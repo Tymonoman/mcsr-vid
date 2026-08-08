@@ -51,7 +51,6 @@ const thumbnailDefaultProps: ThumbnailProps = {
     avatarUrl: "https://starlightskins.lunareclipse.studio/render/crossed/5ee577fdc1af45d3a6fb3e086cc293fb/full",
   },
   headerLabel: "Minecraft · Speedrunning · Ranked",
-  resultLabel: "8:44",
 };
 
 export const RemotionRoot: React.FC = () => {

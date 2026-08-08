@@ -30,7 +30,7 @@ export const Thumbnail: FC<ThumbnailProps> = (props) => {
         <PlayerRender player={props.left} side="left" />
         <PlayerRender player={props.right} side="right" />
         <div className="thumb-vs">
-          <div className="badge">
+          <div className="vs-badge">
             <svg viewBox="0 0 100 100">
               <polygon points="50,4 96,50 50,96" fill="#e2483f" />
               <polygon points="50,4 4,50 50,96" fill="#35d6c4" />
@@ -41,7 +41,6 @@ export const Thumbnail: FC<ThumbnailProps> = (props) => {
         </div>
         <PlayerTag player={props.left} side="left" />
         <PlayerTag player={props.right} side="right" />
-        {props.resultLabel !== null && <div className="thumb-result">{props.resultLabel}</div>}
       </div>
     </AbsoluteFill>
   );

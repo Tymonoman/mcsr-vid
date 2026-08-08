@@ -43,6 +43,4 @@ export type ThumbnailProps = {
   right: ThumbnailPlayer;
   /** Top category bar text, e.g. "MINECRAFT · SPEEDRUNNING · RANKED". */
   headerLabel: string;
-  /** Final run time, M:SS, shown as a corner badge — null if the match has no result (forfeit/DNF). */
-  resultLabel: string | null;
 };

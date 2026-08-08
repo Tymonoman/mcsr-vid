@@ -362,10 +362,18 @@
   gap: 10px;
   z-index: 4;
 }
-.thumb-vs .badge {
-  position: static;
+.thumb-vs .vs-badge {
   width: 150px;
   height: 150px;
+  background: var(--panel-2);
+  border: 4px solid var(--panel-edge-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.thumb-vs .vs-badge svg {
+  width: 62%;
+  height: 62%;
 }
 .thumb-vs .vs-text {
   font-weight: 700;
@@ -404,18 +412,5 @@
   color: var(--quartz);
   font-weight: 700;
   font-size: 26px;
-  text-transform: lowercase;
   white-space: nowrap;
-}
-.thumb-result {
-  position: absolute;
-  right: 14px;
-  bottom: 14px;
-  background: rgba(13, 12, 16, 0.85);
-  color: var(--quartz);
-  font-weight: 700;
-  font-size: 20px;
-  padding: 4px 10px;
-  z-index: 5;
-  font-variant-numeric: tabular-nums;
 }
