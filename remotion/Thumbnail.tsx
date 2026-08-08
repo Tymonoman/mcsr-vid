@@ -2,6 +2,7 @@ import type { FC } from "react";
 import { AbsoluteFill, Img } from "remotion";
 import "./overlay.css";
 import type { ThumbnailProps, ThumbnailPlayer } from "./types.js";
+import { PixelBadge } from "./PixelBadge.js";
 
 function PlayerRender({ player, side }: { player: ThumbnailPlayer; side: "left" | "right" }) {
   return (
@@ -30,13 +31,7 @@ export const Thumbnail: FC<ThumbnailProps> = (props) => {
         <PlayerRender player={props.left} side="left" />
         <PlayerRender player={props.right} side="right" />
         <div className="thumb-vs">
-          <div className="badge">
-            <svg viewBox="0 0 100 100">
-              <polygon points="50,4 96,50 50,96" fill="#e2483f" />
-              <polygon points="50,4 4,50 50,96" fill="#35d6c4" />
-              <rect x="46" y="0" width="8" height="100" fill="#0d0c10" />
-            </svg>
-          </div>
+          <PixelBadge />
           <span className="vs-text">1v1</span>
         </div>
         <PlayerTag player={props.left} side="left" />

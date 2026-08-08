@@ -4,6 +4,7 @@ import "./overlay.css";
 import { formatTime, formatShortTime } from "./format.js";
 import type { OverlayProps, SplitRow } from "./types.js";
 import { resolveSplitSide, compareSplitSides, type SplitSideState } from "./resolveSplitSide.js";
+import { PixelBadge } from "./PixelBadge.js";
 
 function IdentBar({ props }: { props: OverlayProps }) {
   return (
@@ -14,18 +15,6 @@ function IdentBar({ props }: { props: OverlayProps }) {
       <div className="half warped">
         <span className="name">{props.right.nickname}</span>
       </div>
-    </div>
-  );
-}
-
-function Badge() {
-  return (
-    <div className="badge">
-      <svg viewBox="0 0 100 100">
-        <polygon points="50,4 96,50 50,96" fill="#e2483f" />
-        <polygon points="50,4 4,50 50,96" fill="#35d6c4" />
-        <rect x="46" y="0" width="8" height="100" fill="#0d0c10" />
-      </svg>
     </div>
   );
 }
@@ -186,7 +175,7 @@ export const Overlay: FC<OverlayProps> = (props) => {
   return (
     <AbsoluteFill>
       <IdentBar props={props} />
-      <Badge />
+      <PixelBadge />
       <InfoBar props={props} />
       <SplitsPanel props={props} elapsedMs={elapsedMs} frame={frame} fps={fps} runEndFrame={runEndFrame} />
     </AbsoluteFill>
