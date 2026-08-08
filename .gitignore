@@ -11,3 +11,4 @@ dist/
 *.webm
 *.mov
 /remotion/overlay.css
+/.claude/

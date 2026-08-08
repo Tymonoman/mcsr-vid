@@ -3,9 +3,10 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import type { MatchInfo, MatchVod } from "./types.js";
 
-const PRE_ROLL_SEC = 150; // buffer before the estimated match start, for the sync step to search within
-const POST_ROLL_SEC = 60; // buffer after the estimated match end
-const DEFAULT_RUN_SEC = 900; // fallback when result.time is missing/zero (e.g. forfeits)
+// Shared with renderOverlay.ts so the overlay clip uses the same windowing convention as the VODs.
+export const PRE_ROLL_SEC = 150; // buffer before the estimated match start, for the sync step to search within
+export const POST_ROLL_SEC = 60; // buffer after the estimated match end
+export const DEFAULT_RUN_SEC = 900; // fallback when result.time is missing/zero (e.g. forfeits)
 
 export interface VodWindow {
   playerUuid: string;
@@ -18,7 +19,7 @@ export interface VodWindow {
   matchOffsetIntoClipSec: number;
 }
 
-function estimatedRunSec(match: MatchInfo): number {
+export function estimatedRunSec(match: MatchInfo): number {
   return match.result.time > 0 ? match.result.time / 1000 : DEFAULT_RUN_SEC;
 }
 

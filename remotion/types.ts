@@ -27,4 +27,6 @@ export type OverlayProps = {
   timerStartFrame: number;
   /** Final completion ms; the live timer counts up to this and holds. null = keep counting/DNF. */
   runResultMs: number | null;
+  /** Total length of this render, in frames at the composition's fps — matches the synced clip length. */
+  durationInFrames: number;
 };

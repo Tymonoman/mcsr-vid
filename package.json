@@ -9,7 +9,9 @@
     "validate-sync": "tsx src/validateSync.ts",
     "build-overlay-css": "node scripts/build-overlay-css.mjs",
     "remotion:studio": "npm run build-overlay-css && remotion studio remotion/index.ts",
-    "remotion:render": "npm run build-overlay-css && remotion render remotion/index.ts MatchOverlay"
+    "remotion:render": "npm run build-overlay-css && remotion render remotion/index.ts MatchOverlay",
+    "render-overlay": "npm run build-overlay-css && tsx src/renderOverlay.ts",
+    "generate-project": "tsx src/generateProject.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

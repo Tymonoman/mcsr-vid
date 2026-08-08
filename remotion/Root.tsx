@@ -35,6 +35,7 @@ const defaultProps: OverlayProps = {
   ],
   timerStartFrame: 0,
   runResultMs: 505356,
+  durationInFrames: 42900,
 };
 
 export const RemotionRoot: React.FC = () => {
@@ -47,6 +48,7 @@ export const RemotionRoot: React.FC = () => {
       width={1920}
       height={1080}
       defaultProps={defaultProps}
+      calculateMetadata={({ props }) => ({ durationInFrames: props.durationInFrames })}
     />
   );
 };
