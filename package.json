@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "fetch-match": "tsx src/fetchMatch.ts"
+    "fetch-match": "tsx src/fetchMatch.ts",
+    "download-vods": "tsx src/downloadVods.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
