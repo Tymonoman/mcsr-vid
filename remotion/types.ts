@@ -1,0 +1,30 @@
+export interface PlayerIdentity {
+  nickname: string;
+  countryFlag: string;
+  eloRate: number;
+  eloRank: number;
+  pbMs: number;
+  avgMs: number;
+  gamesPlayed: number;
+  winRatePct: number;
+}
+
+export interface SplitRow {
+  label: string;
+  /** null means this player never reached this checkpoint (DNF at this split). */
+  leftMs: number | null;
+  rightMs: number | null;
+}
+
+export type OverlayProps = {
+  left: PlayerIdentity;
+  right: PlayerIdentity;
+  matchPlayedLabel: string;
+  h2hLeftWins: number;
+  h2hRightWins: number;
+  splits: SplitRow[];
+  /** Frame at which the RTA timer starts counting from 0 (the synced match-start frame). */
+  timerStartFrame: number;
+  /** Final completion ms; the live timer counts up to this and holds. null = keep counting/DNF. */
+  runResultMs: number | null;
+};

@@ -5,7 +5,9 @@ dist/
 /media/
 /downloads/
 /output/
+/out/
 *.mp4
 *.mkv
 *.webm
 *.mov
+/remotion/overlay.css

@@ -5,14 +5,26 @@
   "type": "module",
   "scripts": {
     "fetch-match": "tsx src/fetchMatch.ts",
-    "download-vods": "tsx src/downloadVods.ts"
+    "download-vods": "tsx src/downloadVods.ts",
+    "build-overlay-css": "node scripts/build-overlay-css.mjs",
+    "remotion:studio": "npm run build-overlay-css && remotion studio remotion/index.ts",
+    "remotion:render": "npm run build-overlay-css && remotion render remotion/index.ts MatchOverlay"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"
   },
   "allowScripts": {
     "esbuild@0.28.1": true
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.507",
+    "@remotion/renderer": "^4.0.507",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "remotion": "^4.0.507"
   }
 }
