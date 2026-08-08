@@ -6,6 +6,7 @@
   "scripts": {
     "fetch-match": "tsx src/fetchMatch.ts",
     "download-vods": "tsx src/downloadVods.ts",
+    "validate-sync": "tsx src/validateSync.ts",
     "build-overlay-css": "node scripts/build-overlay-css.mjs",
     "remotion:studio": "npm run build-overlay-css && remotion studio remotion/index.ts",
     "remotion:render": "npm run build-overlay-css && remotion render remotion/index.ts MatchOverlay"

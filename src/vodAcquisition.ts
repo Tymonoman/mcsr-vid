@@ -42,11 +42,15 @@ export async function downloadVodWindow(
   const player = match.players.find((p) => p.uuid === vod.uuid);
   const playerNickname = player?.nickname ?? vod.uuid;
 
-  const matchOffsetIntoVodSec = match.date - vod.startsAt;
+  // `date` is the match's *completion* timestamp (verified against real footage: the on-screen
+  // result time at `date - vod.startsAt` matches `result.time` exactly), not its start — so the
+  // start has to be derived by subtracting the run duration.
+  const matchEndIntoVodSec = match.date - vod.startsAt;
   const runSec = estimatedRunSec(match);
-  const windowStartSec = Math.max(0, matchOffsetIntoVodSec - PRE_ROLL_SEC);
-  const windowEndSec = matchOffsetIntoVodSec + runSec + POST_ROLL_SEC;
-  const matchOffsetIntoClipSec = matchOffsetIntoVodSec - windowStartSec;
+  const matchStartIntoVodSec = matchEndIntoVodSec - runSec;
+  const windowStartSec = Math.max(0, matchStartIntoVodSec - PRE_ROLL_SEC);
+  const windowEndSec = matchEndIntoVodSec + POST_ROLL_SEC;
+  const matchOffsetIntoClipSec = matchStartIntoVodSec - windowStartSec;
 
   await mkdir(outDir, { recursive: true });
   const outputTemplate = path.join(outDir, `${playerNickname}.%(ext)s`);
@@ -70,7 +74,7 @@ export async function downloadVodWindow(
     playerNickname,
     sourceUrl: vod.url,
     path: path.join(outDir, `${playerNickname}.mp4`),
-    matchOffsetIntoVodSec,
+    matchOffsetIntoVodSec: matchStartIntoVodSec,
     matchOffsetIntoClipSec,
   };
 }
