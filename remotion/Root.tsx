@@ -1,6 +1,7 @@
 import { Composition } from "remotion";
 import { Overlay } from "./Overlay.js";
-import type { OverlayProps } from "./types.js";
+import { Thumbnail } from "./Thumbnail.js";
+import type { OverlayProps, ThumbnailProps } from "./types.js";
 
 const defaultProps: OverlayProps = {
   left: {
@@ -38,17 +39,43 @@ const defaultProps: OverlayProps = {
   durationInFrames: 42900,
 };
 
+const thumbnailDefaultProps: ThumbnailProps = {
+  left: {
+    nickname: "edcr",
+    eloRate: 2700,
+    avatarUrl: "https://starlightskins.lunareclipse.studio/render/walking/635f35ee69ed4f0c94ff26ece4818956/full",
+  },
+  right: {
+    nickname: "Ranik_",
+    eloRate: 2158,
+    avatarUrl: "https://starlightskins.lunareclipse.studio/render/crossed/5ee577fdc1af45d3a6fb3e086cc293fb/full",
+  },
+  headerLabel: "Minecraft · Speedrunning · Ranked",
+  resultLabel: "8:44",
+};
+
 export const RemotionRoot: React.FC = () => {
   return (
-    <Composition
-      id="MatchOverlay"
-      component={Overlay}
-      durationInFrames={42900}
-      fps={60}
-      width={1920}
-      height={1080}
-      defaultProps={defaultProps}
-      calculateMetadata={({ props }) => ({ durationInFrames: props.durationInFrames })}
-    />
+    <>
+      <Composition
+        id="MatchOverlay"
+        component={Overlay}
+        durationInFrames={42900}
+        fps={60}
+        width={1920}
+        height={1080}
+        defaultProps={defaultProps}
+        calculateMetadata={({ props }) => ({ durationInFrames: props.durationInFrames })}
+      />
+      <Composition
+        id="Thumbnail"
+        component={Thumbnail}
+        durationInFrames={1}
+        fps={1}
+        width={1280}
+        height={720}
+        defaultProps={thumbnailDefaultProps}
+      />
+    </>
   );
 };
