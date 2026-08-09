@@ -452,76 +452,93 @@
   display: flex;
   align-items: flex-end;
 }
+/* Both players hug the centre line of their own half, so the pair reads as a face-off
+   rather than two figures stranded at opposite edges. */
 .thumb-player.left {
-  left: -2%;
-  justify-content: flex-start;
-}
-.thumb-player.right {
-  right: -2%;
+  left: 0;
   justify-content: flex-end;
 }
+.thumb-player.right {
+  right: 0;
+  justify-content: flex-start;
+}
+/* Chained hard drop-shadows fake a pixel outline: each one re-shadows the previous
+   result, so four offsets give an even border that follows the skin's alpha edge. */
 .thumb-player img {
   height: 100%;
   width: auto;
   image-rendering: pixelated;
-  filter: drop-shadow(0 18px 20px rgba(0, 0, 0, 0.55));
+  filter: drop-shadow(3px 0 0 var(--quartz)) drop-shadow(-3px 0 0 var(--quartz))
+    drop-shadow(0 3px 0 var(--quartz)) drop-shadow(0 -3px 0 var(--quartz))
+    drop-shadow(0 18px 20px rgba(0, 0, 0, 0.55));
 }
 .thumb-player.right img {
   transform: scaleX(-1);
 }
 .thumb-vs {
   position: absolute;
-  top: 52%;
+  top: 44%;
   left: 50%;
   transform: translate(-50%, -50%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
   z-index: 4;
+  font-weight: 700;
+  font-size: 150px;
+  line-height: 1;
+  color: var(--quartz);
+  text-shadow:
+    5px 0 0 var(--panel-edge),
+    -5px 0 0 var(--panel-edge),
+    0 5px 0 var(--panel-edge),
+    0 -5px 0 var(--panel-edge),
+    5px 5px 0 var(--panel-edge),
+    -5px -5px 0 var(--panel-edge),
+    5px -5px 0 var(--panel-edge),
+    -5px 5px 0 var(--panel-edge),
+    0 14px 0 rgba(0, 0, 0, 0.45);
 }
-.thumb-vs .badge {
+.thumb-logo {
+  position: absolute;
+  bottom: 26px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+}
+.thumb-logo .badge {
   position: static;
   transform: none;
-  width: 150px;
-  height: 150px;
-}
-.thumb-vs .vs-text {
-  font-weight: 700;
-  font-size: 46px;
-  color: var(--gold);
-  letter-spacing: 0.05em;
-  text-shadow: 0 3px 0 var(--panel-edge);
+  width: 104px;
+  height: 104px;
 }
 .thumb-tag {
   position: absolute;
   bottom: 30px;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   background: var(--panel);
   border: 3px solid var(--panel-edge-light);
-  padding: 10px 22px;
+  padding: 10px 20px;
   z-index: 5;
 }
 .thumb-tag.left {
-  left: 5%;
+  left: 2.5%;
   border-left: 8px solid var(--crimson);
 }
 .thumb-tag.right {
-  right: 5%;
+  right: 2.5%;
   border-right: 8px solid var(--warped);
   flex-direction: row-reverse;
 }
 .thumb-tag .elo {
   color: var(--gold);
   font-weight: 700;
-  font-size: 26px;
+  font-size: 32px;
   white-space: nowrap;
 }
+/* 36px keeps even a 16-character (max-length) Minecraft name clear of the centre logo. */
 .thumb-tag .nick {
   color: var(--quartz);
   font-weight: 700;
-  font-size: 26px;
+  font-size: 36px;
   white-space: nowrap;
 }
