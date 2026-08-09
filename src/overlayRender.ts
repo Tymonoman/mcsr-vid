@@ -2,10 +2,13 @@ import { bundle } from "@remotion/bundler";
 import { makeCancelSignal, renderMedia, selectComposition } from "@remotion/renderer";
 import { config } from "./config.js";
 import { computeOverlayProps } from "./overlayProps.js";
-import { PRE_ROLL_SEC, POST_ROLL_SEC, estimatedRunSec } from "./vodAcquisition.js";
+import { POST_ROLL_SEC, estimatedRunSec } from "./vodAcquisition.js";
 import type { MatchInfo, UserDetails, VersusStats } from "./types.js";
 
 const FPS = config.overlayFps;
+// The VOD clips carry `PRE_ROLL_SEC` (sync-search headroom); the overlay only needs a short
+// pause before the timer starts, so it renders that instead of ~2.5min of a frozen 0:00.000.
+const LEAD_IN_SEC = config.overlayLeadInSec;
 
 export interface RenderProgress {
   phase: "bundling" | "rendering";
@@ -42,8 +45,8 @@ function webpackOverride(config: Record<string, unknown>): Record<string, unknow
 export async function renderOverlay(args: RenderOverlayArgs): Promise<RenderOverlayResult> {
   const props = await computeOverlayProps(args.match, args.userLeft, args.userRight, args.versus);
   const runSec = estimatedRunSec(args.match);
-  const durationInFrames = Math.round((PRE_ROLL_SEC + runSec + POST_ROLL_SEC) * FPS);
-  const timerStartFrame = Math.round(PRE_ROLL_SEC * FPS);
+  const durationInFrames = Math.round((LEAD_IN_SEC + runSec + POST_ROLL_SEC) * FPS);
+  const timerStartFrame = Math.round(LEAD_IN_SEC * FPS);
   const renderProps = { ...props, timerStartFrame, durationInFrames, fps: FPS };
 
   const { cancelSignal, cancel } = makeCancelSignal();
@@ -90,5 +93,5 @@ export async function renderOverlay(args: RenderOverlayArgs): Promise<RenderOver
     args.signal?.removeEventListener("abort", onAbort);
   }
 
-  return { path: args.outPath, matchOffsetIntoClipSec: PRE_ROLL_SEC, durationInFrames, fps: FPS };
+  return { path: args.outPath, matchOffsetIntoClipSec: LEAD_IN_SEC, durationInFrames, fps: FPS };
 }

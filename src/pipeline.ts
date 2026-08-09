@@ -238,7 +238,9 @@ export async function runPipeline(input: string, opts: PipelineOptions = {}): Pr
   const overlayClip: KdenliveClipInput = {
     path: path.resolve(overlayPath),
     durationSec: overlayDurationSec,
-    matchOffsetIntoClipSec: PRE_ROLL_SEC,
+    // Not PRE_ROLL_SEC: the overlay renders only a short lead-in before the timer starts,
+    // so it begins later on the timeline than the VOD clips do (see overlayRender.ts).
+    matchOffsetIntoClipSec: config.overlayLeadInSec,
     clipName: "Stat Overlay",
   };
 

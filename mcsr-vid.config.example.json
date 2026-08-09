@@ -6,6 +6,7 @@
   "postRollSec": 60,
   "defaultRunSec": 900,
   "mediaDir": "media",
+  "overlayLeadInSec": 20,
   "overlayFps": 30,
   "renderConcurrency": null
 }

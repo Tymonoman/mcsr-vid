@@ -15,6 +15,12 @@ export interface Config {
   /** Per-match working directory root. */
   mediaDir: string;
   /**
+   * Seconds of overlay before the timer starts. The VOD clips keep a much larger `preRollSec`
+   * because the audio-sync search needs room to hunt for the world-load thump, but the overlay
+   * just sits frozen at 0:00.000 through all of it — so it only renders a short lead-in.
+   */
+  overlayLeadInSec: number;
+  /**
    * Frame rate of the overlay render. The overlay is 2D graphics composited over 60fps
    * footage, so 30 halves render time and file size for no visible loss; raise to 60 only
    * if you can see the RTA timer's millisecond digits stepping.
@@ -36,6 +42,7 @@ const DEFAULTS: Config = {
   postRollSec: 60,
   defaultRunSec: 900,
   mediaDir: "media",
+  overlayLeadInSec: 20,
   overlayFps: 30,
   renderConcurrency: null,
 };
