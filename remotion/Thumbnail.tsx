@@ -30,12 +30,12 @@ export const Thumbnail: FC<ThumbnailProps> = (props) => {
       <div className="thumb-body">
         <PlayerRender player={props.left} side="left" />
         <PlayerRender player={props.right} side="right" />
-        <div className="thumb-vs">
-          <PixelBadge />
-          <span className="vs-text">1v1</span>
-        </div>
+        <span className="thumb-vs">VS</span>
         <PlayerTag player={props.left} side="left" />
         <PlayerTag player={props.right} side="right" />
+        <div className="thumb-logo">
+          <PixelBadge />
+        </div>
       </div>
     </AbsoluteFill>
   );
