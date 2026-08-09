@@ -12,6 +12,7 @@ const defaultProps: OverlayProps = {
     avgMs: 597823,
     gamesPlayed: 5061,
     winRatePct: 64.8,
+    avatarUrl: "https://nmsr.nickac.dev/fullbody/8667ba71-b85a-4004-af54-457a9734eed7",
   },
   right: {
     nickname: "Ranik_",
@@ -22,6 +23,7 @@ const defaultProps: OverlayProps = {
     avgMs: 668224,
     gamesPlayed: 8895,
     winRatePct: 53.3,
+    avatarUrl: "https://nmsr.nickac.dev/fullbody/61699b2e-d327-4a01-9f1e-0ea8c3f06bc6",
   },
   matchPlayedLabel: "Aug 8, 2026",
   h2hLeftWins: 6,

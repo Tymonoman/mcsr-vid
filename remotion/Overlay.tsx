@@ -4,6 +4,7 @@ import "./overlay.css";
 import { formatTime } from "./format.js";
 import type { OverlayProps, SplitRow } from "./types.js";
 import { resolveSplitSide, compareSplitSides, type SplitSideState } from "./resolveSplitSide.js";
+import { Intro } from "./Intro.js";
 
 function IdentBar({ props }: { props: OverlayProps }) {
   return (
@@ -195,6 +196,7 @@ export const Overlay: FC<OverlayProps> = (props) => {
       <Badge />
       <InfoBar props={props} />
       <SplitsPanel props={props} elapsedMs={elapsedMs} frame={frame} fps={fps} runEndFrame={runEndFrame} />
+      <Intro props={props} />
     </AbsoluteFill>
   );
 };

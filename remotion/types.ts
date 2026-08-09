@@ -7,6 +7,7 @@ export interface PlayerIdentity {
   avgMs: number;
   gamesPlayed: number;
   winRatePct: number;
+  avatarUrl: string;
 }
 
 export interface SplitRow {
