@@ -10,6 +10,12 @@ export interface KdenliveClipInput {
   clipName: string;
 }
 
+export interface KdenliveMarkerInput {
+  /** Absolute timeline position, in seconds from the start of the whole sequence. */
+  positionSec: number;
+  comment: string;
+}
+
 export interface KdenliveProjectInput {
   fps: number;
   width: number;
@@ -18,6 +24,7 @@ export interface KdenliveProjectInput {
   rightClip: KdenliveClipInput;
   overlayClip: KdenliveClipInput;
   projectName: string;
+  markers?: KdenliveMarkerInput[];
 }
 
 function escapeXml(s: string): string {
@@ -125,7 +132,7 @@ function buildTrack(opts: {
 
 /** Generates a complete .kdenlive (MLT XML) project: two split-screen POV clips + an alpha overlay track. */
 export function buildKdenliveProject(input: KdenliveProjectInput): string {
-  const { fps, width, height, leftClip, rightClip, overlayClip, projectName } = input;
+  const { fps, width, height, leftClip, rightClip, overlayClip, projectName, markers } = input;
   const sequenceUuid = `{${randomUUID()}}`;
 
   const maxOffset = Math.max(
@@ -220,6 +227,26 @@ export function buildKdenliveProject(input: KdenliveProjectInput): string {
     })
     .join("");
 
+  // Markers/guides: well-known Kdenlive/MLT convention (pos = frame index, type = category
+  // index), NOT confirmed against a live Kdenlive save (no sample project with markers set was
+  // available) — verify by opening a generated project in real Kdenlive.
+  const guidesXml =
+    markers && markers.length > 0
+      ? `
+        <property name="kdenlive:docproperties.guides">${escapeXml(
+          JSON.stringify(
+            markers.map((m) => ({
+              comment: m.comment,
+              pos: Math.round(m.positionSec * fps),
+              type: 0,
+            })),
+          ),
+        )}</property>
+        <property name="kdenlive:docproperties.guidesCategories">${escapeXml(
+          JSON.stringify([{ color: "#3daee9", comment: "Splits", index: 0 }]),
+        )}</property>`
+      : "";
+
   const mainBinEntries = [
     `<entry in="00:00:00.000" out="00:00:00.000" producer="${sequenceUuid}"/>`,
     `<entry in="00:00:00.000" out="00:00:00.000" producer="chain_audio_left"/>`,
@@ -262,7 +289,7 @@ ${tracks.map((t) => `${t.playlistAXml}${t.playlistBXml}${t.tractorXml}`).join("\
         <property name="kdenlive:docproperties.profile">${width}x${height}p${fps}</property>
         <property name="kdenlive:docproperties.uuid">${sequenceUuid}</property>
         <property name="kdenlive:docproperties.opensequences">${sequenceUuid}</property>
-        <property name="kdenlive:docproperties.activetimeline">${sequenceUuid}</property>
+        <property name="kdenlive:docproperties.activetimeline">${sequenceUuid}</property>${guidesXml}
         <property name="kdenlive:sequenceFolder">2</property>
         <property name="xml_retain">1</property>
         ${mainBinEntries}

@@ -93,6 +93,28 @@ function playerIdentity(user: UserDetails, avatarUrl: string): PlayerIdentity {
   };
 }
 
+/**
+ * Pure, network-free split computation, factored out of `computeOverlayProps` so callers that
+ * only need split timings (e.g. placing Kdenlive markers) don't have to pay for that function's
+ * avatar-resolution network probes.
+ */
+export function computeSplits(match: MatchInfo, leftUuid: string, rightUuid: string): SplitRow[] {
+  const eventsByPlayer = new Map<string, Map<string, number>>();
+  for (const t of match.timelines) {
+    if (!eventsByPlayer.has(t.uuid)) eventsByPlayer.set(t.uuid, new Map());
+    eventsByPlayer.get(t.uuid)!.set(t.type, t.time);
+  }
+
+  const leftEvents = eventsByPlayer.get(leftUuid) ?? new Map();
+  const rightEvents = eventsByPlayer.get(rightUuid) ?? new Map();
+
+  return SPLIT_EVENTS.map(({ label, type }) => ({
+    label,
+    leftMs: leftEvents.get(type) ?? null,
+    rightMs: rightEvents.get(type) ?? null,
+  }));
+}
+
 /** Builds the Remotion overlay props from real API data for one match. */
 export async function computeOverlayProps(
   match: MatchInfo,
@@ -100,22 +122,9 @@ export async function computeOverlayProps(
   userRight: UserDetails,
   versus: VersusStats,
 ): Promise<OverlayProps> {
-  const eventsByPlayer = new Map<string, Map<string, number>>();
-  for (const t of match.timelines) {
-    if (!eventsByPlayer.has(t.uuid)) eventsByPlayer.set(t.uuid, new Map());
-    eventsByPlayer.get(t.uuid)!.set(t.type, t.time);
-  }
-
   const leftUuid = userLeft.uuid;
   const rightUuid = userRight.uuid;
-  const leftEvents = eventsByPlayer.get(leftUuid) ?? new Map();
-  const rightEvents = eventsByPlayer.get(rightUuid) ?? new Map();
-
-  const splits: SplitRow[] = SPLIT_EVENTS.map(({ label, type }) => ({
-    label,
-    leftMs: leftEvents.get(type) ?? null,
-    rightMs: rightEvents.get(type) ?? null,
-  }));
+  const splits = computeSplits(match, leftUuid, rightUuid);
 
   const matchPlayedLabel = new Date(match.date * 1000).toLocaleDateString("en-US", {
     month: "short",
