@@ -53,7 +53,13 @@ export async function renderOverlay(args: RenderOverlayArgs): Promise<RenderOver
     const serveUrl = await bundle(
       new URL("../remotion/index.ts", import.meta.url).pathname,
       (percent) => args.onProgress?.({ phase: "bundling", percent }),
-      { webpackOverride: webpackOverride as never },
+      {
+        webpackOverride: webpackOverride as never,
+        // Mirrors Config.setPublicDir() in remotion.config.ts. That config is only auto-loaded
+        // by the `remotion` CLI, so without this staticFile() (achievement badges) resolves
+        // against a project-root public/ that doesn't exist and the icons 404 at render time.
+        publicDir: new URL("../remotion/assets", import.meta.url).pathname,
+      },
     );
 
     const composition = await selectComposition({ serveUrl, id: "MatchOverlay", inputProps: renderProps });

@@ -36,6 +36,9 @@ export async function renderThumbnail(args: RenderThumbnailArgs): Promise<Render
   try {
     const serveUrl = await bundle(new URL("../remotion/index.ts", import.meta.url).pathname, undefined, {
       webpackOverride: webpackOverride as never,
+      // See overlayRender.ts: remotion.config.ts's setPublicDir is CLI-only, so staticFile()
+      // needs the public dir passed explicitly on programmatic bundles too.
+      publicDir: new URL("../remotion/assets", import.meta.url).pathname,
     });
 
     const composition = await selectComposition({ serveUrl, id: "Thumbnail", inputProps: renderProps });

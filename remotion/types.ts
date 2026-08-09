@@ -9,6 +9,7 @@ export interface PlayerIdentity {
   winRatePct: number;
   forfeitRatePct: number;
   avatarUrl: string;
+  achievements: { id: string; level: number }[];
 }
 
 export interface SplitRow {

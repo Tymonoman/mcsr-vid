@@ -14,6 +14,11 @@ const defaultProps: OverlayProps = {
     gamesPlayed: 5061,
     winRatePct: 64.8,
     forfeitRatePct: 3.2,
+    achievements: [
+      { id: "wins", level: 10 },
+      { id: "playtime", level: 8 },
+      { id: "oneshot", level: 1 },
+    ],
     avatarUrl: "https://nmsr.nickac.dev/fullbody/8667ba71-b85a-4004-af54-457a9734eed7",
   },
   right: {
@@ -26,6 +31,10 @@ const defaultProps: OverlayProps = {
     gamesPlayed: 8895,
     winRatePct: 53.3,
     forfeitRatePct: 5.7,
+    achievements: [
+      { id: "bestTime", level: 6 },
+      { id: "playedMatches", level: 11 },
+    ],
     avatarUrl: "https://nmsr.nickac.dev/fullbody/61699b2e-d327-4a01-9f1e-0ea8c3f06bc6",
   },
   matchPlayedLabel: "Aug 8, 2026",

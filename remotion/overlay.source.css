@@ -167,6 +167,21 @@
   color: var(--quartz);
   margin-top: 3px;
 }
+.ach-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+.row2 .half.right .ach-row {
+  justify-content: flex-end;
+}
+.ach-row img {
+  width: 26px;
+  height: 26px;
+  image-rendering: pixelated;
+}
+
 .col-meta .seed-chip {
   display: flex;
   align-items: center;
