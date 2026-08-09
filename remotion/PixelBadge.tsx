@@ -3,7 +3,7 @@ import { buildBadgeRingCells, BADGE_GRID_N } from "./pixelBadge.js";
 // Computed once at module load, not per frame — this is static across the render.
 const RING_CELLS = buildBadgeRingCells();
 
-/** The MCSR Replayoffs mark: a pixel-art replay ring around the Monocraft
+/** The MCSR RePlayoffs mark: a pixel-art replay ring around the Monocraft
  * wordmark, in the crimson/warped brand split. Shared by the video overlay
  * and the thumbnail generator so both carry the same badge. */
 export function PixelBadge() {

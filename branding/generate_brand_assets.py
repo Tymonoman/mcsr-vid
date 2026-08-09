@@ -1,4 +1,4 @@
-"""Channel logo/banner for MCSR Replayoffs: the same pixel-art replay ring
+"""Channel logo/banner for MCSR RePlayoffs: the same pixel-art replay ring
 as remotion/pixelBadge.ts, rendered with the project's actual Monocraft font
 and --panel-2/--panel-edge-light/--gold/--quartz palette, so the channel art
 matches the video overlay exactly rather than approximating it."""

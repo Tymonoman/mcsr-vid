@@ -1,4 +1,4 @@
-/** Pixel-art replay/rewind ring: the MCSR Replayoffs mark. Grid cells only —
+/** Pixel-art replay/rewind ring: the MCSR RePlayoffs mark. Grid cells only —
  * the "MCSR" wordmark itself is drawn as real Monocraft `<text>` by the
  * caller, not part of this grid. */
 

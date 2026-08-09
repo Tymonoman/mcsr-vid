@@ -1,4 +1,4 @@
-# MCSR Replayoffs brand assets
+# MCSR RePlayoffs brand assets
 
 `logo.png` (800×800, YouTube profile picture) and `banner.png` (2560×1440,
 YouTube channel banner). Both are generated, not hand-drawn — they use the
