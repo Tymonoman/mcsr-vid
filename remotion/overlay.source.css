@@ -54,7 +54,6 @@
   font-weight: 700;
   font-size: 42px;
   color: #16151a;
-  text-transform: lowercase;
 }
 
 .badge {
@@ -339,7 +338,6 @@
   font-weight: 700;
   font-size: 56px;
   color: var(--quartz);
-  text-transform: lowercase;
 }
 .intro-player.left .intro-name {
   color: var(--crimson);
