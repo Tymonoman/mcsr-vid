@@ -176,9 +176,13 @@ function App({ signal }: { signal: AbortSignal }) {
         proc.on("spawn", () => {
           setKdenliveStatus("opened");
           proc.unref();
+          instance.unmount();
+          process.exit(0);
         });
       } else if (char.toLowerCase() === "n") {
         setKdenliveStatus("opened");
+        instance.unmount();
+        process.exit(0);
       }
     },
     { isActive: screen === "summary" },
