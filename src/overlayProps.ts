@@ -1,3 +1,4 @@
+import { config } from "./config.js";
 import type { MatchInfo, UserDetails, VersusStats } from "./types.js";
 
 export interface PlayerIdentity {
@@ -9,6 +10,7 @@ export interface PlayerIdentity {
   avgMs: number;
   gamesPlayed: number;
   winRatePct: number;
+  forfeitRatePct: number;
   avatarUrl: string;
 }
 
@@ -27,6 +29,8 @@ export interface OverlayProps {
   splits: SplitRow[];
   timerStartFrame: number;
   runResultMs: number | null;
+  seedType: string | null;
+  bastionType: string | null;
 }
 
 const SPLIT_EVENTS: { label: string; type: string }[] = [
@@ -62,9 +66,9 @@ function countryFlag(countryCode: string | null): string {
   return String.fromCodePoint(...codePoints);
 }
 
-/** One energetic, one calm — mirrors the thumbnail generator's pose convention. */
-const LEFT_POSE = "walking";
-const RIGHT_POSE = "crossed";
+/** One energetic, one calm — mirrors the thumbnail generator's pose convention. Override via config. */
+const LEFT_POSE = config.leftPose;
+const RIGHT_POSE = config.rightPose;
 
 function playerIdentity(user: UserDetails, avatarUrl: string): PlayerIdentity {
   const stats = user.statistics.total;
@@ -72,6 +76,8 @@ function playerIdentity(user: UserDetails, avatarUrl: string): PlayerIdentity {
   const completionTime = stats.completionTime.ranked ?? 0;
   const wins = stats.wins.ranked ?? 0;
   const loses = stats.loses.ranked ?? 0;
+  const matches = stats.playedMatches.ranked ?? 0;
+  const forfeits = stats.forfeits.ranked ?? 0;
 
   return {
     nickname: user.nickname,
@@ -80,8 +86,9 @@ function playerIdentity(user: UserDetails, avatarUrl: string): PlayerIdentity {
     eloRank: user.eloRank ?? 0,
     pbMs: stats.bestTime.ranked ?? 0,
     avgMs: completions > 0 ? completionTime / completions : 0,
-    gamesPlayed: stats.playedMatches.ranked ?? 0,
+    gamesPlayed: matches,
     winRatePct: wins + loses > 0 ? (wins / (wins + loses)) * 100 : 0,
+    forfeitRatePct: matches > 0 ? (forfeits / matches) * 100 : 0,
     avatarUrl,
   };
 }
@@ -131,5 +138,7 @@ export async function computeOverlayProps(
     splits,
     timerStartFrame: 0,
     runResultMs: match.result.time > 0 ? match.result.time : null,
+    seedType: match.seedType,
+    bastionType: match.bastionType,
   };
 }

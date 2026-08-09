@@ -14,3 +14,13 @@ export function formatShortTime(ms: number): string {
   const seconds = Math.floor((clamped % 60000) / 1000);
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
+
+/** Formats an API constant like "DESERT_TEMPLE" as "Desert Temple". */
+export function formatConstantLabel(value: string | null): string {
+  if (!value) return "Unknown";
+  return value
+    .toLowerCase()
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}

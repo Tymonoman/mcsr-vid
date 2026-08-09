@@ -38,6 +38,13 @@ npm run generate-project -- <url-or-id>  # full pipeline -> media/<id>/match-<id
 
 `npm run remotion:studio` opens the Remotion Studio to preview and tweak the overlay live.
 
+## Config
+
+Copy `mcsr-vid.config.example.json` to `mcsr-vid.config.json` (gitignored) to
+override any of: `leftPose`/`rightPose` (avatar poses), `syncConfidenceThreshold`,
+`preRollSec`/`postRollSec`/`defaultRunSec` (VOD trim window), `mediaDir`. Absent
+keys fall back to the defaults in `src/config.ts`.
+
 ## Project structure
 
 ```

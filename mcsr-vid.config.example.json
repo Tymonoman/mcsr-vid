@@ -1,0 +1,9 @@
+{
+  "leftPose": "walking",
+  "rightPose": "crossed",
+  "syncConfidenceThreshold": 0.15,
+  "preRollSec": 150,
+  "postRollSec": 60,
+  "defaultRunSec": 900,
+  "mediaDir": "media"
+}

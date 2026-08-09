@@ -167,6 +167,23 @@
   color: var(--quartz);
   margin-top: 3px;
 }
+.col-meta .seed-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+.col-meta .bastion-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+.col-meta .seed-label {
+  font-family: var(--pixel-font);
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
 .col-meta .h2h-label {
   margin-top: 18px;
   font-family: var(--pixel-font);

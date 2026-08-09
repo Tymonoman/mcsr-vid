@@ -7,6 +7,7 @@ export interface PlayerIdentity {
   avgMs: number;
   gamesPlayed: number;
   winRatePct: number;
+  forfeitRatePct: number;
   avatarUrl: string;
 }
 
@@ -28,6 +29,10 @@ export type OverlayProps = {
   timerStartFrame: number;
   /** Final completion ms; the live timer counts up to this and holds. null = keep counting/DNF. */
   runResultMs: number | null;
+  /** Overworld structure near spawn, e.g. "DESERT_TEMPLE". null if unknown. */
+  seedType: string | null;
+  /** Bastion remnant type, e.g. "STABLES". null if unknown. */
+  bastionType: string | null;
   /** Total length of this render, in frames at the composition's fps — matches the synced clip length. */
   durationInFrames: number;
 };

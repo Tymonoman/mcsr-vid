@@ -1,3 +1,4 @@
+import { config } from "./config.js";
 import type { MatchInfo, UserDetails } from "./types.js";
 
 export interface ThumbnailPlayer {
@@ -12,9 +13,9 @@ export interface ThumbnailProps {
   headerLabel: string;
 }
 
-/** One energetic, one calm — mirrors the reference thumbnail layout. Override per-video if needed. */
-const LEFT_POSE = "walking";
-const RIGHT_POSE = "crossed";
+/** One energetic, one calm — mirrors the reference thumbnail layout. Override via config. */
+const LEFT_POSE = config.leftPose;
+const RIGHT_POSE = config.rightPose;
 
 const REACHABILITY_TIMEOUT_MS = 4000;
 

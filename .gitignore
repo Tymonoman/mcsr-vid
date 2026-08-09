@@ -2,6 +2,7 @@ node_modules/
 dist/
 .env
 .env.*
+/mcsr-vid.config.json
 /media/
 /downloads/
 /output/

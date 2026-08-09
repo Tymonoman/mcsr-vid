@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
+import { config } from "./config.js";
 import { getMatch, getUser, getVersus, parseMatchId } from "./mcsrApi.js";
 import { buildKdenliveProject, type KdenliveClipInput } from "./kdenliveProject.js";
 import { renderOverlay } from "./overlayRender.js";
@@ -12,7 +13,6 @@ import { downloadMatchVods, PRE_ROLL_SEC, type VodWindow } from "./vodAcquisitio
 const FPS = 60;
 const WIDTH = 1920;
 const HEIGHT = 1080;
-const SYNC_CONFIDENCE_THRESHOLD = 0.15;
 
 export type StageId = "fetch" | "download" | "sync" | "render" | "thumbnail" | "write";
 
@@ -102,7 +102,7 @@ export async function runPipeline(input: string, opts: PipelineOptions = {}): Pr
   ]);
   emit({ stage: "fetch", status: "done", message: `${playerLeft.nickname} vs ${playerRight.nickname}` });
 
-  const outDir = path.join("media", String(matchId));
+  const outDir = path.join(config.mediaDir, String(matchId));
   const pathFor = (nickname: string) => path.join(outDir, `${nickname}.mp4`);
 
   emit({ stage: "download", status: "active", percent: 0 });
@@ -159,7 +159,7 @@ export async function runPipeline(input: string, opts: PipelineOptions = {}): Pr
       rightWindow.matchOffsetIntoClipSec,
       signal,
     );
-    if (sync.confidence >= SYNC_CONFIDENCE_THRESHOLD) {
+    if (sync.confidence >= config.syncConfidenceThreshold) {
       rightOffsetSec = sync.clipBCueTimeSec;
       emit({ stage: "sync", status: "done", message: `confidence ${sync.confidence.toFixed(3)} (refined)` });
     } else {

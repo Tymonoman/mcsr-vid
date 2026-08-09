@@ -1,11 +1,12 @@
 import type { FC } from "react";
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion";
 import "./overlay.css";
-import { formatTime, formatShortTime } from "./format.js";
+import { formatTime, formatShortTime, formatConstantLabel } from "./format.js";
 import type { OverlayProps, SplitRow } from "./types.js";
 import { resolveSplitSide, compareSplitSides, type SplitSideState } from "./resolveSplitSide.js";
 import { Intro } from "./Intro.js";
 import { PixelBadge } from "./PixelBadge.js";
+import { BastionIcon } from "./BastionIcon.js";
 
 function IdentBar({ props }: { props: OverlayProps }) {
   return (
@@ -38,6 +39,8 @@ function InfoBar({ props }: { props: OverlayProps }) {
           <b>{left.gamesPlayed.toLocaleString()}</b> GAMES
           <span className="sep">·</span>
           <b>{left.winRatePct.toFixed(1)}%</b> WR
+          <span className="sep">·</span>
+          <b>{left.forfeitRatePct.toFixed(1)}%</b> FF
         </div>
       </div>
       <div className="half right">
@@ -47,6 +50,8 @@ function InfoBar({ props }: { props: OverlayProps }) {
           <span className="flag">{right.countryFlag}</span>
         </div>
         <div className="deep-line">
+          FF <b>{right.forfeitRatePct.toFixed(1)}%</b>
+          <span className="sep">·</span>
           WR <b>{right.winRatePct.toFixed(1)}%</b>
           <span className="sep">·</span>
           GAMES <b>{right.gamesPlayed.toLocaleString()}</b>
@@ -125,6 +130,12 @@ function SplitsPanel({
       <div className="splits-col col-meta">
         <span className="label">Match Played</span>
         <span className="value">{props.matchPlayedLabel}</span>
+        <span className="seed-chip">
+          <BastionIcon bastionType={props.bastionType} />
+          <span className="seed-label">
+            {formatConstantLabel(props.seedType)} · {formatConstantLabel(props.bastionType)}
+          </span>
+        </span>
         <span className="h2h-label">Head-to-Head (Ranked)</span>
         <span className="h2h-value">
           <span className="l">

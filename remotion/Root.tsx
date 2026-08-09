@@ -13,6 +13,7 @@ const defaultProps: OverlayProps = {
     avgMs: 597823,
     gamesPlayed: 5061,
     winRatePct: 64.8,
+    forfeitRatePct: 3.2,
     avatarUrl: "https://nmsr.nickac.dev/fullbody/8667ba71-b85a-4004-af54-457a9734eed7",
   },
   right: {
@@ -24,6 +25,7 @@ const defaultProps: OverlayProps = {
     avgMs: 668224,
     gamesPlayed: 8895,
     winRatePct: 53.3,
+    forfeitRatePct: 5.7,
     avatarUrl: "https://nmsr.nickac.dev/fullbody/61699b2e-d327-4a01-9f1e-0ea8c3f06bc6",
   },
   matchPlayedLabel: "Aug 8, 2026",
@@ -38,6 +40,8 @@ const defaultProps: OverlayProps = {
   ],
   timerStartFrame: 0,
   runResultMs: 505356,
+  seedType: "DESERT_TEMPLE",
+  bastionType: "STABLES",
   durationInFrames: 42900,
 };
 
