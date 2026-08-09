@@ -30,3 +30,17 @@ export type OverlayProps = {
   /** Total length of this render, in frames at the composition's fps — matches the synced clip length. */
   durationInFrames: number;
 };
+
+export interface ThumbnailPlayer {
+  nickname: string;
+  eloRate: number;
+  /** Pre-resolved full-body render image (Starlight Skins pose render, falls back to a static renderer). */
+  avatarUrl: string;
+}
+
+export type ThumbnailProps = {
+  left: ThumbnailPlayer;
+  right: ThumbnailPlayer;
+  /** Top category bar text, e.g. "MINECRAFT · SPEEDRUNNING · RANKED". */
+  headerLabel: string;
+};
