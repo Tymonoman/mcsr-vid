@@ -14,6 +14,7 @@
     "render-overlay": "npm run build-overlay-css && tsx src/renderOverlay.ts",
     "generate-thumbnail": "npm run build-overlay-css && tsx src/generateThumbnail.ts",
     "generate-project": "npm run build-overlay-css && tsx src/generateProject.ts",
+    "batch": "npm run build-overlay-css && tsx src/batch.ts",
     "start": "npm run build-overlay-css && tsx src/tui.tsx"
   },
   "devDependencies": {
