@@ -1,10 +1,7 @@
-import { spawn } from "node:child_process";
 import path from "node:path";
+import { config } from "./config.js";
 import { getMatch, getUser, getVersus, parseMatchId } from "./mcsrApi.js";
-import { computeOverlayProps } from "./overlayProps.js";
-import { PRE_ROLL_SEC, POST_ROLL_SEC, estimatedRunSec } from "./vodAcquisition.js";
-
-const FPS = 60;
+import { renderOverlay } from "./overlayRender.js";
 
 const input = process.argv[2];
 if (!input) {
@@ -26,51 +23,23 @@ const [userLeft, userRight, versus] = await Promise.all([
   getVersus(playerLeft.uuid, playerRight.uuid),
 ]);
 
-const props = computeOverlayProps(match, userLeft, userRight, versus);
-const runSec = estimatedRunSec(match);
-const durationInFrames = Math.round((PRE_ROLL_SEC + runSec + POST_ROLL_SEC) * FPS);
-const timerStartFrame = Math.round(PRE_ROLL_SEC * FPS);
-
-const renderProps = { ...props, timerStartFrame, durationInFrames };
-
-const outDir = path.join("media", String(matchId));
+const outDir = path.join(config.mediaDir, String(matchId));
 const outPath = path.join(outDir, "overlay.mov");
+const topOutPath = path.join(outDir, "overlay-top.png");
+const introOutPath = path.join(outDir, "overlay-intro.mov");
 
-console.error(`Rendering overlay for match ${matchId} (${durationInFrames} frames @ ${FPS}fps)...`);
+console.error(`Rendering overlay for match ${matchId}...`);
 
-await new Promise<void>((resolve, reject) => {
-  const proc = spawn(
-    "npx",
-    [
-      "remotion",
-      "render",
-      "remotion/index.ts",
-      "MatchOverlay",
-      outPath,
-      "--codec=prores",
-      "--pro-res-profile=4444",
-      `--props=${JSON.stringify(renderProps)}`,
-    ],
-    { stdio: "inherit" },
-  );
-  proc.on("error", reject);
-  proc.on("close", (code) => {
-    if (code === 0) resolve();
-    else reject(new Error(`remotion render exited with code ${code}`));
-  });
+const result = await renderOverlay({
+  match,
+  userLeft,
+  userRight,
+  versus,
+  outPath,
+  topOutPath,
+  introOutPath,
+  onProgress: (p) => console.error(`  ${p.phase}: ${p.percent}%`),
 });
 
 console.error(`Done: ${outPath}`);
-console.log(
-  JSON.stringify(
-    {
-      matchId,
-      path: outPath,
-      matchOffsetIntoClipSec: PRE_ROLL_SEC,
-      durationInFrames,
-      fps: FPS,
-    },
-    null,
-    2,
-  ),
-);
+console.log(JSON.stringify(result, null, 2));
