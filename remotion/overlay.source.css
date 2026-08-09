@@ -39,21 +39,32 @@
   width: 50%;
   display: flex;
   align-items: center;
+  gap: 18px;
+  /* Inner (center-facing) side gets extra room so long names can never run under the
+     centered 173px badge (86.5px half-width + margin) — see .row2 .half for the same rule. */
   padding: 0 62px;
 }
 .row1 .half.crimson {
   background: var(--crimson);
   justify-content: flex-start;
+  padding-right: 110px;
 }
 .row1 .half.warped {
   background: var(--warped);
   justify-content: flex-end;
+  padding-left: 110px;
 }
 .row1 .name {
   font-family: var(--pixel-font);
   font-weight: 700;
-  font-size: 42px;
+  font-size: 54px;
   color: #16151a;
+}
+.player-head {
+  width: 72px;
+  height: 72px;
+  flex-shrink: 0;
+  image-rendering: pixelated;
 }
 
 .badge {
@@ -90,24 +101,26 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 6px;
+  gap: 8px;
   padding: 0 62px;
 }
 .row2 .half.left {
   align-items: flex-start;
+  padding-right: 110px;
 }
 .row2 .half.right {
   align-items: flex-end;
+  padding-left: 110px;
 }
 .row2 .id-line {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 18px;
   font-family: var(--pixel-font);
-  font-size: 24px;
+  font-size: 28px;
 }
 .row2 .flag {
-  font-size: 32px;
+  font-size: 36px;
 }
 .row2 .elo {
   color: var(--gold);
@@ -120,6 +133,7 @@
   font-size: 18px;
   color: var(--quartz);
   opacity: 0.82;
+  white-space: nowrap;
 }
 .row2 .deep-line b {
   opacity: 1;
@@ -166,18 +180,29 @@
   color: var(--quartz);
   margin-top: 3px;
 }
+.ach-label {
+  margin-top: 18px;
+  font-family: var(--pixel-font);
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+.ach-cols {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
 .ach-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-top: 6px;
-}
-.row2 .half.right .ach-row {
-  justify-content: flex-end;
+  justify-content: center;
+  gap: 8px;
 }
 .ach-row img {
-  width: 26px;
-  height: 26px;
+  width: 42px;
+  height: 42px;
   image-rendering: pixelated;
 }
 

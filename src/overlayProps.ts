@@ -12,6 +12,7 @@ export interface PlayerIdentity {
   winRatePct: number;
   forfeitRatePct: number;
   avatarUrl: string;
+  headUrl: string;
   achievements: { id: string; level: number }[];
 }
 
@@ -71,7 +72,7 @@ function countryFlag(countryCode: string | null): string {
 const LEFT_POSE = config.leftPose;
 const RIGHT_POSE = config.rightPose;
 
-function playerIdentity(user: UserDetails, avatarUrl: string): PlayerIdentity {
+function playerIdentity(user: UserDetails, avatarUrl: string, headUrl: string): PlayerIdentity {
   const stats = user.statistics.total;
   const completions = stats.completions.ranked ?? 0;
   const completionTime = stats.completionTime.ranked ?? 0;
@@ -91,6 +92,7 @@ function playerIdentity(user: UserDetails, avatarUrl: string): PlayerIdentity {
     winRatePct: wins + loses > 0 ? (wins / (wins + loses)) * 100 : 0,
     forfeitRatePct: matches > 0 ? (forfeits / matches) * 100 : 0,
     avatarUrl,
+    headUrl,
     // API already caps `display` at the player's chosen highlights (up to 3 by default);
     // slice defensively so a higher-tier supporter's 4-5 doesn't overflow the overlay.
     achievements: user.achievements.display.slice(0, 3).map((a) => ({ id: a.id, level: a.level })),
@@ -143,8 +145,8 @@ export async function computeOverlayProps(
   ]);
 
   return {
-    left: playerIdentity(userLeft, leftAvatarUrl),
-    right: playerIdentity(userRight, rightAvatarUrl),
+    left: playerIdentity(userLeft, leftAvatarUrl, `https://nmsr.nickac.dev/head/${leftUuid}`),
+    right: playerIdentity(userRight, rightAvatarUrl, `https://nmsr.nickac.dev/head/${rightUuid}`),
     matchPlayedLabel,
     h2hLeftWins: versus.results.ranked[leftUuid] ?? 0,
     h2hRightWins: versus.results.ranked[rightUuid] ?? 0,

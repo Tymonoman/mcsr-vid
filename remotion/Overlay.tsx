@@ -10,8 +10,8 @@ import { BastionIcon } from "./BastionIcon.js";
 import { STAGE_WIDTH, STAGE_HEIGHT, BOTTOM_BAND_Y } from "./layout.js";
 import { resolveAchievementIcon } from "./achievementBadges.js";
 
-/** Up to 3 highlighted-achievement badges under a player's id-line. Unmapped
- * ids/levels are skipped entirely, per resolveAchievementIcon's contract. */
+/** Up to 3 highlighted-achievement badges for one player, shown in the splits panel.
+ * Unmapped ids/levels are skipped entirely, per resolveAchievementIcon's contract. */
 function AchievementRow({ player }: { player: PlayerIdentity }) {
   const icons = player.achievements
     .map((a) => resolveAchievementIcon(a.id, a.level))
@@ -30,10 +30,12 @@ function IdentBar({ props }: { props: OverlayProps }) {
   return (
     <div className="row1">
       <div className="half crimson">
+        <Img className="player-head" src={props.left.headUrl} />
         <span className="name">{props.left.nickname}</span>
       </div>
       <div className="half warped">
         <span className="name">{props.right.nickname}</span>
+        <Img className="player-head" src={props.right.headUrl} />
       </div>
     </div>
   );
@@ -49,7 +51,6 @@ function InfoBar({ props }: { props: OverlayProps }) {
           <span className="elo">{left.eloRate} ELO</span>
           <span className="rank">#{left.eloRank} WORLD</span>
         </div>
-        <AchievementRow player={left} />
         <div className="deep-line">
           PB <b>{formatTime(left.pbMs)}</b>
           <span className="sep">·</span>
@@ -68,7 +69,6 @@ function InfoBar({ props }: { props: OverlayProps }) {
           <span className="elo">{right.eloRate} ELO</span>
           <span className="flag">{right.countryFlag}</span>
         </div>
-        <AchievementRow player={right} />
         <div className="deep-line">
           FF <b>{right.forfeitRatePct.toFixed(1)}%</b>
           <span className="sep">·</span>
@@ -166,6 +166,11 @@ function SplitsPanel({
             {props.h2hRightWins} {props.right.nickname}
           </span>
         </span>
+        <span className="ach-label">Achievements</span>
+        <div className="ach-cols">
+          <AchievementRow player={props.left} />
+          <AchievementRow player={props.right} />
+        </div>
       </div>
       <div className="splits-col col-splits">
         <div className="splits-title">Match Splits</div>

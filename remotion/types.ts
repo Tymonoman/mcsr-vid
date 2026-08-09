@@ -9,6 +9,8 @@ export interface PlayerIdentity {
   winRatePct: number;
   forfeitRatePct: number;
   avatarUrl: string;
+  /** Small isometric head render (NMSR `/head/{uuid}`) for the chat-heads-style icon next to the nickname. */
+  headUrl: string;
   achievements: { id: string; level: number }[];
 }
 

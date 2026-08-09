@@ -28,6 +28,7 @@ const defaultProps: OverlayProps = {
       { id: "oneshot", level: 1 },
     ],
     avatarUrl: "https://nmsr.nickac.dev/fullbody/8667ba71-b85a-4004-af54-457a9734eed7",
+    headUrl: "https://nmsr.nickac.dev/head/8667ba71-b85a-4004-af54-457a9734eed7",
   },
   right: {
     nickname: "Ranik_",
@@ -44,6 +45,7 @@ const defaultProps: OverlayProps = {
       { id: "playedMatches", level: 11 },
     ],
     avatarUrl: "https://nmsr.nickac.dev/fullbody/61699b2e-d327-4a01-9f1e-0ea8c3f06bc6",
+    headUrl: "https://nmsr.nickac.dev/head/61699b2e-d327-4a01-9f1e-0ea8c3f06bc6",
   },
   matchPlayedLabel: "Aug 8, 2026",
   h2hLeftWins: 6,
