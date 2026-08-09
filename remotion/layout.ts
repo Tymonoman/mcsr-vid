@@ -15,4 +15,4 @@ export const TOP_BAND_HEIGHT = 210;
 export const BOTTOM_BAND_HEIGHT = 346;
 export const BOTTOM_BAND_Y = STAGE_HEIGHT - BOTTOM_BAND_HEIGHT;
 
-export const INTRO_SECONDS = 5;
+export const INTRO_SECONDS = 7;
