@@ -23,9 +23,36 @@ export function estimatedRunSec(match: MatchInfo): number {
   return match.result.time > 0 ? match.result.time / 1000 : DEFAULT_RUN_SEC;
 }
 
-function runYtDlp(args: string[]): Promise<void> {
+export interface RunOpts {
+  onProgress?: (percent: number) => void;
+  signal?: AbortSignal;
+}
+
+/** Parses a percent out of a `yt-dlp --newline` progress line, e.g. `[download]  45.2% of ...`. */
+export function parseYtDlpPercent(line: string): number | null {
+  const m = /\[download\]\s+([\d.]+)%/.exec(line);
+  return m ? parseFloat(m[1]!) : null;
+}
+
+function runYtDlp(args: string[], opts: RunOpts = {}): Promise<void> {
   return new Promise((resolve, reject) => {
-    const proc = spawn("yt-dlp", args, { stdio: "inherit" });
+    const finalArgs = opts.onProgress ? [...args, "--newline"] : args;
+    const proc = spawn("yt-dlp", finalArgs, {
+      stdio: opts.onProgress ? ["ignore", "pipe", "inherit"] : "inherit",
+      signal: opts.signal,
+    });
+    if (opts.onProgress) {
+      let buf = "";
+      proc.stdout!.on("data", (chunk: Buffer) => {
+        buf += chunk.toString();
+        const lines = buf.split("\n");
+        buf = lines.pop() ?? "";
+        for (const line of lines) {
+          const percent = parseYtDlpPercent(line);
+          if (percent !== null) opts.onProgress!(percent);
+        }
+      });
+    }
     proc.on("error", reject);
     proc.on("close", (code) => {
       if (code === 0) resolve();
@@ -39,6 +66,7 @@ export async function downloadVodWindow(
   match: MatchInfo,
   vod: MatchVod,
   outDir: string,
+  opts: RunOpts = {},
 ): Promise<VodWindow> {
   const player = match.players.find((p) => p.uuid === vod.uuid);
   const playerNickname = player?.nickname ?? vod.uuid;
@@ -56,19 +84,22 @@ export async function downloadVodWindow(
   await mkdir(outDir, { recursive: true });
   const outputTemplate = path.join(outDir, `${playerNickname}.%(ext)s`);
 
-  await runYtDlp([
-    "--download-sections",
-    `*${windowStartSec}-${windowEndSec}`,
-    "-f",
-    "bv*+ba/b",
-    "--merge-output-format",
-    "mp4",
-    "--no-part",
-    "--force-overwrites",
-    "-o",
-    outputTemplate,
-    vod.url,
-  ]);
+  await runYtDlp(
+    [
+      "--download-sections",
+      `*${windowStartSec}-${windowEndSec}`,
+      "-f",
+      "bv*+ba/b",
+      "--merge-output-format",
+      "mp4",
+      "--no-part",
+      "--force-overwrites",
+      "-o",
+      outputTemplate,
+      vod.url,
+    ],
+    opts,
+  );
 
   return {
     playerUuid: vod.uuid,
@@ -80,11 +111,32 @@ export async function downloadVodWindow(
   };
 }
 
+export interface DownloadProgress {
+  index: number;
+  total: number;
+  playerNickname: string;
+  percent: number;
+}
+
 /** Downloads trimmed windows for every vod attached to the match. Matches may have 0, 1, or 2 vod entries. */
-export async function downloadMatchVods(match: MatchInfo, outDir: string): Promise<VodWindow[]> {
+export async function downloadMatchVods(
+  match: MatchInfo,
+  outDir: string,
+  onProgress?: (p: DownloadProgress) => void,
+  signal?: AbortSignal,
+): Promise<VodWindow[]> {
   const results: VodWindow[] = [];
-  for (const vod of match.vod) {
-    results.push(await downloadVodWindow(match, vod, outDir));
+  const total = match.vod.length;
+  for (let i = 0; i < total; i++) {
+    const vod = match.vod[i]!;
+    const nickname = match.players.find((p) => p.uuid === vod.uuid)?.nickname ?? vod.uuid;
+    results.push(
+      await downloadVodWindow(match, vod, outDir, {
+        signal,
+        onProgress:
+          onProgress && ((percent) => onProgress({ index: i, total, playerNickname: nickname, percent })),
+      }),
+    );
   }
   return results;
 }

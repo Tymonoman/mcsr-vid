@@ -16,9 +16,9 @@ export interface SyncResult {
   confidence: number;
 }
 
-function runFfmpeg(args: string[]): Promise<void> {
+function runFfmpeg(args: string[], signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
-    const proc = spawn("ffmpeg", args, { stdio: ["ignore", "ignore", "pipe"] });
+    const proc = spawn("ffmpeg", args, { stdio: ["ignore", "ignore", "pipe"], signal });
     let stderr = "";
     proc.stderr.on("data", (d) => (stderr += d));
     proc.on("error", reject);
@@ -34,24 +34,28 @@ async function extractMonoWav(
   startSec: number,
   durationSec: number,
   outPath: string,
+  signal?: AbortSignal,
 ): Promise<void> {
-  await runFfmpeg([
-    "-y",
-    "-ss",
-    String(Math.max(0, startSec)),
-    "-t",
-    String(durationSec),
-    "-i",
-    videoPath,
-    "-vn",
-    "-ac",
-    "1",
-    "-ar",
-    String(SAMPLE_RATE),
-    "-f",
-    "wav",
-    outPath,
-  ]);
+  await runFfmpeg(
+    [
+      "-y",
+      "-ss",
+      String(Math.max(0, startSec)),
+      "-t",
+      String(durationSec),
+      "-i",
+      videoPath,
+      "-vn",
+      "-ac",
+      "1",
+      "-ar",
+      String(SAMPLE_RATE),
+      "-f",
+      "wav",
+      outPath,
+    ],
+    signal,
+  );
 }
 
 function normalize(samples: Float32Array): Float32Array {
@@ -119,6 +123,7 @@ export async function computeSyncOffset(
   clipBPath: string,
   expectedClipACueSec: number,
   expectedClipBCueSec: number,
+  signal?: AbortSignal,
 ): Promise<SyncResult> {
   const tmpDir = await mkdtemp(path.join(tmpdir(), "mcsr-sync-"));
   try {
@@ -128,8 +133,8 @@ export async function computeSyncOffset(
     const probeStart = expectedClipACueSec - PROBE_RADIUS_SEC;
     const searchStart = expectedClipBCueSec - SEARCH_RADIUS_SEC;
 
-    await extractMonoWav(clipAPath, probeStart, PROBE_RADIUS_SEC * 2, probeWavPath);
-    await extractMonoWav(clipBPath, searchStart, SEARCH_RADIUS_SEC * 2, searchWavPath);
+    await extractMonoWav(clipAPath, probeStart, PROBE_RADIUS_SEC * 2, probeWavPath, signal);
+    await extractMonoWav(clipBPath, searchStart, SEARCH_RADIUS_SEC * 2, searchWavPath, signal);
 
     const [probeWav, searchWav] = await Promise.all([
       readWavMono16(probeWavPath),
