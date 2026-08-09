@@ -364,6 +364,7 @@
 }
 .thumb-vs .badge {
   position: static;
+  transform: none;
   width: 150px;
   height: 150px;
 }
