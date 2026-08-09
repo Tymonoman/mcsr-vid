@@ -3,9 +3,7 @@
 Pipeline that turns an MCSR Ranked match ID into a synced, split-timer-
 overlaid video (`fetch-match` → `download-vods` → `validate-sync` →
 `render-overlay` → `generate-project`), plus a thumbnail generator. Output
-is published to a YouTube channel, **MCSR RePlayoffs** (note the internal
-capital P — that's the channel's actual chosen stylization, confirmed
-2026-08-09; not a typo).
+is published to a YouTube channel, **MCSR Replayoffs**.
 
 ## Branding (updated 2026-08-09)
 
