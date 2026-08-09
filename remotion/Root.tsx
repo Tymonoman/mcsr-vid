@@ -67,12 +67,15 @@ const thumbnailDefaultProps: ThumbnailProps = {
   left: {
     nickname: "edcr",
     eloRate: 2700,
-    avatarUrl: "https://starlightskins.lunareclipse.studio/render/walking/635f35ee69ed4f0c94ff26ece4818956/full",
+    // Studio-preview defaults use NMSR, not Starlight Skins: the pose renderer is a small free
+    // service that 502s periodically, and unlike the pipeline (resolveAvatarUrl probes and falls
+    // back) hardcoded props have no fallback — a preview shouldn't break on someone else's uptime.
+    avatarUrl: "https://nmsr.nickac.dev/fullbody/635f35ee69ed4f0c94ff26ece4818956",
   },
   right: {
     nickname: "Ranik_",
     eloRate: 2158,
-    avatarUrl: "https://starlightskins.lunareclipse.studio/render/crossed/5ee577fdc1af45d3a6fb3e086cc293fb/full",
+    avatarUrl: "https://nmsr.nickac.dev/fullbody/5ee577fdc1af45d3a6fb3e086cc293fb",
   },
   headerLabel: "Minecraft · Speedrunning · Ranked",
 };
