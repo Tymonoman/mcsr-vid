@@ -3,6 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
+  "description": "Turns an MCSR Ranked match into a ready-to-edit Kdenlive project: dual-POV VOD download, audio sync, stat overlay, and timeline assembly.",
   "scripts": {
     "fetch-match": "tsx src/fetchMatch.ts",
     "download-vods": "tsx src/downloadVods.ts",
@@ -12,7 +13,8 @@
     "remotion:render": "npm run build-overlay-css && remotion render remotion/index.ts MatchOverlay",
     "render-overlay": "npm run build-overlay-css && tsx src/renderOverlay.ts",
     "generate-thumbnail": "npm run build-overlay-css && tsx src/generateThumbnail.ts",
-    "generate-project": "tsx src/generateProject.ts"
+    "generate-project": "npm run build-overlay-css && tsx src/generateProject.ts",
+    "start": "npm run build-overlay-css && tsx src/tui.tsx"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
@@ -25,8 +27,11 @@
     "esbuild@0.28.1": true
   },
   "dependencies": {
+    "@remotion/bundler": "^4.0.507",
     "@remotion/cli": "^4.0.507",
     "@remotion/renderer": "^4.0.507",
+    "ink": "^7.1.1",
+    "ink-text-input": "^6.0.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "remotion": "^4.0.507"

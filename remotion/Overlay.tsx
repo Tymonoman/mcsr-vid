@@ -4,6 +4,7 @@ import "./overlay.css";
 import { formatTime, formatShortTime } from "./format.js";
 import type { OverlayProps, SplitRow } from "./types.js";
 import { resolveSplitSide, compareSplitSides, type SplitSideState } from "./resolveSplitSide.js";
+import { Intro } from "./Intro.js";
 import { PixelBadge } from "./PixelBadge.js";
 
 function IdentBar({ props }: { props: OverlayProps }) {
@@ -178,6 +179,7 @@ export const Overlay: FC<OverlayProps> = (props) => {
       <PixelBadge />
       <InfoBar props={props} />
       <SplitsPanel props={props} elapsedMs={elapsedMs} frame={frame} fps={fps} runEndFrame={runEndFrame} />
+      <Intro props={props} />
     </AbsoluteFill>
   );
 };

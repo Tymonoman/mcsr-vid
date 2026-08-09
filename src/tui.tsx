@@ -1,0 +1,265 @@
+import { spawn } from "node:child_process";
+import React, { useEffect, useState } from "react";
+import { Box, render, Text, useInput } from "ink";
+import TextInput from "ink-text-input";
+import {
+  runPipeline,
+  STAGE_LABELS,
+  STAGE_ORDER,
+  type PipelineResult,
+  type StageEvent,
+  type StageId,
+} from "./pipeline.js";
+
+// Pulled straight from remotion/overlay.source.css so the TUI reads as the same brand as the overlay.
+const COLORS = {
+  panelEdge: "#0d0c10",
+  panelEdgeLight: "#3c3844",
+  crimson: "#e2483f",
+  warped: "#35d6c4",
+  gold: "#f0c93d",
+  quartz: "#f3ede2",
+  muted: "#8d8695",
+  lead: "#6be08a",
+} as const;
+
+const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const BAR_WIDTH = 24;
+
+function useSpinnerFrame(active: boolean): string {
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    if (!active) return;
+    const id = setInterval(() => setI((n) => (n + 1) % SPINNER_FRAMES.length), 80);
+    return () => clearInterval(id);
+  }, [active]);
+  return SPINNER_FRAMES[i]!;
+}
+
+function ProgressBar({ percent, color }: { percent: number; color: string }) {
+  const filled = Math.round((Math.min(100, Math.max(0, percent)) / 100) * BAR_WIDTH);
+  return (
+    <Text>
+      <Text color={color}>{"█".repeat(filled)}</Text>
+      <Text color={COLORS.panelEdgeLight}>{"░".repeat(BAR_WIDTH - filled)}</Text>
+      <Text color={COLORS.muted}> {Math.round(percent)}%</Text>
+    </Text>
+  );
+}
+
+function StageRow({ event }: { event: StageEvent }) {
+  const spinnerFrame = useSpinnerFrame(event.status === "active");
+
+  const icon =
+    event.status === "pending" ? (
+      <Text color={COLORS.muted}>○</Text>
+    ) : event.status === "active" ? (
+      <Text color={COLORS.warped}>{spinnerFrame}</Text>
+    ) : event.status === "done" ? (
+      <Text color={COLORS.lead}>✓</Text>
+    ) : (
+      <Text color={COLORS.crimson}>✗</Text>
+    );
+
+  const labelColor =
+    event.status === "pending" ? COLORS.muted : event.status === "error" ? COLORS.crimson : COLORS.quartz;
+
+  return (
+    <Box flexDirection="column">
+      <Box>
+        {icon}
+        <Text> </Text>
+        <Text color={labelColor} bold={event.status === "active"}>
+          {STAGE_LABELS[event.stage]}
+        </Text>
+        {event.percent !== undefined && event.status !== "pending" && (
+          <Box marginLeft={2}>
+            <ProgressBar percent={event.percent} color={event.status === "error" ? COLORS.crimson : COLORS.gold} />
+          </Box>
+        )}
+      </Box>
+      {event.message && (
+        <Box marginLeft={2}>
+          <Text color={COLORS.muted} dimColor>
+            {event.message}
+          </Text>
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+function Header() {
+  return (
+    <Box borderStyle="round" borderColor={COLORS.panelEdgeLight} paddingX={2} marginBottom={1}>
+      <Text color={COLORS.crimson} bold>
+        MCSR
+      </Text>
+      <Text color={COLORS.quartz}> </Text>
+      <Text color={COLORS.warped} bold>
+        VID
+      </Text>
+      <Text color={COLORS.muted}> — match → Kdenlive project</Text>
+    </Box>
+  );
+}
+
+function initialStages(): Record<StageId, StageEvent> {
+  const entries = STAGE_ORDER.map((stage) => [stage, { stage, status: "pending" as const }] as const);
+  return Object.fromEntries(entries) as Record<StageId, StageEvent>;
+}
+
+type Screen = "input" | "progress" | "summary";
+
+function App({ signal }: { signal: AbortSignal }) {
+  const [screen, setScreen] = useState<Screen>("input");
+  const [input, setInput] = useState("");
+  const [inputError, setInputError] = useState<string | null>(null);
+  const [stages, setStages] = useState<Record<StageId, StageEvent>>(initialStages);
+  const [runError, setRunError] = useState<string | null>(null);
+  const [result, setResult] = useState<PipelineResult | null>(null);
+  const [kdenliveStatus, setKdenliveStatus] = useState<"idle" | "opening" | "opened" | "error">("idle");
+  const [kdenliveError, setKdenliveError] = useState<string | null>(null);
+
+  const handleSubmit = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      setInputError("Paste a match URL or ID first.");
+      return;
+    }
+    setInputError(null);
+    setScreen("progress");
+  };
+
+  useEffect(() => {
+    if (screen !== "progress") return;
+    let cancelled = false;
+    runPipeline(input.trim(), {
+      signal,
+      onEvent: (e) => {
+        if (cancelled) return;
+        setStages((prev) => ({ ...prev, [e.stage]: e }));
+      },
+    })
+      .then((r) => {
+        if (cancelled) return;
+        setResult(r);
+        setScreen("summary");
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        const message = (err as Error).message;
+        setRunError(message);
+        setStages((prev) => {
+          const active = STAGE_ORDER.find((s) => prev[s].status === "active") ?? STAGE_ORDER[0]!;
+          return { ...prev, [active]: { stage: active, status: "error", message } };
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [screen]);
+
+  useInput(
+    (char) => {
+      if (screen !== "summary" || kdenliveStatus !== "idle" || !result) return;
+      if (char.toLowerCase() === "y") {
+        setKdenliveStatus("opening");
+        const proc = spawn("kdenlive", [result.projectPath], { detached: true, stdio: "ignore" });
+        proc.on("error", (err) => {
+          const code = (err as NodeJS.ErrnoException).code;
+          setKdenliveError(
+            code === "ENOENT" ? "kdenlive not found on PATH. Open the project manually." : err.message,
+          );
+          setKdenliveStatus("error");
+        });
+        proc.on("spawn", () => {
+          setKdenliveStatus("opened");
+          proc.unref();
+          instance.unmount();
+          process.exit(0);
+        });
+      } else if (char.toLowerCase() === "n") {
+        setKdenliveStatus("opened");
+        instance.unmount();
+        process.exit(0);
+      }
+    },
+    { isActive: screen === "summary" },
+  );
+
+  if (screen === "input") {
+    return (
+      <Box flexDirection="column">
+        <Header />
+        <Box>
+          <Text color={COLORS.gold}>Match URL or ID </Text>
+          <Text color={COLORS.muted}>❯ </Text>
+          <TextInput value={input} onChange={setInput} onSubmit={handleSubmit} placeholder="12247403" />
+        </Box>
+        {inputError && (
+          <Box marginTop={1}>
+            <Text color={COLORS.crimson}>{inputError}</Text>
+          </Box>
+        )}
+      </Box>
+    );
+  }
+
+  if (screen === "progress") {
+    return (
+      <Box flexDirection="column">
+        <Header />
+        <Box flexDirection="column" gap={0}>
+          {STAGE_ORDER.map((stage) => (
+            <StageRow key={stage} event={stages[stage]} />
+          ))}
+        </Box>
+        {runError && (
+          <Box marginTop={1} flexDirection="column">
+            <Text color={COLORS.crimson} bold>
+              Pipeline failed: {runError}
+            </Text>
+            <Text color={COLORS.muted}>
+              Debug a single phase with e.g. `npm run validate-sync -- {input.trim()}`.
+            </Text>
+          </Box>
+        )}
+      </Box>
+    );
+  }
+
+  // summary
+  const fetchMsg = stages.fetch.message;
+  const syncMsg = stages.sync.message;
+  return (
+    <Box flexDirection="column">
+      <Header />
+      <Box borderStyle="round" borderColor={COLORS.lead} paddingX={2} flexDirection="column">
+        <Text color={COLORS.lead} bold>
+          ✓ Done
+        </Text>
+        {fetchMsg && <Text color={COLORS.quartz}>{fetchMsg}</Text>}
+        {syncMsg && <Text color={COLORS.muted}>sync: {syncMsg}</Text>}
+        <Text color={COLORS.muted}>{result?.projectPath}</Text>
+        <Text color={COLORS.muted}>{result?.thumbnailPath}</Text>
+      </Box>
+      <Box marginTop={1}>
+        {kdenliveStatus === "idle" && <Text color={COLORS.gold}>Open in Kdenlive? (y/n)</Text>}
+        {kdenliveStatus === "opening" && <Text color={COLORS.warped}>Launching kdenlive...</Text>}
+        {kdenliveStatus === "opened" && <Text color={COLORS.muted}>{result?.projectPath}</Text>}
+        {kdenliveStatus === "error" && <Text color={COLORS.crimson}>{kdenliveError}</Text>}
+      </Box>
+    </Box>
+  );
+}
+
+const ac = new AbortController();
+const instance = render(<App signal={ac.signal} />, { exitOnCtrlC: false });
+
+process.on("SIGINT", () => {
+  ac.abort();
+  instance.unmount();
+  console.error("\nAborted.");
+  process.exit(130);
+});
