@@ -38,9 +38,10 @@ function runYtDlp(args: string[], opts: RunOpts = {}): Promise<void> {
   return new Promise((resolve, reject) => {
     const finalArgs = opts.onProgress ? [...args, "--newline"] : args;
     const proc = spawn("yt-dlp", finalArgs, {
-      stdio: opts.onProgress ? ["ignore", "pipe", "inherit"] : "inherit",
+      stdio: opts.onProgress ? ["ignore", "pipe", "pipe"] : "inherit",
       signal: opts.signal,
     });
+    let stderrTail = "";
     if (opts.onProgress) {
       let buf = "";
       proc.stdout!.on("data", (chunk: Buffer) => {
@@ -52,11 +53,17 @@ function runYtDlp(args: string[], opts: RunOpts = {}): Promise<void> {
           if (percent !== null) opts.onProgress!(percent);
         }
       });
+      // yt-dlp shells out to ffmpeg for HLS --download-sections trims; ffmpeg's own logging
+      // lands here and would otherwise print straight to the terminal mid-run, corrupting
+      // Ink's redraw. Captured (not inherited) and only surfaced if the process fails.
+      proc.stderr!.on("data", (chunk: Buffer) => {
+        stderrTail = (stderrTail + chunk.toString()).slice(-4000);
+      });
     }
     proc.on("error", reject);
     proc.on("close", (code) => {
       if (code === 0) resolve();
-      else reject(new Error(`yt-dlp exited with code ${code} (args: ${args.join(" ")})`));
+      else reject(new Error(`yt-dlp exited with code ${code} (args: ${args.join(" ")})${stderrTail ? `\n${stderrTail}` : ""}`));
     });
   });
 }
