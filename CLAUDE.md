@@ -18,12 +18,20 @@ pixel-art Minecraft identity:
   `--warped` `--gold` `--quartz` `--muted`. These are the actual brand
   colors — don't invent new ones for related work (thumbnails, channel art,
   docs).
-- **Badge/logo mark:** a pixel-art replay ring (crimson right half / warped
-  left half) with "MCSR" in Monocraft at the center. Defined once in
-  `remotion/pixelBadge.ts` (`buildBadgeRingCells`) and consumed by the
-  shared `<PixelBadge />` component (`remotion/PixelBadge.tsx`), used by
-  both `Overlay.tsx` and `Thumbnail.tsx`. If the icon ever needs to change,
-  change it there — not by re-inlining SVG in either component.
+- **Badge/logo mark:** a pixel-art replay/refresh ring — two arcs (crimson
+  + warped), each capped with an arrowhead, at 180-degree rotational
+  symmetry (the classic "refresh/sync" icon shape) — with an "MC"/"SR"
+  monogram stacked in a 2x2 grid on top, in Monocraft, outlined in a
+  darker shade of its own fill color for a 3D-bevel look. Defined once in
+  `remotion/pixelBadge.ts` (`buildBadgeRingCells`, grid resolution
+  `BADGE_GRID_N=64`) and consumed by the shared `<PixelBadge />` component
+  (`remotion/PixelBadge.tsx`, which also draws the monogram), used by both
+  `Overlay.tsx` and `Thumbnail.tsx`. Note: `<PixelBadge />` must render
+  *after* its siblings in `Overlay.tsx` (last child of the top-level
+  `AbsoluteFill`) — the badge is taller than the header bar it sits in and
+  gets painted over by later siblings otherwise. If the icon ever needs to
+  change, change it in `pixelBadge.ts`/`PixelBadge.tsx` — not by
+  re-inlining SVG in either component.
 - **Channel art:** `branding/logo.png` + `branding/banner.png`, generated
   (not hand-drawn) by `branding/generate_brand_assets.py`, using the same
   ring geometry and the real Monocraft font. See `branding/README.md` to
