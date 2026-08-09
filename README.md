@@ -46,6 +46,26 @@ are skipped, and one failing match doesn't abort the rest.
 
 `npm run remotion:studio` opens the Remotion Studio to preview and tweak the overlay live.
 
+## Overlay render
+
+The overlay ships as three layers rather than one full-frame video, because
+rendering 1920x1080 was mostly rendering empty space:
+
+| Layer | Size | Why |
+| --- | --- | --- |
+| `overlay-top.png` | 1920x210 | Names/Elo/PB/WR never change — one still, held on the timeline |
+| `overlay.mov` | 1920x346 | The only animated part: RTA timer + splits revealing |
+| `overlay-intro.mov` | 1920x1080 | Full-frame and opaque, so it stays its own 5s clip |
+
+The strips are pixel-identical to the corresponding regions of the full-frame
+composition (`MatchOverlay`, still available in `remotion:studio` for previewing
+the whole thing at once). Geometry lives in `remotion/layout.ts`.
+
+Transparency depends on `imageFormat: "png"` **and**
+`pixelFormat: "yuva444p10le"` in `src/overlayRender.ts` — with either missing,
+Remotion captures JPEG frames, alpha is silently discarded, and ffmpeg quietly
+downgrades the output to opaque ProRes 422 HQ.
+
 ## Config
 
 Copy `mcsr-vid.config.example.json` to `mcsr-vid.config.json` (gitignored) to
