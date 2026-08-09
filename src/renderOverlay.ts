@@ -26,7 +26,7 @@ const [userLeft, userRight, versus] = await Promise.all([
   getVersus(playerLeft.uuid, playerRight.uuid),
 ]);
 
-const props = computeOverlayProps(match, userLeft, userRight, versus);
+const props = await computeOverlayProps(match, userLeft, userRight, versus);
 const runSec = estimatedRunSec(match);
 const durationInFrames = Math.round((PRE_ROLL_SEC + runSec + POST_ROLL_SEC) * FPS);
 const timerStartFrame = Math.round(PRE_ROLL_SEC * FPS);
