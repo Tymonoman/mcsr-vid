@@ -12,33 +12,44 @@ const WARPED = "#35d6c4";
 const GAP_START = 300;
 const GAP_END = 345;
 
+// Angular span (degrees) the arrowhead tip extends into the gap from
+// GAP_END, and how much wider than the ring it bulges at its base.
+const ARROW_SPAN = 34;
+const ARROW_BULGE = 2.4;
+
 export function buildBadgeRingCells(n = BADGE_GRID_N): BadgeCell[] {
   const cells: BadgeCell[] = [];
   const c = (n - 1) / 2;
   const outerR = n * 0.46;
   const innerR = n * 0.3;
+  const midR = (innerR + outerR) / 2;
+  const halfThickness = (outerR - innerR) / 2;
+  const arrowStart = GAP_END - ARROW_SPAN;
 
   for (let y = 0; y < n; y++) {
     for (let x = 0; x < n; x++) {
       const dx = x - c;
       const dy = y - c;
       const dist = Math.hypot(dx, dy);
-      if (dist < innerR || dist > outerR) continue;
-      const angle = (Math.atan2(dy, dx) * 180) / Math.PI + 360;
-      const normalized = angle % 360;
-      if (normalized >= GAP_START && normalized <= GAP_END) continue;
-      cells.push({ x, y, color: x < c ? WARPED : CRIMSON });
-    }
-  }
+      const angle = ((Math.atan2(dy, dx) * 180) / Math.PI + 360) % 360;
 
-  // small flared tail at each gap end, reading as a rewind-arrow motion cue
-  const tailR = outerR + 2;
-  for (const angleDeg of [GAP_START - 6, GAP_START - 3, GAP_END + 3, GAP_END + 6]) {
-    const rad = (angleDeg * Math.PI) / 180;
-    const x = Math.round(c + tailR * Math.cos(rad));
-    const y = Math.round(c + tailR * Math.sin(rad));
-    if (x >= 0 && x < n && y >= 0 && y < n) {
-      cells.push({ x, y, color: x < c ? WARPED : CRIMSON });
+      const inRing = dist >= innerR && dist <= outerR && !(angle >= GAP_START && angle <= GAP_END);
+
+      // Arrowhead: a wedge that's widest (a bit wider than the ring
+      // itself) where it joins the ring at GAP_END, tapering to a point
+      // at arrowStart — same per-pixel radius/angle test as the ring
+      // itself, so it's always solid and continuous, never a separate
+      // shape that can drift out of alignment or rasterize as dots.
+      let inArrow = false;
+      if (angle > arrowStart && angle <= GAP_END) {
+        const t = (GAP_END - angle) / ARROW_SPAN; // 0 at the ring join, 1 at the tip
+        const wedgeHalfThickness = halfThickness * ARROW_BULGE * (1 - t);
+        inArrow = dist >= midR - wedgeHalfThickness && dist <= midR + wedgeHalfThickness;
+      }
+
+      if (inRing || inArrow) {
+        cells.push({ x, y, color: x < c ? WARPED : CRIMSON });
+      }
     }
   }
 
