@@ -262,8 +262,13 @@ function Band({ offsetY, children }: { offsetY: number; children: ReactNode }) {
 export const OverlayTop: FC<OverlayProps> = (props) => (
   <Band offsetY={0}>
     <IdentBar props={props} />
-    <PixelBadge />
     <InfoBar props={props} />
+    {/* Painted after InfoBar so it's never occluded by InfoBar's background —
+        the badge (173px) is taller than IdentBar (9% of frame height) and
+        overlaps into InfoBar's box. Same fix as the unbanded Overlay export
+        above; this is the composition actually used by the real render
+        pipeline (src/overlayRender.ts), so it needs it too. */}
+    <PixelBadge />
   </Band>
 );
 
