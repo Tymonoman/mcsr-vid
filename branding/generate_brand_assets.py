@@ -20,29 +20,42 @@ BADGE_N = 32
 GAP_START, GAP_END = 300, 345
 
 
+# Angular span (degrees) the arrowhead tip extends into the gap from
+# GAP_END, and how much wider than the ring it bulges at its base.
+ARROW_SPAN = 34
+ARROW_BULGE = 2.4
+
+
 def build_ring_cells(n=BADGE_N):
     """Same geometry as remotion/pixelBadge.ts's buildBadgeRingCells."""
     cells = []
     c = (n - 1) / 2
     outer_r = n * 0.46
     inner_r = n * 0.3
+    mid_r = (inner_r + outer_r) / 2
+    half_thickness = (outer_r - inner_r) / 2
+    arrow_start = GAP_END - ARROW_SPAN
+
     for y in range(n):
         for x in range(n):
             dx, dy = x - c, y - c
             dist = math.hypot(dx, dy)
-            if dist < inner_r or dist > outer_r:
-                continue
             ang = (math.degrees(math.atan2(dy, dx)) + 360) % 360
-            if GAP_START <= ang <= GAP_END:
-                continue
-            cells.append((x, y, WARPED if x < c else CRIMSON))
-    tail_r = outer_r + 2
-    for ang in (GAP_START - 6, GAP_START - 3, GAP_END + 3, GAP_END + 6):
-        rad = math.radians(ang)
-        x = round(c + tail_r * math.cos(rad))
-        y = round(c + tail_r * math.sin(rad))
-        if 0 <= x < n and 0 <= y < n:
-            cells.append((x, y, WARPED if x < c else CRIMSON))
+
+            in_ring = inner_r <= dist <= outer_r and not (GAP_START <= ang <= GAP_END)
+
+            # Arrowhead: a wedge widest where it joins the ring at GAP_END,
+            # tapering to a point at arrow_start -- same per-pixel
+            # radius/angle test as the ring itself, so it's always solid
+            # and connected, never a separate shape prone to gaps.
+            in_arrow = False
+            if arrow_start < ang <= GAP_END:
+                t = (GAP_END - ang) / ARROW_SPAN  # 0 at the ring join, 1 at the tip
+                wedge_half_thickness = half_thickness * ARROW_BULGE * (1 - t)
+                in_arrow = mid_r - wedge_half_thickness <= dist <= mid_r + wedge_half_thickness
+
+            if in_ring or in_arrow:
+                cells.append((x, y, WARPED if x < c else CRIMSON))
     return cells
 
 
