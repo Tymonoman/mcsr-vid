@@ -292,6 +292,15 @@ function App({ signal }: { signal: AbortSignal }) {
     };
   }, [screen]);
 
+  // Ink puts the terminal in raw mode whenever an input handler is mounted, and raw mode
+  // delivers Ctrl+C as the byte \x03 rather than raising SIGINT — so the process-level SIGINT
+  // handler below never fires on any screen with a field or key handler. Handle it here, and
+  // abort the pipeline on the way out so yt-dlp/ffmpeg/Chrome children go down with us instead
+  // of being orphaned mid-render.
+  useInput((char, key) => {
+    if (key.ctrl && char === "c") quit(130);
+  });
+
   // Tab, not a letter: ink-text-input passes Tab through untouched, so it can't collide with
   // typing a match URL into the field below.
   useInput(
@@ -351,7 +360,7 @@ function App({ signal }: { signal: AbortSignal }) {
           <TextInput value={input} onChange={setInput} onSubmit={handleSubmit} placeholder="12247403" />
         </Box>
         <Box marginTop={1}>
-          <Text color={COLORS.muted}>Tab — recent matches</Text>
+          <Text color={COLORS.muted}>Tab — recent matches · Ctrl+C — quit</Text>
         </Box>
         {inputError && (
           <Box marginTop={1}>
@@ -486,11 +495,19 @@ function App({ signal }: { signal: AbortSignal }) {
 }
 
 const ac = new AbortController();
-const instance = render(<App signal={ac.signal} />, { exitOnCtrlC: false });
 
-process.on("SIGINT", () => {
+/**
+ * Single shutdown path, shared by the in-app Ctrl+C handler (raw mode) and SIGINT (raw mode off,
+ * or `kill -INT`). Hoisted, so App can call it even though `ac`/`instance` are defined below —
+ * the body only runs once both exist.
+ */
+function quit(code: number): void {
   ac.abort();
   instance.unmount();
-  console.error("\nAborted.");
-  process.exit(130);
-});
+  if (code !== 0) console.error("\nAborted.");
+  process.exit(code);
+}
+
+const instance = render(<App signal={ac.signal} />, { exitOnCtrlC: false });
+
+process.on("SIGINT", () => quit(130));
