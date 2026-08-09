@@ -5,6 +5,7 @@ import path from "node:path";
 import { config } from "./config.js";
 import { getMatch, getUser, getVersus, parseMatchId } from "./mcsrApi.js";
 import { buildKdenliveProject, type KdenliveClipInput, type KdenliveMarkerInput } from "./kdenliveProject.js";
+import { BOTTOM_BAND_HEIGHT, BOTTOM_BAND_Y, TOP_BAND_HEIGHT } from "../remotion/layout.js";
 import { computeSplits } from "./overlayProps.js";
 import { renderOverlay } from "./overlayRender.js";
 import { renderThumbnail } from "./thumbnailRender.js";
@@ -185,7 +186,9 @@ export async function runPipeline(input: string, opts: PipelineOptions = {}): Pr
   }
 
   const overlayPath = path.join(outDir, "overlay.mov");
-  if (existsSync(overlayPath)) {
+  const overlayTopPath = path.join(outDir, "overlay-top.png");
+  const overlayIntroPath = path.join(outDir, "overlay-intro.mov");
+  if (existsSync(overlayPath) && existsSync(overlayTopPath) && existsSync(overlayIntroPath)) {
     emit({ stage: "render", status: "done", percent: 100, message: "reused existing render" });
   } else {
     emit(active("render", { percent: 0 }));
@@ -195,6 +198,8 @@ export async function runPipeline(input: string, opts: PipelineOptions = {}): Pr
       userRight,
       versus,
       outPath: overlayPath,
+      topOutPath: overlayTopPath,
+      introOutPath: overlayIntroPath,
       signal,
       onProgress: (p) =>
         emit(
@@ -217,10 +222,11 @@ export async function runPipeline(input: string, opts: PipelineOptions = {}): Pr
   }
 
   emit(active("write"));
-  const [leftDurationSec, rightDurationSec, overlayDurationSec] = await Promise.all([
+  const [leftDurationSec, rightDurationSec, overlayDurationSec, introDurationSec] = await Promise.all([
     probeDurationSec(leftWindow.path, signal),
     probeDurationSec(rightWindow.path, signal),
     probeDurationSec(overlayPath, signal),
+    probeDurationSec(overlayIntroPath, signal),
   ]);
 
   const leftClip: KdenliveClipInput = {
@@ -235,21 +241,41 @@ export async function runPipeline(input: string, opts: PipelineOptions = {}): Pr
     matchOffsetIntoClipSec: rightOffsetSec,
     clipName: `${rightWindow.playerNickname} POV`,
   };
-  const overlayClip: KdenliveClipInput = {
-    path: path.resolve(overlayPath),
-    durationSec: overlayDurationSec,
-    // Not PRE_ROLL_SEC: the overlay renders only a short lead-in before the timer starts,
-    // so it begins later on the timeline than the VOD clips do (see overlayRender.ts).
-    matchOffsetIntoClipSec: config.overlayLeadInSec,
-    clipName: "Stat Overlay",
-  };
+  // The overlay ships as three layers rather than one full-frame video: a static top band held
+  // as a still, the animated bottom band, and the opaque intro card. Rendering the empty middle
+  // of the frame (and ~17k identical copies of the static band) is what made this slow.
+  // `matchOffsetIntoClipSec` is the lead-in, not PRE_ROLL_SEC, so they start later on the
+  // timeline than the VOD clips do (see overlayRender.ts).
+  const overlayClips: KdenliveClipInput[] = [
+    {
+      path: path.resolve(overlayTopPath),
+      durationSec: overlayDurationSec,
+      matchOffsetIntoClipSec: config.overlayLeadInSec,
+      clipName: "Stat Overlay (top)",
+      positionRect: `0 0 ${WIDTH} ${TOP_BAND_HEIGHT} 1`,
+      isImage: true,
+    },
+    {
+      path: path.resolve(overlayPath),
+      durationSec: overlayDurationSec,
+      matchOffsetIntoClipSec: config.overlayLeadInSec,
+      clipName: "Stat Overlay (splits)",
+      positionRect: `0 ${BOTTOM_BAND_Y} ${WIDTH} ${BOTTOM_BAND_HEIGHT} 1`,
+    },
+    {
+      path: path.resolve(overlayIntroPath),
+      durationSec: introDurationSec,
+      matchOffsetIntoClipSec: config.overlayLeadInSec,
+      clipName: "Intro",
+    },
+  ];
 
   // Marker positions use the same maxOffset-relative math buildKdenliveProject's buildTrack
   // uses to place each clip on the timeline, so markers land in sync with the actual footage.
   const maxOffset = Math.max(
     leftClip.matchOffsetIntoClipSec,
     rightClip.matchOffsetIntoClipSec,
-    overlayClip.matchOffsetIntoClipSec,
+    ...overlayClips.map((c) => c.matchOffsetIntoClipSec),
   );
   const splits = computeSplits(match, playerLeft.uuid, playerRight.uuid);
   const markers: KdenliveMarkerInput[] = [];
@@ -274,7 +300,7 @@ export async function runPipeline(input: string, opts: PipelineOptions = {}): Pr
     height: HEIGHT,
     leftClip,
     rightClip,
-    overlayClip,
+    overlayClips,
     projectName: `Match ${matchId} - ${leftWindow.playerNickname} vs ${rightWindow.playerNickname}`,
     markers,
   });

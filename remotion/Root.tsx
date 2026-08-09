@@ -1,5 +1,13 @@
 import { Composition } from "remotion";
-import { Overlay } from "./Overlay.js";
+import {
+  Overlay,
+  OverlayTop,
+  OverlayBottom,
+  OverlayIntro,
+  TOP_BAND_HEIGHT,
+  BOTTOM_BAND_HEIGHT,
+} from "./Overlay.js";
+import { INTRO_SECONDS } from "./Intro.js";
 import { Thumbnail } from "./Thumbnail.js";
 import type { OverlayProps, ThumbnailProps } from "./types.js";
 
@@ -82,6 +90,41 @@ export const RemotionRoot: React.FC = () => {
         defaultProps={defaultProps}
         calculateMetadata={({ props }) => ({
           durationInFrames: props.durationInFrames,
+          fps: props.fps,
+        })}
+      />
+      <Composition
+        id="OverlayTop"
+        component={OverlayTop}
+        durationInFrames={1}
+        fps={30}
+        width={1920}
+        height={TOP_BAND_HEIGHT}
+        defaultProps={defaultProps}
+      />
+      <Composition
+        id="OverlayBottom"
+        component={OverlayBottom}
+        durationInFrames={21450}
+        fps={30}
+        width={1920}
+        height={BOTTOM_BAND_HEIGHT}
+        defaultProps={defaultProps}
+        calculateMetadata={({ props }) => ({
+          durationInFrames: props.durationInFrames,
+          fps: props.fps,
+        })}
+      />
+      <Composition
+        id="OverlayIntro"
+        component={OverlayIntro}
+        durationInFrames={150}
+        fps={30}
+        width={1920}
+        height={1080}
+        defaultProps={defaultProps}
+        calculateMetadata={({ props }) => ({
+          durationInFrames: Math.round(props.fps * INTRO_SECONDS),
           fps: props.fps,
         })}
       />

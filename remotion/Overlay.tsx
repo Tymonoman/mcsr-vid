@@ -1,4 +1,4 @@
-import type { FC } from "react";
+import type { FC, ReactNode } from "react";
 import { AbsoluteFill, Img, useCurrentFrame, useVideoConfig } from "remotion";
 import "./overlay.css";
 import { formatTime, formatShortTime, formatConstantLabel } from "./format.js";
@@ -7,6 +7,7 @@ import { resolveSplitSide, compareSplitSides, type SplitSideState } from "./reso
 import { Intro } from "./Intro.js";
 import { PixelBadge } from "./PixelBadge.js";
 import { BastionIcon } from "./BastionIcon.js";
+import { STAGE_WIDTH, STAGE_HEIGHT, BOTTOM_BAND_Y } from "./layout.js";
 import { resolveAchievementIcon } from "./achievementBadges.js";
 
 /** Up to 3 highlighted-achievement badges under a player's id-line. Unmapped
@@ -192,7 +193,7 @@ function SplitsPanel({
   );
 }
 
-export const Overlay: FC<OverlayProps> = (props) => {
+function useTimer(props: OverlayProps) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const rawElapsedMs = Math.max(0, ((frame - props.timerStartFrame) / fps) * 1000);
@@ -202,6 +203,11 @@ export const Overlay: FC<OverlayProps> = (props) => {
     props.runResultMs !== null
       ? props.timerStartFrame + (props.runResultMs / 1000) * fps
       : props.durationInFrames;
+  return { frame, fps, elapsedMs, runEndFrame };
+}
+
+export const Overlay: FC<OverlayProps> = (props) => {
+  const { frame, fps, elapsedMs, runEndFrame } = useTimer(props);
 
   return (
     <AbsoluteFill>
@@ -213,3 +219,58 @@ export const Overlay: FC<OverlayProps> = (props) => {
     </AbsoluteFill>
   );
 };
+
+// The overlay's content only occupies a band at the top and a band at the bottom; the ~524px
+// between them is transparent, and rendering it cost ~half of every frame. These split the
+// same layout into separately-rendered strips (see src/overlayRender.ts).
+export { TOP_BAND_HEIGHT, BOTTOM_BAND_HEIGHT, BOTTOM_BAND_Y } from "./layout.js";
+
+/**
+ * Renders the full-size 1920x1080 stage inside a shorter canvas, shifted up so only the wanted
+ * band shows. The stage keeps its real dimensions, so every percentage-based rule in
+ * overlay.source.css resolves exactly as it does full-frame — the strips are pixel-identical
+ * to the corresponding region of the full overlay rather than a re-laid-out approximation.
+ */
+function Band({ offsetY, children }: { offsetY: number; children: ReactNode }) {
+  return (
+    <AbsoluteFill style={{ overflow: "hidden" }}>
+      <div
+        style={{
+          position: "absolute",
+          top: -offsetY,
+          left: 0,
+          width: STAGE_WIDTH,
+          height: STAGE_HEIGHT,
+        }}
+      >
+        {children}
+      </div>
+    </AbsoluteFill>
+  );
+}
+
+/** Static for the whole match — rendered once as a still, not as video. */
+export const OverlayTop: FC<OverlayProps> = (props) => (
+  <Band offsetY={0}>
+    <IdentBar props={props} />
+    <PixelBadge />
+    <InfoBar props={props} />
+  </Band>
+);
+
+/** The only part that actually animates: the RTA timer and the splits revealing. */
+export const OverlayBottom: FC<OverlayProps> = (props) => {
+  const { frame, fps, elapsedMs, runEndFrame } = useTimer(props);
+  return (
+    <Band offsetY={BOTTOM_BAND_Y}>
+      <SplitsPanel props={props} elapsedMs={elapsedMs} frame={frame} fps={fps} runEndFrame={runEndFrame} />
+    </Band>
+  );
+};
+
+/** Full-frame and opaque, so it stays its own short clip laid over the strips. */
+export const OverlayIntro: FC<OverlayProps> = (props) => (
+  <AbsoluteFill>
+    <Intro props={props} />
+  </AbsoluteFill>
+);

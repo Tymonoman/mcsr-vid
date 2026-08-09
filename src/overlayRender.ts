@@ -1,5 +1,6 @@
 import { bundle } from "@remotion/bundler";
-import { makeCancelSignal, renderMedia, selectComposition } from "@remotion/renderer";
+import { makeCancelSignal, renderMedia, renderStill, selectComposition } from "@remotion/renderer";
+import { INTRO_SECONDS } from "../remotion/layout.js";
 import { config } from "./config.js";
 import { computeOverlayProps } from "./overlayProps.js";
 import { POST_ROLL_SEC, estimatedRunSec } from "./vodAcquisition.js";
@@ -20,15 +21,23 @@ export interface RenderOverlayArgs {
   userLeft: UserDetails;
   userRight: UserDetails;
   versus: VersusStats;
+  /** Animated bottom band (splits + RTA timer). */
   outPath: string;
+  /** Static top band, rendered once as a PNG still. */
+  topOutPath: string;
+  /** Full-frame opaque intro card. */
+  introOutPath: string;
   onProgress?: (p: RenderProgress) => void;
   signal?: AbortSignal;
 }
 
 export interface RenderOverlayResult {
   path: string;
+  topPath: string;
+  introPath: string;
   matchOffsetIntoClipSec: number;
   durationInFrames: number;
+  introDurationSec: number;
   fps: number;
 }
 
@@ -66,7 +75,39 @@ export async function renderOverlay(args: RenderOverlayArgs): Promise<RenderOver
       },
     );
 
-    const composition = await selectComposition({ serveUrl, id: "MatchOverlay", inputProps: renderProps });
+    // The static top band is one still image held for the whole clip in the NLE, not ~17k
+    // identical video frames — that, plus dropping the empty middle of the frame, is what
+    // keeps the render under 10 minutes.
+    const topComposition = await selectComposition({ serveUrl, id: "OverlayTop", inputProps: renderProps });
+    await renderStill({
+      composition: topComposition,
+      serveUrl,
+      output: args.topOutPath,
+      imageFormat: "png",
+      inputProps: renderProps,
+      cancelSignal,
+    });
+
+    const introComposition = await selectComposition({
+      serveUrl,
+      id: "OverlayIntro",
+      inputProps: renderProps,
+    });
+    await renderMedia({
+      composition: introComposition,
+      serveUrl,
+      codec: "prores",
+      proResProfile: "4444",
+      imageFormat: "png",
+      pixelFormat: "yuva444p10le",
+      muted: true,
+      ...(config.renderConcurrency !== null ? { concurrency: config.renderConcurrency } : {}),
+      outputLocation: args.introOutPath,
+      inputProps: renderProps,
+      cancelSignal,
+    });
+
+    const composition = await selectComposition({ serveUrl, id: "OverlayBottom", inputProps: renderProps });
 
     await renderMedia({
       composition,
@@ -93,5 +134,13 @@ export async function renderOverlay(args: RenderOverlayArgs): Promise<RenderOver
     args.signal?.removeEventListener("abort", onAbort);
   }
 
-  return { path: args.outPath, matchOffsetIntoClipSec: LEAD_IN_SEC, durationInFrames, fps: FPS };
+  return {
+    path: args.outPath,
+    topPath: args.topOutPath,
+    introPath: args.introOutPath,
+    matchOffsetIntoClipSec: LEAD_IN_SEC,
+    durationInFrames,
+    introDurationSec: INTRO_SECONDS,
+    fps: FPS,
+  };
 }
