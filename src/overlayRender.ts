@@ -39,7 +39,7 @@ function webpackOverride(config: Record<string, unknown>): Record<string, unknow
 }
 
 export async function renderOverlay(args: RenderOverlayArgs): Promise<RenderOverlayResult> {
-  const props = computeOverlayProps(args.match, args.userLeft, args.userRight, args.versus);
+  const props = await computeOverlayProps(args.match, args.userLeft, args.userRight, args.versus);
   const runSec = estimatedRunSec(args.match);
   const durationInFrames = Math.round((PRE_ROLL_SEC + runSec + POST_ROLL_SEC) * FPS);
   const timerStartFrame = Math.round(PRE_ROLL_SEC * FPS);
