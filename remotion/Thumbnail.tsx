@@ -36,7 +36,6 @@ export const Thumbnail: FC<ThumbnailProps> = (props) => {
         </div>
         <PlayerTag player={props.left} side="left" />
         <PlayerTag player={props.right} side="right" />
-        {props.resultLabel !== null && <div className="thumb-result">{props.resultLabel}</div>}
       </div>
     </AbsoluteFill>
   );

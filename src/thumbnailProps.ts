@@ -10,14 +10,6 @@ export interface ThumbnailProps {
   left: ThumbnailPlayer;
   right: ThumbnailPlayer;
   headerLabel: string;
-  resultLabel: string | null;
-}
-
-function formatShortTime(ms: number): string {
-  const clamped = Math.max(0, Math.round(ms));
-  const minutes = Math.floor(clamped / 60000);
-  const seconds = Math.floor((clamped % 60000) / 1000);
-  return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
 /** One energetic, one calm — mirrors the reference thumbnail layout. Override per-video if needed. */
@@ -58,6 +50,5 @@ export async function computeThumbnailProps(
     left: { nickname: userLeft.nickname, eloRate: userLeft.eloRate ?? 0, avatarUrl: leftAvatarUrl },
     right: { nickname: userRight.nickname, eloRate: userRight.eloRate ?? 0, avatarUrl: rightAvatarUrl },
     headerLabel: match.tag ?? "Minecraft · Speedrunning · Ranked",
-    resultLabel: match.result.time > 0 ? formatShortTime(match.result.time) : null,
   };
 }
