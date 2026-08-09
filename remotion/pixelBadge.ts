@@ -1,21 +1,24 @@
-/** Pixel-art replay/rewind ring: the MCSR Replayoffs mark. Grid cells only —
- * the "MCSR" wordmark itself is drawn as real Monocraft `<text>` by the
- * caller, not part of this grid. */
+/** Pixel-art replay/refresh ring: the MCSR Replayoffs mark. Two arcs, each
+ * capped with an arrowhead, at 180-degree rotational symmetry — the
+ * classic "refresh/sync" icon shape. Grid cells only; the MC/SR monogram
+ * is drawn separately by the caller (PixelBadge.tsx / generate_brand_assets.py). */
 
 export type BadgeCell = { x: number; y: number; color: string };
 
-export const BADGE_GRID_N = 32;
+export const BADGE_GRID_N = 64;
 
 const CRIMSON = "#e2483f";
 const WARPED = "#35d6c4";
 
-const GAP_START = 300;
-const GAP_END = 345;
+// Two gaps (each with an arrowhead at its end), rotated 180 degrees from
+// each other for perfect 2-fold symmetry.
+const GAP1: [number, number] = [300, 345];
+const GAP2: [number, number] = [120, 165];
 
-// Angular span (degrees) the arrowhead tip extends into the gap from
-// GAP_END, and how much wider than the ring it bulges at its base.
-const ARROW_SPAN = 34;
-const ARROW_BULGE = 2.4;
+// Angular span (degrees) each arrowhead tip extends into its gap, and how
+// much wider than the ring it bulges at its base.
+const ARROW_SPAN = 30;
+const ARROW_BULGE = 2.2;
 
 export function buildBadgeRingCells(n = BADGE_GRID_N): BadgeCell[] {
   const cells: BadgeCell[] = [];
@@ -24,7 +27,22 @@ export function buildBadgeRingCells(n = BADGE_GRID_N): BadgeCell[] {
   const innerR = n * 0.3;
   const midR = (innerR + outerR) / 2;
   const halfThickness = (outerR - innerR) / 2;
-  const arrowStart = GAP_END - ARROW_SPAN;
+
+  const inGap = (angle: number, gap: [number, number]) => angle >= gap[0] && angle <= gap[1];
+  // Which of the two arcs a solid-ring angle belongs to (for per-arc color).
+  const inArc1 = (angle: number) => angle > GAP1[1] || angle < GAP2[0];
+
+  // Same per-pixel radius/angle wedge technique as the single-arrow
+  // design: widest at the gap's end (a bit wider than the ring itself),
+  // tapering to a point as it extends into the gap. Always solid and
+  // continuous, never a separately rasterized shape.
+  const arrowWedge = (angle: number, dist: number, gapEnd: number) => {
+    const arrowStart = gapEnd - ARROW_SPAN;
+    if (!(angle > arrowStart && angle <= gapEnd)) return false;
+    const t = (gapEnd - angle) / ARROW_SPAN; // 0 at the ring join, 1 at the tip
+    const half = halfThickness * ARROW_BULGE * (1 - t);
+    return dist >= midR - half && dist <= midR + half;
+  };
 
   for (let y = 0; y < n; y++) {
     for (let x = 0; x < n; x++) {
@@ -33,23 +51,13 @@ export function buildBadgeRingCells(n = BADGE_GRID_N): BadgeCell[] {
       const dist = Math.hypot(dx, dy);
       const angle = ((Math.atan2(dy, dx) * 180) / Math.PI + 360) % 360;
 
-      const inRing = dist >= innerR && dist <= outerR && !(angle >= GAP_START && angle <= GAP_END);
+      const inRing = dist >= innerR && dist <= outerR && !inGap(angle, GAP1) && !inGap(angle, GAP2);
+      const inArrow1 = arrowWedge(angle, dist, GAP1[1]);
+      const inArrow2 = arrowWedge(angle, dist, GAP2[1]);
+      if (!(inRing || inArrow1 || inArrow2)) continue;
 
-      // Arrowhead: a wedge that's widest (a bit wider than the ring
-      // itself) where it joins the ring at GAP_END, tapering to a point
-      // at arrowStart — same per-pixel radius/angle test as the ring
-      // itself, so it's always solid and continuous, never a separate
-      // shape that can drift out of alignment or rasterize as dots.
-      let inArrow = false;
-      if (angle > arrowStart && angle <= GAP_END) {
-        const t = (GAP_END - angle) / ARROW_SPAN; // 0 at the ring join, 1 at the tip
-        const wedgeHalfThickness = halfThickness * ARROW_BULGE * (1 - t);
-        inArrow = dist >= midR - wedgeHalfThickness && dist <= midR + wedgeHalfThickness;
-      }
-
-      if (inRing || inArrow) {
-        cells.push({ x, y, color: x < c ? WARPED : CRIMSON });
-      }
+      const arc1 = inArrow1 || (inRing && inArc1(angle));
+      cells.push({ x, y, color: arc1 ? CRIMSON : WARPED });
     }
   }
 

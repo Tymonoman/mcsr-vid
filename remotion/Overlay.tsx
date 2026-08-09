@@ -212,9 +212,13 @@ export const Overlay: FC<OverlayProps> = (props) => {
   return (
     <AbsoluteFill>
       <IdentBar props={props} />
-      <PixelBadge />
       <InfoBar props={props} />
       <SplitsPanel props={props} elapsedMs={elapsedMs} frame={frame} fps={fps} runEndFrame={runEndFrame} />
+      {/* Painted after InfoBar so it's never occluded by InfoBar's background —
+          the badge (173px) is taller than IdentBar (9% of frame height) and
+          overlaps into InfoBar's box. Intro still needs to paint after this:
+          it's a temporary full-screen cover for the first few seconds. */}
+      <PixelBadge />
       <Intro props={props} />
     </AbsoluteFill>
   );
