@@ -33,9 +33,10 @@ export function getVersus(identifier1: string, identifier2: string): Promise<Ver
   );
 }
 
-/** Accepts a full mcsrranked.com match URL or a bare match ID and returns the numeric match ID. */
+/** Accepts a full match URL (any site, with or without query/hash) or a bare match ID. */
 export function parseMatchId(input: string): number {
-  const trailingNumber = input.match(/(\d+)\/?$/);
+  const withoutQueryOrHash = input.split(/[?#]/)[0];
+  const trailingNumber = withoutQueryOrHash.match(/(\d+)\/?$/);
   if (!trailingNumber) {
     throw new Error(`Could not find a match ID in "${input}"`);
   }

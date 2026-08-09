@@ -52,6 +52,7 @@ interface TrackXml {
 /** Builds one timeline track (audio or video) as a chain + a 2-playlist tractor pair. */
 function buildTrack(opts: {
   chainId: string;
+  binId: string;
   clip: KdenliveClipInput;
   startOnTimelineSec: number;
   kind: "audio" | "video";
@@ -60,14 +61,27 @@ function buildTrack(opts: {
   tractorId: string;
   positionRect?: string; // "x y w h opacity", video tracks only
 }): TrackXml {
-  const { chainId, clip, startOnTimelineSec, kind, playlistIdA, playlistIdB, tractorId, positionRect } =
-    opts;
+  const {
+    chainId,
+    binId,
+    clip,
+    startOnTimelineSec,
+    kind,
+    playlistIdA,
+    playlistIdB,
+    tractorId,
+    positionRect,
+  } = opts;
 
+  const durationTc = secondsToTimecode(clip.durationSec);
   const chainXml = `
-    <chain id="${chainId}">
+    <chain id="${chainId}" out="${durationTc}">
+        <property name="length">${durationTc}</property>
         <property name="resource">${escapeXml(clip.path)}</property>
         <property name="mlt_service">avformat</property>
         <property name="kdenlive:clipname">${escapeXml(clip.clipName)}</property>
+        <property name="kdenlive:id">${binId}</property>
+        <property name="kdenlive:folderid">-1</property>
     </chain>`;
 
   const blank =
@@ -122,6 +136,7 @@ export function buildKdenliveProject(input: KdenliveProjectInput): string {
 
   const audioLeft = buildTrack({
     chainId: "chain_audio_left",
+    binId: "0",
     clip: leftClip,
     startOnTimelineSec: maxOffset - leftClip.matchOffsetIntoClipSec,
     kind: "audio",
@@ -131,6 +146,7 @@ export function buildKdenliveProject(input: KdenliveProjectInput): string {
   });
   const audioRight = buildTrack({
     chainId: "chain_audio_right",
+    binId: "1",
     clip: rightClip,
     startOnTimelineSec: maxOffset - rightClip.matchOffsetIntoClipSec,
     kind: "audio",
@@ -140,6 +156,7 @@ export function buildKdenliveProject(input: KdenliveProjectInput): string {
   });
   const videoLeft = buildTrack({
     chainId: "chain_video_left",
+    binId: "2",
     clip: leftClip,
     startOnTimelineSec: maxOffset - leftClip.matchOffsetIntoClipSec,
     kind: "video",
@@ -150,6 +167,7 @@ export function buildKdenliveProject(input: KdenliveProjectInput): string {
   });
   const videoRight = buildTrack({
     chainId: "chain_video_right",
+    binId: "3",
     clip: rightClip,
     startOnTimelineSec: maxOffset - rightClip.matchOffsetIntoClipSec,
     kind: "video",
@@ -160,6 +178,7 @@ export function buildKdenliveProject(input: KdenliveProjectInput): string {
   });
   const videoOverlay = buildTrack({
     chainId: "chain_overlay",
+    binId: "4",
     clip: overlayClip,
     startOnTimelineSec: maxOffset - overlayClip.matchOffsetIntoClipSec,
     kind: "video",
