@@ -1,11 +1,28 @@
 import type { FC } from "react";
-import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion";
+import { AbsoluteFill, Img, useCurrentFrame, useVideoConfig } from "remotion";
 import "./overlay.css";
 import { formatTime, formatShortTime } from "./format.js";
-import type { OverlayProps, SplitRow } from "./types.js";
+import type { OverlayProps, PlayerIdentity, SplitRow } from "./types.js";
 import { resolveSplitSide, compareSplitSides, type SplitSideState } from "./resolveSplitSide.js";
 import { Intro } from "./Intro.js";
 import { PixelBadge } from "./PixelBadge.js";
+import { resolveAchievementIcon } from "./achievementBadges.js";
+
+/** Up to 3 highlighted-achievement badges under a player's id-line. Unmapped
+ * ids/levels are skipped entirely, per resolveAchievementIcon's contract. */
+function AchievementRow({ player }: { player: PlayerIdentity }) {
+  const icons = player.achievements
+    .map((a) => resolveAchievementIcon(a.id, a.level))
+    .filter((src): src is string => src !== null);
+  if (icons.length === 0) return null;
+  return (
+    <div className="ach-row">
+      {icons.map((src, i) => (
+        <Img key={`${src}-${i}`} src={src} />
+      ))}
+    </div>
+  );
+}
 
 function IdentBar({ props }: { props: OverlayProps }) {
   return (
@@ -30,6 +47,7 @@ function InfoBar({ props }: { props: OverlayProps }) {
           <span className="elo">{left.eloRate} ELO</span>
           <span className="rank">#{left.eloRank} WORLD</span>
         </div>
+        <AchievementRow player={left} />
         <div className="deep-line">
           PB <b>{formatTime(left.pbMs)}</b>
           <span className="sep">·</span>
@@ -46,6 +64,7 @@ function InfoBar({ props }: { props: OverlayProps }) {
           <span className="elo">{right.eloRate} ELO</span>
           <span className="flag">{right.countryFlag}</span>
         </div>
+        <AchievementRow player={right} />
         <div className="deep-line">
           WR <b>{right.winRatePct.toFixed(1)}%</b>
           <span className="sep">·</span>

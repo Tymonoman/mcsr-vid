@@ -10,6 +10,7 @@ export interface PlayerIdentity {
   gamesPlayed: number;
   winRatePct: number;
   avatarUrl: string;
+  achievements: { id: string; level: number }[];
 }
 
 export interface SplitRow {
@@ -83,6 +84,9 @@ function playerIdentity(user: UserDetails, avatarUrl: string): PlayerIdentity {
     gamesPlayed: stats.playedMatches.ranked ?? 0,
     winRatePct: wins + loses > 0 ? (wins / (wins + loses)) * 100 : 0,
     avatarUrl,
+    // API already caps `display` at the player's chosen highlights (up to 3 by default);
+    // slice defensively so a higher-tier supporter's 4-5 doesn't overflow the overlay.
+    achievements: user.achievements.display.slice(0, 3).map((a) => ({ id: a.id, level: a.level })),
   };
 }
 
