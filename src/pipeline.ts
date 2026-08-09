@@ -35,6 +35,8 @@ export interface StageEvent {
   /** 0-100; omitted for near-instant stages. */
   percent?: number;
   message?: string;
+  /** Date.now() when this stage's status first became "active"; same value across repeat active-emits. */
+  startedAtMs?: number;
 }
 
 export interface PipelineResult {
@@ -74,7 +76,15 @@ export async function runPipeline(input: string, opts: PipelineOptions = {}): Pr
   const { onEvent = () => {}, signal } = opts;
   const emit = (e: StageEvent) => onEvent(e);
 
-  emit({ stage: "fetch", status: "active" });
+  // Tracks when each stage first went "active" so repeat active-emits (download/render
+  // progress callbacks) can carry a stable startedAtMs for the TUI's ETA calculation.
+  const stageStartTimes = new Map<StageId, number>();
+  const active = (stage: StageId, extra: Omit<StageEvent, "stage" | "status" | "startedAtMs"> = {}): StageEvent => {
+    if (!stageStartTimes.has(stage)) stageStartTimes.set(stage, Date.now());
+    return { stage, status: "active", startedAtMs: stageStartTimes.get(stage), ...extra };
+  };
+
+  emit(active("fetch"));
   const matchId = parseMatchId(input);
   const match = await getMatch(matchId);
 
@@ -105,7 +115,7 @@ export async function runPipeline(input: string, opts: PipelineOptions = {}): Pr
   const outDir = path.join(config.mediaDir, String(matchId));
   const pathFor = (nickname: string) => path.join(outDir, `${nickname}.mp4`);
 
-  emit({ stage: "download", status: "active", percent: 0 });
+  emit(active("download", { percent: 0 }));
   let windows: VodWindow[];
   if (existsSync(pathFor(playerLeft.nickname)) && existsSync(pathFor(playerRight.nickname))) {
     windows = [
@@ -132,12 +142,12 @@ export async function runPipeline(input: string, opts: PipelineOptions = {}): Pr
       match,
       outDir,
       (p) =>
-        emit({
-          stage: "download",
-          status: "active",
-          percent: Math.round(((p.index + p.percent / 100) / p.total) * 100),
-          message: `${p.playerNickname} (${p.index + 1}/${p.total}): ${p.percent.toFixed(0)}%`,
-        }),
+        emit(
+          active("download", {
+            percent: Math.round(((p.index + p.percent / 100) / p.total) * 100),
+            message: `${p.playerNickname} (${p.index + 1}/${p.total}): ${p.percent.toFixed(0)}%`,
+          }),
+        ),
       signal,
     );
     emit({ stage: "download", status: "done", percent: 100 });
@@ -149,7 +159,7 @@ export async function runPipeline(input: string, opts: PipelineOptions = {}): Pr
     throw new Error("Downloaded windows don't match players[0]/players[1].");
   }
 
-  emit({ stage: "sync", status: "active" });
+  emit(active("sync"));
   let rightOffsetSec = rightWindow.matchOffsetIntoClipSec;
   try {
     const sync = await computeSyncOffset(
@@ -177,7 +187,7 @@ export async function runPipeline(input: string, opts: PipelineOptions = {}): Pr
   if (existsSync(overlayPath)) {
     emit({ stage: "render", status: "done", percent: 100, message: "reused existing render" });
   } else {
-    emit({ stage: "render", status: "active", percent: 0 });
+    emit(active("render", { percent: 0 }));
     await renderOverlay({
       match,
       userLeft,
@@ -186,12 +196,12 @@ export async function runPipeline(input: string, opts: PipelineOptions = {}): Pr
       outPath: overlayPath,
       signal,
       onProgress: (p) =>
-        emit({
-          stage: "render",
-          status: "active",
-          percent: p.percent,
-          message: `${p.phase}: ${p.percent}%`,
-        }),
+        emit(
+          active("render", {
+            percent: p.percent,
+            message: `${p.phase}: ${p.percent}%`,
+          }),
+        ),
     });
     emit({ stage: "render", status: "done", percent: 100 });
   }
@@ -200,12 +210,12 @@ export async function runPipeline(input: string, opts: PipelineOptions = {}): Pr
   if (existsSync(thumbnailPath)) {
     emit({ stage: "thumbnail", status: "done", message: "reused existing render" });
   } else {
-    emit({ stage: "thumbnail", status: "active" });
+    emit(active("thumbnail"));
     await renderThumbnail({ match, userLeft, userRight, outPath: thumbnailPath, signal });
     emit({ stage: "thumbnail", status: "done" });
   }
 
-  emit({ stage: "write", status: "active" });
+  emit(active("write"));
   const [leftDurationSec, rightDurationSec, overlayDurationSec] = await Promise.all([
     probeDurationSec(leftWindow.path, signal),
     probeDurationSec(rightWindow.path, signal),

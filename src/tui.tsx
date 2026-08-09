@@ -36,13 +36,38 @@ function useSpinnerFrame(active: boolean): string {
   return SPINNER_FRAMES[i]!;
 }
 
-function ProgressBar({ percent, color }: { percent: number; color: string }) {
+/** "Xm Ys" (or just "Ys" under a minute) from a millisecond duration. */
+function formatDuration(ms: number): string {
+  const totalSec = Math.max(0, Math.round(ms / 1000));
+  const min = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  return min > 0 ? `${min}m ${sec}s` : `${sec}s`;
+}
+
+/** Only shown once percent clears a small threshold, to avoid a wild early estimate. */
+function etaText(percent: number, startedAtMs: number | undefined): string | null {
+  if (startedAtMs === undefined || percent <= 5) return null;
+  const elapsed = Date.now() - startedAtMs;
+  const remaining = (elapsed / percent) * (100 - percent);
+  return `~${formatDuration(remaining)} left`;
+}
+
+function ProgressBar({
+  percent,
+  color,
+  startedAtMs,
+}: {
+  percent: number;
+  color: string;
+  startedAtMs?: number;
+}) {
   const filled = Math.round((Math.min(100, Math.max(0, percent)) / 100) * BAR_WIDTH);
+  const eta = etaText(percent, startedAtMs);
   return (
     <Text>
       <Text color={color}>{"█".repeat(filled)}</Text>
       <Text color={COLORS.panelEdgeLight}>{"░".repeat(BAR_WIDTH - filled)}</Text>
-      <Text color={COLORS.muted}> {Math.round(percent)}%</Text>
+      <Text color={COLORS.muted}> {Math.round(percent)}%{eta ? ` · ${eta}` : ""}</Text>
     </Text>
   );
 }
@@ -74,7 +99,11 @@ function StageRow({ event }: { event: StageEvent }) {
         </Text>
         {event.percent !== undefined && event.status !== "pending" && (
           <Box marginLeft={2}>
-            <ProgressBar percent={event.percent} color={event.status === "error" ? COLORS.crimson : COLORS.gold} />
+            <ProgressBar
+              percent={event.percent}
+              color={event.status === "error" ? COLORS.crimson : COLORS.gold}
+              startedAtMs={event.status === "active" ? event.startedAtMs : undefined}
+            />
           </Box>
         )}
       </Box>
