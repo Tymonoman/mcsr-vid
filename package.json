@@ -3,6 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
+  "description": "Turns an MCSR Ranked match into a ready-to-edit Kdenlive project: dual-POV VOD download, audio sync, stat overlay, and timeline assembly.",
   "scripts": {
     "fetch-match": "tsx src/fetchMatch.ts",
     "download-vods": "tsx src/downloadVods.ts",
