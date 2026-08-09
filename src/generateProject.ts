@@ -23,7 +23,13 @@ function onEvent(e: StageEvent) {
 try {
   const result = await runPipeline(input, { onEvent, signal: ac.signal });
   console.error(`Done: ${result.projectPath}`);
-  console.log(JSON.stringify({ matchId: result.matchId, projectPath: result.projectPath }, null, 2));
+  console.log(
+    JSON.stringify(
+      { matchId: result.matchId, projectPath: result.projectPath, thumbnailPath: result.thumbnailPath },
+      null,
+      2,
+    ),
+  );
 } catch (err) {
   if (ac.signal.aborted) {
     console.error("Aborted.");

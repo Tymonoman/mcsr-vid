@@ -242,6 +242,7 @@ function App({ signal }: { signal: AbortSignal }) {
         {fetchMsg && <Text color={COLORS.quartz}>{fetchMsg}</Text>}
         {syncMsg && <Text color={COLORS.muted}>sync: {syncMsg}</Text>}
         <Text color={COLORS.muted}>{result?.projectPath}</Text>
+        <Text color={COLORS.muted}>{result?.thumbnailPath}</Text>
       </Box>
       <Box marginTop={1}>
         {kdenliveStatus === "idle" && <Text color={COLORS.gold}>Open in Kdenlive? (y/n)</Text>}

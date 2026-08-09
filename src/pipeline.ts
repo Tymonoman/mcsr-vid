@@ -5,6 +5,7 @@ import path from "node:path";
 import { getMatch, getUser, getVersus, parseMatchId } from "./mcsrApi.js";
 import { buildKdenliveProject, type KdenliveClipInput } from "./kdenliveProject.js";
 import { renderOverlay } from "./overlayRender.js";
+import { renderThumbnail } from "./thumbnailRender.js";
 import { computeSyncOffset } from "./sync.js";
 import { downloadMatchVods, PRE_ROLL_SEC, type VodWindow } from "./vodAcquisition.js";
 
@@ -13,15 +14,16 @@ const WIDTH = 1920;
 const HEIGHT = 1080;
 const SYNC_CONFIDENCE_THRESHOLD = 0.15;
 
-export type StageId = "fetch" | "download" | "sync" | "render" | "write";
+export type StageId = "fetch" | "download" | "sync" | "render" | "thumbnail" | "write";
 
-export const STAGE_ORDER: StageId[] = ["fetch", "download", "sync", "render", "write"];
+export const STAGE_ORDER: StageId[] = ["fetch", "download", "sync", "render", "thumbnail", "write"];
 
 export const STAGE_LABELS: Record<StageId, string> = {
   fetch: "Fetch match data",
   download: "Download VODs",
   sync: "Audio sync check",
   render: "Render overlay",
+  thumbnail: "Render thumbnail",
   write: "Write Kdenlive project",
 };
 
@@ -38,6 +40,7 @@ export interface StageEvent {
 export interface PipelineResult {
   matchId: number;
   projectPath: string;
+  thumbnailPath: string;
 }
 
 export interface PipelineOptions {
@@ -193,6 +196,15 @@ export async function runPipeline(input: string, opts: PipelineOptions = {}): Pr
     emit({ stage: "render", status: "done", percent: 100 });
   }
 
+  const thumbnailPath = path.join(outDir, "thumbnail.png");
+  if (existsSync(thumbnailPath)) {
+    emit({ stage: "thumbnail", status: "done", message: "reused existing render" });
+  } else {
+    emit({ stage: "thumbnail", status: "active" });
+    await renderThumbnail({ match, userLeft, userRight, outPath: thumbnailPath, signal });
+    emit({ stage: "thumbnail", status: "done" });
+  }
+
   emit({ stage: "write", status: "active" });
   const [leftDurationSec, rightDurationSec, overlayDurationSec] = await Promise.all([
     probeDurationSec(leftWindow.path, signal),
@@ -233,5 +245,5 @@ export async function runPipeline(input: string, opts: PipelineOptions = {}): Pr
   await writeFile(projectPath, projectXml, "utf8");
   emit({ stage: "write", status: "done" });
 
-  return { matchId, projectPath: path.resolve(projectPath) };
+  return { matchId, projectPath: path.resolve(projectPath), thumbnailPath: path.resolve(thumbnailPath) };
 }
