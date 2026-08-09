@@ -28,4 +28,31 @@ assert.ok(
   `found unset bin id: ${binIds}`,
 );
 
+// Markers should serialize onto main_bin as kdenlive:docproperties.guides, one JSON entry per
+// input marker.
+const xmlWithMarkers = buildKdenliveProject({
+  fps: 60,
+  width: 1920,
+  height: 1080,
+  leftClip: clip("left"),
+  rightClip: clip("right"),
+  overlayClip: clip("overlay"),
+  projectName: "Test Match",
+  markers: [
+    { positionSec: 12.5, comment: "Nether Enter — Alice" },
+    { positionSec: 40, comment: "Bastion — Bob" },
+  ],
+});
+
+const guidesMatch = xmlWithMarkers.match(
+  /kdenlive:docproperties\.guides">([^<]*)</,
+);
+assert.ok(guidesMatch, "expected kdenlive:docproperties.guides property to be present");
+const guides = JSON.parse(
+  guidesMatch![1].replace(/&quot;/g, '"').replace(/&amp;/g, "&"),
+);
+assert.equal(guides.length, 2, `expected 2 guide entries, got ${guides.length}`);
+assert.equal(guides[0].pos, Math.round(12.5 * 60));
+assert.equal(guides[0].comment, "Nether Enter — Alice");
+
 console.log("kdenliveProject: all checks passed");

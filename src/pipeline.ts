@@ -3,7 +3,8 @@ import { existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { getMatch, getUser, getVersus, parseMatchId } from "./mcsrApi.js";
-import { buildKdenliveProject, type KdenliveClipInput } from "./kdenliveProject.js";
+import { buildKdenliveProject, type KdenliveClipInput, type KdenliveMarkerInput } from "./kdenliveProject.js";
+import { computeSplits } from "./overlayProps.js";
 import { renderOverlay } from "./overlayRender.js";
 import { renderThumbnail } from "./thumbnailRender.js";
 import { computeSyncOffset } from "./sync.js";
@@ -231,6 +232,30 @@ export async function runPipeline(input: string, opts: PipelineOptions = {}): Pr
     clipName: "Stat Overlay",
   };
 
+  // Marker positions use the same maxOffset-relative math buildKdenliveProject's buildTrack
+  // uses to place each clip on the timeline, so markers land in sync with the actual footage.
+  const maxOffset = Math.max(
+    leftClip.matchOffsetIntoClipSec,
+    rightClip.matchOffsetIntoClipSec,
+    overlayClip.matchOffsetIntoClipSec,
+  );
+  const splits = computeSplits(match, playerLeft.uuid, playerRight.uuid);
+  const markers: KdenliveMarkerInput[] = [];
+  for (const row of splits) {
+    if (row.leftMs !== null) {
+      markers.push({
+        positionSec: maxOffset - leftClip.matchOffsetIntoClipSec + row.leftMs / 1000,
+        comment: `${row.label} — ${leftWindow.playerNickname}`,
+      });
+    }
+    if (row.rightMs !== null) {
+      markers.push({
+        positionSec: maxOffset - rightClip.matchOffsetIntoClipSec + row.rightMs / 1000,
+        comment: `${row.label} — ${rightWindow.playerNickname}`,
+      });
+    }
+  }
+
   const projectXml = buildKdenliveProject({
     fps: FPS,
     width: WIDTH,
@@ -239,6 +264,7 @@ export async function runPipeline(input: string, opts: PipelineOptions = {}): Pr
     rightClip,
     overlayClip,
     projectName: `Match ${matchId} - ${leftWindow.playerNickname} vs ${rightWindow.playerNickname}`,
+    markers,
   });
 
   const projectPath = path.join(outDir, `match-${matchId}.kdenlive`);
