@@ -25,6 +25,17 @@ function run(command: string, args: string[]): Promise<string> {
   });
 }
 
+function runNpmScript(script: string, arg: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn("npm", ["run", script, "--", arg], { stdio: "inherit" });
+    proc.on("error", reject);
+    proc.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`${script} exited with code ${code}`));
+    });
+  });
+}
+
 async function probeDurationSec(filePath: string): Promise<number> {
   const out = await run("ffprobe", [
     "-v",
@@ -126,18 +137,17 @@ try {
 const overlayPath = path.join(outDir, "overlay.mov");
 if (!existsSync(overlayPath)) {
   console.error(`Rendering overlay for match ${matchId}...`);
-  await new Promise<void>((resolve, reject) => {
-    const proc = spawn("npm", ["run", "render-overlay", "--", String(matchId)], {
-      stdio: "inherit",
-    });
-    proc.on("error", reject);
-    proc.on("close", (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`render-overlay exited with code ${code}`));
-    });
-  });
+  await runNpmScript("render-overlay", String(matchId));
 } else {
   console.error(`Reusing existing overlay render: ${overlayPath}`);
+}
+
+const thumbnailPath = path.join(outDir, "thumbnail.png");
+if (!existsSync(thumbnailPath)) {
+  console.error(`Generating thumbnail for match ${matchId}...`);
+  await runNpmScript("generate-thumbnail", String(matchId));
+} else {
+  console.error(`Reusing existing thumbnail: ${thumbnailPath}`);
 }
 
 console.error("Probing clip durations...");
@@ -180,4 +190,14 @@ const projectPath = path.join(outDir, `match-${matchId}.kdenlive`);
 await writeFile(projectPath, projectXml, "utf8");
 
 console.error(`Done: ${projectPath}`);
-console.log(JSON.stringify({ matchId, projectPath: path.resolve(projectPath) }, null, 2));
+console.log(
+  JSON.stringify(
+    {
+      matchId,
+      projectPath: path.resolve(projectPath),
+      thumbnailPath: path.resolve(thumbnailPath),
+    },
+    null,
+    2,
+  ),
+);
