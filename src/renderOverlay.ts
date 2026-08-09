@@ -48,7 +48,7 @@ await new Promise<void>((resolve, reject) => {
       "MatchOverlay",
       outPath,
       "--codec=prores",
-      "--pro-res-profile=4444",
+      "--prores-profile=4444",
       `--props=${JSON.stringify(renderProps)}`,
     ],
     { stdio: "inherit" },
