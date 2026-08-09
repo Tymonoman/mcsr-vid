@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import React, { useEffect, useState } from "react";
 import { Box, render, Text, useInput } from "ink";
 import TextInput from "ink-text-input";
@@ -11,6 +12,7 @@ import {
   type StageId,
 } from "./pipeline.js";
 import { listMatchStatuses, type MatchStatusEntry } from "./matchStatus.js";
+import { readBatchList } from "./batchList.js";
 
 // Pulled straight from remotion/overlay.source.css so the TUI reads as the same brand as the overlay.
 const COLORS = {
@@ -139,7 +141,13 @@ function initialStages(): Record<StageId, StageEvent> {
   return Object.fromEntries(entries) as Record<StageId, StageEvent>;
 }
 
-type Screen = "input" | "progress" | "summary" | "history";
+type Screen = "input" | "progress" | "summary" | "history" | "batchSummary";
+
+interface BatchItemResult {
+  entry: string;
+  projectPath: string | null;
+  error: string | null;
+}
 
 function App({ signal }: { signal: AbortSignal }) {
   const [screen, setScreen] = useState<Screen>("input");
@@ -153,6 +161,10 @@ function App({ signal }: { signal: AbortSignal }) {
   const [history, setHistory] = useState<MatchStatusEntry[] | null>(null);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [historyIndex, setHistoryIndex] = useState(0);
+  // null = single-match mode; a list = batch mode, run one entry at a time.
+  const [batchEntries, setBatchEntries] = useState<string[] | null>(null);
+  const [batchIndex, setBatchIndex] = useState(0);
+  const [batchResults, setBatchResults] = useState<BatchItemResult[]>([]);
 
   const openInKdenlive = (projectPath: string) => {
     setKdenliveStatus("opening");
@@ -172,11 +184,29 @@ function App({ signal }: { signal: AbortSignal }) {
     });
   };
 
-  const handleSubmit = (value: string) => {
+  // A match ID/URL is never an existing path, so this disambiguates the two input kinds
+  // without a separate screen or flag.
+  const handleSubmit = async (value: string) => {
     const trimmed = value.trim();
     if (!trimmed) {
-      setInputError("Paste a match URL or ID first.");
+      setInputError("Paste a match URL or ID, or the path to a list file.");
       return;
+    }
+    if (existsSync(trimmed)) {
+      let entries: string[];
+      try {
+        entries = await readBatchList(trimmed);
+      } catch (err) {
+        setInputError((err as Error).message);
+        return;
+      }
+      if (entries.length === 0) {
+        setInputError(`No match entries found in ${trimmed}.`);
+        return;
+      }
+      setBatchEntries(entries);
+      setBatchIndex(0);
+      setBatchResults([]);
     }
     setInputError(null);
     setScreen("progress");
@@ -185,7 +215,14 @@ function App({ signal }: { signal: AbortSignal }) {
   useEffect(() => {
     if (screen !== "progress") return;
     let cancelled = false;
-    runPipeline(input.trim(), {
+    const entry = batchEntries ? batchEntries[batchIndex]! : input.trim();
+    const advanceBatch = (item: BatchItemResult) => {
+      setBatchResults((prev) => [...prev, item]);
+      if (batchIndex + 1 < batchEntries!.length) setBatchIndex(batchIndex + 1);
+      else setScreen("batchSummary");
+    };
+    setStages(initialStages());
+    runPipeline(entry, {
       signal,
       onEvent: (e) => {
         if (cancelled) return;
@@ -194,12 +231,21 @@ function App({ signal }: { signal: AbortSignal }) {
     })
       .then((r) => {
         if (cancelled) return;
+        if (batchEntries) {
+          advanceBatch({ entry, projectPath: r.projectPath, error: null });
+          return;
+        }
         setResult(r);
         setScreen("summary");
       })
       .catch((err) => {
         if (cancelled) return;
         const message = (err as Error).message;
+        if (batchEntries) {
+          // One bad match doesn't abort the rest of the batch.
+          advanceBatch({ entry, projectPath: null, error: message });
+          return;
+        }
         setRunError(message);
         setStages((prev) => {
           const active = STAGE_ORDER.find((s) => prev[s].status === "active") ?? STAGE_ORDER[0]!;
@@ -209,7 +255,7 @@ function App({ signal }: { signal: AbortSignal }) {
     return () => {
       cancelled = true;
     };
-  }, [screen]);
+  }, [screen, batchIndex]);
 
   useInput(
     (char) => {
@@ -256,6 +302,17 @@ function App({ signal }: { signal: AbortSignal }) {
   );
 
   useInput(
+    (_char, key) => {
+      if (key.tab) setScreen("history");
+      else if (key.escape) {
+        instance.unmount();
+        process.exit(batchResults.some((r) => r.error !== null) ? 1 : 0);
+      }
+    },
+    { isActive: screen === "batchSummary" },
+  );
+
+  useInput(
     (char, key) => {
       if (key.escape || char.toLowerCase() === "b") {
         setScreen("input");
@@ -289,7 +346,7 @@ function App({ signal }: { signal: AbortSignal }) {
       <Box flexDirection="column">
         <Header />
         <Box>
-          <Text color={COLORS.gold}>Match URL or ID </Text>
+          <Text color={COLORS.gold}>Match URL, ID, or list file </Text>
           <Text color={COLORS.muted}>❯ </Text>
           <TextInput value={input} onChange={setInput} onSubmit={handleSubmit} placeholder="12247403" />
         </Box>
@@ -301,6 +358,32 @@ function App({ signal }: { signal: AbortSignal }) {
             <Text color={COLORS.crimson}>{inputError}</Text>
           </Box>
         )}
+      </Box>
+    );
+  }
+
+  if (screen === "batchSummary") {
+    const okCount = batchResults.filter((r) => r.error === null).length;
+    return (
+      <Box flexDirection="column">
+        <Header />
+        <Box borderStyle="round" borderColor={okCount === batchResults.length ? COLORS.lead : COLORS.gold} paddingX={2} flexDirection="column">
+          <Text color={okCount === batchResults.length ? COLORS.lead : COLORS.gold} bold>
+            {okCount} ok / {batchResults.length - okCount} failed
+          </Text>
+          {batchResults.map((r) => (
+            <Box key={r.entry}>
+              <Text color={r.error === null ? COLORS.lead : COLORS.crimson}>
+                {r.error === null ? "✓" : "✗"}{" "}
+              </Text>
+              <Text color={COLORS.quartz}>{r.entry}</Text>
+              <Text color={COLORS.muted}> {r.error ?? r.projectPath}</Text>
+            </Box>
+          ))}
+        </Box>
+        <Box marginTop={1}>
+          <Text color={COLORS.muted}>Tab — browse results in history · Esc quit</Text>
+        </Box>
       </Box>
     );
   }
@@ -350,6 +433,14 @@ function App({ signal }: { signal: AbortSignal }) {
     return (
       <Box flexDirection="column">
         <Header />
+        {batchEntries && (
+          <Box marginBottom={1}>
+            <Text color={COLORS.gold}>
+              Match {batchIndex + 1}/{batchEntries.length}
+            </Text>
+            <Text color={COLORS.muted}> · {batchEntries[batchIndex]}</Text>
+          </Box>
+        )}
         <Box flexDirection="column" gap={0}>
           {STAGE_ORDER.map((stage) => (
             <StageRow key={stage} event={stages[stage]} />

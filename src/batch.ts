@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readBatchList } from "./batchList.js";
 import { runPipeline, STAGE_LABELS, type StageEvent } from "./pipeline.js";
 
 const filePath = process.argv[2];
@@ -7,11 +7,7 @@ if (!filePath) {
   process.exit(1);
 }
 
-const raw = await readFile(filePath, "utf8");
-const entries = raw
-  .split("\n")
-  .map((line) => line.trim())
-  .filter((line) => line.length > 0 && !line.startsWith("#"));
+const entries = await readBatchList(filePath);
 
 if (entries.length === 0) {
   console.error(`No match entries found in ${filePath}.`);
