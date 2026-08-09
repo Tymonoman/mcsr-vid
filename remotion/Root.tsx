@@ -1,5 +1,13 @@
 import { Composition } from "remotion";
-import { Overlay } from "./Overlay.js";
+import {
+  Overlay,
+  OverlayTop,
+  OverlayBottom,
+  OverlayIntro,
+  TOP_BAND_HEIGHT,
+  BOTTOM_BAND_HEIGHT,
+} from "./Overlay.js";
+import { INTRO_SECONDS } from "./Intro.js";
 import { Thumbnail } from "./Thumbnail.js";
 import type { OverlayProps, ThumbnailProps } from "./types.js";
 
@@ -13,6 +21,12 @@ const defaultProps: OverlayProps = {
     avgMs: 597823,
     gamesPlayed: 5061,
     winRatePct: 64.8,
+    forfeitRatePct: 3.2,
+    achievements: [
+      { id: "wins", level: 10 },
+      { id: "playtime", level: 8 },
+      { id: "oneshot", level: 1 },
+    ],
     avatarUrl: "https://nmsr.nickac.dev/fullbody/8667ba71-b85a-4004-af54-457a9734eed7",
   },
   right: {
@@ -24,6 +38,11 @@ const defaultProps: OverlayProps = {
     avgMs: 668224,
     gamesPlayed: 8895,
     winRatePct: 53.3,
+    forfeitRatePct: 5.7,
+    achievements: [
+      { id: "bestTime", level: 6 },
+      { id: "playedMatches", level: 11 },
+    ],
     avatarUrl: "https://nmsr.nickac.dev/fullbody/61699b2e-d327-4a01-9f1e-0ea8c3f06bc6",
   },
   matchPlayedLabel: "Aug 8, 2026",
@@ -38,19 +57,25 @@ const defaultProps: OverlayProps = {
   ],
   timerStartFrame: 0,
   runResultMs: 505356,
-  durationInFrames: 42900,
+  seedType: "DESERT_TEMPLE",
+  bastionType: "STABLES",
+  durationInFrames: 21450,
+  fps: 30,
 };
 
 const thumbnailDefaultProps: ThumbnailProps = {
   left: {
     nickname: "edcr",
     eloRate: 2700,
-    avatarUrl: "https://starlightskins.lunareclipse.studio/render/walking/635f35ee69ed4f0c94ff26ece4818956/full",
+    // Studio-preview defaults use NMSR, not Starlight Skins: the pose renderer is a small free
+    // service that 502s periodically, and unlike the pipeline (resolveAvatarUrl probes and falls
+    // back) hardcoded props have no fallback — a preview shouldn't break on someone else's uptime.
+    avatarUrl: "https://nmsr.nickac.dev/fullbody/635f35ee69ed4f0c94ff26ece4818956",
   },
   right: {
     nickname: "Ranik_",
     eloRate: 2158,
-    avatarUrl: "https://starlightskins.lunareclipse.studio/render/crossed/5ee577fdc1af45d3a6fb3e086cc293fb/full",
+    avatarUrl: "https://nmsr.nickac.dev/fullbody/5ee577fdc1af45d3a6fb3e086cc293fb",
   },
   headerLabel: "Minecraft · Speedrunning · Ranked",
 };
@@ -66,7 +91,45 @@ export const RemotionRoot: React.FC = () => {
         width={1920}
         height={1080}
         defaultProps={defaultProps}
-        calculateMetadata={({ props }) => ({ durationInFrames: props.durationInFrames })}
+        calculateMetadata={({ props }) => ({
+          durationInFrames: props.durationInFrames,
+          fps: props.fps,
+        })}
+      />
+      <Composition
+        id="OverlayTop"
+        component={OverlayTop}
+        durationInFrames={1}
+        fps={30}
+        width={1920}
+        height={TOP_BAND_HEIGHT}
+        defaultProps={defaultProps}
+      />
+      <Composition
+        id="OverlayBottom"
+        component={OverlayBottom}
+        durationInFrames={21450}
+        fps={30}
+        width={1920}
+        height={BOTTOM_BAND_HEIGHT}
+        defaultProps={defaultProps}
+        calculateMetadata={({ props }) => ({
+          durationInFrames: props.durationInFrames,
+          fps: props.fps,
+        })}
+      />
+      <Composition
+        id="OverlayIntro"
+        component={OverlayIntro}
+        durationInFrames={150}
+        fps={30}
+        width={1920}
+        height={1080}
+        defaultProps={defaultProps}
+        calculateMetadata={({ props }) => ({
+          durationInFrames: Math.round(props.fps * INTRO_SECONDS),
+          fps: props.fps,
+        })}
       />
       <Composition
         id="Thumbnail"

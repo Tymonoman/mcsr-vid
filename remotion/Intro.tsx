@@ -3,7 +3,9 @@ import { AbsoluteFill, Img, interpolate, useCurrentFrame, useVideoConfig, Easing
 import { formatTime } from "./format.js";
 import type { OverlayProps, PlayerIdentity } from "./types.js";
 
-export const INTRO_SECONDS = 7;
+import { INTRO_SECONDS } from "./layout.js";
+
+export { INTRO_SECONDS };
 
 function PlayerCard({
   player,

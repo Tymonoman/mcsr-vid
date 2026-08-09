@@ -8,6 +8,16 @@ export interface KdenliveClipInput {
   /** Seconds into this clip where the true match-start moment falls. */
   matchOffsetIntoClipSec: number;
   clipName: string;
+  /** "x y w h opacity" — where this clip sits on the canvas. Full-frame if omitted. */
+  positionRect?: string;
+  /** A still held for `durationSec`; MLT needs a different producer than for video. */
+  isImage?: boolean;
+}
+
+export interface KdenliveMarkerInput {
+  /** Absolute timeline position, in seconds from the start of the whole sequence. */
+  positionSec: number;
+  comment: string;
 }
 
 export interface KdenliveProjectInput {
@@ -16,8 +26,10 @@ export interface KdenliveProjectInput {
   height: number;
   leftClip: KdenliveClipInput;
   rightClip: KdenliveClipInput;
-  overlayClip: KdenliveClipInput;
+  /** Overlay layers, bottom-most first; each may carry its own positionRect. */
+  overlayClips: KdenliveClipInput[];
   projectName: string;
+  markers?: KdenliveMarkerInput[];
 }
 
 function escapeXml(s: string): string {
@@ -74,7 +86,21 @@ function buildTrack(opts: {
   } = opts;
 
   const durationTc = secondsToTimecode(clip.durationSec);
-  const chainXml = `
+  // A still is a `qimage` producer held for the clip's length; video is an avformat chain.
+  // Same element shape either way, so everything downstream (playlists, tractors) is common.
+  const chainXml = clip.isImage
+    ? `
+    <producer id="${chainId}" out="${durationTc}">
+        <property name="length">${durationTc}</property>
+        <property name="eof">continue</property>
+        <property name="resource">${escapeXml(clip.path)}</property>
+        <property name="ttl">1</property>
+        <property name="mlt_service">qimage</property>
+        <property name="kdenlive:clipname">${escapeXml(clip.clipName)}</property>
+        <property name="kdenlive:id">${binId}</property>
+        <property name="kdenlive:folderid">-1</property>
+    </producer>`
+    : `
     <chain id="${chainId}" out="${durationTc}">
         <property name="length">${durationTc}</property>
         <property name="resource">${escapeXml(clip.path)}</property>
@@ -125,13 +151,13 @@ function buildTrack(opts: {
 
 /** Generates a complete .kdenlive (MLT XML) project: two split-screen POV clips + an alpha overlay track. */
 export function buildKdenliveProject(input: KdenliveProjectInput): string {
-  const { fps, width, height, leftClip, rightClip, overlayClip, projectName } = input;
+  const { fps, width, height, leftClip, rightClip, overlayClips, projectName, markers } = input;
   const sequenceUuid = `{${randomUUID()}}`;
 
   const maxOffset = Math.max(
     leftClip.matchOffsetIntoClipSec,
     rightClip.matchOffsetIntoClipSec,
-    overlayClip.matchOffsetIntoClipSec,
+    ...overlayClips.map((c) => c.matchOffsetIntoClipSec),
   );
 
   const audioLeft = buildTrack({
@@ -176,22 +202,25 @@ export function buildKdenliveProject(input: KdenliveProjectInput): string {
     tractorId: "tractor_video_right",
     positionRect: `${width / 2} 0 ${width / 2} ${height} 1`,
   });
-  const videoOverlay = buildTrack({
-    chainId: "chain_overlay",
-    binId: "4",
-    clip: overlayClip,
-    startOnTimelineSec: maxOffset - overlayClip.matchOffsetIntoClipSec,
-    kind: "video",
-    playlistIdA: "playlist8",
-    playlistIdB: "playlist9",
-    tractorId: "tractor_video_overlay",
-  });
+  const overlayTracks = overlayClips.map((clip, i) =>
+    buildTrack({
+      chainId: `chain_overlay_${i}`,
+      binId: String(4 + i),
+      clip,
+      startOnTimelineSec: maxOffset - clip.matchOffsetIntoClipSec,
+      kind: "video",
+      playlistIdA: `playlist${8 + i * 2}`,
+      playlistIdB: `playlist${9 + i * 2}`,
+      tractorId: `tractor_video_overlay_${i}`,
+      positionRect: clip.positionRect,
+    }),
+  );
 
-  const tracks = [audioLeft, audioRight, videoLeft, videoRight, videoOverlay];
+  const tracks = [audioLeft, audioRight, videoLeft, videoRight, ...overlayTracks];
   const totalDurationSec = Math.max(
     maxOffset - leftClip.matchOffsetIntoClipSec + leftClip.durationSec,
     maxOffset - rightClip.matchOffsetIntoClipSec + rightClip.durationSec,
-    maxOffset - overlayClip.matchOffsetIntoClipSec + overlayClip.durationSec,
+    ...overlayClips.map((c) => maxOffset - c.matchOffsetIntoClipSec + c.durationSec),
   );
   const totalDurationTc = secondsToTimecode(totalDurationSec);
 
@@ -220,13 +249,35 @@ export function buildKdenliveProject(input: KdenliveProjectInput): string {
     })
     .join("");
 
+  // Markers/guides: well-known Kdenlive/MLT convention (pos = frame index, type = category
+  // index), NOT confirmed against a live Kdenlive save (no sample project with markers set was
+  // available) — verify by opening a generated project in real Kdenlive.
+  const guidesXml =
+    markers && markers.length > 0
+      ? `
+        <property name="kdenlive:docproperties.guides">${escapeXml(
+          JSON.stringify(
+            markers.map((m) => ({
+              comment: m.comment,
+              pos: Math.round(m.positionSec * fps),
+              type: 0,
+            })),
+          ),
+        )}</property>
+        <property name="kdenlive:docproperties.guidesCategories">${escapeXml(
+          JSON.stringify([{ color: "#3daee9", comment: "Splits", index: 0 }]),
+        )}</property>`
+      : "";
+
   const mainBinEntries = [
     `<entry in="00:00:00.000" out="00:00:00.000" producer="${sequenceUuid}"/>`,
     `<entry in="00:00:00.000" out="00:00:00.000" producer="chain_audio_left"/>`,
     `<entry in="00:00:00.000" out="00:00:00.000" producer="chain_audio_right"/>`,
     `<entry in="00:00:00.000" out="00:00:00.000" producer="chain_video_left"/>`,
     `<entry in="00:00:00.000" out="00:00:00.000" producer="chain_video_right"/>`,
-    `<entry in="00:00:00.000" out="00:00:00.000" producer="chain_overlay"/>`,
+    ...overlayTracks.map(
+      (_, i) => `<entry in="00:00:00.000" out="00:00:00.000" producer="chain_overlay_${i}"/>`,
+    ),
   ].join("\n        ");
 
   return `<?xml version='1.0' encoding='utf-8'?>
@@ -255,14 +306,14 @@ ${tracks.map((t) => `${t.playlistAXml}${t.playlistBXml}${t.tractorXml}`).join("\
         <track producer="${audioRight.tractorId}"/>
         <track producer="${videoLeft.tractorId}"/>
         <track producer="${videoRight.tractorId}"/>
-        <track producer="${videoOverlay.tractorId}"/>${sequenceTransitions}
+        ${overlayTracks.map((t) => `<track producer="${t.tractorId}"/>`).join("\n        ")}${sequenceTransitions}
     </tractor>
     <playlist id="main_bin">
         <property name="kdenlive:docproperties.version">1.1</property>
         <property name="kdenlive:docproperties.profile">${width}x${height}p${fps}</property>
         <property name="kdenlive:docproperties.uuid">${sequenceUuid}</property>
         <property name="kdenlive:docproperties.opensequences">${sequenceUuid}</property>
-        <property name="kdenlive:docproperties.activetimeline">${sequenceUuid}</property>
+        <property name="kdenlive:docproperties.activetimeline">${sequenceUuid}</property>${guidesXml}
         <property name="kdenlive:sequenceFolder">2</property>
         <property name="xml_retain">1</property>
         ${mainBinEntries}
