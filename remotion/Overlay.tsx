@@ -1,8 +1,11 @@
 import type { FC } from "react";
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from "remotion";
 import "./overlay.css";
-import { formatTime } from "./format.js";
+import { formatTime, formatShortTime } from "./format.js";
 import type { OverlayProps, SplitRow } from "./types.js";
+import { resolveSplitSide, compareSplitSides, type SplitSideState } from "./resolveSplitSide.js";
+import { Intro } from "./Intro.js";
+import { PixelBadge } from "./PixelBadge.js";
 
 function IdentBar({ props }: { props: OverlayProps }) {
   return (
@@ -13,18 +16,6 @@ function IdentBar({ props }: { props: OverlayProps }) {
       <div className="half warped">
         <span className="name">{props.right.nickname}</span>
       </div>
-    </div>
-  );
-}
-
-function Badge() {
-  return (
-    <div className="badge">
-      <svg viewBox="0 0 100 100">
-        <polygon points="50,4 96,50 50,96" fill="#e2483f" />
-        <polygon points="50,4 4,50 50,96" fill="#35d6c4" />
-        <rect x="46" y="0" width="8" height="100" fill="#0d0c10" />
-      </svg>
     </div>
   );
 }
@@ -69,46 +60,66 @@ function InfoBar({ props }: { props: OverlayProps }) {
   );
 }
 
-function splitShortTime(ms: number): string {
-  const minutes = Math.floor(ms / 60000);
-  const seconds = Math.floor((ms % 60000) / 1000);
-  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+function SplitSideView({
+  state,
+  side,
+  isLeading,
+  deltaMs,
+}: {
+  state: SplitSideState;
+  side: "left" | "right";
+  isLeading: boolean;
+  deltaMs: number | null;
+}) {
+  if (state.kind === "pending") return <span className={`t ${side}`} />;
+  if (state.kind === "dnf") return <span className={`t ${side} dnf`}>—</span>;
+  return (
+    <span className={`t ${side} ${isLeading ? "lead" : "behind"}`}>
+      {formatShortTime(state.ms)}
+      {!isLeading && deltaMs !== null && <span className="delta">+{formatShortTime(deltaMs)}</span>}
+    </span>
+  );
 }
 
-function SplitRowView({ row }: { row: SplitRow }) {
-  const { leftMs, rightMs } = row;
-  if (leftMs === null && rightMs === null) {
-    return (
-      <div className="split-row">
-        <span className="t left dnf">—</span>
-        <span className="name">{row.label}</span>
-        <span className="t right dnf">—</span>
-      </div>
-    );
-  }
-  const leftLeads = rightMs === null || (leftMs !== null && leftMs <= rightMs);
-  const deltaMs = leftMs !== null && rightMs !== null ? Math.abs(leftMs - rightMs) : null;
+function SplitRowView({
+  row,
+  frame,
+  fps,
+  timerStartFrame,
+  runEndFrame,
+}: {
+  row: SplitRow;
+  frame: number;
+  fps: number;
+  timerStartFrame: number;
+  runEndFrame: number;
+}) {
+  const left = resolveSplitSide(row.leftMs, timerStartFrame, fps, runEndFrame, frame);
+  const right = resolveSplitSide(row.rightMs, timerStartFrame, fps, runEndFrame, frame);
+  const { leftLeads, deltaMs } = compareSplitSides(left, right);
 
   return (
     <div className="split-row">
-      <span className={`t left ${leftMs === null ? "dnf" : leftLeads ? "lead" : "behind"}`}>
-        {leftMs === null ? "—" : splitShortTime(leftMs)}
-        {leftMs !== null && !leftLeads && deltaMs !== null && (
-          <span className="delta">+{splitShortTime(deltaMs)}</span>
-        )}
-      </span>
+      <SplitSideView state={left} side="left" isLeading={leftLeads} deltaMs={deltaMs} />
       <span className="name">{row.label}</span>
-      <span className={`t right ${rightMs === null ? "dnf" : !leftLeads ? "lead" : "behind"}`}>
-        {rightMs === null ? "—" : splitShortTime(rightMs)}
-        {rightMs !== null && leftLeads && deltaMs !== null && (
-          <span className="delta">+{splitShortTime(deltaMs)}</span>
-        )}
-      </span>
+      <SplitSideView state={right} side="right" isLeading={!leftLeads} deltaMs={deltaMs} />
     </div>
   );
 }
 
-function SplitsPanel({ props, elapsedMs }: { props: OverlayProps; elapsedMs: number }) {
+function SplitsPanel({
+  props,
+  elapsedMs,
+  frame,
+  fps,
+  runEndFrame,
+}: {
+  props: OverlayProps;
+  elapsedMs: number;
+  frame: number;
+  fps: number;
+  runEndFrame: number;
+}) {
   return (
     <div className="splits">
       <div className="splits-col col-meta">
@@ -129,7 +140,14 @@ function SplitsPanel({ props, elapsedMs }: { props: OverlayProps; elapsedMs: num
         <div className="splits-title">Match Splits</div>
         <div className="split-table">
           {props.splits.map((row) => (
-            <SplitRowView key={row.label} row={row} />
+            <SplitRowView
+              key={row.label}
+              row={row}
+              frame={frame}
+              fps={fps}
+              timerStartFrame={props.timerStartFrame}
+              runEndFrame={runEndFrame}
+            />
           ))}
         </div>
       </div>
@@ -150,13 +168,18 @@ export const Overlay: FC<OverlayProps> = (props) => {
   const rawElapsedMs = Math.max(0, ((frame - props.timerStartFrame) / fps) * 1000);
   const elapsedMs =
     props.runResultMs !== null ? Math.min(rawElapsedMs, props.runResultMs) : rawElapsedMs;
+  const runEndFrame =
+    props.runResultMs !== null
+      ? props.timerStartFrame + (props.runResultMs / 1000) * fps
+      : props.durationInFrames;
 
   return (
     <AbsoluteFill>
       <IdentBar props={props} />
-      <Badge />
+      <PixelBadge />
       <InfoBar props={props} />
-      <SplitsPanel props={props} elapsedMs={elapsedMs} />
+      <SplitsPanel props={props} elapsedMs={elapsedMs} frame={frame} fps={fps} runEndFrame={runEndFrame} />
+      <Intro props={props} />
     </AbsoluteFill>
   );
 };

@@ -8,6 +8,11 @@ const SAMPLE_RATE = 8000;
 const PROBE_RADIUS_SEC = 3;
 const SEARCH_RADIUS_SEC = 8;
 const COARSE_STRIDE_SAMPLES = 80; // 10ms steps at 8kHz
+// World-load "thump" precedes the actual match start by the ready-countdown most players run
+// (verified against https://www.youtube.com/watch?v=Aa_Md_gZRuw: thump @0:05, start @0:15).
+// It's a loud, sharp transient — a far more reliable correlation anchor than the near-silent
+// instant match start itself — so we correlate on it and add this back to recover match start.
+const THUMP_LEAD_SEC = 10;
 
 export interface SyncResult {
   /** Corrected time (sec) within clip B where the match-start cue actually falls. */
@@ -116,7 +121,10 @@ function findBestLag(probe: Float32Array, search: Float32Array): { lag: number; 
 /**
  * Refines the match-start alignment between two VOD clips using audio cross-correlation.
  * `expectedClipACueSec`/`expectedClipBCueSec` are the coarse API-derived estimates
- * (matchOffsetIntoClipSec from Phase 2) of when the match starts within each clip.
+ * (matchOffsetIntoClipSec from Phase 2) of when the match starts within each clip. Correlation
+ * itself is anchored on the world-load thump (THUMP_LEAD_SEC before match start), not match
+ * start directly, since the thump is loud and distinctive while match start is comparatively
+ * silent.
  */
 export async function computeSyncOffset(
   clipAPath: string,
@@ -130,8 +138,8 @@ export async function computeSyncOffset(
     const probeWavPath = path.join(tmpDir, "probe.wav");
     const searchWavPath = path.join(tmpDir, "search.wav");
 
-    const probeStart = expectedClipACueSec - PROBE_RADIUS_SEC;
-    const searchStart = expectedClipBCueSec - SEARCH_RADIUS_SEC;
+    const probeStart = expectedClipACueSec - THUMP_LEAD_SEC - PROBE_RADIUS_SEC;
+    const searchStart = expectedClipBCueSec - THUMP_LEAD_SEC - SEARCH_RADIUS_SEC;
 
     await extractMonoWav(clipAPath, probeStart, PROBE_RADIUS_SEC * 2, probeWavPath, signal);
     await extractMonoWav(clipBPath, searchStart, SEARCH_RADIUS_SEC * 2, searchWavPath, signal);
@@ -145,10 +153,11 @@ export async function computeSyncOffset(
     const search = normalize(searchWav.samples);
 
     const { lag, confidence } = findBestLag(probe, search);
-    // `lag` locates the *start* of the matched probe window within search; the cue itself
-    // is at the probe's center (PROBE_RADIUS_SEC into it), so shift by that to recover it.
+    // `lag` locates the *start* of the matched probe window within search; the thump itself
+    // is at the probe's center (PROBE_RADIUS_SEC into it), and match start follows the thump
+    // by THUMP_LEAD_SEC, so shift by both to recover the corrected match-start cue.
     const clipBCueTimeSec =
-      Math.max(0, searchStart) + lag / searchWav.sampleRate + PROBE_RADIUS_SEC;
+      Math.max(0, searchStart) + lag / searchWav.sampleRate + PROBE_RADIUS_SEC + THUMP_LEAD_SEC;
 
     return { clipBCueTimeSec, confidence };
   } finally {
