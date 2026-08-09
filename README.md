@@ -34,7 +34,15 @@ npm run download-vods -- <url-or-id>     # download trimmed VODs to media/<id>/
 npm run validate-sync -- <url-or-id>     # check/refine sync, render a preview clip
 npm run render-overlay -- <url-or-id>    # render the stat overlay
 npm run generate-project -- <url-or-id>  # full pipeline -> media/<id>/match-<id>.kdenlive
+npm run batch -- <file>                  # run the full pipeline over a list of matches
+npm run status                           # per-match stage completion table for media/
 ```
+
+`npm start` opens the TUI; press <kbd>Tab</kbd> on the input screen for recent
+matches, to reopen a finished project or resume an incomplete one.
+
+`<file>` for `batch` is one match URL/ID per line; blank lines and `#` comments
+are skipped, and one failing match doesn't abort the rest.
 
 `npm run remotion:studio` opens the Remotion Studio to preview and tweak the overlay live.
 

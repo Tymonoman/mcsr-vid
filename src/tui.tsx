@@ -10,6 +10,7 @@ import {
   type StageEvent,
   type StageId,
 } from "./pipeline.js";
+import { listMatchStatuses, type MatchStatusEntry } from "./matchStatus.js";
 
 // Pulled straight from remotion/overlay.source.css so the TUI reads as the same brand as the overlay.
 const COLORS = {
@@ -138,7 +139,7 @@ function initialStages(): Record<StageId, StageEvent> {
   return Object.fromEntries(entries) as Record<StageId, StageEvent>;
 }
 
-type Screen = "input" | "progress" | "summary";
+type Screen = "input" | "progress" | "summary" | "history";
 
 function App({ signal }: { signal: AbortSignal }) {
   const [screen, setScreen] = useState<Screen>("input");
@@ -149,6 +150,27 @@ function App({ signal }: { signal: AbortSignal }) {
   const [result, setResult] = useState<PipelineResult | null>(null);
   const [kdenliveStatus, setKdenliveStatus] = useState<"idle" | "opening" | "opened" | "error">("idle");
   const [kdenliveError, setKdenliveError] = useState<string | null>(null);
+  const [history, setHistory] = useState<MatchStatusEntry[] | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyIndex, setHistoryIndex] = useState(0);
+
+  const openInKdenlive = (projectPath: string) => {
+    setKdenliveStatus("opening");
+    const proc = spawn("kdenlive", [projectPath], { detached: true, stdio: "ignore" });
+    proc.on("error", (err) => {
+      const code = (err as NodeJS.ErrnoException).code;
+      setKdenliveError(
+        code === "ENOENT" ? "kdenlive not found on PATH. Open the project manually." : err.message,
+      );
+      setKdenliveStatus("error");
+    });
+    proc.on("spawn", () => {
+      setKdenliveStatus("opened");
+      proc.unref();
+      instance.unmount();
+      process.exit(0);
+    });
+  };
 
   const handleSubmit = (value: string) => {
     const trimmed = value.trim();
@@ -193,21 +215,7 @@ function App({ signal }: { signal: AbortSignal }) {
     (char) => {
       if (screen !== "summary" || kdenliveStatus !== "idle" || !result) return;
       if (char.toLowerCase() === "y") {
-        setKdenliveStatus("opening");
-        const proc = spawn("kdenlive", [result.projectPath], { detached: true, stdio: "ignore" });
-        proc.on("error", (err) => {
-          const code = (err as NodeJS.ErrnoException).code;
-          setKdenliveError(
-            code === "ENOENT" ? "kdenlive not found on PATH. Open the project manually." : err.message,
-          );
-          setKdenliveStatus("error");
-        });
-        proc.on("spawn", () => {
-          setKdenliveStatus("opened");
-          proc.unref();
-          instance.unmount();
-          process.exit(0);
-        });
+        openInKdenlive(result.projectPath);
       } else if (char.toLowerCase() === "n") {
         setKdenliveStatus("opened");
         instance.unmount();
@@ -215,6 +223,65 @@ function App({ signal }: { signal: AbortSignal }) {
       }
     },
     { isActive: screen === "summary" },
+  );
+
+  useEffect(() => {
+    if (screen !== "history") return;
+    let cancelled = false;
+    setHistory(null);
+    setHistoryError(null);
+    listMatchStatuses()
+      .then((entries) => {
+        if (cancelled) return;
+        setHistory(entries);
+        setHistoryIndex(0);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setHistoryError((err as Error).message);
+        setHistory([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [screen]);
+
+  // Tab, not a letter: ink-text-input passes Tab through untouched, so it can't collide with
+  // typing a match URL into the field below.
+  useInput(
+    (_char, key) => {
+      if (key.tab) setScreen("history");
+    },
+    { isActive: screen === "input" },
+  );
+
+  useInput(
+    (char, key) => {
+      if (key.escape || char.toLowerCase() === "b") {
+        setScreen("input");
+        return;
+      }
+      if (!history || history.length === 0) return;
+      if (key.upArrow || char === "k") {
+        setHistoryIndex((i) => (i - 1 + history.length) % history.length);
+      } else if (key.downArrow || char === "j") {
+        setHistoryIndex((i) => (i + 1) % history.length);
+      } else if (key.return) {
+        const entry = history[historyIndex];
+        if (!entry) return;
+        if (entry.projectPath) {
+          openInKdenlive(entry.projectPath);
+        } else {
+          // Incomplete: re-run the pipeline for it. Every stage skip-reuses its cached file,
+          // so resuming needs no special handling beyond pointing runPipeline at the id.
+          setInput(String(entry.matchId));
+          setStages(initialStages());
+          setRunError(null);
+          setScreen("progress");
+        }
+      }
+    },
+    { isActive: screen === "history" },
   );
 
   if (screen === "input") {
@@ -226,11 +293,55 @@ function App({ signal }: { signal: AbortSignal }) {
           <Text color={COLORS.muted}>❯ </Text>
           <TextInput value={input} onChange={setInput} onSubmit={handleSubmit} placeholder="12247403" />
         </Box>
+        <Box marginTop={1}>
+          <Text color={COLORS.muted}>Tab — recent matches</Text>
+        </Box>
         {inputError && (
           <Box marginTop={1}>
             <Text color={COLORS.crimson}>{inputError}</Text>
           </Box>
         )}
+      </Box>
+    );
+  }
+
+  if (screen === "history") {
+    return (
+      <Box flexDirection="column">
+        <Header />
+        {history === null ? (
+          <Text color={COLORS.muted}>Loading recent matches…</Text>
+        ) : history.length === 0 ? (
+          <Text color={COLORS.muted}>No matches downloaded yet.</Text>
+        ) : (
+          <Box flexDirection="column">
+            {history.map((entry, i) => (
+              <Box key={entry.matchId}>
+                <Text color={COLORS.gold}>{i === historyIndex ? "❯ " : "  "}</Text>
+                <Text color={i === historyIndex ? COLORS.quartz : COLORS.muted}>
+                  {entry.matchId} {entry.leftNickname} vs {entry.rightNickname}
+                </Text>
+                <Text> </Text>
+                {STAGE_ORDER.map((stage) => (
+                  <Text key={stage} color={entry.stages[stage] ? COLORS.lead : COLORS.panelEdgeLight}>
+                    {entry.stages[stage] ? "✓" : "·"}
+                  </Text>
+                ))}
+                <Text color={entry.projectPath ? COLORS.lead : COLORS.muted}>
+                  {entry.projectPath ? " ready" : " incomplete"}
+                </Text>
+              </Box>
+            ))}
+          </Box>
+        )}
+        {historyError && (
+          <Box marginTop={1}>
+            <Text color={COLORS.crimson}>{historyError}</Text>
+          </Box>
+        )}
+        <Box marginTop={1}>
+          <Text color={COLORS.muted}>↑/↓ select · Enter open/resume · Esc back</Text>
+        </Box>
       </Box>
     );
   }
