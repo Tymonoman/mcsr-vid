@@ -36,6 +36,8 @@ export type OverlayProps = {
   bastionType: string | null;
   /** Total length of this render, in frames at the composition's fps — matches the synced clip length. */
   durationInFrames: number;
+  /** Overlay render frame rate; independent of the 60fps footage it's composited over. */
+  fps: number;
 };
 
 export interface ThumbnailPlayer {

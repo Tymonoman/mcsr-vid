@@ -51,7 +51,8 @@ const defaultProps: OverlayProps = {
   runResultMs: 505356,
   seedType: "DESERT_TEMPLE",
   bastionType: "STABLES",
-  durationInFrames: 42900,
+  durationInFrames: 21450,
+  fps: 30,
 };
 
 const thumbnailDefaultProps: ThumbnailProps = {
@@ -79,7 +80,10 @@ export const RemotionRoot: React.FC = () => {
         width={1920}
         height={1080}
         defaultProps={defaultProps}
-        calculateMetadata={({ props }) => ({ durationInFrames: props.durationInFrames })}
+        calculateMetadata={({ props }) => ({
+          durationInFrames: props.durationInFrames,
+          fps: props.fps,
+        })}
       />
       <Composition
         id="Thumbnail"

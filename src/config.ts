@@ -14,6 +14,18 @@ export interface Config {
   defaultRunSec: number;
   /** Per-match working directory root. */
   mediaDir: string;
+  /**
+   * Frame rate of the overlay render. The overlay is 2D graphics composited over 60fps
+   * footage, so 30 halves render time and file size for no visible loss; raise to 60 only
+   * if you can see the RTA timer's millisecond digits stepping.
+   */
+  overlayFps: number;
+  /**
+   * Parallel browser tabs used to render frames. null = Remotion's default (~half your
+   * cores). Each tab holds a full 1080p page, so on a RAM-tight machine a *lower* number
+   * renders faster than a higher one by avoiding swap.
+   */
+  renderConcurrency: number | null;
 }
 
 const DEFAULTS: Config = {
@@ -24,6 +36,8 @@ const DEFAULTS: Config = {
   postRollSec: 60,
   defaultRunSec: 900,
   mediaDir: "media",
+  overlayFps: 30,
+  renderConcurrency: null,
 };
 
 const CONFIG_PATH = path.resolve("mcsr-vid.config.json");

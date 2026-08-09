@@ -1,10 +1,11 @@
 import { bundle } from "@remotion/bundler";
 import { makeCancelSignal, renderMedia, selectComposition } from "@remotion/renderer";
+import { config } from "./config.js";
 import { computeOverlayProps } from "./overlayProps.js";
 import { PRE_ROLL_SEC, POST_ROLL_SEC, estimatedRunSec } from "./vodAcquisition.js";
 import type { MatchInfo, UserDetails, VersusStats } from "./types.js";
 
-const FPS = 60;
+const FPS = config.overlayFps;
 
 export interface RenderProgress {
   phase: "bundling" | "rendering";
@@ -43,7 +44,7 @@ export async function renderOverlay(args: RenderOverlayArgs): Promise<RenderOver
   const runSec = estimatedRunSec(args.match);
   const durationInFrames = Math.round((PRE_ROLL_SEC + runSec + POST_ROLL_SEC) * FPS);
   const timerStartFrame = Math.round(PRE_ROLL_SEC * FPS);
-  const renderProps = { ...props, timerStartFrame, durationInFrames };
+  const renderProps = { ...props, timerStartFrame, durationInFrames, fps: FPS };
 
   const { cancelSignal, cancel } = makeCancelSignal();
   const onAbort = () => cancel();
@@ -69,6 +70,16 @@ export async function renderOverlay(args: RenderOverlayArgs): Promise<RenderOver
       serveUrl,
       codec: "prores",
       proResProfile: "4444",
+      // Both of these are load-bearing for transparency. Remotion captures frames as JPEG by
+      // default, which has no alpha channel, so the overlay's transparent regions get baked to
+      // black and ffmpeg then silently downgrades the output to ProRes 422 HQ (apch) since the
+      // pixel format carries no alpha. Renders looked fine in isolation but covered the gameplay
+      // with a black rectangle once composited in Kdenlive.
+      imageFormat: "png",
+      pixelFormat: "yuva444p10le",
+      // The overlay is silent; without this Remotion muxes an empty PCM track (~140MB/render).
+      muted: true,
+      ...(config.renderConcurrency !== null ? { concurrency: config.renderConcurrency } : {}),
       outputLocation: args.outPath,
       inputProps: renderProps,
       cancelSignal,
