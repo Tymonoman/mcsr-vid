@@ -167,6 +167,7 @@ export async function runPipeline(input: string, opts: PipelineOptions = {}): Pr
 
   emit(active("sync"));
   let rightOffsetSec = rightWindow.matchOffsetIntoClipSec;
+  let syncConfidence: number | undefined;
   try {
     const sync = await computeSyncOffset(
       leftWindow.path,
@@ -175,6 +176,7 @@ export async function runPipeline(input: string, opts: PipelineOptions = {}): Pr
       rightWindow.matchOffsetIntoClipSec,
       signal,
     );
+    syncConfidence = sync.confidence;
     if (sync.confidence >= config.syncConfidenceThreshold) {
       rightOffsetSec = sync.clipBCueTimeSec;
       emit({ stage: "sync", status: "done", message: `confidence ${sync.confidence.toFixed(3)} (refined)` });
@@ -296,6 +298,13 @@ export async function runPipeline(input: string, opts: PipelineOptions = {}): Pr
         comment: `${row.label} — ${rightWindow.playerNickname}`,
       });
     }
+  }
+  if (syncConfidence !== undefined) {
+    const lowConfidence = syncConfidence < config.syncConfidenceThreshold;
+    markers.push({
+      positionSec: maxOffset,
+      comment: `Sync confidence: ${(syncConfidence * 100).toFixed(0)}%${lowConfidence ? " — LOW, verify alignment" : ""}`,
+    });
   }
 
   const projectXml = buildKdenliveProject({
