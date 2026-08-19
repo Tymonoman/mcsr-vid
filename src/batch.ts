@@ -1,11 +1,8 @@
 import { readBatchList } from "./batchList.js";
+import { requireArg } from "./cliArgs.js";
 import { runPipeline, STAGE_LABELS, type StageEvent } from "./pipeline.js";
 
-const filePath = process.argv[2];
-if (!filePath) {
-  console.error("Usage: npm run batch -- <path to file of match URLs/IDs, one per line>");
-  process.exit(1);
-}
+const filePath = requireArg("batch", "<path to file of match URLs/IDs, one per line>");
 
 const entries = await readBatchList(filePath);
 

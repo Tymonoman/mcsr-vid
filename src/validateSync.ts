@@ -1,17 +1,12 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import { requireArg } from "./cliArgs.js";
 import { getMatch, parseMatchId } from "./mcsrApi.js";
 import { computeSyncOffset } from "./sync.js";
 import { downloadMatchVods, type VodWindow } from "./vodAcquisition.js";
 
-const input = process.argv[2];
-if (!input) {
-  console.error("Usage: npm run validate-sync -- <mcsrranked.com match URL or match ID>");
-  process.exit(1);
-}
-
-const matchId = parseMatchId(input);
+const matchId = parseMatchId(requireArg("validate-sync"));
 const match = await getMatch(matchId);
 
 if (match.vod.length < 2) {

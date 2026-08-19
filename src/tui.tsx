@@ -5,7 +5,6 @@ import { Box, render, Text, useInput } from "ink";
 import TextInput from "ink-text-input";
 import {
   runPipeline,
-  STAGE_LABELS,
   STAGE_ORDER,
   type PipelineResult,
   type StageEvent,
@@ -13,128 +12,7 @@ import {
 } from "./pipeline.js";
 import { listMatchStatuses, type MatchStatusEntry } from "./matchStatus.js";
 import { readBatchList } from "./batchList.js";
-
-// Pulled straight from remotion/overlay.source.css so the TUI reads as the same brand as the overlay.
-const COLORS = {
-  panelEdge: "#0d0c10",
-  panelEdgeLight: "#3c3844",
-  crimson: "#e2483f",
-  warped: "#35d6c4",
-  gold: "#f0c93d",
-  quartz: "#f3ede2",
-  muted: "#8d8695",
-  lead: "#6be08a",
-} as const;
-
-const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-const BAR_WIDTH = 24;
-
-function useSpinnerFrame(active: boolean): string {
-  const [i, setI] = useState(0);
-  useEffect(() => {
-    if (!active) return;
-    const id = setInterval(() => setI((n) => (n + 1) % SPINNER_FRAMES.length), 80);
-    return () => clearInterval(id);
-  }, [active]);
-  return SPINNER_FRAMES[i]!;
-}
-
-/** "Xm Ys" (or just "Ys" under a minute) from a millisecond duration. */
-function formatDuration(ms: number): string {
-  const totalSec = Math.max(0, Math.round(ms / 1000));
-  const min = Math.floor(totalSec / 60);
-  const sec = totalSec % 60;
-  return min > 0 ? `${min}m ${sec}s` : `${sec}s`;
-}
-
-/** Only shown once percent clears a small threshold, to avoid a wild early estimate. */
-function etaText(percent: number, startedAtMs: number | undefined): string | null {
-  if (startedAtMs === undefined || percent <= 5) return null;
-  const elapsed = Date.now() - startedAtMs;
-  const remaining = (elapsed / percent) * (100 - percent);
-  return `~${formatDuration(remaining)} left`;
-}
-
-function ProgressBar({
-  percent,
-  color,
-  startedAtMs,
-}: {
-  percent: number;
-  color: string;
-  startedAtMs?: number;
-}) {
-  const filled = Math.round((Math.min(100, Math.max(0, percent)) / 100) * BAR_WIDTH);
-  const eta = etaText(percent, startedAtMs);
-  return (
-    <Text>
-      <Text color={color}>{"█".repeat(filled)}</Text>
-      <Text color={COLORS.panelEdgeLight}>{"░".repeat(BAR_WIDTH - filled)}</Text>
-      <Text color={COLORS.muted}> {Math.round(percent)}%{eta ? ` · ${eta}` : ""}</Text>
-    </Text>
-  );
-}
-
-function StageRow({ event }: { event: StageEvent }) {
-  const spinnerFrame = useSpinnerFrame(event.status === "active");
-
-  const icon =
-    event.status === "pending" ? (
-      <Text color={COLORS.muted}>○</Text>
-    ) : event.status === "active" ? (
-      <Text color={COLORS.warped}>{spinnerFrame}</Text>
-    ) : event.status === "done" ? (
-      <Text color={COLORS.lead}>✓</Text>
-    ) : (
-      <Text color={COLORS.crimson}>✗</Text>
-    );
-
-  const labelColor =
-    event.status === "pending" ? COLORS.muted : event.status === "error" ? COLORS.crimson : COLORS.quartz;
-
-  return (
-    <Box flexDirection="column">
-      <Box>
-        {icon}
-        <Text> </Text>
-        <Text color={labelColor} bold={event.status === "active"}>
-          {STAGE_LABELS[event.stage]}
-        </Text>
-        {event.percent !== undefined && event.status !== "pending" && (
-          <Box marginLeft={2}>
-            <ProgressBar
-              percent={event.percent}
-              color={event.status === "error" ? COLORS.crimson : COLORS.gold}
-              startedAtMs={event.status === "active" ? event.startedAtMs : undefined}
-            />
-          </Box>
-        )}
-      </Box>
-      {event.message && (
-        <Box marginLeft={2}>
-          <Text color={COLORS.muted} dimColor>
-            {event.message}
-          </Text>
-        </Box>
-      )}
-    </Box>
-  );
-}
-
-function Header() {
-  return (
-    <Box borderStyle="round" borderColor={COLORS.panelEdgeLight} paddingX={2} marginBottom={1}>
-      <Text color={COLORS.crimson} bold>
-        MCSR
-      </Text>
-      <Text color={COLORS.quartz}> </Text>
-      <Text color={COLORS.warped} bold>
-        VID
-      </Text>
-      <Text color={COLORS.muted}> — match → Kdenlive project</Text>
-    </Box>
-  );
-}
+import { COLORS, Header, StageRow } from "./tuiComponents.js";
 
 function initialStages(): Record<StageId, StageEvent> {
   const entries = STAGE_ORDER.map((stage) => [stage, { stage, status: "pending" as const }] as const);

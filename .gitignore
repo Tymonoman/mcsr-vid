@@ -13,3 +13,4 @@ dist/
 *.mov
 /remotion/overlay.css
 /.claude/
+/.claude-flow/

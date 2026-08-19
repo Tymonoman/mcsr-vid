@@ -1,39 +1,17 @@
 import { config } from "./config.js";
+import { resolveAvatarUrl } from "./avatarUrl.js";
 import type { MatchInfo, UserDetails, VersusStats } from "./types.js";
+// PlayerIdentity/SplitRow/OverlayProps are defined once in remotion/types.ts (the component's
+// prop contract) and reused here, since computeOverlayProps's output crosses into Remotion via
+// an untyped `inputProps` JSON boundary — a hand-kept-in-sync second copy could silently drift.
+import type {
+  PlayerIdentity,
+  SplitRow,
+  OverlayProps as RemotionOverlayProps,
+} from "../remotion/types.js";
 
-export interface PlayerIdentity {
-  nickname: string;
-  countryFlag: string;
-  eloRate: number;
-  eloRank: number;
-  pbMs: number;
-  avgMs: number;
-  gamesPlayed: number;
-  winRatePct: number;
-  forfeitRatePct: number;
-  avatarUrl: string;
-  headUrl: string;
-  achievements: { id: string; level: number }[];
-}
-
-export interface SplitRow {
-  label: string;
-  leftMs: number | null;
-  rightMs: number | null;
-}
-
-export interface OverlayProps {
-  left: PlayerIdentity;
-  right: PlayerIdentity;
-  matchPlayedLabel: string;
-  h2hLeftWins: number;
-  h2hRightWins: number;
-  splits: SplitRow[];
-  timerStartFrame: number;
-  runResultMs: number | null;
-  seedType: string | null;
-  bastionType: string | null;
-}
+export type { PlayerIdentity, SplitRow };
+export type OverlayProps = Omit<RemotionOverlayProps, "durationInFrames" | "fps">;
 
 const SPLIT_EVENTS: { label: string; type: string }[] = [
   { label: "Nether Enter", type: "story.enter_the_nether" },
@@ -42,25 +20,6 @@ const SPLIT_EVENTS: { label: string; type: string }[] = [
   { label: "Blind", type: "projectelo.timeline.blind_travel" },
   { label: "End Enter", type: "story.enter_the_end" },
 ];
-
-const AVATAR_REACHABILITY_TIMEOUT_MS = 4000;
-
-/**
- * Starlight Skins renders a named action pose but is a small free service that's occasionally
- * down; NMSR has no pose support but is reliably up. Probe the pose render and fall back so the
- * pipeline never blocks a render on a flaky third-party image host.
- */
-export async function resolveAvatarUrl(uuid: string, pose: string): Promise<string> {
-  const poseUrl = `https://starlightskins.lunareclipse.studio/render/${pose}/${uuid}/full`;
-  try {
-    const res = await fetch(poseUrl, { signal: AbortSignal.timeout(AVATAR_REACHABILITY_TIMEOUT_MS) });
-    if (res.ok) return poseUrl;
-  } catch {
-    // fall through to the static fallback below
-  }
-  console.error(`  Starlight Skins unavailable for ${uuid}, falling back to a static pose.`);
-  return `https://nmsr.nickac.dev/fullbody/${uuid}`;
-}
 
 function countryFlag(countryCode: string | null): string {
   if (!countryCode || countryCode.length !== 2) return "🏳️";

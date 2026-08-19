@@ -33,6 +33,7 @@ npm run fetch-match -- <url-or-id>       # print match/player/versus JSON
 npm run download-vods -- <url-or-id>     # download trimmed VODs to media/<id>/
 npm run validate-sync -- <url-or-id>     # check/refine sync, render a preview clip
 npm run render-overlay -- <url-or-id>    # render the stat overlay
+npm run generate-thumbnail -- <url-or-id> # render the video thumbnail
 npm run generate-project -- <url-or-id>  # full pipeline -> media/<id>/match-<id>.kdenlive
 npm run batch -- <file>                  # run the full pipeline over a list of matches
 npm run status                           # per-match stage completion table for media/
@@ -69,9 +70,8 @@ downgrades the output to opaque ProRes 422 HQ.
 ## Config
 
 Copy `mcsr-vid.config.example.json` to `mcsr-vid.config.json` (gitignored) to
-override any of: `leftPose`/`rightPose` (avatar poses), `syncConfidenceThreshold`,
-`preRollSec`/`postRollSec`/`defaultRunSec` (VOD trim window), `mediaDir`. Absent
-keys fall back to the defaults in `src/config.ts`.
+override any subset of its fields — see that file for the current defaults and
+`src/config.ts` for what each one does. Absent keys fall back to the defaults.
 
 ## Project structure
 
@@ -84,9 +84,6 @@ media/        Per-match working directory (VODs, renders, project files) — git
 
 ## Tests
 
-Plain assertion scripts, no test framework:
-
-```sh
-npx tsx remotion/resolveSplitSide.test.ts
-npx tsx src/kdenliveProject.test.ts
-```
+Plain assertion scripts, no test framework — `npm test` runs every
+`*.test.ts` under `src/` and `remotion/`. Run one directly with
+`npx tsx src/kdenliveProject.test.ts` etc.

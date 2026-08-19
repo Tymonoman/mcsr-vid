@@ -1,40 +1,18 @@
 import { config } from "./config.js";
+// Same rationale as overlayProps.ts: ThumbnailPlayer/ThumbnailProps are Remotion's prop contract
+// (remotion/types.ts), reused here rather than hand-duplicated, since this crosses into Remotion
+// via an untyped `inputProps` JSON boundary.
+import type { ThumbnailPlayer, ThumbnailProps } from "../remotion/types.js";
+import { resolveAvatarUrl } from "./avatarUrl.js";
 import type { MatchInfo, UserDetails } from "./types.js";
 
-export interface ThumbnailPlayer {
-  nickname: string;
-  eloRate: number;
-  avatarUrl: string;
-}
-
-export interface ThumbnailProps {
-  left: ThumbnailPlayer;
-  right: ThumbnailPlayer;
-  headerLabel: string;
-}
+export type { ThumbnailPlayer, ThumbnailProps };
+// Re-exported for thumbnailProps.test.ts, which tests this behavior in the thumbnail context.
+export { resolveAvatarUrl };
 
 /** One energetic, one calm — mirrors the reference thumbnail layout. Override via config. */
 const LEFT_POSE = config.leftPose;
 const RIGHT_POSE = config.rightPose;
-
-const REACHABILITY_TIMEOUT_MS = 4000;
-
-/**
- * Starlight Skins renders any named pose but is a small free service that's occasionally down;
- * NMSR has no pose support but is reliably up. Probe the pose render and fall back so the
- * pipeline never blocks a whole video on a flaky third-party image host.
- */
-export async function resolveAvatarUrl(uuid: string, pose: string): Promise<string> {
-  const poseUrl = `https://starlightskins.lunareclipse.studio/render/${pose}/${uuid}/full`;
-  try {
-    const res = await fetch(poseUrl, { signal: AbortSignal.timeout(REACHABILITY_TIMEOUT_MS) });
-    if (res.ok) return poseUrl;
-  } catch {
-    // fall through to the static fallback below
-  }
-  console.error(`  Starlight Skins unavailable for ${uuid}, falling back to a static pose.`);
-  return `https://nmsr.nickac.dev/fullbody/${uuid}`;
-}
 
 /** Builds Thumbnail composition props from real API data for one match. */
 export async function computeThumbnailProps(
