@@ -30,6 +30,8 @@ for (const entry of entries) {
   try {
     const result = await runPipeline(entry, { onEvent });
     console.error(`Done: ${result.projectPath}`);
+    console.error(`  chapters: ${result.chaptersPath}`);
+    console.error(`  description: ${result.descriptionPath}`);
     okCount++;
   } catch (err) {
     const message = (err as Error).message;

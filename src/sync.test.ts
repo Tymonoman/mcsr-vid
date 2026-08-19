@@ -47,20 +47,24 @@ try {
   const clipAPath = path.join(tmpDir, "a.wav");
   const clipBPath = path.join(tmpDir, "b.wav");
 
-  const thumpAtA = 12.0;
-  const trueMatchStartA = thumpAtA + THUMP_LEAD_SEC; // 22.0
+  // Kept well clear of t=0 so the widened probe/search windows (used below with a perturbed
+  // clip-A estimate) never hit extractMonoWav's `Math.max(0, startSec)` clamp, which would
+  // silently shift the extraction window and confound the bias math.
+  const thumpAtA = 25.0;
+  const trueMatchStartA = thumpAtA + THUMP_LEAD_SEC; // 35.0
 
   const deltaSec = 5.3; // clip B's recording started later relative to clip A
-  const thumpAtB = thumpAtA + deltaSec; // 17.3
-  const trueMatchStartB = thumpAtB + THUMP_LEAD_SEC; // 27.3
+  const thumpAtB = thumpAtA + deltaSec; // 30.3
+  const trueMatchStartB = thumpAtB + THUMP_LEAD_SEC; // 40.3
 
   // Coarse API-derived estimate for B, deliberately off by a couple seconds from the truth,
   // simulating imprecision in the date/runtime-derived offset from vodAcquisition.ts.
   const estimatedMatchStartB = trueMatchStartB - 1.5;
 
+  const clipDurSec = 80;
   await Promise.all([
-    buildClip(clipAPath, 35, thumpAtA),
-    buildClip(clipBPath, 35, thumpAtB),
+    buildClip(clipAPath, clipDurSec, thumpAtA),
+    buildClip(clipBPath, clipDurSec, thumpAtB),
   ]);
 
   const result = await computeSyncOffset(clipAPath, clipBPath, trueMatchStartA, estimatedMatchStartB);
@@ -77,6 +81,37 @@ try {
   console.log(
     `OK: recovered clip B match start ${result.clipBCueTimeSec.toFixed(3)}s ` +
       `(true ${trueMatchStartB}s), confidence ${result.confidence.toFixed(3)}`,
+  );
+
+  // NOTE: clip A's coarse estimate is the anchor the whole calculation is relative to (pipeline.ts
+  // never corrects it) — a wrong expectedClipACueSec propagates 1:1 into clipBCueTimeSec by design,
+  // there's no way to recover the true value from this function alone. What widening
+  // PROBE_RADIUS_SEC buys is narrower: the thump doesn't fall out of the probe window entirely
+  // (correlation still succeeds with reasonable confidence) even when A's estimate has a few
+  // seconds of slop, rather than correlating against noise. Verify exactly that: perturb A's
+  // estimate by 5s (more than the old 3s PROBE_RADIUS_SEC, within the current 8s one), confirm
+  // confidence stays high and the *known, expected* 5s bias shows up in the output — proving the
+  // correlation still locked onto the real thump rather than losing it.
+  const estimatedMatchStartA = trueMatchStartA - 5;
+  const resultAPerturbed = await computeSyncOffset(
+    clipAPath,
+    clipBPath,
+    estimatedMatchStartA,
+    trueMatchStartB,
+  );
+
+  const expectedBiasedResult = trueMatchStartB - 5; // A's 5s error propagates 1:1, by design
+  assert.ok(
+    Math.abs(resultAPerturbed.clipBCueTimeSec - expectedBiasedResult) < 0.2,
+    `with clip A's estimate off by 5s, expected the same 5s bias in the output (~${expectedBiasedResult}s), got ${resultAPerturbed.clipBCueTimeSec}s`,
+  );
+  assert.ok(
+    resultAPerturbed.confidence > 0.3,
+    `with clip A's estimate off by 5s, expected the widened probe to still find the thump with high confidence, got ${resultAPerturbed.confidence}`,
+  );
+
+  console.log(
+    `OK: widened probe still locks onto the thump with 5s of A-side slop (confidence ${resultAPerturbed.confidence.toFixed(3)}); output carries A's error as expected, by design`,
   );
 } finally {
   await rm(tmpDir, { recursive: true, force: true });

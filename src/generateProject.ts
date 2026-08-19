@@ -25,7 +25,13 @@ try {
   console.error(`Done: ${result.projectPath}`);
   console.log(
     JSON.stringify(
-      { matchId: result.matchId, projectPath: result.projectPath, thumbnailPath: result.thumbnailPath },
+      {
+        matchId: result.matchId,
+        projectPath: result.projectPath,
+        thumbnailPath: result.thumbnailPath,
+        chaptersPath: result.chaptersPath,
+        descriptionPath: result.descriptionPath,
+      },
       null,
       2,
     ),

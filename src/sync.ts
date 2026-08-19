@@ -5,14 +5,21 @@ import path from "node:path";
 import { readWavMono16 } from "./wav.js";
 
 const SAMPLE_RATE = 8000;
-const PROBE_RADIUS_SEC = 3;
-const SEARCH_RADIUS_SEC = 8;
+// SEARCH_RADIUS_SEC (clip B): widened 8->20. B's recovered time is exact regardless of how far
+// off expectedClipBCueSec was, as long as the thump falls inside the search window — so this
+// directly buys tolerance for a bigger B-side coarse-estimate error, no accuracy tradeoff.
+// PROBE_RADIUS_SEC (clip A): widened 3->8. This only avoids losing the thump out of the probe
+// entirely; it does NOT correct for error in expectedClipACueSec — the recovery formula assumes
+// the probe is centered exactly on A's real thump, so any A-side estimate error still propagates
+// 1:1 into the output. Fixing that needs independently detecting A's own thump (not implemented).
+const PROBE_RADIUS_SEC = 8;
+const SEARCH_RADIUS_SEC = 20;
 const COARSE_STRIDE_SAMPLES = 80; // 10ms steps at 8kHz
 // World-load "thump" precedes the actual match start by the ready-countdown most players run
 // (verified against https://www.youtube.com/watch?v=Aa_Md_gZRuw: thump @0:05, start @0:15).
 // It's a loud, sharp transient — a far more reliable correlation anchor than the near-silent
 // instant match start itself — so we correlate on it and add this back to recover match start.
-const THUMP_LEAD_SEC = 10;
+export const THUMP_LEAD_SEC = 10;
 
 export interface SyncResult {
   /** Corrected time (sec) within clip B where the match-start cue actually falls. */

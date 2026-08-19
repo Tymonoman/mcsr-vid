@@ -1,4 +1,9 @@
 import { randomUUID } from "node:crypto";
+import { THUMP_LEAD_SEC } from "./sync.js";
+
+// Cut POV clips exactly at the world-load thump — no earlier — so the visible clip starts right
+// at the 10s ready-countdown instead of carrying minutes of dead pre-roll footage.
+const CLIP_LEAD_IN_SEC = THUMP_LEAD_SEC;
 
 export interface KdenliveClipInput {
   /** Path to the media file, as Kdenlive should reference it (absolute, for portability). */
@@ -67,6 +72,8 @@ function buildTrack(opts: {
   binId: string;
   clip: KdenliveClipInput;
   startOnTimelineSec: number;
+  /** Seconds trimmed off the clip's own head (source-relative). Default 0 = untrimmed. */
+  trimInSec?: number;
   kind: "audio" | "video";
   playlistIdA: string;
   playlistIdB: string;
@@ -78,6 +85,7 @@ function buildTrack(opts: {
     binId,
     clip,
     startOnTimelineSec,
+    trimInSec = 0,
     kind,
     playlistIdA,
     playlistIdB,
@@ -110,10 +118,9 @@ function buildTrack(opts: {
         <property name="kdenlive:folderid">-1</property>
     </chain>`;
 
+  const blankLengthSec = startOnTimelineSec + trimInSec;
   const blank =
-    startOnTimelineSec > 0
-      ? `<blank length="${secondsToTimecode(startOnTimelineSec)}"/>`
-      : "";
+    blankLengthSec > 0 ? `<blank length="${secondsToTimecode(blankLengthSec)}"/>` : "";
   const filterXml =
     positionRect !== undefined
       ? `
@@ -126,7 +133,7 @@ function buildTrack(opts: {
                 <property name="rotate_center">1</property>
             </filter>`
       : "";
-  const entryXml = `<entry in="00:00:00.000" out="${secondsToTimecode(clip.durationSec)}" producer="${chainId}">${filterXml}
+  const entryXml = `<entry in="${secondsToTimecode(trimInSec)}" out="${secondsToTimecode(clip.durationSec)}" producer="${chainId}">${filterXml}
         </entry>`;
 
   const playlistAXml = `
@@ -159,12 +166,17 @@ export function buildKdenliveProject(input: KdenliveProjectInput): string {
     rightClip.matchOffsetIntoClipSec,
     ...overlayClips.map((c) => c.matchOffsetIntoClipSec),
   );
+  // Trim each POV clip's dead pre-roll up to (but not past) the world-load thump; timeline
+  // position is compensated in buildTrack so the aligned moment still lands at maxOffset.
+  const leftTrimInSec = Math.max(0, leftClip.matchOffsetIntoClipSec - CLIP_LEAD_IN_SEC);
+  const rightTrimInSec = Math.max(0, rightClip.matchOffsetIntoClipSec - CLIP_LEAD_IN_SEC);
 
   const audioLeft = buildTrack({
     chainId: "chain_audio_left",
     binId: "0",
     clip: leftClip,
     startOnTimelineSec: maxOffset - leftClip.matchOffsetIntoClipSec,
+    trimInSec: leftTrimInSec,
     kind: "audio",
     playlistIdA: "playlist0",
     playlistIdB: "playlist1",
@@ -175,6 +187,7 @@ export function buildKdenliveProject(input: KdenliveProjectInput): string {
     binId: "1",
     clip: rightClip,
     startOnTimelineSec: maxOffset - rightClip.matchOffsetIntoClipSec,
+    trimInSec: rightTrimInSec,
     kind: "audio",
     playlistIdA: "playlist2",
     playlistIdB: "playlist3",
@@ -185,6 +198,7 @@ export function buildKdenliveProject(input: KdenliveProjectInput): string {
     binId: "2",
     clip: leftClip,
     startOnTimelineSec: maxOffset - leftClip.matchOffsetIntoClipSec,
+    trimInSec: leftTrimInSec,
     kind: "video",
     playlistIdA: "playlist4",
     playlistIdB: "playlist5",
@@ -196,6 +210,7 @@ export function buildKdenliveProject(input: KdenliveProjectInput): string {
     binId: "3",
     clip: rightClip,
     startOnTimelineSec: maxOffset - rightClip.matchOffsetIntoClipSec,
+    trimInSec: rightTrimInSec,
     kind: "video",
     playlistIdA: "playlist6",
     playlistIdB: "playlist7",
@@ -250,8 +265,8 @@ export function buildKdenliveProject(input: KdenliveProjectInput): string {
     .join("");
 
   // Markers/guides: well-known Kdenlive/MLT convention (pos = frame index, type = category
-  // index), NOT confirmed against a live Kdenlive save (no sample project with markers set was
-  // available) — verify by opening a generated project in real Kdenlive.
+  // index). Confirmed to round-trip correctly through a real Kdenlive save — diffed against
+  // a hand-edited project's own autosave backups and the guides JSON survived unchanged.
   const guidesXml =
     markers && markers.length > 0
       ? `

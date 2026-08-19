@@ -100,4 +100,38 @@ assert.equal(
   `duplicate kdenlive:id across layered clips: ${layeredBinIds}`,
 );
 
+// POV clips should be trimmed to start at the world-load thump (matchOffsetIntoClipSec - 10s),
+// but overlay clips (short, deliberate lead-in already) must stay untrimmed at in=0.
+const preRollClip = (name: string, offsetSec: number): KdenliveClipInput => ({
+  ...clip(name),
+  matchOffsetIntoClipSec: offsetSec,
+});
+
+const trimmed = buildKdenliveProject({
+  fps: 60,
+  width: 1920,
+  height: 1080,
+  leftClip: preRollClip("left", 150),
+  rightClip: preRollClip("right", 120),
+  overlayClips: [preRollClip("overlay", 20)],
+  projectName: "Trim Test",
+});
+
+// left: 150 - 10 = 140s in; right: 120 - 10 = 110s in.
+assert.match(
+  trimmed,
+  /<entry in="00:02:20\.000" out="[^"]*" producer="chain_video_left"/,
+  "left POV clip should be trimmed to 00:02:20.000 (150s offset - 10s thump lead-in)",
+);
+assert.match(
+  trimmed,
+  /<entry in="00:01:50\.000" out="[^"]*" producer="chain_video_right"/,
+  "right POV clip should be trimmed to 00:01:50.000 (120s offset - 10s thump lead-in)",
+);
+assert.match(
+  trimmed,
+  /<entry in="00:00:00\.000" out="00:10:00\.000" producer="chain_overlay_0"/,
+  "overlay clip must stay untrimmed at in=0",
+);
+
 console.log("kdenliveProject: all checks passed");
