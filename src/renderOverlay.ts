@@ -1,15 +1,10 @@
 import path from "node:path";
+import { requireArg } from "./cliArgs.js";
 import { config } from "./config.js";
 import { getMatch, getUser, getVersus, parseMatchId } from "./mcsrApi.js";
 import { renderOverlay } from "./overlayRender.js";
 
-const input = process.argv[2];
-if (!input) {
-  console.error("Usage: npm run render-overlay -- <mcsrranked.com match URL or match ID>");
-  process.exit(1);
-}
-
-const matchId = parseMatchId(input);
+const matchId = parseMatchId(requireArg("render-overlay"));
 const match = await getMatch(matchId);
 
 const [playerLeft, playerRight] = match.players;

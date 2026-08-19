@@ -1,10 +1,7 @@
+import { requireArg } from "./cliArgs.js";
 import { runPipeline, STAGE_LABELS, type StageEvent } from "./pipeline.js";
 
-const input = process.argv[2];
-if (!input) {
-  console.error("Usage: npm run generate-project -- <mcsrranked.com match URL or match ID>");
-  process.exit(1);
-}
+const input = requireArg("generate-project");
 
 const ac = new AbortController();
 process.on("SIGINT", () => {

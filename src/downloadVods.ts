@@ -1,14 +1,9 @@
 import path from "node:path";
+import { requireArg } from "./cliArgs.js";
 import { getMatch, parseMatchId } from "./mcsrApi.js";
 import { downloadMatchVods } from "./vodAcquisition.js";
 
-const input = process.argv[2];
-if (!input) {
-  console.error("Usage: npm run download-vods -- <mcsrranked.com match URL or match ID>");
-  process.exit(1);
-}
-
-const matchId = parseMatchId(input);
+const matchId = parseMatchId(requireArg("download-vods"));
 const match = await getMatch(matchId);
 
 if (match.vod.length === 0) {

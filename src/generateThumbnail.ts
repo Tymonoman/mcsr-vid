@@ -1,14 +1,9 @@
 import path from "node:path";
+import { requireArg } from "./cliArgs.js";
 import { getMatch, getUser, parseMatchId } from "./mcsrApi.js";
 import { renderThumbnail } from "./thumbnailRender.js";
 
-const input = process.argv[2];
-if (!input) {
-  console.error("Usage: npm run generate-thumbnail -- <mcsrranked.com match URL or match ID>");
-  process.exit(1);
-}
-
-const matchId = parseMatchId(input);
+const matchId = parseMatchId(requireArg("generate-thumbnail"));
 const match = await getMatch(matchId);
 
 const [playerLeft, playerRight] = match.players;

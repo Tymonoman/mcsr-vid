@@ -16,7 +16,8 @@
     "generate-project": "npm run build-overlay-css && tsx src/generateProject.ts",
     "batch": "npm run build-overlay-css && tsx src/batch.ts",
     "status": "tsx src/status.ts",
-    "start": "npm run build-overlay-css && tsx src/tui.tsx"
+    "start": "npm run build-overlay-css && tsx src/tui.tsx",
+    "test": "for f in src/*.test.ts remotion/*.test.ts; do echo \"-- $f --\"; tsx \"$f\" || exit 1; done"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
