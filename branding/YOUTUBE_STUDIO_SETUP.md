@@ -26,14 +26,8 @@ Have these ready in a folder on your machine:
 **Studio → Customization → Basic info**
 
 - [ ] **Name:** `MCSR Replayoffs`
-- [ ] **Handle:** try `@MCSRReplayoffs` first. YouTube will tell you
-      immediately if it's taken — this was never confirmed live (no browser
-      available during planning), so this is the first real test. If it's
-      taken, fall back to something that still reads clearly, e.g.
-      `@MCSRReplayoffsYT` or `@MCSRReplayoffs.gg` — avoid anything that
-      drifts toward `@MCSRReplay` (the existing competitor channel) or
-      `@MCSRReplayoffs.official` (implies affiliation with MCSR Ranked,
-      which the whole brand plan deliberately avoids).
+- [x] **Handle:** `@MCSRReplayoffs` — confirmed claimed and live (channel ID
+      `UCm2mAyONTHlmIxZzNmi388w`). No fallback needed.
 - [ ] **Description:** paste the About copy below.
 - [ ] **Links** (up to 5 shown on the channel page): add
       `mcsrranked.com` labeled "Match data source." Nothing else at
@@ -114,13 +108,21 @@ video until it clears — you need custom thumbnails from upload #1.
 This is boilerplate applied to every new upload as a starting point — you
 still edit per-video, but it saves retyping the constant parts.
 
-- [ ] **Description:** paste the reusable footer (disclaimer + hashtags)
-      so it's already there when you start each upload:
+- [ ] **Description:** paste the reusable footer (disclaimer + feedback
+      line + hashtags) so it's already there when you start each upload —
+      widened from the original 4-hashtag version to match what MCSR
+      Matches/MCSR Vault actually run (checkpoint tags; per-match player
+      tags still get added per-video from the generated description file,
+      not here):
       ```
       MCSR Replayoffs is an independent fan project, not affiliated
       with MCSR Ranked.
 
+      Spot a sync issue or a stat error? Flag it — this pipeline is
+      actively maintained, not fire-and-forget automation.
+
       #MCSRRanked #MinecraftSpeedrun #Minecraft #Speedrunning
+      #Nether #Bastion #Fortress #End
       ```
 - [ ] **Tags:** `mcsr ranked, minecraft speedrun, minecraft randomizer,
       speedrunning, minecraft 1v1, ranked speedrun`
@@ -188,14 +190,28 @@ Once the pipeline (`fetch-match` → `download-vods` → `validate-sync` →
 thumbnail generator has produced a thumbnail:
 
 - [ ] **Upload** the video file in Studio.
-- [ ] **Title**, following the fixed template — always spell out the brand,
-      never rely on channel-name recognition alone:
+- [ ] **Title**, following the fixed template (revised from the original
+      plain version below — both live uploads already drifted to a
+      hook-driven title on their own, and a live competitor check
+      [artifact](https://claude.ai/code/artifact/82c863d6-1bf5-4e01-b679-a2a3c40fcc80)
+      confirms hook-driven outperforms plain-functional in this niche):
       ```
-      [PlayerA] vs [PlayerB] — MCSR Replayoffs
+      [HOOK, one clause] | [PlayerA] vs [PlayerB] | MCSR Ranked 1v1
       ```
+      Front-load "MCSR Ranked 1v1" + both names within the first ~45
+      characters (mobile truncation window). Target 70-100 characters
+      total. Lock this construction pattern instead of reinventing the
+      hook's voice per video — upload #1 ("WANNABE vs REAL GOAT...") and
+      #2 ("They REALLY think they'll get RANK #1...") already differ in
+      style from each other.
 - [ ] **Thumbnail:** upload the generated PNG (requires verification from
       step 3 above).
-- [ ] **Description:** use the full template, not just the default footer:
+- [ ] **Description:** hand-write the top block, then paste the
+      auto-generated block under it — don't retype what the pipeline
+      already computes correctly.
+
+      Hand-write (title/result/head-to-head aren't reliably computable —
+      DNF reasons and the exact bracket label still need a human):
       ```
       [PlayerA] vs [PlayerB] | MCSR Ranked, [rank/ELO bracket]
 
@@ -205,16 +221,19 @@ thumbnail generator has produced a thumbnail:
       Result: [PlayerA] [time/DNF] — [PlayerB] [time/DNF]
       Head-to-head (Ranked): [PlayerA] [x] – [y] [PlayerB]
 
-      Watch [PlayerA]: [link]
-      Watch [PlayerB]: [link]
-
       Match data: mcsrranked.com/matches/[id]
-
-      MCSR Replayoffs is an independent fan project, not affiliated
-      with MCSR Ranked.
-
-      #MCSRRanked #MinecraftSpeedrun #Minecraft #Speedrunning
       ```
+      Paste as-is from `media/<matchId>/match-<matchId>.description.txt`
+      (written by `generate-project`, alongside the `.kdenlive` project):
+      watch links deep-linked to the exact match moment in each player's
+      own VOD (`?t=Ns`, same pattern MCSR Matches uses), the chapters
+      block (minimum 3, first at `0:00` — the single biggest recurring
+      SEO gap on both live videos so far, and confirmed absent from all
+      three competitor channels), the independence disclaimer, a
+      feedback-invite line, and a wider hashtag block (format tags +
+      both player names + checkpoint tags — matching what MCSR Matches
+      and MCSR Vault already do, which our old 4-hashtag-only footer
+      didn't).
 - [ ] **Made for kids:** No (see step 5).
 - [ ] **Visibility:** Schedule (not Publish now) for **Tuesday, 17:00 UTC**
       — the launch anchor time, chosen to land at EU evening prime-time and
@@ -236,11 +255,17 @@ thumbnail generator has produced a thumbnail:
       policy is notify-always, no opt-in gate required before publishing,
       but always notify after.
 
-Launch cadence: **Tuesday / Thursday / Saturday** (3/week). Don't scale to
-5/week (adding Wed/Sun) until the pipeline's actual per-video time has been
-measured for real across a few uploads — the cadence target was set before
-timing the manual steps (VOD download, sync validation, Kdenlive pass), so
-treat it as provisional until proven.
+Cadence: revised down to **Tuesday / Thursday** (2/week), from the original
+Tuesday/Thursday/Saturday (3/week) plan. Both live uploads already slipped
+off that plan (#1 published Monday, #2 scheduled Thursday), and the manual
+pipeline steps (VOD download, sync validation, Kdenlive pass) still haven't
+been timed for real — so 3/week was provisional and hasn't held up. Scale to
+3/week only after 3-4 consecutive weeks of consistently hitting 2/week, not
+before. Don't chase competitor cadence either: a live check found MCSR
+Matches and MCSR Vault both publishing near-daily right now, which proves
+the niche supports that volume but isn't a reason to match it — see the
+[brand plan artifact](https://claude.ai/code/artifact/82c863d6-1bf5-4e01-b679-a2a3c40fcc80)
+for the full comparison.
 
 ---
 

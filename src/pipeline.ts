@@ -7,6 +7,8 @@ import { getMatch, getUser, getVersus, parseMatchId } from "./mcsrApi.js";
 import { buildKdenliveProject, type KdenliveClipInput, type KdenliveMarkerInput } from "./kdenliveProject.js";
 import { BOTTOM_BAND_HEIGHT, BOTTOM_BAND_Y, TOP_BAND_HEIGHT } from "../remotion/layout.js";
 import { computeSplits } from "./overlayProps.js";
+import { buildChapters, formatChapters } from "./chapters.js";
+import { buildDescriptionExtras } from "./description.js";
 import { renderOverlay } from "./overlayRender.js";
 import { renderThumbnail } from "./thumbnailRender.js";
 import { computeSyncOffset } from "./sync.js";
@@ -45,6 +47,8 @@ export interface PipelineResult {
   matchId: number;
   projectPath: string;
   thumbnailPath: string;
+  chaptersPath: string;
+  descriptionPath: string;
 }
 
 export interface PipelineOptions {
@@ -307,7 +311,27 @@ export async function runPipeline(input: string, opts: PipelineOptions = {}): Pr
 
   const projectPath = path.join(outDir, `match-${matchId}.kdenlive`);
   await writeFile(projectPath, projectXml, "utf8");
+
+  const chapters = buildChapters(splits, match, config.overlayLeadInSec);
+  const chaptersPath = path.join(outDir, `match-${matchId}.chapters.txt`);
+  await writeFile(chaptersPath, formatChapters(chapters), "utf8");
+
+  const descriptionExtras = buildDescriptionExtras({
+    leftNickname: leftWindow.playerNickname,
+    rightNickname: rightWindow.playerNickname,
+    leftWindow,
+    rightWindow,
+    chapters,
+  });
+  const descriptionPath = path.join(outDir, `match-${matchId}.description.txt`);
+  await writeFile(descriptionPath, descriptionExtras, "utf8");
   emit({ stage: "write", status: "done" });
 
-  return { matchId, projectPath: path.resolve(projectPath), thumbnailPath: path.resolve(thumbnailPath) };
+  return {
+    matchId,
+    projectPath: path.resolve(projectPath),
+    thumbnailPath: path.resolve(thumbnailPath),
+    chaptersPath: path.resolve(chaptersPath),
+    descriptionPath: path.resolve(descriptionPath),
+  };
 }
