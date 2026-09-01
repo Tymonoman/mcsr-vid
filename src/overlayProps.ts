@@ -1,12 +1,13 @@
 import { config } from "./config.js";
 import { resolveAvatarUrl } from "./avatarUrl.js";
-import type { MatchInfo, UserDetails, VersusStats } from "./types.js";
+import type { MatchInfo, StatisticCategoryMap, UserDetails, VersusStats } from "./types.js";
 // PlayerIdentity/SplitRow/OverlayProps are defined once in remotion/types.ts (the component's
 // prop contract) and reused here, since computeOverlayProps's output crosses into Remotion via
 // an untyped `inputProps` JSON boundary — a hand-kept-in-sync second copy could silently drift.
 import type {
   PlayerIdentity,
   SplitRow,
+  StatsScope,
   OverlayProps as RemotionOverlayProps,
 } from "../remotion/types.js";
 
@@ -31,21 +32,58 @@ function countryFlag(countryCode: string | null): string {
 const LEFT_POSE = config.leftPose;
 const RIGHT_POSE = config.rightPose;
 
-function playerIdentity(user: UserDetails, avatarUrl: string, headUrl: string): PlayerIdentity {
-  const stats = user.statistics.total;
-  const completions = stats.completions.ranked ?? 0;
-  const completionTime = stats.completionTime.ranked ?? 0;
-  const wins = stats.wins.ranked ?? 0;
-  const loses = stats.loses.ranked ?? 0;
-  const matches = stats.playedMatches.ranked ?? 0;
-  const forfeits = stats.forfeits.ranked ?? 0;
+/**
+ * Career totals average a player's entire history — for a top runner that's thousands of games
+ * including the climb — so they read as flatly wrong next to current form. Viewers said so on the
+ * edcr vs doogile upload ("both of their average are pretty high and their win rates seem off...
+ * are these session stats instead of season stats?"), and they were right: the overlay was showing
+ * ~5,000-game career numbers. Use the live season bucket, and fall back to career only right after
+ * a season rollover, when the season bucket is still empty. Either way the overlay says which.
+ */
+export function pickStats(user: UserDetails): { stats: StatisticCategoryMap; scope: StatsScope } {
+  const season = user.statistics.season;
+  if ((season?.playedMatches?.ranked ?? 0) > 0) return { stats: season, scope: "SEASON" };
+  return { stats: user.statistics.total, scope: "CAREER" };
+}
+
+/**
+ * `user.eloRate` is the player's rating *now*, not at the match — and at the top those diverge
+ * within days. edcr went into match 12730175 rated 2546 on Aug 24; the video rendered two days
+ * later showed 2615, turning a 106-point gap into a 245-point one. It also goes null outright at a
+ * season rollover, which would render "0 ELO". The match record carries each player's post-match
+ * rating plus the delta that produced it, so the rating they actually carried in is exact.
+ */
+export function eloAtMatchStart(match: MatchInfo, uuid: string, liveElo: number | null): number {
+  const change = match.changes.find((c) => c.uuid === uuid);
+  if (change?.eloRate == null) return liveElo ?? 0;
+  return change.eloRate - (change.change ?? 0);
+}
+
+function playerIdentity(
+  user: UserDetails,
+  eloRate: number,
+  avatarUrl: string,
+  headUrl: string,
+): PlayerIdentity {
+  const { stats, scope } = pickStats(user);
+  const completions = stats.completions?.ranked ?? 0;
+  const completionTime = stats.completionTime?.ranked ?? 0;
+  const wins = stats.wins?.ranked ?? 0;
+  const loses = stats.loses?.ranked ?? 0;
+  const matches = stats.playedMatches?.ranked ?? 0;
+  const forfeits = stats.forfeits?.ranked ?? 0;
 
   return {
     nickname: user.nickname,
     countryFlag: countryFlag(user.country),
-    eloRate: user.eloRate ?? 0,
-    eloRank: user.eloRank ?? 0,
-    pbMs: stats.bestTime.ranked ?? 0,
+    eloRate,
+    // No historical rank exists in the API, so this one stays render-time. null renders as no
+    // rank chip at all rather than a bogus "#0 WORLD" (which is what a season rollover yields).
+    eloRank: user.eloRank,
+    statsScope: scope,
+    // PB stays lifetime even when the rest is season-scoped: in speedrunning "PB" means the
+    // best you have ever done, and the complaint was about averages and rates, not about PB.
+    pbMs: user.statistics.total.bestTime?.ranked ?? 0,
     avgMs: completions > 0 ? completionTime / completions : 0,
     gamesPlayed: matches,
     winRatePct: wins + loses > 0 ? (wins / (wins + loses)) * 100 : 0,
@@ -104,8 +142,18 @@ export async function computeOverlayProps(
   ]);
 
   return {
-    left: playerIdentity(userLeft, leftAvatarUrl, `https://nmsr.nickac.dev/head/${leftUuid}`),
-    right: playerIdentity(userRight, rightAvatarUrl, `https://nmsr.nickac.dev/head/${rightUuid}`),
+    left: playerIdentity(
+      userLeft,
+      eloAtMatchStart(match, leftUuid, userLeft.eloRate),
+      leftAvatarUrl,
+      `https://nmsr.nickac.dev/head/${leftUuid}`,
+    ),
+    right: playerIdentity(
+      userRight,
+      eloAtMatchStart(match, rightUuid, userRight.eloRate),
+      rightAvatarUrl,
+      `https://nmsr.nickac.dev/head/${rightUuid}`,
+    ),
     matchPlayedLabel,
     h2hLeftWins: versus.results.ranked[leftUuid] ?? 0,
     h2hRightWins: versus.results.ranked[rightUuid] ?? 0,

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { LEFT_POV_RECT, RIGHT_POV_RECT } from "../remotion/layout.js";
 import { buildKdenliveProject, type KdenliveClipInput } from "./kdenliveProject.js";
 
 const clip = (name: string): KdenliveClipInput => ({
@@ -64,7 +65,7 @@ const layered = buildKdenliveProject({
   leftClip: clip("left"),
   rightClip: clip("right"),
   overlayClips: [
-    { ...clip("top"), path: "/media/top.png", isImage: true, positionRect: "0 0 1920 210 1" },
+    { ...clip("top"), path: "/media/top.png", isImage: true, positionRect: "0 0 1920 194 1" },
     { ...clip("splits"), positionRect: "0 734 1920 346 1" },
     clip("intro"),
   ],
@@ -82,7 +83,7 @@ assert.equal(
   2,
   "the two video bands should stay avformat chains",
 );
-for (const rect of ["0 0 1920 210 1", "0 734 1920 346 1"]) {
+for (const rect of ["0 0 1920 194 1", "0 734 1920 346 1"]) {
   assert.ok(layered.includes(`<property name="rect">${rect}</property>`), `missing rect ${rect}`);
 }
 // Every band must be a real track and a bin entry, or it just won't show up in Kdenlive.
@@ -135,3 +136,32 @@ assert.match(
 );
 
 console.log("kdenliveProject: all checks passed");
+
+// The two POV clips must honour their own positionRect. Without this they fall back to a naive
+// "half the canvas, full height" box, which letterboxes a 16:9 POV into a 960x1080 slot and
+// leaves it overlapping the overlay bands — the layout bug viewers reported.
+const posed = buildKdenliveProject({
+  fps: 60,
+  width: 1920,
+  height: 1080,
+  leftClip: { ...clip("left"), positionRect: LEFT_POV_RECT },
+  rightClip: { ...clip("right"), positionRect: RIGHT_POV_RECT },
+  overlayClips: [],
+  projectName: "Posed",
+});
+for (const rect of [LEFT_POV_RECT, RIGHT_POV_RECT]) {
+  assert.ok(posed.includes(`<property name="rect">${rect}</property>`), `missing POV rect ${rect}`);
+}
+assert.ok(!posed.includes('<property name="rect">0 0 960 1080 1</property>'), "POV must not use the full-height fallback when a rect is given");
+
+// Omitting them keeps the old full-height split, so the builder stays usable standalone.
+const bare = buildKdenliveProject({
+  fps: 60,
+  width: 1920,
+  height: 1080,
+  leftClip: clip("left"),
+  rightClip: clip("right"),
+  overlayClips: [],
+  projectName: "Bare",
+});
+assert.ok(bare.includes('<property name="rect">0 0 960 1080 1</property>'));

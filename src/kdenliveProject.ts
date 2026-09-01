@@ -13,7 +13,8 @@ export interface KdenliveClipInput {
   /** Seconds into this clip where the true match-start moment falls. */
   matchOffsetIntoClipSec: number;
   clipName: string;
-  /** "x y w h opacity" — where this clip sits on the canvas. Full-frame if omitted. */
+  /** "x y w h opacity" — where this clip sits on the canvas. Overlays default to full-frame;
+   *  the two POV clips fall back to a naive half-width split (see buildKdenliveProject). */
   positionRect?: string;
   /** A still held for `durationSec`; MLT needs a different producer than for video. */
   isImage?: boolean;
@@ -203,7 +204,7 @@ export function buildKdenliveProject(input: KdenliveProjectInput): string {
     playlistIdA: "playlist4",
     playlistIdB: "playlist5",
     tractorId: "tractor_video_left",
-    positionRect: `0 0 ${width / 2} ${height} 1`,
+    positionRect: leftClip.positionRect ?? `0 0 ${width / 2} ${height} 1`,
   });
   const videoRight = buildTrack({
     chainId: "chain_video_right",
@@ -215,7 +216,7 @@ export function buildKdenliveProject(input: KdenliveProjectInput): string {
     playlistIdA: "playlist6",
     playlistIdB: "playlist7",
     tractorId: "tractor_video_right",
-    positionRect: `${width / 2} 0 ${width / 2} ${height} 1`,
+    positionRect: rightClip.positionRect ?? `${width / 2} 0 ${width / 2} ${height} 1`,
   });
   const overlayTracks = overlayClips.map((clip, i) =>
     buildTrack({

@@ -1,8 +1,16 @@
+/** Which bucket the form stats (avg/games/WR/FF) were taken from — shown on the overlay so the
+ *  numbers can't be misread as career totals (or as season stats) the way they were before. */
+export type StatsScope = "SEASON" | "CAREER";
+
 export interface PlayerIdentity {
   nickname: string;
   countryFlag: string;
+  /** Rating carried *into* this match, not the player's rating now. See eloAtMatchStart. */
   eloRate: number;
-  eloRank: number;
+  /** Render-time world rank; null when unranked or between seasons, and then simply not shown. */
+  eloRank: number | null;
+  statsScope: StatsScope;
+  /** Lifetime best, even when statsScope is SEASON — "PB" means all-time in speedrunning. */
   pbMs: number;
   avgMs: number;
   gamesPlayed: number;
