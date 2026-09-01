@@ -28,6 +28,7 @@ try {
         thumbnailPath: result.thumbnailPath,
         chaptersPath: result.chaptersPath,
         descriptionPath: result.descriptionPath,
+        titlePath: result.titlePath,
       },
       null,
       2,
