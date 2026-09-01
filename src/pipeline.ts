@@ -5,7 +5,13 @@ import path from "node:path";
 import { config } from "./config.js";
 import { getMatch, getUser, getVersus, parseMatchId } from "./mcsrApi.js";
 import { buildKdenliveProject, type KdenliveClipInput, type KdenliveMarkerInput } from "./kdenliveProject.js";
-import { BOTTOM_BAND_HEIGHT, BOTTOM_BAND_Y, TOP_BAND_HEIGHT } from "../remotion/layout.js";
+import {
+  BOTTOM_BAND_HEIGHT,
+  BOTTOM_BAND_Y,
+  TOP_BAND_HEIGHT,
+  LEFT_POV_RECT,
+  RIGHT_POV_RECT,
+} from "../remotion/layout.js";
 import { computeSplits } from "./overlayProps.js";
 import { buildChapters, formatChapters } from "./chapters.js";
 import { buildDescriptionExtras } from "./description.js";
@@ -240,12 +246,14 @@ export async function runPipeline(input: string, opts: PipelineOptions = {}): Pr
     durationSec: leftDurationSec,
     matchOffsetIntoClipSec: leftWindow.matchOffsetIntoClipSec,
     clipName: `${leftWindow.playerNickname} POV`,
+    positionRect: LEFT_POV_RECT,
   };
   const rightClip: KdenliveClipInput = {
     path: path.resolve(rightWindow.path),
     durationSec: rightDurationSec,
     matchOffsetIntoClipSec: rightOffsetSec,
     clipName: `${rightWindow.playerNickname} POV`,
+    positionRect: RIGHT_POV_RECT,
   };
   // The overlay ships as three layers rather than one full-frame video: a static top band held
   // as a still, the animated bottom band, and the opaque intro card. Rendering the empty middle

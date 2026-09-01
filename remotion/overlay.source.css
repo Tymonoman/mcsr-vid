@@ -32,7 +32,8 @@
   top: 0;
   left: 0;
   right: 0;
-  height: 9%;
+  /* px, not %: must match TOP_BAND_HEIGHT in layout.ts (.row1 97 + .row2 97 = 194). */
+  height: 97px;
   display: flex;
 }
 .row1 .half {
@@ -88,10 +89,10 @@
 /* ===== row 2: info bar ===== */
 .row2 {
   position: absolute;
-  top: 9%;
+  top: 97px;
   left: 0;
   right: 0;
-  height: 10.4%;
+  height: 97px;
   display: flex;
   background: var(--panel);
   border-bottom: 3px solid var(--panel-edge);
@@ -144,13 +145,27 @@
   opacity: 0.6;
 }
 
+/* SEASON / CAREER marker. Everything after it on the left half (and before it on the right) is
+   scoped by it; PB deliberately sits on the far outside, since PB is always lifetime. */
+.row2 .deep-line .scope {
+  color: var(--gold);
+  opacity: 1;
+  letter-spacing: 1px;
+  margin-right: 8px;
+}
+.row2 .half.right .deep-line .scope {
+  margin-right: 0;
+  margin-left: 8px;
+}
+
 /* ===== bottom: match splits panel ===== */
 .splits {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
-  height: 32%;
+  /* px, not %: must match BOTTOM_BAND_HEIGHT in layout.ts. */
+  height: 346px;
   display: flex;
   background: var(--panel-2);
   border-top: 4px solid var(--panel-edge-light);

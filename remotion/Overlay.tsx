@@ -49,11 +49,13 @@ function InfoBar({ props }: { props: OverlayProps }) {
         <div className="id-line">
           <span className="flag">{left.countryFlag}</span>
           <span className="elo">{left.eloRate} ELO</span>
-          <span className="rank">#{left.eloRank} WORLD</span>
+          {left.eloRank !== null && <span className="rank">#{left.eloRank} WORLD</span>}
         </div>
         <div className="deep-line">
           PB <b>{formatTime(left.pbMs)}</b>
           <span className="sep">·</span>
+          {/* Scopes everything after it. PB sits outside deliberately — it's always lifetime. */}
+          <span className="scope">{left.statsScope}</span>
           AVG <b>{formatTime(left.avgMs)}</b>
           <span className="sep">·</span>
           <b>{left.gamesPlayed.toLocaleString()}</b> GAMES
@@ -65,7 +67,7 @@ function InfoBar({ props }: { props: OverlayProps }) {
       </div>
       <div className="half right">
         <div className="id-line">
-          <span className="rank">#{right.eloRank} WORLD</span>
+          {right.eloRank !== null && <span className="rank">#{right.eloRank} WORLD</span>}
           <span className="elo">{right.eloRate} ELO</span>
           <span className="flag">{right.countryFlag}</span>
         </div>
@@ -77,6 +79,7 @@ function InfoBar({ props }: { props: OverlayProps }) {
           GAMES <b>{right.gamesPlayed.toLocaleString()}</b>
           <span className="sep">·</span>
           AVG <b>{formatTime(right.avgMs)}</b>
+          <span className="scope">{right.statsScope}</span>
           <span className="sep">·</span>
           PB <b>{formatTime(right.pbMs)}</b>
         </div>
@@ -156,7 +159,7 @@ function SplitsPanel({
             {formatConstantLabel(props.seedType)} · {formatConstantLabel(props.bastionType)}
           </span>
         </span>
-        <span className="h2h-label">Head-to-Head (Ranked)</span>
+        <span className="h2h-label">Head-to-Head (Season)</span>
         <span className="h2h-value">
           <span className="l">
             {props.left.nickname} {props.h2hLeftWins}
