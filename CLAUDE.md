@@ -42,20 +42,16 @@ pixel-art Minecraft identity:
 
 ## Coordination note
 
-As of 2026-08-09 there were **two divergent lines of work** on top of
-`main` (4caf807, Phase 5) that hadn't been reconciled:
+Reconciled on 2026-09-03. All twelve `worktree-*` branches were merged into
+`main` and their worktrees pruned; `git worktree list` should show only the
+primary checkout. The `.claude/worktrees/` tree (37 GB) and the unreferenced
+Kdenlive `*-60fps.mp4` transcodes (27 GB) were deleted — nothing in `src/`,
+`remotion/`, or any `.kdenlive` project referenced them, and Kdenlive
+regenerates transcodes on demand from the source VODs.
 
-- `worktree-thumbnail-gen` (commit `e3905ac`, pushed to origin) — Phase 6
-  thumbnail generator, plus the split-timer `resolveSplitSide` refactor.
-- Uncommitted local changes in the primary checkout touching the same
-  `resolveSplitSide` refactor (parseMatchId fix, VOD-count warning) — these
-  overlap with what `e3905ac` already carries forward.
-- This pixel-branding work branched from `main`, then merged in
-  `worktree-thumbnail-gen` before adding the new badge/logo — so it carries
-  both, but the primary checkout's uncommitted edits still need manual
-  reconciliation (likely just re-applying the parseMatchId/VOD-warning bits
-  on top, since the split-timer refactor itself is already present here).
-
-If you're a session picking this up cold: check `git log --all --oneline`
-and `git status` in the primary checkout before assuming `main` is current
-— there is real unmerged work sitting in sibling branches/worktrees.
+One loose end survives as a patch, not a branch: the `match-suggester`
+worktree carried uncommitted work (7 files, +63/-105 — a net simplification of
+`suggest.ts`, `matchScore.ts`, `config.ts`, `scoreCli.ts`, `tui.tsx`,
+`tuiComponents.tsx`). It is saved at `~/mcsr-suggester-refactor.patch` and
+applies cleanly to `main`. It has **not** been applied — decide deliberately
+before assuming the suggester is in its final shape.
