@@ -1,5 +1,6 @@
 import path from "node:path";
 import { requireArg } from "./cliArgs.js";
+import { config } from "./config.js";
 import { getMatch, parseMatchId } from "./mcsrApi.js";
 import { downloadMatchVods } from "./vodAcquisition.js";
 
@@ -11,7 +12,7 @@ if (match.vod.length === 0) {
   process.exit(1);
 }
 
-const outDir = path.join("media", String(matchId));
+const outDir = path.join(config.mediaDir, String(matchId));
 console.error(
   `Match ${matchId}: ${match.vod.length}/2 player(s) have a VOD attached. Downloading to ${outDir}/ ...`,
 );
