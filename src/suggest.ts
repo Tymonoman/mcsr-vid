@@ -38,6 +38,17 @@ const POOL_MAX_AGE_DAYS = 10;
 /** Requests spent catching up on matches played since the last launch. */
 const CATCHUP_MAX_REQUESTS = 5;
 
+/**
+ * A rate limit or a flaky upstream is worth one retry — over 40 paged requests the MCSR
+ * API returns the occasional 502, and a background scan shouldn't die on one.
+ */
+const TRANSIENT_RETRIES = 2;
+const RETRY_DELAY_MS = 800;
+
+const isTransient = (err: unknown): boolean =>
+  // A network-level failure surfaces as a plain TypeError from fetch, not McsrApiError.
+  !(err instanceof McsrApiError) || err.status === 429 || err.status >= 500;
+
 const NO_TWITCH_NOTE =
   "popularity: streaming frequency only (set TWITCH_CLIENT_ID/TWITCH_CLIENT_SECRET in .env for follower data)";
 
@@ -285,6 +296,23 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
   let scanned = 0;
   let requests = 0;
   let highestSeen = cache.newestScannedId ?? 0;
+  let scanAborted = false;
+
+  /**
+   * One page of the feed, retrying transient failures. Returns null once the scan should
+   * stop — a non-transient error still throws, so a genuine bug isn't swallowed.
+   */
+  const fetchPage = async (before: number | undefined): Promise<FeedMatch[] | null> => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await getRecentMatches({ count: PAGE_SIZE, type: RANKED_TYPE, before });
+      } catch (err) {
+        if (!isTransient(err)) throw err;
+        if (attempt >= TRANSIENT_RETRIES) return null;
+        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS * (attempt + 1)));
+      }
+    }
+  };
 
   /**
    * Reads one page and folds it in. Returns the id to continue from, or null to stop.
@@ -294,13 +322,12 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
   const consumePage = async (
     before: number | undefined,
   ): Promise<{ next: number | null; allSeen: boolean }> => {
-    let page: FeedMatch[];
-    try {
-      page = await getRecentMatches({ count: PAGE_SIZE, type: RANKED_TYPE, before });
-    } catch (err) {
-      // A partial list beats none, so a rate limit ends the scan instead of failing it.
-      if (err instanceof McsrApiError && err.status === 429) return { next: null, allSeen: false };
-      throw err;
+    const page = await fetchPage(before);
+    // A partial list beats none: a rate limit or a flaky upstream ends the scan rather
+    // than failing it. Whatever was already pooled is still worth showing.
+    if (page === null) {
+      scanAborted = true;
+      return { next: null, allSeen: false };
     }
     requests += 1;
     if (page.length === 0) return { next: null, allSeen: false };
@@ -353,7 +380,15 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
   }
   cache.newestScannedId = highestSeen;
 
-  const nicknames = [...new Set(candidates.flatMap((m) => m.players.map((p) => p.nickname)))];
+  // Everyone who could appear in the final list, not just this scan's finds: the buckets
+  // rank the whole pool, so resolving only fresh candidates would leave most pooled
+  // matches scored on appearances alone.
+  const nicknames = [
+    ...new Set([
+      ...candidates.flatMap((m) => m.players.map((p) => p.nickname)),
+      ...Object.values(cache.pool).flatMap((entry) => entry.metrics.players),
+    ]),
+  ];
   const { followers, usedTwitch, note } = await resolveFollowers(nicknames, cache);
 
   // Popularity blends how often a player streams ranked matches with the size of their
@@ -456,5 +491,17 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
   cache.stats = stats;
   saveCache(cache);
 
-  return { suggestions, usedTwitchFollowers: usedTwitch, note, stats };
+  // A truncated scan still returns results, but say so rather than letting a short list
+  // look like "there was nothing to find".
+  const scanNote = scanAborted
+    ? `scan stopped early after ${requests} requests (rate limit or MCSR API error) — press r to continue`
+    : null;
+  const notes = [scanNote, note].filter((n): n is string => n !== null);
+
+  return {
+    suggestions,
+    usedTwitchFollowers: usedTwitch,
+    note: notes.length > 0 ? notes.join(" · ") : null,
+    stats,
+  };
 }

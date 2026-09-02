@@ -453,7 +453,7 @@ function App({ signal }: { signal: AbortSignal }) {
         <Box marginTop={1} flexDirection="column">
           <Text color={COLORS.muted}>
             {entry.bucket === "close" ? "Close race" : "Chaotic run"} · score{" "}
-            {entry.score.toFixed(2)} · streamed-often score {entry.popularity}
+            {entry.score.toFixed(2)} · popularity {entry.popularity.toFixed(1)}
           </Text>
           {entry.vodUrls.map((url) => (
             <Text key={url} color={COLORS.muted}>
