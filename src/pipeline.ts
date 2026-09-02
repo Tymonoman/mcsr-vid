@@ -15,6 +15,7 @@ import {
 import { computeSplits } from "./overlayProps.js";
 import { buildChapters, formatChapters } from "./chapters.js";
 import { buildDescriptionExtras } from "./description.js";
+import { buildTitle, formatTitle } from "./title.js";
 import { renderOverlay } from "./overlayRender.js";
 import { renderThumbnail } from "./thumbnailRender.js";
 import { computeSyncOffset } from "./sync.js";
@@ -55,6 +56,7 @@ export interface PipelineResult {
   thumbnailPath: string;
   chaptersPath: string;
   descriptionPath: string;
+  titlePath: string;
 }
 
 export interface PipelineOptions {
@@ -342,6 +344,13 @@ export async function runPipeline(input: string, opts: PipelineOptions = {}): Pr
   });
   const descriptionPath = path.join(outDir, `match-${matchId}.description.txt`);
   await writeFile(descriptionPath, descriptionExtras, "utf8");
+
+  const title = buildTitle({
+    leftNickname: leftWindow.playerNickname,
+    rightNickname: rightWindow.playerNickname,
+  });
+  const titlePath = path.join(outDir, `match-${matchId}.title.txt`);
+  await writeFile(titlePath, formatTitle(title), "utf8");
   emit({ stage: "write", status: "done" });
 
   return {
@@ -350,5 +359,6 @@ export async function runPipeline(input: string, opts: PipelineOptions = {}): Pr
     thumbnailPath: path.resolve(thumbnailPath),
     chaptersPath: path.resolve(chaptersPath),
     descriptionPath: path.resolve(descriptionPath),
+    titlePath: path.resolve(titlePath),
   };
 }

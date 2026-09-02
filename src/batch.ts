@@ -29,6 +29,7 @@ for (const entry of entries) {
     console.error(`Done: ${result.projectPath}`);
     console.error(`  chapters: ${result.chaptersPath}`);
     console.error(`  description: ${result.descriptionPath}`);
+    console.error(`  title: ${result.titlePath}`);
     okCount++;
   } catch (err) {
     const message = (err as Error).message;
