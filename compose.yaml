@@ -19,9 +19,12 @@ services:
     # chrome-headless-shell tabs to capture every frame, so this is not optional.
     shm_size: 1gb
 
-    # ~3.9 GB is actually free with the other 16 containers running. Renders should
-    # fit in 3 GB at renderConcurrency 2; raise if a render is OOM-killed.
-    mem_limit: 3g
+    # Measured 6.3 GB free on the lab. Capped rather than uncapped so a runaway render
+    # is killed on its own instead of taking the homelab's other services down; the two
+    # services here are capped at 4g each against 7.6 GB physical plus 4 GB swap, which
+    # only overcommits if both render at once. Since atomicOutput landed, an OOM kill
+    # is merely a failed render, not a corrupt artifact.
+    mem_limit: 4g
 
     volumes:
       # Repo lives on the lab host, so edits and node_modules survive image rebuilds.
@@ -51,7 +54,7 @@ services:
     shm_size: 1gb
     # Idle it needs ~200 MB, but clicking "Run pipeline" renders in this container,
     # so it needs the same headroom as mcsr. Limits are caps, not reservations.
-    mem_limit: 3g
+    mem_limit: 4g
     volumes:
       - /home/homelab/mcsr-vid:/app
       - /home/homelab/mcsr-media:/media
