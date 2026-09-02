@@ -1,0 +1,18 @@
+# The Dockerfile has no COPY, but Docker still tars the whole context and ships it
+# to the daemon on every build. On the lab the repo carries ~700 MB of node_modules
+# (including a 220 MB chrome-headless-shell), which would be uploaded every time.
+node_modules/
+media/
+out/
+dist/
+.git/
+.claude/
+.claude-flow/
+.env
+.env.*
+mcsr-vid.config.json
+remotion/overlay.css
+*.mp4
+*.mkv
+*.webm
+*.mov
