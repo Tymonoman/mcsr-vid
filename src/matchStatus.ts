@@ -18,13 +18,22 @@ export interface MatchStatusEntry {
  * which pipeline stages have already produced their cache-marker file — the same
  * files `runPipeline` (src/pipeline.ts) checks via `existsSync` to skip/reuse a stage.
  */
-export async function listMatchStatuses(): Promise<MatchStatusEntry[]> {
+/**
+ * Match ids that already have a working directory, ascending. Purely a directory
+ * listing — no API calls — so it is safe to call on a hot path such as filtering
+ * suggestions. Use this rather than `listMatchStatuses()` when all you need is "have I
+ * touched this match before?": that function fires one API request per match.
+ */
+export function listProcessedMatchIds(): number[] {
   if (!existsSync(config.mediaDir)) return [];
-
-  const matchIds = readdirSync(config.mediaDir, { withFileTypes: true })
+  return readdirSync(config.mediaDir, { withFileTypes: true })
     .filter((entry) => entry.isDirectory() && /^\d+$/.test(entry.name))
     .map((entry) => Number(entry.name))
     .sort((a, b) => a - b);
+}
+
+export async function listMatchStatuses(): Promise<MatchStatusEntry[]> {
+  const matchIds = listProcessedMatchIds();
 
   return Promise.all(
     matchIds.map(async (matchId): Promise<MatchStatusEntry> => {
