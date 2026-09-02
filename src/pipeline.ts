@@ -14,7 +14,7 @@ import {
 } from "../remotion/layout.js";
 import { computeSplits } from "./overlayProps.js";
 import { buildChapters, formatChapters } from "./chapters.js";
-import { buildDescriptionExtras } from "./description.js";
+import { buildDescription } from "./description.js";
 import { buildTitle, formatTitle } from "./title.js";
 import { renderOverlay } from "./overlayRender.js";
 import { renderThumbnail } from "./thumbnailRender.js";
@@ -335,15 +335,17 @@ export async function runPipeline(input: string, opts: PipelineOptions = {}): Pr
   const chaptersPath = path.join(outDir, `match-${matchId}.chapters.txt`);
   await writeFile(chaptersPath, formatChapters(chapters), "utf8");
 
-  const descriptionExtras = buildDescriptionExtras({
-    leftNickname: leftWindow.playerNickname,
-    rightNickname: rightWindow.playerNickname,
+  const description = buildDescription({
+    matchId,
+    match,
+    userLeft,
+    userRight,
     leftWindow,
     rightWindow,
     chapters,
   });
   const descriptionPath = path.join(outDir, `match-${matchId}.description.txt`);
-  await writeFile(descriptionPath, descriptionExtras, "utf8");
+  await writeFile(descriptionPath, description, "utf8");
 
   const title = buildTitle({
     leftNickname: leftWindow.playerNickname,
