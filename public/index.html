@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MCSR Replayoffs</title>
+<style>
+  /* Monocraft and the palette are the project's real brand assets (CLAUDE.md) --
+     the same font and tokens the overlay and thumbnails use. Not re-invented here. */
+  @font-face { font-family: "Monocraft"; src: url(/Monocraft.ttf) format("truetype"); font-display: swap; }
+
+  :root {
+    --panel: #221f27; --panel-2: #1a1820; --panel-edge: #0d0c10;
+    --panel-edge-light: #3c3844; --crimson: #e2483f; --warped: #35d6c4;
+    --gold: #f0c93d; --quartz: #f3ede2; --muted: #8d8695;
+    --pixel-font: "Monocraft", ui-monospace, "Cascadia Mono", Menlo, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--panel-2); color: var(--quartz);
+    font-family: var(--pixel-font); font-size: 14px; line-height: 1.5;
+  }
+  header {
+    display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+    padding: 14px 18px; background: var(--panel);
+    border-bottom: 2px solid var(--panel-edge);
+  }
+  header h1 { margin: 0; font-size: 18px; letter-spacing: 2px; text-transform: uppercase; }
+  header .dot { color: var(--crimson); }
+  header .meta { color: var(--muted); font-size: 12px; margin-left: auto; }
+
+  main { display: grid; grid-template-columns: minmax(320px, 420px) 1fr; gap: 0; align-items: start; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+
+  #list { border-right: 2px solid var(--panel-edge); min-height: calc(100vh - 52px); }
+  .card {
+    display: grid; grid-template-columns: 112px 1fr; gap: 10px; padding: 10px 12px;
+    border-bottom: 1px solid var(--panel-edge); cursor: pointer;
+  }
+  .card:hover { background: var(--panel); }
+  .card[aria-selected="true"] { background: var(--panel); box-shadow: inset 3px 0 0 var(--warped); }
+  .card img {
+    width: 112px; aspect-ratio: 16/9; object-fit: cover; display: block;
+    background: var(--panel-edge); border: 1px solid var(--panel-edge-light);
+  }
+  .card .who { font-weight: 700; }
+  .card .id { color: var(--muted); font-size: 12px; }
+
+  .stages { display: flex; gap: 3px; margin-top: 6px; }
+  .pip {
+    width: 100%; height: 6px; background: var(--panel-edge-light);
+    border: 1px solid var(--panel-edge);
+  }
+  .pip.done { background: var(--warped); }
+
+  #detail { padding: 18px; }
+  .empty { color: var(--muted); padding: 40px 8px; }
+
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+  button {
+    font-family: inherit; font-size: 13px; padding: 7px 14px; cursor: pointer;
+    color: var(--panel-2); background: var(--gold);
+    border: 2px solid var(--panel-edge); border-bottom-width: 4px;
+  }
+  button:active { border-bottom-width: 2px; transform: translateY(2px); }
+  button:disabled { background: var(--panel-edge-light); color: var(--muted); cursor: not-allowed; }
+  button.ghost { background: transparent; color: var(--quartz); border-color: var(--panel-edge-light); }
+
+  h2 { font-size: 13px; letter-spacing: 1.5px; text-transform: uppercase;
+       color: var(--muted); margin: 22px 0 8px; }
+  textarea, input[type=text] {
+    width: 100%; font-family: inherit; font-size: 13px; padding: 9px;
+    background: var(--panel); color: var(--quartz);
+    border: 1px solid var(--panel-edge-light); resize: vertical;
+  }
+  textarea:focus, input:focus { outline: 2px solid var(--warped); outline-offset: -2px; }
+  .counter { font-size: 12px; color: var(--muted); }
+  .counter.good { color: var(--warped); }
+  .counter.over { color: var(--crimson); }
+  pre {
+    background: var(--panel); border: 1px solid var(--panel-edge-light);
+    padding: 10px; overflow-x: auto; font-size: 12px; margin: 0;
+  }
+
+  #progress { display: none; }
+  #progress.live { display: block; }
+  .stagerow { display: grid; grid-template-columns: 190px 1fr 46px; gap: 10px;
+              align-items: center; margin-bottom: 5px; font-size: 13px; }
+  .bar { height: 12px; background: var(--panel); border: 1px solid var(--panel-edge-light); }
+  .bar > i { display: block; height: 100%; width: 0; background: var(--warped); transition: width .25s; }
+  .stagerow.active .bar > i { background: var(--gold); }
+  .stagerow.error .bar > i { background: var(--crimson); width: 100% !important; }
+  .stagerow .pct { text-align: right; color: var(--muted); }
+  .msg { color: var(--muted); font-size: 12px; min-height: 18px; }
+  .saved { color: var(--warped); font-size: 12px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>MCSR <span class="dot">&#9679;</span> Replayoffs</h1>
+  <span class="meta" id="hostmeta"></span>
+</header>
+
+<main>
+  <section id="list"><div class="empty">Loading&hellip;</div></section>
+  <section id="detail"><div class="empty">Pick a match on the left.</div></section>
+</main>
+
+<script>
+const $ = (s, r = document) => r.querySelector(s);
+let STAGES = { order: [], labels: {} };
+let matches = [];
+let selected = null;
+let stream = null;
+
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
+
+async function api(path, opts) {
+  const res = await fetch(path, opts);
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
+  return res.json();
+}
+
+function renderList() {
+  const el = $("#list");
+  if (!matches.length) { el.innerHTML = '<div class="empty">No matches in mediaDir yet.</div>'; return; }
+  el.innerHTML = matches.map(m => `
+    <div class="card" data-id="${m.matchId}" aria-selected="${selected === m.matchId}">
+      <img src="/api/thumbnail/${m.matchId}" alt="" loading="lazy"
+           onerror="this.style.visibility='hidden'">
+      <div>
+        <div class="who">${esc(m.leftNickname)} vs ${esc(m.rightNickname)}</div>
+        <div class="id">#${m.matchId}</div>
+        <div class="stages">${STAGES.order.map(s =>
+          `<span class="pip ${m.stages[s] ? "done" : ""}" title="${esc(STAGES.labels[s])}"></span>`
+        ).join("")}</div>
+      </div>
+    </div>`).join("");
+  el.querySelectorAll(".card").forEach(c =>
+    c.addEventListener("click", () => select(Number(c.dataset.id))));
+}
+
+function hookCounter(meta) {
+  const input = $("#hook"), out = $("#hookcount");
+  if (!input || !meta.hook) return;
+  const n = input.value.length;
+  const { min, max } = meta.hook;
+  out.textContent = `${n} / ${min}-${max} chars`;
+  out.className = "counter" + (n > max ? " over" : n >= min ? " good" : "");
+  $("#hookpreview").textContent = input.value
+    ? `${input.value} | ${meta.hook.generated}`
+    : meta.hook.placeholder;
+}
+
+async function select(id) {
+  selected = id;
+  renderList();
+  const meta = await api(`/api/meta/${id}`);
+  const m = matches.find(x => x.matchId === id);
+  const rendered = m && m.stages.render;
+
+  $("#detail").innerHTML = `
+    <div class="row">
+      <button id="run">${rendered ? "Re-run pipeline" : "Run pipeline"}</button>
+      <button id="stop" class="ghost">Stop</button>
+      <span class="id">#${id} &mdash; ${esc(meta.leftNickname)} vs ${esc(meta.rightNickname)}</span>
+    </div>
+
+    <div id="progress">
+      ${STAGES.order.map(s => `
+        <div class="stagerow" data-stage="${s}">
+          <span>${esc(STAGES.labels[s])}</span>
+          <span class="bar"><i></i></span>
+          <span class="pct"></span>
+        </div>`).join("")}
+      <div class="msg" id="msg"></div>
+    </div>
+
+    ${meta.hook ? `
+      <h2>Hook <span class="counter" id="hookcount"></span></h2>
+      <input type="text" id="hook" placeholder="The one part worth writing by hand">
+      <pre id="hookpreview" style="margin-top:8px"></pre>` : ""}
+
+    <h2>Title ${meta.titleEdited ? '<span class="saved">(edited)</span>' : ""}</h2>
+    <textarea id="title" rows="4">${esc(meta.title ?? "")}</textarea>
+
+    <h2>Description ${meta.descriptionEdited ? '<span class="saved">(edited)</span>' : ""}</h2>
+    <textarea id="description" rows="14">${esc(meta.description ?? "")}</textarea>
+
+    <div class="row" style="margin-top:12px">
+      <button id="save">Save edits</button><span class="saved" id="savedmsg"></span>
+    </div>
+
+    <h2>Chapters</h2>
+    <pre>${esc(meta.chapters ?? "not generated yet")}</pre>`;
+
+  if (meta.hook) {
+    $("#hook").addEventListener("input", () => hookCounter(meta));
+    hookCounter(meta);
+  }
+
+  $("#run").addEventListener("click", async () => {
+    await api(`/api/render/${id}`, { method: "POST" });
+    watch(id);
+  });
+  $("#stop").addEventListener("click", () => api(`/api/render/${id}`, { method: "DELETE" }));
+  $("#save").addEventListener("click", async () => {
+    await api(`/api/meta/${id}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: $("#title").value, description: $("#description").value }),
+    });
+    $("#savedmsg").textContent = "saved";
+    setTimeout(() => ($("#savedmsg").textContent = ""), 2000);
+  });
+
+  watch(id, true);
+}
+
+function watch(id, quiet) {
+  if (stream) { stream.close(); stream = null; }
+  const box = $("#progress");
+  if (!box) return;
+
+  const src = new EventSource(`/api/progress/${id}`);
+  stream = src;
+
+  src.onmessage = (e) => {
+    box.classList.add("live");
+    const ev = JSON.parse(e.data);
+    const row = box.querySelector(`[data-stage="${ev.stage}"]`);
+    if (!row) return;
+    row.classList.toggle("active", ev.status === "active");
+    row.classList.toggle("error", ev.status === "error");
+    const pct = ev.status === "done" ? 100 : (ev.percent ?? 0);
+    row.querySelector("i").style.width = pct + "%";
+    row.querySelector(".pct").textContent = pct ? pct + "%" : "";
+    if (ev.message) $("#msg").textContent = `${ev.stage}: ${ev.message}`;
+  };
+
+  src.addEventListener("end", (e) => {
+    const { error } = JSON.parse(e.data);
+    $("#msg").textContent = error ? `failed: ${error}` : "done";
+    src.close(); stream = null;
+    refresh();
+  });
+
+  // A 404 just means nothing is running for this match, which is the normal case.
+  src.onerror = () => {
+    src.close();
+    if (stream === src) stream = null;
+    if (quiet) box.classList.remove("live");
+  };
+}
+
+async function refresh() {
+  matches = (await api("/api/matches")).matches;
+  renderList();
+}
+
+(async function init() {
+  $("#hostmeta").textContent = location.host;
+  STAGES = await api("/api/stages");
+  await refresh();
+  if (matches.length) select(matches[0].matchId);
+})();
+</script>
+</body>
+</html>

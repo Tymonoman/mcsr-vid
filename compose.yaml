@@ -35,14 +35,32 @@ services:
       # Keeps the Claude Code subscription login across image rebuilds.
       - claude-config:/home/node/.claude
 
+    # No env_file needed: .env sits in the bind-mounted repo and src/twitch.ts:11-17
+    # loads it natively via process.loadEnvFile, falling through to process.env.
+
+  # Separate service, same image. Kept apart from `mcsr` deliberately: if the
+  # dashboard were that container's command, a crash would restart the container
+  # and take your attached tmux/Claude session with it. Split, each restarts alone.
+  dashboard:
+    image: mcsr-vid
+    container_name: mcsr-dashboard
+    depends_on: [mcsr]
+    command: npm run dashboard
+    restart: unless-stopped
+    working_dir: /app
+    shm_size: 1gb
+    # Idle it needs ~200 MB, but clicking "Run pipeline" renders in this container,
+    # so it needs the same headroom as mcsr. Limits are caps, not reservations.
+    mem_limit: 3g
+    volumes:
+      - /home/homelab/mcsr-vid:/app
+      - /home/homelab/mcsr-media:/media
+      - /home/homelab/media/tymek/mcsr-archive:/archive
     ports:
       # Binds 0.0.0.0 on the host, which includes its Tailscale interface — so the
       # dashboard is reachable at http://actimel:8080 from anywhere on the tailnet
       # with no tailscaled inside the container. Port verified free on the lab.
       - "8080:8080"
-
-    # No env_file needed: .env sits in the bind-mounted repo and src/twitch.ts:11-17
-    # loads it natively via process.loadEnvFile, falling through to process.env.
 
 volumes:
   claude-config:
