@@ -1,5 +1,6 @@
 import { bundle } from "@remotion/bundler";
 import { makeCancelSignal, renderStill, selectComposition } from "@remotion/renderer";
+import { atomicOutput } from "./atomicOutput.js";
 import { computeThumbnailProps } from "./thumbnailProps.js";
 import type { MatchInfo, UserDetails } from "./types.js";
 
@@ -43,13 +44,15 @@ export async function renderThumbnail(args: RenderThumbnailArgs): Promise<Render
 
     const composition = await selectComposition({ serveUrl, id: "Thumbnail", inputProps: renderProps });
 
-    await renderStill({
-      composition,
-      serveUrl,
-      output: args.outPath,
-      inputProps: renderProps,
-      cancelSignal,
-    });
+    await atomicOutput(args.outPath, (output) =>
+      renderStill({
+        composition,
+        serveUrl,
+        output,
+        inputProps: renderProps,
+        cancelSignal,
+      }),
+    );
   } finally {
     args.signal?.removeEventListener("abort", onAbort);
   }

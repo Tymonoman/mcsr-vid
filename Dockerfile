@@ -7,6 +7,7 @@ FROM node:24-bookworm-slim
 # Remotion downloads the shell itself into node_modules/.remotion on first render.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ffmpeg ca-certificates curl git tmux dtach procps \
+      melt frei0r-plugins \
       libnss3 libdbus-1-3 libatk1.0-0 libatk-bridge2.0-0 libasound2 \
       libxrandr2 libxkbcommon0 libxfixes3 libxcomposite1 libxdamage1 \
       libxext6 libxi6 libgbm1 libpango-1.0-0 libcairo2 libcups2 \

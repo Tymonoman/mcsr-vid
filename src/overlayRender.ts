@@ -1,6 +1,7 @@
 import { bundle } from "@remotion/bundler";
 import { makeCancelSignal, renderMedia, renderStill, selectComposition } from "@remotion/renderer";
 import { INTRO_SECONDS } from "../remotion/layout.js";
+import { atomicOutput } from "./atomicOutput.js";
 import { config } from "./config.js";
 import { computeOverlayProps } from "./overlayProps.js";
 import { POST_ROLL_SEC, estimatedRunSec } from "./vodAcquisition.js";
@@ -79,57 +80,63 @@ export async function renderOverlay(args: RenderOverlayArgs): Promise<RenderOver
     // identical video frames — that, plus dropping the empty middle of the frame, is what
     // keeps the render under 10 minutes.
     const topComposition = await selectComposition({ serveUrl, id: "OverlayTop", inputProps: renderProps });
-    await renderStill({
-      composition: topComposition,
-      serveUrl,
-      output: args.topOutPath,
-      imageFormat: "png",
-      inputProps: renderProps,
-      cancelSignal,
-    });
+    await atomicOutput(args.topOutPath, (output) =>
+      renderStill({
+        composition: topComposition,
+        serveUrl,
+        output,
+        imageFormat: "png",
+        inputProps: renderProps,
+        cancelSignal,
+      }),
+    );
 
     const introComposition = await selectComposition({
       serveUrl,
       id: "OverlayIntro",
       inputProps: renderProps,
     });
-    await renderMedia({
-      composition: introComposition,
-      serveUrl,
-      codec: "prores",
-      proResProfile: "4444",
-      imageFormat: "png",
-      pixelFormat: "yuva444p10le",
-      muted: true,
-      ...(config.renderConcurrency !== null ? { concurrency: config.renderConcurrency } : {}),
-      outputLocation: args.introOutPath,
-      inputProps: renderProps,
-      cancelSignal,
-    });
+    await atomicOutput(args.introOutPath, (outputLocation) =>
+      renderMedia({
+        composition: introComposition,
+        serveUrl,
+        codec: "prores",
+        proResProfile: "4444",
+        imageFormat: "png",
+        pixelFormat: "yuva444p10le",
+        muted: true,
+        ...(config.renderConcurrency !== null ? { concurrency: config.renderConcurrency } : {}),
+        outputLocation,
+        inputProps: renderProps,
+        cancelSignal,
+      }),
+    );
 
     const composition = await selectComposition({ serveUrl, id: "OverlayBottom", inputProps: renderProps });
 
-    await renderMedia({
-      composition,
-      serveUrl,
-      codec: "prores",
-      proResProfile: "4444",
-      // Both of these are load-bearing for transparency. Remotion captures frames as JPEG by
-      // default, which has no alpha channel, so the overlay's transparent regions get baked to
-      // black and ffmpeg then silently downgrades the output to ProRes 422 HQ (apch) since the
-      // pixel format carries no alpha. Renders looked fine in isolation but covered the gameplay
-      // with a black rectangle once composited in Kdenlive.
-      imageFormat: "png",
-      pixelFormat: "yuva444p10le",
-      // The overlay is silent; without this Remotion muxes an empty PCM track (~140MB/render).
-      muted: true,
-      ...(config.renderConcurrency !== null ? { concurrency: config.renderConcurrency } : {}),
-      outputLocation: args.outPath,
-      inputProps: renderProps,
-      cancelSignal,
-      onProgress: ({ progress }) =>
-        args.onProgress?.({ phase: "rendering", percent: Math.round(progress * 100) }),
-    });
+    await atomicOutput(args.outPath, (outputLocation) =>
+      renderMedia({
+        composition,
+        serveUrl,
+        codec: "prores",
+        proResProfile: "4444",
+        // Both of these are load-bearing for transparency. Remotion captures frames as JPEG by
+        // default, which has no alpha channel, so the overlay's transparent regions get baked to
+        // black and ffmpeg then silently downgrades the output to ProRes 422 HQ (apch) since the
+        // pixel format carries no alpha. Renders looked fine in isolation but covered the gameplay
+        // with a black rectangle once composited in Kdenlive.
+        imageFormat: "png",
+        pixelFormat: "yuva444p10le",
+        // The overlay is silent; without this Remotion muxes an empty PCM track (~140MB/render).
+        muted: true,
+        ...(config.renderConcurrency !== null ? { concurrency: config.renderConcurrency } : {}),
+        outputLocation,
+        inputProps: renderProps,
+        cancelSignal,
+        onProgress: ({ progress }) =>
+          args.onProgress?.({ phase: "rendering", percent: Math.round(progress * 100) }),
+      }),
+    );
   } finally {
     args.signal?.removeEventListener("abort", onAbort);
   }
