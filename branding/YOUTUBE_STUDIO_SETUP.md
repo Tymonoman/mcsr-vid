@@ -108,22 +108,24 @@ video until it clears — you need custom thumbnails from upload #1.
 This is boilerplate applied to every new upload as a starting point — you
 still edit per-video, but it saves retyping the constant parts.
 
-- [ ] **Description:** paste the reusable footer (disclaimer + feedback
-      line + hashtags) so it's already there when you start each upload —
-      widened from the original 4-hashtag version to match what MCSR
-      Matches/MCSR Vault actually run (checkpoint tags; per-match player
-      tags still get added per-video from the generated description file,
-      not here):
+- [ ] **Description:** leave this **empty**. The pipeline now generates
+      the entire description — opening, chapters, VOD links, disclaimer and
+      hashtags — so anything set here only has to be deleted per upload.
+- [ ] **Hashtags: never use Studio's hashtag chip field.** This is the one
+      that makes you pick each tag from a dropdown. It also lowercases what
+      you enter and double-spaces it into the description, which is exactly
+      what the first four live uploads show
+      (`#mcsrranked  #minecraftspeedrun  ...`). Hashtags typed as plain text
+      in the description body are auto-linked by YouTube with no clicking at
+      all, and the first three still render above the title. The generated
+      description already ends with the three that matter:
       ```
-      MCSR Replayoffs is an independent fan project, not affiliated
-      with MCSR Ranked.
-
-      Spot a sync issue or a stat error? Flag it — this pipeline is
-      actively maintained, not fire-and-forget automation.
-
-      #MCSRRanked #MinecraftSpeedrun #Minecraft #Speedrunning
-      #Nether #Bastion #Fortress #End
+      #MCSRRanked #MCSR #MinecraftSpeedrunning
       ```
+      Three, not ten: over 15 YouTube voids every hashtag on the video, 3-5
+      is the optimum, and only the first three are ever visible. Per-player
+      tags (`#edcr`) were dropped — a nickname hashtag has no search volume
+      of its own and was consuming two of the three visible slots.
 - [ ] **Tags:** `mcsr ranked, minecraft speedrun, minecraft randomizer,
       speedrunning, minecraft 1v1, ranked speedrun`
 - [ ] **Category:** Gaming
@@ -174,12 +176,20 @@ YouTube asks this per upload, but the channel default matters too:
 
 ---
 
-## 7. Playlists (optional at launch)
+## 7. Playlists
 
-Full uncut races with no Shorts means the main channel feed (chronological)
-already does most of the organizing work. Skip playlists at launch;
-consider one per ladder season only once there's enough backlog for it to
-matter.
+One playlist, **`MCSR Ranked 1v1 — Full Races`**, holding every upload in
+chronological order. Add each new video to it at publish time (Studio's
+upload flow has a Playlist picker on the Details step — set it there rather
+than going back afterwards).
+
+This reverses the original "skip playlists at launch" call. The channel
+audit found 77% of views arriving from a single source and no mechanism to
+chain one video into the next; a playlist is what turns an ended video into
+a started one, and session continuation is itself a satisfaction signal.
+
+A second "top bracket" playlist is deliberately deferred — with five uploads
+it would hold one or two videos and chain nothing. Revisit at ~15.
 
 ---
 
@@ -200,40 +210,49 @@ thumbnail generator has produced a thumbnail:
       ```
       Front-load "MCSR Ranked 1v1" + both names within the first ~45
       characters (mobile truncation window). Target 70-100 characters
-      total. Lock this construction pattern instead of reinventing the
+      total — `match-<matchId>.title.txt` generates the names-and-format
+      half and prints the hook budget plus where the finished title lands
+      (e.g. "Replace <HOOK> with 31-47 characters (title lands at
+      70-86)"). Write a hook inside that range; the live titles so far sit
+      at 45-61, under the band that outperforms by 10-14%. Lock this construction pattern instead of reinventing the
       hook's voice per video — upload #1 ("WANNABE vs REAL GOAT...") and
       #2 ("They REALLY think they'll get RANK #1...") already differ in
       style from each other.
 - [ ] **Thumbnail:** upload the generated PNG (requires verification from
       step 3 above).
-- [ ] **Description:** hand-write the top block, then paste the
-      auto-generated block under it — don't retype what the pipeline
-      already computes correctly.
+- [ ] **Description:** paste
+      `media/<matchId>/match-<matchId>.description.txt` as the entire
+      description and edit nothing. Do not add hashtags in Studio (see
+      step 4), and do not hand-write an opening above it.
 
-      Hand-write (title/result/head-to-head aren't reliably computable —
-      DNF reasons and the exact bracket label still need a human):
+      This replaces the old split where the pipeline generated only the
+      lower half and you hand-wrote a keyword-rich block on top. That block
+      was never written once across five uploads, so every live description
+      opened with two raw Twitch URLs — which is the whole 150-200 character
+      "Show more" preview, carrying zero keywords, on a channel where search
+      delivers 1.9% of views. The generator now produces the opening itself:
+
       ```
-      [PlayerA] vs [PlayerB] | MCSR Ranked, [rank/ELO bracket]
-
-      Same-seed 1v1, Random Seed Glitchless. Full race, synced
-      dual-POV, live split comparison.
-
-      Result: [PlayerA] [time/DNF] — [PlayerB] [time/DNF]
-      Head-to-head (Ranked): [PlayerA] [x] – [y] [PlayerB]
-
-      Match data: mcsrranked.com/matches/[id]
+      BeefSalad vs v_strid — MCSR Ranked 1v1, 1788 vs 1765 elo. Full
+      same-seed race, synced dual-POV with live split comparison.
+      Result: v_strid 11:12.
       ```
-      Paste as-is from `media/<matchId>/match-<matchId>.description.txt`
-      (written by `generate-project`, alongside the `.kdenlive` project):
-      watch links deep-linked to the exact match moment in each player's
-      own VOD (`?t=Ns`, same pattern MCSR Matches uses), the chapters
-      block (minimum 3, first at `0:00` — the single biggest recurring
-      SEO gap on both live videos so far, and confirmed absent from all
-      three competitor channels), the independence disclaimer, a
-      feedback-invite line, and a wider hashtag block (format tags +
-      both player names + checkpoint tags — matching what MCSR Matches
-      and MCSR Vault already do, which our old 4-hashtag-only footer
-      didn't).
+
+      Both nicknames land in the first ~20 characters (they are the search
+      terms in this niche) and "MCSR Ranked 1v1" clears the ~50-character
+      mobile truncation. The elo figures are each player's rating *going
+      into that match*, read from `changes[].eloRate - changes[].change`,
+      not their rating today — the same fix §02 of the channel audit
+      applied to the overlay.
+
+      Below the opening: chapters, then the VOD deep links (`?t=Ns`, seeking
+      to the exact match moment in each player's own Twitch VOD), the match
+      data link, the independence disclaimer, the feedback-invite line, and
+      the three hashtags. The "synced dual-POV with live split comparison"
+      clause is load-bearing beyond SEO — it is the only place the
+      description states what the channel *adds*, which is what a YPP
+      reviewer looks for.
+- [ ] **Playlist:** add to `MCSR Ranked 1v1 — Full Races` (see step 7).
 - [ ] **Made for kids:** No (see step 5).
 - [ ] **Visibility:** Schedule (not Publish now) for **Tuesday, 17:00 UTC**
       — the launch anchor time, chosen to land at EU evening prime-time and

@@ -58,10 +58,14 @@ export function buildTitle({ leftNickname, rightNickname }: TitleInput): BuiltTi
 
 /** Renders the paste-and-edit file: the title on its own first line, then how to finish it. */
 export function formatTitle(built: BuiltTitle): string {
+  // Length of everything but the hook, so the guidance can show what the budget actually buys —
+  // the 70-100 band is the target, and a bare character count doesn't say whether you hit it.
+  const base = built.title.length - HOOK_PLACEHOLDER.length;
   return [
     built.title,
     "",
-    `Replace ${HOOK_PLACEHOLDER} with ${built.hookMin}-${built.hookMax} characters.`,
+    `Replace ${HOOK_PLACEHOLDER} with ${built.hookMin}-${built.hookMax} characters ` +
+      `(title lands at ${base + built.hookMin}-${base + built.hookMax}).`,
     `Both nicknames come from the API — don't retype them.`,
   ].join("\n");
 }
