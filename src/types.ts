@@ -144,6 +144,14 @@ export interface MatchInfo {
   bastionType: string | null;
 }
 
+/**
+ * An entry from the `/matches` list endpoint. It carries everything `MatchInfo` does
+ * *except* `timelines` and `completions` — fetch the match by id (`getMatch`) when you
+ * need those. Splitting the type keeps a feed entry from being handed to code that
+ * expects a timeline, which would silently score every match as having no splits.
+ */
+export type FeedMatch = Omit<MatchInfo, "timelines" | "completions">;
+
 export interface VersusResultMap {
   total: number;
   [uuid: string]: number;

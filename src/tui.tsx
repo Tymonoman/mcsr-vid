@@ -12,14 +12,16 @@ import {
 } from "./pipeline.js";
 import { listMatchStatuses, type MatchStatusEntry } from "./matchStatus.js";
 import { readBatchList } from "./batchList.js";
-import { COLORS, Header, StageRow } from "./tuiComponents.js";
+import { formatMetrics } from "./matchScore.js";
+import { dismissSuggestion, getSuggestions, type Suggestion } from "./suggest.js";
+import { COLORS, Header, StageRow, SuggestionRow } from "./tuiComponents.js";
 
 function initialStages(): Record<StageId, StageEvent> {
   const entries = STAGE_ORDER.map((stage) => [stage, { stage, status: "pending" as const }] as const);
   return Object.fromEntries(entries) as Record<StageId, StageEvent>;
 }
 
-type Screen = "input" | "progress" | "summary" | "history" | "batchSummary";
+type Screen = "input" | "progress" | "summary" | "history" | "batchSummary" | "suggestions" | "suggestDetail";
 
 interface BatchItemResult {
   entry: string;
@@ -43,6 +45,14 @@ function App({ signal }: { signal: AbortSignal }) {
   const [batchEntries, setBatchEntries] = useState<string[] | null>(null);
   const [batchIndex, setBatchIndex] = useState(0);
   const [batchResults, setBatchResults] = useState<BatchItemResult[]>([]);
+  const [suggestions, setSuggestions] = useState<Suggestion[] | null>(null);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
+  // Non-fatal degradation (no Twitch credentials, Twitch API down) worth surfacing.
+  const [suggestNote, setSuggestNote] = useState<string | null>(null);
+  const [suggestIndex, setSuggestIndex] = useState(0);
+  const [suggestScanned, setSuggestScanned] = useState(0);
+  // Bumped by the refresh key to force a rescan past the cache TTL.
+  const [suggestNonce, setSuggestNonce] = useState(0);
 
   const openInKdenlive = (projectPath: string) => {
     setKdenliveStatus("opening");
@@ -170,6 +180,37 @@ function App({ signal }: { signal: AbortSignal }) {
     };
   }, [screen]);
 
+  // Suggestions load on mount, not on entering the screen, so the scan (a few seconds of
+  // paging the match feed) overlaps with the operator reading the prompt. Deliberately
+  // not gated on `screen`: typing a match ID stays instant either way.
+  useEffect(() => {
+    let cancelled = false;
+    setSuggestions(null);
+    setSuggestError(null);
+    setSuggestScanned(0);
+    getSuggestions({
+      signal,
+      force: suggestNonce > 0,
+      onProgress: (scanned) => {
+        if (!cancelled) setSuggestScanned(scanned);
+      },
+    })
+      .then((result) => {
+        if (cancelled) return;
+        setSuggestions(result.suggestions);
+        setSuggestNote(result.note);
+        setSuggestIndex(0);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setSuggestError((err as Error).message);
+        setSuggestions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [suggestNonce]);
+
   // Ink puts the terminal in raw mode whenever an input handler is mounted, and raw mode
   // delivers Ctrl+C as the byte \x03 rather than raising SIGINT — so the process-level SIGINT
   // handler below never fires on any screen with a field or key handler. Handle it here, and
@@ -181,11 +222,64 @@ function App({ signal }: { signal: AbortSignal }) {
 
   // Tab, not a letter: ink-text-input passes Tab through untouched, so it can't collide with
   // typing a match URL into the field below.
+  // Shift+Tab for suggestions, plain Tab for history. Both are non-letters, so neither
+  // collides with typing a match URL into the field.
   useInput(
     (_char, key) => {
-      if (key.tab) setScreen("history");
+      if (key.tab && key.shift) setScreen("suggestions");
+      else if (key.tab) setScreen("history");
     },
     { isActive: screen === "input" },
+  );
+
+  useInput(
+    (char, key) => {
+      if (key.escape || char.toLowerCase() === "b") {
+        setScreen("input");
+        return;
+      }
+      if (char.toLowerCase() === "r") {
+        setSuggestNonce((n) => n + 1);
+        return;
+      }
+      const list = suggestions ?? [];
+      if (list.length === 0) return;
+      if (key.upArrow || char === "k") {
+        setSuggestIndex((i) => (i - 1 + list.length) % list.length);
+      } else if (key.downArrow || char === "j") {
+        setSuggestIndex((i) => (i + 1) % list.length);
+      } else if (char.toLowerCase() === "d") {
+        const entry = list[suggestIndex];
+        if (!entry) return;
+        dismissSuggestion(entry.metrics.matchId);
+        const remaining = list.filter((s) => s.metrics.matchId !== entry.metrics.matchId);
+        setSuggestions(remaining);
+        setSuggestIndex((i) => Math.max(0, Math.min(i, remaining.length - 1)));
+      } else if (key.return) {
+        setScreen("suggestDetail");
+      }
+    },
+    { isActive: screen === "suggestions" },
+  );
+
+  useInput(
+    (char, key) => {
+      if (key.escape || char.toLowerCase() === "n") {
+        setScreen("suggestions");
+        return;
+      }
+      if (char.toLowerCase() !== "y") return;
+      const entry = (suggestions ?? [])[suggestIndex];
+      if (!entry) return;
+      // Same hand-off the history screen uses: point the pipeline at the id and let the
+      // existing progress screen drive it.
+      setBatchEntries(null);
+      setInput(String(entry.metrics.matchId));
+      setStages(initialStages());
+      setRunError(null);
+      setScreen("progress");
+    },
+    { isActive: screen === "suggestDetail" },
   );
 
   useInput(
@@ -238,7 +332,17 @@ function App({ signal }: { signal: AbortSignal }) {
           <TextInput value={input} onChange={setInput} onSubmit={handleSubmit} placeholder="12247403" />
         </Box>
         <Box marginTop={1}>
-          <Text color={COLORS.muted}>Tab — recent matches · Ctrl+C — quit</Text>
+          <Text color={COLORS.muted}>Tab — recent matches · </Text>
+          {suggestions === null ? (
+            <Text color={COLORS.muted}>
+              finding matches…{suggestScanned > 0 ? ` (${suggestScanned} scanned)` : ""}
+            </Text>
+          ) : (
+            <Text color={suggestions.length > 0 ? COLORS.warped : COLORS.muted}>
+              Shift+Tab — {suggestions.length} suggestions
+            </Text>
+          )}
+          <Text color={COLORS.muted}> · Ctrl+C — quit</Text>
         </Box>
         {inputError && (
           <Box marginTop={1}>
@@ -270,6 +374,95 @@ function App({ signal }: { signal: AbortSignal }) {
         </Box>
         <Box marginTop={1}>
           <Text color={COLORS.muted}>Tab — browse results in history · Esc quit</Text>
+        </Box>
+      </Box>
+    );
+  }
+
+  if (screen === "suggestions") {
+    return (
+      <Box flexDirection="column">
+        <Header />
+        {suggestions === null ? (
+          <Text color={COLORS.muted}>
+            Scanning the match feed…{suggestScanned > 0 ? ` ${suggestScanned} matches checked` : ""}
+          </Text>
+        ) : suggestions.length === 0 ? (
+          <Text color={COLORS.muted}>
+            No suggestions. Only ranked matches where both players have a Twitch VOD
+            qualify — press r to rescan.
+          </Text>
+        ) : (
+          <Box flexDirection="column">
+            {suggestions.map((suggestion, i) => (
+              <SuggestionRow
+                key={suggestion.metrics.matchId}
+                suggestion={suggestion}
+                selected={i === suggestIndex}
+              />
+            ))}
+          </Box>
+        )}
+        {suggestError && (
+          <Box marginTop={1}>
+            <Text color={COLORS.crimson}>{suggestError}</Text>
+          </Box>
+        )}
+        {suggestNote && (
+          <Box marginTop={1}>
+            <Text color={COLORS.gold}>{suggestNote}</Text>
+          </Box>
+        )}
+        <Box marginTop={1}>
+          <Text color={COLORS.muted}>
+            ↑/↓ select · Enter details · d dismiss · r rescan · Esc back
+          </Text>
+        </Box>
+      </Box>
+    );
+  }
+
+  if (screen === "suggestDetail") {
+    const entry = (suggestions ?? [])[suggestIndex];
+    if (!entry) {
+      return (
+        <Box flexDirection="column">
+          <Header />
+          <Text color={COLORS.muted}>Nothing selected. Esc to go back.</Text>
+        </Box>
+      );
+    }
+    return (
+      <Box flexDirection="column">
+        <Header />
+        <Box
+          borderStyle="round"
+          borderColor={entry.bucket === "close" ? COLORS.lead : COLORS.gold}
+          paddingX={2}
+          flexDirection="column"
+        >
+          {/* Same renderer as `npm run score`, so the two never drift apart. */}
+          {formatMetrics(entry.metrics)
+            .split("\n")
+            .map((line, i) => (
+              <Text key={i} color={COLORS.quartz}>
+                {line}
+              </Text>
+            ))}
+        </Box>
+        <Box marginTop={1} flexDirection="column">
+          <Text color={COLORS.muted}>
+            {entry.bucket === "close" ? "Close race" : "Chaotic run"} · score{" "}
+            {entry.score.toFixed(2)} · popularity {entry.popularity.toFixed(1)}
+          </Text>
+          {entry.vodUrls.map((url) => (
+            <Text key={url} color={COLORS.muted}>
+              {url}
+            </Text>
+          ))}
+        </Box>
+        <Box marginTop={1}>
+          <Text color={COLORS.gold}>Render this match? (y/n)</Text>
         </Box>
       </Box>
     );

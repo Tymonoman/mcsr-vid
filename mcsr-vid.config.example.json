@@ -8,5 +8,24 @@
   "mediaDir": "media",
   "overlayLeadInSec": 20,
   "overlayFps": 30,
-  "renderConcurrency": null
+  "renderConcurrency": null,
+  "suggestCloseSlots": 8,
+  "suggestChaosSlots": 2,
+  "suggestCacheTtlMin": 30,
+  "suggestMaxScanRequests": 40,
+  "suggestDetailFetchLimit": 120,
+  "suggestFastRunTargetSec": 420,
+  "suggestSlowRunCutoffSec": 600,
+  "suggestFollowerWeight": 3,
+  "suggestWeights": {
+    "closeMargin": 3,
+    "closeSplits": 2,
+    "closeMaxLead": 1.5,
+    "closeLeadChanges": 1,
+    "closeSpeed": 1,
+    "chaosDeaths": 3,
+    "chaosLeadChanges": 1.5,
+    "chaosSwing": 2,
+    "chaosSpeed": 0.5
+  }
 }

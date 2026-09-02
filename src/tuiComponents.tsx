@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { Box, Text } from "ink";
+import { formatClock } from "./matchScore.js";
 import { STAGE_LABELS, type StageEvent } from "./pipeline.js";
+import type { Suggestion } from "./suggest.js";
 
 // Pulled straight from remotion/overlay.source.css so the TUI reads as the same brand as the overlay.
 export const COLORS = {
@@ -105,6 +107,44 @@ export function StageRow({ event }: { event: StageEvent }) {
           </Text>
         </Box>
       )}
+    </Box>
+  );
+}
+
+/** Fixed-width so the columns line up down the list; long nicknames are clipped. */
+function pad(text: string, width: number): string {
+  return text.length > width ? `${text.slice(0, width - 1)}…` : text.padEnd(width);
+}
+
+export function SuggestionRow({
+  suggestion,
+  selected,
+}: {
+  suggestion: Suggestion;
+  selected: boolean;
+}) {
+  const { metrics, bucket, score } = suggestion;
+  const isClose = bucket === "close";
+  const margin =
+    metrics.finishMarginMs === null
+      ? "  DNF"
+      : `${(metrics.finishMarginMs / 1000).toFixed(2).padStart(5)}s`;
+  return (
+    <Box>
+      <Text color={COLORS.gold}>{selected ? "❯ " : "  "}</Text>
+      <Text color={isClose ? COLORS.lead : COLORS.gold}>{isClose ? "[CLOSE]" : "[CHAOS]"}</Text>
+      <Text color={selected ? COLORS.quartz : COLORS.muted}>
+        {" "}
+        {metrics.matchId} {pad(`${metrics.players[0]} v ${metrics.players[1]}`, 30)}
+      </Text>
+      <Text color={COLORS.muted}> {formatClock(metrics.resultMs).padStart(9)}</Text>
+      {/* The two numbers that decide whether a match is worth rendering. */}
+      <Text color={isClose ? COLORS.warped : COLORS.muted}> Δ{margin}</Text>
+      <Text color={isClose ? COLORS.muted : COLORS.crimson}>
+        {" "}
+        ☠{String(metrics.deaths).padStart(2)}
+      </Text>
+      <Text color={COLORS.muted}> {score.toFixed(2)}</Text>
     </Box>
   );
 }
