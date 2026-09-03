@@ -32,7 +32,9 @@ const user = (season: ReturnType<typeof bucket>) =>
 
 // A season bucket missing keys entirely must not throw — it's an untrusted API shape.
 {
-  const { scope } = pickStats({ statistics: { season: {}, total: bucket(10, 5, 1) } } as unknown as UserDetails);
+  const { scope } = pickStats({
+    statistics: { season: {}, total: bucket(10, 5, 1) },
+  } as unknown as UserDetails);
   assert.equal(scope, "CAREER");
 }
 
@@ -54,7 +56,11 @@ assert.equal(eloAtMatchStart(match, "edcr", 2615) - eloAtMatchStart(match, "doog
 // Unknown player, or a match with no rating attached, falls back to the live value...
 assert.equal(eloAtMatchStart(match, "nobody", 1234), 1234);
 assert.equal(
-  eloAtMatchStart({ changes: [{ uuid: "edcr", change: null, eloRate: null }] } as unknown as MatchInfo, "edcr", 1234),
+  eloAtMatchStart(
+    { changes: [{ uuid: "edcr", change: null, eloRate: null }] } as unknown as MatchInfo,
+    "edcr",
+    1234,
+  ),
   1234,
 );
 // ...and a null live value degrades to 0 rather than rendering "null ELO".

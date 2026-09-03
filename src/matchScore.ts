@@ -161,11 +161,7 @@ export function computeMetrics(match: MatchInfo): MatchMetrics {
     aMs: dragonA_ms,
     bMs: dragonB_ms,
     gapMs: dragonComparable ? Math.abs(dragonA_ms - dragonB_ms) : null,
-    leader: dragonComparable
-      ? dragonA_ms < dragonB_ms
-        ? playerA.nickname
-        : playerB.nickname
-      : null,
+    leader: dragonComparable ? (dragonA_ms < dragonB_ms ? playerA.nickname : playerB.nickname) : null,
   });
 
   // Signed gap is positive when player A leads, so a sign flip is a lead change and the
