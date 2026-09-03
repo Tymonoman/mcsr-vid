@@ -14,6 +14,10 @@ import type {
 export type { PlayerIdentity, SplitRow };
 export type OverlayProps = Omit<RemotionOverlayProps, "durationInFrames" | "fps">;
 
+// What the overlay puts on screen: a deliberate subset of the milestones matchScore.ts scores.
+// "Bastion" here is arrival (`nether.find_bastion`) and only arrival — the scorer additionally
+// tracks `nether.loot_bastion`, under distinct labels so the two lists can't drift into meaning
+// different things under the same word again.
 const SPLIT_EVENTS: { label: string; type: string }[] = [
   { label: "Nether Enter", type: "story.enter_the_nether" },
   { label: "Bastion", type: "nether.find_bastion" },

@@ -5,13 +5,21 @@ import type { MatchInfo } from "./types.js";
 import { formatTime } from "../remotion/format.js";
 
 /**
- * The seven milestones both players always pass through, in run order. These are the
- * splits the overlay already shows, so a suggestion's split table lines up with the
- * finished video.
+ * Milestones both players pass through, in run order, used to score how close a match was.
+ * Deliberately a superset of the five splits the overlay displays: scoring wants every
+ * comparable moment, while the overlay only has room for the ones viewers track.
+ *
+ * The bastion contributes two, because they measure genuinely different things — a player can
+ * arrive well ahead and still leave together (in match 12730175 they arrived 8.185s apart and
+ * finished looting 1.705s apart), and that convergence is worth scoring. The overlay shows
+ * arrival only, labelled just "Bastion" there. Keep these two labels distinct: one bare
+ * "Bastion" entry meaning `find_bastion` in one list and `loot_bastion` in the other is exactly
+ * how the two silently drifted apart before.
  */
 const SPLITS: ReadonlyArray<{ label: string; type: string }> = [
   { label: "Nether enter", type: "story.enter_the_nether" },
-  { label: "Bastion", type: "nether.find_bastion" },
+  { label: "Bastion enter", type: "nether.find_bastion" },
+  { label: "Bastion loot", type: "nether.loot_bastion" },
   { label: "Fortress", type: "nether.find_fortress" },
   { label: "Blaze rod", type: "nether.obtain_blaze_rod" },
   { label: "Blind travel", type: "projectelo.timeline.blind_travel" },
