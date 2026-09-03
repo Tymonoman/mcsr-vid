@@ -31,7 +31,10 @@ assert.equal(benchmark.finishMarginMs, 1033, "gap between the two dragon_death e
 assert.equal(benchmark.finishEstimated, false, "both players have a real dragon_death event");
 assert.equal(benchmark.deaths, 5);
 assert.deepEqual(benchmark.deathsByPlayer, { edcr: 3, doogile: 2 });
-assert.equal(benchmark.splitsWithin3s, 4, "Bastion, Blind, End enter and Dragon are all <3s");
+// The Bastion split is arrival (`nether.find_bastion`), matching what the overlay shows.
+// In this match the two arrived 8.185s apart but finished looting 1.705s apart, so scoring on
+// arrival counts three close splits here where scoring on loot counted four.
+assert.equal(benchmark.splitsWithin3s, 3, "Blind, End enter and Dragon are all <3s");
 assert.equal(benchmark.comparedSplits, 8, "7 splits plus the dragon, all reached by both");
 assert.equal(benchmark.maxLeadMs, 10086, "widest gap was at the stronghold");
 assert.equal(benchmark.leadChanges, 0, "edcr led every scored split");
@@ -120,7 +123,7 @@ assert.equal(speedBonus(510_000, FAST_SEC, SLOW_SEC), 0.5, "midway between the t
 const text = formatMetrics(benchmark);
 assert.match(text, /Match 12730175 - edcr vs doogile/);
 assert.match(text, /Finish margin : 1\.033s/);
-assert.match(text, /Splits <3s {4}: 4\/8/);
+assert.match(text, /Splits <3s {4}: 3\/8/);
 assert.match(text, /Deaths {8}: 5 \(edcr 3, doogile 2\)/);
 assert.match(formatMetrics(dnf), /Finish margin : DNF/);
 assert.match(formatMetrics(estimatedFinish), /Finish margin : 14\.394s \(estimated\)/);

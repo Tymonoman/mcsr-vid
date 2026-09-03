@@ -8,6 +8,8 @@ import { buildKdenliveProject, type KdenliveClipInput, type KdenliveMarkerInput 
 import {
   BOTTOM_BAND_HEIGHT,
   BOTTOM_BAND_Y,
+  STAGE_HEIGHT,
+  STAGE_WIDTH,
   TOP_BAND_HEIGHT,
   LEFT_POV_RECT,
   RIGHT_POV_RECT,
@@ -22,8 +24,6 @@ import { computeSyncOffset } from "./sync.js";
 import { downloadMatchVods, PRE_ROLL_SEC, type VodWindow } from "./vodAcquisition.js";
 
 const FPS = 60;
-const WIDTH = 1920;
-const HEIGHT = 1080;
 
 export type StageId = "fetch" | "download" | "sync" | "render" | "thumbnail" | "write";
 
@@ -268,7 +268,7 @@ export async function runPipeline(input: string, opts: PipelineOptions = {}): Pr
       durationSec: overlayDurationSec,
       matchOffsetIntoClipSec: config.overlayLeadInSec,
       clipName: "Stat Overlay (top)",
-      positionRect: `0 0 ${WIDTH} ${TOP_BAND_HEIGHT} 1`,
+      positionRect: `0 0 ${STAGE_WIDTH} ${TOP_BAND_HEIGHT} 1`,
       isImage: true,
     },
     {
@@ -276,7 +276,7 @@ export async function runPipeline(input: string, opts: PipelineOptions = {}): Pr
       durationSec: overlayDurationSec,
       matchOffsetIntoClipSec: config.overlayLeadInSec,
       clipName: "Stat Overlay (splits)",
-      positionRect: `0 ${BOTTOM_BAND_Y} ${WIDTH} ${BOTTOM_BAND_HEIGHT} 1`,
+      positionRect: `0 ${BOTTOM_BAND_Y} ${STAGE_WIDTH} ${BOTTOM_BAND_HEIGHT} 1`,
     },
     {
       path: path.resolve(overlayIntroPath),
@@ -319,8 +319,8 @@ export async function runPipeline(input: string, opts: PipelineOptions = {}): Pr
 
   const projectXml = buildKdenliveProject({
     fps: FPS,
-    width: WIDTH,
-    height: HEIGHT,
+    width: STAGE_WIDTH,
+    height: STAGE_HEIGHT,
     leftClip,
     rightClip,
     overlayClips,
