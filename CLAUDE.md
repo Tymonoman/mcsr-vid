@@ -5,6 +5,29 @@ overlaid video (`fetch-match` → `download-vods` → `validate-sync` →
 `render-overlay` → `generate-project`), plus a thumbnail generator. Output
 is published to a YouTube channel, **MCSR Replayoffs**.
 
+## Commands
+
+Every command below was hand-rebuilt more than once in past sessions. Use the
+script, don't reconstruct the shell line. Extra arguments go after `--`.
+
+| Script | What it does |
+| --- | --- |
+| `npm run still -- <Composition> <out.png> [--frame=N] [--props=p.json]` | Render one Remotion frame to PNG — the fast visual check. Rebuilds overlay CSS first. Compositions: `MatchOverlay`, `OverlayTop`, `OverlayBottom`, `OverlayIntro`, `Thumbnail`. |
+| `npm run validate-project -- media/<id>/match-<id>.kdenlive` | Load the generated MLT/Kdenlive XML through the MLT engine. Exit 0 = parses, exit 1 = malformed. |
+| `npm run export:nvenc -- media/<id>/match-<id>.kdenlive [out=N]` | GPU-encode the timeline to `out/export.mp4` via `h264_nvenc`. Append `out=48` to render a short range instead of the whole video. |
+| `npm run analytics -- <videoId> [--traffic-sources] [--days N]` | YouTube Analytics for a published video. |
+
+Three things these scripts do **not** do:
+
+- `validate-project` catches malformed XML only. It exits 0 on a project whose
+  media files are all missing, so it is not a substitute for opening the result
+  in Kdenlive.
+- `export:nvenc` needs an NVIDIA GPU and writes to a fixed `out/export.mp4`.
+  Check support with `ffmpeg -hide_banner -encoders | grep nvenc`.
+- `analytics` shells out to `~/.claude/skills/claude-youtube/`, which lives
+  outside this repo and needs an OAuth token at
+  `~/.claude/.tmp/youtube_oauth_token.json`.
+
 ## Branding (updated 2026-08-09)
 
 The whole project — video overlay, thumbnails, and channel art — shares one
