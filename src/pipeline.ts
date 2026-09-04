@@ -216,8 +216,10 @@ async function runStages(
   }
 
   emit(active("sync"));
+  let leftOffsetSec = leftWindow.matchOffsetIntoClipSec;
   let rightOffsetSec = rightWindow.matchOffsetIntoClipSec;
   let syncConfidence: number | undefined;
+  let syncDetail = "not run";
   try {
     const sync = await computeSyncOffset(
       leftWindow.path,
@@ -227,15 +229,16 @@ async function runStages(
       signal,
     );
     syncConfidence = sync.confidence;
+    syncDetail = sync.detail;
     if (sync.confidence >= config.syncConfidenceThreshold) {
+      // BOTH offsets, not just the right one. The left clip used to be trusted as-is, which was
+      // survivable while the editor aligned the timeline by hand — now that timeline zero is the
+      // thump, an error in the left clip's estimate moves the whole published video.
+      leftOffsetSec = sync.clipACueTimeSec;
       rightOffsetSec = sync.clipBCueTimeSec;
-      emit(done("sync", { message: `confidence ${sync.confidence.toFixed(3)} (refined)` }));
+      emit(done("sync", { message: sync.detail }));
     } else {
-      emit(
-        warn("sync", {
-          message: `confidence ${sync.confidence.toFixed(3)} (too low, kept coarse offset)`,
-        }),
-      );
+      emit(warn("sync", { message: `kept coarse offsets — ${sync.detail}` }));
     }
   } catch (err) {
     emit(warn("sync", { message: `refinement failed: ${describeError(err)}` }));
@@ -325,7 +328,7 @@ async function runStages(
   const leftClip: KdenliveClipInput = {
     path: path.resolve(leftWindow.path),
     durationSec: leftDurationSec,
-    matchOffsetIntoClipSec: leftWindow.matchOffsetIntoClipSec,
+    matchOffsetIntoClipSec: leftOffsetSec,
     clipName: `${leftWindow.playerNickname} POV`,
     positionRect: LEFT_POV_RECT,
   };
@@ -390,7 +393,7 @@ async function runStages(
     const lowConfidence = syncConfidence < config.syncConfidenceThreshold;
     markers.push({
       positionSec: ANCHOR_SEC,
-      comment: `Match start · sync confidence ${(syncConfidence * 100).toFixed(0)}%${lowConfidence ? " — LOW, verify alignment" : ""}`,
+      comment: `Match start · sync ${(syncConfidence * 100).toFixed(0)}% — ${syncDetail}${lowConfidence ? " — LOW, verify alignment" : ""}`,
     });
   }
 
