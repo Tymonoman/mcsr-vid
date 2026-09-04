@@ -14,11 +14,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "./config.js";
 import { describeError } from "./errorText.js";
+import { buildHookSuggestions, suggestHooksExternally } from "./hooks.js";
+import { computeMetrics } from "./matchScore.js";
 import { listMatchStatuses, matchStatusFor } from "./matchStatus.js";
-import { parseMatchId } from "./mcsrApi.js";
+import { getMatch, getUser, parseMatchId } from "./mcsrApi.js";
 import { runPipeline, STAGE_LABELS, STAGE_ORDER, type StageEvent, type StageId } from "./pipeline.js";
 import { dismiss, snapshot, startScan } from "./suggestScan.js";
-import { buildTitle } from "./title.js";
+import { buildTitle, type BuiltTitle } from "./title.js";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -92,9 +94,11 @@ async function readMeta(matchId: number) {
   // The hook is the one part a human writes (src/title.ts:5). buildTitle also returns the
   // character budget that keeps the title in the 70-100 band while leaving both nicknames
   // above YouTube's ~50-char mobile cutoff, which is what the editor counts against.
-  const budget = entry
-    ? buildTitle({ leftNickname: entry.leftNickname, rightNickname: entry.rightNickname })
-    : null;
+  const budget = buildTitle({
+    leftNickname: entry.leftNickname,
+    rightNickname: entry.rightNickname,
+  });
+  const hookSuggestions = await readHookSuggestions(matchId, budget);
 
   return {
     matchId,
@@ -105,11 +109,13 @@ async function readMeta(matchId: number) {
     description: (await readIfPresent(description.edited)) ?? (await readIfPresent(description.generated)),
     descriptionEdited: existsSync(description.edited),
     chapters: await readIfPresent(chaptersPath),
-    hook: budget && {
+    hook: {
       generated: budget.generated,
       placeholder: budget.title,
       min: budget.hookMin,
       max: budget.hookMax,
+      /** Ranked openers built from the match's own numbers; empty when the match is unreadable. */
+      suggestions: hookSuggestions,
     },
     matchUrl: `${MCSR_MATCH_URL}${matchId}`,
     /** Why the entry is degraded (API unreachable), or null. Surfaced so "?" is never a lie. */
@@ -121,6 +127,33 @@ async function readMeta(matchId: number) {
      */
     outputs: outputPaths(matchId, entry.projectPath),
   };
+}
+
+/**
+ * Hook candidates for the title editor. Costs one more MCSR request than the metadata read
+ * alone, because the openers are built from splits and deaths that only the full match carries;
+ * a failure degrades to no suggestions rather than failing the whole metadata response, since
+ * the title and description are still perfectly editable without them.
+ */
+async function readHookSuggestions(matchId: number, budget: BuiltTitle): Promise<string[]> {
+  try {
+    const match = await getMatch(matchId);
+    const [left, right] = match.players;
+    if (!left || !right) return [];
+    const [userLeft, userRight] = await Promise.all([getUser(left.uuid), getUser(right.uuid)]);
+    const input = {
+      metrics: computeMetrics(match),
+      match,
+      userLeft,
+      userRight,
+      maxChars: budget.hookMax,
+      minChars: budget.hookMin,
+    };
+    return (await suggestHooksExternally(input)) ?? buildHookSuggestions(input);
+  } catch (err) {
+    console.error(`hook suggestions unavailable for ${matchId}: ${describeError(err)}`);
+    return [];
+  }
 }
 
 /** Absolute paths of the run's artifacts, each null until the stage that writes it has run. */

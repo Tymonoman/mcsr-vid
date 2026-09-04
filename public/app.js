@@ -119,7 +119,14 @@ async function select(id) {
       meta.hook
         ? `
       <h2>Hook <span class="counter" id="hookcount"></span></h2>
-      <input type="text" id="hook" placeholder="The one part worth writing by hand">
+      <input type="text" id="hook" placeholder="${esc(meta.hook.suggestions[0] ?? "The one part worth writing by hand")}">
+      ${
+        meta.hook.suggestions.length
+          ? `<div class="chips">${meta.hook.suggestions
+              .map((s) => `<button type="button" class="chip">${esc(s)}</button>`)
+              .join("")}</div>`
+          : ""
+      }
       <pre id="hookpreview" style="margin-top:8px"></pre>`
         : ""
     }
@@ -142,6 +149,17 @@ async function select(id) {
 
   if (meta.hook) {
     $("#hook").addEventListener("input", () => hookCounter(meta));
+    // A chip fills the field rather than committing anything: the suggestion is a starting
+    // point to edit, which is the whole reason the hook is hand-written in the first place.
+    $("#detail")
+      .querySelectorAll(".chip")
+      .forEach((chip) =>
+        chip.addEventListener("click", () => {
+          $("#hook").value = chip.textContent;
+          hookCounter(meta);
+          $("#hook").focus();
+        }),
+      );
     hookCounter(meta);
   }
 

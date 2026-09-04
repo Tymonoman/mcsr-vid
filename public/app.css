@@ -451,3 +451,28 @@ pre {
 .outputs .missing {
   color: var(--muted);
 }
+
+/* --- Hook suggestions ---------------------------------------------------------------------- */
+/* Facts from the match, phrased as openers. Clicking one fills the field to edit rather than
+   committing it -- the hook is hand-written on purpose. */
+.chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.chip {
+  background: transparent;
+  color: var(--warped);
+  border: 1px solid var(--panel-edge-light);
+  border-bottom-width: 1px;
+  font-size: 12px;
+  padding: 4px 9px;
+}
+.chip:hover {
+  border-color: var(--warped);
+}
+.chip:active {
+  transform: none;
+  border-bottom-width: 1px;
+}
