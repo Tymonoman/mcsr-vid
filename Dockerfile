@@ -19,6 +19,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux \
       -o /usr/local/bin/yt-dlp && chmod a+rx /usr/local/bin/yt-dlp
 
+# Only the claude-youtube skill needs these, and only for `npm run analytics`. ~140 MB, which is
+# most of what python adds here — drop this layer if you never run analytics on the lab.
+# --break-system-packages because bookworm marks the system python externally-managed (PEP 668);
+# a venv would be the answer on a real host, but this is a single-purpose container.
+RUN pip3 install --no-cache-dir --break-system-packages \
+      google-api-python-client google-auth-oauthlib
+
 RUN npm install -g @anthropic-ai/claude-code
 
 # Installed as root but run as node, so `claude doctor` reports it cannot
@@ -69,8 +76,15 @@ RUN printf '%s\n' \
 # measured and is a non-issue: every service a Kdenlive save uses here
 # (audiolevel, avformat-novalidate, color, mix, panner, qimage, qtblend, volume)
 # exists in 7.12.
+# rsync is not optional: src/archive.ts and `npm run archive` both shell out to it to copy a
+# published match to the NAS, and it is preferred over cp precisely because the CIFS mount can
+# I/O-error mid-write. Without it, archiving fails with ENOENT after every upload.
+#
+# python3 is needed by `npm run analytics` (which shells into the claude-youtube skill),
+# branding/generate_brand_assets.py, and src/hooks.test.ts, which uses it to stand up a fake
+# HOOK_SUGGEST_CMD. The repo's own YouTube code is plain fetch and needs none of this.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      sudo xvfb xauth \
+      sudo xvfb xauth rsync python3 python3-pip \
       intel-media-va-driver i965-va-driver libva2 libva-drm2 vainfo \
     && echo 'node ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/node \
     && chmod 0440 /etc/sudoers.d/node \
