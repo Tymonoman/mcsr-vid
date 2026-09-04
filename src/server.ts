@@ -14,12 +14,17 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "./config.js";
 import { describeError } from "./errorText.js";
-import { listMatchStatuses } from "./matchStatus.js";
+import { listMatchStatuses, matchStatusFor } from "./matchStatus.js";
+import { parseMatchId } from "./mcsrApi.js";
 import { runPipeline, STAGE_LABELS, STAGE_ORDER, type StageEvent, type StageId } from "./pipeline.js";
+import { dismiss, snapshot, startScan } from "./suggestScan.js";
 import { buildTitle } from "./title.js";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
+
+/** Same match page the generated description links to (src/description.ts). */
+const MCSR_MATCH_URL = "https://mcsrranked.com/matches/";
 
 /**
  * A render in flight. Events are retained so a browser that connects late — or
@@ -76,8 +81,9 @@ function metaPaths(matchId: number, kind: "title" | "description") {
 }
 
 async function readMeta(matchId: number) {
-  const statuses = await listMatchStatuses();
-  const entry = statuses.find((s) => s.matchId === matchId);
+  // One API request, not one per existing match directory: this used to go through
+  // listMatchStatuses purely to read two nicknames for the hook budget.
+  const entry = await matchStatusFor(matchId);
 
   const title = metaPaths(matchId, "title");
   const description = metaPaths(matchId, "description");
@@ -105,6 +111,69 @@ async function readMeta(matchId: number) {
       min: budget.hookMin,
       max: budget.hookMax,
     },
+    matchUrl: `${MCSR_MATCH_URL}${matchId}`,
+    /** Why the entry is degraded (API unreachable), or null. Surfaced so "?" is never a lie. */
+    error: entry.error,
+    /**
+     * Where the run actually put things. The TUI's success summary lists all of these and the
+     * dashboard showed none, so the one artifact you open by hand — the Kdenlive project — was
+     * the one thing it could not tell you the path of.
+     */
+    outputs: outputPaths(matchId, entry.projectPath),
+  };
+}
+
+/** Absolute paths of the run's artifacts, each null until the stage that writes it has run. */
+function outputPaths(matchId: number, projectPath: string | null) {
+  const dir = matchDir(matchId);
+  const ifPresent = (p: string) => (existsSync(p) ? path.resolve(p) : null);
+  return {
+    project: projectPath,
+    title: ifPresent(metaPaths(matchId, "title").generated),
+    description: ifPresent(metaPaths(matchId, "description").generated),
+    chapters: ifPresent(path.join(dir, `match-${matchId}.chapters.txt`)),
+    overlay: ifPresent(path.join(dir, "overlay.mov")),
+    thumbnail: ifPresent(path.join(dir, "thumbnail.png")),
+    // Written by `npm run validate-sync`, never by the pipeline — worth surfacing because it is
+    // the only artifact that lets you eyeball whether the audio sync actually landed.
+    syncPreview: ifPresent(path.join(dir, "sync-preview.mp4")),
+  };
+}
+
+/**
+ * A suggestion as the browser needs it: the numbers the TUI's row shows, plus the links it only
+ * ever printed as plain text. The mcsrranked URL is built here rather than in the page so the
+ * one already in every generated description (src/description.ts) stays the single definition.
+ */
+function suggestionsPayload() {
+  const state = snapshot();
+  const suggestions = (state.result?.suggestions ?? []).map((s) => ({
+    matchId: s.metrics.matchId,
+    players: s.metrics.players,
+    winner: s.metrics.winner,
+    bucket: s.bucket,
+    score: s.score,
+    popularity: s.popularity,
+    resultMs: s.metrics.resultMs,
+    finishMarginMs: s.metrics.finishMarginMs,
+    finishEstimated: s.metrics.finishEstimated,
+    leadChanges: s.metrics.leadChanges,
+    deaths: s.metrics.deaths,
+    dateSec: s.dateSec,
+    matchUrl: `${MCSR_MATCH_URL}${s.metrics.matchId}`,
+    vodUrls: s.vodUrls,
+  }));
+
+  return {
+    suggestions,
+    scanning: state.scanning,
+    error: state.error,
+    scanned: state.scanned,
+    candidates: state.candidates,
+    scannedAtMs: state.scannedAtMs,
+    note: state.result?.note ?? null,
+    usedTwitchFollowers: state.result?.usedTwitchFollowers ?? false,
+    stats: state.result?.stats ?? null,
   };
 }
 
@@ -247,6 +316,53 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    // Render a match that has no working directory yet. Without this the dashboard could only
+    // re-run matches already on disk, so starting a new one meant being at the homelab with the
+    // TUI open — the single biggest gap against the TUI it is meant to replace.
+    if (resource === "render" && idRaw === undefined && req.method === "POST") {
+      const body = JSON.parse(await readBody(req)) as { input?: unknown };
+      if (typeof body.input !== "string" || body.input.trim() === "") {
+        json(res, 400, { error: "expected { input: \"<match id or mcsrranked URL>\" }" });
+        return;
+      }
+      // parseMatchId accepts a bare id or any URL ending in one, and throws with the offending
+      // text; startJob's own id is re-derived from it so the digits-only path guard still holds.
+      let parsed: number;
+      try {
+        parsed = parseMatchId(body.input.trim());
+      } catch (err) {
+        json(res, 400, { error: describeError(err) });
+        return;
+      }
+      const job = startJob(parsed);
+      json(res, 202, { matchId: parsed, running: !job.done });
+      return;
+    }
+
+    if (resource === "suggestions" && idRaw === undefined && req.method === "GET") {
+      json(res, 200, suggestionsPayload());
+      return;
+    }
+
+    if (resource === "suggestions" && idRaw === "rescan" && req.method === "POST") {
+      // Past the cache TTL the scan is the expensive part (dozens of feed pages against a
+      // 500-per-10-minute budget), so this is deliberately manual, as `r` is in the TUI.
+      void startScan(true);
+      json(res, 202, suggestionsPayload());
+      return;
+    }
+
+    if (resource === "suggestions" && req.method === "DELETE") {
+      const dismissId = parseId(idRaw);
+      if (dismissId === null) {
+        json(res, 400, { error: "match id must be digits" });
+        return;
+      }
+      dismiss(dismissId);
+      json(res, 200, suggestionsPayload());
+      return;
+    }
+
     const matchId = parseId(idRaw);
     if (matchId === null) {
       json(res, 400, { error: "match id must be digits" });
@@ -305,4 +421,8 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, "0.0.0.0", () => {
   console.error(`mcsr-vid dashboard on http://0.0.0.0:${PORT}  (mediaDir: ${config.mediaDir})`);
+  // Warm the suggestions in the background, as the TUI does on mount. A cold scan pages the
+  // MCSR feed dozens of times, so waiting until someone asks means waiting a minute for an
+  // answer; a fresh cache returns immediately and this costs nothing.
+  void startScan();
 });

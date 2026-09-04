@@ -66,7 +66,7 @@ main {
   }
 }
 
-#list {
+#left {
   border-right: 2px solid var(--panel-edge);
   min-height: calc(100vh - 52px);
 }
@@ -320,4 +320,134 @@ pre {
 #failure .actions {
   padding: 8px 10px;
   border-top: 1px solid var(--panel-edge-light);
+}
+
+/* --- Match entry: the reason the dashboard exists away from the homelab ------------------ */
+.entry {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex: 1 1 320px;
+  max-width: 520px;
+}
+.entry input {
+  flex: 1;
+  padding: 6px 9px;
+}
+.entry .err {
+  color: var(--crimson);
+  font-size: 12px;
+}
+
+/* --- Left column tabs -------------------------------------------------------------------- */
+.tabs {
+  display: flex;
+  border-bottom: 2px solid var(--panel-edge);
+}
+.tabs button {
+  flex: 1;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  padding: 10px 6px;
+}
+.tabs button[aria-selected="true"] {
+  color: var(--quartz);
+  border-bottom-color: var(--warped);
+}
+.tabs button:active {
+  transform: none;
+}
+
+/* --- Suggestions -------------------------------------------------------------------------- */
+.scanline {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--panel-edge);
+}
+.scanline.bad {
+  color: var(--crimson);
+}
+.sugg {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--panel-edge);
+}
+.sugg .top {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.sugg .who {
+  font-weight: 700;
+}
+/* Two buckets ranked separately so a run of very tight matches cannot crowd out the funny
+   ones -- the colours keep that split visible rather than implying one ordering. */
+.sugg .bucket {
+  font-size: 10px;
+  letter-spacing: 1px;
+  padding: 1px 5px;
+  border: 1px solid currentColor;
+}
+.sugg .bucket.close {
+  color: var(--warped);
+}
+.sugg .bucket.chaos {
+  color: var(--gold);
+}
+.sugg .facts {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+.sugg .links {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+  font-size: 12px;
+}
+.sugg a {
+  color: var(--warped);
+}
+.sugg .acts {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.sugg .acts button {
+  padding: 4px 10px;
+  font-size: 12px;
+  border-bottom-width: 3px;
+}
+
+/* --- Output paths ------------------------------------------------------------------------- */
+.outputs {
+  font-size: 12px;
+  border: 1px solid var(--panel-edge-light);
+  background: var(--panel);
+}
+.outputs div {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 8px;
+  padding: 5px 9px;
+  border-bottom: 1px solid var(--panel-edge);
+}
+.outputs div:last-child {
+  border-bottom: 0;
+}
+.outputs .k {
+  color: var(--muted);
+}
+.outputs .v {
+  overflow-wrap: anywhere;
+}
+.outputs .missing {
+  color: var(--muted);
 }

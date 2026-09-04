@@ -13,12 +13,27 @@
 
 <header>
   <h1>MCSR <span class="dot">&#9679;</span> Replayoffs</h1>
+  <!-- In the header rather than in a panel: starting a match is the whole reason for reaching
+       this page from a phone, so it must not be behind a tab. -->
+  <form class="entry" id="entry">
+    <input type="text" id="entryinput" placeholder="Match ID or mcsrranked.com URL"
+           aria-label="Match ID or mcsrranked.com URL">
+    <button type="submit">Render</button>
+  </form>
+  <span class="err" id="entryerr"></span>
   <span class="meta" id="hostmeta"></span>
 </header>
 
 <main>
-  <section id="list"><div class="empty">Loading&hellip;</div></section>
-  <section id="detail"><div class="empty">Pick a match on the left.</div></section>
+  <section id="left">
+    <div class="tabs" role="tablist">
+      <button id="tab-suggestions" role="tab" aria-selected="true">Suggestions</button>
+      <button id="tab-matches" role="tab" aria-selected="false">Rendered</button>
+    </div>
+    <div id="suggestions"><div class="empty">Scanning&hellip;</div></div>
+    <div id="list" hidden><div class="empty">Loading&hellip;</div></div>
+  </section>
+  <section id="detail"><div class="empty">Pick a match, or paste an ID above.</div></section>
 </main>
 
 <script src="/app.js"></script>

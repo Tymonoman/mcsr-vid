@@ -135,7 +135,10 @@ async function select(id) {
     </div>
 
     <h2>Chapters</h2>
-    <pre>${esc(meta.chapters ?? "not generated yet")}</pre>`;
+    <pre>${esc(meta.chapters ?? "not generated yet")}</pre>
+
+    <h2>Outputs</h2>
+    ${outputsHtml(meta.outputs)}`;
 
   if (meta.hook) {
     $("#hook").addEventListener("input", () => hookCounter(meta));
@@ -159,6 +162,33 @@ async function select(id) {
   });
 
   watch(id, true);
+}
+
+/**
+ * Where the run put things. The TUI's success summary lists all of these; the dashboard listed
+ * none, so the one file you actually open by hand — the Kdenlive project — had no visible path.
+ * These are container-side paths, hence text rather than links.
+ */
+const OUTPUT_LABELS = {
+  project: "Kdenlive",
+  overlay: "Overlay",
+  thumbnail: "Thumbnail",
+  title: "Title",
+  description: "Description",
+  chapters: "Chapters",
+  syncPreview: "Sync preview",
+};
+
+function outputsHtml(outputs) {
+  if (!outputs) return '<div class="empty">nothing written yet</div>';
+  return `<div class="outputs">${Object.entries(OUTPUT_LABELS)
+    .map(
+      ([key, label]) =>
+        `<div><span class="k">${label}</span><span class="v${outputs[key] ? "" : " missing"}">${
+          outputs[key] ? esc(outputs[key]) : "&mdash;"
+        }</span></div>`,
+    )
+    .join("")}</div>`;
 }
 
 function showFailure(title, text) {
@@ -250,9 +280,123 @@ async function refresh() {
   renderList();
 }
 
+/* --- Suggestions ------------------------------------------------------------------------- */
+
+let suggestPoll = null;
+
+const clock = (ms) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, "0")}`;
+
+function renderSuggestions(data) {
+  const el = $("#suggestions");
+  $("#tab-suggestions").textContent = `Suggestions${data.suggestions.length ? ` (${data.suggestions.length})` : ""}`;
+
+  // A failed scan keeps whatever list it had: a stale suggestion is still a renderable match.
+  const scan = data.scanning
+    ? `<div class="scanline">scanning&hellip; ${data.scanned} matches, ${data.candidates} with two VODs</div>`
+    : data.error
+      ? `<div class="scanline bad">scan failed: ${esc(data.error)}</div>`
+      : data.note
+        ? `<div class="scanline">${esc(data.note)}</div>`
+        : "";
+
+  if (!data.suggestions.length) {
+    el.innerHTML = scan + `<div class="empty">${data.scanning ? "" : "Nothing suggested yet."}</div>`;
+    return;
+  }
+
+  el.innerHTML =
+    scan +
+    data.suggestions
+      .map((s) => {
+        // DNF: the loser usually stops once the winner is done, so there is no gap to report.
+        const margin =
+          s.finishMarginMs === null
+            ? "DNF"
+            : `${(s.finishMarginMs / 1000).toFixed(1)}s${s.finishEstimated ? "*" : ""}`;
+        return `
+      <div class="sugg" data-id="${s.matchId}">
+        <div class="top">
+          <span class="bucket ${s.bucket}">${s.bucket.toUpperCase()}</span>
+          <span class="who">${esc(s.players[0])} vs ${esc(s.players[1])}</span>
+        </div>
+        <div class="facts">
+          ${clock(s.resultMs)} &middot; &Delta;${margin} &middot; ${s.leadChanges} lead changes
+          &middot; &#9760;${s.deaths} &middot; score ${s.score.toFixed(2)}
+        </div>
+        <div class="links">
+          <a href="${esc(s.matchUrl)}" target="_blank" rel="noopener">mcsrranked #${s.matchId}</a>
+          ${s.vodUrls.map((u, i) => `<a href="${esc(u)}" target="_blank" rel="noopener">VOD ${i + 1}</a>`).join("")}
+        </div>
+        <div class="acts">
+          <button data-act="render">Render this</button>
+          <button data-act="dismiss" class="ghost">Dismiss</button>
+        </div>
+      </div>`;
+      })
+      .join("");
+
+  el.querySelectorAll(".sugg").forEach((row) => {
+    const id = Number(row.dataset.id);
+    row.querySelector('[data-act="render"]').addEventListener("click", () => startRender(String(id)));
+    row.querySelector('[data-act="dismiss"]').addEventListener("click", async () => {
+      renderSuggestions(await api(`/api/suggestions/${id}`, { method: "DELETE" }));
+    });
+  });
+}
+
+async function pollSuggestions() {
+  const data = await api("/api/suggestions");
+  renderSuggestions(data);
+  clearTimeout(suggestPoll);
+  // Only while a scan is in flight — the result is cached for suggestCacheTtlMin afterwards,
+  // so polling a settled list would just burn requests.
+  if (data.scanning) suggestPoll = setTimeout(pollSuggestions, 2000);
+}
+
+/* --- Starting a match by id ---------------------------------------------------------------- */
+
+async function startRender(input) {
+  const err = $("#entryerr");
+  err.textContent = "";
+  try {
+    const { matchId } = await api("/api/render", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ input }),
+    });
+    // The match may have no working directory yet, so it is not in `matches` — refresh first so
+    // select() can find it, then fall back to watching the id directly.
+    await refresh();
+    await select(matchId);
+    watch(matchId);
+  } catch (e) {
+    err.textContent = e.message;
+  }
+}
+
+function showTab(which) {
+  const suggestions = which === "suggestions";
+  $("#suggestions").hidden = !suggestions;
+  $("#list").hidden = suggestions;
+  $("#tab-suggestions").setAttribute("aria-selected", String(suggestions));
+  $("#tab-matches").setAttribute("aria-selected", String(!suggestions));
+}
+
 (async function init() {
   $("#hostmeta").textContent = location.host;
   STAGES = await api("/api/stages");
+
+  $("#entry").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const value = $("#entryinput").value.trim();
+    if (value) startRender(value);
+  });
+  $("#tab-suggestions").addEventListener("click", () => showTab("suggestions"));
+  $("#tab-matches").addEventListener("click", () => showTab("matches"));
+
   await refresh();
   if (matches.length) select(matches[0].matchId);
+  // Not awaited: the first scan can take a minute against a cold cache, and the rendered-match
+  // list is usable immediately.
+  pollSuggestions().catch((e) => ($("#suggestions").innerHTML = `<div class="scanline bad">${esc(e.message)}</div>`));
 })();
