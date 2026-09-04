@@ -53,18 +53,27 @@ export interface StageEvent {
  */
 export type PhaseWeights<P extends string> = Record<P, readonly [number, number]>;
 
+/**
+ * The order the overlay render actually runs its sub-steps in. Exported so the weight bands and
+ * the test that checks they tile read the same list — the test used to repeat it by hand, and
+ * silently stopped covering a phase the moment one was added.
+ */
+export const RENDER_PHASE_ORDER = ["bundling", "top", "splits", "intro", "rendering"] as const;
+
 export const RENDER_PHASE_WEIGHTS: PhaseWeights<RenderProgress["phase"]> = {
-  bundling: [0, 10],
-  top: [10, 15],
-  intro: [15, 30],
-  rendering: [30, 100],
+  bundling: [0, 8],
+  top: [8, 12],
+  splits: [12, 22],
+  intro: [22, 35],
+  rendering: [35, 100],
 };
 
 export const RENDER_PHASE_LABELS: Record<RenderProgress["phase"], string> = {
   bundling: "bundling",
   top: "top band",
+  splits: "splits stills",
   intro: "intro card",
-  rendering: "splits band",
+  rendering: "RTA timer",
 };
 
 export const THUMBNAIL_PHASE_WEIGHTS: PhaseWeights<ThumbnailProgress["phase"]> = {

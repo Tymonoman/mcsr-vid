@@ -19,9 +19,6 @@ const [userLeft, userRight, versus] = await Promise.all([
 ]);
 
 const outDir = path.join(config.mediaDir, String(matchId));
-const outPath = path.join(outDir, "overlay.mov");
-const topOutPath = path.join(outDir, "overlay-top.png");
-const introOutPath = path.join(outDir, "overlay-intro.mov");
 
 console.error(`Rendering overlay for match ${matchId}...`);
 
@@ -30,11 +27,9 @@ const result = await renderOverlay({
   userLeft,
   userRight,
   versus,
-  outPath,
-  topOutPath,
-  introOutPath,
+  outDir,
   onProgress: (p) => console.error(`  ${p.phase}: ${p.percent}%`),
 });
 
-console.error(`Done: ${outPath}`);
+console.error(`Done: ${result.timerPath} (+ ${result.splits.length} split stills)`);
 console.log(JSON.stringify(result, null, 2));

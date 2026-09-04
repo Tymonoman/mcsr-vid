@@ -7,7 +7,7 @@ import { resolveSplitSide, compareSplitSides, type SplitSideState } from "./reso
 import { Intro } from "./Intro.js";
 import { PixelBadge } from "./PixelBadge.js";
 import { BastionIcon } from "./BastionIcon.js";
-import { STAGE_WIDTH, STAGE_HEIGHT, BOTTOM_BAND_Y } from "./layout.js";
+import { STAGE_WIDTH, STAGE_HEIGHT, BOTTOM_BAND_Y, RTA_COL_X } from "./layout.js";
 import { resolveAchievementIcon } from "./achievementBadges.js";
 
 /** Up to 3 highlighted-achievement badges for one player, shown in the splits panel.
@@ -234,22 +234,43 @@ export const Overlay: FC<OverlayProps> = (props) => {
 // The overlay's content only occupies a band at the top and a band at the bottom; the ~524px
 // between them is transparent, and rendering it cost ~half of every frame. These split the
 // same layout into separately-rendered strips (see src/overlayRender.ts).
-export { TOP_BAND_HEIGHT, BOTTOM_BAND_HEIGHT, BOTTOM_BAND_Y } from "./layout.js";
+export {
+  TOP_BAND_HEIGHT,
+  BOTTOM_BAND_HEIGHT,
+  BOTTOM_BAND_Y,
+  META_COL_WIDTH,
+  SPLITS_COL_WIDTH,
+  RTA_COL_WIDTH,
+  RTA_COL_X,
+  STATIC_COL_WIDTH,
+} from "./layout.js";
 
 /**
- * Renders the full-size 1920x1080 stage inside a shorter canvas, shifted up so only the wanted
- * band shows. The stage keeps its real dimensions, so every percentage-based rule in
- * overlay.source.css resolves exactly as it does full-frame — the strips are pixel-identical
- * to the corresponding region of the full overlay rather than a re-laid-out approximation.
+ * Renders the full-size 1920x1080 stage inside a smaller canvas, shifted so only the wanted
+ * window shows. The stage keeps its real dimensions, so every rule in overlay.source.css
+ * resolves exactly as it does full-frame — the crops are pixel-identical to the corresponding
+ * region of the full overlay rather than a re-laid-out approximation.
+ *
+ * `offsetX` cuts vertically as well, which is what lets the bottom band split into a static
+ * left region and the RTA column: same component tree, same frame, two windows onto it that
+ * abut exactly at RTA_COL_X.
  */
-function Band({ offsetY, children }: { offsetY: number; children: ReactNode }) {
+function Band({
+  offsetY,
+  offsetX = 0,
+  children,
+}: {
+  offsetY: number;
+  offsetX?: number;
+  children: ReactNode;
+}) {
   return (
     <AbsoluteFill style={{ overflow: "hidden" }}>
       <div
         style={{
           position: "absolute",
           top: -offsetY,
-          left: 0,
+          left: -offsetX,
           width: STAGE_WIDTH,
           height: STAGE_HEIGHT,
         }}
@@ -274,11 +295,43 @@ export const OverlayTop: FC<OverlayProps> = (props) => (
   </Band>
 );
 
-/** The only part that actually animates: the RTA timer and the splits revealing. */
+/**
+ * The whole bottom band. Kept for the Studio preview and for A/B-ing a render against the
+ * split pair below; the pipeline renders OverlaySplits + OverlayTimer instead, which together
+ * are pixel-identical to this and about a quarter of the per-frame cost.
+ */
 export const OverlayBottom: FC<OverlayProps> = (props) => {
   const { frame, fps, elapsedMs, runEndFrame } = useTimer(props);
   return (
     <Band offsetY={BOTTOM_BAND_Y}>
+      <SplitsPanel props={props} elapsedMs={elapsedMs} frame={frame} fps={fps} runEndFrame={runEndFrame} />
+    </Band>
+  );
+};
+
+/**
+ * The bottom band's left region: match meta (static all match) plus the splits table, which
+ * only changes on a split's reveal frame. Rendered as one still per distinct state — a handful
+ * per match — instead of ~17k identical video frames. See src/splitStates.ts for the frames.
+ */
+export const OverlaySplits: FC<OverlayProps> = (props) => {
+  const { frame, fps, elapsedMs, runEndFrame } = useTimer(props);
+  return (
+    <Band offsetY={BOTTOM_BAND_Y}>
+      <SplitsPanel props={props} elapsedMs={elapsedMs} frame={frame} fps={fps} runEndFrame={runEndFrame} />
+    </Band>
+  );
+};
+
+/**
+ * The RTA column — the only thing in the whole overlay that genuinely changes every frame, and
+ * so the only thing still rendered as video. Opaque, like the rest of the band, so it needs no
+ * alpha channel (see src/overlayRender.ts).
+ */
+export const OverlayTimer: FC<OverlayProps> = (props) => {
+  const { frame, fps, elapsedMs, runEndFrame } = useTimer(props);
+  return (
+    <Band offsetY={BOTTOM_BAND_Y} offsetX={RTA_COL_X}>
       <SplitsPanel props={props} elapsedMs={elapsedMs} frame={frame} fps={fps} runEndFrame={runEndFrame} />
     </Band>
   );

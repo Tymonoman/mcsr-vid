@@ -32,4 +32,24 @@ export const BOTTOM_BAND_Y = STAGE_HEIGHT - BOTTOM_BAND_HEIGHT;
 export const LEFT_POV_RECT = `0 ${TOP_BAND_HEIGHT} ${POV_WIDTH} ${POV_HEIGHT} 1`;
 export const RIGHT_POV_RECT = `${POV_WIDTH} ${TOP_BAND_HEIGHT} ${POV_WIDTH} ${POV_HEIGHT} 1`;
 
+/**
+ * Bottom-band column geometry, in px, mirroring .col-meta/.col-splits/.col-rta in
+ * overlay.source.css (layout.test.ts pins the two together).
+ *
+ * These exist because only the RTA column changes from frame to frame: the meta column is
+ * static for the whole match and the splits table only changes at its reveal frames. Splitting
+ * the band here lets the left region render as a handful of stills and leaves the RTA column as
+ * the only thing rendered per frame — a quarter of the pixels.
+ *
+ * They were percentages (20/55/25 of 1920), which resolve to exactly these values but are
+ * flex items: long content shrank a column and silently moved the boundary the crop depends on.
+ */
+export const META_COL_WIDTH = 384;
+export const SPLITS_COL_WIDTH = 1056;
+export const RTA_COL_WIDTH = 480;
+/** Left edge of the RTA column — the crop seam between the static stills and the timer video. */
+export const RTA_COL_X = META_COL_WIDTH + SPLITS_COL_WIDTH;
+/** Width of the static (meta + splits) region rendered as stills. */
+export const STATIC_COL_WIDTH = RTA_COL_X;
+
 export const INTRO_SECONDS = 7;

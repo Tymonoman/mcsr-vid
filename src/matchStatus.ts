@@ -3,6 +3,7 @@ import path from "node:path";
 import { config } from "./config.js";
 import { describeError } from "./errorText.js";
 import { getMatch } from "./mcsrApi.js";
+import { SPLITS_MANIFEST } from "./overlayRender.js";
 import type { StageId } from "./pipeline.js";
 
 export interface MatchStatusEntry {
@@ -98,13 +99,15 @@ export async function matchStatusFor(matchId: number): Promise<MatchStatusEntry>
     fetch: existsSync(outDir),
     download: vodsDownloaded,
     sync: vodsDownloaded,
-    // All three, matching pipeline.ts's skip condition. Checking only overlay.mov let a
-    // match report render:true and then re-render anyway, because the pipeline also wants
-    // the top band and the intro card before it will reuse the stage.
+    // All four, matching pipeline.ts's skip condition. Checking only the video let a match
+    // report render:true and then re-render anyway, because the pipeline also wants the top
+    // band, the intro card and the split stills before it will reuse the stage. The manifest
+    // is written last and only once every still exists, so it stands in for all of them.
     render:
-      existsSync(path.join(outDir, "overlay.mov")) &&
+      existsSync(path.join(outDir, "overlay-timer.mov")) &&
       existsSync(path.join(outDir, "overlay-top.png")) &&
-      existsSync(path.join(outDir, "overlay-intro.mov")),
+      existsSync(path.join(outDir, "overlay-intro.mov")) &&
+      existsSync(path.join(outDir, SPLITS_MANIFEST)),
     thumbnail: existsSync(path.join(outDir, "thumbnail.png")),
     write: hasProject,
   };

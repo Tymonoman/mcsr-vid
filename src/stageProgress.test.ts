@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
-import { aggregateDownloadPercent, RENDER_PHASE_WEIGHTS, STAGE_ORDER, weighted } from "./stageProgress.js";
+import {
+  aggregateDownloadPercent,
+  RENDER_PHASE_ORDER,
+  RENDER_PHASE_WEIGHTS,
+  STAGE_ORDER,
+  weighted,
+} from "./stageProgress.js";
 
 // --- download: the two yt-dlp processes run concurrently, so their events interleave ---
 
@@ -36,15 +42,10 @@ assert.equal(aggregateDownloadPercent(onlyFirst, 2), 50);
 assert.equal(aggregateDownloadPercent(new Map(), 2), 0);
 assert.equal(aggregateDownloadPercent(new Map([[0, 50]]), 0), 0);
 
-// --- render: four sub-steps weighted into one bar ---
+// --- render: five sub-steps weighted into one bar ---
 
 // The bands must tile 0-100 with no gap and no overlap, in the order the render runs them.
-const bands = [
-  RENDER_PHASE_WEIGHTS.bundling,
-  RENDER_PHASE_WEIGHTS.top,
-  RENDER_PHASE_WEIGHTS.intro,
-  RENDER_PHASE_WEIGHTS.rendering,
-];
+const bands = RENDER_PHASE_ORDER.map((phase) => RENDER_PHASE_WEIGHTS[phase]);
 assert.equal(bands[0]![0], 0);
 assert.equal(bands[bands.length - 1]![1], 100);
 for (let i = 1; i < bands.length; i++) {
@@ -53,7 +54,7 @@ for (let i = 1; i < bands.length; i++) {
 
 // Walking every phase 0 -> 100 in order must climb monotonically. Previously each phase
 // reported a raw 0-100, so the bar hit 100 and reset to 0 three times per overlay render.
-const phases = ["bundling", "top", "intro", "rendering"] as const;
+const phases = RENDER_PHASE_ORDER;
 let last = -1;
 for (const phase of phases) {
   for (const percent of [0, 25, 50, 75, 100]) {

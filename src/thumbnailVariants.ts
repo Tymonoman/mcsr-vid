@@ -9,12 +9,12 @@
  * skip check, matchStatus, the CLI, the dashboard's image route — matches that exact literal
  * name, so they keep working without knowing variants exist.
  */
-import { bundle } from "@remotion/bundler";
 import { makeCancelSignal, renderStill, selectComposition } from "@remotion/renderer";
 import { existsSync } from "node:fs";
 import { copyFile, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { atomicOutput } from "./atomicOutput.js";
+import { bundleOnce } from "./remotionBundle.js";
 import type { AvatarProvider } from "./avatarUrl.js";
 import { computeThumbnailProps, type PosePair } from "./thumbnailProps.js";
 import type { ThumbnailProgress } from "./thumbnailRender.js";
@@ -56,16 +56,6 @@ export interface RenderVariantsArgs {
 
 export const variantKey = (poses: PosePair): string => `${poses.left}-${poses.right}`;
 export const variantFile = (poses: PosePair): string => `thumbnail.${variantKey(poses)}.png`;
-
-// Same webpack override as remotion.config.ts, duplicated here because that config file is only
-// auto-loaded by the `remotion` CLI, not importable from a programmatic bundle() call.
-function webpackOverride(config: Record<string, unknown>): Record<string, unknown> {
-  const resolve = (config.resolve as Record<string, unknown>) ?? {};
-  return {
-    ...config,
-    resolve: { ...resolve, extensionAlias: { ".js": [".js", ".ts", ".tsx"] } },
-  };
-}
 
 export function manifestPath(outDir: string): string {
   return path.join(outDir, VARIANTS_FILE);
@@ -111,16 +101,7 @@ export async function renderThumbnailVariants(args: RenderVariantsArgs): Promise
   try {
     // Bundling dominates the cost of a still, so it happens once for all variants rather than
     // once per variant — which is also why the single-variant path now routes through here.
-    const serveUrl = await bundle(
-      new URL("../remotion/index.ts", import.meta.url).pathname,
-      (percent) => args.onProgress?.({ phase: "bundling", percent }),
-      {
-        webpackOverride: webpackOverride as never,
-        // See overlayRender.ts: remotion.config.ts's setPublicDir is CLI-only, so staticFile()
-        // needs the public dir passed explicitly on programmatic bundles too.
-        publicDir: new URL("../remotion/assets", import.meta.url).pathname,
-      },
-    );
+    const serveUrl = await bundleOnce((percent) => args.onProgress?.({ phase: "bundling", percent }));
 
     for (const [index, poses] of args.poses.entries()) {
       args.onProgress?.({ phase: "rendering", percent: Math.round((index / args.poses.length) * 100) });

@@ -178,8 +178,14 @@
   padding: 0 38px;
   text-align: center;
 }
+/* px + flex:none, not %, and must match META_COL_WIDTH in layout.ts. As percentage-width flex
+   items these three columns shrank to fit overlong content (a 16-character nickname in the
+   head-to-head line is enough), which moved the .col-rta boundary that the render crop is cut
+   on. Fixed widths keep that seam where layout.ts says it is; min-width:0 plus wrapping keeps
+   long content inside its own column instead of overflowing into the next one. */
 .col-meta {
-  width: 20%;
+  flex: 0 0 384px;
+  min-width: 0;
   border-right: 3px solid var(--panel-edge);
 }
 .col-meta .label {
@@ -250,6 +256,8 @@
   font-family: var(--pixel-font);
   font-size: 24px;
   margin-top: 4px;
+  /* Two 16-character nicknames do not fit 384px; wrap rather than widen the column. */
+  overflow-wrap: anywhere;
 }
 .col-meta .h2h-value .l {
   color: var(--crimson);
@@ -263,7 +271,8 @@
 }
 
 .col-splits {
-  width: 55%;
+  flex: 0 0 1056px;
+  min-width: 0;
 }
 .splits-title {
   font-family: var(--pixel-font);
@@ -327,7 +336,8 @@
 }
 
 .col-rta {
-  width: 25%;
+  flex: 0 0 480px;
+  min-width: 0;
   gap: 12px;
   border-left: 3px solid var(--panel-edge);
 }

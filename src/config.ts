@@ -41,9 +41,16 @@ export interface Config {
    */
   youtubeReportingJobId: string;
   /**
-   * Seconds of overlay before the timer starts. The VOD clips keep a much larger `preRollSec`
-   * because the audio-sync search needs room to hunt for the world-load thump, but the overlay
-   * just sits frozen at 0:00.000 through all of it — so it only renders a short lead-in.
+   * Seconds of overlay before the RTA timer starts.
+   *
+   * This is also where the published video begins: the timeline is anchored on the world-load
+   * thump (kdenliveProject.ANCHOR_SEC), so an overlay lead-in equal to that anchor puts the
+   * overlay, the intro and the footage all at timeline 0 with nothing trimmed. Changing it
+   * away from 10 makes the overlay clips get head-trimmed to keep match start in place, which
+   * is correct but wastes render, and an intro shorter than the difference is rejected outright.
+   *
+   * The VOD clips keep a much larger `preRollSec` because the audio-sync search needs room to
+   * hunt for the thump; that headroom is trimmed off the timeline rather than shown.
    */
   overlayLeadInSec: number;
   /**
@@ -110,7 +117,7 @@ const DEFAULTS: Config = {
   mediaDir: "media",
   youtubeChannelId: "UCm2mAyONTHlmIxZzNmi388w",
   youtubeReportingJobId: "eda017ae-a539-4c79-8e2c-66d1af74264a",
-  overlayLeadInSec: 20,
+  overlayLeadInSec: 10,
   overlayFps: 30,
   renderConcurrency: null,
   suggestCloseSlots: 8,

@@ -4,21 +4,30 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { config } from "./config.js";
 import { getMatch, getUser, getVersus, parseMatchId } from "./mcsrApi.js";
-import { buildKdenliveProject, type KdenliveClipInput, type KdenliveMarkerInput } from "./kdenliveProject.js";
+import {
+  ANCHOR_SEC,
+  buildKdenliveProject,
+  type KdenliveClipInput,
+  type KdenliveMarkerInput,
+} from "./kdenliveProject.js";
 import {
   BOTTOM_BAND_HEIGHT,
   BOTTOM_BAND_Y,
+  RTA_COL_WIDTH,
+  RTA_COL_X,
   STAGE_HEIGHT,
   STAGE_WIDTH,
+  STATIC_COL_WIDTH,
   TOP_BAND_HEIGHT,
   LEFT_POV_RECT,
   RIGHT_POV_RECT,
 } from "../remotion/layout.js";
 import { computeSplits } from "./overlayProps.js";
 import { buildChapters, formatChapters } from "./chapters.js";
+import { buildSplitMarkers } from "./markers.js";
 import { buildDescription } from "./description.js";
 import { buildTitle, formatTitle } from "./title.js";
-import { renderOverlay } from "./overlayRender.js";
+import { overlayPaths, readSplitStills, renderOverlay, type SplitStill } from "./overlayRender.js";
 import { renderThumbnailVariants, variantFile } from "./thumbnailVariants.js";
 import { describeError } from "./errorText.js";
 import {
@@ -232,21 +241,25 @@ async function runStages(
     emit(warn("sync", { message: `refinement failed: ${describeError(err)}` }));
   }
 
-  const overlayPath = path.join(outDir, "overlay.mov");
-  const overlayTopPath = path.join(outDir, "overlay-top.png");
-  const overlayIntroPath = path.join(outDir, "overlay-intro.mov");
-  if (existsSync(overlayPath) && existsSync(overlayTopPath) && existsSync(overlayIntroPath)) {
+  const overlay = overlayPaths(outDir);
+  const cachedStills = await readSplitStills(outDir);
+  let splitStills: SplitStill[];
+  if (
+    cachedStills !== null &&
+    existsSync(overlay.timer) &&
+    existsSync(overlay.top) &&
+    existsSync(overlay.intro)
+  ) {
+    splitStills = cachedStills;
     emit(done("render", { percent: 100, message: "reused existing render" }));
   } else {
     emit(active("render", { percent: 0 }));
-    await renderOverlay({
+    const rendered = await renderOverlay({
       match,
       userLeft,
       userRight,
       versus,
-      outPath: overlayPath,
-      topOutPath: overlayTopPath,
-      introOutPath: overlayIntroPath,
+      outDir,
       signal,
       onProgress: (p) =>
         emit(
@@ -256,7 +269,8 @@ async function runStages(
           }),
         ),
     });
-    emit(done("render", { percent: 100 }));
+    splitStills = rendered.splits;
+    emit(done("render", { percent: 100, message: `${rendered.splits.length} split stills + RTA timer` }));
   }
 
   // Every configured pose pair, so there is something to A/B test once the channel has the
@@ -304,8 +318,8 @@ async function runStages(
   const [leftDurationSec, rightDurationSec, overlayDurationSec, introDurationSec] = await Promise.all([
     probeDurationSec(leftWindow.path, signal),
     probeDurationSec(rightWindow.path, signal),
-    probeDurationSec(overlayPath, signal),
-    probeDurationSec(overlayIntroPath, signal),
+    probeDurationSec(overlay.timer, signal),
+    probeDurationSec(overlay.intro, signal),
   ]);
 
   const leftClip: KdenliveClipInput = {
@@ -322,14 +336,16 @@ async function runStages(
     clipName: `${rightWindow.playerNickname} POV`,
     positionRect: RIGHT_POV_RECT,
   };
-  // The overlay ships as three layers rather than one full-frame video: a static top band held
-  // as a still, the animated bottom band, and the opaque intro card. Rendering the empty middle
-  // of the frame (and ~17k identical copies of the static band) is what made this slow.
-  // `matchOffsetIntoClipSec` is the lead-in, not PRE_ROLL_SEC, so they start later on the
-  // timeline than the VOD clips do (see overlayRender.ts).
+  // The overlay ships as four layers rather than one full-frame video, because almost none of
+  // it actually moves: a static top band held as a still, the meta+splits region as a handful
+  // of stills swapped on each split's reveal frame, the RTA column as the only real video, and
+  // the opaque intro card. Rendering the empty middle of the frame — and ~17k identical copies
+  // of everything that never changes — is what made this slow.
+  // Their `matchOffsetIntoClipSec` is the overlay lead-in, which equals ANCHOR_SEC, so they sit
+  // at timeline 0 untrimmed (see overlayRender.ts and kdenliveProject.ts).
   const overlayClips: KdenliveClipInput[] = [
     {
-      path: path.resolve(overlayTopPath),
+      path: path.resolve(overlay.top),
       durationSec: overlayDurationSec,
       matchOffsetIntoClipSec: config.overlayLeadInSec,
       clipName: "Stat Overlay (top)",
@@ -337,48 +353,44 @@ async function runStages(
       isImage: true,
     },
     {
-      path: path.resolve(overlayPath),
+      // Unused: `stills` supplies every placed image. Named for the first of them so nothing
+      // downstream ever resolves a path that is not part of this track.
+      path: path.resolve(splitStills[0]?.path ?? overlay.top),
       durationSec: overlayDurationSec,
       matchOffsetIntoClipSec: config.overlayLeadInSec,
       clipName: "Stat Overlay (splits)",
-      positionRect: `0 ${BOTTOM_BAND_Y} ${STAGE_WIDTH} ${BOTTOM_BAND_HEIGHT} 1`,
+      positionRect: `0 ${BOTTOM_BAND_Y} ${STATIC_COL_WIDTH} ${BOTTOM_BAND_HEIGHT} 1`,
+      stills: splitStills.map((s) => ({ ...s, path: path.resolve(s.path) })),
     },
     {
-      path: path.resolve(overlayIntroPath),
+      path: path.resolve(overlay.timer),
+      durationSec: overlayDurationSec,
+      matchOffsetIntoClipSec: config.overlayLeadInSec,
+      clipName: "Stat Overlay (RTA)",
+      positionRect: `${RTA_COL_X} ${BOTTOM_BAND_Y} ${RTA_COL_WIDTH} ${BOTTOM_BAND_HEIGHT} 1`,
+    },
+    {
+      path: path.resolve(overlay.intro),
       durationSec: introDurationSec,
       matchOffsetIntoClipSec: config.overlayLeadInSec,
       clipName: "Intro",
     },
   ];
 
-  // Marker positions use the same maxOffset-relative math buildKdenliveProject's buildTrack
-  // uses to place each clip on the timeline, so markers land in sync with the actual footage.
-  const maxOffset = Math.max(
-    leftClip.matchOffsetIntoClipSec,
-    rightClip.matchOffsetIntoClipSec,
-    ...overlayClips.map((c) => c.matchOffsetIntoClipSec),
-  );
+  // Match start is at ANCHOR_SEC on the timeline by construction, so guides are anchor-relative
+  // and need no clip arithmetic at all (see src/markers.ts for what this replaced).
   const splits = computeSplits(match, playerLeft.uuid, playerRight.uuid);
-  const markers: KdenliveMarkerInput[] = [];
-  for (const row of splits) {
-    if (row.leftMs !== null) {
-      markers.push({
-        positionSec: maxOffset - leftClip.matchOffsetIntoClipSec + row.leftMs / 1000,
-        comment: `${row.label} — ${leftWindow.playerNickname}`,
-      });
-    }
-    if (row.rightMs !== null) {
-      markers.push({
-        positionSec: maxOffset - rightClip.matchOffsetIntoClipSec + row.rightMs / 1000,
-        comment: `${row.label} — ${rightWindow.playerNickname}`,
-      });
-    }
-  }
+  const markers: KdenliveMarkerInput[] = buildSplitMarkers({
+    splits,
+    anchorSec: ANCHOR_SEC,
+    leftNickname: leftWindow.playerNickname,
+    rightNickname: rightWindow.playerNickname,
+  });
   if (syncConfidence !== undefined) {
     const lowConfidence = syncConfidence < config.syncConfidenceThreshold;
     markers.push({
-      positionSec: maxOffset,
-      comment: `Sync confidence: ${(syncConfidence * 100).toFixed(0)}%${lowConfidence ? " — LOW, verify alignment" : ""}`,
+      positionSec: ANCHOR_SEC,
+      comment: `Match start · sync confidence ${(syncConfidence * 100).toFixed(0)}%${lowConfidence ? " — LOW, verify alignment" : ""}`,
     });
   }
 

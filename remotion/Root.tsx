@@ -3,9 +3,13 @@ import {
   Overlay,
   OverlayTop,
   OverlayBottom,
+  OverlaySplits,
+  OverlayTimer,
   OverlayIntro,
   TOP_BAND_HEIGHT,
   BOTTOM_BAND_HEIGHT,
+  RTA_COL_WIDTH,
+  STATIC_COL_WIDTH,
 } from "./Overlay.js";
 import { INTRO_SECONDS } from "./Intro.js";
 import { Thumbnail } from "./Thumbnail.js";
@@ -115,6 +119,35 @@ export const RemotionRoot: React.FC = () => {
         durationInFrames={21450}
         fps={30}
         width={1920}
+        height={BOTTOM_BAND_HEIGHT}
+        defaultProps={defaultProps}
+        calculateMetadata={({ props }) => ({
+          durationInFrames: props.durationInFrames,
+          fps: props.fps,
+        })}
+      />
+      {/* The two halves the pipeline actually renders. Together they tile OverlayBottom exactly:
+          OverlaySplits is stepped through its handful of distinct states as stills, OverlayTimer
+          is the only composition rendered per frame. */}
+      <Composition
+        id="OverlaySplits"
+        component={OverlaySplits}
+        durationInFrames={21450}
+        fps={30}
+        width={STATIC_COL_WIDTH}
+        height={BOTTOM_BAND_HEIGHT}
+        defaultProps={defaultProps}
+        calculateMetadata={({ props }) => ({
+          durationInFrames: props.durationInFrames,
+          fps: props.fps,
+        })}
+      />
+      <Composition
+        id="OverlayTimer"
+        component={OverlayTimer}
+        durationInFrames={21450}
+        fps={30}
+        width={RTA_COL_WIDTH}
         height={BOTTOM_BAND_HEIGHT}
         defaultProps={defaultProps}
         calculateMetadata={({ props }) => ({

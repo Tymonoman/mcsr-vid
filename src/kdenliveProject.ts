@@ -2,9 +2,12 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { THUMP_LEAD_SEC } from "./sync.js";
 
-// Cut POV clips exactly at the world-load thump — no earlier — so the visible clip starts right
-// at the 10s ready-countdown instead of carrying minutes of dead pre-roll footage.
-const CLIP_LEAD_IN_SEC = THUMP_LEAD_SEC;
+/**
+ * Timeline zero, expressed as seconds before match start: the world-load thump, which is when
+ * the 10s ready-countdown appears. Every clip is placed against this, so match start always
+ * lands at exactly ANCHOR_SEC and the exported video opens on the countdown.
+ */
+export const ANCHOR_SEC = THUMP_LEAD_SEC;
 
 export interface KdenliveClipInput {
   /** Absolute path to the media file. Written out relative to `KdenliveProjectInput.root`. */
@@ -19,6 +22,24 @@ export interface KdenliveClipInput {
   positionRect?: string;
   /** A still held for `durationSec`; MLT needs a different producer than for video. */
   isImage?: boolean;
+  /**
+   * Successive stills sharing ONE track, each held for its own span — used by the splits panel,
+   * which only changes on a split's reveal frame and so needs a handful of images rather than
+   * a video. `startSec` is measured from the same origin as `matchOffsetIntoClipSec`.
+   *
+   * When set, `path` and `durationSec` describe the track as a whole and are not themselves
+   * placed; the stills are. MLT holds a qimage producer for as long as the entry asks, so this
+   * costs no encoding at all — the alternative, baking the stills back into a video, measured
+   * 2m14s of ffmpeg per match for a picture that changes nine times.
+   */
+  stills?: StillSegment[];
+}
+
+export interface StillSegment {
+  path: string;
+  /** Seconds from the clip's own zero at which this still takes over. */
+  startSec: number;
+  durationSec: number;
 }
 
 export interface KdenliveMarkerInput {
@@ -63,72 +84,91 @@ function secondsToTimecode(sec: number): string {
   return `${pad(h)}:${pad(m)}:${pad(s)}.${pad(ms, 3)}`;
 }
 
+/** One producer placed once on a track: which source, where on the timeline, and which part of it. */
+interface PlacedEntry {
+  producerId: string;
+  binId: string;
+  path: string;
+  clipName: string;
+  isImage: boolean;
+  /** Length the producer must declare it can serve. */
+  sourceLengthSec: number;
+  startOnTimelineSec: number;
+  /** Seconds trimmed off the source's head. */
+  inSec: number;
+  /** Source-relative out point. */
+  outSec: number;
+}
+
 interface TrackXml {
   chainXml: string;
   playlistAXml: string;
   playlistBXml: string;
   tractorXml: string;
   tractorId: string;
+  /** Timeline second the last entry on this track ends on — the track's contribution to length. */
+  endSec: number;
+  /** Every producer this track placed, for the project bin. */
+  producerIds: string[];
 }
 
-/** Builds one timeline track (audio or video) as a chain + a 2-playlist tractor pair. */
+function producerXml(entry: PlacedEntry): string {
+  const lengthTc = secondsToTimecode(entry.sourceLengthSec);
+  // A still is a `qimage` producer held for the entry's length; video is an avformat chain.
+  // Same element shape either way, so everything downstream (playlists, tractors) is common.
+  return entry.isImage
+    ? `
+    <producer id="${entry.producerId}" out="${lengthTc}">
+        <property name="length">${lengthTc}</property>
+        <property name="eof">continue</property>
+        <property name="resource">${escapeXml(entry.path)}</property>
+        <property name="ttl">1</property>
+        <property name="mlt_service">qimage</property>
+        <property name="kdenlive:clipname">${escapeXml(entry.clipName)}</property>
+        <property name="kdenlive:id">${entry.binId}</property>
+        <property name="kdenlive:folderid">-1</property>
+    </producer>`
+    : `
+    <chain id="${entry.producerId}" out="${lengthTc}">
+        <property name="length">${lengthTc}</property>
+        <property name="resource">${escapeXml(entry.path)}</property>
+        <property name="mlt_service">avformat</property>
+        <property name="kdenlive:clipname">${escapeXml(entry.clipName)}</property>
+        <property name="kdenlive:id">${entry.binId}</property>
+        <property name="kdenlive:folderid">-1</property>
+    </chain>`;
+}
+
+/**
+ * Builds one timeline track (audio or video) as producers + a 2-playlist tractor pair.
+ *
+ * Entries must be in timeline order; the gap before each is emitted as a `<blank>`, so a track
+ * carrying a sequence of stills lays them end to end without any of them needing its own track.
+ */
 function buildTrack(opts: {
-  chainId: string;
-  binId: string;
-  clip: KdenliveClipInput;
-  startOnTimelineSec: number;
-  /** Seconds trimmed off the clip's own head (source-relative). Default 0 = untrimmed. */
-  trimInSec?: number;
+  entries: PlacedEntry[];
   kind: "audio" | "video";
   playlistIdA: string;
   playlistIdB: string;
   tractorId: string;
   positionRect?: string; // "x y w h opacity", video tracks only
 }): TrackXml {
-  const {
-    chainId,
-    binId,
-    clip,
-    startOnTimelineSec,
-    trimInSec = 0,
-    kind,
-    playlistIdA,
-    playlistIdB,
-    tractorId,
-    positionRect,
-  } = opts;
+  const { entries, kind, playlistIdA, playlistIdB, tractorId, positionRect } = opts;
 
-  const durationTc = secondsToTimecode(clip.durationSec);
-  // A still is a `qimage` producer held for the clip's length; video is an avformat chain.
-  // Same element shape either way, so everything downstream (playlists, tractors) is common.
-  const chainXml = clip.isImage
-    ? `
-    <producer id="${chainId}" out="${durationTc}">
-        <property name="length">${durationTc}</property>
-        <property name="eof">continue</property>
-        <property name="resource">${escapeXml(clip.path)}</property>
-        <property name="ttl">1</property>
-        <property name="mlt_service">qimage</property>
-        <property name="kdenlive:clipname">${escapeXml(clip.clipName)}</property>
-        <property name="kdenlive:id">${binId}</property>
-        <property name="kdenlive:folderid">-1</property>
-    </producer>`
-    : `
-    <chain id="${chainId}" out="${durationTc}">
-        <property name="length">${durationTc}</property>
-        <property name="resource">${escapeXml(clip.path)}</property>
-        <property name="mlt_service">avformat</property>
-        <property name="kdenlive:clipname">${escapeXml(clip.clipName)}</property>
-        <property name="kdenlive:id">${binId}</property>
-        <property name="kdenlive:folderid">-1</property>
-    </chain>`;
+  const chainXml = entries.map(producerXml).join("");
 
-  const blankLengthSec = startOnTimelineSec + trimInSec;
-  const blank = blankLengthSec > 0 ? `<blank length="${secondsToTimecode(blankLengthSec)}"/>` : "";
-  const filterXml =
-    positionRect !== undefined
-      ? `
-            <filter id="${chainId}_transform">
+  let cursorSec = 0;
+  const body: string[] = [];
+  for (const entry of entries) {
+    // Timeline position of the entry's first frame. `inSec` shifts it because MLT places the
+    // *trimmed* clip here, so the head we skipped still has to be paid for in blank.
+    const startsAt = entry.startOnTimelineSec + entry.inSec;
+    const gap = startsAt - cursorSec;
+    if (gap > 0) body.push(`<blank length="${secondsToTimecode(gap)}"/>`);
+    const filterXml =
+      positionRect !== undefined
+        ? `
+            <filter id="${entry.producerId}_transform">
                 <property name="mlt_service">qtblend</property>
                 <property name="kdenlive_id">qtblend</property>
                 <property name="rect">${positionRect}</property>
@@ -136,14 +176,17 @@ function buildTrack(opts: {
                 <property name="distort">0</property>
                 <property name="rotate_center">1</property>
             </filter>`
-      : "";
-  const entryXml = `<entry in="${secondsToTimecode(trimInSec)}" out="${secondsToTimecode(clip.durationSec)}" producer="${chainId}">${filterXml}
-        </entry>`;
+        : "";
+    body.push(
+      `<entry in="${secondsToTimecode(entry.inSec)}" out="${secondsToTimecode(entry.outSec)}" producer="${entry.producerId}">${filterXml}
+        </entry>`,
+    );
+    cursorSec = startsAt + (entry.outSec - entry.inSec);
+  }
 
   const playlistAXml = `
     <playlist id="${playlistIdA}">
-        ${blank}
-        ${entryXml}
+        ${body.join("\n        ")}
     </playlist>`;
   const playlistBXml = `
     <playlist id="${playlistIdB}"/>`;
@@ -157,7 +200,15 @@ function buildTrack(opts: {
         <track producer="${playlistIdB}" hide="${hide}"/>
     </tractor>`;
 
-  return { chainXml, playlistAXml, playlistBXml, tractorXml, tractorId };
+  return {
+    chainXml,
+    playlistAXml,
+    playlistBXml,
+    tractorXml,
+    tractorId,
+    endSec: cursorSec,
+    producerIds: entries.map((e) => e.producerId),
+  };
 }
 
 /** Generates a complete .kdenlive (MLT XML) project: two split-screen POV clips + an alpha overlay track. */
@@ -170,49 +221,76 @@ export function buildKdenliveProject(input: KdenliveProjectInput): string {
   const relativise = (clip: KdenliveClipInput): KdenliveClipInput => ({
     ...clip,
     path: path.relative(root, clip.path),
+    ...(clip.stills ? { stills: clip.stills.map((s) => ({ ...s, path: path.relative(root, s.path) })) } : {}),
   });
   const leftClip = relativise(input.leftClip);
   const rightClip = relativise(input.rightClip);
   const overlayClips = input.overlayClips.map(relativise);
 
-  const maxOffset = Math.max(
-    leftClip.matchOffsetIntoClipSec,
-    rightClip.matchOffsetIntoClipSec,
-    ...overlayClips.map((c) => c.matchOffsetIntoClipSec),
-  );
-  // Trim each POV clip's dead pre-roll up to (but not past) the world-load thump; timeline
-  // position is compensated in buildTrack so the aligned moment still lands at maxOffset.
-  const leftTrimInSec = Math.max(0, leftClip.matchOffsetIntoClipSec - CLIP_LEAD_IN_SEC);
-  const rightTrimInSec = Math.max(0, rightClip.matchOffsetIntoClipSec - CLIP_LEAD_IN_SEC);
+  // Timeline zero is the world-load thump — the moment the 10s ready-countdown appears — so
+  // match start always lands at exactly ANCHOR_SEC and the intro can be cut against a
+  // fixed mark. It used to be max(every clip's matchOffsetIntoClipSec), which is preRollSec
+  // (150s) for a POV clip: the exported timeline opened with two and a half minutes of dead
+  // pre-match footage, and lining the cut up by hand in Kdenlive was the whole reason this
+  // pipeline still needed a human.
+  let binCounter = 0;
+  const nextBinId = () => String(binCounter++);
+
+  /** Where this clip's own zero sits on the timeline. Negative means its head is off-screen. */
+  const timelineOriginOf = (clip: KdenliveClipInput) => ANCHOR_SEC - clip.matchOffsetIntoClipSec;
+
+  /**
+   * One video/audio clip placed against the thump. `inSec` skips the head that falls before
+   * timeline zero, so a POV clip carrying 150s of sync headroom starts on screen immediately
+   * rather than after 140s of black.
+   */
+  const placeClip = (opts: {
+    producerId: string;
+    clip: KdenliveClipInput;
+    clipName?: string;
+  }): PlacedEntry => {
+    const { clip } = opts;
+    const origin = timelineOriginOf(clip);
+    // A clip whose match-start sits later than the anchor is pushed further into its own head,
+    // not merely un-blanked: MLT cannot express a negative position, and dropping the negative
+    // shift instead would slide the clip late by exactly that much — a desync that renders
+    // perfectly and that no in-point assertion can see.
+    const inSec = Math.max(0, -origin);
+    if (inSec >= clip.durationSec) {
+      throw new Error(
+        `${clip.clipName}: match start is ${clip.matchOffsetIntoClipSec}s into a ` +
+          `${clip.durationSec}s clip, so anchoring it at the thump would trim the whole clip away.`,
+      );
+    }
+    return {
+      producerId: opts.producerId,
+      binId: nextBinId(),
+      path: clip.path,
+      clipName: opts.clipName ?? clip.clipName,
+      isImage: clip.isImage === true,
+      sourceLengthSec: clip.durationSec,
+      startOnTimelineSec: origin,
+      inSec,
+      outSec: clip.durationSec,
+    };
+  };
 
   const audioLeft = buildTrack({
-    chainId: "chain_audio_left",
-    binId: "0",
-    clip: leftClip,
-    startOnTimelineSec: maxOffset - leftClip.matchOffsetIntoClipSec,
-    trimInSec: leftTrimInSec,
+    entries: [placeClip({ producerId: "chain_audio_left", clip: leftClip })],
     kind: "audio",
     playlistIdA: "playlist0",
     playlistIdB: "playlist1",
     tractorId: "tractor_audio_left",
   });
   const audioRight = buildTrack({
-    chainId: "chain_audio_right",
-    binId: "1",
-    clip: rightClip,
-    startOnTimelineSec: maxOffset - rightClip.matchOffsetIntoClipSec,
-    trimInSec: rightTrimInSec,
+    entries: [placeClip({ producerId: "chain_audio_right", clip: rightClip })],
     kind: "audio",
     playlistIdA: "playlist2",
     playlistIdB: "playlist3",
     tractorId: "tractor_audio_right",
   });
   const videoLeft = buildTrack({
-    chainId: "chain_video_left",
-    binId: "2",
-    clip: leftClip,
-    startOnTimelineSec: maxOffset - leftClip.matchOffsetIntoClipSec,
-    trimInSec: leftTrimInSec,
+    entries: [placeClip({ producerId: "chain_video_left", clip: leftClip })],
     kind: "video",
     playlistIdA: "playlist4",
     playlistIdB: "playlist5",
@@ -220,23 +298,44 @@ export function buildKdenliveProject(input: KdenliveProjectInput): string {
     positionRect: leftClip.positionRect ?? `0 0 ${width / 2} ${height} 1`,
   });
   const videoRight = buildTrack({
-    chainId: "chain_video_right",
-    binId: "3",
-    clip: rightClip,
-    startOnTimelineSec: maxOffset - rightClip.matchOffsetIntoClipSec,
-    trimInSec: rightTrimInSec,
+    entries: [placeClip({ producerId: "chain_video_right", clip: rightClip })],
     kind: "video",
     playlistIdA: "playlist6",
     playlistIdB: "playlist7",
     tractorId: "tractor_video_right",
     positionRect: rightClip.positionRect ?? `${width / 2} 0 ${width / 2} ${height} 1`,
   });
+
+  /**
+   * A still sequence becomes one qimage producer per segment, laid end to end on a single
+   * track. Segments starting before timeline zero are shortened (or dropped) rather than
+   * placed at a negative position, which MLT has no way to express.
+   */
+  const placeStills = (clip: KdenliveClipInput, i: number): PlacedEntry[] => {
+    const origin = timelineOriginOf(clip);
+    return (clip.stills ?? []).flatMap((still, j) => {
+      const startsAt = origin + still.startSec;
+      const visibleSec = still.durationSec + Math.min(0, startsAt);
+      if (visibleSec <= 0) return [];
+      return [
+        {
+          producerId: `chain_overlay_${i}_${j}`,
+          binId: nextBinId(),
+          path: still.path,
+          clipName: `${clip.clipName} ${j + 1}`,
+          isImage: true,
+          sourceLengthSec: visibleSec,
+          startOnTimelineSec: Math.max(0, startsAt),
+          inSec: 0,
+          outSec: visibleSec,
+        },
+      ];
+    });
+  };
+
   const overlayTracks = overlayClips.map((clip, i) =>
     buildTrack({
-      chainId: `chain_overlay_${i}`,
-      binId: String(4 + i),
-      clip,
-      startOnTimelineSec: maxOffset - clip.matchOffsetIntoClipSec,
+      entries: clip.stills ? placeStills(clip, i) : [placeClip({ producerId: `chain_overlay_${i}`, clip })],
       kind: "video",
       playlistIdA: `playlist${8 + i * 2}`,
       playlistIdB: `playlist${9 + i * 2}`,
@@ -246,11 +345,9 @@ export function buildKdenliveProject(input: KdenliveProjectInput): string {
   );
 
   const tracks = [audioLeft, audioRight, videoLeft, videoRight, ...overlayTracks];
-  const totalDurationSec = Math.max(
-    maxOffset - leftClip.matchOffsetIntoClipSec + leftClip.durationSec,
-    maxOffset - rightClip.matchOffsetIntoClipSec + rightClip.durationSec,
-    ...overlayClips.map((c) => maxOffset - c.matchOffsetIntoClipSec + c.durationSec),
-  );
+  // Whatever ends last. Each track already knows where its final entry finishes, so this no
+  // longer has to re-derive placement arithmetic that buildTrack owns.
+  const totalDurationSec = Math.max(0, ...tracks.map((t) => t.endSec));
   const totalDurationTc = secondsToTimecode(totalDurationSec);
 
   const sequenceTransitions = tracks
@@ -298,14 +395,13 @@ export function buildKdenliveProject(input: KdenliveProjectInput): string {
         )}</property>`
       : "";
 
+  // Every producer on every track, so a still sequence's images each get their own bin entry.
+  // Derived from the tracks rather than re-listed by hand: a producer missing here simply does
+  // not appear in Kdenlive's Project Bin.
   const mainBinEntries = [
     `<entry in="00:00:00.000" out="00:00:00.000" producer="${sequenceUuid}"/>`,
-    `<entry in="00:00:00.000" out="00:00:00.000" producer="chain_audio_left"/>`,
-    `<entry in="00:00:00.000" out="00:00:00.000" producer="chain_audio_right"/>`,
-    `<entry in="00:00:00.000" out="00:00:00.000" producer="chain_video_left"/>`,
-    `<entry in="00:00:00.000" out="00:00:00.000" producer="chain_video_right"/>`,
-    ...overlayTracks.map(
-      (_, i) => `<entry in="00:00:00.000" out="00:00:00.000" producer="chain_overlay_${i}"/>`,
+    ...tracks.flatMap((t) =>
+      t.producerIds.map((id) => `<entry in="00:00:00.000" out="00:00:00.000" producer="${id}"/>`),
     ),
   ].join("\n        ");
 
