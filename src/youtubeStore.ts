@@ -64,7 +64,10 @@ export async function allUploads(): Promise<Array<{ matchId: number; record: Upl
  * Ambiguity is reported rather than guessed at: uploading the wrong four-gigabyte file to a
  * public channel is not a mistake worth being clever about.
  */
-export function findExportedVideo(matchId: number, povNicknames: string[]): { path: string } | { error: string } {
+export function findExportedVideo(
+  matchId: number,
+  povNicknames: string[],
+): { path: string } | { error: string } {
   const dir = matchDir(matchId);
   if (!existsSync(dir)) return { error: `No working directory for match ${matchId}` };
 
@@ -73,7 +76,19 @@ export function findExportedVideo(matchId: number, povNicknames: string[]): { pa
     .filter((e) => e.isFile() && /\.(mp4|mov|mkv|webm)$/i.test(e.name))
     .map((e) => e.name)
     // overlay.mov and overlay-intro.mov are render intermediates, not the finished video.
-    .filter((name) => !povFiles.has(name) && !name.startsWith("overlay") && name !== "sync-preview.mp4");
+    //
+    // `.part.` catches anything still being written. Both writers in this project rename into
+    // place on success — src/atomicOutput.ts writes `<name>.part<ext>`, scripts/export.sh writes
+    // `final.part.mp4` — precisely so a truncated file is never mistaken for a finished one.
+    // Without this the upload panel would offer `final.part.mp4` while an export was still
+    // running, and publish half a video.
+    .filter(
+      (name) =>
+        !povFiles.has(name) &&
+        !name.startsWith("overlay") &&
+        !name.includes(".part.") &&
+        name !== "sync-preview.mp4",
+    );
 
   if (candidates.length === 0) {
     return {

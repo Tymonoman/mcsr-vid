@@ -71,7 +71,13 @@ await writeFile(path.join(dir, "sync-preview.mp4"), "preview", "utf8");
 const stillNone = findExportedVideo(matchId, ["nahhann", "Aquacorde"]);
 assert.ok("error" in stillNone, "POV clips and intermediates must never be upload candidates");
 
-// One export: found.
+// An export still in flight is not a candidate. scripts/export.sh writes final.part.mp4 and
+// renames on success, exactly as atomicOutput does, so offering it would publish half a video.
+await writeFile(path.join(dir, "final.part.mp4"), "half a video", "utf8");
+const midExport = findExportedVideo(matchId, ["nahhann", "Aquacorde"]);
+assert.ok("error" in midExport, "a .part. file must never be offered for upload");
+
+// One export: found — and the finished file wins over a leftover .part. beside it.
 await writeFile(path.join(dir, "final-render.mp4"), "the actual video", "utf8");
 const found = findExportedVideo(matchId, ["nahhann", "Aquacorde"]);
 assert.ok("path" in found);
@@ -103,7 +109,10 @@ assert.ok(Math.abs(mixed.weightedCtr / mixed.impressions - 0.0109) < 0.0001);
 // weightedCtr stays undivided so per-video totals can be summed again per variant.
 const one = totalReach([{ date: "d", videoId: "v1", impressions: 100, ctr: 0.05 }]);
 const two = totalReach([{ date: "d", videoId: "v2", impressions: 300, ctr: 0.01 }]);
-const group = { impressions: one.impressions + two.impressions, weightedCtr: one.weightedCtr + two.weightedCtr };
+const group = {
+  impressions: one.impressions + two.impressions,
+  weightedCtr: one.weightedCtr + two.weightedCtr,
+};
 assert.equal(group.weightedCtr / group.impressions, 0.02);
 
 // No rows, and rows with no impressions, must not divide by zero.
