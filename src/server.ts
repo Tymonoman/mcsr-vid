@@ -23,6 +23,7 @@ import { STAGE_LABELS, STAGE_ORDER } from "./pipeline.js";
 import { dismiss, snapshot, startScan } from "./suggestScan.js";
 import { chooseVariant, readManifest } from "./thumbnailVariants.js";
 import { buildTitle, type BuiltTitle } from "./title.js";
+import { allArchiveStates, capacity } from "./archive.js";
 import { handleExportRoute } from "./exportRoutes.js";
 import { handleYoutubeRoute } from "./youtubeRoutes.js";
 
@@ -265,6 +266,13 @@ const server = createServer(async (req, res) => {
 
     if (resource === "stages" && req.method === "GET") {
       json(res, 200, { order: STAGE_ORDER, labels: STAGE_LABELS });
+      return;
+    }
+
+    // Both tiers, because archiving copies and never deletes: the NAS fills and the SSD does
+    // not drain. Seeing only one of them is how you hit the ceiling by surprise.
+    if (resource === "capacity" && req.method === "GET") {
+      json(res, 200, { ...(await capacity()), archives: allArchiveStates() });
       return;
     }
 

@@ -8,6 +8,7 @@
 import { existsSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
+import { archiveMatch } from "./archive.js";
 import { auditState, readAudit, startAudit } from "./audit.js";
 import { config } from "./config.js";
 import { describeError } from "./errorText.js";
@@ -278,6 +279,11 @@ async function startUpload(
         title: body.title as string,
       };
       await writeUpload(matchId, record);
+      // Published is the point the match is finished with, so it is the point worth backing up.
+      // Fire-and-forget: ~7 GB over a 17.7 MB/s CIFS mount is about seven minutes, and the
+      // upload response should not wait on it. Failures land in the server log and in
+      // GET /api/capacity, not here — a NAS blip must not read as a failed upload.
+      archiveMatch(matchId);
     } catch (err) {
       progress.error = describeError(err);
     } finally {
