@@ -23,6 +23,7 @@ import { STAGE_LABELS, STAGE_ORDER } from "./pipeline.js";
 import { dismiss, snapshot, startScan } from "./suggestScan.js";
 import { chooseVariant, readManifest } from "./thumbnailVariants.js";
 import { buildTitle, type BuiltTitle } from "./title.js";
+import { handleExportRoute } from "./exportRoutes.js";
 import { handleYoutubeRoute } from "./youtubeRoutes.js";
 
 const PORT = Number(process.env.PORT ?? 8080);
@@ -255,6 +256,10 @@ const server = createServer(async (req, res) => {
     // Delegated rather than inlined: server.ts was already at the 500-line cap, and the YouTube
     // group is the largest single addition. It returns false for anything it does not own.
     if (await handleYoutubeRoute(req, res, segments, { json, readBody, matchDir, parseId })) return;
+
+    // Same reason, same shape: the export round-trip (project down, cut project back, encode,
+    // finished MP4 down) is its own group and this file is at the cap.
+    if (await handleExportRoute(req, res, segments, { json, readBody, matchDir, parseId })) return;
 
     const [, resource, idRaw] = segments;
 
