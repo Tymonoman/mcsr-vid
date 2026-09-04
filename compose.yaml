@@ -26,6 +26,16 @@ services:
     # is merely a failed render, not a corrupt artifact.
     mem_limit: 4g
 
+    # The lab's Intel HD 520 render node, for hardware H.264 on the final export.
+    # Without it melt falls back to libx264 on two cores. The desktop's Kdenlive
+    # preset uses h264_nvenc, which has no equivalent here — there is no NVIDIA GPU.
+    # gid 993 is the host's `render` group, which owns /dev/dri/renderD128 (mode 660);
+    # without group_add the container user cannot open it even with the device mapped.
+    # Verify with `docker exec mcsr vainfo`.
+    devices:
+      - /dev/dri/renderD128:/dev/dri/renderD128
+    group_add: ["993"]
+
     volumes:
       # Repo lives on the lab host, so edits and node_modules survive image rebuilds.
       - /home/homelab/mcsr-vid:/app
@@ -37,6 +47,10 @@ services:
       - /home/homelab/media/tymek/mcsr-archive:/archive
       # Keeps the Claude Code subscription login across image rebuilds.
       - claude-config:/home/node/.claude
+      # .claude.json sits OUTSIDE ~/.claude, so the named volume does not cover it
+      # and every rebuild wiped it — losing onboarding state (Claude came back at
+      # the theme picker) and every `claude mcp add`. Bind-mounted so it survives.
+      - /home/homelab/claude-home.json:/home/node/.claude.json
 
     # No env_file needed: .env sits in the bind-mounted repo and src/twitch.ts:11-17
     # loads it natively via process.loadEnvFile, falling through to process.env.
@@ -55,6 +69,12 @@ services:
     # Idle it needs ~200 MB, but clicking "Run pipeline" renders in this container,
     # so it needs the same headroom as mcsr. Limits are caps, not reservations.
     mem_limit: 4g
+    # Same render node as mcsr: the export queue runs in this container, so it needs
+    # the GPU for the same reason. Sharing one render node between both services is
+    # fine — the export queue is concurrency 1 and nothing else encodes.
+    devices:
+      - /dev/dri/renderD128:/dev/dri/renderD128
+    group_add: ["993"]
     volumes:
       - /home/homelab/mcsr-vid:/app
       - /home/homelab/mcsr-media:/media

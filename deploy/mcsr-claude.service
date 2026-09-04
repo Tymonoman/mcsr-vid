@@ -1,0 +1,20 @@
+[Unit]
+Description=Claude Code session for mcsr-vid (byobu + Remote Control)
+
+[Service]
+# byobu keeps it alive across SSH disconnects; --remote-control is what the phone
+# talks to. Both halves are needed.
+#
+# The bash -lc wrapper is load-bearing: systemd splits ExecStart into argv and does
+# not honour shell quoting, so passing the until-loop directly made byobu run
+# "until" as the command and exit immediately.
+#
+# The loop exists because a user unit cannot Require the system docker.service, so
+# at boot the container may not be up yet.
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/bash -lc 'byobu new-session -d -s mcsr "until docker exec mcsr true 2>/dev/null; do sleep 5; done; exec docker exec -it mcsr claude --dangerously-skip-permissions --remote-control lab"'
+ExecStop=/bin/bash -lc 'byobu kill-session -t mcsr || true'
+
+[Install]
+WantedBy=default.target
