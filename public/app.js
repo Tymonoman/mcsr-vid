@@ -65,7 +65,7 @@ function renderList() {
       .join("");
 
   el.querySelectorAll(".card").forEach((c) =>
-    c.addEventListener("click", () => select(Number(c.dataset.id))),
+    c.addEventListener("click", () => select(Number(c.dataset.id), { scroll: true })),
   );
 }
 
@@ -82,7 +82,13 @@ function hookCounter(meta) {
     : meta.hook.placeholder;
 }
 
-async function select(id) {
+/**
+ * `scroll` is set only when a human tapped a card. Below 860px the detail pane is a row under
+ * the whole list, so on a phone a tap changes something a thousand pixels off-screen and reads
+ * as nothing happening. On the two-column desktop layout the pane is already in view and
+ * scrolling would just be jarring, and on first load nothing was tapped at all.
+ */
+async function select(id, { scroll = false } = {}) {
   selected = id;
   renderList();
   const meta = await api(`/api/meta/${id}`);
@@ -190,6 +196,10 @@ async function select(id) {
   loadVariants(id);
   loadYoutube(id, meta);
   watch(id, true);
+
+  if (scroll && matchMedia("(max-width: 860px)").matches) {
+    $("#detail").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 }
 
 /**

@@ -60,6 +60,13 @@ main {
   gap: 0;
   align-items: start;
 }
+/* A grid item's default `min-width: auto` means it refuses to shrink below its content's
+   min-content width, and the track grows with it. On a 375px phone that pinned the single
+   column open to 396px and pushed the whole page sideways -- measured, not theorised. The
+   column is the thing that should win; the content inside it wraps or scrolls on its own. */
+main > * {
+  min-width: 0;
+}
 @media (max-width: 860px) {
   main {
     grid-template-columns: 1fr;

@@ -1,6 +1,8 @@
 /* Panels layered on the base in app.css: match entry, the left-column tabs, suggestions,
    thumbnail variants, the YouTube panel and the A/B table. Split out because app.css crossed
-   the 500-line cap; loaded after app.css, so it can rely on the tokens defined there. */
+   the 500-line cap; loaded after app.css, so it can rely on the tokens defined there.
+
+   The touch-target block is at the bottom of this file, where it wins on source order. */
 
 /* --- Match entry: the reason the dashboard exists away from the homelab ------------------ */
 .entry {
@@ -328,4 +330,41 @@
   white-space: pre-wrap;
   word-break: break-word;
   margin-top: 8px;
+}
+
+/* --- Touch targets --------------------------------------------------------------------------
+   Measured on the live dashboard at phone and tablet widths: the match-id field was 28px tall,
+   the suggestion buttons 26px, the hook chips 23px. iOS asks for 44pt and Android 48dp, and
+   below ~30px these are genuinely fiddly one-handed.
+
+   Scoped to `pointer: coarse` rather than a width query on purpose: it catches a tablet in
+   landscape at 1024px, which a max-width rule would miss, and leaves the mouse-driven desktop
+   layout exactly as it was. */
+@media (pointer: coarse) {
+  button,
+  [role="tab"],
+  select,
+  input[type="text"],
+  input[type="datetime-local"] {
+    min-height: 44px;
+  }
+
+  /* Inline links in a suggestion card are a row of separate destinations, not prose, so they
+     need a real hit area too -- 32px plus a wider gap, rather than 44px each, which would push
+     a row of three past the width of a phone. */
+  .sugg .links {
+    gap: 16px;
+  }
+  .sugg .links a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+  }
+
+  /* Denser controls sit inside scrolling lists, so give them room to breathe as well. */
+  .sugg .acts,
+  .variant figcaption,
+  .comment .row {
+    gap: 10px;
+  }
 }
