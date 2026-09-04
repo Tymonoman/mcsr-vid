@@ -58,8 +58,19 @@ RUN printf '%s\n' \
 # the legacy path — and libva picks by PCI id. Override with LIBVA_DRIVER_NAME if it
 # chooses wrong. Needs /dev/dri passed in and group_add for the render gid: see
 # compose.yaml.
+# xvfb and xauth are not optional for headless melt, despite melt itself being a
+# CLI tool. MLT's Qt module backs both `qimage` (the PNG overlay bands) and
+# `qtblend` (the split-screen positioning), and it hard-fails without an X
+# display: "The MLT Qt module requires a X11 environment." Every render must
+# therefore go through `xvfb-run -a melt`. xauth is a separate package and
+# xvfb-run exits 3 without it ("xauth command not found").
+#
+# Note this is unrelated to the melt 7.12 vs project 7.40 version gap, which was
+# measured and is a non-issue: every service a Kdenlive save uses here
+# (audiolevel, avformat-novalidate, color, mix, panner, qimage, qtblend, volume)
+# exists in 7.12.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      sudo \
+      sudo xvfb xauth \
       intel-media-va-driver i965-va-driver libva2 libva-drm2 vainfo \
     && echo 'node ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/node \
     && chmod 0440 /etc/sudoers.d/node \
