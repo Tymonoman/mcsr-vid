@@ -410,8 +410,9 @@ function renderSuggestions(data) {
           <span class="who">${esc(s.players[0])} vs ${esc(s.players[1])}</span>
         </div>
         <div class="facts">
-          ${clock(s.resultMs)} &middot; &Delta;${margin} &middot; ${s.leadChanges} lead changes
-          &middot; &#9760;${s.deaths} &middot; score ${s.score.toFixed(2)}
+          ${clock(s.resultMs)} &middot; &Delta;${margin} &middot; ${s.leadChanges} lead
+          change${s.leadChanges === 1 ? "" : "s"}
+          &middot; &#9760;${s.deaths} &middot; score&nbsp;${s.score.toFixed(2)}
         </div>
         <div class="links">
           <a href="${esc(s.matchUrl)}" target="_blank" rel="noopener">mcsrranked #${s.matchId}</a>
