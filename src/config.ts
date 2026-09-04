@@ -60,9 +60,14 @@ export interface Config {
    */
   overlayFps: number;
   /**
-   * Parallel browser tabs used to render frames. null = Remotion's default (~half your
-   * cores). Each tab holds a full 1080p page, so on a RAM-tight machine a *lower* number
-   * renders faster than a higher one by avoiding swap.
+   * Parallel browser tabs used to render frames. null = Remotion's default, which is
+   * round(min(8, cores/2)) — 2 on the lab.
+   *
+   * A lower number used to render faster here, because each tab held a full 1080p page. Since
+   * the overlay render was cut down to a 480x346 strip that is no longer true: measured on the
+   * lab at 1920x346, concurrency 1/2/4 gave 6.8/8.2/10.3 fps, so 4 (all four cores) wins by
+   * 25% over the default. Raising it further is refused by Remotion, which caps concurrency at
+   * the core count.
    */
   renderConcurrency: number | null;
   /**

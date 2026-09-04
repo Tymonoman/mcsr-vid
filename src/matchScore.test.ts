@@ -71,6 +71,12 @@ assert.equal(dnf.comparedSplits, 8, "the dragon split is dropped, the other eigh
 assert.equal(dnf.maxLeadMs, 130585);
 assert.equal(dnf.maxSwingMs, 135085, "130.585s lead flipping to a 4.5s deficit");
 assert.equal(dnf.leadChanges, 2);
+// This match records its death as a bare `projectelo.timeline.death`, not the
+// `death_spawnpoint` spelling every other fixture uses. Only the latter was counted, so this
+// reported zero deaths — silently zeroing `chaosDeaths`, the heaviest term of the chaos score,
+// for every match that uses the short spelling.
+assert.equal(dnf.deaths, 1, "a bare projectelo.timeline.death must count as a death");
+assert.deepEqual(dnf.deathsByPlayer, { Feinberg: 1, silverrruns: 0 });
 
 // --- Scoring behaviour.
 const score = (m: Parameters<typeof closenessScore>[0]) =>

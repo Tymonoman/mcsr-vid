@@ -104,7 +104,7 @@ export async function matchStatusFor(matchId: number): Promise<MatchStatusEntry>
     // band, the intro card and the split stills before it will reuse the stage. The manifest
     // is written last and only once every still exists, so it stands in for all of them.
     render:
-      existsSync(path.join(outDir, "overlay-timer.mov")) &&
+      existsSync(path.join(outDir, "overlay-timer.mp4")) &&
       existsSync(path.join(outDir, "overlay-top.png")) &&
       existsSync(path.join(outDir, "overlay-intro.mov")) &&
       existsSync(path.join(outDir, SPLITS_MANIFEST)),

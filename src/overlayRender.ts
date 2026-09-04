@@ -63,7 +63,7 @@ export interface RenderOverlayResult {
 
 export const overlayPaths = (outDir: string) => ({
   top: path.join(outDir, "overlay-top.png"),
-  timer: path.join(outDir, "overlay-timer.mov"),
+  timer: path.join(outDir, "overlay-timer.mp4"),
   intro: path.join(outDir, "overlay-intro.mov"),
   manifest: path.join(outDir, SPLITS_MANIFEST),
 });
@@ -183,14 +183,22 @@ export async function renderOverlay(args: RenderOverlayArgs): Promise<RenderOver
       renderMedia({
         composition: timerComposition,
         serveUrl,
-        codec: "prores",
-        // 4:4:4 10-bit, so the gold-on-dark pixel text keeps full chroma resolution, but with
-        // no alpha plane: the bottom band is a solid panel, every pixel of it opaque (asserted
-        // in overlayRender.test.ts). It used to be rendered yuva444p10le — a full alpha channel,
-        // uniformly 255, across every frame of the match.
-        proResProfile: "4444",
-        pixelFormat: "yuv444p10le",
-        // PNG, not JPEG: the overlay is pixel-art text and JPEG's 4:2:0 softens its edges.
+        // H.264, not ProRes, and the reason is throughput rather than size. Remotion can only
+        // stream frames straight into ffmpeg for h264/h265 (canUseParallelEncoding); with ProRes
+        // every single frame is written to a temp PNG and read back with -f image2. Measured
+        // back to back on the lab, 450 frames of this composition: 16.98 fps ProRes vs 32.51 fps
+        // H.264 — 1.9x, for a file three orders of magnitude smaller.
+        codec: "h264",
+        // 4:4:4, so the gold-on-dark pixel text keeps full chroma resolution. Measured against a
+        // lossless still of the same frame, 4:4:4 at this CRF is 51 dB PSNR / 0.999 SSIM —
+        // transparent — while 4:2:0 costs 13 dB and visibly softens the digits.
+        pixelFormat: "yuv444p",
+        crf: 14,
+        // No alpha plane: the bottom band is a solid panel, every pixel of it opaque (pinned by
+        // overlayRender.test.ts). It used to be ProRes 4444 with yuva444p10le — a full alpha
+        // channel, uniformly 255, across all ~17k frames of the match.
+        // PNG capture, not JPEG: the overlay is pixel-art text and JPEG's 4:2:0 softens its
+        // edges for no measurable throughput gain.
         imageFormat: "png",
         // The overlay is silent; without this Remotion muxes an empty PCM track (~140MB/render).
         muted: true,

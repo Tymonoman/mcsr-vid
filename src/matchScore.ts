@@ -32,7 +32,13 @@ export const TOTAL_SPLITS = SPLITS.length + 1;
 
 const DRAGON_DEATH = "projectelo.timeline.dragon_death";
 const KILL_DRAGON = "end.kill_dragon";
-const DEATH = "projectelo.timeline.death_spawnpoint";
+/**
+ * The API emits two kinds of player-death event, and only one of them was counted. Fixture
+ * match-12929221 carries a bare `projectelo.timeline.death` and scored zero deaths because of
+ * it — silently zeroing the heaviest term of the chaos score (`chaosDeaths`, weight 3) for
+ * however many matches use that spelling. Neither type is a dragon death; that is DRAGON_DEATH.
+ */
+const DEATH_TYPES = new Set(["projectelo.timeline.death_spawnpoint", "projectelo.timeline.death"]);
 
 /**
  * `end.kill_dragon` fires on the killing blow; `dragon_death` fires when the ~10s death
@@ -197,7 +203,7 @@ export function computeMetrics(match: MatchInfo): MatchMetrics {
 
   const deathsByPlayer: Record<string, number> = { [playerA.nickname]: 0, [playerB.nickname]: 0 };
   for (const entry of match.timelines) {
-    if (entry.type !== DEATH) continue;
+    if (!DEATH_TYPES.has(entry.type)) continue;
     if (entry.uuid === playerA.uuid) deathsByPlayer[playerA.nickname] += 1;
     else if (entry.uuid === playerB.uuid) deathsByPlayer[playerB.nickname] += 1;
   }
