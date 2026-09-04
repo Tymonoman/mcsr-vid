@@ -28,6 +28,42 @@ Three things these scripts do **not** do:
   outside this repo and needs an OAuth token at
   `~/.claude/.tmp/youtube_oauth_token.json`.
 
+## Known Pitfalls
+
+- **Season vs career stats.** `pickStats` (`src/overlayProps.ts:47`) uses the live
+  season bucket and falls back to career totals *only* when that bucket has no
+  ranked games — right after a rollover — and the overlay then labels itself
+  CAREER. Both paths are intentional and pinned by `src/overlayProps.test.ts`;
+  don't "fix" the fallback away. The original bug was showing ~5,000-game career
+  numbers unlabelled.
+- **Elo must come from the match, not the user.** `user.eloRate` is the rating
+  *now*. Use `eloAtMatchStart()` (`src/overlayProps.ts:60`) everywhere — overlay,
+  thumbnail and description — or the same match shows different numbers in
+  different places.
+- **Props functions are async.** `computeOverlayProps` (`src/overlayProps.ts:132`)
+  and `computeThumbnailProps` (`src/thumbnailProps.ts:40`) both return promises; a
+  missing `await` renders a pending promise as player data.
+- **Never import `Overlay.tsx` from Node code.** It does `import "./overlay.css"`
+  (`remotion/Overlay.tsx:3`), which only webpack resolves; under plain Node it is a
+  hard `ERR_UNKNOWN_FILE_EXTENSION` crash. Shared geometry lives in
+  `remotion/layout.ts` precisely for this — import from there, as `src/pipeline.ts`
+  does.
+- **Verify visual changes by rendering.** `npm run still -- <Composition> <out.png>`,
+  then read the PNG. Don't reason about the JSX and call it done.
+- **Generated projects carry `root`.** `src/kdenliveProject.ts:313` emits
+  `<mlt root="...">` with every resource relative to it, which is what lets a
+  project rendered on the homelab open on the desktop. Check output with
+  `npm run validate-project -- media/<id>/match-<id>.kdenlive`; note that only
+  proves the XML parses, not that the media resolves.
+
+## Version Control
+
+Long-lived branches are normal here. Before concluding a feature doesn't exist,
+check `git branch -a`, `git worktree list`, and the remote — not just the working
+tree; several branches have existed only locally. Sessions also run concurrently
+in `.claude/worktrees/`, so check for another session's uncommitted work before
+staging anything, and never `git add -A` on a shared tree.
+
 ## Branding (updated 2026-08-09)
 
 The whole project — video overlay, thumbnails, and channel art — shares one
