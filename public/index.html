@@ -8,6 +8,7 @@
      dashboard feature, and CLAUDE.md caps a file at 500 lines. Both are served by src/server.ts
      next to /index.html, so there is no bundler and no build step. -->
 <link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/panels.css">
 </head>
 <body>
 
@@ -38,6 +39,9 @@
   <section id="detail"><div class="empty">Pick a match, or paste an ID above.</div></section>
 </main>
 
+<!-- youtube.js first: it only declares functions, while app.js ends in the init IIFE that
+     actually runs and calls into them. Both are classic scripts sharing one global scope. -->
+<script src="/youtube.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

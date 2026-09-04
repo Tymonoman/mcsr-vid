@@ -8,6 +8,7 @@
 import { existsSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
+import { auditState, readAudit, startAudit } from "./audit.js";
 import { config } from "./config.js";
 import { describeError } from "./errorText.js";
 import { matchStatusFor } from "./matchStatus.js";
@@ -120,6 +121,38 @@ export async function handleYoutubeRoute(
 
   if (action === "upload" && req.method === "GET") {
     ctx.json(res, 200, uploads.get(matchId) ?? idle(matchId));
+    return true;
+  }
+
+  // On demand only. The button that reaches this says what it costs, and nothing schedules it.
+  if (action === "audit" && req.method === "POST") {
+    const record = await readUpload(matchId);
+    if (!record) {
+      ctx.json(res, 404, { error: `Match ${matchId} has not been uploaded, so there is nothing to audit` });
+      return true;
+    }
+    const status = await matchStatusFor(matchId);
+    const [stats] = await videoStats([record.videoId]).catch(() => []);
+    const reach = await reachFor(record.videoId);
+    ctx.json(
+      res,
+      202,
+      startAudit({
+        matchId,
+        videoId: record.videoId,
+        title: record.title,
+        description: "",
+        players: [status.leftNickname, status.rightNickname],
+        stats: stats ? { views: stats.views, likes: stats.likes, comments: stats.comments } : null,
+        reach,
+      }),
+    );
+    return true;
+  }
+
+  if (action === "audit" && req.method === "GET") {
+    const state = auditState(matchId);
+    ctx.json(res, 200, { ...state, report: state.running ? null : await readAudit(matchId) });
     return true;
   }
 
@@ -251,6 +284,26 @@ async function startUpload(
       progress.done = true;
     }
   })();
+}
+
+/**
+ * One video's impressions and click-through, or null.
+ *
+ * Best-effort: the audit is more useful knowing the video underperformed, but a Reporting job
+ * that has not produced a row yet must not stop the audit from running.
+ */
+async function reachFor(videoId: string): Promise<{ impressions: number; ctr: number } | null> {
+  try {
+    const rows = (await latestImpressions(config.youtubeReportingJobId)).filter((r) => r.videoId === videoId);
+    if (rows.length === 0) return null;
+    const impressions = rows.reduce((sum, r) => sum + r.impressions, 0);
+    if (impressions === 0) return { impressions: 0, ctr: 0 };
+    // Weighted by each day's impressions, matching the A/B table — a quiet day must not count
+    // as much as a busy one.
+    return { impressions, ctr: rows.reduce((sum, r) => sum + r.ctr * r.impressions, 0) / impressions };
+  } catch {
+    return null;
+  }
 }
 
 /** Uploaded matches with their live stats, or the record alone when YouTube is unreachable. */

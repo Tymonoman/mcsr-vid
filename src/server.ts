@@ -31,6 +31,18 @@ const ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 /** Same match page the generated description links to (src/description.ts). */
 const MCSR_MATCH_URL = "https://mcsrranked.com/matches/";
 
+/**
+ * The page's own assets. An explicit allowlist rather than serving public/ as a directory,
+ * because a listing can be walked and this cannot. There are several because both the
+ * stylesheet and the script outgrew CLAUDE.md's 500-line cap.
+ */
+const STATIC_ASSETS: Record<string, { file: string; type: string }> = {
+  "/app.css": { file: "app.css", type: "text/css; charset=utf-8" },
+  "/panels.css": { file: "panels.css", type: "text/css; charset=utf-8" },
+  "/app.js": { file: "app.js", type: "text/javascript; charset=utf-8" },
+  "/youtube.js": { file: "youtube.js", type: "text/javascript; charset=utf-8" },
+};
+
 /** Match ids come from the URL, so they gate a path join and must be digits only. */
 function parseId(raw: string | undefined): number | null {
   if (!raw || !/^\d+$/.test(raw)) return null;
@@ -227,12 +239,9 @@ const server = createServer(async (req, res) => {
       // The dashboard's CSS and JS are siblings of index.html rather than inlined, because that
       // file gains a section per feature and CLAUDE.md caps a file at 500 lines. Named
       // explicitly rather than serving public/ as a directory: an allowlist cannot be walked.
-      if (url.pathname === "/app.css") {
-        sendFile(res, path.join(ROOT, "public", "app.css"), "text/css; charset=utf-8");
-        return;
-      }
-      if (url.pathname === "/app.js") {
-        sendFile(res, path.join(ROOT, "public", "app.js"), "text/javascript; charset=utf-8");
+      const asset = STATIC_ASSETS[url.pathname];
+      if (asset) {
+        sendFile(res, path.join(ROOT, "public", asset.file), asset.type);
         return;
       }
       if (url.pathname === "/Monocraft.ttf") {
