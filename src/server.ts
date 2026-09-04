@@ -23,6 +23,7 @@ import { STAGE_LABELS, STAGE_ORDER } from "./pipeline.js";
 import { dismiss, snapshot, startScan } from "./suggestScan.js";
 import { chooseVariant, readManifest } from "./thumbnailVariants.js";
 import { buildTitle, type BuiltTitle } from "./title.js";
+import { handleYoutubeRoute } from "./youtubeRoutes.js";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -241,6 +242,10 @@ const server = createServer(async (req, res) => {
       json(res, 404, { error: "not found" });
       return;
     }
+
+    // Delegated rather than inlined: server.ts was already at the 500-line cap, and the YouTube
+    // group is the largest single addition. It returns false for anything it does not own.
+    if (await handleYoutubeRoute(req, res, segments, { json, readBody, matchDir, parseId })) return;
 
     const [, resource, idRaw] = segments;
 

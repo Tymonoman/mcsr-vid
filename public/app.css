@@ -531,3 +531,110 @@ pre {
   font-size: 12px;
   border-bottom-width: 3px;
 }
+
+/* --- YouTube ------------------------------------------------------------------------------- */
+.upload label {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.upload label input[type="text"],
+.upload label textarea {
+  margin-top: 4px;
+  color: var(--quartz);
+}
+.upload select,
+.upload input[type="datetime-local"] {
+  font-family: inherit;
+  font-size: 13px;
+  padding: 6px 8px;
+  margin-top: 4px;
+  background: var(--panel);
+  color: var(--quartz);
+  border: 1px solid var(--panel-edge-light);
+}
+#ytBarWrap {
+  height: 12px;
+}
+#ytBarWrap > i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--warped);
+  transition: width 0.4s;
+}
+
+.published a {
+  color: var(--warped);
+}
+.stats {
+  display: flex;
+  gap: 18px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+.stats b {
+  color: var(--gold);
+}
+
+.comment {
+  border-left: 2px solid var(--panel-edge-light);
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  background: var(--panel);
+}
+/* The point of the panel is finding what still needs you, so those are the ones that stand out. */
+.comment.unanswered {
+  border-left-color: var(--gold);
+}
+.comment .who {
+  font-size: 12px;
+  color: var(--muted);
+}
+.comment .badge {
+  color: var(--gold);
+  border: 1px solid currentColor;
+  padding: 0 4px;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+.comment .body {
+  font-size: 13px;
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+}
+.comment .row {
+  margin-bottom: 0;
+}
+.comment .replytext {
+  flex: 1;
+}
+
+/* --- A/B table ------------------------------------------------------------------------------ */
+.abtable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.abtable th,
+.abtable td {
+  text-align: left;
+  padding: 6px 9px;
+  border-bottom: 1px solid var(--panel-edge);
+  font-variant-numeric: tabular-nums;
+}
+.abtable th {
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.abtable .warn {
+  color: var(--gold);
+}
+.comment .reply {
+  padding: 4px 10px;
+  font-size: 12px;
+  border-bottom-width: 3px;
+}

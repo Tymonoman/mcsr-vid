@@ -29,6 +29,18 @@ export interface Config {
   /** Per-match working directory root. */
   mediaDir: string;
   /**
+   * The channel uploads go to. Used to tell your own replies apart from viewers' when deciding
+   * which comment threads are still unanswered.
+   */
+  youtubeChannelId: string;
+  /**
+   * Standing YouTube Reporting API job producing `channel_reach_basic_a1`. That report is the
+   * only source of per-video thumbnail impressions and CTR — the Analytics API does not expose
+   * them — so thumbnail A/B testing reads this and nothing else. Reports land ~48h after the
+   * day they cover, so a video uploaded today will have no row yet.
+   */
+  youtubeReportingJobId: string;
+  /**
    * Seconds of overlay before the timer starts. The VOD clips keep a much larger `preRollSec`
    * because the audio-sync search needs room to hunt for the world-load thump, but the overlay
    * just sits frozen at 0:00.000 through all of it — so it only renders a short lead-in.
@@ -96,6 +108,8 @@ const DEFAULTS: Config = {
   postRollSec: 60,
   defaultRunSec: 900,
   mediaDir: "media",
+  youtubeChannelId: "UCm2mAyONTHlmIxZzNmi388w",
+  youtubeReportingJobId: "eda017ae-a539-4c79-8e2c-66d1af74264a",
   overlayLeadInSec: 20,
   overlayFps: 30,
   renderConcurrency: null,
