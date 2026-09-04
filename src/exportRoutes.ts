@@ -164,9 +164,14 @@ export async function handleExportRoute(
       ctx.json(res, 400, { error: "not an MLT/Kdenlive project" });
       return true;
     }
-    const relocated = relocateRoot(body, dir);
+    // Absolute, always. matchDir is only absolute when config.mediaDir is (it is on the lab,
+    // "/media"; it is not on a desktop checkout, where it defaults to "media"). A relative root
+    // resolves against whatever cwd Kdenlive or melt happens to have, which is how a project
+    // opens with every clip offline.
+    const root = path.resolve(dir);
+    const relocated = relocateRoot(body, root);
     await writeFile(projectPath(dir, matchId), relocated, "utf8");
-    ctx.json(res, 200, { matchId, root: dir, rewritten: relocated !== body });
+    ctx.json(res, 200, { matchId, root, rewritten: relocated !== body });
     return true;
   }
 

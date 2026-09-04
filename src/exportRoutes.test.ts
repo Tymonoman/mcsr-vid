@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import path from "node:path";
 import { relocateRoot } from "./exportRoutes.js";
 
 // A project cut on the desktop names a desktop path. The lab has the same match under a
@@ -42,5 +43,12 @@ assert.match(decoyMoved, /rooturl">\/a\/keep-me</, "a property that just mention
 // A project with no root at all (an older generated one) must pass through rather than throw.
 const rootless = `<mlt LC_NUMERIC="C" producer="main_bin" version="7.25.0">`;
 assert.equal(relocateRoot(rootless, "/media/9"), rootless, "no root: unchanged, not corrupted");
+
+// The route resolves the match dir before rewriting, because config.mediaDir is relative on a
+// desktop checkout ("media") and absolute on the lab ("/media"). A relative root resolves
+// against whatever cwd melt happens to have — which is a project that opens with every clip
+// offline. Caught by a smoke test that wrote root="media/12296170" into a real project.
+const relative = relocateRoot(generated, path.resolve("media/12296170"));
+assert.match(relative, /root="\/.*\/media\/12296170"/, "root written into a project must be absolute");
 
 console.log("exportRoutes: all checks passed");
