@@ -17,7 +17,7 @@ import { buildChapters, formatChapters } from "./chapters.js";
 import { buildDescription } from "./description.js";
 import { buildTitle, formatTitle } from "./title.js";
 import { renderOverlay } from "./overlayRender.js";
-import { renderThumbnail } from "./thumbnailRender.js";
+import { renderThumbnailVariants, variantFile } from "./thumbnailVariants.js";
 import { describeError } from "./errorText.js";
 import {
   aggregateDownloadPercent,
@@ -259,16 +259,23 @@ async function runStages(
     emit(done("render", { percent: 100 }));
   }
 
+  // Every configured pose pair, so there is something to A/B test once the channel has the
+  // audience for it. Skipping is per variant rather than per match, so adding a pose renders
+  // only the new one; when they are all present this stage is as cheap as it always was.
   const thumbnailPath = path.join(outDir, "thumbnail.png");
-  if (existsSync(thumbnailPath)) {
-    emit(done("thumbnail", { message: "reused existing render" }));
+  const variants = config.thumbnailVariants;
+  const allRendered =
+    existsSync(thumbnailPath) && variants.every((p) => existsSync(path.join(outDir, variantFile(p))));
+  if (allRendered) {
+    emit(done("thumbnail", { message: `reused ${variants.length} variants` }));
   } else {
     emit(active("thumbnail", { percent: 0 }));
-    await renderThumbnail({
+    const manifest = await renderThumbnailVariants({
       match,
       userLeft,
       userRight,
-      outPath: thumbnailPath,
+      outDir,
+      poses: variants,
       signal,
       onProgress: (p) =>
         emit(
@@ -278,7 +285,19 @@ async function runStages(
           }),
         ),
     });
-    emit(done("thumbnail"));
+    // Worth saying out loud: when Starlight Skins is down every pose falls back to the same
+    // static NMSR render, so "3 variants" would otherwise imply three different images.
+    const posed = manifest.variants.filter(
+      (v) => v.leftProvider === "starlight" || v.rightProvider === "starlight",
+    ).length;
+    emit(
+      done("thumbnail", {
+        message:
+          posed === manifest.variants.length
+            ? `${manifest.variants.length} variants`
+            : `${manifest.variants.length} variants (${manifest.variants.length - posed} fell back to a static pose)`,
+      }),
+    );
   }
 
   emit(active("write"));

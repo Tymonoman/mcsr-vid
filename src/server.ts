@@ -18,8 +18,10 @@ import { buildHookSuggestions, suggestHooksExternally } from "./hooks.js";
 import { computeMetrics } from "./matchScore.js";
 import { listMatchStatuses, matchStatusFor } from "./matchStatus.js";
 import { getMatch, getUser, parseMatchId } from "./mcsrApi.js";
-import { runPipeline, STAGE_LABELS, STAGE_ORDER, type StageEvent, type StageId } from "./pipeline.js";
+import { abortJob, getJob, startJob, streamProgress } from "./jobs.js";
+import { STAGE_LABELS, STAGE_ORDER } from "./pipeline.js";
 import { dismiss, snapshot, startScan } from "./suggestScan.js";
+import { chooseVariant, readManifest } from "./thumbnailVariants.js";
 import { buildTitle, type BuiltTitle } from "./title.js";
 
 const PORT = Number(process.env.PORT ?? 8080);
@@ -27,26 +29,6 @@ const ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 
 /** Same match page the generated description links to (src/description.ts). */
 const MCSR_MATCH_URL = "https://mcsrranked.com/matches/";
-
-/**
- * A render in flight. Events are retained so a browser that connects late — or
- * reconnects from a phone — replays the whole run rather than joining blind.
- */
-interface Job {
-  matchId: number;
-  events: StageEvent[];
-  done: boolean;
-  /** Failure text, or null when the run succeeded *or* was deliberately aborted. */
-  error: string | null;
-  /** Which stage the failure belongs to, so the browser can mark that row rather than guess. */
-  errorStage: StageId | null;
-  /** A deliberate stop via DELETE /api/render/:id, which is not a failure. */
-  aborted: boolean;
-  subscribers: Set<ServerResponse>;
-  controller: AbortController;
-}
-
-const jobs = new Map<number, Job>();
 
 /** Match ids come from the URL, so they gate a path join and must be digits only. */
 function parseId(raw: string | undefined): number | null {
@@ -210,81 +192,6 @@ function suggestionsPayload() {
   };
 }
 
-function startJob(matchId: number): Job {
-  const existing = jobs.get(matchId);
-  if (existing && !existing.done) return existing;
-
-  const controller = new AbortController();
-  const job: Job = {
-    matchId,
-    events: [],
-    done: false,
-    error: null,
-    errorStage: null,
-    aborted: false,
-    subscribers: new Set(),
-    controller,
-  };
-  jobs.set(matchId, job);
-
-  const push = (event: StageEvent) => {
-    job.events.push(event);
-    // The pipeline now names the stage that died, so the browser can colour that row instead of
-    // dumping a multi-KB stderr tail into a one-line status field.
-    if (event.status === "error") job.errorStage = event.stage;
-    const frame = `data: ${JSON.stringify(event)}\n\n`;
-    for (const res of job.subscribers) res.write(frame);
-  };
-
-  runPipeline(String(matchId), { onEvent: push, signal: controller.signal })
-    .then(() => {
-      job.done = true;
-    })
-    .catch((err: unknown) => {
-      job.done = true;
-      // Aborting rejects the same promise a real failure does, so without this check pressing
-      // Stop reported "failed: The operation was aborted" and read as a crash.
-      job.aborted = controller.signal.aborted;
-      job.error = job.aborted ? null : describeError(err);
-    })
-    .finally(() => {
-      for (const res of job.subscribers) {
-        res.write(endFrame(job));
-        res.end();
-      }
-      job.subscribers.clear();
-    });
-
-  return job;
-}
-
-function endFrame(job: Job): string {
-  const payload = { error: job.error, stage: job.errorStage, aborted: job.aborted };
-  return `event: end\ndata: ${JSON.stringify(payload)}\n\n`;
-}
-
-function streamProgress(res: ServerResponse, job: Job): void {
-  res.writeHead(200, {
-    "content-type": "text/event-stream",
-    "cache-control": "no-store",
-    connection: "keep-alive",
-    // Proxies buffer SSE into uselessness; harmless when nothing proxies us.
-    "x-accel-buffering": "no",
-  });
-
-  // Replay first, so a late or reconnecting client sees the whole run.
-  for (const event of job.events) res.write(`data: ${JSON.stringify(event)}\n\n`);
-
-  if (job.done) {
-    res.write(endFrame(job));
-    res.end();
-    return;
-  }
-
-  job.subscribers.add(res);
-  res.on("close", () => job.subscribers.delete(res));
-}
-
 function sendFile(res: ServerResponse, filePath: string, contentType: string): void {
   if (!existsSync(filePath)) {
     json(res, 404, { error: "not found" });
@@ -355,7 +262,7 @@ const server = createServer(async (req, res) => {
     if (resource === "render" && idRaw === undefined && req.method === "POST") {
       const body = JSON.parse(await readBody(req)) as { input?: unknown };
       if (typeof body.input !== "string" || body.input.trim() === "") {
-        json(res, 400, { error: "expected { input: \"<match id or mcsrranked URL>\" }" });
+        json(res, 400, { error: 'expected { input: "<match id or mcsrranked URL>" }' });
         return;
       }
       // parseMatchId accepts a bare id or any URL ending in one, and throws with the offending
@@ -403,7 +310,40 @@ const server = createServer(async (req, res) => {
     }
 
     if (resource === "thumbnail" && req.method === "GET") {
-      sendFile(res, path.join(matchDir(matchId), "thumbnail.png"), "image/png");
+      // `?v=<key>` serves one variant. The key indexes the manifest rather than being joined
+      // into a path, so it cannot walk out of the match directory.
+      const key = url.searchParams.get("v");
+      if (key === null) {
+        sendFile(res, path.join(matchDir(matchId), "thumbnail.png"), "image/png");
+        return;
+      }
+      const manifest = await readManifest(matchDir(matchId));
+      const variant = manifest?.variants.find((v) => v.key === key);
+      if (!variant) {
+        json(res, 404, { error: `no thumbnail variant "${key}" for match ${matchId}` });
+        return;
+      }
+      sendFile(res, path.join(matchDir(matchId), variant.file), "image/png");
+      return;
+    }
+
+    if (resource === "thumbnails" && req.method === "GET") {
+      json(res, 200, (await readManifest(matchDir(matchId))) ?? { chosen: null, variants: [] });
+      return;
+    }
+
+    // Promote a variant to thumbnail.png, which is the file that actually gets uploaded.
+    if (resource === "thumbnails" && req.method === "PUT") {
+      const body = JSON.parse(await readBody(req)) as { chosen?: unknown };
+      if (typeof body.chosen !== "string") {
+        json(res, 400, { error: 'expected { chosen: "<variant key>" }' });
+        return;
+      }
+      try {
+        json(res, 200, await chooseVariant(matchDir(matchId), body.chosen));
+      } catch (err) {
+        json(res, 400, { error: describeError(err) });
+      }
       return;
     }
 
@@ -431,13 +371,13 @@ const server = createServer(async (req, res) => {
     }
 
     if (resource === "render" && req.method === "DELETE") {
-      jobs.get(matchId)?.controller.abort();
+      abortJob(matchId);
       json(res, 200, { matchId, aborted: true });
       return;
     }
 
     if (resource === "progress" && req.method === "GET") {
-      const job = jobs.get(matchId);
+      const job = getJob(matchId);
       if (!job) {
         json(res, 404, { error: "no job for that match" });
         return;

@@ -141,6 +141,9 @@ async function select(id) {
       <button id="save">Save edits</button><span class="saved" id="savedmsg"></span>
     </div>
 
+    <h2>Thumbnail</h2>
+    <div id="variants"><div class="empty">loading&hellip;</div></div>
+
     <h2>Chapters</h2>
     <pre>${esc(meta.chapters ?? "not generated yet")}</pre>
 
@@ -179,7 +182,59 @@ async function select(id) {
     setTimeout(() => ($("#savedmsg").textContent = ""), 2000);
   });
 
+  loadVariants(id);
   watch(id, true);
+}
+
+/**
+ * The rendered pose variants, one per configured pair. Picking one copies it over
+ * thumbnail.png, which is the file that gets uploaded.
+ *
+ * A variant whose avatars came from NMSR is labelled as a fallback rather than shown as a
+ * distinct pose: NMSR has no pose support, so during a Starlight Skins outage every variant is
+ * the same image, and calling them three poses would make the eventual CTR comparison a lie.
+ */
+async function loadVariants(id) {
+  const el = $("#variants");
+  if (!el) return;
+  let data;
+  try {
+    data = await api(`/api/thumbnails/${id}`);
+  } catch (e) {
+    el.innerHTML = `<div class="scanline bad">${esc(e.message)}</div>`;
+    return;
+  }
+  if (!data.variants.length) {
+    el.innerHTML = '<div class="empty">no variants rendered yet</div>';
+    return;
+  }
+
+  el.innerHTML = `<div class="strip">${data.variants
+    .map((v) => {
+      const fellBack = v.leftProvider !== "starlight" || v.rightProvider !== "starlight";
+      return `
+      <figure class="variant ${v.key === data.chosen ? "chosen" : ""}" data-key="${esc(v.key)}">
+        <img src="/api/thumbnail/${id}?v=${encodeURIComponent(v.key)}" alt="${esc(v.key)}" loading="lazy">
+        <figcaption>
+          <span class="key">${esc(v.leftPose)} / ${esc(v.rightPose)}</span>
+          ${fellBack ? '<span class="fallback" title="Starlight Skins was unavailable, so this is the static NMSR render -- not the pose it is named after">static fallback</span>' : ""}
+          ${v.key === data.chosen ? '<span class="is-chosen">in use</span>' : '<button type="button" class="use">Use this</button>'}
+        </figcaption>
+      </figure>`;
+    })
+    .join("")}</div>`;
+
+  el.querySelectorAll(".variant .use").forEach((btn) =>
+    btn.addEventListener("click", async () => {
+      await api(`/api/thumbnails/${id}`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ chosen: btn.closest(".variant").dataset.key }),
+      });
+      await loadVariants(id);
+      await refresh();
+    }),
+  );
 }
 
 /**

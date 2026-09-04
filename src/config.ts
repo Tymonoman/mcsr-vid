@@ -6,6 +6,19 @@ export interface Config {
   /** Starlight Skins pose name for the left/right player's avatar (overlay + thumbnail). */
   leftPose: string;
   rightPose: string;
+  /**
+   * Pose pairs rendered as thumbnail variants on every pipeline run, for A/B testing which
+   * poses earn clicks. The first entry is what `thumbnail.png` becomes unless you pick another
+   * in the dashboard, so keep `leftPose`/`rightPose` first to preserve the current look.
+   *
+   * The non-default pairs are unverified: Starlight Skins' `/render/<pose>/<uuid>/full` returns
+   * 404 for every pose at the time of writing, so there is no way to confirm which names it
+   * still accepts, and each variant currently falls back to the same static NMSR render. The
+   * dashboard labels those as fallbacks rather than pretending they are distinct poses. Re-check
+   * these names once the service is back, and treat CTR grouped by pose as meaningless until
+   * the variants are visibly different.
+   */
+  thumbnailVariants: Array<{ left: string; right: string }>;
   /** Minimum cross-correlation confidence (sync.ts) to trust the refined audio sync offset. */
   syncConfidenceThreshold: number;
   /** VOD trim window: seconds of buffer before/after the estimated match start/end. */
@@ -72,6 +85,12 @@ export interface Config {
 const DEFAULTS: Config = {
   leftPose: "walking",
   rightPose: "crossed",
+  thumbnailVariants: [
+    // First is the existing look, so nothing changes for a match already published.
+    { left: "walking", right: "crossed" },
+    { left: "cheering", right: "relaxing" },
+    { left: "marching", right: "crouching" },
+  ],
   syncConfidenceThreshold: 0.15,
   preRollSec: 150,
   postRollSec: 60,

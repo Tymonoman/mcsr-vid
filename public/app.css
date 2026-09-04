@@ -476,3 +476,58 @@ pre {
   transform: none;
   border-bottom-width: 1px;
 }
+
+/* --- Thumbnail variants -------------------------------------------------------------------- */
+.strip {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.variant {
+  margin: 0;
+  flex: 0 0 260px;
+  border: 1px solid var(--panel-edge-light);
+  background: var(--panel);
+}
+.variant.chosen {
+  border-color: var(--warped);
+}
+.variant img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16/9;
+  object-fit: cover;
+  background: var(--panel-edge);
+}
+.variant figcaption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 7px 9px;
+  font-size: 12px;
+}
+.variant .key {
+  color: var(--muted);
+}
+/* NMSR has no pose support, so during a Starlight Skins outage every "pose" is the same static
+   render. Labelling it is what keeps the CTR-by-pose table honest. */
+.variant .fallback {
+  color: var(--gold);
+  border: 1px solid currentColor;
+  padding: 0 4px;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.variant .is-chosen {
+  color: var(--warped);
+  margin-left: auto;
+}
+.variant .use {
+  margin-left: auto;
+  padding: 3px 9px;
+  font-size: 12px;
+  border-bottom-width: 3px;
+}
