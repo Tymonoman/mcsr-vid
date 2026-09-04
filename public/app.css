@@ -1,0 +1,323 @@
+/* Monocraft and the palette are the project's real brand assets (CLAUDE.md) --
+   the same font and tokens the overlay and thumbnails use. Not re-invented here. */
+@font-face {
+  font-family: "Monocraft";
+  src: url(/Monocraft.ttf) format("truetype");
+  font-display: swap;
+}
+
+:root {
+  --panel: #221f27;
+  --panel-2: #1a1820;
+  --panel-edge: #0d0c10;
+  --panel-edge-light: #3c3844;
+  --crimson: #e2483f;
+  --warped: #35d6c4;
+  --gold: #f0c93d;
+  --quartz: #f3ede2;
+  --muted: #8d8695;
+  --pixel-font: "Monocraft", ui-monospace, "Cascadia Mono", Menlo, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--panel-2);
+  color: var(--quartz);
+  font-family: var(--pixel-font);
+  font-size: 14px;
+  line-height: 1.5;
+}
+header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 18px;
+  background: var(--panel);
+  border-bottom: 2px solid var(--panel-edge);
+}
+header h1 {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+header .dot {
+  color: var(--crimson);
+}
+header .meta {
+  color: var(--muted);
+  font-size: 12px;
+  margin-left: auto;
+}
+
+main {
+  display: grid;
+  grid-template-columns: minmax(320px, 420px) 1fr;
+  gap: 0;
+  align-items: start;
+}
+@media (max-width: 860px) {
+  main {
+    grid-template-columns: 1fr;
+  }
+}
+
+#list {
+  border-right: 2px solid var(--panel-edge);
+  min-height: calc(100vh - 52px);
+}
+.card {
+  display: grid;
+  grid-template-columns: 112px 1fr;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--panel-edge);
+  cursor: pointer;
+}
+.card:hover {
+  background: var(--panel);
+}
+.card[aria-selected="true"] {
+  background: var(--panel);
+  box-shadow: inset 3px 0 0 var(--warped);
+}
+.card img {
+  width: 112px;
+  aspect-ratio: 16/9;
+  object-fit: cover;
+  display: block;
+  background: var(--panel-edge);
+  border: 1px solid var(--panel-edge-light);
+}
+.card .who {
+  font-weight: 700;
+}
+.card .id {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* The pips used to be six anonymous coloured tiles with only a title= tooltip, which is
+   unreadable on a phone and unmemorable anywhere. The legend above the list names them once,
+   in stage order, so a glance at a card is decodable without hovering. */
+.legend {
+  display: flex;
+  gap: 3px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--panel-edge);
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.legend span {
+  flex: 1;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stages {
+  display: flex;
+  gap: 3px;
+  margin-top: 6px;
+}
+.pip {
+  width: 100%;
+  height: 6px;
+  background: var(--panel-edge-light);
+  border: 1px solid var(--panel-edge);
+}
+.pip.done {
+  background: var(--warped);
+}
+
+/* A match whose MCSR API lookup failed: nicknames came off the filenames and their
+   left/right order is a guess. Saying so beats silently showing "?" as if it were a fact. */
+.card .degraded {
+  color: var(--gold);
+  font-size: 11px;
+}
+
+#detail {
+  padding: 18px;
+}
+.empty {
+  color: var(--muted);
+  padding: 40px 8px;
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+button {
+  font-family: inherit;
+  font-size: 13px;
+  padding: 7px 14px;
+  cursor: pointer;
+  color: var(--panel-2);
+  background: var(--gold);
+  border: 2px solid var(--panel-edge);
+  border-bottom-width: 4px;
+}
+button:active {
+  border-bottom-width: 2px;
+  transform: translateY(2px);
+}
+button:disabled {
+  background: var(--panel-edge-light);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+button.ghost {
+  background: transparent;
+  color: var(--quartz);
+  border-color: var(--panel-edge-light);
+}
+
+h2 {
+  font-size: 13px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 22px 0 8px;
+}
+textarea,
+input[type="text"] {
+  width: 100%;
+  font-family: inherit;
+  font-size: 13px;
+  padding: 9px;
+  background: var(--panel);
+  color: var(--quartz);
+  border: 1px solid var(--panel-edge-light);
+  resize: vertical;
+}
+textarea:focus,
+input:focus {
+  outline: 2px solid var(--warped);
+  outline-offset: -2px;
+}
+.counter {
+  font-size: 12px;
+  color: var(--muted);
+}
+.counter.good {
+  color: var(--warped);
+}
+.counter.over {
+  color: var(--crimson);
+}
+pre {
+  background: var(--panel);
+  border: 1px solid var(--panel-edge-light);
+  padding: 10px;
+  overflow-x: auto;
+  font-size: 12px;
+  margin: 0;
+}
+
+#progress {
+  display: none;
+}
+#progress.live {
+  display: block;
+}
+/* label | bar | percent | elapsed. The fourth column is the point: a render is tens of
+   minutes and a bar alone cannot tell a slow stage from a wedged one. */
+.stagerow {
+  display: grid;
+  grid-template-columns: 150px 1fr 46px 74px;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 5px;
+  font-size: 13px;
+}
+.bar {
+  height: 12px;
+  background: var(--panel);
+  border: 1px solid var(--panel-edge-light);
+}
+.bar > i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--warped);
+  transition: width 0.25s;
+}
+.stagerow.active .bar > i {
+  background: var(--gold);
+}
+/* Finished, but not cleanly -- a sync that fell under the confidence threshold or failed
+   outright and fell back to the coarse offset. Used to be indistinguishable from success. */
+.stagerow.warn .bar > i {
+  background: var(--gold);
+  width: 100% !important;
+}
+.stagerow.error .bar > i {
+  background: var(--crimson);
+  width: 100% !important;
+}
+.stagerow .pct,
+.stagerow .elapsed {
+  text-align: right;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.stagerow.warn .label {
+  color: var(--gold);
+}
+.stagerow.error .label {
+  color: var(--crimson);
+}
+.msg {
+  color: var(--muted);
+  font-size: 12px;
+  min-height: 18px;
+}
+.saved {
+  color: var(--warped);
+  font-size: 12px;
+}
+
+/* Failures used to arrive as a multi-KB yt-dlp stderr tail crushed into a one-line div.
+   A <pre> that scrolls, plus the stage that owns it, plus a copy button, because the whole
+   point of the text is pasting it somewhere. */
+#failure {
+  display: none;
+  margin-top: 14px;
+  border: 1px solid var(--crimson);
+  background: var(--panel);
+}
+#failure.live {
+  display: block;
+}
+#failure .title {
+  border-bottom: 1px solid var(--panel-edge-light);
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--crimson);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+#failure pre {
+  border: 0;
+  max-height: 40vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+#failure .actions {
+  padding: 8px 10px;
+  border-top: 1px solid var(--panel-edge-light);
+}

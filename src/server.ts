@@ -13,8 +13,9 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "./config.js";
+import { describeError } from "./errorText.js";
 import { listMatchStatuses } from "./matchStatus.js";
-import { runPipeline, STAGE_LABELS, STAGE_ORDER, type StageEvent } from "./pipeline.js";
+import { runPipeline, STAGE_LABELS, STAGE_ORDER, type StageEvent, type StageId } from "./pipeline.js";
 import { buildTitle } from "./title.js";
 
 const PORT = Number(process.env.PORT ?? 8080);
@@ -28,7 +29,12 @@ interface Job {
   matchId: number;
   events: StageEvent[];
   done: boolean;
+  /** Failure text, or null when the run succeeded *or* was deliberately aborted. */
   error: string | null;
+  /** Which stage the failure belongs to, so the browser can mark that row rather than guess. */
+  errorStage: StageId | null;
+  /** A deliberate stop via DELETE /api/render/:id, which is not a failure. */
+  aborted: boolean;
   subscribers: Set<ServerResponse>;
   controller: AbortController;
 }
@@ -90,8 +96,7 @@ async function readMeta(matchId: number) {
     rightNickname: entry?.rightNickname ?? null,
     title: (await readIfPresent(title.edited)) ?? (await readIfPresent(title.generated)),
     titleEdited: existsSync(title.edited),
-    description:
-      (await readIfPresent(description.edited)) ?? (await readIfPresent(description.generated)),
+    description: (await readIfPresent(description.edited)) ?? (await readIfPresent(description.generated)),
     descriptionEdited: existsSync(description.edited),
     chapters: await readIfPresent(chaptersPath),
     hook: budget && {
@@ -113,6 +118,8 @@ function startJob(matchId: number): Job {
     events: [],
     done: false,
     error: null,
+    errorStage: null,
+    aborted: false,
     subscribers: new Set(),
     controller,
   };
@@ -120,6 +127,9 @@ function startJob(matchId: number): Job {
 
   const push = (event: StageEvent) => {
     job.events.push(event);
+    // The pipeline now names the stage that died, so the browser can colour that row instead of
+    // dumping a multi-KB stderr tail into a one-line status field.
+    if (event.status === "error") job.errorStage = event.stage;
     const frame = `data: ${JSON.stringify(event)}\n\n`;
     for (const res of job.subscribers) res.write(frame);
   };
@@ -130,18 +140,25 @@ function startJob(matchId: number): Job {
     })
     .catch((err: unknown) => {
       job.done = true;
-      job.error = err instanceof Error ? err.message : String(err);
+      // Aborting rejects the same promise a real failure does, so without this check pressing
+      // Stop reported "failed: The operation was aborted" and read as a crash.
+      job.aborted = controller.signal.aborted;
+      job.error = job.aborted ? null : describeError(err);
     })
     .finally(() => {
-      const frame = `event: end\ndata: ${JSON.stringify({ error: job.error })}\n\n`;
       for (const res of job.subscribers) {
-        res.write(frame);
+        res.write(endFrame(job));
         res.end();
       }
       job.subscribers.clear();
     });
 
   return job;
+}
+
+function endFrame(job: Job): string {
+  const payload = { error: job.error, stage: job.errorStage, aborted: job.aborted };
+  return `event: end\ndata: ${JSON.stringify(payload)}\n\n`;
 }
 
 function streamProgress(res: ServerResponse, job: Job): void {
@@ -157,7 +174,7 @@ function streamProgress(res: ServerResponse, job: Job): void {
   for (const event of job.events) res.write(`data: ${JSON.stringify(event)}\n\n`);
 
   if (job.done) {
-    res.write(`event: end\ndata: ${JSON.stringify({ error: job.error })}\n\n`);
+    res.write(endFrame(job));
     res.end();
     return;
   }
@@ -195,6 +212,17 @@ const server = createServer(async (req, res) => {
     if (segments[0] !== "api") {
       if (url.pathname === "/" || url.pathname === "/index.html") {
         sendFile(res, path.join(ROOT, "public", "index.html"), "text/html; charset=utf-8");
+        return;
+      }
+      // The dashboard's CSS and JS are siblings of index.html rather than inlined, because that
+      // file gains a section per feature and CLAUDE.md caps a file at 500 lines. Named
+      // explicitly rather than serving public/ as a directory: an allowlist cannot be walked.
+      if (url.pathname === "/app.css") {
+        sendFile(res, path.join(ROOT, "public", "app.css"), "text/css; charset=utf-8");
+        return;
+      }
+      if (url.pathname === "/app.js") {
+        sendFile(res, path.join(ROOT, "public", "app.js"), "text/javascript; charset=utf-8");
         return;
       }
       if (url.pathname === "/Monocraft.ttf") {
@@ -271,7 +299,7 @@ const server = createServer(async (req, res) => {
 
     json(res, 404, { error: "not found" });
   } catch (err) {
-    json(res, 500, { error: err instanceof Error ? err.message : String(err) });
+    json(res, 500, { error: describeError(err) });
   }
 });
 
