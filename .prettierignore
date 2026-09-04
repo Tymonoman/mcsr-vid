@@ -1,0 +1,14 @@
+node_modules/
+out/
+dist/
+media/
+downloads/
+package-lock.json
+remotion/overlay.css
+remotion/assets/
+# Captured MCSR API responses used as test fixtures — reformatting them makes
+# every diff enormous and changes nothing about how they're read.
+src/fixtures/
+# Prose is hand-wrapped, and prettier's markdown parser rewrote a continuation
+# line beginning with "+" into a nested list item, corrupting CLAUDE.md.
+*.md

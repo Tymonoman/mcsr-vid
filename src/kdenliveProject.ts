@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import path from "node:path";
 import { THUMP_LEAD_SEC } from "./sync.js";
 
 // Cut POV clips exactly at the world-load thump — no earlier — so the visible clip starts right
@@ -6,7 +7,7 @@ import { THUMP_LEAD_SEC } from "./sync.js";
 const CLIP_LEAD_IN_SEC = THUMP_LEAD_SEC;
 
 export interface KdenliveClipInput {
-  /** Path to the media file, as Kdenlive should reference it (absolute, for portability). */
+  /** Absolute path to the media file. Written out relative to `KdenliveProjectInput.root`. */
   path: string;
   /** Usable duration of the clip file, in seconds, from its own start. */
   durationSec: number;
@@ -30,6 +31,13 @@ export interface KdenliveProjectInput {
   fps: number;
   width: number;
   height: number;
+  /**
+   * Directory every clip path is written relative to, emitted as the `<mlt root>` attribute.
+   * Normally the match's media dir. This is what makes a project portable: the lab generates
+   * it with root=/media/<id>, and the desktop opens the same file after rewriting one
+   * attribute — instead of every clip going offline because the paths were absolute.
+   */
+  root: string;
   leftClip: KdenliveClipInput;
   rightClip: KdenliveClipInput;
   /** Overlay layers, bottom-most first; each may carry its own positionRect. */
@@ -39,11 +47,7 @@ export interface KdenliveProjectInput {
 }
 
 function escapeXml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 function secondsToTimecode(sec: number): string {
@@ -120,8 +124,7 @@ function buildTrack(opts: {
     </chain>`;
 
   const blankLengthSec = startOnTimelineSec + trimInSec;
-  const blank =
-    blankLengthSec > 0 ? `<blank length="${secondsToTimecode(blankLengthSec)}"/>` : "";
+  const blank = blankLengthSec > 0 ? `<blank length="${secondsToTimecode(blankLengthSec)}"/>` : "";
   const filterXml =
     positionRect !== undefined
       ? `
@@ -159,8 +162,18 @@ function buildTrack(opts: {
 
 /** Generates a complete .kdenlive (MLT XML) project: two split-screen POV clips + an alpha overlay track. */
 export function buildKdenliveProject(input: KdenliveProjectInput): string {
-  const { fps, width, height, leftClip, rightClip, overlayClips, projectName, markers } = input;
+  const { fps, width, height, projectName, markers, root } = input;
   const sequenceUuid = `{${randomUUID()}}`;
+
+  // Relativise once, here, rather than threading `root` down into every emitter: everything
+  // below already reads `clip.path` and stays untouched.
+  const relativise = (clip: KdenliveClipInput): KdenliveClipInput => ({
+    ...clip,
+    path: path.relative(root, clip.path),
+  });
+  const leftClip = relativise(input.leftClip);
+  const rightClip = relativise(input.rightClip);
+  const overlayClips = input.overlayClips.map(relativise);
 
   const maxOffset = Math.max(
     leftClip.matchOffsetIntoClipSec,
@@ -297,7 +310,7 @@ export function buildKdenliveProject(input: KdenliveProjectInput): string {
   ].join("\n        ");
 
   return `<?xml version='1.0' encoding='utf-8'?>
-<mlt LC_NUMERIC="en_US.UTF-8" producer="main_bin" version="7.25.0">
+<mlt root="${escapeXml(root)}" LC_NUMERIC="en_US.UTF-8" producer="main_bin" version="7.25.0">
     <profile colorspace="709" description="${width}x${height}, ${fps} fps" display_aspect_den="9" display_aspect_num="16" frame_rate_den="1" frame_rate_num="${fps}" height="${height}" progressive="1" sample_aspect_den="1" sample_aspect_num="1" width="${width}"/>
     <producer id="producer0" in="00:00:00.000" out="${totalDurationTc}">
         <property name="length">2147483647</property>

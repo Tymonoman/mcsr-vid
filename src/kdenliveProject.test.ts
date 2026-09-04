@@ -13,6 +13,7 @@ const xml = buildKdenliveProject({
   fps: 60,
   width: 1920,
   height: 1080,
+  root: "/media",
   leftClip: clip("left"),
   rightClip: clip("right"),
   overlayClips: [clip("overlay")],
@@ -35,6 +36,7 @@ const xmlWithMarkers = buildKdenliveProject({
   fps: 60,
   width: 1920,
   height: 1080,
+  root: "/media",
   leftClip: clip("left"),
   rightClip: clip("right"),
   overlayClips: [clip("overlay")],
@@ -62,6 +64,7 @@ const layered = buildKdenliveProject({
   fps: 60,
   width: 1920,
   height: 1080,
+  root: "/media",
   leftClip: clip("left"),
   rightClip: clip("right"),
   overlayClips: [
@@ -112,6 +115,7 @@ const trimmed = buildKdenliveProject({
   fps: 60,
   width: 1920,
   height: 1080,
+  root: "/media",
   leftClip: preRollClip("left", 150),
   rightClip: preRollClip("right", 120),
   overlayClips: [preRollClip("overlay", 20)],
@@ -135,6 +139,43 @@ assert.match(
   "overlay clip must stay untrimmed at in=0",
 );
 
+// The project must be portable between machines. The lab generates it with root=/media/<id>
+// and the desktop opens the same file; if resources were absolute, every clip would be offline
+// on the other box. MLT resolves relative resources against the root attribute.
+const portable = buildKdenliveProject({
+  fps: 60,
+  width: 1920,
+  height: 1080,
+  root: "/media/12345678",
+  leftClip: { ...clip("left"), path: "/media/12345678/left.mp4" },
+  rightClip: { ...clip("right"), path: "/media/12345678/right.mp4" },
+  overlayClips: [{ ...clip("overlay"), path: "/media/12345678/overlay.mov" }],
+  projectName: "Portable Match",
+});
+
+assert.match(portable, /<mlt root="\/media\/12345678"/, "root attribute must be emitted");
+
+const resources = [...portable.matchAll(/name="resource">([^<]*)</g)].map((m) => m[1]);
+const mediaResources = resources.filter((r) => r !== "black");
+assert.deepEqual(
+  [...new Set(mediaResources)].sort(),
+  ["left.mp4", "overlay.mov", "right.mp4"],
+  `resources must be relative to root, got: ${mediaResources}`,
+);
+assert.ok(
+  mediaResources.every((r) => !r.startsWith("/")),
+  `no resource may be absolute: ${mediaResources}`,
+);
+
+// Relocating the project to another machine is a one-attribute rewrite. Swapping root alone
+// must be enough - nothing else in the file may mention the old location.
+const relocated = portable.replace('root="/media/12345678"', 'root="/home/tymek/media/12345678"');
+assert.ok(
+  !relocated.includes("/media/12345678/"),
+  "rewriting root alone must relocate the project - no path may survive it",
+);
+assert.match(relocated, /<mlt root="\/home\/tymek\/media\/12345678"/);
+
 console.log("kdenliveProject: all checks passed");
 
 // The two POV clips must honour their own positionRect. Without this they fall back to a naive
@@ -144,6 +185,7 @@ const posed = buildKdenliveProject({
   fps: 60,
   width: 1920,
   height: 1080,
+  root: "/media",
   leftClip: { ...clip("left"), positionRect: LEFT_POV_RECT },
   rightClip: { ...clip("right"), positionRect: RIGHT_POV_RECT },
   overlayClips: [],
@@ -159,6 +201,7 @@ const bare = buildKdenliveProject({
   fps: 60,
   width: 1920,
   height: 1080,
+  root: "/media",
   leftClip: clip("left"),
   rightClip: clip("right"),
   overlayClips: [],

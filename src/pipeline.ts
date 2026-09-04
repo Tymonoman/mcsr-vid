@@ -367,6 +367,9 @@ async function runStages(
     fps: FPS,
     width: WIDTH,
     height: HEIGHT,
+    // Every artifact this pipeline writes lives under outDir, so the project references
+    // nothing outside it. Relocating it to another machine is then a one-attribute rewrite.
+    root: path.resolve(outDir),
     leftClip,
     rightClip,
     overlayClips,

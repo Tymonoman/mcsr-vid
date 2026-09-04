@@ -19,12 +19,15 @@
     "status": "tsx src/status.ts",
     "score": "tsx src/scoreCli.ts",
     "start": "npm run build-overlay-css && tsx src/tui.tsx",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write .",
     "test": "for f in src/*.test.ts remotion/*.test.ts; do echo \"-- $f --\"; tsx \"$f\" || exit 1; done"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
+    "prettier": "^3.9.6",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"
   },
