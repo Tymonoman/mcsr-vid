@@ -47,6 +47,10 @@ services:
       - /home/homelab/media/tymek/mcsr-archive:/archive
       # Keeps the Claude Code subscription login across image rebuilds.
       - claude-config:/home/node/.claude
+      # .claude.json sits OUTSIDE ~/.claude, so the named volume does not cover it
+      # and every rebuild wiped it — losing onboarding state (Claude came back at
+      # the theme picker) and every `claude mcp add`. Bind-mounted so it survives.
+      - /home/homelab/claude-home.json:/home/node/.claude.json
 
     # No env_file needed: .env sits in the bind-mounted repo and src/twitch.ts:11-17
     # loads it natively via process.loadEnvFile, falling through to process.env.
