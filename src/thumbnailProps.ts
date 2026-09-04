@@ -4,6 +4,7 @@ import { config } from "./config.js";
 // via an untyped `inputProps` JSON boundary.
 import type { ThumbnailPlayer, ThumbnailProps } from "../remotion/types.js";
 import { resolveAvatarUrl } from "./avatarUrl.js";
+import { eloAtMatchStart } from "./overlayProps.js";
 import type { MatchInfo, UserDetails } from "./types.js";
 
 export type { ThumbnailPlayer, ThumbnailProps };
@@ -25,9 +26,21 @@ export async function computeThumbnailProps(
     resolveAvatarUrl(userRight.uuid, RIGHT_POSE),
   ]);
 
+  // `user.eloRate` is the rating *now*, which drifts from the rating carried into the match
+  // within days at the top — see eloAtMatchStart's note in overlayProps.ts. The overlay and the
+  // description already use it; the thumbnail showing a different number for the same match was
+  // the same bug left unfixed here.
   return {
-    left: { nickname: userLeft.nickname, eloRate: userLeft.eloRate ?? 0, avatarUrl: leftAvatarUrl },
-    right: { nickname: userRight.nickname, eloRate: userRight.eloRate ?? 0, avatarUrl: rightAvatarUrl },
+    left: {
+      nickname: userLeft.nickname,
+      eloRate: eloAtMatchStart(match, userLeft.uuid, userLeft.eloRate),
+      avatarUrl: leftAvatarUrl,
+    },
+    right: {
+      nickname: userRight.nickname,
+      eloRate: eloAtMatchStart(match, userRight.uuid, userRight.eloRate),
+      avatarUrl: rightAvatarUrl,
+    },
     headerLabel: match.tag ?? "Minecraft · Speedrunning · Ranked",
   };
 }

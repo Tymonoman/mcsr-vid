@@ -97,15 +97,67 @@ const DEFAULTS: Config = {
 
 const CONFIG_PATH = path.resolve("mcsr-vid.config.json");
 
+/**
+ * The config file is hand-edited, so a wrong type (`"renderConcurrency": "4"`) would otherwise be
+ * spread straight into `Config` and surface far from the cause — as string concatenation in slot
+ * arithmetic, or a bad option handed to the Remotion renderer. Check each override against the
+ * type of the default it replaces and fail here, naming the key.
+ */
+export function validateOverrides(raw: Record<string, unknown>): void {
+  for (const [key, value] of Object.entries(raw)) {
+    if (!(key in DEFAULTS)) {
+      throw new Error(`${CONFIG_PATH}: unknown key "${key}".`);
+    }
+    const expected = DEFAULTS[key as keyof Config];
+    if (key === "suggestWeights") {
+      if (typeof value !== "object" || value === null || Array.isArray(value)) {
+        throw new Error(`${CONFIG_PATH}: "suggestWeights" must be an object.`);
+      }
+      for (const [wKey, wValue] of Object.entries(value)) {
+        if (!(wKey in DEFAULTS.suggestWeights)) {
+          throw new Error(`${CONFIG_PATH}: unknown suggestWeights key "${wKey}".`);
+        }
+        if (typeof wValue !== "number" || !Number.isFinite(wValue)) {
+          throw new Error(`${CONFIG_PATH}: suggestWeights."${wKey}" must be a finite number.`);
+        }
+      }
+      continue;
+    }
+    // renderConcurrency is the one key whose default is null and whose override is a number.
+    if (expected === null) {
+      if (value !== null && (typeof value !== "number" || !Number.isFinite(value))) {
+        throw new Error(`${CONFIG_PATH}: "${key}" must be a finite number or null.`);
+      }
+      continue;
+    }
+    if (typeof value !== typeof expected) {
+      throw new Error(
+        `${CONFIG_PATH}: "${key}" must be a ${typeof expected}, got ${value === null ? "null" : typeof value}.`,
+      );
+    }
+    if (typeof value === "number" && !Number.isFinite(value)) {
+      throw new Error(`${CONFIG_PATH}: "${key}" must be a finite number.`);
+    }
+  }
+}
+
 function loadConfig(): Config {
   if (!existsSync(CONFIG_PATH)) return DEFAULTS;
-  const raw = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
+  const parsed: unknown = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error(`${CONFIG_PATH}: expected a JSON object.`);
+  }
+  const raw = parsed as Record<string, unknown>;
+  validateOverrides(raw);
   return {
     ...DEFAULTS,
     ...raw,
     // The spread above is shallow, so overriding one weight would drop all the others.
-    suggestWeights: { ...DEFAULTS.suggestWeights, ...(raw.suggestWeights ?? {}) },
-  };
+    suggestWeights: {
+      ...DEFAULTS.suggestWeights,
+      ...((raw.suggestWeights as Partial<ScoreWeights>) ?? {}),
+    },
+  } as Config;
 }
 
 /** Optional `mcsr-vid.config.json` overrides, merged over defaults. Loaded once at import time. */

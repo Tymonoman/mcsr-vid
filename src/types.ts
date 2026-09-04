@@ -69,7 +69,8 @@ export interface UserDetails extends UserProfile {
     nextDecay: number | null;
   };
   statistics: {
-    season: StatisticCategoryMap;
+    /** Absent/empty right after a season rollover — pickStats falls back to `total` there. */
+    season: StatisticCategoryMap | null;
     total: StatisticCategoryMap;
   };
   connections: Record<string, UserConnection>;

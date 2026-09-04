@@ -14,6 +14,10 @@ import type {
 export type { PlayerIdentity, SplitRow };
 export type OverlayProps = Omit<RemotionOverlayProps, "durationInFrames" | "fps">;
 
+// What the overlay puts on screen: a deliberate subset of the milestones matchScore.ts scores.
+// "Bastion" here is arrival (`nether.find_bastion`) and only arrival — the scorer additionally
+// tracks `nether.loot_bastion`, under distinct labels so the two lists can't drift into meaning
+// different things under the same word again.
 const SPLIT_EVENTS: { label: string; type: string }[] = [
   { label: "Nether Enter", type: "story.enter_the_nether" },
   { label: "Bastion", type: "nether.find_bastion" },
@@ -42,7 +46,7 @@ const RIGHT_POSE = config.rightPose;
  */
 export function pickStats(user: UserDetails): { stats: StatisticCategoryMap; scope: StatsScope } {
   const season = user.statistics.season;
-  if ((season?.playedMatches?.ranked ?? 0) > 0) return { stats: season, scope: "SEASON" };
+  if (season && (season.playedMatches?.ranked ?? 0) > 0) return { stats: season, scope: "SEASON" };
   return { stats: user.statistics.total, scope: "CAREER" };
 }
 
@@ -105,7 +109,13 @@ export function computeSplits(match: MatchInfo, leftUuid: string, rightUuid: str
   const eventsByPlayer = new Map<string, Map<string, number>>();
   for (const t of match.timelines) {
     if (!eventsByPlayer.has(t.uuid)) eventsByPlayer.set(t.uuid, new Map());
-    eventsByPlayer.get(t.uuid)!.set(t.type, t.time);
+    const events = eventsByPlayer.get(t.uuid)!;
+    // A type can repeat (a second blind travel, say); the first time the milestone was reached
+    // is the split, matching matchScore.ts's earliestByType. The API happens to return entries
+    // newest-first, so plain "last write wins" lands on the earliest by accident — don't rely
+    // on that ordering.
+    const seen = events.get(t.type);
+    if (seen === undefined || t.time < seen) events.set(t.type, t.time);
   }
 
   const leftEvents = eventsByPlayer.get(leftUuid) ?? new Map();

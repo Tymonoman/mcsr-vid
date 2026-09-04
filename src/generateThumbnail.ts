@@ -1,5 +1,6 @@
 import path from "node:path";
 import { requireArg } from "./cliArgs.js";
+import { config } from "./config.js";
 import { getMatch, getUser, parseMatchId } from "./mcsrApi.js";
 import { renderThumbnail } from "./thumbnailRender.js";
 
@@ -13,7 +14,7 @@ if (!playerLeft || !playerRight) {
 
 const [userLeft, userRight] = await Promise.all([getUser(playerLeft.uuid), getUser(playerRight.uuid)]);
 
-const outDir = path.join("media", String(matchId));
+const outDir = path.join(config.mediaDir, String(matchId));
 const outPath = path.join(outDir, "thumbnail.png");
 
 console.error(`Rendering thumbnail for match ${matchId}...`);

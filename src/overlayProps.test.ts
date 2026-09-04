@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { pickStats, eloAtMatchStart } from "./overlayProps.js";
+import { pickStats, eloAtMatchStart, computeSplits } from "./overlayProps.js";
 import type { MatchInfo, UserDetails } from "./types.js";
 
 const bucket = (played: number, wins: number, best: number) => ({
@@ -65,5 +65,44 @@ assert.equal(
 );
 // ...and a null live value degrades to 0 rather than rendering "null ELO".
 assert.equal(eloAtMatchStart(match, "nobody", null), 0);
+
+// computeSplits feeds both the on-screen splits panel and the Kdenlive marker positions, so a
+// wrong key or a wrong occurrence ships a misaligned video with nothing failing loudly.
+const splitTimeline = [
+  // The API returns timelines newest-first, and a type can repeat: this run blind-travelled twice.
+  { uuid: "L", type: "projectelo.timeline.blind_travel", time: 400_000 },
+  { uuid: "L", type: "projectelo.timeline.blind_travel", time: 300_000 },
+  { uuid: "L", type: "story.enter_the_nether", time: 100_000 },
+  { uuid: "R", type: "story.enter_the_nether", time: 110_000 },
+  { uuid: "R", type: "nether.find_bastion", time: 150_000 },
+  { uuid: "OTHER", type: "story.enter_the_nether", time: 1 },
+];
+
+{
+  const splits = computeSplits({ timelines: splitTimeline } as unknown as MatchInfo, "L", "R");
+
+  // The label set and its order are what the overlay renders top-to-bottom.
+  assert.deepEqual(
+    splits.map((s) => s.label),
+    ["Nether Enter", "Bastion", "Fortress", "Blind", "End Enter"],
+  );
+
+  const by = (label: string) => splits.find((s) => s.label === label)!;
+  assert.deepEqual(by("Nether Enter"), { label: "Nether Enter", leftMs: 100_000, rightMs: 110_000 });
+  // A milestone the player never reached is null, not 0 — 0 would render as "0:00.000".
+  assert.deepEqual(by("Bastion"), { label: "Bastion", leftMs: null, rightMs: 150_000 });
+  assert.deepEqual(by("Fortress"), { label: "Fortress", leftMs: null, rightMs: null });
+  // The repeated blind travel resolves to the FIRST time the milestone was reached.
+  assert.equal(by("Blind").leftMs, 300_000);
+}
+
+// Same events, ascending order: the answer must not depend on how the API happens to sort.
+{
+  const ascending = [...splitTimeline].reverse();
+  const splits = computeSplits({ timelines: ascending } as unknown as MatchInfo, "L", "R");
+  const blind = splits.find((s) => s.label === "Blind")!;
+  assert.equal(blind.leftMs, 300_000);
+  assert.equal(splits.find((s) => s.label === "Nether Enter")!.leftMs, 100_000);
+}
 
 console.log("overlayProps: all checks passed");

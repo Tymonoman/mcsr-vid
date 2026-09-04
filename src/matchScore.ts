@@ -1,13 +1,25 @@
 import type { MatchInfo } from "./types.js";
+// remotion/format.ts is a CSS-free leaf module (like layout.ts), so Node code can import it.
+// It replaces a local formatClock that split seconds without re-carrying into minutes, so a
+// value a hair under a minute boundary formatted as "2:60.000".
+import { formatTime } from "../remotion/format.js";
 
 /**
- * The seven milestones both players always pass through, in run order. These are the
- * splits the overlay already shows, so a suggestion's split table lines up with the
- * finished video.
+ * Milestones both players pass through, in run order, used to score how close a match was.
+ * Deliberately a superset of the five splits the overlay displays: scoring wants every
+ * comparable moment, while the overlay only has room for the ones viewers track.
+ *
+ * The bastion contributes two, because they measure genuinely different things — a player can
+ * arrive well ahead and still leave together (in match 12730175 they arrived 8.185s apart and
+ * finished looting 1.705s apart), and that convergence is worth scoring. The overlay shows
+ * arrival only, labelled just "Bastion" there. Keep these two labels distinct: one bare
+ * "Bastion" entry meaning `find_bastion` in one list and `loot_bastion` in the other is exactly
+ * how the two silently drifted apart before.
  */
 const SPLITS: ReadonlyArray<{ label: string; type: string }> = [
   { label: "Nether enter", type: "story.enter_the_nether" },
-  { label: "Bastion", type: "nether.loot_bastion" },
+  { label: "Bastion enter", type: "nether.find_bastion" },
+  { label: "Bastion loot", type: "nether.loot_bastion" },
   { label: "Fortress", type: "nether.find_fortress" },
   { label: "Blaze rod", type: "nether.obtain_blaze_rod" },
   { label: "Blind travel", type: "projectelo.timeline.blind_travel" },
@@ -96,13 +108,6 @@ export const DEFAULT_WEIGHTS: ScoreWeights = {
 };
 
 const clamp01 = (n: number): number => Math.min(1, Math.max(0, n));
-
-/** "m:ss.mmm" from milliseconds. */
-export function formatClock(ms: number): string {
-  const min = Math.floor(ms / 60_000);
-  const sec = (ms - min * 60_000) / 1000;
-  return `${min}:${sec.toFixed(3).padStart(6, "0")}`;
-}
 
 /**
  * Earliest time per event type for one player. Timelines can repeat a type (a second
@@ -277,12 +282,12 @@ export function formatMetrics(metrics: MatchMetrics): string {
   const [nameA, nameB] = metrics.players;
   const lines: string[] = [];
   lines.push(`Match ${metrics.matchId} - ${nameA} vs ${nameB}`);
-  lines.push(`Winner: ${metrics.winner ?? "-"} in ${formatClock(metrics.resultMs)}`);
+  lines.push(`Winner: ${metrics.winner ?? "-"} in ${formatTime(metrics.resultMs)}`);
   lines.push("");
   lines.push(`${"SPLIT".padEnd(14)}${nameA.padStart(14)}${nameB.padStart(14)}      GAP`);
   for (const split of metrics.splits) {
-    const a = split.aMs === null ? "--" : formatClock(split.aMs);
-    const b = split.bMs === null ? "--" : formatClock(split.bMs);
+    const a = split.aMs === null ? "--" : formatTime(split.aMs);
+    const b = split.bMs === null ? "--" : formatTime(split.bMs);
     const gap =
       split.gapMs === null
         ? "  (incomparable)"

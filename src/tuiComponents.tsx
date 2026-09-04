@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Box, Text } from "ink";
-import { formatClock } from "./matchScore.js";
+import { formatTime } from "../remotion/format.js";
 import { STAGE_LABELS, type StageEvent } from "./pipeline.js";
 import type { Suggestion } from "./suggest.js";
 
@@ -132,7 +132,7 @@ export function SuggestionRow({ suggestion, selected }: { suggestion: Suggestion
         {" "}
         {metrics.matchId} {pad(`${metrics.players[0]} v ${metrics.players[1]}`, 30)}
       </Text>
-      <Text color={COLORS.muted}> {formatClock(metrics.resultMs).padStart(9)}</Text>
+      <Text color={COLORS.muted}> {formatTime(metrics.resultMs).padStart(9)}</Text>
       {/* The two numbers that decide whether a match is worth rendering. */}
       <Text color={isClose ? COLORS.warped : COLORS.muted}> Δ{margin}</Text>
       <Text color={isClose ? COLORS.muted : COLORS.crimson}> ☠{String(metrics.deaths).padStart(2)}</Text>

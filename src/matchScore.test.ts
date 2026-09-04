@@ -31,8 +31,11 @@ assert.equal(benchmark.finishMarginMs, 1033, "gap between the two dragon_death e
 assert.equal(benchmark.finishEstimated, false, "both players have a real dragon_death event");
 assert.equal(benchmark.deaths, 5);
 assert.deepEqual(benchmark.deathsByPlayer, { edcr: 3, doogile: 2 });
-assert.equal(benchmark.splitsWithin3s, 4, "Bastion, Blind, End enter and Dragon are all <3s");
-assert.equal(benchmark.comparedSplits, 8, "7 splits plus the dragon, all reached by both");
+// The bastion is scored twice, because arrival and loot say different things: these two arrived
+// 8.185s apart and finished looting 1.705s apart, so the convergence inside the bastion is real
+// and only the loot half is close. The overlay displays arrival alone.
+assert.equal(benchmark.splitsWithin3s, 4, "Bastion loot, Blind travel, End enter and Dragon are <3s");
+assert.equal(benchmark.comparedSplits, 9, "8 milestones plus the dragon, all reached by both");
 assert.equal(benchmark.maxLeadMs, 10086, "widest gap was at the stronghold");
 assert.equal(benchmark.leadChanges, 0, "edcr led every scored split");
 
@@ -64,7 +67,7 @@ assert.equal(estimatedFinish.deaths, 0);
 // huge mid-race collapse (a 130.6s lead becoming a 4.5s deficit).
 const dnf = computeMetrics(load(12929221));
 assert.equal(dnf.finishMarginMs, null, "a DNF finish has no margin");
-assert.equal(dnf.comparedSplits, 7, "the dragon split is dropped, the other seven remain");
+assert.equal(dnf.comparedSplits, 8, "the dragon split is dropped, the other eight remain");
 assert.equal(dnf.maxLeadMs, 130585);
 assert.equal(dnf.maxSwingMs, 135085, "130.585s lead flipping to a 4.5s deficit");
 assert.equal(dnf.leadChanges, 2);
@@ -96,16 +99,16 @@ assert.ok(score(dnf) > 0, "a DNF still earns score from its other terms");
 // A patchy timeline must not look as close as a complete one. Dividing the close-split
 // count by however many splits happened to be comparable would score 3-of-6 the same as
 // 3-of-8, quietly promoting matches with missing data.
-assert.equal(TOTAL_SPLITS, 8, "seven milestones plus the dragon");
+assert.equal(TOTAL_SPLITS, 9, "eight milestones plus the dragon");
 const sparse = { ...dnf, splitsWithin3s: 3, comparedSplits: 6 };
-const complete = { ...dnf, splitsWithin3s: 3, comparedSplits: 8 };
+const complete = { ...dnf, splitsWithin3s: 3, comparedSplits: 9 };
 assert.equal(
   score(sparse),
   score(complete),
   "the split term must depend on the count of close splits, not on how many were comparable",
 );
 assert.ok(
-  score({ ...dnf, splitsWithin3s: 4, comparedSplits: 8 }) > score(sparse),
+  score({ ...dnf, splitsWithin3s: 4, comparedSplits: 9 }) > score(sparse),
   "more close splits must still outrank fewer",
 );
 
@@ -119,8 +122,11 @@ assert.equal(speedBonus(510_000, FAST_SEC, SLOW_SEC), 0.5, "midway between the t
 // --- formatMetrics renders every split plus the summary block.
 const text = formatMetrics(benchmark);
 assert.match(text, /Match 12730175 - edcr vs doogile/);
+// Distinct labels, so the table can never again read as one ambiguous "Bastion".
+assert.match(text, /Bastion enter {7}2:03\.676/);
+assert.match(text, /Bastion loot {8}2:17\.182/);
 assert.match(text, /Finish margin : 1\.033s/);
-assert.match(text, /Splits <3s {4}: 4\/8/);
+assert.match(text, /Splits <3s {4}: 4\/9/);
 assert.match(text, /Deaths {8}: 5 \(edcr 3, doogile 2\)/);
 assert.match(formatMetrics(dnf), /Finish margin : DNF/);
 assert.match(formatMetrics(estimatedFinish), /Finish margin : 14\.394s \(estimated\)/);
