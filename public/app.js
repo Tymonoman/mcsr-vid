@@ -65,7 +65,7 @@ function renderList() {
       .join("");
 
   el.querySelectorAll(".card").forEach((c) =>
-    c.addEventListener("click", () => select(Number(c.dataset.id))),
+    c.addEventListener("click", () => select(Number(c.dataset.id), { scroll: true })),
   );
 }
 
@@ -82,7 +82,13 @@ function hookCounter(meta) {
     : meta.hook.placeholder;
 }
 
-async function select(id) {
+/**
+ * `scroll` is set only when a human tapped a card. Below 860px the detail pane is a row under
+ * the whole list, so on a phone a tap changes something a thousand pixels off-screen and reads
+ * as nothing happening. On the two-column desktop layout the pane is already in view and
+ * scrolling would just be jarring, and on first load nothing was tapped at all.
+ */
+async function select(id, { scroll = false } = {}) {
   selected = id;
   renderList();
   const meta = await api(`/api/meta/${id}`);
@@ -190,6 +196,10 @@ async function select(id) {
   loadVariants(id);
   loadYoutube(id, meta);
   watch(id, true);
+
+  if (scroll && matchMedia("(max-width: 860px)").matches) {
+    $("#detail").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 }
 
 /**
@@ -400,8 +410,9 @@ function renderSuggestions(data) {
           <span class="who">${esc(s.players[0])} vs ${esc(s.players[1])}</span>
         </div>
         <div class="facts">
-          ${clock(s.resultMs)} &middot; &Delta;${margin} &middot; ${s.leadChanges} lead changes
-          &middot; &#9760;${s.deaths} &middot; score ${s.score.toFixed(2)}
+          ${clock(s.resultMs)} &middot; &Delta;${margin} &middot; ${s.leadChanges} lead
+          change${s.leadChanges === 1 ? "" : "s"}
+          &middot; &#9760;${s.deaths} &middot; score&nbsp;${s.score.toFixed(2)}
         </div>
         <div class="links">
           <a href="${esc(s.matchUrl)}" target="_blank" rel="noopener">mcsrranked #${s.matchId}</a>
