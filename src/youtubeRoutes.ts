@@ -294,7 +294,10 @@ async function startUpload(
  */
 export function totalReach(rows: ImpressionsRow[]): { impressions: number; weightedCtr: number } {
   return rows.reduce(
-    (acc, r) => ({ impressions: acc.impressions + r.impressions, weightedCtr: acc.weightedCtr + r.ctr * r.impressions }),
+    (acc, r) => ({
+      impressions: acc.impressions + r.impressions,
+      weightedCtr: acc.weightedCtr + r.ctr * r.impressions,
+    }),
     { impressions: 0, weightedCtr: 0 },
   );
 }
@@ -325,7 +328,11 @@ async function uploadsPayload() {
     const stats = await videoStats(records.map((r) => r.record.videoId));
     const byId = new Map(stats.map((s) => [s.videoId, s]));
     return {
-      uploads: records.map((r) => ({ matchId: r.matchId, ...r.record, stats: byId.get(r.record.videoId) ?? null })),
+      uploads: records.map((r) => ({
+        matchId: r.matchId,
+        ...r.record,
+        stats: byId.get(r.record.videoId) ?? null,
+      })),
       statsError: null,
     };
   } catch (err) {
@@ -364,12 +371,17 @@ async function abTestPayload() {
   }
   const byVideo = new Map([...rowsByVideo].map(([videoId, rows]) => [videoId, totalReach(rows)]));
 
-  const groups = new Map<string, { videos: number; impressions: number; weightedCtr: number; fellBack: boolean }>();
+  const groups = new Map<
+    string,
+    { videos: number; impressions: number; weightedCtr: number; fellBack: boolean }
+  >();
   for (const { matchId, record } of records) {
     const key = record.thumbnailVariant ?? "(unknown)";
     const manifest = await readManifest(path.join(config.mediaDir, String(matchId)));
     const variant = manifest?.variants.find((v) => v.key === record.thumbnailVariant);
-    const fellBack = variant ? variant.leftProvider !== "starlight" || variant.rightProvider !== "starlight" : false;
+    const fellBack = variant
+      ? variant.leftProvider !== "starlight" || variant.rightProvider !== "starlight"
+      : false;
 
     const acc = groups.get(key) ?? { videos: 0, impressions: 0, weightedCtr: 0, fellBack: false };
     acc.videos += 1;

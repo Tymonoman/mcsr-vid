@@ -87,7 +87,9 @@ assert.ok(
 
 // A forfeit is stated plainly rather than dressed up as a close finish.
 assert.ok(
-  buildHookSuggestions(input({ finishMarginMs: null }, { forfeited: true })).includes("It ended in a forfeit"),
+  buildHookSuggestions(input({ finishMarginMs: null }, { forfeited: true })).includes(
+    "It ended in a forfeit",
+  ),
 );
 
 // Never more than the caller asked for.

@@ -59,8 +59,10 @@ function candidates(input: HookInput): Candidate[] {
   if (finishMarginMs !== null) {
     // Under three seconds after eight-plus minutes is the whole story; the scorer uses the same
     // 3s window to call a split "close".
-    if (finishMarginMs < 3_000) out.push({ text: `Decided by ${seconds(finishMarginMs)} seconds`, weight: 100 });
-    else if (finishMarginMs < 10_000) out.push({ text: `${seconds(finishMarginMs)} seconds apart`, weight: 70 });
+    if (finishMarginMs < 3_000)
+      out.push({ text: `Decided by ${seconds(finishMarginMs)} seconds`, weight: 100 });
+    else if (finishMarginMs < 10_000)
+      out.push({ text: `${seconds(finishMarginMs)} seconds apart`, weight: 70 });
   } else {
     // The loser usually stops once the winner is done, so a null margin is normal, not dramatic.
     out.push({ text: "One of them never reached the dragon", weight: 30 });
@@ -74,7 +76,8 @@ function candidates(input: HookInput): Candidate[] {
   // A swing is the largest single-split collapse, which is the thing that actually looks
   // dramatic on the splits panel.
   if (maxSwingMs >= 60_000) out.push({ text: `A ${formatShortTime(maxSwingMs)} lead, gone`, weight: 80 });
-  else if (maxSwingMs >= 30_000) out.push({ text: `${Math.round(maxSwingMs / 1000)} seconds swung it`, weight: 50 });
+  else if (maxSwingMs >= 30_000)
+    out.push({ text: `${Math.round(maxSwingMs / 1000)} seconds swung it`, weight: 50 });
 
   if (deaths === 0) out.push({ text: "Not a single death between them", weight: 45 });
   else if (deaths >= 4) out.push({ text: `${deaths} deaths and still this close`, weight: 60 });

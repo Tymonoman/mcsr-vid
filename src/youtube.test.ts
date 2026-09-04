@@ -103,7 +103,10 @@ assert.ok(Math.abs(mixed.weightedCtr / mixed.impressions - 0.0109) < 0.0001);
 // weightedCtr stays undivided so per-video totals can be summed again per variant.
 const one = totalReach([{ date: "d", videoId: "v1", impressions: 100, ctr: 0.05 }]);
 const two = totalReach([{ date: "d", videoId: "v2", impressions: 300, ctr: 0.01 }]);
-const group = { impressions: one.impressions + two.impressions, weightedCtr: one.weightedCtr + two.weightedCtr };
+const group = {
+  impressions: one.impressions + two.impressions,
+  weightedCtr: one.weightedCtr + two.weightedCtr,
+};
 assert.equal(group.weightedCtr / group.impressions, 0.02);
 
 // No rows, and rows with no impressions, must not divide by zero.

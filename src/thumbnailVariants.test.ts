@@ -80,7 +80,9 @@ assert.equal(await readManifest(dir), null);
 
 // Provenance is what keeps the A/B honest: these two variants carry different pose names but
 // the first fell back to NMSR, which has no pose support, so it is not a distinct pose at all.
-const fellBack = manifest.variants.filter((v) => v.leftProvider !== "starlight" || v.rightProvider !== "starlight");
+const fellBack = manifest.variants.filter(
+  (v) => v.leftProvider !== "starlight" || v.rightProvider !== "starlight",
+);
 assert.equal(fellBack.length, 1);
 assert.equal(fellBack[0]!.key, "walking-crossed");
 

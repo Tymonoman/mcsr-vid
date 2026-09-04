@@ -215,7 +215,10 @@ export async function uploadVideo(opts: UploadOptions): Promise<UploadResult> {
       continue;
     }
     if (res.ok) {
-      const body = (await res.json()) as { id: string; status?: { privacyStatus?: string; publishAt?: string } };
+      const body = (await res.json()) as {
+        id: string;
+        status?: { privacyStatus?: string; publishAt?: string };
+      };
       opts.onProgress?.(total, total);
       return {
         videoId: body.id,

@@ -76,7 +76,9 @@ export async function readAudit(matchId: number): Promise<string | null> {
 export function buildAuditPrompt(input: AuditInput): string {
   const url = `https://www.youtube.com/watch?v=${input.videoId}`;
   const numbers = [
-    input.stats ? `views ${input.stats.views}, likes ${input.stats.likes}, comments ${input.stats.comments}` : null,
+    input.stats
+      ? `views ${input.stats.views}, likes ${input.stats.likes}, comments ${input.stats.comments}`
+      : null,
     input.reach
       ? `thumbnail impressions ${input.reach.impressions}, click-through ${(input.reach.ctr * 100).toFixed(2)}%`
       : null,

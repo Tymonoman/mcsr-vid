@@ -54,11 +54,7 @@ globalThis.fetch = (async () => new Response(null, { status: 200 })) as typeof f
   );
   assert.equal(props.props.left.eloRate, 2546, "2615 post-match minus the +69 that match produced");
   assert.equal(props.props.right.eloRate, 2382, "2370 post-match minus the -12 that match produced");
-  assert.equal(
-    props.props.headerLabel,
-    "Minecraft · Speedrunning · Ranked",
-    "null tag uses the default",
-  );
+  assert.equal(props.props.headerLabel, "Minecraft · Speedrunning · Ranked", "null tag uses the default");
 }
 
 globalThis.fetch = realFetch;

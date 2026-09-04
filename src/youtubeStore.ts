@@ -64,7 +64,10 @@ export async function allUploads(): Promise<Array<{ matchId: number; record: Upl
  * Ambiguity is reported rather than guessed at: uploading the wrong four-gigabyte file to a
  * public channel is not a mistake worth being clever about.
  */
-export function findExportedVideo(matchId: number, povNicknames: string[]): { path: string } | { error: string } {
+export function findExportedVideo(
+  matchId: number,
+  povNicknames: string[],
+): { path: string } | { error: string } {
   const dir = matchDir(matchId);
   if (!existsSync(dir)) return { error: `No working directory for match ${matchId}` };
 

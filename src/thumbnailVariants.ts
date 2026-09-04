@@ -88,7 +88,9 @@ export async function chooseVariant(outDir: string, key: string): Promise<Varian
   if (!manifest) throw new Error(`No thumbnail variants recorded in ${outDir}`);
   const variant = manifest.variants.find((v) => v.key === key);
   if (!variant) {
-    throw new Error(`No thumbnail variant "${key}" (have: ${manifest.variants.map((v) => v.key).join(", ")})`);
+    throw new Error(
+      `No thumbnail variant "${key}" (have: ${manifest.variants.map((v) => v.key).join(", ")})`,
+    );
   }
   await copyFile(path.join(outDir, variant.file), path.join(outDir, "thumbnail.png"));
   const updated: VariantsManifest = { ...manifest, chosen: key };

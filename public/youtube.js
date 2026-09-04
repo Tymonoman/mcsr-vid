@@ -240,7 +240,6 @@ async function loadComments(id) {
   );
 }
 
-
 /**
  * Which thumbnail variant earns clicks, once there is enough data to say.
  *

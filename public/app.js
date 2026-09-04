@@ -77,7 +77,9 @@ function hookCounter(meta) {
   const { min, max } = meta.hook;
   out.textContent = `${n} / ${min}-${max} chars`;
   out.className = "counter" + (n > max ? " over" : n >= min ? " good" : "");
-  $("#hookpreview").textContent = input.value ? `${input.value} | ${meta.hook.generated}` : meta.hook.placeholder;
+  $("#hookpreview").textContent = input.value
+    ? `${input.value} | ${meta.hook.generated}`
+    : meta.hook.placeholder;
 }
 
 async function select(id) {
@@ -365,7 +367,8 @@ const clock = (ms) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000
 
 function renderSuggestions(data) {
   const el = $("#suggestions");
-  $("#tab-suggestions").textContent = `Suggestions${data.suggestions.length ? ` (${data.suggestions.length})` : ""}`;
+  $("#tab-suggestions").textContent =
+    `Suggestions${data.suggestions.length ? ` (${data.suggestions.length})` : ""}`;
 
   // A failed scan keeps whatever list it had: a stale suggestion is still a renderable match.
   const scan = data.scanning
@@ -478,5 +481,7 @@ function showTab(which) {
   if (matches.length) select(matches[0].matchId);
   // Not awaited: the first scan can take a minute against a cold cache, and the rendered-match
   // list is usable immediately.
-  pollSuggestions().catch((e) => ($("#suggestions").innerHTML = `<div class="scanline bad">${esc(e.message)}</div>`));
+  pollSuggestions().catch(
+    (e) => ($("#suggestions").innerHTML = `<div class="scanline bad">${esc(e.message)}</div>`),
+  );
 })();
