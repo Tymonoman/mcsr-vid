@@ -23,12 +23,14 @@
     "generate-thumbnail": "npm run build-overlay-css && tsx src/generateThumbnail.ts",
     "generate-project": "npm run build-overlay-css && tsx src/generateProject.ts",
     "batch": "npm run build-overlay-css && tsx src/batch.ts",
+    "dashboard": "npm run build-overlay-css && tsx src/server.ts",
     "status": "tsx src/status.ts",
     "score": "tsx src/scoreCli.ts",
     "start": "npm run build-overlay-css && tsx src/tui.tsx",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
-    "test": "for f in src/*.test.ts remotion/*.test.ts; do echo \"-- $f --\"; tsx \"$f\" || exit 1; done"
+    "test": "for f in src/*.test.ts remotion/*.test.ts; do echo \"-- $f --\"; tsx \"$f\" || exit 1; done",
+    "youtube-auth": "tsx src/youtubeAuth.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

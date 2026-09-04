@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { requireArg } from "./cliArgs.js";
+import { config } from "./config.js";
 import { getMatch, parseMatchId } from "./mcsrApi.js";
 import { computeSyncOffset } from "./sync.js";
 import { downloadMatchVods, type VodWindow } from "./vodAcquisition.js";
@@ -14,7 +15,7 @@ if (match.vod.length < 2) {
   process.exit(1);
 }
 
-const outDir = path.join("media", String(matchId));
+const outDir = path.join(config.mediaDir, String(matchId));
 let windows: VodWindow[];
 const [vodA, vodB] = match.vod;
 const expectedPathA = path.join(

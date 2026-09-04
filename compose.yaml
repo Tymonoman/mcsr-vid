@@ -1,0 +1,69 @@
+# One always-up container you exec into, rather than a job that exits. There is no
+# queue or scheduler because jobs are started by hand in the attached tmux session.
+#
+# Host paths below are the homelab's. The lab is a *shared* box (immich, the *arr
+# stack, adguard, home-assistant, ...), so this is memory-capped: a runaway render
+# should be OOM-killed on its own rather than take the rest of the homelab down.
+services:
+  mcsr:
+    build: .
+    image: mcsr-vid
+    container_name: mcsr
+    command: sleep infinity
+    tty: true
+    stdin_open: true
+    restart: unless-stopped
+    working_dir: /app
+
+    # Chrome dies on the default 64 MB /dev/shm. Remotion drives
+    # chrome-headless-shell tabs to capture every frame, so this is not optional.
+    shm_size: 1gb
+
+    # Measured 6.3 GB free on the lab. Capped rather than uncapped so a runaway render
+    # is killed on its own instead of taking the homelab's other services down; the two
+    # services here are capped at 4g each against 7.6 GB physical plus 4 GB swap, which
+    # only overcommits if both render at once. Since atomicOutput landed, an OOM kill
+    # is merely a failed render, not a corrupt artifact.
+    mem_limit: 4g
+
+    volumes:
+      # Repo lives on the lab host, so edits and node_modules survive image rebuilds.
+      - /home/homelab/mcsr-vid:/app
+      # Working dir on the SSD (184 GB free, ~26 matches). Deliberately NOT the NAS:
+      # measured at 17.7 MB/s write over a *soft* CIFS mount, where a network blip
+      # returns an I/O error and would kill an hour-long render.
+      - /home/homelab/mcsr-media:/media
+      # The NAS, for archiving matches once they're published. Reads at 33 MB/s.
+      - /home/homelab/media/tymek/mcsr-archive:/archive
+      # Keeps the Claude Code subscription login across image rebuilds.
+      - claude-config:/home/node/.claude
+
+    # No env_file needed: .env sits in the bind-mounted repo and src/twitch.ts:11-17
+    # loads it natively via process.loadEnvFile, falling through to process.env.
+
+  # Separate service, same image. Kept apart from `mcsr` deliberately: if the
+  # dashboard were that container's command, a crash would restart the container
+  # and take your attached tmux/Claude session with it. Split, each restarts alone.
+  dashboard:
+    image: mcsr-vid
+    container_name: mcsr-dashboard
+    depends_on: [mcsr]
+    command: npm run dashboard
+    restart: unless-stopped
+    working_dir: /app
+    shm_size: 1gb
+    # Idle it needs ~200 MB, but clicking "Run pipeline" renders in this container,
+    # so it needs the same headroom as mcsr. Limits are caps, not reservations.
+    mem_limit: 4g
+    volumes:
+      - /home/homelab/mcsr-vid:/app
+      - /home/homelab/mcsr-media:/media
+      - /home/homelab/media/tymek/mcsr-archive:/archive
+    ports:
+      # Binds 0.0.0.0 on the host, which includes its Tailscale interface — so the
+      # dashboard is reachable at http://actimel:8080 from anywhere on the tailnet
+      # with no tailscaled inside the container. Port verified free on the lab.
+      - "8080:8080"
+
+volumes:
+  claude-config:

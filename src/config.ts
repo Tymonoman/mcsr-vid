@@ -6,6 +6,19 @@ export interface Config {
   /** Starlight Skins pose name for the left/right player's avatar (overlay + thumbnail). */
   leftPose: string;
   rightPose: string;
+  /**
+   * Pose pairs rendered as thumbnail variants on every pipeline run, for A/B testing which
+   * poses earn clicks. The first entry is what `thumbnail.png` becomes unless you pick another
+   * in the dashboard, so keep `leftPose`/`rightPose` first to preserve the current look.
+   *
+   * The non-default pairs are unverified: Starlight Skins' `/render/<pose>/<uuid>/full` returns
+   * 404 for every pose at the time of writing, so there is no way to confirm which names it
+   * still accepts, and each variant currently falls back to the same static NMSR render. The
+   * dashboard labels those as fallbacks rather than pretending they are distinct poses. Re-check
+   * these names once the service is back, and treat CTR grouped by pose as meaningless until
+   * the variants are visibly different.
+   */
+  thumbnailVariants: Array<{ left: string; right: string }>;
   /** Minimum cross-correlation confidence (sync.ts) to trust the refined audio sync offset. */
   syncConfidenceThreshold: number;
   /** VOD trim window: seconds of buffer before/after the estimated match start/end. */
@@ -15,6 +28,18 @@ export interface Config {
   defaultRunSec: number;
   /** Per-match working directory root. */
   mediaDir: string;
+  /**
+   * The channel uploads go to. Used to tell your own replies apart from viewers' when deciding
+   * which comment threads are still unanswered.
+   */
+  youtubeChannelId: string;
+  /**
+   * Standing YouTube Reporting API job producing `channel_reach_basic_a1`. That report is the
+   * only source of per-video thumbnail impressions and CTR — the Analytics API does not expose
+   * them — so thumbnail A/B testing reads this and nothing else. Reports land ~48h after the
+   * day they cover, so a video uploaded today will have no row yet.
+   */
+  youtubeReportingJobId: string;
   /**
    * Seconds of overlay before the timer starts. The VOD clips keep a much larger `preRollSec`
    * because the audio-sync search needs room to hunt for the world-load thump, but the overlay
@@ -72,11 +97,19 @@ export interface Config {
 const DEFAULTS: Config = {
   leftPose: "walking",
   rightPose: "crossed",
+  thumbnailVariants: [
+    // First is the existing look, so nothing changes for a match already published.
+    { left: "walking", right: "crossed" },
+    { left: "cheering", right: "relaxing" },
+    { left: "marching", right: "crouching" },
+  ],
   syncConfidenceThreshold: 0.15,
   preRollSec: 150,
   postRollSec: 60,
   defaultRunSec: 900,
   mediaDir: "media",
+  youtubeChannelId: "UCm2mAyONTHlmIxZzNmi388w",
+  youtubeReportingJobId: "eda017ae-a539-4c79-8e2c-66d1af74264a",
   overlayLeadInSec: 20,
   overlayFps: 30,
   renderConcurrency: null,

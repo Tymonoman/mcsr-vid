@@ -19,36 +19,37 @@ import { buildChapters, formatChapters } from "./chapters.js";
 import { buildDescription } from "./description.js";
 import { buildTitle, formatTitle } from "./title.js";
 import { renderOverlay } from "./overlayRender.js";
-import { renderThumbnail } from "./thumbnailRender.js";
+import { renderThumbnailVariants, variantFile } from "./thumbnailVariants.js";
+import { describeError } from "./errorText.js";
+import {
+  aggregateDownloadPercent,
+  createStageTracker,
+  RENDER_PHASE_LABELS,
+  RENDER_PHASE_WEIGHTS,
+  THUMBNAIL_PHASE_WEIGHTS,
+  weighted,
+  type StageEvent,
+  type StageExtra,
+  type StageId,
+  type StageTracker,
+} from "./stageProgress.js";
 import { computeSyncOffset } from "./sync.js";
 import { downloadMatchVods, PRE_ROLL_SEC, type VodWindow } from "./vodAcquisition.js";
 
 const FPS = 60;
 
-export type StageId = "fetch" | "download" | "sync" | "render" | "thumbnail" | "write";
-
-export const STAGE_ORDER: StageId[] = ["fetch", "download", "sync", "render", "thumbnail", "write"];
-
-export const STAGE_LABELS: Record<StageId, string> = {
-  fetch: "Fetch match data",
-  download: "Download VODs",
-  sync: "Audio sync check",
-  render: "Render overlay",
-  thumbnail: "Render thumbnail",
-  write: "Write Kdenlive project",
-};
-
-export type StageStatus = "pending" | "active" | "done" | "error";
-
-export interface StageEvent {
-  stage: StageId;
-  status: StageStatus;
-  /** 0-100; omitted for near-instant stages. */
-  percent?: number;
-  message?: string;
-  /** Date.now() when this stage's status first became "active"; same value across repeat active-emits. */
-  startedAtMs?: number;
-}
+/**
+ * Stage vocabulary, tracker and progress weighting live in ./stageProgress.js — pipeline.ts
+ * crossed the 500-line cap and that half is pure, so it is unit-testable on its own. Re-exported
+ * here so the seven existing importers of this module do not have to change.
+ */
+export {
+  STAGE_LABELS,
+  STAGE_ORDER,
+  type StageEvent,
+  type StageId,
+  type StageStatus,
+} from "./stageProgress.js";
 
 export interface PipelineResult {
   matchId: number;
@@ -95,19 +96,33 @@ async function probeDurationSec(filePath: string, signal?: AbortSignal): Promise
 }
 
 export async function runPipeline(input: string, opts: PipelineOptions = {}): Promise<PipelineResult> {
-  const { onEvent = () => {}, signal } = opts;
-  const emit = (e: StageEvent) => onEvent(e);
+  const tracker = createStageTracker(opts.onEvent ?? (() => {}));
+  try {
+    return await runStages(input, opts, tracker);
+  } catch (err) {
+    // An abort is a deliberate stop, not a failure, and reporting it as one made "Stop" in the
+    // dashboard read as a crash. The distinction is only visible here, because aborting rejects
+    // the same promise a genuine error does — so the stage that was interrupted settles as a
+    // warning (interrupted) rather than an error (broken).
+    const aborted = opts.signal?.aborted === true;
+    tracker.emit(
+      aborted
+        ? tracker.settle(tracker.current(), "warn", { message: "stopped" })
+        : tracker.settle(tracker.current(), "error", { message: describeError(err) }),
+    );
+    throw err;
+  }
+}
 
-  // Tracks when each stage first went "active" so repeat active-emits (download/render
-  // progress callbacks) can carry a stable startedAtMs for the TUI's ETA calculation.
-  const stageStartTimes = new Map<StageId, number>();
-  const active = (
-    stage: StageId,
-    extra: Omit<StageEvent, "stage" | "status" | "startedAtMs"> = {},
-  ): StageEvent => {
-    if (!stageStartTimes.has(stage)) stageStartTimes.set(stage, Date.now());
-    return { stage, status: "active", startedAtMs: stageStartTimes.get(stage), ...extra };
-  };
+async function runStages(
+  input: string,
+  opts: PipelineOptions,
+  tracker: StageTracker,
+): Promise<PipelineResult> {
+  const { signal } = opts;
+  const { emit, active } = tracker;
+  const done = (stage: StageId, extra: StageExtra = {}) => tracker.settle(stage, "done", extra);
+  const warn = (stage: StageId, extra: StageExtra = {}) => tracker.settle(stage, "warn", extra);
 
   emit(active("fetch"));
   const matchId = parseMatchId(input);
@@ -135,11 +150,12 @@ export async function runPipeline(input: string, opts: PipelineOptions = {}): Pr
     getUser(playerRight.uuid),
     getVersus(playerLeft.uuid, playerRight.uuid),
   ]);
-  emit({ stage: "fetch", status: "done", message: `${playerLeft.nickname} vs ${playerRight.nickname}` });
+  emit(done("fetch", { message: `${playerLeft.nickname} vs ${playerRight.nickname}` }));
 
   const outDir = path.join(config.mediaDir, String(matchId));
   const pathFor = (nickname: string) => path.join(outDir, `${nickname}.mp4`);
 
+  const downloadPercents = new Map<number, number>();
   emit(active("download", { percent: 0 }));
   let windows: VodWindow[];
   if (existsSync(pathFor(playerLeft.nickname)) && existsSync(pathFor(playerRight.nickname))) {
@@ -161,21 +177,27 @@ export async function runPipeline(input: string, opts: PipelineOptions = {}): Pr
         matchOffsetIntoClipSec: PRE_ROLL_SEC,
       },
     ];
-    emit({ stage: "download", status: "done", percent: 100, message: "reused cached downloads" });
+    emit(done("download", { percent: 100, message: "reused cached downloads" }));
   } else {
     windows = await downloadMatchVods(
       match,
       outDir,
-      (p) =>
+      (p) => {
+        // Both downloads run concurrently (vodAcquisition.ts uses Promise.all), so their
+        // progress lines interleave. Averaging the latest percent per player is monotonic;
+        // the previous `(index + pct/100) / total` mapped player 0 to 0-50% and player 1 to
+        // 50-100%, which made the bar jump between the two bands for the whole download.
+        downloadPercents.set(p.index, p.percent);
         emit(
           active("download", {
-            percent: Math.round(((p.index + p.percent / 100) / p.total) * 100),
+            percent: aggregateDownloadPercent(downloadPercents, p.total),
             message: `${p.playerNickname} (${p.index + 1}/${p.total}): ${p.percent.toFixed(0)}%`,
           }),
-        ),
+        );
+      },
       signal,
     );
-    emit({ stage: "download", status: "done", percent: 100 });
+    emit(done("download", { percent: 100 }));
   }
 
   const leftWindow = windows.find((w) => w.playerUuid === playerLeft.uuid);
@@ -198,23 +220,23 @@ export async function runPipeline(input: string, opts: PipelineOptions = {}): Pr
     syncConfidence = sync.confidence;
     if (sync.confidence >= config.syncConfidenceThreshold) {
       rightOffsetSec = sync.clipBCueTimeSec;
-      emit({ stage: "sync", status: "done", message: `confidence ${sync.confidence.toFixed(3)} (refined)` });
+      emit(done("sync", { message: `confidence ${sync.confidence.toFixed(3)} (refined)` }));
     } else {
-      emit({
-        stage: "sync",
-        status: "done",
-        message: `confidence ${sync.confidence.toFixed(3)} (too low, kept coarse offset)`,
-      });
+      emit(
+        warn("sync", {
+          message: `confidence ${sync.confidence.toFixed(3)} (too low, kept coarse offset)`,
+        }),
+      );
     }
   } catch (err) {
-    emit({ stage: "sync", status: "done", message: `refinement failed: ${(err as Error).message}` });
+    emit(warn("sync", { message: `refinement failed: ${describeError(err)}` }));
   }
 
   const overlayPath = path.join(outDir, "overlay.mov");
   const overlayTopPath = path.join(outDir, "overlay-top.png");
   const overlayIntroPath = path.join(outDir, "overlay-intro.mov");
   if (existsSync(overlayPath) && existsSync(overlayTopPath) && existsSync(overlayIntroPath)) {
-    emit({ stage: "render", status: "done", percent: 100, message: "reused existing render" });
+    emit(done("render", { percent: 100, message: "reused existing render" }));
   } else {
     emit(active("render", { percent: 0 }));
     await renderOverlay({
@@ -229,21 +251,53 @@ export async function runPipeline(input: string, opts: PipelineOptions = {}): Pr
       onProgress: (p) =>
         emit(
           active("render", {
-            percent: p.percent,
+            percent: weighted(RENDER_PHASE_WEIGHTS, p.phase, p.percent),
+            message: `${RENDER_PHASE_LABELS[p.phase]}: ${p.percent}%`,
+          }),
+        ),
+    });
+    emit(done("render", { percent: 100 }));
+  }
+
+  // Every configured pose pair, so there is something to A/B test once the channel has the
+  // audience for it. Skipping is per variant rather than per match, so adding a pose renders
+  // only the new one; when they are all present this stage is as cheap as it always was.
+  const thumbnailPath = path.join(outDir, "thumbnail.png");
+  const variants = config.thumbnailVariants;
+  const allRendered =
+    existsSync(thumbnailPath) && variants.every((p) => existsSync(path.join(outDir, variantFile(p))));
+  if (allRendered) {
+    emit(done("thumbnail", { message: `reused ${variants.length} variants` }));
+  } else {
+    emit(active("thumbnail", { percent: 0 }));
+    const manifest = await renderThumbnailVariants({
+      match,
+      userLeft,
+      userRight,
+      outDir,
+      poses: variants,
+      signal,
+      onProgress: (p) =>
+        emit(
+          active("thumbnail", {
+            percent: weighted(THUMBNAIL_PHASE_WEIGHTS, p.phase, p.percent),
             message: `${p.phase}: ${p.percent}%`,
           }),
         ),
     });
-    emit({ stage: "render", status: "done", percent: 100 });
-  }
-
-  const thumbnailPath = path.join(outDir, "thumbnail.png");
-  if (existsSync(thumbnailPath)) {
-    emit({ stage: "thumbnail", status: "done", message: "reused existing render" });
-  } else {
-    emit(active("thumbnail"));
-    await renderThumbnail({ match, userLeft, userRight, outPath: thumbnailPath, signal });
-    emit({ stage: "thumbnail", status: "done" });
+    // Worth saying out loud: when Starlight Skins is down every pose falls back to the same
+    // static NMSR render, so "3 variants" would otherwise imply three different images.
+    const posed = manifest.variants.filter(
+      (v) => v.leftProvider === "starlight" || v.rightProvider === "starlight",
+    ).length;
+    emit(
+      done("thumbnail", {
+        message:
+          posed === manifest.variants.length
+            ? `${manifest.variants.length} variants`
+            : `${manifest.variants.length} variants (${manifest.variants.length - posed} fell back to a static pose)`,
+      }),
+    );
   }
 
   emit(active("write"));
@@ -364,7 +418,7 @@ export async function runPipeline(input: string, opts: PipelineOptions = {}): Pr
   });
   const titlePath = path.join(outDir, `match-${matchId}.title.txt`);
   await writeFile(titlePath, formatTitle(title), "utf8");
-  emit({ stage: "write", status: "done" });
+  emit(done("write"));
 
   return {
     matchId,

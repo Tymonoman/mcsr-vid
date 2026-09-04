@@ -1,6 +1,7 @@
 import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { config } from "./config.js";
+import { describeError } from "./errorText.js";
 import { getMatch } from "./mcsrApi.js";
 import type { StageId } from "./pipeline.js";
 
@@ -11,6 +12,13 @@ export interface MatchStatusEntry {
   stages: Record<StageId, boolean>;
   /** Path to the .kdenlive file if it exists, else null. */
   projectPath: string | null;
+  /**
+   * Why this entry is degraded, or null when it is fully trustworthy. Set when the MCSR API
+   * lookup failed: nicknames then come off the downloaded filenames and their left/right order
+   * is a guess. Without this the caller could not tell a stage that has not run from one whose
+   * status could not be determined — both used to render identically.
+   */
+  error: string | null;
 }
 
 /**
@@ -33,51 +41,80 @@ export function listProcessedMatchIds(): number[] {
 }
 
 export async function listMatchStatuses(): Promise<MatchStatusEntry[]> {
-  const matchIds = listProcessedMatchIds();
+  return Promise.all(listProcessedMatchIds().map(matchStatusFor));
+}
 
-  return Promise.all(
-    matchIds.map(async (matchId): Promise<MatchStatusEntry> => {
-      const outDir = path.join(config.mediaDir, String(matchId));
+/**
+ * One match's status, costing exactly one API request.
+ *
+ * Split out of `listMatchStatuses` because the dashboard's `GET /api/meta/:id` only ever wanted
+ * two nicknames, and going through the list meant one request per *existing match directory*
+ * on every metadata read — a linear tax on an API budgeted at 500 requests per 10 minutes.
+ */
+export async function matchStatusFor(matchId: number): Promise<MatchStatusEntry> {
+  const outDir = path.join(config.mediaDir, String(matchId));
 
-      let leftNickname = "?";
-      let rightNickname = "?";
-      let vodsDownloaded = false;
-      try {
-        const match = await getMatch(matchId);
-        const [playerLeft, playerRight] = match.players;
-        leftNickname = playerLeft?.nickname ?? "?";
-        rightNickname = playerRight?.nickname ?? "?";
-        vodsDownloaded =
-          !!playerLeft &&
-          !!playerRight &&
-          existsSync(path.join(outDir, `${playerLeft.nickname}.mp4`)) &&
-          existsSync(path.join(outDir, `${playerRight.nickname}.mp4`));
-      } catch {
-        // Match API unreachable/gone; fall back to nicknames "?" and download/sync unknown (false).
-      }
+  // Read from disk first so the answer survives the API being down. The pipeline names each
+  // clip `<nickname>.mp4`, so the files alone tell us the VODs are there — the API is only
+  // needed to say which of the two is players[0].
+  const downloadedNicknames = existsSync(outDir)
+    ? readdirSync(outDir, { withFileTypes: true })
+        .filter((entry) => entry.isFile() && entry.name.endsWith(".mp4"))
+        .map((entry) => entry.name.slice(0, -".mp4".length))
+        .sort()
+    : [];
 
-      const projectFilePath = path.join(outDir, `match-${matchId}.kdenlive`);
-      const hasProject = existsSync(projectFilePath);
+  let leftNickname = "?";
+  let rightNickname = "?";
+  let vodsDownloaded = false;
+  let error: string | null = null;
+  try {
+    const match = await getMatch(matchId);
+    const [playerLeft, playerRight] = match.players;
+    leftNickname = playerLeft?.nickname ?? "?";
+    rightNickname = playerRight?.nickname ?? "?";
+    vodsDownloaded =
+      !!playerLeft &&
+      !!playerRight &&
+      existsSync(path.join(outDir, `${playerLeft.nickname}.mp4`)) &&
+      existsSync(path.join(outDir, `${playerRight.nickname}.mp4`));
+  } catch (err) {
+    // Previously a bare `catch {}`: nicknames silently became "?" and download/sync were
+    // forced to false even with both VODs sitting on disk, so an unreachable API was
+    // indistinguishable from an unstarted match. Report both the degradation and what we
+    // can still establish locally.
+    error = describeError(err);
+    vodsDownloaded = downloadedNicknames.length >= 2;
+    [leftNickname = "?", rightNickname = "?"] = downloadedNicknames;
+  }
 
-      // "fetch" has no durable artifact of its own — the dir existing means it ran once.
-      // "sync" doesn't produce a file either; it's a pass-through check keyed on the VODs
-      // it consumes, so it's "done" exactly when both VODs are (matching pipeline.ts's treatment).
-      const stages: Record<StageId, boolean> = {
-        fetch: true,
-        download: vodsDownloaded,
-        sync: vodsDownloaded,
-        render: existsSync(path.join(outDir, "overlay.mov")),
-        thumbnail: existsSync(path.join(outDir, "thumbnail.png")),
-        write: hasProject,
-      };
+  const projectFilePath = path.join(outDir, `match-${matchId}.kdenlive`);
+  const hasProject = existsSync(projectFilePath);
 
-      return {
-        matchId,
-        leftNickname,
-        rightNickname,
-        stages,
-        projectPath: hasProject ? path.resolve(projectFilePath) : null,
-      };
-    }),
-  );
+  // "fetch" has no durable artifact of its own — the dir existing means it ran once.
+  // "sync" doesn't produce a file either; it's a pass-through check keyed on the VODs
+  // it consumes, so it's "done" exactly when both VODs are (matching pipeline.ts's treatment).
+  const stages: Record<StageId, boolean> = {
+    fetch: existsSync(outDir),
+    download: vodsDownloaded,
+    sync: vodsDownloaded,
+    // All three, matching pipeline.ts's skip condition. Checking only overlay.mov let a
+    // match report render:true and then re-render anyway, because the pipeline also wants
+    // the top band and the intro card before it will reuse the stage.
+    render:
+      existsSync(path.join(outDir, "overlay.mov")) &&
+      existsSync(path.join(outDir, "overlay-top.png")) &&
+      existsSync(path.join(outDir, "overlay-intro.mov")),
+    thumbnail: existsSync(path.join(outDir, "thumbnail.png")),
+    write: hasProject,
+  };
+
+  return {
+    matchId,
+    leftNickname,
+    rightNickname,
+    stages,
+    projectPath: hasProject ? path.resolve(projectFilePath) : null,
+    error,
+  };
 }

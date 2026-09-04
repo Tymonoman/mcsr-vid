@@ -1,6 +1,11 @@
 {
   "leftPose": "walking",
   "rightPose": "crossed",
+  "thumbnailVariants": [
+    { "left": "walking", "right": "crossed" },
+    { "left": "cheering", "right": "relaxing" },
+    { "left": "marching", "right": "crouching" }
+  ],
   "syncConfidenceThreshold": 0.15,
   "preRollSec": 150,
   "postRollSec": 60,

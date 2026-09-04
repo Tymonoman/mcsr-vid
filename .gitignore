@@ -14,3 +14,6 @@ dist/
 /remotion/overlay.css
 /.claude/
 /.claude-flow/
+
+# Long-lived YouTube refresh token written by `npm run youtube-auth`.
+/youtube-token.json

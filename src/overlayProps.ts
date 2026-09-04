@@ -146,10 +146,14 @@ export async function computeOverlayProps(
     timeZone: "UTC",
   });
 
-  const [leftAvatarUrl, rightAvatarUrl] = await Promise.all([
+  // Only the URL matters here: the overlay renders one fixed pose pair, so unlike the thumbnail
+  // it has no A/B reason to care which host actually served it.
+  const [leftAvatar, rightAvatar] = await Promise.all([
     resolveAvatarUrl(userLeft.uuid, LEFT_POSE),
     resolveAvatarUrl(userRight.uuid, RIGHT_POSE),
   ]);
+  const leftAvatarUrl = leftAvatar.url;
+  const rightAvatarUrl = rightAvatar.url;
 
   return {
     left: playerIdentity(
