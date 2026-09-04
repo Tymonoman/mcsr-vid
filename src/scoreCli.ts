@@ -17,7 +17,5 @@ console.log(`Closeness     : ${close.toFixed(3)}`);
 console.log(`Chaos         : ${chaos.toFixed(3)}`);
 if (match.vod.length < 2) {
   console.log("");
-  console.log(
-    `NOTE: only ${match.vod.length}/2 VODs attached — this match can't be rendered as-is.`,
-  );
+  console.log(`NOTE: only ${match.vod.length}/2 VODs attached — this match can't be rendered as-is.`);
 }

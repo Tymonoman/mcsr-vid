@@ -345,8 +345,7 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
       if (hasBothVods && !counted.has(match.id)) {
         counted.add(match.id);
         for (const player of match.players) {
-          cache.playerAppearances[player.nickname] =
-            (cache.playerAppearances[player.nickname] ?? 0) + 1;
+          cache.playerAppearances[player.nickname] = (cache.playerAppearances[player.nickname] ?? 0) + 1;
         }
       }
       if (!match.forfeited && hasBothVods && !excluded.has(match.id)) candidates.push(match);
@@ -397,8 +396,7 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
   const popularityOfName = (nickname: string): number =>
     (cache.playerAppearances[nickname] ?? 0) +
     config.suggestFollowerWeight * Math.log10(1 + (followers.get(nickname) ?? 0));
-  const popularityOfNames = (a: string, b: string): number =>
-    popularityOfName(a) + popularityOfName(b);
+  const popularityOfNames = (a: string, b: string): number => popularityOfName(a) + popularityOfName(b);
   const popularityOf = (match: FeedMatch): number =>
     match.players.reduce((sum, p) => sum + popularityOfName(p.nickname), 0);
 
@@ -452,12 +450,7 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
       ? closenessScore(entry.metrics, suggestWeights, suggestFastRunTargetSec, suggestSlowRunCutoffSec)
       : chaosScore(entry.metrics, suggestWeights, suggestFastRunTargetSec, suggestSlowRunCutoffSec);
 
-  const take = (
-    pool: typeof selectable,
-    bucket: Bucket,
-    slots: number,
-    exclude: Set<number>,
-  ): Suggestion[] =>
+  const take = (pool: typeof selectable, bucket: Bucket, slots: number, exclude: Set<number>): Suggestion[] =>
     pool
       .filter((entry) => !exclude.has(entry.metrics.matchId))
       .map((entry) => ({ ...entry, bucket, score: rank(entry, bucket) }))

@@ -80,7 +80,10 @@ assert.match(text, /independent fan project, not affiliated with MCSR Ranked/);
 assert.match(text, /synced dual-POV with live split comparison/, "the added-value line YPP review looks for");
 
 // VOD links moved below the chapters, so the preview is prose rather than URLs.
-assert.ok(text.indexOf("Chapters:") < text.indexOf("Watch edcr's POV"), "chapters must precede the VOD links");
+assert.ok(
+  text.indexOf("Chapters:") < text.indexOf("Watch edcr's POV"),
+  "chapters must precede the VOD links",
+);
 
 // Exactly the three hashtags, and nothing per-player or per-checkpoint.
 assert.match(text, /^#MCSRRanked #MCSR #MinecraftSpeedrunning$/m);

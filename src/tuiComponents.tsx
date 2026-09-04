@@ -60,7 +60,10 @@ function ProgressBar({
     <Text>
       <Text color={color}>{"█".repeat(filled)}</Text>
       <Text color={COLORS.panelEdgeLight}>{"░".repeat(BAR_WIDTH - filled)}</Text>
-      <Text color={COLORS.muted}> {Math.round(percent)}%{eta ? ` · ${eta}` : ""}</Text>
+      <Text color={COLORS.muted}>
+        {" "}
+        {Math.round(percent)}%{eta ? ` · ${eta}` : ""}
+      </Text>
     </Text>
   );
 }
@@ -116,19 +119,11 @@ function pad(text: string, width: number): string {
   return text.length > width ? `${text.slice(0, width - 1)}…` : text.padEnd(width);
 }
 
-export function SuggestionRow({
-  suggestion,
-  selected,
-}: {
-  suggestion: Suggestion;
-  selected: boolean;
-}) {
+export function SuggestionRow({ suggestion, selected }: { suggestion: Suggestion; selected: boolean }) {
   const { metrics, bucket, score } = suggestion;
   const isClose = bucket === "close";
   const margin =
-    metrics.finishMarginMs === null
-      ? "  DNF"
-      : `${(metrics.finishMarginMs / 1000).toFixed(2).padStart(5)}s`;
+    metrics.finishMarginMs === null ? "  DNF" : `${(metrics.finishMarginMs / 1000).toFixed(2).padStart(5)}s`;
   return (
     <Box>
       <Text color={COLORS.gold}>{selected ? "❯ " : "  "}</Text>
@@ -140,10 +135,7 @@ export function SuggestionRow({
       <Text color={COLORS.muted}> {formatClock(metrics.resultMs).padStart(9)}</Text>
       {/* The two numbers that decide whether a match is worth rendering. */}
       <Text color={isClose ? COLORS.warped : COLORS.muted}> Δ{margin}</Text>
-      <Text color={isClose ? COLORS.muted : COLORS.crimson}>
-        {" "}
-        ☠{String(metrics.deaths).padStart(2)}
-      </Text>
+      <Text color={isClose ? COLORS.muted : COLORS.crimson}> ☠{String(metrics.deaths).padStart(2)}</Text>
       <Text color={COLORS.muted}> {score.toFixed(2)}</Text>
     </Box>
   );

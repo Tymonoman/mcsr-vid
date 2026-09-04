@@ -10,17 +10,21 @@ const matchId = parseMatchId(requireArg("validate-sync"));
 const match = await getMatch(matchId);
 
 if (match.vod.length < 2) {
-  console.error(
-    `Match ${matchId} has ${match.vod.length}/2 VODs attached; sync validation needs both.`,
-  );
+  console.error(`Match ${matchId} has ${match.vod.length}/2 VODs attached; sync validation needs both.`);
   process.exit(1);
 }
 
 const outDir = path.join("media", String(matchId));
 let windows: VodWindow[];
 const [vodA, vodB] = match.vod;
-const expectedPathA = path.join(outDir, `${match.players.find((p) => p.uuid === vodA!.uuid)?.nickname ?? vodA!.uuid}.mp4`);
-const expectedPathB = path.join(outDir, `${match.players.find((p) => p.uuid === vodB!.uuid)?.nickname ?? vodB!.uuid}.mp4`);
+const expectedPathA = path.join(
+  outDir,
+  `${match.players.find((p) => p.uuid === vodA!.uuid)?.nickname ?? vodA!.uuid}.mp4`,
+);
+const expectedPathB = path.join(
+  outDir,
+  `${match.players.find((p) => p.uuid === vodB!.uuid)?.nickname ?? vodB!.uuid}.mp4`,
+);
 
 if (existsSync(expectedPathA) && existsSync(expectedPathB)) {
   console.error(`Reusing existing downloads in ${outDir}/`);
@@ -48,9 +52,7 @@ if (existsSync(expectedPathA) && existsSync(expectedPathB)) {
 const [clipA, clipB] = windows;
 if (!clipA || !clipB) throw new Error("expected two downloaded clips");
 
-console.error(
-  `Cross-correlating ${clipA.playerNickname} (ref) against ${clipB.playerNickname} (search)...`,
-);
+console.error(`Cross-correlating ${clipA.playerNickname} (ref) against ${clipB.playerNickname} (search)...`);
 const result = await computeSyncOffset(
   clipA.path,
   clipB.path,

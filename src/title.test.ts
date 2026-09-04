@@ -38,7 +38,11 @@ for (const len of [edcr.hookMin, edcr.hookMax]) {
 assert.ok(edcr.title.replace(HOOK_PLACEHOLDER, "x".repeat(edcr.hookMin)).length >= 70);
 
 // Budgets stay coherent and non-negative for absurd nicknames, rather than going inverted.
-for (const [l, r] of [["a", "b"], ["x".repeat(60), "y".repeat(60)], ["", ""]]) {
+for (const [l, r] of [
+  ["a", "b"],
+  ["x".repeat(60), "y".repeat(60)],
+  ["", ""],
+]) {
   const { hookMin, hookMax } = buildTitle({ leftNickname: l, rightNickname: r });
   assert.ok(hookMin >= 0 && hookMax >= 0, "budgets must never go negative");
   assert.ok(hookMin <= hookMax, "the minimum hook must fit inside the maximum");

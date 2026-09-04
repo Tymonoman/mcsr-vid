@@ -3,13 +3,7 @@ import { existsSync } from "node:fs";
 import React, { useEffect, useState } from "react";
 import { Box, render, Text, useInput } from "ink";
 import TextInput from "ink-text-input";
-import {
-  runPipeline,
-  STAGE_ORDER,
-  type PipelineResult,
-  type StageEvent,
-  type StageId,
-} from "./pipeline.js";
+import { runPipeline, STAGE_ORDER, type PipelineResult, type StageEvent, type StageId } from "./pipeline.js";
 import { listMatchStatuses, type MatchStatusEntry } from "./matchStatus.js";
 import { readBatchList } from "./batchList.js";
 import { formatMetrics } from "./matchScore.js";
@@ -358,7 +352,12 @@ function App({ signal }: { signal: AbortSignal }) {
     return (
       <Box flexDirection="column">
         <Header />
-        <Box borderStyle="round" borderColor={okCount === batchResults.length ? COLORS.lead : COLORS.gold} paddingX={2} flexDirection="column">
+        <Box
+          borderStyle="round"
+          borderColor={okCount === batchResults.length ? COLORS.lead : COLORS.gold}
+          paddingX={2}
+          flexDirection="column"
+        >
           <Text color={okCount === batchResults.length ? COLORS.lead : COLORS.gold} bold>
             {okCount} ok / {batchResults.length - okCount} failed
           </Text>
@@ -389,8 +388,8 @@ function App({ signal }: { signal: AbortSignal }) {
           </Text>
         ) : suggestions.length === 0 ? (
           <Text color={COLORS.muted}>
-            No suggestions. Only ranked matches where both players have a Twitch VOD
-            qualify — press r to rescan.
+            No suggestions. Only ranked matches where both players have a Twitch VOD qualify — press r to
+            rescan.
           </Text>
         ) : (
           <Box flexDirection="column">
@@ -414,9 +413,7 @@ function App({ signal }: { signal: AbortSignal }) {
           </Box>
         )}
         <Box marginTop={1}>
-          <Text color={COLORS.muted}>
-            ↑/↓ select · Enter details · d dismiss · r rescan · Esc back
-          </Text>
+          <Text color={COLORS.muted}>↑/↓ select · Enter details · d dismiss · r rescan · Esc back</Text>
         </Box>
       </Box>
     );
@@ -452,8 +449,8 @@ function App({ signal }: { signal: AbortSignal }) {
         </Box>
         <Box marginTop={1} flexDirection="column">
           <Text color={COLORS.muted}>
-            {entry.bucket === "close" ? "Close race" : "Chaotic run"} · score{" "}
-            {entry.score.toFixed(2)} · popularity {entry.popularity.toFixed(1)}
+            {entry.bucket === "close" ? "Close race" : "Chaotic run"} · score {entry.score.toFixed(2)} ·
+            popularity {entry.popularity.toFixed(1)}
           </Text>
           {entry.vodUrls.map((url) => (
             <Text key={url} color={COLORS.muted}>

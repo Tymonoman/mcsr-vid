@@ -514,8 +514,7 @@
   bottom: 0;
   background:
     linear-gradient(135deg, rgba(226, 72, 63, 0.3), transparent 45%),
-    linear-gradient(-135deg, rgba(53, 214, 196, 0.3), transparent 45%),
-    var(--panel-2);
+    linear-gradient(-135deg, rgba(53, 214, 196, 0.3), transparent 45%), var(--panel-2);
 }
 .thumb-player {
   position: absolute;

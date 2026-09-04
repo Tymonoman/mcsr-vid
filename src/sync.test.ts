@@ -62,10 +62,7 @@ try {
   const estimatedMatchStartB = trueMatchStartB - 1.5;
 
   const clipDurSec = 80;
-  await Promise.all([
-    buildClip(clipAPath, clipDurSec, thumpAtA),
-    buildClip(clipBPath, clipDurSec, thumpAtB),
-  ]);
+  await Promise.all([buildClip(clipAPath, clipDurSec, thumpAtA), buildClip(clipBPath, clipDurSec, thumpAtB)]);
 
   const result = await computeSyncOffset(clipAPath, clipBPath, trueMatchStartA, estimatedMatchStartB);
 

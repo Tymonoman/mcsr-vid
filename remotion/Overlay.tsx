@@ -205,8 +205,7 @@ function useTimer(props: OverlayProps) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const rawElapsedMs = Math.max(0, ((frame - props.timerStartFrame) / fps) * 1000);
-  const elapsedMs =
-    props.runResultMs !== null ? Math.min(rawElapsedMs, props.runResultMs) : rawElapsedMs;
+  const elapsedMs = props.runResultMs !== null ? Math.min(rawElapsedMs, props.runResultMs) : rawElapsedMs;
   const runEndFrame =
     props.runResultMs !== null
       ? props.timerStartFrame + (props.runResultMs / 1000) * fps

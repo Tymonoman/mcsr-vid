@@ -80,7 +80,15 @@ function run(command: string, args: string[], signal?: AbortSignal): Promise<str
 async function probeDurationSec(filePath: string, signal?: AbortSignal): Promise<number> {
   const out = await run(
     "ffprobe",
-    ["-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", filePath],
+    [
+      "-v",
+      "error",
+      "-show_entries",
+      "format=duration",
+      "-of",
+      "default=noprint_wrappers=1:nokey=1",
+      filePath,
+    ],
     signal,
   );
   return parseFloat(out.trim());
@@ -93,7 +101,10 @@ export async function runPipeline(input: string, opts: PipelineOptions = {}): Pr
   // Tracks when each stage first went "active" so repeat active-emits (download/render
   // progress callbacks) can carry a stable startedAtMs for the TUI's ETA calculation.
   const stageStartTimes = new Map<StageId, number>();
-  const active = (stage: StageId, extra: Omit<StageEvent, "stage" | "status" | "startedAtMs"> = {}): StageEvent => {
+  const active = (
+    stage: StageId,
+    extra: Omit<StageEvent, "stage" | "status" | "startedAtMs"> = {},
+  ): StageEvent => {
     if (!stageStartTimes.has(stage)) stageStartTimes.set(stage, Date.now());
     return { stage, status: "active", startedAtMs: stageStartTimes.get(stage), ...extra };
   };

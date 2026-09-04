@@ -45,13 +45,9 @@ const xmlWithMarkers = buildKdenliveProject({
   ],
 });
 
-const guidesMatch = xmlWithMarkers.match(
-  /kdenlive:docproperties\.guides">([^<]*)</,
-);
+const guidesMatch = xmlWithMarkers.match(/kdenlive:docproperties\.guides">([^<]*)</);
 assert.ok(guidesMatch, "expected kdenlive:docproperties.guides property to be present");
-const guides = JSON.parse(
-  guidesMatch![1].replace(/&quot;/g, '"').replace(/&amp;/g, "&"),
-);
+const guides = JSON.parse(guidesMatch![1].replace(/&quot;/g, '"').replace(/&amp;/g, "&"));
 assert.equal(guides.length, 2, `expected 2 guide entries, got ${guides.length}`);
 assert.equal(guides[0].pos, Math.round(12.5 * 60));
 assert.equal(guides[0].comment, "Nether Enter — Alice");
@@ -152,7 +148,10 @@ const posed = buildKdenliveProject({
 for (const rect of [LEFT_POV_RECT, RIGHT_POV_RECT]) {
   assert.ok(posed.includes(`<property name="rect">${rect}</property>`), `missing POV rect ${rect}`);
 }
-assert.ok(!posed.includes('<property name="rect">0 0 960 1080 1</property>'), "POV must not use the full-height fallback when a rect is given");
+assert.ok(
+  !posed.includes('<property name="rect">0 0 960 1080 1</property>'),
+  "POV must not use the full-height fallback when a rect is given",
+);
 
 // Omitting them keeps the old full-height split, so the builder stays usable standalone.
 const bare = buildKdenliveProject({

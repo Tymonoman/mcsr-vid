@@ -64,7 +64,12 @@ function runYtDlp(args: string[], opts: RunOpts = {}): Promise<void> {
     proc.on("error", reject);
     proc.on("close", (code) => {
       if (code === 0) resolve();
-      else reject(new Error(`yt-dlp exited with code ${code} (args: ${args.join(" ")})${stderrTail ? `\n${stderrTail}` : ""}`));
+      else
+        reject(
+          new Error(
+            `yt-dlp exited with code ${code} (args: ${args.join(" ")})${stderrTail ? `\n${stderrTail}` : ""}`,
+          ),
+        );
     });
   });
 }

@@ -39,11 +39,7 @@ export interface KdenliveProjectInput {
 }
 
 function escapeXml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 function secondsToTimecode(sec: number): string {
@@ -120,8 +116,7 @@ function buildTrack(opts: {
     </chain>`;
 
   const blankLengthSec = startOnTimelineSec + trimInSec;
-  const blank =
-    blankLengthSec > 0 ? `<blank length="${secondsToTimecode(blankLengthSec)}"/>` : "";
+  const blank = blankLengthSec > 0 ? `<blank length="${secondsToTimecode(blankLengthSec)}"/>` : "";
   const filterXml =
     positionRect !== undefined
       ? `
