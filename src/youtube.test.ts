@@ -85,4 +85,32 @@ assert.match((ambiguous as { error: string }).error, /final-render\.mp4/);
 assert.match((ambiguous as { error: string }).error, /final-render-v2\.mp4/);
 
 await rm(dir, { recursive: true, force: true });
+
+// --- Impressions-weighted CTR. This is the number the A/B table picks a pose from, so getting
+// it wrong silently recommends the worse thumbnail.
+
+const { totalReach } = await import("./youtubeRoutes.js");
+
+// A quiet day must not outvote a busy one: the naive mean of 1% and 10% is 5.5%, but 1000
+// impressions at 1% next to 10 at 10% is really 1.09%.
+const mixed = totalReach([
+  { date: "20260901", videoId: "v", impressions: 1000, ctr: 0.01 },
+  { date: "20260902", videoId: "v", impressions: 10, ctr: 0.1 },
+]);
+assert.equal(mixed.impressions, 1010);
+assert.ok(Math.abs(mixed.weightedCtr / mixed.impressions - 0.0109) < 0.0001);
+
+// weightedCtr stays undivided so per-video totals can be summed again per variant.
+const one = totalReach([{ date: "d", videoId: "v1", impressions: 100, ctr: 0.05 }]);
+const two = totalReach([{ date: "d", videoId: "v2", impressions: 300, ctr: 0.01 }]);
+const group = { impressions: one.impressions + two.impressions, weightedCtr: one.weightedCtr + two.weightedCtr };
+assert.equal(group.weightedCtr / group.impressions, 0.02);
+
+// No rows, and rows with no impressions, must not divide by zero.
+assert.deepEqual(totalReach([]), { impressions: 0, weightedCtr: 0 });
+assert.deepEqual(totalReach([{ date: "d", videoId: "v", impressions: 0, ctr: 0 }]), {
+  impressions: 0,
+  weightedCtr: 0,
+});
+
 console.log("youtube: all checks passed");

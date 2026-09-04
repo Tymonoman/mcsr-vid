@@ -287,6 +287,19 @@ async function startUpload(
 }
 
 /**
+ * Sums impressions and keeps CTR *undivided*, so the result can be summed again at a higher
+ * level (per-video rows into a per-variant group) before anyone divides.
+ *
+ * CTR is a per-day rate: averaging days equally would let a quiet day outvote a busy one.
+ */
+export function totalReach(rows: ImpressionsRow[]): { impressions: number; weightedCtr: number } {
+  return rows.reduce(
+    (acc, r) => ({ impressions: acc.impressions + r.impressions, weightedCtr: acc.weightedCtr + r.ctr * r.impressions }),
+    { impressions: 0, weightedCtr: 0 },
+  );
+}
+
+/**
  * One video's impressions and click-through, or null.
  *
  * Best-effort: the audit is more useful knowing the video underperformed, but a Reporting job
@@ -296,11 +309,8 @@ async function reachFor(videoId: string): Promise<{ impressions: number; ctr: nu
   try {
     const rows = (await latestImpressions(config.youtubeReportingJobId)).filter((r) => r.videoId === videoId);
     if (rows.length === 0) return null;
-    const impressions = rows.reduce((sum, r) => sum + r.impressions, 0);
-    if (impressions === 0) return { impressions: 0, ctr: 0 };
-    // Weighted by each day's impressions, matching the A/B table — a quiet day must not count
-    // as much as a busy one.
-    return { impressions, ctr: rows.reduce((sum, r) => sum + r.ctr * r.impressions, 0) / impressions };
+    const { impressions, weightedCtr } = totalReach(rows);
+    return { impressions, ctr: impressions > 0 ? weightedCtr / impressions : 0 };
   } catch {
     return null;
   }
@@ -348,15 +358,11 @@ async function abTestPayload() {
     impressionsError = describeError(err);
   }
 
-  const byVideo = new Map<string, { impressions: number; weightedCtr: number }>();
+  const rowsByVideo = new Map<string, ImpressionsRow[]>();
   for (const row of impressions) {
-    const acc = byVideo.get(row.videoId) ?? { impressions: 0, weightedCtr: 0 };
-    acc.impressions += row.impressions;
-    // CTR is a per-day rate, so averaging days equally would overweight a quiet day; weight it
-    // by that day's impressions instead.
-    acc.weightedCtr += row.ctr * row.impressions;
-    byVideo.set(row.videoId, acc);
+    rowsByVideo.set(row.videoId, [...(rowsByVideo.get(row.videoId) ?? []), row]);
   }
+  const byVideo = new Map([...rowsByVideo].map(([videoId, rows]) => [videoId, totalReach(rows)]));
 
   const groups = new Map<string, { videos: number; impressions: number; weightedCtr: number; fellBack: boolean }>();
   for (const { matchId, record } of records) {
