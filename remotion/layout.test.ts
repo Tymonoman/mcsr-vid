@@ -15,6 +15,15 @@ import {
   RTA_COL_WIDTH,
   RTA_COL_X,
   STATIC_COL_WIDTH,
+  SHORT_HEIGHT,
+  SHORT_NAMEPLATE_HEIGHT,
+  SHORT_POV_HEIGHT,
+  SHORT_POV_WIDTH,
+  SHORT_BRAND_BAR_HEIGHT,
+  SHORT_BRAND_BAR_Y,
+  SHORT_TOP_POV_Y,
+  SHORT_BOTTOM_NAMEPLATE_Y,
+  SHORT_TOP_POV_RECT,
 } from "./layout.js";
 
 // The stage is 16:9, and so is each half-width POV slot.
@@ -67,5 +76,25 @@ const flexBasis = (selector: string) => {
 assert.equal(flexBasis(".col-meta"), META_COL_WIDTH);
 assert.equal(flexBasis(".col-splits"), SPLITS_COL_WIDTH);
 assert.equal(flexBasis(".col-rta"), RTA_COL_WIDTH);
+
+// The Shorts board must tile 1080x1920 exactly: two nameplates, two 16:9 panes and the brand
+// bar, with no gap and no overlap. A gap here shows as a black stripe across a vertical video.
+assert.ok(
+  Math.abs(SHORT_POV_WIDTH / SHORT_POV_HEIGHT - 16 / 9) < 0.01,
+  "each Shorts pane must stay 16:9 so gameplay is never cropped or stretched",
+);
+assert.ok(
+  SHORT_BRAND_BAR_HEIGHT > 150 && SHORT_BRAND_BAR_HEIGHT < 400,
+  `the derived brand bar is ${SHORT_BRAND_BAR_HEIGHT}px, which is not a plausible band`,
+);
+assert.equal(
+  SHORT_NAMEPLATE_HEIGHT * 2 + SHORT_POV_HEIGHT * 2 + SHORT_BRAND_BAR_HEIGHT,
+  SHORT_HEIGHT,
+  "the Shorts bands must fill exactly 1920px",
+);
+assert.equal(SHORT_TOP_POV_Y, SHORT_NAMEPLATE_HEIGHT);
+assert.equal(SHORT_BOTTOM_NAMEPLATE_Y, SHORT_NAMEPLATE_HEIGHT + SHORT_POV_HEIGHT);
+assert.equal(SHORT_BRAND_BAR_Y + SHORT_BRAND_BAR_HEIGHT, SHORT_HEIGHT);
+assert.equal(SHORT_TOP_POV_RECT, `0 ${SHORT_NAMEPLATE_HEIGHT} 1080 608 1`);
 
 console.log("layout invariants ok");

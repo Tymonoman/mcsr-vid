@@ -63,3 +63,25 @@ export type ThumbnailProps = {
   /** Top category bar text, e.g. "MINECRAFT · SPEEDRUNNING · RANKED". */
   headerLabel: string;
 };
+
+/** One player as a Shorts nameplate shows them. */
+// `type`, not `interface`, and deliberately: Remotion's Composition generic requires props to
+// be assignable to Record<string, unknown>, which a type alias satisfies through its implicit
+// index signature and an interface does not. OverlayProps above is a type alias for the same
+// reason.
+export type ShortPlayer = {
+  nickname: string;
+  eloRate: number;
+  eloRank: number | null;
+};
+
+export type ShortProps = {
+  top: ShortPlayer;
+  bottom: ShortPlayer;
+  /** The line that has to earn the scroll, on screen for the first few seconds. */
+  hook: string;
+  /** RTA at the Short's first frame, so the running timer stays true to the match. */
+  timerStartMs: number;
+  durationInFrames: number;
+  fps: number;
+};

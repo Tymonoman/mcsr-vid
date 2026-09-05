@@ -172,6 +172,23 @@ export function rankShortMoments(match: MatchInfo, opts: ShortMomentOptions): Sh
   return moments.sort((a, b) => b.score - a.score);
 }
 
+/**
+ * Best-first, but with overlapping windows collapsed.
+ *
+ * A 1-second stride means the runner-up to any window is almost always the same window shifted
+ * by a second. That is the right resolution to *search* at and a useless thing to offer a human:
+ * "here are three options" has to mean three different moments.
+ */
+export function distinctShortMoments(match: MatchInfo, opts: ShortMomentOptions, limit = 3): ShortMoment[] {
+  const chosen: ShortMoment[] = [];
+  for (const moment of rankShortMoments(match, opts)) {
+    if (chosen.some((c) => moment.startMs < c.endMs && c.startMs < moment.endMs)) continue;
+    chosen.push(moment);
+    if (chosen.length >= limit) break;
+  }
+  return chosen;
+}
+
 /** The single best window, or null when the match has no scoreable events at all. */
 export function pickShortMoment(match: MatchInfo, opts: ShortMomentOptions): ShortMoment | null {
   return rankShortMoments(match, opts)[0] ?? null;

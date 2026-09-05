@@ -13,7 +13,9 @@ import {
 } from "./Overlay.js";
 import { INTRO_SECONDS } from "./Intro.js";
 import { Thumbnail } from "./Thumbnail.js";
-import type { OverlayProps, ThumbnailProps } from "./types.js";
+import { Short, ShortHook } from "./Short.js";
+import { SHORT_HEIGHT, SHORT_WIDTH } from "./layout.js";
+import type { OverlayProps, ShortProps, ThumbnailProps } from "./types.js";
 
 const defaultProps: OverlayProps = {
   left: {
@@ -86,6 +88,15 @@ const thumbnailDefaultProps: ThumbnailProps = {
     avatarUrl: "https://nmsr.nickac.dev/fullbody/5ee577fdc1af45d3a6fb3e086cc293fb",
   },
   headerLabel: "Minecraft · Speedrunning · Ranked",
+};
+
+const shortDefaultProps: ShortProps = {
+  top: { nickname: "edcr", eloRate: 2640, eloRank: 1 },
+  bottom: { nickname: "Ranik_", eloRate: 2132, eloRank: 51 },
+  hook: "both blind at the same time",
+  timerStartMs: 402_000,
+  durationInFrames: 900,
+  fps: 30,
 };
 
 export const RemotionRoot: React.FC = () => {
@@ -167,6 +178,26 @@ export const RemotionRoot: React.FC = () => {
           durationInFrames: Math.round(props.fps * INTRO_SECONDS),
           fps: props.fps,
         })}
+      />
+      {/* Both are stills: nothing on the Shorts board animates. The hook is separate only so
+          ffmpeg can fade it out without the board going with it. */}
+      <Composition
+        id="Short"
+        component={Short}
+        durationInFrames={1}
+        fps={30}
+        width={SHORT_WIDTH}
+        height={SHORT_HEIGHT}
+        defaultProps={shortDefaultProps}
+      />
+      <Composition
+        id="ShortHook"
+        component={ShortHook}
+        durationInFrames={1}
+        fps={30}
+        width={SHORT_WIDTH}
+        height={SHORT_HEIGHT}
+        defaultProps={shortDefaultProps}
       />
       <Composition
         id="Thumbnail"

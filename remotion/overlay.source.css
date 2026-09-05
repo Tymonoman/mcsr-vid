@@ -624,3 +624,117 @@
   font-size: 36px;
   white-space: nowrap;
 }
+
+/* ===== shorts board (1080x1920 vertical) ===== */
+/* Same palette and font as the 16:9 overlay — a Short has to read as the same channel at a
+   glance, and at 1080 wide the pixel font is the only thing legible on a phone anyway. */
+.short {
+  display: flex;
+  flex-direction: column;
+  font-family: var(--pixel-font);
+}
+.short-plate {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 0 28px;
+  background: var(--panel);
+  border-bottom: 4px solid var(--panel-edge);
+  flex-shrink: 0;
+}
+.short-plate.left {
+  border-top: 8px solid var(--crimson);
+}
+.short-plate.right {
+  flex-direction: row-reverse;
+  border-top: 8px solid var(--warped);
+}
+.short-plate .badge {
+  position: static;
+  transform: none;
+  width: 104px;
+  height: 104px;
+  flex-shrink: 0;
+}
+.short-plate-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.short-plate.right .short-plate-text {
+  align-items: flex-end;
+}
+.short-name {
+  font-weight: 700;
+  font-size: 62px;
+  color: var(--quartz);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.short-elo {
+  font-size: 34px;
+  color: var(--gold);
+}
+.short-rank {
+  color: var(--muted);
+}
+/* The gameplay shows through here; nothing may be painted over it. */
+.short-pane {
+  flex-shrink: 0;
+  background: transparent;
+}
+.short-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  background: var(--panel-2);
+  border-top: 4px solid var(--panel-edge-light);
+  flex-shrink: 0;
+}
+.short-brand .badge {
+  position: static;
+  transform: none;
+  width: 132px;
+  height: 132px;
+}
+.short-wordmark {
+  font-weight: 700;
+  font-size: 52px;
+  letter-spacing: 0.06em;
+  color: var(--quartz);
+}
+.short-rta {
+  font-weight: 700;
+  font-size: 52px;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+}
+/* On the seam between the two panes: the one place a caption costs neither POV anything. */
+/* Anchored from the bottom by the component, so it lands just above the middle nameplate —
+   over gameplay, where a caption costs nothing. Centring it on the board instead put it on top
+   of the lower player's nameplate and hid their name. */
+.short-hook {
+  position: absolute;
+  left: 40px;
+  right: 40px;
+  text-align: center;
+  /* Set here, not inherited: ShortHook renders on a bare frame so ffmpeg can fade it
+     independently of the board, so there is no .short ancestor to inherit the font from. */
+  font-family: var(--pixel-font);
+  font-weight: 700;
+  font-size: 72px;
+  line-height: 1.15;
+  color: var(--quartz);
+  text-shadow:
+    6px 0 0 var(--panel-edge),
+    -6px 0 0 var(--panel-edge),
+    0 6px 0 var(--panel-edge),
+    0 -6px 0 var(--panel-edge),
+    6px 6px 0 var(--panel-edge),
+    -6px -6px 0 var(--panel-edge),
+    6px -6px 0 var(--panel-edge),
+    -6px 6px 0 var(--panel-edge);
+}

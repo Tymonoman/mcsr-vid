@@ -53,3 +53,43 @@ export const RTA_COL_X = META_COL_WIDTH + SPLITS_COL_WIDTH;
 export const STATIC_COL_WIDTH = RTA_COL_X;
 
 export const INTRO_SECONDS = 7;
+
+/**
+ * Shorts board: 1080x1920, two stacked POV panes.
+ *
+ * The band proportions follow the layout @MCSR-Vault uses (measured off a 42k-view Short): a
+ * nameplate above each pane and a persistent channel bar along the bottom. What is deliberately
+ * *not* copied is their source — both they and @MCSR_Ranked centre-crop a finished 16:9
+ * broadcast, which slices the right edge off every stat panel and truncates handles and Elo
+ * readouts. Rendering the board natively at 1080x1920 from match data costs nothing extra here
+ * and has none of that.
+ */
+export const SHORT_WIDTH = 1080;
+export const SHORT_HEIGHT = 1920;
+/** A 16:9 POV pane at full board width. */
+export const SHORT_POV_WIDTH = SHORT_WIDTH;
+export const SHORT_POV_HEIGHT = Math.round((SHORT_POV_WIDTH * 9) / 16);
+export const SHORT_NAMEPLATE_HEIGHT = 220;
+/**
+ * Whatever is left. Derived rather than chosen so the five bands tile 1920 exactly by
+ * construction — a few pixels of drift here is a black stripe across a vertical video, and it
+ * would only show up on the published Short.
+ *
+ * Note the panes are true 16:9 at full width (608px), unlike the reference layout's 653/700px,
+ * which are the shape they are because a 16:9 broadcast was cropped to fit rather than composed.
+ */
+export const SHORT_BRAND_BAR_HEIGHT = SHORT_HEIGHT - SHORT_NAMEPLATE_HEIGHT * 2 - SHORT_POV_HEIGHT * 2;
+
+/** Top of each element, so the Remotion board and any NLE placement agree by construction. */
+export const SHORT_TOP_NAMEPLATE_Y = 0;
+export const SHORT_TOP_POV_Y = SHORT_NAMEPLATE_HEIGHT;
+export const SHORT_BOTTOM_NAMEPLATE_Y = SHORT_TOP_POV_Y + SHORT_POV_HEIGHT;
+export const SHORT_BOTTOM_POV_Y = SHORT_BOTTOM_NAMEPLATE_Y + SHORT_NAMEPLATE_HEIGHT;
+export const SHORT_BRAND_BAR_Y = SHORT_BOTTOM_POV_Y + SHORT_POV_HEIGHT;
+
+/** "x y w h opacity" rects for each POV pane, in the same convention the 16:9 stage uses. */
+export const SHORT_TOP_POV_RECT = `0 ${SHORT_TOP_POV_Y} ${SHORT_POV_WIDTH} ${SHORT_POV_HEIGHT} 1`;
+export const SHORT_BOTTOM_POV_RECT = `0 ${SHORT_BOTTOM_POV_Y} ${SHORT_POV_WIDTH} ${SHORT_POV_HEIGHT} 1`;
+
+/** Seconds the hook line stays on screen before it is removed. */
+export const SHORT_HOOK_SEC = 4;
