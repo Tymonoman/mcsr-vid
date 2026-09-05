@@ -6,17 +6,22 @@ import { getMatch, parseMatchId } from "./mcsrApi.js";
 import { overlayPaths, readSplitStills } from "./overlayRender.js";
 import { exportOutputPath, runFastExport, vaapiAvailable } from "./exportFast.js";
 import { ANCHOR_SEC } from "./kdenliveProject.js";
+import { measureTail, suggestTailSec } from "./postRoll.js";
 import { INTRO_SECONDS } from "../remotion/layout.js";
 
 /**
- * npm run export:fast -- <matchId> [--cpu] [--seconds=N]
+ * npm run export:fast -- <matchId> [--cpu] [--seconds=N] [--full-tail]
  *
  * The headless path: renders the finished MP4 straight from the overlay artifacts, without melt
  * and without opening Kdenlive. `--cpu` forces libx264 when the VAAPI encode is unavailable or
  * its quality is not wanted.
  */
 const matchId = parseMatchId(requireArg("export:fast"));
+/** Never cut closer than this to the finish; a hard cut on the dragon's death reads as broken. */
+const MIN_TAIL_SEC = 15;
 const forceCpu = process.argv.includes("--cpu");
+/** Keep the whole configured post-roll instead of trimming to where the reaction stops. */
+const fullTail = process.argv.includes("--full-tail");
 /** Render only the first N seconds — a smoke test for the filter graph before a full run. */
 const limitSec = Number(
   process.argv
@@ -69,6 +74,24 @@ const [leftDur, rightDur, timerDur] = await Promise.all([
   probe(overlay.timer),
 ]);
 
+// Where the run ends on the timeline: match start sits at ANCHOR_SEC by construction.
+const runEndOnTimelineSec = ANCHOR_SEC + (match.result.time || 0) / 1000;
+let totalDurationSec = timerDur;
+if (!fullTail && match.result.time > 0 && timerDur > runEndOnTimelineSec + MIN_TAIL_SEC) {
+  const maxTailSec = Math.min(config.postRollSec, timerDur - runEndOnTimelineSec);
+  // Measured on the winner's POV — they are the one reacting.
+  const winnerNickname =
+    match.players.find((p) => p.uuid === match.result.uuid)?.nickname ?? playerLeft.nickname;
+  const runEndInClipSec = config.preRollSec + (match.result.time || 0) / 1000;
+  const tail = await measureTail(clipFor(winnerNickname), runEndInClipSec, maxTailSec);
+  const tailSec = suggestTailSec(tail, { minSec: MIN_TAIL_SEC, maxSec: maxTailSec });
+  totalDurationSec = runEndOnTimelineSec + tailSec;
+  console.error(
+    `Tail: keeping ${tailSec.toFixed(0)}s of ${maxTailSec.toFixed(0)}s after the run ` +
+      `(${winnerNickname}'s reaction). --full-tail keeps all of it.`,
+  );
+}
+
 const useVaapi = !forceCpu && vaapiAvailable();
 const outPath = exportOutputPath(outDir, matchId);
 console.error(
@@ -99,7 +122,7 @@ await runFastExport(
     fps: 60,
     // The overlay spans lead-in + run + post-roll and starts at timeline 0, so it is the
     // timeline's length.
-    totalDurationSec: Number.isFinite(limitSec) ? limitSec : timerDur,
+    totalDurationSec: Number.isFinite(limitSec) ? limitSec : totalDurationSec,
     outPath,
     useVaapi,
   },
