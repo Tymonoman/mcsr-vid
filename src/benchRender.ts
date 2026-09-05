@@ -44,8 +44,11 @@ async function main() {
   const bundleMs = performance.now() - t0;
 
   const composition = await selectComposition({ serveUrl, id: compositionId, inputProps: props });
-  const dir = await mkdtemp(path.join(tmpdir(), "mcsr-bench-"));
-  const out = path.join(dir, codec === "vp9" ? "out.webm" : "out.mov");
+  // --out keeps the render instead of discarding it, for when the artifact itself is the thing
+  // under test (checking a codec's alpha survives MLT, say) rather than the throughput.
+  const keep = flag("out");
+  const dir = keep ? null : await mkdtemp(path.join(tmpdir(), "mcsr-bench-"));
+  const out = keep ?? path.join(dir!, codec === "vp9" ? "out.webm" : "out.mov");
 
   const t1 = performance.now();
   await renderMedia({
@@ -63,7 +66,7 @@ async function main() {
   });
   const renderMs = performance.now() - t1;
   const bytes = (await stat(out)).size;
-  await rm(dir, { recursive: true, force: true });
+  if (dir) await rm(dir, { recursive: true, force: true });
 
   const result = {
     composition: compositionId,

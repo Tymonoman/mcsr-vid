@@ -75,7 +75,10 @@ export function findExportedVideo(
   const candidates = readdirSync(dir, { withFileTypes: true })
     .filter((e) => e.isFile() && /\.(mp4|mov|mkv|webm)$/i.test(e.name))
     .map((e) => e.name)
-    // overlay.mov and overlay-intro.mov are render intermediates, not the finished video.
+    // Everything named overlay* is a render intermediate, not the finished video: the timer
+    // strip, the intro card and the split stills. Matched by prefix rather than by name so the
+    // codec changes those artifacts have been through (overlay.mov -> overlay-timer.mp4,
+    // overlay-intro.mov -> overlay-intro.webm) cannot turn one of them into an upload candidate.
     //
     // `.part.` catches anything still being written. Both writers in this project rename into
     // place on success — src/atomicOutput.ts writes `<name>.part<ext>`, scripts/export.sh writes

@@ -64,7 +64,7 @@ export interface RenderOverlayResult {
 export const overlayPaths = (outDir: string) => ({
   top: path.join(outDir, "overlay-top.png"),
   timer: path.join(outDir, "overlay-timer.mp4"),
-  intro: path.join(outDir, "overlay-intro.mov"),
+  intro: path.join(outDir, "overlay-intro.webm"),
   manifest: path.join(outDir, SPLITS_MANIFEST),
 });
 
@@ -158,12 +158,21 @@ export async function renderOverlay(args: RenderOverlayArgs): Promise<RenderOver
       renderMedia({
         composition: introComposition,
         serveUrl,
-        codec: "prores",
-        proResProfile: "4444",
-        // The intro genuinely needs alpha: it fades to transparent to reveal the gameplay
-        // underneath. It is 7 seconds, so the cost of carrying an alpha channel is bounded.
+        // VP9, because it is the only alpha format Remotion can emit that MLT actually
+        // composites. This was ProRes 4444, and MLT silently discards its alpha: measured
+        // through the real project emitter at the intro's fade-out, where the card is 11%
+        // opaque, melt returned the card's own colour (57,30,36) instead of the gameplay
+        // underneath (121,118,121). So the 0.25s fade-in and 0.6s wipe-out have been rendering
+        // as hard cuts in every export. qtrle and png-in-mov also composite correctly but are
+        // 209-235 MB for these seven seconds against VP9's 2.9 MB.
+        //
+        // Spot-checking this file with plain ffmpeg will look like the alpha is missing:
+        // FFmpeg's native vp9 decoder drops the alpha side-data and only libvpx-vp9 reads it.
+        // MLT picks the right one.
+        codec: "vp9",
+        // The intro genuinely needs alpha: it fades to transparent to reveal the gameplay.
         imageFormat: "png",
-        pixelFormat: "yuva444p10le",
+        pixelFormat: "yuva420p",
         muted: true,
         ...(config.renderConcurrency !== null ? { concurrency: config.renderConcurrency } : {}),
         outputLocation,

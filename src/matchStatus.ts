@@ -106,7 +106,7 @@ export async function matchStatusFor(matchId: number): Promise<MatchStatusEntry>
     render:
       existsSync(path.join(outDir, "overlay-timer.mp4")) &&
       existsSync(path.join(outDir, "overlay-top.png")) &&
-      existsSync(path.join(outDir, "overlay-intro.mov")) &&
+      existsSync(path.join(outDir, "overlay-intro.webm")) &&
       existsSync(path.join(outDir, SPLITS_MANIFEST)),
     thumbnail: existsSync(path.join(outDir, "thumbnail.png")),
     write: hasProject,

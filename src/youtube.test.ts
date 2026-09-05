@@ -67,6 +67,10 @@ await writeFile(path.join(dir, "nahhann.mp4"), "pov", "utf8");
 await writeFile(path.join(dir, "Aquacorde.mp4"), "pov", "utf8");
 await writeFile(path.join(dir, "overlay.mov"), "intermediate", "utf8");
 await writeFile(path.join(dir, "overlay-intro.mov"), "intermediate", "utf8");
+// The current artifact names, which are ordinary .mp4/.webm and would otherwise look exactly
+// like a finished export sitting in the folder.
+await writeFile(path.join(dir, "overlay-timer.mp4"), "intermediate", "utf8");
+await writeFile(path.join(dir, "overlay-intro.webm"), "intermediate", "utf8");
 await writeFile(path.join(dir, "sync-preview.mp4"), "preview", "utf8");
 const stillNone = findExportedVideo(matchId, ["nahhann", "Aquacorde"]);
 assert.ok("error" in stillNone, "POV clips and intermediates must never be upload candidates");
