@@ -25,6 +25,7 @@ import { chooseVariant, readManifest } from "./thumbnailVariants.js";
 import { buildTitle, type BuiltTitle } from "./title.js";
 import { allArchiveStates, capacity } from "./archive.js";
 import { handleExportRoute } from "./exportRoutes.js";
+import { handleShortsRoute } from "./shortsRoutes.js";
 import { handleYoutubeRoute } from "./youtubeRoutes.js";
 
 const PORT = Number(process.env.PORT ?? 8080);
@@ -261,6 +262,8 @@ const server = createServer(async (req, res) => {
     // Same reason, same shape: the export round-trip (project down, cut project back, encode,
     // finished MP4 down) is its own group and this file is at the cap.
     if (await handleExportRoute(req, res, segments, { json, readBody, matchDir, parseId })) return;
+
+    if (await handleShortsRoute(req, res, segments, { json, readBody, matchDir, parseId })) return;
 
     const [, resource, idRaw] = segments;
 
