@@ -67,6 +67,14 @@ assert.ok(filter.includes("normalize=0"), "audio must be summed, not averaged");
 assert.ok(filter.includes("force_original_aspect_ratio=decrease"), "POVs must letterboxed, not stretched");
 assert.ok(filter.includes("pad=960:540"), "and padded back to the pane size");
 
+// The intro must be decoded with libvpx-vp9. ffmpeg's native vp9 decoder drops the alpha
+// side-data, which turns the fades back into hard cuts — silently, and visible only by looking
+// at a frame mid-fade.
+const introIndex = args.indexOf("/m/overlay-intro.webm");
+assert.equal(args[introIndex - 1], "-i");
+assert.equal(args[introIndex - 2], "libvpx-vp9");
+assert.equal(args[introIndex - 3], "-c:v");
+
 // Encoder selection, and the promote-on-success name.
 assert.ok(args.includes("libx264"), "CPU path by default in this fixture");
 const gpu = buildFastExportCommand({ ...base, useVaapi: true });

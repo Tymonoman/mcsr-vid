@@ -87,7 +87,11 @@ export function buildFastExportCommand(input: FastExportInput): BuiltCommand {
   args.push("-ss", right.inSec.toFixed(3), "-i", input.rightClip.path);
   args.push("-i", input.topPath);
   args.push("-i", input.timerPath);
-  args.push("-i", input.introPath);
+  // libvpx-vp9 explicitly. ffmpeg's *native* vp9 decoder silently drops the alpha side-data, so
+  // without this the intro composites as an opaque card and its fades become hard cuts — the
+  // very bug that moving the intro off ProRes was meant to fix, reintroduced one layer down.
+  // Caught by looking: the frame at t=6.85s, where the card should be ~25% opaque, was solid.
+  args.push("-c:v", "libvpx-vp9", "-i", input.introPath);
   for (const still of input.splits) args.push("-i", still.path);
 
   const SPLIT_BASE = 5;

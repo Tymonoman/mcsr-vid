@@ -18,6 +18,7 @@ script, don't reconstruct the shell line. Extra arguments go after `--`.
 | `npm run analytics -- <videoId> [--traffic-sources] [--days N]` | YouTube Analytics for a published video. |
 | `npm run bench -- <Composition> [--frames=N] [--codec=] [--pixelFormat=] [--concurrency=N] [--out=path]` | Measure render throughput for one composition. Use it before claiming a render change is faster — every speed number in this file came from it. |
 | `npm run short -- <matchId> [--pick=N] [--seconds=30]` | Pick the most watchable ~30s of a match and render a finished vertical MP4 (`short-<id>.mp4`). Needs the VODs already downloaded. |
+| `npm run export:fast -- <matchId> [--cpu] [--seconds=N]` | Render the finished MP4 with one ffmpeg pass instead of melt — ~3.8x faster, no Kdenlive. `--seconds` renders a short range as a smoke test. |
 
 Three things these scripts do **not** do:
 
@@ -25,7 +26,10 @@ Three things these scripts do **not** do:
   media files are all missing, so it is not a substitute for opening the result
   in Kdenlive.
 - `export:nvenc` needs an NVIDIA GPU and writes to a fixed `out/export.mp4`.
-  Check support with `ffmpeg -hide_banner -encoders | grep nvenc`.
+  Check support with `ffmpeg -hide_banner -encoders | grep nvenc`. The lab has no NVIDIA GPU —
+  use `export:fast` there, which uses the Intel VAAPI encoder.
+- `export:fast` does not replace Kdenlive; it is the headless path. Open the `.kdenlive` when a
+  match needs a human. Both place clips through `placeOnTimeline`, so they cannot drift.
 - `analytics` shells out to `~/.claude/skills/claude-youtube/`, which lives
   outside this repo and needs an OAuth token at
   `~/.claude/.tmp/youtube_oauth_token.json`.

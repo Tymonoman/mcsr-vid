@@ -9,7 +9,7 @@ import { ANCHOR_SEC } from "./kdenliveProject.js";
 import { INTRO_SECONDS } from "../remotion/layout.js";
 
 /**
- * npm run export:fast -- <matchId> [--cpu]
+ * npm run export:fast -- <matchId> [--cpu] [--seconds=N]
  *
  * The headless path: renders the finished MP4 straight from the overlay artifacts, without melt
  * and without opening Kdenlive. `--cpu` forces libx264 when the VAAPI encode is unavailable or
@@ -17,6 +17,13 @@ import { INTRO_SECONDS } from "../remotion/layout.js";
  */
 const matchId = parseMatchId(requireArg("export:fast"));
 const forceCpu = process.argv.includes("--cpu");
+/** Render only the first N seconds — a smoke test for the filter graph before a full run. */
+const limitSec = Number(
+  process.argv
+    .slice(2)
+    .find((a) => a.startsWith("--seconds="))
+    ?.slice("--seconds=".length) ?? NaN,
+);
 
 const match = await getMatch(matchId);
 const [playerLeft, playerRight] = match.players;
@@ -92,7 +99,7 @@ await runFastExport(
     fps: 60,
     // The overlay spans lead-in + run + post-roll and starts at timeline 0, so it is the
     // timeline's length.
-    totalDurationSec: timerDur,
+    totalDurationSec: Number.isFinite(limitSec) ? limitSec : timerDur,
     outPath,
     useVaapi,
   },
