@@ -155,6 +155,9 @@ async function select(id, { scroll = false } = {}) {
     <h2>Chapters</h2>
     <pre>${esc(meta.chapters ?? "not generated yet")}</pre>
 
+    <h2>Short</h2>
+    <div id="short"><div class="empty">loading&hellip;</div></div>
+
     <h2>YouTube</h2>
     <div id="youtube"><div class="empty">loading&hellip;</div></div>
 
@@ -194,6 +197,7 @@ async function select(id, { scroll = false } = {}) {
   });
 
   loadVariants(id);
+  loadShort(id);
   loadYoutube(id, meta);
   watch(id, true);
 
@@ -249,6 +253,83 @@ async function loadVariants(id) {
       });
       await loadVariants(id);
       await refresh();
+    }),
+  );
+}
+
+/** m:ss, for moment boundaries measured from the start of the run. */
+function runClock(ms) {
+  const total = Math.round(ms / 1000);
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+}
+
+/**
+ * The candidate 30-second windows, best first, and a button to cut one.
+ *
+ * Ranked rather than chosen for you: the scorer is a set of informed guesses about what makes a
+ * Short watchable (see src/shortMoment.ts) and has no retention data behind it yet, so the top
+ * pick is a strong default and not a verdict. Each row shows why it won and the hook line it
+ * would carry, which is the part worth disagreeing with.
+ */
+async function loadShort(id) {
+  const el = $("#short");
+  if (!el) return;
+  let data;
+  try {
+    data = await api(`/api/shorts/moments/${id}`);
+  } catch (e) {
+    el.innerHTML = `<div class="scanline bad">${esc(e.message)}</div>`;
+    return;
+  }
+  if (!data.moments.length) {
+    el.innerHTML =
+      '<div class="empty">no moment worth cutting &mdash; this match has no scored timeline events</div>';
+    return;
+  }
+
+  el.innerHTML = `
+    ${data.rendered ? `<div class="scanline">rendered: ${esc(data.rendered)}</div>` : ""}
+    <div class="moments">${data.moments
+      .map(
+        (m) => `
+      <div class="moment" data-pick="${m.index}">
+        <span class="when">${runClock(m.startMs)}&ndash;${runClock(m.endMs)}</span>
+        <span class="why">${esc(m.reason)}</span>
+        <span class="hook">&ldquo;${esc(m.hook)}&rdquo;</span>
+        <button type="button" class="cut">Cut this</button>
+      </div>`,
+      )
+      .join("")}</div>
+    <pre id="shortlog" class="hidden"></pre>`;
+
+  el.querySelectorAll(".moment .cut").forEach((btn) =>
+    btn.addEventListener("click", async () => {
+      const pick = Number(btn.closest(".moment").dataset.pick);
+      el.querySelectorAll(".cut").forEach((b) => (b.disabled = true));
+      const log = $("#shortlog");
+      log.classList.remove("hidden");
+      log.textContent = "starting\n";
+      await api(`/api/shorts/render/${id}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ pick }),
+      });
+      // Same SSE shape as the export panel, so a phone that reconnects mid-render replays the
+      // whole run rather than joining blind.
+      const es = new EventSource(`/api/shorts/progress/${id}`);
+      es.onmessage = (ev) => {
+        const payload = JSON.parse(ev.data);
+        if (payload.line) {
+          log.textContent += `${payload.line}\n`;
+          log.scrollTop = log.scrollHeight;
+        }
+        if (payload.done) {
+          es.close();
+          log.textContent += payload.error ? `failed: ${payload.error}\n` : "done\n";
+          loadShort(id);
+        }
+      };
+      es.onerror = () => es.close();
     }),
   );
 }

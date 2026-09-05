@@ -368,3 +368,58 @@
     gap: 10px;
   }
 }
+
+/* ===== shorts: the candidate moments, best first ===== */
+.moments {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.moment {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  background: var(--panel-2, #1a1820);
+  border: 1px solid var(--edge, #2c2833);
+}
+/* The best pick reads as the default without being the only option. */
+.moment:first-child {
+  border-color: var(--gold, #f0c93d);
+}
+.moment .when {
+  font-variant-numeric: tabular-nums;
+  color: var(--gold, #f0c93d);
+}
+.moment .why {
+  color: var(--muted, #8d8695);
+  font-size: 0.9em;
+}
+.moment .hook {
+  color: var(--quartz, #f3ede2);
+  font-style: italic;
+  max-width: 32ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#shortlog {
+  margin-top: 10px;
+  max-height: 220px;
+  overflow: auto;
+}
+#shortlog.hidden {
+  display: none;
+}
+/* A phone gets one column; the grid above puts the hook off-screen otherwise. */
+@media (max-width: 640px) {
+  .moment {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .moment .hook {
+    max-width: none;
+    white-space: normal;
+  }
+}
