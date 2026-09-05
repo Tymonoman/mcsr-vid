@@ -18,7 +18,7 @@ script, don't reconstruct the shell line. Extra arguments go after `--`.
 | `npm run analytics -- <videoId> [--traffic-sources] [--days N]` | YouTube Analytics for a published video. |
 | `npm run bench -- <Composition> [--frames=N] [--codec=] [--pixelFormat=] [--concurrency=N] [--out=path]` | Measure render throughput for one composition. Use it before claiming a render change is faster — every speed number in this file came from it. |
 | `npm run short -- <matchId> [--pick=N] [--seconds=30]` | Pick the most watchable ~30s of a match and render a finished vertical MP4 (`short-<id>.mp4`). Needs the VODs already downloaded. |
-| `npm run export:fast -- <matchId> [--cpu] [--seconds=N]` | Render the finished MP4 with one ffmpeg pass instead of melt — ~3.8x faster, no Kdenlive. `--seconds` renders a short range as a smoke test. |
+| `npm run export:fast -- <matchId> [--cpu] [--seconds=N] [--full-tail]` | Render the finished MP4 with one ffmpeg pass instead of melt — ~3.8x faster, no Kdenlive. `--seconds` renders a short range as a smoke test; `--full-tail` keeps the whole post-roll. |
 
 Three things these scripts do **not** do:
 
@@ -70,6 +70,18 @@ fade it), then one ffmpeg pass scales both POVs into their panes and lays the bo
 - **Auto-cropping the game window usually declines, and should.** Streamers whose chat and stat
   panels reach the frame edges have motion everywhere, so there is no game window to isolate
   (measured on both POVs of 12296170). `--top-crop=x,y,w,h` overrides it when you know the layout.
+
+## What is and is not edited automatically
+
+The match footage is never cut. That leaves two editable regions, and both are automated:
+
+- **Before the match** — the thump anchor puts timeline zero on the ready-countdown, the intro
+  plays over it, and gameplay starts at 10s. Nothing to trim by hand.
+- **After the run** — `src/postRoll.ts` ends the video where the winner goes quiet *and* still,
+  rather than after a flat `postRollSec`. Never closer than 15s to the finish.
+
+Not attempted, and worth knowing why: cutting to the good part of a reaction needs to know what
+is being said, and speech means a transcription pass per match on a four-core box.
 
 ## Known Pitfalls
 
