@@ -42,6 +42,42 @@ export interface StillSegment {
   durationSec: number;
 }
 
+/**
+ * Where one clip sits once the timeline is anchored on the thump.
+ *
+ * Exported because the Kdenlive project and the direct-ffmpeg export (src/exportFast.ts) must
+ * place every clip identically — they are two renderings of one timeline, and the whole point of
+ * having both is that they agree. Deriving this twice is how they would stop agreeing.
+ */
+export interface TimelinePlacement {
+  /** Timeline second the clip's first visible frame lands on. Never negative. */
+  startOnTimelineSec: number;
+  /** Seconds trimmed off the clip's own head. */
+  inSec: number;
+  /** How long it plays for. */
+  lengthSec: number;
+}
+
+export function placeOnTimeline(clip: {
+  matchOffsetIntoClipSec: number;
+  durationSec: number;
+  clipName: string;
+}): TimelinePlacement {
+  const origin = ANCHOR_SEC - clip.matchOffsetIntoClipSec;
+  // A clip whose match start sits later than the anchor is pushed further into its own head,
+  // not merely un-blanked: MLT cannot express a negative position, and dropping the negative
+  // shift instead would slide the clip late by exactly that much — a desync that renders
+  // perfectly and that no in-point assertion can see.
+  const inSec = Math.max(0, -origin);
+  if (inSec >= clip.durationSec) {
+    throw new Error(
+      `${clip.clipName}: match start is ${clip.matchOffsetIntoClipSec}s into a ` +
+        `${clip.durationSec}s clip, so anchoring it at the thump would trim the whole clip away.`,
+    );
+  }
+  return { startOnTimelineSec: Math.max(0, origin), inSec, lengthSec: clip.durationSec - inSec };
+}
+
 export interface KdenliveMarkerInput {
   /** Absolute timeline position, in seconds from the start of the whole sequence. */
   positionSec: number;
@@ -250,18 +286,7 @@ export function buildKdenliveProject(input: KdenliveProjectInput): string {
     clipName?: string;
   }): PlacedEntry => {
     const { clip } = opts;
-    const origin = timelineOriginOf(clip);
-    // A clip whose match-start sits later than the anchor is pushed further into its own head,
-    // not merely un-blanked: MLT cannot express a negative position, and dropping the negative
-    // shift instead would slide the clip late by exactly that much — a desync that renders
-    // perfectly and that no in-point assertion can see.
-    const inSec = Math.max(0, -origin);
-    if (inSec >= clip.durationSec) {
-      throw new Error(
-        `${clip.clipName}: match start is ${clip.matchOffsetIntoClipSec}s into a ` +
-          `${clip.durationSec}s clip, so anchoring it at the thump would trim the whole clip away.`,
-      );
-    }
+    const { inSec } = placeOnTimeline(clip);
     return {
       producerId: opts.producerId,
       binId: nextBinId(),
@@ -269,7 +294,7 @@ export function buildKdenliveProject(input: KdenliveProjectInput): string {
       clipName: opts.clipName ?? clip.clipName,
       isImage: clip.isImage === true,
       sourceLengthSec: clip.durationSec,
-      startOnTimelineSec: origin,
+      startOnTimelineSec: timelineOriginOf(clip),
       inSec,
       outSec: clip.durationSec,
     };

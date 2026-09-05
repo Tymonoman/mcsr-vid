@@ -35,7 +35,8 @@
     "test": "for f in src/*.test.ts remotion/*.test.ts; do echo \"-- $f --\"; tsx \"$f\" || exit 1; done",
     "youtube-auth": "tsx src/youtubeAuth.ts",
     "bench": "npm run build-overlay-css && tsx src/benchRender.ts",
-    "short": "npm run build-overlay-css && tsx src/generateShort.ts"
+    "short": "npm run build-overlay-css && tsx src/generateShort.ts",
+    "export:fast": "tsx src/exportFastCli.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
