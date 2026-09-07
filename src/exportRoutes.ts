@@ -8,10 +8,14 @@
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { createReadStream, existsSync } from "node:fs";
+import { stat } from "node:fs/promises";
 import { writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import { describeError } from "./errorText.js";
+import { sendVideo } from "./rangeStream.js";
+import { matchStatusFor } from "./matchStatus.js";
+import { findExportedVideo } from "./youtubeStore.js";
 
 type Json = (res: ServerResponse, status: number, body: unknown) => void;
 
@@ -122,6 +126,27 @@ function startExport(matchId: number, dir: string): ExportJob {
   return job;
 }
 
+/**
+ * The finished video for a match, whichever way it was produced, or null.
+ *
+ * scripts/export.sh writes final.mp4; `npm run export:fast` writes final-<id>.mp4; and an export
+ * cut by hand in Kdenlive can be named anything. findExportedVideo already encodes that last
+ * rule (any video in the folder that is not a POV clip or a render intermediate), so this defers
+ * to it rather than growing a second list of names to keep in sync.
+ */
+async function locateExport(matchId: number, dir: string): Promise<string | null> {
+  const canonical = finalPath(dir);
+  if (existsSync(canonical)) return canonical;
+  try {
+    const status = await matchStatusFor(matchId);
+    const located = findExportedVideo(matchId, [status.leftNickname, status.rightNickname]);
+    return "error" in located ? null : located.path;
+  } catch {
+    // The MCSR API being down must not stop you watching a file that is already on disk.
+    return null;
+  }
+}
+
 export async function handleExportRoute(
   req: IncomingMessage,
   res: ServerResponse,
@@ -216,9 +241,12 @@ export async function handleExportRoute(
     return true;
   }
 
+  // Download. `finalPath` is where scripts/export.sh writes; anything else the export produced
+  // is found the same way the upload panel finds it, so `npm run export:fast` output
+  // (final-<id>.mp4) is offered here too rather than reading as "not exported yet".
   if (action === "final" && req.method === "GET") {
-    const file = finalPath(dir);
-    if (!existsSync(file)) {
+    const file = await locateExport(matchId, dir);
+    if (file === null) {
       ctx.json(res, 404, { error: "not exported yet" });
       return true;
     }
@@ -228,6 +256,32 @@ export async function handleExportRoute(
       "cache-control": "no-store",
     });
     createReadStream(file).pipe(res);
+    return true;
+  }
+
+  // Playback. Separate from `final` because the two want opposite headers: a download wants
+  // `attachment` and may stream straight through, while a <video> needs `inline` and byte
+  // ranges or it cannot seek and re-fetches the whole ~800 MB file on every scrub.
+  if (action === "preview" && (req.method === "GET" || req.method === "HEAD")) {
+    const file = await locateExport(matchId, dir);
+    if (file === null) {
+      ctx.json(res, 404, { error: "not exported yet" });
+      return true;
+    }
+    await sendVideo(req, res, file, `match-${matchId}.mp4`);
+    return true;
+  }
+
+  // Which export exists, and how big it is — so the dashboard can show a player without
+  // guessing at a URL that 404s.
+  if (action === "preview-meta" && req.method === "GET") {
+    const file = await locateExport(matchId, dir);
+    if (file === null) {
+      ctx.json(res, 200, { exported: false });
+      return true;
+    }
+    const { size } = await stat(file);
+    ctx.json(res, 200, { exported: true, name: path.basename(file), bytes: size });
     return true;
   }
 
