@@ -78,6 +78,20 @@ export interface Config {
    */
   renderConcurrency: number | null;
   /**
+   * Hour of day (UTC, 0-23) at which the dashboard starts one render by itself, or null to
+   * never. 3 is 05:00 in Poland: the lab is idle, and a 30-45 minute render is finished long
+   * before anyone looks, which is the whole point — the bottleneck on output is operator
+   * minutes, not compute, so the morning question becomes "publish this?" with a preview
+   * rather than "render this?" with a chart. See src/nightly.ts for what it will and won't do.
+   */
+  nightlyRenderHourUtc: number | null;
+  /**
+   * Where to POST a one-line plain-text result when a nightly render settles — an ntfy.sh topic
+   * URL takes exactly that body, which is why the body is plain text and nothing else. Empty
+   * string turns the notification off; a failed POST is logged, never fatal.
+   */
+  nightlyNotifyUrl: string;
+  /**
    * Suggestion slots per bucket. Close races and entertaining messes are ranked
    * separately so a run of very tight matches can't crowd the funny ones off the list.
    */
@@ -133,6 +147,8 @@ const DEFAULTS: Config = {
   overlayLeadInSec: 10,
   overlayFps: 30,
   renderConcurrency: null,
+  nightlyRenderHourUtc: 3,
+  nightlyNotifyUrl: "",
   suggestCloseSlots: 8,
   suggestChaosSlots: 2,
   suggestCacheTtlMin: 30,
@@ -176,7 +192,9 @@ export function validateOverrides(raw: Record<string, unknown>): void {
       }
       continue;
     }
-    // renderConcurrency is the one key whose default is null and whose override is a number.
+    // Keys whose default is null and whose override is a number: renderConcurrency (null =
+    // Remotion's own default) and nightlyRenderHourUtc (null = no nightly render). `typeof
+    // null` is "object", so these have to be checked before the typeof comparison below.
     if (expected === null) {
       if (value !== null && (typeof value !== "number" || !Number.isFinite(value))) {
         throw new Error(`${CONFIG_PATH}: "${key}" must be a finite number or null.`);

@@ -18,6 +18,7 @@ import { buildHookSuggestions, suggestHooksExternally } from "./hooks.js";
 import { computeMetrics } from "./matchScore.js";
 import { listMatchStatuses, matchStatusFor } from "./matchStatus.js";
 import { getMatch, getUser, getVersus, parseMatchId } from "./mcsrApi.js";
+import { scheduleNightly } from "./nightly.js";
 import { abortJob, getJob, startJob, streamProgress } from "./jobs.js";
 import { STAGE_LABELS, STAGE_ORDER, STAGE_SHORT_LABELS } from "./pipeline.js";
 import { presentSuggestions } from "./suggestPresent.js";
@@ -552,4 +553,12 @@ server.listen(PORT, "0.0.0.0", () => {
   // MCSR feed dozens of times, so waiting until someone asks means waiting a minute for an
   // answer; a fresh cache returns immediately and this costs nothing.
   void startScan();
+  // And then render one of them overnight, unattended. Waiting for a click is what caps output
+  // at 7.24 videos a month: the render is cheap, the operator's attention is not.
+  if (config.nightlyRenderHourUtc !== null) {
+    scheduleNightly({
+      hourUtc: config.nightlyRenderHourUtc,
+      notifyUrl: config.nightlyNotifyUrl,
+    });
+  }
 });
