@@ -14,6 +14,7 @@ import { config } from "./config.js";
 import { describeError } from "./errorText.js";
 import { matchStatusFor } from "./matchStatus.js";
 import { readManifest } from "./thumbnailVariants.js";
+import { HOOK_PLACEHOLDER } from "./title.js";
 import {
   addToPlaylist,
   commentThreads,
@@ -200,6 +201,14 @@ async function startUpload(
   };
   if (typeof body.title !== "string" || body.title.trim() === "") {
     ctx.json(res, 400, { error: "title is required" });
+    return;
+  }
+  // The generated title ships with a literal placeholder for the hand-written hook, and the
+  // browser's YouTube panel pre-fills the field from it. Measured in a real browser: typing a
+  // hook does not rewrite that field, so an operator who trusts the form uploads a video titled
+  // "<HOOK> | ...". Refusing here is the guard that does not depend on any UI getting it right.
+  if (body.title.includes(HOOK_PLACEHOLDER)) {
+    ctx.json(res, 400, { error: `title still contains ${HOOK_PLACEHOLDER} — pick a hook first` });
     return;
   }
   if (typeof body.description !== "string") {

@@ -131,3 +131,32 @@ assert.deepEqual(totalReach([{ date: "d", videoId: "v", impressions: 0, ctr: 0 }
 });
 
 console.log("youtube: all checks passed");
+
+// --- upload refuses a title that still carries the hook placeholder ----------------------------
+// The YouTube panel pre-fills its title field from the generated title, and typing a hook does
+// not rewrite it (measured in a browser). Without this the form would happily upload
+// "<HOOK> | a vs b | MCSR Ranked 1v1" — the one string that must never reach YouTube.
+{
+  const { handleYoutubeRoute } = await import("./youtubeRoutes.js");
+  const { HOOK_PLACEHOLDER } = await import("./title.js");
+  // Holder object rather than a `let`: the assignment happens inside a callback, so TypeScript
+  // narrows a plain variable to `never` after the assert below.
+  const got: { r: { status: number; body: unknown } | null } = { r: null };
+  const ctx = {
+    json: (_res: unknown, status: number, body: unknown) => {
+      got.r = { status, body };
+    },
+    readBody: async () =>
+      JSON.stringify({ title: `${HOOK_PLACEHOLDER} | a vs b | MCSR Ranked 1v1`, description: "d" }),
+    matchDir: (id: number) => path.join(config.mediaDir, String(id)),
+    parseId: (raw: string | undefined) => (raw && /^\d+$/.test(raw) ? Number(raw) : null),
+  };
+  const req = { method: "POST", headers: {} } as unknown as import("node:http").IncomingMessage;
+  const res = {} as unknown as import("node:http").ServerResponse;
+  const handled = await handleYoutubeRoute(req, res, ["api", "youtube", "upload", "424242"], ctx);
+  assert.equal(handled, true, "the upload route should claim the request");
+  assert.ok(got.r, "the route must answer");
+  assert.equal(got.r.status, 400, "a placeholder title must be refused, not uploaded");
+  assert.match(String((got.r.body as { error: string }).error), /HOOK/);
+  console.log("OK: upload refuses a title that still contains the hook placeholder");
+}
