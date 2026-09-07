@@ -11,12 +11,12 @@ export interface Config {
    * poses earn clicks. The first entry is what `thumbnail.png` becomes unless you pick another
    * in the dashboard, so keep `leftPose`/`rightPose` first to preserve the current look.
    *
-   * The non-default pairs are unverified: Starlight Skins' `/render/<pose>/<uuid>/full` returns
-   * 404 for every pose at the time of writing, so there is no way to confirm which names it
-   * still accepts, and each variant currently falls back to the same static NMSR render. The
-   * dashboard labels those as fallbacks rather than pretending they are distinct poses. Re-check
-   * these names once the service is back, and treat CTR grouped by pose as meaningless until
-   * the variants are visibly different.
+   * Pose names map to NMSR camera settings in `src/avatarUrl.ts` (`POSE_CAMERAS`) — Starlight
+   * Skins, which rendered real poses, is gone, and every name here must have an entry there or
+   * the variant renders NMSR's default view and the dashboard flags it as a fallback. Measured
+   * on 2026-09-07: all six names below produce visibly different silhouettes, so CTR grouped by
+   * pose compares a variable that actually varies. Since the hook-text change, all variants also
+   * carry the same headline; the pose is still the only thing that differs between them.
    */
   thumbnailVariants: Array<{ left: string; right: string }>;
   /** Minimum cross-correlation confidence (sync.ts) to trust the refined audio sync offset. */
