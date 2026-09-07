@@ -41,6 +41,13 @@ export interface Config {
    */
   youtubeReportingJobId: string;
   /**
+   * Playlist every upload is added to, keyed by title rather than id so this stays editable by
+   * hand — an id would have to be copied out of Studio after creating the playlist there, which
+   * is the manual step this removes. Created on first upload if no playlist of that title
+   * exists. Empty string turns the step off.
+   */
+  youtubePlaylistTitle: string;
+  /**
    * Seconds of overlay before the RTA timer starts.
    *
    * This is also where the published video begins: the timeline is anchored on the world-load
@@ -122,6 +129,7 @@ const DEFAULTS: Config = {
   mediaDir: "media",
   youtubeChannelId: "UCm2mAyONTHlmIxZzNmi388w",
   youtubeReportingJobId: "eda017ae-a539-4c79-8e2c-66d1af74264a",
+  youtubePlaylistTitle: "MCSR Ranked matches",
   overlayLeadInSec: 10,
   overlayFps: 30,
   renderConcurrency: null,

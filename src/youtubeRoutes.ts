@@ -15,6 +15,7 @@ import { describeError } from "./errorText.js";
 import { matchStatusFor } from "./matchStatus.js";
 import { readManifest } from "./thumbnailVariants.js";
 import {
+  addToPlaylist,
   commentThreads,
   isConfigured,
   latestImpressions,
@@ -267,6 +268,18 @@ async function startUpload(
           await setThumbnail(result.videoId, thumb);
         } catch (err) {
           progress.error = `Uploaded, but the thumbnail was rejected: ${describeError(err)}`;
+        }
+      }
+
+      // Same contract as the thumbnail: the video is up, so a playlist failure is worth saying
+      // out loud but must not read as a failed upload. Appended, not assigned — a thumbnail
+      // error above would otherwise be silently overwritten.
+      if (config.youtubePlaylistTitle) {
+        try {
+          await addToPlaylist(result.videoId, config.youtubePlaylistTitle);
+        } catch (err) {
+          const note = `Uploaded, but adding it to the playlist failed: ${describeError(err)}`;
+          progress.error = progress.error ? `${progress.error} ${note}` : note;
         }
       }
 

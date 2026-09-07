@@ -253,6 +253,51 @@ export async function setThumbnail(videoId: string, pngPath: string): Promise<vo
   if (!res.ok) throw new Error(await describeApiFailure(res, "thumbnails.set"));
 }
 
+/**
+ * Adds a video to a playlist, creating the playlist the first time.
+ *
+ * Keyed by title, not id, because an id would have to be copied out of Studio by hand — the
+ * manual step this exists to remove. Uses `youtube.force-ssl`, already in the stored token, so
+ * enabling this needs no re-consent.
+ *
+ * No de-duplication: this is only ever called on a video `videos.insert` returned seconds
+ * earlier, so it cannot already be in the playlist.
+ */
+export async function addToPlaylist(videoId: string, playlistTitle: string): Promise<void> {
+  const playlistId = await findOrCreatePlaylist(playlistTitle);
+  await apiCall(DATA_API, "/playlistItems?part=snippet", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      snippet: { playlistId, resourceId: { kind: "youtube#video", videoId } },
+    }),
+  });
+}
+
+/** Exported for the test; `addToPlaylist` is the entry point everything else should use. */
+export async function findOrCreatePlaylist(title: string): Promise<string> {
+  // `mine=true` scopes the search to the operator's own playlists, so a title collision with
+  // someone else's public playlist cannot hijack this.
+  let pageToken = "";
+  for (;;) {
+    const page = await apiCall<{
+      items?: Array<{ id: string; snippet: { title: string } }>;
+      nextPageToken?: string;
+    }>(DATA_API, `/playlists?part=snippet&mine=true&maxResults=50${pageToken}`);
+    const hit = (page.items ?? []).find((p) => p.snippet.title === title);
+    if (hit) return hit.id;
+    if (!page.nextPageToken) break;
+    pageToken = `&pageToken=${encodeURIComponent(page.nextPageToken)}`;
+  }
+
+  const created = await apiCall<{ id: string }>(DATA_API, "/playlists?part=snippet,status", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ snippet: { title }, status: { privacyStatus: "public" } }),
+  });
+  return created.id;
+}
+
 export interface VideoStats {
   videoId: string;
   title: string;
