@@ -460,3 +460,35 @@
   background: #000;
   border: 1px solid var(--edge, #2c2833);
 }
+
+/* Splits visualiser. Sized by width alone — the viewBox carries the real proportions, so the
+   dots stay round instead of stretching into ovals. */
+.splitschart {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.splitschart .sc-tick {
+  font-size: 17px;
+  letter-spacing: 1px;
+  fill: var(--muted, #8d8695);
+}
+.splitschart .sc-gap {
+  font-size: 16px;
+  fill: var(--gold, #f0c93d);
+}
+.splitschart .sc-name {
+  font-size: 18px;
+  letter-spacing: 0.5px;
+}
+/* On a card the chart is a glance, not a reading: smaller ticks, tighter to the facts above. */
+.splitschart.compact {
+  margin: 4px 0 2px;
+}
+.splitschart.compact .sc-tick {
+  font-size: 16px;
+}
+#splits {
+  padding: 4px 0 2px;
+}

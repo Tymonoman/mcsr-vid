@@ -45,6 +45,7 @@ const STATIC_ASSETS: Record<string, { file: string; type: string }> = {
   "/panels.css": { file: "panels.css", type: "text/css; charset=utf-8" },
   "/app.js": { file: "app.js", type: "text/javascript; charset=utf-8" },
   "/youtube.js": { file: "youtube.js", type: "text/javascript; charset=utf-8" },
+  "/splits.js": { file: "splits.js", type: "text/javascript; charset=utf-8" },
   // The channel badge, downscaled to 64px so each cell of the 64-wide pixel grid in
   // `remotion/pixelBadge.ts` lands on exactly one pixel. Regenerate with:
   //   ffmpeg -i branding/logo.png -vf scale=64:64:flags=neighbor public/favicon.png
@@ -194,6 +195,7 @@ function suggestionsPayload() {
     finishMarginMs: s.metrics.finishMarginMs,
     finishEstimated: s.metrics.finishEstimated,
     leadChanges: s.metrics.leadChanges,
+    splits: s.metrics.splits,
     deaths: s.metrics.deaths,
     dateSec: s.dateSec,
     matchUrl: `${MCSR_MATCH_URL}${s.metrics.matchId}`,
@@ -346,6 +348,25 @@ const server = createServer(async (req, res) => {
     const matchId = parseId(idRaw);
     if (matchId === null) {
       json(res, 400, { error: "match id must be digits" });
+      return;
+    }
+
+    // Its own endpoint rather than part of /api/meta: this needs the *full* match (timelines),
+    // which is a second API request, and the metadata editor must neither wait on it nor break
+    // when the MCSR API is down.
+    if (resource === "splits" && req.method === "GET") {
+      try {
+        const metrics = computeMetrics(await getMatch(matchId));
+        json(res, 200, {
+          matchId,
+          players: metrics.players,
+          splits: metrics.splits,
+          leadChanges: metrics.leadChanges,
+          resultMs: metrics.resultMs,
+        });
+      } catch (err) {
+        json(res, 502, { error: describeError(err) });
+      }
       return;
     }
 

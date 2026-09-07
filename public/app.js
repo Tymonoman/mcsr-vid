@@ -214,6 +214,9 @@ async function select(id, { scroll = false } = {}) {
         : ""
     }
 
+    <h2>Splits</h2>
+    <div id="splits"><div class="empty">loading&hellip;</div></div>
+
     <h2>Title ${meta.titleEdited ? '<span class="saved">(edited)</span>' : ""}</h2>
     <textarea id="title" rows="4">${esc(meta.title ?? "")}</textarea>
 
@@ -275,6 +278,7 @@ async function select(id, { scroll = false } = {}) {
   });
 
   loadVariants(id);
+  loadSplits(id, meta);
   loadPreview(id);
   loadShort(id);
   loadYoutube(id, meta);
@@ -343,6 +347,28 @@ async function loadVariants(id) {
  * panel is to check a render at a glance, so it fetches the header and the poster frame and
  * nothing else until you press play. Seeking works because the route serves byte ranges.
  */
+/**
+ * The same chart the suggestion cards carry, full size. Fetched separately rather than folded
+ * into /api/meta: the metrics need the full match (timelines), which is one more API request,
+ * and the metadata editor above must not wait on it or block when the API is down.
+ */
+async function loadSplits(id, meta) {
+  const el = $("#splits");
+  if (!el) return;
+  try {
+    const data = await api(`/api/splits/${id}`);
+    const svg = splitsChart(data.splits, {
+      left: meta.leftNickname,
+      right: meta.rightNickname,
+      compact: false,
+    });
+    el.innerHTML =
+      svg || '<div class="empty">no comparable splits &mdash; this match has no timeline events</div>';
+  } catch (e) {
+    el.innerHTML = `<div class="scanline bad">${esc(e.message)}</div>`;
+  }
+}
+
 async function loadPreview(id) {
   const el = $("#preview");
   if (!el) return;
@@ -631,6 +657,7 @@ function renderSuggestions(data) {
           change${s.leadChanges === 1 ? "" : "s"}
           &middot; &#9760;${s.deaths} &middot; score&nbsp;${s.score.toFixed(2)}
         </div>
+        ${splitsChart(s.splits, { left: s.players[0], right: s.players[1], compact: true })}
         <div class="links">
           <a href="${esc(s.matchUrl)}" target="_blank" rel="noopener">mcsrranked #${s.matchId}</a>
           ${s.vodUrls.map((u, i) => `<a href="${esc(u)}" target="_blank" rel="noopener">VOD ${i + 1}</a>`).join("")}
