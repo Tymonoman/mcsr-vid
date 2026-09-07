@@ -9,7 +9,8 @@
 set -uo pipefail
 cd "${CLAUDE_PROJECT_DIR:-/app}" 2>/dev/null || exit 0
 
-problems=()
+problems=()   # things that will break work
+notes=()      # things worth knowing that will not
 
 # --- tools the pipeline shells out to. Missing ones surface as a failed render otherwise.
 for tool in ffmpeg ffprobe yt-dlp melt-7 xvfb-run node; do
@@ -31,17 +32,19 @@ if command -v gh >/dev/null 2>&1; then
     problems+=("gh is not authenticated — run: gh auth login --with-token  (needs Contents: Read and write)")
   fi
 else
-  problems+=("gh not installed — pushes and PRs go through raw git only")
+  # Not a blocker: pushes go through the credential helper, not gh. Only `gh pr create` needs it.
+  notes+=("gh not installed — push works via the credential helper; only 'gh pr create' is unavailable")
 fi
 
 # --- the credential most likely to expire silently. See scripts/preflight-youtube.mjs.
 youtube=$(timeout 20 node scripts/preflight-youtube.mjs 2>/dev/null)
 
-if [ ${#problems[@]} -eq 0 ] && [ -z "$youtube" ]; then
+if [ ${#problems[@]} -eq 0 ] && [ ${#notes[@]} -eq 0 ] && [ -z "$youtube" ]; then
   echo "preflight: ok"
 else
-  echo "preflight: needs attention"
-  for p in "${problems[@]}"; do echo "  $p"; done
+  [ ${#problems[@]} -gt 0 ] || [ -n "$youtube" ] && echo "preflight: needs attention" || echo "preflight: ok, with notes"
+  for p in "${problems[@]:-}"; do [ -n "$p" ] && echo "  $p"; done
   [ -n "$youtube" ] && echo "$youtube"
+  for n in "${notes[@]:-}"; do [ -n "$n" ] && echo "  note: $n"; done
 fi
 exit 0
