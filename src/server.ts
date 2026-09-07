@@ -20,6 +20,7 @@ import { listMatchStatuses, matchStatusFor } from "./matchStatus.js";
 import { getMatch, getUser, getVersus, parseMatchId } from "./mcsrApi.js";
 import { abortJob, getJob, startJob, streamProgress } from "./jobs.js";
 import { STAGE_LABELS, STAGE_ORDER, STAGE_SHORT_LABELS } from "./pipeline.js";
+import { presentSuggestions } from "./suggestPresent.js";
 import { dismiss, snapshot, startScan } from "./suggestScan.js";
 import { chooseVariant, readManifest } from "./thumbnailVariants.js";
 import { buildTitle, type BuiltTitle } from "./title.js";
@@ -202,22 +203,10 @@ function outputPaths(matchId: number, projectPath: string | null) {
  */
 function suggestionsPayload() {
   const state = snapshot();
-  const suggestions = (state.result?.suggestions ?? []).map((s) => ({
-    matchId: s.metrics.matchId,
-    players: s.metrics.players,
-    winner: s.metrics.winner,
-    bucket: s.bucket,
-    score: s.score,
-    popularity: s.popularity,
-    resultMs: s.metrics.resultMs,
-    finishMarginMs: s.metrics.finishMarginMs,
-    finishEstimated: s.metrics.finishEstimated,
-    leadChanges: s.metrics.leadChanges,
-    splits: s.metrics.splits,
-    deaths: s.metrics.deaths,
-    dateSec: s.dateSec,
-    matchUrl: `${MCSR_MATCH_URL}${s.metrics.matchId}`,
-    vodUrls: s.vodUrls,
+  // Ordering and wording are `presentSuggestions`; this only adds the link the page can't build.
+  const suggestions = presentSuggestions(state.result?.suggestions ?? []).map((card) => ({
+    ...card,
+    matchUrl: `${MCSR_MATCH_URL}${card.matchId}`,
   }));
 
   return {

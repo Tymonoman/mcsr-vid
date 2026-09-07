@@ -56,8 +56,8 @@ function splitsChart(splits, { left, right, compact = false } = {}) {
   const padL = compact ? 10 : 150;
   const padR = compact ? 34 : 40;
   const laneGap = compact ? 30 : 46;
-  const topY = compact ? 34 : 62;
-  const H = compact ? 100 : 168;
+  const topY = compact ? 15 : 62;
+  const H = compact ? 60 : 168;
   const span = W - padL - padR;
 
   const x = (ms) => padL + (ms / maxMs) * span;
@@ -89,7 +89,6 @@ function splitsChart(splits, { left, right, compact = false } = {}) {
 
   points.forEach((s, i) => {
     const stagger = i % 2;
-    const short = SPLIT_SHORT[s.label] ?? s.label;
     const tickX = x(Math.max(s.aMs ?? 0, s.bMs ?? 0));
 
     // The connector is the whole point of the chart: its length IS the gap at that milestone,
@@ -121,13 +120,17 @@ function splitsChart(splits, { left, right, compact = false } = {}) {
       );
     }
 
+    // No text at all on a card: nine tick labels across ~300px collapse into overlapping noise,
+    // and the shape alone — stub connectors versus long diagonals — already says "close" or
+    // "blowout". The names are in the <title> tooltips either way.
+    if (compact) return;
     parts.push(
-      `<text x="${tickX}" y="${laneB + (compact ? 24 : 30) + stagger * (compact ? 20 : 24)}" ` +
-        `text-anchor="middle" class="sc-tick">${splitEsc(short)}</text>`,
+      `<text x="${tickX}" y="${laneB + 30 + stagger * 24}" ` +
+        `text-anchor="middle" class="sc-tick">${splitEsc(SPLIT_SHORT[s.label] ?? s.label)}</text>`,
     );
     // Gaps go *above* the lanes: below, they would be a third row competing with the two
     // staggered tick rows for the same strip of space.
-    if (!compact && s.gapMs !== null) {
+    if (s.gapMs !== null) {
       parts.push(
         `<text x="${tickX}" y="${laneA - 18 - stagger * 24}" text-anchor="middle" class="sc-gap">+${(s.gapMs / 1000).toFixed(1)}s</text>`,
       );

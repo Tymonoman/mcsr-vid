@@ -63,6 +63,7 @@
   display: flex;
   align-items: baseline;
   gap: 8px;
+  flex-wrap: wrap;
 }
 .sugg .who {
   font-weight: 700;
@@ -81,11 +82,28 @@
 .sugg .bucket.chaos {
   color: var(--gold);
 }
+/* The line that actually sells the match -- ranks, elo, rivalry, audience -- so it reads at
+   full brightness, above the facts. */
+.sugg .story {
+  font-size: 12px;
+  margin-top: 3px;
+  font-variant-numeric: tabular-nums;
+}
 .sugg .facts {
   color: var(--muted);
   font-size: 12px;
   margin-top: 2px;
   font-variant-numeric: tabular-nums;
+}
+/* Expiry is the only thing on a card that can make it un-renderable, so it is also the only
+   thing allowed to shout -- and only when it is nearly out of time. */
+.sugg .expiry {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.sugg .expiry.warn {
+  color: var(--gold);
 }
 .sugg .links {
   display: flex;
@@ -482,12 +500,10 @@
   font-size: 18px;
   letter-spacing: 0.5px;
 }
-/* On a card the chart is a glance, not a reading: smaller ticks, tighter to the facts above. */
+/* On a card the chart is a glance, not a reading: no labels at all (see splits.js), so it is
+   just a short strip of rails and dots. */
 .splitschart.compact {
-  margin: 4px 0 2px;
-}
-.splitschart.compact .sc-tick {
-  font-size: 16px;
+  margin: 6px 0 2px;
 }
 #splits {
   padding: 4px 0 2px;
