@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MCSR Replayoffs</title><link rel="stylesheet" href="style.css"><link rel="icon" href="logo.png">
+</head><body><div class="wrap">
+<header><img src="logo.png" alt="MCSR Replayoffs logo"><h1>MCSR Replayoffs</h1></header>
+<p class="tagline">Synced dual-POV videos of Minecraft Speedrunning (MCSR) Ranked matches.</p>
+<nav><a href="privacy.html">Privacy policy</a><a href="terms.html">Terms of service</a>
+<a href="https://github.com/Tymonoman/mcsr-vid">Source code</a>
+<a href="https://www.youtube.com/channel/UCm2mAyONTHlmIxZzNmi388w">YouTube channel</a></nav>
+
+<h2>What this is</h2>
+<p>An open-source pipeline that turns a finished MCSR Ranked match into a single video showing
+both players' points of view side by side, synchronised to the frame, with a live split timer
+and match statistics overlaid. Output is published to the YouTube channel
+<strong>MCSR Replayoffs</strong>.</p>
+
+<h2>How it works</h2>
+<ul>
+  <li>Reads match data — players, splits, results — from the public MCSR Ranked API.</li>
+  <li>Downloads the relevant window of each player's Twitch VOD.</li>
+  <li>Aligns the two recordings by detecting the pre-match countdown in each.</li>
+  <li>Renders the overlay and composites the finished video.</li>
+</ul>
+
+<h2>Who it is for</h2>
+<p>This is a personal tool, run by one person, publishing to one channel. It is not a service,
+has no accounts, and is not offered for other people to sign in to. The source is public so the
+method is auditable and so other runners can see exactly how their footage is handled.</p>
+
+<h2>Not affiliated with MCSR Ranked</h2>
+<p>This project is an independent third party. It uses the public MCSR Ranked API but is not
+endorsed by, or associated with, MCSR Ranked or Mojang.</p>
+
+<hr class="rule">
+<footer>Contact: <a href="https://github.com/Tymonoman/mcsr-vid/issues">open an issue on GitHub</a>.</footer>
+</div></body></html>
