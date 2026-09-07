@@ -17,10 +17,28 @@ export const STAGE_ORDER: StageId[] = ["fetch", "download", "sync", "render", "t
 export const STAGE_LABELS: Record<StageId, string> = {
   fetch: "Fetch match data",
   download: "Download VODs",
-  sync: "Audio sync check",
+  // Not "Audio sync check" any more: alignment is read off the countdown freeze in the picture
+  // (src/countdownDetect.ts), and audio is only the fallback. The old name described the thing
+  // that was replaced because it did not work.
+  sync: "Sync check",
   render: "Render overlay",
   thumbnail: "Render thumbnail",
   write: "Write Kdenlive project",
+};
+
+/**
+ * One word per stage, for the pip legend in the dashboard's match list. That legend gives each
+ * label an equal fraction of a narrow column and ellipsises the overflow, which turned both
+ * "Render overlay" and "Render thumbnail" into "RENDER ..." — a key that cannot be read is not
+ * a key. Kept beside the long labels so the two cannot drift apart.
+ */
+export const STAGE_SHORT_LABELS: Record<StageId, string> = {
+  fetch: "Match",
+  download: "VODs",
+  sync: "Sync",
+  render: "Overlay",
+  thumbnail: "Thumb",
+  write: "Project",
 };
 
 /**

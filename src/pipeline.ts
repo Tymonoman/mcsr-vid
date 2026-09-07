@@ -54,6 +54,7 @@ const FPS = 60;
  */
 export {
   STAGE_LABELS,
+  STAGE_SHORT_LABELS,
   STAGE_ORDER,
   type StageEvent,
   type StageId,

@@ -1,5 +1,5 @@
 const $ = (s, r = document) => r.querySelector(s);
-let STAGES = { order: [], labels: {} };
+let STAGES = { order: [], labels: {}, short: {} };
 let matches = [];
 let selected = null;
 let stream = null;
@@ -36,7 +36,7 @@ function renderList() {
   // Named once here rather than as a title= on every pip: a tooltip is unreachable on a phone,
   // which is exactly where this dashboard gets used.
   const legend = `<div class="legend">${STAGES.order
-    .map((s) => `<span>${esc(STAGES.labels[s])}</span>`)
+    .map((s) => `<span title="${esc(STAGES.labels[s])}">${esc(STAGES.short[s] ?? STAGES.labels[s])}</span>`)
     .join("")}</div>`;
 
   el.innerHTML =

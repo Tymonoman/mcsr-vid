@@ -19,7 +19,7 @@ import { computeMetrics } from "./matchScore.js";
 import { listMatchStatuses, matchStatusFor } from "./matchStatus.js";
 import { getMatch, getUser, parseMatchId } from "./mcsrApi.js";
 import { abortJob, getJob, startJob, streamProgress } from "./jobs.js";
-import { STAGE_LABELS, STAGE_ORDER } from "./pipeline.js";
+import { STAGE_LABELS, STAGE_ORDER, STAGE_SHORT_LABELS } from "./pipeline.js";
 import { dismiss, snapshot, startScan } from "./suggestScan.js";
 import { chooseVariant, readManifest } from "./thumbnailVariants.js";
 import { buildTitle, type BuiltTitle } from "./title.js";
@@ -272,7 +272,7 @@ const server = createServer(async (req, res) => {
     const [, resource, idRaw] = segments;
 
     if (resource === "stages" && req.method === "GET") {
-      json(res, 200, { order: STAGE_ORDER, labels: STAGE_LABELS });
+      json(res, 200, { order: STAGE_ORDER, labels: STAGE_LABELS, short: STAGE_SHORT_LABELS });
       return;
     }
 
