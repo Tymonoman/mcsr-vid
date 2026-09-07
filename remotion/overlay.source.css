@@ -475,6 +475,62 @@
   font-size: 64px;
   color: var(--gold);
 }
+/* Head-to-head + seed, stacked ABOVE the VS badge. Absolutely positioned like .intro-meta
+   rather than made an in-flow sibling of .intro-vs, so the badge keeps its dead-centre
+   position; 150px clears the badge's 110px radius at rest and its 1.25x exit scale.
+
+   Above, not below, because .intro-player sets `transform: translateY(-50%)` but PlayerCard
+   overwrites the whole transform with its entrance translateX — so the player columns hang
+   from the vertical centre downwards, and the names sit exactly where a block under the badge
+   would land. The top third of the card is the empty region. */
+.intro-h2h {
+  position: absolute;
+  bottom: 50%;
+  margin-bottom: 150px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--pixel-font);
+  white-space: nowrap;
+}
+.intro-h2h-label,
+.intro-h2h-seed {
+  font-size: 24px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.intro-h2h-record {
+  display: flex;
+  align-items: baseline;
+  gap: 22px;
+  font-size: 76px;
+  font-weight: 700;
+  /* Neutral is the default; only the leader's own number takes their side colour, so a draw
+     comes out symmetrical without a second rule. */
+  color: var(--quartz);
+}
+.intro-h2h-record .l {
+  color: var(--crimson);
+  filter: brightness(1.25);
+}
+.intro-h2h-record .r {
+  color: var(--warped);
+}
+.intro-h2h-record .dash {
+  font-size: 52px;
+  color: var(--muted);
+}
+.intro-h2h-first {
+  font-size: 52px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
 .intro-meta {
   position: absolute;
   bottom: 40px;

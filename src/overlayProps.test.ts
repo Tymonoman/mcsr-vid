@@ -1,6 +1,20 @@
 import assert from "node:assert/strict";
 import { pickStats, eloAtMatchStart, computeSplits } from "./overlayProps.js";
+import { formatConstantLabel } from "../remotion/format.js";
 import type { MatchInfo, UserDetails } from "./types.js";
+
+// The seed/bastion enums reach two places now — the bottom band's seed chip and the intro
+// card's countdown line — so they go through one humaniser rather than two. Tested here
+// because it's `match.seedType`/`match.bastionType` straight off the API that it has to
+// survive; remotion/format.ts is only where the function happens to live.
+assert.equal(formatConstantLabel("VILLAGE"), "Village");
+assert.equal(formatConstantLabel("RUINED_PORTAL"), "Ruined Portal");
+// An enum the API adds later must render, not throw and not read as missing data: the raw
+// value, humanised, is a better guess than any mapping table we could keep current.
+assert.equal(formatConstantLabel("SHIPWRECK_UNDERWATER"), "Shipwreck Underwater");
+// null is "Unknown", not "" — callers that would rather omit the line entirely (the intro
+// card does) must test the prop, not this string.
+assert.equal(formatConstantLabel(null), "Unknown");
 
 const bucket = (played: number, wins: number, best: number) => ({
   playedMatches: { ranked: played, casual: 0 },
