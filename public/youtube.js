@@ -86,6 +86,7 @@ async function loadYoutube(id, meta) {
         body: JSON.stringify({
           title: $("#ytTitle").value,
           description: $("#ytDesc").value,
+          tags: meta.tags ?? [],
           privacyStatus: $("#ytPrivacy").value,
           // datetime-local has no zone; the browser's own offset is what the operator meant.
           publishAt: when ? new Date(when).toISOString() : "",

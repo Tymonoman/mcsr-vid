@@ -10,6 +10,23 @@ import type { MatchInfo, UserDetails } from "./types.js";
 // spent two of the three visible slots.
 const HASHTAGS = ["#MCSRRanked", "#MCSR", "#MinecraftSpeedrunning"];
 
+/**
+ * `DESERT_TEMPLE` -> "desert temple seed", `BRIDGE` -> "bridge bastion". An unknown enum value
+ * degrades to its own lowercased words rather than throwing, so a seed type the API adds
+ * tomorrow reads slightly odd instead of failing a render.
+ */
+function humanise(value: string, noun: string): string {
+  return `${value.toLowerCase().replace(/_/g, " ")} ${noun}`;
+}
+
+function seedPhrase(match: MatchInfo): string | null {
+  return match.seedType ? humanise(match.seedType, "seed") : null;
+}
+
+function bastionPhrase(match: MatchInfo): string | null {
+  return match.bastionType ? humanise(match.bastionType, "bastion") : null;
+}
+
 /** Twitch's own deep-link format: `?t=<seconds>s` seeks the VOD player to that exact moment. */
 function vodDeepLink(window: VodWindow): string {
   return `${window.sourceUrl}?t=${Math.max(0, Math.round(window.matchOffsetIntoVodSec))}s`;
@@ -47,14 +64,19 @@ function buildOpening(input: DescriptionInput): string {
   // used to say only what the channel isn't ("not affiliated"), never what it contributes.
   const body = "Full same-seed race, synced dual-POV with live split comparison.";
 
+  // Runners search by seed type — the closest competitor puts it in every title. It goes after
+  // the body so the nicknames and "MCSR Ranked 1v1" keep the front of the Show-more preview.
+  const seed = [seedPhrase(match), bastionPhrase(match)].filter(Boolean).join(", ");
+  const lead = seed ? `${head} ${body} ${seed[0].toUpperCase()}${seed.slice(1)}.` : `${head} ${body}`;
+
   const winner = match.result.uuid;
-  if (!winner) return `${head} ${body}`;
+  if (!winner) return lead;
 
   const winnerName = winner === userLeft.uuid ? left : right;
   const outcome = match.forfeited
     ? `${winnerName} wins by forfeit`
     : `${winnerName} ${formatShortTime(match.result.time)}`;
-  return `${head} ${body} Result: ${outcome}.`;
+  return `${lead} Result: ${outcome}.`;
 }
 
 /**
@@ -83,4 +105,54 @@ export function buildDescription(input: DescriptionInput): string {
     "",
     HASHTAGS.join(" "),
   ].join("\n");
+}
+
+/** YouTube rejects any tag over 30 characters, silently dropping the rest of the list with it. */
+const MAX_TAG_CHARS = 30;
+
+/**
+ * Tags for the upload. Nicknames first — they are the search terms in this niche — then the
+ * format keywords, then the seed, and the broadest term last, because YouTube weights order.
+ *
+ * All seven published videos carried one identical Studio-default tag set, because the dashboard
+ * sent no `tags` field at all. This is what it sends instead.
+ *
+ * `maxTotalChars` is a parameter only so the length guard is reachable from a test; nothing
+ * calls it with anything but the default. YouTube's real ceiling is 500.
+ */
+export function buildTags(
+  match: MatchInfo,
+  userLeft: UserDetails,
+  userRight: UserDetails,
+  maxTotalChars = 450,
+): string[] {
+  const wanted = [
+    userLeft.nickname,
+    userRight.nickname,
+    "mcsr ranked",
+    "mcsr",
+    "minecraft speedrun",
+    "minecraft speedrunning",
+    "ranked 1v1",
+    "speedrun race",
+    seedPhrase(match),
+    bastionPhrase(match),
+    "minecraft",
+  ];
+
+  const tags: string[] = [];
+  const seen = new Set<string>();
+  let total = 0;
+  for (const tag of wanted) {
+    if (!tag || tag.length > MAX_TAG_CHARS) continue;
+    const key = tag.toLowerCase();
+    if (seen.has(key)) continue;
+    // The comma YouTube joins them with counts against the limit too.
+    const next = total + tag.length + (tags.length ? 1 : 0);
+    if (next > maxTotalChars) break;
+    seen.add(key);
+    tags.push(tag);
+    total = next;
+  }
+  return tags;
 }

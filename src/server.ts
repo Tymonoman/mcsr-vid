@@ -94,6 +94,7 @@ async function readMeta(matchId: number) {
   const title = metaPaths(matchId, "title");
   const description = metaPaths(matchId, "description");
   const chaptersPath = path.join(matchDir(matchId), `match-${matchId}.chapters.txt`);
+  const tagsPath = path.join(matchDir(matchId), `match-${matchId}.tags.txt`);
 
   // The hook is the one part a human writes (src/title.ts:5). buildTitle also returns the
   // character budget that keeps the title in the 70-100 band while leaving both nicknames
@@ -113,6 +114,12 @@ async function readMeta(matchId: number) {
     description: (await readIfPresent(description.edited)) ?? (await readIfPresent(description.generated)),
     descriptionEdited: existsSync(description.edited),
     chapters: await readIfPresent(chaptersPath),
+    // The upload sends these verbatim; empty means the pipeline predates the file, and YouTube
+    // then falls back to the Studio defaults that made all seven live videos share one tag set.
+    tags: ((await readIfPresent(tagsPath)) ?? "")
+      .split("\n")
+      .map((t) => t.trim())
+      .filter(Boolean),
     hook: {
       generated: budget.generated,
       placeholder: budget.title,
