@@ -67,10 +67,51 @@ main {
 main > * {
   min-width: 0;
 }
+/* Below 860px the sidebar and the detail stop sharing one column and become two screens. With
+   ten suggestion cards the page measured ~5,600px tall, so the panel the operator actually acts
+   in started thousands of pixels down and a tap on a card changed nothing you could see. The
+   `view-match` class is toggled at every width and only means anything in here. */
 @media (max-width: 860px) {
   main {
     grid-template-columns: 1fr;
   }
+  #detail {
+    display: none;
+  }
+  body.view-match #left {
+    display: none;
+  }
+  body.view-match #detail {
+    display: block;
+  }
+  /* Sticky rather than pinned to the top of the detail: the detail is taller than the screen,
+     and the way back has to stay reachable from the bottom of it. */
+  body.view-match #backtolist {
+    display: block;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 14px;
+    text-align: left;
+    background: var(--panel);
+    color: var(--quartz);
+    border: 0;
+    border-bottom: 2px solid var(--panel-edge);
+    font-size: 12px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  body.view-match #backtolist:active {
+    transform: none;
+    background: var(--panel-edge-light);
+  }
+}
+
+/* Never on the desktop layout, where both columns are already on screen. */
+#backtolist {
+  display: none;
 }
 
 #left {

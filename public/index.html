@@ -29,6 +29,11 @@
       <span class="meta" id="hostmeta"></span>
     </header>
 
+    <!-- Below 860px the list and the detail are two screens (app.css); this is the way back.
+     Outside <main> so it can stick to the page rather than to its own grid row, and outside
+     #detail because select() rewrites that whole subtree on every match. -->
+    <button type="button" id="backtolist"></button>
+
     <main>
       <section id="left">
         <div class="tabs" role="tablist">
