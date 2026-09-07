@@ -71,6 +71,41 @@ fade it), then one ffmpeg pass scales both POVs into their panes and lays the bo
   panels reach the frame edges have motion everywhere, so there is no game window to isolate
   (measured on both POVs of 12296170). `--top-crop=x,y,w,h` overrides it when you know the layout.
 
+## Dashboard
+
+`npm run dashboard` (port from `PORT`, default 8080). Server code in `src/` is read at boot;
+`public/` is served from disk per request. So after pulling server changes the production
+container needs `docker restart mcsr-dashboard`; a CSS/JS change is live on reload.
+
+- **Suggestions** are scored candidate matches. Each card carries a story line built server-side
+  (`src/suggestPresent.ts`): current rank, match-start elo, head-to-head record, Twitch followers,
+  VOD expiry. Head-to-head costs one `getVersus` call per *newly scored* match and is pooled in
+  `/media/.suggest-cache.json` (`CACHE_VERSION` in `src/suggest.ts`; bumping it makes the next
+  scan re-fetch everything, ~340 MCSR API calls against 500/10 min).
+- **Hook chips** (`src/hooks.ts`) put rivalry framing first — `Rematch: doogile leads 2-1`,
+  `#4 vs #11`, `2050 vs 1850` — because the audit measured rivalry-framed titles at 9.36% CTR
+  against 2.25% for descriptive ones, with no overlap. Descriptive chips are fallbacks.
+- **Thumbnails carry a hook** (`hookText` in `ThumbnailProps`, recorded in `thumbnail.json`).
+  The pipeline renders with the first hook suggestion; "Re-render with hook" in the detail panel
+  (`POST /api/thumbnails/:id/rerender`) redoes all variants with the hook you typed. Verified
+  legible at YouTube's 246x138 grid size; a render with no hook is byte-identical to before.
+- **Upload** sends the tags from `match-<id>.tags.txt` (written by the pipeline, see
+  `buildTags` in `src/description.ts`) and refuses — server and client — any title still
+  containing `<HOOK>`. After upload it adds the video to the season playlist *and* a
+  per-matchup one (`matchupPlaylistTitle` in `src/youtube.ts`, seat- and case-independent).
+- **Publish checklist** under the pipeline stages: five facts derived from disk, three manual
+  toggles (`Short uploaded`, `related link`, `players notified`) in `<mediaDir>/<id>/publish.json`.
+- **Hide / delete** matches from the list; delete refuses while any job is writing into that
+  directory and reports whether an archived copy exists (`src/matchShelf.ts`).
+- **Nightly auto-render** (`src/nightly.ts`): at `nightlyRenderHourUtc` (default 3, i.e. 05:00
+  in Poland; `null` disables) the server starts one render of the top un-rendered, un-hidden
+  suggestion via the same `startJob` the button uses, skipping the night if a render is already
+  running or fewer than two matches of disk remain. `nightlyNotifyUrl` gets a one-line POST on
+  done / failed / aborted (an ntfy.sh topic URL works as-is).
+- On phones (<= 860px) the list and the match are two screens with a back bar, not one column.
+- There is a Playwright smoke script from the 2026-09-07 session in that session's scratchpad
+  (`smoke.cjs http://host:port`); it is not in the repo because Playwright is not a dependency.
+
 ## What is and is not edited automatically
 
 The match footage is never cut. That leaves two editable regions, and both are automated:
@@ -149,6 +184,15 @@ Run it by hand any time with `bash scripts/preflight.sh`.
   still stretch — `src/countdownDetect.ts`, validated to 0ms on both POVs of that match against
   ground truth read off the countdown digits. `src/sync.ts` keeps the audio path only for footage
   the freeze heuristic cannot read.
+- **The intro card's centre block must sit above the VS badge.** `.intro-player` positions the
+  columns with a `transform`, but `PlayerCard` writes an inline `transform` that replaces it, so
+  the player names sit at y≈790 — anything placed under the badge collides with them.
+- **No `ss`, `lsof` or `fuser` in the container.** "Kill whatever holds the port" silently does
+  nothing and the next `npm run dashboard` dies with EADDRINUSE while the old server keeps
+  answering — tests then run against stale code. Find it with
+  `ps -eo pid,args | grep 'src/server.ts'` and kill by PID; the process `comm` is `MainThread`.
+- **Country flags render as tofu** unless the container has a colour-emoji font; the pixel font
+  has no flag glyphs. Cosmetic on the intro card.
 - **Verify visual changes by rendering.** `npm run still -- <Composition> <out.png>`,
   then read the PNG. Don't reason about the JSX and call it done.
 - **Run `npm test` after touching rendering or asset generation, and keep it green.** Not after

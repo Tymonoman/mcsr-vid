@@ -137,6 +137,17 @@ console.log("youtube: all checks passed");
 // not rewrite it (measured in a browser). Without this the form would happily upload
 // "<HOOK> | a vs b | MCSR Ranked 1v1" — the one string that must never reach YouTube.
 {
+  // `isConfigured()` looks for youtube-token.json in cwd, which is gitignored, so this case 503s
+  // in a fresh worktree or CI unless a token file exists. A dummy one is enough: the route
+  // refuses the placeholder title before any credential is read.
+  const tokenDir = await (
+    await import("node:fs/promises")
+  ).mkdtemp(path.join((await import("node:os")).tmpdir(), "mcsr-yt-route-test-"));
+  process.env.YOUTUBE_TOKEN_FILE = path.join(tokenDir, "token.json");
+  await writeFile(
+    process.env.YOUTUBE_TOKEN_FILE,
+    JSON.stringify({ client_id: "c", client_secret: "s", refresh_token: "r" }),
+  );
   const { handleYoutubeRoute } = await import("./youtubeRoutes.js");
   const { HOOK_PLACEHOLDER } = await import("./title.js");
   // Holder object rather than a `let`: the assignment happens inside a callback, so TypeScript
@@ -159,4 +170,5 @@ console.log("youtube: all checks passed");
   assert.equal(got.r.status, 400, "a placeholder title must be refused, not uploaded");
   assert.match(String((got.r.body as { error: string }).error), /HOOK/);
   console.log("OK: upload refuses a title that still contains the hook placeholder");
+  await rm(tokenDir, { recursive: true, force: true });
 }
