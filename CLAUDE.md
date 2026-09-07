@@ -83,6 +83,26 @@ The match footage is never cut. That leaves two editable regions, and both are a
 Not attempted, and worth knowing why: cutting to the good part of a reaction needs to know what
 is being said, and speech means a transcription pass per match on a four-core box.
 
+## Session preflight
+
+`scripts/preflight.sh` runs at session start (wired in `.claude/settings.json`) and prints one
+line when everything is fine. It exists because three sessions were lost to environment state
+rather than code: a container with no GitHub credentials, a read-only PAT that failed only at
+push time, and expiring OAuth tokens.
+
+It reports rather than blocks — always exits 0, every network call bounded by a timeout. When it
+flags something, fix that before starting work; it is naming a thing that will otherwise surface
+halfway through a merge or a render.
+
+The YouTube half (`scripts/preflight-youtube.mjs`) actually spends the refresh token rather than
+inspecting it, because that is the only way to know it still works. It also warns while a token
+is *about* to die: an OAuth consent screen left in "Testing" gets refresh tokens that Google
+expires after 7 days, which is invisible until the day it bites. That warning stops on its own —
+a token still alive past day 8 proves the app is published, so it writes a marker and never asks
+again.
+
+Run it by hand any time with `bash scripts/preflight.sh`.
+
 ## Known Pitfalls
 
 - **Season vs career stats.** `pickStats` (`src/overlayProps.ts:47`) uses the live
@@ -131,6 +151,10 @@ is being said, and speech means a transcription pass per match on a four-core bo
   the freeze heuristic cannot read.
 - **Verify visual changes by rendering.** `npm run still -- <Composition> <out.png>`,
   then read the PNG. Don't reason about the JSX and call it done.
+- **Run `npm test` after touching rendering or asset generation, and keep it green.** Not after
+  every edit, though — the suite drives Chromium and ffmpeg and takes minutes, which is why the
+  PostToolUse hook runs `prettier` and `tsc --noEmit` instead. Those two catch the mistakes an
+  edit actually introduces; the suite catches what a *change* introduces.
 - **Generated projects carry `root`.** `src/kdenliveProject.ts:313` emits
   `<mlt root="...">` with every resource relative to it, which is what lets a
   project rendered on the homelab open on the desktop. Check output with

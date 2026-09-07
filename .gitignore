@@ -17,3 +17,6 @@ dist/
 
 # Long-lived YouTube refresh token written by `npm run youtube-auth`.
 /youtube-token.json
+
+# Written by scripts/preflight-youtube.mjs once a live token proves the OAuth app is published.
+/.youtube-production-confirmed
