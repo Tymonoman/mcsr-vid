@@ -1,38 +1,55 @@
-const REACHABILITY_TIMEOUT_MS = 4000;
+const NMSR = "https://nmsr.nickac.dev/fullbody";
 
 /**
- * Which service actually rendered the avatar.
+ * Camera per pose name.
  *
- * This is load-bearing for thumbnail A/B testing, not bookkeeping. `resolveAvatarUrl` used to
- * return a bare URL, so a fallback was invisible to callers — and when Starlight Skins is down
- * (as it is at the time of writing: `/render/<pose>/<uuid>/full` returns 404 for every pose,
- * while `/skin-render/...` answers with "moved, please use /render/..." — their server pointing
- * at a route it has not mounted), *every* pose resolves to the same static NMSR render. Without
- * this field, three "different pose" variants would be three identical images, and a CTR table
- * grouped by pose would be comparing a variable that never varied.
+ * Starlight Skins used to render genuinely different poses, but it has been down long enough
+ * that every variant fell back to one static NMSR render — three "poses" that were three
+ * identical images. NMSR has no poses, but it does take `yaw` (turn) and `arms` (0-180, how far
+ * the arms are raised), and a distinct silhouette per variant is the only thing the thumbnail
+ * A/B test actually needs from a pose.
+ *
+ * `pitch` is deliberately unused: measured, it tilts the camera enough to crop the legs out of
+ * frame, so variants stop being comparable at a glance.
  */
-export type AvatarProvider = "starlight" | "nmsr";
+const POSE_CAMERAS: Record<string, string> = {
+  walking: "yaw=-20&arms=25",
+  crossed: "yaw=20&arms=0",
+  cheering: "yaw=0&arms=150",
+  relaxing: "yaw=35&arms=15",
+  marching: "yaw=-35&arms=45",
+  crouching: "yaw=15&arms=5",
+};
+
+/**
+ * Which render a caller got. `nmsr` means the pose was NOT honoured — the name had no camera —
+ * so the A/B table must not treat it as a distinct pose. This is load-bearing for thumbnail A/B
+ * testing, not bookkeeping: it is what stops a CTR comparison grouping by a variable that never
+ * varied. `starlight` no longer occurs but still appears in manifests written before the switch.
+ */
+export type AvatarProvider = "nmsr-posed" | "nmsr" | "starlight";
 
 export interface ResolvedAvatar {
   url: string;
   provider: AvatarProvider;
-  /** The pose that was asked for. On the `nmsr` fallback it was not honoured. */
+  /** The pose that was asked for. On the bare `nmsr` provider it was not honoured. */
   pose: string;
 }
 
+/** Poses the config may name. Exported so a bad pose can be caught before a render, not after. */
+export const KNOWN_POSES = Object.keys(POSE_CAMERAS);
+
 /**
- * Starlight Skins renders a named pose but is a small free service that's occasionally down;
- * NMSR has no pose support but is reliably up. Probe the pose render and fall back so the
- * pipeline never blocks a render on a flaky third-party image host.
+ * Async only so the call sites that already await it do not have to change; there is no probe
+ * any more, because there is nothing left to probe for.
  */
 export async function resolveAvatarUrl(uuid: string, pose: string): Promise<ResolvedAvatar> {
-  const poseUrl = `https://starlightskins.lunareclipse.studio/render/${pose}/${uuid}/full`;
-  try {
-    const res = await fetch(poseUrl, { signal: AbortSignal.timeout(REACHABILITY_TIMEOUT_MS) });
-    if (res.ok) return { url: poseUrl, provider: "starlight", pose };
-  } catch {
-    // fall through to the static fallback below
+  const camera = POSE_CAMERAS[pose];
+  if (!camera) {
+    console.error(
+      `  Unknown pose "${pose}" — rendering NMSR's default view. Known: ${KNOWN_POSES.join(", ")}`,
+    );
+    return { url: `${NMSR}/${uuid}`, provider: "nmsr", pose };
   }
-  console.error(`  Starlight Skins unavailable for ${uuid}, falling back to a static pose.`);
-  return { url: `https://nmsr.nickac.dev/fullbody/${uuid}`, provider: "nmsr", pose };
+  return { url: `${NMSR}/${uuid}?${camera}`, provider: "nmsr-posed", pose };
 }

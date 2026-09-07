@@ -1,35 +1,33 @@
 import assert from "node:assert/strict";
 import { computeThumbnailProps, resolveAvatarUrl } from "./thumbnailProps.js";
+import { KNOWN_POSES } from "./avatarUrl.js";
 import type { MatchInfo, UserDetails } from "./types.js";
 
 const realFetch = globalThis.fetch;
 
-// Starlight Skins reachable: use its pose render.
-globalThis.fetch = (async () => new Response(null, { status: 200 })) as typeof fetch;
-assert.deepEqual(await resolveAvatarUrl("uuid-1", "walking"), {
-  url: "https://starlightskins.lunareclipse.studio/render/walking/uuid-1/full",
-  provider: "starlight",
-  pose: "walking",
-});
+// Every configured pose resolves to its own NMSR camera, so the three variants are three
+// different silhouettes. When this regressed (Starlight Skins going down), all three were the
+// same image and the CTR table was comparing a variable that never varied.
+{
+  const walking = await resolveAvatarUrl("uuid-1", "walking");
+  const crossed = await resolveAvatarUrl("uuid-1", "crossed");
+  assert.equal(walking.provider, "nmsr-posed");
+  assert.equal(walking.pose, "walking");
+  assert.ok(walking.url.startsWith("https://nmsr.nickac.dev/fullbody/uuid-1?"), walking.url);
+  assert.notEqual(walking.url, crossed.url, "two poses must not resolve to the same render");
 
-// Starlight Skins down (bad status): fall back to NMSR.
-globalThis.fetch = (async () => new Response(null, { status: 502 })) as typeof fetch;
-// provider "nmsr" is what tells a caller the pose was NOT honoured -- without it, three
-// "different pose" variants during a Starlight outage are three identical images.
-assert.deepEqual(await resolveAvatarUrl("uuid-2", "walking"), {
+  const urls = new Set(
+    await Promise.all(KNOWN_POSES.map(async (pose) => (await resolveAvatarUrl("u", pose)).url)),
+  );
+  assert.equal(urls.size, KNOWN_POSES.length, "every known pose needs its own camera");
+}
+
+// An unconfigured pose must say so rather than quietly returning the default view under a name
+// that implies it was honoured.
+assert.deepEqual(await resolveAvatarUrl("uuid-2", "moonwalking"), {
   url: "https://nmsr.nickac.dev/fullbody/uuid-2",
   provider: "nmsr",
-  pose: "walking",
-});
-
-// Starlight Skins unreachable (network error/timeout): also falls back.
-globalThis.fetch = (async () => {
-  throw new Error("network error");
-}) as typeof fetch;
-assert.deepEqual(await resolveAvatarUrl("uuid-3", "crossed"), {
-  url: "https://nmsr.nickac.dev/fullbody/uuid-3",
-  provider: "nmsr",
-  pose: "crossed",
+  pose: "moonwalking",
 });
 
 // The thumbnail must show the rating each player carried INTO the match, not their rating now.

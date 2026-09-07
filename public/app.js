@@ -214,9 +214,9 @@ async function select(id, { scroll = false } = {}) {
  * The rendered pose variants, one per configured pair. Picking one copies it over
  * thumbnail.png, which is the file that gets uploaded.
  *
- * A variant whose avatars came from NMSR is labelled as a fallback rather than shown as a
- * distinct pose: NMSR has no pose support, so during a Starlight Skins outage every variant is
- * the same image, and calling them three poses would make the eventual CTR comparison a lie.
+ * A variant whose avatars came back un-posed is labelled as a fallback rather than shown as a
+ * distinct pose: it is the default NMSR view, so every such variant is the same image, and
+ * calling them three poses would make the eventual CTR comparison a lie.
  */
 async function loadVariants(id) {
   const el = $("#variants");
@@ -235,13 +235,13 @@ async function loadVariants(id) {
 
   el.innerHTML = `<div class="strip">${data.variants
     .map((v) => {
-      const fellBack = v.leftProvider !== "starlight" || v.rightProvider !== "starlight";
+      const fellBack = v.leftProvider === "nmsr" || v.rightProvider === "nmsr";
       return `
       <figure class="variant ${v.key === data.chosen ? "chosen" : ""}" data-key="${esc(v.key)}">
         <img src="/api/thumbnail/${id}?v=${encodeURIComponent(v.key)}" alt="${esc(v.key)}" loading="lazy">
         <figcaption>
           <span class="key">${esc(v.leftPose)} / ${esc(v.rightPose)}</span>
-          ${fellBack ? '<span class="fallback" title="Starlight Skins was unavailable, so this is the static NMSR render -- not the pose it is named after">static fallback</span>' : ""}
+          ${fellBack ? '<span class="fallback" title="This pose name has no camera, so it is the default NMSR view -- not the pose it is named after">static fallback</span>' : ""}
           ${v.key === data.chosen ? '<span class="is-chosen">in use</span>' : '<button type="button" class="use">Use this</button>'}
         </figcaption>
       </figure>`;
