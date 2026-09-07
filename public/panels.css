@@ -445,3 +445,18 @@
   margin-left: auto;
   color: var(--gold, #f0c93d);
 }
+
+/* The Short is 1080x1920. Left to fill the panel it would be a full-height column that pushes
+   everything else off the page, so it is capped by height and centred, letting the panel keep
+   its shape whatever aspect the file turns out to be. */
+.shortplayer {
+  margin-bottom: 10px;
+}
+.shortplayer video {
+  display: block;
+  margin: 0 auto;
+  max-height: 55vh;
+  max-width: 100%;
+  background: #000;
+  border: 1px solid var(--edge, #2c2833);
+}

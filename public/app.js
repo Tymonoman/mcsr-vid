@@ -324,7 +324,18 @@ async function loadShort(id) {
   }
 
   el.innerHTML = `
-    ${data.rendered ? `<div class="scanline">rendered: ${esc(data.rendered)}</div>` : ""}
+    ${
+      data.rendered
+        ? `<div class="shortplayer">
+             <video id="shortvideo" controls preload="metadata" playsinline
+                    src="/api/shorts/preview/${id}"></video>
+             <div class="previewmeta">
+               <span>${esc(data.rendered)}</span>
+               <a href="/api/shorts/preview/${id}" download>Download</a>
+             </div>
+           </div>`
+        : ""
+    }
     <div class="moments">${data.moments
       .map(
         (m) => `
@@ -421,6 +432,16 @@ function paintElapsed() {
   }
 }
 
+/** Stop is a no-op when nothing is running and destructive when something is, so it looks it. */
+function armStop(on) {
+  const btn = $("#stop");
+  if (!btn) return;
+  btn.classList.toggle("danger", on);
+  btn.classList.toggle("ghost", !on);
+  btn.disabled = !on;
+  btn.title = on ? "Abort the running pipeline" : "Nothing is running";
+}
+
 function watch(id, quiet) {
   if (stream) {
     stream.close();
@@ -430,6 +451,7 @@ function watch(id, quiet) {
   stageState = {};
   const box = $("#progress");
   if (!box) return;
+  armStop(false);
 
   const src = new EventSource(`/api/progress/${id}`);
   stream = src;
@@ -438,6 +460,7 @@ function watch(id, quiet) {
   src.onmessage = (e) => {
     box.classList.add("live");
     const ev = JSON.parse(e.data);
+    if (ev.status === "active") armStop(true);
     const row = box.querySelector(`[data-stage="${ev.stage}"]`);
     if (!row) return;
 
@@ -463,6 +486,7 @@ function watch(id, quiet) {
 
   src.addEventListener("end", (e) => {
     const { error, stage, aborted } = JSON.parse(e.data);
+    armStop(false);
     $("#msg").textContent = aborted ? "stopped" : error ? "failed" : "done";
     if (error) showFailure(stage ? `${STAGES.labels[stage]} failed` : "Pipeline failed", error);
     src.close();
@@ -477,6 +501,7 @@ function watch(id, quiet) {
     src.close();
     if (stream === src) stream = null;
     clearInterval(elapsedTimer);
+    armStop(false);
     if (quiet) box.classList.remove("live");
   };
 }

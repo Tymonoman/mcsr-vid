@@ -16,6 +16,7 @@ import type { ExportRouteContext } from "./exportRoutes.js";
 import { getMatch } from "./mcsrApi.js";
 import { distinctShortMoments, SHORT_WINDOW_SEC } from "./shortMoment.js";
 import { buildShortHook } from "./shortHook.js";
+import { sendVideo } from "./rangeStream.js";
 
 /** One Short render in flight. Lines are retained so a browser joining late replays the run. */
 interface ShortJob {
@@ -141,6 +142,19 @@ export async function handleShortsRoute(
     } catch (err) {
       ctx.json(res, 502, { error: describeError(err) });
     }
+    return true;
+  }
+
+  // Playback, byte-ranged like the export preview. A Short is ~10 MB rather than ~800 MB, but
+  // it still needs ranges: without them a <video> cannot seek, and scrubbing a 30-second clip is
+  // the whole point of previewing one.
+  if (action === "preview" && (req.method === "GET" || req.method === "HEAD")) {
+    const file = shortPath(dir, matchId);
+    if (!existsSync(file)) {
+      ctx.json(res, 404, { error: "no Short rendered yet" });
+      return true;
+    }
+    await sendVideo(req, res, file, path.basename(file));
     return true;
   }
 

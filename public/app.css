@@ -191,6 +191,21 @@ button.ghost {
   border-color: var(--panel-edge-light);
 }
 
+/* Armed only while a run is in flight, so the one destructive control on the page reads as
+   destructive exactly when it can do something. */
+button.danger {
+  background: var(--crimson);
+  color: var(--quartz);
+  border-color: var(--crimson);
+}
+button.danger:hover {
+  filter: brightness(1.15);
+}
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 h2 {
   font-size: 13px;
   letter-spacing: 1.5px;
