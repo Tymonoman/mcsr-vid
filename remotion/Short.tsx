@@ -4,19 +4,14 @@ import "./overlay.css";
 import { formatShortTime } from "./format.js";
 import { PixelBadge } from "./PixelBadge.js";
 import type { ShortProps } from "./types.js";
+import { layoutShortHook } from "./shortHookLayout.js";
 import {
+  SHORT_BOTTOM_NAMEPLATE_Y,
   SHORT_BRAND_BAR_HEIGHT,
   SHORT_HOOK_SEC,
   SHORT_NAMEPLATE_HEIGHT,
   SHORT_POV_HEIGHT,
 } from "./layout.js";
-
-/**
- * The hook sits just above the lower nameplate: inside the top pane, over gameplay. Derived
- * from the band heights rather than a percentage so it tracks the layout, and expressed as a
- * distance from the bottom because that is what the bands below it add up to.
- */
-const HOOK_BOTTOM_PX = SHORT_POV_HEIGHT + SHORT_NAMEPLATE_HEIGHT + SHORT_BRAND_BAR_HEIGHT + 28;
 
 /**
  * The 1080x1920 Shorts board: a nameplate above each POV pane, and a channel bar pinned to the
@@ -85,15 +80,24 @@ export const Short: FC<ShortProps> = (props) => {
 
 /**
  * The hook line alone, on a transparent frame, so ffmpeg can fade it out after a few seconds
- * without the board fading with it. Sits just above the lower nameplate — inside the top pane,
- * over gameplay, where a caption costs neither player anything.
+ * without the board fading with it.
+ *
+ * Centred on the seam between the top pane and the lower nameplate, which is where the
+ * best-performing Short on the competing channel (~42k views) puts its own hook. It costs four
+ * seconds of the lower player's nameplate, and that is the trade: nothing else on the board is
+ * asking anyone to keep watching, and a caption tucked into a corner reads as a subtitle.
  */
-export const ShortHook: FC<ShortProps> = (props) => (
-  <AbsoluteFill>
-    <div className="short-hook" style={{ bottom: HOOK_BOTTOM_PX }}>
-      {props.hook}
-    </div>
-  </AbsoluteFill>
-);
+export const ShortHook: FC<ShortProps> = (props) => {
+  const { lines, fontSize } = layoutShortHook(props.hook);
+  return (
+    <AbsoluteFill>
+      <div className="short-hook" style={{ top: SHORT_BOTTOM_NAMEPLATE_Y, fontSize }}>
+        {lines.map((line, i) => (
+          <div key={i}>{line}</div>
+        ))}
+      </div>
+    </AbsoluteFill>
+  );
+};
 
 export { SHORT_HOOK_SEC };

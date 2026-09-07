@@ -743,29 +743,40 @@
   color: var(--gold);
   font-variant-numeric: tabular-nums;
 }
-/* On the seam between the two panes: the one place a caption costs neither POV anything. */
-/* Anchored from the bottom by the component, so it lands just above the middle nameplate —
-   over gameplay, where a caption costs nothing. Centring it on the board instead put it on top
-   of the lower player's nameplate and hid their name. */
+/* Straddles the seam between the top POV pane and the lower nameplate, centred: the position
+   the best-performing competitor Short uses, and the only place on a vertical board where a
+   caption is unavoidable rather than skippable. It is gone by four seconds, so the four seconds
+   it costs the lower player's nameplate are cheaper than a hook nobody reads. The component
+   anchors it with `top: <seam>`; the translate is what centres it on that line. */
 .short-hook {
   position: absolute;
-  left: 40px;
-  right: 40px;
+  left: 24px;
+  right: 24px;
+  transform: translateY(-50%);
   text-align: center;
   /* Set here, not inherited: ShortHook renders on a bare frame so ffmpeg can fade it
      independently of the board, so there is no .short ancestor to inherit the font from. */
   font-family: var(--pixel-font);
   font-weight: 700;
-  font-size: 72px;
-  line-height: 1.15;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  line-height: 1.1;
   color: var(--quartz);
+  /* The component sized the type for these exact line breaks; a browser re-wrap would add the
+     third line the layout has no room for. */
+  white-space: nowrap;
+  /* Eight-way hard outline, the same treatment as the thumbnail hook and the VS: over live
+     gameplay the outline is most of what makes white letters readable. The crimson offset
+     behind it is the brand's, and doubles as the drop that lifts the block off the nameplate
+     it crosses. */
   text-shadow:
-    6px 0 0 var(--panel-edge),
-    -6px 0 0 var(--panel-edge),
-    0 6px 0 var(--panel-edge),
-    0 -6px 0 var(--panel-edge),
-    6px 6px 0 var(--panel-edge),
-    -6px -6px 0 var(--panel-edge),
-    6px -6px 0 var(--panel-edge),
-    -6px 6px 0 var(--panel-edge);
+    7px 0 0 var(--panel-edge),
+    -7px 0 0 var(--panel-edge),
+    0 7px 0 var(--panel-edge),
+    0 -7px 0 var(--panel-edge),
+    7px 7px 0 var(--panel-edge),
+    -7px -7px 0 var(--panel-edge),
+    7px -7px 0 var(--panel-edge),
+    -7px 7px 0 var(--panel-edge),
+    14px 14px 0 var(--crimson);
 }

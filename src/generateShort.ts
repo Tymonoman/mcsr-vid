@@ -1,12 +1,16 @@
 import path from "node:path";
 import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { requireArg } from "./cliArgs.js";
 import { config } from "./config.js";
 import { getMatch, getUser, parseMatchId } from "./mcsrApi.js";
 import { distinctShortMoments, SHORT_WINDOW_SEC } from "./shortMoment.js";
 import { renderShort } from "./shortRender.js";
 import { eloAtMatchStart } from "./overlayProps.js";
-import { buildShortHook } from "./shortHook.js";
+import { buildHookSuggestions } from "./hooks.js";
+import { computeMetrics } from "./matchScore.js";
+import { buildTitle } from "./title.js";
+import { buildShortHook, resolveShortHook } from "./shortHook.js";
 
 /**
  * npm run short -- <matchId> [--pick=N] [--seconds=30] [--top-crop=x,y,w,h] [--bottom-crop=...]
@@ -82,6 +86,26 @@ if (!moment) throw new Error(`--pick=${pick} is out of range; ${moments.length} 
 
 const [userLeft, userRight] = await Promise.all([getUser(playerLeft.uuid), getUser(playerRight.uuid)]);
 
+// The hook is the whole first four seconds, so it comes from the best source available rather
+// than from the 30-second window alone. Sized against the *title* budget on purpose: when the
+// operator has written a title hook this is literally that line, so the two must be the same
+// length of thing. `versus` is left out — the rematch chip costs one more API call, and a Short
+// render is not the place to spend it.
+const budget = buildTitle({ leftNickname: playerLeft.nickname, rightNickname: playerRight.nickname });
+const hook = resolveShortHook(
+  await readFile(path.join(outDir, `match-${matchId}.title.edited.txt`), "utf8").catch(() => null),
+  buildHookSuggestions({
+    metrics: computeMetrics(match),
+    match,
+    userLeft,
+    userRight,
+    maxChars: budget.hookMax,
+    minChars: budget.hookMin,
+  }),
+  buildShortHook(moment, playerLeft.nickname, playerRight.nickname),
+);
+console.error(`Hook: ${hook}`);
+
 // The same sync the long-form uses would be ideal here, but it costs a video scan per clip and a
 // Short is far more forgiving: it is cut from one moment, so a second of absolute drift shifts
 // which second you see rather than desyncing anything. The coarse estimate is what the download
@@ -112,7 +136,7 @@ await renderShort({
       eloRate: eloAtMatchStart(match, playerRight.uuid, userRight.eloRate),
       eloRank: userRight.eloRank,
     },
-    hook: buildShortHook(moment, playerLeft.nickname, playerRight.nickname),
+    hook,
     timerStartMs: moment.startMs,
   },
   outPath,
