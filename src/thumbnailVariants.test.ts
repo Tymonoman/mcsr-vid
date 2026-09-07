@@ -28,6 +28,7 @@ assert.equal(await readManifest(dir), null);
 
 const manifest: VariantsManifest = {
   chosen: "walking-crossed",
+  hookText: "WANNABE vs REAL GOAT",
   variants: [
     {
       key: "walking-crossed",
@@ -72,6 +73,20 @@ await assert.rejects(
   () => chooseVariant(dir, "nope-nope"),
   /No thumbnail variant "nope-nope".*walking-crossed, cheering-relaxing/s,
 );
+
+// The headline every variant carries is recorded, and survives promoting a different variant:
+// it is the one thing about a render you cannot recover from the pose keys or the filenames.
+assert.equal((await readManifest(dir))?.hookText, "WANNABE vs REAL GOAT");
+
+// A sidecar written before hooks existed has no field at all. That is "rendered without one",
+// not undefined -- the dashboard renders the value and would print "undefined" over the strip.
+await writeFile(
+  manifestPath(dir),
+  JSON.stringify({ chosen: manifest.chosen, variants: manifest.variants }),
+  "utf8",
+);
+assert.equal((await readManifest(dir))?.hookText, null);
+await writeFile(manifestPath(dir), JSON.stringify(manifest), "utf8");
 
 // A truncated sidecar (killed mid-write) reads as "no manifest" so the next render regenerates
 // it, rather than throwing and taking the whole thumbnail stage down.

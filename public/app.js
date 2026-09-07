@@ -312,10 +312,18 @@ async function loadVariants(id) {
     return;
   }
 
-  el.innerHTML = `<div class="strip">${data.variants
-    .map((v) => {
-      const fellBack = v.leftProvider === "nmsr" || v.rightProvider === "nmsr";
-      return `
+  // The headline every variant in the strip was rendered with. Not visible in the shrunken
+  // previews once it wraps, and it is the whole reason a re-render happens.
+  const headline = data.hookText
+    ? `<div class="counter">headline: &ldquo;${esc(data.hookText)}&rdquo;</div>`
+    : "";
+
+  el.innerHTML =
+    headline +
+    `<div class="strip">${data.variants
+      .map((v) => {
+        const fellBack = v.leftProvider === "nmsr" || v.rightProvider === "nmsr";
+        return `
       <figure class="variant ${v.key === data.chosen ? "chosen" : ""}" data-key="${esc(v.key)}">
         <img src="/api/thumbnail/${id}?v=${encodeURIComponent(v.key)}" alt="${esc(v.key)}" loading="lazy">
         <figcaption>
@@ -324,8 +332,9 @@ async function loadVariants(id) {
           ${v.key === data.chosen ? '<span class="is-chosen">in use</span>' : '<button type="button" class="use">Use this</button>'}
         </figcaption>
       </figure>`;
-    })
-    .join("")}</div>`;
+      })
+      .join("")}</div>` +
+    '<button type="button" class="ghost" id="rerender">Re-render with hook</button>';
 
   el.querySelectorAll(".variant .use").forEach((btn) =>
     btn.addEventListener("click", async () => {
@@ -338,6 +347,36 @@ async function loadVariants(id) {
       await refresh();
     }),
   );
+
+  // The pipeline renders thumbnails before anyone has watched the match, so the headline in the
+  // image is only its first guess. This is how it catches up with the hook the title editor got.
+  // That field lives in the metadata panel, which is absent when the match has no metadata yet.
+  $("#rerender").addEventListener("click", async (ev) => {
+    const btn = ev.currentTarget;
+    const hookText = $("#hook")?.value.trim() ?? "";
+    btn.disabled = true;
+    btn.textContent = "Rendering\u2026";
+    try {
+      await api(`/api/thumbnails/${id}/rerender`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ hookText }),
+      });
+      // 202 only means it started. The manifest's hookText is the one thing that says it
+      // finished, so poll that rather than guessing at a duration.
+      const want = hookText || null;
+      for (let i = 0; i < 60; i++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const m = await api(`/api/thumbnails/${id}`).catch(() => null);
+        if (m && m.hookText === want) break;
+      }
+    } catch (e) {
+      btn.textContent = e.message;
+      return;
+    }
+    await loadVariants(id);
+    await refresh();
+  });
 }
 
 /**

@@ -26,6 +26,8 @@ import { computeSplits } from "./overlayProps.js";
 import { buildChapters, formatChapters } from "./chapters.js";
 import { buildSplitMarkers } from "./markers.js";
 import { buildDescription } from "./description.js";
+import { buildHookSuggestions } from "./hooks.js";
+import { computeMetrics } from "./matchScore.js";
 import { buildTitle, formatTitle } from "./title.js";
 import { overlayPaths, readSplitStills, renderOverlay, type SplitStill } from "./overlayRender.js";
 import { renderThumbnailVariants, variantFile } from "./thumbnailVariants.js";
@@ -280,6 +282,13 @@ async function runStages(
   // Every configured pose pair, so there is something to A/B test once the channel has the
   // audience for it. Skipping is per variant rather than per match, so adding a pose renders
   // only the new one; when they are all present this stage is as cheap as it always was.
+  // Hoisted above the thumbnail stage: the thumbnail's headline is scored against the same
+  // character budget as the title's hook, and this is a pure function of two nicknames.
+  const title = buildTitle({
+    leftNickname: leftWindow.playerNickname,
+    rightNickname: rightWindow.playerNickname,
+  });
+
   const thumbnailPath = path.join(outDir, "thumbnail.png");
   const variants = config.thumbnailVariants;
   const allRendered =
@@ -288,12 +297,25 @@ async function runStages(
     emit(done("thumbnail", { message: `reused ${variants.length} variants` }));
   } else {
     emit(active("thumbnail", { percent: 0 }));
+    // Nobody has picked a hook yet — the operator does that in the dashboard's title editor,
+    // long after this runs — so the thumbnail opens on the same opener that editor will offer
+    // first. `POST /api/thumbnails/:id/rerender` replaces it once a human has chosen. An
+    // unreadable match yields no suggestions, and then this renders the plain header strip.
+    const hookText = buildHookSuggestions({
+      metrics: computeMetrics(match),
+      match,
+      userLeft,
+      userRight,
+      maxChars: title.hookMax,
+      minChars: title.hookMin,
+    })[0];
     const manifest = await renderThumbnailVariants({
       match,
       userLeft,
       userRight,
       outDir,
       poses: variants,
+      hookText,
       signal,
       onProgress: (p) =>
         emit(
@@ -431,10 +453,6 @@ async function runStages(
   const descriptionPath = path.join(outDir, `match-${matchId}.description.txt`);
   await writeFile(descriptionPath, description, "utf8");
 
-  const title = buildTitle({
-    leftNickname: leftWindow.playerNickname,
-    rightNickname: rightWindow.playerNickname,
-  });
   const titlePath = path.join(outDir, `match-${matchId}.title.txt`);
   await writeFile(titlePath, formatTitle(title), "utf8");
   emit(done("write"));

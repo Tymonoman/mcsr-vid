@@ -21,7 +21,7 @@ import { getMatch, getUser, parseMatchId } from "./mcsrApi.js";
 import { abortJob, getJob, startJob, streamProgress } from "./jobs.js";
 import { STAGE_LABELS, STAGE_ORDER, STAGE_SHORT_LABELS } from "./pipeline.js";
 import { dismiss, snapshot, startScan } from "./suggestScan.js";
-import { chooseVariant, readManifest } from "./thumbnailVariants.js";
+import { chooseVariant, readManifest, rerenderThumbnailVariants } from "./thumbnailVariants.js";
 import { buildTitle, type BuiltTitle } from "./title.js";
 import { allArchiveStates, capacity } from "./archive.js";
 import { exportRunning, handleExportRoute } from "./exportRoutes.js";
@@ -51,6 +51,9 @@ const STATIC_ASSETS: Record<string, { file: string; type: string }> = {
   //   ffmpeg -i branding/logo.png -vf scale=64:64:flags=neighbor public/favicon.png
   "/favicon.png": { file: "favicon.png", type: "image/png" },
 };
+
+/** Thumbnail re-renders in flight, so a second POST cannot delete the files the first is writing. */
+const thumbnailRerenders = new Set<number>();
 
 /** Match ids come from the URL, so they gate a path join and must be digits only. */
 function parseId(raw: string | undefined): number | null {
@@ -442,6 +445,48 @@ const server = createServer(async (req, res) => {
       } catch (err) {
         json(res, 400, { error: describeError(err) });
       }
+      return;
+    }
+
+    // Re-render every variant behind a headline the operator has actually chosen. The pipeline
+    // renders thumbnails long before anyone has watched the match, so the hook it used is only
+    // ever its first suggestion, and this is how it gets replaced. 202 plus the existing GET is
+    // the whole protocol: a re-render is a handful of stills, and the manifest's hookText is the
+    // answer the poll is waiting for.
+    if (resource === "thumbnails" && segments[3] === "rerender" && req.method === "POST") {
+      const body = JSON.parse(await readBody(req)) as { hookText?: unknown };
+      const hookText = body.hookText;
+      if (typeof hookText !== "string") {
+        json(res, 400, { error: 'expected { hookText: "<headline>" }, empty string for none' });
+        return;
+      }
+      if (thumbnailRerenders.has(matchId) || getJob(matchId)?.done === false) {
+        json(res, 409, { error: `Match ${matchId} is already rendering thumbnails` });
+        return;
+      }
+      thumbnailRerenders.add(matchId);
+      // Not awaited: the render outlives the request, which is what the 202 is saying.
+      void (async () => {
+        try {
+          const match = await getMatch(matchId);
+          const [left, right] = match.players;
+          if (!left || !right) throw new Error(`match ${matchId} does not have two players`);
+          const [userLeft, userRight] = await Promise.all([getUser(left.uuid), getUser(right.uuid)]);
+          await rerenderThumbnailVariants({
+            match,
+            userLeft,
+            userRight,
+            outDir: matchDir(matchId),
+            poses: config.thumbnailVariants,
+            hookText,
+          });
+        } catch (err) {
+          console.error(`thumbnail re-render failed for ${matchId}: ${describeError(err)}`);
+        } finally {
+          thumbnailRerenders.delete(matchId);
+        }
+      })();
+      json(res, 202, { matchId, hookText });
       return;
     }
 

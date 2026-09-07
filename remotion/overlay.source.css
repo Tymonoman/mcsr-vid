@@ -516,6 +516,37 @@
   text-transform: uppercase;
   color: var(--quartz);
 }
+/* With a hook the strip stops being a category label and becomes the headline: it grows to the
+   height the component measured, and the same component pushes .thumb-body down so the avatars
+   only run slightly behind its lower edge. Gold bottom border is the accent -- an underline bar
+   costs no legibility, where colouring a word would make that word the hardest one to read at
+   246px wide. */
+.thumb-header.has-hook {
+  padding: 0 40px;
+  border-bottom: 10px solid var(--gold);
+}
+.thumb-hook {
+  font-weight: 700;
+  line-height: 1.04;
+  letter-spacing: 0.02em;
+  text-align: center;
+  text-transform: uppercase;
+  color: var(--quartz);
+  /* The component already decided the line breaks and sized the band for them; letting the
+     browser re-wrap a line would overflow that band from the inside. */
+  white-space: nowrap;
+  /* The same eight-way hard shadow the VS carries. It is what keeps the letters off whatever
+     is behind them -- at grid size the outline is most of what makes them readable. */
+  text-shadow:
+    7px 0 0 var(--panel-edge),
+    -7px 0 0 var(--panel-edge),
+    0 7px 0 var(--panel-edge),
+    0 -7px 0 var(--panel-edge),
+    7px 7px 0 var(--panel-edge),
+    -7px -7px 0 var(--panel-edge),
+    7px -7px 0 var(--panel-edge),
+    -7px 7px 0 var(--panel-edge);
+}
 .thumb-body {
   position: absolute;
   top: 11%;

@@ -36,12 +36,17 @@ export interface ComputedThumbnail {
  * The pose pair is an argument rather than the module-level constant it used to be: rendering
  * several variants of one match means varying it per call, and mutating `config` to do that
  * would leak across the concurrent overlay render that reads the same fields.
+ *
+ * `hookText` is the headline the thumbnail is sold on — the same rivalry line the title carries.
+ * Optional because the pipeline renders thumbnails before anyone has picked one, and because
+ * every already-published match must keep rendering the header strip it was published with.
  */
 export async function computeThumbnailProps(
   match: MatchInfo,
   userLeft: UserDetails,
   userRight: UserDetails,
   poses: PosePair = DEFAULT_POSES,
+  hookText?: string,
 ): Promise<ComputedThumbnail> {
   const [leftAvatar, rightAvatar] = await Promise.all([
     resolveAvatarUrl(userLeft.uuid, poses.left),
@@ -65,6 +70,10 @@ export async function computeThumbnailProps(
         avatarUrl: rightAvatar.url,
       },
       headerLabel: match.tag ?? "Minecraft · Speedrunning · Ranked",
+      // Omitted rather than set to undefined when there is no hook: the props go through a JSON
+      // boundary into Remotion, and a thumbnail rendered without one has to be the same image it
+      // was before hooks existed.
+      ...(hookText?.trim() ? { hookText } : {}),
     },
     leftAvatar,
     rightAvatar,
