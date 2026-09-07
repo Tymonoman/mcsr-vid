@@ -78,7 +78,7 @@ function renderList() {
       .join("");
 
   el.querySelectorAll(".card").forEach((c) =>
-    c.addEventListener("click", () => select(Number(c.dataset.id), { scroll: true })),
+    c.addEventListener("click", () => select(Number(c.dataset.id), { open: true })),
   );
 
   $("#showhidden")?.addEventListener("click", (e) => {
@@ -158,13 +158,14 @@ function hookCounter(meta) {
 }
 
 /**
- * `scroll` is set only when a human tapped a card. Below 860px the detail pane is a row under
- * the whole list, so on a phone a tap changes something a thousand pixels off-screen and reads
- * as nothing happening. On the two-column desktop layout the pane is already in view and
- * scrolling would just be jarring, and on first load nothing was tapped at all.
+ * `open` is set only when a human asked for this match -- a tapped card, or a render they just
+ * started. Below 860px the list and the detail are two screens (see app.css), so opening one
+ * hides the other; on the two-column desktop layout the class is inert. First load asks for
+ * nothing, which is how the phone stays on the list while the desktop still auto-selects.
  */
-async function select(id, { scroll = false } = {}) {
+async function select(id, { open = false } = {}) {
   selected = id;
+  if (open) showMatch();
   renderList();
   const meta = await api(`/api/meta/${id}`);
   const m = matches.find((x) => x.matchId === id);
@@ -283,10 +284,6 @@ async function select(id, { scroll = false } = {}) {
   loadShort(id);
   loadYoutube(id, meta);
   watch(id, true);
-
-  if (scroll && matchMedia("(max-width: 860px)").matches) {
-    $("#detail").scrollIntoView({ behavior: "smooth", block: "start" });
-  }
 }
 
 /**
@@ -659,6 +656,7 @@ function renderSuggestions(data) {
   const el = $("#suggestions");
   $("#tab-suggestions").textContent =
     `Suggestions${data.suggestions.length ? ` (${data.suggestions.length})` : ""}`;
+  updateBackLabel();
 
   // A failed scan keeps whatever list it had: a stale suggestion is still a renderable match.
   const scan = data.scanning
@@ -734,7 +732,7 @@ async function startRender(input) {
     // The match may have no working directory yet, so it is not in `matches` — refresh first so
     // select() can find it, then fall back to watching the id directly.
     await refresh();
-    await select(matchId);
+    await select(matchId, { open: true });
     watch(matchId);
   } catch (e) {
     err.textContent = e.message;
@@ -748,7 +746,32 @@ function showTab(which) {
     $(selector).hidden = name !== which;
     $(`#tab-${name === "matches" ? "matches" : name}`).setAttribute("aria-selected", String(name === which));
   }
+  updateBackLabel();
   if (which === "abtest") loadAbTest();
+}
+
+/* --- List screen / match screen -------------------------------------------------------------
+   Only the class moves. Whether it means anything is the @media (max-width: 860px) block's
+   business, so there is no width test in here to drift out of step with the CSS. */
+
+/** The tab's own label already carries the count, so the way back names where it goes. */
+function updateBackLabel() {
+  const tab = $('.tabs [aria-selected="true"]');
+  $("#backtolist").textContent = `\u2190 Back to ${tab ? tab.textContent : "list"}`;
+}
+
+function showMatch() {
+  document.body.classList.add("view-match");
+  updateBackLabel();
+  // Only when the CSS actually swapped screens: hiding the list shortens the page, and the
+  // browser would leave you clamped somewhere in the middle of the detail. Asking the back
+  // bar whether it is on screen beats re-testing the width the stylesheet already tested.
+  if ($("#backtolist").offsetParent) window.scrollTo(0, 0);
+}
+
+function showList() {
+  document.body.classList.remove("view-match");
+  window.scrollTo(0, 0);
 }
 
 (async function init() {
@@ -763,6 +786,7 @@ function showTab(which) {
   $("#tab-suggestions").addEventListener("click", () => showTab("suggestions"));
   $("#tab-matches").addEventListener("click", () => showTab("matches"));
   $("#tab-abtest").addEventListener("click", () => showTab("abtest"));
+  $("#backtolist").addEventListener("click", showList);
 
   await refresh();
   if (matches.length) select(matches[0].matchId);
