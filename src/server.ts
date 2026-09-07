@@ -26,7 +26,16 @@ import { chooseVariant, readManifest, rerenderThumbnailVariants } from "./thumbn
 import { buildTitle, type BuiltTitle } from "./title.js";
 import { allArchiveStates, capacity } from "./archive.js";
 import { exportRunning, handleExportRoute } from "./exportRoutes.js";
-import { deleteMatch, hiddenMatchIds, isArchived, setHidden } from "./matchShelf.js";
+import {
+  MANUAL_PUBLISH_KEYS,
+  deleteMatch,
+  hiddenMatchIds,
+  isArchived,
+  isManualPublishKey,
+  publishChecklist,
+  setHidden,
+  setPublishFlag,
+} from "./matchShelf.js";
 import { handleShortsRoute, shortRunning } from "./shortsRoutes.js";
 import { handleYoutubeRoute, uploadRunning } from "./youtubeRoutes.js";
 
@@ -388,6 +397,29 @@ const server = createServer(async (req, res) => {
       }
       setHidden(matchId, body.hidden);
       json(res, 200, { matchId, hidden: body.hidden });
+      return;
+    }
+
+    // Where a match has got to on the way out the door. Five of the eight answers are read off
+    // disk on every request rather than recorded, so they cannot go stale; only the three that
+    // happen elsewhere — in Studio, or in a DM to a player — are stored. See src/matchShelf.ts.
+    if (resource === "publish" && req.method === "GET") {
+      json(res, 200, await publishChecklist(matchId, (await matchStatusFor(matchId)).projectPath));
+      return;
+    }
+
+    if (resource === "publish" && req.method === "PUT") {
+      const body = JSON.parse(await readBody(req)) as { key?: unknown; value?: unknown };
+      if (!isManualPublishKey(body.key) || typeof body.value !== "boolean") {
+        json(res, 400, {
+          error: `expected { key: ${MANUAL_PUBLISH_KEYS.join("|")}, value: true|false }`,
+        });
+        return;
+      }
+      setPublishFlag(matchId, body.key, body.value);
+      // Returns the merged object, not just the key it changed: the row repaints from one
+      // answer, so a derived pill that flipped meanwhile lands in the same response.
+      json(res, 200, await publishChecklist(matchId, (await matchStatusFor(matchId)).projectPath));
       return;
     }
 

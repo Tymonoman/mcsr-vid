@@ -362,6 +362,47 @@
   margin-top: 8px;
 }
 
+/* --- Publish checklist ---------------------------------------------------------------------
+   Eight pills on one row: five facts read off disk, three the operator ticks. Wraps rather than
+   scrolls -- at 390px it lands as three lines, and a horizontal scroller would hide the last
+   pill, which is the one ("players notified") most likely to be forgotten. */
+.checklist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 4px;
+}
+.checklist .pill {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--panel-edge-light);
+  border-bottom-width: 1px;
+  font-size: 12px;
+  padding: 4px 9px;
+  white-space: nowrap;
+}
+.checklist .pill.on {
+  color: var(--warped);
+  border-color: var(--warped);
+}
+/* Only the three manual pills are pressable; a span says "this is a reading, not a control",
+   and the hover is what tells a mouse which three of the eight it can actually click. */
+.checklist span.pill {
+  font-family: var(--pixel-font);
+  align-content: center;
+}
+.checklist button.pill {
+  cursor: pointer;
+}
+.checklist button.pill:hover:not(:disabled) {
+  border-color: var(--quartz);
+  color: var(--quartz);
+}
+.checklist button.pill:active {
+  transform: none;
+  border-bottom-width: 1px;
+}
+
 /* --- Touch targets --------------------------------------------------------------------------
    Measured on the live dashboard at phone and tablet widths: the match-id field was 28px tall,
    the suggestion buttons 26px, the hook chips 23px. iOS asks for 44pt and Android 48dp, and
