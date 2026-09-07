@@ -25,7 +25,7 @@ import {
 import { computeSplits } from "./overlayProps.js";
 import { buildChapters, formatChapters } from "./chapters.js";
 import { buildSplitMarkers } from "./markers.js";
-import { buildDescription } from "./description.js";
+import { buildDescription, buildTags } from "./description.js";
 import { buildTitle, formatTitle } from "./title.js";
 import { overlayPaths, readSplitStills, renderOverlay, type SplitStill } from "./overlayRender.js";
 import { renderThumbnailVariants, variantFile } from "./thumbnailVariants.js";
@@ -430,6 +430,13 @@ async function runStages(
   });
   const descriptionPath = path.join(outDir, `match-${matchId}.description.txt`);
   await writeFile(descriptionPath, description, "utf8");
+
+  // One tag per line, next to the description the dashboard reads for the same upload.
+  await writeFile(
+    path.join(outDir, `match-${matchId}.tags.txt`),
+    `${buildTags(match, userLeft, userRight).join("\n")}\n`,
+    "utf8",
+  );
 
   const title = buildTitle({
     leftNickname: leftWindow.playerNickname,

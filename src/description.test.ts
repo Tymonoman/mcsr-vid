@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { buildDescription } from "./description.js";
+import { buildDescription, buildTags } from "./description.js";
 import type { MatchInfo, UserDetails } from "./types.js";
 import type { VodWindow } from "./vodAcquisition.js";
 
@@ -100,5 +100,64 @@ assert.match(ff.split("\n")[0], /Result: doogile wins by forfeit\./);
 const draw = build(match({ result: { uuid: null, time: 0 } }));
 assert.ok(!draw.split("\n")[0].includes("Result:"), "no winner means no result clause");
 assert.match(draw.split("\n")[0], /^edcr vs doogile — MCSR Ranked 1v1/);
+
+// --- Seed type ---------------------------------------------------------------------------
+// The base match carries no seedType, so the assertions above already cover "omit it entirely".
+assert.ok(!opening.includes("seed."), "no seedType means no seed sentence");
+assert.ok(!/bastion/.test(opening), "no bastionType means no bastion clause");
+
+const seeded = build(match({ seedType: "VILLAGE", bastionType: "BRIDGE" })).split("\n")[0];
+assert.match(seeded, /Village seed, bridge bastion\./, "both halves, first letter capitalised");
+assert.match(seeded, /^edcr vs doogile — MCSR Ranked 1v1/, "nicknames still lead the preview");
+assert.ok(seeded.indexOf("Village seed") > seeded.indexOf("dual-POV"), "seed follows the body sentence");
+assert.ok(seeded.indexOf("Village seed") < seeded.indexOf("Result:"), "and precedes the result");
+
+const seedOnly = build(match({ seedType: "DESERT_TEMPLE" })).split("\n")[0];
+assert.match(seedOnly, /Desert temple seed\./, "underscores become spaces");
+assert.ok(!seedOnly.includes("bastion"), "a null bastion drops only its own half");
+
+// An enum value nobody has seen yet must render, not throw.
+assert.match(build(match({ seedType: "NEW_THING_HERE" })).split("\n")[0], /New thing here seed\./);
+
+// --- Tags ----------------------------------------------------------------------------------
+const tagsFor = (m: MatchInfo, left = "edcr", right = "doogile", max?: number) =>
+  buildTags(m, user(EDCR, left, 2615), user(DOOGILE, right, 2370), max);
+
+assert.deepEqual(tagsFor(match({ seedType: "VILLAGE", bastionType: "BRIDGE" })), [
+  "edcr",
+  "doogile",
+  "mcsr ranked",
+  "mcsr",
+  "minecraft speedrun",
+  "minecraft speedrunning",
+  "ranked 1v1",
+  "speedrun race",
+  "village seed",
+  "bridge bastion",
+  "minecraft",
+]);
+
+// No seed known: the two seed tags are simply absent and nothing else shifts.
+const plain = tagsFor(match());
+assert.ok(!plain.some((t) => t.includes("seed") || t.includes("bastion")), "null seed adds no tags");
+assert.equal(plain.at(-1), "minecraft", "the broadest term stays last");
+assert.ok(!plain.some((t) => t.includes("#")), "tags are not hashtags");
+
+// A nickname that collides with a keyword must appear once, in the nickname's slot.
+const collide = tagsFor(match(), "MCSR", "doogile");
+assert.equal(collide[0], "MCSR");
+assert.equal(collide.filter((t) => t.toLowerCase() === "mcsr").length, 1, "dedupe is case-insensitive");
+
+// Over 30 characters YouTube rejects the tag; drop that one rather than the whole list.
+const longName = "a".repeat(31);
+assert.ok(!tagsFor(match(), longName).includes(longName), "a 31-char nickname is dropped");
+assert.ok(tagsFor(match(), "a".repeat(30)).includes("a".repeat(30)), "30 is still fine");
+
+// The joined-length guard stops adding rather than truncating a tag mid-word.
+// 24 is exactly "edcr,doogile,mcsr ranked" — the next tag would overflow, so the list ends there.
+const capped = tagsFor(match(), "edcr", "doogile", 24);
+assert.deepEqual(capped, ["edcr", "doogile", "mcsr ranked"], "stops before the limit is exceeded");
+assert.equal(capped.join(",").length, 24);
+assert.ok(tagsFor(match({ seedType: "VILLAGE", bastionType: "BRIDGE" })).join(",").length <= 450);
 
 console.log("description: all checks passed");
