@@ -1,6 +1,6 @@
 /** The format half every upload shares, matching the titles already on the channel. */
 const FORMAT_SUFFIX = "MCSR Ranked 1v1";
-const SEPARATOR = " | ";
+export const SEPARATOR = " | ";
 /** Stands in for the editorial hook, which is the one part worth writing by hand. */
 export const HOOK_PLACEHOLDER = "<HOOK>";
 

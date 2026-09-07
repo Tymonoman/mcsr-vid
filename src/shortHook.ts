@@ -1,4 +1,5 @@
 import type { ShortMoment } from "./shortMoment.js";
+import { HOOK_PLACEHOLDER, SEPARATOR } from "./title.js";
 
 /**
  * The line that has to earn the scroll, written from what the window actually contains.
@@ -29,4 +30,34 @@ export function buildShortHook(moment: ShortMoment, leftNickname: string, rightN
   if (died) return "this is where it falls apart";
   if (has("projectelo.timeline.blind_travel")) return "the blind travel that decided it";
   return `${leftNickname} vs ${rightNickname}`;
+}
+
+/**
+ * The line the Short actually burns in, in the order the evidence ranks the sources.
+ *
+ * The operator's own title hook wins, because it is the one line on the upload somebody has
+ * already judged, and a Short and its long-form video sell the same match — they should not
+ * disagree about why it is worth watching. Failing that, the ranked suggestions the title editor
+ * offers: the channel audit measured rivalry-framed hooks at 9.36% CTR against 2.25% for
+ * descriptive ones, and `buildHookSuggestions` sorts on exactly that, so its first entry beats
+ * anything derived from the 30-second window alone. `buildShortHook` stays as the last resort,
+ * for a match whose numbers yield no suggestion at all.
+ *
+ * Pure — the caller reads the title file — so this is testable and cannot stall a render on IO.
+ */
+export function resolveShortHook(
+  editedTitle: string | null | undefined,
+  suggestions: readonly string[],
+  fallback: string,
+): string {
+  // Split before trimming: an operator who cleared the hook but left the separator leaves a
+  // first line of " | a vs b | ...", and trimming first eats the leading space the separator
+  // needs, which turns an empty hook into a hook of "| a vs b".
+  const firstLine = editedTitle?.split("\n")[0] ?? "";
+  // An untouched title still carries the literal placeholder: that is the empty box, not a hook.
+  if (!firstLine.includes(HOOK_PLACEHOLDER)) {
+    const hook = firstLine.split(SEPARATOR)[0]!.trim();
+    if (hook !== "") return hook;
+  }
+  return suggestions.find((s) => s.trim() !== "")?.trim() ?? fallback;
 }
