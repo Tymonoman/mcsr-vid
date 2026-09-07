@@ -44,6 +44,10 @@ const STATIC_ASSETS: Record<string, { file: string; type: string }> = {
   "/panels.css": { file: "panels.css", type: "text/css; charset=utf-8" },
   "/app.js": { file: "app.js", type: "text/javascript; charset=utf-8" },
   "/youtube.js": { file: "youtube.js", type: "text/javascript; charset=utf-8" },
+  // The channel badge, downscaled to 64px so each cell of the 64-wide pixel grid in
+  // `remotion/pixelBadge.ts` lands on exactly one pixel. Regenerate with:
+  //   ffmpeg -i branding/logo.png -vf scale=64:64:flags=neighbor public/favicon.png
+  "/favicon.png": { file: "favicon.png", type: "image/png" },
 };
 
 /** Match ids come from the URL, so they gate a path join and must be digits only. */
