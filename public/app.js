@@ -155,6 +155,9 @@ async function select(id, { scroll = false } = {}) {
     <h2>Chapters</h2>
     <pre>${esc(meta.chapters ?? "not generated yet")}</pre>
 
+    <h2>Final video</h2>
+    <div id="preview"><div class="empty">loading&hellip;</div></div>
+
     <h2>Short</h2>
     <div id="short"><div class="empty">loading&hellip;</div></div>
 
@@ -197,6 +200,7 @@ async function select(id, { scroll = false } = {}) {
   });
 
   loadVariants(id);
+  loadPreview(id);
   loadShort(id);
   loadYoutube(id, meta);
   watch(id, true);
@@ -255,6 +259,38 @@ async function loadVariants(id) {
       await refresh();
     }),
   );
+}
+
+/**
+ * The finished export, playable in place.
+ *
+ * `preload="metadata"` on purpose: the file is several hundred megabytes and the point of the
+ * panel is to check a render at a glance, so it fetches the header and the poster frame and
+ * nothing else until you press play. Seeking works because the route serves byte ranges.
+ */
+async function loadPreview(id) {
+  const el = $("#preview");
+  if (!el) return;
+  let meta;
+  try {
+    meta = await api(`/api/export/preview-meta/${id}`);
+  } catch (e) {
+    el.innerHTML = `<div class="scanline bad">${esc(e.message)}</div>`;
+    return;
+  }
+  if (!meta.exported) {
+    el.innerHTML = '<div class="empty">not exported yet &mdash; run the export, then reload</div>';
+    return;
+  }
+  const mb = (meta.bytes / 1048576).toFixed(0);
+  el.innerHTML = `
+    <video id="finalvideo" controls preload="metadata" playsinline
+           src="/api/export/preview/${id}" poster="/api/thumbnail/${id}"></video>
+    <div class="previewmeta">
+      <span>${esc(meta.name)}</span>
+      <span>${mb} MB</span>
+      <a href="/api/export/final/${id}" download>Download</a>
+    </div>`;
 }
 
 /** m:ss, for moment boundaries measured from the start of the run. */

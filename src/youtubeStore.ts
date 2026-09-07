@@ -89,6 +89,10 @@ export function findExportedVideo(
       (name) =>
         !povFiles.has(name) &&
         !name.startsWith("overlay") &&
+        // A Short is its own deliverable, uploaded as a separate video — not a candidate for
+        // "the finished match export". Without this the Shorts pipeline makes every rendered
+        // match ambiguous, which silently disables the upload panel and the preview player.
+        !name.startsWith("short-") &&
         !name.includes(".part.") &&
         name !== "sync-preview.mp4",
     );

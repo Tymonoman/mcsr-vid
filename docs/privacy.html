@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy policy — MCSR Replayoffs</title><link rel="stylesheet" href="style.css"><link rel="icon" href="logo.png">
+</head><body><div class="wrap">
+<header><img src="logo.png" alt=""><h1>Privacy policy</h1></header>
+<p class="updated">Last updated 7 September 2026.</p>
+<nav><a href="index.html">Home</a><a href="terms.html">Terms of service</a></nav>
+
+<h2>Summary</h2>
+<p>This application is operated by one person and acts only on that person's own YouTube channel.
+It has no user accounts, no sign-in for anyone else, and no analytics or tracking of visitors.
+It does not sell, share, or transfer any data to third parties.</p>
+
+<h2>Google user data it accesses</h2>
+<p>The application requests these OAuth scopes, and uses them only as described:</p>
+<ul>
+  <li><code>youtube.upload</code> — to upload finished videos to the operator's own channel.</li>
+  <li><code>youtube.force-ssl</code> — to set the title, description, and thumbnail of those
+      uploads, and to read comments on them.</li>
+  <li><code>youtube.readonly</code> — to read the operator's own channel and video list, so the
+      tool can tell which matches have already been published.</li>
+  <li><code>yt-analytics.readonly</code> — to read view and click-through statistics for the
+      operator's own videos, used to decide which thumbnail to keep.</li>
+</ul>
+<p>All four apply solely to the account that grants them. The application never requests access
+to anyone else's Google account and cannot act on one.</p>
+
+<h2>Where that data goes</h2>
+<p>The OAuth refresh token is stored in a single file on the operator's own machine and is never
+transmitted anywhere except to Google's own token endpoint. Video and analytics data retrieved
+from the YouTube API stay on that machine. Nothing is sent to any server operated by this
+project, because there is no such server.</p>
+
+<h2>Other data the project handles</h2>
+<p>The pipeline also reads publicly available match data from the MCSR Ranked API and publicly
+available Twitch VODs. That is public information about a public competitive match; it is not
+Google user data and is not covered by the scopes above.</p>
+
+<h2>Limited Use</h2>
+<p>This application's use of information received from Google APIs adheres to the
+<a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services
+User Data Policy</a>, including the Limited Use requirements.</p>
+
+<h2>Retention and removal</h2>
+<p>Access can be revoked at any time from the operator's
+<a href="https://myaccount.google.com/permissions">Google Account permissions page</a>, which
+immediately and permanently ends the application's access. Deleting the stored token file has
+the same effect locally.</p>
+
+<h2>Runners appearing in videos</h2>
+<p>Videos feature publicly broadcast Twitch VODs of ranked matches. Both players are credited by
+name in every video description. If you appear in a video and want it removed, open an issue on
+the <a href="https://github.com/Tymonoman/mcsr-vid/issues">project's GitHub</a> and it will be
+taken down.</p>
+
+<hr class="rule">
+<footer>Contact: <a href="https://github.com/Tymonoman/mcsr-vid/issues">open an issue on GitHub</a>.</footer>
+</div></body></html>

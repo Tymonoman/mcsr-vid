@@ -1,0 +1,48 @@
+/* The channel's own palette and font, so these pages read as the same project as the videos.
+   Values mirror remotion/overlay.source.css. */
+@font-face {
+  font-family: "Monocraft";
+  src: url("Monocraft.ttf") format("truetype");
+  font-display: swap;
+}
+:root {
+  --panel: #221f27;
+  --panel-2: #1a1820;
+  --edge: #3c3844;
+  --crimson: #e2483f;
+  --warped: #35d6c4;
+  --gold: #f0c93d;
+  --quartz: #f3ede2;
+  --muted: #8d8695;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 48px 20px 80px;
+  background: var(--panel-2);
+  color: var(--quartz);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.65;
+}
+.wrap { max-width: 46rem; margin: 0 auto; }
+header { display: flex; align-items: center; gap: 18px; margin-bottom: 8px; }
+header img { width: 64px; height: 64px; image-rendering: pixelated; }
+h1 { font-family: "Monocraft", ui-monospace, monospace; font-size: 2rem; margin: 0; color: var(--quartz); }
+h2 {
+  font-family: "Monocraft", ui-monospace, monospace;
+  font-size: 1.15rem; color: var(--gold);
+  margin: 2.25rem 0 0.6rem;
+}
+.tagline { color: var(--muted); margin: 0 0 2rem; }
+nav { display: flex; gap: 18px; margin: 1.5rem 0 2.5rem; flex-wrap: wrap; }
+nav a, a { color: var(--warped); }
+a:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.updated { color: var(--muted); font-size: 0.85rem; }
+ul { padding-left: 1.2rem; }
+li { margin-bottom: 0.35rem; }
+code {
+  font-family: "Monocraft", ui-monospace, monospace;
+  background: var(--panel); padding: 0.1em 0.4em; color: var(--gold);
+}
+.rule { height: 4px; background: var(--edge); border: 0; margin: 2.5rem 0 0; }
+footer { margin-top: 2rem; color: var(--muted); font-size: 0.85rem; }

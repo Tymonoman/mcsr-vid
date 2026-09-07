@@ -72,6 +72,10 @@ await writeFile(path.join(dir, "overlay-intro.mov"), "intermediate", "utf8");
 await writeFile(path.join(dir, "overlay-timer.mp4"), "intermediate", "utf8");
 await writeFile(path.join(dir, "overlay-intro.webm"), "intermediate", "utf8");
 await writeFile(path.join(dir, "sync-preview.mp4"), "preview", "utf8");
+// A rendered Short lives in the same folder and is a real .mp4. It is a separate deliverable,
+// so it must never be offered as the finished match export — when it was, every match with a
+// Short became "several possible videos" and the upload panel stopped working.
+await writeFile(path.join(dir, "short-12345.mp4"), "a short", "utf8");
 const stillNone = findExportedVideo(matchId, ["nahhann", "Aquacorde"]);
 assert.ok("error" in stillNone, "POV clips and intermediates must never be upload candidates");
 

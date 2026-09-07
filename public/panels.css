@@ -423,3 +423,25 @@
     white-space: normal;
   }
 }
+
+/* ===== final video preview ===== */
+#preview video {
+  width: 100%;
+  max-height: 60vh;
+  background: #000;
+  display: block;
+  border: 1px solid var(--edge, #2c2833);
+}
+.previewmeta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 6px;
+  font-size: 0.85em;
+  color: var(--muted, #8d8695);
+}
+/* Pushes the download link to the right without a spacer element. */
+.previewmeta a {
+  margin-left: auto;
+  color: var(--gold, #f0c93d);
+}
