@@ -343,3 +343,24 @@ pre {
   padding: 8px 10px;
   border-top: 1px solid var(--panel-edge-light);
 }
+
+/* Row controls sit inside the card, which is itself a click target, so they need to read as
+   separate affordances rather than decoration. Small and quiet until the delete arms itself. */
+.rowacts {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+.rowacts button {
+  font-size: 10px;
+  padding: 2px 8px;
+  letter-spacing: 0.5px;
+}
+#showhidden {
+  display: block;
+  width: 100%;
+  font-size: 10px;
+  padding: 4px;
+  letter-spacing: 0.5px;
+  border-radius: 0;
+}

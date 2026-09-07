@@ -1,5 +1,7 @@
 const $ = (s, r = document) => r.querySelector(s);
 let STAGES = { order: [], labels: {}, short: {} };
+/** Hidden matches are filtered out of the list until this is toggled on. */
+let showHidden = false;
 let matches = [];
 let selected = null;
 let stream = null;
@@ -39,9 +41,16 @@ function renderList() {
     .map((s) => `<span title="${esc(STAGES.labels[s])}">${esc(STAGES.short[s] ?? STAGES.labels[s])}</span>`)
     .join("")}</div>`;
 
+  const visible = showHidden ? matches : matches.filter((m) => !m.hidden);
+  const hiddenCount = matches.filter((m) => m.hidden).length;
+  const toggle = hiddenCount
+    ? `<button type="button" id="showhidden" class="ghost">${showHidden ? "Hide" : "Show"} ${hiddenCount} hidden</button>`
+    : "";
+
   el.innerHTML =
+    toggle +
     legend +
-    matches
+    visible
       .map(
         (m) => `
     <div class="card" data-id="${m.matchId}" aria-selected="${selected === m.matchId}">
@@ -51,6 +60,10 @@ function renderList() {
         <div class="who">${esc(m.leftNickname)} vs ${esc(m.rightNickname)}</div>
         <div class="id">#${m.matchId}</div>
         ${m.error ? `<div class="degraded" title="${esc(m.error)}">names from filenames &mdash; API lookup failed</div>` : ""}
+        <div class="rowacts">
+          <button type="button" class="hide ghost">${m.hidden ? "Unhide" : "Hide"}</button>
+          <button type="button" class="del ghost" data-armed="0">Delete</button>
+        </div>
         <div class="stages">${STAGES.order
           .map(
             (s) =>
@@ -66,6 +79,68 @@ function renderList() {
 
   el.querySelectorAll(".card").forEach((c) =>
     c.addEventListener("click", () => select(Number(c.dataset.id), { scroll: true })),
+  );
+
+  $("#showhidden")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    showHidden = !showHidden;
+    renderList();
+  });
+
+  // stopPropagation on every row control: the card itself is a click target that selects the
+  // match, and hiding a match you did not mean to open is a poor trade.
+  el.querySelectorAll(".card .hide").forEach((btn) =>
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const card = btn.closest(".card");
+      const id = Number(card.dataset.id);
+      const nowHidden = btn.textContent === "Hide";
+      await api(`/api/hidden/${id}`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ hidden: nowHidden }),
+      });
+      await refresh();
+    }),
+  );
+
+  // Two-step rather than a confirm(): the second click is the confirmation, and the button says
+  // what it is about to cost. An unarchived match has no copy anywhere, so it says so.
+  el.querySelectorAll(".card .del").forEach((btn) =>
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const card = btn.closest(".card");
+      const id = Number(card.dataset.id);
+      const m = matches.find((x) => x.matchId === id);
+      if (btn.dataset.armed !== "1") {
+        btn.dataset.armed = "1";
+        btn.classList.remove("ghost");
+        btn.classList.add("danger");
+        btn.textContent = m && m.archived ? "Delete (archived)" : "Delete forever?";
+        setTimeout(() => {
+          if (!btn.isConnected || btn.dataset.armed !== "1") return;
+          btn.dataset.armed = "0";
+          btn.classList.add("ghost");
+          btn.classList.remove("danger");
+          btn.textContent = "Delete";
+        }, 5000);
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = "deleting";
+      try {
+        const out = await api(`/api/match/${id}`, { method: "DELETE" });
+        const mb = (out.bytesFreed / 1073741824).toFixed(1);
+        $("#entryerr").textContent =
+          `deleted #${id}, freed ${mb} GB${out.archived ? "" : " (no archived copy)"}`;
+      } catch (err) {
+        $("#entryerr").textContent = err.message;
+        btn.disabled = false;
+        btn.textContent = "Delete";
+      }
+      if (selected === id) selected = null;
+      await refresh();
+    }),
   );
 }
 

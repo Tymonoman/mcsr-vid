@@ -24,9 +24,10 @@ import { dismiss, snapshot, startScan } from "./suggestScan.js";
 import { chooseVariant, readManifest } from "./thumbnailVariants.js";
 import { buildTitle, type BuiltTitle } from "./title.js";
 import { allArchiveStates, capacity } from "./archive.js";
-import { handleExportRoute } from "./exportRoutes.js";
-import { handleShortsRoute } from "./shortsRoutes.js";
-import { handleYoutubeRoute } from "./youtubeRoutes.js";
+import { exportRunning, handleExportRoute } from "./exportRoutes.js";
+import { deleteMatch, hiddenMatchIds, isArchived, setHidden } from "./matchShelf.js";
+import { handleShortsRoute, shortRunning } from "./shortsRoutes.js";
+import { handleYoutubeRoute, uploadRunning } from "./youtubeRoutes.js";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -285,8 +286,13 @@ const server = createServer(async (req, res) => {
 
     if (resource === "matches" && req.method === "GET") {
       const statuses = await listMatchStatuses();
+      const hidden = hiddenMatchIds();
       // Newest first: match ids ascend with time, and the newest is what you just rendered.
-      json(res, 200, { matches: statuses.sort((a, b) => b.matchId - a.matchId) });
+      json(res, 200, {
+        matches: statuses
+          .map((m) => ({ ...m, hidden: hidden.has(m.matchId), archived: isArchived(m.matchId) }))
+          .sort((a, b) => b.matchId - a.matchId),
+      });
       return;
     }
 
@@ -340,6 +346,43 @@ const server = createServer(async (req, res) => {
     const matchId = parseId(idRaw);
     if (matchId === null) {
       json(res, 400, { error: "match id must be digits" });
+      return;
+    }
+
+    if (resource === "hidden" && req.method === "PUT") {
+      const body = JSON.parse(await readBody(req)) as { hidden?: unknown };
+      if (typeof body.hidden !== "boolean") {
+        json(res, 400, { error: "expected { hidden: true|false }" });
+        return;
+      }
+      setHidden(matchId, body.hidden);
+      json(res, 200, { matchId, hidden: body.hidden });
+      return;
+    }
+
+    // Deleting a match's working directory is the one irreversible thing the dashboard can do,
+    // so it refuses while anything is still writing into that directory, and reports whether an
+    // archived copy survived it. See src/matchShelf.ts for why this exists at all.
+    if (resource === "match" && req.method === "DELETE") {
+      const busy =
+        getJob(matchId)?.done === false
+          ? "a pipeline run"
+          : exportRunning(matchId)
+            ? "an export"
+            : shortRunning(matchId)
+              ? "a Short render"
+              : uploadRunning(matchId)
+                ? "an upload"
+                : null;
+      if (busy) {
+        json(res, 409, { error: `Match ${matchId} has ${busy} in flight — stop it first` });
+        return;
+      }
+      try {
+        json(res, 200, await deleteMatch(matchId));
+      } catch (err) {
+        json(res, 404, { error: describeError(err) });
+      }
       return;
     }
 

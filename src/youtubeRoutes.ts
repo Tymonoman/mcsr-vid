@@ -49,6 +49,9 @@ interface UploadProgress {
 
 const uploads = new Map<number, UploadProgress>();
 
+/** An upload reading this match's export right now. */
+export const uploadRunning = (matchId: number): boolean => uploads.get(matchId)?.done === false;
+
 const idle = (matchId: number): UploadProgress => ({
   matchId,
   uploaded: 0,

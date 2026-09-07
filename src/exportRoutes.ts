@@ -48,6 +48,9 @@ interface ExportJob {
 
 const jobs = new Map<number, ExportJob>();
 
+/** An export writing into this match's directory right now. */
+export const exportRunning = (matchId: number): boolean => jobs.get(matchId)?.done === false;
+
 const projectPath = (dir: string, matchId: number) => path.join(dir, `match-${matchId}.kdenlive`);
 const finalPath = (dir: string) => path.join(dir, "final.mp4");
 
