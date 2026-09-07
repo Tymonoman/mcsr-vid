@@ -185,7 +185,9 @@ function outputPaths(matchId: number, projectPath: string | null) {
     title: ifPresent(metaPaths(matchId, "title").generated),
     description: ifPresent(metaPaths(matchId, "description").generated),
     chapters: ifPresent(path.join(dir, `match-${matchId}.chapters.txt`)),
-    overlay: ifPresent(path.join(dir, "overlay.mov")),
+    // The single overlay.mov is gone (see CLAUDE.md, "What the render actually produces"); the
+    // per-frame artifact is now the timer strip, and the split stills sit beside it.
+    overlay: ifPresent(path.join(dir, "overlay-timer.mp4")) ?? ifPresent(path.join(dir, "overlay.mov")),
     thumbnail: ifPresent(path.join(dir, "thumbnail.png")),
     // Written by `npm run validate-sync`, never by the pipeline — worth surfacing because it is
     // the only artifact that lets you eyeball whether the audio sync actually landed.
@@ -493,7 +495,11 @@ const server = createServer(async (req, res) => {
     if (resource === "progress" && req.method === "GET") {
       const job = getJob(matchId);
       if (!job) {
-        json(res, 404, { error: "no job for that match" });
+        // The browser opens this stream for every match it shows, running or not. A 404 here
+        // is correct but lands in the console as an error on every page load; 204 says the
+        // same thing — nothing to stream — without the noise. EventSource treats any non-200
+        // as "closed", which is exactly what the client handles.
+        res.writeHead(204).end();
         return;
       }
       streamProgress(res, job);

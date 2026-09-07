@@ -597,7 +597,7 @@ function watch(id, quiet) {
     refresh();
   });
 
-  // A 404 just means nothing is running for this match, which is the normal case.
+  // A 204 (no job) closes the stream without a console error; that is the normal case.
   src.onerror = () => {
     src.close();
     if (stream === src) stream = null;
