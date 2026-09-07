@@ -3,9 +3,10 @@ import path from "node:path";
 import { config } from "./config.js";
 import { chaosScore, closenessScore, computeMetrics, type MatchMetrics } from "./matchScore.js";
 import { listProcessedMatchIds } from "./matchStatus.js";
-import { getMatch, getRecentMatches, getUser, McsrApiError } from "./mcsrApi.js";
+import { getMatch, getRecentMatches, getUser, getVersus, McsrApiError } from "./mcsrApi.js";
+import { eloAtMatchStart } from "./overlayProps.js";
 import * as twitch from "./twitch.js";
-import type { FeedMatch } from "./types.js";
+import type { FeedMatch, MatchInfo } from "./types.js";
 
 /** `type` 2 is ranked; casual and private matches aren't worth publishing. */
 const RANKED_TYPE = 2;
@@ -13,7 +14,8 @@ const RANKED_TYPE = 2;
 const PAGE_SIZE = 100;
 /** Parallel `getMatch` calls. Low enough to stay polite inside the shared rate limit. */
 const DETAIL_CONCURRENCY = 4;
-const CACHE_VERSION = 2;
+/** Bumped whenever `PooledMatch` grows a field: a stale pool regenerates, it never migrates. */
+const CACHE_VERSION = 3;
 /**
  * Twitch handles are resolved one MCSR request per player and then cached forever, so
  * only a cold cache pays. Capped per scan so a first run can't blow the request budget;
@@ -34,7 +36,7 @@ const FOLLOWER_TTL_MS = 24 * 60 * 60 * 1000;
  */
 const POOL_MAX_ENTRIES = 500;
 /** Twitch VODs expire (14 days for non-affiliates); past this a match can't be rendered. */
-const POOL_MAX_AGE_DAYS = 10;
+export const POOL_MAX_AGE_DAYS = 10;
 /** Requests spent catching up on matches played since the last launch. */
 const CATCHUP_MAX_REQUESTS = 5;
 
@@ -54,6 +56,23 @@ const NO_TWITCH_NOTE =
 
 export type Bucket = "close" | "chaos";
 
+/** Who a player is, for the card: the operator picks on names and stakes, not on a score. */
+export interface SuggestionPlayer {
+  nickname: string;
+  /** Leaderboard position when the match was scored; null when unranked. */
+  eloRank: number | null;
+  /** Rating carried *into* this match, per `eloAtMatchStart`; null when unknown. */
+  elo: number | null;
+  /** Twitch followers, or null when unknown or no linked account. */
+  followers: number | null;
+}
+
+/** Ranked wins between these two, in `metrics.players` order. */
+export interface HeadToHead {
+  leftWins: number;
+  rightWins: number;
+}
+
 export interface Suggestion {
   metrics: MatchMetrics;
   bucket: Bucket;
@@ -61,6 +80,9 @@ export interface Suggestion {
   score: number;
   /** Combined dual-VOD appearances of both players - the streaming-frequency proxy. */
   popularity: number;
+  /** Same order as `metrics.players`. */
+  profiles: [SuggestionPlayer, SuggestionPlayer];
+  h2h: HeadToHead | null;
   vodUrls: string[];
   /** Match start, unix epoch seconds. */
   dateSec: number;
@@ -95,8 +117,13 @@ interface SuggestCache {
   newestScannedId: number | null;
 }
 
+/** Followers move daily and are cached separately, so they are filled in per scan, not pooled. */
+type PooledPlayer = Omit<SuggestionPlayer, "followers">;
+
 interface PooledMatch {
   metrics: MatchMetrics;
+  profiles: [PooledPlayer, PooledPlayer];
+  h2h: HeadToHead | null;
   vodUrls: string[];
   /** Match start, unix epoch seconds — used to expire entries whose VODs have died. */
   dateSec: number;
@@ -257,6 +284,36 @@ async function resolveFollowers(
   return { followers, usedTwitch: true, note: null };
 }
 
+function profilesOf(match: MatchInfo): [PooledPlayer, PooledPlayer] {
+  return match.players.slice(0, 2).map((player) => ({
+    nickname: player.nickname,
+    eloRank: player.eloRank,
+    // `|| null` because eloAtMatchStart bottoms out at 0 when nothing is known, and a card
+    // should say nothing rather than "0 elo".
+    elo: eloAtMatchStart(match, player.uuid, player.eloRate) || null,
+  })) as [PooledPlayer, PooledPlayer];
+}
+
+/**
+ * Ranked head-to-head, in `metrics.players` order. One request, spent once per match ever: it
+ * is pooled next to the metrics, because the record barely moves and refreshing it per scan
+ * would cost a request for every pooled match on every launch.
+ */
+async function headToHead(match: MatchInfo): Promise<HeadToHead | null> {
+  const [left, right] = match.players;
+  if (!left || !right) return null;
+  try {
+    const versus = await getVersus(left.uuid, right.uuid);
+    return {
+      leftWins: versus.results.ranked[left.uuid] ?? 0,
+      rightWins: versus.results.ranked[right.uuid] ?? 0,
+    };
+  } catch {
+    // A card without a rivalry line is still a card; the overlay fetches this again at render.
+    return null;
+  }
+}
+
 export interface SuggestOptions {
   /** Ignore a still-fresh cache and rescan. */
   force?: boolean;
@@ -414,6 +471,8 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
         const full = await getMatch(feedMatch.id);
         return {
           metrics: computeMetrics(full),
+          profiles: profilesOf(full),
+          h2h: await headToHead(full),
           vodUrls: (feedMatch.vod ?? []).map((v) => v.url),
           dateSec: feedMatch.date,
           scoredAt: Date.now(),
@@ -442,6 +501,10 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
     .map((entry) => ({
       ...entry,
       popularity: popularityOfNames(entry.metrics.players[0], entry.metrics.players[1]),
+      profiles: entry.profiles.map((p) => ({
+        ...p,
+        followers: followers.get(p.nickname) ?? null,
+      })) as [SuggestionPlayer, SuggestionPlayer],
     }));
 
   const { suggestWeights, suggestFastRunTargetSec, suggestSlowRunCutoffSec } = config;

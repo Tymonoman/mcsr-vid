@@ -616,8 +616,6 @@ async function refresh() {
 
 let suggestPoll = null;
 
-const clock = (ms) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, "0")}`;
-
 function renderSuggestions(data) {
   const el = $("#suggestions");
   $("#tab-suggestions").textContent =
@@ -641,23 +639,18 @@ function renderSuggestions(data) {
     scan +
     data.suggestions
       .map((s) => {
-        // DNF: the loser usually stops once the winner is done, so there is no gap to report.
-        const margin =
-          s.finishMarginMs === null
-            ? "DNF"
-            : `${(s.finishMarginMs / 1000).toFixed(1)}s${s.finishEstimated ? "*" : ""}`;
+        // Every line but the chart and the links is prose the server assembled, so it all goes
+        // through esc() — including `bucket`, which reaches a class attribute.
         return `
       <div class="sugg" data-id="${s.matchId}">
         <div class="top">
-          <span class="bucket ${s.bucket}">${s.bucket.toUpperCase()}</span>
+          <span class="bucket ${esc(s.bucket)}">${esc(s.bucket.toUpperCase())}</span>
           <span class="who">${esc(s.players[0])} vs ${esc(s.players[1])}</span>
         </div>
-        <div class="facts">
-          ${clock(s.resultMs)} &middot; &Delta;${margin} &middot; ${s.leadChanges} lead
-          change${s.leadChanges === 1 ? "" : "s"}
-          &middot; &#9760;${s.deaths} &middot; score&nbsp;${s.score.toFixed(2)}
-        </div>
+        ${s.story ? `<div class="story">${esc(s.story)}</div>` : ""}
+        <div class="facts">${esc(s.facts)}</div>
         ${splitsChart(s.splits, { left: s.players[0], right: s.players[1], compact: true })}
+        <div class="expiry${s.expiring ? " warn" : ""}">${esc(s.expiryLabel)}</div>
         <div class="links">
           <a href="${esc(s.matchUrl)}" target="_blank" rel="noopener">mcsrranked #${s.matchId}</a>
           ${s.vodUrls.map((u, i) => `<a href="${esc(u)}" target="_blank" rel="noopener">VOD ${i + 1}</a>`).join("")}
