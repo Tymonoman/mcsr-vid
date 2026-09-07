@@ -18,7 +18,8 @@ assert.ok(media.startsWith(tmpdir()) && archive.startsWith(tmpdir()), "refusing 
 config.mediaDir = media;
 process.env.MCSR_ARCHIVE_DIR = archive;
 
-const { deleteMatch, hiddenMatchIds, isArchived, setHidden } = await import("./matchShelf.js");
+const { deleteMatch, hiddenMatchIds, isArchived, publishChecklist, setHidden, setPublishFlag } =
+  await import("./matchShelf.js");
 
 function seed(matchId: number, bytes: number): string {
   const dir = path.join(media, String(matchId));
@@ -75,6 +76,53 @@ try {
   // --- 6. Deleting something that is not there fails loudly ---------------------------------
   // Returning success would let the UI report freeing space it did not free.
   await assert.rejects(() => deleteMatch(999), /No working directory for match 999/);
+
+  // --- 7. The checklist derives five of its eight facts, and stores only the other three ------
+  // The point of the feature is that nothing derivable is written down, so this pins both
+  // halves: a fact appearing because its file appeared, and a manual flag surviving a reload.
+  const pubDir = seed(555, 4);
+  let list = await publishChecklist(555, null);
+  assert.deepEqual(
+    list,
+    {
+      rendered: false,
+      hookPicked: false,
+      thumbnailChosen: false,
+      uploaded: false,
+      shortRendered: false,
+      shortUploaded: false,
+      relatedLinkSet: false,
+      playersNotified: false,
+    },
+    "a bare match directory should tick nothing",
+  );
+
+  // A title still carrying the placeholder is exactly the case the upload route refuses, so it
+  // must not count as a picked hook — that is the whole reason this looks at the first line.
+  writeFileSync(path.join(pubDir, "match-555.title.edited.txt"), "<HOOK> | a vs b | MCSR Ranked 1v1\n");
+  assert.equal((await publishChecklist(555, null)).hookPicked, false, "the placeholder is not a hook");
+  writeFileSync(path.join(pubDir, "match-555.title.edited.txt"), "Down to the last heart | a vs b\n");
+  writeFileSync(path.join(pubDir, "thumbnail.json"), JSON.stringify({ chosen: "hero", variants: [] }));
+  writeFileSync(path.join(pubDir, "youtube.json"), JSON.stringify({ videoId: "abc" }));
+  writeFileSync(path.join(pubDir, "short-555.mp4"), Buffer.alloc(4));
+  list = await publishChecklist(555, "/media/555/match-555.kdenlive");
+  assert.deepEqual(
+    [list.rendered, list.hookPicked, list.thumbnailChosen, list.uploaded, list.shortRendered],
+    [true, true, true, true, true],
+    "every derived fact should follow its file",
+  );
+
+  setPublishFlag(555, "playersNotified", true);
+  assert.equal((await publishChecklist(555, null)).playersNotified, true, "a toggle must persist");
+  setPublishFlag(555, "relatedLinkSet", true);
+  setPublishFlag(555, "playersNotified", false);
+  const after = await publishChecklist(555, null);
+  assert.equal(after.playersNotified, false, "toggling back off must persist too");
+  assert.equal(after.relatedLinkSet, true, "one key's write must not clear its neighbours");
+
+  // Same rule as the hidden list: a cosmetic file must never take the panel down.
+  writeFileSync(path.join(pubDir, "publish.json"), "{ not json");
+  assert.equal((await publishChecklist(555, null)).relatedLinkSet, false, "corrupt reads as unticked");
 
   console.log("matchShelf: all checks passed");
 } finally {

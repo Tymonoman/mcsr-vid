@@ -17,6 +17,9 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { config } from "./config.js";
+import { readManifest } from "./thumbnailVariants.js";
+import { HOOK_PLACEHOLDER } from "./title.js";
+import { readUpload } from "./youtubeStore.js";
 
 /** Where the NAS is mounted inside the container. Same default as archive.ts. */
 const ARCHIVE_ROOT = process.env.MCSR_ARCHIVE_DIR ?? "/archive";
@@ -91,4 +94,74 @@ export async function deleteMatch(matchId: number): Promise<DeleteResult> {
   // A hidden flag for a directory that no longer exists is just litter.
   setHidden(matchId, false);
   return { matchId, bytesFreed, archived };
+}
+
+/* --- Publish checklist ----------------------------------------------------------------------
+ *
+ * Uploading is manual while the YouTube API compliance audit is pending (videos.insert would
+ * lock every upload private), so "is this match actually out the door?" lives in the operator's
+ * head. Eight facts answer it, and only three are worth storing: the other five are already on
+ * disk, and a stored copy of a derivable fact is just a second thing that can be wrong.
+ */
+
+/** The facts nothing in this repo can see, because they happen in Studio or in a DM. */
+export const MANUAL_PUBLISH_KEYS = ["shortUploaded", "relatedLinkSet", "playersNotified"] as const;
+export type ManualPublishKey = (typeof MANUAL_PUBLISH_KEYS)[number];
+
+export const isManualPublishKey = (key: unknown): key is ManualPublishKey =>
+  MANUAL_PUBLISH_KEYS.includes(key as ManualPublishKey);
+
+export type PublishChecklist = Record<ManualPublishKey, boolean> & {
+  rendered: boolean;
+  hookPicked: boolean;
+  thumbnailChosen: boolean;
+  uploaded: boolean;
+  shortRendered: boolean;
+};
+
+/** Inside the match directory, so the state travels with the media — as `.dashboard.json` does. */
+const publishPath = (matchId: number): string => path.join(config.mediaDir, String(matchId), "publish.json");
+
+function readManual(matchId: number): Record<ManualPublishKey, boolean> {
+  let stored: Partial<Record<ManualPublishKey, unknown>> = {};
+  try {
+    stored = JSON.parse(readFileSync(publishPath(matchId), "utf8")) as typeof stored;
+  } catch {
+    // Missing and corrupt both mean "nothing ticked yet", which is the recoverable answer: the
+    // operator re-ticks three boxes rather than the detail panel refusing to open.
+  }
+  return Object.fromEntries(MANUAL_PUBLISH_KEYS.map((k) => [k, stored[k] === true])) as Record<
+    ManualPublishKey,
+    boolean
+  >;
+}
+
+/** Writes one manual flag. Callers must have validated the key — see `isManualPublishKey`. */
+export function setPublishFlag(matchId: number, key: ManualPublishKey, value: boolean): void {
+  writeFileSync(publishPath(matchId), JSON.stringify({ ...readManual(matchId), [key]: value }, null, 2));
+}
+
+/**
+ * The merged checklist. `projectPath` is passed in rather than looked up so this stays a pure
+ * disk read: the route already holds a `matchStatusFor` entry, and asking for one here would
+ * cost an MCSR API request per pill.
+ */
+export async function publishChecklist(
+  matchId: number,
+  projectPath: string | null,
+): Promise<PublishChecklist> {
+  const dir = path.join(config.mediaDir, String(matchId));
+  const editedTitle = path.join(dir, `match-${matchId}.title.edited.txt`);
+  // The same test the upload route runs before it will send anything (youtubeRoutes.ts): a title
+  // still carrying the placeholder has no hook, whatever else was edited around it.
+  const firstLine = existsSync(editedTitle) ? readFileSync(editedTitle, "utf8").split("\n")[0]!.trim() : "";
+
+  return {
+    rendered: projectPath !== null,
+    hookPicked: firstLine !== "" && !firstLine.includes(HOOK_PLACEHOLDER),
+    thumbnailChosen: Boolean((await readManifest(dir))?.chosen),
+    uploaded: (await readUpload(matchId)) !== null,
+    shortRendered: existsSync(path.join(dir, `short-${matchId}.mp4`)),
+    ...readManual(matchId),
+  };
 }

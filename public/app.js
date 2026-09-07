@@ -193,6 +193,8 @@ async function select(id, { open = false } = {}) {
       <div class="msg" id="msg"></div>
     </div>
 
+    <div class="checklist" id="checklist"></div>
+
     <div id="failure">
       <div class="title" id="failtitle"></div>
       <pre id="failtext"></pre>
@@ -278,12 +280,76 @@ async function select(id, { open = false } = {}) {
     setTimeout(() => ($("#savedmsg").textContent = ""), 2000);
   });
 
+  loadChecklist(id);
   loadVariants(id);
   loadSplits(id, meta);
   loadPreview(id);
   loadShort(id);
   loadYoutube(id, meta);
   watch(id, true);
+}
+
+/**
+ * The publish checklist, in the order the work actually happens. Uploading is manual until the
+ * YouTube compliance audit clears, so this row is the only place that knows whether a rendered
+ * match ever left the box. Five pills are facts read off disk and are not clickable; the three
+ * that happen in Studio or in a DM are buttons.
+ */
+const CHECKLIST = [
+  ["rendered", "rendered"],
+  ["hookPicked", "hook"],
+  ["thumbnailChosen", "thumbnail"],
+  ["uploaded", "uploaded"],
+  ["shortRendered", "Short rendered"],
+  ["shortUploaded", "Short uploaded", true],
+  ["relatedLinkSet", "related link", true],
+  ["playersNotified", "players notified", true],
+];
+
+async function loadChecklist(id) {
+  const el = $("#checklist");
+  if (!el) return;
+
+  // Repainted from whatever the server last returned — including the PUT reply, which is the
+  // whole merged object, so a toggle needs no follow-up GET.
+  const paint = (state) => {
+    el.innerHTML = CHECKLIST.map(([key, label, manual]) => {
+      const on = state[key] === true;
+      // The tick is not decoration: filled-vs-outlined is a colour difference, and this row is
+      // read at a glance on a phone. It also gives the read-only pills something to announce.
+      const text = `${on ? "✓" : "·"} ${label}`;
+      return manual
+        ? `<button type="button" class="pill${on ? " on" : ""}" data-key="${key}" aria-pressed="${on}">${text}</button>`
+        : `<span class="pill${on ? " on" : ""}">${text}</span>`;
+    }).join("");
+
+    el.querySelectorAll("button[data-key]").forEach((btn) =>
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        try {
+          paint(
+            await api(`/api/publish/${id}`, {
+              method: "PUT",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                key: btn.dataset.key,
+                value: btn.getAttribute("aria-pressed") !== "true",
+              }),
+            }),
+          );
+        } catch (err) {
+          btn.disabled = false;
+          alert(err.message);
+        }
+      }),
+    );
+  };
+
+  try {
+    paint(await api(`/api/publish/${id}`));
+  } catch (err) {
+    el.innerHTML = `<span class="pill">checklist unavailable: ${esc(err.message)}</span>`;
+  }
 }
 
 /**
