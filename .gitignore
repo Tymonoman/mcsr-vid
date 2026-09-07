@@ -20,3 +20,4 @@ dist/
 
 # Written by scripts/preflight-youtube.mjs once a live token proves the OAuth app is published.
 /.youtube-production-confirmed
+__pycache__/

@@ -141,9 +141,16 @@ def build_logo(path, size=800):
     canvas.save(path)
 
 
+# YouTube shows one 2560x1440 upload three ways: TV gets all of it, desktop a 2560x423 band
+# across the middle, and phones only the central 1546x423. Anything outside that box is
+# invisible to most viewers, so the whole identity has to fit inside it — the previous layout
+# put a 530px-tall badge in a 423px band, ran the wordmark to the phone crop's right edge, and
+# drew the divider straight through the badge.
+SAFE_W, SAFE_H = 1546, 423
+
+
 def build_banner(path, w=2560, h=1440):
     img = Image.new("RGB", (w, h), PANEL_EDGE)
-    draw = ImageDraw.Draw(img)
 
     corner = Image.new("RGB", (w, h), PANEL_EDGE)
     cdraw = ImageDraw.Draw(corner)
@@ -152,26 +159,46 @@ def build_banner(path, w=2560, h=1440):
     img = Image.blend(img, corner, 0.08)
     draw = ImageDraw.Draw(img)
 
-    badge = badge_with_frame(px_per_cell=6, border_px=5)
-    badge_x, badge_y = 560, 570
-    img.paste(badge, (badge_x, badge_y))
+    cx, cy = w // 2, h // 2
+    safe_top, safe_bottom = cy - SAFE_H // 2, cy + SAFE_H // 2
 
-    text_x = badge_x + badge.width + 60
+    # A 6px badge frame is 530px tall — taller than the band. 4px gives 352, which leaves
+    # ~35px of air above and below on a phone.
+    badge = badge_with_frame(px_per_cell=4, border_px=4)
+    gap = 48
+
     word_font = ImageFont.truetype(FONT_PATH, 128)
-    tag_font = ImageFont.truetype(FONT_PATH, 40)
+    # 40px read as ~10px on a phone (the 1546 safe width lands on a ~390px screen). 46 is the
+    # largest that still keeps the tagline narrower than the badge+wordmark group fits.
+    tag_font = ImageFont.truetype(FONT_PATH, 46)
+    word, tag = "REPLAYOFFS", "MCSR RANKED · TOP-BRACKET REPLAYS"
+    wb = draw.textbbox((0, 0), word, font=word_font)
+    tb = draw.textbbox((0, 0), tag, font=tag_font)
+    word_w, word_h = wb[2] - wb[0], wb[3] - wb[1]
+    tag_w, tag_h = tb[2] - tb[0], tb[3] - tb[1]
+    text_w = max(word_w, tag_w)
+    line_gap = 22
+    text_h = word_h + line_gap + tag_h
 
-    word_y = 630
-    draw.text((text_x, word_y), "REPLAYOFFS", font=word_font, fill=QUARTZ)
-    word_bbox = draw.textbbox((text_x, word_y), "REPLAYOFFS", font=word_font)
+    group_w = badge.width + gap + text_w
+    assert group_w <= SAFE_W - 60, f"banner group {group_w}px does not fit the {SAFE_W}px safe width"
+    group_x = cx - group_w // 2
 
-    tag_y = word_bbox[3] + 26
-    draw.text((text_x, tag_y), "MCSR RANKED · TOP-BRACKET REPLAYS", font=tag_font, fill=GOLD)
-    tag_bbox = draw.textbbox((text_x, tag_y), "MCSR RANKED · TOP-BRACKET REPLAYS", font=tag_font)
+    badge_y = cy - badge.height // 2
+    assert badge_y >= safe_top and badge_y + badge.height <= safe_bottom, "badge leaves the safe band"
+    img.paste(badge, (group_x, badge_y))
 
-    div_y = tag_bbox[3] + 30
-    div_w = 1420
-    draw.rectangle([badge_x, div_y, badge_x + div_w // 2, div_y + 6], fill=CRIMSON)
-    draw.rectangle([badge_x + div_w // 2, div_y, badge_x + div_w, div_y + 6], fill=WARPED)
+    text_x = group_x + badge.width + gap
+    word_y = cy - text_h // 2 - wb[1]
+    draw.text((text_x, word_y), word, font=word_font, fill=QUARTZ)
+    tag_y = word_y + wb[1] + word_h + line_gap - tb[1]
+    draw.text((text_x, tag_y), tag, font=tag_font, fill=GOLD)
+
+    # The two-tone rule now sits just under the phone band, so TV and desktop keep the accent
+    # and it can no longer cut across the badge.
+    rule_y = safe_bottom + 28
+    draw.rectangle([group_x, rule_y, cx, rule_y + 6], fill=CRIMSON)
+    draw.rectangle([cx, rule_y, group_x + group_w, rule_y + 6], fill=WARPED)
 
     img.save(path)
 
