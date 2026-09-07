@@ -11,7 +11,7 @@
  */
 import { makeCancelSignal, renderStill, selectComposition } from "@remotion/renderer";
 import { existsSync } from "node:fs";
-import { copyFile, readFile, writeFile } from "node:fs/promises";
+import { copyFile, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { atomicOutput } from "./atomicOutput.js";
 import { bundleOnce } from "./remotionBundle.js";
@@ -42,6 +42,13 @@ export interface VariantRecord {
 export interface VariantsManifest {
   chosen: string;
   variants: VariantRecord[];
+  /**
+   * The headline every variant was rendered with, or null for none. Recorded because it is the
+   * one thing about a variant you cannot see from its pose key, and the dashboard needs to show
+   * what the rendered set is actually selling. Manifests written before hooks existed have no
+   * field at all, which reads as null.
+   */
+  hookText: string | null;
 }
 
 export interface RenderVariantsArgs {
@@ -50,6 +57,8 @@ export interface RenderVariantsArgs {
   userRight: UserDetails;
   outDir: string;
   poses: PosePair[];
+  /** Headline for every variant in this render; omitted or empty renders the plain header strip. */
+  hookText?: string;
   onProgress?: (p: ThumbnailProgress) => void;
   signal?: AbortSignal;
 }
@@ -65,7 +74,10 @@ export async function readManifest(outDir: string): Promise<VariantsManifest | n
   const file = manifestPath(outDir);
   if (!existsSync(file)) return null;
   try {
-    return JSON.parse(await readFile(file, "utf8")) as VariantsManifest;
+    const parsed = JSON.parse(await readFile(file, "utf8")) as VariantsManifest;
+    // Sidecars predating the hook have no field; null is "rendered without one", which is what
+    // those files show.
+    return { ...parsed, hookText: parsed.hookText ?? null };
   } catch {
     // A truncated sidecar is not worth failing a render over; it is regenerated below.
     return null;
@@ -106,7 +118,13 @@ export async function renderThumbnailVariants(args: RenderVariantsArgs): Promise
     for (const [index, poses] of args.poses.entries()) {
       args.onProgress?.({ phase: "rendering", percent: Math.round((index / args.poses.length) * 100) });
 
-      const computed = await computeThumbnailProps(args.match, args.userLeft, args.userRight, poses);
+      const computed = await computeThumbnailProps(
+        args.match,
+        args.userLeft,
+        args.userRight,
+        poses,
+        args.hookText,
+      );
       const renderProps = { ...computed.props };
       const file = variantFile(poses);
       const outPath = path.join(args.outDir, file);
@@ -140,11 +158,31 @@ export async function renderThumbnailVariants(args: RenderVariantsArgs): Promise
   const keys = new Set(records.map((r) => r.key));
   const chosen = previous && keys.has(previous.chosen) ? previous.chosen : records[0]!.key;
 
-  const manifest: VariantsManifest = { chosen, variants: records };
+  const manifest: VariantsManifest = {
+    chosen,
+    variants: records,
+    hookText: args.hookText?.trim() ? args.hookText : null,
+  };
   await writeFile(manifestPath(args.outDir), JSON.stringify(manifest, null, 2), "utf8");
   await copyFile(
     path.join(args.outDir, records.find((r) => r.key === chosen)!.file),
     path.join(args.outDir, "thumbnail.png"),
   );
   return manifest;
+}
+
+/**
+ * Re-renders every configured variant, typically because a human finally picked the headline.
+ *
+ * Deleting the old files first is the entire point: `renderThumbnailVariants` skips a variant
+ * whose PNG is already on disk, so without this a new hook would reach only the variants that
+ * had never been rendered. Which variant is in use survives by itself — the renderer keeps the
+ * previous manifest's `chosen` key whenever it is still in the set, and re-copies it over
+ * `thumbnail.png`.
+ */
+export async function rerenderThumbnailVariants(args: RenderVariantsArgs): Promise<VariantsManifest> {
+  await Promise.all(
+    args.poses.map((poses) => rm(path.join(args.outDir, variantFile(poses)), { force: true })),
+  );
+  return renderThumbnailVariants(args);
 }

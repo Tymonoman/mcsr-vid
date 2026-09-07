@@ -62,6 +62,12 @@ export type ThumbnailProps = {
   right: ThumbnailPlayer;
   /** Top category bar text, e.g. "MINECRAFT · SPEEDRUNNING · RANKED". */
   headerLabel: string;
+  /**
+   * The headline the thumbnail is actually sold on — the same rivalry hook the title carries.
+   * When set it replaces `headerLabel` in the top band; when absent the thumbnail renders
+   * exactly as it always did, so already-published matches do not change under a re-render.
+   */
+  hookText?: string;
 };
 
 /** One player as a Shorts nameplate shows them. */

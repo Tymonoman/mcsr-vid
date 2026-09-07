@@ -53,6 +53,29 @@ globalThis.fetch = (async () => new Response(null, { status: 200 })) as typeof f
   assert.equal(props.props.left.eloRate, 2546, "2615 post-match minus the +69 that match produced");
   assert.equal(props.props.right.eloRate, 2382, "2370 post-match minus the -12 that match produced");
   assert.equal(props.props.headerLabel, "Minecraft · Speedrunning · Ranked", "null tag uses the default");
+  assert.equal(props.props.hookText, undefined, "no hook asked for, none rendered");
+
+  // The headline is what the thumbnail is actually sold on, so it has to survive the trip into
+  // Remotion's props. Absent it must stay absent: every already-published match re-renders to
+  // the header strip it was published with.
+  const hooked = await computeThumbnailProps(
+    match,
+    user("u-left", "edcr", 2615),
+    user("u-right", "doogile", 2370),
+    { left: "walking", right: "crossed" },
+    "WANNABE vs REAL GOAT",
+  );
+  assert.equal(hooked.props.hookText, "WANNABE vs REAL GOAT");
+
+  // A blank box in the dashboard is "no hook", not a hook made of spaces.
+  const blank = await computeThumbnailProps(
+    match,
+    user("u-left", "edcr", 2615),
+    user("u-right", "doogile", 2370),
+    { left: "walking", right: "crossed" },
+    "   ",
+  );
+  assert.equal(blank.props.hookText, undefined, "whitespace is not a headline");
 }
 
 globalThis.fetch = realFetch;
