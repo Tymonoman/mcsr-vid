@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libxrandr2 libxkbcommon0 libxfixes3 libxcomposite1 libxdamage1 \
       libxext6 libxi6 libgbm1 libpango-1.0-0 libcairo2 libcups2 \
       fonts-liberation \
+      fonts-noto-color-emoji \
     && rm -rf /var/lib/apt/lists/*
 
 # Standalone binary rather than the distro package: Twitch breaks yt-dlp often
