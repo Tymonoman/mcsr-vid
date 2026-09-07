@@ -13,7 +13,7 @@ await writeFile(
   JSON.stringify({ client_id: "c", client_secret: "s", refresh_token: "r" }),
 );
 
-const { addToPlaylist } = await import("./youtube.js");
+const { addToPlaylist, matchupPlaylistTitle } = await import("./youtube.js");
 
 interface Call {
   url: string;
@@ -110,6 +110,20 @@ try {
   }) as typeof fetch;
   await assert.rejects(() => addToPlaylist("VID3", "MCSR Ranked matches"), /playlistNotFound/);
   console.log("OK: an API failure throws, with the actionable reason in the message");
+
+  // --- 4. One matchup, one playlist, whichever seat each player got -------------------------
+  // Purely local: the title is the whole guard against a rematch creating a second playlist,
+  // since `findOrCreatePlaylist` matches on the exact string.
+  assert.equal(matchupPlaylistTitle("doogile", "Feinberg"), "doogile vs Feinberg · MCSR Ranked");
+  assert.equal(
+    matchupPlaylistTitle("Feinberg", "doogile"),
+    matchupPlaylistTitle("doogile", "Feinberg"),
+    "swapping the seats must not produce a second playlist",
+  );
+  // Case-insensitively, because a plain sort puts every capitalised nickname first and the same
+  // pair would then split in two the moment the API seated them the other way round.
+  assert.equal(matchupPlaylistTitle("apple", "Banana"), "apple vs Banana · MCSR Ranked");
+  console.log("OK: the per-matchup title is seat- and case-independent");
 
   console.log("playlist: all checks passed");
 } finally {

@@ -20,6 +20,7 @@ import {
   commentThreads,
   isConfigured,
   latestImpressions,
+  matchupPlaylistTitle,
   replyToComment,
   setThumbnail,
   uploadVideo,
@@ -286,13 +287,24 @@ async function startUpload(
       // Same contract as the thumbnail: the video is up, so a playlist failure is worth saying
       // out loud but must not read as a failed upload. Appended, not assigned — a thumbnail
       // error above would otherwise be silently overwritten.
-      if (config.youtubePlaylistTitle) {
+      const joinPlaylist = async (title: string) => {
         try {
-          await addToPlaylist(result.videoId, config.youtubePlaylistTitle);
+          await addToPlaylist(result.videoId, title);
         } catch (err) {
-          const note = `Uploaded, but adding it to the playlist failed: ${describeError(err)}`;
+          const note = `Uploaded, but adding it to "${title}" failed: ${describeError(err)}`;
           progress.error = progress.error ? `${progress.error} ${note}` : note;
         }
+      };
+      if (config.youtubePlaylistTitle) await joinPlaylist(config.youtubePlaylistTitle);
+      // And a playlist per matchup. A rematch is the strongest series signal this channel has —
+      // it is already what the best hook chips say ("Rematch: doogile leads 2-1") — and a
+      // playlist is how a viewer who liked one of them finds the rest.
+      //
+      // Skipped when the nicknames are the "?" `matchStatusFor` degrades to with the MCSR API
+      // down: a public playlist called "? vs ?" is worse than no playlist, and unlike the
+      // upload it cannot be quietly re-done later.
+      if (status.leftNickname !== "?" && status.rightNickname !== "?") {
+        await joinPlaylist(matchupPlaylistTitle(status.leftNickname, status.rightNickname));
       }
 
       const record: UploadRecord = {

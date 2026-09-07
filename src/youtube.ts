@@ -274,6 +274,18 @@ export async function addToPlaylist(videoId: string, playlistTitle: string): Pro
   });
 }
 
+/**
+ * The playlist title for one matchup.
+ *
+ * Sorted, and case-insensitively, so the same two players land in one playlist however they were
+ * seated: MCSR decides who is players[0] per match, so "doogile vs Feinberg" and
+ * "Feinberg vs doogile" are the same series, and two playlists for it would be worse than none.
+ */
+export function matchupPlaylistTitle(a: string, b: string): string {
+  const [first, second] = [a, b].sort((x, y) => x.toLowerCase().localeCompare(y.toLowerCase()));
+  return `${first} vs ${second} · MCSR Ranked`;
+}
+
 /** Exported for the test; `addToPlaylist` is the entry point everything else should use. */
 export async function findOrCreatePlaylist(title: string): Promise<string> {
   // `mine=true` scopes the search to the operator's own playlists, so a title collision with
