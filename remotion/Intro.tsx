@@ -1,6 +1,6 @@
 import type { FC } from "react";
 import { AbsoluteFill, Img, interpolate, useCurrentFrame, useVideoConfig, Easing } from "remotion";
-import { formatTime } from "./format.js";
+import { formatConstantLabel, formatTime } from "./format.js";
 import type { OverlayProps, PlayerIdentity } from "./types.js";
 
 import { INTRO_SECONDS } from "./layout.js";
@@ -65,6 +65,43 @@ function PlayerCard({
   );
 }
 
+/**
+ * The centre column under the VS badge: the head-to-head record, and what the seed is.
+ *
+ * Both long-form competitors open on a head-to-head table, and both then fill the ten-second
+ * ready-countdown with a "Seed Type: Village" card. This channel's intro *is* that window — it
+ * runs 0-7s of the countdown — so the seed rides along on the versus card instead of costing a
+ * second element. `formatConstantLabel` is the same humaniser the bottom band's seed chip uses,
+ * so the two can't disagree about what a bastion is called; CSS uppercases it for the label.
+ */
+function VersusRecord({ props, opacity }: { props: OverlayProps; opacity: number }) {
+  const left = props.h2hLeftWins;
+  const right = props.h2hRightWins;
+  const seed = [
+    props.seedType && `${formatConstantLabel(props.seedType)} Seed`,
+    props.bastionType && `${formatConstantLabel(props.bastionType)} Bastion`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  return (
+    <div className="intro-h2h" style={{ opacity }}>
+      <span className="intro-h2h-label">Head to Head</span>
+      {left === 0 && right === 0 ? (
+        // "0 – 0" reads as a scoreline someone forgot to fill in; say what it means instead.
+        <span className="intro-h2h-first">First Meeting</span>
+      ) : (
+        <span className="intro-h2h-record">
+          <b className={left > right ? "l" : ""}>{left}</b>
+          <span className="dash">–</span>
+          <b className={right > left ? "r" : ""}>{right}</b>
+        </span>
+      )}
+      {seed && <span className="intro-h2h-seed">{seed}</span>}
+    </div>
+  );
+}
+
 /** Full-screen versus card for the video's first INTRO_SECONDS, opaque so it covers the
  *  gameplay track underneath, then wipes to transparent to reveal it. */
 export const Intro: FC<{ props: OverlayProps }> = ({ props }) => {
@@ -84,6 +121,12 @@ export const Intro: FC<{ props: OverlayProps }> = ({ props }) => {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
+  // The same window PlayerCard fades its stats in on: everything that isn't the headline
+  // (names, VS badge) arrives together, one beat after the cards land.
+  const detailOpacity = interpolate(frame, [fps * 0.7, fps * 1.05], [0, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
 
   return (
     <AbsoluteFill className="intro" style={{ opacity }}>
@@ -92,6 +135,7 @@ export const Intro: FC<{ props: OverlayProps }> = ({ props }) => {
       <div className="intro-vs" style={{ transform: `scale(${badgeScale})` }}>
         <span className="intro-vs-text">VS</span>
       </div>
+      <VersusRecord props={props} opacity={detailOpacity} />
       <div className="intro-meta">{props.matchPlayedLabel}</div>
     </AbsoluteFill>
   );
