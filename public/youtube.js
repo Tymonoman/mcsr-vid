@@ -76,6 +76,33 @@ async function loadYoutube(id, meta) {
       <div class="bar" id="ytBarWrap" hidden><i id="ytBar"></i></div>
     </div>`;
 
+  // The title field is seeded from the hook *once*, when this panel renders. Measured in a real
+  // browser: typing a hook afterwards updated the preview line but never this field, and Upload
+  // stayed enabled — one forgotten edit away from publishing "<HOOK> | a vs b". So the field
+  // follows the hook until the operator edits it by hand, and Upload is gated on the placeholder
+  // being gone. The server refuses such a title too; this is the half that explains itself.
+  const titleField = $("#ytTitle");
+  const uploadBtn = $("#ytUpload");
+  let titleEdited = false;
+  const gate = () => {
+    const t = titleField.value;
+    const blocked =
+      t.trim() === "" ? "Title is empty" : t.includes("<HOOK>") ? "Replace <HOOK> with a hook first" : "";
+    uploadBtn.disabled = blocked !== "";
+    uploadBtn.title = blocked;
+  };
+  titleField.addEventListener("input", () => {
+    titleEdited = true;
+    gate();
+  });
+  $("#hook")?.addEventListener("input", (e) => {
+    if (titleEdited) return;
+    const h = e.target.value.trim();
+    titleField.value = h ? firstLine.replace("<HOOK>", h) : firstLine;
+    gate();
+  });
+  gate();
+
   $("#ytUpload").addEventListener("click", async () => {
     const when = $("#ytWhen").value;
     $("#ytMsg").textContent = "starting…";
