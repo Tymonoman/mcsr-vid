@@ -19,7 +19,13 @@ import { formatShortTime } from "../remotion/format.js";
 import { describeError } from "./errorText.js";
 import type { MatchMetrics } from "./matchScore.js";
 import { eloAtMatchStart } from "./overlayProps.js";
-import type { MatchInfo, UserDetails } from "./types.js";
+import type { MatchInfo, UserDetails, VersusStats } from "./types.js";
+
+/**
+ * A rank high enough that a viewer places it without looking it up. Past this, "#843 vs #1291"
+ * is two numbers rather than a rivalry.
+ */
+const RECOGNISABLE_RANK = 100;
 
 /** A hook nobody would read as a hook. Below this a suggestion is noise, not a shorter option. */
 const MIN_USEFUL_CHARS = 8;
@@ -36,6 +42,12 @@ export interface HookInput {
   maxChars: number;
   /** buildTitle().hookMin — shorter than this and the title falls under the 70-char band. */
   minChars: number;
+  /**
+   * Head-to-head record, for the rematch hook. Optional: it is one more API call than the rest
+   * of the facts need, so a caller that cannot afford it — or whose request failed — simply
+   * omits the chip.
+   */
+  versus?: VersusStats;
 }
 
 interface Candidate {
@@ -47,54 +59,110 @@ interface Candidate {
 const seconds = (ms: number): string => (ms / 1000).toFixed(1).replace(/\.0$/, "");
 
 /**
- * The facts, ranked. Order here is the tiebreak when several apply, and it is deliberate: a
- * photo finish beats a lead change beats a death count, because that is the order a viewer
- * would care about them.
+ * The facts, ranked. Order here is the tiebreak when several apply, and it is deliberate.
+ *
+ * Rivalry framing outranks everything, by measurement rather than taste. Across the first seven
+ * published videos the hook *style* split CTR with no overlap: the three "X vs Y" hooks (YN vs
+ * TAS 9.61%, UNC vs CATBOY 8.33%, WANNABE vs REAL GOAT 8.04%) weighted to 9.36%, while the four
+ * descriptive/event/joke hooks (INSANELY CLOSE MATCHUP 3.75%, "They REALLY think they'll get
+ * RANK #1" 3.29%, SILENT ACCEPTANCE 3.25%, DON'T DIG STRAIGHT DOWN KIDS 2.01%) weighted to
+ * 2.25%. A contrast between two people is a reason to click; a description of the match is not.
+ * So every rivalry candidate sits in the 100-130 band and every descriptive one below it, which
+ * means a descriptive hook reaches the top of the list only when the match has no rivalry to
+ * state — the dashboard used to nudge the operator into the 2.25% format on every upload.
+ *
+ * Within the rivalry band a shared history beats an upset beats a ranking beats a rating gap,
+ * because that is how much of a story each one carries. Within the descriptive band the old
+ * order stands: a photo finish beats a lead change beats a death count.
  */
 function candidates(input: HookInput): Candidate[] {
-  const { metrics, match, userLeft, userRight } = input;
+  const { metrics, match, userLeft, userRight, versus } = input;
   const out: Candidate[] = [];
   const { finishMarginMs, leadChanges, maxSwingMs, deaths, resultMs, winner } = metrics;
+
+  // --- Rivalry framing (100-130) ----------------------------------------------------------
+  // Match-time elo, not live elo: reading the rating at render time once turned a real
+  // 106-point gap into a displayed 245-point one (see src/description.ts).
+  const leftElo = eloAtMatchStart(match, userLeft.uuid, userLeft.eloRate);
+  const rightElo = eloAtMatchStart(match, userRight.uuid, userRight.eloRate);
+
+  if (versus) {
+    const leftWins = versus.results.ranked[userLeft.uuid] ?? 0;
+    const rightWins = versus.results.ranked[userRight.uuid] ?? 0;
+    // Both sides have to have won one for this to read as a rivalry. "First meeting" is a fact
+    // about the fixture list, not a reason to watch, so no history gets no chip.
+    if (leftWins >= 1 && rightWins >= 1) {
+      const leader = leftWins >= rightWins ? userLeft.nickname : userRight.nickname;
+      const hi = Math.max(leftWins, rightWins);
+      const lo = Math.min(leftWins, rightWins);
+      out.push({
+        text: hi === lo ? `Rematch: ${hi}-${lo} all time` : `Rematch: ${leader} leads ${hi}-${lo}`,
+        weight: 130,
+      });
+    }
+  }
+
+  if (winner !== null && leftElo > 0 && rightElo > 0) {
+    const winnerElo = winner === userLeft.nickname ? leftElo : rightElo;
+    const loserElo = winner === userLeft.nickname ? rightElo : leftElo;
+    if (loserElo - winnerElo >= 100) {
+      out.push({ text: `The ${winnerElo} takes down the ${loserElo}`, weight: 125 });
+    }
+  }
+
+  // Current rank, not rank at match time: the API carries no historical rank the way `changes`
+  // carries historical elo, so there is nothing to reconstruct. Acceptable where a stale elo was
+  // not, because "#4" is the standing a viewer recognises today, whereas a stale rating silently
+  // contradicted the one the overlay shows.
+  const leftRank = userLeft.eloRank;
+  const rightRank = userRight.eloRank;
+  if (
+    typeof leftRank === "number" &&
+    typeof rightRank === "number" &&
+    leftRank <= RECOGNISABLE_RANK &&
+    rightRank <= RECOGNISABLE_RANK
+  ) {
+    out.push({ text: `#${leftRank} vs #${rightRank}`, weight: 115 });
+  }
+
+  // The same gap without claiming a result — just the matchup. Numbers rather than "the
+  // favourite vs the underdog" because a number is checkable against the overlay.
+  if (leftElo > 0 && rightElo > 0 && Math.abs(leftElo - rightElo) >= 100) {
+    out.push({
+      text: `${Math.max(leftElo, rightElo)} vs ${Math.min(leftElo, rightElo)}`,
+      weight: 105,
+    });
+  }
+
+  // --- Descriptive fallbacks (below 100) --------------------------------------------------
 
   if (finishMarginMs !== null) {
     // Under three seconds after eight-plus minutes is the whole story; the scorer uses the same
     // 3s window to call a split "close".
     if (finishMarginMs < 3_000)
-      out.push({ text: `Decided by ${seconds(finishMarginMs)} seconds`, weight: 100 });
+      out.push({ text: `Decided by ${seconds(finishMarginMs)} seconds`, weight: 95 });
     else if (finishMarginMs < 10_000)
-      out.push({ text: `${seconds(finishMarginMs)} seconds apart`, weight: 70 });
+      out.push({ text: `${seconds(finishMarginMs)} seconds apart`, weight: 65 });
   } else {
     // The loser usually stops once the winner is done, so a null margin is normal, not dramatic.
-    out.push({ text: "One of them never reached the dragon", weight: 30 });
+    out.push({ text: "One of them never reached the dragon", weight: 25 });
   }
 
-  if (match.forfeited) out.push({ text: "It ended in a forfeit", weight: 65 });
+  if (match.forfeited) out.push({ text: "It ended in a forfeit", weight: 60 });
 
-  if (leadChanges >= 3) out.push({ text: `The lead changed ${leadChanges} times`, weight: 85 });
-  else if (leadChanges === 2) out.push({ text: "The lead changed twice", weight: 55 });
+  if (leadChanges >= 3) out.push({ text: `The lead changed ${leadChanges} times`, weight: 80 });
+  else if (leadChanges === 2) out.push({ text: "The lead changed twice", weight: 50 });
 
   // A swing is the largest single-split collapse, which is the thing that actually looks
   // dramatic on the splits panel.
-  if (maxSwingMs >= 60_000) out.push({ text: `A ${formatShortTime(maxSwingMs)} lead, gone`, weight: 80 });
+  if (maxSwingMs >= 60_000) out.push({ text: `A ${formatShortTime(maxSwingMs)} lead, gone`, weight: 75 });
   else if (maxSwingMs >= 30_000)
-    out.push({ text: `${Math.round(maxSwingMs / 1000)} seconds swung it`, weight: 50 });
+    out.push({ text: `${Math.round(maxSwingMs / 1000)} seconds swung it`, weight: 45 });
 
-  if (deaths === 0) out.push({ text: "Not a single death between them", weight: 45 });
-  else if (deaths >= 4) out.push({ text: `${deaths} deaths and still this close`, weight: 60 });
+  if (deaths === 0) out.push({ text: "Not a single death between them", weight: 40 });
+  else if (deaths >= 4) out.push({ text: `${deaths} deaths and still this close`, weight: 55 });
 
-  if (resultMs > 0 && resultMs < 600_000) out.push({ text: "A sub-10 to win it", weight: 62 });
-
-  // Match-time elo, not live elo: reading the rating at render time once turned a real
-  // 106-point gap into a displayed 245-point one (see src/description.ts).
-  const leftElo = eloAtMatchStart(match, userLeft.uuid, userLeft.eloRate);
-  const rightElo = eloAtMatchStart(match, userRight.uuid, userRight.eloRate);
-  if (winner !== null && leftElo > 0 && rightElo > 0) {
-    const winnerElo = winner === userLeft.nickname ? leftElo : rightElo;
-    const loserElo = winner === userLeft.nickname ? rightElo : leftElo;
-    if (loserElo - winnerElo >= 100) {
-      out.push({ text: `The ${winnerElo} takes down the ${loserElo}`, weight: 90 });
-    }
-  }
+  if (resultMs > 0 && resultMs < 600_000) out.push({ text: "A sub-10 to win it", weight: 57 });
 
   return out;
 }
@@ -143,6 +211,15 @@ export function hookFacts(input: HookInput) {
       left: eloAtMatchStart(match, userLeft.uuid, userLeft.eloRate),
       right: eloAtMatchStart(match, userRight.uuid, userRight.eloRate),
     },
+    /** Live standings — there is no match-time rank to read back, see candidates(). */
+    rank: { left: userLeft.eloRank ?? null, right: userRight.eloRank ?? null },
+    /** Ranked wins between these two, or null when the caller did not fetch them. */
+    h2h: input.versus
+      ? {
+          left: input.versus.results.ranked[userLeft.uuid] ?? 0,
+          right: input.versus.results.ranked[userRight.uuid] ?? 0,
+        }
+      : null,
     maxChars: input.maxChars,
     minChars: input.minChars,
   };

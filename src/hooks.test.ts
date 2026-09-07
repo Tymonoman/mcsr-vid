@@ -1,13 +1,28 @@
 import assert from "node:assert/strict";
 import { buildHookSuggestions, hookFacts, suggestHooksExternally, type HookInput } from "./hooks.js";
 import type { MatchMetrics } from "./matchScore.js";
-import type { MatchInfo, UserDetails } from "./types.js";
+import type { MatchInfo, UserDetails, VersusStats } from "./types.js";
 
 /** Budget from a real pair of nicknames: buildTitle("edcr","doogile") gives 34-47. */
 const MAX = 47;
 const MIN = 34;
 
-function input(over: Partial<MatchMetrics> = {}, matchOver: Partial<MatchInfo> = {}): HookInput {
+/** Elo `changes` that put edcr at 1850 and doogile at 2050 going in. */
+const ELO_GAP = {
+  changes: [
+    { uuid: "uuid-l", eloRate: 1870, change: 20 },
+    { uuid: "uuid-r", eloRate: 2030, change: -20 },
+  ],
+} as unknown as Partial<MatchInfo>;
+
+const versus = (leftWins: number, rightWins: number): VersusStats =>
+  ({ results: { ranked: { "uuid-l": leftWins, "uuid-r": rightWins } } }) as unknown as VersusStats;
+
+function input(
+  over: Partial<MatchMetrics> = {},
+  matchOver: Partial<MatchInfo> = {},
+  extra: Partial<HookInput> = {},
+): HookInput {
   const metrics: MatchMetrics = {
     matchId: 1,
     players: ["edcr", "doogile"],
@@ -32,8 +47,6 @@ function input(over: Partial<MatchMetrics> = {}, matchOver: Partial<MatchInfo> =
     players: [],
     ...matchOver,
   } as unknown as MatchInfo;
-  const user = (nickname: string, uuid: string): UserDetails =>
-    ({ nickname, uuid, eloRate: 1900 }) as unknown as UserDetails;
   return {
     metrics,
     match,
@@ -41,8 +54,12 @@ function input(over: Partial<MatchMetrics> = {}, matchOver: Partial<MatchInfo> =
     userRight: user("doogile", "uuid-r"),
     maxChars: MAX,
     minChars: MIN,
+    ...extra,
   };
 }
+
+const user = (nickname: string, uuid: string, eloRank: number | null = null): UserDetails =>
+  ({ nickname, uuid, eloRate: 1900, eloRank }) as unknown as UserDetails;
 
 // A photo finish is the whole story and must lead. The number is the real margin, not a
 // rounding — a hook that overstates the match is worse than no hook.
@@ -72,18 +89,92 @@ assert.deepEqual(buildHookSuggestions({ ...input({ finishMarginMs: 2_400 }), max
 
 // Underdog: elo comes from the match-time rating, not the live one. changes[] carries
 // eloRate *after* the match plus the delta, so edcr started at 1850 and doogile at 2050.
-const upset = buildHookSuggestions(
-  input({ winner: "edcr" }, {
-    changes: [
-      { uuid: "uuid-l", eloRate: 1870, change: 20 },
-      { uuid: "uuid-r", eloRate: 2030, change: -20 },
-    ],
-  } as unknown as Partial<MatchInfo>),
-);
+const upset = buildHookSuggestions(input({ winner: "edcr" }, ELO_GAP));
 assert.ok(
   upset.some((t) => t === "The 1850 takes down the 2050"),
   `expected an underdog hook, got ${JSON.stringify(upset)}`,
 );
+
+// --- Rivalry framing outranks description ------------------------------------------------
+// Measured on the first seven uploads: rivalry hooks took 9.36% CTR, descriptive ones 2.25%.
+// So with rivalry data present a descriptive chip must never reach the top of the list — and
+// the top one is what public/app.js drops into the hook input's placeholder.
+const rivalry = buildHookSuggestions(
+  input({ winner: "edcr", finishMarginMs: 2_400, leadChanges: 4 }, ELO_GAP, {
+    userLeft: user("edcr", "uuid-l", 4),
+    userRight: user("doogile", "uuid-r", 11),
+    versus: versus(1, 2),
+  }),
+  4,
+);
+assert.deepEqual(rivalry, [
+  "Rematch: doogile leads 2-1",
+  "The 1850 takes down the 2050",
+  "#4 vs #11",
+  "2050 vs 1850",
+]);
+
+// A tie is still a rivalry, but nobody "leads" it.
+assert.equal(buildHookSuggestions(input({}, ELO_GAP, { versus: versus(2, 2) }))[0], "Rematch: 2-2 all time");
+
+// One-sided history is not a rivalry, and a first meeting is a fact about the fixture list
+// rather than a reason to click: no chip either way.
+for (const record of [versus(3, 0), versus(0, 0)]) {
+  const none = buildHookSuggestions(input({}, {}, { versus: record }));
+  assert.ok(!none.some((t) => t.startsWith("Rematch")), `unexpected h2h chip in ${JSON.stringify(none)}`);
+}
+
+// `versus` is optional — every caller that predates it still works, and just loses that chip.
+const noVersus = buildHookSuggestions(input({ finishMarginMs: 2_400 }));
+assert.equal(noVersus[0], "Decided by 2.4 seconds");
+assert.ok(!noVersus.some((t) => t.startsWith("Rematch")));
+
+// Ranks a viewer cannot place are two numbers, not a matchup.
+assert.ok(
+  !buildHookSuggestions(
+    input({}, {}, { userLeft: user("edcr", "uuid-l", 843), userRight: user("doogile", "uuid-r", 1291) }),
+  ).some((t) => t.includes("#843")),
+);
+
+// Descriptive chips are still there underneath, and still lead when there is no rivalry to
+// state — a match between two unranked players of equal elo is exactly that case.
+const plain = buildHookSuggestions(input({ finishMarginMs: 2_400, leadChanges: 4, deaths: 0 }));
+assert.equal(plain[0], "Decided by 2.4 seconds");
+assert.ok(plain.includes("The lead changed 4 times"));
+assert.ok(plain.includes("Not a single death between them"));
+
+// The budget applies to rivalry chips too: an over-long rematch line is dropped, not truncated.
+const longName = buildHookSuggestions(
+  input(
+    {},
+    {},
+    {
+      userRight: user("a-nickname-far-past-the-title-budget", "uuid-r"),
+      versus: versus(1, 2),
+    },
+  ),
+);
+for (const text of longName) assert.ok(text.length <= MAX && text.length >= 8, text);
+assert.ok(!longName.some((t) => t.startsWith("Rematch")));
+
+// Length still only breaks ties: the in-band chip wins between equal weights, never against a
+// heavier one.
+for (const text of rivalry) assert.ok(text.length <= MAX, `"${text}" is over the ${MAX} budget`);
+assert.deepEqual(buildHookSuggestions({ ...input({}, ELO_GAP, { versus: versus(1, 2) }), maxChars: 12 }), [
+  "2050 vs 1850",
+]);
+
+// hookFacts carries the same rivalry facts, so an external generator sees what the built-ins do.
+const rivalryFacts = hookFacts(
+  input({}, ELO_GAP, {
+    userLeft: user("edcr", "uuid-l", 4),
+    userRight: user("doogile", "uuid-r", 11),
+    versus: versus(1, 2),
+  }),
+);
+assert.deepEqual(rivalryFacts.rank, { left: 4, right: 11 });
+assert.deepEqual(rivalryFacts.h2h, { left: 1, right: 2 });
+assert.equal(hookFacts(input()).h2h, null);
 
 // A forfeit is stated plainly rather than dressed up as a close finish.
 assert.ok(

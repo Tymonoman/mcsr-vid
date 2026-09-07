@@ -17,7 +17,7 @@ import { describeError } from "./errorText.js";
 import { buildHookSuggestions, suggestHooksExternally } from "./hooks.js";
 import { computeMetrics } from "./matchScore.js";
 import { listMatchStatuses, matchStatusFor } from "./matchStatus.js";
-import { getMatch, getUser, parseMatchId } from "./mcsrApi.js";
+import { getMatch, getUser, getVersus, parseMatchId } from "./mcsrApi.js";
 import { abortJob, getJob, startJob, streamProgress } from "./jobs.js";
 import { STAGE_LABELS, STAGE_ORDER, STAGE_SHORT_LABELS } from "./pipeline.js";
 import { dismiss, snapshot, startScan } from "./suggestScan.js";
@@ -134,9 +134,11 @@ async function readMeta(matchId: number) {
 }
 
 /**
- * Hook candidates for the title editor. Costs one more MCSR request than the metadata read
- * alone, because the openers are built from splits and deaths that only the full match carries;
- * a failure degrades to no suggestions rather than failing the whole metadata response, since
+ * Hook candidates for the title editor. Uncached, and four requests per metadata read: the match
+ * (splits and deaths, which only the full record carries), both users (rank), and the versus
+ * record (the rematch line). That is one operator opening one match, against a 500-per-10-minute
+ * budget, so it is affordable; it would not be if this ran per row of the suggestions list.
+ * A failure degrades to no suggestions rather than failing the whole metadata response, since
  * the title and description are still perfectly editable without them.
  */
 async function readHookSuggestions(matchId: number, budget: BuiltTitle): Promise<string[]> {
@@ -144,7 +146,13 @@ async function readHookSuggestions(matchId: number, budget: BuiltTitle): Promise
     const match = await getMatch(matchId);
     const [left, right] = match.players;
     if (!left || !right) return [];
-    const [userLeft, userRight] = await Promise.all([getUser(left.uuid), getUser(right.uuid)]);
+    const [userLeft, userRight, versus] = await Promise.all([
+      getUser(left.uuid),
+      getUser(right.uuid),
+      // The head-to-head record, for the rematch opener. Its own catch: it is the one fact here
+      // that only feeds a single chip, so losing it must not cost the other suggestions.
+      getVersus(left.uuid, right.uuid).catch(() => undefined),
+    ]);
     const input = {
       metrics: computeMetrics(match),
       match,
@@ -152,6 +160,7 @@ async function readHookSuggestions(matchId: number, budget: BuiltTitle): Promise
       userRight,
       maxChars: budget.hookMax,
       minChars: budget.hookMin,
+      versus,
     };
     return (await suggestHooksExternally(input)) ?? buildHookSuggestions(input);
   } catch (err) {
