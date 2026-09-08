@@ -178,7 +178,9 @@ the page is newer than its server: the nightly strip detects that (the old serve
   `<mediaDir>/<id>/publish.json`. `uploaded` is also derived (youtube.json) — the tick exists
   because uploads go through Studio until the API audit clears. The Rendered tab counts
   matches that are exported and not uploaded (`Rendered (4 ready)`); rows say *ready to
-  publish* / *published*; hidden matches are out of the count.
+  publish* / *published*; hidden matches are out of the count. Rows are ordered by what to
+  publish next — ready first, the ready ones the competitor already posted after them, then in
+  progress, published last, newest first within each — with a one-line legend saying so.
 - **Dismiss** on a card hides a suggestion (`DELETE /api/suggestions/:id`); it leaves an
   undo line above the cards (`POST /api/suggestions/:id/restore`), which puts the row back at
   once if this process dismissed it and otherwise at the next scan.
