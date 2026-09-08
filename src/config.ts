@@ -66,6 +66,12 @@ export interface Config {
    */
   rivalChannelHandle: string;
   /**
+   * A tip-jar URL (Ko-fi, PayPal.me) for the description's "Support the channel" line. The
+   * audit named it the one revenue stream not gated at 41 subscribers, and the active
+   * competitor runs a PayPal.me link in every description. Empty: no line.
+   */
+  supportUrl: string;
+  /**
    * Seconds of overlay before the RTA timer starts.
    *
    * This is also where the published video begins: the timeline is anchored on the world-load
@@ -196,6 +202,7 @@ const DEFAULTS: Config = {
   youtubePlaylistTitle: "MCSR Ranked matches",
   youtubePlaylistUrl: "",
   rivalChannelHandle: "mcsrmatches",
+  supportUrl: "",
   overlayLeadInSec: 10,
   overlayFps: 30,
   renderConcurrency: null,

@@ -42,6 +42,8 @@ export interface DescriptionInput {
   chapters: ChapterMarker[];
   /** `config.youtubePlaylistUrl`; empty or absent means no playlist line. */
   playlistUrl?: string;
+  /** `config.supportUrl`; empty or absent means no tip-jar line. */
+  supportUrl?: string;
 }
 
 /**
@@ -105,6 +107,9 @@ export function buildDescription(input: DescriptionInput): string {
     `Watch ${userRight.nickname}'s POV: ${vodDeepLink(rightWindow)}`,
     `Match data: https://mcsrranked.com/matches/${matchId}`,
     "",
+    // Below the links and above the disclaimer: the one line that can earn before the
+    // Partner Programme does, and where the competitor puts its PayPal.me.
+    ...(input.supportUrl ? [`Support the channel: ${input.supportUrl}`, ""] : []),
     "MCSR Replayoffs is an independent fan project, not affiliated with MCSR Ranked.",
     "Spot a sync issue or a stat error? Flag it — this pipeline is actively maintained, not fire-and-forget automation.",
     "",

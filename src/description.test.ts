@@ -89,6 +89,15 @@ assert.ok(!text.includes("Every match on the channel"), "no playlist line until 
   assert.ok(at < withList.indexOf("Watch edcr's POV"), "playlist link comes before the Twitch links");
   assert.ok(at > withList.indexOf("Chapters:"), "but stays below the chapters, out of the preview");
 }
+
+// The tip jar is opt-in and sits between the links and the disclaimer.
+assert.ok(!text.includes("Support the channel"), "no tip-jar line until a URL is configured");
+{
+  const withTip = build(match(), { supportUrl: "https://ko-fi.com/mcsrreplayoffs" });
+  const at = withTip.indexOf("Support the channel: https://ko-fi.com/mcsrreplayoffs");
+  assert.ok(at > withTip.indexOf("Match data:"), "below the links");
+  assert.ok(at < withTip.indexOf("independent fan project"), "above the disclaimer");
+}
 assert.match(text, /independent fan project, not affiliated with MCSR Ranked/);
 assert.match(text, /synced dual-POV with live split comparison/, "the added-value line YPP review looks for");
 
