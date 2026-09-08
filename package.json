@@ -10,7 +10,7 @@
     "validate-sync": "tsx src/validateSync.ts",
     "build-overlay-css": "node scripts/build-overlay-css.mjs",
     "remotion:studio": "npm run build-overlay-css && remotion studio remotion/index.ts",
-    "//still": "Render one frame of a composition to PNG \u2014 the fast visual check before a full render.",
+    "//still": "Render one frame of a composition to PNG — the fast visual check before a full render.",
     "still": "npm run build-overlay-css && remotion still remotion/index.ts",
     "//validate-project": "Load a generated .kdenlive through the MLT engine; exit 0 = parses, 1 = malformed XML.",
     "validate-project": "melt-7 -consumer xml:/dev/null",
@@ -41,6 +41,7 @@
   "devDependencies": {
     "@types/node": "^24.0.0",
     "@types/react": "^19.2.18",
+    "playwright": "^1.63.0",
     "prettier": "^3.9.6",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"
