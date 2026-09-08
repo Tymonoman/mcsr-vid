@@ -108,4 +108,47 @@ assert.equal(buildShortTitle("#7 vs #11"), "#7 vs #11", "hash-bearing hooks must
 assert.equal(buildShortTitle("WANNABE vs REAL GOAT"), "WANNABE vs REAL GOAT #minecraft #mcsr");
 console.log("OK: a rank hook stands alone in the Short title");
 
+// The thumbnail's committed hook outranks a fresh suggestion, because rank chips read live rank
+// and the two halves of a match would otherwise drift apart ("#3 vs #17" vs "#3 vs #21").
+{
+  const { mkdtemp, writeFile: wf, rm: rmDir } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { resolveShortHookFor } = await import("./shortHook.js");
+  const dir = await mkdtemp((await import("node:path")).join(tmpdir(), "mcsr-shorthook-"));
+  await wf(
+    (await import("node:path")).join(dir, "thumbnail.json"),
+    JSON.stringify({ chosen: "a-b", hookText: "#3 vs #17", variants: [] }),
+  );
+  const user = (nickname: string, uuid: string) =>
+    ({ nickname, uuid, eloRate: 1900, eloRank: 40 }) as unknown as import("./types.js").UserDetails;
+  const match = {
+    forfeited: false,
+    changes: [],
+    result: { uuid: null, time: 500_000 },
+    players: [
+      { uuid: "ua", nickname: "a", eloRate: 1900, eloRank: 40 },
+      { uuid: "ub", nickname: "b", eloRate: 1900, eloRank: 41 },
+    ],
+    timelines: [],
+  } as unknown as import("./types.js").MatchInfo;
+  const moment = {
+    startMs: 0,
+    endMs: 22_000,
+    score: 1,
+    reason: "x",
+    events: [],
+  } as unknown as import("./shortMoment.js").ShortMoment;
+  const hook = await resolveShortHookFor({
+    matchId: 1,
+    match,
+    moment,
+    userLeft: user("a", "ua"),
+    userRight: user("b", "ub"),
+    matchDir: dir,
+  });
+  assert.equal(hook, "#3 vs #17", "the thumbnail's committed hook must win over a fresh suggestion");
+  await rmDir(dir, { recursive: true, force: true });
+  console.log("OK: the Short reuses the thumbnail's committed hook");
+}
+
 console.log("shortHook: all checks passed");

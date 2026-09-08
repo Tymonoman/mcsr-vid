@@ -286,8 +286,25 @@ export function matchupPlaylistTitle(a: string, b: string): string {
   return `${first} vs ${second} · MCSR Ranked`;
 }
 
+/**
+ * Playlist ids this process has already resolved or created, by title. YouTube's `playlists.list`
+ * does not show a playlist it created a second earlier — measured: the season playlist was made,
+ * the very next call listed the channel without it, and created a second one with the same title.
+ * Every upload runs two inserts back to back (season, then matchup), so without this the channel
+ * grows a duplicate playlist per upload.
+ */
+const playlistIds = new Map<string, string>();
+
 /** Exported for the test; `addToPlaylist` is the entry point everything else should use. */
 export async function findOrCreatePlaylist(title: string): Promise<string> {
+  const known = playlistIds.get(title);
+  if (known) return known;
+  const id = await lookupOrCreatePlaylist(title);
+  playlistIds.set(title, id);
+  return id;
+}
+
+async function lookupOrCreatePlaylist(title: string): Promise<string> {
   // `mine=true` scopes the search to the operator's own playlists, so a title collision with
   // someone else's public playlist cannot hijack this.
   let pageToken = "";

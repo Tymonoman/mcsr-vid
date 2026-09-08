@@ -125,6 +125,18 @@ try {
   assert.equal(matchupPlaylistTitle("apple", "Banana"), "apple vs Banana · MCSR Ranked");
   console.log("OK: the per-matchup title is seat- and case-independent");
 
+  // --- 5. A created playlist is remembered, because listing does not show it yet ---------------
+  // Measured on the real channel: create, then list one second later, and the new playlist is
+  // absent — the next insert created a duplicate. The second call must not list at all.
+  calls = stubFetch([{ items: [] }, { items: [] }], "PL_ONCE");
+  await addToPlaylist("VID5", "Season two");
+  await addToPlaylist("VID6", "Season two");
+  const creates = calls.filter((c) => c.url.includes("/playlists?") && c.method === "POST").length;
+  const lists2 = calls.filter((c) => c.url.includes("/playlists?") && c.method === "GET").length;
+  assert.equal(creates, 1, "the same title must be created once per process, not per upload");
+  assert.equal(lists2, 1, "after creating, the id is remembered rather than listed again");
+  console.log("OK: a freshly created playlist is reused without re-listing");
+
   console.log("playlist: all checks passed");
 } finally {
   await rm(dir, { recursive: true, force: true });

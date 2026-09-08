@@ -4,6 +4,7 @@ import { HASHTAGS } from "./description.js";
 import { buildHookSuggestions } from "./hooks.js";
 import { computeMetrics } from "./matchScore.js";
 import type { ShortMoment } from "./shortMoment.js";
+import { readManifest } from "./thumbnailVariants.js";
 import { buildTitle, HOOK_PLACEHOLDER, SEPARATOR } from "./title.js";
 import type { MatchInfo, UserDetails } from "./types.js";
 
@@ -100,16 +101,24 @@ export async function resolveShortHookFor(input: {
   const editedTitle = await readFile(path.join(matchDir, `match-${matchId}.title.edited.txt`), "utf8").catch(
     () => null,
   );
+  // The thumbnail already committed to a hook when the pipeline ran, and rank chips read *live*
+  // rank — measured on one match: thumbnail "#3 vs #17" at render time, Short "#3 vs #21" an hour
+  // later. A viewer sees both halves of a match; they must not disagree. So an operator-picked
+  // title still wins, but the thumbnail's line beats a fresh suggestion.
+  const committed = (await readManifest(matchDir))?.hookText ?? null;
   return resolveShortHook(
     editedTitle,
-    buildHookSuggestions({
-      metrics: computeMetrics(match),
-      match,
-      userLeft,
-      userRight,
-      maxChars: budget.hookMax,
-      minChars: budget.hookMin,
-    }),
+    [
+      ...(committed ? [committed] : []),
+      ...buildHookSuggestions({
+        metrics: computeMetrics(match),
+        match,
+        userLeft,
+        userRight,
+        maxChars: budget.hookMax,
+        minChars: budget.hookMin,
+      }),
+    ],
     buildShortHook(moment, userLeft.nickname, userRight.nickname),
   );
 }
