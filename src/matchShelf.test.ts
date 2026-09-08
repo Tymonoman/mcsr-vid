@@ -98,6 +98,7 @@ try {
       thumbnailChosen: false,
       uploaded: false,
       shortRendered: false,
+      chatSaved: false,
       shortUploaded: false,
       relatedLinkSet: false,
       endScreenSet: false,
@@ -132,6 +133,12 @@ try {
   // Same rule as the hidden list: a cosmetic file must never take the panel down.
   writeFileSync(path.join(pubDir, "publish.json"), "{ not json");
   assert.equal((await publishChecklist(555, null)).relatedLinkSet, false, "corrupt reads as unticked");
+
+  // Chat is a fact about two files, one per player; one alone is not a match's chat.
+  writeFileSync(path.join(pubDir, "chat-edcr.json"), "{}");
+  assert.equal((await publishChecklist(555, null)).chatSaved, false, "one chat file is not both");
+  writeFileSync(path.join(pubDir, "chat-doogile.json"), "{}");
+  assert.equal((await publishChecklist(555, null)).chatSaved, true, "both players' chats saved");
 
   // --- 8. "Ready to publish" is exported and not uploaded; a Studio upload is ticked by hand ---
   // A fresh match: 555 has the youtube.json from case 7, which is the other way to be uploaded.

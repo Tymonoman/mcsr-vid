@@ -310,6 +310,7 @@ const CHECKLIST = [
   ["thumbnailChosen", "thumbnail"],
   ["uploaded", "uploaded", true],
   ["shortRendered", "Short rendered"],
+  ["chatSaved", "chat saved"],
   ["shortUploaded", "Short uploaded", true],
   ["relatedLinkSet", "related link", true],
   ["endScreenSet", "end screen", true],

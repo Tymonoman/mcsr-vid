@@ -13,7 +13,7 @@
  * Hiding is the reversible option and the one the list uses by default: it only filters the
  * dashboard, and touches nothing on disk inside the match directory.
  */
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { config } from "./config.js";
@@ -129,6 +129,8 @@ export type PublishChecklist = Record<ManualPublishKey, boolean> & {
   thumbnailChosen: boolean;
   uploaded: boolean;
   shortRendered: boolean;
+  /** Both players' Twitch chat saved beside the media (src/twitchChat.ts) — the chat panel's input. */
+  chatSaved: boolean;
 };
 
 /** Inside the match directory, so the state travels with the media — as `.dashboard.json` does. */
@@ -158,6 +160,15 @@ export function setPublishFlag(matchId: number, key: ManualPublishKey, value: bo
  * disk read: the route already holds a `matchStatusFor` entry, and asking for one here would
  * cost an MCSR API request per pill.
  */
+/** How many `chat-<nick>.json` files sit beside the media; two is a match. */
+function chatFiles(dir: string): number {
+  try {
+    return readdirSync(dir).filter((f) => /^chat-.+\.json$/.test(f)).length;
+  } catch {
+    return 0;
+  }
+}
+
 /** Uploaded by the dashboard (youtube.json beside the media) or ticked as uploaded in Studio. */
 export async function isUploaded(matchId: number): Promise<boolean> {
   return (await readUpload(matchId)) !== null || readManual(matchId).uploaded;
@@ -189,5 +200,6 @@ export async function publishChecklist(
     thumbnailChosen: Boolean((await readManifest(dir))?.chosen),
     uploaded: await isUploaded(matchId),
     shortRendered: existsSync(path.join(dir, `short-${matchId}.mp4`)),
+    chatSaved: chatFiles(dir) >= 2,
   };
 }
