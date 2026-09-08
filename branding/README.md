@@ -12,7 +12,11 @@ To regenerate after a palette or badge-geometry change:
 ```
 pip install pillow
 python3 branding/generate_brand_assets.py
+cp branding/logo.png docs/logo.png
 ```
+
+The last line matters: GitHub Pages serves only `/docs`, so `docs/logo.png` is a
+copy of this one and drifts silently if it isn't recopied.
 
 If `pixelBadge.ts`'s ring parameters (grid size, radii, gap angles) change,
 mirror them in `build_ring_cells()` here too — the two are intentionally

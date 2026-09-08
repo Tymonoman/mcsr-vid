@@ -2,7 +2,6 @@ node_modules/
 out/
 dist/
 media/
-downloads/
 package-lock.json
 remotion/overlay.css
 remotion/assets/

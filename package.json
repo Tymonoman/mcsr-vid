@@ -3,14 +3,13 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "description": "Turns an MCSR Ranked match into a ready-to-edit Kdenlive project: dual-POV VOD download, audio sync, stat overlay, and timeline assembly.",
+  "description": "Turns an MCSR Ranked match into a synced dual-POV video with a split-timer overlay: VOD download, countdown sync, Remotion overlay, Kdenlive project or headless MP4.",
   "scripts": {
     "fetch-match": "tsx src/fetchMatch.ts",
     "download-vods": "tsx src/downloadVods.ts",
     "validate-sync": "tsx src/validateSync.ts",
     "build-overlay-css": "node scripts/build-overlay-css.mjs",
     "remotion:studio": "npm run build-overlay-css && remotion studio remotion/index.ts",
-    "remotion:render": "npm run build-overlay-css && remotion render remotion/index.ts MatchOverlay",
     "//still": "Render one frame of a composition to PNG \u2014 the fast visual check before a full render.",
     "still": "npm run build-overlay-css && remotion still remotion/index.ts",
     "//validate-project": "Load a generated .kdenlive through the MLT engine; exit 0 = parses, 1 = malformed XML.",
@@ -42,7 +41,6 @@
   "devDependencies": {
     "@types/node": "^24.0.0",
     "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.4",
     "prettier": "^3.9.6",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"

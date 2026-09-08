@@ -4,15 +4,13 @@ dist/
 .env.*
 /mcsr-vid.config.json
 /media/
-/downloads/
-/output/
 /out/
 *.mp4
-*.mkv
 *.webm
 *.mov
 /remotion/overlay.css
-/.claude/
+/.claude/*
+!/.claude/settings.json
 /.claude-flow/
 
 # Long-lived YouTube refresh token written by `npm run youtube-auth`.

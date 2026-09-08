@@ -1,8 +1,8 @@
 import { Config } from "@remotion/cli/config";
 
-// No project-root public/ dir exists (fonts are base64-inlined at build time instead) —
-// point staticFile()'s resolution at remotion/assets/ so vendored images (e.g. achievement
-// badges) can live next to the other vendored assets instead of a separate public/ tree.
+// public/ at the repo root is the dashboard's, not Remotion's. Point staticFile() at
+// remotion/assets/ so the vendored achievement badges resolve and the dashboard files never end
+// up in a bundle (src/remotionBundle.ts sets the same dir for programmatic renders).
 Config.setPublicDir("remotion/assets");
 
 Config.overrideWebpackConfig((currentConfig) => ({
