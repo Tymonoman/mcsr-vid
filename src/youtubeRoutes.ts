@@ -21,6 +21,7 @@ import {
   isConfigured,
   latestImpressions,
   matchupPlaylistTitle,
+  playerPlaylistTitle,
   replyToComment,
   setThumbnail,
   uploadVideo,
@@ -305,6 +306,9 @@ async function startUpload(
       // upload it cannot be quietly re-done later.
       if (status.leftNickname !== "?" && status.rightNickname !== "?") {
         await joinPlaylist(matchupPlaylistTitle(status.leftNickname, status.rightNickname));
+        // And one per player: the link a runner shares, and the one their followers browse.
+        await joinPlaylist(playerPlaylistTitle(status.leftNickname));
+        await joinPlaylist(playerPlaylistTitle(status.rightNickname));
       }
 
       const record: UploadRecord = {

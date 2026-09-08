@@ -112,6 +112,9 @@
 .scanline.bad {
   color: var(--crimson);
 }
+.scanline a {
+  color: var(--warped);
+}
 .sugg {
   padding: 10px 12px;
   border-bottom: 1px solid var(--panel-edge);
@@ -127,17 +130,27 @@
 }
 /* Two buckets ranked separately so a run of very tight matches cannot crowd out the funny
    ones -- the colours keep that split visible rather than implying one ordering. */
-.sugg .bucket {
+.bucket {
   font-size: 10px;
   letter-spacing: 1px;
   padding: 1px 5px;
   border: 1px solid currentColor;
 }
-.sugg .bucket.close {
+.bucket.close {
   color: var(--warped);
 }
-.sugg .bucket.chaos {
+.bucket.chaos {
   color: var(--gold);
+}
+.bucketlegend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  padding: 6px 12px;
+  font-size: 11px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--panel-edge);
 }
 /* The line that actually sells the match -- ranks, elo, rivalry, audience -- so it reads at
    full brightness, above the facts. */

@@ -287,6 +287,15 @@ export function matchupPlaylistTitle(a: string, b: string): string {
 }
 
 /**
+ * The playlist title for one player: every match of theirs on the channel. Runners' fans follow
+ * a runner, not a channel, and a runner asked to share "their" matches needs one link, not a
+ * search. The nickname as the API spells it, so the same person never gets two.
+ */
+export function playerPlaylistTitle(nickname: string): string {
+  return `${nickname} · MCSR Ranked matches`;
+}
+
+/**
  * Playlist ids this process has already resolved or created, by title. YouTube's `playlists.list`
  * does not show a playlist it created a second earlier — measured: the season playlist was made,
  * the very next call listed the channel without it, and created a second one with the same title.

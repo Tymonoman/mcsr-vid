@@ -1026,13 +1026,19 @@ function renderSuggestions(data) {
   updateBackLabel();
 
   // A failed scan keeps whatever list it had: a stale suggestion is still a renderable match.
+  // Settled, the line says what was scanned and offers a rescan — the list refreshes itself
+  // every suggestCacheTtlMin, and until now there was no way to ask sooner from the browser.
   const scan = data.scanning
     ? `<div class="scanline">scanning&hellip; ${data.scanned} matches, ${data.candidates} with two VODs</div>`
     : data.error
       ? `<div class="scanline bad">scan failed: ${esc(data.error)}</div>`
-      : data.note
-        ? `<div class="scanline">${esc(data.note)}</div>`
-        : "";
+      : `<div class="scanline">${data.scanned ? `${data.scanned} scanned, ${data.candidates} with two VODs` : "list from the last scan"}${data.note ? ` &middot; ${esc(data.note)}` : ""} &middot; <a href="#" data-act="rescan" title="Scan again now (~340 MCSR API calls). The list refreshes itself every 30 minutes.">rescan</a></div>`;
+
+  // The two words on every card, explained once. The stage strip had the same gap: labels that
+  // are obvious to whoever wrote the scorer and to nobody else.
+  const legend = data.suggestions.length
+    ? `<div class="bucketlegend"><span class="bucket close">CLOSE</span><span>decided by seconds at the finish</span><span class="bucket chaos">CHAOS</span><span>lead changes, deaths, the mess</span></div>`
+    : "";
 
   // Dismiss is next to Render on a phone, and used to be permanent. One line, above the cards,
   // until it is used or the next dismiss replaces it.
@@ -1079,8 +1085,14 @@ function renderSuggestions(data) {
         })
         .join("");
 
-  el.innerHTML = '<div id="nightly" class="nightly"></div>' + undo + scan + cards;
+  el.innerHTML = '<div id="nightly" class="nightly"></div>' + undo + scan + legend + cards;
   paintNightly();
+  el.querySelector('[data-act="rescan"]')?.addEventListener("click", async (ev) => {
+    ev.preventDefault();
+    renderSuggestions(await api("/api/suggestions/rescan", { method: "POST" }));
+    clearTimeout(suggestPoll);
+    suggestPoll = setTimeout(pollSuggestions, 2000);
+  });
   el.querySelector('[data-act="undo"]')?.addEventListener("click", async (ev) => {
     ev.preventDefault();
     const { id, who } = lastDismissed;

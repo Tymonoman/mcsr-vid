@@ -13,7 +13,7 @@ await writeFile(
   JSON.stringify({ client_id: "c", client_secret: "s", refresh_token: "r" }),
 );
 
-const { addToPlaylist, matchupPlaylistTitle } = await import("./youtube.js");
+const { addToPlaylist, matchupPlaylistTitle, playerPlaylistTitle } = await import("./youtube.js");
 
 interface Call {
   url: string;
@@ -126,6 +126,16 @@ try {
   // pair would then split in two the moment the API seated them the other way round.
   assert.equal(matchupPlaylistTitle("apple", "Banana"), "apple vs Banana · MCSR Ranked");
   console.log("OK: the per-matchup title is seat- and case-independent");
+
+  // --- 4b. One playlist per player, distinct from the season's and from any matchup's ----------
+  assert.equal(playerPlaylistTitle("Feinberg"), "Feinberg · MCSR Ranked matches");
+  assert.notEqual(
+    playerPlaylistTitle("Feinberg"),
+    "MCSR Ranked matches",
+    "must not collide with the season playlist",
+  );
+  assert.notEqual(playerPlaylistTitle("Feinberg"), matchupPlaylistTitle("Feinberg", "doogile"));
+  console.log("OK: the per-player title is its own playlist");
 
   // --- 5. A created playlist is remembered, because listing does not show it yet ---------------
   // Measured on the real channel: create, then list one second later, and the new playlist is

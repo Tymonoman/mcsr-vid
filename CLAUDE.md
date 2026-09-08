@@ -107,8 +107,9 @@ the page is newer than its server: the nightly strip detects that (the old serve
   `abTestPayload`, impression-weighted); videos whose manifest is missing land in `Unknown`.
 - **Upload** sends the tags from `match-<id>.tags.txt` (written by the pipeline, see
   `buildTags` in `src/description.ts`) and refuses — server and client — any title still
-  containing `<HOOK>`. After upload it adds the video to the season playlist *and* a
-  per-matchup one (`matchupPlaylistTitle` in `src/youtube.ts`, seat- and case-independent).
+  containing `<HOOK>`. After upload it adds the video to the season playlist, a
+  per-matchup one (`matchupPlaylistTitle` in `src/youtube.ts`, seat- and case-independent) and
+  one per player (`playerPlaylistTitle`) — the link a runner shares.
   `findOrCreatePlaylist` remembers ids per process: YouTube's `playlists.list` does not show a
   playlist created a second earlier, and the back-to-back inserts made a duplicate on the live
   channel before this. The season playlist exists: `PLHG-jSA-dWDo`, all uploads to date.
