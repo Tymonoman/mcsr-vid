@@ -1,5 +1,5 @@
 import path from "node:path";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { requireArg } from "./cliArgs.js";
 import { config } from "./config.js";
@@ -8,6 +8,7 @@ import { distinctShortMoments, SHORT_WINDOW_SEC } from "./shortMoment.js";
 import { renderShort } from "./shortRender.js";
 import { eloAtMatchStart } from "./overlayProps.js";
 import { buildShortDescription, buildShortTitle, resolveShortHookFor } from "./shortHook.js";
+import { readChatTimes } from "./twitchChat.js";
 
 /**
  * npm run short -- <matchId> [--pick=N] [--seconds=22] [--top-crop=x,y,w,h] [--bottom-crop=...]
@@ -60,18 +61,7 @@ for (const p of [playerLeft, playerRight]) {
 
 // Both chats, merged, when the pipeline saved them: where the crowd reacted is a signal the
 // timeline does not have. A match without chat files scores exactly as before.
-const chatAtSec = readdirSync(outDir)
-  .filter((f) => /^chat-.+\.json$/.test(f))
-  .flatMap((f) => {
-    try {
-      const parsed = JSON.parse(readFileSync(path.join(outDir, f), "utf8")) as {
-        messages?: Array<{ atSec: number }>;
-      };
-      return (parsed.messages ?? []).map((m) => m.atSec);
-    } catch {
-      return [];
-    }
-  });
+const chatAtSec = readChatTimes(outDir);
 if (chatAtSec.length > 0) console.error(`Chat: ${chatAtSec.length} messages inform the moment`);
 
 const moments = distinctShortMoments(

@@ -11,7 +11,7 @@
  * hash this throws with Twitch's own message, which is the failure to look for first.
  */
 
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { describeError } from "./errorText.js";
@@ -164,6 +164,30 @@ export async function saveChats(
     }
   }
   return counts;
+}
+
+/**
+ * Every saved message's time for a match, both chats merged, in seconds after match start —
+ * the shape `shortMoment.ts` scores with. No files, or unreadable ones, is an empty list: the
+ * moment picker must behave exactly as before chat existed.
+ */
+export function readChatTimes(dir: string): number[] {
+  let files: string[];
+  try {
+    files = readdirSync(dir).filter((f) => /^chat-.+\.json$/.test(f));
+  } catch {
+    return [];
+  }
+  return files.flatMap((f) => {
+    try {
+      const parsed = JSON.parse(readFileSync(path.join(dir, f), "utf8")) as {
+        messages?: Array<{ atSec: number }>;
+      };
+      return (parsed.messages ?? []).map((m) => m.atSec).filter((t) => Number.isFinite(t));
+    } catch {
+      return [];
+    }
+  });
 }
 
 /** The VOD id in a `https://www.twitch.tv/videos/<id>` URL, or null. */

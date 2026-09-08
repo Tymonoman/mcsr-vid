@@ -18,6 +18,7 @@ import { getMatch, getUser } from "./mcsrApi.js";
 import { distinctShortMoments, SHORT_WINDOW_SEC } from "./shortMoment.js";
 import { buildShortHook, resolveShortHookFor } from "./shortHook.js";
 import { sendVideo } from "./rangeStream.js";
+import { readChatTimes } from "./twitchChat.js";
 
 /** One Short render in flight. Lines are retained so a browser joining late replays the run. */
 interface ShortJob {
@@ -132,6 +133,8 @@ export async function handleShortsRoute(
         ctx.json(res, 404, { error: "match does not have two players" });
         return true;
       }
+      // The same options the CLI cuts with — chat included — or the panel would offer one list
+      // and "Cut this" would render another.
       const moments = distinctShortMoments(
         match,
         {
@@ -139,6 +142,7 @@ export async function handleShortsRoute(
           rightUuid: right.uuid,
           runMs: match.result.time || 900_000,
           windowSec: SHORT_WINDOW_SEC,
+          chatAtSec: readChatTimes(dir),
         },
         5,
       );

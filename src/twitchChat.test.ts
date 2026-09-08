@@ -141,3 +141,30 @@ console.log("twitchChat: all checks passed");
     await rm(dir, { recursive: true, force: true });
   }
 }
+
+// --- readChatTimes: both files merged, missing or broken is empty ------------------------------
+{
+  const { mkdtemp, rm, writeFile } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const path = (await import("node:path")).default;
+  const { readChatTimes } = await import("./twitchChat.js");
+  const dir = await mkdtemp(path.join(tmpdir(), "mcsr-chattimes-"));
+  try {
+    assert.deepEqual(readChatTimes(dir), [], "no files, no times");
+    assert.deepEqual(readChatTimes(path.join(dir, "missing")), [], "no directory, no times, no throw");
+    await writeFile(
+      path.join(dir, "chat-a.json"),
+      JSON.stringify({ messages: [{ atSec: 5 }, { atSec: 9 }] }),
+    );
+    await writeFile(path.join(dir, "chat-b.json"), JSON.stringify({ messages: [{ atSec: 7 }] }));
+    await writeFile(path.join(dir, "chat-broken.json"), "{ not json");
+    assert.deepEqual(
+      [...readChatTimes(dir)].sort((x, y) => x - y),
+      [5, 7, 9],
+      "both chats, the broken one ignored",
+    );
+    console.log("OK: readChatTimes merges both chats and ignores what it cannot read");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
