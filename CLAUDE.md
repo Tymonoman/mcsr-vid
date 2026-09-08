@@ -83,7 +83,9 @@ fade it), then one ffmpeg pass scales both POVs into their panes and lays the bo
 
 `npm run dashboard` (port from `PORT`, default 8080). Server code in `src/` is read at boot;
 `public/` is served from disk per request. So after pulling server changes the production
-container needs `docker restart mcsr-dashboard`; a CSS/JS change is live on reload.
+container needs `docker restart mcsr-dashboard`; a CSS/JS change is live on reload. In between,
+the page is newer than its server: the nightly strip detects that (the old server answers
+`/api/nightly` with its id-parser error) and says to restart, rather than echoing the error.
 
 - **Suggestions** are scored candidate matches. Each card carries a story line built server-side
   (`src/suggestPresent.ts`): current rank, match-start elo, head-to-head record, Twitch followers,

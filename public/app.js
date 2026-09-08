@@ -899,6 +899,9 @@ let nightly = null;
 
 function nightlyInner() {
   if (!nightly) return '<div class="lines"><span class="muted">nightly&hellip;</span></div>';
+  if (nightly.stale) {
+    return `<div class="lines"><span class="bad">The server is running older code than this page</span> &middot; <code>docker restart mcsr-dashboard</code> on the lab enables the nightly render and the newer panels.</div>`;
+  }
   if (nightly.error) return `<div class="lines"><span class="bad">${esc(nightly.error)}</span></div>`;
 
   const { enabled, hourUtc, nextRunAt, candidate, lastRun } = nightly;
@@ -972,7 +975,12 @@ async function loadNightly() {
   try {
     nightly = await api("/api/nightly");
   } catch (e) {
-    nightly = { error: e.message };
+    // public/ is served from disk and src/ is read at boot, so after a pull this page is newer
+    // than the server until the container restarts. The old server answers this route with
+    // "match id must be digits" (no nightly route: the id parser gets "nightly"); say what that
+    // means instead of showing it.
+    const stale = /must be digits|not found/i.test(e.message);
+    nightly = { error: e.message, stale };
   }
   paintNightly();
 }
