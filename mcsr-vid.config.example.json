@@ -4,7 +4,7 @@
   "thumbnailVariants": [
     { "left": "walking", "right": "crossed" },
     { "left": "cheering", "right": "relaxing" },
-    { "left": "marching", "right": "crouching" }
+    { "left": "marching", "right": "crouching", "hook": false }
   ],
   "syncConfidenceThreshold": 0.15,
   "preRollSec": 150,

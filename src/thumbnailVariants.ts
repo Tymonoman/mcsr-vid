@@ -35,6 +35,13 @@ export interface VariantRecord {
    */
   leftProvider: AvatarProvider;
   rightProvider: AvatarProvider;
+  /**
+   * Whether this variant was rendered with the headline. False is the deliberate text-free
+   * control (`hook: false` on the configured pair) — the only way to answer "does text on the
+   * thumbnail lift CTR?", which pose alone never could. Backfilled by `readManifest` for
+   * sidecars written before the flag existed.
+   */
+  hook: boolean;
   /** Basename, not an absolute path: mediaDir differs between the container and the host. */
   file: string;
 }
@@ -76,8 +83,16 @@ export async function readManifest(outDir: string): Promise<VariantsManifest | n
   try {
     const parsed = JSON.parse(await readFile(file, "utf8")) as VariantsManifest;
     // Sidecars predating the hook have no field; null is "rendered without one", which is what
-    // those files show.
-    return { ...parsed, hookText: parsed.hookText ?? null };
+    // those files show. Per-variant `hook` arrived later still, and before it opting one variant
+    // out was impossible — so a sidecar without the field carried the headline on all its
+    // variants or none. This is the only place thumbnail.json is read, so backfilling here is
+    // the one helper every consumer already goes through.
+    const hookText = parsed.hookText ?? null;
+    return {
+      ...parsed,
+      hookText,
+      variants: parsed.variants.map((v) => ({ ...v, hook: v.hook ?? Boolean(hookText) })),
+    };
   } catch {
     // A truncated sidecar is not worth failing a render over; it is regenerated below.
     return null;
@@ -113,17 +128,25 @@ export async function renderThumbnailVariants(args: RenderVariantsArgs): Promise
   try {
     // Bundling dominates the cost of a still, so it happens once for all variants rather than
     // once per variant — which is also why the single-variant path now routes through here.
-    const serveUrl = await bundleOnce((percent) => args.onProgress?.({ phase: "bundling", percent }));
+    // Deferred until a still actually needs it: a call where every PNG is already on disk only
+    // rewrites the manifest, and paying ~10-30s of webpack for that is pure waste.
+    let bundled: Promise<string> | null = null;
+    const serveUrl = () =>
+      (bundled ??= bundleOnce((percent) => args.onProgress?.({ phase: "bundling", percent })));
 
     for (const [index, poses] of args.poses.entries()) {
       args.onProgress?.({ phase: "rendering", percent: Math.round((index / args.poses.length) * 100) });
 
+      // The control variant opts out of the headline while every other one carries it, so the
+      // A/B set varies text as well as pose. `rerenderThumbnailVariants` routes back through
+      // here, which is why a re-render with a new hook still leaves the control text-free.
+      const hookText = poses.hook === false ? undefined : args.hookText;
       const computed = await computeThumbnailProps(
         args.match,
         args.userLeft,
         args.userRight,
         poses,
-        args.hookText,
+        hookText,
       );
       const renderProps = { ...computed.props };
       const file = variantFile(poses);
@@ -135,6 +158,7 @@ export async function renderThumbnailVariants(args: RenderVariantsArgs): Promise
         rightPose: poses.right,
         leftProvider: computed.leftAvatar.provider,
         rightProvider: computed.rightAvatar.provider,
+        hook: Boolean(hookText?.trim()),
         file,
       });
 
@@ -143,9 +167,14 @@ export async function renderThumbnailVariants(args: RenderVariantsArgs): Promise
       // The manifest must still list it, which is why the record is pushed above this check.
       if (existsSync(outPath)) continue;
 
-      const composition = await selectComposition({ serveUrl, id: "Thumbnail", inputProps: renderProps });
+      const bundleUrl = await serveUrl();
+      const composition = await selectComposition({
+        serveUrl: bundleUrl,
+        id: "Thumbnail",
+        inputProps: renderProps,
+      });
       await atomicOutput(outPath, (output) =>
-        renderStill({ composition, serveUrl, output, inputProps: renderProps, cancelSignal }),
+        renderStill({ composition, serveUrl: bundleUrl, output, inputProps: renderProps, cancelSignal }),
       );
     }
     args.onProgress?.({ phase: "rendering", percent: 100 });

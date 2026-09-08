@@ -15,6 +15,11 @@ export { resolveAvatarUrl };
 export interface PosePair {
   left: string;
   right: string;
+  /**
+   * `false` renders this variant without the headline — the text-free control in the A/B set.
+   * Optional and defaulting to "with hook" because every pair predating it carried one.
+   */
+  hook?: boolean;
 }
 
 export const DEFAULT_POSES: PosePair = { left: config.leftPose, right: config.rightPose };
