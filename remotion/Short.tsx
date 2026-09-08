@@ -91,7 +91,11 @@ export const ShortHook: FC<ShortProps> = (props) => {
   const { lines, fontSize } = layoutShortHook(props.hook);
   return (
     <AbsoluteFill>
-      <div className="short-hook" style={{ top: SHORT_BOTTOM_NAMEPLATE_Y, fontSize }}>
+      {/* Optically centred, not box-centred: the outline reaches 7px left of the glyphs and the
+          crimson drop 14px right, so a box-centred block sits ~7px right of where the eye puts
+          the middle. `translate` rather than `transform`, which .short-hook already uses for its
+          own vertical centring. */}
+      <div className="short-hook" style={{ top: SHORT_BOTTOM_NAMEPLATE_Y, fontSize, translate: "-7px" }}>
         {lines.map((line, i) => (
           <div key={i}>{line}</div>
         ))}
