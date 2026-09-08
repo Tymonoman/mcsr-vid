@@ -97,10 +97,17 @@ container needs `docker restart mcsr-dashboard`; a CSS/JS change is live on relo
   The pipeline renders with the first hook suggestion; "Re-render with hook" in the detail panel
   (`POST /api/thumbnails/:id/rerender`) redoes all variants with the hook you typed. Verified
   legible at YouTube's 246x138 grid size; a render with no hook is byte-identical to before.
+  The third configured variant is `hook: false` — a text-free control — so Studio's Test &
+  compare can measure text vs no text; each `VariantRecord` records `hook`, and the Short
+  reuses the manifest's `hookText` so both halves of a match say the same thing (rank chips
+  read live rank, which drifted from `#3 vs #17` to `#3 vs #21` within an hour).
 - **Upload** sends the tags from `match-<id>.tags.txt` (written by the pipeline, see
   `buildTags` in `src/description.ts`) and refuses — server and client — any title still
   containing `<HOOK>`. After upload it adds the video to the season playlist *and* a
   per-matchup one (`matchupPlaylistTitle` in `src/youtube.ts`, seat- and case-independent).
+  `findOrCreatePlaylist` remembers ids per process: YouTube's `playlists.list` does not show a
+  playlist created a second earlier, and the back-to-back inserts made a duplicate on the live
+  channel before this. The season playlist exists: `PLHG-jSA-dWDo`, all uploads to date.
 - **Publish kit** under the YouTube panel (`GET /api/publishkit/:id`): copy buttons for the
   title (hook substituted), description, comma-joined tags with the 500-char count, the
   Short's title/description when `short-<id>.title.txt` exists, and a DM per player with the
