@@ -153,6 +153,16 @@
 .scanline a {
   color: var(--warped);
 }
+/* A dismiss happens mid-list, and the undo has to be in view there -- not 1,200px up at the top
+   of the panel where the line renders. Sticky, with a background, since the line is otherwise
+   transparent and would sit over card text. No scrolling: that would throw the operator out of
+   their place in the list on every dismiss. */
+.scanline.undo {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--panel);
+}
 .sugg {
   padding: 10px 12px;
   border-bottom: 1px solid var(--panel-edge);

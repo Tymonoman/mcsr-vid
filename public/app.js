@@ -260,14 +260,14 @@ async function select(id, { open = false } = {}) {
     <h2>Final video</h2>
     <div id="preview"><div class="empty">loading&hellip;</div></div>
 
+    <h2>Publish kit</h2>
+    <div id="publishkit"><div class="empty">loading&hellip;</div></div>
+
     <h2>Short</h2>
     <div id="short"><div class="empty">loading&hellip;</div></div>
 
     <h2>YouTube</h2>
     <div id="youtube"><div class="empty">loading&hellip;</div></div>
-
-    <h2>Publish kit</h2>
-    <div id="publishkit"><div class="empty">loading&hellip;</div></div>
 
     <h2>Outputs</h2>
     ${outputsHtml(meta.outputs)}`;
@@ -693,7 +693,15 @@ async function loadPublishKit(id, meta) {
     const title = titleText();
     const tags = (meta.tags ?? []).join(", ");
     el.innerHTML = [
-      block("Title", title, 2, counter(`${title.length} / 100 chars`, title.length > 100)),
+      block(
+        "Title",
+        title,
+        2,
+        counter(
+          title.includes("<HOOK>") ? "pick a hook first" : `${title.length} / 100 chars`,
+          title.length > 100 || title.includes("<HOOK>"),
+        ),
+      ),
       slot ? block("Publish at", slotText, 1) : "",
       block("Description", meta.description ?? "", 10),
       // Both numbers, because YouTube caps the list twice over: 500 characters across the whole
@@ -1132,13 +1140,13 @@ function renderSuggestions(data) {
   // The two words on every card, explained once. The stage strip had the same gap: labels that
   // are obvious to whoever wrote the scorer and to nobody else.
   const legend = data.suggestions.length
-    ? `<div class="bucketlegend"><span class="bucket close">CLOSE</span><span>decided by seconds at the finish</span><span class="bucket chaos">CHAOS</span><span>lead changes, deaths, the mess</span><span class="order">&middot; ordered by VOD expiry, then not yet posted by ${data.rivalHandle ? `@${esc(data.rivalHandle)}` : "the competitor"}, then audience</span></div>`
+    ? `<div class="bucketlegend"><span class="bucket close">CLOSE</span><span>decided by seconds at the finish</span><span class="bucket chaos">CHAOS</span><span>lead changes, deaths, the mess</span><span class="order">&middot; CLOSE first, then CHAOS &middot; within each: VODs about to expire, then not yet posted by ${data.rivalHandle ? `@${esc(data.rivalHandle)}` : "the competitor"}, then biggest audience</span></div>`
     : "";
 
   // Dismiss is next to Render on a phone, and used to be permanent. One line, above the cards,
   // until it is used or the next dismiss replaces it.
   const undo = lastDismissed
-    ? `<div class="scanline">Dismissed <b>${esc(lastDismissed.who)}</b> &middot; <a href="#" data-act="undo">undo</a>${lastDismissed.note ? ` <span class="muted">${esc(lastDismissed.note)}</span>` : ""}</div>`
+    ? `<div class="scanline undo">Dismissed <b>${esc(lastDismissed.who)}</b> &middot; <a href="#" data-act="undo">undo</a>${lastDismissed.note ? ` <span class="muted">${esc(lastDismissed.note)}</span>` : ""}</div>`
     : "";
 
   const cards = !data.suggestions.length
