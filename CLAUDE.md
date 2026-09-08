@@ -113,10 +113,15 @@ names both commits when they differ.
   scan line says how old the list is ("scanned 16h ago") and the nightly strip how old the last
   run is, because both looked the same at any age.
 - **Rival posts** (`src/rivalPosts.ts`): the competitor's last fifty uploads (`rivalChannelHandle`,
-  default `mcsrmatches`; 2 quota units, refreshed every six hours, fire-and-forget from the
+  default `mcsrmatches`; 3 quota units, refreshed every six hours, fire-and-forget from the
   suggestions route) are matched against the cards by normalised nickname pair within ten days
-  of the match. A posted matchup shows "@mcsrmatches posted this 2d ago" and is ordered after
-  the fresh ones — in the nightly's order too, since `orderForDisplay` is the same sort.
+  of the match and — since their descriptions carry no links — by the video's length: their
+  videos are the run plus a few seconds (8:59 for an 8:48 run), so a post counts only within
+  −5/+30 s of the suggestion's run time, and a post of the wrong length is another match of the
+  same pair (Aquacorde vs nahhann play several times a night). A posted match shows
+  "@mcsrmatches posted this 2d ago" and is ordered after the fresh ones — in the nightly's order
+  too, since `orderForDisplay` is the same sort. The shelf has no run time to hand, so its rows
+  say "posted this pair".
 - **Hook chips** (`src/hooks.ts`) put rivalry framing first — `Rematch: doogile leads 2-1`,
   `#4 vs #11`, `2050 vs 1850` — because the audit measured rivalry-framed titles at 9.36% CTR
   against 2.25% for descriptive ones, with no overlap. Descriptive chips are fallbacks. **No
