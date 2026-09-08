@@ -52,6 +52,13 @@ export interface Config {
    */
   youtubePlaylistTitle: string;
   /**
+   * The same playlist's public URL (`https://www.youtube.com/playlist?list=...`), linked from
+   * every description and Short description once set. This one is an id after all, because the
+   * description is written by the pipeline, hours before an upload could resolve the title; copy
+   * it from the address bar once the first upload has created the playlist. Empty: no line.
+   */
+  youtubePlaylistUrl: string;
+  /**
    * Seconds of overlay before the RTA timer starts.
    *
    * This is also where the published video begins: the timeline is anchored on the world-load
@@ -157,6 +164,7 @@ const DEFAULTS: Config = {
   youtubeChannelId: "UCm2mAyONTHlmIxZzNmi388w",
   youtubeReportingJobId: "eda017ae-a539-4c79-8e2c-66d1af74264a",
   youtubePlaylistTitle: "MCSR Ranked matches",
+  youtubePlaylistUrl: "",
   overlayLeadInSec: 10,
   overlayFps: 30,
   renderConcurrency: null,

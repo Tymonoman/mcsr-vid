@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { buildDescription, buildTags } from "./description.js";
+import { buildDescription, buildTags, type DescriptionInput } from "./description.js";
 import type { MatchInfo, UserDetails } from "./types.js";
 import type { VodWindow } from "./vodAcquisition.js";
 
@@ -34,7 +34,7 @@ const match = (over: Partial<MatchInfo> = {}): MatchInfo =>
     ...over,
   }) as MatchInfo;
 
-const build = (m: MatchInfo) =>
+const build = (m: MatchInfo, over: Partial<DescriptionInput> = {}) =>
   buildDescription({
     matchId: 12730175,
     match: m,
@@ -46,6 +46,7 @@ const build = (m: MatchInfo) =>
       { label: "Start", timeSec: 0 },
       { label: "Nether Enter", timeSec: 127 },
     ],
+    ...over,
   });
 
 const text = build(match());
@@ -76,6 +77,18 @@ assert.match(
 assert.match(text, /Watch doogile's POV: .*\?t=932s/);
 assert.match(text, /^Chapters:\n0:00 Start\n2:07 Nether Enter$/m, "chapters block must be included verbatim");
 assert.match(text, /Match data: https:\/\/mcsrranked\.com\/matches\/12730175/);
+
+// The playlist link is opt-in (the playlist exists only after the first upload) and sits above
+// the Twitch links: keep the viewer on the channel before pointing them off it.
+assert.ok(!text.includes("Every match on the channel"), "no playlist line until the URL is configured");
+{
+  const url = "https://www.youtube.com/playlist?list=PLHG-jSA-dWDo";
+  const withList = build(match(), { playlistUrl: url });
+  const at = withList.indexOf(`Every match on the channel: ${url}`);
+  assert.ok(at > 0, "playlist line present once configured");
+  assert.ok(at < withList.indexOf("Watch edcr's POV"), "playlist link comes before the Twitch links");
+  assert.ok(at > withList.indexOf("Chapters:"), "but stays below the chapters, out of the preview");
+}
 assert.match(text, /independent fan project, not affiliated with MCSR Ranked/);
 assert.match(text, /synced dual-POV with live split comparison/, "the added-value line YPP review looks for");
 

@@ -40,6 +40,8 @@ export interface DescriptionInput {
   leftWindow: VodWindow;
   rightWindow: VodWindow;
   chapters: ChapterMarker[];
+  /** `config.youtubePlaylistUrl`; empty or absent means no playlist line. */
+  playlistUrl?: string;
 }
 
 /**
@@ -96,6 +98,9 @@ export function buildDescription(input: DescriptionInput): string {
     "Chapters:",
     formatChapters(chapters),
     "",
+    // First in the links block, above the two that leave for Twitch: a playlist link is the one
+    // thing in a description that turns one view into a session, and sessions are watch hours.
+    ...(input.playlistUrl ? [`Every match on the channel: ${input.playlistUrl}`] : []),
     `Watch ${userLeft.nickname}'s POV: ${vodDeepLink(leftWindow)}`,
     `Watch ${userRight.nickname}'s POV: ${vodDeepLink(rightWindow)}`,
     `Match data: https://mcsrranked.com/matches/${matchId}`,

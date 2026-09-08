@@ -100,6 +100,13 @@ const FALLBACK = "watch the lead flip here";
   // The same three the long-form carries, not a second set — both halves of a match should look
   // like one channel to YouTube.
   assert.ok(description.includes(HASHTAGS.join(" ")));
+  assert.ok(!description.includes("Every match"), "no playlist line until the URL is configured");
+  const url = "https://www.youtube.com/playlist?list=PLHG-jSA-dWDo";
+  assert.equal(
+    buildShortDescription(12730175, "edcr", "doogile", url).split("\n")[1],
+    `Every match: ${url}`,
+    "the playlist link sits on line two, above the match page",
+  );
 }
 
 // A rank hook is the common case now, and its hashes would read as hashtags in a title — the

@@ -155,9 +155,15 @@ function cutAtWord(text: string, max: number): string {
  * and the format label for search, the match page for anyone who wants the numbers, and the same
  * hashtags the long-form upload carries so both halves of a match are one channel to YouTube.
  */
-export function buildShortDescription(matchId: number, leftNickname: string, rightNickname: string): string {
+export function buildShortDescription(
+  matchId: number,
+  leftNickname: string,
+  rightNickname: string,
+  playlistUrl = "",
+): string {
   return [
     `${leftNickname} vs ${rightNickname} — MCSR Ranked 1v1. Full synced dual-POV race on the channel.`,
+    ...(playlistUrl ? [`Every match: ${playlistUrl}`] : []),
     `Match data: https://mcsrranked.com/matches/${matchId}`,
     HASHTAGS.join(" "),
   ].join("\n");

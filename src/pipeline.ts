@@ -449,6 +449,7 @@ async function runStages(
     leftWindow,
     rightWindow,
     chapters,
+    playlistUrl: config.youtubePlaylistUrl,
   });
   const descriptionPath = path.join(outDir, `match-${matchId}.description.txt`);
   await writeFile(descriptionPath, description, "utf8");

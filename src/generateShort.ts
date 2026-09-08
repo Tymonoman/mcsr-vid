@@ -142,7 +142,7 @@ const titlePath = path.join(outDir, `short-${matchId}.title.txt`);
 await writeFile(titlePath, buildShortTitle(hook), "utf8");
 await writeFile(
   path.join(outDir, `short-${matchId}.description.txt`),
-  buildShortDescription(matchId, playerLeft.nickname, playerRight.nickname),
+  buildShortDescription(matchId, playerLeft.nickname, playerRight.nickname, config.youtubePlaylistUrl),
   "utf8",
 );
 
