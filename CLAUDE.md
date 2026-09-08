@@ -116,10 +116,15 @@ the page is newer than its server: the nightly strip detects that (the old serve
   the fresh ones — in the nightly's order too, since `orderForDisplay` is the same sort.
 - **Hook chips** (`src/hooks.ts`) put rivalry framing first — `Rematch: doogile leads 2-1`,
   `#4 vs #11`, `2050 vs 1850` — because the audit measured rivalry-framed titles at 9.36% CTR
-  against 2.25% for descriptive ones, with no overlap. Descriptive chips are fallbacks.
+  against 2.25% for descriptive ones, with no overlap. Descriptive chips are fallbacks. **No
+  chip, description or thumbnail names the winner**: the upset chip is a question (`Can the
+  1789 take down the 2080?`), asked whenever the elo gap is 100+ whoever won, and the
+  description carries no result line — the ending is the reason to watch.
 - **Thumbnails carry a hook** (`hookText` in `ThumbnailProps`, recorded in `thumbnail.json`).
   The pipeline renders with the first hook suggestion; "Re-render with hook" in the detail panel
-  (`POST /api/thumbnails/:id/rerender`) redoes all variants with the hook you typed. Verified
+  (`POST /api/thumbnails/:id/rerender`) redoes all variants with the hook you typed and says
+  what happened — rendered, failed (the server keeps the last failure per match and reports
+  `rerender: { running, error }` on the GET), or nothing to change. Verified
   legible at YouTube's 246x138 grid size; a render with no hook is byte-identical to before.
   A still on disk is reused only when the previous manifest carries the same headline
   (`variantStillReusable`): a re-render with new text re-renders the hooked variants, keeps the
