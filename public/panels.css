@@ -527,6 +527,12 @@
   max-height: 220px;
   overflow: auto;
 }
+.exportbar {
+  margin-top: 8px;
+}
+.exportbar.hidden {
+  display: none;
+}
 #shortlog.hidden {
   display: none;
 }

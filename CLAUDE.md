@@ -128,8 +128,9 @@ container needs `docker restart mcsr-dashboard`; a CSS/JS change is live on relo
   and a file to upload, not a project. `nightlyNotifyUrl` gets a one-line POST on done / failed /
   aborted (an ntfy.sh topic URL works as-is). The Suggestions tab shows a strip — tonight's
   pick, the last run's outcome (`<mediaDir>/.nightly.json`), a `Run now` button — backed by
-  `GET /api/nightly` and `POST /api/nightly/run`. "Render + Short" on a card is the same path
-  (`POST /api/render/:id?short=1`); one poller settles both, so a job can never cut two Shorts.
+  `GET /api/nightly` and `POST /api/nightly/run`. "Render + Short + MP4" on a card is the same
+  path (`POST /api/render/:id?short=1&export=1`); one poller settles all of it, so a job can
+  never cut two Shorts.
 - On phones (<= 860px) the list and the match are two screens with a back bar, not one column.
 - There is a Playwright smoke script from the 2026-09-07 session in that session's scratchpad
   (`smoke.cjs http://host:port`); it is not in the repo because Playwright is not a dependency.

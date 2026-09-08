@@ -487,7 +487,28 @@ async function loadPreview(id) {
     return;
   }
   if (!meta.exported) {
-    el.innerHTML = '<div class="empty">not exported yet &mdash; run the export, then reload</div>';
+    // The one-pass encode the nightly runs, on demand. ~10 minutes on the lab, so the button
+    // hands over to a bar fed by the same progress stream the nightly's encode writes to.
+    el.innerHTML = `
+      <div class="row">
+        <button id="encode" ${meta.running ? "disabled" : ""}>Encode MP4 (~10 min)</button>
+        <span id="encodestate" class="muted">${meta.running ? "encoding…" : "not exported yet"}</span>
+      </div>
+      <div class="bar exportbar${meta.running ? "" : " hidden"}"><i style="width:${meta.percent ?? 0}%"></i></div>`;
+    $("#encode").addEventListener("click", async () => {
+      const btn = $("#encode");
+      btn.disabled = true;
+      try {
+        await api(`/api/export/fast/${id}`, { method: "POST" });
+        $("#encodestate").textContent = "encoding…";
+        $(".exportbar").classList.remove("hidden");
+        watchExport(id);
+      } catch (e) {
+        $("#encodestate").textContent = e.message;
+        btn.disabled = false;
+      }
+    });
+    if (meta.running) watchExport(id);
     return;
   }
   const mb = (meta.bytes / 1048576).toFixed(0);
@@ -499,6 +520,35 @@ async function loadPreview(id) {
       <span>${mb} MB</span>
       <a href="/api/export/final/${id}" download>Download</a>
     </div>`;
+}
+
+/** Follows one encode to its end, then swaps the bar for the player. The stream replays what
+    the encode has said so far, so a phone that comes back late is not blind. */
+function watchExport(id) {
+  const src = new EventSource(`/api/export/progress/${id}`);
+  const state = () => $("#encodestate");
+  src.onmessage = (e) => {
+    const ev = JSON.parse(e.data);
+    const bar = document.querySelector(".exportbar > i");
+    if (ev.percent !== undefined && bar) {
+      bar.style.width = ev.percent + "%";
+      if (state()) state().textContent = `encoding… ${ev.percent}%`;
+    }
+    if (ev.done) {
+      src.close();
+      if (ev.error) {
+        if (state()) {
+          state().textContent = ev.error;
+          state().className = "bad";
+        }
+        const btn = $("#encode");
+        if (btn) btn.disabled = false;
+      } else {
+        loadPreview(id);
+      }
+    }
+  };
+  src.onerror = () => src.close();
 }
 
 /** m:ss, for moment boundaries measured from the start of the run. */
@@ -997,7 +1047,7 @@ function renderSuggestions(data) {
             onShelf
               ? `<button data-act="open">Rendered &middot; open</button>`
               : `<button data-act="render">Render this</button>
-          <button data-act="render-short" class="ghost">Render + Short</button>`
+          <button data-act="render-short" class="ghost">Render + Short + MP4</button>`
           }
           <button data-act="dismiss" class="ghost">Dismiss</button>
         </div>
@@ -1023,13 +1073,14 @@ function renderSuggestions(data) {
   });
 }
 
-/** "Render + Short": the same start as "Render this", plus the flag the server's one completion
-    poll reads — so the Short is cut by the nightly's own code, not a second copy of it. */
+/** "Render + Short + MP4": the same start as "Render this", plus the flags the server's one
+    completion poll reads — so the Short and the encode come from the nightly's own code, not a
+    second copy of it. What the nightly does at 03:00, by hand, for a match you want today. */
 async function startRenderWithShort(id) {
   const err = $("#entryerr");
   err.textContent = "";
   try {
-    await api(`/api/render/${id}?short=1`, { method: "POST" });
+    await api(`/api/render/${id}?short=1&export=1`, { method: "POST" });
     await refresh();
     await select(id, { open: true });
     watch(id);

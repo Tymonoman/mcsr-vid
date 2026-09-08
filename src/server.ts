@@ -23,6 +23,7 @@ import {
   msUntilNextRun,
   nightlyCandidate,
   readNightlyState,
+  requestExport,
   requestShort,
   runNightlyOnce,
   scheduleNightly,
@@ -620,13 +621,15 @@ const server = createServer(async (req, res) => {
 
     if (resource === "render" && req.method === "POST") {
       const job = startJob(matchId);
-      // `?short=1` is the suggestion card's "Render + Short": the same render, plus a note that
-      // nightly.ts's completion poll — the only poller, and the nightly's own — should cut the
-      // Short when it settles. Nothing about the render itself changes.
-      if (url.searchParams.get("short") === "1") {
-        requestShort(matchId);
-        afterSettled(job);
-      }
+      // `?short=1` / `?export=1` are the suggestion card's "Render + Short + MP4": the same
+      // render, plus a note that nightly.ts's completion poll — the only poller, and the
+      // nightly's own — should cut the Short and encode the MP4 when it settles. Nothing about
+      // the render itself changes, and one poll serves both flags.
+      const wantShort = url.searchParams.get("short") === "1";
+      const wantExport = url.searchParams.get("export") === "1";
+      if (wantShort) requestShort(matchId);
+      if (wantExport) requestExport(matchId);
+      if (wantShort || wantExport) afterSettled(job);
       json(res, 202, { matchId, running: !job.done });
       return;
     }

@@ -264,6 +264,19 @@ export async function handleExportRoute(
     return true;
   }
 
+  // The headless encode from the browser: what the nightly does for its own pick, for any
+  // rendered match the operator wants today. The preview panel had told the operator to "run
+  // the export, then reload" for months without offering a way to run one.
+  if (action === "fast" && req.method === "POST") {
+    if (!existsSync(path.join(dir, "overlay-timer.mp4"))) {
+      ctx.json(res, 404, { error: "not rendered yet — the encode needs the overlays" });
+      return true;
+    }
+    const job = startFastExport(matchId, dir);
+    ctx.json(res, 202, { matchId, running: !job.done });
+    return true;
+  }
+
   if (action === "run" && req.method === "DELETE") {
     jobs.get(matchId)?.proc.kill("SIGTERM");
     ctx.json(res, 200, { matchId, aborted: true });
@@ -329,13 +342,18 @@ export async function handleExportRoute(
   // Which export exists, and how big it is — so the dashboard can show a player without
   // guessing at a URL that 404s.
   if (action === "preview-meta" && req.method === "GET") {
+    // An encode in flight is part of the answer: the panel shows its bar rather than a button
+    // that would start a second one (startExport would hand back the same job, but the operator
+    // cannot know that).
+    const job = jobs.get(matchId);
+    const running = job !== undefined && !job.done;
     const file = await locateExport(matchId, dir);
     if (file === null) {
-      ctx.json(res, 200, { exported: false });
+      ctx.json(res, 200, { exported: false, running, percent: running ? job.percent : 0 });
       return true;
     }
     const { size } = await stat(file);
-    ctx.json(res, 200, { exported: true, name: path.basename(file), bytes: size });
+    ctx.json(res, 200, { exported: true, name: path.basename(file), bytes: size, running });
     return true;
   }
 
