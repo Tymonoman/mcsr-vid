@@ -832,6 +832,8 @@ function watch(id, quiet) {
 async function refresh() {
   matches = (await api("/api/matches")).matches;
   renderList();
+  // A card whose match just landed on the shelf switches from "Render this" to "open".
+  if (suggestData) renderSuggestions(suggestData);
 }
 
 /* --- Nightly render strip ---------------------------------------------------------------------
@@ -850,7 +852,13 @@ function nightlyInner() {
   if (nightly.error) return `<div class="lines"><span class="bad">${esc(nightly.error)}</span></div>`;
 
   const { enabled, hourUtc, nextRunAt, candidate, lastRun } = nightly;
-  const at = `Tonight ${String(hourUtc).padStart(2, "0")}:00 UTC`;
+  // The browser knows the operator's zone; the config only knows UTC. Both, so "03:00" is not
+  // mistaken for a small-hours render when it is 05:00 where the operator sleeps.
+  const local =
+    nextRunAt && new Date().getTimezoneOffset() !== 0
+      ? new Date(nextRunAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      : null;
+  const at = `Next ${local ? `${local} local (` : ""}${String(hourUtc).padStart(2, "0")}:00 UTC${local ? ")" : ""}`;
   const plan = !enabled
     ? '<span class="muted">nightly off</span>'
     : candidate
@@ -861,7 +869,16 @@ function nightlyInner() {
   // about when it happened would be worse than a slightly duller one.
   let last = '<span class="muted">Last run: never</span>';
   if (lastRun) {
-    const who = lastRun.matchId ? `#${lastRun.matchId} ${lastRun.players.join(" vs ")} — ` : "";
+    // The morning click: the record names a match that is (usually) on the shelf now, and the
+    // strip is the first thing the operator reads. A match that has since been deleted stays
+    // plain text rather than a link to a 404.
+    const label = lastRun.matchId ? `#${lastRun.matchId} ${esc(lastRun.players.join(" vs "))}` : "";
+    const onShelf = lastRun.matchId && matches.some((m) => m.matchId === lastRun.matchId);
+    const who = !label
+      ? ""
+      : onShelf
+        ? `<a href="#" data-act="nightly-open" data-id="${lastRun.matchId}">${label}</a> &mdash; `
+        : `${label} &mdash; `;
     const why = lastRun.reason ? `: ${lastRun.reason}` : "";
     const short =
       lastRun.short === "done"
@@ -869,8 +886,14 @@ function nightlyInner() {
         : lastRun.short === "failed"
           ? ' <span class="bad">+ Short failed</span>'
           : "";
+    const exported =
+      lastRun.export === "done"
+        ? ' <span class="ok">+ exported</span>'
+        : lastRun.export === "failed"
+          ? ' <span class="bad">+ export failed</span>'
+          : "";
     const cls = lastRun.outcome === "done" ? "ok" : lastRun.outcome === "failed" ? "bad" : "muted";
-    last = `Last run: ${esc(who)}<span class="${cls}">${esc(lastRun.outcome + why)}</span>${short}`;
+    last = `Last run: ${who}<span class="${cls}">${esc(lastRun.outcome + why)}</span>${short}${exported}`;
   }
 
   return `<div class="lines">
@@ -886,6 +909,13 @@ function paintNightly() {
   el.innerHTML = nightlyInner();
   const btn = el.querySelector('[data-act="nightly-run"]');
   if (btn) btn.addEventListener("click", () => runNightlyNow(btn));
+  const open = el.querySelector('[data-act="nightly-open"]');
+  if (open) {
+    open.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      void select(Number(open.dataset.id), { open: true });
+    });
+  }
 }
 
 async function loadNightly() {
@@ -919,8 +949,11 @@ async function runNightlyNow(btn) {
 /* --- Suggestions ------------------------------------------------------------------------- */
 
 let suggestPoll = null;
+/** The last payload painted, so a shelf change can repaint the cards without a request. */
+let suggestData = null;
 
 function renderSuggestions(data) {
+  suggestData = data;
   const el = $("#suggestions");
   $("#tab-suggestions").textContent =
     `Suggestions${data.suggestions.length ? ` (${data.suggestions.length})` : ""}`;
@@ -939,6 +972,10 @@ function renderSuggestions(data) {
     ? `<div class="empty">${data.scanning ? "" : "Nothing suggested yet."}</div>`
     : data.suggestions
         .map((s) => {
+          // Rendered since the list was scored — by the nightly, or a click: the card stays, since
+          // the list is the operator's reading order, but its verb changes. Pressing "Render this"
+          // on a finished match was the morning's easiest mistake.
+          const onShelf = matches.some((m) => m.matchId === s.matchId);
           // Every line but the chart and the links is prose the server assembled, so it all goes
           // through esc() — including `bucket`, which reaches a class attribute.
           return `
@@ -956,8 +993,12 @@ function renderSuggestions(data) {
           ${s.vodUrls.map((u, i) => `<a href="${esc(u)}" target="_blank" rel="noopener">VOD ${i + 1}</a>`).join("")}
         </div>
         <div class="acts">
-          <button data-act="render">Render this</button>
-          <button data-act="render-short" class="ghost">Render + Short</button>
+          ${
+            onShelf
+              ? `<button data-act="open">Rendered &middot; open</button>`
+              : `<button data-act="render">Render this</button>
+          <button data-act="render-short" class="ghost">Render + Short</button>`
+          }
           <button data-act="dismiss" class="ghost">Dismiss</button>
         </div>
       </div>`;
@@ -973,8 +1014,9 @@ function renderSuggestions(data) {
 
   el.querySelectorAll(".sugg").forEach((row) => {
     const id = Number(row.dataset.id);
-    row.querySelector('[data-act="render"]').addEventListener("click", () => startRender(String(id)));
-    row.querySelector('[data-act="render-short"]').addEventListener("click", () => startRenderWithShort(id));
+    row.querySelector('[data-act="render"]')?.addEventListener("click", () => startRender(String(id)));
+    row.querySelector('[data-act="render-short"]')?.addEventListener("click", () => startRenderWithShort(id));
+    row.querySelector('[data-act="open"]')?.addEventListener("click", () => select(id, { open: true }));
     row.querySelector('[data-act="dismiss"]').addEventListener("click", async () => {
       renderSuggestions(await api(`/api/suggestions/${id}`, { method: "DELETE" }));
     });

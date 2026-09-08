@@ -122,7 +122,10 @@ container needs `docker restart mcsr-dashboard`; a CSS/JS change is live on relo
   in Poland; `null` disables) the server starts one render of the first eligible card *in the
   order the dashboard shows them* (`orderForDisplay`), skipping the night if a render is already
   running or fewer than two matches of disk remain, then renders that match's Short
-  (`nightlyRenderShort`, default on). `nightlyNotifyUrl` gets a one-line POST on done / failed /
+  (`nightlyRenderShort`, default on) and encodes the finished MP4 with `export:fast`
+  (`nightlyRenderExport`, default on; ~10 min on the lab's VAAPI, through exportRoutes' job
+  table so the export panel and the delete guard see it) — the morning has a preview to watch
+  and a file to upload, not a project. `nightlyNotifyUrl` gets a one-line POST on done / failed /
   aborted (an ntfy.sh topic URL works as-is). The Suggestions tab shows a strip — tonight's
   pick, the last run's outcome (`<mediaDir>/.nightly.json`), a `Run now` button — backed by
   `GET /api/nightly` and `POST /api/nightly/run`. "Render + Short" on a card is the same path

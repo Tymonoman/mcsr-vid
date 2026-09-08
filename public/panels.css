@@ -92,6 +92,9 @@
 .nightly b {
   color: var(--gold);
 }
+.nightly a {
+  color: var(--warped);
+}
 .nightly button {
   padding: 4px 10px;
   font-size: 12px;

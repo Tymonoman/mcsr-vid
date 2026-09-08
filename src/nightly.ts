@@ -17,15 +17,17 @@
  *   - it stops well before the SSD does (a finished match is ~7 GB), because a render that dies
  *     at the write stage has burned the whole night for nothing.
  *
- * What it does do unprompted is cut the Short of the match it just rendered (`nightlyRenderShort`),
- * because that is the same footage, already on disk, and a morning with a video and no Short is a
- * morning with half the publishing done.
+ * What it does do unprompted is cut the Short of the match it just rendered (`nightlyRenderShort`)
+ * and encode the finished MP4 (`nightlyRenderExport`), because that is the same footage, already
+ * on disk, and a morning with a project file and no video is a morning with the publishing not
+ * started.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { capacity } from "./archive.js";
 import { config } from "./config.js";
 import { describeError } from "./errorText.js";
+import { startFastExport } from "./exportRoutes.js";
 import { getJob, startJob, type Job } from "./jobs.js";
 import { hiddenMatchIds } from "./matchShelf.js";
 import { orderForDisplay } from "./suggestPresent.js";
@@ -69,6 +71,8 @@ export interface NightlyLastRun {
   /** The failure's first line, or why the run was skipped. */
   reason?: string;
   short?: ShortOutcome;
+  /** The finished MP4, in the same three states. */
+  export?: ShortOutcome;
 }
 
 const statePath = (): string => path.join(config.mediaDir, ".nightly.json");
@@ -177,6 +181,10 @@ function outcomeOf(job: Job): JobVerdict {
 const shortOutcome = (clause: string): ShortOutcome =>
   clause === "" ? "skipped" : clause.startsWith(" + Short rendered") ? "done" : "failed";
 
+/** Likewise for `chainExport`. */
+const exportOutcome = (clause: string): ShortOutcome =>
+  clause === "" ? "skipped" : clause === " + exported" ? "done" : "failed";
+
 /**
  * The Short that follows the render, as the clause the notification gains for it.
  *
@@ -221,31 +229,62 @@ export async function chainShort(
   });
 }
 
+/** Starts the encode and settles with its error line, or null. Injected by the tests. */
+export type ExportStarter = (matchId: number) => Promise<string | null>;
+
+const startFastExportOf: ExportStarter = (matchId) =>
+  startFastExport(matchId, path.join(config.mediaDir, String(matchId))).finished;
+
+/**
+ * The finished MP4 after the Short, as its clause. Same gate as the Short: only a clean `done`,
+ * and only when asked — a match the operator will cut in Kdenlive first has no business being
+ * encoded uncut. Ten minutes on the lab's VAAPI, which is why it runs at 03:00 and not at the
+ * first click of the morning.
+ */
+export async function chainExport(
+  matchId: number,
+  outcome: string,
+  enabled: boolean,
+  start: ExportStarter = startFastExportOf,
+): Promise<string> {
+  if (!enabled || outcome !== "done") return "";
+  const error = await start(matchId);
+  return error === null ? " + exported" : ` + export failed: ${error.slice(0, 120)}`;
+}
+
 /**
  * Match ids whose render has a Short waiting on it — the nightly's own pick, and anything the
- * operator started with the dashboard's "Render + Short".
+ * operator started with the dashboard's "Render + Short" — and, separately, those whose render
+ * is to be encoded as well, which is the nightly's pick alone.
  *
- * A set here rather than a flag on the job, because jobs.ts is the plain render path shared with
+ * Sets here rather than flags on the job, because jobs.ts is the plain render path shared with
  * the button and the TUI and has no business knowing what happens afterwards. `afterSettled` is
  * the only reader, and it consumes the entry, so two pollers on one job cannot cut two Shorts.
  */
 const wantsShort = new Set<number>();
+const wantsExport = new Set<number>();
 
 export function requestShort(matchId: number): void {
   wantsShort.add(matchId);
 }
 
+export function requestExport(matchId: number): void {
+  wantsExport.add(matchId);
+}
+
 /**
- * Waits out the render, cuts its Short if one was asked for, and reports how both went.
+ * Waits out the render, cuts its Short and encodes the MP4 if asked for, and reports how it all
+ * went.
  *
  * The one poller. The nightly and "Render + Short" both land here, so there is a single place
  * that decides a Short is earned and a single 30s timer per render. `report` is awaited after
- * the Short rather than before, because one notification for the pair is what anybody reads:
- * two pushes in the small hours for one match is one too many.
+ * both rather than before, because one notification for the lot is what anybody reads: three
+ * pushes in the small hours for one match is two too many. The Short goes first: it is two
+ * minutes to the export's ten, and if the encode dies the Short is at least on disk.
  */
 export function afterSettled(
   job: Job,
-  report?: (verdict: JobVerdict, shortClause: string) => Promise<void> | void,
+  report?: (verdict: JobVerdict, shortClause: string, exportClause: string) => Promise<void> | void,
 ): void {
   const poll = () => void tick().catch((err: unknown) => console.error(`nightly: ${describeError(err)}`));
   const tick = async (): Promise<void> => {
@@ -255,7 +294,8 @@ export function afterSettled(
     }
     const verdict = outcomeOf(job);
     const shortClause = await chainShort(job.matchId, verdict.outcome, wantsShort.delete(job.matchId));
-    await report?.(verdict, shortClause);
+    const exportClause = await chainExport(job.matchId, verdict.outcome, wantsExport.delete(job.matchId));
+    await report?.(verdict, shortClause, exportClause);
   };
   poll();
 }
@@ -339,11 +379,12 @@ export async function runNightlyOnce(
   console.error(`nightly: starting render of #${matchId} ${label}`);
   lastStartedId = matchId;
   if (config.nightlyRenderShort) requestShort(matchId);
+  if (config.nightlyRenderExport) requestExport(matchId);
   // The same call `POST /api/render` makes, so a nightly render and a clicked one are one code
   // path: startJob de-duplicates by match id and owns the whole pipeline invocation.
   const job = startJob(matchId);
-  afterSettled(job, async (verdict, shortClause) => {
-    // State first, then the push, from the same two values: a panel that disagreed with the
+  afterSettled(job, async (verdict, shortClause, exportClause) => {
+    // State first, then the push, from the same values: a panel that disagreed with the
     // notification would be worse than either on its own.
     writeNightlyState({
       startedAt,
@@ -352,9 +393,12 @@ export async function runNightlyOnce(
       outcome: verdict.outcome,
       ...(verdict.reason ? { reason: verdict.reason } : {}),
       short: shortOutcome(shortClause),
+      export: exportOutcome(exportClause),
     });
     const said = verdict.reason ? `${verdict.outcome}: ${verdict.reason}` : verdict.outcome;
-    if (notifyUrl) await notify(notifyUrl, `Rendered #${matchId} ${label} — ${said}${shortClause}`);
+    if (notifyUrl) {
+      await notify(notifyUrl, `Rendered #${matchId} ${label} — ${said}${shortClause}${exportClause}`);
+    }
   });
   return { matchId, players: [...players] };
 }

@@ -36,7 +36,7 @@ export function relocateRoot(xml: string, dir: string): string {
 }
 
 /** One encode in flight. Lines are retained so a browser joining late replays the whole run. */
-interface ExportJob {
+export interface ExportJob {
   matchId: number;
   lines: string[];
   percent: number;
@@ -44,6 +44,8 @@ interface ExportJob {
   error: string | null;
   subscribers: Set<ServerResponse>;
   proc: ChildProcess;
+  /** Settles when the encode does, with `error` — the nightly awaits this, the browser polls. */
+  finished: Promise<string | null>;
 }
 
 const jobs = new Map<number, ExportJob>();
@@ -59,18 +61,31 @@ function broadcast(job: ExportJob, payload: unknown): void {
   for (const res of job.subscribers) res.write(frame);
 }
 
-function startExport(matchId: number, dir: string): ExportJob {
+/** The desktop round-trip's encode: melt over the (cut) project, via scripts/export.sh. */
+const meltArgv = (matchId: number, dir: string) => [
+  "bash",
+  "scripts/export.sh",
+  projectPath(dir, matchId),
+  finalPath(dir),
+];
+
+/** The headless encode: one ffmpeg pass, VAAPI, writes final-<id>.mp4 (see CLAUDE.md). */
+const fastArgv = (matchId: number) => ["npm", "run", "--silent", "export:fast", "--", String(matchId)];
+
+function startExport(matchId: number, dir: string, argv = meltArgv(matchId, dir)): ExportJob {
   const existing = jobs.get(matchId);
   // Concurrency 1 per match falls out of this. Two *different* matches encoding at once would
   // contend for the lab's two cores; if that ever actually happens, flock in export.sh is the
   // fix rather than a scheduler here.
   if (existing && !existing.done) return existing;
 
-  const proc = spawn("bash", ["scripts/export.sh", projectPath(dir, matchId), finalPath(dir)], {
+  const [cmd, ...args] = argv as [string, ...string[]];
+  const proc = spawn(cmd, args, {
     cwd: path.resolve(new URL("..", import.meta.url).pathname),
     stdio: ["ignore", "pipe", "pipe"],
   });
 
+  let settle!: (error: string | null) => void;
   const job: ExportJob = {
     matchId,
     lines: [],
@@ -79,6 +94,7 @@ function startExport(matchId: number, dir: string): ExportJob {
     error: null,
     subscribers: new Set(),
     proc,
+    finished: new Promise((resolve) => (settle = resolve)),
   };
   jobs.set(matchId, job);
 
@@ -116,6 +132,7 @@ function startExport(matchId: number, dir: string): ExportJob {
     broadcast(job, { done: true, error: job.error, percent: job.error ? job.percent : 100 });
     for (const res of job.subscribers) res.end();
     job.subscribers.clear();
+    settle(job.error);
   });
 
   proc.on("error", (err) => {
@@ -124,9 +141,19 @@ function startExport(matchId: number, dir: string): ExportJob {
     broadcast(job, { done: true, error: job.error });
     for (const res of job.subscribers) res.end();
     job.subscribers.clear();
+    settle(job.error);
   });
 
   return job;
+}
+
+/**
+ * The encode for a render nobody will cut by hand — the nightly's. Same job table as the
+ * button's export, so the browser's progress panel shows it running, the delete guard holds
+ * while it writes, and the preview finds the file the moment it lands.
+ */
+export function startFastExport(matchId: number, dir: string): ExportJob {
+  return startExport(matchId, dir, fastArgv(matchId));
 }
 
 /**

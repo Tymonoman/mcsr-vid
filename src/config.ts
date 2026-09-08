@@ -105,6 +105,14 @@ export interface Config {
    */
   nightlyRenderShort: boolean;
   /**
+   * Whether a clean nightly render is also encoded to a finished MP4 (`npm run export:fast`,
+   * ~10 minutes for a 10-minute match on the lab's VAAPI). On by default, because the render
+   * alone leaves a project and overlays: nothing to watch in the preview and nothing to upload,
+   * so the morning would still open on a ten-minute wait. Off when every match is cut by hand
+   * in Kdenlive first — the export would be of the uncut project.
+   */
+  nightlyRenderExport: boolean;
+  /**
    * Where to POST a one-line plain-text result when a nightly render settles — an ntfy.sh topic
    * URL takes exactly that body, which is why the body is plain text and nothing else. Empty
    * string turns the notification off; a failed POST is logged, never fatal.
@@ -170,6 +178,7 @@ const DEFAULTS: Config = {
   renderConcurrency: null,
   nightlyRenderHourUtc: 3,
   nightlyRenderShort: true,
+  nightlyRenderExport: true,
   nightlyNotifyUrl: "",
   suggestCloseSlots: 8,
   suggestChaosSlots: 2,

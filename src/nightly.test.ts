@@ -11,7 +11,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { config } from "./config.js";
 import {
+  chainExport,
   chainShort,
+  type ExportStarter,
   msUntilNextRun,
   pickNightlyCandidate,
   readNightlyState,
@@ -96,6 +98,29 @@ assert.equal(pickNightlyCandidate(ranked, { ...roomy, freeMatches: 2 })?.metrics
   // A Short that fails does not turn a rendered match into a failure — it is a clause, not a
   // verdict, and the notification has to carry both halves.
   assert.match(await chainShort(5, "done", true, runner(1)), /Short failed/);
+}
+
+// --- And whether it ends with a finished MP4. Same gate, same clause shape; the starter is
+// injected because the real one is a ten-minute ffmpeg encode.
+{
+  const started: number[] = [];
+  const starter =
+    (error: string | null): ExportStarter =>
+    async (matchId) => {
+      started.push(matchId);
+      return error;
+    };
+  assert.equal(await chainExport(1, "done", true, starter(null)), " + exported");
+  assert.equal(await chainExport(2, "done", false, starter(null)), "");
+  assert.equal(await chainExport(3, "aborted", true, starter(null)), "");
+  assert.equal(await chainExport(4, "failed: ffmpeg died", true, starter(null)), "");
+  assert.deepEqual(started, [1], "only a clean render with the flag on may start an encode");
+  // An encode that dies is a clause on a rendered match, not a failed night: the project and
+  // the overlays are still there to export by hand.
+  assert.match(
+    await chainExport(5, "done", true, starter("killed by the OOM killer")),
+    /export failed: killed/,
+  );
 }
 
 // --- The record of the last run, and the two guards that end one before it starts. ------------
