@@ -7,7 +7,7 @@
  * itself lives in scripts/export.sh.
  */
 import { spawn, type ChildProcess } from "node:child_process";
-import { createReadStream, existsSync } from "node:fs";
+import { createReadStream, existsSync, readdirSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -15,6 +15,7 @@ import path from "node:path";
 import { describeError } from "./errorText.js";
 import { sendVideo } from "./rangeStream.js";
 import { matchStatusFor } from "./matchStatus.js";
+import { inPublishSet } from "./publishSet.js";
 import { findExportedVideo } from "./youtubeStore.js";
 
 type Json = (res: ServerResponse, status: number, body: unknown) => void;
@@ -323,6 +324,31 @@ export async function handleExportRoute(
       "cache-control": "no-store",
     });
     createReadStream(file).pipe(res);
+    return true;
+  }
+
+  // The whole publish set as one file, for a PC with no ssh to pull with (src/publishSet.ts).
+  // Uncompressed: the MP4s are already compressed, so gzip would only make the operator wait.
+  if (action === "bundle" && req.method === "GET") {
+    const file = await locateExport(matchId, dir);
+    if (file === null) {
+      ctx.json(res, 404, { error: "not exported yet" });
+      return true;
+    }
+    // A hand-named export is in the bundle under its own name — locateExport already knows how
+    // to find it, and the pattern list cannot.
+    const names = readdirSync(dir)
+      .filter((name) => name === path.basename(file) || inPublishSet(matchId, name))
+      .sort();
+    res.writeHead(200, {
+      "content-type": "application/x-tar",
+      "content-disposition": `attachment; filename="replayoffs-${matchId}.tar"`,
+      "cache-control": "no-store",
+    });
+    const tar = spawn("tar", ["-C", dir, "-cf", "-", ...names], { stdio: ["ignore", "pipe", "inherit"] });
+    tar.stdout.pipe(res);
+    // A browser that cancels the download leaves tar writing into a closed socket.
+    req.on("close", () => tar.kill());
     return true;
   }
 

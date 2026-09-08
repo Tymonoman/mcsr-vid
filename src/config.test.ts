@@ -31,6 +31,10 @@ assert.throws(
 );
 assert.doesNotThrow(() => validateOverrides({ publishHourUtc: 19 }));
 assert.doesNotThrow(() => validateOverrides({ mediaDir: "/tmp/media", overlayFps: 60 }));
+assert.doesNotThrow(() =>
+  validateOverrides({ pullSource: "homelab@actimel:/home/homelab/mcsr-media", pullDest: "~/Replayoffs" }),
+);
+assert.throws(() => validateOverrides({ pullSource: true }), /pullSource/);
 assert.doesNotThrow(() => validateOverrides({ suggestWeights: { closeMargin: 4 } }));
 assert.doesNotThrow(() => validateOverrides({}));
 

@@ -159,6 +159,15 @@ the page is newer than its server: the nightly strip detects that (the old serve
   `short-<id>.title.txt` exists, a pinned comment (one easy question plus the subscribe ask),
   and a DM per player with the `youtu.be` link once uploaded.
   Nothing is stored; it is the manual Studio phase, pre-pasted.
+- **Getting files to the PC** (`src/publishSet.ts`): the publish kit's top block is an rsync
+  command the *operator's* machine runs — one match, everything ready once, or a crontab line
+  that pulls every ten minutes so a nightly render is on the PC within ten minutes of finishing.
+  A pull, not a push: this image has rsync but no ssh client, the PC already reaches the lab over
+  ssh, and nothing has to be open on the PC. `pullSource` (empty hides the block; it is the lab
+  host's path, `/home/homelab/mcsr-media`, not the container's `/media`) and `pullDest`. It
+  carries the publish set only — MP4, Short, thumbnails, text — never the VODs, overlays, chats
+  or the project, which are the gigabytes. `GET /api/export/bundle/:id` is the same set as one
+  uncompressed `.tar` (`Bundle (.tar)` beside the preview's Download), for a machine with no ssh.
 - **Publish checklist** under the pipeline stages: five facts derived from disk, five manual
   toggles (`uploaded`, `Short uploaded`, `related link`, `end screen`, `players notified`) in
   `<mediaDir>/<id>/publish.json`. `uploaded` is also derived (youtube.json) — the tick exists

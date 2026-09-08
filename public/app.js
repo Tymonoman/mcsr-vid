@@ -569,6 +569,7 @@ async function loadPreview(id) {
       <span>${esc(meta.name)}</span>
       <span>${mb} MB</span>
       <a href="/api/export/final/${id}" download>Download</a>
+      <a href="/api/export/bundle/${id}" download>Bundle (.tar)</a>
     </div>`;
 }
 
@@ -689,10 +690,22 @@ async function loadPublishKit(id, meta) {
   publishSlotAt = slot;
   prefillPublishAt();
 
+  // Getting the files onto the PC that publishes, which is step zero of the Studio phase and the
+  // only part of this panel that is a command rather than a paste. Pull, not push: the container
+  // has rsync but no ssh client (src/publishSet.ts). Absent unless `pullSource` is configured.
+  const pull = kit.pull
+    ? [
+        block("Pull this match to your PC", kit.pull.one, 3),
+        block("Pull everything ready, once", kit.pull.all, 3),
+        block("…or every 10 minutes (crontab -e)", kit.pull.cron, 3),
+      ].join("")
+    : "";
+
   const paint = () => {
     const title = titleText();
     const tags = (meta.tags ?? []).join(", ");
     el.innerHTML = [
+      pull,
       block(
         "Title",
         title,
