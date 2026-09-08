@@ -119,10 +119,14 @@ container needs `docker restart mcsr-dashboard`; a CSS/JS change is live on relo
 - **Hide / delete** matches from the list; delete refuses while any job is writing into that
   directory and reports whether an archived copy exists (`src/matchShelf.ts`).
 - **Nightly auto-render** (`src/nightly.ts`): at `nightlyRenderHourUtc` (default 3, i.e. 05:00
-  in Poland; `null` disables) the server starts one render of the top un-rendered, un-hidden
-  suggestion via the same `startJob` the button uses, skipping the night if a render is already
-  running or fewer than two matches of disk remain. `nightlyNotifyUrl` gets a one-line POST on
-  done / failed / aborted (an ntfy.sh topic URL works as-is).
+  in Poland; `null` disables) the server starts one render of the first eligible card *in the
+  order the dashboard shows them* (`orderForDisplay`), skipping the night if a render is already
+  running or fewer than two matches of disk remain, then renders that match's Short
+  (`nightlyRenderShort`, default on). `nightlyNotifyUrl` gets a one-line POST on done / failed /
+  aborted (an ntfy.sh topic URL works as-is). The Suggestions tab shows a strip — tonight's
+  pick, the last run's outcome (`<mediaDir>/.nightly.json`), a `Run now` button — backed by
+  `GET /api/nightly` and `POST /api/nightly/run`. "Render + Short" on a card is the same path
+  (`POST /api/render/:id?short=1`); one poller settles both, so a job can never cut two Shorts.
 - On phones (<= 860px) the list and the match are two screens with a back bar, not one column.
 - There is a Playwright smoke script from the 2026-09-07 session in that session's scratchpad
   (`smoke.cjs http://host:port`); it is not in the repo because Playwright is not a dependency.
