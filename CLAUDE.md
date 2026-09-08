@@ -116,6 +116,9 @@ container needs `docker restart mcsr-dashboard`; a CSS/JS change is live on relo
   `youtu.be` link once uploaded. Nothing is stored; it is the manual Studio phase, pre-pasted.
 - **Publish checklist** under the pipeline stages: five facts derived from disk, three manual
   toggles (`Short uploaded`, `related link`, `players notified`) in `<mediaDir>/<id>/publish.json`.
+- **Dismiss** on a card hides a suggestion (`DELETE /api/suggestions/:id`); it leaves an
+  undo line above the cards (`POST /api/suggestions/:id/restore`), which puts the row back at
+  once if this process dismissed it and otherwise at the next scan.
 - **Hide / delete** matches from the list; delete refuses while any job is writing into that
   directory and reports whether an archived copy exists (`src/matchShelf.ts`).
 - **Nightly auto-render** (`src/nightly.ts`): at `nightlyRenderHourUtc` (default 3, i.e. 05:00

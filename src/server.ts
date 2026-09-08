@@ -28,10 +28,10 @@ import {
   runNightlyOnce,
   scheduleNightly,
 } from "./nightly.js";
-import { abortJob, getJob, startJob, streamProgress } from "./jobs.js";
+import { abortJob, getJob, startJob, streamProgress, type Job } from "./jobs.js";
 import { STAGE_LABELS, STAGE_ORDER, STAGE_SHORT_LABELS } from "./pipeline.js";
 import { presentSuggestions } from "./suggestPresent.js";
-import { dismiss, snapshot, startScan } from "./suggestScan.js";
+import { dismiss, restore, snapshot, startScan } from "./suggestScan.js";
 import { chooseVariant, readManifest, rerenderThumbnailVariants } from "./thumbnailVariants.js";
 import { buildTitle, type BuiltTitle } from "./title.js";
 import { allArchiveStates, capacity } from "./archive.js";
@@ -206,6 +206,20 @@ async function readHookSuggestions(matchId: number, budget: BuiltTitle): Promise
   }
 }
 
+/**
+ * `?short=1` / `?export=1` on either render route — the entry box's and the card's "Render +
+ * Short + MP4": the same render, plus a note that nightly.ts's completion poll — the only
+ * poller, and the nightly's own — should cut the Short and encode the MP4 when it settles.
+ * Nothing about the render itself changes, and one poll serves both flags.
+ */
+function armFollowUps(job: Job, url: URL): void {
+  const wantShort = url.searchParams.get("short") === "1";
+  const wantExport = url.searchParams.get("export") === "1";
+  if (wantShort) requestShort(job.matchId);
+  if (wantExport) requestExport(job.matchId);
+  if (wantShort || wantExport) afterSettled(job);
+}
+
 /** Absolute paths of the run's artifacts, each null until the stage that writes it has run. */
 function outputPaths(matchId: number, projectPath: string | null) {
   const dir = matchDir(matchId);
@@ -353,6 +367,7 @@ const server = createServer(async (req, res) => {
         return;
       }
       const job = startJob(parsed);
+      armFollowUps(job, url);
       json(res, 202, { matchId: parsed, running: !job.done });
       return;
     }
@@ -367,6 +382,19 @@ const server = createServer(async (req, res) => {
       // 500-per-10-minute budget), so this is deliberately manual, as `r` is in the TUI.
       void startScan(true);
       json(res, 202, suggestionsPayload());
+      return;
+    }
+
+    // The undo for the DELETE below. Answers with the list, like the dismiss it reverses, plus
+    // whether the card is back now or only after the next scan (this process never saw it).
+    if (resource === "suggestions" && segments[3] === "restore" && req.method === "POST") {
+      const restoreId = parseId(idRaw);
+      if (restoreId === null) {
+        json(res, 400, { error: "match id must be digits" });
+        return;
+      }
+      const now = restore(restoreId);
+      json(res, 200, { ...suggestionsPayload(), restored: restoreId, now });
       return;
     }
 
@@ -621,15 +649,7 @@ const server = createServer(async (req, res) => {
 
     if (resource === "render" && req.method === "POST") {
       const job = startJob(matchId);
-      // `?short=1` / `?export=1` are the suggestion card's "Render + Short + MP4": the same
-      // render, plus a note that nightly.ts's completion poll — the only poller, and the
-      // nightly's own — should cut the Short and encode the MP4 when it settles. Nothing about
-      // the render itself changes, and one poll serves both flags.
-      const wantShort = url.searchParams.get("short") === "1";
-      const wantExport = url.searchParams.get("export") === "1";
-      if (wantShort) requestShort(matchId);
-      if (wantExport) requestExport(matchId);
-      if (wantShort || wantExport) afterSettled(job);
+      armFollowUps(job, url);
       json(res, 202, { matchId, running: !job.done });
       return;
     }

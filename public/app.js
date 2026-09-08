@@ -999,6 +999,8 @@ async function runNightlyNow(btn) {
 /* --- Suggestions ------------------------------------------------------------------------- */
 
 let suggestPoll = null;
+/** The last card dismissed, until it is restored or another goes: the undo line's subject. */
+let lastDismissed = null;
 /** The last payload painted, so a shelf change can repaint the cards without a request. */
 let suggestData = null;
 
@@ -1017,6 +1019,12 @@ function renderSuggestions(data) {
       : data.note
         ? `<div class="scanline">${esc(data.note)}</div>`
         : "";
+
+  // Dismiss is next to Render on a phone, and used to be permanent. One line, above the cards,
+  // until it is used or the next dismiss replaces it.
+  const undo = lastDismissed
+    ? `<div class="scanline">Dismissed <b>${esc(lastDismissed.who)}</b> &middot; <a href="#" data-act="undo">undo</a>${lastDismissed.note ? ` <span class="muted">${esc(lastDismissed.note)}</span>` : ""}</div>`
+    : "";
 
   const cards = !data.suggestions.length
     ? `<div class="empty">${data.scanning ? "" : "Nothing suggested yet."}</div>`
@@ -1057,8 +1065,16 @@ function renderSuggestions(data) {
         })
         .join("");
 
-  el.innerHTML = '<div id="nightly" class="nightly"></div>' + scan + cards;
+  el.innerHTML = '<div id="nightly" class="nightly"></div>' + undo + scan + cards;
   paintNightly();
+  el.querySelector('[data-act="undo"]')?.addEventListener("click", async (ev) => {
+    ev.preventDefault();
+    const { id, who } = lastDismissed;
+    const out = await api(`/api/suggestions/${id}/restore`, { method: "POST" });
+    // A restart since the dismiss means the row is gone from memory; it returns at the next scan.
+    lastDismissed = out.now ? null : { id, who, note: "back after the next scan" };
+    renderSuggestions(out);
+  });
   // First paint fetches it; every later paint reuses the cache, so polling a running scan does
   // not also poll the scheduler.
   if (nightly === null) void loadNightly();
@@ -1070,7 +1086,10 @@ function renderSuggestions(data) {
     row.querySelector('[data-act="render-short"]')?.addEventListener("click", () => startRenderWithShort(id));
     row.querySelector('[data-act="open"]')?.addEventListener("click", () => select(id, { open: true }));
     row.querySelector('[data-act="dismiss"]').addEventListener("click", async () => {
-      renderSuggestions(await api(`/api/suggestions/${id}`, { method: "DELETE" }));
+      const s = data.suggestions.find((x) => x.matchId === id);
+      const out = await api(`/api/suggestions/${id}`, { method: "DELETE" });
+      lastDismissed = { id, who: s ? `${s.players[0]} vs ${s.players[1]}` : `#${id}` };
+      renderSuggestions(out);
     });
   });
 }
@@ -1102,11 +1121,13 @@ async function pollSuggestions() {
 
 /* --- Starting a match by id ---------------------------------------------------------------- */
 
-async function startRender(input) {
+/** The entry box's render is the full chain — a pasted match URL means "I want this video" —
+    while a card's "Render only" is the plain pipeline, for a match headed to Kdenlive. */
+async function startRender(input, full = false) {
   const err = $("#entryerr");
   err.textContent = "";
   try {
-    const { matchId } = await api("/api/render", {
+    const { matchId } = await api(`/api/render${full ? "?short=1&export=1" : ""}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ input }),
@@ -1163,7 +1184,7 @@ function showList() {
   $("#entry").addEventListener("submit", (e) => {
     e.preventDefault();
     const value = $("#entryinput").value.trim();
-    if (value) startRender(value);
+    if (value) startRender(value, true);
   });
   $("#tab-suggestions").addEventListener("click", () => showTab("suggestions"));
   $("#tab-matches").addEventListener("click", () => showTab("matches"));

@@ -197,6 +197,18 @@ export function dismissSuggestion(matchId: number): void {
   saveCache(cache);
 }
 
+/**
+ * The undo. Dismiss sits next to Render on a phone, and "permanently" was the whole of its
+ * safety. `row` is the scored entry the caller kept when it dropped it, put back so a restart
+ * before the next scan still shows the match; without one it returns at that scan.
+ */
+export function restoreSuggestion(matchId: number, row?: Suggestion): void {
+  const cache = loadCache();
+  cache.dismissed = cache.dismissed.filter((id) => id !== matchId);
+  if (row && !cache.suggestions.some((s) => s.metrics.matchId === matchId)) cache.suggestions.push(row);
+  saveCache(cache);
+}
+
 async function mapWithConcurrency<T, R>(
   items: readonly T[],
   limit: number,

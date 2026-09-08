@@ -10,7 +10,13 @@
  * ask for them are suggestions you have already navigated away from.
  */
 import { describeError } from "./errorText.js";
-import { dismissSuggestion, getSuggestions, type SuggestResult } from "./suggest.js";
+import {
+  dismissSuggestion,
+  getSuggestions,
+  restoreSuggestion,
+  type SuggestResult,
+  type Suggestion,
+} from "./suggest.js";
 
 export interface SuggestSnapshot {
   /** Null until the first scan finishes; a stale result is kept while a rescan runs. */
@@ -73,16 +79,35 @@ export function snapshot(): SuggestSnapshot {
   return { ...state };
 }
 
+/** Rows dropped by `dismiss`, kept so `restore` can put them back without a scan. */
+const parked = new Map<number, Suggestion>();
+
 /**
- * Hides a match permanently. `dismissSuggestion` writes the cache, but the in-memory result
- * would keep serving the row until the next scan, so it is dropped here too.
+ * Hides a match. `dismissSuggestion` writes the cache, but the in-memory result would keep
+ * serving the row until the next scan, so it is dropped here too — and parked, for the undo.
  */
 export function dismiss(matchId: number): void {
   dismissSuggestion(matchId);
   if (state.result) {
+    const row = state.result.suggestions.find((s) => s.metrics.matchId === matchId);
+    if (row) parked.set(matchId, row);
     state.result = {
       ...state.result,
       suggestions: state.result.suggestions.filter((s) => s.metrics.matchId !== matchId),
     };
   }
+}
+
+/**
+ * Un-dismisses a match. True when the row is showing again now; false when this process never
+ * saw it (a restart since), in which case it is back after the next scan. Order is not a
+ * concern here: `presentSuggestions` sorts each bucket on every read.
+ */
+export function restore(matchId: number): boolean {
+  const row = parked.get(matchId);
+  restoreSuggestion(matchId, row);
+  if (!row) return false;
+  parked.delete(matchId);
+  if (state.result) state.result = { ...state.result, suggestions: [...state.result.suggestions, row] };
+  return true;
 }
