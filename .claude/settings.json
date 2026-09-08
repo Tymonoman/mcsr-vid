@@ -1,0 +1,27 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=$(node -e 'let s=\"\";process.stdin.on(\"data\",d=>s+=d).on(\"end\",()=>{try{const p=JSON.parse(s).tool_input?.file_path;if(p)process.stdout.write(p)}catch{}})'); case \"$f\" in *.ts|*.tsx) npx prettier --write \"$f\" >/dev/null 2>&1; npx tsc --noEmit 2>&1 | head -20;; esac",
+            "statusMessage": "Formatting and typechecking..."
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-/app}/scripts/preflight.sh\"",
+            "statusMessage": "Preflight: tools, git, credentials..."
+          }
+        ]
+      }
+    ]
+  }
+}
