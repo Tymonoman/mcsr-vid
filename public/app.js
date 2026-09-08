@@ -1317,7 +1317,13 @@ function showList() {
   $("#tab-abtest").addEventListener("click", () => showTab("abtest"));
   $("#backtolist").addEventListener("click", showList);
 
-  await refresh();
+  // A shelf that cannot be listed must not leave the whole page at "loading…": say so in the
+  // list, and let the suggestions poll below run regardless.
+  try {
+    await refresh();
+  } catch (e) {
+    $("#list").innerHTML = `<div class="scanline bad">Could not load matches: ${esc(e.message)}</div>`;
+  }
   if (matches.length) select(matches[0].matchId);
   // Not awaited: the first scan can take a minute against a cold cache, and the rendered-match
   // list is usable immediately.
