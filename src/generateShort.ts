@@ -1,5 +1,5 @@
 import path from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { requireArg } from "./cliArgs.js";
 import { config } from "./config.js";
@@ -58,6 +58,22 @@ for (const p of [playerLeft, playerRight]) {
   }
 }
 
+// Both chats, merged, when the pipeline saved them: where the crowd reacted is a signal the
+// timeline does not have. A match without chat files scores exactly as before.
+const chatAtSec = readdirSync(outDir)
+  .filter((f) => /^chat-.+\.json$/.test(f))
+  .flatMap((f) => {
+    try {
+      const parsed = JSON.parse(readFileSync(path.join(outDir, f), "utf8")) as {
+        messages?: Array<{ atSec: number }>;
+      };
+      return (parsed.messages ?? []).map((m) => m.atSec);
+    } catch {
+      return [];
+    }
+  });
+if (chatAtSec.length > 0) console.error(`Chat: ${chatAtSec.length} messages inform the moment`);
+
 const moments = distinctShortMoments(
   match,
   {
@@ -65,6 +81,7 @@ const moments = distinctShortMoments(
     rightUuid: playerRight.uuid,
     runMs: match.result.time || 900_000,
     windowSec: seconds,
+    chatAtSec,
   },
   5,
 );

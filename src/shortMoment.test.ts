@@ -127,3 +127,47 @@ const optsFor = (m: MatchInfo) => ({
 }
 
 console.log("shortMoment: all checks passed");
+
+// --- Chat as the crowd's own record of the moment ---------------------------------------------
+// Two identical events far apart score alike on the timeline. A burst of chat after one of them
+// is what the crowd reacted to, and it decides the tie — without ever outranking the event
+// itself, and without changing anything for a match that has no saved chat.
+{
+  const { chatBurst } = await import("./shortMoment.js");
+  const match = load(12902901);
+  const uuid = match.players[0]!.uuid;
+  const twin: MatchInfo = {
+    ...match,
+    timelines: [
+      { uuid, time: 100_000, type: "projectelo.timeline.dragon_death" },
+      { uuid, time: 300_000, type: "projectelo.timeline.dragon_death" },
+    ],
+  };
+  const opts = { ...optsFor(match), runMs: 500_000 };
+  const quiet = pickShortMoment(twin, opts)!;
+  const withoutChat = pickShortMoment(twin, { ...opts, chatAtSec: [] })!;
+  assert.equal(withoutChat.score, quiet.score, "an empty chat changes nothing");
+
+  // Twelve messages in the ten seconds after the second event, one a minute otherwise.
+  const chat = [
+    ...Array.from({ length: 8 }, (_, i) => i * 60 + 30),
+    ...Array.from({ length: 12 }, (_, i) => 302 + i),
+  ];
+  const loud = pickShortMoment(twin, { ...opts, chatAtSec: chat })!;
+  assert.ok(
+    loud.startMs < 300_000 && loud.endMs > 300_000,
+    `the window should hold the event chat reacted to, got ${loud.startMs}-${loud.endMs}`,
+  );
+  assert.match(loud.reason, /chat burst/);
+  assert.ok(loud.score > quiet.score, "the burst adds, it does not replace");
+
+  // The burst is relative to the match's own average, and needs a crowd: one message a minute
+  // is a single viewer typing, and a window that happens to hold one of them is no burst.
+  assert.equal(chatBurst([10, 70, 130, 190, 250], 0, 22_000, 500_000), 0, "steady chat is no burst");
+  assert.equal(chatBurst([], 0, 22_000, 500_000), 0);
+  assert.ok(
+    chatBurst(chat, 290_000, 312_000, 500_000) >= 0.9,
+    "twelve messages in ten seconds against one a minute is a full burst",
+  );
+  console.log("OK: chat bursts break ties toward the moment the crowd reacted to");
+}

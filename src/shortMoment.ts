@@ -110,6 +110,38 @@ export interface ShortMomentOptions {
   /** Length of the run, ms. Windows are not allowed to run past it. */
   runMs: number;
   windowSec?: number;
+  /**
+   * When each Twitch chat message was posted, in seconds after match start, both chats merged
+   * (`chat-<nick>.json`, src/twitchChat.ts). Optional: a match without saved chat scores as
+   * before. Chat is the one record of where the *crowd* reacted, which the timeline cannot know.
+   */
+  chatAtSec?: readonly number[];
+}
+
+/** Chat reacts after the fact: the burst for a window is counted this long past its end. */
+const CHAT_LAG_SEC = 8;
+/** Fewer messages than this is one person typing, not a crowd — a quiet chat must not burst on it. */
+const MIN_BURST_MESSAGES = 4;
+
+/**
+ * How much louder than the match's average chat is over a window, 0 at average and 1 at three
+ * times it. Relative, so a stream with a thousand viewers and one with ten are scored the same
+ * way; and a chat that never bursts scores every window 0, which changes nothing.
+ */
+export function chatBurst(
+  chatAtSec: readonly number[],
+  startMs: number,
+  endMs: number,
+  runMs: number,
+): number {
+  if (chatAtSec.length === 0 || runMs <= 0) return 0;
+  const from = startMs / 1000;
+  const to = endMs / 1000 + CHAT_LAG_SEC;
+  const inWindow = chatAtSec.filter((t) => t >= from && t < to).length;
+  if (inWindow < MIN_BURST_MESSAGES) return 0;
+  const rate = inWindow / (to - from);
+  const mean = chatAtSec.length / (runMs / 1000 + CHAT_LAG_SEC);
+  return mean === 0 ? 0 : clamp01((rate / mean - 1) / 2);
 }
 
 /**
@@ -165,10 +197,14 @@ export function rankShortMoments(match: MatchInfo, opts: ShortMomentOptions): Sh
     }
 
     const density = clamp01(inside.reduce((sum, e) => sum + weightOf(e.type), 0) / 3);
+    const burst = opts.chatAtSec ? chatBurst(opts.chatAtSec, startMs, endMs, opts.runMs) : 0;
 
     // Weights, not a formula to be clever about: payoff dominates, a lead flip is nearly as good
     // as a big single event, and the hook is a tiebreak that stops a window opening on dead air.
-    const score = 3 * clamp01(payoff) + 2.5 * leadFlip + 2 * simultaneity + 1.5 * hook + 1 * density;
+    // A chat burst is worth as much as the hook: the crowd's reaction breaks ties between
+    // windows the timeline scores alike, and never outranks the event itself.
+    const score =
+      3 * clamp01(payoff) + 2.5 * leadFlip + 2 * simultaneity + 1.5 * hook + 1 * density + 1.5 * burst;
 
     const reasons = [
       `payoff ${best.type.split(".").pop()} at +${((best.time - startMs) / 1000).toFixed(0)}s`,
@@ -176,6 +212,7 @@ export function rankShortMoments(match: MatchInfo, opts: ShortMomentOptions): Sh
     if (leadFlip) reasons.push("lead change");
     if (simultaneity > 0.5) reasons.push("both players within seconds");
     if (hook > 0) reasons.push("opens on an event");
+    if (burst >= 0.5) reasons.push("chat burst");
     moments.push({ startMs, endMs, score, reason: reasons.join(", "), events: inside });
   }
 

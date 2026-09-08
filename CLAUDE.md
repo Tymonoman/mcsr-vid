@@ -65,6 +65,11 @@ fade it), then one ffmpeg pass scales both POVs into their panes and lays the bo
   hitting the same milestone seconds apart, and something in the first two seconds so the opening
   is not dead air. On match 12730175 it picks the double death over the dragon kill, which is
   right. The weights are informed guesses; re-tune them against retention once Shorts exist.
+- **Chat is a term in the moment score** when `chat-<nick>.json` files sit beside the media
+  (src/twitchChat.ts): a window whose chat runs three times the match's average — counted
+  eight seconds past the window, since chat reacts late, and at least four messages, since
+  one viewer typing is not a crowd — gains as much as the hook term. Measured on four
+  matches: it lifts finish windows with a burst and flips nothing the timeline already decided.
 - **Nothing on the board animates**, deliberately. As a 900-frame VP9 render it took ~10 minutes
   to produce 22 seconds of furniture; as two stills it takes seconds. The one thing that would
   animate — a live RTA counter — is a static "at 6:57" label instead, and neither reference
