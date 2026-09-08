@@ -50,7 +50,8 @@ Four overlay artifacts, not one video, because almost nothing in the overlay mov
   seconds after the finish the achievements block becomes `SUBSCRIBE · for the next one`, as one
   more split still (`ctaFrameOf` in `src/splitStates.ts`). Subscribers are the binding Partner
   Programme gate, and the post-roll is where 35-69% of viewers are still watching with nothing
-  on screen changing.
+  on screen changing. `renderOverlay({ only: ["splits"] })` redoes just the stills (seconds) for
+  a match already on the shelf; the timer strip is the ~9 minutes and does not change.
 - `overlay-intro.webm` — the 7s intro card.
 
 The old single `overlay.mov` (1920x346 ProRes 4444, 3.9-5.7 GB a match) is gone. Measured on the
