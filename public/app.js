@@ -275,7 +275,9 @@ async function select(id, { open = false } = {}) {
       .forEach((chip) =>
         chip.addEventListener("click", () => {
           $("#hook").value = chip.textContent;
-          hookCounter(meta);
+          // Through the same event a keystroke raises: the YouTube title and the publish kit
+          // follow the field from that, and a chip that only set the value left both behind.
+          $("#hook").dispatchEvent(new Event("input"));
           $("#hook").focus();
         }),
       );
@@ -289,13 +291,33 @@ async function select(id, { open = false } = {}) {
   $("#stop").addEventListener("click", () => api(`/api/render/${id}`, { method: "DELETE" }));
   $("#failcopy").addEventListener("click", () => navigator.clipboard?.writeText($("#failtext").textContent));
   $("#save").addEventListener("click", async () => {
-    await api(`/api/meta/${id}`, {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ title: $("#title").value, description: $("#description").value }),
-    });
+    // The hook field is where the headline is written, and Save is where it is committed: the
+    // placeholder in the title's first line takes it here, so the file on disk — what the
+    // checklist reads and what the Short's hook resolves from — no longer says <HOOK>.
+    const hook = $("#hook")?.value.trim();
+    const [first, ...rest] = $("#title").value.split("\n");
+    if (hook && first.includes("<HOOK>"))
+      $("#title").value = [first.replace("<HOOK>", hook), ...rest].join("\n");
+    let saved;
+    try {
+      saved = await api(`/api/meta/${id}`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title: $("#title").value, description: $("#description").value }),
+      });
+    } catch (e) {
+      $("#savedmsg").textContent = e.message;
+      return;
+    }
     $("#savedmsg").textContent = "saved";
     setTimeout(() => ($("#savedmsg").textContent = ""), 2000);
+    // The panels that quote the title and description were painted from the meta this detail
+    // opened with; after a save they would still show the old text until the match was reopened.
+    // The PUT answers with the merged meta, so no follow-up GET.
+    Object.assign(meta, saved);
+    loadChecklist(id);
+    loadYoutube(id, meta);
+    loadPublishKit(id, meta);
   });
 
   loadChecklist(id);

@@ -180,6 +180,12 @@ the page is newer than its server: the nightly strip detects that (the old serve
   path (`POST /api/render/:id?short=1&export=1`); one poller settles all of it, so a job can
   never cut two Shorts.
 - On phones (<= 860px) the list and the match are two screens with a back bar, not one column.
+  On a coarse pointer the Rendered rows carry no Hide/Delete: a thumb landing near them armed
+  the two-step delete that the next tap completed. Disk management is a desk job.
+- **Save edits** commits the hook field into the title's first line (the file on disk stops
+  saying `<HOOK>`, which is what the checklist and the Short's hook read), then repaints the
+  checklist, the YouTube panel and the publish kit from the PUT's reply; a chip click raises the
+  same `input` event a keystroke does, so both panels follow it.
 - There is a Playwright smoke script from the 2026-09-07 session in that session's scratchpad
   (`smoke.cjs http://host:port`); it is not in the repo because Playwright is not a dependency.
 

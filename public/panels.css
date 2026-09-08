@@ -532,6 +532,14 @@
   .sugg .links {
     gap: 16px;
   }
+
+  /* A Rendered row is one tap target on a phone: opening the match. Hide and Delete sit inside
+     that target, and a thumb landing near them arms the two-step delete that a second tap on
+     the same spot then completes -- measured on a 390px viewport. Disk management is a desk
+     job; the phone gets the row and nothing destructive in it. */
+  .card .rowacts {
+    display: none;
+  }
   .sugg .links a {
     display: inline-flex;
     align-items: center;
