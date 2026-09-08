@@ -628,7 +628,7 @@ async function loadPublishKit(id, meta) {
   // Plain, and it offers the takedown in the same breath: this goes to someone who never asked
   // to be on the channel, and one line of "just say" is cheaper than a strike.
   const dm = (who, opponent) =>
-    `Hey ${who} — your ranked match vs ${opponent} is up on MCSR Replayoffs, both POVs synced with the split timer: ${url}. Happy to take it down if you'd rather, just say.`;
+    `Hey ${who} — your ranked match vs ${opponent} is up on MCSR Replayoffs, both POVs synced with the split timer: ${url}. Share it with your chat if you like — and if you'd rather it came down, just say.`;
 
   // The YouTube panel's field is the one an operator may have edited by hand, so it wins while
   // it is on the page; otherwise the generated first line with the hook substituted in. Never
