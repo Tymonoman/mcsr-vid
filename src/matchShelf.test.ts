@@ -151,6 +151,26 @@ try {
   assert.equal(await isUploaded(556), true, "a Studio upload is ticked by hand");
   assert.equal((await publishChecklist(556, null)).uploaded, true, "and the checklist agrees");
 
+  // --- 9. And a Studio upload nobody ticked, recognised by the match link in its description ---
+  const { _setChannelUploadsForTest } = await import("./channelUploads.js");
+  seed(557, 4);
+  const onChannel = (matchId: number) => [
+    {
+      videoId: "xF_DFvTDo-E",
+      title: "hook | a vs b",
+      publishedAt: "2026-09-01T19:00:00Z",
+      description: `Match data: https://mcsrranked.com/matches/${matchId}`,
+      privacyStatus: "public",
+    },
+  ];
+  // 5570 is a different match whose id merely starts with ours; a substring test would tick 557.
+  _setChannelUploadsForTest(onChannel(5570));
+  assert.equal(await isUploaded(557), false, "another match's link is not ours");
+  _setChannelUploadsForTest(onChannel(557));
+  assert.equal(await isUploaded(557), true, "the match link in a Studio upload's description");
+  assert.equal((await publishChecklist(557, null)).uploaded, true, "and the checklist agrees");
+  _setChannelUploadsForTest([]);
+
   console.log("matchShelf: all checks passed");
 } finally {
   await rm(media, { recursive: true, force: true });

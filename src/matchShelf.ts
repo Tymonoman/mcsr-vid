@@ -16,6 +16,7 @@
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
+import { channelUploadsSnapshot, channelVideoFor } from "./channelUploads.js";
 import { config } from "./config.js";
 import { readManifest } from "./thumbnailVariants.js";
 import { HOOK_PLACEHOLDER } from "./title.js";
@@ -169,9 +170,17 @@ function chatFiles(dir: string): number {
   }
 }
 
-/** Uploaded by the dashboard (youtube.json beside the media) or ticked as uploaded in Studio. */
+/**
+ * Uploaded by the dashboard (youtube.json beside the media), found on the channel by the match
+ * link in its description (src/channelUploads.ts — how a Studio upload announces itself), or
+ * ticked by hand. The tick is the fallback for a video the link cannot find.
+ */
 export async function isUploaded(matchId: number): Promise<boolean> {
-  return (await readUpload(matchId)) !== null || readManual(matchId).uploaded;
+  return (
+    (await readUpload(matchId)) !== null ||
+    readManual(matchId).uploaded ||
+    channelVideoFor(matchId, channelUploadsSnapshot()) !== null
+  );
 }
 
 /**

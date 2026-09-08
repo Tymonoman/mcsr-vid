@@ -141,6 +141,13 @@ the page is newer than its server: the nightly strip detects that (the old serve
   `findOrCreatePlaylist` remembers ids per process: YouTube's `playlists.list` does not show a
   playlist created a second earlier, and the back-to-back inserts made a duplicate on the live
   channel before this. The season playlist exists: `PLHG-jSA-dWDo`, all uploads to date.
+  **A Studio upload is recognised without being ticked** (`src/channelUploads.ts`): the channel's
+  own videos are listed every six hours and paired with a match by the `/matches/<id>` segment in
+  the description the operator pasted, so the same match cannot be both "ready to publish" and on
+  the channel. Matched on the path segment, not the host — the three pipeline-era descriptions
+  live today carry three shapes of that line, including a `magmamcsr.com` deep link. The manual
+  `uploaded` tick is now only the fallback for a video the link cannot find: the hand-made
+  uploads from before the pipeline, whose descriptions name no match.
 - **Publish kit** under the YouTube panel (`GET /api/publishkit/:id`): copy buttons for the
   title (hook substituted), the publish slot (next `publishHourUtc`, default 19:00 UTC — the
   active competitor's measured slot; `src/publishSlot.ts`, also the upload form's default),

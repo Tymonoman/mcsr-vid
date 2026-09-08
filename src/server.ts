@@ -12,6 +12,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { channelUploadsSnapshot, channelVideoFor, refreshChannelUploadsIfStale } from "./channelUploads.js";
 import { config } from "./config.js";
 import { describeError } from "./errorText.js";
 import { buildHookSuggestions, suggestHooksExternally } from "./hooks.js";
@@ -346,6 +347,9 @@ const server = createServer(async (req, res) => {
     }
 
     if (resource === "matches" && req.method === "GET") {
+      // `uploaded` below reads the channel snapshot; this keeps it from going six hours stale
+      // on a dashboard nobody opened the YouTube panel on.
+      refreshChannelUploadsIfStale();
       const statuses = await listMatchStatuses();
       const hidden = hiddenMatchIds();
       // Newest first: match ids ascend with time, and the newest is what you just rendered.
@@ -543,14 +547,19 @@ const server = createServer(async (req, res) => {
     // record that a title editor never looks at.
     if (resource === "publishkit" && req.method === "GET") {
       const entry = await matchStatusFor(matchId);
-      const upload = await readUpload(matchId);
+      // The dashboard's own record, else the video the channel says is this match — the DM is
+      // useless without the link, and while uploads go through Studio the record never exists.
+      const videoId =
+        (await readUpload(matchId))?.videoId ??
+        channelVideoFor(matchId, channelUploadsSnapshot())?.videoId ??
+        null;
       const short = async (kind: string) =>
         ((await readIfPresent(path.join(matchDir(matchId), `short-${matchId}.${kind}.txt`))) ?? "").trim() ||
         null;
       json(res, 200, {
         shortTitle: await short("title"),
         shortDescription: await short("description"),
-        videoUrl: upload ? `https://youtu.be/${upload.videoId}` : null,
+        videoUrl: videoId ? `https://youtu.be/${videoId}` : null,
         players: [entry.leftNickname ?? null, entry.rightNickname ?? null],
         // The slot to schedule for, so the morning's paste into Studio carries a time too.
         publishAt: nextPublishSlot(Date.now(), config.publishHourUtc).toISOString(),
@@ -724,6 +733,7 @@ server.listen(PORT, "0.0.0.0", () => {
   // answer; a fresh cache returns immediately and this costs nothing.
   void startScan();
   refreshRivalPostsIfStale();
+  refreshChannelUploadsIfStale();
   // And then render one of them overnight, unattended. Waiting for a click is what caps output
   // at 7.24 videos a month: the render is cheap, the operator's attention is not.
   if (config.nightlyRenderHourUtc !== null) {
