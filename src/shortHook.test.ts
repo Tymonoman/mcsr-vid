@@ -102,4 +102,10 @@ const FALLBACK = "watch the lead flip here";
   assert.ok(description.includes(HASHTAGS.join(" ")));
 }
 
+// A rank hook is the common case now, and its hashes would read as hashtags in a title — the
+// first three shown above the Short would be "#7 #11 #minecraft". So it gets no appended tags.
+assert.equal(buildShortTitle("#7 vs #11"), "#7 vs #11", "hash-bearing hooks must not gain hashtags");
+assert.equal(buildShortTitle("WANNABE vs REAL GOAT"), "WANNABE vs REAL GOAT #minecraft #mcsr");
+console.log("OK: a rank hook stands alone in the Short title");
+
 console.log("shortHook: all checks passed");

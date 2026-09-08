@@ -122,14 +122,23 @@ export async function resolveShortHookFor(input: {
  * the whole line and the nicknames are in the description where they still count for search.
  */
 export function buildShortTitle(hook: string): string {
-  const budget = TITLE_MAX_CHARS - SHORT_TAGS.length;
   const text = hook.trim();
+  // A rank hook already carries hashes — "#7 vs #11" — and YouTube reads any `#token` in a title
+  // as a hashtag, showing the first three above the video. Appending two more would make that
+  // "#7 #11 #minecraft" and bury the one that matters. The description carries the real hashtags
+  // on every Short, so a hash-bearing hook stands alone.
+  if (text.includes("#")) return text.length <= TITLE_MAX_CHARS ? text : cutAtWord(text, TITLE_MAX_CHARS);
+  const budget = TITLE_MAX_CHARS - SHORT_TAGS.length;
   if (text.length <= budget) return `${text}${SHORT_TAGS}`;
   // Cut at a word boundary: a title truncated mid-word reads as a broken pipeline, and YouTube
   // truncates the tail again in the feed anyway.
-  const cut = text.slice(0, budget);
+  return `${cutAtWord(text, budget)}${SHORT_TAGS}`;
+}
+
+function cutAtWord(text: string, max: number): string {
+  const cut = text.slice(0, max);
   const lastSpace = cut.lastIndexOf(" ");
-  return `${(lastSpace > 0 ? cut.slice(0, lastSpace) : cut).trimEnd()}${SHORT_TAGS}`;
+  return (lastSpace > 0 ? cut.slice(0, lastSpace) : cut).trimEnd();
 }
 
 /**

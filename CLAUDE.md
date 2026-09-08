@@ -17,7 +17,7 @@ script, don't reconstruct the shell line. Extra arguments go after `--`.
 | `npm run export:nvenc -- media/<id>/match-<id>.kdenlive [out=N]` | GPU-encode the timeline to `out/export.mp4` via `h264_nvenc`. Append `out=48` to render a short range instead of the whole video. |
 | `npm run analytics -- <videoId> [--traffic-sources] [--days N]` | YouTube Analytics for a published video. |
 | `npm run bench -- <Composition> [--frames=N] [--codec=] [--pixelFormat=] [--concurrency=N] [--out=path]` | Measure render throughput for one composition. Use it before claiming a render change is faster — every speed number in this file came from it. |
-| `npm run short -- <matchId> [--pick=N] [--seconds=30]` | Pick the most watchable ~30s of a match and render a finished vertical MP4 (`short-<id>.mp4`). Needs the VODs already downloaded. |
+| `npm run short -- <matchId> [--pick=N] [--seconds=22]` | Pick the most watchable ~22s of a match and render a finished vertical MP4 (`short-<id>.mp4`) plus `short-<id>.title.txt` / `.description.txt`. Needs the VODs already downloaded. |
 | `npm run export:fast -- <matchId> [--cpu] [--seconds=N] [--full-tail]` | Render the finished MP4 with one ffmpeg pass instead of melt — ~3.8x faster, no Kdenlive. `--seconds` renders a short range as a smoke test; `--full-tail` keeps the whole post-roll. |
 
 Three things these scripts do **not** do:
@@ -53,20 +53,28 @@ lab, the overlay render went from ~28.5 min to ~9 min for a 10-minute match.
 ## Shorts
 
 `npm run short -- <matchId>` cuts a finished vertical MP4 from VODs the main pipeline already
-downloaded. No Kdenlive project: a Short is 30 seconds of fixed layout with nothing to decide, so
+downloaded. No Kdenlive project: a Short is 22 seconds of fixed layout with nothing to decide, so
 an NLE would only insert a manual step into the one part of the pipeline that can be fully
 automatic. Remotion renders two stills (the board, and the hook on its own frame so ffmpeg can
 fade it), then one ffmpeg pass scales both POVs into their panes and lays the board over.
 
-- **Which 30 seconds** is `src/shortMoment.ts`, scored entirely from `match.timelines` — no video
-  decoding. It weights the payoff landing ~70% through the window, a lead change, both players
+- **Which 22 seconds** is `src/shortMoment.ts`, scored entirely from `match.timelines` — no video
+  decoding. It weights the payoff landing ~59% through the window (the 42k-view competitor Short
+  is 21 s with its payoff at 9 s), a lead change, both players
   hitting the same milestone seconds apart, and something in the first two seconds so the opening
   is not dead air. On match 12730175 it picks the double death over the dragon kill, which is
   right. The weights are informed guesses; re-tune them against retention once Shorts exist.
 - **Nothing on the board animates**, deliberately. As a 900-frame VP9 render it took ~10 minutes
-  to produce 30 seconds of furniture; as two stills it takes seconds. The one thing that would
+  to produce 22 seconds of furniture; as two stills it takes seconds. The one thing that would
   animate — a live RTA counter — is a static "at 6:57" label instead, and neither reference
   channel runs a timer on their Shorts either.
+- **The hook line is the title hook.** `resolveShortHook` (`src/shortHook.ts`) takes the edited
+  title's hook if one was picked, else the first rivalry chip, else the per-moment line — burned
+  in centred on the seam for 4 s, in the style measured on the 42k-view competitor Short. The
+  Short's own title is that hook plus `#minecraft #mcsr`, unless the hook already carries a
+  hash (`#7 vs #11`), in which case it stands alone so YouTube does not read four hashtags.
+- **A Short follows every clean nightly render** (`nightlyRenderShort`, default on), so the
+  morning has both halves of a match ready.
 - **Auto-cropping the game window usually declines, and should.** Streamers whose chat and stat
   panels reach the frame edges have motion everywhere, so there is no game window to isolate
   (measured on both POVs of 12296170). `--top-crop=x,y,w,h` overrides it when you know the layout.
