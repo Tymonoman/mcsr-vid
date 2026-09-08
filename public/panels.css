@@ -546,6 +546,16 @@
     gap: 16px;
   }
 
+  /* The 12px text links that are really controls -- rescan, try again, undo, Download, Bundle --
+     get a thumb-sized hit area without changing how the line reads. */
+  .scanline a,
+  .previewmeta a {
+    display: inline-block;
+    padding: 8px 6px;
+    margin: -8px -2px;
+    min-height: 32px;
+  }
+
   /* A Rendered row is one tap target on a phone: opening the match. Hide and Delete sit inside
      that target, and a thumb landing near them arms the two-step delete that a second tap on
      the same spot then completes -- measured on a 390px viewport. Disk management is a desk

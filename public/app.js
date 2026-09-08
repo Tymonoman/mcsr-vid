@@ -194,7 +194,7 @@ async function select(id, { open = false } = {}) {
 
   $("#detail").innerHTML = `
     <div class="row">
-      <button id="run">${rendered ? "Re-run pipeline" : "Run pipeline"}</button>
+      <button id="run" class="${rendered ? "ghost" : ""}">${rendered ? "Re-run pipeline" : "Run pipeline"}</button>
       <button id="stop" class="ghost">Stop</button>
       <span class="id">#${id} &mdash; ${esc(meta.leftNickname)} vs ${esc(meta.rightNickname)}</span>
     </div>
