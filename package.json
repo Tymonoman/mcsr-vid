@@ -11,7 +11,7 @@
     "build-overlay-css": "node scripts/build-overlay-css.mjs",
     "remotion:studio": "npm run build-overlay-css && remotion studio remotion/index.ts",
     "remotion:render": "npm run build-overlay-css && remotion render remotion/index.ts MatchOverlay",
-    "//still": "Render one frame of a composition to PNG — the fast visual check before a full render.",
+    "//still": "Render one frame of a composition to PNG \u2014 the fast visual check before a full render.",
     "still": "npm run build-overlay-css && remotion still remotion/index.ts",
     "//validate-project": "Load a generated .kdenlive through the MLT engine; exit 0 = parses, 1 = malformed XML.",
     "validate-project": "melt-7 -consumer xml:/dev/null",
@@ -36,7 +36,8 @@
     "youtube-auth": "tsx src/youtubeAuth.ts",
     "bench": "npm run build-overlay-css && tsx src/benchRender.ts",
     "short": "npm run build-overlay-css && tsx src/generateShort.ts",
-    "export:fast": "tsx src/exportFastCli.ts"
+    "export:fast": "tsx src/exportFastCli.ts",
+    "chat": "tsx src/chatCli.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
