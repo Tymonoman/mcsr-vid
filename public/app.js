@@ -1084,6 +1084,13 @@ function nightlyInner() {
     return `<div class="lines"><span class="bad">The server is running older code than this page</span> &middot; <code>docker restart mcsr-dashboard</code> on the lab enables the nightly render and the newer panels.</div>`;
   }
   if (nightly.error) return `<div class="lines"><span class="bad">${esc(nightly.error)}</span></div>`;
+  // One restart behind is invisible otherwise: the page is served from disk and looks current,
+  // the server still writes yesterday's descriptions and hooks.
+  const { boot, now } = nightly.code ?? {};
+  const behind =
+    boot && now && boot !== now
+      ? `<div class="bad">The server is running <code>${esc(boot)}</code>; the repo is at <code>${esc(now)}</code> &middot; <code>docker restart mcsr-dashboard</code> picks it up.</div>`
+      : "";
 
   const { enabled, hourUtc, nextRunAt, candidate, lastRun } = nightly;
   // The browser knows the operator's zone; the config only knows UTC. Both, so "03:00" is not
@@ -1133,7 +1140,7 @@ function nightlyInner() {
   }
 
   const failed = nightly.runError ? `<div class="bad">Run now failed: ${esc(nightly.runError)}</div>` : "";
-  return `<div class="lines">
+  return `<div class="lines">${behind}
       <div class="plan" title="${esc(nextRunAt ?? "no schedule")}">${plan}</div>
       <div class="last" title="${esc(lastRun ? lastRun.startedAt : "")}">${last}</div>${failed}
     </div>

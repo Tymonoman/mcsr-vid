@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 import { channelUploadsSnapshot, channelVideoFor, refreshChannelUploadsIfStale } from "./channelUploads.js";
 import { config } from "./config.js";
 import { describeError } from "./errorText.js";
+import { codeVersions } from "./repoHead.js";
 import { buildHookSuggestions, suggestHooksExternally } from "./hooks.js";
 import { computeMetrics } from "./matchScore.js";
 import { listMatchStatuses, matchStatusFor } from "./matchStatus.js";
@@ -459,6 +460,8 @@ const server = createServer(async (req, res) => {
       const hourUtc = config.nightlyRenderHourUtc;
       const pick = await nightlyCandidate();
       json(res, 200, {
+        // Boot commit vs checked-out commit: the strip says "restart" when they differ.
+        code: codeVersions(),
         enabled: hourUtc !== null,
         hourUtc,
         nextRunAt:

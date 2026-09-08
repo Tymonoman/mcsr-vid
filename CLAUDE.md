@@ -98,6 +98,9 @@ fade it), then one ffmpeg pass scales both POVs into their panes and lays the bo
 container needs `docker restart mcsr-dashboard`; a CSS/JS change is live on reload. In between,
 the page is newer than its server: the nightly strip detects that (the old server answers
 `/api/nightly` with its id-parser error) and says to restart, rather than echoing the error.
+Any later gap is caught the same way: `/api/nightly` carries `code: { boot, now }`
+(`src/repoHead.ts` reads `.git/HEAD` at boot and per request, no git spawned), and the strip
+names both commits when they differ.
 
 - **Suggestions** are scored candidate matches. Each card carries a story line built server-side
   (`src/suggestPresent.ts`): current rank, match-start elo, head-to-head record, Twitch followers,
