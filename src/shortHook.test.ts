@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
-import { resolveShortHook } from "./shortHook.js";
+import { buildShortDescription, buildShortTitle, resolveShortHook } from "./shortHook.js";
+import { HASHTAGS } from "./description.js";
 import { buildTitle, HOOK_PLACEHOLDER } from "./title.js";
 import { layoutShortHook } from "../remotion/shortHookLayout.js";
 
+/** The tail every Short title carries; kept here so the length assertions can subtract it. */
+const TAGS = " #minecraft #mcsr";
 const SUGGESTIONS = ["#3 vs #11", "Decided by 2.4 seconds"];
 const FALLBACK = "watch the lead flip here";
 
@@ -70,6 +73,33 @@ const FALLBACK = "watch the lead flip here";
     assert.ok(fits(layout), `${text}: ${layout.fontSize}px overflows the board`);
     assert.ok(layout.fontSize <= 120, `${text}: ${layout.fontSize}px is past the top step`);
   }
+}
+
+// --- The metadata files the manual upload is typed from.
+{
+  // The hook is the title, verbatim: it is the line already judged good enough to burn in.
+  assert.equal(
+    buildShortTitle("both blind at the same time"),
+    "both blind at the same time #minecraft #mcsr",
+  );
+  assert.equal(buildShortTitle("  padded  "), "padded #minecraft #mcsr");
+
+  // 100 is YouTube's hard cap, and a title cut mid-word reads as a broken pipeline. Only an
+  // edited long-form title can produce a hook this long — the suggestion budget caps at 47.
+  const title = buildShortTitle(`${"word ".repeat(30)}end`);
+  assert.ok(title.length <= 100, `title ran to ${title.length} characters`);
+  assert.ok(title.endsWith(TAGS), "the tags must survive the truncation");
+  assert.ok(!title.slice(0, -TAGS.length).endsWith("wor"), "truncated mid-word");
+  // A single unbreakable word has no boundary to cut at; it still has to fit.
+  assert.ok(buildShortTitle("x".repeat(200)).length <= 100);
+}
+{
+  const description = buildShortDescription(12730175, "edcr", "doogile");
+  assert.match(description.split("\n")[0]!, /edcr vs doogile.*MCSR Ranked 1v1/);
+  assert.ok(description.includes("https://mcsrranked.com/matches/12730175"));
+  // The same three the long-form carries, not a second set — both halves of a match should look
+  // like one channel to YouTube.
+  assert.ok(description.includes(HASHTAGS.join(" ")));
 }
 
 console.log("shortHook: all checks passed");

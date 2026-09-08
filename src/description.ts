@@ -8,7 +8,7 @@ import type { MatchInfo, UserDetails } from "./types.js";
 // and only the first three render above the title — which here means all of them are visible.
 // Per-player tags are gone deliberately: a nickname hashtag has no search volume of its own and
 // spent two of the three visible slots.
-const HASHTAGS = ["#MCSRRanked", "#MCSR", "#MinecraftSpeedrunning"];
+export const HASHTAGS = ["#MCSRRanked", "#MCSR", "#MinecraftSpeedrunning"];
 
 /**
  * `DESERT_TEMPLE` -> "desert temple seed", `BRIDGE` -> "bridge bastion". An unknown enum value
