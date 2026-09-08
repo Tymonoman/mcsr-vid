@@ -17,7 +17,7 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { channelUploadsSnapshot, channelVideoFor } from "./channelUploads.js";
-import { config } from "./config.js";
+import { config, matchDir } from "./config.js";
 import { readManifest } from "./thumbnailVariants.js";
 import { HOOK_PLACEHOLDER } from "./title.js";
 import { readUpload } from "./youtubeStore.js";
@@ -86,7 +86,7 @@ export const isArchived = (matchId: number): boolean => existsSync(path.join(ARC
  * the job registries, so it stays testable without standing one up.
  */
 export async function deleteMatch(matchId: number): Promise<DeleteResult> {
-  const dir = path.join(config.mediaDir, String(matchId));
+  const dir = matchDir(matchId);
   if (!existsSync(dir)) throw new Error(`No working directory for match ${matchId}`);
 
   const bytesFreed = await dirBytes(dir);
@@ -135,7 +135,7 @@ export type PublishChecklist = Record<ManualPublishKey, boolean> & {
 };
 
 /** Inside the match directory, so the state travels with the media — as `.dashboard.json` does. */
-const publishPath = (matchId: number): string => path.join(config.mediaDir, String(matchId), "publish.json");
+const publishPath = (matchId: number): string => path.join(matchDir(matchId), "publish.json");
 
 function readManual(matchId: number): Record<ManualPublishKey, boolean> {
   let stored: Partial<Record<ManualPublishKey, unknown>> = {};
@@ -188,7 +188,7 @@ export async function isUploaded(matchId: number): Promise<boolean> {
  * by the preview (`findExportedVideo`); this is the cheap read the match list can afford per row.
  */
 export function isExported(matchId: number): boolean {
-  const dir = path.join(config.mediaDir, String(matchId));
+  const dir = matchDir(matchId);
   return existsSync(path.join(dir, "final.mp4")) || existsSync(path.join(dir, `final-${matchId}.mp4`));
 }
 
@@ -196,7 +196,7 @@ export async function publishChecklist(
   matchId: number,
   projectPath: string | null,
 ): Promise<PublishChecklist> {
-  const dir = path.join(config.mediaDir, String(matchId));
+  const dir = matchDir(matchId);
   const editedTitle = path.join(dir, `match-${matchId}.title.edited.txt`);
   // The same test the upload route runs before it will send anything (youtubeRoutes.ts): a title
   // still carrying the placeholder has no hook, whatever else was edited around it.

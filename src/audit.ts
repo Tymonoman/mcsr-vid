@@ -12,7 +12,7 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { config } from "./config.js";
+import { matchDir } from "./config.js";
 import { describeError } from "./errorText.js";
 
 /** Frame extraction and transcription on a 10-minute video is slow; this is a ceiling, not a target. */
@@ -47,7 +47,7 @@ export interface AuditState {
 const audits = new Map<number, AuditState>();
 
 export const auditPath = (matchId: number): string =>
-  path.join(config.mediaDir, String(matchId), `match-${matchId}.audit.md`);
+  path.join(matchDir(matchId), `match-${matchId}.audit.md`);
 
 export function auditState(matchId: number): AuditState {
   return (

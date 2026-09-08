@@ -11,7 +11,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
  * that is not a small difference.
  */
 
-export type ParsedRange =
+type ParsedRange =
   { kind: "none" } | { kind: "range"; start: number; end: number } | { kind: "unsatisfiable" };
 
 /**

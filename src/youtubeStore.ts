@@ -9,10 +9,10 @@
 import { existsSync, readdirSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { config } from "./config.js";
+import { matchDir } from "./config.js";
 import { listProcessedMatchIds } from "./matchStatus.js";
 
-export const UPLOAD_FILE = "youtube.json";
+const UPLOAD_FILE = "youtube.json";
 
 export interface UploadRecord {
   videoId: string;
@@ -26,7 +26,6 @@ export interface UploadRecord {
   title: string;
 }
 
-const matchDir = (matchId: number): string => path.join(config.mediaDir, String(matchId));
 const recordPath = (matchId: number): string => path.join(matchDir(matchId), UPLOAD_FILE);
 
 export async function readUpload(matchId: number): Promise<UploadRecord | null> {

@@ -7,7 +7,6 @@ import {
   POV_HEIGHT,
   POV_WIDTH,
   RTA_COL_WIDTH,
-  STAGE_HEIGHT,
   STAGE_WIDTH,
   STATIC_COL_WIDTH,
   TOP_BAND_HEIGHT,
@@ -49,7 +48,7 @@ export interface FastExportInput {
   useVaapi?: boolean;
 }
 
-export interface BuiltCommand {
+interface BuiltCommand {
   args: string[];
   /** For the log, and for a human to sanity-check what was assembled. */
   description: string;

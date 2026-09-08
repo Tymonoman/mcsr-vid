@@ -25,7 +25,6 @@ export interface ArchiveState {
 
 const states = new Map<number, ArchiveState>();
 
-export const archiveState = (matchId: number): ArchiveState | undefined => states.get(matchId);
 export const allArchiveStates = (): ArchiveState[] => [...states.values()];
 
 /**

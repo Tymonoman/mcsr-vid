@@ -21,9 +21,9 @@ import type { ThumbnailProgress } from "./thumbnailRender.js";
 import type { MatchInfo, UserDetails } from "./types.js";
 
 /** Sidecar naming the variants on disk and which one `thumbnail.png` currently is. */
-export const VARIANTS_FILE = "thumbnail.json";
+const VARIANTS_FILE = "thumbnail.json";
 
-export interface VariantRecord {
+interface VariantRecord {
   /** `<leftPose>-<rightPose>`; also the filename infix and the A/B grouping key. */
   key: string;
   leftPose: string;

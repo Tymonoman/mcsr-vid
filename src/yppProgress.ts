@@ -10,11 +10,11 @@
  * — subscribers move on each upload, hours accumulate.
  */
 import { describeError } from "./errorText.js";
-import { getAccessToken, isConfigured } from "./youtube.js";
+import { dataApiGet, getAccessToken, isConfigured } from "./youtube.js";
 
 export const YPP = { subscribers: 500, watchHours: 4000, shortsViews: 10_000_000 } as const;
 
-export interface YppSnapshot {
+interface YppSnapshot {
   fetchedAt: string;
   subscribers: number;
   subscribersPer7d: number;
@@ -24,7 +24,7 @@ export interface YppSnapshot {
   shortsViewsPer28d: number;
 }
 
-export interface YppGate {
+interface YppGate {
   have: number;
   need: number;
   /** Per day, from the window each gate is measured over. */
@@ -95,15 +95,14 @@ async function analytics(token: string, params: Record<string, string>): Promise
 const sum = (rows: number[][], col = 0) => rows.reduce((a, r) => a + (r[col] ?? 0), 0);
 
 /** Five requests: channel subscribers, hours over 365 and 28 days, Shorts views over 90 and 28 days. */
-export async function fetchYppSnapshot(nowMs: number = Date.now()): Promise<YppSnapshot> {
+async function fetchYppSnapshot(nowMs: number = Date.now()): Promise<YppSnapshot> {
   const token = await getAccessToken();
   const now = new Date(nowMs);
   const daysAgo = (n: number) => ymd(new Date(nowMs - n * 86_400_000));
-  const channel = await fetch("https://www.googleapis.com/youtube/v3/channels?part=statistics&mine=true", {
-    headers: { authorization: `Bearer ${token}` },
-  });
-  const stats = ((await channel.json()) as { items?: Array<{ statistics: { subscriberCount: string } }> })
-    .items?.[0]?.statistics;
+  const channel = await dataApiGet<{ items?: Array<{ statistics: { subscriberCount: string } }> }>(
+    "/channels?part=statistics&mine=true",
+  );
+  const stats = channel.items?.[0]?.statistics;
   const subs = await analytics(token, {
     startDate: daysAgo(7),
     endDate: ymd(now),

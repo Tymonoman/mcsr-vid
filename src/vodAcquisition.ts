@@ -7,7 +7,7 @@ import type { MatchInfo, MatchVod } from "./types.js";
 // Shared with renderOverlay.ts so the overlay clip uses the same windowing convention as the VODs.
 export const PRE_ROLL_SEC = config.preRollSec; // buffer before the estimated match start, for the sync step to search within
 export const POST_ROLL_SEC = config.postRollSec; // buffer after the estimated match end
-export const DEFAULT_RUN_SEC = config.defaultRunSec; // fallback when result.time is missing/zero (e.g. forfeits)
+const DEFAULT_RUN_SEC = config.defaultRunSec; // fallback when result.time is missing/zero (e.g. forfeits)
 
 export interface VodWindow {
   playerUuid: string;
@@ -36,7 +36,7 @@ export function matchStartIntoVodSec(match: MatchInfo, vod: { startsAt: number }
 }
 const matchStartIntoVodSecOf = matchStartIntoVodSec;
 
-export interface RunOpts {
+interface RunOpts {
   onProgress?: (percent: number) => void;
   signal?: AbortSignal;
 }
@@ -87,7 +87,7 @@ function runYtDlp(args: string[], opts: RunOpts = {}): Promise<void> {
 }
 
 /** Downloads a trimmed window of one player's VOD around the match, without pulling the full broadcast. */
-export async function downloadVodWindow(
+async function downloadVodWindow(
   match: MatchInfo,
   vod: MatchVod,
   outDir: string,

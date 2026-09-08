@@ -18,7 +18,7 @@ import {
 } from "./suggest.js";
 
 /** A VOD this close to aging out is the one thing that reorders the list. */
-export const EXPIRY_WARN_DAYS = 2;
+const EXPIRY_WARN_DAYS = 2;
 
 export interface SuggestionCard {
   matchId: number;

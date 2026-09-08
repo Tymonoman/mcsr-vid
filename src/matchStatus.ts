@@ -1,6 +1,6 @@
 import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
-import { config } from "./config.js";
+import { config, matchDir } from "./config.js";
 import { describeError } from "./errorText.js";
 import { getMatch } from "./mcsrApi.js";
 import { SPLITS_MANIFEST } from "./overlayRender.js";
@@ -53,7 +53,7 @@ export async function listMatchStatuses(): Promise<MatchStatusEntry[]> {
  * on every metadata read — a linear tax on an API budgeted at 500 requests per 10 minutes.
  */
 export async function matchStatusFor(matchId: number): Promise<MatchStatusEntry> {
-  const outDir = path.join(config.mediaDir, String(matchId));
+  const outDir = matchDir(matchId);
 
   // Read from disk first so the answer survives the API being down. The pipeline names each
   // clip `<nickname>.mp4`, so the files alone tell us the VODs are there — the API is only

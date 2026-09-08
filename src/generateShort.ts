@@ -2,7 +2,7 @@ import path from "node:path";
 import { existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { requireArg } from "./cliArgs.js";
-import { config } from "./config.js";
+import { config, matchDir } from "./config.js";
 import { getMatch, getUser, parseMatchId } from "./mcsrApi.js";
 import { distinctShortMoments, SHORT_WINDOW_SEC } from "./shortMoment.js";
 import { renderShort } from "./shortRender.js";
@@ -48,7 +48,7 @@ const match = await getMatch(matchId);
 const [playerLeft, playerRight] = match.players;
 if (!playerLeft || !playerRight) throw new Error(`Match ${matchId} does not have two players.`);
 
-const outDir = path.join(config.mediaDir, String(matchId));
+const outDir = matchDir(matchId);
 const clipFor = (nickname: string) => path.join(outDir, `${nickname}.mp4`);
 for (const p of [playerLeft, playerRight]) {
   if (!existsSync(clipFor(p.nickname))) {

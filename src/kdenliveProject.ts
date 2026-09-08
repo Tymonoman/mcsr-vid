@@ -35,7 +35,7 @@ export interface KdenliveClipInput {
   stills?: StillSegment[];
 }
 
-export interface StillSegment {
+interface StillSegment {
   path: string;
   /** Seconds from the clip's own zero at which this still takes over. */
   startSec: number;

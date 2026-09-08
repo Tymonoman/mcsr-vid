@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 
 /** One match URL/ID per line; blank lines and `#` comments are skipped. */
-export function parseBatchList(raw: string): string[] {
+function parseBatchList(raw: string): string[] {
   return raw
     .split("\n")
     .map((line) => line.trim())

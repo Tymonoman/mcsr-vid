@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Box, Text } from "ink";
 import { formatTime } from "../remotion/format.js";
 import { STAGE_LABELS, type StageEvent } from "./pipeline.js";

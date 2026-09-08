@@ -1,6 +1,5 @@
-import path from "node:path";
 import { requireArg } from "./cliArgs.js";
-import { config } from "./config.js";
+import { matchDir } from "./config.js";
 import { getMatch, getUser, getVersus, parseMatchId } from "./mcsrApi.js";
 import { renderOverlay } from "./overlayRender.js";
 
@@ -18,7 +17,7 @@ const [userLeft, userRight, versus] = await Promise.all([
   getVersus(playerLeft.uuid, playerRight.uuid),
 ]);
 
-const outDir = path.join(config.mediaDir, String(matchId));
+const outDir = matchDir(matchId);
 
 console.error(`Rendering overlay for match ${matchId}...`);
 

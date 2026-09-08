@@ -54,7 +54,7 @@ export interface RenderOverlayArgs {
   only?: ReadonlyArray<OverlayPhase>;
 }
 
-export type OverlayPhase = "top" | "splits" | "intro" | "timer";
+type OverlayPhase = "top" | "splits" | "intro" | "timer";
 
 export interface RenderOverlayResult {
   /** RTA column — the only part rendered per frame. */

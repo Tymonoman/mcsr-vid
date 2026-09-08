@@ -1,7 +1,7 @@
 import path from "node:path";
 import { existsSync } from "node:fs";
 import { requireArg } from "./cliArgs.js";
-import { config } from "./config.js";
+import { config, matchDir } from "./config.js";
 import { getMatch, parseMatchId } from "./mcsrApi.js";
 import { overlayPaths, readSplitStills } from "./overlayRender.js";
 import { exportOutputPath, runFastExport, vaapiAvailable } from "./exportFast.js";
@@ -34,7 +34,7 @@ const match = await getMatch(matchId);
 const [playerLeft, playerRight] = match.players;
 if (!playerLeft || !playerRight) throw new Error(`Match ${matchId} does not have two players.`);
 
-const outDir = path.join(config.mediaDir, String(matchId));
+const outDir = matchDir(matchId);
 const overlay = overlayPaths(outDir);
 const splits = await readSplitStills(outDir);
 const clipFor = (nickname: string) => path.join(outDir, `${nickname}.mp4`);

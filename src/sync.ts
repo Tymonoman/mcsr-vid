@@ -7,18 +7,14 @@ import { detectThump, type ThumpDetection } from "./thumpDetect.js";
 import { detectMatchStart, type MatchStartDetection } from "./countdownDetect.js";
 
 const SAMPLE_RATE = 8000;
-// SEARCH_RADIUS_SEC (clip B): widened 8->20. B's recovered time is exact regardless of how far
-// off expectedClipBCueSec was, as long as the thump falls inside the search window — so this
-// directly buys tolerance for a bigger B-side coarse-estimate error, no accuracy tradeoff.
 // PROBE_RADIUS_SEC (clip A): widened 3->8. This only avoids losing the thump out of the probe
 // entirely; it does NOT correct for error in expectedClipACueSec — the recovery formula assumes
 // the probe is centered exactly on A's real thump, so any A-side estimate error still propagates
 // 1:1 into the output. Fixing that needs independently detecting A's own thump (not implemented).
 const PROBE_RADIUS_SEC = 8;
-const SEARCH_RADIUS_SEC = 20;
 /**
- * Half-width of the window each clip's own thump is hunted in. Wider than SEARCH_RADIUS_SEC
- * because absolute detection has nothing to fall back on: if the thump is outside this window,
+ * Half-width of the window each clip's own thump is hunted in. Wider than the correlation's
+ * own search window because absolute detection has nothing to fall back on: if the thump is outside this window,
  * that clip simply has no answer of its own.
  */
 const DETECT_RADIUS_SEC = 25;

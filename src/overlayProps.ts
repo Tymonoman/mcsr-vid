@@ -11,7 +11,7 @@ import type {
   OverlayProps as RemotionOverlayProps,
 } from "../remotion/types.js";
 
-export type { PlayerIdentity, SplitRow };
+export type { SplitRow };
 export type OverlayProps = Omit<RemotionOverlayProps, "durationInFrames" | "fps">;
 
 // What the overlay puts on screen: a deliberate subset of the milestones matchScore.ts scores.

@@ -20,7 +20,7 @@
  */
 
 /** Everything here runs at the rate sync.ts extracts audio at. */
-export const DETECT_SAMPLE_RATE = 8000;
+const DETECT_SAMPLE_RATE = 8000;
 
 /**
  * The thump is a broadband transient dominated by low frequencies. 250 Hz is inferred, not

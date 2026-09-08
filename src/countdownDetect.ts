@@ -29,7 +29,7 @@ const SUSTAINED_SEC = 2;
 /** ...and be moving for at least this fraction of that window. */
 const SUSTAINED_FRACTION = 0.6;
 /** Nominal countdown length, and so the gap from the freeze's start to gameplay. */
-export const COUNTDOWN_SEC = 10;
+const COUNTDOWN_SEC = 10;
 
 export interface MatchStartDetection {
   /** Seconds into the clip where gameplay starts (RTA 0:00), or null if nothing qualified. */

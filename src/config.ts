@@ -323,3 +323,6 @@ function loadConfig(): Config {
 
 /** Optional `mcsr-vid.config.json` overrides, merged over defaults. Loaded once at import time. */
 export const config: Config = loadConfig();
+
+/** Every match's working directory: `<mediaDir>/<id>`. */
+export const matchDir = (matchId: number): string => path.join(config.mediaDir, String(matchId));

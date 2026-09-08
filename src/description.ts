@@ -1,7 +1,6 @@
 import type { VodWindow } from "./vodAcquisition.js";
 import { type ChapterMarker, formatChapters } from "./chapters.js";
 import { eloAtMatchStart } from "./overlayProps.js";
-import { formatShortTime } from "../remotion/format.js";
 import type { MatchInfo, UserDetails } from "./types.js";
 
 // Three, not the ten this used to emit. Over 15 YouTube voids all of them, 3-5 is the optimum,

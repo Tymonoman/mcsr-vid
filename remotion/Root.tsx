@@ -1,21 +1,17 @@
 import { Composition } from "remotion";
-import {
-  Overlay,
-  OverlayTop,
-  OverlayBottom,
-  OverlaySplits,
-  OverlayTimer,
-  OverlayIntro,
-  TOP_BAND_HEIGHT,
-  BOTTOM_BAND_HEIGHT,
-  RTA_COL_WIDTH,
-  STATIC_COL_WIDTH,
-} from "./Overlay.js";
-import { INTRO_SECONDS } from "./Intro.js";
+import { Overlay, OverlayTop, OverlayBottom, OverlaySplits, OverlayTimer, OverlayIntro } from "./Overlay.js";
 import { Thumbnail } from "./Thumbnail.js";
 import { Short, ShortHook } from "./Short.js";
 import { ChatPanel } from "./ChatPanel.js";
-import { SHORT_HEIGHT, SHORT_WIDTH } from "./layout.js";
+import {
+  BOTTOM_BAND_HEIGHT,
+  INTRO_SECONDS,
+  RTA_COL_WIDTH,
+  SHORT_HEIGHT,
+  SHORT_WIDTH,
+  STATIC_COL_WIDTH,
+  TOP_BAND_HEIGHT,
+} from "./layout.js";
 import type { ChatPanelProps, OverlayProps, ShortProps, ThumbnailProps } from "./types.js";
 import { infumeChat, INFUME_CHAT_NICKNAME } from "./fixtures/chatInfume.js";
 

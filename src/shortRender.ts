@@ -2,7 +2,6 @@ import { spawn } from "node:child_process";
 import { renderStill, selectComposition } from "@remotion/renderer";
 import path from "node:path";
 import { atomicOutput } from "./atomicOutput.js";
-import { config } from "./config.js";
 import { bundleOnce } from "./remotionBundle.js";
 import {
   SHORT_HEIGHT,
@@ -65,7 +64,7 @@ const FPS = 30;
  * every frame while chat, webcam borders, stat panels and black bars are static or nearly so.
  * So the game window is found as the region carrying the variance.
  */
-export interface ActiveRegion {
+interface ActiveRegion {
   x: number;
   y: number;
   w: number;
@@ -176,7 +175,7 @@ function readProbeFrames(
 }
 
 /** Returns the game window as fractions of the frame, or null when it fills the frame anyway. */
-export async function detectActiveRegion(
+async function detectActiveRegion(
   clipPath: string,
   aroundSec: number,
   signal?: AbortSignal,
@@ -202,7 +201,7 @@ function run(command: string, args: string[], signal?: AbortSignal): Promise<voi
 }
 
 /** The two board stills: the furniture, and the hook line on its own transparent frame. */
-export async function renderShortBoard(
+async function renderShortBoard(
   args: Pick<ShortRenderArgs, "board" | "durationSec" | "signal" | "onProgress">,
   boardPath: string,
   hookPath: string,
@@ -225,11 +224,7 @@ export async function renderShortBoard(
  * One ffmpeg pass: seek each POV to the moment, scale it into its pane, stack the two, then lay
  * the board over the top. Audio is the two POVs mixed, matching the long-form.
  */
-export async function compositeShort(
-  args: ShortRenderArgs,
-  boardPath: string,
-  hookPath: string,
-): Promise<void> {
+async function compositeShort(args: ShortRenderArgs, boardPath: string, hookPath: string): Promise<void> {
   const topSeek = args.topMatchStartSec + args.startMs / 1000;
   const bottomSeek = args.bottomMatchStartSec + args.startMs / 1000;
 

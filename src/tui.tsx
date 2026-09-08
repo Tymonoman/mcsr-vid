@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Box, render, Text, useInput } from "ink";
 import TextInput from "ink-text-input";
 import { runPipeline, STAGE_ORDER, type PipelineResult, type StageEvent, type StageId } from "./pipeline.js";

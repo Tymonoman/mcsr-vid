@@ -40,7 +40,7 @@ const PAYOFF_TARGET = 0.59;
  * These are informed guesses, not measurements — there is no retention data for a channel with
  * no Shorts yet. They belong in config once there is.
  */
-export const EVENT_WEIGHTS: Record<string, number> = {
+const EVENT_WEIGHTS: Record<string, number> = {
   "projectelo.timeline.dragon_death": 1.0,
   "end.kill_dragon": 0.95,
   "projectelo.timeline.death_spawnpoint": 0.8,

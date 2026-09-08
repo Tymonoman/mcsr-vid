@@ -1,7 +1,5 @@
 import type { ChatMessage } from "../src/twitchChat.js";
 
-export type { ChatMessage };
-
 /** Which bucket the form stats (avg/games/WR/FF) were taken from — shown on the overlay so the
  *  numbers can't be misread as career totals (or as season stats) the way they were before. */
 export type StatsScope = "SEASON" | "CAREER";
@@ -81,7 +79,7 @@ export type ThumbnailProps = {
 // be assignable to Record<string, unknown>, which a type alias satisfies through its implicit
 // index signature and an interface does not. OverlayProps above is a type alias for the same
 // reason.
-export type ShortPlayer = {
+type ShortPlayer = {
   nickname: string;
   eloRate: number;
   eloRank: number | null;

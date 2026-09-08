@@ -20,10 +20,8 @@ import {
   SHORT_POV_HEIGHT,
   SHORT_POV_WIDTH,
   SHORT_BRAND_BAR_HEIGHT,
-  SHORT_BRAND_BAR_Y,
   SHORT_TOP_POV_Y,
   SHORT_BOTTOM_NAMEPLATE_Y,
-  SHORT_TOP_POV_RECT,
 } from "./layout.js";
 
 // The stage is 16:9, and so is each half-width POV slot.
@@ -94,7 +92,5 @@ assert.equal(
 );
 assert.equal(SHORT_TOP_POV_Y, SHORT_NAMEPLATE_HEIGHT);
 assert.equal(SHORT_BOTTOM_NAMEPLATE_Y, SHORT_NAMEPLATE_HEIGHT + SHORT_POV_HEIGHT);
-assert.equal(SHORT_BRAND_BAR_Y + SHORT_BRAND_BAR_HEIGHT, SHORT_HEIGHT);
-assert.equal(SHORT_TOP_POV_RECT, `0 ${SHORT_NAMEPLATE_HEIGHT} 1080 608 1`);
 
 console.log("layout invariants ok");

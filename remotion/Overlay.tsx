@@ -244,20 +244,6 @@ export const Overlay: FC<OverlayProps> = (props) => {
   );
 };
 
-// The overlay's content only occupies a band at the top and a band at the bottom; the ~524px
-// between them is transparent, and rendering it cost ~half of every frame. These split the
-// same layout into separately-rendered strips (see src/overlayRender.ts).
-export {
-  TOP_BAND_HEIGHT,
-  BOTTOM_BAND_HEIGHT,
-  BOTTOM_BAND_Y,
-  META_COL_WIDTH,
-  SPLITS_COL_WIDTH,
-  RTA_COL_WIDTH,
-  RTA_COL_X,
-  STATIC_COL_WIDTH,
-} from "./layout.js";
-
 /**
  * Renders the full-size 1920x1080 stage inside a smaller canvas, shifted so only the wanted
  * window shows. The stage keeps its real dimensions, so every rule in overlay.source.css
