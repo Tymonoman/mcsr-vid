@@ -86,7 +86,7 @@ try {
   const created = calls.find((c) => c.url.includes("/playlists?") && c.method === "POST");
   assert.ok(created, "should have created the playlist");
   assert.deepEqual(created.body, {
-    snippet: { title: "Season one" },
+    snippet: { title: "Season one", description: "" },
     status: { privacyStatus: "public" },
   });
   const insert2 = calls.find((c) => c.url.includes("/playlistItems?"));
@@ -136,6 +136,23 @@ try {
   );
   assert.notEqual(playerPlaylistTitle("Feinberg"), matchupPlaylistTitle("Feinberg", "doogile"));
   console.log("OK: the per-player title is its own playlist");
+  const { matchupPlaylistDescription, playerPlaylistDescription } = await import("./youtube.js");
+  assert.equal(
+    matchupPlaylistDescription("Feinberg", "doogile"),
+    matchupPlaylistDescription("doogile", "Feinberg"),
+    "seat-independent, like the title",
+  );
+  assert.ok(playerPlaylistDescription("Feinberg").includes("Feinberg's"));
+
+  // --- 4c. A description travels with a created playlist, and only a created one -------------
+  calls = stubFetch([{ items: [] }], "PL_DESC");
+  await addToPlaylist("VID7", "Season three", "What this playlist is.");
+  const createdWithDesc = calls.find((c) => c.url.includes("/playlists?") && c.method === "POST");
+  assert.deepEqual(
+    (createdWithDesc?.body as { snippet: { description: string } }).snippet.description,
+    "What this playlist is.",
+  );
+  console.log("OK: a new playlist carries its description");
 
   // --- 5. A created playlist is remembered, because listing does not show it yet ---------------
   // Measured on the real channel: create, then list one second later, and the new playlist is

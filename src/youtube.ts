@@ -263,8 +263,8 @@ export async function setThumbnail(videoId: string, pngPath: string): Promise<vo
  * No de-duplication: this is only ever called on a video `videos.insert` returned seconds
  * earlier, so it cannot already be in the playlist.
  */
-export async function addToPlaylist(videoId: string, playlistTitle: string): Promise<void> {
-  const playlistId = await findOrCreatePlaylist(playlistTitle);
+export async function addToPlaylist(videoId: string, playlistTitle: string, description = ""): Promise<void> {
+  const playlistId = await findOrCreatePlaylist(playlistTitle, description);
   await apiCall(DATA_API, "/playlistItems?part=snippet", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -296,6 +296,22 @@ export function playerPlaylistTitle(nickname: string): string {
 }
 
 /**
+ * Playlist descriptions, which YouTube indexes and shows on the playlist page. Set at creation
+ * only — an existing playlist keeps whatever it has, so a hand-edited one is never overwritten.
+ */
+export const SEASON_PLAYLIST_DESCRIPTION =
+  "Every MCSR Ranked 1v1 on MCSR Replayoffs, oldest first: top-bracket matches, both POVs synced with a live split comparison, head-to-head record and seed on the intro card. Subscribe for the next one.";
+
+export function matchupPlaylistDescription(a: string, b: string): string {
+  const [first, second] = [a, b].sort((x, y) => x.toLowerCase().localeCompare(y.toLowerCase()));
+  return `Every ranked 1v1 between ${first} and ${second} on MCSR Replayoffs, oldest first — both POVs synced, with the live split comparison and the head-to-head record on the intro card.`;
+}
+
+export function playerPlaylistDescription(nickname: string): string {
+  return `Every MCSR Ranked 1v1 of ${nickname}'s on MCSR Replayoffs, oldest first — both POVs synced with a live split comparison.`;
+}
+
+/**
  * Playlist ids this process has already resolved or created, by title. YouTube's `playlists.list`
  * does not show a playlist it created a second earlier — measured: the season playlist was made,
  * the very next call listed the channel without it, and created a second one with the same title.
@@ -305,15 +321,15 @@ export function playerPlaylistTitle(nickname: string): string {
 const playlistIds = new Map<string, string>();
 
 /** Exported for the test; `addToPlaylist` is the entry point everything else should use. */
-export async function findOrCreatePlaylist(title: string): Promise<string> {
+export async function findOrCreatePlaylist(title: string, description = ""): Promise<string> {
   const known = playlistIds.get(title);
   if (known) return known;
-  const id = await lookupOrCreatePlaylist(title);
+  const id = await lookupOrCreatePlaylist(title, description);
   playlistIds.set(title, id);
   return id;
 }
 
-async function lookupOrCreatePlaylist(title: string): Promise<string> {
+async function lookupOrCreatePlaylist(title: string, description: string): Promise<string> {
   // `mine=true` scopes the search to the operator's own playlists, so a title collision with
   // someone else's public playlist cannot hijack this.
   let pageToken = "";
@@ -331,7 +347,7 @@ async function lookupOrCreatePlaylist(title: string): Promise<string> {
   const created = await apiCall<{ id: string }>(DATA_API, "/playlists?part=snippet,status", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ snippet: { title }, status: { privacyStatus: "public" } }),
+    body: JSON.stringify({ snippet: { title, description }, status: { privacyStatus: "public" } }),
   });
   return created.id;
 }

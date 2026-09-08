@@ -27,6 +27,9 @@ import {
   uploadVideo,
   videoStats,
   type ImpressionsRow,
+  SEASON_PLAYLIST_DESCRIPTION,
+  matchupPlaylistDescription,
+  playerPlaylistDescription,
 } from "./youtube.js";
 import { allUploads, findExportedVideo, readUpload, writeUpload, type UploadRecord } from "./youtubeStore.js";
 import { yppProgress } from "./yppProgress.js";
@@ -296,15 +299,16 @@ async function startUpload(
       // Same contract as the thumbnail: the video is up, so a playlist failure is worth saying
       // out loud but must not read as a failed upload. Appended, not assigned — a thumbnail
       // error above would otherwise be silently overwritten.
-      const joinPlaylist = async (title: string) => {
+      const joinPlaylist = async (title: string, description = "") => {
         try {
-          await addToPlaylist(result.videoId, title);
+          await addToPlaylist(result.videoId, title, description);
         } catch (err) {
           const note = `Uploaded, but adding it to "${title}" failed: ${describeError(err)}`;
           progress.error = progress.error ? `${progress.error} ${note}` : note;
         }
       };
-      if (config.youtubePlaylistTitle) await joinPlaylist(config.youtubePlaylistTitle);
+      if (config.youtubePlaylistTitle)
+        await joinPlaylist(config.youtubePlaylistTitle, SEASON_PLAYLIST_DESCRIPTION);
       // And a playlist per matchup. A rematch is the strongest series signal this channel has —
       // it is already what the best hook chips say ("Rematch: doogile leads 2-1") — and a
       // playlist is how a viewer who liked one of them finds the rest.
@@ -313,10 +317,19 @@ async function startUpload(
       // down: a public playlist called "? vs ?" is worse than no playlist, and unlike the
       // upload it cannot be quietly re-done later.
       if (status.leftNickname !== "?" && status.rightNickname !== "?") {
-        await joinPlaylist(matchupPlaylistTitle(status.leftNickname, status.rightNickname));
+        await joinPlaylist(
+          matchupPlaylistTitle(status.leftNickname, status.rightNickname),
+          matchupPlaylistDescription(status.leftNickname, status.rightNickname),
+        );
         // And one per player: the link a runner shares, and the one their followers browse.
-        await joinPlaylist(playerPlaylistTitle(status.leftNickname));
-        await joinPlaylist(playerPlaylistTitle(status.rightNickname));
+        await joinPlaylist(
+          playerPlaylistTitle(status.leftNickname),
+          playerPlaylistDescription(status.leftNickname),
+        );
+        await joinPlaylist(
+          playerPlaylistTitle(status.rightNickname),
+          playerPlaylistDescription(status.rightNickname),
+        );
       }
 
       const record: UploadRecord = {
