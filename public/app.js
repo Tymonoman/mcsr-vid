@@ -882,7 +882,7 @@ function watch(id, quiet) {
 async function refresh() {
   matches = (await api("/api/matches")).matches;
   renderList();
-  // A card whose match just landed on the shelf switches from "Render this" to "open".
+  // A card whose match just landed on the shelf switches from render buttons to "open".
   if (suggestData) renderSuggestions(suggestData);
 }
 
@@ -978,7 +978,7 @@ async function loadNightly() {
 }
 
 /** The same body the clock runs. A skip repaints the strip with its reason; a start is watched
-    like any other render, so it lands in the list exactly as "Render this" would. */
+    like any other render, so it lands in the list exactly as a card's render would. */
 async function runNightlyNow(btn) {
   btn.disabled = true;
   btn.textContent = "starting…";
@@ -1023,8 +1023,10 @@ function renderSuggestions(data) {
     : data.suggestions
         .map((s) => {
           // Rendered since the list was scored — by the nightly, or a click: the card stays, since
-          // the list is the operator's reading order, but its verb changes. Pressing "Render this"
-          // on a finished match was the morning's easiest mistake.
+          // the list is the operator's reading order, but its verb changes. Pressing render on a
+          // finished match was the morning's easiest mistake. The full chain is the primary
+          // button: it is what the nightly does, and a finished MP4 is what "render" means to
+          // the operator; "Render only" is the Kdenlive round-trip's first half.
           const onShelf = matches.some((m) => m.matchId === s.matchId);
           // Every line but the chart and the links is prose the server assembled, so it all goes
           // through esc() — including `bucket`, which reaches a class attribute.
@@ -1046,8 +1048,8 @@ function renderSuggestions(data) {
           ${
             onShelf
               ? `<button data-act="open">Rendered &middot; open</button>`
-              : `<button data-act="render">Render this</button>
-          <button data-act="render-short" class="ghost">Render + Short + MP4</button>`
+              : `<button data-act="render-short">Render + Short + MP4</button>
+          <button data-act="render" class="ghost">Render only</button>`
           }
           <button data-act="dismiss" class="ghost">Dismiss</button>
         </div>
@@ -1073,7 +1075,7 @@ function renderSuggestions(data) {
   });
 }
 
-/** "Render + Short + MP4": the same start as "Render this", plus the flags the server's one
+/** "Render + Short + MP4": the same start as "Render only", plus the flags the server's one
     completion poll reads — so the Short and the encode come from the nightly's own code, not a
     second copy of it. What the nightly does at 03:00, by hand, for a match you want today. */
 async function startRenderWithShort(id) {
