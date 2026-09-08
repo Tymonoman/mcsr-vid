@@ -39,6 +39,7 @@ import {
 } from "./matchShelf.js";
 import { handleShortsRoute, shortRunning } from "./shortsRoutes.js";
 import { handleYoutubeRoute, uploadRunning } from "./youtubeRoutes.js";
+import { readUpload } from "./youtubeStore.js";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -421,6 +422,27 @@ const server = createServer(async (req, res) => {
       // Returns the merged object, not just the key it changed: the row repaints from one
       // answer, so a derived pill that flipped meanwhile lands in the same response.
       json(res, 200, await publishChecklist(matchId, (await matchStatusFor(matchId)).projectPath));
+      return;
+    }
+
+    // The four facts the publish-kit panel needs that /api/meta has no reason to know: the
+    // Short's own metadata, the video's public URL, and who to send the two DMs to. Uploading
+    // stays manual while the API audit is pending, and the Related Video link and the player
+    // DMs have no API at all, so what the operator actually needs is every paste in one place.
+    // Its own route rather than more fields on readMeta: this reads two files and the upload
+    // record that a title editor never looks at.
+    if (resource === "publishkit" && req.method === "GET") {
+      const entry = await matchStatusFor(matchId);
+      const upload = await readUpload(matchId);
+      const short = async (kind: string) =>
+        ((await readIfPresent(path.join(matchDir(matchId), `short-${matchId}.${kind}.txt`))) ?? "").trim() ||
+        null;
+      json(res, 200, {
+        shortTitle: await short("title"),
+        shortDescription: await short("description"),
+        videoUrl: upload ? `https://youtu.be/${upload.videoId}` : null,
+        players: [entry.leftNickname ?? null, entry.rightNickname ?? null],
+      });
       return;
     }
 

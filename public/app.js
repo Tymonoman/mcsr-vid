@@ -245,6 +245,9 @@ async function select(id, { open = false } = {}) {
     <h2>YouTube</h2>
     <div id="youtube"><div class="empty">loading&hellip;</div></div>
 
+    <h2>Publish kit</h2>
+    <div id="publishkit"><div class="empty">loading&hellip;</div></div>
+
     <h2>Outputs</h2>
     ${outputsHtml(meta.outputs)}`;
 
@@ -286,6 +289,7 @@ async function select(id, { open = false } = {}) {
   loadPreview(id);
   loadShort(id);
   loadYoutube(id, meta);
+  loadPublishKit(id, meta);
   watch(id, true);
 }
 
@@ -497,6 +501,98 @@ async function loadPreview(id) {
 }
 
 /** m:ss, for moment boundaries measured from the start of the run. */
+/**
+ * Every paste a manual publish needs, in the order it gets used.
+ *
+ * Uploading is manual while the YouTube compliance audit is pending, and two parts of it stay
+ * manual afterwards: a Short's Related Video link has no API, and telling the two players their
+ * match is up is a DM. Today those pastes are transcribed by hand out of four different panels,
+ * which is exactly how a title picks up a stray newline. Nothing here is stored -- every block
+ * is derived from the metadata already on the page plus /api/publishkit.
+ */
+async function loadPublishKit(id, meta) {
+  const el = $("#publishkit");
+  if (!el) return;
+
+  let kit;
+  try {
+    kit = await api(`/api/publishkit/${id}`);
+  } catch (e) {
+    el.innerHTML = `<div class="scanline bad">${esc(e.message)}</div>`;
+    return;
+  }
+
+  const [left, right] = kit.players;
+  const url = kit.videoUrl ?? "<link once uploaded>";
+  // Plain, and it offers the takedown in the same breath: this goes to someone who never asked
+  // to be on the channel, and one line of "just say" is cheaper than a strike.
+  const dm = (who, opponent) =>
+    `Hey ${who} — your ranked match vs ${opponent} is up on MCSR Replayoffs, both POVs synced with the split timer: ${url}. Happy to take it down if you'd rather, just say.`;
+
+  // The YouTube panel's field is the one an operator may have edited by hand, so it wins while
+  // it is on the page; otherwise the generated first line with the hook substituted in. Never
+  // the whole file: the lines under it are guidance for the terminal (src/title.ts).
+  const titleText = () => {
+    const field = $("#ytTitle");
+    if (field) return field.value;
+    const firstLine = (meta.title ?? "").split("\n")[0] ?? "";
+    const hook = $("#hook")?.value.trim();
+    return hook ? firstLine.replace("<HOOK>", hook) : firstLine;
+  };
+
+  const counter = (text, over) => `<span class="counter${over ? " over" : ""}">${esc(text)}</span>`;
+  const block = (label, text, rows, note = "") => `
+    <div class="kit">
+      <div class="kithead">
+        <span class="kitlabel">${esc(label)}</span>${note}
+        <button type="button" class="ghost copy">Copy</button>
+      </div>
+      <textarea readonly rows="${rows}">${esc(text)}</textarea>
+    </div>`;
+
+  const paint = () => {
+    const title = titleText();
+    const tags = (meta.tags ?? []).join(", ");
+    el.innerHTML = [
+      block("Title", title, 2, counter(`${title.length} / 100 chars`, title.length > 100)),
+      block("Description", meta.description ?? "", 10),
+      // Both numbers, because YouTube caps the list twice over: 500 characters across the whole
+      // field, and the count is what tells you the pipeline wrote a tags file at all.
+      block(
+        "Tags",
+        tags,
+        3,
+        counter(`${meta.tags?.length ?? 0} tags · ${tags.length} / 500 chars`, tags.length > 500),
+      ),
+      kit.shortTitle
+        ? block("Short title", kit.shortTitle, 2)
+        : `<div class="kit"><div class="kithead"><span class="kitlabel">Short title</span></div>
+             <div class="empty">no Short title yet</div></div>`,
+      kit.shortDescription ? block("Short description", kit.shortDescription, 4) : "",
+      block(`Message to ${left ?? "left player"}`, dm(left ?? "there", right ?? "your opponent"), 3),
+      block(`Message to ${right ?? "right player"}`, dm(right ?? "there", left ?? "your opponent"), 3),
+    ].join("");
+  };
+  paint();
+
+  el.addEventListener("click", (ev) => {
+    const btn = ev.target.closest("button.copy");
+    if (!btn) return;
+    navigator.clipboard
+      ?.writeText(btn.closest(".kit").querySelector("textarea").value)
+      .then(
+        () => (btn.textContent = "copied"),
+        () => (btn.textContent = "blocked"),
+      )
+      .finally(() => setTimeout(() => (btn.textContent = "Copy"), 1500));
+  });
+
+  // The hook is typed after this panel paints, and the YouTube panel rewrites #ytTitle from the
+  // same event. Deferring a tick means this reads that field after it has been rewritten,
+  // whichever of the two panels happened to register its listener first.
+  $("#hook")?.addEventListener("input", () => setTimeout(paint, 0));
+}
+
 function runClock(ms) {
   const total = Math.round(ms / 1000);
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;

@@ -561,3 +561,42 @@
 #splits {
   padding: 4px 0 2px;
 }
+
+/* ===== publish kit ==========================================================================
+   Six read-only boxes that exist to be copied, so the label, the count and the Copy button sit
+   on one line above each one and nothing competes with the text itself. The head wraps rather
+   than shrinking the button: at 390px the label and the counter already fill the row. */
+.kit {
+  margin-bottom: 14px;
+}
+.kithead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 5px;
+}
+.kithead .kitlabel {
+  font-size: 12px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+/* Right-aligned on a wide panel, first on its own line when the head wraps. */
+.kithead .copy {
+  margin-left: auto;
+  padding: 4px 12px;
+  font-size: 12px;
+}
+/* Darker than an editable field: these are output, and the page already teaches that the paler
+   panel colour means "you can type here". */
+.kit textarea[readonly] {
+  background: var(--panel-2);
+  color: var(--quartz);
+  resize: vertical;
+  /* Grow to the text instead of clipping it: the same block is one line at 1280px and four at
+     390px, and a paste you cannot read is a paste you retype. Browsers without field-sizing
+     fall back to the rows attribute, which is why every block still carries one. */
+  field-sizing: content;
+  max-height: 40vh;
+}
