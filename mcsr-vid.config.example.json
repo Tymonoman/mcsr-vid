@@ -15,6 +15,7 @@
   "overlayFps": 30,
   "renderConcurrency": null,
   "nightlyRenderHourUtc": 3,
+  "nightlyRenderShort": true,
   "nightlyNotifyUrl": "",
   "suggestCloseSlots": 8,
   "suggestChaosSlots": 2,

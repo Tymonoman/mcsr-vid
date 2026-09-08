@@ -20,21 +20,47 @@ const optsFor = (m: MatchInfo) => ({
   runMs: m.result.time || 900_000,
 });
 
-// --- 12730175: edcr vs doogile. Both players died within seconds of each other mid-race, and
-// the lead changed there. That beats the dragon kill, which is the point: the finish is the
+// --- 12730175: edcr vs doogile. Both players died within seconds of each other, and the lead
+// had just changed hands. That beats the dragon kill, which is the point: the finish is the
 // obvious moment and often not the best one.
+//
+// At the old 30s window this landed on the 7:04 pair of deaths, because a 30s window could also
+// hold the 6:42 blind travel both players hit together. 22 seconds cannot hold both, and the
+// 9:08 stretch is the better story anyway: the lead flips, they die 0.4s apart, and they enter
+// the End together — which is why the assertion is on the shape of the window, not the clock.
 {
   const match = load(12730175);
   const best = pickShortMoment(match, optsFor(match))!;
   assert.ok(best, "a match with events must yield a moment");
   assert.ok(
-    best.startMs >= 390_000 && best.endMs <= 440_000,
-    `expected the double-death window around 6:42, got ${best.startMs / 1000}-${best.endMs / 1000}s`,
+    best.startMs >= 540_000 && best.endMs <= 575_000,
+    `expected the double-death window around 9:08, got ${best.startMs / 1000}-${best.endMs / 1000}s`,
   );
   assert.match(best.reason, /lead change/);
   assert.match(best.reason, /death/);
   const dragon = rankShortMoments(match, optsFor(match)).find((m) => m.reason.includes("dragon"));
   assert.ok(dragon === undefined || best.score > dragon.score, "the double death must outrank the dragon");
+}
+
+// --- Where the payoff lands. The window is sized around completion rate: the reference Short
+// (@MCSR-Vault, 42k views) is 21.3s with its payoff at t=9s and no outro, so the target leaves
+// ~9s of reaction after the biggest event rather than the ~4s a 0.9 position would.
+//
+// One event, every window containing it, so the only thing being scored is position: the winner
+// must be the window that opens 13s before it — 59% through a 22s window, 9s of tail.
+{
+  const match = load(12902901);
+  const solo: MatchInfo = {
+    ...match,
+    timelines: [{ uuid: match.players[0]!.uuid, time: 200_000, type: "projectelo.timeline.dragon_death" }],
+  };
+  const best = pickShortMoment(solo, optsFor(match))!;
+  const position = (200_000 - best.startMs) / (best.endMs - best.startMs);
+  assert.ok(
+    position >= 0.55 && position <= 0.6,
+    `payoff should land 55-60% through the window, landed at ${(position * 100).toFixed(0)}%`,
+  );
+  assert.equal(best.endMs - 200_000, 9_000, "the reference Short's ~9s of reaction must survive");
 }
 
 // --- Every window is exactly the configured length and lies inside the run.

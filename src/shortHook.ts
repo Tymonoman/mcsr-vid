@@ -1,5 +1,15 @@
+import path from "node:path";
+import { readFile } from "node:fs/promises";
+import { HASHTAGS } from "./description.js";
+import { buildHookSuggestions } from "./hooks.js";
+import { computeMetrics } from "./matchScore.js";
 import type { ShortMoment } from "./shortMoment.js";
-import { HOOK_PLACEHOLDER, SEPARATOR } from "./title.js";
+import { buildTitle, HOOK_PLACEHOLDER, SEPARATOR } from "./title.js";
+import type { MatchInfo, UserDetails } from "./types.js";
+
+/** YouTube's hard cap on a title, and the tags that ride along on every Short. */
+const TITLE_MAX_CHARS = 100;
+const SHORT_TAGS = " #minecraft #mcsr";
 
 /**
  * The line that has to earn the scroll, written from what the window actually contains.
@@ -60,4 +70,77 @@ export function resolveShortHook(
     if (hook !== "") return hook;
   }
   return suggestions.find((s) => s.trim() !== "")?.trim() ?? fallback;
+}
+
+/**
+ * The hook a render of this moment would burn in, wiring and all.
+ *
+ * Exists so the dashboard can show the same line the CLI will use rather than the per-moment
+ * fallback: the resolution above is pure, and the inputs it resolves *between* — the operator's
+ * edited title file and the ranked hook suggestions — were assembled inline in the CLI, where
+ * nothing else could reach them. `versus` is left out here exactly as it is there: the rematch
+ * chip costs one more API call and neither a render nor a panel load is the place to spend it.
+ *
+ * Users come from the caller because both callers already have them (the CLI needs the ratings
+ * for the board, the route fetches them once for the panel).
+ */
+export async function resolveShortHookFor(input: {
+  matchId: number;
+  match: MatchInfo;
+  moment: ShortMoment;
+  userLeft: UserDetails;
+  userRight: UserDetails;
+  /** The match's working directory, where the pipeline writes the title files. */
+  matchDir: string;
+}): Promise<string> {
+  const { matchId, match, moment, userLeft, userRight, matchDir } = input;
+  // Sized against the *title* budget on purpose: when the operator has written a title hook this
+  // is literally that line, so the two must be the same length of thing.
+  const budget = buildTitle({ leftNickname: userLeft.nickname, rightNickname: userRight.nickname });
+  const editedTitle = await readFile(path.join(matchDir, `match-${matchId}.title.edited.txt`), "utf8").catch(
+    () => null,
+  );
+  return resolveShortHook(
+    editedTitle,
+    buildHookSuggestions({
+      metrics: computeMetrics(match),
+      match,
+      userLeft,
+      userRight,
+      maxChars: budget.hookMax,
+      minChars: budget.hookMin,
+    }),
+    buildShortHook(moment, userLeft.nickname, userRight.nickname),
+  );
+}
+
+/**
+ * The Short's own title: the hook, verbatim, plus the two tags Shorts browse traffic rides.
+ *
+ * Not the long-form title. That one leads with both nicknames because search is where a 12-minute
+ * VOD gets found; a Short is found by a thumb that has already stopped scrolling, so the hook is
+ * the whole line and the nicknames are in the description where they still count for search.
+ */
+export function buildShortTitle(hook: string): string {
+  const budget = TITLE_MAX_CHARS - SHORT_TAGS.length;
+  const text = hook.trim();
+  if (text.length <= budget) return `${text}${SHORT_TAGS}`;
+  // Cut at a word boundary: a title truncated mid-word reads as a broken pipeline, and YouTube
+  // truncates the tail again in the feed anyway.
+  const cut = text.slice(0, budget);
+  const lastSpace = cut.lastIndexOf(" ");
+  return `${(lastSpace > 0 ? cut.slice(0, lastSpace) : cut).trimEnd()}${SHORT_TAGS}`;
+}
+
+/**
+ * The Short's description. Three lines, because nobody expands a Short's description: the names
+ * and the format label for search, the match page for anyone who wants the numbers, and the same
+ * hashtags the long-form upload carries so both halves of a match are one channel to YouTube.
+ */
+export function buildShortDescription(matchId: number, leftNickname: string, rightNickname: string): string {
+  return [
+    `${leftNickname} vs ${rightNickname} — MCSR Ranked 1v1. Full synced dual-POV race on the channel.`,
+    `Match data: https://mcsrranked.com/matches/${matchId}`,
+    HASHTAGS.join(" "),
+  ].join("\n");
 }

@@ -16,12 +16,18 @@
  *     of one the operator started before going to bed.
  *   - it stops well before the SSD does (a finished match is ~7 GB), because a render that dies
  *     at the write stage has burned the whole night for nothing.
+ *
+ * What it does do unprompted is cut the Short of the match it just rendered (`nightlyRenderShort`),
+ * because that is the same footage, already on disk, and a morning with a video and no Short is a
+ * morning with half the publishing done.
  */
 import { capacity } from "./archive.js";
+import { config } from "./config.js";
 import { describeError } from "./errorText.js";
 import { getJob, startJob, type Job } from "./jobs.js";
 import { hiddenMatchIds } from "./matchShelf.js";
 import { listProcessedMatchIds } from "./matchStatus.js";
+import { spawnShortCli, type ShortRunner } from "./shortsRoutes.js";
 import { snapshot, startScan } from "./suggestScan.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -114,15 +120,68 @@ function outcomeOf(job: Job): string {
   return `failed: ${job.error.split("\n")[0]?.slice(0, 200) ?? "unknown"}`;
 }
 
-function notifyWhenSettled(job: Job, url: string, label: string): void {
-  const tick = () => {
+/**
+ * The Short that follows the render, as the clause the notification gains for it.
+ *
+ * Chained here rather than left for the morning because the two halves of a match are one job:
+ * the VODs are on disk, the moment scorer needs no video decoding, and the cut is minutes next
+ * to the render's 30-45. Only a clean `done` earns one — a failed pipeline may have left
+ * nothing to cut from, and an abort is the operator saying stop, which a Short would ignore.
+ *
+ * `--pick=0` through shortsRoutes' own runner, so the dashboard button and the small hours run
+ * the same command; nothing here duplicates the spawn.
+ */
+export async function chainShort(
+  matchId: number,
+  outcome: string,
+  enabled: boolean,
+  run: ShortRunner = spawnShortCli,
+): Promise<string> {
+  if (!enabled || outcome !== "done") return "";
+
+  const proc = run(matchId, 0);
+  // Drained as much as read: an unconsumed stdio pipe fills at 64 KB and stalls the render it
+  // belongs to. The last line is kept because that is where the CLI puts its failure.
+  let tail = "";
+  const keep = (chunk: Buffer) => {
+    const lines = chunk
+      .toString()
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+    if (lines.length > 0) tail = lines[lines.length - 1]!;
+  };
+  proc.stdout?.on("data", keep);
+  proc.stderr?.on("data", keep);
+
+  return new Promise<string>((resolve) => {
+    proc.on("error", (err) => resolve(` + Short failed: ${describeError(err)}`));
+    proc.on("close", (code) =>
+      resolve(
+        code === 0 ? " + Short rendered" : ` + Short failed: ${tail.slice(0, 120) || `exit code ${code}`}`,
+      ),
+    );
+  });
+}
+
+/**
+ * Waits out the render, cuts its Short, and posts the one line that says how both went.
+ *
+ * One notification for the pair, which is why the Short is awaited before the POST: two pushes
+ * in the small hours for one match is one more than anybody reads.
+ */
+function afterSettled(job: Job, url: string, label: string): void {
+  const poll = () => void tick().catch((err: unknown) => console.error(`nightly: ${describeError(err)}`));
+  const tick = async (): Promise<void> => {
     if (!job.done) {
-      setTimeout(tick, SETTLE_POLL_MS);
+      setTimeout(poll, SETTLE_POLL_MS);
       return;
     }
-    void notify(url, `Rendered #${job.matchId} ${label} — ${outcomeOf(job)}`);
+    const outcome = outcomeOf(job);
+    const short = await chainShort(job.matchId, outcome, config.nightlyRenderShort);
+    if (url) await notify(url, `Rendered #${job.matchId} ${label} — ${outcome}${short}`);
   };
-  tick();
+  poll();
 }
 
 async function runNightly({ notifyUrl }: NightlyOptions): Promise<void> {
@@ -164,7 +223,7 @@ async function runNightly({ notifyUrl }: NightlyOptions): Promise<void> {
   // The same call `POST /api/render` makes, so a nightly render and a clicked one are one code
   // path: startJob de-duplicates by match id and owns the whole pipeline invocation.
   const job = startJob(matchId);
-  if (notifyUrl) notifyWhenSettled(job, notifyUrl, label);
+  afterSettled(job, notifyUrl, label);
 }
 
 /**

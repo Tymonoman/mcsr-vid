@@ -1,21 +1,19 @@
 import path from "node:path";
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { requireArg } from "./cliArgs.js";
 import { config } from "./config.js";
 import { getMatch, getUser, parseMatchId } from "./mcsrApi.js";
 import { distinctShortMoments, SHORT_WINDOW_SEC } from "./shortMoment.js";
 import { renderShort } from "./shortRender.js";
 import { eloAtMatchStart } from "./overlayProps.js";
-import { buildHookSuggestions } from "./hooks.js";
-import { computeMetrics } from "./matchScore.js";
-import { buildTitle } from "./title.js";
-import { buildShortHook, resolveShortHook } from "./shortHook.js";
+import { buildShortDescription, buildShortTitle, resolveShortHookFor } from "./shortHook.js";
 
 /**
- * npm run short -- <matchId> [--pick=N] [--seconds=30] [--top-crop=x,y,w,h] [--bottom-crop=...]
+ * npm run short -- <matchId> [--pick=N] [--seconds=22] [--top-crop=x,y,w,h] [--bottom-crop=...]
  *
- * Picks the most watchable ~30s of the match and renders a finished vertical MP4. `--pick`
+ * Picks the most watchable ~22s of the match and renders a finished vertical MP4, plus the title
+ * and description the manual upload needs. `--pick`
  * chooses a lower-ranked, non-overlapping alternative when the top one is not the moment you
  * wanted.
  *
@@ -87,23 +85,16 @@ if (!moment) throw new Error(`--pick=${pick} is out of range; ${moments.length} 
 const [userLeft, userRight] = await Promise.all([getUser(playerLeft.uuid), getUser(playerRight.uuid)]);
 
 // The hook is the whole first four seconds, so it comes from the best source available rather
-// than from the 30-second window alone. Sized against the *title* budget on purpose: when the
-// operator has written a title hook this is literally that line, so the two must be the same
-// length of thing. `versus` is left out — the rematch chip costs one more API call, and a Short
-// render is not the place to spend it.
-const budget = buildTitle({ leftNickname: playerLeft.nickname, rightNickname: playerRight.nickname });
-const hook = resolveShortHook(
-  await readFile(path.join(outDir, `match-${matchId}.title.edited.txt`), "utf8").catch(() => null),
-  buildHookSuggestions({
-    metrics: computeMetrics(match),
-    match,
-    userLeft,
-    userRight,
-    maxChars: budget.hookMax,
-    minChars: budget.hookMin,
-  }),
-  buildShortHook(moment, playerLeft.nickname, playerRight.nickname),
-);
+// than from the window alone — the operator's own title hook first. Shared with the dashboard's
+// Shorts panel so the line it previews is the line that gets burned in.
+const hook = await resolveShortHookFor({
+  matchId,
+  match,
+  moment,
+  userLeft,
+  userRight,
+  matchDir: outDir,
+});
 console.error(`Hook: ${hook}`);
 
 // The same sync the long-form uses would be ideal here, but it costs a video scan per clip and a
@@ -143,7 +134,23 @@ await renderShort({
   onProgress: (p) => console.error(`  ${p.phase}: ${p.percent}%`),
 });
 
+// The upload is manual, so the two things that have to be typed into the Studio form are
+// written next to the video rather than left to be reconstructed from the log: the title is the
+// hook that was actually burned in, and the description carries the names and the match page.
+// Overwritten on every render, like the pipeline's own title/description files.
+const titlePath = path.join(outDir, `short-${matchId}.title.txt`);
+await writeFile(titlePath, buildShortTitle(hook), "utf8");
+await writeFile(
+  path.join(outDir, `short-${matchId}.description.txt`),
+  buildShortDescription(matchId, playerLeft.nickname, playerRight.nickname),
+  "utf8",
+);
+
 console.error(`\nDone: ${outPath}`);
 console.log(
-  JSON.stringify({ matchId, outPath, moment: { ...moment, events: moment.events.length } }, null, 2),
+  JSON.stringify(
+    { matchId, outPath, titlePath, moment: { ...moment, events: moment.events.length } },
+    null,
+    2,
+  ),
 );
