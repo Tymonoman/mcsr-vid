@@ -1052,7 +1052,7 @@ function renderSuggestions(data) {
   // The two words on every card, explained once. The stage strip had the same gap: labels that
   // are obvious to whoever wrote the scorer and to nobody else.
   const legend = data.suggestions.length
-    ? `<div class="bucketlegend"><span class="bucket close">CLOSE</span><span>decided by seconds at the finish</span><span class="bucket chaos">CHAOS</span><span>lead changes, deaths, the mess</span></div>`
+    ? `<div class="bucketlegend"><span class="bucket close">CLOSE</span><span>decided by seconds at the finish</span><span class="bucket chaos">CHAOS</span><span>lead changes, deaths, the mess</span><span class="order">&middot; ordered by VOD expiry, then not yet posted by ${data.rivalHandle ? `@${esc(data.rivalHandle)}` : "the competitor"}, then audience</span></div>`
     : "";
 
   // Dismiss is next to Render on a phone, and used to be permanent. One line, above the cards,

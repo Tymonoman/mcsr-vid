@@ -142,6 +142,10 @@
 .bucket.chaos {
   color: var(--gold);
 }
+.bucketlegend .order {
+  flex-basis: 100%;
+  color: var(--muted);
+}
 .bucketlegend {
   display: flex;
   flex-wrap: wrap;
