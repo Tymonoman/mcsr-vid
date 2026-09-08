@@ -1,3 +1,7 @@
+import type { ChatMessage } from "../src/twitchChat.js";
+
+export type { ChatMessage };
+
 /** Which bucket the form stats (avg/games/WR/FF) were taken from — shown on the overlay so the
  *  numbers can't be misread as career totals (or as season stats) the way they were before. */
 export type StatsScope = "SEASON" | "CAREER";
@@ -89,5 +93,24 @@ export type ShortProps = {
   /** RTA at the Short's first frame, so the running timer stays true to the match. */
   timerStartMs: number;
   durationInFrames: number;
+  fps: number;
+};
+
+/**
+ * One player's Twitch chat replay, beside the splits — the panel the active competitor runs and
+ * we do not. `messages` is exactly what `npm run chat -- <matchId>` writes to chat-<nick>.json,
+ * so the panel is fed from disk with no reshaping in between.
+ */
+export type ChatPanelProps = {
+  nickname: string;
+  messages: ChatMessage[];
+  widthPx: number;
+  heightPx: number;
+  /**
+   * Seconds of video before RTA 0:00 — config.overlayLeadInSec, the same 10s the timer strip and
+   * the intro are placed against. A message's `atSec` is relative to match start, so it appears
+   * at leadInSec + atSec on this composition's own clock.
+   */
+  leadInSec: number;
   fps: number;
 };
