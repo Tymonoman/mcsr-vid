@@ -19,6 +19,7 @@ script, don't reconstruct the shell line. Extra arguments go after `--`.
 | `npm run bench -- <Composition> [--frames=N] [--codec=] [--pixelFormat=] [--concurrency=N] [--out=path]` | Measure render throughput for one composition. Use it before claiming a render change is faster — every speed number in this file came from it. |
 | `npm run short -- <matchId> [--pick=N] [--seconds=22]` | Pick the most watchable ~22s of a match and render a finished vertical MP4 (`short-<id>.mp4`) plus `short-<id>.title.txt` / `.description.txt`. Needs the VODs already downloaded. |
 | `npm run export:fast -- <matchId> [--cpu] [--seconds=N] [--full-tail]` | Render the finished MP4 with one ffmpeg pass instead of melt — ~3.8x faster, no Kdenlive. `--seconds` renders a short range as a smoke test; `--full-tail` keeps the whole post-roll. |
+| `npm run chat -- <matchId>` | Download both players' Twitch chat for the match window to `chat-<nick>.json` beside the media (`src/twitchChat.ts`). Prototype: reads the POV links back from the generated description. Nothing renders it yet. |
 
 Three things these scripts do **not** do:
 
@@ -144,6 +145,20 @@ the page is newer than its server: the nightly strip detects that (the old serve
 - On phones (<= 860px) the list and the match are two screens with a back bar, not one column.
 - There is a Playwright smoke script from the 2026-09-07 session in that session's scratchpad
   (`smoke.cjs http://host:port`); it is not in the repo because Playwright is not a dependency.
+
+## Chat replay (prototype, 2026-09-08)
+
+The active competitor (MCSR Matches, `@mcsrmatches`, 1.5k subs, daily uploads, our title
+grammar) shows both players' Twitch chat replays beside the splits — the one production element
+it has that we don't. `src/twitchChat.ts` fetches a VOD's chat through Twitch's web GQL
+persisted query without a login, **paging by offset**: the cursor the response offers fails
+Twitch's integrity check without a browser token (measured), re-asking from the last message's
+second does not, and the overlap is deduplicated by comment id. Chat dies with the VOD, so it
+has to be fetched while the pipeline still can — the natural place is a stage after
+`download-vods`, using the `VodWindow` offsets the pipeline already holds; until then
+`npm run chat` reads them back from the description. A `ChatPanel` Remotion composition is the
+render half; where it sits in the 1920x1080 frame is a brand decision for the operator, made
+from stills, before anything is wired into `src/pipeline.ts`.
 
 ## What is and is not edited automatically
 
