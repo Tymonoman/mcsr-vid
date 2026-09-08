@@ -14,7 +14,7 @@
  *     anyway; a scan happens only when there is no list at all yet.
  *   - it skips entirely while a pipeline is running, so an overnight render cannot land on top
  *     of one the operator started before going to bed.
- *   - it stops well before the SSD does (a finished match is ~2 GB), because a render that dies
+ *   - it stops well before the SSD does (a finished match is 2–2.5 GB), because a render that dies
  *     at the write stage has burned the whole night for nothing.
  *
  * What it does do unprompted is cut the Short of the match it just rendered (`nightlyRenderShort`)
@@ -38,7 +38,7 @@ import { snapshot, startScan } from "./suggestScan.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** Room for this render and one more. At ~2 GB a match, the last slot is not worth taking. */
+/** Room for this render and one more. At ~3 GB a match, the last slot is not worth taking. */
 const MIN_FREE_MATCHES = 2;
 
 /** jobs.ts offers no completion callback, and a render runs unattended for minutes, so poll coarsely. */

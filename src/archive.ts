@@ -3,7 +3,7 @@
  *
  * Deliberately a copy, never a move: nothing is deleted. That is the policy, and it has a
  * consequence worth stating rather than discovering at 95% — archiving does NOT reclaim the lab
- * SSD. A finished match is ~2 GB (two POV clips and the final MP4; the overlay artifacts are a
+ * SSD. A finished match is 2–2.5 GB (two POV clips and the final MP4; the overlay artifacts are a
  * few MB), so the SSD fills at that rate however diligently this runs. The NAS copy is a backup;
  * freeing space stays a separate, manual decision.
  */
@@ -78,11 +78,12 @@ export interface Capacity {
   path: string;
   freeBytes: number;
   totalBytes: number;
-  /** Roughly how many more matches fit, at ~2 GB each. */
+  /** Roughly how many more matches fit, at 3 GB each. */
   matchesLeft: number;
 }
 
-const MATCH_BYTES = 2 * 1024 ** 3;
+// Measured 1.9–2.4 GB on the shelf (two POV clips and the final MP4); budgeted with headroom.
+const MATCH_BYTES = 3 * 1024 ** 3;
 
 async function capacityOf(target: string): Promise<Capacity | null> {
   try {

@@ -31,6 +31,19 @@ try {
   // A detached HEAD.
   await writeFile(path.join(dir, ".git", "HEAD"), "89abcdef0123456789abcdef0123456789abcdef\n");
   assert.equal(repoHead(dir), "89abcde");
+  // A worktree: `.git` is a file naming the worktree's git dir, and the refs live in the
+  // common dir it points back at (the layout `git worktree add` makes).
+  const common = path.join(dir, "common");
+  await mkdir(path.join(common, "refs", "heads"), { recursive: true });
+  await writeFile(path.join(common, "refs", "heads", "topic"), "abcdef0123456789abcdef0123456789abcdef01\n");
+  const wt = path.join(dir, "wt");
+  const wtGit = path.join(common, "worktrees", "wt");
+  await mkdir(wtGit, { recursive: true });
+  await mkdir(wt, { recursive: true });
+  await writeFile(path.join(wt, ".git"), `gitdir: ${wtGit}\n`);
+  await writeFile(path.join(wtGit, "HEAD"), "ref: refs/heads/topic\n");
+  await writeFile(path.join(wtGit, "commondir"), "../..\n");
+  assert.equal(repoHead(wt), "abcdef0", "a worktree resolves through its gitdir and commondir");
   // No repo at all: null, never a throw into a route.
   assert.equal(repoHead(path.join(dir, "nowhere")), null);
   console.log("repoHead: all checks passed");
