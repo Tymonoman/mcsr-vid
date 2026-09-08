@@ -749,7 +749,9 @@ async function loadPublishKit(id, meta) {
         ),
       ),
       slot ? block("Publish at", slotText, 1) : "",
-      block("Description", meta.description ?? "", 10),
+      // A server one restart behind still writes "Result: X 9:47." into the file (removed in
+      // 10f584a); what gets pasted into Studio must never say who won, whichever build wrote it.
+      block("Description", (meta.description ?? "").replace(/ Result: [^.\n]*\./, ""), 10),
       // Both numbers, because YouTube caps the list twice over: 500 characters across the whole
       // field, and the count is what tells you the pipeline wrote a tags file at all.
       block(
