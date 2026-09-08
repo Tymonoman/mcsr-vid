@@ -145,7 +145,8 @@ the page is newer than its server: the nightly strip detects that (the old serve
   title (hook substituted), the publish slot (next `publishHourUtc`, default 19:00 UTC — the
   active competitor's measured slot; `src/publishSlot.ts`, also the upload form's default),
   description, comma-joined tags with the 500-char count, the Short's title/description when
-  `short-<id>.title.txt` exists, and a DM per player with the `youtu.be` link once uploaded.
+  `short-<id>.title.txt` exists, a pinned comment (one easy question plus the subscribe ask),
+  and a DM per player with the `youtu.be` link once uploaded.
   Nothing is stored; it is the manual Studio phase, pre-pasted.
 - **Publish checklist** under the pipeline stages: five facts derived from disk, five manual
   toggles (`uploaded`, `Short uploaded`, `related link`, `end screen`, `players notified`) in

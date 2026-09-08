@@ -681,6 +681,14 @@ async function loadPublishKit(id, meta) {
         : `<div class="kit"><div class="kithead"><span class="kitlabel">Short title</span></div>
              <div class="empty">no Short title yet</div></div>`,
       kit.shortDescription ? block("Short description", kit.shortDescription, 4) : "",
+      // A first comment to pin: one question a viewer can answer without thinking, and the
+      // subscribe ask — comments are the one engagement signal a two-POV replay does not get on
+      // its own, and the pinned slot is otherwise empty on every upload so far.
+      block(
+        "Pinned comment",
+        `${left ?? "Left"} vs ${right ?? "right"}, split for split. Who did you have winning before the nether? Subscribe if you want the next one on your feed.`,
+        3,
+      ),
       block(`Message to ${left ?? "left player"}`, dm(left ?? "there", right ?? "your opponent"), 3),
       block(`Message to ${right ?? "right player"}`, dm(right ?? "there", left ?? "your opponent"), 3),
     ].join("");
