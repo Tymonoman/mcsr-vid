@@ -503,12 +503,16 @@ function runClock(ms) {
 }
 
 /**
- * The candidate 30-second windows, best first, and a button to cut one.
+ * The candidate windows, best first, and a button to cut one.
  *
  * Ranked rather than chosen for you: the scorer is a set of informed guesses about what makes a
  * Short watchable (see src/shortMoment.ts) and has no retention data behind it yet, so the top
- * pick is a strong default and not a verdict. Each row shows why it won and the hook line it
- * would carry, which is the part worth disagreeing with.
+ * pick is a strong default and not a verdict. Each row shows why it won and the line it would
+ * carry if nothing better existed, which is the part worth disagreeing with.
+ *
+ * `data.hook` is the line that will actually be burned in — the edited title's hook, or the
+ * top-ranked suggestion, and only then the per-row one. The rows used to be the only hook on
+ * screen, which meant the panel showed a line no render would ever use.
  */
 async function loadShort(id) {
   const el = $("#short");
@@ -539,6 +543,15 @@ async function loadShort(id) {
            </div>`
         : ""
     }
+    ${
+      data.title
+        ? `<div class="previewmeta">
+             <span id="shorttitle">${esc(data.title)}</span>
+             <button type="button" id="shorttitlecopy" class="ghost">Copy title</button>
+           </div>`
+        : ""
+    }
+    ${data.hook ? `<div class="previewmeta"><span>burns in: &ldquo;${esc(data.hook)}&rdquo;</span></div>` : ""}
     <div class="moments">${data.moments
       .map(
         (m) => `
@@ -551,6 +564,16 @@ async function loadShort(id) {
       )
       .join("")}</div>
     <pre id="shortlog" class="hidden"></pre>`;
+
+  // The Short's title is typed into Studio by hand, and retyping a line the render already
+  // wrote is how a hook picks up a typo the burned-in one doesn't have.
+  const copyTitle = $("#shorttitlecopy");
+  if (copyTitle) {
+    copyTitle.addEventListener("click", () => {
+      navigator.clipboard?.writeText(data.title);
+      copyTitle.textContent = "Copied";
+    });
+  }
 
   el.querySelectorAll(".moment .cut").forEach((btn) =>
     btn.addEventListener("click", async () => {

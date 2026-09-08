@@ -9,13 +9,14 @@
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import { describeError } from "./errorText.js";
 import type { ExportRouteContext } from "./exportRoutes.js";
-import { getMatch } from "./mcsrApi.js";
+import { getMatch, getUser } from "./mcsrApi.js";
 import { distinctShortMoments, SHORT_WINDOW_SEC } from "./shortMoment.js";
-import { buildShortHook } from "./shortHook.js";
+import { buildShortHook, resolveShortHookFor } from "./shortHook.js";
 import { sendVideo } from "./rangeStream.js";
 
 /** One Short render in flight. Lines are retained so a browser joining late replays the run. */
@@ -34,6 +35,13 @@ const jobs = new Map<number, ShortJob>();
 export const shortRunning = (matchId: number): boolean => jobs.get(matchId)?.done === false;
 
 const shortPath = (dir: string, matchId: number) => path.join(dir, `short-${matchId}.mp4`);
+
+/** The first line of a written file, or null when it is missing — a file nothing wrote yet. */
+const firstLine = (file: string): Promise<string | null> =>
+  readFile(file, "utf8").then(
+    (text) => text.split("\n")[0]!.trim() || null,
+    () => null,
+  );
 
 function broadcast(job: ShortJob, payload: unknown): void {
   const frame = `data: ${JSON.stringify(payload)}\n\n`;
@@ -132,16 +140,36 @@ export async function handleShortsRoute(
           windowSec: SHORT_WINDOW_SEC,
         },
         5,
-      ).map((m, index) => ({
-        index,
-        startMs: m.startMs,
-        endMs: m.endMs,
-        score: Number(m.score.toFixed(2)),
-        reason: m.reason,
-        hook: buildShortHook(m, left.nickname, right.nickname),
-      }));
+      );
+
+      // What a render would actually burn in, which is usually not the per-moment line: an
+      // edited title hook or a ranked suggestion outranks it, and the panel showing the third
+      // choice while the render uses the first is how you disagree with a hook you never saw.
+      // Resolved for the top moment, the one the panel offers as the default — a lower pick
+      // differs only in the fallback, which is the case that loses to both other sources anyway.
+      const top = moments[0];
+      let hook: string | null = null;
+      if (top) {
+        const [userLeft, userRight] = await Promise.all([getUser(left.uuid), getUser(right.uuid)]);
+        hook = await resolveShortHookFor({ matchId, match, moment: top, userLeft, userRight, matchDir: dir });
+      }
+
       const file = shortPath(dir, matchId);
-      ctx.json(res, 200, { moments, rendered: existsSync(file) ? path.basename(file) : null });
+      ctx.json(res, 200, {
+        moments: moments.map((m, index) => ({
+          index,
+          startMs: m.startMs,
+          endMs: m.endMs,
+          score: Number(m.score.toFixed(2)),
+          reason: m.reason,
+          hook: buildShortHook(m, left.nickname, right.nickname),
+        })),
+        rendered: existsSync(file) ? path.basename(file) : null,
+        hook,
+        // The title the last render wrote, for the manual upload. Absent until something has
+        // been rendered, which is exactly when there is nothing to paste anywhere.
+        title: await firstLine(path.join(dir, `short-${matchId}.title.txt`)),
+      });
     } catch (err) {
       ctx.json(res, 502, { error: describeError(err) });
     }
