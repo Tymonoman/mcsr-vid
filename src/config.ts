@@ -15,10 +15,14 @@ export interface Config {
    * Skins, which rendered real poses, is gone, and every name here must have an entry there or
    * the variant renders NMSR's default view and the dashboard flags it as a fallback. Measured
    * on 2026-09-07: all six names below produce visibly different silhouettes, so CTR grouped by
-   * pose compares a variable that actually varies. Since the hook-text change, all variants also
-   * carry the same headline; the pose is still the only thing that differs between them.
+   * pose compares a variable that actually varies.
+   *
+   * `hook: false` renders that pair without the title headline. Pose barely moves clicks, so a
+   * set that varies only pose cannot answer the question the channel actually has — does text on
+   * the thumbnail lift CTR? — and Studio's Test & compare takes three images, one of which should
+   * be the text-free control. Keep it off the first entry, which is what `thumbnail.png` becomes.
    */
-  thumbnailVariants: Array<{ left: string; right: string }>;
+  thumbnailVariants: Array<{ left: string; right: string; hook?: boolean }>;
   /** Minimum cross-correlation confidence (sync.ts) to trust the refined audio sync offset. */
   syncConfidenceThreshold: number;
   /** VOD trim window: seconds of buffer before/after the estimated match start/end. */
@@ -142,7 +146,8 @@ const DEFAULTS: Config = {
     // First is the existing look, so nothing changes for a match already published.
     { left: "walking", right: "crossed" },
     { left: "cheering", right: "relaxing" },
-    { left: "marching", right: "crouching" },
+    // The control: same layout, no headline, so the A/B set varies text and not just pose.
+    { left: "marching", right: "crouching", hook: false },
   ],
   syncConfidenceThreshold: 0.15,
   preRollSec: 150,

@@ -379,8 +379,9 @@ async function loadVariants(id) {
     return;
   }
 
-  // The headline every variant in the strip was rendered with. Not visible in the shrunken
-  // previews once it wraps, and it is the whole reason a re-render happens.
+  // The headline the strip was rendered with — every variant except any marked control. Not
+  // visible in the shrunken previews once it wraps, and it is the whole reason a re-render
+  // happens.
   const headline = data.hookText
     ? `<div class="counter">headline: &ldquo;${esc(data.hookText)}&rdquo;</div>`
     : "";
@@ -394,7 +395,7 @@ async function loadVariants(id) {
       <figure class="variant ${v.key === data.chosen ? "chosen" : ""}" data-key="${esc(v.key)}">
         <img src="/api/thumbnail/${id}?v=${encodeURIComponent(v.key)}" alt="${esc(v.key)}" loading="lazy">
         <figcaption>
-          <span class="key">${esc(v.leftPose)} / ${esc(v.rightPose)}</span>
+          <span class="key">${esc(v.leftPose)} / ${esc(v.rightPose)}${v.hook === false ? " · no text (control)" : ""}</span>
           ${fellBack ? '<span class="fallback" title="This pose name has no camera, so it is the default NMSR view -- not the pose it is named after">static fallback</span>' : ""}
           ${v.key === data.chosen ? '<span class="is-chosen">in use</span>' : '<button type="button" class="use">Use this</button>'}
         </figcaption>
