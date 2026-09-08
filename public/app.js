@@ -1081,6 +1081,7 @@ function renderSuggestions(data) {
         </div>
         ${s.story ? `<div class="story">${esc(s.story)}</div>` : ""}
         <div class="facts">${esc(s.facts)}</div>
+        ${s.rivalPosted ? `<div class="rival" title="${esc(s.rivalPosted.title)}">@${esc(data.rivalHandle ?? "rival")} posted this ${s.rivalPosted.daysAgo === 0 ? "today" : `${s.rivalPosted.daysAgo}d ago`}</div>` : ""}
         ${splitsChart(s.splits, { left: s.players[0], right: s.players[1], compact: true })}
         <div class="expiry${s.expiring ? " warn" : ""}">${esc(s.expiryLabel)}</div>
         <div class="links">

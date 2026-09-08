@@ -93,6 +93,11 @@ the page is newer than its server: the nightly strip detects that (the old serve
   VOD expiry. Head-to-head costs one `getVersus` call per *newly scored* match and is pooled in
   `/media/.suggest-cache.json` (`CACHE_VERSION` in `src/suggest.ts`; bumping it makes the next
   scan re-fetch everything, ~340 MCSR API calls against 500/10 min).
+- **Rival posts** (`src/rivalPosts.ts`): the competitor's last fifty uploads (`rivalChannelHandle`,
+  default `mcsrmatches`; 2 quota units, refreshed every six hours, fire-and-forget from the
+  suggestions route) are matched against the cards by normalised nickname pair within ten days
+  of the match. A posted matchup shows "@mcsrmatches posted this 2d ago" and is ordered after
+  the fresh ones — in the nightly's order too, since `orderForDisplay` is the same sort.
 - **Hook chips** (`src/hooks.ts`) put rivalry framing first — `Rematch: doogile leads 2-1`,
   `#4 vs #11`, `2050 vs 1850` — because the audit measured rivalry-framed titles at 9.36% CTR
   against 2.25% for descriptive ones, with no overlap. Descriptive chips are fallbacks.

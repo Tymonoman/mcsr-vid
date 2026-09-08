@@ -59,6 +59,13 @@ export interface Config {
    */
   youtubePlaylistUrl: string;
   /**
+   * The competitor whose uploads the suggestion cards are checked against (src/rivalPosts.ts):
+   * MCSR Matches posts the same matches this channel picks, a day later, to 37x the
+   * subscribers. A matchup it has already covered is flagged on the card and ordered after the
+   * fresh ones. Empty string turns the check off; it also needs the YouTube token.
+   */
+  rivalChannelHandle: string;
+  /**
    * Seconds of overlay before the RTA timer starts.
    *
    * This is also where the published video begins: the timeline is anchored on the world-load
@@ -180,6 +187,7 @@ const DEFAULTS: Config = {
   youtubeReportingJobId: "eda017ae-a539-4c79-8e2c-66d1af74264a",
   youtubePlaylistTitle: "MCSR Ranked matches",
   youtubePlaylistUrl: "",
+  rivalChannelHandle: "mcsrmatches",
   overlayLeadInSec: 10,
   overlayFps: 30,
   renderConcurrency: null,

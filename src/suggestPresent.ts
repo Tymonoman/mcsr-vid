@@ -7,6 +7,7 @@
  * "won by" not "Δ", float an expiring match to the top) and rules want a test.
  */
 import { formatShortTime } from "../remotion/format.js";
+import { rivalMatchFor, rivalPostsSnapshot, type RivalPost } from "./rivalPosts.js";
 import type { SplitGap } from "./matchScore.js";
 import {
   POOL_MAX_AGE_DAYS,
@@ -35,6 +36,8 @@ export interface SuggestionCard {
   popularity: number;
   splits: SplitGap[];
   vodUrls: string[];
+  /** The rival channel's post of this matchup, when it has one (src/rivalPosts.ts). */
+  rivalPosted: { daysAgo: number; title: string } | null;
 }
 
 /** Follower counts are read at a glance, so they round: 8143 -> 8.1k, 84_312 -> 84k. */
@@ -86,11 +89,15 @@ export function factsLine(s: Suggestion): string {
   ].join(" · ");
 }
 
-function toCard(s: Suggestion, nowMs: number): SuggestionCard {
+function toCard(s: Suggestion, nowMs: number, rival: readonly RivalPost[]): SuggestionCard {
   const ageDays = (nowMs / 1000 - s.dateSec) / 86_400;
   const expiresInDays = Math.max(0, Math.floor(POOL_MAX_AGE_DAYS - ageDays));
   const expiring = expiresInDays <= EXPIRY_WARN_DAYS;
+  const posted = rivalMatchFor(rival, s.metrics.players, s.dateSec);
   return {
+    rivalPosted: posted
+      ? { daysAgo: Math.max(0, Math.floor((nowMs - posted.publishedAtMs) / 86_400_000)), title: posted.title }
+      : null,
     matchId: s.metrics.matchId,
     bucket: s.bucket,
     players: s.metrics.players,
@@ -108,18 +115,26 @@ function toCard(s: Suggestion, nowMs: number): SuggestionCard {
 /**
  * Cards in display order: buckets stay in the order they arrive (close, then chaos), and inside
  * a bucket the biggest audience wins — except a match whose VODs are about to die, which goes
- * to the top of its bucket because it is the only candidate that stops being renderable.
+ * to the top of its bucket because it is the only candidate that stops being renderable, and
+ * except a matchup the rival channel has already posted, which goes after the fresh ones: it
+ * would compete with the rival's own video for the same browse session.
  */
 export function presentSuggestions(
   suggestions: readonly Suggestion[],
   nowMs: number = Date.now(),
+  rival: readonly RivalPost[] = rivalPostsSnapshot(),
 ): SuggestionCard[] {
-  const cards = suggestions.map((s) => toCard(s, nowMs));
+  const cards = suggestions.map((s) => toCard(s, nowMs, rival));
   const buckets = [...new Set(cards.map((c) => c.bucket))];
   return buckets.flatMap((bucket) =>
     cards
       .filter((c) => c.bucket === bucket)
-      .sort((x, y) => Number(y.expiring) - Number(x.expiring) || y.popularity - x.popularity),
+      .sort(
+        (x, y) =>
+          Number(y.expiring) - Number(x.expiring) ||
+          Number(x.rivalPosted !== null) - Number(y.rivalPosted !== null) ||
+          y.popularity - x.popularity,
+      ),
   );
 }
 
@@ -132,8 +147,9 @@ export function presentSuggestions(
 export function orderForDisplay(
   suggestions: readonly Suggestion[],
   nowMs: number = Date.now(),
+  rival: readonly RivalPost[] = rivalPostsSnapshot(),
 ): Suggestion[] {
-  const rank = new Map(presentSuggestions(suggestions, nowMs).map((card, i) => [card.matchId, i]));
+  const rank = new Map(presentSuggestions(suggestions, nowMs, rival).map((card, i) => [card.matchId, i]));
   return [...suggestions].sort(
     (a, b) => (rank.get(a.metrics.matchId) ?? Infinity) - (rank.get(b.metrics.matchId) ?? Infinity),
   );

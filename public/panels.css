@@ -152,6 +152,13 @@
   color: var(--muted);
   border-bottom: 1px solid var(--panel-edge);
 }
+/* The competitor already has this matchup up: it competes with their video for the same
+   browse session, so the card says so and the order puts it after the fresh ones. */
+.sugg .rival {
+  color: var(--crimson);
+  font-size: 11px;
+  margin-top: 2px;
+}
 /* The line that actually sells the match -- ranks, elo, rivalry, audience -- so it reads at
    full brightness, above the facts. */
 .sugg .story {

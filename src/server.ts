@@ -33,6 +33,7 @@ import { STAGE_LABELS, STAGE_ORDER, STAGE_SHORT_LABELS } from "./pipeline.js";
 import { presentSuggestions } from "./suggestPresent.js";
 import { dismiss, restore, snapshot, startScan } from "./suggestScan.js";
 import { nextPublishSlot } from "./publishSlot.js";
+import { refreshRivalPostsIfStale, rivalPostsSnapshot } from "./rivalPosts.js";
 import { chooseVariant, readManifest, rerenderThumbnailVariants } from "./thumbnailVariants.js";
 import { buildTitle, type BuiltTitle } from "./title.js";
 import { allArchiveStates, capacity } from "./archive.js";
@@ -250,13 +251,18 @@ function outputPaths(matchId: number, projectPath: string | null) {
 function suggestionsPayload() {
   const state = snapshot();
   // Ordering and wording are `presentSuggestions`; this only adds the link the page can't build.
-  const suggestions = presentSuggestions(state.result?.suggestions ?? []).map((card) => ({
+  const suggestions = presentSuggestions(
+    state.result?.suggestions ?? [],
+    Date.now(),
+    rivalPostsSnapshot(),
+  ).map((card) => ({
     ...card,
     matchUrl: `${MCSR_MATCH_URL}${card.matchId}`,
   }));
 
   return {
     suggestions,
+    rivalHandle: config.rivalChannelHandle || null,
     scanning: state.scanning,
     error: state.error,
     scanned: state.scanned,
@@ -383,6 +389,9 @@ const server = createServer(async (req, res) => {
     }
 
     if (resource === "suggestions" && idRaw === undefined && req.method === "GET") {
+      // Fire-and-forget: the first request after boot answers without the rival badges and the
+      // next has them; a failure is a log line, never a 500 on the suggestions page.
+      refreshRivalPostsIfStale();
       json(res, 200, suggestionsPayload());
       return;
     }
@@ -699,6 +708,7 @@ server.listen(PORT, "0.0.0.0", () => {
   // MCSR feed dozens of times, so waiting until someone asks means waiting a minute for an
   // answer; a fresh cache returns immediately and this costs nothing.
   void startScan();
+  refreshRivalPostsIfStale();
   // And then render one of them overnight, unattended. Waiting for a click is what caps output
   // at 7.24 videos a month: the render is cheap, the operator's attention is not.
   if (config.nightlyRenderHourUtc !== null) {

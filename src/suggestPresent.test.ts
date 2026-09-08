@@ -134,6 +134,47 @@ assert.equal(
 
 console.log("suggestPresent: ok");
 
+// --- a matchup the rival already posted goes after the fresh ones, but never above an expiring one
+{
+  const rival = [
+    {
+      title: "GG!! | edcr vs doogile | MCSR Ranked",
+      publishedAtMs: NOW - 86_400_000,
+      players: ["edcr", "doogile"] as [string, string],
+    },
+  ];
+  const raw = [
+    suggestion({
+      popularity: 90,
+      dateSec: daysAgo(2),
+      metrics: { ...suggestion().metrics, matchId: 21, players: ["edcr", "doogile"] },
+    }),
+    suggestion({
+      popularity: 10,
+      dateSec: daysAgo(2),
+      metrics: { ...suggestion().metrics, matchId: 22, players: ["a", "b"] },
+    }),
+    suggestion({
+      popularity: 1,
+      dateSec: daysAgo(9),
+      metrics: { ...suggestion().metrics, matchId: 23, players: ["c", "d"] },
+    }),
+  ];
+  const cards = presentSuggestions(raw, NOW, rival);
+  assert.deepEqual(
+    cards.map((c) => c.matchId),
+    [23, 22, 21],
+    "expiring, then fresh, then the rival's matchup last despite its audience",
+  );
+  assert.deepEqual(cards[2]!.rivalPosted, { daysAgo: 1, title: "GG!! | edcr vs doogile | MCSR Ranked" });
+  assert.equal(cards[1]!.rivalPosted, null);
+  assert.deepEqual(
+    orderForDisplay(raw, NOW, rival).map((s) => s.metrics.matchId),
+    [23, 22, 21],
+    "the nightly demotes it too",
+  );
+}
+
 // --- the nightly must pick what the operator sees first --------------------------------------
 // orderForDisplay is the presenter's order applied back to the suggestions themselves, so the
 // nightly's "will render X" and card #1 cannot disagree the way they did on the live channel.
