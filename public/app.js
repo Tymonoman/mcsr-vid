@@ -1235,6 +1235,8 @@ function renderSuggestions(data) {
     // A restart since the dismiss means the row is gone from memory; it returns at the next scan.
     lastDismissed = out.now ? null : { id, who, note: "back after the next scan" };
     renderSuggestions(out);
+    // Focus follows the round trip: the repaint destroyed the link that was focused.
+    el.querySelector(`.sugg[data-id="${id}"] [data-act="dismiss"]`)?.focus();
     void loadNightly();
   });
   // First paint fetches it; every later paint reuses the cache, so polling a running scan does
@@ -1258,6 +1260,9 @@ function renderSuggestions(data) {
       }
       lastDismissed = { id, who: s ? `${s.players[0]} vs ${s.players[1]}` : `#${id}` };
       renderSuggestions(out);
+      // The repaint destroyed the focused button; land on the sticky undo line so a mis-press is
+      // one Enter away and the next Tab does not jump to the top of the panel.
+      el.querySelector('[data-act="undo"]')?.focus({ preventScroll: true });
       // Tonight's pick may have been the card just dismissed.
       void loadNightly();
     });
