@@ -8,7 +8,6 @@ import { layoutShortHook } from "./shortHookLayout.js";
 import {
   SHORT_BOTTOM_NAMEPLATE_Y,
   SHORT_BRAND_BAR_HEIGHT,
-  SHORT_HOOK_SEC,
   SHORT_NAMEPLATE_HEIGHT,
   SHORT_POV_HEIGHT,
 } from "./layout.js";
@@ -103,5 +102,3 @@ export const ShortHook: FC<ShortProps> = (props) => {
     </AbsoluteFill>
   );
 };
-
-export { SHORT_HOOK_SEC };

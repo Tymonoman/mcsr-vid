@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
-import { config } from "./config.js";
+import { config, matchDir } from "./config.js";
 import { getMatch, getUser, getVersus, parseMatchId } from "./mcsrApi.js";
 import {
   ANCHOR_SEC,
@@ -67,7 +67,6 @@ export {
   STAGE_ORDER,
   type StageEvent,
   type StageId,
-  type StageStatus,
 } from "./stageProgress.js";
 
 export interface PipelineResult {
@@ -171,7 +170,7 @@ async function runStages(
   ]);
   emit(done("fetch", { message: `${playerLeft.nickname} vs ${playerRight.nickname}` }));
 
-  const outDir = path.join(config.mediaDir, String(matchId));
+  const outDir = matchDir(matchId);
   const pathFor = (nickname: string) => path.join(outDir, `${nickname}.mp4`);
 
   const downloadPercents = new Map<number, number>();
@@ -356,10 +355,9 @@ async function runStages(
           }),
         ),
     });
-    // Worth saying out loud: when Starlight Skins is down every pose falls back to the same
-    // static NMSR render, so "3 variants" would otherwise imply three different images.
+    // A variant whose pose was not honoured is the same NMSR image as every other fallback.
     const posed = manifest.variants.filter(
-      (v) => v.leftProvider === "starlight" || v.rightProvider === "starlight",
+      (v) => v.leftProvider === "nmsr-posed" && v.rightProvider === "nmsr-posed",
     ).length;
     emit(
       done("thumbnail", {

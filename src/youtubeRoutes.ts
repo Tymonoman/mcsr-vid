@@ -17,7 +17,7 @@ import {
   refreshChannelUploadsNow,
   type ChannelVideo,
 } from "./channelUploads.js";
-import { config } from "./config.js";
+import { config, matchDir } from "./config.js";
 import { describeError } from "./errorText.js";
 import { listProcessedMatchIds, matchStatusFor } from "./matchStatus.js";
 import { readManifest } from "./thumbnailVariants.js";
@@ -454,7 +454,7 @@ async function uploadsPayload() {
 }
 
 /** One text-vs-no-text bucket. `hook: null` is "no manifest said", not "no". */
-export interface HookGroup {
+interface HookGroup {
   hook: boolean | null;
   videos: number;
   impressions: number;
@@ -527,15 +527,13 @@ async function abTestPayload() {
   const hookEntries: { hook: boolean | null; reach: { impressions: number; weightedCtr: number } | null }[] =
     [];
   for (const u of uploads) {
-    const manifest = await readManifest(path.join(config.mediaDir, String(u.matchId)));
+    const manifest = await readManifest(matchDir(u.matchId));
     // A dashboard upload recorded which variant it sent; a Studio upload did not, and the
     // manifest's `chosen` is the one the dashboard handed over to be uploaded.
     const variantKey = u.source === "dashboard" ? u.thumbnailVariant : (manifest?.chosen ?? undefined);
     const key = variantKey ?? "(unknown)";
     const variant = manifest?.variants.find((v) => v.key === variantKey);
-    const fellBack = variant
-      ? variant.leftProvider !== "starlight" || variant.rightProvider !== "starlight"
-      : false;
+    const fellBack = variant ? variant.leftProvider === "nmsr" || variant.rightProvider === "nmsr" : false;
 
     hookEntries.push({ hook: variant?.hook ?? null, reach: byVideo.get(u.videoId) ?? null });
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { computeThumbnailProps, resolveAvatarUrl } from "./thumbnailProps.js";
-import { KNOWN_POSES } from "./avatarUrl.js";
+import { computeThumbnailProps } from "./thumbnailProps.js";
+import { KNOWN_POSES, resolveAvatarUrl } from "./avatarUrl.js";
 import type { MatchInfo, UserDetails } from "./types.js";
 
 const realFetch = globalThis.fetch;

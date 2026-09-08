@@ -2,13 +2,12 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { requireArg } from "./cliArgs.js";
-import { config } from "./config.js";
+import { matchDir } from "./config.js";
 import { getMatch, parseMatchId } from "./mcsrApi.js";
 import { computeSyncOffset } from "./sync.js";
 import {
   downloadMatchVods,
   type VodWindow,
-  estimatedRunSec,
   matchStartIntoVodSec as matchStartIntoVodSecOf,
 } from "./vodAcquisition.js";
 
@@ -20,7 +19,7 @@ if (match.vod.length < 2) {
   process.exit(1);
 }
 
-const outDir = path.join(config.mediaDir, String(matchId));
+const outDir = matchDir(matchId);
 let windows: VodWindow[];
 const [vodA, vodB] = match.vod;
 const expectedPathA = path.join(
@@ -39,8 +38,6 @@ if (existsSync(expectedPathA) && existsSync(expectedPathB)) {
     // Mirrors vodAcquisition.ts: `date` is the match's completion timestamp, so the start
     // has to be derived by subtracting the run duration.
     const matchStartIntoVodSec = matchStartIntoVodSecOf(match, vod);
-    const runSec = estimatedRunSec(match);
-    const matchEndIntoVodSec = matchStartIntoVodSec + runSec;
     return {
       playerUuid: vod.uuid,
       playerNickname: nickname,

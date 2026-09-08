@@ -13,7 +13,7 @@
  */
 import { config } from "./config.js";
 import { describeError } from "./errorText.js";
-import { getAccessToken, isConfigured } from "./youtube.js";
+import { dataApiGet, isConfigured } from "./youtube.js";
 
 export interface RivalPost {
   title: string;
@@ -114,15 +114,8 @@ export function rivalRecentPostFor(
 }
 
 /** The rival's last fifty uploads, newest first. Throws on API failure; the cache below catches. */
-export async function fetchRivalPosts(handle: string, fetchImpl: typeof fetch = fetch): Promise<RivalPost[]> {
-  const token = await getAccessToken();
-  const yt = async (path: string): Promise<any> => {
-    const res = await fetchImpl(`https://www.googleapis.com/youtube/v3/${path}`, {
-      headers: { authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) throw new Error(`YouTube ${res.status} for ${path.split("?")[0]}`);
-    return res.json();
-  };
+async function fetchRivalPosts(handle: string, fetchImpl: typeof fetch = fetch): Promise<RivalPost[]> {
+  const yt = (path: string): Promise<any> => dataApiGet<any>(`/${path}`, fetchImpl);
   const channel = await yt(`channels?part=contentDetails&forHandle=${encodeURIComponent(handle)}`);
   const uploads = channel.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
   if (!uploads) throw new Error(`no channel for handle ${handle}`);
@@ -192,9 +185,4 @@ export function refreshRivalPostsIfStale(nowMs: number = Date.now()): void {
     .finally(() => {
       inflight = null;
     });
-}
-
-/** Test seam. */
-export function _setRivalPostsForTest(posts: RivalPost[]): void {
-  cached = { atMs: Date.now(), posts };
 }

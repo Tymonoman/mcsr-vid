@@ -5,8 +5,6 @@ import type { OverlayProps, PlayerIdentity } from "./types.js";
 
 import { INTRO_SECONDS } from "./layout.js";
 
-export { INTRO_SECONDS };
-
 function PlayerCard({
   player,
   side,

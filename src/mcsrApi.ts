@@ -2,9 +2,6 @@ import type { FeedMatch, MatchInfo, UserDetails, VersusStats } from "./types.js"
 
 const BASE_URL = "https://api.mcsrranked.com";
 
-/** The API allows 500 requests per 10 minutes; callers that page should budget against it. */
-export const RATE_LIMIT_PER_10_MIN = 500;
-
 interface Envelope<T> {
   status: "success" | "error";
   data: T;

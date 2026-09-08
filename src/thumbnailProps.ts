@@ -1,15 +1,11 @@
 import { config } from "./config.js";
-// Same rationale as overlayProps.ts: ThumbnailPlayer/ThumbnailProps are Remotion's prop contract
+// Same rationale as overlayProps.ts: ThumbnailProps is Remotion's prop contract
 // (remotion/types.ts), reused here rather than hand-duplicated, since this crosses into Remotion
 // via an untyped `inputProps` JSON boundary.
-import type { ThumbnailPlayer, ThumbnailProps } from "../remotion/types.js";
+import type { ThumbnailProps } from "../remotion/types.js";
 import { resolveAvatarUrl, type ResolvedAvatar } from "./avatarUrl.js";
 import { eloAtMatchStart } from "./overlayProps.js";
 import type { MatchInfo, UserDetails } from "./types.js";
-
-export type { ThumbnailPlayer, ThumbnailProps };
-// Re-exported for thumbnailProps.test.ts, which tests this behavior in the thumbnail context.
-export { resolveAvatarUrl };
 
 /** One energetic, one calm — mirrors the reference thumbnail layout. Override via config. */
 export interface PosePair {

@@ -8,7 +8,7 @@
  */
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { config } from "./config.js";
+import { config, matchDir } from "./config.js";
 import { getMatch, parseMatchId } from "./mcsrApi.js";
 import { chatWindowsFromDescription, saveChats } from "./twitchChat.js";
 import { estimatedRunSec } from "./vodAcquisition.js";
@@ -19,7 +19,7 @@ if (!arg) {
   process.exit(2);
 }
 const matchId = parseMatchId(arg);
-const dir = path.join(config.mediaDir, String(matchId));
+const dir = matchDir(matchId);
 const description = await readFile(path.join(dir, `match-${matchId}.description.txt`), "utf8");
 const windows = chatWindowsFromDescription(description);
 if (windows.length !== 2)

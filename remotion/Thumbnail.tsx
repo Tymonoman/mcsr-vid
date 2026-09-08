@@ -62,7 +62,7 @@ function balancedPair(words: string[]): string[] {
  * shrinking past legibility — the title budget allows ~47 characters and 96px fits 19 a line.
  * If those ever need to stay at two lines, condense the text, not the type.
  */
-export function layoutHook(text: string): { lines: string[]; fontSize: number } {
+function layoutHook(text: string): { lines: string[]; fontSize: number } {
   const words = text.trim().split(/\s+/);
   const single = words.join(" ");
 

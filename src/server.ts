@@ -13,7 +13,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { channelUploadsSnapshot, channelVideoFor, refreshChannelUploadsIfStale } from "./channelUploads.js";
-import { config } from "./config.js";
+import { config, matchDir } from "./config.js";
 import { describeError } from "./errorText.js";
 import { codeVersions } from "./repoHead.js";
 import { buildHookSuggestions, suggestHooksExternally } from "./hooks.js";
@@ -91,10 +91,6 @@ function parseId(raw: string | undefined): number | null {
   if (!raw || !/^\d+$/.test(raw)) return null;
   const n = Number(raw);
   return Number.isSafeInteger(n) && n > 0 ? n : null;
-}
-
-function matchDir(matchId: number): string {
-  return path.join(config.mediaDir, String(matchId));
 }
 
 function json(res: ServerResponse, status: number, body: unknown): void {

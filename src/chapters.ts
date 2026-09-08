@@ -1,3 +1,4 @@
+import { formatShortTime } from "../remotion/format.js";
 import type { SplitRow } from "./overlayProps.js";
 import type { MatchInfo } from "./types.js";
 
@@ -36,14 +37,7 @@ export function buildChapters(splits: SplitRow[], match: MatchInfo, leadInSec: n
   return filtered;
 }
 
-function formatTimestamp(sec: number): string {
-  const total = Math.floor(sec);
-  const m = Math.floor(total / 60);
-  const s = total % 60;
-  return `${m}:${String(s).padStart(2, "0")}`;
-}
-
 /** Formats chapters as YouTube-description-ready `M:SS Label` lines, one per line. */
 export function formatChapters(chapters: ChapterMarker[]): string {
-  return chapters.map((c) => `${formatTimestamp(c.timeSec)} ${c.label}`).join("\n");
+  return chapters.map((c) => `${formatShortTime(c.timeSec * 1000)} ${c.label}`).join("\n");
 }

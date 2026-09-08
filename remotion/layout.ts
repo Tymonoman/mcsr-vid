@@ -81,15 +81,8 @@ export const SHORT_NAMEPLATE_HEIGHT = 220;
 export const SHORT_BRAND_BAR_HEIGHT = SHORT_HEIGHT - SHORT_NAMEPLATE_HEIGHT * 2 - SHORT_POV_HEIGHT * 2;
 
 /** Top of each element, so the Remotion board and any NLE placement agree by construction. */
-export const SHORT_TOP_NAMEPLATE_Y = 0;
 export const SHORT_TOP_POV_Y = SHORT_NAMEPLATE_HEIGHT;
 export const SHORT_BOTTOM_NAMEPLATE_Y = SHORT_TOP_POV_Y + SHORT_POV_HEIGHT;
-export const SHORT_BOTTOM_POV_Y = SHORT_BOTTOM_NAMEPLATE_Y + SHORT_NAMEPLATE_HEIGHT;
-export const SHORT_BRAND_BAR_Y = SHORT_BOTTOM_POV_Y + SHORT_POV_HEIGHT;
-
-/** "x y w h opacity" rects for each POV pane, in the same convention the 16:9 stage uses. */
-export const SHORT_TOP_POV_RECT = `0 ${SHORT_TOP_POV_Y} ${SHORT_POV_WIDTH} ${SHORT_POV_HEIGHT} 1`;
-export const SHORT_BOTTOM_POV_RECT = `0 ${SHORT_BOTTOM_POV_Y} ${SHORT_POV_WIDTH} ${SHORT_POV_HEIGHT} 1`;
 
 /** Seconds the hook line stays on screen before it is removed. */
 export const SHORT_HOOK_SEC = 4;
