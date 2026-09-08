@@ -86,6 +86,14 @@ export interface Config {
    */
   nightlyRenderHourUtc: number | null;
   /**
+   * Whether a clean nightly render is followed by a Short of the same match, cut with the top
+   * moment (`--pick=0`). On by default: the VODs are already on disk, the cut costs a couple of
+   * minutes next to the render's 30-45, and Shorts are the only surface on the channel that
+   * reaches people who have never heard of it. Only `done` chains one — a failed or aborted
+   * pipeline has nothing to cut from, and an abort is the operator saying stop.
+   */
+  nightlyRenderShort: boolean;
+  /**
    * Where to POST a one-line plain-text result when a nightly render settles — an ntfy.sh topic
    * URL takes exactly that body, which is why the body is plain text and nothing else. Empty
    * string turns the notification off; a failed POST is logged, never fatal.
@@ -148,6 +156,7 @@ const DEFAULTS: Config = {
   overlayFps: 30,
   renderConcurrency: null,
   nightlyRenderHourUtc: 3,
+  nightlyRenderShort: true,
   nightlyNotifyUrl: "",
   suggestCloseSlots: 8,
   suggestChaosSlots: 2,

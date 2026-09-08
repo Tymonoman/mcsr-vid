@@ -55,7 +55,8 @@ function broadcast(job: ShortJob, payload: unknown): void {
  */
 export type ShortRunner = (matchId: number, pick: number) => ChildProcess;
 
-const spawnShortCli: ShortRunner = (matchId, pick) =>
+/** The one way a Short is rendered: exported so the nightly job chains this and not a second spawn. */
+export const spawnShortCli: ShortRunner = (matchId, pick) =>
   // The CLI is the one code path that renders a Short, so the dashboard drives it rather than
   // duplicating the moment-picking and ffmpeg assembly. Same reason exportRoutes shells out to
   // export.sh instead of reimplementing melt's invocation.

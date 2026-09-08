@@ -3,7 +3,10 @@
 // The timer itself is not tested: that would be a test of setTimeout.
 // Run: npx tsx src/nightly.test.ts
 import assert from "node:assert/strict";
-import { msUntilNextRun, pickNightlyCandidate } from "./nightly.js";
+import type { ChildProcess } from "node:child_process";
+import { EventEmitter } from "node:events";
+import { chainShort, msUntilNextRun, pickNightlyCandidate } from "./nightly.js";
+import type { ShortRunner } from "./shortsRoutes.js";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -50,5 +53,37 @@ assert.equal(pickNightlyCandidate([], roomy), null);
 assert.equal(pickNightlyCandidate(ranked, { ...roomy, freeMatches: 1 }), null);
 assert.equal(pickNightlyCandidate(ranked, { ...roomy, freeMatches: 0 }), null);
 assert.equal(pickNightlyCandidate(ranked, { ...roomy, freeMatches: 2 })?.metrics.matchId, 1);
+
+// --- Whether the night ends with a Short. The spawn is injected: the real one is a full render,
+// and this is a test of the decision, not of ffmpeg.
+{
+  const spawned: Array<{ matchId: number; pick: number }> = [];
+  const runner =
+    (code: number): ShortRunner =>
+    (matchId, pick) => {
+      spawned.push({ matchId, pick });
+      const proc = new EventEmitter() as ChildProcess;
+      // The close listener is attached after the runner returns, so it cannot fire synchronously.
+      setImmediate(() => proc.emit("close", code));
+      return proc;
+    };
+
+  assert.equal(await chainShort(1, "done", true, runner(0)), " + Short rendered");
+  // The flag is the whole point of the flag.
+  assert.equal(await chainShort(2, "done", false, runner(0)), "");
+  // An abort is the operator saying stop, and a failed render may have left nothing to cut from;
+  // neither is a licence to spend the rest of the night on a Short.
+  assert.equal(await chainShort(3, "aborted", true, runner(0)), "");
+  assert.equal(await chainShort(4, "failed: ffmpeg died", true, runner(0)), "");
+  assert.deepEqual(
+    spawned,
+    [{ matchId: 1, pick: 0 }],
+    "only a clean render with the flag on may spawn, and always the top moment",
+  );
+
+  // A Short that fails does not turn a rendered match into a failure — it is a clause, not a
+  // verdict, and the notification has to carry both halves.
+  assert.match(await chainShort(5, "done", true, runner(1)), /Short failed/);
+}
 
 console.log("nightly: all checks passed");
