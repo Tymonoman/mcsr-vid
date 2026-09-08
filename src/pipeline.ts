@@ -30,7 +30,7 @@ import { buildHookSuggestions } from "./hooks.js";
 import { computeMetrics } from "./matchScore.js";
 import { buildTitle, formatTitle } from "./title.js";
 import { overlayPaths, readSplitStills, renderOverlay, type SplitStill } from "./overlayRender.js";
-import { renderThumbnailVariants, variantFile } from "./thumbnailVariants.js";
+import { carriedHookText, readManifest, renderThumbnailVariants, variantFile } from "./thumbnailVariants.js";
 import { describeError } from "./errorText.js";
 import {
   aggregateDownloadPercent,
@@ -320,21 +320,26 @@ async function runStages(
     emit(done("thumbnail", { message: `reused ${variants.length} variants` }));
   } else {
     emit(active("thumbnail", { percent: 0 }));
-    // Nobody has picked a hook yet — the operator does that in the dashboard's title editor,
-    // long after this runs — so the thumbnail opens on the same opener that editor will offer
-    // first. `POST /api/thumbnails/:id/rerender` replaces it once a human has chosen. An
-    // unreadable match yields no suggestions, and then this renders the plain header strip.
-    // With `versus`, so the thumbnail's hook is the dashboard's first chip — the rematch line
-    // outranks everything else, and without the record here it never appeared on a thumbnail.
-    const hookText = buildHookSuggestions({
-      metrics: computeMetrics(match),
-      match,
-      userLeft,
-      userRight,
-      maxChars: title.hookMax,
-      minChars: title.hookMin,
-      versus,
-    })[0];
+    // On a cold start nobody has picked a hook yet — the operator does that in the dashboard's
+    // title editor, long after this runs — so the thumbnail opens on the same opener that editor
+    // will offer first. `POST /api/thumbnails/:id/rerender` replaces it once a human has chosen,
+    // and a later re-run (a pose added to the config, a lost PNG) carries that choice forward
+    // rather than re-rendering it away under the chip. An unreadable match yields no
+    // suggestions, and then this renders the plain header strip. With `versus`, so the
+    // thumbnail's hook is the dashboard's first chip — the rematch line outranks everything
+    // else, and without the record here it never appeared on a thumbnail.
+    const hookText = carriedHookText(
+      await readManifest(outDir),
+      buildHookSuggestions({
+        metrics: computeMetrics(match),
+        match,
+        userLeft,
+        userRight,
+        maxChars: title.hookMax,
+        minChars: title.hookMin,
+        versus,
+      })[0],
+    );
     const manifest = await renderThumbnailVariants({
       match,
       userLeft,

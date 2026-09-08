@@ -187,4 +187,22 @@ console.log("thumbnailVariants: all checks passed");
     "the control carries no text",
   );
   console.log("OK: variant stills are reused only under the same headline");
+
+  // A re-run keeps the committed headline: the pipeline renders with the manifest's text when
+  // there is one, and the chip only when there is none — else adding a pose to the config would
+  // re-render the operator's "Rematch: doogile leads 2-1" away as "#3 vs #21".
+  const { carriedHookText } = await import("./thumbnailVariants.js");
+  assert.equal(carriedHookText(prev, "#3 vs #21"), "OLD", "manifest text wins over the chip");
+  assert.equal(carriedHookText(null, "#3 vs #21"), "#3 vs #21", "no manifest: the chip");
+  assert.equal(
+    carriedHookText({ ...prev, hookText: null }, "#3 vs #21"),
+    undefined,
+    "a deliberate text-free render stays text-free",
+  );
+  assert.equal(
+    variantStillReusable(prev, { left: "walking", right: "crossed" }, carriedHookText(prev, "#3 vs #21")),
+    true,
+    "so the existing stills survive a re-run with an extra pose",
+  );
+  console.log("OK: a re-run carries the manifest's headline forward");
 }

@@ -130,6 +130,20 @@ export function variantStillReusable(
   return (previous.hookText ?? "").trim() === (hookText ?? "").trim();
 }
 
+/**
+ * The headline a pipeline run renders with. A manifest is the committed choice — the operator's
+ * "Re-render with hook", or the last run's — and a re-run (a pose added to the config, one PNG
+ * lost) must keep it, or `variantStillReusable` would redo every hooked still under the auto
+ * chip and the chosen headline would silently vanish. A manifest with no text is a deliberate
+ * text-free render, kept too. Only a match with no manifest takes the chip.
+ */
+export function carriedHookText(
+  previous: VariantsManifest | null,
+  chip: string | undefined,
+): string | undefined {
+  return previous ? (previous.hookText ?? undefined) : chip;
+}
+
 export async function renderThumbnailVariants(args: RenderVariantsArgs): Promise<VariantsManifest> {
   if (args.poses.length === 0) throw new Error("renderThumbnailVariants needs at least one pose pair");
 

@@ -182,6 +182,7 @@ async function select(id, { open = false } = {}) {
   if (open) showMatch();
   renderList();
   const meta = await api(`/api/meta/${id}`);
+  if (selected !== id) return; // the operator moved on while this was in flight
   const m = matches.find((x) => x.matchId === id);
   const rendered = m && m.stages.render;
 
@@ -501,9 +502,12 @@ async function loadPreview(id) {
   try {
     meta = await api(`/api/export/preview-meta/${id}`);
   } catch (e) {
-    el.innerHTML = `<div class="scanline bad">${esc(e.message)}</div>`;
+    if (selected === id) el.innerHTML = `<div class="scanline bad">${esc(e.message)}</div>`;
     return;
   }
+  // The operator may have opened another match while this was in flight; a late reply must not
+  // paint its bar into that match's panel, nor close its live export stream via watchExport.
+  if (selected !== id) return;
   if (!meta.exported) {
     // The one-pass encode the nightly runs, on demand. ~10 minutes on the lab, so the button
     // hands over to a bar fed by the same progress stream the nightly's encode writes to.
