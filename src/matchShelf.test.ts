@@ -18,8 +18,16 @@ assert.ok(media.startsWith(tmpdir()) && archive.startsWith(tmpdir()), "refusing 
 config.mediaDir = media;
 process.env.MCSR_ARCHIVE_DIR = archive;
 
-const { deleteMatch, hiddenMatchIds, isArchived, publishChecklist, setHidden, setPublishFlag } =
-  await import("./matchShelf.js");
+const {
+  deleteMatch,
+  hiddenMatchIds,
+  isArchived,
+  isExported,
+  isUploaded,
+  publishChecklist,
+  setHidden,
+  setPublishFlag,
+} = await import("./matchShelf.js");
 
 function seed(matchId: number, bytes: number): string {
   const dir = path.join(media, String(matchId));
@@ -124,6 +132,17 @@ try {
   // Same rule as the hidden list: a cosmetic file must never take the panel down.
   writeFileSync(path.join(pubDir, "publish.json"), "{ not json");
   assert.equal((await publishChecklist(555, null)).relatedLinkSet, false, "corrupt reads as unticked");
+
+  // --- 8. "Ready to publish" is exported and not uploaded; a Studio upload is ticked by hand ---
+  // A fresh match: 555 has the youtube.json from case 7, which is the other way to be uploaded.
+  const readyDir = seed(556, 4);
+  assert.equal(isExported(556), false, "no MP4 yet");
+  writeFileSync(path.join(readyDir, "final-556.mp4"), "");
+  assert.equal(isExported(556), true, "the fast export's name counts as exported");
+  assert.equal(await isUploaded(556), false, "nothing says it was uploaded");
+  setPublishFlag(556, "uploaded", true);
+  assert.equal(await isUploaded(556), true, "a Studio upload is ticked by hand");
+  assert.equal((await publishChecklist(556, null)).uploaded, true, "and the checklist agrees");
 
   console.log("matchShelf: all checks passed");
 } finally {

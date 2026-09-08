@@ -116,9 +116,12 @@ the page is newer than its server: the nightly strip detects that (the old serve
   title (hook substituted), description, comma-joined tags with the 500-char count, the
   Short's title/description when `short-<id>.title.txt` exists, and a DM per player with the
   `youtu.be` link once uploaded. Nothing is stored; it is the manual Studio phase, pre-pasted.
-- **Publish checklist** under the pipeline stages: five facts derived from disk, four manual
-  toggles (`Short uploaded`, `related link`, `end screen`, `players notified`) in
-  `<mediaDir>/<id>/publish.json`.
+- **Publish checklist** under the pipeline stages: five facts derived from disk, five manual
+  toggles (`uploaded`, `Short uploaded`, `related link`, `end screen`, `players notified`) in
+  `<mediaDir>/<id>/publish.json`. `uploaded` is also derived (youtube.json) — the tick exists
+  because uploads go through Studio until the API audit clears. The Rendered tab counts
+  matches that are exported and not uploaded (`Rendered (4 ready)`); rows say *ready to
+  publish* / *published*; hidden matches are out of the count.
 - **Dismiss** on a card hides a suggestion (`DELETE /api/suggestions/:id`); it leaves an
   undo line above the cards (`POST /api/suggestions/:id/restore`), which puts the row back at
   once if this process dismissed it and otherwise at the next scan.

@@ -43,6 +43,10 @@ function renderList() {
 
   const visible = showHidden ? matches : matches.filter((m) => !m.hidden);
   const hiddenCount = matches.filter((m) => m.hidden).length;
+  // The morning's number: finished MP4s nobody has published. Hidden matches are out of it, so
+  // parking an old one keeps the count honest.
+  const ready = matches.filter((m) => !m.hidden && m.exported && !m.uploaded).length;
+  $("#tab-matches").textContent = ready ? `Rendered (${ready} ready)` : "Rendered";
   const toggle = hiddenCount
     ? `<button type="button" id="showhidden" class="ghost">${showHidden ? "Hide" : "Show"} ${hiddenCount} hidden</button>`
     : "";
@@ -59,6 +63,7 @@ function renderList() {
       <div>
         <div class="who">${esc(m.leftNickname)} vs ${esc(m.rightNickname)}</div>
         <div class="id">#${m.matchId}</div>
+        ${m.uploaded ? '<div class="state">published</div>' : m.exported ? '<div class="state ready">ready to publish</div>' : ""}
         ${m.error ? `<div class="degraded" title="${esc(m.error)}">names from filenames &mdash; API lookup failed</div>` : ""}
         <div class="rowacts">
           <button type="button" class="hide ghost">${m.hidden ? "Unhide" : "Hide"}</button>
@@ -303,7 +308,7 @@ const CHECKLIST = [
   ["rendered", "rendered"],
   ["hookPicked", "hook"],
   ["thumbnailChosen", "thumbnail"],
-  ["uploaded", "uploaded"],
+  ["uploaded", "uploaded", true],
   ["shortRendered", "Short rendered"],
   ["shortUploaded", "Short uploaded", true],
   ["relatedLinkSet", "related link", true],

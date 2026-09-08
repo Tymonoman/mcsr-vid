@@ -191,6 +191,15 @@ main > * {
   color: var(--gold);
   font-size: 11px;
 }
+.card .state {
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+.card .state.ready {
+  color: var(--gold);
+}
 
 #detail {
   padding: 18px;

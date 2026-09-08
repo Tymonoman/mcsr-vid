@@ -41,7 +41,9 @@ import {
   deleteMatch,
   hiddenMatchIds,
   isArchived,
+  isExported,
   isManualPublishKey,
+  isUploaded,
   publishChecklist,
   setHidden,
   setPublishFlag,
@@ -340,11 +342,18 @@ const server = createServer(async (req, res) => {
       const statuses = await listMatchStatuses();
       const hidden = hiddenMatchIds();
       // Newest first: match ids ascend with time, and the newest is what you just rendered.
-      json(res, 200, {
-        matches: statuses
-          .map((m) => ({ ...m, hidden: hidden.has(m.matchId), archived: isArchived(m.matchId) }))
-          .sort((a, b) => b.matchId - a.matchId),
-      });
+      // `exported` and `uploaded` are what "ready to publish" means on the list: the morning
+      // question is how many of these are waiting on a Studio session, not how many rendered.
+      const rows = await Promise.all(
+        statuses.map(async (m) => ({
+          ...m,
+          hidden: hidden.has(m.matchId),
+          archived: isArchived(m.matchId),
+          exported: isExported(m.matchId),
+          uploaded: await isUploaded(m.matchId),
+        })),
+      );
+      json(res, 200, { matches: rows.sort((a, b) => b.matchId - a.matchId) });
       return;
     }
 

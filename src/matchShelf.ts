@@ -108,7 +108,11 @@ export async function deleteMatch(matchId: number): Promise<DeleteResult> {
 // endScreenSet: end screens and cards have no API and are the cheapest session-time lever on the
 // platform — a viewer who finishes one match is offered the next one by the channel, not by
 // the algorithm. The rivalry playlist link in the description only helps the ones who scroll.
+// uploaded: derived from youtube.json when the dashboard did the upload, and a tick while uploads
+// go through Studio (the API audit is pending) — otherwise the fact never ticks and the list's
+// "ready to publish" count never drops.
 export const MANUAL_PUBLISH_KEYS = [
+  "uploaded",
   "shortUploaded",
   "relatedLinkSet",
   "endScreenSet",
@@ -154,6 +158,20 @@ export function setPublishFlag(matchId: number, key: ManualPublishKey, value: bo
  * disk read: the route already holds a `matchStatusFor` entry, and asking for one here would
  * cost an MCSR API request per pill.
  */
+/** Uploaded by the dashboard (youtube.json beside the media) or ticked as uploaded in Studio. */
+export async function isUploaded(matchId: number): Promise<boolean> {
+  return (await readUpload(matchId)) !== null || readManual(matchId).uploaded;
+}
+
+/**
+ * A finished MP4 under either name the two encoders write. A hand-named export is still found
+ * by the preview (`findExportedVideo`); this is the cheap read the match list can afford per row.
+ */
+export function isExported(matchId: number): boolean {
+  const dir = path.join(config.mediaDir, String(matchId));
+  return existsSync(path.join(dir, "final.mp4")) || existsSync(path.join(dir, `final-${matchId}.mp4`));
+}
+
 export async function publishChecklist(
   matchId: number,
   projectPath: string | null,
@@ -165,11 +183,11 @@ export async function publishChecklist(
   const firstLine = existsSync(editedTitle) ? readFileSync(editedTitle, "utf8").split("\n")[0]!.trim() : "";
 
   return {
+    ...readManual(matchId),
     rendered: projectPath !== null,
     hookPicked: firstLine !== "" && !firstLine.includes(HOOK_PLACEHOLDER),
     thumbnailChosen: Boolean((await readManifest(dir))?.chosen),
-    uploaded: (await readUpload(matchId)) !== null,
+    uploaded: await isUploaded(matchId),
     shortRendered: existsSync(path.join(dir, `short-${matchId}.mp4`)),
-    ...readManual(matchId),
   };
 }
