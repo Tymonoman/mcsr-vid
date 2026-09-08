@@ -103,6 +103,41 @@
 }
 
 /* --- Suggestions -------------------------------------------------------------------------- */
+/* The three Partner Programme gates, above the A/B tables: what the operator is actually
+   working towards, with the rate and the date it lands at that rate. */
+.ypp {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--panel-edge);
+  display: grid;
+  gap: 10px;
+}
+.ypp .ypphead {
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.ypp .gatehead,
+.ypp .gatefoot {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+.ypp .gatehead b {
+  color: var(--gold);
+}
+.ypp .gatefoot {
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 3px;
+}
+.ypp .bar {
+  margin-top: 4px;
+}
+.ypp .small {
+  font-size: 10px;
+}
 .scanline {
   padding: 8px 12px;
   font-size: 12px;

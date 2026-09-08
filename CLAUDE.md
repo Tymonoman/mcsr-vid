@@ -114,6 +114,12 @@ the page is newer than its server: the nightly strip detects that (the old serve
   compare can measure text vs no text; each `VariantRecord` records `hook`, and the Short
   reuses the manifest's `hookText` so both halves of a match say the same thing (rank chips
   read live rank, which drifted from `#3 vs #17` to `#3 vs #21` within an hour).
+  The A/B tab opens with the **Partner programme panel** (`GET /api/youtube/ypp`,
+  `src/yppProgress.ts`): the three gates — 500 subscribers, 4,000 watch hours in the trailing
+  365 days, 10M Shorts views in the trailing 90 — with the current rate and the date each lands
+  at it. The two rolling-window gates carry a ceiling (rate × window): under the gate, the panel
+  says "levels off near N · needs M / day" instead of a date, because a flat line never gets
+  there. Five Analytics/Data requests, cached six hours.
   The A/B tab groups impressions and CTR by variant *and* by text vs no text (`byHook` in
   `abTestPayload`, impression-weighted); videos whose manifest is missing land in `Unknown`.
 - **Upload** sends the tags from `match-<id>.tags.txt` (written by the pipeline, see

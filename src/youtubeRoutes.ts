@@ -29,6 +29,7 @@ import {
   type ImpressionsRow,
 } from "./youtube.js";
 import { allUploads, findExportedVideo, readUpload, writeUpload, type UploadRecord } from "./youtubeStore.js";
+import { yppProgress } from "./yppProgress.js";
 
 type Json = (res: ServerResponse, status: number, body: unknown) => void;
 type ReadBody = (req: IncomingMessage) => Promise<string>;
@@ -98,6 +99,13 @@ export async function handleYoutubeRoute(
 
   if (action === "abtest" && req.method === "GET") {
     ctx.json(res, 200, await abTestPayload());
+    return true;
+  }
+
+  // The Partner Programme gates with the current rate and the date each lands. Cached six
+  // hours; the first request after boot answers `stale` while the numbers are fetched.
+  if (action === "ypp" && req.method === "GET") {
+    ctx.json(res, 200, yppProgress());
     return true;
   }
 

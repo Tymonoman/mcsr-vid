@@ -283,19 +283,72 @@ const HOOK_LABEL = { true: "Hook text", false: "No text", null: "Unknown" };
  * lives in the left column beside the lists. The server refuses to name a winner from two
  * uploads; this just renders what it says.
  */
+/** The three Partner Programme gates: where the channel is, the rate, and the date at that rate. */
+function yppInner(ypp) {
+  if (!ypp) return '<div class="ypp"><div class="empty">channel numbers&hellip;</div></div>';
+  if (!ypp.progress) {
+    return `<div class="ypp"><div class="empty">${esc(ypp.error ?? "channel numbers…")}</div></div>`;
+  }
+  const p = ypp.progress;
+  const fmt = (n) =>
+    n >= 1e6
+      ? `${(n / 1e6).toFixed(1)}M`
+      : n >= 1e4
+        ? `${(n / 1e3).toFixed(0)}k`
+        : Math.round(n).toLocaleString();
+  // A rolling-window gate with a ceiling under it never lands at this rate; say what rate would.
+  const when = (g) =>
+    g.have >= g.need
+      ? '<span class="ok">reached</span>'
+      : g.eta
+        ? `at this rate ${esc(new Date(g.eta).toLocaleDateString([], { month: "short", year: "numeric" }))}`
+        : g.ceiling !== undefined && g.ratePerDay > 0
+          ? `<span class="bad">levels off near ${fmt(g.ceiling)}</span> &middot; needs ${fmt(g.needPerDay)} / day`
+          : '<span class="muted">no rate yet</span>';
+  const gate = (label, g, unit, rateLabel) => `
+    <div class="gate">
+      <div class="gatehead"><b>${esc(label)}</b><span>${fmt(g.have)} / ${fmt(g.need)}${unit}</span></div>
+      <div class="bar"><i style="width:${Math.min(100, (100 * g.have) / g.need).toFixed(1)}%"></i></div>
+      <div class="gatefoot"><span>${esc(rateLabel(g.ratePerDay))}</span><span>${when(g)}</span></div>
+    </div>`;
+  return `<div class="ypp">
+    <div class="ypphead">Partner programme &middot; 500 subscribers and either 4,000 watch hours or 10M Shorts views</div>
+    ${gate("Subscribers", p.subscribers, "", (r) => `+${(r * 7).toFixed(0)} / week`)}
+    ${gate("Watch hours, last 365 days", p.watchHours, " h", (r) => `+${(r * 28).toFixed(0)} h / 28 days`)}
+    ${gate("Shorts views, last 90 days", p.shortsViews, "", (r) => (r > 0 ? `+${fmt(r * 28)} / 28 days` : "no Shorts published yet"))}
+    <div class="muted small">numbers as of ${esc(new Date(p.fetchedAt).toLocaleString())}; refreshed every six hours</div>
+  </div>`;
+}
+
+async function loadYpp(el) {
+  let ypp = null;
+  try {
+    ypp = await api("/api/youtube/ypp");
+  } catch (e) {
+    ypp = { progress: null, error: e.message, stale: false };
+  }
+  const slot = el.querySelector("#yppslot");
+  if (slot) slot.innerHTML = yppInner(ypp);
+  // The first answer after boot is "fetching"; the numbers are a few seconds behind it.
+  if (ypp && !ypp.progress && ypp.stale) setTimeout(() => loadYpp(el), 3000);
+}
+
 async function loadAbTest() {
   const el = $("#abtest");
   let data;
   try {
     data = await api("/api/youtube/abtest");
   } catch (e) {
-    el.innerHTML = `<div class="scanline bad">${esc(e.message)}</div>`;
+    el.innerHTML = `<div id="yppslot"></div><div class="scanline bad">${esc(e.message)}</div>`;
+    void loadYpp(el);
     return;
   }
   const note = data.note ? `<div class="scanline">${esc(data.note)}</div>` : "";
   const err = data.impressionsError ? `<div class="scanline bad">${esc(data.impressionsError)}</div>` : "";
   if (!data.rows.length) {
-    el.innerHTML = note + err + '<div class="empty">nothing to compare yet</div>';
+    el.innerHTML =
+      '<div id="yppslot"></div>' + note + err + '<div class="empty">nothing to compare yet</div>';
+    void loadYpp(el);
     return;
   }
   const byHook = data.byHook ?? [];
@@ -307,7 +360,7 @@ async function loadAbTest() {
         .map((r) => `<tr><td>${HOOK_LABEL[String(r.hook)]}</td>${reachCells(r)}</tr>`)
         .join("")}</tbody>
     </table>`;
-  el.innerHTML = `${note}${err}${hookTable}
+  el.innerHTML = `<div id="yppslot"></div>${note}${err}${hookTable}
     <table class="abtable">
       <thead><tr><th>Variant</th><th>Videos</th><th>Impressions</th><th>CTR</th></tr></thead>
       <tbody>${data.rows
@@ -320,4 +373,5 @@ async function loadAbTest() {
         .join("")}</tbody>
     </table>
     ${data.rows.some((r) => r.fellBack) ? '<div class="scanline">* avatars fell back to the static NMSR render, so this row is not a distinct pose.</div>' : ""}`;
+  void loadYpp(el);
 }
