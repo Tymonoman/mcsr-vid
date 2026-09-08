@@ -208,8 +208,7 @@ try {
   console.log(`OK: periodic bed — confidence ${periodic.confidence.toFixed(3)}: ${periodic.detail}`);
 
   // --- 5. Confidence is a real 0-1 scale --------------------------------------------------
-  // It used to be an unbounded dot product; the configured 0.15 threshold could not mean
-  // anything consistent across matches while that was true.
+  // Confidence is a real 0-1 scale, so the 0.15 threshold means the same thing across matches.
   for (const r of [result, decoy, noThump, loud, periodic]) {
     assert.ok(r.confidence >= 0 && r.confidence <= 1, `confidence out of range: ${r.confidence}`);
   }

@@ -29,8 +29,7 @@ export interface KdenliveClipInput {
    *
    * When set, `path` and `durationSec` describe the track as a whole and are not themselves
    * placed; the stills are. MLT holds a qimage producer for as long as the entry asks, so this
-   * costs no encoding at all — the alternative, baking the stills back into a video, measured
-   * 2m14s of ffmpeg per match for a picture that changes nine times.
+   * costs no encoding at all.
    */
   stills?: StillSegment[];
 }
@@ -263,12 +262,6 @@ export function buildKdenliveProject(input: KdenliveProjectInput): string {
   const rightClip = relativise(input.rightClip);
   const overlayClips = input.overlayClips.map(relativise);
 
-  // Timeline zero is the world-load thump — the moment the 10s ready-countdown appears — so
-  // match start always lands at exactly ANCHOR_SEC and the intro can be cut against a
-  // fixed mark. It used to be max(every clip's matchOffsetIntoClipSec), which is preRollSec
-  // (150s) for a POV clip: the exported timeline opened with two and a half minutes of dead
-  // pre-match footage, and lining the cut up by hand in Kdenlive was the whole reason this
-  // pipeline still needed a human.
   let binCounter = 0;
   const nextBinId = () => String(binCounter++);
 

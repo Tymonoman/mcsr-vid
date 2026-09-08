@@ -1,8 +1,7 @@
 /**
  * Pipeline runs in flight, and the SSE plumbing that reports them.
  *
- * Lifted out of server.ts to keep that file under the 500-line cap as it grows a route group
- * per dashboard feature. Nothing here decides anything: it starts `runPipeline`, retains its
+ * Lifted out of server.ts so that file stays transport-only. Nothing here decides anything: it starts `runPipeline`, retains its
  * events, and fans them out.
  *
  * Events are retained rather than streamed-and-forgotten so a browser that connects late — or

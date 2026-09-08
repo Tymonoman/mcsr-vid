@@ -1,13 +1,11 @@
 /**
  * What the active competitor has already published, matched against our candidates.
  *
- * MCSR Matches (@mcsrmatches) posts the same matches this channel picks — it put Aquacorde vs
- * Nahhann up the day after we did — with 37x our subscribers behind it. A matchup it has
- * already covered competes with its own video for the same browse session; a fresh one is
- * first. So the suggestion cards say when the rival has posted a candidate, and the display
- * order (which is also the nightly's order) puts those after the fresh ones.
+ * The rival posts the same matches a day later to a far larger audience, so a matchup it has
+ * already covered competes with its own video for the same browse session. The suggestion cards
+ * flag one, and the display order (which is also the nightly's) puts those after the fresh ones.
  *
- * Two quota units per refresh (channels.list + playlistItems.list), refreshed every six hours,
+ * Three quota units per refresh (channels.list + playlistItems.list + videos.list), every six hours,
  * and never a reason for the suggestions page to fail: no token, no network, no rival channel
  * configured — all read as "nothing known", not an error.
  */

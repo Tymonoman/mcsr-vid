@@ -2,8 +2,7 @@
  * The dashboard's YouTube panel: upload form, live stats, comment triage, and the
  * thumbnail A/B table.
  *
- * A sibling of app.js rather than part of it, because that file crossed the 500-line cap.
- * Both are classic scripts sharing one global scope, so this one is loaded first and only
+ * A sibling of app.js, split by feature. Both are classic scripts sharing one global scope, so this one is loaded first and only
  * declares functions -- app.js's init IIFE is the only thing that runs at parse time.
  */
 
@@ -97,10 +96,8 @@ async function loadYoutube(id, meta) {
   // The kit may have fetched the slot before this form existed (app.js prefillPublishAt).
   if (typeof prefillPublishAt === "function") prefillPublishAt();
 
-  // The title field is seeded from the hook *once*, when this panel renders. Measured in a real
-  // browser: typing a hook afterwards updated the preview line but never this field, and Upload
-  // stayed enabled — one forgotten edit away from publishing "<HOOK> | a vs b". So the field
-  // follows the hook until the operator edits it by hand, and Upload is gated on the placeholder
+  // The title field is seeded from the hook *once*, when this panel renders, so it follows the
+  // hook until the operator edits it by hand, and Upload is gated on the `<HOOK>` placeholder
   // being gone. The server refuses such a title too; this is the half that explains itself.
   const titleField = $("#ytTitle");
   const uploadBtn = $("#ytUpload");

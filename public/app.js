@@ -352,8 +352,8 @@ async function select(id, { open = false } = {}) {
 /**
  * The publish checklist, in the order the work actually happens. Uploading is manual until the
  * YouTube compliance audit clears, so this row is the only place that knows whether a rendered
- * match ever left the box. Five pills are facts read off disk and are not clickable; the three
- * that happen in Studio or in a DM are buttons.
+ * match ever left the box. Pills that are facts read off disk are not clickable; the ones that
+ * happen in Studio or in a DM are buttons.
  */
 const CHECKLIST = [
   ["rendered", "rendered"],
@@ -721,8 +721,8 @@ async function loadPublishKit(id, meta) {
   prefillPublishAt();
 
   // Getting the files onto the PC that publishes, which is step zero of the Studio phase and the
-  // only part of this panel that is a command rather than a paste. Pull, not push: the container
-  // has rsync but no ssh client (src/publishSet.ts). Absent unless `pullSource` is configured.
+  // only part of this panel that is a command rather than a paste. Pull, not push
+  // (src/publishSet.ts). Absent unless `pullSource` is configured.
   // The per-match line is the morning's; the other two are pasted once and then never again,
   // so they fold away rather than push the title down the page every day.
   const pull = kit.pull
@@ -820,8 +820,7 @@ function runClock(ms) {
  * carry if nothing better existed, which is the part worth disagreeing with.
  *
  * `data.hook` is the line that will actually be burned in — the edited title's hook, or the
- * top-ranked suggestion, and only then the per-row one. The rows used to be the only hook on
- * screen, which meant the panel showed a line no render would ever use.
+ * top-ranked suggestion, and only then the per-row one.
  */
 async function loadShort(id) {
   const el = $("#short");
@@ -1064,9 +1063,8 @@ async function refresh() {
 }
 
 /* --- Nightly render strip ---------------------------------------------------------------------
-   The scheduler is a setTimeout and a log line, both invisible by morning, so "trust the timer"
-   was the only option. This is the whole of its UI: what it will pick tonight, what the last run
-   did, and a button that stops you waiting for 03:00 UTC to find out.
+   The whole of the scheduler's UI: what it will pick tonight, what the last run did, and a
+   button that stops you waiting for 03:00 UTC to find out.
 
    It rides at the top of the Suggestions panel rather than being its own element, because
    renderSuggestions() rebuilds that panel on every scan poll and a sibling would have to be
@@ -1234,8 +1232,7 @@ function renderSuggestions(data) {
     ? `<div class="bucketlegend"><span class="bucket close">CLOSE</span><span>decided by seconds at the finish</span><span class="bucket chaos">CHAOS</span><span>lead changes, deaths, the mess</span><span class="order">&middot; CLOSE first, then CHAOS &middot; within each: VODs about to expire, then not yet posted by ${data.rivalHandle ? `@${esc(data.rivalHandle)}` : "the competitor"}, then biggest audience</span></div>`
     : "";
 
-  // Dismiss is next to Render on a phone, and used to be permanent. One line, above the cards,
-  // until it is used or the next dismiss replaces it.
+  // Undo line, above the cards, until it is used or the next dismiss replaces it.
   const undo = lastDismissed
     ? `<div class="scanline undo">Dismissed <b>${esc(lastDismissed.who)}</b> &middot; <a href="#" data-act="undo">undo</a>${lastDismissed.note ? ` <span class="muted">${esc(lastDismissed.note)}</span>` : ""}</div>`
     : "";

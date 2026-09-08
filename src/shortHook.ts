@@ -51,7 +51,7 @@ export function buildShortHook(moment: ShortMoment, leftNickname: string, rightN
  * disagree about why it is worth watching. Failing that, the ranked suggestions the title editor
  * offers: the channel audit measured rivalry-framed hooks at 9.36% CTR against 2.25% for
  * descriptive ones, and `buildHookSuggestions` sorts on exactly that, so its first entry beats
- * anything derived from the 30-second window alone. `buildShortHook` stays as the last resort,
+ * anything derived from the 22-second window alone. `buildShortHook` stays as the last resort,
  * for a match whose numbers yield no suggestion at all.
  *
  * Pure — the caller reads the title file — so this is testable and cannot stall a render on IO.
@@ -101,10 +101,9 @@ export async function resolveShortHookFor(input: {
   const editedTitle = await readFile(path.join(matchDir, `match-${matchId}.title.edited.txt`), "utf8").catch(
     () => null,
   );
-  // The thumbnail already committed to a hook when the pipeline ran, and rank chips read *live*
-  // rank — measured on one match: thumbnail "#3 vs #17" at render time, Short "#3 vs #21" an hour
-  // later. A viewer sees both halves of a match; they must not disagree. So an operator-picked
-  // title still wins, but the thumbnail's line beats a fresh suggestion.
+  // Rank chips read live rank and drift within hours, so the thumbnail's committed line wins
+  // over a fresh suggestion and both halves of a match agree. An operator-picked title still
+  // beats both.
   const committed = (await readManifest(matchDir))?.hookText ?? null;
   return resolveShortHook(
     editedTitle,

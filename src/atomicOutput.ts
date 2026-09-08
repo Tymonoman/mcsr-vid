@@ -4,20 +4,13 @@ import path from "node:path";
 /**
  * Renders to a temporary sibling and renames only on success.
  *
- * Every stage-completion check in this project is `existsSync` on the artifact —
- * `pipeline.ts` skips the render when `overlay.mov` is present, `matchStatus.ts`
- * reports the same to the TUI and the dashboard. Remotion writes that file
- * progressively, so a render killed partway (OOM against the container's memory
- * cap, a container restart, Ctrl-C) leaves a truncated `overlay.mov` that every
- * one of those checks reads as "done". The next run then reuses several gigabytes
- * of corrupt video and reports success.
+ * Every stage-completion check is an `existsSync` on the artifact, and Remotion writes
+ * progressively, so a killed render must never leave a full-named truncated file.
+ * Renaming within a directory is atomic on POSIX, so the final name only ever appears
+ * on a completed render; a crash leaves `<name>.part.<ext>`, which nothing treats as an
+ * artifact and the next run overwrites.
  *
- * Renaming within a directory is atomic on POSIX, so the final name only ever
- * appears on a completed render. A crash leaves `<name>.part.<ext>` behind, which
- * nothing treats as an artifact and the next run overwrites.
- *
- * The extension is preserved in the temporary name because ffmpeg picks its muxer
- * from it — `overlay.mov.part` would not produce ProRes.
+ * The extension is kept in the temporary name because ffmpeg picks its muxer from it.
  */
 export async function atomicOutput<T>(
   finalPath: string,

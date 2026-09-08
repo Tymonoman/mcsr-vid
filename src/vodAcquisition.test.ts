@@ -11,8 +11,7 @@ assert.equal(parseYtDlpPercent('[Merger] Merging formats into "output.mp4"'), nu
 console.log("all checks passed");
 
 // --- One definition of where a match starts inside its VOD -------------------------------------
-// `date` is the completion timestamp; the reuse path in pipeline.ts used to hard-code 0 here and
-// saved the pre-match chat (and `?t=0s` deep links) for two matches on 2026-09-08.
+// `date` is the completion timestamp, so match start is `date - vod.startsAt - run`.
 {
   const { matchStartIntoVodSec } = await import("./vodAcquisition.js");
   const match = { date: 10_000, result: { time: 480_000 } } as unknown as import("./types.js").MatchInfo;

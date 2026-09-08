@@ -17,7 +17,7 @@ export interface MatchStatusEntry {
    * Why this entry is degraded, or null when it is fully trustworthy. Set when the MCSR API
    * lookup failed: nicknames then come off the downloaded filenames and their left/right order
    * is a guess. Without this the caller could not tell a stage that has not run from one whose
-   * status could not be determined — both used to render identically.
+   * status could not be determined.
    */
   error: string | null;
 }
@@ -48,9 +48,8 @@ export async function listMatchStatuses(): Promise<MatchStatusEntry[]> {
 /**
  * One match's status, costing exactly one API request.
  *
- * Split out of `listMatchStatuses` because the dashboard's `GET /api/meta/:id` only ever wanted
- * two nicknames, and going through the list meant one request per *existing match directory*
- * on every metadata read — a linear tax on an API budgeted at 500 requests per 10 minutes.
+ * One API request per call; the list variant costs one per match directory, which is a linear
+ * tax on an API budgeted at 500 requests per 10 minutes.
  */
 export async function matchStatusFor(matchId: number): Promise<MatchStatusEntry> {
   const outDir = matchDir(matchId);
@@ -80,10 +79,8 @@ export async function matchStatusFor(matchId: number): Promise<MatchStatusEntry>
       existsSync(path.join(outDir, `${playerLeft.nickname}.mp4`)) &&
       existsSync(path.join(outDir, `${playerRight.nickname}.mp4`));
   } catch (err) {
-    // Previously a bare `catch {}`: nicknames silently became "?" and download/sync were
-    // forced to false even with both VODs sitting on disk, so an unreachable API was
-    // indistinguishable from an unstarted match. Report both the degradation and what we
-    // can still establish locally.
+    // Report the degradation and what can still be established locally: an unreachable API
+    // must not look like an unstarted match.
     error = describeError(err);
     vodsDownloaded = downloadedNicknames.length >= 2;
     [leftNickname = "?", rightNickname = "?"] = downloadedNicknames;

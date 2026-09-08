@@ -1,10 +1,6 @@
 /**
- * What happened to a match after it left the pipeline.
- *
- * The pipeline stops at a Kdenlive project — the finished video is exported by hand — so
- * nothing in this repo previously knew whether a match had been published, let alone as which
- * video. That record is what turns a pile of renders into a channel you can reason about, and
- * it is the join key thumbnail A/B testing needs: variant -> videoId -> CTR row.
+ * What happened to a match after it left the pipeline: the upload record that joins a thumbnail
+ * variant to a videoId and its CTR row.
  */
 import { existsSync, readdirSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
@@ -55,10 +51,9 @@ export async function allUploads(): Promise<Array<{ matchId: number; record: Upl
 /**
  * The finished video to upload, or null.
  *
- * The pipeline never produces one: it writes two POV clips, the overlay, and a Kdenlive project
- * you export from by hand. So the convention is "whatever video file in the match folder is not
- * one of the two POV clips" — export into the match folder and it is found automatically. The
- * POV clips are named `<nickname>.mp4`, and they are the only ones the pipeline itself writes.
+ * Whatever video in the match folder is not a POV clip (`<nickname>.mp4`), a render intermediate
+ * or a Short: `npm run export:fast` writes `final-<id>.mp4`, `scripts/export.sh` writes
+ * `final.mp4`, and a hand export can be named anything.
  *
  * Ambiguity is reported rather than guessed at: uploading the wrong four-gigabyte file to a
  * public channel is not a mistake worth being clever about.

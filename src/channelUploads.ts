@@ -2,9 +2,7 @@
  * What is actually on the channel, matched back to the match that produced it.
  *
  * Uploads go through YouTube Studio by hand while the API audit is pending, so nothing on disk
- * records them: the dashboard kept offering an upload form for videos already published, counted
- * them in "Rendered (N ready)", and left the publish kit's DMs saying "<link once uploaded>".
- * The tick on the publish checklist was supposed to close that and nobody ticks it.
+ * records them.
  *
  * The link back is the description. Every description the pipeline writes carries
  * `Match data: https://mcsrranked.com/matches/<id>` (src/description.ts) and that description is

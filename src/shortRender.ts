@@ -16,7 +16,7 @@ import type { ShortProps } from "../remotion/types.js";
 /**
  * Renders a finished, uploadable vertical Short.
  *
- * Unlike the long-form path this does not produce a Kdenlive project. A Short is 30 seconds of
+ * Unlike the long-form path this does not produce a Kdenlive project. A Short is ~22 seconds of
  * fixed layout with nothing to decide, so there is nothing for an editor to do to it, and going
  * through an NLE would just insert a manual step into the one part of the pipeline that can be
  * fully automatic. ffmpeg composites the two POV panes and the Remotion board in a single pass.

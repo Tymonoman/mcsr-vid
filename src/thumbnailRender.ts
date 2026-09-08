@@ -5,9 +5,8 @@ import { renderThumbnailVariants } from "./thumbnailVariants.js";
 import type { MatchInfo, UserDetails } from "./types.js";
 
 /**
- * `renderStill` has no progress API, so the webpack bundle is the only sub-step that can report
- * anything — and it is also the slow one, which is why the thumbnail stage used to sit at no
- * percent at all for most of its run.
+ * `renderStill` has no progress API, so the webpack bundle — the slow part — is the only
+ * sub-step that reports.
  */
 export interface ThumbnailProgress {
   phase: "bundling" | "rendering";

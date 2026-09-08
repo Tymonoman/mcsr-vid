@@ -57,7 +57,7 @@ export type OverlayProps = {
 export interface ThumbnailPlayer {
   nickname: string;
   eloRate: number;
-  /** Pre-resolved full-body render image (Starlight Skins pose render, falls back to a static renderer). */
+  /** Pre-resolved full-body render image (NMSR, posed via camera query when the pose name is known). */
   avatarUrl: string;
 }
 

@@ -16,10 +16,9 @@ import type { MatchInfo, TimelineEntry } from "./types.js";
 /**
  * Seconds of match footage a Short covers.
  *
- * 22, not the 30 this started at. Completion rate is a Shorts ranking input, and the reference
- * point is @MCSR-Vault's 42k-view Short: 21.3s long, payoff at t=9s, ~12s of reaction, no outro.
- * A shorter clip with the same payoff finishes more often, and nothing here needs 30 seconds —
- * the window is one event and the run-up to it. `--seconds` still overrides.
+ * Completion rate is a Shorts ranking input, and the reference Short is 21.3s with its payoff
+ * at t=9s. The window is one event and the run-up to it, so a shorter clip with the same payoff
+ * finishes more often. `--seconds` overrides.
  */
 export const SHORT_WINDOW_SEC = 22;
 /** How far apart candidate windows are tried. */

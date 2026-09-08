@@ -2,9 +2,9 @@
  * The dashboard's export endpoints: the desktop round-trip.
  *
  * The lab renders the assets, you cut in Kdenlive on the desktop, and the lab encodes the
- * finished MP4 — so the project file has to travel both ways. Split from server.ts for the same
- * reason as youtubeRoutes.ts: that file is at the 500-line cap. Transport only; the encode
- * itself lives in scripts/export.sh.
+ * finished MP4 — so the project file has to travel both ways. Split from server.ts for size,
+ * like youtubeRoutes.ts. Transport only; the encodes live in scripts/export.sh (melt) and
+ * src/exportFast.ts (ffmpeg).
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { createReadStream, existsSync, readdirSync } from "node:fs";
@@ -99,7 +99,7 @@ const fastArgv = (matchId: number) => ["npm", "run", "--silent", "export:fast", 
 function startExport(matchId: number, dir: string, argv = meltArgv(matchId, dir)): ExportJob {
   const existing = jobs.get(matchId);
   // Concurrency 1 per match falls out of this. Two *different* matches encoding at once would
-  // contend for the lab's two cores; if that ever actually happens, flock in export.sh is the
+  // contend for the lab's four cores; if that ever actually happens, flock in export.sh is the
   // fix rather than a scheduler here.
   if (existing && !existing.done) return existing;
 

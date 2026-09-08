@@ -2,7 +2,7 @@
  * One render a night, started by the clock instead of by a click.
  *
  * The channel's bottleneck is not compute, it is operator minutes: every render is a "Render
- * this" click followed by a 30-45 minute wait that nobody watches. The dashboard already scores
+ * this" click followed by a wait that nobody watches. The dashboard already scores
  * candidates (suggestScan.ts) and already renders on demand (jobs.ts), so the only missing piece
  * is starting the top-ranked untouched match while the lab is idle. The morning question then
  * becomes "publish this?" with a preview, rather than "render this?" with a chart.
@@ -14,7 +14,7 @@
  *     anyway; a scan happens only when there is no list at all yet.
  *   - it skips entirely while a pipeline is running, so an overnight render cannot land on top
  *     of one the operator started before going to bed.
- *   - it stops well before the SSD does (a finished match is ~7 GB), because a render that dies
+ *   - it stops well before the SSD does (a finished match is ~2 GB), because a render that dies
  *     at the write stage has burned the whole night for nothing.
  *
  * What it does do unprompted is cut the Short of the match it just rendered (`nightlyRenderShort`)
@@ -38,10 +38,10 @@ import { snapshot, startScan } from "./suggestScan.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** Room for this render and one more. At ~7 GB a match, the last slot is not worth taking. */
+/** Room for this render and one more. At ~2 GB a match, the last slot is not worth taking. */
 const MIN_FREE_MATCHES = 2;
 
-/** jobs.ts offers no completion callback, and a render is 30-45 minutes, so poll coarsely. */
+/** jobs.ts offers no completion callback, and a render runs unattended for minutes, so poll coarsely. */
 const SETTLE_POLL_MS = 30_000;
 
 /** ntfy.sh and friends answer fast or not at all; a hung POST must not outlive the render. */
@@ -49,9 +49,9 @@ const NOTIFY_TIMEOUT_MS = 10_000;
 
 /* --- What the last run did --------------------------------------------------------------------
  *
- * The scheduler used to leave nothing behind but a log line and a push notification, and both
- * are gone by morning: there was no way to ask the dashboard what happened. One file in
- * mediaDir — dot-prefixed and beside `.dashboard.json` for the same two reasons: the state
+ * One file in mediaDir records the last run, so the dashboard can show it after the log line
+ * and the push notification are gone by morning. Dot-prefixed and beside `.dashboard.json` for
+ * the same two reasons: the state
  * travels with the media it describes, and `listProcessedMatchIds` takes every `^\d+$`
  * *directory*, so it must not look like a match.
  *
@@ -190,7 +190,7 @@ const exportOutcome = (clause: string): ShortOutcome =>
  *
  * Chained here rather than left for the morning because the two halves of a match are one job:
  * the VODs are on disk, the moment scorer needs no video decoding, and the cut is minutes next
- * to the render's 30-45. Only a clean `done` earns one — a failed pipeline may have left
+ * to the render itself. Only a clean `done` earns one — a failed pipeline may have left
  * nothing to cut from, and an abort is the operator saying stop, which a Short would ignore.
  *
  * `--pick=0` through shortsRoutes' own runner, so the dashboard button and the small hours run

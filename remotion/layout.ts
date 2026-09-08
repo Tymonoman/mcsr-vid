@@ -15,14 +15,12 @@ export const POV_HEIGHT = (POV_WIDTH * 9) / 16;
 
 /**
  * The bands are sized so the transparent gap between them is exactly POV_HEIGHT. Get this wrong
- * and a 16:9 POV either letterboxes into a short slot or bleeds under a band — which is what put
- * the splits panel over the hotbar and the info bar over the boss-bar/"Ender Dragon" text.
- * TOP_BAND_HEIGHT + BOTTOM_BAND_HEIGHT must equal STAGE_HEIGHT - POV_HEIGHT; layout.test.ts
- * fails if that ever drifts again.
+ * and a 16:9 POV either letterboxes into a short slot or bleeds under a band, over the hotbar or
+ * the boss bar. TOP_BAND_HEIGHT + BOTTOM_BAND_HEIGHT must equal STAGE_HEIGHT - POV_HEIGHT;
+ * layout.test.ts fails if that drifts.
  *
- * Mirrored in overlay.source.css as literal px (.row1 97 + .row2 97 = 194, .splits 346). These
- * were percentages (9% / 10.4% / 32% -> 209.5px + 345.6px = 555px against a 540px POV), and that
- * 15px overshoot is precisely the overlap viewers reported.
+ * Literal px, mirrored in overlay.source.css (.row1 97 + .row2 97 = 194, .splits 346);
+ * percentages rounded to a 15px overshoot.
  */
 export const TOP_BAND_HEIGHT = 194;
 export const BOTTOM_BAND_HEIGHT = 346;
@@ -36,13 +34,11 @@ export const RIGHT_POV_RECT = `${POV_WIDTH} ${TOP_BAND_HEIGHT} ${POV_WIDTH} ${PO
  * Bottom-band column geometry, in px, mirroring .col-meta/.col-splits/.col-rta in
  * overlay.source.css (layout.test.ts pins the two together).
  *
- * These exist because only the RTA column changes from frame to frame: the meta column is
- * static for the whole match and the splits table only changes at its reveal frames. Splitting
- * the band here lets the left region render as a handful of stills and leaves the RTA column as
- * the only thing rendered per frame — a quarter of the pixels.
+ * These exist because only the RTA column changes from frame to frame (see CLAUDE.md), so the
+ * left region renders as stills and the RTA column is the only thing rendered per frame.
  *
- * They were percentages (20/55/25 of 1920), which resolve to exactly these values but are
- * flex items: long content shrank a column and silently moved the boundary the crop depends on.
+ * Fixed px rather than flex percentages, so long content cannot move the boundary the crop
+ * depends on.
  */
 export const META_COL_WIDTH = 384;
 export const SPLITS_COL_WIDTH = 1056;

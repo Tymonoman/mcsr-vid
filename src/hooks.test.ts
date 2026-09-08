@@ -104,9 +104,9 @@ assert.ok(
 assert.ok(!upset.concat(favourite).some((t) => /takes down/.test(t)), "no chip names the winner");
 
 // --- Rivalry framing outranks description ------------------------------------------------
-// Measured on the first seven uploads: rivalry hooks took 9.36% CTR, descriptive ones 2.25%.
-// So with rivalry data present a descriptive chip must never reach the top of the list — and
-// the top one is what public/app.js drops into the hook input's placeholder.
+// Rivalry framing outranks description (see hooks.ts), so with rivalry data present a
+// descriptive chip must never reach the top of the list — and the top one is what public/app.js
+// drops into the hook input's placeholder.
 const rivalry = buildHookSuggestions(
   input({ winner: "edcr", finishMarginMs: 2_400, leadChanges: 4 }, ELO_GAP, {
     userLeft: user("edcr", "uuid-l", 4),

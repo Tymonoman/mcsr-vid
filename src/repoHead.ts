@@ -2,9 +2,7 @@
  * Which commit is running, versus which one is checked out.
  *
  * `src/` is read at boot and the repo is a bind mount, so after a pull the server keeps running
- * the old code until `docker restart mcsr-dashboard`. The nightly strip used to detect only the
- * pre-session server (by its id-parser error); a server one restart behind looked current, and
- * a nightly on it still wrote the old description. The two hashes side by side say it plainly.
+ * the old code until `docker restart mcsr-dashboard`. The two hashes side by side say so.
  */
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";

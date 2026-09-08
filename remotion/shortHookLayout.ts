@@ -1,9 +1,7 @@
 /**
  * How the Short's hook is broken into lines and sized.
  *
- * Its own module, not part of Short.tsx, for the same reason resolveSplitSide.ts and
- * pixelBadge.ts are: Short.tsx does `import "./overlay.css"`, which only webpack resolves, so
- * anything a Node test needs to call has to live outside it.
+ * A CSS-free leaf module so Node tests can import it (see layout.ts).
  */
 import { SHORT_WIDTH } from "./layout.js";
 

@@ -7,10 +7,9 @@ import { detectThump, type ThumpDetection } from "./thumpDetect.js";
 import { detectMatchStart, type MatchStartDetection } from "./countdownDetect.js";
 
 const SAMPLE_RATE = 8000;
-// PROBE_RADIUS_SEC (clip A): widened 3->8. This only avoids losing the thump out of the probe
-// entirely; it does NOT correct for error in expectedClipACueSec — the recovery formula assumes
-// the probe is centered exactly on A's real thump, so any A-side estimate error still propagates
-// 1:1 into the output. Fixing that needs independently detecting A's own thump (not implemented).
+// Only keeps the thump inside clip A's probe; it does not correct error in expectedClipACueSec,
+// which propagates 1:1 into the correlation's output. Absolute per-clip detection
+// (thumpDetect.ts) is what corrects A-side error.
 const PROBE_RADIUS_SEC = 8;
 /**
  * Half-width of the window each clip's own thump is hunted in. Wider than the correlation's
@@ -214,9 +213,8 @@ function findBestLag(
  * Three measurements, deliberately not one: each clip's thump found on its own terms, plus the
  * cross-correlation between them. The correlation is precise about the *relative* offset and
  * says nothing about the absolute one — its result reduces to `expectedA + (thumpB - thumpA)`,
- * so clip A's estimate error passes straight through. That was tolerable when the editor nudged
- * the whole timeline into place by hand; now that timeline zero *is* the thump, an A-side error
- * moves the video's start, the intro and every chapter with it.
+ * so clip A's estimate error passes straight through. Timeline zero *is* the thump, so an
+ * A-side error moves the video's start, the intro and every chapter with it.
  *
  * So the absolute detections supply the anchor, the correlation supplies the precision, and
  * their disagreement is the confidence. Two independently-derived values agreeing to within a
@@ -233,12 +231,9 @@ export async function computeSyncOffset(
   expectedClipBCueSec: number,
   signal?: AbortSignal,
 ): Promise<SyncResult> {
-  // Look at the picture first. MCSR freezes both players through the countdown, so match start
-  // is visible in each VOD on its own — no cross-clip comparison, and so no dependency on the
-  // two streams sharing anything. See the note on countdownDetect.ts for why that matters more
-  // than it sounds: measured on match 12296170, audio correlation between the two POVs peaked at
-  // 0.03-0.13 and was 12-32s wrong, because opponents play separate worlds with their own
-  // microphones and music. There is no shared "world-load thump" to correlate on.
+  // Picture first (countdownDetect.ts); audio is the fallback. MCSR freezes both players through
+  // the countdown, so match start is visible in each VOD on its own — no dependency on the two
+  // streams sharing anything.
   const [videoA, videoB] = await Promise.all([
     detectMatchStart(clipAPath, expectedClipACueSec, DETECT_RADIUS_SEC, signal),
     detectMatchStart(clipBPath, expectedClipBCueSec, DETECT_RADIUS_SEC, signal),

@@ -15,10 +15,8 @@ const window = (nickname: string, matchOffsetIntoVodSec: number): VodWindow => (
 const user = (uuid: string, nickname: string, liveElo: number): UserDetails =>
   ({ uuid, nickname, eloRate: liveElo }) as UserDetails;
 
-// Real figures from match 12730175 (edcr vs doogile, 24 Aug 2026). The overlay used to read elo
-// live at render time and showed 2615/2370; the ratings the players actually carried in were
-// 2546/2440. src/overlayProps.test.ts pins the same numbers, so a regression to live elo fails in
-// two places at once.
+// Real figures from match 12730175 (edcr vs doogile): live elo 2615/2370, carried in 2546/2440.
+// src/overlayProps.test.ts pins the same numbers, so a regression to live elo fails twice.
 const EDCR = "edcr-uuid";
 const DOOGILE = "doogile-uuid";
 
@@ -52,10 +50,8 @@ const build = (m: MatchInfo, over: Partial<DescriptionInput> = {}) =>
 const text = build(match());
 const opening = text.split("\n")[0];
 
-// The whole point of the rewrite: the first 150-200 characters are all YouTube shows before
-// "Show more", and on every live upload so far they were two raw Twitch URLs.
-// 100, not 120: the result clause that used to pad the opening is gone on purpose, and a
-// match with no seed type is legitimately short.
+// The first 150-200 characters are all YouTube shows before "Show more". 100 at the low end: a
+// match with no seed type is legitimately short, and the opening never carries the result.
 assert.ok(
   opening.length >= 100 && opening.length <= 200,
   `opening must fit the Show-more preview, got ${opening.length}: ${opening}`,

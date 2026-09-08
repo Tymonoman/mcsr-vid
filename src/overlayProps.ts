@@ -37,12 +37,9 @@ const LEFT_POSE = config.leftPose;
 const RIGHT_POSE = config.rightPose;
 
 /**
- * Career totals average a player's entire history — for a top runner that's thousands of games
- * including the climb — so they read as flatly wrong next to current form. Viewers said so on the
- * edcr vs doogile upload ("both of their average are pretty high and their win rates seem off...
- * are these session stats instead of season stats?"), and they were right: the overlay was showing
- * ~5,000-game career numbers. Use the live season bucket, and fall back to career only right after
- * a season rollover, when the season bucket is still empty. Either way the overlay says which.
+ * Career totals average a top runner's whole climb and read as wrong next to current form. Use
+ * the live season bucket, and fall back to career only right after a season rollover, when the
+ * season bucket is still empty. Either way the overlay says which.
  */
 export function pickStats(user: UserDetails): { stats: StatisticCategoryMap; scope: StatsScope } {
   const season = user.statistics.season;
@@ -51,11 +48,9 @@ export function pickStats(user: UserDetails): { stats: StatisticCategoryMap; sco
 }
 
 /**
- * `user.eloRate` is the player's rating *now*, not at the match — and at the top those diverge
- * within days. edcr went into match 12730175 rated 2546 on Aug 24; the video rendered two days
- * later showed 2615, turning a 106-point gap into a 245-point one. It also goes null outright at a
- * season rollover, which would render "0 ELO". The match record carries each player's post-match
- * rating plus the delta that produced it, so the rating they actually carried in is exact.
+ * `user.eloRate` is the player's rating *now*, which diverges from the match's within days at the
+ * top and goes null outright at a season rollover. The match record carries each player's
+ * post-match rating plus the delta that produced it, so the rating carried in is exact.
  */
 export function eloAtMatchStart(match: MatchInfo, uuid: string, liveElo: number | null): number {
   const change = match.changes.find((c) => c.uuid === uuid);
@@ -86,7 +81,7 @@ function playerIdentity(
     eloRank: user.eloRank,
     statsScope: scope,
     // PB stays lifetime even when the rest is season-scoped: in speedrunning "PB" means the
-    // best you have ever done, and the complaint was about averages and rates, not about PB.
+    // best you have ever done.
     pbMs: user.statistics.total.bestTime?.ranked ?? 0,
     avgMs: completions > 0 ? completionTime / completions : 0,
     gamesPlayed: matches,
@@ -101,9 +96,8 @@ function playerIdentity(
 }
 
 /**
- * Pure, network-free split computation, factored out of `computeOverlayProps` so callers that
- * only need split timings (e.g. placing Kdenlive markers) don't have to pay for that function's
- * avatar-resolution network probes.
+ * Pure, network-free split computation, factored out of `computeOverlayProps` for callers that
+ * only need split timings (e.g. placing Kdenlive markers).
  */
 export function computeSplits(match: MatchInfo, leftUuid: string, rightUuid: string): SplitRow[] {
   const eventsByPlayer = new Map<string, Map<string, number>>();

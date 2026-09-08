@@ -310,8 +310,8 @@ export const OverlayBottom: FC<OverlayProps> = (props) => {
 
 /**
  * The bottom band's left region: match meta (static all match) plus the splits table, which
- * only changes on a split's reveal frame. Rendered as one still per distinct state — a handful
- * per match — instead of ~17k identical video frames. See src/splitStates.ts for the frames.
+ * only changes on a split's reveal frame. Still, not video — see src/splitStates.ts for the
+ * frames it changes on.
  */
 export const OverlaySplits: FC<OverlayProps> = (props) => {
   const { frame, fps, elapsedMs, runEndFrame } = useTimer(props);

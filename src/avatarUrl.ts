@@ -3,14 +3,11 @@ const NMSR = "https://nmsr.nickac.dev/fullbody";
 /**
  * Camera per pose name.
  *
- * Starlight Skins used to render genuinely different poses, but it has been down long enough
- * that every variant fell back to one static NMSR render — three "poses" that were three
- * identical images. NMSR has no poses, but it does take `yaw` (turn) and `arms` (0-180, how far
- * the arms are raised), and a distinct silhouette per variant is the only thing the thumbnail
- * A/B test actually needs from a pose.
+ * NMSR has no poses, but it does take `yaw` (turn) and `arms` (0-180, how far the arms are
+ * raised), and a distinct silhouette per variant is all the thumbnail A/B test needs.
  *
- * `pitch` is deliberately unused: measured, it tilts the camera enough to crop the legs out of
- * frame, so variants stop being comparable at a glance.
+ * `pitch` is deliberately unused: it tilts the camera enough to crop the legs out of frame, so
+ * variants stop being comparable at a glance.
  */
 const POSE_CAMERAS: Record<string, string> = {
   walking: "yaw=-20&arms=25",
@@ -39,10 +36,7 @@ export interface ResolvedAvatar {
 /** Poses the config may name. Exported so a bad pose can be caught before a render, not after. */
 export const KNOWN_POSES = Object.keys(POSE_CAMERAS);
 
-/**
- * Async only so the call sites that already await it do not have to change; there is no probe
- * any more, because there is nothing left to probe for.
- */
+/** Async for its callers' sake; nothing is fetched here. */
 export async function resolveAvatarUrl(uuid: string, pose: string): Promise<ResolvedAvatar> {
   const camera = POSE_CAMERAS[pose];
   if (!camera) {

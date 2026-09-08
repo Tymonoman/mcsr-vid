@@ -3,10 +3,9 @@ import { type ChapterMarker, formatChapters } from "./chapters.js";
 import { eloAtMatchStart } from "./overlayProps.js";
 import type { MatchInfo, UserDetails } from "./types.js";
 
-// Three, not the ten this used to emit. Over 15 YouTube voids all of them, 3-5 is the optimum,
-// and only the first three render above the title — which here means all of them are visible.
-// Per-player tags are gone deliberately: a nickname hashtag has no search volume of its own and
-// spent two of the three visible slots.
+// Three: over 15 YouTube voids all of them, and only the first three render above the title, so
+// all of these are visible. No per-player tag — a nickname hashtag has no search volume of its
+// own and would spend two of the three visible slots.
 export const HASHTAGS = ["#MCSRRanked", "#MCSR", "#MinecraftSpeedrunning"];
 
 /**
@@ -58,14 +57,12 @@ function buildOpening(input: DescriptionInput): string {
   const left = userLeft.nickname;
   const right = userRight.nickname;
 
-  // Match-time elo, not live elo. Reading the rating at render time is what turned a real
-  // 106-point gap into a displayed 245-point one on the edcr vs doogile upload.
+  // Match-time elo, not live elo: the live rating is the one now, not the one carried in.
   const leftElo = eloAtMatchStart(match, userLeft.uuid, userLeft.eloRate);
   const rightElo = eloAtMatchStart(match, userRight.uuid, userRight.eloRate);
 
   const head = `${left} vs ${right} — MCSR Ranked 1v1, ${leftElo} vs ${rightElo} elo.`;
-  // Doubles as the "what does this channel add" line a YPP reviewer looks for: the description
-  // used to say only what the channel isn't ("not affiliated"), never what it contributes.
+  // Doubles as the "what does this channel add" line a YPP reviewer looks for.
   const body = "Full same-seed race, synced dual-POV with live split comparison.";
 
   // Runners search by seed type — the closest competitor puts it in every title. It goes after
@@ -77,10 +74,8 @@ function buildOpening(input: DescriptionInput): string {
 /**
  * Builds the complete video description — paste it as-is, edit nothing.
  *
- * This used to generate only the lower half, with the keyword-rich opening left to a hand-written
- * template in branding/YOUTUBE_STUDIO_SETUP.md. That template was never once used: all five live
- * uploads open with two raw Twitch URLs, which is the entire "Show more" preview and carries zero
- * keywords. Generating the whole thing removes the manual step instead of documenting it harder.
+ * The keyword-rich opening is generated too, because a hand-written one was never used and the
+ * "Show more" preview would otherwise open on two raw Twitch URLs, carrying zero keywords.
  */
 export function buildDescription(input: DescriptionInput): string {
   const { matchId, userLeft, userRight, leftWindow, rightWindow, chapters } = input;
@@ -114,9 +109,6 @@ const MAX_TAG_CHARS = 30;
 /**
  * Tags for the upload. Nicknames first — they are the search terms in this niche — then the
  * format keywords, then the seed, and the broadest term last, because YouTube weights order.
- *
- * All seven published videos carried one identical Studio-default tag set, because the dashboard
- * sent no `tags` field at all. This is what it sends instead.
  *
  * `maxTotalChars` is a parameter only so the length guard is reachable from a test; nothing
  * calls it with anything but the default. YouTube's real ceiling is 500.

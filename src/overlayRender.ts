@@ -18,9 +18,8 @@ const LEAD_IN_SEC = config.overlayLeadInSec;
 
 /**
  * Four sub-steps, reported separately because they are wildly uneven in cost and only two of
- * them can report granular progress. Callers weight them into a single bar (see pipeline.ts);
- * reporting a bare 0-100 per phase used to make the overlay bar climb to 100, reset to 0, and
- * then stall silently through `top` and `intro`, which have no per-frame callback of their own.
+ * them can report granular progress. Callers weight them into a single bar (RENDER_PHASE_WEIGHTS
+ * in stageProgress.ts).
  */
 export interface RenderProgress {
   phase: "bundling" | "top" | "splits" | "intro" | "rendering";
@@ -107,11 +106,9 @@ export async function renderOverlay(args: RenderOverlayArgs): Promise<RenderOver
   try {
     const serveUrl = await bundleOnce((percent) => args.onProgress?.({ phase: "bundling", percent }));
 
-    // The static top band is one still image held for the whole clip in the NLE, not ~17k
-    // identical video frames.
-    // renderStill has no progress API, so this phase can only bracket itself. Reporting the
-    // bracket still beats silence: without it the bar sat frozen here with no way to tell a
-    // slow still from a hung one.
+    // The static top band is a still, not video — nothing in it changes per frame (CLAUDE.md).
+    // renderStill has no progress API, so this phase can only bracket itself; the bracket still
+    // beats silence, which cannot tell a slow still from a hung one.
     if (want("top")) {
       args.onProgress?.({ phase: "top", percent: 0 });
       const topComposition = await selectComposition({ serveUrl, id: "OverlayTop", inputProps: renderProps });
@@ -172,17 +169,9 @@ export async function renderOverlay(args: RenderOverlayArgs): Promise<RenderOver
         renderMedia({
           composition: introComposition,
           serveUrl,
-          // VP9, because it is the only alpha format Remotion can emit that MLT actually
-          // composites. This was ProRes 4444, and MLT silently discards its alpha: measured
-          // through the real project emitter at the intro's fade-out, where the card is 11%
-          // opaque, melt returned the card's own colour (57,30,36) instead of the gameplay
-          // underneath (121,118,121). So the 0.25s fade-in and 0.6s wipe-out have been rendering
-          // as hard cuts in every export. qtrle and png-in-mov also composite correctly but are
-          // 209-235 MB for these seven seconds against VP9's 2.9 MB.
-          //
-          // Spot-checking this file with plain ffmpeg will look like the alpha is missing:
-          // FFmpeg's native vp9 decoder drops the alpha side-data and only libvpx-vp9 reads it.
-          // MLT picks the right one.
+          // VP9: the only alpha format Remotion emits that MLT composites — ProRes 4444's alpha
+          // is silently dropped (see CLAUDE.md). Spot-check with `-c:v libvpx-vp9`; ffmpeg's
+          // native vp9 decoder drops the alpha side-data. MLT picks the right one.
           codec: "vp9",
           // The intro genuinely needs alpha: it fades to transparent to reveal the gameplay.
           imageFormat: "png",
@@ -207,11 +196,8 @@ export async function renderOverlay(args: RenderOverlayArgs): Promise<RenderOver
         renderMedia({
           composition: timerComposition,
           serveUrl,
-          // H.264, not ProRes, and the reason is throughput rather than size. Remotion can only
-          // stream frames straight into ffmpeg for h264/h265 (canUseParallelEncoding); with ProRes
-          // every single frame is written to a temp PNG and read back with -f image2. Measured
-          // back to back on the lab, 450 frames of this composition: 16.98 fps ProRes vs 32.51 fps
-          // H.264 — 1.9x, for a file three orders of magnitude smaller.
+          // H.264, not ProRes: Remotion streams frames into ffmpeg only for h264/h265, while
+          // ProRes round-trips every frame through a PNG (~1.9x slower, see CLAUDE.md).
           codec: "h264",
           // 4:4:4, so the gold-on-dark pixel text keeps full chroma resolution. Measured against a
           // lossless still of the same frame, 4:4:4 at this CRF is 51 dB PSNR / 0.999 SSIM —
@@ -219,8 +205,7 @@ export async function renderOverlay(args: RenderOverlayArgs): Promise<RenderOver
           pixelFormat: "yuv444p",
           crf: 14,
           // No alpha plane: the bottom band is a solid panel, every pixel of it opaque (pinned by
-          // overlayRender.test.ts). It used to be ProRes 4444 with yuva444p10le — a full alpha
-          // channel, uniformly 255, across all ~17k frames of the match.
+          // overlayRender.test.ts).
           // PNG capture, not JPEG: the overlay is pixel-art text and JPEG's 4:2:0 softens its
           // edges for no measurable throughput gain.
           imageFormat: "png",

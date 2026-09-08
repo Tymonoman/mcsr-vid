@@ -24,10 +24,8 @@ const optsFor = (m: MatchInfo) => ({
 // had just changed hands. That beats the dragon kill, which is the point: the finish is the
 // obvious moment and often not the best one.
 //
-// At the old 30s window this landed on the 7:04 pair of deaths, because a 30s window could also
-// hold the 6:42 blind travel both players hit together. 22 seconds cannot hold both, and the
-// 9:08 stretch is the better story anyway: the lead flips, they die 0.4s apart, and they enter
-// the End together — which is why the assertion is on the shape of the window, not the clock.
+// The 9:08 stretch is the better story — the lead flips, they die 0.4s apart, and they enter the
+// End together — which is why the assertion is on the shape of the window, not the clock.
 {
   const match = load(12730175);
   const best = pickShortMoment(match, optsFor(match))!;

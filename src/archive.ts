@@ -3,9 +3,9 @@
  *
  * Deliberately a copy, never a move: nothing is deleted. That is the policy, and it has a
  * consequence worth stating rather than discovering at 95% — archiving does NOT reclaim the lab
- * SSD. A finished match is ~7 GB (a 5.7 GB ProRes 4444 overlay, a 280 MB intro, two POV clips,
- * the final MP4), so the SSD fills at that rate however diligently this runs. The NAS copy is a
- * backup; freeing space stays a separate, manual decision.
+ * SSD. A finished match is ~2 GB (two POV clips and the final MP4; the overlay artifacts are a
+ * few MB), so the SSD fills at that rate however diligently this runs. The NAS copy is a backup;
+ * freeing space stays a separate, manual decision.
  */
 import { spawn } from "node:child_process";
 import { statfs } from "node:fs/promises";
@@ -29,8 +29,8 @@ export const allArchiveStates = (): ArchiveState[] => [...states.values()];
 
 /**
  * rsync rather than cp: the NAS is a CIFS mount that can return an I/O error mid-write, and
- * rsync resumes instead of leaving a truncated file behind. Fire-and-forget — ~7 GB at the
- * measured 17.7 MB/s is about seven minutes, which an upload response should not wait on.
+ * rsync resumes instead of leaving a truncated file behind. Fire-and-forget: a match over the
+ * CIFS mount takes minutes, which an upload response should not wait on.
  */
 export function archiveMatch(matchId: number): ArchiveState {
   const existing = states.get(matchId);
@@ -42,7 +42,7 @@ export function archiveMatch(matchId: number): ArchiveState {
   const startedAt = Date.now();
   const src = `${path.resolve(config.mediaDir, String(matchId))}/`;
   const dest = `${path.join(ARCHIVE_ROOT, String(matchId))}/`;
-  // --partial so an interrupted transfer resumes rather than restarting the 5.7 GB overlay.
+  // --partial so an interrupted transfer resumes rather than restarting the biggest clip.
   const proc = spawn("rsync", ["-a", "--partial", src, dest], {
     stdio: ["ignore", "ignore", "pipe"],
   });
@@ -78,11 +78,11 @@ export interface Capacity {
   path: string;
   freeBytes: number;
   totalBytes: number;
-  /** Roughly how many more matches fit, at ~7 GB each. */
+  /** Roughly how many more matches fit, at ~2 GB each. */
   matchesLeft: number;
 }
 
-const MATCH_BYTES = 7 * 1024 ** 3;
+const MATCH_BYTES = 2 * 1024 ** 3;
 
 async function capacityOf(target: string): Promise<Capacity | null> {
   try {

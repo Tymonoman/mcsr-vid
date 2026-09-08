@@ -52,9 +52,8 @@ const user = (season: ReturnType<typeof bucket>) =>
   assert.equal(scope, "CAREER");
 }
 
-// Real numbers from match 12730175 (edcr vs doogile, 2026-08-24). The API reports each player's
-// POST-match rating plus the delta, so the rating carried into the match is eloRate - change.
-// This is the bug viewers saw: the render two days later showed edcr at 2615, not 2546.
+// Real numbers from match 12730175 (edcr vs doogile). The API reports each player's POST-match
+// rating plus the delta, so the rating carried into the match is eloRate - change.
 const match = {
   changes: [
     { uuid: "edcr", change: 15, eloRate: 2561 },

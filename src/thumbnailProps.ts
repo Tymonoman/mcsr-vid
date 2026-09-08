@@ -34,8 +34,7 @@ export interface ComputedThumbnail {
 /**
  * Builds Thumbnail composition props from real API data for one match.
  *
- * The pose pair is an argument rather than the module-level constant it used to be: rendering
- * several variants of one match means varying it per call, and mutating `config` to do that
+ * The pose pair is an argument so variants can vary it per call; mutating `config` to do that
  * would leak across the concurrent overlay render that reads the same fields.
  *
  * `hookText` is the headline the thumbnail is sold on — the same rivalry line the title carries.

@@ -3,11 +3,9 @@ import { bundle } from "@remotion/bundler";
 /**
  * One webpack bundle per process, shared by every renderer.
  *
- * `remotion.config.ts` is only auto-loaded by the `remotion` CLI, so a programmatic `bundle()`
- * call has to repeat its two settings — which is why this lived, copy-pasted, in both
- * overlayRender.ts and thumbnailVariants.ts. Worse than the duplication: a pipeline run bundled
- * twice (once for the overlay, once for the thumbnails) and paid the same ~10-30s twice for a
- * byte-identical result, because the bundle depends only on the source tree, never on the match.
+ * `remotion.config.ts` is only auto-loaded by the `remotion` CLI, so the programmatic `bundle()`
+ * repeats its two settings here. The bundle depends only on the source tree, never on the match,
+ * so it is built once (~10-30s) and shared.
  */
 export function webpackOverride(config: Record<string, unknown>): Record<string, unknown> {
   const resolve = (config.resolve as Record<string, unknown>) ?? {};
