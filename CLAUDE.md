@@ -33,6 +33,7 @@ Use the script, don't reconstruct the shell line. Extra arguments go after `--`.
 | `npm run bench -- <Composition> [--frames=N] [--codec=] [--pixelFormat=] [--concurrency=N]` | Render throughput for one composition. Measure before claiming a render change is faster. |
 | `npm run analytics -- <videoId> [--traffic-sources] [--days N]` | YouTube Analytics via `~/.claude/skills/claude-youtube/` (outside the repo; token at `~/.claude/.tmp/youtube_oauth_token.json`). |
 | `python3 scripts/reap.py <command…>` | Run anything that spawns Chromium through this (see Pitfalls). |
+| `bash scripts/browser-checks/run-all.sh <url>` | Drives the dashboard in a real browser the way the operator does (17 Playwright checks, self-configuring from `/api/matches`). Needs `npx playwright install chromium` once and a server with real data. |
 
 Lab timings for a 10-minute match: overlay render ~9 min, `export:fast` ~10 min, a Short in
 seconds; a nightly render + Short takes ~12 min, ~21 min with the MP4.

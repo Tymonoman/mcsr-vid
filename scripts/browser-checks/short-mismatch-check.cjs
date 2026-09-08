@@ -15,7 +15,16 @@ const { chromium } = require("playwright");
     await page.goto(base + "/", { waitUntil: "networkidle" });
     await page.evaluate((id) => select(Number(id), { open: true }), id);
     await page.waitForSelector("#short .moment", { timeout: 30000 });
-    check("no mismatch line when the Short matches the thumbnail", !(await page.$("#short .scanline.bad")));
+    // The line appears exactly when the last cut's title does not start with the hook a cut would use now.
+    const m = await page.evaluate(async (id) => await (await fetch(`/api/shorts/moments/${id}`)).json(), id);
+    const expectLine = !!(m.rendered && m.title && m.hook && !m.title.startsWith(m.hook));
+    check(
+      expectLine
+        ? "mismatch line present when the Short and thumbnail disagree"
+        : "no mismatch line when the Short matches the thumbnail",
+      !!(await page.$("#short .scanline.bad")) === expectLine,
+      `title=${m.title} hook=${m.hook}`,
+    );
     // the thumbnail moved on (mocked): the line appears and re-cut starts a render
     let started = false;
     await page.route(`**/api/shorts/moments/${id}`, async (r) => {

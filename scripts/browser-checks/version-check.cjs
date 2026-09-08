@@ -16,11 +16,17 @@ const { chromium } = require("playwright");
     const code = await page.evaluate(async () => (await (await fetch("/api/nightly")).json()).code);
     const strip0 = (await page.textContent("#nightly")).replace(/\s+/g, " ");
     check(
-      "payload carries boot and now, equal on a fresh server",
-      code && code.boot && code.boot === code.now,
+      "payload carries boot and now",
+      code && /^[0-9a-f]{7}$/.test(code.boot || "") && /^[0-9a-f]{7}$/.test(code.now || ""),
       JSON.stringify(code),
     );
-    check("no restart line when current", !/repo is at/.test(strip0), strip0.slice(0, 80));
+    // The line appears exactly when the running commit is behind the checked-out one.
+    const behind = code.boot !== code.now;
+    check(
+      behind ? "a server behind the repo says so" : "no restart line when current",
+      /repo is at/.test(strip0) === behind,
+      strip0.slice(0, 100),
+    );
     await page.route("**/api/nightly", async (r) => {
       const d = await (await r.fetch()).json();
       d.code = { boot: "abc1234", now: d.code.now };
