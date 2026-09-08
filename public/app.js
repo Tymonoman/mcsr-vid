@@ -511,6 +511,8 @@ async function loadVariants(id) {
     }
     await loadVariants(id);
     await refresh();
+    // The Short panel decides from the manifest whether its burned-in hook still matches.
+    void loadShort(id);
     const label = want ? `"${want}"` : "no headline";
     if (!status) said("bad", "re-render: could not reach the server to confirm — reload to see");
     else if (status.rerender?.error) said("bad", `re-render failed: ${status.rerender.error}`);
@@ -869,6 +871,21 @@ async function loadShort(id) {
       )
       .join("")}</div>
     <pre id="shortlog" class="hidden"></pre>`;
+
+  // A thumbnail re-rendered with a new headline leaves the Short burned with the old one — the
+  // two halves of a match then disagree, which is the one thing the shared hook exists to
+  // prevent. `hook` is what a cut would use now; `title` is what the last cut wrote.
+  if (data.rendered && data.title && data.hook && !data.title.startsWith(data.hook)) {
+    const burned = data.title.replace(/\s*#minecraft #mcsr$/, "");
+    el.insertAdjacentHTML(
+      "afterbegin",
+      `<div class="scanline bad">The Short still says &ldquo;${esc(burned)}&rdquo;; the thumbnail now says &ldquo;${esc(data.hook)}&rdquo; &middot; <a href="#" data-act="recut">re-cut it</a></div>`,
+    );
+    el.querySelector('[data-act="recut"]')?.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      el.querySelector(".moment .cut")?.click();
+    });
+  }
 
   // The Short's title is typed into Studio by hand, and retyping a line the render already
   // wrote is how a hook picks up a typo the burned-in one doesn't have.
