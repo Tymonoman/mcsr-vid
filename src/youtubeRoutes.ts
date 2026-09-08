@@ -405,7 +405,7 @@ async function reachFor(videoId: string): Promise<{ impressions: number; ctr: nu
  * (src/channelUploads.ts). Without those the panel offered an upload form for videos already on
  * the channel.
  */
-async function uploadsPayload() {
+async function knownUploads() {
   const local = (await allUploads()).map((r) => ({
     matchId: r.matchId,
     ...r.record,
@@ -425,8 +425,11 @@ async function uploadsPayload() {
       privacyStatus: video.privacyStatus,
       source: "channel" as const,
     }));
+  return [...local, ...studio];
+}
 
-  const uploads = [...local, ...studio];
+async function uploadsPayload() {
+  const uploads = await knownUploads();
   if (uploads.length === 0) return { uploads: [], statsError: null };
 
   try {
@@ -493,8 +496,10 @@ export function groupByHook(
  * the same image under different pose names and cannot be compared at all.
  */
 async function abTestPayload() {
-  const records = await allUploads();
-  if (records.length === 0)
+  // The same union the YouTube panel shows: a Studio upload counts here too, or the tab says
+  // "Nothing uploaded yet" over a channel with seven videos on it.
+  const uploads = await knownUploads();
+  if (uploads.length === 0)
     return { rows: [], byHook: [], note: "Nothing uploaded yet.", impressionsError: null };
 
   let impressions: ImpressionsRow[] = [];
@@ -517,20 +522,23 @@ async function abTestPayload() {
   >();
   const hookEntries: { hook: boolean | null; reach: { impressions: number; weightedCtr: number } | null }[] =
     [];
-  for (const { matchId, record } of records) {
-    const key = record.thumbnailVariant ?? "(unknown)";
-    const manifest = await readManifest(path.join(config.mediaDir, String(matchId)));
-    const variant = manifest?.variants.find((v) => v.key === record.thumbnailVariant);
+  for (const u of uploads) {
+    const manifest = await readManifest(path.join(config.mediaDir, String(u.matchId)));
+    // A dashboard upload recorded which variant it sent; a Studio upload did not, and the
+    // manifest's `chosen` is the one the dashboard handed over to be uploaded.
+    const variantKey = u.source === "dashboard" ? u.thumbnailVariant : (manifest?.chosen ?? undefined);
+    const key = variantKey ?? "(unknown)";
+    const variant = manifest?.variants.find((v) => v.key === variantKey);
     const fellBack = variant
       ? variant.leftProvider !== "starlight" || variant.rightProvider !== "starlight"
       : false;
 
-    hookEntries.push({ hook: variant?.hook ?? null, reach: byVideo.get(record.videoId) ?? null });
+    hookEntries.push({ hook: variant?.hook ?? null, reach: byVideo.get(u.videoId) ?? null });
 
     const acc = groups.get(key) ?? { videos: 0, impressions: 0, weightedCtr: 0, fellBack: false };
     acc.videos += 1;
     acc.fellBack = acc.fellBack || fellBack;
-    const v = byVideo.get(record.videoId);
+    const v = byVideo.get(u.videoId);
     if (v) {
       acc.impressions += v.impressions;
       acc.weightedCtr += v.weightedCtr;

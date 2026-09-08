@@ -130,7 +130,9 @@ the page is newer than its server: the nightly strip detects that (the old serve
   says "levels off near N · needs M / day" instead of a date, because a flat line never gets
   there. Five Analytics/Data requests, cached six hours.
   The A/B tab groups impressions and CTR by variant *and* by text vs no text (`byHook` in
-  `abTestPayload`, impression-weighted); videos whose manifest is missing land in `Unknown`.
+  `abTestPayload`, impression-weighted) over the same upload union the YouTube panel shows
+  (`knownUploads`: dashboard records plus Studio uploads paired through the channel); a Studio
+  upload's variant is the manifest's `chosen`; videos whose manifest is missing land in `Unknown`.
 - **Upload** sends the tags from `match-<id>.tags.txt` (written by the pipeline, see
   `buildTags` in `src/description.ts`) and refuses — server and client — any title still
   containing `<HOOK>`. After upload it adds the video to the season playlist, a
