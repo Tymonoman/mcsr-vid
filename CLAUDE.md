@@ -206,7 +206,10 @@ the page is newer than its server: the nightly strip detects that (the old serve
   never cut two Shorts.
 - On phones (<= 860px) the list and the match are two screens with a back bar, not one column.
   On a coarse pointer the Rendered rows carry no Hide/Delete: a thumb landing near them armed
-  the two-step delete that the next tap completed. Disk management is a desk job.
+  the two-step delete that the next tap completed. Disk management is a desk job. The match
+  screen's first row offers Final video · Publish kit · Short jump links on a phone (the
+  headings sit under the sticky back bar via `scroll-margin-top`). On load the detail opens the
+  top card in display order, not the server's newest.
 - **Save edits** commits the hook field into the title's first line (the file on disk stops
   saying `<HOOK>`, which is what the checklist and the Short's hook read), then repaints the
   checklist, the YouTube panel and the publish kit from the PUT's reply; a chip click raises the
