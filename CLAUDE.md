@@ -304,6 +304,13 @@ Run it by hand any time with `bash scripts/preflight.sh`.
 - **The intro card's centre block must sit above the VS badge.** `.intro-player` positions the
   columns with a `transform`, but `PlayerCard` writes an inline `transform` that replaces it, so
   the player names sit at y≈790 — anything placed under the badge collides with them.
+- **PID 1 in the Claude container is `sleep infinity` and never reaps.** Every process a
+  headless browser or Remotion leaves behind is a zombie until the container is recreated, and
+  the pids cgroup limit (`/sys/fs/cgroup/pids.max`, 9,186 measured) is a hard stop for `fork`:
+  one 37-agent Playwright review left 5,300 of them. Run anything that spawns Chromium through
+  `python3 scripts/reap.py <command…>` (a child subreaper that reaps orphans and kills stragglers
+  after 5 s; measured zero growth through `npm test`), tell subagents to do the same, and watch
+  `ps -eo stat | grep -c '^Z'`.
 - **No `ss`, `lsof` or `fuser` in the container.** "Kill whatever holds the port" silently does
   nothing and the next `npm run dashboard` dies with EADDRINUSE while the old server keeps
   answering — tests then run against stale code. Find it with
