@@ -14,8 +14,10 @@ import {
 import { INTRO_SECONDS } from "./Intro.js";
 import { Thumbnail } from "./Thumbnail.js";
 import { Short, ShortHook } from "./Short.js";
+import { ChatPanel } from "./ChatPanel.js";
 import { SHORT_HEIGHT, SHORT_WIDTH } from "./layout.js";
-import type { OverlayProps, ShortProps, ThumbnailProps } from "./types.js";
+import type { ChatPanelProps, OverlayProps, ShortProps, ThumbnailProps } from "./types.js";
+import { infumeChat, INFUME_CHAT_NICKNAME } from "./fixtures/chatInfume.js";
 
 const defaultProps: OverlayProps = {
   left: {
@@ -96,6 +98,17 @@ const shortDefaultProps: ShortProps = {
   hook: "both blind at the same time",
   timerStartMs: 402_000,
   durationInFrames: 900,
+  fps: 30,
+};
+
+/* A real 532-second chat replay, so the Studio and `npm run still` show the panel under the
+   traffic it actually has to hold rather than three invented lines. */
+const chatDefaultProps: ChatPanelProps = {
+  nickname: INFUME_CHAT_NICKNAME,
+  messages: infumeChat,
+  widthPx: RTA_COL_WIDTH,
+  heightPx: BOTTOM_BAND_HEIGHT,
+  leadInSec: 10,
   fps: 30,
 };
 
@@ -198,6 +211,22 @@ export const RemotionRoot: React.FC = () => {
         width={SHORT_WIDTH}
         height={SHORT_HEIGHT}
         defaultProps={shortDefaultProps}
+      />
+      {/* Prototype: not placed in the layout yet, and nothing in the pipeline renders it. Sized
+          from its own props so the operator can try it at widths other than the timer strip's. */}
+      <Composition
+        id="ChatPanel"
+        component={ChatPanel}
+        durationInFrames={18000}
+        fps={30}
+        width={RTA_COL_WIDTH}
+        height={BOTTOM_BAND_HEIGHT}
+        defaultProps={chatDefaultProps}
+        calculateMetadata={({ props }) => ({
+          fps: props.fps,
+          width: props.widthPx,
+          height: props.heightPx,
+        })}
       />
       <Composition
         id="Thumbnail"
