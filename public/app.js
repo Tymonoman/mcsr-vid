@@ -61,7 +61,7 @@ function renderList() {
     visible
       .map(
         (m) => `
-    <div class="card" data-id="${m.matchId}" aria-selected="${selected === m.matchId}">
+    <div class="card" data-id="${m.matchId}" aria-selected="${selected === m.matchId}" role="button" tabindex="0">
       <img src="/api/thumbnail/${m.matchId}" alt="" loading="lazy"
            onerror="this.style.visibility='hidden'">
       <div>
@@ -87,9 +87,15 @@ function renderList() {
       )
       .join("");
 
-  el.querySelectorAll(".card").forEach((c) =>
-    c.addEventListener("click", () => select(Number(c.dataset.id), { open: true })),
-  );
+  el.querySelectorAll(".card").forEach((c) => {
+    c.addEventListener("click", () => select(Number(c.dataset.id), { open: true }));
+    // A row is a button in everything but markup; Enter and Space open it from the keyboard.
+    c.addEventListener("keydown", (e) => {
+      if (e.target !== c || (e.key !== "Enter" && e.key !== " ")) return;
+      e.preventDefault();
+      select(Number(c.dataset.id), { open: true });
+    });
+  });
 
   $("#showhidden")?.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -1040,9 +1046,10 @@ function nightlyInner() {
     last = `Last run: ${who}<span class="${cls}">${esc(lastRun.outcome + why)}</span>${short}${exported}`;
   }
 
+  const failed = nightly.runError ? `<div class="bad">Run now failed: ${esc(nightly.runError)}</div>` : "";
   return `<div class="lines">
       <div class="plan" title="${esc(nextRunAt ?? "no schedule")}">${plan}</div>
-      <div class="last" title="${esc(lastRun ? lastRun.startedAt : "")}">${last}</div>
+      <div class="last" title="${esc(lastRun ? lastRun.startedAt : "")}">${last}</div>${failed}
     </div>
     <button data-act="nightly-run">Run now</button>`;
 }
@@ -1090,7 +1097,10 @@ async function runNightlyNow(btn) {
       watch(out.matchId, true);
     }
   } catch (e) {
-    nightly = { error: e.message };
+    // The strip stays — plan, last run, and the button to try again — with the failure on its
+    // own line. Replacing the whole strip with the error also removed the only way to retry.
+    await loadNightly();
+    if (nightly) nightly.runError = e.message;
     paintNightly();
   }
 }

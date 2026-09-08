@@ -27,7 +27,10 @@
   border-bottom: 2px solid var(--panel-edge);
 }
 .tabs button {
-  flex: 1;
+  /* Sized to the label, not a third each: "Rendered (4 ready)" wrapped onto two lines in a
+     third of the list column at 1280px, and a tab that wraps reads as two tabs. */
+  flex: 1 1 auto;
+  white-space: nowrap;
   border: 0;
   border-bottom: 3px solid transparent;
   background: transparent;
