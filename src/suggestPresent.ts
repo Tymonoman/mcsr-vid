@@ -95,7 +95,7 @@ function toCard(s: Suggestion, nowMs: number, rival: readonly RivalPost[]): Sugg
   const ageDays = (nowMs / 1000 - s.dateSec) / 86_400;
   const expiresInDays = Math.max(0, Math.floor(POOL_MAX_AGE_DAYS - ageDays));
   const expiring = expiresInDays <= EXPIRY_WARN_DAYS;
-  const posted = rivalMatchFor(rival, s.metrics.players, s.dateSec);
+  const posted = rivalMatchFor(rival, s.metrics.players, s.dateSec, s.metrics.resultMs / 1000);
   return {
     rivalPosted: posted
       ? { daysAgo: Math.max(0, Math.floor((nowMs - posted.publishedAtMs) / 86_400_000)), title: posted.title }

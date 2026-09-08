@@ -50,6 +50,43 @@ assert.equal(
 // Too long after: the rival posts daily, so a post twelve days later is another match.
 assert.equal(rivalMatchFor(posts, ["nahhann", "Aquacorde"], (matchAt - 12 * day) / 1000), null);
 assert.equal(rivalMatchFor(posts, ["Infume", "BeefSalad"], matchAt / 1000), null, "not posted: nothing");
+
+// Two matches of one pair in one night: the video's length says which one was posted. Measured
+// on the rival: 8:59 for an 8:48 run. A post of the wrong length is the other match, not this
+// one, and must not demote this one; without lengths the old pair-and-window rule stands.
+{
+  const { isoDurationSec } = await import("./rivalPosts.js");
+  assert.equal(isoDurationSec("PT8M59S"), 539);
+  assert.equal(isoDurationSec("PT1H2M3S"), 3723);
+  assert.equal(isoDurationSec("nonsense"), 0);
+  const timed: RivalPost[] = [{ ...posts[0]!, durationSec: 539 }];
+  assert.equal(
+    rivalMatchFor(timed, ["Aquacorde", "nahhann"], matchAt / 1000, 528)?.title,
+    posts[0]!.title,
+    "8:48 run, 8:59 video: this one",
+  );
+  assert.equal(
+    rivalMatchFor(timed, ["Aquacorde", "nahhann"], matchAt / 1000, 494),
+    null,
+    "8:13 run, 8:59 video: a different match of the pair",
+  );
+  assert.equal(
+    rivalMatchFor(timed, ["Aquacorde", "nahhann"], matchAt / 1000, 582),
+    null,
+    "9:42 run: too long for the video",
+  );
+  assert.equal(
+    rivalMatchFor(posts, ["Aquacorde", "nahhann"], matchAt / 1000, 494)?.title,
+    posts[0]!.title,
+    "no length on the post: the pair-and-window rule as before",
+  );
+  assert.equal(
+    rivalMatchFor(timed, ["Aquacorde", "nahhann"], matchAt / 1000)?.title,
+    posts[0]!.title,
+    "no run time given: as before",
+  );
+  console.log("OK: a post's length tells two matches of one pair apart");
+}
 // The shelf has nicknames but no match date: the most recent post of the pair in the last two weeks.
 {
   const { rivalRecentPostFor } = await import("./rivalPosts.js");

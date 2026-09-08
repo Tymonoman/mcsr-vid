@@ -20,6 +20,21 @@ export interface RivalPost {
   publishedAtMs: number;
   /** Normalised nicknames from the title, or null when the title names no matchup. */
   players: [string, string] | null;
+  /** The video's length; absent on older snapshots. What tells two matches of one pair apart. */
+  durationSec?: number;
+}
+
+/**
+ * The rival's video is the run plus a few seconds either side (measured: 8:59 for an 8:48 run,
+ * 7:07 for a sub-7). A post whose length is outside this band of a match's run time is a
+ * different match of the same pair — Aquacorde and nahhann played three times in one night.
+ */
+const DURATION_SLACK_SEC = { before: 5, after: 30 };
+
+function durationFits(post: RivalPost, runSec: number | undefined): boolean | null {
+  if (runSec === undefined || post.durationSec === undefined) return null;
+  const gap = post.durationSec - runSec;
+  return gap >= -DURATION_SLACK_SEC.before && gap <= DURATION_SLACK_SEC.after;
 }
 
 export interface RivalMatch {
@@ -52,17 +67,24 @@ export function rivalMatchFor(
   posts: readonly RivalPost[],
   players: readonly [string, string],
   matchDateSec: number,
+  runSec?: number,
 ): RivalMatch | null {
   const ours = [normaliseNick(players[0]), normaliseNick(players[1])].sort().join("|");
   const from = matchDateSec * 1000;
   const to = from + POST_WINDOW_DAYS * 86_400_000;
-  const hit = posts.find(
+  const hits = posts.filter(
     (p) =>
       p.players &&
       [...p.players].sort().join("|") === ours &&
       p.publishedAtMs >= from &&
       p.publishedAtMs <= to,
   );
+  // With lengths to compare, only a post the right length counts; one that is not is the rival
+  // posting another match of the pair, which must not demote this one. Without lengths (an
+  // older snapshot), the pair and the window are all there is, as before.
+  const judged = hits.map((p) => ({ p, fits: durationFits(p, runSec) }));
+  const hit =
+    judged.find((j) => j.fits === true)?.p ?? (judged.every((j) => j.fits === null) ? hits[0] : undefined);
   return hit ? { title: hit.title, publishedAtMs: hit.publishedAtMs } : null;
 }
 
@@ -105,11 +127,36 @@ export async function fetchRivalPosts(handle: string, fetchImpl: typeof fetch = 
   const uploads = channel.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
   if (!uploads) throw new Error(`no channel for handle ${handle}`);
   const items = await yt(`playlistItems?part=snippet&playlistId=${uploads}&maxResults=50`);
-  return (items.items ?? []).map((i: any) => ({
+  const posts: RivalPost[] = (items.items ?? []).map((i: any) => ({
     title: String(i.snippet.title),
     publishedAtMs: Date.parse(i.snippet.publishedAt),
     players: playersFromTitle(String(i.snippet.title)),
   }));
+  // One more unit for the lengths: the only thing that tells two matches of one pair apart.
+  const ids: string[] = (items.items ?? [])
+    .map((i: any) => String(i.snippet.resourceId?.videoId ?? ""))
+    .filter((id: string) => id !== "");
+  if (ids.length > 0) {
+    const vids = await yt(`videos?part=contentDetails&id=${ids.join(",")}`);
+    const seconds = new Map<string, number>(
+      (vids.items ?? []).map((v: any) => [
+        String(v.id),
+        isoDurationSec(String(v.contentDetails?.duration ?? "")),
+      ]),
+    );
+    ids.forEach((id, n) => {
+      const sec = seconds.get(id);
+      if (sec !== undefined && posts[n]) posts[n].durationSec = sec;
+    });
+  }
+  return posts;
+}
+
+/** `PT8M59S` → 539. Anything unparseable is 0, which no run time fits. */
+export function isoDurationSec(iso: string): number {
+  const m = /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(iso);
+  if (!m) return 0;
+  return Number(m[1] ?? 0) * 3600 + Number(m[2] ?? 0) * 60 + Number(m[3] ?? 0);
 }
 
 const REFRESH_MS = 6 * 60 * 60 * 1000;

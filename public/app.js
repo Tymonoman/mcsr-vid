@@ -80,7 +80,7 @@ function renderList() {
         <div class="who">${esc(m.leftNickname)} vs ${esc(m.rightNickname)}</div>
         <div class="id">#${m.matchId}</div>
         ${m.uploaded ? '<div class="state">published</div>' : m.exported ? '<div class="state ready">ready to publish</div>' : ""}
-        ${m.rivalPosted && !m.uploaded ? `<div class="rival" title="${esc(m.rivalPosted.title)}">rival posted this ${m.rivalPosted.daysAgo === 0 ? "today" : `${m.rivalPosted.daysAgo}d ago`}</div>` : ""}
+        ${m.rivalPosted && !m.uploaded ? `<div class="rival" title="${esc(m.rivalPosted.title)}">rival posted this pair ${m.rivalPosted.daysAgo === 0 ? "today" : `${m.rivalPosted.daysAgo}d ago`}</div>` : ""}
         ${m.error ? `<div class="degraded" title="${esc(m.error)}">names from filenames &mdash; API lookup failed</div>` : ""}
         <div class="rowacts">
           <button type="button" class="hide ghost">${m.hidden ? "Unhide" : "Hide"}</button>
