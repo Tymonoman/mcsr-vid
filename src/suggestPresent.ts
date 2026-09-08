@@ -79,7 +79,9 @@ export function factsLine(s: Suggestion): string {
   const margin =
     m.finishMarginMs === null
       ? "DNF"
-      : `won by ${m.finishEstimated ? "~" : ""}${(m.finishMarginMs / 1000).toFixed(1)}s`;
+      : // A photo finish is the one number a CLOSE card most needs, and "0.0s" reads as a tie or
+        // a data error; under a tenth of a second the margin is said in milliseconds.
+        `won by ${m.finishEstimated ? "~" : ""}${m.finishMarginMs < 100 ? `${Math.round(m.finishMarginMs)}ms` : `${(m.finishMarginMs / 1000).toFixed(1)}s`}`;
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
   return [
     formatShortTime(m.resultMs),

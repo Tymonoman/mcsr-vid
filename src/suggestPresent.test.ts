@@ -103,6 +103,10 @@ assert.equal(
 );
 // An estimated margin came from the killing blow, not the death animation; say so.
 assert.ok(factsLine(suggestion({}, { finishEstimated: true })).includes("won by ~0.2s"));
+// Under a tenth of a second the margin is milliseconds: "won by 0.0s" on the closest finish of
+// the week read as a tie (seen on match 13132794, 35 ms).
+assert.ok(factsLine(suggestion({}, { finishMarginMs: 35 })).includes("won by 35ms"));
+assert.ok(factsLine(suggestion({}, { finishMarginMs: 100 })).includes("won by 0.1s"));
 
 // --- Ordering: popularity within a bucket, except a match that is about to stop existing.
 const cards = presentSuggestions(
