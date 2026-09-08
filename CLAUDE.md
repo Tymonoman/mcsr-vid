@@ -257,9 +257,8 @@ Kdenlive `*-60fps.mp4` transcodes (27 GB) were deleted — nothing in `src/`,
 `remotion/`, or any `.kdenlive` project referenced them, and Kdenlive
 regenerates transcodes on demand from the source VODs.
 
-One loose end survives as a patch, not a branch: the `match-suggester`
-worktree carried uncommitted work (7 files, +63/-105 — a net simplification of
-`suggest.ts`, `matchScore.ts`, `config.ts`, `scoreCli.ts`, `tui.tsx`,
-`tuiComponents.tsx`). It is saved at `~/mcsr-suggester-refactor.patch` and
-applies cleanly to `main`. It has **not** been applied — decide deliberately
-before assuming the suggester is in its final shape.
+The `match-suggester` worktree's uncommitted refactor (7 files, +63/-105) was saved as
+`~/mcsr-suggester-refactor.patch` on 2026-09-03 and is **gone**: `/home/node` is not a
+persisted volume (only `~/.claude` is, see compose.yaml), so an image rebuild took it. Checked
+2026-09-08. Nothing to apply; the suggester on `main` — including the 2026-09-07 card redesign
+in `src/suggestPresent.ts` — is its current shape. Save loose ends inside the repo next time.
