@@ -93,6 +93,10 @@ container needs `docker restart mcsr-dashboard`; a CSS/JS change is live on relo
   `buildTags` in `src/description.ts`) and refuses — server and client — any title still
   containing `<HOOK>`. After upload it adds the video to the season playlist *and* a
   per-matchup one (`matchupPlaylistTitle` in `src/youtube.ts`, seat- and case-independent).
+- **Publish kit** under the YouTube panel (`GET /api/publishkit/:id`): copy buttons for the
+  title (hook substituted), description, comma-joined tags with the 500-char count, the
+  Short's title/description when `short-<id>.title.txt` exists, and a DM per player with the
+  `youtu.be` link once uploaded. Nothing is stored; it is the manual Studio phase, pre-pasted.
 - **Publish checklist** under the pipeline stages: five facts derived from disk, three manual
   toggles (`Short uploaded`, `related link`, `players notified`) in `<mediaDir>/<id>/publish.json`.
 - **Hide / delete** matches from the list; delete refuses while any job is writing into that
