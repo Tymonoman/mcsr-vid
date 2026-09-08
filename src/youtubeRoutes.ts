@@ -10,9 +10,15 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import { archiveMatch } from "./archive.js";
 import { auditState, readAudit, startAudit } from "./audit.js";
+import {
+  channelUploadsSnapshot,
+  channelVideoFor,
+  refreshChannelUploadsIfStale,
+  type ChannelVideo,
+} from "./channelUploads.js";
 import { config } from "./config.js";
 import { describeError } from "./errorText.js";
-import { matchStatusFor } from "./matchStatus.js";
+import { listProcessedMatchIds, matchStatusFor } from "./matchStatus.js";
 import { readManifest } from "./thumbnailVariants.js";
 import { HOOK_PLACEHOLDER } from "./title.js";
 import {
@@ -96,6 +102,9 @@ export async function handleYoutubeRoute(
   }
 
   if (action === "uploads" && req.method === "GET") {
+    // Fire-and-forget, as the suggestions route does for the rival posts: the first request
+    // after boot answers without the Studio uploads and the next one has them.
+    refreshChannelUploadsIfStale();
     ctx.json(res, 200, await uploadsPayload());
     return true;
   }
@@ -387,27 +396,51 @@ async function reachFor(videoId: string): Promise<{ impressions: number; ctr: nu
   }
 }
 
-/** Uploaded matches with their live stats, or the record alone when YouTube is unreachable. */
+/**
+ * Uploaded matches with their live stats, or the record alone when YouTube is unreachable.
+ *
+ * Two sources, because only one of them is written here. A match uploaded through Studio — every
+ * upload while the API audit is pending — has no youtube.json; what it has is the match link in
+ * its description, which is enough to pair it with the directory it came from
+ * (src/channelUploads.ts). Without those the panel offered an upload form for videos already on
+ * the channel.
+ */
 async function uploadsPayload() {
-  const records = await allUploads();
-  if (records.length === 0) return { uploads: [], statsError: null };
+  const local = (await allUploads()).map((r) => ({
+    matchId: r.matchId,
+    ...r.record,
+    source: "dashboard" as const,
+  }));
+  const known = new Set(local.map((u) => u.matchId));
+  const channel = channelUploadsSnapshot();
+  const studio = listProcessedMatchIds()
+    .filter((matchId) => !known.has(matchId))
+    .map((matchId) => ({ matchId, video: channelVideoFor(matchId, channel) }))
+    .filter((e): e is { matchId: number; video: ChannelVideo } => e.video !== null)
+    .map(({ matchId, video }) => ({
+      matchId,
+      videoId: video.videoId,
+      title: video.title,
+      publishedAt: video.publishedAt,
+      privacyStatus: video.privacyStatus,
+      source: "channel" as const,
+    }));
+
+  const uploads = [...local, ...studio];
+  if (uploads.length === 0) return { uploads: [], statsError: null };
 
   try {
-    const stats = await videoStats(records.map((r) => r.record.videoId));
+    const stats = await videoStats(uploads.map((u) => u.videoId));
     const byId = new Map(stats.map((s) => [s.videoId, s]));
     return {
-      uploads: records.map((r) => ({
-        matchId: r.matchId,
-        ...r.record,
-        stats: byId.get(r.record.videoId) ?? null,
-      })),
+      uploads: uploads.map((u) => ({ ...u, stats: byId.get(u.videoId) ?? null })),
       statsError: null,
     };
   } catch (err) {
     // The local record is still worth showing when the API is down — it is what tells you a
     // match was already published, which is the question you actually need answered.
     return {
-      uploads: records.map((r) => ({ matchId: r.matchId, ...r.record, stats: null })),
+      uploads: uploads.map((u) => ({ ...u, stats: null })),
       statsError: describeError(err),
     };
   }

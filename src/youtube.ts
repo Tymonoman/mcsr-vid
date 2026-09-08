@@ -94,14 +94,28 @@ export async function getAccessToken(): Promise<string> {
   return cached.value;
 }
 
-async function apiCall<T>(base: string, pathAndQuery: string, init: RequestInit = {}): Promise<T> {
+async function apiCall<T>(
+  base: string,
+  pathAndQuery: string,
+  init: RequestInit = {},
+  fetchImpl: typeof fetch = fetch,
+): Promise<T> {
   const accessToken = await getAccessToken();
-  const res = await fetch(`${base}${pathAndQuery}`, {
+  const res = await fetchImpl(`${base}${pathAndQuery}`, {
     ...init,
     headers: { authorization: `Bearer ${accessToken}`, ...(init.headers ?? {}) },
   });
   if (!res.ok) throw new Error(await describeApiFailure(res, pathAndQuery));
   return (await res.json()) as T;
+}
+
+/**
+ * One Data API GET with the auth header and the error text every call here shares. Exported for
+ * src/channelUploads.ts, which walks three endpoints and has no reason to re-derive either;
+ * `fetchImpl` is its test seam.
+ */
+export function dataApiGet<T>(pathAndQuery: string, fetchImpl: typeof fetch = fetch): Promise<T> {
+  return apiCall<T>(DATA_API, pathAndQuery, {}, fetchImpl);
 }
 
 /**

@@ -156,7 +156,15 @@ function uploadedHtml(u, statsError) {
       <div class="row">
         <a href="https://www.youtube.com/watch?v=${esc(u.videoId)}" target="_blank" rel="noopener">${esc(u.videoId)}</a>
         <span class="id">${esc(scheduled)}</span>
-        ${u.thumbnailVariant ? `<span class="id">thumbnail: ${esc(u.thumbnailVariant)}</span>` : ""}
+        ${
+          // A Studio upload was recognised by the match link in its description, so there is no
+          // youtube.json and no record of which thumbnail variant went out with it.
+          u.source === "channel"
+            ? '<span class="id">found on the channel &mdash; uploaded from Studio</span>'
+            : u.thumbnailVariant
+              ? `<span class="id">thumbnail: ${esc(u.thumbnailVariant)}</span>`
+              : ""
+        }
       </div>
       ${
         s
