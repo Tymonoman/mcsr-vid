@@ -552,8 +552,13 @@
   .previewmeta a {
     display: inline-block;
     padding: 8px 6px;
-    margin: -8px -2px;
+    margin: -8px 0;
     min-height: 32px;
+  }
+  .kitmore > summary {
+    min-height: 32px;
+    display: flex;
+    align-items: center;
   }
 
   /* A Rendered row is one tap target on a phone: opening the match. Hide and Delete sit inside
@@ -648,6 +653,7 @@
 }
 .previewmeta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 14px;
   margin-top: 6px;

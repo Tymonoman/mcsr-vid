@@ -775,6 +775,8 @@ async function loadPublishKit(id, meta) {
         "Community post",
         `New: ${title} — both POVs synced to the split timer. Who did you have winning before the nether? ${url}`,
         3,
+        // The same flag as the Title block: this quotes the title, so it carries the same hole.
+        title.includes("<HOOK>") ? counter("pick a hook first", true) : "",
       ),
       block(`Message to ${left ?? "left player"}`, dm(left ?? "there", right ?? "your opponent"), 3),
       block(`Message to ${right ?? "right player"}`, dm(right ?? "there", left ?? "your opponent"), 3),

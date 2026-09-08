@@ -423,6 +423,10 @@ pre {
 
 /* Row controls sit inside the card, which is itself a click target, so they need to read as
    separate affordances rather than decoration. Small and quiet until the delete arms itself. */
+#hookpreview {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .listorder {
   font-family: var(--mono, ui-monospace, monospace);
   font-size: 11px;
