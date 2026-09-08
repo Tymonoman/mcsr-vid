@@ -160,11 +160,13 @@ export function buildShortDescription(
   leftNickname: string,
   rightNickname: string,
   playlistUrl = "",
+  supportUrl = "",
 ): string {
   return [
     `${leftNickname} vs ${rightNickname} — MCSR Ranked 1v1. Full synced dual-POV race on the channel.`,
     ...(playlistUrl ? [`Every match: ${playlistUrl}`] : []),
     `Match data: https://mcsrranked.com/matches/${matchId}`,
+    ...(supportUrl ? [`Support the channel: ${supportUrl}`] : []),
     HASHTAGS.join(" "),
   ].join("\n");
 }

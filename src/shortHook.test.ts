@@ -107,6 +107,13 @@ const FALLBACK = "watch the lead flip here";
     `Every match: ${url}`,
     "the playlist link sits on line two, above the match page",
   );
+  const tip = buildShortDescription(12730175, "edcr", "doogile", url, "https://ko-fi.com/x").split("\n");
+  assert.equal(
+    tip[3],
+    "Support the channel: https://ko-fi.com/x",
+    "the tip jar sits under the match page, above the hashtags",
+  );
+  assert.ok(tip[4]!.startsWith("#"), "hashtags stay last");
 }
 
 // A rank hook is the common case now, and its hashes would read as hashtags in a title — the
