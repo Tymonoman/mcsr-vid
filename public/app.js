@@ -1191,9 +1191,22 @@ function renderSuggestions(data) {
 
   el.innerHTML = '<div id="nightly" class="nightly"></div>' + undo + scan + legend + cards;
   paintNightly();
+  // A failed action says so where it was clicked — the scan line, the undo line, the card —
+  // rather than as an unhandled rejection in a console nobody has open.
+  const failed = (target, text) => {
+    if (!target) return;
+    const old = target.querySelector(".actfail");
+    if (old) old.remove();
+    target.insertAdjacentHTML("beforeend", ` <span class="bad actfail">${esc(text)}</span>`);
+  };
   el.querySelector('[data-act="rescan"]')?.addEventListener("click", async (ev) => {
     ev.preventDefault();
-    renderSuggestions(await api("/api/suggestions/rescan", { method: "POST" }));
+    try {
+      renderSuggestions(await api("/api/suggestions/rescan", { method: "POST" }));
+    } catch (e) {
+      failed(ev.target.closest(".scanline"), `rescan failed: ${e.message}`);
+      return;
+    }
     clearTimeout(suggestPoll);
     suggestPoll = setTimeout(pollSuggestions, 2000);
     void loadNightly();
@@ -1201,7 +1214,13 @@ function renderSuggestions(data) {
   el.querySelector('[data-act="undo"]')?.addEventListener("click", async (ev) => {
     ev.preventDefault();
     const { id, who } = lastDismissed;
-    const out = await api(`/api/suggestions/${id}/restore`, { method: "POST" });
+    let out;
+    try {
+      out = await api(`/api/suggestions/${id}/restore`, { method: "POST" });
+    } catch (e) {
+      failed(ev.target.closest(".scanline"), `undo failed: ${e.message}`);
+      return;
+    }
     // A restart since the dismiss means the row is gone from memory; it returns at the next scan.
     lastDismissed = out.now ? null : { id, who, note: "back after the next scan" };
     renderSuggestions(out);
@@ -1217,9 +1236,15 @@ function renderSuggestions(data) {
     row.querySelector('[data-act="render"]')?.addEventListener("click", () => startRender(String(id)));
     row.querySelector('[data-act="render-short"]')?.addEventListener("click", () => startRenderWithShort(id));
     row.querySelector('[data-act="open"]')?.addEventListener("click", () => select(id, { open: true }));
-    row.querySelector('[data-act="dismiss"]').addEventListener("click", async () => {
+    row.querySelector('[data-act="dismiss"]').addEventListener("click", async (ev) => {
       const s = data.suggestions.find((x) => x.matchId === id);
-      const out = await api(`/api/suggestions/${id}`, { method: "DELETE" });
+      let out;
+      try {
+        out = await api(`/api/suggestions/${id}`, { method: "DELETE" });
+      } catch (e) {
+        failed(ev.target.closest(".acts") ?? row, `dismiss failed: ${e.message}`);
+        return;
+      }
       lastDismissed = { id, who: s ? `${s.players[0]} vs ${s.players[1]}` : `#${id}` };
       renderSuggestions(out);
       // Tonight's pick may have been the card just dismissed.
