@@ -72,6 +72,16 @@ export interface Config {
    */
   supportUrl: string;
   /**
+   * Where the PC that publishes pulls finished files *from*, as an rsync/ssh target — e.g.
+   * `homelab@actimel:/home/homelab/mcsr-media`, which is this container's `/media` seen from
+   * the lab host (compose bind mount), not the container path. A pull rather than a push: this
+   * image has rsync but no ssh client, and the PC already reaches the lab. Empty string hides
+   * the publish kit's pull block; nothing here is ever executed by the server (src/publishSet.ts).
+   */
+  pullSource: string;
+  /** Where those files land on the PC. `~` is expanded by the operator's own shell. */
+  pullDest: string;
+  /**
    * Seconds of overlay before the RTA timer starts.
    *
    * This is also where the published video begins: the timeline is anchored on the world-load
@@ -203,6 +213,8 @@ const DEFAULTS: Config = {
   youtubePlaylistUrl: "",
   rivalChannelHandle: "mcsrmatches",
   supportUrl: "",
+  pullSource: "",
+  pullDest: "~/Replayoffs",
   overlayLeadInSec: 10,
   overlayFps: 30,
   renderConcurrency: null,

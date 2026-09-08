@@ -33,6 +33,7 @@ import { abortJob, getJob, startJob, streamProgress, type Job } from "./jobs.js"
 import { STAGE_LABELS, STAGE_ORDER, STAGE_SHORT_LABELS } from "./pipeline.js";
 import { presentSuggestions } from "./suggestPresent.js";
 import { dismiss, restore, snapshot, startScan } from "./suggestScan.js";
+import { cronLine, rsyncPullAllCommand, rsyncPullCommand } from "./publishSet.js";
 import { nextPublishSlot } from "./publishSlot.js";
 import { refreshRivalPostsIfStale, rivalPostsSnapshot, rivalRecentPostFor } from "./rivalPosts.js";
 import { chooseVariant, readManifest, rerenderThumbnailVariants } from "./thumbnailVariants.js";
@@ -564,6 +565,14 @@ const server = createServer(async (req, res) => {
         // The slot to schedule for, so the morning's paste into Studio carries a time too.
         publishAt: nextPublishSlot(Date.now(), config.publishHourUtc).toISOString(),
         publishHourUtc: config.publishHourUtc,
+        // Commands for the operator's own shell, not this one: the publishing PC pulls.
+        pull: config.pullSource
+          ? {
+              one: rsyncPullCommand(config.pullSource, config.pullDest, matchId),
+              all: rsyncPullAllCommand(config.pullSource, config.pullDest),
+              cron: cronLine(config.pullSource, config.pullDest),
+            }
+          : null,
       });
       return;
     }
