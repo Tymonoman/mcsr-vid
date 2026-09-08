@@ -1,7 +1,7 @@
 import type { MatchInfo, TimelineEntry } from "./types.js";
 
 /**
- * Picks the ~30 seconds of a match worth cutting into a Short.
+ * Picks the ~22 seconds of a match worth cutting into a Short.
  *
  * Everything here comes from `match.timelines` — the same event list the splits and the chaos
  * score are built from — so choosing a moment costs no video decoding at all. That matters: a
@@ -10,21 +10,28 @@ import type { MatchInfo, TimelineEntry } from "./types.js";
  *
  * The scoring is deliberately shaped for Shorts rather than reused from `matchScore`, which
  * ranks whole matches. A Short is not a match in miniature: it needs something in the first two
- * seconds or the viewer scrolls, and it needs its payoff near the end rather than at the start.
+ * seconds or the viewer scrolls, and it needs its payoff past the middle rather than at the start.
  */
 
-/** Seconds of match footage a Short covers. */
-export const SHORT_WINDOW_SEC = 30;
+/**
+ * Seconds of match footage a Short covers.
+ *
+ * 22, not the 30 this started at. Completion rate is a Shorts ranking input, and the reference
+ * point is @MCSR-Vault's 42k-view Short: 21.3s long, payoff at t=9s, ~12s of reaction, no outro.
+ * A shorter clip with the same payoff finishes more often, and nothing here needs 30 seconds —
+ * the window is one event and the run-up to it. `--seconds` still overrides.
+ */
+export const SHORT_WINDOW_SEC = 22;
 /** How far apart candidate windows are tried. */
 const STRIDE_SEC = 1;
 /** The opening that has to earn the scroll. */
 const HOOK_SEC = 2;
 /**
- * Where in the window the biggest moment should land, as a fraction. 0.7 leaves ~21s of build
- * and ~9s of reaction — long enough to see it coming, short enough not to sit through the
- * aftermath.
+ * Where in the window the biggest moment should land, as a fraction. At the 22s window that
+ * leaves ~13s of build and ~9s of reaction, which is the reference Short's shape: enough run-up
+ * to see it coming, and the tail that carries the reaction without outstaying it.
  */
-const PAYOFF_TARGET = 0.7;
+const PAYOFF_TARGET = 0.59;
 
 /**
  * How much each event is worth as the payoff of a Short. Everything not listed scores zero:
@@ -109,7 +116,7 @@ export interface ShortMomentOptions {
  * Scores every candidate window and returns them best-first.
  *
  * Scores are comparable within one match only, exactly like `Suggestion.score` — they say which
- * 30 seconds of *this* match to cut, not whether this match deserves a Short at all.
+ * 22 seconds of *this* match to cut, not whether this match deserves a Short at all.
  */
 export function rankShortMoments(match: MatchInfo, opts: ShortMomentOptions): ShortMoment[] {
   const windowSec = opts.windowSec ?? SHORT_WINDOW_SEC;
@@ -133,7 +140,10 @@ export function rankShortMoments(match: MatchInfo, opts: ShortMomentOptions): Sh
     pairGaps.set(b, b - a);
   }
 
-  const lastEnd = Math.min(opts.runMs, scored[scored.length - 1]!.time + windowMs * 0.4);
+  // How far past the last scored event a window may run. Slightly more than the payoff target
+  // leaves behind (1 - 0.59 = 0.41), so that the ideal window is still reachable when the payoff
+  // *is* the last event — at exactly 0.4 the search stops one stride short of its own target.
+  const lastEnd = Math.min(opts.runMs, scored[scored.length - 1]!.time + windowMs * 0.45);
   const moments: ShortMoment[] = [];
   for (let startMs = 0; startMs + windowMs <= Math.max(windowMs, lastEnd); startMs += STRIDE_SEC * 1000) {
     const endMs = startMs + windowMs;
