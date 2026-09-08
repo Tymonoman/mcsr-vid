@@ -33,7 +33,7 @@ import { STAGE_LABELS, STAGE_ORDER, STAGE_SHORT_LABELS } from "./pipeline.js";
 import { presentSuggestions } from "./suggestPresent.js";
 import { dismiss, restore, snapshot, startScan } from "./suggestScan.js";
 import { nextPublishSlot } from "./publishSlot.js";
-import { refreshRivalPostsIfStale, rivalPostsSnapshot } from "./rivalPosts.js";
+import { refreshRivalPostsIfStale, rivalPostsSnapshot, rivalRecentPostFor } from "./rivalPosts.js";
 import { chooseVariant, readManifest, rerenderThumbnailVariants } from "./thumbnailVariants.js";
 import { buildTitle, type BuiltTitle } from "./title.js";
 import { allArchiveStates, capacity } from "./archive.js";
@@ -351,14 +351,27 @@ const server = createServer(async (req, res) => {
       // Newest first: match ids ascend with time, and the newest is what you just rendered.
       // `exported` and `uploaded` are what "ready to publish" means on the list: the morning
       // question is how many of these are waiting on a Studio session, not how many rendered.
+      const rival = rivalPostsSnapshot();
+      const now = Date.now();
       const rows = await Promise.all(
-        statuses.map(async (m) => ({
-          ...m,
-          hidden: hidden.has(m.matchId),
-          archived: isArchived(m.matchId),
-          exported: isExported(m.matchId),
-          uploaded: await isUploaded(m.matchId),
-        })),
+        statuses.map(async (m) => {
+          // Same badge as the suggestion cards: of four finished videos, the ones the rival has
+          // not covered go out first.
+          const posted = rivalRecentPostFor(rival, [m.leftNickname, m.rightNickname], now);
+          return {
+            ...m,
+            hidden: hidden.has(m.matchId),
+            archived: isArchived(m.matchId),
+            exported: isExported(m.matchId),
+            uploaded: await isUploaded(m.matchId),
+            rivalPosted: posted
+              ? {
+                  daysAgo: Math.max(0, Math.floor((now - posted.publishedAtMs) / 86_400_000)),
+                  title: posted.title,
+                }
+              : null,
+          };
+        }),
       );
       json(res, 200, { matches: rows.sort((a, b) => b.matchId - a.matchId) });
       return;

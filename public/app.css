@@ -200,6 +200,10 @@ main > * {
 .card .state.ready {
   color: var(--gold);
 }
+.card .rival {
+  color: var(--crimson);
+  font-size: 11px;
+}
 
 #detail {
   padding: 18px;

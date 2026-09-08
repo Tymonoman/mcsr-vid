@@ -66,6 +66,31 @@ export function rivalMatchFor(
   return hit ? { title: hit.title, publishedAtMs: hit.publishedAtMs } : null;
 }
 
+/**
+ * The rival's most recent post of this matchup within `days`, for a match whose date is not to
+ * hand — the shelf, whose entries carry nicknames but not the match itself. Every match on the
+ * shelf is recent (VODs live ~10 days), so "posted in the last two weeks" is the same question.
+ */
+export function rivalRecentPostFor(
+  posts: readonly RivalPost[],
+  players: readonly [string, string],
+  nowMs: number,
+  days = 14,
+): RivalMatch | null {
+  const ours = [normaliseNick(players[0]), normaliseNick(players[1])].sort().join("|");
+  const since = nowMs - days * 86_400_000;
+  const hit = posts
+    .filter(
+      (p) =>
+        p.players &&
+        [...p.players].sort().join("|") === ours &&
+        p.publishedAtMs >= since &&
+        p.publishedAtMs <= nowMs,
+    )
+    .sort((a, b) => b.publishedAtMs - a.publishedAtMs)[0];
+  return hit ? { title: hit.title, publishedAtMs: hit.publishedAtMs } : null;
+}
+
 /** The rival's last fifty uploads, newest first. Throws on API failure; the cache below catches. */
 export async function fetchRivalPosts(handle: string, fetchImpl: typeof fetch = fetch): Promise<RivalPost[]> {
   const token = await getAccessToken();

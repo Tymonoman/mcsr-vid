@@ -50,4 +50,33 @@ assert.equal(
 // Too long after: the rival posts daily, so a post twelve days later is another match.
 assert.equal(rivalMatchFor(posts, ["nahhann", "Aquacorde"], (matchAt - 12 * day) / 1000), null);
 assert.equal(rivalMatchFor(posts, ["Infume", "BeefSalad"], matchAt / 1000), null, "not posted: nothing");
+// The shelf has nicknames but no match date: the most recent post of the pair in the last two weeks.
+{
+  const { rivalRecentPostFor } = await import("./rivalPosts.js");
+  const now = Date.UTC(2026, 8, 8, 4);
+  const shelfPosts: RivalPost[] = [
+    { title: "old", publishedAtMs: now - 30 * day, players: ["aquacorde", "nahhann"] },
+    {
+      title: "TOUGH MATCH | Aquacorde vs Nahhann",
+      publishedAtMs: now - 1 * day,
+      players: ["aquacorde", "nahhann"],
+    },
+    {
+      title: "earlier | nahhann vs Aquacorde",
+      publishedAtMs: now - 5 * day,
+      players: ["nahhann", "aquacorde"],
+    },
+  ];
+  assert.equal(
+    rivalRecentPostFor(shelfPosts, ["nahhann", "Aquacorde"], now)?.title,
+    "TOUGH MATCH | Aquacorde vs Nahhann",
+    "the most recent within two weeks",
+  );
+  assert.equal(rivalRecentPostFor(shelfPosts, ["Infume", "BeefSalad"], now), null);
+  assert.equal(
+    rivalRecentPostFor(shelfPosts, ["nahhann", "Aquacorde"], now, 0.5),
+    null,
+    "outside the window is nothing",
+  );
+}
 console.log("rivalPosts: all checks passed");
