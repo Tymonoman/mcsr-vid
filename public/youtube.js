@@ -268,11 +268,20 @@ async function loadComments(id) {
   );
 }
 
+/** The three numeric cells both A/B tables share; CTR is a rate, so a missing one is not zero. */
+const reachCells = (r) =>
+  `<td>${r.videos}</td><td>${r.impressions.toLocaleString()}</td>` +
+  `<td>${r.ctr === null ? "&mdash;" : (r.ctr * 100).toFixed(2) + "%"}</td>`;
+
+const HOOK_LABEL = { true: "Hook text", false: "No text", null: "Unknown" };
+
 /**
- * Which thumbnail variant earns clicks, once there is enough data to say.
+ * Which thumbnail earns clicks, once there is enough data to say.
  *
- * Channel-wide rather than per-match, so it lives in the left column beside the lists. The
- * server refuses to name a winner from two uploads; this just renders what it says.
+ * Two tables: text vs no text first, because that is the question the hook change was made to
+ * answer, and pose second, which barely moves CTR. Channel-wide rather than per-match, so it
+ * lives in the left column beside the lists. The server refuses to name a winner from two
+ * uploads; this just renders what it says.
  */
 async function loadAbTest() {
   const el = $("#abtest");
@@ -289,16 +298,23 @@ async function loadAbTest() {
     el.innerHTML = note + err + '<div class="empty">nothing to compare yet</div>';
     return;
   }
-  el.innerHTML = `${note}${err}
+  const byHook = data.byHook ?? [];
+  const hookTable = !byHook.length
+    ? ""
+    : `<table class="abtable">
+      <thead><tr><th>Thumbnail text</th><th>Videos</th><th>Impressions</th><th>CTR</th></tr></thead>
+      <tbody>${byHook
+        .map((r) => `<tr><td>${HOOK_LABEL[String(r.hook)]}</td>${reachCells(r)}</tr>`)
+        .join("")}</tbody>
+    </table>`;
+  el.innerHTML = `${note}${err}${hookTable}
     <table class="abtable">
       <thead><tr><th>Variant</th><th>Videos</th><th>Impressions</th><th>CTR</th></tr></thead>
       <tbody>${data.rows
         .map(
           (r) => `<tr class="${r.fellBack ? "warn" : ""}">
             <td>${esc(r.variant)}${r.fellBack ? " *" : ""}</td>
-            <td>${r.videos}</td>
-            <td>${r.impressions.toLocaleString()}</td>
-            <td>${r.ctr === null ? "&mdash;" : (r.ctr * 100).toFixed(2) + "%"}</td>
+            ${reachCells(r)}
           </tr>`,
         )
         .join("")}</tbody>

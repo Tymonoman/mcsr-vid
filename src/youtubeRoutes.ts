@@ -388,6 +388,44 @@ async function uploadsPayload() {
   }
 }
 
+/** One text-vs-no-text bucket. `hook: null` is "no manifest said", not "no". */
+export interface HookGroup {
+  hook: boolean | null;
+  videos: number;
+  impressions: number;
+  ctr: number | null;
+}
+
+/**
+ * The comparison the hook change was made to answer: thumbnails with the headline against the
+ * text-free control, pooled across every pose.
+ *
+ * Videos whose manifest or variant is gone group under `hook: null` rather than being guessed
+ * into a side — a guess here moves impressions onto whichever answer the table is meant to
+ * produce. Empty buckets are dropped so the client renders what exists.
+ *
+ * CTR stays impression-weighted (`totalReach`): averaging per-video percentages would let a
+ * 40-impression upload outvote a 40,000-impression one.
+ */
+export function groupByHook(
+  entries: { hook: boolean | null; reach: { impressions: number; weightedCtr: number } | null }[],
+): HookGroup[] {
+  const buckets: (boolean | null)[] = [true, false, null];
+  return buckets
+    .map((hook) => {
+      const mine = entries.filter((e) => e.hook === hook);
+      const impressions = mine.reduce((n, e) => n + (e.reach?.impressions ?? 0), 0);
+      const weighted = mine.reduce((n, e) => n + (e.reach?.weightedCtr ?? 0), 0);
+      return {
+        hook,
+        videos: mine.length,
+        impressions,
+        ctr: impressions > 0 ? weighted / impressions : null,
+      };
+    })
+    .filter((g) => g.videos > 0);
+}
+
 /**
  * CTR grouped by thumbnail variant.
  *
@@ -398,7 +436,8 @@ async function uploadsPayload() {
  */
 async function abTestPayload() {
   const records = await allUploads();
-  if (records.length === 0) return { rows: [], note: "Nothing uploaded yet.", impressionsError: null };
+  if (records.length === 0)
+    return { rows: [], byHook: [], note: "Nothing uploaded yet.", impressionsError: null };
 
   let impressions: ImpressionsRow[] = [];
   let impressionsError: string | null = null;
@@ -418,6 +457,8 @@ async function abTestPayload() {
     string,
     { videos: number; impressions: number; weightedCtr: number; fellBack: boolean }
   >();
+  const hookEntries: { hook: boolean | null; reach: { impressions: number; weightedCtr: number } | null }[] =
+    [];
   for (const { matchId, record } of records) {
     const key = record.thumbnailVariant ?? "(unknown)";
     const manifest = await readManifest(path.join(config.mediaDir, String(matchId)));
@@ -425,6 +466,8 @@ async function abTestPayload() {
     const fellBack = variant
       ? variant.leftProvider !== "starlight" || variant.rightProvider !== "starlight"
       : false;
+
+    hookEntries.push({ hook: variant?.hook ?? null, reach: byVideo.get(record.videoId) ?? null });
 
     const acc = groups.get(key) ?? { videos: 0, impressions: 0, weightedCtr: 0, fellBack: false };
     acc.videos += 1;
@@ -457,5 +500,5 @@ async function abTestPayload() {
           ? "Some variants fell back to the static NMSR render, so their pose names are not distinct images."
           : null;
 
-  return { rows, note, impressionsError };
+  return { rows, byHook: groupByHook(hookEntries), note, impressionsError };
 }
