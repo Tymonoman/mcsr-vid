@@ -103,7 +103,9 @@ the page is newer than its server: the nightly strip detects that (the old serve
   (`src/suggestPresent.ts`): current rank, match-start elo, head-to-head record, Twitch followers,
   VOD expiry. Head-to-head costs one `getVersus` call per *newly scored* match and is pooled in
   `/media/.suggest-cache.json` (`CACHE_VERSION` in `src/suggest.ts`; bumping it makes the next
-  scan re-fetch everything, ~340 MCSR API calls against 500/10 min).
+  scan re-fetch everything, ~340 MCSR API calls against 500/10 min). The list is scanned at boot
+  and on the `rescan` link, nothing else; the scan line says how old it is ("scanned 16h ago")
+  and the nightly strip says how old the last run is, because both looked the same at any age.
 - **Rival posts** (`src/rivalPosts.ts`): the competitor's last fifty uploads (`rivalChannelHandle`,
   default `mcsrmatches`; 2 quota units, refreshed every six hours, fire-and-forget from the
   suggestions route) are matched against the cards by normalised nickname pair within ten days

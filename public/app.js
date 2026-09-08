@@ -1002,6 +1002,12 @@ async function refresh() {
 
 let nightly = null;
 
+/** "16h ago" — coarse on purpose: the question is thirty minutes or three days, not the minute. */
+function ago(t) {
+  const m = Math.max(0, Math.round((Date.now() - new Date(t).getTime()) / 60000));
+  return m < 60 ? `${m}m ago` : m < 2880 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`;
+}
+
 function nightlyInner() {
   if (!nightly) return '<div class="lines"><span class="muted">nightly&hellip;</span></div>';
   if (nightly.stale) {
@@ -1026,6 +1032,8 @@ function nightlyInner() {
   // "Last run", not "last night": the Run now button records here too, and a label that lied
   // about when it happened would be worse than a slightly duller one.
   let last = '<span class="muted">Last run: never</span>';
+  // With its age in the line: "done" from last night and "done" from a week ago looked the same.
+  const lastLabel = lastRun ? `Last run ${ago(lastRun.startedAt)}:` : "Last run:";
   if (lastRun) {
     // The morning click: the record names a match that is (usually) on the shelf now, and the
     // strip is the first thing the operator reads. A match that has since been deleted stays
@@ -1051,7 +1059,7 @@ function nightlyInner() {
           ? ' <span class="bad">+ export failed</span>'
           : "";
     const cls = lastRun.outcome === "done" ? "ok" : lastRun.outcome === "failed" ? "bad" : "muted";
-    last = `Last run: ${who}<span class="${cls}">${esc(lastRun.outcome + why)}</span>${short}${exported}`;
+    last = `${lastLabel} ${who}<span class="${cls}">${esc(lastRun.outcome + why)}</span>${short}${exported}`;
   }
 
   const failed = nightly.runError ? `<div class="bad">Run now failed: ${esc(nightly.runError)}</div>` : "";
@@ -1135,7 +1143,10 @@ function renderSuggestions(data) {
     ? `<div class="scanline">scanning&hellip; ${data.scanned} matches, ${data.candidates} with two VODs</div>`
     : data.error
       ? `<div class="scanline bad">scan failed: ${esc(data.error)}</div>`
-      : `<div class="scanline">${data.scanned ? `${data.scanned} scanned, ${data.candidates} with two VODs` : "list from the last scan"}${data.note ? ` &middot; ${esc(data.note)}` : ""} &middot; <a href="#" data-act="rescan" title="Scan again now (~340 MCSR API calls). The list refreshes itself every 30 minutes.">rescan</a></div>`;
+      : // How old the list is, in the line: at 22:00 the question is whether this is tonight's
+        // feed or last week's, and the answer was only in a tooltip. The server scans at boot and
+        // on this link, nothing else, so the age is worth reading.
+        `<div class="scanline">scanned ${data.scannedAtMs ? ago(data.scannedAtMs) : "earlier"}${data.stats ? ` &middot; ${data.stats.matchesScanned} matches, ${data.stats.candidates} with two VODs` : ""}${data.note ? ` &middot; ${esc(data.note)}` : ""} &middot; <a href="#" data-act="rescan" title="Scan again now (~340 MCSR API calls). The list is scanned at boot and on this link.">rescan</a></div>`;
 
   // The two words on every card, explained once. The stage strip had the same gap: labels that
   // are obvious to whoever wrote the scorer and to nobody else.
