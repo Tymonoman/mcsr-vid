@@ -4,6 +4,9 @@ let STAGES = { order: [], labels: {}, short: {} };
 let showHidden = false;
 let matches = [];
 let selected = null;
+// The competitor's handle as the suggestions payload names it; the list's order line reads it too.
+let rivalHandle = null;
+const rivalHandleOrDefault = () => rivalHandle ?? "mcsrmatches";
 let stream = null;
 /** The encode progress stream for the selected match; closed when another match is opened. */
 let exportStream = null;
@@ -43,9 +46,18 @@ function renderList() {
   // which is exactly where this dashboard gets used.
   const legend = `<div class="legend">${STAGES.order
     .map((s) => `<span title="${esc(STAGES.labels[s])}">${esc(STAGES.short[s] ?? STAGES.labels[s])}</span>`)
-    .join("")}</div>`;
+    .join(
+      "",
+    )}</div><div class="listorder">ready to publish first &middot; then the ones @${esc(rivalHandleOrDefault())} already posted &middot; then in progress &middot; published last</div>`;
 
-  const visible = showHidden ? matches : matches.filter((m) => !m.hidden);
+  // In the order the morning asks its question: what do I upload next? Ready first, the ready
+  // ones the competitor already posted after them, then what is still in progress, and what is
+  // published last — newest first within each. The server's newest-first order was right for
+  // finding what just rendered and wrong for a shelf of four finished MP4s and a published one.
+  const stage = (m) => (m.uploaded ? 3 : m.exported ? (m.rivalPosted ? 1 : 0) : 2);
+  const visible = (showHidden ? matches : matches.filter((m) => !m.hidden))
+    .slice()
+    .sort((a, b) => stage(a) - stage(b) || b.matchId - a.matchId);
   const hiddenCount = matches.filter((m) => m.hidden).length;
   // The morning's number: finished MP4s nobody has published. Hidden matches are out of it, so
   // parking an old one keeps the count honest.
@@ -1153,6 +1165,7 @@ let lastDismissed = null;
 let suggestData = null;
 
 function renderSuggestions(data) {
+  if (data.rivalHandle) rivalHandle = data.rivalHandle;
   suggestData = data;
   const el = $("#suggestions");
   $("#tab-suggestions").textContent =

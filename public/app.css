@@ -404,6 +404,13 @@ pre {
 
 /* Row controls sit inside the card, which is itself a click target, so they need to read as
    separate affordances rather than decoration. Small and quiet until the delete arms itself. */
+.listorder {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--muted);
+  padding: 6px 12px 8px;
+  border-bottom: 1px solid var(--panel-edge);
+}
 .rowacts {
   display: flex;
   gap: 6px;
