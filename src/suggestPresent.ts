@@ -142,9 +142,7 @@ export function presentSuggestions(
 
 /**
  * The suggestions themselves in the order the dashboard shows them. The nightly render picks the
- * first eligible one, and it must be the card the operator sees at the top — the raw suggester
- * order put "cornflakesmcsr vs Ranik_" on the strip while the first card was "Aquacorde vs
- * Infume" with 86k followers between them.
+ * first eligible one, so it must be the card the operator sees at the top.
  */
 export function orderForDisplay(
   suggestions: readonly Suggestion[],

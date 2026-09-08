@@ -101,17 +101,14 @@ export async function deleteMatch(matchId: number): Promise<DeleteResult> {
  *
  * Uploading is manual while the YouTube API compliance audit is pending (videos.insert would
  * lock every upload private), so "is this match actually out the door?" lives in the operator's
- * head. Eight facts answer it, and only three are worth storing: the other five are already on
- * disk, and a stored copy of a derivable fact is just a second thing that can be wrong.
+ * head. Ten facts answer it; the five that happen in Studio or in a DM are stored here, the rest
+ * are read off disk, because a stored copy of a derivable fact is a second thing that can be wrong.
  */
 
 /** The facts nothing in this repo can see, because they happen in Studio or in a DM. */
 // endScreenSet: end screens and cards have no API and are the cheapest session-time lever on the
 // platform — a viewer who finishes one match is offered the next one by the channel, not by
 // the algorithm. The rivalry playlist link in the description only helps the ones who scroll.
-// uploaded: derived from youtube.json when the dashboard did the upload, and a tick while uploads
-// go through Studio (the API audit is pending) — otherwise the fact never ticks and the list's
-// "ready to publish" count never drops.
 export const MANUAL_PUBLISH_KEYS = [
   "uploaded",
   "shortUploaded",
@@ -143,7 +140,7 @@ function readManual(matchId: number): Record<ManualPublishKey, boolean> {
     stored = JSON.parse(readFileSync(publishPath(matchId), "utf8")) as typeof stored;
   } catch {
     // Missing and corrupt both mean "nothing ticked yet", which is the recoverable answer: the
-    // operator re-ticks three boxes rather than the detail panel refusing to open.
+    // operator re-ticks the five manual boxes rather than the detail panel refusing to open.
   }
   return Object.fromEntries(MANUAL_PUBLISH_KEYS.map((k) => [k, stored[k] === true])) as Record<
     ManualPublishKey,

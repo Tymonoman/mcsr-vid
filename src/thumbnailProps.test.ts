@@ -6,8 +6,7 @@ import type { MatchInfo, UserDetails } from "./types.js";
 const realFetch = globalThis.fetch;
 
 // Every configured pose resolves to its own NMSR camera, so the three variants are three
-// different silhouettes. When this regressed (Starlight Skins going down), all three were the
-// same image and the CTR table was comparing a variable that never varied.
+// different silhouettes; without that the CTR table compares a variable that never varied.
 {
   const walking = await resolveAvatarUrl("uuid-1", "walking");
   const crossed = await resolveAvatarUrl("uuid-1", "crossed");

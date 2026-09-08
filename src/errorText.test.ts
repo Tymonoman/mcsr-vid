@@ -26,7 +26,7 @@ const wrapped = new Error("render failed", { cause: new Error("chrome-headless-s
 assert.match(describeError(wrapped), /render failed/);
 assert.match(describeError(wrapped), /caused by: chrome-headless-shell died/);
 
-// Non-Error throws used to stringify to "[object Object]" or vanish into an empty template slot.
+// Non-Error throws must still produce text.
 assert.equal(describeError("plain string"), "plain string");
 assert.equal(describeError({ code: "ENOENT" }), '{"code":"ENOENT"}');
 const circular: Record<string, unknown> = {};

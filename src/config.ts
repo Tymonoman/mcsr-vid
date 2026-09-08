@@ -3,7 +3,7 @@ import path from "node:path";
 import { DEFAULT_WEIGHTS, type ScoreWeights } from "./matchScore.js";
 
 export interface Config {
-  /** Starlight Skins pose name for the left/right player's avatar (overlay + thumbnail). */
+  /** Pose name for the left/right player's avatar (overlay + thumbnail); see POSE_CAMERAS in src/avatarUrl.ts. */
   leftPose: string;
   rightPose: string;
   /**
@@ -11,11 +11,10 @@ export interface Config {
    * poses earn clicks. The first entry is what `thumbnail.png` becomes unless you pick another
    * in the dashboard, so keep `leftPose`/`rightPose` first to preserve the current look.
    *
-   * Pose names map to NMSR camera settings in `src/avatarUrl.ts` (`POSE_CAMERAS`) — Starlight
-   * Skins, which rendered real poses, is gone, and every name here must have an entry there or
-   * the variant renders NMSR's default view and the dashboard flags it as a fallback. Measured
-   * on 2026-09-07: all six names below produce visibly different silhouettes, so CTR grouped by
-   * pose compares a variable that actually varies.
+   * Pose names map to NMSR camera settings in `src/avatarUrl.ts` (`POSE_CAMERAS`). Every name
+   * here must have an entry there with a distinct silhouette, or the variant renders NMSR's
+   * default view — the dashboard flags it as a fallback — and CTR grouped by pose compares a
+   * variable that never varied.
    *
    * `hook: false` renders that pair without the title headline. Pose barely moves clicks, so a
    * set that varies only pose cannot answer the question the channel actually has — does text on
@@ -38,10 +37,8 @@ export interface Config {
    */
   youtubeChannelId: string;
   /**
-   * Standing YouTube Reporting API job producing `channel_reach_basic_a1`. That report is the
-   * only source of per-video thumbnail impressions and CTR — the Analytics API does not expose
-   * them — so thumbnail A/B testing reads this and nothing else. Reports land ~48h after the
-   * day they cover, so a video uploaded today will have no row yet.
+   * Standing YouTube Reporting API job producing `channel_reach_basic_a1`, the only source of
+   * per-video thumbnail impressions and CTR (see src/youtube.ts).
    */
   youtubeReportingJobId: string;
   /**
@@ -74,9 +71,9 @@ export interface Config {
   /**
    * Where the PC that publishes pulls finished files *from*, as an rsync/ssh target — e.g.
    * `homelab@actimel:/home/homelab/mcsr-media`, which is this container's `/media` seen from
-   * the lab host (compose bind mount), not the container path. A pull rather than a push: this
-   * image has rsync but no ssh client, and the PC already reaches the lab. Empty string hides
-   * the publish kit's pull block; nothing here is ever executed by the server (src/publishSet.ts).
+   * the lab host (compose bind mount), not the container path. A pull target, not a push (see
+   * src/publishSet.ts). Empty string hides the publish kit's pull block; nothing here is ever
+   * executed by the server.
    */
   pullSource: string;
   /** Where those files land on the PC. `~` is expanded by the operator's own shell. */
@@ -101,20 +98,14 @@ export interface Config {
    */
   overlayFps: number;
   /**
-   * Parallel browser tabs used to render frames. null = Remotion's default, which is
-   * round(min(8, cores/2)) — 2 on the lab.
-   *
-   * A lower number used to render faster here, because each tab held a full 1080p page. Since
-   * the overlay render was cut down to a 480x346 strip that is no longer true: measured on the
-   * lab at 1920x346, concurrency 1/2/4 gave 6.8/8.2/10.3 fps, so 4 (all four cores) wins by
-   * 25% over the default. Raising it further is refused by Remotion, which caps concurrency at
-   * the core count.
+   * Parallel browser tabs used to render frames. null = Remotion's default,
+   * round(min(8, cores/2)) — 2 on the lab. Remotion caps this at the core count.
    */
   renderConcurrency: number | null;
   /**
    * Hour of day (UTC, 0-23) at which the dashboard starts one render by itself, or null to
-   * never. 3 is 05:00 in Poland: the lab is idle, and a 30-45 minute render is finished long
-   * before anyone looks, which is the whole point — the bottleneck on output is operator
+   * never. 3 is 05:00 in Poland: the lab is idle, and a render that runs unattended is finished
+   * long before anyone looks, which is the whole point — the bottleneck on output is operator
    * minutes, not compute, so the morning question becomes "publish this?" with a preview
    * rather than "render this?" with a chart. See src/nightly.ts for what it will and won't do.
    */
@@ -122,7 +113,7 @@ export interface Config {
   /**
    * Whether a clean nightly render is followed by a Short of the same match, cut with the top
    * moment (`--pick=0`). On by default: the VODs are already on disk, the cut costs a couple of
-   * minutes next to the render's 30-45, and Shorts are the only surface on the channel that
+   * minutes next to the render itself, and Shorts are the only surface on the channel that
    * reaches people who have never heard of it. Only `done` chains one — a failed or aborted
    * pipeline has nothing to cut from, and an abort is the operator saying stop.
    */
@@ -167,8 +158,8 @@ export interface Config {
   /**
    * Caps on a single scan. Only ~2% of ranked matches have the two VODs the pipeline
    * needs, so the feed is paged (100 matches per request) until enough candidates turn
-   * up; each survivor then costs one more request for its timeline. Worst case here is
-   * ~65 requests against a 500-per-10-minute budget.
+   * up; each survivor then costs one more request for its timeline. Worst case here is ~160
+   * requests (120 detail fetches plus ~40 feed pages) against a 500-per-10-minute budget.
    */
   suggestMaxScanRequests: number;
   suggestDetailFetchLimit: number;
@@ -228,10 +219,8 @@ const DEFAULTS: Config = {
   suggestChaosSlots: 2,
   suggestCacheTtlMin: 30,
   suggestMaxScanRequests: 40,
-  // Measured: only ~10% of dual-VOD matches have a comparable finish (usually the loser
-  // stops once the winner is done), so filling eight close slots needs a shortlist well
-  // past eight. 120 detail fetches plus ~40 feed pages is ~160 of the 500-per-10-min
-  // budget.
+  // Only ~10% of dual-VOD matches have a comparable finish (usually the loser stops once the
+  // winner is done), so filling eight close slots needs a shortlist well past eight.
   suggestDetailFetchLimit: 120,
   suggestFastRunTargetSec: 420,
   suggestSlowRunCutoffSec: 600,

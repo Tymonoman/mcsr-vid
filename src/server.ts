@@ -65,8 +65,8 @@ const MCSR_MATCH_URL = "https://mcsrranked.com/matches/";
 
 /**
  * The page's own assets. An explicit allowlist rather than serving public/ as a directory,
- * because a listing can be walked and this cannot. There are several because both the
- * stylesheet and the script outgrew CLAUDE.md's 500-line cap.
+ * because a listing can be walked and this cannot. There are several because the stylesheet
+ * and the script are split by feature.
  */
 const STATIC_ASSETS: Record<string, { file: string; type: string }> = {
   "/app.css": { file: "app.css", type: "text/css; charset=utf-8" },
@@ -117,8 +117,7 @@ function metaPaths(matchId: number, kind: "title" | "description") {
 }
 
 async function readMeta(matchId: number) {
-  // One API request, not one per existing match directory: this used to go through
-  // listMatchStatuses purely to read two nicknames for the hook budget.
+  // One API request; the list variant costs one per match directory.
   const entry = await matchStatusFor(matchId);
 
   const title = metaPaths(matchId, "title");
@@ -200,10 +199,9 @@ async function readHookSuggestions(matchId: number, budget: BuiltTitle): Promise
       versus,
     };
     const hooks = (await suggestHooksExternally(input)) ?? buildHookSuggestions(input);
-    // The thumbnail already says something — lead with that. Rank chips read the live ladder,
-    // which moved from "#9 vs #3" to "#9 vs #2" within hours of a render, and a title that
-    // disagrees with its own thumbnail is the kind of thing viewers notice and cannot name.
-    // "Re-render with hook" rewrites the manifest, so choosing differently is still one click.
+    // Rank chips read live rank and drift within hours; the thumbnail's committed line wins so
+    // both halves of a match agree. "Re-render with hook" rewrites the manifest, so choosing
+    // differently is still one click.
     const committed = (await readManifest(matchDir(matchId)))?.hookText;
     return committed ? [committed, ...hooks.filter((h) => h !== committed)] : hooks;
   } catch (err) {
@@ -214,9 +212,8 @@ async function readHookSuggestions(matchId: number, budget: BuiltTitle): Promise
 
 /**
  * `?short=1` / `?export=1` on either render route — the entry box's and the card's "Render +
- * Short + MP4": the same render, plus a note that nightly.ts's completion poll — the only
- * poller, and the nightly's own — should cut the Short and encode the MP4 when it settles.
- * Nothing about the render itself changes, and one poll serves both flags.
+ * Short + MP4": the same render, plus a note for `afterSettled` (nightly.ts) to chain the Short
+ * and the MP4. Nothing about the render itself changes.
  */
 function armFollowUps(job: Job, url: URL): void {
   const wantShort = url.searchParams.get("short") === "1";
@@ -325,12 +322,12 @@ const server = createServer(async (req, res) => {
       return;
     }
 
-    // Delegated rather than inlined: server.ts was already at the 500-line cap, and the YouTube
-    // group is the largest single addition. It returns false for anything it does not own.
+    // Delegated rather than inlined: the YouTube group is its own route file. It returns false
+    // for anything it does not own.
     if (await handleYoutubeRoute(req, res, segments, { json, readBody, matchDir, parseId })) return;
 
-    // Same reason, same shape: the export round-trip (project down, cut project back, encode,
-    // finished MP4 down) is its own group and this file is at the cap.
+    // Same shape: the export round-trip (project down, cut project back, encode, finished MP4
+    // down) is its own group.
     if (await handleExportRoute(req, res, segments, { json, readBody, matchDir, parseId })) return;
 
     if (await handleShortsRoute(req, res, segments, { json, readBody, matchDir, parseId })) return;
@@ -448,10 +445,10 @@ const server = createServer(async (req, res) => {
       return;
     }
 
-    // The scheduler's only window. It was a timer and a log line, both gone by morning, so the
-    // operator could not see what it would pick or what it did. `candidate` runs the very same
-    // `pickNightlyCandidate` the run does — a second implementation here would eventually
-    // promise one match and render another — and deliberately never forces a scan.
+    // The scheduler's only window: what it will pick tonight and what the last run did.
+    // `candidate` runs the very same `pickNightlyCandidate` the run does — a second
+    // implementation would eventually promise one match and render another — and never
+    // forces a scan.
     if (resource === "nightly" && idRaw === undefined && req.method === "GET") {
       const hourUtc = config.nightlyRenderHourUtc;
       const pick = await nightlyCandidate();

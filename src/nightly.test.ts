@@ -62,7 +62,7 @@ assert.equal(
 assert.equal(pickNightlyCandidate(ranked, { ...roomy, processedIds: [1, 2, 3, 4] }), null);
 assert.equal(pickNightlyCandidate([], roomy), null);
 
-// A match is ~7 GB. Starting one with a single slot left means a render that dies at the write
+// A match is ~2 GB. Starting one with a single slot left means a render that dies at the write
 // stage, having burned the night; unknown capacity is reported as 0 and must behave the same.
 assert.equal(pickNightlyCandidate(ranked, { ...roomy, freeMatches: 1 }), null);
 assert.equal(pickNightlyCandidate(ranked, { ...roomy, freeMatches: 0 }), null);

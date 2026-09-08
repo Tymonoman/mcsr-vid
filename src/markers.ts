@@ -8,10 +8,7 @@ import type { KdenliveMarkerInput } from "./kdenliveProject.js";
  * match start sits at `anchorSec` on the timeline, so a split's position is simply
  * `anchorSec + ms/1000`.
  *
- * This was inline in pipeline.ts as `maxOffset - clip.matchOffsetIntoClipSec + ms/1000`, which
- * cancelled to roughly `ms/1000` because maxOffset *was* the POV clip's offset — putting every
- * guide about 150 seconds early, near the head of the timeline instead of on the split. It is a
- * pure function here so that it can be tested; nothing covered it before.
+ * Pure, so it can be tested.
  */
 export function buildSplitMarkers(opts: {
   splits: SplitRow[];

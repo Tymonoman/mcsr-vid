@@ -1,9 +1,8 @@
 /**
  * Renders one thumbnail per pose pair so there is something to A/B test later.
  *
- * Three things make this cheaper than three separate renders: the webpack bundle is built once,
- * the composition is selected once, and only `renderStill` repeats. Today's single-thumbnail
- * path rebuilt the bundle on every call, so three variants cost well under three times as much.
+ * The webpack bundle (src/remotionBundle.ts) and the composition are resolved once; only
+ * `renderStill` repeats per variant, so three variants cost well under three separate renders.
  *
  * The chosen variant is copied to `thumbnail.png`. Every existing consumer — the pipeline's
  * skip check, matchStatus, the CLI, the dashboard's image route — matches that exact literal
@@ -194,10 +193,7 @@ export async function renderThumbnailVariants(args: RenderVariantsArgs): Promise
       // Skip per variant, not per match: adding a fourth pose to the config should render only
       // the fourth, and a re-run after an aborted batch should not redo the ones that landed.
       // The manifest must still list it, which is why the record is pushed above this check.
-      // But only a PNG rendered with *this* text is reusable. The previous manifest says what
-      // its stills carry: a different headline there means a still kept now would be recorded
-      // with text it never had. No manifest at all is the aborted batch — resume it — and the
-      // control variant carries no text, so its still is good whatever the headline.
+      // Only a PNG rendered with *this* text is reusable — see variantStillReusable.
       if (existsSync(outPath) && variantStillReusable(previous, poses, hookText)) continue;
 
       const bundleUrl = await serveUrl();

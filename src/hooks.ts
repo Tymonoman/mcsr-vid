@@ -61,15 +61,11 @@ const seconds = (ms: number): string => (ms / 1000).toFixed(1).replace(/\.0$/, "
 /**
  * The facts, ranked. Order here is the tiebreak when several apply, and it is deliberate.
  *
- * Rivalry framing outranks everything, by measurement rather than taste. Across the first seven
- * published videos the hook *style* split CTR with no overlap: the three "X vs Y" hooks (YN vs
- * TAS 9.61%, UNC vs CATBOY 8.33%, WANNABE vs REAL GOAT 8.04%) weighted to 9.36%, while the four
- * descriptive/event/joke hooks (INSANELY CLOSE MATCHUP 3.75%, "They REALLY think they'll get
- * RANK #1" 3.29%, SILENT ACCEPTANCE 3.25%, DON'T DIG STRAIGHT DOWN KIDS 2.01%) weighted to
- * 2.25%. A contrast between two people is a reason to click; a description of the match is not.
- * So every rivalry candidate sits in the 100-130 band and every descriptive one below it, which
- * means a descriptive hook reaches the top of the list only when the match has no rivalry to
- * state — the dashboard used to nudge the operator into the 2.25% format on every upload.
+ * Rivalry framing outranks everything: the channel audit measured rivalry hooks at 9.36% CTR
+ * against 2.25% for descriptive ones (see CLAUDE.md). A contrast between two people is a reason
+ * to click; a description of the match is not. So every rivalry candidate sits in the 100-130
+ * band and every descriptive one below it, and a descriptive hook reaches the top of the list
+ * only when the match has no rivalry to state.
  *
  * Within the rivalry band a shared history beats an upset beats a ranking beats a rating gap,
  * because that is how much of a story each one carries. Within the descriptive band the old
@@ -81,8 +77,7 @@ function candidates(input: HookInput): Candidate[] {
   const { finishMarginMs, leadChanges, maxSwingMs, deaths, resultMs, winner } = metrics;
 
   // --- Rivalry framing (100-130) ----------------------------------------------------------
-  // Match-time elo, not live elo: reading the rating at render time once turned a real
-  // 106-point gap into a displayed 245-point one (see src/description.ts).
+  // Match-time elo, not live elo: the live rating is the one now, not the one carried in.
   const leftElo = eloAtMatchStart(match, userLeft.uuid, userLeft.eloRate);
   const rightElo = eloAtMatchStart(match, userRight.uuid, userRight.eloRate);
 
@@ -90,9 +85,8 @@ function candidates(input: HookInput): Candidate[] {
     const leftWins = versus.results.ranked[userLeft.uuid] ?? 0;
     const rightWins = versus.results.ranked[userRight.uuid] ?? 0;
     // Both sides have to have won one for this to read as a rivalry. A one-sided record gets
-    // no chip; a first meeting gets a descriptive one — the active competitor's "Their First
-    // 1v1" drew 4.9k views against its 3.3k median (8 Sept 2026), so it is a reason to click,
-    // if a weaker one than a close finish.
+    // no chip; a first meeting gets a descriptive one — a reason to click, if a weaker one than
+    // a close finish.
     if (leftWins >= 1 && rightWins >= 1) {
       const leader = leftWins >= rightWins ? userLeft.nickname : userRight.nickname;
       const hi = Math.max(leftWins, rightWins);
@@ -239,8 +233,8 @@ export function hookFacts(input: HookInput) {
 /**
  * Runs `HOOK_SUGGEST_CMD` with the match facts on stdin, one suggestion per stdout line.
  *
- * Deliberately a command rather than a client for any particular tool: the antigravity CLI is
- * not set up yet, and whatever ends up generating these should be swappable without a release.
+ * Deliberately a command rather than a client for any particular tool, so whatever generates
+ * these can be swapped without a release.
  * Any failure — unset, missing binary, timeout, empty output — falls back to the built-ins,
  * because an empty hook box is a worse outcome than a less clever hook.
  */

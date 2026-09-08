@@ -17,11 +17,8 @@ import {
  * bottom. The two gameplay panes are transparent holes the POV clips show through.
  *
  * Rendered as two *stills*, not video, for the same reason the 16:9 overlay is: nothing here
- * moves. As a 900-frame VP9 render this took about ten minutes to produce thirty seconds of
- * furniture; as two PNGs it takes a couple of seconds, and ffmpeg fades the hook out on its own.
- * The one thing that would genuinely animate — a live RTA counter — is deliberately a static
- * "at 6:42" label instead: neither reference channel runs a timer on their Shorts, and it is
- * not worth reintroducing a per-frame render for.
+ * moves, and ffmpeg fades the hook out on its own. The one thing that would animate — a live
+ * RTA counter — is a static "at m:ss" label instead, as on both reference channels.
  */
 
 function Nameplate({

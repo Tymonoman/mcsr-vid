@@ -155,11 +155,9 @@ export async function handleShortsRoute(
         5,
       );
 
-      // What a render would actually burn in, which is usually not the per-moment line: an
-      // edited title hook or a ranked suggestion outranks it, and the panel showing the third
-      // choice while the render uses the first is how you disagree with a hook you never saw.
-      // Resolved for the top moment, the one the panel offers as the default — a lower pick
-      // differs only in the fallback, which is the case that loses to both other sources anyway.
+      // What a render would actually burn in (see resolveShortHook), which is usually not the
+      // per-moment line. Resolved for the top moment, the panel's default — a lower pick differs
+      // only in the fallback.
       const top = moments[0];
       let hook: string | null = null;
       if (top) {

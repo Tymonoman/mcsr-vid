@@ -2,10 +2,9 @@
  * The pipeline's progress vocabulary: what a stage is, what it reports, and how sub-steps that
  * report their own 0-100 are folded into one honest number.
  *
- * Split out of pipeline.ts because that file crossed the 500-line cap once stage timing and
- * error attribution landed, and because this half is pure and therefore testable on its own
- * (src/stageProgress.test.ts) — the progress bugs it fixes were arithmetic, not orchestration.
- * pipeline.ts re-exports everything public here, so no consumer imports this directly.
+ * Split out of pipeline.ts because this half is pure and therefore testable on its own
+ * (src/stageProgress.test.ts). pipeline.ts re-exports everything public here, so no consumer
+ * imports this directly.
  */
 import type { RenderProgress } from "./overlayRender.js";
 import type { ThumbnailProgress } from "./thumbnailRender.js";
@@ -17,9 +16,8 @@ export const STAGE_ORDER: StageId[] = ["fetch", "download", "sync", "render", "t
 export const STAGE_LABELS: Record<StageId, string> = {
   fetch: "Fetch match data",
   download: "Download VODs",
-  // Not "Audio sync check" any more: alignment is read off the countdown freeze in the picture
-  // (src/countdownDetect.ts), and audio is only the fallback. The old name described the thing
-  // that was replaced because it did not work.
+  // Sync reads the countdown freeze in the picture (src/countdownDetect.ts); audio is the
+  // fallback.
   sync: "Sync check",
   render: "Render overlay",
   thumbnail: "Render thumbnail",
@@ -42,10 +40,8 @@ export const STAGE_SHORT_LABELS: Record<StageId, string> = {
 };
 
 /**
- * `warn` is a stage that finished but not cleanly — the sync refinement failing or landing under
- * the confidence threshold, where the pipeline carries on with the coarse offset. It used to
- * report plain `done`, which made a broken sync indistinguishable from a good one unless you
- * read the message text.
+ * `warn` is a stage that finished but not cleanly — sync failing or landing under the confidence
+ * threshold, where the pipeline carries on with the coarse offset.
  */
 export type StageStatus = "pending" | "active" | "done" | "warn" | "error";
 
@@ -64,17 +60,16 @@ export interface StageEvent {
 /**
  * Sub-steps of a stage, as `[start, end]` bands of that stage's own 0-100.
  *
- * A stage that runs several renders back to back can only report progress per render, so
- * forwarding those percentages raw made the bar climb to 100 and reset once per sub-step. The
- * bands are rough measurements, not knobs to tune: the splits band dominates the overlay
+ * A stage that runs several renders back to back can only report progress per render, so raw
+ * percentages would climb to 100 and reset once per sub-step. The bands are rough measurements,
+ * not knobs to tune: the splits band dominates the overlay
  * render, and the webpack bundle dominates the thumbnail, which is otherwise a single still.
  */
 export type PhaseWeights<P extends string> = Record<P, readonly [number, number]>;
 
 /**
  * The order the overlay render actually runs its sub-steps in. Exported so the weight bands and
- * the test that checks they tile read the same list — the test used to repeat it by hand, and
- * silently stopped covering a phase the moment one was added.
+ * the test that checks they tile read the same list.
  */
 export const RENDER_PHASE_ORDER = ["bundling", "top", "splits", "intro", "rendering"] as const;
 
@@ -109,10 +104,8 @@ export function weighted<P extends string>(weights: PhaseWeights<P>, phase: P, p
  * Overall percent for downloads that run at the same time.
  *
  * `downloadMatchVods` starts both yt-dlp processes under one `Promise.all`, so their progress
- * lines interleave. The previous `(index + percent/100) / total` formula assumed they ran in
- * sequence — it mapped player 0 onto 0-50% and player 1 onto 50-100%, so consecutive events
- * from the two players slammed the bar back and forth between the halves for the entire
- * download. The mean of the latest reading per player is what actually rises monotonically.
+ * lines interleave and the mean of the latest reading per player is the only overall percent
+ * that rises monotonically.
  */
 export function aggregateDownloadPercent(latestByIndex: ReadonlyMap<number, number>, total: number): number {
   if (total <= 0) return 0;
@@ -134,10 +127,7 @@ export interface StageTracker {
 
 /**
  * Stage bookkeeping, kept outside the pipeline body so `runPipeline` can wrap it in a try/catch
- * and emit a terminal `error` event naming the stage that actually died. Previously the pipeline
- * only ever threw: `status: "error"` was never emitted by any code path, so the dashboard printed
- * a possibly multi-KB stderr tail into a one-line status field with no indication of which stage
- * produced it. The TUI worked around this locally by synthesising its own error event.
+ * and emit a terminal `error` event naming the stage that died.
  */
 export function createStageTracker(onEvent: (e: StageEvent) => void): StageTracker {
   const startedAt = new Map<StageId, number>();

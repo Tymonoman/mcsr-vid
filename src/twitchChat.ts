@@ -1,13 +1,12 @@
 /**
- * Twitch VOD chat replay, for the chat panel the active competitor runs and we do not (MCSR
- * Matches shows both players' chats beside the splits; watched 2026-09-08).
+ * Twitch VOD chat replay, for the chat panel the active competitor runs beside the splits and
+ * we do not.
  *
  * Twitch has no public REST endpoint for replayed chat. What exists is the web player's own GQL
  * persisted query, `VideoCommentsByOffsetOrCursor`, which answers without a login when sent
  * with the web client id — the same call TwitchDownloader makes. Paging is by *offset*, not by
  * the cursor the response offers: a cursor request fails Twitch's integrity check without a
- * browser-issued token (measured 2026-09-08), while asking again from the last message's second
- * does not. The overlap that creates is deduplicated by comment id. If Twitch rotates the query
+ * browser-issued token, while asking again from the last message's second does not. The overlap that creates is deduplicated by comment id. If Twitch rotates the query
  * hash this throws with Twitch's own message, which is the failure to look for first.
  */
 
@@ -199,8 +198,8 @@ export const vodIdFromUrl = (url: string): string | null => /videos\/(\d+)/.exec
 /**
  * The two POVs' VOD ids and match offsets, read back from the description the pipeline wrote —
  * `Watch <nick>'s POV: https://www.twitch.tv/videos/<id>?t=<n>s`. The pipeline holds these as
- * `VodWindow`s in memory and persists nothing else with them; until the chat download is a
- * pipeline stage, the description is the durable copy.
+ * `VodWindow`s in memory and persists nothing else with them, so the description is the durable
+ * copy for `npm run chat` on a match rendered before the pipeline saved chat itself.
  */
 export function chatWindowsFromDescription(text: string): ChatWindow[] {
   const out: ChatWindow[] = [];

@@ -75,9 +75,7 @@ const thumbnailDefaultProps: ThumbnailProps = {
   left: {
     nickname: "edcr",
     eloRate: 2700,
-    // Studio-preview defaults use NMSR, not Starlight Skins: the pose renderer is a small free
-    // service that 502s periodically, and unlike the pipeline (resolveAvatarUrl probes and falls
-    // back) hardcoded props have no fallback — a preview shouldn't break on someone else's uptime.
+    // Hardcoded NMSR URLs, the same host the pipeline renders from.
     avatarUrl: "https://nmsr.nickac.dev/fullbody/635f35ee69ed4f0c94ff26ece4818956",
   },
   right: {

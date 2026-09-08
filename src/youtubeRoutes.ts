@@ -1,8 +1,7 @@
 /**
  * The dashboard's YouTube endpoints.
  *
- * Split from server.ts purely for size — that file is already at the 500-line cap — and it
- * keeps the same rule: transport only. Anything resembling a decision belongs in youtube.ts
+ * Split from server.ts for size, and it keeps the same rule: transport only. Anything resembling a decision belongs in youtube.ts
  * (the API) or youtubeStore.ts (what we recorded about a match).
  */
 import { existsSync } from "node:fs";
@@ -229,10 +228,8 @@ async function startUpload(
     ctx.json(res, 400, { error: "title is required" });
     return;
   }
-  // The generated title ships with a literal placeholder for the hand-written hook, and the
-  // browser's YouTube panel pre-fills the field from it. Measured in a real browser: typing a
-  // hook does not rewrite that field, so an operator who trusts the form uploads a video titled
-  // "<HOOK> | ...". Refusing here is the guard that does not depend on any UI getting it right.
+  // Refuse a title still carrying the `<HOOK>` placeholder. The client gates the button too
+  // (youtube.js); this is the half that does not depend on any UI getting it right.
   if (body.title.includes(HOOK_PLACEHOLDER)) {
     ctx.json(res, 400, { error: `title still contains ${HOOK_PLACEHOLDER} — pick a hook first` });
     return;
@@ -355,8 +352,7 @@ async function startUpload(
       };
       await writeUpload(matchId, record);
       // Published is the point the match is finished with, so it is the point worth backing up.
-      // Fire-and-forget: ~7 GB over a 17.7 MB/s CIFS mount is about seven minutes, and the
-      // upload response should not wait on it. Failures land in the server log and in
+      // Fire-and-forget (see archiveMatch's note); failures land in the server log and in
       // GET /api/capacity, not here — a NAS blip must not read as a failed upload.
       archiveMatch(matchId);
     } catch (err) {

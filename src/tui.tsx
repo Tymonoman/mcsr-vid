@@ -214,8 +214,6 @@ function App({ signal }: { signal: AbortSignal }) {
     if (key.ctrl && char === "c") quit(130);
   });
 
-  // Tab, not a letter: ink-text-input passes Tab through untouched, so it can't collide with
-  // typing a match URL into the field below.
   // Shift+Tab for suggestions, plain Tab for history. Both are non-letters, so neither
   // collides with typing a match URL into the field.
   useInput(

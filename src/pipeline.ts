@@ -57,9 +57,8 @@ import { saveChats, vodIdFromUrl } from "./twitchChat.js";
 const FPS = 60;
 
 /**
- * Stage vocabulary, tracker and progress weighting live in ./stageProgress.js — pipeline.ts
- * crossed the 500-line cap and that half is pure, so it is unit-testable on its own. Re-exported
- * here so the seven existing importers of this module do not have to change.
+ * Stage vocabulary, tracker and progress weighting live in ./stageProgress.js because that half
+ * is pure and unit-testable on its own. Re-exported here so importers need not change.
  */
 export {
   STAGE_LABELS,
@@ -183,9 +182,8 @@ async function runStages(
         playerNickname: playerLeft.nickname,
         sourceUrl: vodLeft.url,
         path: pathFor(playerLeft.nickname),
-        // The same offset the download computed, not 0: the chat save and the description's
-        // deep links read this back, and a re-run with 0 fetched the pre-match chat and wrote
-        // `?t=0s` into the description (found on two matches on 2026-09-08).
+        // The offset the download computed, not 0: the chat save and the description's deep
+        // links read it back.
         matchOffsetIntoVodSec: matchStartIntoVodSec(match, vodLeft),
         matchOffsetIntoClipSec: PRE_ROLL_SEC,
       },
@@ -204,10 +202,7 @@ async function runStages(
       match,
       outDir,
       (p) => {
-        // Both downloads run concurrently (vodAcquisition.ts uses Promise.all), so their
-        // progress lines interleave. Averaging the latest percent per player is monotonic;
-        // the previous `(index + pct/100) / total` mapped player 0 to 0-50% and player 1 to
-        // 50-100%, which made the bar jump between the two bands for the whole download.
+        // Concurrent downloads: see aggregateDownloadPercent.
         downloadPercents.set(p.index, p.percent);
         emit(
           active("download", {
@@ -227,10 +222,8 @@ async function runStages(
     throw new Error("Downloaded windows don't match players[0]/players[1].");
   }
 
-  // Chat dies with the VOD, so it is saved here, while the VODs are known to exist, for the
-  // chat panel (src/twitchChat.ts). Best effort and outside the stage list: Twitch rotating its
-  // query must not cost a render, and a match rendered before this existed picks its chat up
-  // on the next run through, since reused downloads pass here too.
+  // Best effort, outside the stage list (see saveChats); reused downloads pass here too, so an
+  // older match picks its chat up on the next run through.
   await saveChats(
     outDir,
     [leftWindow, rightWindow].flatMap((w) => {
@@ -256,9 +249,8 @@ async function runStages(
     syncConfidence = sync.confidence;
     syncDetail = sync.detail;
     if (sync.confidence >= config.syncConfidenceThreshold) {
-      // BOTH offsets, not just the right one. The left clip used to be trusted as-is, which was
-      // survivable while the editor aligned the timeline by hand — now that timeline zero is the
-      // thump, an error in the left clip's estimate moves the whole published video.
+      // BOTH offsets, not just the right one: timeline zero is the thump, so an error in the
+      // left clip's estimate moves the whole published video.
       leftOffsetSec = sync.clipACueTimeSec;
       rightOffsetSec = sync.clipBCueTimeSec;
       emit(done("sync", { message: sync.detail }));
@@ -391,11 +383,9 @@ async function runStages(
     clipName: `${rightWindow.playerNickname} POV`,
     positionRect: RIGHT_POV_RECT,
   };
-  // The overlay ships as four layers rather than one full-frame video, because almost none of
-  // it actually moves: a static top band held as a still, the meta+splits region as a handful
-  // of stills swapped on each split's reveal frame, the RTA column as the only real video, and
-  // the opaque intro card. Rendering the empty middle of the frame — and ~17k identical copies
-  // of everything that never changes — is what made this slow.
+  // The overlay ships as four layers rather than one full-frame video: a static top band, the
+  // meta+splits region as stills swapped on each split's reveal frame, the RTA column as the
+  // only real video, and the opaque intro card (see CLAUDE.md).
   // Their `matchOffsetIntoClipSec` is the overlay lead-in, which equals ANCHOR_SEC, so they sit
   // at timeline 0 untrimmed (see overlayRender.ts and kdenliveProject.ts).
   const overlayClips: KdenliveClipInput[] = [

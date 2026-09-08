@@ -156,8 +156,6 @@ await rm(dir, { recursive: true, force: true });
 console.log("thumbnailVariants: all checks passed");
 
 // --- A still is reused only when it was rendered with this headline -----------------------------
-// Found by review on 2026-09-08: "Re-render with hook" kept the old PNGs and recorded the new
-// text against them.
 {
   const { variantStillReusable } = await import("./thumbnailVariants.js");
   const prev = { chosen: null, hookText: "OLD", variants: [] } as unknown as VariantsManifest;

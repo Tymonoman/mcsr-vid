@@ -21,8 +21,8 @@ import {
  * four of the five are `hstack`/`vstack` — a memcpy — and only the intro, which genuinely fades,
  * needs a real alpha composite.
  *
- * Measured on the lab, 1800 frames: 45.1s here against melt's 171-214s. A full match goes from
- * roughly 49 minutes to 13.
+ * Measured on the lab, 1800 frames: 45.1s here against melt's 171-214s; ~10 min for a full
+ * match.
  *
  * This does not replace the Kdenlive project — that is still what you open when a match needs a
  * human. Both are built from `placeOnTimeline`, so they place every clip identically; deriving
@@ -86,10 +86,8 @@ export function buildFastExportCommand(input: FastExportInput): BuiltCommand {
   args.push("-ss", right.inSec.toFixed(3), "-i", input.rightClip.path);
   args.push("-i", input.topPath);
   args.push("-i", input.timerPath);
-  // libvpx-vp9 explicitly. ffmpeg's *native* vp9 decoder silently drops the alpha side-data, so
-  // without this the intro composites as an opaque card and its fades become hard cuts — the
-  // very bug that moving the intro off ProRes was meant to fix, reintroduced one layer down.
-  // Caught by looking: the frame at t=6.85s, where the card should be ~25% opaque, was solid.
+  // libvpx-vp9 explicitly: ffmpeg's *native* vp9 decoder silently drops the alpha side-data, so
+  // without this the intro composites as an opaque card and its fades become hard cuts.
   args.push("-c:v", "libvpx-vp9", "-i", input.introPath);
   for (const still of input.splits) args.push("-i", still.path);
 

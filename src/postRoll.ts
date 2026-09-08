@@ -5,13 +5,13 @@ import { spawn } from "node:child_process";
  *
  * The one hard rule for automated editing here is that the match itself is never cut. That
  * leaves exactly two editable regions: the pre-roll, which the thump anchor already handles, and
- * the tail. Today the tail is a flat `postRollSec` of whatever followed — sometimes a celebration
- * worth watching, sometimes 60 seconds of a menu.
+ * the tail. The tail is cut where the winner goes quiet *and* still, never sooner than `minSec`
+ * after the finish.
  *
- * A reaction is loud and the frame keeps moving; dead air is neither. So the tail is cut where
- * *both* stop, taking the later of the two so a quiet fist-pump or a wordless replay-watch is not
- * clipped. This never shortens below `minSec`, because a hard cut on the dragon's death frame
- * reads as a mistake rather than an ending.
+ * A reaction is loud and the frame keeps moving; dead air is neither. So the cut takes the later
+ * of the two so a quiet fist-pump or a wordless replay-watch is not clipped, and never shortens
+ * below `minSec`, because a hard cut on the dragon's death frame reads as a mistake rather than
+ * an ending.
  *
  * Deliberately not attempted: anything that would need to know what is *being said*. Cutting to
  * the good part of a reaction needs speech, and speech means a transcription pass per match on a
@@ -43,12 +43,7 @@ const QUIET_RUN_SEC = 6;
 const AUDIBLE_DBFS = -45;
 const MOVING_MAD = 2;
 
-/**
- * The pure core: where activity stops, in seconds after the run ended.
- *
- * Thresholds come from the clip's own levels rather than absolutes — one streamer's excited is
- * another's baseline, and a capture card's gain is arbitrary.
- */
+/** The pure core: where activity stops, in seconds after the run ended. */
 export function suggestTailSec(window: TailWindow, opts: TailOptions): number {
   const { minSec, maxSec } = opts;
   const quietRun = opts.quietRunSec ?? QUIET_RUN_SEC;

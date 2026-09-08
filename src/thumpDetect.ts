@@ -1,16 +1,14 @@
 /**
  * Finds the world-load "thump" in ONE clip, with no reference clip to compare against.
  *
- * The pipeline used to locate the thump only *relatively*, by correlating clip A against clip B.
- * That aligns the two POVs with each other but inherits whatever error clip A's API-derived
- * estimate had — and since the timeline is now anchored on the thump, that error moves the
- * published video's zero, its intro, and every chapter. So each clip gets an absolute detection
- * of its own, and sync.ts reconciles the two against the correlation.
+ * Each clip gets an absolute detection because timeline zero is the thump: a purely relative
+ * alignment would pass clip A's estimate error straight into the published video's start.
+ * sync.ts reconciles the two detections against the correlation.
  *
  * The feature is the *log-domain* rise of the low band. Working in the log domain is what makes
  * it scale-free: a stream that is uniformly 10x louder produces an identical onset curve, so one
  * threshold works for a quiet capture and a loud one. Absolute energy does not have that
- * property, which is the flaw in the old confidence score (see sync.ts).
+ * property (see sync.ts).
  *
  * What matters as much as finding the thump is *refusing to*. A player tabbed out has no thump
  * at all, and a re-log or the previous match's world load can sit inside the search window as a

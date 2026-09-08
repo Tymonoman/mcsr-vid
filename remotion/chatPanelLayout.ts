@@ -1,9 +1,7 @@
 /**
  * What a Twitch chat-replay panel shows at a given second, and in what colour.
  *
- * Its own module, not part of ChatPanel.tsx, for the same reason shortHookLayout.ts and
- * resolveSplitSide.ts are: ChatPanel.tsx does `import "./overlay.css"`, which only webpack
- * resolves, so anything a Node test needs to call has to live outside it.
+ * A CSS-free leaf module so Node tests can import it (see layout.ts).
  *
  * Everything here is measured in *characters*, not pixels. Monocraft is monospaced, so a line's
  * width is its length times one advance — which means the wrap the panel renders can be computed

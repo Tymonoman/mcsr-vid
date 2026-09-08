@@ -30,13 +30,10 @@ export interface BuiltTitle {
 
 /**
  * Builds the half of a video title that can be derived from the match: both nicknames, spelled
- * the way the API spells them, plus the shared format suffix. Two published titles misspelled a
- * player ("Fineberg" for Feinberg, "silverruns" for silverrruns) because that half was retyped by
- * hand while the description generator had it right all along — nicknames are the highest-value
- * search terms here, and a misspelt one is simply invisible.
+ * the way the API spells them, plus the shared format suffix. Nicknames are the highest-value
+ * search terms here, and a misspelt one is invisible.
  *
- * The hook is deliberately left as a placeholder. "YN vs TAS" is why one upload got 3,654 views
- * and its neighbours got 53-298; that judgement is not something this can make.
+ * The hook is left as a placeholder, because that judgement is not derivable.
  */
 export function buildTitle({ leftNickname, rightNickname }: TitleInput): BuiltTitle {
   const generated = `${leftNickname} vs ${rightNickname}${SEPARATOR}${FORMAT_SUFFIX}`;

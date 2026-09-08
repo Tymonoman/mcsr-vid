@@ -54,9 +54,8 @@ function balancedPair(words: string[]): string[] {
 /**
  * Lines and font size for one hook: the largest step at which it fits on one line, else on two.
  *
- * A step function decided in JS rather than CSS `clamp`/`vw`: this renders once at a fixed
- * 1280x720, so a size that depends on the viewport is not reproducible from the props alone,
- * and two renders of the same hook must be the same image.
+ * A step function in JS rather than a CSS `clamp` — see `layoutShortHook` in
+ * shortHookLayout.ts for why: two renders of the same hook must give the same image.
  *
  * ponytail: a hook too long for two lines even at the 96px floor wraps to three rather than
  * shrinking past legibility — the title budget allows ~47 characters and 96px fits 19 a line.

@@ -1,7 +1,5 @@
 import type { MatchInfo } from "./types.js";
 // remotion/format.ts is a CSS-free leaf module (like layout.ts), so Node code can import it.
-// It replaces a local formatClock that split seconds without re-carrying into minutes, so a
-// value a hair under a minute boundary formatted as "2:60.000".
 import { formatTime } from "../remotion/format.js";
 
 /**

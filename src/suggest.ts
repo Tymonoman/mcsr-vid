@@ -27,11 +27,8 @@ const FOLLOWER_TTL_MS = 24 * 60 * 60 * 1000;
 /**
  * Scored matches persist between launches and the buckets draw from that pool.
  *
- * Measured, and the reason this exists: a 4,000-match scan (~5 hours of play) yielded
- * 26 dual-VOD candidates and exactly *one* with a comparable finish. Genuinely close
- * races are that rare, so eight of them cannot come out of a single scan — filling the
- * bucket in one pass would cost ~300 feed requests against a 500-per-10-min budget, and
- * some five-hour windows simply don't contain eight. Accumulating instead fills the
+ * Comparable finishes are rare — roughly one per 4,000 matches scanned — so eight of them
+ * cannot come out of one scan at any sane request budget. Accumulating instead fills the
  * bucket over successive launches at no extra cost per scan.
  */
 const POOL_MAX_ENTRIES = 500;
@@ -200,8 +197,7 @@ export function dismissSuggestion(matchId: number): void {
 }
 
 /**
- * The undo. Dismiss sits next to Render on a phone, and "permanently" was the whole of its
- * safety. `row` is the scored entry the caller kept when it dropped it, put back so a restart
+ * The undo, because Dismiss sits next to Render on a phone. `row` is the scored entry the caller kept when it dropped it, put back so a restart
  * before the next scan still shows the match; without one it returns at that scan.
  */
 export function restoreSuggestion(matchId: number, row?: Suggestion): void {

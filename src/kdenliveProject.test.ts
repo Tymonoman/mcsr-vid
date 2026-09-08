@@ -136,10 +136,8 @@ assert.match(
   "an overlay with a 10s lead-in must stay untrimmed at in=0",
 );
 
-// THE invariant this whole anchoring exists for: the exported timeline opens on the footage,
-// not on minutes of blank. Placement used to be relative to max(all offsets) = the 150s sync
-// pre-roll, so the project began 2.5 minutes before the match and every export had to be
-// trimmed by hand in Kdenlive before it was publishable.
+// THE invariant this anchoring exists for: the exported timeline opens on the footage, not on
+// blank.
 assert.ok(
   !/<playlist id="playlist4">\s*<blank/.test(trimmed),
   "the left POV track must start at timeline 0, with no leading blank",

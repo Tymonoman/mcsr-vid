@@ -1,12 +1,9 @@
 /**
  * One place to turn a thrown value into text a human can act on.
  *
- * Every call site in this project used to write `(err as Error).message` inline, which throws
- * away three things that matter when a render fails on a headless box you are not sitting at:
- * the HTTP status on `McsrApiError` (nothing read it, so a rate-limit looked like any other
- * failure), the `cause` chain, and non-Error throws. The child processes deliberately build
- * multi-line messages — yt-dlp attaches a 4 KB stderr tail, ffmpeg the last 500 chars — so
- * nothing here truncates; the dashboard renders the result in a <pre>.
+ * Keeps the three things a bare `(err as Error).message` throws away: the HTTP status on
+ * `McsrApiError`, the `cause` chain, and non-Error throws. Nothing here truncates, because the
+ * child processes attach stderr tails on purpose; the dashboard renders the result in a <pre>.
  */
 import { McsrApiError } from "./mcsrApi.js";
 

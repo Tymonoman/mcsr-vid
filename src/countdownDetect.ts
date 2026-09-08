@@ -7,15 +7,13 @@ import { spawn } from "node:child_process";
  * MCSR holds every player still through the 10-second pre-match countdown: the world is loaded,
  * the camera is locked, and the only thing moving on screen is the countdown digit. So a match
  * start is the *end of a long frozen stretch* — a near-zero frame difference for the better part
- * of ten seconds, ending in sustained motion that never stops. Measured on match 12296170 that
- * transition is a jump from ~0.3 to 50+ on a 0-255 mean-absolute-difference scale: not a
- * threshold that needs tuning so much as a cliff.
+ * of ten seconds, ending in sustained motion that never stops. That transition is a jump from
+ * ~0.3 to 50+ on a 0-255 mean-absolute-difference scale: not a threshold that needs tuning so
+ * much as a cliff.
  *
- * This replaced cross-correlating the two players' audio, which cannot work here however well it
- * is implemented: MCSR opponents play separate worlds with their own microphones and music, so
- * the two streams share almost no audio. Measured on the same match, correlation between the two
- * VODs peaked at 0.03-0.13 and returned offsets 12 to 32 seconds from the truth, whichever
- * window it was given. See src/sync.ts, which now uses this and keeps audio only as corroboration.
+ * Audio cross-correlation cannot work here: opponents play separate worlds with their own
+ * microphones and music, so the two streams share almost no audio (see CLAUDE.md). src/sync.ts
+ * uses this and keeps audio only as corroboration.
  */
 
 /** Analysis resolution. Tiny on purpose — this measures whether the frame changed, not how. */
