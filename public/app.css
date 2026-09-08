@@ -405,3 +405,9 @@ pre {
   letter-spacing: 0.5px;
   border-radius: 0;
 }
+
+/* The A/B tab stacks two of these — hook text, then pose. Without a gap they read as one
+   table with a stray header row in the middle. (.abtable itself lives in panels.css.) */
+.abtable + .abtable {
+  margin-top: 16px;
+}

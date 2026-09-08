@@ -172,3 +172,42 @@ console.log("youtube: all checks passed");
   console.log("OK: upload refuses a title that still contains the hook placeholder");
   await rm(tokenDir, { recursive: true, force: true });
 }
+
+// --- text vs no text: the grouping the hook change is judged by --------------------------------
+// Pooling per-video rates by hand is where an A/B table quietly lies, so pin the two things that
+// go wrong: CTR must be impression-weighted, and a video whose manifest is gone must not be
+// counted as evidence for either side.
+{
+  const { groupByHook } = await import("./youtubeRoutes.js");
+  const reach = (impressions: number, ctr: number) => ({ impressions, weightedCtr: ctr * impressions });
+  const groups = groupByHook([
+    { hook: true, reach: reach(1000, 0.05) },
+    { hook: true, reach: reach(1000, 0.03) },
+    { hook: false, reach: reach(500, 0.1) },
+    { hook: null, reach: reach(300, 0.09) },
+  ]);
+  const bucket = (hook: boolean | null) => groups.find((g) => g.hook === hook);
+
+  const withHook = bucket(true);
+  assert.ok(withHook);
+  assert.equal(withHook.videos, 2);
+  assert.equal(withHook.impressions, 2000);
+  // 0.04 exactly, up to the float error of summing 0.05*1000 + 0.03*1000.
+  assert.ok(Math.abs(withHook.ctr! - 0.04) < 1e-9, `weighted CTR was ${withHook.ctr}`);
+
+  const noHook = bucket(false);
+  assert.ok(noHook);
+  assert.deepEqual([noHook.videos, noHook.impressions, noHook.ctr], [1, 500, 0.1]);
+
+  // No manifest is its own bucket, not a guess at either answer.
+  assert.equal(bucket(null)?.videos, 1);
+
+  // A bucket nobody uploaded into is absent, not a row of zeroes.
+  assert.deepEqual(
+    groupByHook([{ hook: true, reach: null }]).map((g) => g.hook),
+    [true],
+  );
+  // And a video with no Reporting row yet counts as a video with no CTR, not 0% CTR.
+  assert.equal(groupByHook([{ hook: true, reach: null }])[0]!.ctr, null);
+  console.log("OK: A/B groups text vs no text with impression-weighted CTR");
+}
