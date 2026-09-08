@@ -570,9 +570,11 @@ const server = createServer(async (req, res) => {
             ? "an export"
             : shortRunning(matchId)
               ? "a Short render"
-              : uploadRunning(matchId)
-                ? "an upload"
-                : null;
+              : thumbnailRerenders.has(matchId)
+                ? "a thumbnail re-render"
+                : uploadRunning(matchId)
+                  ? "an upload"
+                  : null;
       if (busy) {
         json(res, 409, { error: `Match ${matchId} has ${busy} in flight — stop it first` });
         return;

@@ -66,6 +66,14 @@ export const spawnShortCli: ShortRunner = (matchId, pick) =>
     cwd: process.cwd(),
   });
 
+/**
+ * The runner the nightly chains: the same spawn, registered in this file's job table, so the
+ * delete guard refuses and the progress stream answers while the chained Short is writing —
+ * exactly as they do for a Short the button started. Bypassing the table left a two-minute
+ * window in which DELETE /api/match could remove the directory under the running CLI.
+ */
+export const spawnShortJob: ShortRunner = (matchId, pick) => startShort(matchId, pick, spawnShortCli).proc;
+
 function startShort(matchId: number, pick: number, run: ShortRunner): ShortJob {
   const existing = jobs.get(matchId);
   if (existing && !existing.done) return existing;

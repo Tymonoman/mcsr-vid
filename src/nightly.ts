@@ -32,7 +32,7 @@ import { getJob, startJob, type Job } from "./jobs.js";
 import { hiddenMatchIds } from "./matchShelf.js";
 import { orderForDisplay } from "./suggestPresent.js";
 import { listProcessedMatchIds } from "./matchStatus.js";
-import { spawnShortCli, type ShortRunner } from "./shortsRoutes.js";
+import { spawnShortJob, type ShortRunner } from "./shortsRoutes.js";
 import type { Suggestion } from "./suggest.js";
 import { snapshot, startScan } from "./suggestScan.js";
 
@@ -200,7 +200,7 @@ export async function chainShort(
   matchId: number,
   outcome: string,
   enabled: boolean,
-  run: ShortRunner = spawnShortCli,
+  run: ShortRunner = spawnShortJob,
 ): Promise<string> {
   if (!enabled || outcome !== "done") return "";
 
@@ -373,6 +373,9 @@ export async function runNightlyOnce(
 
   const pick = pickNightlyCandidate(suggestions, await pickContext());
   if (!pick) return skip("every suggestion is processed or hidden, or the disk is full");
+  // Checked again after the awaits above: a render clicked while the list was being ranked
+  // must not get a second one started on top of it.
+  if (busy()) return skip("a render is already in flight", true);
 
   const { matchId, players } = pick.metrics;
   const label = `${players[0]} vs ${players[1]}`;

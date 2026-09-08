@@ -75,6 +75,8 @@ async function loadYoutube(id, meta) {
       </div>
       <div class="bar" id="ytBarWrap" hidden><i id="ytBar"></i></div>
     </div>`;
+  // The kit may have fetched the slot before this form existed (app.js prefillPublishAt).
+  if (typeof prefillPublishAt === "function") prefillPublishAt();
 
   // The title field is seeded from the hook *once*, when this panel renders. Measured in a real
   // browser: typing a hook afterwards updated the preview line but never this field, and Upload

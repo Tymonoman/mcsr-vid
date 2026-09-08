@@ -24,6 +24,18 @@ export function estimatedRunSec(match: MatchInfo): number {
   return match.result.time > 0 ? match.result.time / 1000 : DEFAULT_RUN_SEC;
 }
 
+/**
+ * Seconds into a VOD where the match starts. `date` is the match's *completion* timestamp
+ * (verified against real footage: the on-screen result time at `date - vod.startsAt` matches
+ * `result.time` exactly), so the start is that minus the run. The one definition: the download
+ * path, the reuse path and validate-sync all derive the same offset from it, and the chat save
+ * and the description's Twitch deep links read it back.
+ */
+export function matchStartIntoVodSec(match: MatchInfo, vod: { startsAt: number }): number {
+  return match.date - vod.startsAt - estimatedRunSec(match);
+}
+const matchStartIntoVodSecOf = matchStartIntoVodSec;
+
 export interface RunOpts {
   onProgress?: (percent: number) => void;
   signal?: AbortSignal;
@@ -84,12 +96,9 @@ export async function downloadVodWindow(
   const player = match.players.find((p) => p.uuid === vod.uuid);
   const playerNickname = player?.nickname ?? vod.uuid;
 
-  // `date` is the match's *completion* timestamp (verified against real footage: the on-screen
-  // result time at `date - vod.startsAt` matches `result.time` exactly), not its start — so the
-  // start has to be derived by subtracting the run duration.
-  const matchEndIntoVodSec = match.date - vod.startsAt;
   const runSec = estimatedRunSec(match);
-  const matchStartIntoVodSec = matchEndIntoVodSec - runSec;
+  const matchStartIntoVodSec = matchStartIntoVodSecOf(match, vod);
+  const matchEndIntoVodSec = matchStartIntoVodSec + runSec;
   const windowStartSec = Math.max(0, matchStartIntoVodSec - PRE_ROLL_SEC);
   const windowEndSec = matchEndIntoVodSec + POST_ROLL_SEC;
   const matchOffsetIntoClipSec = matchStartIntoVodSec - windowStartSec;

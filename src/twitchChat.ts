@@ -64,6 +64,9 @@ async function commentsPage(
     method: "POST",
     headers: { "Client-Id": WEB_CLIENT_ID, "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    // A hung Twitch request must not hold the nightly's pipeline: a page is ~60 comments and
+    // answers in well under a second, so fifteen is a dead connection, not a slow one.
+    signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) throw new Error(`Twitch GQL ${res.status} for VOD ${videoId}`);
   const [page] = (await res.json()) as CommentsPage[];

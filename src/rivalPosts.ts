@@ -135,8 +135,11 @@ export function refreshRivalPostsIfStale(nowMs: number = Date.now()): void {
       console.error(`rival: ${posts.length} posts from @${config.rivalChannelHandle}`);
     })
     .catch((err: unknown) => {
-      // Try again on the next request rather than in six hours: a transient 5xx should not
-      // blank the badges for a quarter of a day.
+      // Try again in five minutes rather than in six hours — a transient 5xx should not blank
+      // the badges for a quarter of a day — but not on every request either: the suggestions
+      // route is polled every two seconds during a scan, and a dead token would spend a call
+      // per poll.
+      cached = { ...cached, atMs: nowMs - REFRESH_MS + 5 * 60_000 };
       console.error(`rival: ${describeError(err)} (badges off until the next try)`);
     })
     .finally(() => {

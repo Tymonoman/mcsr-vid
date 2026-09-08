@@ -45,7 +45,13 @@ import {
   type StageTracker,
 } from "./stageProgress.js";
 import { computeSyncOffset } from "./sync.js";
-import { downloadMatchVods, estimatedRunSec, PRE_ROLL_SEC, type VodWindow } from "./vodAcquisition.js";
+import {
+  downloadMatchVods,
+  estimatedRunSec,
+  matchStartIntoVodSec,
+  PRE_ROLL_SEC,
+  type VodWindow,
+} from "./vodAcquisition.js";
 import { saveChats, vodIdFromUrl } from "./twitchChat.js";
 
 const FPS = 60;
@@ -178,7 +184,10 @@ async function runStages(
         playerNickname: playerLeft.nickname,
         sourceUrl: vodLeft.url,
         path: pathFor(playerLeft.nickname),
-        matchOffsetIntoVodSec: 0,
+        // The same offset the download computed, not 0: the chat save and the description's
+        // deep links read this back, and a re-run with 0 fetched the pre-match chat and wrote
+        // `?t=0s` into the description (found on two matches on 2026-09-08).
+        matchOffsetIntoVodSec: matchStartIntoVodSec(match, vodLeft),
         matchOffsetIntoClipSec: PRE_ROLL_SEC,
       },
       {
@@ -186,7 +195,7 @@ async function runStages(
         playerNickname: playerRight.nickname,
         sourceUrl: vodRight.url,
         path: pathFor(playerRight.nickname),
-        matchOffsetIntoVodSec: 0,
+        matchOffsetIntoVodSec: matchStartIntoVodSec(match, vodRight),
         matchOffsetIntoClipSec: PRE_ROLL_SEC,
       },
     ];
@@ -315,6 +324,8 @@ async function runStages(
     // long after this runs — so the thumbnail opens on the same opener that editor will offer
     // first. `POST /api/thumbnails/:id/rerender` replaces it once a human has chosen. An
     // unreadable match yields no suggestions, and then this renders the plain header strip.
+    // With `versus`, so the thumbnail's hook is the dashboard's first chip — the rematch line
+    // outranks everything else, and without the record here it never appeared on a thumbnail.
     const hookText = buildHookSuggestions({
       metrics: computeMetrics(match),
       match,
@@ -322,6 +333,7 @@ async function runStages(
       userRight,
       maxChars: title.hookMax,
       minChars: title.hookMin,
+      versus,
     })[0];
     const manifest = await renderThumbnailVariants({
       match,

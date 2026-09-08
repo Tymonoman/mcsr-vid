@@ -9,3 +9,19 @@ assert.equal(parseYtDlpPercent("[download] 100% of   10.00MiB in 00:08"), 100);
 assert.equal(parseYtDlpPercent('[Merger] Merging formats into "output.mp4"'), null);
 
 console.log("all checks passed");
+
+// --- One definition of where a match starts inside its VOD -------------------------------------
+// `date` is the completion timestamp; the reuse path in pipeline.ts used to hard-code 0 here and
+// saved the pre-match chat (and `?t=0s` deep links) for two matches on 2026-09-08.
+{
+  const { matchStartIntoVodSec } = await import("./vodAcquisition.js");
+  const match = { date: 10_000, result: { time: 480_000 } } as unknown as import("./types.js").MatchInfo;
+  assert.equal(matchStartIntoVodSec(match, { startsAt: 4_000 }), 10_000 - 4_000 - 480, "end minus the run");
+  const noResult = { date: 10_000, result: { time: 0 } } as unknown as import("./types.js").MatchInfo;
+  assert.equal(
+    matchStartIntoVodSec(noResult, { startsAt: 4_000 }),
+    10_000 - 4_000 - 900,
+    "no result: the default run length, as the download path assumes",
+  );
+  console.log("OK: matchStartIntoVodSec");
+}

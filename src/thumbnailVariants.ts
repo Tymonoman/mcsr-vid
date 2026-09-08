@@ -115,6 +115,21 @@ export async function chooseVariant(outDir: string, key: string): Promise<Varian
   return updated;
 }
 
+/**
+ * Whether a variant's PNG already on disk can stand for this render. The previous manifest says
+ * what its stills carry: a different headline there means a still kept now would be recorded
+ * with text it never had. No manifest at all is an aborted batch — resume it — and the control
+ * variant carries no text, so its still is good whatever the headline.
+ */
+export function variantStillReusable(
+  previous: VariantsManifest | null,
+  poses: PosePair,
+  hookText: string | undefined,
+): boolean {
+  if (poses.hook === false || previous === null) return true;
+  return (previous.hookText ?? "").trim() === (hookText ?? "").trim();
+}
+
 export async function renderThumbnailVariants(args: RenderVariantsArgs): Promise<VariantsManifest> {
   if (args.poses.length === 0) throw new Error("renderThumbnailVariants needs at least one pose pair");
 
@@ -165,7 +180,11 @@ export async function renderThumbnailVariants(args: RenderVariantsArgs): Promise
       // Skip per variant, not per match: adding a fourth pose to the config should render only
       // the fourth, and a re-run after an aborted batch should not redo the ones that landed.
       // The manifest must still list it, which is why the record is pushed above this check.
-      if (existsSync(outPath)) continue;
+      // But only a PNG rendered with *this* text is reusable. The previous manifest says what
+      // its stills carry: a different headline there means a still kept now would be recorded
+      // with text it never had. No manifest at all is the aborted batch — resume it — and the
+      // control variant carries no text, so its still is good whatever the headline.
+      if (existsSync(outPath) && variantStillReusable(previous, poses, hookText)) continue;
 
       const bundleUrl = await serveUrl();
       const composition = await selectComposition({

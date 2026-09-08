@@ -116,6 +116,9 @@ the page is newer than its server: the nightly strip detects that (the old serve
   The pipeline renders with the first hook suggestion; "Re-render with hook" in the detail panel
   (`POST /api/thumbnails/:id/rerender`) redoes all variants with the hook you typed. Verified
   legible at YouTube's 246x138 grid size; a render with no hook is byte-identical to before.
+  A still on disk is reused only when the previous manifest carries the same headline
+  (`variantStillReusable`): a re-render with new text re-renders the hooked variants, keeps the
+  control, and resumes an aborted batch (no manifest) as before.
   The third configured variant is `hook: false` — a text-free control — so Studio's Test &
   compare can measure text vs no text; each `VariantRecord` records `hook`, and the Short
   reuses the manifest's `hookText` so both halves of a match say the same thing (rank chips

@@ -5,7 +5,12 @@ import { requireArg } from "./cliArgs.js";
 import { config } from "./config.js";
 import { getMatch, parseMatchId } from "./mcsrApi.js";
 import { computeSyncOffset } from "./sync.js";
-import { downloadMatchVods, type VodWindow } from "./vodAcquisition.js";
+import {
+  downloadMatchVods,
+  type VodWindow,
+  estimatedRunSec,
+  matchStartIntoVodSec as matchStartIntoVodSecOf,
+} from "./vodAcquisition.js";
 
 const matchId = parseMatchId(requireArg("validate-sync"));
 const match = await getMatch(matchId);
@@ -33,9 +38,9 @@ if (existsSync(expectedPathA) && existsSync(expectedPathB)) {
     const nickname = match.players.find((p) => p.uuid === vod.uuid)?.nickname ?? vod.uuid;
     // Mirrors vodAcquisition.ts: `date` is the match's completion timestamp, so the start
     // has to be derived by subtracting the run duration.
-    const matchEndIntoVodSec = match.date - vod.startsAt;
-    const runSec = match.result.time > 0 ? match.result.time / 1000 : 900;
-    const matchStartIntoVodSec = matchEndIntoVodSec - runSec;
+    const matchStartIntoVodSec = matchStartIntoVodSecOf(match, vod);
+    const runSec = estimatedRunSec(match);
+    const matchEndIntoVodSec = matchStartIntoVodSec + runSec;
     return {
       playerUuid: vod.uuid,
       playerNickname: nickname,

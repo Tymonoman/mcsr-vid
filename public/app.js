@@ -5,6 +5,10 @@ let showHidden = false;
 let matches = [];
 let selected = null;
 let stream = null;
+/** The encode progress stream for the selected match; closed when another match is opened. */
+let exportStream = null;
+/** The next publish slot the kit last fetched; prefilled into the upload form whenever it renders. */
+let publishSlotAt = null;
 
 /** Per-stage timing for the run being watched, keyed by stage id. Rebuilt on every select. */
 let stageState = {};
@@ -171,6 +175,10 @@ function hookCounter(meta) {
  */
 async function select(id, { open = false } = {}) {
   selected = id;
+  if (exportStream) {
+    exportStream.close();
+    exportStream = null;
+  }
   if (open) showMatch();
   renderList();
   const meta = await api(`/api/meta/${id}`);
@@ -349,6 +357,8 @@ async function loadChecklist(id) {
               }),
             }),
           );
+          // "uploaded" changes the list's ready count.
+          void refresh();
         } catch (err) {
           btn.disabled = false;
           alert(err.message);
@@ -533,9 +543,18 @@ async function loadPreview(id) {
 /** Follows one encode to its end, then swaps the bar for the player. The stream replays what
     the encode has said so far, so a phone that comes back late is not blind. */
 function watchExport(id) {
+  if (exportStream) exportStream.close();
   const src = new EventSource(`/api/export/progress/${id}`);
+  exportStream = src;
   const state = () => $("#encodestate");
   src.onmessage = (e) => {
+    // The operator may have opened another match meanwhile; this stream's bar and player belong
+    // to the one it was started for, and must not be painted into whatever is on screen now.
+    if (selected !== id) {
+      src.close();
+      if (exportStream === src) exportStream = null;
+      return;
+    }
     const ev = JSON.parse(e.data);
     const bar = document.querySelector(".exportbar > i");
     if (ev.percent !== undefined && bar) {
@@ -544,6 +563,7 @@ function watchExport(id) {
     }
     if (ev.done) {
       src.close();
+      if (exportStream === src) exportStream = null;
       if (ev.error) {
         if (state()) {
           state().textContent = ev.error;
@@ -553,10 +573,28 @@ function watchExport(id) {
         if (btn) btn.disabled = false;
       } else {
         loadPreview(id);
+        // The list's "ready to publish" badge and count read the same file.
+        void refresh();
       }
     }
   };
-  src.onerror = () => src.close();
+  src.onerror = () => {
+    src.close();
+    if (exportStream === src) exportStream = null;
+  };
+}
+
+/**
+ * Fills the upload form's "Publish at" with the kit's slot, if the field is empty. Called from
+ * both sides of a race: the kit (which knows the slot) and the YouTube panel (which owns the
+ * field) render independently, and whichever finishes second gets to do it.
+ */
+function prefillPublishAt() {
+  const when = $("#ytWhen");
+  if (!publishSlotAt || !when || when.value) return;
+  const pad = (n) => String(n).padStart(2, "0");
+  const s = publishSlotAt;
+  when.value = `${s.getFullYear()}-${pad(s.getMonth() + 1)}-${pad(s.getDate())}T${pad(s.getHours())}:${pad(s.getMinutes())}`;
 }
 
 /** m:ss, for moment boundaries measured from the start of the run. */
@@ -616,11 +654,8 @@ async function loadPublishKit(id, meta) {
   const slotText = slot
     ? `${slot.toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })} (${String(kit.publishHourUtc).padStart(2, "0")}:00 UTC)`
     : "";
-  const when = $("#ytWhen");
-  if (slot && when && !when.value) {
-    const pad = (n) => String(n).padStart(2, "0");
-    when.value = `${slot.getFullYear()}-${pad(slot.getMonth() + 1)}-${pad(slot.getDate())}T${pad(slot.getHours())}:${pad(slot.getMinutes())}`;
-  }
+  publishSlotAt = slot;
+  prefillPublishAt();
 
   const paint = () => {
     const title = titleText();
@@ -1109,6 +1144,7 @@ function renderSuggestions(data) {
     renderSuggestions(await api("/api/suggestions/rescan", { method: "POST" }));
     clearTimeout(suggestPoll);
     suggestPoll = setTimeout(pollSuggestions, 2000);
+    void loadNightly();
   });
   el.querySelector('[data-act="undo"]')?.addEventListener("click", async (ev) => {
     ev.preventDefault();
@@ -1117,6 +1153,7 @@ function renderSuggestions(data) {
     // A restart since the dismiss means the row is gone from memory; it returns at the next scan.
     lastDismissed = out.now ? null : { id, who, note: "back after the next scan" };
     renderSuggestions(out);
+    void loadNightly();
   });
   // First paint fetches it; every later paint reuses the cache, so polling a running scan does
   // not also poll the scheduler.
@@ -1133,6 +1170,8 @@ function renderSuggestions(data) {
       const out = await api(`/api/suggestions/${id}`, { method: "DELETE" });
       lastDismissed = { id, who: s ? `${s.players[0]} vs ${s.players[1]}` : `#${id}` };
       renderSuggestions(out);
+      // Tonight's pick may have been the card just dismissed.
+      void loadNightly();
     });
   });
 }
