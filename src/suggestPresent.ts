@@ -122,3 +122,19 @@ export function presentSuggestions(
       .sort((x, y) => Number(y.expiring) - Number(x.expiring) || y.popularity - x.popularity),
   );
 }
+
+/**
+ * The suggestions themselves in the order the dashboard shows them. The nightly render picks the
+ * first eligible one, and it must be the card the operator sees at the top — the raw suggester
+ * order put "cornflakesmcsr vs Ranik_" on the strip while the first card was "Aquacorde vs
+ * Infume" with 86k followers between them.
+ */
+export function orderForDisplay(
+  suggestions: readonly Suggestion[],
+  nowMs: number = Date.now(),
+): Suggestion[] {
+  const rank = new Map(presentSuggestions(suggestions, nowMs).map((card, i) => [card.matchId, i]));
+  return [...suggestions].sort(
+    (a, b) => (rank.get(a.metrics.matchId) ?? Infinity) - (rank.get(b.metrics.matchId) ?? Infinity),
+  );
+}

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import type { MatchMetrics } from "./matchScore.js";
-import { factsLine, presentSuggestions, storyLine } from "./suggestPresent.js";
+import { factsLine, orderForDisplay, presentSuggestions, storyLine } from "./suggestPresent.js";
 import type { Bucket, Suggestion, SuggestionPlayer } from "./suggest.js";
 
 const NOW = Date.UTC(2026, 8, 7);
@@ -133,3 +133,20 @@ assert.equal(
 );
 
 console.log("suggestPresent: ok");
+
+// --- the nightly must pick what the operator sees first --------------------------------------
+// orderForDisplay is the presenter's order applied back to the suggestions themselves, so the
+// nightly's "will render X" and card #1 cannot disagree the way they did on the live channel.
+{
+  const raw = [
+    suggestion({ popularity: 1, dateSec: daysAgo(1), metrics: { ...suggestion().metrics, matchId: 11 } }),
+    suggestion({ popularity: 9, dateSec: daysAgo(1), metrics: { ...suggestion().metrics, matchId: 12 } }),
+    suggestion({ popularity: 5, dateSec: daysAgo(9), metrics: { ...suggestion().metrics, matchId: 13 } }),
+  ];
+  const ordered = orderForDisplay(raw, NOW).map((s) => s.metrics.matchId);
+  const shown = presentSuggestions(raw, NOW).map((c) => c.matchId);
+  assert.deepEqual(ordered, shown, "the nightly's order must be the display order");
+  assert.equal(ordered[0], 13, "an expiring match still comes first, as on the cards");
+  assert.equal(ordered[1], 12, "then the biggest audience");
+  console.log("OK: orderForDisplay matches the cards");
+}

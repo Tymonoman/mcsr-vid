@@ -28,6 +28,7 @@ import { config } from "./config.js";
 import { describeError } from "./errorText.js";
 import { getJob, startJob, type Job } from "./jobs.js";
 import { hiddenMatchIds } from "./matchShelf.js";
+import { orderForDisplay } from "./suggestPresent.js";
 import { listProcessedMatchIds } from "./matchStatus.js";
 import { spawnShortCli, type ShortRunner } from "./shortsRoutes.js";
 import type { Suggestion } from "./suggest.js";
@@ -279,7 +280,8 @@ const liveRanked = async (): Promise<readonly Suggestion[] | null> => {
   // Not `startScan(true)`: a forced rescan is hundreds of API requests, and the cached list is
   // exactly what the operator would be choosing from. Only a cold process needs a scan at all.
   if (!snapshot().result) await startScan(false);
-  return snapshot().result?.suggestions ?? null;
+  const result = snapshot().result;
+  return result ? orderForDisplay(result.suggestions) : null;
 };
 
 /** The disk-and-shelf half of the pick, shared by the run and the dashboard's preview of it. */
@@ -298,7 +300,7 @@ const pickContext = async (): Promise<NightlyPickContext> => ({
  */
 export async function nightlyCandidate(): Promise<Suggestion | null> {
   const result = snapshot().result;
-  return result ? pickNightlyCandidate(result.suggestions, await pickContext()) : null;
+  return result ? pickNightlyCandidate(orderForDisplay(result.suggestions), await pickContext()) : null;
 }
 
 /**

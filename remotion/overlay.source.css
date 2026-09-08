@@ -808,7 +808,9 @@
   position: absolute;
   left: 24px;
   right: 24px;
-  transform: translateY(-50%);
+  /* Anchored by its bottom edge, not centred: a two-line hook centred on the seam covered the
+     lower nameplate's name. 28px below the seam keeps the straddle without the occlusion. */
+  transform: translateY(calc(-100% + 28px));
   text-align: center;
   /* Set here, not inherited: ShortHook renders on a bare frame so ffmpeg can fade it
      independently of the board, so there is no .short ancestor to inherit the font from. */
