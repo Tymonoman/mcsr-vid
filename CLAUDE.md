@@ -160,7 +160,9 @@ the page is newer than its server: the nightly strip detects that (the old serve
   active competitor's measured slot; `src/publishSlot.ts`, also the upload form's default),
   description, comma-joined tags with the 500-char count, the Short's title/description when
   `short-<id>.title.txt` exists, a pinned comment (one easy question plus the subscribe ask),
-  and a DM per player with the `youtu.be` link once uploaded.
+  a community post (the title, the question, the link), and a DM per player with the `youtu.be`
+  link once uploaded. When `pullSource` is set the kit opens with the per-match rsync pull; the
+  everything-at-once and crontab lines fold under a disclosure, since they are pasted once.
   Nothing is stored; it is the manual Studio phase, pre-pasted.
 - **Getting files to the PC** (`src/publishSet.ts`): the publish kit's top block is an rsync
   command the *operator's* machine runs — one match, everything ready once, or a crontab line
