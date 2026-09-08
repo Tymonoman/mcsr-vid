@@ -89,8 +89,10 @@ function candidates(input: HookInput): Candidate[] {
   if (versus) {
     const leftWins = versus.results.ranked[userLeft.uuid] ?? 0;
     const rightWins = versus.results.ranked[userRight.uuid] ?? 0;
-    // Both sides have to have won one for this to read as a rivalry. "First meeting" is a fact
-    // about the fixture list, not a reason to watch, so no history gets no chip.
+    // Both sides have to have won one for this to read as a rivalry. A one-sided record gets
+    // no chip; a first meeting gets a descriptive one — the active competitor's "Their First
+    // 1v1" drew 4.9k views against its 3.3k median (8 Sept 2026), so it is a reason to click,
+    // if a weaker one than a close finish.
     if (leftWins >= 1 && rightWins >= 1) {
       const leader = leftWins >= rightWins ? userLeft.nickname : userRight.nickname;
       const hi = Math.max(leftWins, rightWins);
@@ -99,6 +101,8 @@ function candidates(input: HookInput): Candidate[] {
         text: hi === lo ? `Rematch: ${hi}-${lo} all time` : `Rematch: ${leader} leads ${hi}-${lo}`,
         weight: 130,
       });
+    } else if (leftWins === 0 && rightWins === 0) {
+      out.push({ text: "Their first 1v1", weight: 92 });
     }
   }
 
@@ -162,7 +166,12 @@ function candidates(input: HookInput): Candidate[] {
   if (deaths === 0) out.push({ text: "Not a single death between them", weight: 40 });
   else if (deaths >= 4) out.push({ text: `${deaths} deaths and still this close`, weight: 55 });
 
-  if (resultMs > 0 && resultMs < 600_000) out.push({ text: "A sub-10 to win it", weight: 57 });
+  // The actual minute, not "sub-10": "SUB 7" and "Insane 6:51" both ran ~1.5x the competitor's
+  // median, and a sub-8 is news in a way a sub-10 no longer is.
+  if (resultMs > 0 && resultMs < 600_000) {
+    const minute = Math.floor(resultMs / 60_000) + 1;
+    out.push({ text: `A sub-${minute} to win it`, weight: minute <= 8 ? 90 : 57 });
+  }
 
   return out;
 }

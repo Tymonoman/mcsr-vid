@@ -117,12 +117,24 @@ assert.deepEqual(rivalry, [
 // A tie is still a rivalry, but nobody "leads" it.
 assert.equal(buildHookSuggestions(input({}, ELO_GAP, { versus: versus(2, 2) }))[0], "Rematch: 2-2 all time");
 
-// One-sided history is not a rivalry, and a first meeting is a fact about the fixture list
-// rather than a reason to click: no chip either way.
+// One-sided history is not a rivalry: no rematch chip. A first meeting gets its own chip, but
+// below a close finish — it drew 1.5x the median on the competitor that uses it, while their
+// close-finish titles topped the channel.
 for (const record of [versus(3, 0), versus(0, 0)]) {
   const none = buildHookSuggestions(input({}, {}, { versus: record }));
   assert.ok(!none.some((t) => t.startsWith("Rematch")), `unexpected h2h chip in ${JSON.stringify(none)}`);
 }
+assert.ok(!buildHookSuggestions(input({}, {}, { versus: versus(3, 0) })).includes("Their first 1v1"));
+const first = buildHookSuggestions(input({ finishMarginMs: 2_400 }, {}, { versus: versus(0, 0) }));
+assert.equal(first[0], "Decided by 2.4 seconds");
+assert.equal(first[1], "Their first 1v1");
+
+// The finishing minute is the hook, not a fixed "sub-10": 6:51 is a sub-7, 7:00 is a sub-8.
+assert.ok(buildHookSuggestions(input({ resultMs: 411_000 })).includes("A sub-7 to win it"));
+assert.ok(buildHookSuggestions(input({ resultMs: 420_000 })).includes("A sub-8 to win it"));
+assert.ok(buildHookSuggestions(input({ resultMs: 599_000 })).includes("A sub-10 to win it"));
+const fast = buildHookSuggestions(input({ resultMs: 411_000, leadChanges: 3 }));
+assert.ok(fast.indexOf("A sub-7 to win it") < fast.indexOf("The lead changed 3 times"), JSON.stringify(fast));
 
 // `versus` is optional — every caller that predates it still works, and just loses that chip.
 const noVersus = buildHookSuggestions(input({ finishMarginMs: 2_400 }));
