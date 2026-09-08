@@ -9,6 +9,7 @@ import { PixelBadge } from "./PixelBadge.js";
 import { BastionIcon } from "./BastionIcon.js";
 import { STAGE_WIDTH, STAGE_HEIGHT, BOTTOM_BAND_Y, RTA_COL_X } from "./layout.js";
 import { resolveAchievementIcon } from "./achievementBadges.js";
+import { ctaFrameOf } from "../src/splitStates.js";
 
 /** Up to 3 highlighted-achievement badges for one player, shown in the splits panel.
  * Unmapped ids/levels are skipped entirely, per resolveAchievementIcon's contract. */
@@ -148,6 +149,7 @@ function SplitsPanel({
   fps: number;
   runEndFrame: number;
 }) {
+  const ctaFrame = ctaFrameOf(props);
   return (
     <div className="splits">
       <div className="splits-col col-meta">
@@ -169,11 +171,22 @@ function SplitsPanel({
             {props.h2hRightWins} {props.right.nickname}
           </span>
         </span>
-        <span className="ach-label">Achievements</span>
-        <div className="ach-cols">
-          <AchievementRow player={props.left} />
-          <AchievementRow player={props.right} />
-        </div>
+        {ctaFrame !== null && frame >= ctaFrame ? (
+          // The post-roll: the run is over, the achievements have been on screen for the whole
+          // match, and this is the one moment the band can ask for the next one.
+          <div className="cta">
+            <span className="cta-value">SUBSCRIBE</span>
+            <span className="cta-sub">for the next one</span>
+          </div>
+        ) : (
+          <>
+            <span className="ach-label">Achievements</span>
+            <div className="ach-cols">
+              <AchievementRow player={props.left} />
+              <AchievementRow player={props.right} />
+            </div>
+          </>
+        )}
       </div>
       <div className="splits-col col-splits">
         <div className="splits-title">Match Splits</div>

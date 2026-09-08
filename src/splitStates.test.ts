@@ -6,6 +6,8 @@ const base = {
   runResultMs: 505356,
   durationInFrames: 21450,
   fps: 30,
+  // The reveal cases count stills; the subscribe card is its own case below.
+  postRollCta: false,
 };
 
 // Reveal frame = timerStartFrame + ms/1000*fps, rounded up.
@@ -86,3 +88,33 @@ const revealOf = (ms: number) => Math.ceil(base.timerStartFrame + (ms / 1000) * 
 }
 
 console.log("splitStates: all checks passed");
+
+// --- The subscribe card is a state of its own: one still begins exactly three seconds after
+// the finish, and none does when the card is off or the run has no recorded finish.
+{
+  const { ctaFrameOf, CTA_DELAY_SEC } = await import("./splitStates.js");
+  const props = {
+    ...base,
+    postRollCta: true,
+    splits: [{ label: "Nether Enter", leftMs: 123693, rightMs: 151021 }],
+  };
+  const runEnd = base.timerStartFrame + (base.runResultMs / 1000) * base.fps;
+  const cta = Math.ceil(runEnd + CTA_DELAY_SEC * base.fps);
+  assert.equal(ctaFrameOf(props), cta);
+  assert.ok(
+    splitSegments(props).some((s) => s.startFrame === cta),
+    "a still starts on the card's frame",
+  );
+  assert.equal(ctaFrameOf({ ...props, postRollCta: false }), null);
+  assert.ok(
+    !splitSegments({ ...props, postRollCta: false }).some((s) => s.startFrame === cta),
+    "off: no extra still",
+  );
+  assert.equal(ctaFrameOf({ ...props, runResultMs: null }), null, "no finish, no card");
+  assert.equal(
+    ctaFrameOf({ ...props, postRollCta: undefined }),
+    cta,
+    "unset means on, as the config default",
+  );
+  console.log("OK: the subscribe card is one more still, three seconds after the finish");
+}

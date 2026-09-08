@@ -133,6 +133,14 @@ export interface Config {
    */
   publishHourUtc: number;
   /**
+   * Whether the bottom band's meta column turns into a subscribe card a few seconds after the
+   * finish, for the post-roll. Subscribers are the binding Partner Programme gate (500; the
+   * hours gate levels off under 4,000 at any cadence this channel can run), and the post-roll
+   * is where 35-69% of viewers are still watching with nothing on screen changing. Off keeps
+   * the achievements block through the tail.
+   */
+  postRollCta: boolean;
+  /**
    * Suggestion slots per bucket. Close races and entertaining messes are ranked
    * separately so a run of very tight matches can't crowd the funny ones off the list.
    */
@@ -194,6 +202,7 @@ const DEFAULTS: Config = {
   nightlyRenderHourUtc: 3,
   nightlyRenderShort: true,
   publishHourUtc: 19,
+  postRollCta: true,
   nightlyRenderExport: true,
   nightlyNotifyUrl: "",
   suggestCloseSlots: 8,

@@ -174,6 +174,7 @@ export async function computeOverlayProps(
     splits,
     timerStartFrame: 0,
     runResultMs: match.result.time > 0 ? match.result.time : null,
+    postRollCta: config.postRollCta,
     seedType: match.seedType,
     bastionType: match.bastionType,
   };

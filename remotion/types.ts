@@ -44,6 +44,8 @@ export type OverlayProps = {
   timerStartFrame: number;
   /** Final completion ms; the live timer counts up to this and holds. null = keep counting/DNF. */
   runResultMs: number | null;
+  /** Show the subscribe card in the meta column after the finish (config.postRollCta). */
+  postRollCta?: boolean;
   /** Overworld structure near spawn, e.g. "DESERT_TEMPLE". null if unknown. */
   seedType: string | null;
   /** Bastion remnant type, e.g. "STABLES". null if unknown. */

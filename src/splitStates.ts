@@ -23,8 +23,21 @@ export interface SplitSegment {
 
 type StateProps = Pick<
   OverlayProps,
-  "splits" | "timerStartFrame" | "runResultMs" | "durationInFrames" | "fps"
+  "splits" | "timerStartFrame" | "runResultMs" | "durationInFrames" | "fps" | "postRollCta"
 >;
+
+/** Seconds after the finish before the meta column becomes the subscribe card. */
+export const CTA_DELAY_SEC = 3;
+
+/**
+ * The first frame of the subscribe card, or null when there is none: no recorded finish (the
+ * card would never be right), or the card turned off. Read by the overlay and by the state
+ * enumeration below, so the still that carries the card starts on exactly this frame.
+ */
+export function ctaFrameOf(props: StateProps): number | null {
+  if (props.postRollCta === false || props.runResultMs === null) return null;
+  return Math.ceil(runEndFrameOf(props) + CTA_DELAY_SEC * props.fps);
+}
 
 /** Mirrors Overlay.tsx's useTimer: a run with no recorded result never resolves to DNF. */
 export function runEndFrameOf(props: StateProps): number {
@@ -39,7 +52,8 @@ export function runEndFrameOf(props: StateProps): number {
  */
 function fingerprint(props: StateProps, frame: number): string {
   const runEndFrame = runEndFrameOf(props);
-  return props.splits
+  const ctaFrame = ctaFrameOf(props);
+  const rows = props.splits
     .map((row) => {
       const l = resolveSplitSide(row.leftMs, props.timerStartFrame, props.fps, runEndFrame, frame);
       const r = resolveSplitSide(row.rightMs, props.timerStartFrame, props.fps, runEndFrame, frame);
@@ -47,6 +61,8 @@ function fingerprint(props: StateProps, frame: number): string {
       return `${show(l)}|${show(r)}`;
     })
     .join(",");
+  // The meta column is part of the same still, so the card's appearance is a state change too.
+  return `${rows};cta:${ctaFrame !== null && frame >= ctaFrame}`;
 }
 
 /**
@@ -70,6 +86,8 @@ function candidateFrames(props: StateProps): number[] {
     }
   }
   if (hasMissingSide) frames.add(Math.ceil(runEndFrame));
+  const ctaFrame = ctaFrameOf(props);
+  if (ctaFrame !== null) frames.add(ctaFrame);
   return [...frames].filter((f) => f >= 0 && f < props.durationInFrames).sort((a, b) => a - b);
 }
 

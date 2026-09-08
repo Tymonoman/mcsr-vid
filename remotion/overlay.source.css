@@ -227,6 +227,27 @@
   image-rendering: pixelated;
 }
 
+/* The post-roll subscribe card, in the achievements' place (src/splitStates.ts decides the frame). */
+.col-meta .cta {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.col-meta .cta-value {
+  font-family: var(--pixel-font);
+  font-size: 34px;
+  letter-spacing: 0.06em;
+  color: var(--gold);
+  text-shadow: 3px 3px 0 var(--panel-edge);
+}
+.col-meta .cta-sub {
+  font-family: var(--pixel-font);
+  font-size: 16px;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
 .col-meta .seed-chip {
   display: flex;
   align-items: center;
