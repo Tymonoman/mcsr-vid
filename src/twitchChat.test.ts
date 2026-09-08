@@ -89,3 +89,55 @@ function stub(pages: unknown[]) {
   console.log("OK: both POV windows read back from the description");
 }
 console.log("twitchChat: all checks passed");
+
+// --- saveChats: skips what exists, survives a failure, writes the CLI's and the pipeline's shape
+{
+  const { mkdtemp, rm, readFile, writeFile } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const path = (await import("node:path")).default;
+  const { saveChats, chatPath } = await import("./twitchChat.js");
+  const dir = await mkdtemp(path.join(tmpdir(), "mcsr-chat-"));
+  try {
+    await writeFile(chatPath(dir, "kept"), '{"nickname":"kept"}');
+    let calls = 0;
+    const fetchImpl = (async (_url: string | URL | Request, init?: RequestInit) => {
+      calls++;
+      const { videoID } = JSON.parse(init!.body as string)[0].variables;
+      if (videoID === "bad")
+        return new Response(JSON.stringify([{ errors: [{ message: "failed integrity check" }] }]), {
+          status: 200,
+        });
+      return new Response(JSON.stringify([page([node(100, "u", "hi")], false)]), { status: 200 });
+    }) as typeof fetch;
+    const lines: string[] = [];
+    const counts = await saveChats(
+      dir,
+      [
+        { nickname: "kept", videoId: "1", fromSec: 0 },
+        { nickname: "bad", videoId: "bad", fromSec: 0 },
+        { nickname: "good", videoId: "2", fromSec: 90 },
+      ],
+      60,
+      (l) => lines.push(l),
+      fetchImpl,
+    );
+    assert.deepEqual(counts, { good: 1 }, "only the fetched chat is counted");
+    assert.equal(calls, 2, "an existing file is not refetched");
+    assert.equal(await readFile(chatPath(dir, "kept"), "utf8"), '{"nickname":"kept"}', "and not overwritten");
+    assert.ok(
+      lines.some((l) => /bad: .*integrity check.*continuing/.test(l)),
+      `failure is logged, not thrown: ${lines}`,
+    );
+    const good = JSON.parse(await readFile(chatPath(dir, "good"), "utf8"));
+    assert.deepEqual(good, {
+      nickname: "good",
+      videoId: "2",
+      fromSec: 90,
+      spanSec: 60,
+      messages: [{ atSec: 10, name: "u", color: "#FF0000", text: "hi" }],
+    });
+    console.log("OK: saveChats keeps, tolerates, writes");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}

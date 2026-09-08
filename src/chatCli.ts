@@ -6,11 +6,11 @@
  * the windows are read back from the description the pipeline wrote, and the window runs from
  * match start to run end plus the post-roll, which is what the video covers.
  */
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { config } from "./config.js";
 import { getMatch, parseMatchId } from "./mcsrApi.js";
-import { chatWindowsFromDescription, fetchVodChat } from "./twitchChat.js";
+import { chatWindowsFromDescription, saveChats } from "./twitchChat.js";
 import { estimatedRunSec } from "./vodAcquisition.js";
 
 const arg = process.argv[2];
@@ -28,19 +28,9 @@ if (windows.length !== 2)
 const match = await getMatch(matchId);
 const spanSec = config.overlayLeadInSec + estimatedRunSec(match) + config.postRollSec;
 
-for (const w of windows) {
-  const started = Date.now();
-  const messages = await fetchVodChat(w.videoId, w.fromSec, w.fromSec + spanSec);
-  const out = path.join(dir, `chat-${w.nickname}.json`);
-  await writeFile(
-    out,
-    JSON.stringify(
-      { nickname: w.nickname, videoId: w.videoId, fromSec: w.fromSec, spanSec, messages },
-      null,
-      1,
-    ),
-  );
-  console.error(
-    `${w.nickname}: ${messages.length} messages over ${spanSec.toFixed(0)}s in ${((Date.now() - started) / 1000).toFixed(1)}s -> ${out}`,
-  );
-}
+// Existing files are kept (the pipeline may have saved them already); delete one to refetch.
+const started = Date.now();
+const counts = await saveChats(dir, windows, spanSec);
+console.error(
+  `${Object.keys(counts).length} of ${windows.length} chats written to ${dir} in ${((Date.now() - started) / 1000).toFixed(1)}s`,
+);

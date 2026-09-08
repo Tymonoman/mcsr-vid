@@ -11,6 +11,11 @@
  * hash this throws with Twitch's own message, which is the failure to look for first.
  */
 
+import { existsSync } from "node:fs";
+import { writeFile } from "node:fs/promises";
+import path from "node:path";
+import { describeError } from "./errorText.js";
+
 const GQL_URL = "https://gql.twitch.tv/gql";
 const WEB_CLIENT_ID = "kimne78kx3ncx6brgo4mv6wki5h1ko";
 const COMMENTS_QUERY_HASH = "b70a3591ff0f4e0313d126c6a1502d79a1c02baebb288227c582044aa76adf6a";
@@ -115,16 +120,63 @@ export async function fetchVodChat(
   return out;
 }
 
+export interface ChatWindow {
+  nickname: string;
+  videoId: string;
+  /** Seconds into the VOD where the match starts. */
+  fromSec: number;
+}
+
+/** The file beside the media: `chat-<nick>.json`. */
+export const chatPath = (dir: string, nickname: string): string => path.join(dir, `chat-${nickname}.json`);
+
+/**
+ * Fetches and writes one chat file per window, skipping files that exist. Best effort by
+ * design: chat dies with the VOD, so the pipeline saves it while the VODs are known to exist,
+ * but Twitch rotating its query must never cost a render — a failure is logged and the next
+ * window is tried. Returns the message count per nickname for the log line.
+ */
+export async function saveChats(
+  dir: string,
+  windows: readonly ChatWindow[],
+  spanSec: number,
+  log: (line: string) => void = (line) => console.error(line),
+  fetchImpl: typeof fetch = fetch,
+): Promise<Record<string, number>> {
+  const counts: Record<string, number> = {};
+  for (const w of windows) {
+    const out = chatPath(dir, w.nickname);
+    if (existsSync(out)) continue;
+    try {
+      const messages = await fetchVodChat(w.videoId, w.fromSec, w.fromSec + spanSec, fetchImpl);
+      await writeFile(
+        out,
+        JSON.stringify(
+          { nickname: w.nickname, videoId: w.videoId, fromSec: w.fromSec, spanSec, messages },
+          null,
+          1,
+        ),
+      );
+      counts[w.nickname] = messages.length;
+      log(`chat: ${w.nickname}: ${messages.length} messages over ${spanSec.toFixed(0)}s`);
+    } catch (err) {
+      log(`chat: ${w.nickname}: ${describeError(err)} (continuing without it)`);
+    }
+  }
+  return counts;
+}
+
+/** The VOD id in a `https://www.twitch.tv/videos/<id>` URL, or null. */
+export const vodIdFromUrl = (url: string): string | null => /videos\/(\d+)/.exec(url)?.[1] ?? null;
+
 /**
  * The two POVs' VOD ids and match offsets, read back from the description the pipeline wrote —
  * `Watch <nick>'s POV: https://www.twitch.tv/videos/<id>?t=<n>s`. The pipeline holds these as
  * `VodWindow`s in memory and persists nothing else with them; until the chat download is a
  * pipeline stage, the description is the durable copy.
  */
-export function chatWindowsFromDescription(
-  text: string,
-): Array<{ nickname: string; videoId: string; fromSec: number }> {
-  const out: Array<{ nickname: string; videoId: string; fromSec: number }> = [];
+export function chatWindowsFromDescription(text: string): ChatWindow[] {
+  const out: ChatWindow[] = [];
   for (const m of text.matchAll(
     /^Watch (.+?)'s POV: https:\/\/www\.twitch\.tv\/videos\/(\d+)\?t=(\d+)s$/gm,
   )) {

@@ -45,7 +45,8 @@ import {
   type StageTracker,
 } from "./stageProgress.js";
 import { computeSyncOffset } from "./sync.js";
-import { downloadMatchVods, PRE_ROLL_SEC, type VodWindow } from "./vodAcquisition.js";
+import { downloadMatchVods, estimatedRunSec, PRE_ROLL_SEC, type VodWindow } from "./vodAcquisition.js";
+import { saveChats, vodIdFromUrl } from "./twitchChat.js";
 
 const FPS = 60;
 
@@ -217,6 +218,19 @@ async function runStages(
   if (!leftWindow || !rightWindow) {
     throw new Error("Downloaded windows don't match players[0]/players[1].");
   }
+
+  // Chat dies with the VOD, so it is saved here, while the VODs are known to exist, for the
+  // chat panel (src/twitchChat.ts). Best effort and outside the stage list: Twitch rotating its
+  // query must not cost a render, and a match rendered before this existed picks its chat up
+  // on the next run through, since reused downloads pass here too.
+  await saveChats(
+    outDir,
+    [leftWindow, rightWindow].flatMap((w) => {
+      const videoId = vodIdFromUrl(w.sourceUrl);
+      return videoId ? [{ nickname: w.playerNickname, videoId, fromSec: w.matchOffsetIntoVodSec }] : [];
+    }),
+    config.overlayLeadInSec + estimatedRunSec(match) + config.postRollSec,
+  );
 
   emit(active("sync"));
   let leftOffsetSec = leftWindow.matchOffsetIntoClipSec;
