@@ -23,6 +23,13 @@ assert.doesNotThrow(() => validateOverrides({ renderConcurrency: null }));
 assert.doesNotThrow(() => validateOverrides({ nightlyRenderHourUtc: 0 }));
 assert.doesNotThrow(() => validateOverrides({ nightlyRenderHourUtc: 23 }));
 assert.doesNotThrow(() => validateOverrides({ nightlyRenderHourUtc: null }));
+assert.throws(() => validateOverrides({ publishHourUtc: 24 }), /publishHourUtc.*0-23/);
+assert.throws(
+  () => validateOverrides({ publishHourUtc: null }),
+  /publishHourUtc/,
+  "the publish hour is not optional",
+);
+assert.doesNotThrow(() => validateOverrides({ publishHourUtc: 19 }));
 assert.doesNotThrow(() => validateOverrides({ mediaDir: "/tmp/media", overlayFps: 60 }));
 assert.doesNotThrow(() => validateOverrides({ suggestWeights: { closeMargin: 4 } }));
 assert.doesNotThrow(() => validateOverrides({}));

@@ -32,6 +32,7 @@ import { abortJob, getJob, startJob, streamProgress, type Job } from "./jobs.js"
 import { STAGE_LABELS, STAGE_ORDER, STAGE_SHORT_LABELS } from "./pipeline.js";
 import { presentSuggestions } from "./suggestPresent.js";
 import { dismiss, restore, snapshot, startScan } from "./suggestScan.js";
+import { nextPublishSlot } from "./publishSlot.js";
 import { chooseVariant, readManifest, rerenderThumbnailVariants } from "./thumbnailVariants.js";
 import { buildTitle, type BuiltTitle } from "./title.js";
 import { allArchiveStates, capacity } from "./archive.js";
@@ -529,6 +530,9 @@ const server = createServer(async (req, res) => {
         shortDescription: await short("description"),
         videoUrl: upload ? `https://youtu.be/${upload.videoId}` : null,
         players: [entry.leftNickname ?? null, entry.rightNickname ?? null],
+        // The slot to schedule for, so the morning's paste into Studio carries a time too.
+        publishAt: nextPublishSlot(Date.now(), config.publishHourUtc).toISOString(),
+        publishHourUtc: config.publishHourUtc,
       });
       return;
     }

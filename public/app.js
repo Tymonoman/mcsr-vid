@@ -608,11 +608,25 @@ async function loadPublishKit(id, meta) {
       <textarea readonly rows="${rows}">${esc(text)}</textarea>
     </div>`;
 
+  // The slot, in the operator's own zone with the UTC hour beside it. Studio's scheduler takes
+  // local time; the upload form below gets the same value as its default, so a scheduled upload
+  // through the dashboard and a paste into Studio land on the same minute.
+  const slot = kit.publishAt ? new Date(kit.publishAt) : null;
+  const slotText = slot
+    ? `${slot.toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })} (${String(kit.publishHourUtc).padStart(2, "0")}:00 UTC)`
+    : "";
+  const when = $("#ytWhen");
+  if (slot && when && !when.value) {
+    const pad = (n) => String(n).padStart(2, "0");
+    when.value = `${slot.getFullYear()}-${pad(slot.getMonth() + 1)}-${pad(slot.getDate())}T${pad(slot.getHours())}:${pad(slot.getMinutes())}`;
+  }
+
   const paint = () => {
     const title = titleText();
     const tags = (meta.tags ?? []).join(", ");
     el.innerHTML = [
       block("Title", title, 2, counter(`${title.length} / 100 chars`, title.length > 100)),
+      slot ? block("Publish at", slotText, 1) : "",
       block("Description", meta.description ?? "", 10),
       // Both numbers, because YouTube caps the list twice over: 500 characters across the whole
       // field, and the count is what tells you the pipeline wrote a tags file at all.

@@ -115,9 +115,11 @@ the page is newer than its server: the nightly strip detects that (the old serve
   playlist created a second earlier, and the back-to-back inserts made a duplicate on the live
   channel before this. The season playlist exists: `PLHG-jSA-dWDo`, all uploads to date.
 - **Publish kit** under the YouTube panel (`GET /api/publishkit/:id`): copy buttons for the
-  title (hook substituted), description, comma-joined tags with the 500-char count, the
-  Short's title/description when `short-<id>.title.txt` exists, and a DM per player with the
-  `youtu.be` link once uploaded. Nothing is stored; it is the manual Studio phase, pre-pasted.
+  title (hook substituted), the publish slot (next `publishHourUtc`, default 19:00 UTC — the
+  active competitor's measured slot; `src/publishSlot.ts`, also the upload form's default),
+  description, comma-joined tags with the 500-char count, the Short's title/description when
+  `short-<id>.title.txt` exists, and a DM per player with the `youtu.be` link once uploaded.
+  Nothing is stored; it is the manual Studio phase, pre-pasted.
 - **Publish checklist** under the pipeline stages: five facts derived from disk, five manual
   toggles (`uploaded`, `Short uploaded`, `related link`, `end screen`, `players notified`) in
   `<mediaDir>/<id>/publish.json`. `uploaded` is also derived (youtube.json) — the tick exists

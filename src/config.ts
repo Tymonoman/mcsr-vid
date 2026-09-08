@@ -119,6 +119,13 @@ export interface Config {
    */
   nightlyNotifyUrl: string;
   /**
+   * The hour (UTC, 0-23) the publish kit proposes for "Publish at", and the upload form's
+   * default. 19 is the active competitor's measured slot — 36 of its last 50 uploads on the
+   * dot, median 4.2k views there against 1.6k for its earlier 17:xx uploads — and 21:00 in
+   * Poland, 15:00 on the US east coast. See src/publishSlot.ts.
+   */
+  publishHourUtc: number;
+  /**
    * Suggestion slots per bucket. Close races and entertaining messes are ranked
    * separately so a run of very tight matches can't crowd the funny ones off the list.
    */
@@ -178,6 +185,7 @@ const DEFAULTS: Config = {
   renderConcurrency: null,
   nightlyRenderHourUtc: 3,
   nightlyRenderShort: true,
+  publishHourUtc: 19,
   nightlyRenderExport: true,
   nightlyNotifyUrl: "",
   suggestCloseSlots: 8,
@@ -226,9 +234,15 @@ export function validateOverrides(raw: Record<string, unknown>): void {
     // Its default is an hour, but null is the documented "no nightly render", and a number
     // outside the clock would pass a type check: `setUTCHours(25)` rolls into the next day
     // without a word, so a mistyped hour would fire at 01:00 and look scheduled.
-    if (key === "nightlyRenderHourUtc") {
-      if (value !== null && (!Number.isInteger(value) || (value as number) < 0 || (value as number) > 23)) {
-        throw new Error(`${CONFIG_PATH}: "nightlyRenderHourUtc" must be a whole hour 0-23 (UTC), or null.`);
+    if (key === "nightlyRenderHourUtc" || key === "publishHourUtc") {
+      const nullable = key === "nightlyRenderHourUtc";
+      if (
+        (value === null && !nullable) ||
+        (value !== null && (!Number.isInteger(value) || (value as number) < 0 || (value as number) > 23))
+      ) {
+        throw new Error(
+          `${CONFIG_PATH}: "${key}" must be a whole hour 0-23 (UTC)${nullable ? ", or null" : ""}.`,
+        );
       }
       continue;
     }
