@@ -693,12 +693,15 @@ async function loadPublishKit(id, meta) {
   // Getting the files onto the PC that publishes, which is step zero of the Studio phase and the
   // only part of this panel that is a command rather than a paste. Pull, not push: the container
   // has rsync but no ssh client (src/publishSet.ts). Absent unless `pullSource` is configured.
+  // The per-match line is the morning's; the other two are pasted once and then never again,
+  // so they fold away rather than push the title down the page every day.
   const pull = kit.pull
-    ? [
-        block("Pull this match to your PC", kit.pull.one, 3),
-        block("Pull everything ready, once", kit.pull.all, 3),
-        block("…or every 10 minutes (crontab -e)", kit.pull.cron, 3),
-      ].join("")
+    ? `${block("Pull this match to your PC", kit.pull.one, 3)}
+      <details class="kitmore">
+        <summary>everything ready at once, or every 10 minutes</summary>
+        ${block("Pull everything ready, once", kit.pull.all, 3)}
+        ${block("…or every 10 minutes (crontab -e)", kit.pull.cron, 3)}
+      </details>`
     : "";
 
   const paint = () => {

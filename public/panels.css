@@ -726,6 +726,20 @@
   color: var(--muted);
 }
 /* Right-aligned on a wide panel, first on its own line when the head wraps. */
+/* The one-time pull commands, folded: a native disclosure, styled as one more kit line. */
+.kitmore {
+  margin: 0 0 10px;
+}
+.kitmore > summary {
+  cursor: pointer;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 12px;
+  color: var(--muted);
+  padding: 4px 0;
+}
+.kitmore[open] > summary {
+  margin-bottom: 6px;
+}
 .kithead .copy {
   margin-left: auto;
   padding: 4px 12px;
