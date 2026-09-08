@@ -877,7 +877,7 @@ function nightlyInner() {
       <div class="plan" title="${esc(nextRunAt ?? "no schedule")}">${plan}</div>
       <div class="last" title="${esc(lastRun ? lastRun.startedAt : "")}">${last}</div>
     </div>
-    <button data-act="nightly-run" ${enabled ? "" : "disabled"}>Run now</button>`;
+    <button data-act="nightly-run">Run now</button>`;
 }
 
 function paintNightly() {

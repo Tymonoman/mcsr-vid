@@ -206,9 +206,18 @@ export function validateOverrides(raw: Record<string, unknown>): void {
       }
       continue;
     }
-    // Keys whose default is null and whose override is a number: renderConcurrency (null =
-    // Remotion's own default) and nightlyRenderHourUtc (null = no nightly render). `typeof
-    // null` is "object", so these have to be checked before the typeof comparison below.
+    // Its default is an hour, but null is the documented "no nightly render", and a number
+    // outside the clock would pass a type check: `setUTCHours(25)` rolls into the next day
+    // without a word, so a mistyped hour would fire at 01:00 and look scheduled.
+    if (key === "nightlyRenderHourUtc") {
+      if (value !== null && (!Number.isInteger(value) || (value as number) < 0 || (value as number) > 23)) {
+        throw new Error(`${CONFIG_PATH}: "nightlyRenderHourUtc" must be a whole hour 0-23 (UTC), or null.`);
+      }
+      continue;
+    }
+    // A key whose default is null and whose override is a number: renderConcurrency (null =
+    // Remotion's own default). `typeof null` is "object", so it has to be checked before the
+    // typeof comparison below.
     if (expected === null) {
       if (value !== null && (typeof value !== "number" || !Number.isFinite(value))) {
         throw new Error(`${CONFIG_PATH}: "${key}" must be a finite number or null.`);

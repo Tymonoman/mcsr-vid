@@ -128,11 +128,12 @@ try {
 
   // A run already going is a conflict, not an answer: the route turns `busy` into a 409, which
   // is the same refusal DELETE /api/match gives for the same reason.
+  // It leaves the record alone: the render it yielded to is the night's output, and the strip
+  // would otherwise show "skipped" over last night's real result after one impatient click.
+  writeNightlyState(run);
   const inFlight = await runNightlyOnce("", { renderInFlight: () => true });
   assert.deepEqual(inFlight, { skipped: "a render is already in flight", busy: true });
-  assert.equal(readNightlyState()?.outcome, "skipped", "a skip is recorded, with its reason");
-  assert.equal(readNightlyState()?.reason, "a render is already in flight");
-  assert.equal(readNightlyState()?.matchId, null, "a skip chose nothing, so it names nothing");
+  assert.deepEqual(readNightlyState(), run, "a conflict is not recorded over the last real run");
 
   // Nothing eligible is an ordinary answer with a reason, not a failure. The list is injected
   // because the real one is a scan; the job lookup because this box has no jobs.
@@ -140,6 +141,9 @@ try {
   assert.deepEqual(empty, {
     skipped: "every suggestion is processed or hidden, or the disk is full",
   });
+  assert.equal(readNightlyState()?.outcome, "skipped", "an ordinary skip is recorded, with its reason");
+  assert.equal(readNightlyState()?.reason, "every suggestion is processed or hidden, or the disk is full");
+  assert.equal(readNightlyState()?.matchId, null, "a skip chose nothing, so it names nothing");
   // No list at all is a different sentence — a cold process with a dead API, not a full disk.
   const none = await runNightlyOnce("", { renderInFlight: () => false, ranked: async () => null });
   assert.deepEqual(none, { skipped: "no suggestions available" });

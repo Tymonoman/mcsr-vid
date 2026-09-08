@@ -318,7 +318,10 @@ export async function runNightlyOnce(
   const startedAt = new Date().toISOString();
   const skip = (reason: string, conflict = false): NightlyRunResult => {
     console.error(`nightly: skipped — ${reason}`);
-    writeNightlyState({ startedAt, matchId: null, players: [], outcome: "skipped", reason });
+    // A conflict is the one skip that is not an outcome: the route answers it 409 and the run
+    // already in flight is what the night produced. Recording it would replace last night's
+    // real result with "skipped" on the strip.
+    if (!conflict) writeNightlyState({ startedAt, matchId: null, players: [], outcome: "skipped", reason });
     return { skipped: reason, ...(conflict ? { busy: true } : {}) };
   };
 
