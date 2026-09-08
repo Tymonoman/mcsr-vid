@@ -101,6 +101,8 @@ container needs `docker restart mcsr-dashboard`; a CSS/JS change is live on relo
   compare can measure text vs no text; each `VariantRecord` records `hook`, and the Short
   reuses the manifest's `hookText` so both halves of a match say the same thing (rank chips
   read live rank, which drifted from `#3 vs #17` to `#3 vs #21` within an hour).
+  The A/B tab groups impressions and CTR by variant *and* by text vs no text (`byHook` in
+  `abTestPayload`, impression-weighted); videos whose manifest is missing land in `Unknown`.
 - **Upload** sends the tags from `match-<id>.tags.txt` (written by the pipeline, see
   `buildTags` in `src/description.ts`) and refuses — server and client — any title still
   containing `<HOOK>`. After upload it adds the video to the season playlist *and* a
