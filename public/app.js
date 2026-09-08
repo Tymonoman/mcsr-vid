@@ -481,28 +481,43 @@ async function loadVariants(id) {
   $("#rerender").addEventListener("click", async (ev) => {
     const btn = ev.currentTarget;
     const hookText = $("#hook")?.value.trim() ?? "";
+    const want = hookText || null;
+    const said = (cls, text) =>
+      $("#variants")?.insertAdjacentHTML("beforeend", `<div class="scanline ${cls}">${esc(text)}</div>`);
     btn.disabled = true;
     btn.textContent = "Rendering\u2026";
+    // What the manifest said before, so "nothing changed" can be told apart from "changed".
+    const before = await api(`/api/thumbnails/${id}`).catch(() => null);
+    let status = null;
     try {
       await api(`/api/thumbnails/${id}/rerender`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ hookText }),
       });
-      // 202 only means it started. The manifest's hookText is the one thing that says it
-      // finished, so poll that rather than guessing at a duration.
-      const want = hookText || null;
-      for (let i = 0; i < 60; i++) {
+      // 202 only means it started. The server says when it stopped running and whether it
+      // failed; a server without that field (older code) is polled on the manifest's headline.
+      for (let i = 0; i < 90; i++) {
         await new Promise((r) => setTimeout(r, 2000));
-        const m = await api(`/api/thumbnails/${id}`).catch(() => null);
-        if (m && m.hookText === want) break;
+        status = await api(`/api/thumbnails/${id}`).catch(() => null);
+        if (status && status.rerender ? !status.rerender.running : status && status.hookText === want) break;
       }
     } catch (e) {
-      btn.textContent = e.message;
+      btn.disabled = false;
+      btn.textContent = "Re-render with hook";
+      said("bad", `re-render failed: ${e.message}`);
       return;
     }
     await loadVariants(id);
     await refresh();
+    const label = want ? `"${want}"` : "no headline";
+    if (!status) said("bad", "re-render: could not reach the server to confirm — reload to see");
+    else if (status.rerender?.error) said("bad", `re-render failed: ${status.rerender.error}`);
+    else if (status.rerender?.running)
+      said("bad", "re-render is still running after three minutes — check the server log");
+    else if ((before?.hookText ?? null) === want)
+      said("muted", `already rendered with ${label} — nothing to change`);
+    else said("ok", `rendered with ${label}`);
   });
 }
 

@@ -91,9 +91,17 @@ assert.deepEqual(buildHookSuggestions({ ...input({ finishMarginMs: 2_400 }), max
 // eloRate *after* the match plus the delta, so edcr started at 1850 and doogile at 2050.
 const upset = buildHookSuggestions(input({ winner: "edcr" }, ELO_GAP));
 assert.ok(
-  upset.some((t) => t === "The 1850 takes down the 2050"),
+  upset.some((t) => t === "Can the 1850 take down the 2050?"),
   `expected an underdog hook, got ${JSON.stringify(upset)}`,
 );
+// The same question when the favourite wins, so the question never answers itself; only its
+// weight differs, which a viewer cannot see.
+const favourite = buildHookSuggestions(input({ winner: "doogile" }, ELO_GAP));
+assert.ok(
+  favourite.some((t) => t === "Can the 1850 take down the 2050?"),
+  `the question must not depend on who won, got ${JSON.stringify(favourite)}`,
+);
+assert.ok(!upset.concat(favourite).some((t) => /takes down/.test(t)), "no chip names the winner");
 
 // --- Rivalry framing outranks description ------------------------------------------------
 // Measured on the first seven uploads: rivalry hooks took 9.36% CTR, descriptive ones 2.25%.
@@ -109,7 +117,7 @@ const rivalry = buildHookSuggestions(
 );
 assert.deepEqual(rivalry, [
   "Rematch: doogile leads 2-1",
-  "The 1850 takes down the 2050",
+  "Can the 1850 take down the 2050?",
   "#4 vs #11",
   "2050 vs 1850",
 ]);

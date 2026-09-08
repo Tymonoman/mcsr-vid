@@ -54,8 +54,10 @@ const opening = text.split("\n")[0];
 
 // The whole point of the rewrite: the first 150-200 characters are all YouTube shows before
 // "Show more", and on every live upload so far they were two raw Twitch URLs.
+// 100, not 120: the result clause that used to pad the opening is gone on purpose, and a
+// match with no seed type is legitimately short.
 assert.ok(
-  opening.length >= 120 && opening.length <= 200,
+  opening.length >= 100 && opening.length <= 200,
   `opening must fit the Show-more preview, got ${opening.length}: ${opening}`,
 );
 assert.ok(!opening.includes("http"), "opening must not lead with a URL");
@@ -67,7 +69,8 @@ assert.ok(
 
 // Elo comes from changes[].eloRate - changes[].change, never the live rating.
 assert.match(opening, /2546 vs 2440 elo/, "must use match-time elo, not the live 2615/2370");
-assert.match(opening, /Result: edcr 8:52\./, "winner and finish time");
+// Never the result: the description is read before the match is watched.
+assert.ok(!opening.includes("Result:") && !opening.includes("8:52"), "the opening must not say who won");
 
 assert.match(
   text,
@@ -114,9 +117,9 @@ for (const gone of ["#edcr", "#doogile", "#Nether", "#Bastion", "#Fortress", "#E
   assert.ok(!text.includes(gone), `${gone} must be gone`);
 }
 
-// A forfeited match names the winner without implying they ran the time.
+// Nor a forfeit: that is the ending too.
 const ff = build(match({ forfeited: true, result: { uuid: DOOGILE, time: 0 } }));
-assert.match(ff.split("\n")[0], /Result: doogile wins by forfeit\./);
+assert.ok(!/forfeit|Result:/.test(ff.split("\n")[0]), "a forfeit is not announced either");
 
 // No recorded winner: drop the clause rather than render a bogus one.
 const draw = build(match({ result: { uuid: null, time: 0 } }));
@@ -132,7 +135,7 @@ const seeded = build(match({ seedType: "VILLAGE", bastionType: "BRIDGE" })).spli
 assert.match(seeded, /Village seed, bridge bastion\./, "both halves, first letter capitalised");
 assert.match(seeded, /^edcr vs doogile — MCSR Ranked 1v1/, "nicknames still lead the preview");
 assert.ok(seeded.indexOf("Village seed") > seeded.indexOf("dual-POV"), "seed follows the body sentence");
-assert.ok(seeded.indexOf("Village seed") < seeded.indexOf("Result:"), "and precedes the result");
+assert.ok(seeded.trimEnd().endsWith("bastion."), "and ends the opening");
 
 const seedOnly = build(match({ seedType: "DESERT_TEMPLE" })).split("\n")[0];
 assert.match(seedOnly, /Desert temple seed\./, "underscores become spaces");

@@ -81,6 +81,9 @@ const STATIC_ASSETS: Record<string, { file: string; type: string }> = {
 
 /** Thumbnail re-renders in flight, so a second POST cannot delete the files the first is writing. */
 const thumbnailRerenders = new Set<number>();
+/** The last re-render failure per match, for the panel: a background render that dies would
+    otherwise be a console line nobody sees and a button that quietly comes back. */
+const thumbnailRerenderErrors = new Map<number, string>();
 
 /** Match ids come from the URL, so they gate a path join and must be digits only. */
 function parseId(raw: string | undefined): number | null {
@@ -626,7 +629,13 @@ const server = createServer(async (req, res) => {
     }
 
     if (resource === "thumbnails" && req.method === "GET") {
-      json(res, 200, (await readManifest(matchDir(matchId))) ?? { chosen: null, variants: [] });
+      json(res, 200, {
+        ...((await readManifest(matchDir(matchId))) ?? { chosen: null, hookText: null, variants: [] }),
+        rerender: {
+          running: thumbnailRerenders.has(matchId),
+          error: thumbnailRerenderErrors.get(matchId) ?? null,
+        },
+      });
       return;
     }
 
@@ -662,6 +671,7 @@ const server = createServer(async (req, res) => {
         return;
       }
       thumbnailRerenders.add(matchId);
+      thumbnailRerenderErrors.delete(matchId);
       // Not awaited: the render outlives the request, which is what the 202 is saying.
       void (async () => {
         try {
@@ -678,6 +688,7 @@ const server = createServer(async (req, res) => {
             hookText,
           });
         } catch (err) {
+          thumbnailRerenderErrors.set(matchId, describeError(err));
           console.error(`thumbnail re-render failed for ${matchId}: ${describeError(err)}`);
         } finally {
           thumbnailRerenders.delete(matchId);

@@ -51,7 +51,8 @@ export interface DescriptionInput {
  * "Show more". Both nicknames go first because they are the search terms in this niche, and
  * "MCSR Ranked 1v1" lands before character 50 so it survives the mobile truncation.
  *
- * The result clause is dropped entirely when the match has no winner recorded.
+ * No result, ever: the description is read before the match is watched, and the ending is the
+ * reason to watch it. Who won stays on the timer.
  */
 function buildOpening(input: DescriptionInput): string {
   const { match, userLeft, userRight } = input;
@@ -71,16 +72,7 @@ function buildOpening(input: DescriptionInput): string {
   // Runners search by seed type — the closest competitor puts it in every title. It goes after
   // the body so the nicknames and "MCSR Ranked 1v1" keep the front of the Show-more preview.
   const seed = [seedPhrase(match), bastionPhrase(match)].filter(Boolean).join(", ");
-  const lead = seed ? `${head} ${body} ${seed[0].toUpperCase()}${seed.slice(1)}.` : `${head} ${body}`;
-
-  const winner = match.result.uuid;
-  if (!winner) return lead;
-
-  const winnerName = winner === userLeft.uuid ? left : right;
-  const outcome = match.forfeited
-    ? `${winnerName} wins by forfeit`
-    : `${winnerName} ${formatShortTime(match.result.time)}`;
-  return `${lead} Result: ${outcome}.`;
+  return seed ? `${head} ${body} ${seed[0].toUpperCase()}${seed.slice(1)}.` : `${head} ${body}`;
 }
 
 /**

@@ -106,12 +106,14 @@ function candidates(input: HookInput): Candidate[] {
     }
   }
 
-  if (winner !== null && leftElo > 0 && rightElo > 0) {
-    const winnerElo = winner === userLeft.nickname ? leftElo : rightElo;
-    const loserElo = winner === userLeft.nickname ? rightElo : leftElo;
-    if (loserElo - winnerElo >= 100) {
-      out.push({ text: `The ${winnerElo} takes down the ${loserElo}`, weight: 125 });
-    }
+  // The favourite and the underdog, never the winner: the ending is the reason to watch, and
+  // "The 1789 takes down the 2080" gave it away on the thumbnail. A question, and asked whenever
+  // the gap is wide enough to be one — if it only appeared for upsets, it would answer itself.
+  if (leftElo > 0 && rightElo > 0 && Math.abs(leftElo - rightElo) >= 100) {
+    const low = Math.min(leftElo, rightElo);
+    const high = Math.max(leftElo, rightElo);
+    const upset = winner !== null && (winner === userLeft.nickname ? leftElo : rightElo) === low;
+    out.push({ text: `Can the ${low} take down the ${high}?`, weight: upset ? 125 : 60 });
   }
 
   // Current rank, not rank at match time: the API carries no historical rank the way `changes`
