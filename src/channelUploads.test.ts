@@ -146,6 +146,23 @@ try {
   assert.equal(got[0]!.privacyStatus, "public");
   assert.equal(channelVideoFor(matchOf("vid59"), got)?.videoId, "vid59", "the last batch is kept");
 
+  // "Check the channel" after a Studio upload: a forced refresh fills the snapshot whatever the
+  // cache's age, and the ordinary stale check right after it does nothing (it is fresh now).
+  const {
+    _setChannelUploadsForTest,
+    channelUploadsSnapshot,
+    refreshChannelUploadsIfStale,
+    refreshChannelUploadsNow,
+  } = await import("./channelUploads.js");
+  _setChannelUploadsForTest([]);
+  const before = calls.length;
+  await refreshChannelUploadsNow(stub);
+  assert.equal(channelUploadsSnapshot().length, 60, "a forced refresh lists the channel now");
+  assert.ok(calls.length > before, "and actually called the API");
+  const after = calls.length;
+  refreshChannelUploadsIfStale();
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(calls.length, after, "a fresh cache is not refreshed again by the stale check");
   console.log("channelUploads: all checks passed");
 } finally {
   await rm(dir, { recursive: true, force: true });

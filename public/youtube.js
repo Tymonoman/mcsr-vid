@@ -53,8 +53,27 @@ async function loadYoutube(id, meta) {
   const firstLine = (meta.title ?? "").split("\n")[0] ?? "";
   const hook = $("#hook")?.value.trim();
   const suggestedTitle = hook ? firstLine.replace("<HOOK>", hook) : firstLine;
+  // Back from Studio: list the channel now, then repaint everything that says "published".
+  const checkChannel = async (link) => {
+    link.textContent = "checking…";
+    try {
+      const all = await api("/api/youtube/uploads?fresh=1");
+      if (!all.uploads.some((u) => u.matchId === id)) {
+        link.textContent = "not on the channel yet — check again";
+        return;
+      }
+    } catch (e) {
+      link.textContent = `could not check: ${e.message}`;
+      return;
+    }
+    await refresh();
+    loadYoutube(id, meta);
+    loadPublishKit(id, meta);
+    loadChecklist(id);
+  };
 
   el.innerHTML = `
+    <div class="scanline">Uploaded it in Studio already? <a href="#" data-act="checkchannel">check the channel</a> <span class="muted">(otherwise it is noticed within six hours)</span></div>
     <div class="upload">
       <label>Title <input type="text" id="ytTitle" value="${esc(suggestedTitle)}"></label>
       <label>Description <textarea id="ytDesc" rows="6">${esc(meta.description ?? "")}</textarea></label>
@@ -104,6 +123,10 @@ async function loadYoutube(id, meta) {
     gate();
   });
   gate();
+  $('#youtube [data-act="checkchannel"]')?.addEventListener("click", (ev) => {
+    ev.preventDefault();
+    void checkChannel(ev.currentTarget);
+  });
 
   $("#ytUpload").addEventListener("click", async () => {
     const when = $("#ytWhen").value;

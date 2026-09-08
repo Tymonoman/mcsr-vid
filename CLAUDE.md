@@ -159,7 +159,9 @@ the page is newer than its server: the nightly strip detects that (the old serve
   the channel. Matched on the path segment, not the host — the three pipeline-era descriptions
   live today carry three shapes of that line, including a `magmamcsr.com` deep link. The manual
   `uploaded` tick is now only the fallback for a video the link cannot find: the hand-made
-  uploads from before the pipeline, whose descriptions name no match.
+  uploads from before the pipeline, whose descriptions name no match. Back from Studio, the
+  YouTube panel's "check the channel" link lists the channel at once (`GET
+  /api/youtube/uploads?fresh=1`, three quota units) instead of waiting for the six-hour scan.
 - **Publish kit** under the final video (`GET /api/publishkit/:id`): copy buttons for the
   title (hook substituted), the publish slot (next `publishHourUtc`, default 19:00 UTC — the
   active competitor's measured slot; `src/publishSlot.ts`, also the upload form's default),

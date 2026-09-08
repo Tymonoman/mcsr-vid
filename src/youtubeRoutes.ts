@@ -14,6 +14,7 @@ import {
   channelUploadsSnapshot,
   channelVideoFor,
   refreshChannelUploadsIfStale,
+  refreshChannelUploadsNow,
   type ChannelVideo,
 } from "./channelUploads.js";
 import { config } from "./config.js";
@@ -103,8 +104,11 @@ export async function handleYoutubeRoute(
 
   if (action === "uploads" && req.method === "GET") {
     // Fire-and-forget, as the suggestions route does for the rival posts: the first request
-    // after boot answers without the Studio uploads and the next one has them.
-    refreshChannelUploadsIfStale();
+    // after boot answers without the Studio uploads and the next one has them. `?fresh=1` is
+    // the operator back from Studio: list the channel now and answer with it.
+    if (new URL(req.url ?? "/", "http://x").searchParams.get("fresh") === "1")
+      await refreshChannelUploadsNow();
+    else refreshChannelUploadsIfStale();
     ctx.json(res, 200, await uploadsPayload());
     return true;
   }

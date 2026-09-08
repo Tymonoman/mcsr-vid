@@ -116,7 +116,24 @@ export function channelUploadsSnapshot(): ChannelVideo[] {
 export function refreshChannelUploadsIfStale(nowMs: number = Date.now()): void {
   if (!isConfigured()) return;
   if (inflight || nowMs - cached.atMs < REFRESH_MS) return;
-  inflight = fetchChannelUploads()
+  inflight = refresh(nowMs);
+}
+
+/**
+ * Now, whatever the cache's age: the operator has just uploaded in Studio and wants the row to
+ * say so, not six hours from now. Three quota units, on a click. Shares the in-flight refresh.
+ */
+export function refreshChannelUploadsNow(
+  fetchImpl: typeof fetch = fetch,
+  nowMs: number = Date.now(),
+): Promise<void> {
+  if (!isConfigured()) return Promise.resolve();
+  if (!inflight) inflight = refresh(nowMs, fetchImpl);
+  return inflight;
+}
+
+function refresh(nowMs: number, fetchImpl: typeof fetch = fetch): Promise<void> {
+  return fetchChannelUploads(fetchImpl)
     .then((videos) => {
       cached = { atMs: nowMs, videos };
       console.error(`channel: ${videos.length} videos on the channel`);
