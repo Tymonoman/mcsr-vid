@@ -8,7 +8,7 @@
   ],
   "syncConfidenceThreshold": 0.15,
   "preRollSec": 150,
-  "postRollSec": 60,
+  "postRollSec": 30,
   "defaultRunSec": 900,
   "mediaDir": "media",
   "youtubeChannelId": "UCm2mAyONTHlmIxZzNmi388w",

@@ -24,8 +24,15 @@ export interface Config {
   thumbnailVariants: Array<{ left: string; right: string; hook?: boolean }>;
   /** Minimum cross-correlation confidence (sync.ts) to trust the refined audio sync offset. */
   syncConfidenceThreshold: number;
-  /** VOD trim window: seconds of buffer before/after the estimated match start/end. */
+  /** VOD trim window: seconds of buffer before the estimated match start. */
   preRollSec: number;
+  /**
+   * Seconds kept after the finish, at most (the tail is cut earlier where the winner goes quiet
+   * and still, never under 15 s). 30, not 60: measured on the same match the competitor posted,
+   * their video ends ~10 s after the finish and ours ran 59 s into the winner's stats screen; the
+   * subscribe card lands at +3 s and the rank-up screen is over by +15. Also the VOD download's
+   * buffer after the run.
+   */
   postRollSec: number;
   /** Fallback run length (sec) when match.result.time is missing/zero (e.g. forfeits). */
   defaultRunSec: number;
@@ -195,7 +202,7 @@ const DEFAULTS: Config = {
   ],
   syncConfidenceThreshold: 0.15,
   preRollSec: 150,
-  postRollSec: 60,
+  postRollSec: 30,
   defaultRunSec: 900,
   mediaDir: "media",
   youtubeChannelId: "UCm2mAyONTHlmIxZzNmi388w",

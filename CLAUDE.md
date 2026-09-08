@@ -8,7 +8,8 @@ what an agent cannot derive from the code; the rest is in the files it names.
 ## House rules
 
 - The match footage is never cut. The two editable regions — before the match and after the run
-  — are automated (`ANCHOR_SEC`, `src/postRoll.ts`).
+  — are automated (`ANCHOR_SEC`, `src/postRoll.ts`; the tail is at most `postRollSec` = 30 s,
+  cut earlier where the winner goes quiet, never under 15 s).
 - Nothing names the winner: no result line in the description, no winner in a hook or on a
   thumbnail. The upset hook is a question (`Can the 1789 take down the 2080?`).
 - No `videos.insert` until the YouTube API compliance audit clears (submitted 7 Sept 2026): an
