@@ -78,13 +78,15 @@ try {
   console.log("OK: found an existing playlist on page 2, reused it, inserted the video");
 
   // --- 2. No playlist of that title yet ----------------------------------------------------
+  // A title the first case did not resolve: ids are remembered per process (case 5), so reusing
+  // "MCSR Ranked matches" here would never reach the create path it is meant to test.
   calls = stubFetch([{ items: [{ id: "PL_A", snippet: { title: "Other" } }] }], "PL_CREATED");
-  await addToPlaylist("VID2", "MCSR Ranked matches");
+  await addToPlaylist("VID2", "Season one");
 
   const created = calls.find((c) => c.url.includes("/playlists?") && c.method === "POST");
   assert.ok(created, "should have created the playlist");
   assert.deepEqual(created.body, {
-    snippet: { title: "MCSR Ranked matches" },
+    snippet: { title: "Season one" },
     status: { privacyStatus: "public" },
   });
   const insert2 = calls.find((c) => c.url.includes("/playlistItems?"));
