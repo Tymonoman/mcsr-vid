@@ -105,7 +105,15 @@ export async function deleteMatch(matchId: number): Promise<DeleteResult> {
  */
 
 /** The facts nothing in this repo can see, because they happen in Studio or in a DM. */
-export const MANUAL_PUBLISH_KEYS = ["shortUploaded", "relatedLinkSet", "playersNotified"] as const;
+// endScreenSet: end screens and cards have no API and are the cheapest session-time lever on the
+// platform — a viewer who finishes one match is offered the next one by the channel, not by
+// the algorithm. The rivalry playlist link in the description only helps the ones who scroll.
+export const MANUAL_PUBLISH_KEYS = [
+  "shortUploaded",
+  "relatedLinkSet",
+  "endScreenSet",
+  "playersNotified",
+] as const;
 export type ManualPublishKey = (typeof MANUAL_PUBLISH_KEYS)[number];
 
 export const isManualPublishKey = (key: unknown): key is ManualPublishKey =>

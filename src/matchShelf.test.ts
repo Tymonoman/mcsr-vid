@@ -92,6 +92,7 @@ try {
       shortRendered: false,
       shortUploaded: false,
       relatedLinkSet: false,
+      endScreenSet: false,
       playersNotified: false,
     },
     "a bare match directory should tick nothing",

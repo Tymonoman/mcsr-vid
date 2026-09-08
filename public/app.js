@@ -307,6 +307,7 @@ const CHECKLIST = [
   ["shortRendered", "Short rendered"],
   ["shortUploaded", "Short uploaded", true],
   ["relatedLinkSet", "related link", true],
+  ["endScreenSet", "end screen", true],
   ["playersNotified", "players notified", true],
 ];
 
