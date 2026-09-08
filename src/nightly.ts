@@ -10,8 +10,9 @@
  * Deliberately timid — it starts *one* render, and only when nothing else is going on:
  *
  *   - it never forces a rescan. A forced scan is hundreds of feed requests against a
- *     500-per-10-minute budget, and the cached list is what the operator would be picking from
- *     anyway; a scan happens only when there is no list at all yet.
+ *     500-per-10-minute budget; it runs the same unforced scan the timer does — the cache while
+ *     fresh, only the matches played since the last scan once stale — so the pick is from
+ *     tonight's feed.
  *   - it skips entirely while a pipeline is running, so an overnight render cannot land on top
  *     of one the operator started before going to bed.
  *   - it stops well before the SSD does (a finished match is 2–2.5 GB), because a render that dies

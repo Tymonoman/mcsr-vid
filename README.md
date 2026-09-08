@@ -27,7 +27,7 @@ match — existing files under `media/<id>/` are reused instead of re-fetched.
 | `npm run generate-project -- <id>` | Full pipeline → `media/<id>/match-<id>.kdenlive` |
 | `npm run export:fast -- <id>` | The same video as one finished MP4, no Kdenlive |
 | `npm run short -- <id>` | A vertical ~22s Short of the match's best moment |
-| `npm run generate-thumbnail -- <id>` | Thumbnail variants |
+| `npm run generate-thumbnail -- <id>` | The default-pose `thumbnail.png` only, no hook; the pipeline's thumbnail stage renders the configured A/B variants |
 | `npm run dashboard` | Web UI: match suggestions, render, publish kit (`PORT`, default 8080) |
 | `npm start` | Terminal UI: pick a match, resume one, reopen a finished project |
 | `npm run fetch-match -- <id>` | Match/player/versus JSON |

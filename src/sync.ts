@@ -12,9 +12,9 @@ const SAMPLE_RATE = 8000;
 // (thumpDetect.ts) is what corrects A-side error.
 const PROBE_RADIUS_SEC = 8;
 /**
- * Half-width of the window each clip's own thump is hunted in. Wider than the correlation's
- * own search window because absolute detection has nothing to fall back on: if the thump is outside this window,
- * that clip simply has no answer of its own.
+ * Half-width of the window each clip's own thump is hunted in — by the per-clip absolute
+ * detections and, doubled, by the audio fallback's B-side search. Generous because absolute
+ * detection has nothing to fall back on: a thump outside it means that clip has no answer.
  */
 const DETECT_RADIUS_SEC = 25;
 /**

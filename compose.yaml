@@ -39,7 +39,7 @@ services:
     volumes:
       # Repo lives on the lab host, so edits and node_modules survive image rebuilds.
       - /home/homelab/mcsr-vid:/app
-      # Working dir on the SSD (184 GB free, ~26 matches). Deliberately NOT the NAS:
+      # Working dir on the SSD (~3 GB a match, see src/archive.ts). Deliberately NOT the NAS:
       # measured at 17.7 MB/s write over a *soft* CIFS mount, where a network blip
       # returns an I/O error and would kill an hour-long render.
       - /home/homelab/mcsr-media:/media

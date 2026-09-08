@@ -29,13 +29,13 @@ Use the script, don't reconstruct the shell line. Extra arguments go after `--`.
 | `npm run export:fast -- <matchId> [--cpu] [--seconds=N] [--full-tail]` | The finished MP4 in one ffmpeg pass (Intel VAAPI on the lab), no Kdenlive. `--seconds` renders a short range as a smoke test. Open the `.kdenlive` when a match needs a human; both place clips through `placeOnTimeline`. |
 | `npm run export:nvenc -- media/<id>/match-<id>.kdenlive [out=N]` | melt + `h264_nvenc` to `out/export.mp4`. Needs an NVIDIA GPU; the lab has none. |
 | `npm run short -- <matchId> [--pick=N] [--seconds=22]` | The ~22 s vertical MP4 (`short-<id>.mp4`) plus its `.title.txt` / `.description.txt`. Needs the VODs. |
-| `npm run chat -- <matchId>` | Re-fetch both players' Twitch chat to `chat-<nick>.json` (the pipeline does this itself after `download-vods`). |
+| `npm run chat -- <matchId>` | Fetch both players' Twitch chat to `chat-<nick>.json` for a match the pipeline saved none for (it does this itself after `download-vods`). Existing files are kept; delete one to refetch. |
 | `npm run bench -- <Composition> [--frames=N] [--codec=] [--pixelFormat=] [--concurrency=N]` | Render throughput for one composition. Measure before claiming a render change is faster. |
 | `npm run analytics -- <videoId> [--traffic-sources] [--days N]` | YouTube Analytics via `~/.claude/skills/claude-youtube/` (outside the repo; token at `~/.claude/.tmp/youtube_oauth_token.json`). |
 | `python3 scripts/reap.py <command…>` | Run anything that spawns Chromium through this (see Pitfalls). |
 
 Lab timings for a 10-minute match: overlay render ~9 min, `export:fast` ~10 min, a Short in
-seconds; a nightly render + Short + MP4 lands in 12–21 minutes.
+seconds; a nightly render + Short takes ~12 min, ~21 min with the MP4.
 
 ## What the render produces
 
