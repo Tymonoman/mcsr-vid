@@ -5,7 +5,19 @@
 import assert from "node:assert/strict";
 import type { ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { chainShort, msUntilNextRun, pickNightlyCandidate } from "./nightly.js";
+import { writeFileSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { config } from "./config.js";
+import {
+  chainShort,
+  msUntilNextRun,
+  pickNightlyCandidate,
+  readNightlyState,
+  runNightlyOnce,
+  writeNightlyState,
+} from "./nightly.js";
 import type { ShortRunner } from "./shortsRoutes.js";
 
 const HOUR = 3_600_000;
@@ -84,6 +96,62 @@ assert.equal(pickNightlyCandidate(ranked, { ...roomy, freeMatches: 2 })?.metrics
   // A Short that fails does not turn a rendered match into a failure — it is a clause, not a
   // verdict, and the notification has to carry both halves.
   assert.match(await chainShort(5, "done", true, runner(1)), /Short failed/);
+}
+
+// --- The record of the last run, and the two guards that end one before it starts. ------------
+// A tmp mediaDir as matchShelf.test.ts uses: the state file lives beside the media, so pointing
+// config at a scratch directory is the whole of the setup.
+const media = await mkdtemp(path.join(tmpdir(), "mcsr-nightly-media-"));
+assert.ok(media.startsWith(tmpdir()), "refusing to run outside tmpdir");
+config.mediaDir = media;
+
+try {
+  // Nothing written yet reads as "no record", not as a crash — the panel opens on a fresh box.
+  assert.equal(readNightlyState(), null, "an absent state file is null");
+
+  const run = {
+    startedAt: "2026-09-07T03:00:00.000Z",
+    matchId: 13172029,
+    players: ["Infume", "NoHacsJustRoblox"],
+    outcome: "done" as const,
+    short: "done" as const,
+  };
+  writeNightlyState(run);
+  assert.deepEqual(readNightlyState(), run, "what was written is what comes back");
+
+  // Same defensive read as matchShelf.ts: a truncated write must not take the dashboard down.
+  writeFileSync(path.join(media, ".nightly.json"), "{ this is not");
+  assert.equal(readNightlyState(), null, "a corrupt state file is null, not a throw");
+  // And so is a well-formed file with no run in it.
+  writeFileSync(path.join(media, ".nightly.json"), '{"lastRun":null}');
+  assert.equal(readNightlyState(), null);
+
+  // A run already going is a conflict, not an answer: the route turns `busy` into a 409, which
+  // is the same refusal DELETE /api/match gives for the same reason.
+  const inFlight = await runNightlyOnce("", { renderInFlight: () => true });
+  assert.deepEqual(inFlight, { skipped: "a render is already in flight", busy: true });
+  assert.equal(readNightlyState()?.outcome, "skipped", "a skip is recorded, with its reason");
+  assert.equal(readNightlyState()?.reason, "a render is already in flight");
+  assert.equal(readNightlyState()?.matchId, null, "a skip chose nothing, so it names nothing");
+
+  // Nothing eligible is an ordinary answer with a reason, not a failure. The list is injected
+  // because the real one is a scan; the job lookup because this box has no jobs.
+  const empty = await runNightlyOnce("", { renderInFlight: () => false, ranked: async () => [] });
+  assert.deepEqual(empty, {
+    skipped: "every suggestion is processed or hidden, or the disk is full",
+  });
+  // No list at all is a different sentence — a cold process with a dead API, not a full disk.
+  const none = await runNightlyOnce("", { renderInFlight: () => false, ranked: async () => null });
+  assert.deepEqual(none, { skipped: "no suggestions available" });
+
+  // "Run now" must not move tonight's render. runNightlyOnce touches no timer, and this is the
+  // assertion that keeps it that way if someone later reaches for `scheduleNightly` inside it.
+  const now = at("2026-09-07T01:30:00Z");
+  const before = msUntilNextRun(now, 3);
+  await runNightlyOnce("", { renderInFlight: () => true });
+  assert.equal(msUntilNextRun(now, 3), before, "a manual run leaves the schedule alone");
+} finally {
+  await rm(media, { recursive: true, force: true });
 }
 
 console.log("nightly: all checks passed");

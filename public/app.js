@@ -834,6 +834,88 @@ async function refresh() {
   renderList();
 }
 
+/* --- Nightly render strip ---------------------------------------------------------------------
+   The scheduler is a setTimeout and a log line, both invisible by morning, so "trust the timer"
+   was the only option. This is the whole of its UI: what it will pick tonight, what the last run
+   did, and a button that stops you waiting for 03:00 UTC to find out.
+
+   It rides at the top of the Suggestions panel rather than being its own element, because
+   renderSuggestions() rebuilds that panel on every scan poll and a sibling would have to be
+   hidden and shown in step with the tab. The payload is cached so the repaint costs no request. */
+
+let nightly = null;
+
+function nightlyInner() {
+  if (!nightly) return '<div class="lines"><span class="muted">nightly&hellip;</span></div>';
+  if (nightly.error) return `<div class="lines"><span class="bad">${esc(nightly.error)}</span></div>`;
+
+  const { enabled, hourUtc, nextRunAt, candidate, lastRun } = nightly;
+  const at = `Tonight ${String(hourUtc).padStart(2, "0")}:00 UTC`;
+  const plan = !enabled
+    ? '<span class="muted">nightly off</span>'
+    : candidate
+      ? `${esc(at)} &middot; will render <b>${esc(candidate.players[0])} vs ${esc(candidate.players[1])}</b>`
+      : `${esc(at)} &middot; <span class="muted">nothing eligible</span>`;
+
+  // "Last run", not "last night": the Run now button records here too, and a label that lied
+  // about when it happened would be worse than a slightly duller one.
+  let last = '<span class="muted">Last run: never</span>';
+  if (lastRun) {
+    const who = lastRun.matchId ? `#${lastRun.matchId} ${lastRun.players.join(" vs ")} — ` : "";
+    const why = lastRun.reason ? `: ${lastRun.reason}` : "";
+    const short =
+      lastRun.short === "done"
+        ? ' <span class="ok">+ Short rendered</span>'
+        : lastRun.short === "failed"
+          ? ' <span class="bad">+ Short failed</span>'
+          : "";
+    const cls = lastRun.outcome === "done" ? "ok" : lastRun.outcome === "failed" ? "bad" : "muted";
+    last = `Last run: ${esc(who)}<span class="${cls}">${esc(lastRun.outcome + why)}</span>${short}`;
+  }
+
+  return `<div class="lines">
+      <div class="plan" title="${esc(nextRunAt ?? "no schedule")}">${plan}</div>
+      <div class="last" title="${esc(lastRun ? lastRun.startedAt : "")}">${last}</div>
+    </div>
+    <button data-act="nightly-run" ${enabled ? "" : "disabled"}>Run now</button>`;
+}
+
+function paintNightly() {
+  const el = $("#nightly");
+  if (!el) return;
+  el.innerHTML = nightlyInner();
+  const btn = el.querySelector('[data-act="nightly-run"]');
+  if (btn) btn.addEventListener("click", () => runNightlyNow(btn));
+}
+
+async function loadNightly() {
+  try {
+    nightly = await api("/api/nightly");
+  } catch (e) {
+    nightly = { error: e.message };
+  }
+  paintNightly();
+}
+
+/** The same body the clock runs. A skip repaints the strip with its reason; a start is watched
+    like any other render, so it lands in the list exactly as "Render this" would. */
+async function runNightlyNow(btn) {
+  btn.disabled = true;
+  btn.textContent = "starting…";
+  try {
+    const out = await api("/api/nightly/run", { method: "POST" });
+    await loadNightly();
+    if (out.matchId) {
+      await refresh();
+      await select(out.matchId, { open: true });
+      watch(out.matchId, true);
+    }
+  } catch (e) {
+    nightly = { error: e.message };
+    paintNightly();
+  }
+}
+
 /* --- Suggestions ------------------------------------------------------------------------- */
 
 let suggestPoll = null;
@@ -853,18 +935,13 @@ function renderSuggestions(data) {
         ? `<div class="scanline">${esc(data.note)}</div>`
         : "";
 
-  if (!data.suggestions.length) {
-    el.innerHTML = scan + `<div class="empty">${data.scanning ? "" : "Nothing suggested yet."}</div>`;
-    return;
-  }
-
-  el.innerHTML =
-    scan +
-    data.suggestions
-      .map((s) => {
-        // Every line but the chart and the links is prose the server assembled, so it all goes
-        // through esc() — including `bucket`, which reaches a class attribute.
-        return `
+  const cards = !data.suggestions.length
+    ? `<div class="empty">${data.scanning ? "" : "Nothing suggested yet."}</div>`
+    : data.suggestions
+        .map((s) => {
+          // Every line but the chart and the links is prose the server assembled, so it all goes
+          // through esc() — including `bucket`, which reaches a class attribute.
+          return `
       <div class="sugg" data-id="${s.matchId}">
         <div class="top">
           <span class="bucket ${esc(s.bucket)}">${esc(s.bucket.toUpperCase())}</span>
@@ -880,19 +957,43 @@ function renderSuggestions(data) {
         </div>
         <div class="acts">
           <button data-act="render">Render this</button>
+          <button data-act="render-short" class="ghost">Render + Short</button>
           <button data-act="dismiss" class="ghost">Dismiss</button>
         </div>
       </div>`;
-      })
-      .join("");
+        })
+        .join("");
+
+  el.innerHTML = '<div id="nightly" class="nightly"></div>' + scan + cards;
+  paintNightly();
+  // First paint fetches it; every later paint reuses the cache, so polling a running scan does
+  // not also poll the scheduler.
+  if (nightly === null) void loadNightly();
+  if (!data.suggestions.length) return;
 
   el.querySelectorAll(".sugg").forEach((row) => {
     const id = Number(row.dataset.id);
     row.querySelector('[data-act="render"]').addEventListener("click", () => startRender(String(id)));
+    row.querySelector('[data-act="render-short"]').addEventListener("click", () => startRenderWithShort(id));
     row.querySelector('[data-act="dismiss"]').addEventListener("click", async () => {
       renderSuggestions(await api(`/api/suggestions/${id}`, { method: "DELETE" }));
     });
   });
+}
+
+/** "Render + Short": the same start as "Render this", plus the flag the server's one completion
+    poll reads — so the Short is cut by the nightly's own code, not a second copy of it. */
+async function startRenderWithShort(id) {
+  const err = $("#entryerr");
+  err.textContent = "";
+  try {
+    await api(`/api/render/${id}?short=1`, { method: "POST" });
+    await refresh();
+    await select(id, { open: true });
+    watch(id);
+  } catch (e) {
+    err.textContent = e.message;
+  }
 }
 
 async function pollSuggestions() {

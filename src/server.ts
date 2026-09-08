@@ -18,7 +18,15 @@ import { buildHookSuggestions, suggestHooksExternally } from "./hooks.js";
 import { computeMetrics } from "./matchScore.js";
 import { listMatchStatuses, matchStatusFor } from "./matchStatus.js";
 import { getMatch, getUser, getVersus, parseMatchId } from "./mcsrApi.js";
-import { scheduleNightly } from "./nightly.js";
+import {
+  afterSettled,
+  msUntilNextRun,
+  nightlyCandidate,
+  readNightlyState,
+  requestShort,
+  runNightlyOnce,
+  scheduleNightly,
+} from "./nightly.js";
 import { abortJob, getJob, startJob, streamProgress } from "./jobs.js";
 import { STAGE_LABELS, STAGE_ORDER, STAGE_SHORT_LABELS } from "./pipeline.js";
 import { presentSuggestions } from "./suggestPresent.js";
@@ -366,6 +374,41 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    // The scheduler's only window. It was a timer and a log line, both gone by morning, so the
+    // operator could not see what it would pick or what it did. `candidate` runs the very same
+    // `pickNightlyCandidate` the run does — a second implementation here would eventually
+    // promise one match and render another — and deliberately never forces a scan.
+    if (resource === "nightly" && idRaw === undefined && req.method === "GET") {
+      const hourUtc = config.nightlyRenderHourUtc;
+      const pick = await nightlyCandidate();
+      json(res, 200, {
+        enabled: hourUtc !== null,
+        hourUtc,
+        nextRunAt:
+          hourUtc === null ? null : new Date(Date.now() + msUntilNextRun(Date.now(), hourUtc)).toISOString(),
+        candidate: pick && {
+          matchId: pick.metrics.matchId,
+          players: pick.metrics.players,
+          bucket: pick.bucket,
+        },
+        lastRun: readNightlyState(),
+      });
+      return;
+    }
+
+    // The nightly body on demand, guards and all: the chain has unit tests and a boot log line
+    // but had never run end to end, and "wait until 03:00 UTC" is not a way to find out. The
+    // schedule is untouched — this starts a render, not a timer.
+    if (resource === "nightly" && idRaw === "run" && req.method === "POST") {
+      const result = await runNightlyOnce(config.nightlyNotifyUrl);
+      // A render already in flight is the one refusal that is a conflict rather than an answer,
+      // and it is the same guard DELETE /api/match reports as 409.
+      if (result.busy) json(res, 409, { error: result.skipped });
+      else if (result.skipped) json(res, 200, { skipped: result.skipped });
+      else json(res, 202, result);
+      return;
+    }
+
     const matchId = parseId(idRaw);
     if (matchId === null) {
       json(res, 400, { error: "match id must be digits" });
@@ -571,6 +614,13 @@ const server = createServer(async (req, res) => {
 
     if (resource === "render" && req.method === "POST") {
       const job = startJob(matchId);
+      // `?short=1` is the suggestion card's "Render + Short": the same render, plus a note that
+      // nightly.ts's completion poll — the only poller, and the nightly's own — should cut the
+      // Short when it settles. Nothing about the render itself changes.
+      if (url.searchParams.get("short") === "1") {
+        requestShort(matchId);
+        afterSettled(job);
+      }
       json(res, 202, { matchId, running: !job.done });
       return;
     }

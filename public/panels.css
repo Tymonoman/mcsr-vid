@@ -57,6 +57,48 @@
   }
 }
 
+/* --- Nightly render strip -------------------------------------------------------------------
+   Above the cards because it answers the one thing the list cannot: what the clock is going to
+   do with this list tonight, and what it did last time. Two lines and a button, and it has to
+   survive a 390px phone -- hence the wrap and the min-width:0 that lets a long nickname pair
+   break instead of shoving the button off the edge. */
+.nightly {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--panel-edge);
+}
+.nightly .lines {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.nightly .last {
+  margin-top: 2px;
+}
+.nightly .muted {
+  color: var(--muted);
+}
+.nightly .ok {
+  color: var(--warped);
+}
+.nightly .bad {
+  color: var(--crimson);
+}
+.nightly b {
+  color: var(--gold);
+}
+.nightly button {
+  padding: 4px 10px;
+  font-size: 12px;
+  border-bottom-width: 3px;
+  white-space: nowrap;
+}
+
 /* --- Suggestions -------------------------------------------------------------------------- */
 .scanline {
   padding: 8px 12px;
@@ -127,8 +169,10 @@
 .sugg a {
   color: var(--warped);
 }
+/* Wraps because a third button ("Render + Short") pushes the row past a 390px phone. */
 .sugg .acts {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 8px;
 }

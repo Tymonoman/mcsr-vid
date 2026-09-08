@@ -21,6 +21,8 @@
  * because that is the same footage, already on disk, and a morning with a video and no Short is a
  * morning with half the publishing done.
  */
+import { readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import { capacity } from "./archive.js";
 import { config } from "./config.js";
 import { describeError } from "./errorText.js";
@@ -28,6 +30,7 @@ import { getJob, startJob, type Job } from "./jobs.js";
 import { hiddenMatchIds } from "./matchShelf.js";
 import { listProcessedMatchIds } from "./matchStatus.js";
 import { spawnShortCli, type ShortRunner } from "./shortsRoutes.js";
+import type { Suggestion } from "./suggest.js";
 import { snapshot, startScan } from "./suggestScan.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -40,6 +43,50 @@ const SETTLE_POLL_MS = 30_000;
 
 /** ntfy.sh and friends answer fast or not at all; a hung POST must not outlive the render. */
 const NOTIFY_TIMEOUT_MS = 10_000;
+
+/* --- What the last run did --------------------------------------------------------------------
+ *
+ * The scheduler used to leave nothing behind but a log line and a push notification, and both
+ * are gone by morning: there was no way to ask the dashboard what happened. One file in
+ * mediaDir — dot-prefixed and beside `.dashboard.json` for the same two reasons: the state
+ * travels with the media it describes, and `listProcessedMatchIds` takes every `^\d+$`
+ * *directory*, so it must not look like a match.
+ *
+ * Written by the same call that posts the notification, so the panel and the push can never
+ * disagree about how a night went.
+ */
+
+export type NightlyOutcome = "done" | "failed" | "aborted" | "skipped";
+export type ShortOutcome = "done" | "failed" | "skipped";
+
+export interface NightlyLastRun {
+  startedAt: string;
+  /** Null when the run was skipped before it had chosen anything. */
+  matchId: number | null;
+  players: string[];
+  outcome: NightlyOutcome;
+  /** The failure's first line, or why the run was skipped. */
+  reason?: string;
+  short?: ShortOutcome;
+}
+
+const statePath = (): string => path.join(config.mediaDir, ".nightly.json");
+
+/** The last recorded run, or null. Missing and corrupt are one answer, as in matchShelf.ts. */
+export function readNightlyState(): NightlyLastRun | null {
+  try {
+    const parsed = JSON.parse(readFileSync(statePath(), "utf8")) as { lastRun?: NightlyLastRun };
+    return parsed?.lastRun ?? null;
+  } catch {
+    // Missing is the first-ever boot and corrupt is a truncated write. Neither is worth failing
+    // a status panel over, and the next run overwrites the file either way.
+    return null;
+  }
+}
+
+export function writeNightlyState(lastRun: NightlyLastRun): void {
+  writeFileSync(statePath(), JSON.stringify({ lastRun }, null, 2));
+}
 
 /**
  * Milliseconds until the next `hourUtc:00` UTC strictly after `nowMs`.
@@ -113,12 +160,21 @@ async function notify(url: string, body: string): Promise<void> {
   }
 }
 
-function outcomeOf(job: Job): string {
-  if (job.aborted) return "aborted";
-  if (!job.error) return "done";
-  // The pipeline's error text can be a multi-KB stderr tail; a push notification wants a line.
-  return `failed: ${job.error.split("\n")[0]?.slice(0, 200) ?? "unknown"}`;
+export interface JobVerdict {
+  outcome: Exclude<NightlyOutcome, "skipped">;
+  /** The pipeline's error text can be a multi-KB stderr tail; a notification wants a line. */
+  reason?: string;
 }
+
+function outcomeOf(job: Job): JobVerdict {
+  if (job.aborted) return { outcome: "aborted" };
+  if (!job.error) return { outcome: "done" };
+  return { outcome: "failed", reason: job.error.split("\n")[0]?.slice(0, 200) ?? "unknown" };
+}
+
+/** The clause `chainShort` returns, as the tri-state the state file records. */
+const shortOutcome = (clause: string): ShortOutcome =>
+  clause === "" ? "skipped" : clause.startsWith(" + Short rendered") ? "done" : "failed";
 
 /**
  * The Short that follows the render, as the clause the notification gains for it.
@@ -165,65 +221,137 @@ export async function chainShort(
 }
 
 /**
- * Waits out the render, cuts its Short, and posts the one line that says how both went.
+ * Match ids whose render has a Short waiting on it — the nightly's own pick, and anything the
+ * operator started with the dashboard's "Render + Short".
  *
- * One notification for the pair, which is why the Short is awaited before the POST: two pushes
- * in the small hours for one match is one more than anybody reads.
+ * A set here rather than a flag on the job, because jobs.ts is the plain render path shared with
+ * the button and the TUI and has no business knowing what happens afterwards. `afterSettled` is
+ * the only reader, and it consumes the entry, so two pollers on one job cannot cut two Shorts.
  */
-function afterSettled(job: Job, url: string, label: string): void {
+const wantsShort = new Set<number>();
+
+export function requestShort(matchId: number): void {
+  wantsShort.add(matchId);
+}
+
+/**
+ * Waits out the render, cuts its Short if one was asked for, and reports how both went.
+ *
+ * The one poller. The nightly and "Render + Short" both land here, so there is a single place
+ * that decides a Short is earned and a single 30s timer per render. `report` is awaited after
+ * the Short rather than before, because one notification for the pair is what anybody reads:
+ * two pushes in the small hours for one match is one too many.
+ */
+export function afterSettled(
+  job: Job,
+  report?: (verdict: JobVerdict, shortClause: string) => Promise<void> | void,
+): void {
   const poll = () => void tick().catch((err: unknown) => console.error(`nightly: ${describeError(err)}`));
   const tick = async (): Promise<void> => {
     if (!job.done) {
       setTimeout(poll, SETTLE_POLL_MS);
       return;
     }
-    const outcome = outcomeOf(job);
-    const short = await chainShort(job.matchId, outcome, config.nightlyRenderShort);
-    if (url) await notify(url, `Rendered #${job.matchId} ${label} — ${outcome}${short}`);
+    const verdict = outcomeOf(job);
+    const shortClause = await chainShort(job.matchId, verdict.outcome, wantsShort.delete(job.matchId));
+    await report?.(verdict, shortClause);
   };
   poll();
 }
 
-async function runNightly({ notifyUrl }: NightlyOptions): Promise<void> {
-  if (snapshot().scanning) {
-    console.error("nightly: skipped — a suggestion scan is running");
-    return;
-  }
-  if (renderInFlight()) {
-    console.error("nightly: skipped — a render is already in flight");
-    return;
-  }
+export interface NightlyRunResult {
+  matchId?: number;
+  players?: string[];
+  /** Why nothing was started, when nothing was. */
+  skipped?: string;
+  /** True for the one skip that is a conflict rather than an answer — something is rendering. */
+  busy?: boolean;
+}
 
+/** The seams the tests inject: the two things `runNightlyOnce` cannot reach without a live lab. */
+export interface NightlyDeps {
+  renderInFlight: () => boolean;
+  /** The ranked list to pick from, or null when there is none. */
+  ranked: () => Promise<readonly Suggestion[] | null>;
+}
+
+const liveRanked = async (): Promise<readonly Suggestion[] | null> => {
   // Not `startScan(true)`: a forced rescan is hundreds of API requests, and the cached list is
   // exactly what the operator would be choosing from. Only a cold process needs a scan at all.
   if (!snapshot().result) await startScan(false);
-  const result = snapshot().result;
-  if (!result) {
-    console.error("nightly: skipped — no suggestions available");
-    return;
-  }
+  return snapshot().result?.suggestions ?? null;
+};
 
-  const pick = pickNightlyCandidate(result.suggestions, {
-    processedIds: listProcessedMatchIds(),
-    hiddenIds: hiddenMatchIds(),
-    // A missing capacity reading (statfs failed, mediaDir gone) is not a licence to fill a disk.
-    freeMatches: (await capacity()).working?.matchesLeft ?? 0,
-  });
-  if (!pick) {
-    console.error(
-      "nightly: nothing to render — every suggestion is processed or hidden, or the disk is full",
-    );
-    return;
-  }
+/** The disk-and-shelf half of the pick, shared by the run and the dashboard's preview of it. */
+const pickContext = async (): Promise<NightlyPickContext> => ({
+  processedIds: listProcessedMatchIds(),
+  hiddenIds: hiddenMatchIds(),
+  // A missing capacity reading (statfs failed, mediaDir gone) is not a licence to fill a disk.
+  freeMatches: (await capacity()).working?.matchesLeft ?? 0,
+});
+
+/**
+ * What a run right now would start, without starting it — the dashboard's preview.
+ *
+ * Deliberately never scans: a GET the browser polls must not be able to spend a scan's worth of
+ * the MCSR request budget. No cached list simply means nothing to promise yet.
+ */
+export async function nightlyCandidate(): Promise<Suggestion | null> {
+  const result = snapshot().result;
+  return result ? pickNightlyCandidate(result.suggestions, await pickContext()) : null;
+}
+
+/**
+ * One nightly run, from the guards to the notification.
+ *
+ * Split out of the timer callback so the route and the clock invoke the same body: the chain had
+ * never once run end to end, and "wait until 03:00 UTC" is not a way to test it. Nothing here
+ * touches the schedule, so a manual run leaves tonight's alone.
+ */
+export async function runNightlyOnce(
+  notifyUrl: string,
+  deps: Partial<NightlyDeps> = {},
+): Promise<NightlyRunResult> {
+  const { renderInFlight: busy = renderInFlight, ranked = liveRanked } = deps;
+  const startedAt = new Date().toISOString();
+  const skip = (reason: string, conflict = false): NightlyRunResult => {
+    console.error(`nightly: skipped — ${reason}`);
+    writeNightlyState({ startedAt, matchId: null, players: [], outcome: "skipped", reason });
+    return { skipped: reason, ...(conflict ? { busy: true } : {}) };
+  };
+
+  if (snapshot().scanning) return skip("a suggestion scan is running");
+  if (busy()) return skip("a render is already in flight", true);
+
+  const suggestions = await ranked();
+  if (!suggestions) return skip("no suggestions available");
+
+  const pick = pickNightlyCandidate(suggestions, await pickContext());
+  if (!pick) return skip("every suggestion is processed or hidden, or the disk is full");
 
   const { matchId, players } = pick.metrics;
   const label = `${players[0]} vs ${players[1]}`;
   console.error(`nightly: starting render of #${matchId} ${label}`);
   lastStartedId = matchId;
+  if (config.nightlyRenderShort) requestShort(matchId);
   // The same call `POST /api/render` makes, so a nightly render and a clicked one are one code
   // path: startJob de-duplicates by match id and owns the whole pipeline invocation.
   const job = startJob(matchId);
-  afterSettled(job, notifyUrl, label);
+  afterSettled(job, async (verdict, shortClause) => {
+    // State first, then the push, from the same two values: a panel that disagreed with the
+    // notification would be worse than either on its own.
+    writeNightlyState({
+      startedAt,
+      matchId,
+      players: [...players],
+      outcome: verdict.outcome,
+      ...(verdict.reason ? { reason: verdict.reason } : {}),
+      short: shortOutcome(shortClause),
+    });
+    const said = verdict.reason ? `${verdict.outcome}: ${verdict.reason}` : verdict.outcome;
+    if (notifyUrl) await notify(notifyUrl, `Rendered #${matchId} ${label} — ${said}${shortClause}`);
+  });
+  return { matchId, players: [...players] };
 }
 
 /**
@@ -234,7 +362,7 @@ export function scheduleNightly(options: NightlyOptions): void {
   const delay = msUntilNextRun(Date.now(), options.hourUtc);
   console.error(`nightly: next auto-render at ${new Date(Date.now() + delay).toISOString()}`);
   setTimeout(() => {
-    runNightly(options)
+    runNightlyOnce(options.notifyUrl)
       .catch((err: unknown) => console.error(`nightly: ${describeError(err)}`))
       .finally(() => scheduleNightly(options));
   }, delay);
