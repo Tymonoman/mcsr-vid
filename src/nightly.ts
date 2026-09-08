@@ -317,9 +317,10 @@ export interface NightlyDeps {
 }
 
 const liveRanked = async (): Promise<readonly Suggestion[] | null> => {
-  // Not `startScan(true)`: a forced rescan is hundreds of API requests, and the cached list is
-  // exactly what the operator would be choosing from. Only a cold process needs a scan at all.
-  if (!snapshot().result) await startScan(false);
+  // Not `startScan(true)`: a forced rescan is hundreds of API requests. Unforced, the scan
+  // returns the cache while it is fresh and walks only the matches played since the last one
+  // when it is stale — so the pick is from tonight's feed, not from whenever the process booted.
+  await startScan(false);
   const result = snapshot().result;
   return result ? orderForDisplay(result.suggestions) : null;
 };

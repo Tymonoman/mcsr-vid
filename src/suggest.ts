@@ -152,6 +152,8 @@ export interface SuggestResult {
   usedTwitchFollowers: boolean;
   /** Set when something degraded, for the UI to show. */
   note: string | null;
+  /** When the feed was last walked — the cache's time, not the time this call answered. */
+  scannedAt: number;
   /** How the scan went. Close slots underfill when few matches have a comparable finish. */
   stats: {
     matchesScanned: number;
@@ -356,6 +358,7 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
       // Re-derived rather than cached: the reason popularity is frequency-only still
       // applies to a cached list, and the operator should keep seeing it.
       note: cache.usedTwitchFollowers ? null : NO_TWITCH_NOTE,
+      scannedAt: cache.scannedAt,
       stats: cache.stats,
     };
   }
@@ -568,6 +571,7 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
 
   return {
     suggestions,
+    scannedAt: cache.scannedAt,
     usedTwitchFollowers: usedTwitch,
     note: notes.length > 0 ? notes.join(" · ") : null,
     stats,

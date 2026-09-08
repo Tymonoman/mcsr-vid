@@ -738,6 +738,13 @@ async function loadPublishKit(id, meta) {
         `${left ?? "Left"} vs ${right ?? "right"}, split for split. Who did you have winning before the nether? Subscribe if you want the next one on your feed.`,
         3,
       ),
+      // The Community tab is open to every channel now, and a post per upload is the cheapest
+      // reach a 41-subscriber channel has: the same question as the pinned comment, with the link.
+      block(
+        "Community post",
+        `New: ${title} — both POVs synced to the split timer. Who did you have winning before the nether? ${url}`,
+        3,
+      ),
       block(`Message to ${left ?? "left player"}`, dm(left ?? "there", right ?? "your opponent"), 3),
       block(`Message to ${right ?? "right player"}`, dm(right ?? "there", left ?? "your opponent"), 3),
     ].join("");
@@ -1155,11 +1162,11 @@ function renderSuggestions(data) {
   const scan = data.scanning
     ? `<div class="scanline">scanning&hellip; ${data.scanned} matches, ${data.candidates} with two VODs</div>`
     : data.error
-      ? `<div class="scanline bad">scan failed: ${esc(data.error)}</div>`
+      ? `<div class="scanline bad">scan failed: ${esc(data.error)} &middot; <a href="#" data-act="rescan">try again</a></div>`
       : // How old the list is, in the line: at 22:00 the question is whether this is tonight's
         // feed or last week's, and the answer was only in a tooltip. The server scans at boot and
         // on this link, nothing else, so the age is worth reading.
-        `<div class="scanline">scanned ${data.scannedAtMs ? ago(data.scannedAtMs) : "earlier"}${data.stats ? ` &middot; ${data.stats.matchesScanned} matches, ${data.stats.candidates} with two VODs` : ""}${data.note ? ` &middot; ${esc(data.note)}` : ""} &middot; <a href="#" data-act="rescan" title="Scan again now (~340 MCSR API calls). The list is scanned at boot and on this link.">rescan</a></div>`;
+        `<div class="scanline">scanned ${data.scannedAtMs ? ago(data.scannedAtMs) : "earlier"}${data.stats ? ` &middot; ${data.stats.matchesScanned} matches, ${data.stats.candidates} with two VODs` : ""}${data.note ? ` &middot; ${esc(data.note)}` : ""} &middot; <a href="#" data-act="rescan" title="Scan everything again now (~340 MCSR API calls). New matches are picked up on their own every ${data.ttlMin ?? 30} minutes.">rescan</a></div>`;
 
   // The two words on every card, explained once. The stage strip had the same gap: labels that
   // are obvious to whoever wrote the scorer and to nobody else.

@@ -60,7 +60,9 @@ export function startScan(force = false): Promise<void> {
   })
     .then((result) => {
       state.result = result;
-      state.scannedAtMs = Date.now();
+      // The cache's time, not now: an unforced scan on a fresh cache walks nothing, and the
+      // scan line's "scanned 16h ago" must not reset to "0m ago" on every 30-minute tick.
+      state.scannedAtMs = result.scannedAt;
     })
     .catch((err: unknown) => {
       // A flaky feed must not clear a good previous list — a stale suggestion is still a

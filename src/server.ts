@@ -265,6 +265,8 @@ function suggestionsPayload() {
   return {
     suggestions,
     rivalHandle: config.rivalChannelHandle || null,
+    // For the rescan link's tooltip: how often new matches arrive on their own.
+    ttlMin: config.suggestCacheTtlMin,
     scanning: state.scanning,
     error: state.error,
     scanned: state.scanned,
@@ -741,6 +743,9 @@ server.listen(PORT, "0.0.0.0", () => {
   // MCSR feed dozens of times, so waiting until someone asks means waiting a minute for an
   // answer; a fresh cache returns immediately and this costs nothing.
   void startScan();
+  // And keep it current: an unforced scan is the cache while fresh and only the new matches
+  // once stale, so the evening list and the nightly's pick are never older than the TTL.
+  setInterval(() => void startScan(false), config.suggestCacheTtlMin * 60_000).unref();
   refreshRivalPostsIfStale();
   refreshChannelUploadsIfStale();
   // And then render one of them overnight, unattended. Waiting for a click is what caps output
