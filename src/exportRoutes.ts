@@ -46,6 +46,29 @@ export interface ExportJob {
   proc: ChildProcess;
   /** Settles when the encode does, with `error` — the nightly awaits this, the browser polls. */
   finished: Promise<string | null>;
+  /** Output length the fast export announces up front; 0 until it has, and always for melt. */
+  totalSec: number;
+}
+
+/** The fast export's opening line names the output length: `ffmpeg: 11 split stills, 597.1s at 60fps, ...`. */
+export function announcedTotalSec(line: string): number | null {
+  const m = /^ffmpeg: .*?\b(\d+(?:\.\d+)?)s at \d+fps/.exec(line);
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * The percentage one log line reports, or null for a line that is not progress. Two formats:
+ * melt says `percentage: N` outright; ffmpeg's `-stats` line carries `time=HH:MM:SS.ss` of
+ * output written, which is a percentage only against the total the fast export announced.
+ * Capped at 99 — the promote-on-success rename is what makes it 100.
+ */
+export function percentOf(line: string, totalSec: number): number | null {
+  const melt = /percentage:\s*(\d+)/.exec(line);
+  if (melt) return Number(melt[1]);
+  const at = /\btime=(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(line);
+  if (!at || totalSec <= 0) return null;
+  const secs = Number(at[1]) * 3600 + Number(at[2]) * 60 + Number(at[3]);
+  return Math.min(99, Math.floor((secs / totalSec) * 100));
 }
 
 const jobs = new Map<number, ExportJob>();
@@ -95,6 +118,7 @@ function startExport(matchId: number, dir: string, argv = meltArgv(matchId, dir)
     subscribers: new Set(),
     proc,
     finished: new Promise((resolve) => (settle = resolve)),
+    totalSec: 0,
   };
   jobs.set(matchId, job);
 
@@ -102,11 +126,11 @@ function startExport(matchId: number, dir: string, argv = meltArgv(matchId, dir)
     for (const raw of chunk.toString("utf8").split(/\r?\n|\r/)) {
       const line = raw.trim();
       if (line === "") continue;
-      // melt reports every single frame; an hour-long encode is tens of thousands of those.
-      // Keep the percentage, drop the noise.
-      const progress = /percentage:\s*(\d+)/.exec(line);
-      if (progress) {
-        const pct = Number(progress[1]);
+      // melt reports every single frame, ffmpeg every second; an hour-long encode is tens of
+      // thousands of those. Keep the percentage, drop the noise.
+      job.totalSec = announcedTotalSec(line) ?? job.totalSec;
+      const pct = percentOf(line, job.totalSec);
+      if (pct !== null) {
         if (pct !== job.percent) {
           job.percent = pct;
           broadcast(job, { percent: pct });

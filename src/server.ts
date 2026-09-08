@@ -192,7 +192,13 @@ async function readHookSuggestions(matchId: number, budget: BuiltTitle): Promise
       minChars: budget.hookMin,
       versus,
     };
-    return (await suggestHooksExternally(input)) ?? buildHookSuggestions(input);
+    const hooks = (await suggestHooksExternally(input)) ?? buildHookSuggestions(input);
+    // The thumbnail already says something — lead with that. Rank chips read the live ladder,
+    // which moved from "#9 vs #3" to "#9 vs #2" within hours of a render, and a title that
+    // disagrees with its own thumbnail is the kind of thing viewers notice and cannot name.
+    // "Re-render with hook" rewrites the manifest, so choosing differently is still one click.
+    const committed = (await readManifest(matchDir(matchId)))?.hookText;
+    return committed ? [committed, ...hooks.filter((h) => h !== committed)] : hooks;
   } catch (err) {
     console.error(`hook suggestions unavailable for ${matchId}: ${describeError(err)}`);
     return [];
