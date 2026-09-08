@@ -209,6 +209,7 @@ async function select(id, { open = false } = {}) {
       <button id="run" class="${rendered ? "ghost" : ""}">${rendered ? "Re-run pipeline" : "Run pipeline"}</button>
       <button id="stop" class="ghost">Stop</button>
       <span class="id">#${id} &mdash; ${esc(meta.leftNickname)} vs ${esc(meta.rightNickname)}</span>
+      ${rendered ? '<span class="jump"><a href="#h-preview">Final video</a> &middot; <a href="#h-publishkit">Publish kit</a> &middot; <a href="#h-short">Short</a></span>' : ""}
     </div>
 
     <div id="progress">
@@ -269,13 +270,13 @@ async function select(id, { open = false } = {}) {
     <h2>Chapters</h2>
     <pre>${esc(meta.chapters ?? "not generated yet")}</pre>
 
-    <h2>Final video</h2>
+    <h2 id="h-preview">Final video</h2>
     <div id="preview"><div class="empty">loading&hellip;</div></div>
 
-    <h2>Publish kit</h2>
+    <h2 id="h-publishkit">Publish kit</h2>
     <div id="publishkit"><div class="empty">loading&hellip;</div></div>
 
-    <h2>Short</h2>
+    <h2 id="h-short">Short</h2>
     <div id="short"><div class="empty">loading&hellip;</div></div>
 
     <h2>YouTube</h2>
@@ -1193,7 +1194,7 @@ function renderSuggestions(data) {
   const scan = data.scanning
     ? `<div class="scanline">scanning&hellip; ${data.scanned} matches, ${data.candidates} with two VODs</div>`
     : data.error
-      ? `<div class="scanline bad">scan failed: ${esc(data.error)} &middot; <a href="#" data-act="rescan">try again</a></div>`
+      ? `<div class="scanline bad">${data.scannedAtMs ? `list from ${ago(data.scannedAtMs)} &middot; ` : ""}scan failed: ${esc(data.error)} &middot; <a href="#" data-act="rescan">try again</a></div>`
       : // How old the list is, in the line: at 22:00 the question is whether this is tonight's
         // feed or last week's, and the answer was only in a tooltip. The server scans at boot and
         // on this link, nothing else, so the age is worth reading.
@@ -1424,7 +1425,10 @@ function showList() {
   } catch (e) {
     $("#list").innerHTML = `<div class="scanline bad">Could not load matches: ${esc(e.message)}</div>`;
   }
-  if (matches.length) select(matches[0].matchId);
+  // The top card in display order — the one the list's legend says is next — not the server's
+  // newest, which is a published or half-encoded match the morning after any upload.
+  const first = $("#list .card");
+  if (first) select(Number(first.dataset.id));
   // Not awaited: the first scan can take a minute against a cold cache, and the rendered-match
   // list is usable immediately.
   pollSuggestions().catch(

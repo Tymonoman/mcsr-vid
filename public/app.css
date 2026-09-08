@@ -71,6 +71,25 @@ main > * {
    ten suggestion cards the page measured ~5,600px tall, so the panel the operator actually acts
    in started thousands of pixels down and a tap on a card changed nothing you could see. The
    `view-match` class is toggled at every width and only means anything in here. */
+/* On a phone the preview and the kit start two thousand pixels down the match screen; the
+   first row offers a jump to each, and the headings land under the sticky back bar, not behind it. */
+.jump {
+  display: none;
+  font-size: 12px;
+}
+.jump a {
+  color: var(--warped);
+}
+@media (max-width: 860px) {
+  .jump {
+    display: inline-block;
+    width: 100%;
+    margin-top: 6px;
+  }
+  #detail h2 {
+    scroll-margin-top: 52px;
+  }
+}
 @media (max-width: 860px) {
   main {
     grid-template-columns: 1fr;
