@@ -10,6 +10,10 @@ services:
     image: mcsr-vid
     container_name: mcsr
     command: sleep infinity
+    # tini as PID 1. `sleep infinity` never wait()s, so every child orphaned into it
+    # -- chrome-headless from remotion, esbuild, npm -- became a permanent zombie.
+    # The lab's SSH banner was reporting 5.6k of them after four days' uptime.
+    init: true
     tty: true
     stdin_open: true
     restart: unless-stopped
@@ -63,6 +67,8 @@ services:
     container_name: mcsr-dashboard
     depends_on: [mcsr]
     command: npm run dashboard
+    # Same reason as mcsr: npm as PID 1 does not reap the render subprocesses either.
+    init: true
     restart: unless-stopped
     working_dir: /app
     shm_size: 1gb
