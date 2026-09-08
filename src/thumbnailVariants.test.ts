@@ -118,11 +118,22 @@ assert.equal(await readManifest(dir), null);
 
 // Provenance is what keeps the A/B honest: these two variants carry different pose names but
 // the first fell back to NMSR, which has no pose support, so it is not a distinct pose at all.
-const fellBack = manifest.variants.filter(
-  (v) => v.leftProvider !== "starlight" || v.rightProvider !== "starlight",
-);
+// The rule is the production predicate, not a copy of it, so the two cannot drift apart.
+const { variantFellBack } = await import("./thumbnailVariants.js");
+const fellBack = manifest.variants.filter(variantFellBack);
 assert.equal(fellBack.length, 1);
 assert.equal(fellBack[0]!.key, "walking-crossed");
+assert.equal(
+  variantFellBack({ leftProvider: "nmsr-posed", rightProvider: "nmsr-posed" }),
+  false,
+  "both posed",
+);
+assert.equal(variantFellBack({ leftProvider: "nmsr-posed", rightProvider: "nmsr" }), true, "one side static");
+assert.equal(
+  variantFellBack({ leftProvider: "starlight", rightProvider: "starlight" }),
+  false,
+  "a legacy posed manifest",
+);
 
 // `hook: false` on a configured pair is the text-free control -- the only variable in the A/B
 // set that pose cannot supply, since pose barely moves clicks. Both PNGs already exist, so the

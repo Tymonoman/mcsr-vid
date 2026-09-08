@@ -143,6 +143,15 @@ export function carriedHookText(
   return previous ? (previous.hookText ?? undefined) : chip;
 }
 
+/**
+ * Whether a variant's pose was honoured. `nmsr` is the static render every failed pose falls
+ * back to, so two variants with different pose names can be the same image; the A/B tab and
+ * the pipeline's message both need to know. One rule, here, so they cannot drift again.
+ */
+export function variantFellBack(v: { leftProvider: AvatarProvider; rightProvider: AvatarProvider }): boolean {
+  return v.leftProvider === "nmsr" || v.rightProvider === "nmsr";
+}
+
 export async function renderThumbnailVariants(args: RenderVariantsArgs): Promise<VariantsManifest> {
   if (args.poses.length === 0) throw new Error("renderThumbnailVariants needs at least one pose pair");
 

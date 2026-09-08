@@ -30,7 +30,13 @@ import { buildHookSuggestions } from "./hooks.js";
 import { computeMetrics } from "./matchScore.js";
 import { buildTitle, formatTitle } from "./title.js";
 import { overlayPaths, readSplitStills, renderOverlay, type SplitStill } from "./overlayRender.js";
-import { carriedHookText, readManifest, renderThumbnailVariants, variantFile } from "./thumbnailVariants.js";
+import {
+  carriedHookText,
+  readManifest,
+  renderThumbnailVariants,
+  variantFellBack,
+  variantFile,
+} from "./thumbnailVariants.js";
 import { describeError } from "./errorText.js";
 import {
   aggregateDownloadPercent,
@@ -348,9 +354,7 @@ async function runStages(
         ),
     });
     // A variant whose pose was not honoured is the same NMSR image as every other fallback.
-    const posed = manifest.variants.filter(
-      (v) => v.leftProvider === "nmsr-posed" && v.rightProvider === "nmsr-posed",
-    ).length;
+    const posed = manifest.variants.filter((v) => !variantFellBack(v)).length;
     emit(
       done("thumbnail", {
         message:

@@ -19,7 +19,7 @@ import {
 import { config, matchDir } from "./config.js";
 import { describeError } from "./errorText.js";
 import { listProcessedMatchIds, matchStatusFor } from "./matchStatus.js";
-import { readManifest } from "./thumbnailVariants.js";
+import { readManifest, variantFellBack } from "./thumbnailVariants.js";
 import { HOOK_PLACEHOLDER } from "./title.js";
 import {
   addToPlaylist,
@@ -529,7 +529,7 @@ async function abTestPayload() {
     const variantKey = u.source === "dashboard" ? u.thumbnailVariant : (manifest?.chosen ?? undefined);
     const key = variantKey ?? "(unknown)";
     const variant = manifest?.variants.find((v) => v.key === variantKey);
-    const fellBack = variant ? variant.leftProvider === "nmsr" || variant.rightProvider === "nmsr" : false;
+    const fellBack = variant ? variantFellBack(variant) : false;
 
     hookEntries.push({ hook: variant?.hook ?? null, reach: byVideo.get(u.videoId) ?? null });
 
