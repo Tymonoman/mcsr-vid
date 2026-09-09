@@ -59,6 +59,7 @@ import {
   type VodWindow,
 } from "./vodAcquisition.js";
 import { saveChats, vodIdFromUrl } from "./twitchChat.js";
+import { withDiscoveredVods } from "./vodDiscovery.js";
 
 const FPS = 60;
 
@@ -149,16 +150,15 @@ async function runStages(
 
   emit(active("fetch"));
   const matchId = parseMatchId(input);
-  const match = await getMatch(matchId);
+  // Private rooms attach no VOD and ranked matches often only one; the rest are found by time.
+  const match = await withDiscoveredVods(await getMatch(matchId));
 
   const [playerLeft, playerRight] = match.players;
   if (!playerLeft || !playerRight) {
     throw new Error(`Match ${matchId} does not have two players.`);
   }
   if (match.vod.length < 2) {
-    throw new Error(
-      `Match ${matchId} has ${match.vod.length}/2 VODs attached; the Kdenlive project needs both.`,
-    );
+    throw new Error(`Match ${matchId} has ${match.vod.length}/2 VODs, attached or found; both are needed.`);
   }
 
   const vodForPlayer = (uuid: string) => match.vod.find((v) => v.uuid === uuid);
