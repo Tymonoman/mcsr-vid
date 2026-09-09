@@ -33,7 +33,12 @@ assert.ok(moments.length >= 2, "the fixture must offer alternatives");
     input.candidates[0]!.chatPer2s!.reduce((a, b) => a + b, 0),
     opts.chatAtSec.filter((t) => t * 1000 >= moments[0]!.startMs && t * 1000 < moments[0]!.endMs).length,
   );
-  assert.ok(input.candidates[0]!.events.every((e) => typeof e.player === "string"));
+  // Every event names its player, except the synthetic end-of-run marker, which names nobody —
+  // naming whose finish it was would tell the model who won.
+  assert.ok(
+    input.candidates[0]!.events.every((e) => typeof e.player === "string" || e.player === null),
+    "an event's player is a nickname or null, never undefined",
+  );
 }
 
 // --- A valid answer puts the pick first, shifted; the rest keep their order.

@@ -29,7 +29,7 @@ import type { MatchInfo } from "./types.js";
 export const MAX_SHIFT_SEC = 4;
 const CHAT_BUCKET_SEC = 2;
 
-export const SHORT_REASON_TASK = `Two Minecraft speedrunners race the same seed side by side; a 22-second vertical Short is cut from one moment of the race. Below are the candidate windows a heuristic ranked (best first, index 0), the timeline events inside each (type, seconds into the run, which player), the times the lead changed hands, and, when chat was saved, how many chat messages arrived in each 2-second bucket of the window. Choose the window that makes the best Short: something happens in the first two seconds or the viewer scrolls, the biggest beat lands past the middle, and a moment both players share beats a solo one. You may move the start by at most ${MAX_SHIFT_SEC} seconds either way. Reply with {"pick": <candidate index>, "shiftSec": <-${MAX_SHIFT_SEC}..${MAX_SHIFT_SEC}>, "why": "<one short sentence for the operator>"}.`;
+export const SHORT_REASON_TASK = `Two Minecraft speedrunners race the same seed side by side; a 22-second vertical Short is cut from one moment of the race. Below are the candidate windows a heuristic ranked (best first, index 0), the timeline events inside each (type, seconds into the run, which player, or null for the end of the run, which belongs to neither), the times the lead changed hands, and, when chat was saved, how many chat messages arrived in each 2-second bucket of the window. Choose the window that makes the best Short: something happens in the first two seconds or the viewer scrolls, the biggest beat lands past the middle, and a moment both players share beats a solo one. You may move the start by at most ${MAX_SHIFT_SEC} seconds either way. Reply with {"pick": <candidate index>, "shiftSec": <-${MAX_SHIFT_SEC}..${MAX_SHIFT_SEC}>, "why": "<one short sentence for the operator>"}.`;
 
 const sec = (ms: number) => Math.round(ms / 100) / 10;
 
@@ -51,7 +51,10 @@ export function shortReasonInput(
       endSec: sec(m.endMs),
       score: Number(m.score.toFixed(2)),
       reason: m.reason,
-      events: m.events.map((e) => ({ type: e.type, atSec: sec(e.time), player: nick.get(e.uuid) })),
+      // `player: null` is the synthetic finish event (src/shortMoment.ts), which belongs to the
+      // run rather than to either player — and must stay that way, since naming whose finish it
+      // is would hand the model the winner.
+      events: m.events.map((e) => ({ type: e.type, atSec: sec(e.time), player: nick.get(e.uuid) ?? null })),
       ...(chat.length > 0
         ? {
             chatPer2s: Array.from(
