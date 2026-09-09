@@ -20,6 +20,12 @@ assert.throws(() => validateOverrides({ suggestWeights: [] }), /suggestWeights/)
 // Legitimate overrides pass, including the one key that is a number *or* null.
 assert.doesNotThrow(() => validateOverrides({ renderConcurrency: 4 }));
 assert.doesNotThrow(() => validateOverrides({ renderConcurrency: null }));
+// And the one that is an argv array or null: a bare string would be spawned as a binary named
+// "agy -p {prompt}".
+assert.doesNotThrow(() => validateOverrides({ reasonerCommand: null }));
+assert.doesNotThrow(() => validateOverrides({ reasonerCommand: ["agy", "-p", "{prompt}"] }));
+assert.throws(() => validateOverrides({ reasonerCommand: "agy -p {prompt}" }), /reasonerCommand/);
+assert.throws(() => validateOverrides({ reasonerCommand: ["agy", 1] }), /reasonerCommand/);
 assert.doesNotThrow(() => validateOverrides({ nightlyRenderHourUtc: 0 }));
 assert.doesNotThrow(() => validateOverrides({ nightlyRenderHourUtc: 23 }));
 assert.doesNotThrow(() => validateOverrides({ nightlyRenderHourUtc: null }));

@@ -860,6 +860,7 @@ async function loadShort(id) {
         : ""
     }
     ${data.hook ? `<div class="previewmeta"><span>burns in: &ldquo;${esc(data.hook)}&rdquo;</span></div>` : ""}
+    ${data.reasoner?.applied ? `<div class="previewmeta"><span>reasoner: ${esc(data.reasoner.why || "picked the top moment")}</span></div>` : ""}
     <div class="moments">${data.moments
       .map(
         (m) => `

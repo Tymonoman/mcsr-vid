@@ -59,6 +59,14 @@ TWITCH_CLIENT_ID=your_client_id
 TWITCH_CLIENT_SECRET=your_client_secret
 ```
 
+`reasonerCommand` hands reasoning questions (today: which 22 seconds the Short
+cuts) to an LLM CLI; the example names Antigravity. Install it on the lab host
+with `curl -fsSL https://antigravity.google/cli/install.sh | bash` (lands in
+`~/.local/bin/agy`), then sign in once interactively or set an API key with
+`modelProvider gemini`; `agy` exits 1 until it has auth. `npm run reason -- <id>`
+prints the candidates, the prompt and the answer, to try it by hand. Null or
+absent, everything keeps its heuristic.
+
 ## Tests
 
 Plain assertion scripts, no test framework — `npm test` runs every `*.test.ts`

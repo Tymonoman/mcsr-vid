@@ -4,7 +4,9 @@ import { writeFile } from "node:fs/promises";
 import { requireArg } from "./cliArgs.js";
 import { config, matchDir } from "./config.js";
 import { getMatch, getUser, parseMatchId } from "./mcsrApi.js";
+import { reasonerConfigured } from "./reasoner.js";
 import { distinctShortMoments, SHORT_WINDOW_SEC } from "./shortMoment.js";
+import { reasonShortMoments } from "./shortReason.js";
 import { renderShort } from "./shortRender.js";
 import { eloAtMatchStart } from "./overlayProps.js";
 import { buildShortDescription, buildShortTitle, resolveShortHookFor } from "./shortHook.js";
@@ -64,19 +66,24 @@ for (const p of [playerLeft, playerRight]) {
 const chatAtSec = readChatTimes(outDir);
 if (chatAtSec.length > 0) console.error(`Chat: ${chatAtSec.length} messages inform the moment`);
 
-const moments = distinctShortMoments(
-  match,
-  {
-    leftUuid: playerLeft.uuid,
-    rightUuid: playerRight.uuid,
-    runMs: match.result.time || 900_000,
-    windowSec: seconds,
-    chatAtSec,
-  },
-  5,
-);
+const momentOpts = {
+  leftUuid: playerLeft.uuid,
+  rightUuid: playerRight.uuid,
+  runMs: match.result.time || 900_000,
+  windowSec: seconds,
+  chatAtSec,
+};
+let moments = distinctShortMoments(match, momentOpts, 5);
 if (moments.length === 0) {
   throw new Error(`Match ${matchId} has no timeline events worth cutting a Short from.`);
+}
+// The reasoner's choice moves to index 0 — the nightly's `--pick=0` — so the same order the
+// dashboard panel shows is the one this cuts from.
+if (reasonerConfigured()) {
+  const reasoned = await reasonShortMoments(match, moments, momentOpts);
+  moments = reasoned.moments;
+  if (reasoned.reasoner.applied)
+    console.error(`Reasoner: ${reasoned.reasoner.why ?? "picked the top moment"}`);
 }
 
 const mmss = (ms: number) =>
