@@ -208,7 +208,7 @@ async function select(id, { open = false } = {}) {
   $("#detail").innerHTML = `
     <div class="row">
       <button id="run" class="${rendered ? "ghost" : ""}">${rendered ? "Re-run pipeline" : "Run pipeline"}</button>
-      <button id="stop" class="ghost">Stop</button>
+      <button id="stop" class="danger" title="Abort the running pipeline" hidden>Stop</button>
       <span class="id">#${id} &mdash; ${esc(meta.leftNickname)} vs ${esc(meta.rightNickname)}</span>
       ${rendered ? '<span class="jump"><a href="#h-preview">Final video</a> &middot; <a href="#h-publishkit">Publish kit</a> &middot; <a href="#h-short">Short</a></span>' : ""}
     </div>
@@ -986,14 +986,10 @@ function paintElapsed() {
   }
 }
 
-/** Stop is a no-op when nothing is running and destructive when something is, so it looks it. */
+/** Stop exists only while a run does: a permanently disabled button is furniture on every card. */
 function armStop(on) {
   const btn = $("#stop");
-  if (!btn) return;
-  btn.classList.toggle("danger", on);
-  btn.classList.toggle("ghost", !on);
-  btn.disabled = !on;
-  btn.title = on ? "Abort the running pipeline" : "Nothing is running";
+  if (btn) btn.hidden = !on;
 }
 
 function watch(id, quiet) {
