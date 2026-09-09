@@ -167,7 +167,7 @@ export async function runFastExport(
   input: FastExportInput,
   onLine?: (line: string) => void,
 ): Promise<{ path: string }> {
-  // Same promote-only-on-success gate as atomicOutput and scripts/export.sh: every stage check
+  // Same promote-only-on-success gate as atomicOutput: every stage check
   // in this project is existsSync, so a truncated file under the final name is trusted forever.
   const partPath = `${input.outPath.replace(/\.mp4$/, "")}.part.mp4`;
   const { args, description } = buildFastExportCommand({ ...input, outPath: partPath });

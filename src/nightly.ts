@@ -26,14 +26,14 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { capacity } from "./archive.js";
-import { config, matchDir } from "./config.js";
+import { config } from "./config.js";
 import { describeError } from "./errorText.js";
-import { startFastExport } from "./exportRoutes.js";
+import { exportRunning, startFastExport } from "./exportRoutes.js";
 import { getJob, startJob, type Job } from "./jobs.js";
 import { hiddenMatchIds } from "./matchShelf.js";
 import { orderForDisplay } from "./suggestPresent.js";
 import { listProcessedMatchIds } from "./matchStatus.js";
-import { spawnShortJob, type ShortRunner } from "./shortsRoutes.js";
+import { shortRunning, spawnShortJob, type ShortRunner } from "./shortsRoutes.js";
 import type { Suggestion } from "./suggest.js";
 import { snapshot, startScan } from "./suggestScan.js";
 
@@ -60,7 +60,8 @@ const NOTIFY_TIMEOUT_MS = 10_000;
  * disagree about how a night went.
  */
 
-type NightlyOutcome = "done" | "failed" | "aborted" | "skipped";
+/** `started` is written the moment a render begins; a restart mid-night leaves it as the record. */
+type NightlyOutcome = "started" | "done" | "failed" | "aborted" | "skipped";
 type ShortOutcome = "done" | "failed" | "skipped";
 
 export interface NightlyLastRun {
@@ -148,9 +149,11 @@ export interface NightlyOptions {
  */
 let lastStartedId: number | null = null;
 
+/** A pipeline, an encode or a Short on this match: the same three the delete guard refuses for. */
+const busyWith = (id: number): boolean => getJob(id)?.done === false || exportRunning(id) || shortRunning(id);
+
 const renderInFlight = (): boolean =>
-  (lastStartedId !== null && getJob(lastStartedId)?.done === false) ||
-  listProcessedMatchIds().some((id) => getJob(id)?.done === false);
+  (lastStartedId !== null && busyWith(lastStartedId)) || listProcessedMatchIds().some(busyWith);
 
 /** A failure to notify is worth a log line and nothing more — the render still happened. */
 async function notify(url: string, body: string): Promise<void> {
@@ -167,7 +170,7 @@ async function notify(url: string, body: string): Promise<void> {
 }
 
 export interface JobVerdict {
-  outcome: Exclude<NightlyOutcome, "skipped">;
+  outcome: Exclude<NightlyOutcome, "skipped" | "started">;
   /** The pipeline's error text can be a multi-KB stderr tail; a notification wants a line. */
   reason?: string;
 }
@@ -233,7 +236,7 @@ export async function chainShort(
 /** Starts the encode and settles with its error line, or null. Injected by the tests. */
 export type ExportStarter = (matchId: number) => Promise<string | null>;
 
-const startFastExportOf: ExportStarter = (matchId) => startFastExport(matchId, matchDir(matchId)).finished;
+const startFastExportOf: ExportStarter = (matchId) => startFastExport(matchId).finished;
 
 /**
  * The finished MP4 after the Short, as its clause. Same gate as the Short: only a clean `done`,
@@ -357,16 +360,18 @@ export async function runNightlyOnce(
 ): Promise<NightlyRunResult> {
   const { renderInFlight: busy = renderInFlight, ranked = liveRanked } = deps;
   const startedAt = new Date().toISOString();
-  const skip = (reason: string, conflict = false): NightlyRunResult => {
+  const skip = async (reason: string, conflict = false): Promise<NightlyRunResult> => {
     console.error(`nightly: skipped — ${reason}`);
     // A conflict is the one skip that is not an outcome: the route answers it 409 and the run
     // already in flight is what the night produced. Recording it would replace last night's
-    // real result with "skipped" on the strip.
-    if (!conflict) writeNightlyState({ startedAt, matchId: null, players: [], outcome: "skipped", reason });
+    // real result with "skipped" on the strip — and a push for it would wake nobody usefully.
+    if (!conflict) {
+      writeNightlyState({ startedAt, matchId: null, players: [], outcome: "skipped", reason });
+      if (notifyUrl) await notify(notifyUrl, `Nightly skipped — ${reason}`);
+    }
     return { skipped: reason, ...(conflict ? { busy: true } : {}) };
   };
 
-  if (snapshot().scanning) return skip("a suggestion scan is running");
   if (busy()) return skip("a render is already in flight", true);
 
   const suggestions = await ranked();
@@ -387,6 +392,8 @@ export async function runNightlyOnce(
   // The same call `POST /api/render` makes, so a nightly render and a clicked one are one code
   // path: startJob de-duplicates by match id and owns the whole pipeline invocation.
   const job = startJob(matchId);
+  // Recorded now, so a restart mid-render leaves "started" on the strip rather than nothing.
+  writeNightlyState({ startedAt, matchId, players: [...players], outcome: "started" });
   afterSettled(job, async (verdict, shortClause, exportClause) => {
     // State first, then the push, from the same values: a panel that disagreed with the
     // notification would be worse than either on its own.

@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { config } from "./config.js";
-import { dismissSuggestion, restoreSuggestion, type Suggestion } from "./suggest.js";
+import { dismissSuggestion, reconcileDismissed, restoreSuggestion, type Suggestion } from "./suggest.js";
 
 const media = await mkdtemp(path.join(tmpdir(), "mcsr-dismiss-"));
 assert.ok(media.startsWith(tmpdir()), "refusing to run outside tmpdir");
@@ -42,6 +42,19 @@ try {
   c = await cache();
   assert.deepEqual(c.dismissed, [], "restore without a row still un-dismisses");
   assert.ok(!c.suggestions.some((s) => s.metrics.matchId === 9), "and invents no row");
+
+  // A Dismiss made while a scan runs: the scan's copy predates it, and saving that copy as-is
+  // un-dismissed the match. The disk's list wins, and the ranked list drops the row too.
+  const scanCopy = { ...JSON.parse(await readFile(path.join(media, ".suggest-cache.json"), "utf8")) };
+  scanCopy.suggestions = [row, { ...row, metrics: { matchId: 8 } }];
+  dismissSuggestion(7);
+  reconcileDismissed(scanCopy);
+  assert.deepEqual(scanCopy.dismissed, [7], "the dismiss made mid-scan survives");
+  assert.deepEqual(
+    scanCopy.suggestions.map((s: Suggestion) => s.metrics.matchId),
+    [8],
+    "the dismissed match leaves the list being saved",
+  );
   console.log("suggestDismiss: all checks passed");
 } finally {
   await rm(media, { recursive: true, force: true });

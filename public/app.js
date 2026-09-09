@@ -283,7 +283,7 @@ async function select(id, { open = false } = {}) {
     <div id="youtube"><div class="empty">loading&hellip;</div></div>
 
     <h2>Outputs</h2>
-    ${outputsHtml(meta.outputs)}`;
+    ${outputsHtml(meta.outputs, id)}`;
 
   if (meta.hook) {
     $("#hook").addEventListener("input", () => hookCounter(meta));
@@ -977,15 +977,18 @@ const OUTPUT_LABELS = {
   syncPreview: "Sync preview",
 };
 
-function outputsHtml(outputs) {
+function outputsHtml(outputs, id) {
   if (!outputs) return '<div class="empty">nothing written yet</div>';
   return `<div class="outputs">${Object.entries(OUTPUT_LABELS)
-    .map(
-      ([key, label]) =>
-        `<div><span class="k">${label}</span><span class="v${outputs[key] ? "" : " missing"}">${
-          outputs[key] ? esc(outputs[key]) : "&mdash;"
-        }</span></div>`,
-    )
+    .map(([key, label]) => {
+      // The project is the one output you take somewhere else, so its path is its download.
+      const value = !outputs[key]
+        ? "&mdash;"
+        : key === "project"
+          ? `<a href="/api/export/project/${id}" download>${esc(outputs[key])}</a>`
+          : esc(outputs[key]);
+      return `<div><span class="k">${label}</span><span class="v${outputs[key] ? "" : " missing"}">${value}</span></div>`;
+    })
     .join("")}</div>`;
 }
 
@@ -1155,6 +1158,8 @@ function nightlyInner() {
         ? `<a href="#" data-act="nightly-open" data-id="${lastRun.matchId}">${label}</a> &mdash; `
         : `${label} &mdash; `;
     const why = lastRun.reason ? `: ${lastRun.reason}` : "";
+    // "started" with no later record is a render the server did not live to finish.
+    const said = lastRun.outcome === "started" ? "started, not finished" : lastRun.outcome;
     const short =
       lastRun.short === "done"
         ? ' <span class="ok">+ Short rendered</span>'
@@ -1168,7 +1173,7 @@ function nightlyInner() {
           ? ' <span class="bad">+ export failed</span>'
           : "";
     const cls = lastRun.outcome === "done" ? "ok" : lastRun.outcome === "failed" ? "bad" : "muted";
-    last = `${lastLabel} ${who}<span class="${cls}">${esc(lastRun.outcome + why)}</span>${short}${exported}`;
+    last = `${lastLabel} ${who}<span class="${cls}">${esc(said + why)}</span>${short}${exported}`;
   }
 
   const failed = nightly.runError ? `<div class="bad">Run now failed: ${esc(nightly.runError)}</div>` : "";

@@ -52,7 +52,7 @@ export async function allUploads(): Promise<Array<{ matchId: number; record: Upl
  * The finished video to upload, or null.
  *
  * Whatever video in the match folder is not a POV clip (`<nickname>.mp4`), a render intermediate
- * or a Short: `npm run export:fast` writes `final-<id>.mp4`, `scripts/export.sh` writes
+ * or a Short: `npm run export:fast` writes `final-<id>.mp4`, the retired melt export wrote
  * `final.mp4`, and a hand export can be named anything.
  *
  * Ambiguity is reported rather than guessed at: uploading the wrong four-gigabyte file to a
@@ -75,8 +75,8 @@ export function findExportedVideo(
     // overlay-intro.mov -> overlay-intro.webm) cannot turn one of them into an upload candidate.
     //
     // `.part.` catches anything still being written. Both writers in this project rename into
-    // place on success — src/atomicOutput.ts writes `<name>.part<ext>`, scripts/export.sh writes
-    // `final.part.mp4` — precisely so a truncated file is never mistaken for a finished one.
+    // place on success — src/atomicOutput.ts writes `<name>.part<ext>`, exportFast.ts writes
+    // `final-<id>.part.mp4` — precisely so a truncated file is never mistaken for a finished one.
     // Without this the upload panel would offer `final.part.mp4` while an export was still
     // running, and publish half a video.
     .filter(

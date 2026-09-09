@@ -14,7 +14,7 @@
 /** The publish set for one match, as rsync/glob patterns. Also the .tar bundle's contents. */
 export function publishSetPatterns(matchId: number): string[] {
   return [
-    // Two names because two encoders write it: scripts/export.sh -> final.mp4,
+    // Two names because two encoders wrote it: the retired melt export -> final.mp4,
     // `npm run export:fast` -> final-<id>.mp4 (see matchShelf.isExported).
     `final-${matchId}.mp4`,
     "final.mp4",

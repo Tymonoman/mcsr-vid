@@ -61,7 +61,7 @@ export type ShortRunner = (matchId: number, pick: number) => ChildProcess;
 const spawnShortCli: ShortRunner = (matchId, pick) =>
   // The CLI is the one code path that renders a Short, so the dashboard drives it rather than
   // duplicating the moment-picking and ffmpeg assembly. Same reason exportRoutes shells out to
-  // export.sh instead of reimplementing melt's invocation.
+  // `npm run export:fast` instead of reimplementing the encode.
   spawn("npm", ["run", "--silent", "short", "--", String(matchId), `--pick=${pick}`], {
     stdio: ["ignore", "pipe", "pipe"],
     cwd: process.cwd(),
