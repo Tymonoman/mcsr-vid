@@ -32,9 +32,9 @@ import { startFastExport } from "./exportRoutes.js";
 import { getJob, startJob, type Job } from "./jobs.js";
 import { hiddenMatchIds } from "./matchShelf.js";
 import { orderForDisplay } from "./suggestPresent.js";
+import { playoffBoard } from "./playoffs.js";
 import { listProcessedMatchIds } from "./matchStatus.js";
 import { spawnShortJob, type ShortRunner } from "./shortsRoutes.js";
-import type { Suggestion } from "./suggest.js";
 import { snapshot, startScan } from "./suggestScan.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -125,6 +125,39 @@ interface NightlyPickContext {
  * and re-running it overnight would spend the night reproducing files that exist; anything
  * hidden is a match the operator has already said no to.
  */
+/** What a pick needs to carry: a Suggestion, or a playoff game dressed as one. */
+export interface NightlyPick {
+  metrics: { matchId: number; players: [string, string] };
+  bucket: string;
+}
+
+/**
+ * The current bracket's detected games, oldest first, as picks — ahead of every suggestion when
+ * `playoffsFirst` is on. Game order is series order, which is also the playlist's.
+ */
+export async function playoffPicks(): Promise<NightlyPick[]> {
+  if (!config.playoffsFirst) return [];
+  try {
+    const board = await playoffBoard();
+    return board.slots
+      .flatMap((slot) =>
+        slot.games.map((g) => ({
+          metrics: {
+            matchId: g.matchId,
+            players: [slot.seeds[0].nickname, slot.seeds[1].nickname] as [string, string],
+          },
+          bucket: "playoffs",
+          dateSec: g.dateSec,
+        })),
+      )
+      .sort((a, b) => a.dateSec - b.dateSec);
+  } catch (err) {
+    // The bracket is a bonus on top of the feed, never the reason a night renders nothing.
+    console.error(`nightly: playoffs unavailable — ${describeError(err)}`);
+    return [];
+  }
+}
+
 export function pickNightlyCandidate<T extends { metrics: { matchId: number } }>(
   suggestions: readonly T[],
   { processedIds, hiddenIds, freeMatches }: NightlyPickContext,
@@ -313,16 +346,16 @@ export interface NightlyRunResult {
 export interface NightlyDeps {
   renderInFlight: () => boolean;
   /** The ranked list to pick from, or null when there is none. */
-  ranked: () => Promise<readonly Suggestion[] | null>;
+  ranked: () => Promise<readonly NightlyPick[] | null>;
 }
 
-const liveRanked = async (): Promise<readonly Suggestion[] | null> => {
+const liveRanked = async (): Promise<readonly NightlyPick[] | null> => {
   // Not `startScan(true)`: a forced rescan is hundreds of API requests. Unforced, the scan
   // returns the cache while it is fresh and walks only the matches played since the last one
   // when it is stale — so the pick is from tonight's feed, not from whenever the process booted.
   await startScan(false);
   const result = snapshot().result;
-  return result ? orderForDisplay(result.suggestions) : null;
+  return result ? [...(await playoffPicks()), ...orderForDisplay(result.suggestions)] : null;
 };
 
 /** The disk-and-shelf half of the pick, shared by the run and the dashboard's preview of it. */
@@ -339,9 +372,14 @@ const pickContext = async (): Promise<NightlyPickContext> => ({
  * Deliberately never scans: a GET the browser polls must not be able to spend a scan's worth of
  * the MCSR request budget. No cached list simply means nothing to promise yet.
  */
-export async function nightlyCandidate(): Promise<Suggestion | null> {
+export async function nightlyCandidate(): Promise<NightlyPick | null> {
   const result = snapshot().result;
-  return result ? pickNightlyCandidate(orderForDisplay(result.suggestions), await pickContext()) : null;
+  return result
+    ? pickNightlyCandidate(
+        [...(await playoffPicks()), ...orderForDisplay(result.suggestions)],
+        await pickContext(),
+      )
+    : null;
 }
 
 /**

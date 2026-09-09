@@ -84,6 +84,9 @@ function VersusRecord({ props, opacity }: { props: OverlayProps; opacity: number
 
   return (
     <div className="intro-h2h" style={{ opacity }}>
+      {/* The tournament line rides on the centre block, not the date line at the bottom: at this
+          size a line that long wraps into the stat columns on both sides. */}
+      {props.playoffLabel && <span className="intro-h2h-playoff">{props.playoffLabel}</span>}
       <span className="intro-h2h-label">Head to Head</span>
       {left === 0 && right === 0 ? (
         // "0 – 0" reads as a scoreline someone forgot to fill in; say what it means instead.

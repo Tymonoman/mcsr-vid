@@ -1,4 +1,4 @@
-import type { FeedMatch, MatchInfo, UserDetails, VersusStats } from "./types.js";
+import type { FeedMatch, MatchInfo, PlayoffBracket, UserDetails, VersusStats } from "./types.js";
 
 const BASE_URL = "https://api.mcsrranked.com";
 
@@ -55,6 +55,32 @@ export function getRecentMatches(query: RecentMatchQuery = {}): Promise<FeedMatc
   }
   const search = params.toString();
   return getJson<FeedMatch[]>(`/matches${search ? `?${search}` : ""}`);
+}
+
+/**
+ * One player's own match history, newest first, in the shape of the `/matches` feed. `type: 3`
+ * and a `season` are how the playoff games are found: they are ordinary private-room matches.
+ */
+export function getUserMatches(
+  uuid: string,
+  query: RecentMatchQuery & { season?: number },
+): Promise<FeedMatch[]> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined) params.set(key, String(value));
+  }
+  return getJson<FeedMatch[]>(`/users/${encodeURIComponent(uuid)}/matches?${params.toString()}`);
+}
+
+/**
+ * The playoff bracket: the current one, or a past season's. The envelope wraps the bracket in a
+ * second `data` next to `next`/`prev` season pointers, which nothing here needs.
+ */
+export async function getPlayoffs(season?: number): Promise<PlayoffBracket> {
+  const page = await getJson<{ data: PlayoffBracket }>(
+    season === undefined ? "/playoffs" : `/playoffs/${season}`,
+  );
+  return page.data;
 }
 
 export function getUser(identifier: string): Promise<UserDetails> {

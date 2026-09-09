@@ -1,6 +1,7 @@
 import type { VodWindow } from "./vodAcquisition.js";
 import { type ChapterMarker, formatChapters } from "./chapters.js";
 import { eloAtMatchStart } from "./overlayProps.js";
+import { playoffLabel, playoffParagraph, type PlayoffContext } from "./playoffs.js";
 import type { MatchInfo, UserDetails } from "./types.js";
 
 // Three: over 15 YouTube voids all of them, and only the first three render above the title, so
@@ -42,6 +43,8 @@ export interface DescriptionInput {
   playlistUrl?: string;
   /** `config.supportUrl`; empty or absent means no tip-jar line. */
   supportUrl?: string;
+  /** `playoffContextFor(match)`: the round and game replace "1v1" and earn a paragraph. */
+  playoff?: PlayoffContext | null;
 }
 
 /**
@@ -61,7 +64,10 @@ function buildOpening(input: DescriptionInput): string {
   const leftElo = eloAtMatchStart(match, userLeft.uuid, userLeft.eloRate);
   const rightElo = eloAtMatchStart(match, userRight.uuid, userRight.eloRate);
 
-  const head = `${left} vs ${right} — MCSR Ranked 1v1, ${leftElo} vs ${rightElo} elo.`;
+  const format = input.playoff
+    ? `MCSR Ranked S${input.playoff.season} Playoffs, ${playoffLabel(input.playoff)}`
+    : "MCSR Ranked 1v1";
+  const head = `${left} vs ${right} — ${format}, ${leftElo} vs ${rightElo} elo.`;
   // Doubles as the "what does this channel add" line a YPP reviewer looks for.
   const body = "Full same-seed race, synced dual-POV with live split comparison.";
 
@@ -83,6 +89,9 @@ export function buildDescription(input: DescriptionInput): string {
   return [
     buildOpening(input),
     "",
+    // The series context a playoff viewer arrives with: which round, which game, what the score
+    // was going in. Going in, never after — the result stays on the timer.
+    ...(input.playoff ? [playoffParagraph(input.playoff), ""] : []),
     "Chapters:",
     formatChapters(chapters),
     "",

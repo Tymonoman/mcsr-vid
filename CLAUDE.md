@@ -114,6 +114,14 @@ they differ (`code: { boot, now }` from `src/repoHead.ts`). Client changes need 
   running or under two matches of disk remain, then the Short (`nightlyRenderShort`) and the MP4
   (`nightlyRenderExport`); `nightlyNotifyUrl` gets one line on done / failed / aborted. The
   strip's `Run now` is the same path, as is a card's "Render + Short + MP4".
+- **Playoffs** (`src/playoffs.ts`): the bracket (`/playoffs`) knows the series, not the games;
+  the games are private-room matches (type 3) found in each seed's history, and the API stamps
+  them with the season *after* the bracket's (a Season 11 bracket's games are season 12). The
+  series score in every surface is the score *before* the game, counted from the earlier games —
+  never the bracket's `roundScore`, which is the score now. A "Playoffs" section sits above the
+  suggestions while a slot is within 14 days (`GET /api/playoffs`), its games go first in the
+  nightly's order (`playoffsFirst`), and `playoffContextFor(match)` drives the title tail, the
+  description paragraph, the intro line, the tournament playlist and the frozen season-end elo.
 - Phones (<= 860px): list and match are two screens with a back bar; rows carry no Hide/Delete
   on a coarse pointer; the match screen offers jump links to the video, the kit and the Short.
 - `docs/` is the GitHub Pages site (`mcsr.sezamki.site`: the OAuth homepage, privacy and terms

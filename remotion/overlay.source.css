@@ -524,6 +524,15 @@
   text-transform: uppercase;
   color: var(--muted);
 }
+/* "Season 11 Playoffs · Round of 16 · Game 2": the one line that says this is not a ranked
+   match, so it takes the badge's gold and a little more room than the label under it. */
+.intro-h2h-playoff {
+  font-size: 30px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin-bottom: 14px;
+}
 .intro-h2h-record {
   display: flex;
   align-items: baseline;

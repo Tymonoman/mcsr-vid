@@ -1277,8 +1277,10 @@ function renderSuggestions(data) {
         })
         .join("");
 
-  el.innerHTML = '<div id="nightly" class="nightly"></div>' + undo + scan + legend + cards;
+  el.innerHTML =
+    '<div id="nightly" class="nightly"></div>' + undo + scan + '<div id="playoffs"></div>' + legend + cards;
   paintNightly();
+  paintPlayoffs();
   // A failed action says so where it was clicked — the scan line, the undo line, the card —
   // rather than as an unhandled rejection in a console nobody has open.
   const failed = (target, text) => {
@@ -1362,8 +1364,74 @@ async function startRenderWithShort(id) {
   }
 }
 
+/* --- Playoffs --------------------------------------------------------------------------------
+   The current bracket's seated slots and the games found for them, above the suggestions while
+   a tournament is on. A game's Render is the header form's own start: the plain pipeline by id,
+   with the Short and the MP4, as the nightly would run it. The series score shown is the score
+   *before* the game, as the description carries it. */
+let playoffData = null;
+
+function paintPlayoffs() {
+  const el = $("#playoffs");
+  if (!el || !playoffData) return;
+  const now = Date.now() / 1000;
+  const slots = playoffData.slots.filter(
+    (s) => s.games.length || (s.startTime !== null && s.startTime > now - 6 * 3600),
+  );
+  if (!slots.length) {
+    el.innerHTML = "";
+    return;
+  }
+  const when = (t) =>
+    t === null
+      ? "unscheduled"
+      : new Date(t * 1000).toLocaleString(undefined, {
+          weekday: "short",
+          day: "numeric",
+          month: "short",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+  el.innerHTML = `
+    <div class="bucketlegend"><span class="bucket playoffs">PLAYOFFS</span><span>Season ${esc(String(playoffData.season))} bracket &middot; <a href="https://mcsrranked.com/playoffs/${esc(String(playoffData.season))}" target="_blank" rel="noopener">mcsrranked.com</a></span></div>
+    ${slots
+      .map(
+        (s) => `
+      <div class="sugg playoff">
+        <div class="top">
+          <span class="bucket playoffs">${esc(s.round.toUpperCase())}</span>
+          <span class="who">${esc(s.seeds[0].nickname)} <span class="muted">(${esc(s.seeds[0].label)})</span> vs ${esc(s.seeds[1].nickname)} <span class="muted">(${esc(s.seeds[1].label)})</span></span>
+        </div>
+        <div class="facts">Bo${s.bestOf} &middot; ${esc(when(s.startTime))}${s.games.length ? "" : " &middot; no games found yet"}</div>
+        ${s.games
+          .map((g) => {
+            const onShelf = matches.some((m) => m.matchId === g.matchId);
+            return `<div class="game" data-id="${g.matchId}">
+            <span>Game ${g.gameNo} of ${s.bestOf} &middot; ${esc(s.seeds[0].nickname)} ${g.scoreBefore[0]}–${g.scoreBefore[1]} ${esc(s.seeds[1].nickname)} going in</span>
+            <a href="https://mcsrranked.com/matches/${g.matchId}" target="_blank" rel="noopener">#${g.matchId}</a>
+            ${onShelf ? `<button data-act="open">Rendered &middot; open</button>` : `<button data-act="render">Render</button>`}
+          </div>`;
+          })
+          .join("")}
+      </div>`,
+      )
+      .join("")}`;
+  el.querySelectorAll(".game").forEach((row) => {
+    const id = Number(row.dataset.id);
+    row.querySelector('[data-act="render"]')?.addEventListener("click", () => startRender(String(id), true));
+    row.querySelector('[data-act="open"]')?.addEventListener("click", () => select(id, { open: true }));
+  });
+}
+
 async function pollSuggestions() {
   const data = await api("/api/suggestions");
+  // Not awaited with the list: the bracket's first read fetches sixteen histories.
+  api("/api/playoffs")
+    .then((board) => {
+      playoffData = board;
+      paintPlayoffs();
+    })
+    .catch(() => {});
   renderSuggestions(data);
   clearTimeout(suggestPoll);
   // Only while a scan is in flight — the result is cached for suggestCacheTtlMin afterwards,

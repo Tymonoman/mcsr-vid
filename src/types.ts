@@ -153,6 +153,39 @@ export interface MatchInfo {
  */
 export type FeedMatch = Omit<MatchInfo, "timelines" | "completions">;
 
+/** A seeded entrant of a playoff bracket (`/playoffs`). `seasonEloRate` is the frozen season-end rating. */
+export interface PlayoffPlayer {
+  uuid: string;
+  nickname: string;
+  seasonEloRate: number;
+  seasonEloRank: number;
+  /** 0-based; 12 and up came through the last-chance qualifier. */
+  seedNumber: number;
+  personalBest: number;
+}
+
+/** One slot of the bracket — a whole best-of series, not a game. */
+export interface PlayoffSlot {
+  id: number;
+  name: string;
+  nextMatchId: number | null;
+  /** Wins needed: 3 for a Bo5, 4 for a Bo7. */
+  maxRoundScore: number;
+  /** Epoch seconds, or null until scheduled. */
+  startTime: number | null;
+  state: string | null;
+  /** `player` indexes `PlayoffBracket.players`. `roundScore` is the score *now* — never shown. */
+  participants: { player: number; roundScore: number }[];
+  vod: string | null;
+}
+
+export interface PlayoffBracket {
+  season: number;
+  players: PlayoffPlayer[];
+  matches: PlayoffSlot[];
+  results: { player: number | null; place: number; prize: number }[];
+}
+
 export interface VersusResultMap {
   total: number;
   [uuid: string]: number;

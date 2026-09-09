@@ -188,6 +188,12 @@ export interface Config {
   suggestFollowerWeight: number;
   /** Per-term weights for the closeness and chaos scores. */
   suggestWeights: ScoreWeights;
+  /**
+   * Whether detected playoff games (src/playoffs.ts) go ahead of the ordinary suggestions in
+   * the nightly's pick order. On by default: during a tournament the bracket is the channel's
+   * best material by a distance, and the games age out of Twitch like any other VOD.
+   */
+  playoffsFirst: boolean;
 }
 
 const DEFAULTS: Config = {
@@ -233,6 +239,7 @@ const DEFAULTS: Config = {
   suggestSlowRunCutoffSec: 600,
   suggestFollowerWeight: 3,
   suggestWeights: DEFAULT_WEIGHTS,
+  playoffsFirst: true,
 };
 
 const CONFIG_PATH = path.resolve("mcsr-vid.config.json");

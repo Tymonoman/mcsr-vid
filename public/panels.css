@@ -190,6 +190,27 @@
 .bucket.chaos {
   color: var(--gold);
 }
+.bucket.playoffs {
+  color: var(--crimson);
+}
+.sugg .muted {
+  color: var(--muted);
+}
+/* One row per detected game under its slot; the score is the one going in, never after. */
+.sugg .game {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.sugg .game button {
+  padding: 3px 10px;
+  font-size: 12px;
+  border-bottom-width: 3px;
+}
 .bucketlegend .order {
   flex-basis: 100%;
   color: var(--muted);

@@ -35,6 +35,8 @@ export type OverlayProps = {
   left: PlayerIdentity;
   right: PlayerIdentity;
   matchPlayedLabel: string;
+  /** "Season 11 Playoffs · Round of 16 · Game 2" for a playoff game; absent for a ranked match. */
+  playoffLabel?: string;
   h2hLeftWins: number;
   h2hRightWins: number;
   splits: SplitRow[];

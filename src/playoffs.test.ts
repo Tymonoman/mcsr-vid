@@ -1,0 +1,256 @@
+// Self-check for playoffs.ts on the saved Season 11 bracket (src/fixtures/playoffs-11.json), with
+// games synthesised around its Round of 16 slots: the API is stubbed at global fetch, so nothing
+// here touches the network. What is pinned is what would embarrass the channel if it slipped —
+// a game numbered out of order, a series score that names the game's own winner, a practice
+// reset counted as a game, the wrong season's bracket.
+// Run: npx tsx src/playoffs.test.ts
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import type { FeedMatch, PlayoffBracket } from "./types.js";
+
+const envelope = JSON.parse(readFileSync(new URL("./fixtures/playoffs-11.json", import.meta.url), "utf8"));
+const bracket: PlayoffBracket = envelope.data.data;
+
+// Slot 9: edcr (#1 seed, players[0]) vs lauveer (LCQ, players[15]), Sat 12 Sept 15:00 UTC.
+const slot = bracket.matches.find((m) => m.id === 9)!;
+const edcr = bracket.players[0]!;
+const lauveer = bracket.players[15]!;
+const feinberg = bracket.players[7]!;
+const start = slot.startTime!;
+
+let nextId = 13_100_000;
+const game = (
+  a: { uuid: string; nickname: string },
+  b: { uuid: string; nickname: string },
+  date: number,
+  winner: string | null,
+  over: Partial<FeedMatch> = {},
+): FeedMatch =>
+  ({
+    id: nextId++,
+    type: 3,
+    season: 12,
+    date,
+    players: [
+      { uuid: a.uuid, nickname: a.nickname },
+      { uuid: b.uuid, nickname: b.nickname },
+    ],
+    spectators: [],
+    result: { uuid: winner, time: 480_000 },
+    forfeited: false,
+    changes: [],
+    vod: [],
+    rank: { season: null, allTime: null },
+    tag: null,
+    ...over,
+  }) as FeedMatch;
+
+const g1 = game(edcr, lauveer, start + 300, edcr.uuid);
+const g2 = game(lauveer, edcr, start + 900, lauveer.uuid); // seated the other way round
+const g3 = game(edcr, lauveer, start + 1500, edcr.uuid);
+const reset = game(edcr, lauveer, start - 600, null, {
+  forfeited: true,
+  result: { uuid: null, time: 30_000 },
+});
+const otherPair = game(edcr, feinberg, start + 600, edcr.uuid);
+const tooLate = game(edcr, lauveer, start + 7 * 3600, edcr.uuid);
+const tooEarly = game(edcr, lauveer, start - 3600, edcr.uuid);
+const edcrHistory = [tooLate, g3, otherPair, g2, g1, reset, tooEarly];
+const lauveerHistory = [tooLate, g3, g2, g1, reset];
+
+const {
+  _resetPlayoffsForTest,
+  bracketActive,
+  gameBelongs,
+  playoffBoard,
+  playoffContextFor,
+  playoffEloFor,
+  playoffLabel,
+  playoffParagraph,
+  playoffTitleTail,
+  seedLabel,
+  slotFor,
+  slotGames,
+  slotWindow,
+} = await import("./playoffs.js");
+
+/* --- Pure parts --------------------------------------------------------------------------- */
+
+assert.equal(seedLabel(0), "#1 seed");
+assert.equal(seedLabel(11), "#12 seed");
+assert.equal(seedLabel(12), "LCQ", "the last four came through the last-chance qualifier");
+
+assert.ok(gameBelongs(bracket, slot, g1));
+assert.ok(gameBelongs(bracket, slot, g2), "seat order is the room's, not the bracket's");
+assert.ok(!gameBelongs(bracket, slot, reset), "a forfeit inside a minute is a room reset");
+assert.ok(!gameBelongs(bracket, slot, otherPair));
+assert.ok(!gameBelongs(bracket, slot, tooLate), "six hours after the listed start is another day");
+assert.ok(!gameBelongs(bracket, slot, tooEarly), "an hour before it is practice");
+assert.ok(
+  gameBelongs(bracket, slot, game(edcr, lauveer, start - 600, edcr.uuid)),
+  "a quarter hour early is fine",
+);
+assert.equal(slotFor(bracket, g2)?.id, 9);
+assert.equal(slotFor(bracket, otherPair), null, "edcr and Feinberg hold no slot together");
+
+const games = slotGames(bracket, slot, [...edcrHistory, ...lauveerHistory]);
+assert.deepEqual(
+  games.map((g) => [g.matchId, g.gameNo, g.scoreBefore]),
+  [
+    [g1.id, 1, [0, 0]],
+    [g2.id, 2, [1, 0]],
+    [g3.id, 3, [1, 1]],
+  ],
+  "numbered by date, deduplicated across both histories, scored before each game",
+);
+
+// An unscheduled slot takes any game of its pair inside the tournament's month.
+const quarter = {
+  ...bracket.matches.find((m) => m.id === 5)!,
+  participants: [
+    { player: 0, roundScore: 0 },
+    { player: 7, roundScore: 0 },
+  ],
+};
+const later = { ...bracket, matches: bracket.matches.map((m) => (m.id === 5 ? quarter : m)) };
+assert.equal(quarter.startTime, null);
+assert.deepEqual(slotWindow(later, quarter), [start - 900, start + 30 * 86_400]);
+assert.equal(slotFor(later, game(edcr, feinberg, start + 3 * 86_400, edcr.uuid))?.id, 5);
+
+/* --- Wording: the round, the game, the seeds, the score going in; never the result ---------- */
+
+const ctx = {
+  season: 11,
+  round: "Round of 16",
+  gameNo: 2,
+  bestOf: 5,
+  seeds: [
+    { uuid: edcr.uuid, nickname: "edcr", label: "#1 seed", seasonEloRate: 2688 },
+    { uuid: lauveer.uuid, nickname: "lauveer", label: "LCQ", seasonEloRate: 2137 },
+  ] as const,
+  scoreBefore: [1, 0] as [number, number],
+};
+assert.equal(playoffLabel({ ...ctx, seeds: [...ctx.seeds] }), "Round of 16 · Game 2 of 5");
+assert.equal(
+  playoffTitleTail({ ...ctx, seeds: [...ctx.seeds] }),
+  "MCSR Ranked S11 Playoffs · Round of 16 · Game 2",
+);
+const para = playoffParagraph({ ...ctx, seeds: [...ctx.seeds] });
+assert.ok(para.includes("edcr (#1 seed, 2688 elo) vs lauveer (LCQ, 2137 elo)"));
+assert.ok(para.includes("Series going in: edcr 1–0 lauveer."));
+assert.ok(para.includes("https://mcsrranked.com/playoffs/11"));
+assert.ok(para.includes("twitch.tv/mcsrranked") && para.includes("youtube.com/@MCSR_Ranked"));
+
+/* --- Fetching: the bracket by season offset, histories paged and cached --------------------- */
+
+const calls: string[] = [];
+const ok = (payload: unknown) =>
+  new Response(JSON.stringify({ status: "success", data: payload }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+globalThis.fetch = (async (input: string | URL | Request) => {
+  const url = new URL(String(input));
+  calls.push(url.pathname + url.search);
+  if (url.pathname === "/playoffs" || url.pathname === "/playoffs/11")
+    return ok({ data: bracket, next: null, prev: 10 });
+  if (url.pathname.startsWith("/playoffs/")) {
+    return new Response(JSON.stringify({ status: "error", data: "not found" }), { status: 404 });
+  }
+  const m = /^\/users\/([^/]+)\/matches$/.exec(url.pathname);
+  if (m) {
+    assert.equal(url.searchParams.get("type"), "3", "playoff games are private-room matches");
+    assert.equal(url.searchParams.get("season"), "12", "stamped with the season after the bracket's");
+    if (m[1] === edcr.uuid) return ok(edcrHistory);
+    if (m[1] === lauveer.uuid) return ok(lauveerHistory);
+    return ok([]);
+  }
+  throw new Error(`unexpected fetch: ${url}`);
+}) as typeof fetch;
+
+_resetPlayoffsForTest();
+const found = await playoffContextFor({ ...g2, timelines: [], completions: [] });
+assert.deepEqual(
+  found && { ...found, seeds: found.seeds.map((s) => [s.nickname, s.label, s.seasonEloRate]) },
+  {
+    season: 11,
+    round: "Round of 16",
+    gameNo: 2,
+    bestOf: 5,
+    seeds: [
+      ["edcr", "#1 seed", 2688],
+      ["lauveer", "LCQ", 2137],
+    ],
+    scoreBefore: [1, 0],
+  },
+);
+assert.ok(calls[0]!.startsWith("/playoffs/11"), `a season-12 game reads the season-11 bracket: ${calls[0]}`);
+
+// The frozen rating reaches eloAtMatchStart through the resolved context — the game itself has
+// no changes[], and the live rating would be the new season's.
+assert.equal(playoffEloFor(g2.id, edcr.uuid), 2688);
+assert.equal(playoffEloFor(g2.id, "nobody"), null);
+const { eloAtMatchStart } = await import("./overlayProps.js");
+const g2Info = { ...g2, timelines: [], completions: [] };
+assert.equal(eloAtMatchStart(g2Info, edcr.uuid, 1500), 2688, "the bracket's rating, not the live one");
+assert.equal(eloAtMatchStart(g2Info, lauveer.uuid, null), 2137);
+assert.equal(
+  eloAtMatchStart({ ...g2Info, id: 1 }, edcr.uuid, 1500),
+  1500,
+  "an unresolved match keeps the live rating",
+);
+
+assert.equal(await playoffContextFor({ ...otherPair, timelines: [], completions: [] }), null);
+assert.equal(
+  await playoffContextFor({ ...g1, type: 2, timelines: [], completions: [] }),
+  null,
+  "a ranked match is never a playoff game",
+);
+const before = calls.length;
+assert.equal(
+  await playoffContextFor({ ...g1, season: 8, timelines: [], completions: [] }),
+  null,
+  "no bracket for that season",
+);
+assert.equal(await playoffContextFor({ ...g1, season: 8, id: 5, timelines: [], completions: [] }), null);
+assert.equal(calls.length - before, 1, "a 404 bracket is remembered, not re-asked");
+
+/* --- The board: seated slots with their games, only while the bracket is live --------------- */
+
+assert.ok(bracketActive(bracket, start - 10 * 86_400), "ten days out is upcoming");
+assert.ok(bracketActive(bracket, start + 10 * 86_400), "ten days in, games may exist");
+assert.ok(!bracketActive(bracket, start - 20 * 86_400), "three weeks out is not yet a tournament");
+assert.ok(!bracketActive(bracket, start + 40 * 86_400), "and six weeks after it is over");
+
+_resetPlayoffsForTest();
+calls.length = 0;
+const board = await playoffBoard(start + 3600);
+assert.equal(board.season, 11);
+assert.equal(board.slots.length, 8, "the eight seated Round of 16 slots; later rounds have no seats yet");
+assert.equal(board.slots[0]!.id, 9, "earliest start first, then by id");
+const ours = board.slots.find((s) => s.id === 9)!;
+assert.deepEqual(
+  ours.seeds.map((s) => s.label),
+  ["#1 seed", "LCQ"],
+);
+assert.deepEqual(
+  ours.games.map((g) => g.gameNo),
+  [1, 2, 3],
+);
+assert.equal(board.slots.find((s) => s.id === 10)!.games.length, 0);
+const histories = calls.filter((c) => c.includes("/matches?")).length;
+assert.equal(histories, 16, "one history per seated player");
+assert.equal(playoffEloFor(g3.id, lauveer.uuid), 2137, "the board resolves every game it lists");
+await playoffBoard(start + 3600);
+assert.equal(
+  calls.filter((c) => c.includes("/matches?")).length,
+  histories,
+  "cached: a second board fetches nothing",
+);
+assert.deepEqual(
+  (await playoffBoard(start + 40 * 86_400)).slots,
+  [],
+  "over: nothing listed, nothing fetched",
+);
+
+console.log("playoffs: all checks passed");

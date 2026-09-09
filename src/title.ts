@@ -15,6 +15,8 @@ const MOBILE_CUTOFF = 50;
 export interface TitleInput {
   leftNickname: string;
   rightNickname: string;
+  /** Replaces the format suffix — a playoff game's round and game number (src/playoffs.ts). */
+  suffix?: string;
 }
 
 export interface BuiltTitle {
@@ -35,8 +37,8 @@ export interface BuiltTitle {
  *
  * The hook is left as a placeholder, because that judgement is not derivable.
  */
-export function buildTitle({ leftNickname, rightNickname }: TitleInput): BuiltTitle {
-  const generated = `${leftNickname} vs ${rightNickname}${SEPARATOR}${FORMAT_SUFFIX}`;
+export function buildTitle({ leftNickname, rightNickname, suffix = FORMAT_SUFFIX }: TitleInput): BuiltTitle {
+  const generated = `${leftNickname} vs ${rightNickname}${SEPARATOR}${suffix}`;
   const hookMax = Math.max(
     0,
     Math.min(MOBILE_CUTOFF - SEPARATOR.length, HARD_MAX - SEPARATOR.length - generated.length),
