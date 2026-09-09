@@ -207,6 +207,8 @@ try {
         data: { players: [{ nickname: "doogile" }, { nickname: "Feinberg" }] },
       });
     if (url.includes("/playlists?")) return body({ items: [{ id: "PL1", snippet: { title: "x" } }] });
+    // The video is not in the playlist yet, so the join goes ahead.
+    if (url.includes("/playlistItems?") && (init?.method ?? "GET") === "GET") return body({ items: [] });
     return body({ id: "ok" });
   }) as typeof fetch;
 
@@ -244,8 +246,14 @@ try {
   const retried = await finishOnYouTube(matchId, "vidX");
   assert.equal(retried.playlists, null, "the failed step was retried and succeeded");
   assert.ok(
-    hits.some((h) => h.includes("/playlistItems?")),
+    hits.some((h) => h.startsWith("POST") && h.includes("/playlistItems?")),
     "and it actually called the API",
+  );
+  // A partial playlist failure is one string for four joins, so a retry re-runs all four —
+  // which is only safe because `addToPlaylist` asks before it inserts.
+  assert.ok(
+    hits.some((h) => h.startsWith("GET") && h.includes("/playlistItems?")),
+    "and asked whether the video was already in the playlist",
   );
   assert.ok(
     !hits.some((h) => h.includes("/commentThreads?")),

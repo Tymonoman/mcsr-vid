@@ -364,11 +364,18 @@ export async function setThumbnail(
  * manual step this exists to remove. Uses `youtube.force-ssl`, already in the stored token, so
  * enabling this needs no re-consent.
  *
- * No de-duplication: this is only ever called on a video `videos.insert` returned seconds
- * earlier, so it cannot already be in the playlist.
+ * It asks before inserting. That used to be unnecessary — this only ever ran on a video
+ * `videos.insert` had returned seconds earlier — but "Finish on YouTube" runs on videos that
+ * have been through here before, including a retry after one of four joins failed. A duplicate
+ * playlist item is a hand-removal in Studio, and the list costs 1 unit against the insert's 50.
  */
 export async function addToPlaylist(videoId: string, playlistTitle: string, description = ""): Promise<void> {
   const playlistId = await findOrCreatePlaylist(playlistTitle, description);
+  const existing = await apiCall<{ items?: unknown[] }>(
+    DATA_API,
+    `/playlistItems?part=id&maxResults=1&playlistId=${encodeURIComponent(playlistId)}&videoId=${encodeURIComponent(videoId)}`,
+  );
+  if ((existing.items ?? []).length > 0) return;
   await apiCall(DATA_API, "/playlistItems?part=snippet", {
     method: "POST",
     headers: { "content-type": "application/json" },
