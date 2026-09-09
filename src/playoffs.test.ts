@@ -62,6 +62,7 @@ const {
   _resetPlayoffsForTest,
   bracketActive,
   gameBelongs,
+  loadHistory,
   playoffBoard,
   playoffContextFor,
   playoffEloFor,
@@ -173,12 +174,38 @@ globalThis.fetch = (async (input: string | URL | Request) => {
     assert.equal(url.searchParams.get("season"), "12", "stamped with the season after the bracket's");
     if (m[1] === edcr.uuid) return ok(edcrHistory);
     if (m[1] === lauveer.uuid) return ok(lauveerHistory);
+    if (m[1] === "pager") {
+      // One full page newest-first, then a short one. The walk must ask for the next page below
+      // the last id it saw, and must stop on the short page rather than spin to MAX_HISTORY_PAGES.
+      const before = url.searchParams.get("before");
+      if (before === null) return ok(pagerGames.slice(0, 50));
+      assert.equal(before, String(pagerGames[49]!.id), "paged by the last id seen, not by date");
+      return ok(pagerGames.slice(50));
+    }
     return ok([]);
   }
   throw new Error(`unexpected fetch: ${url}`);
 }) as typeof fetch;
 
+// Newest first and ids descending, like the API's own ordering.
+const pagerGames: FeedMatch[] = Array.from({ length: 57 }, (_, i) => ({
+  ...game(edcr, feinberg, start + 3600 - i, edcr.uuid),
+  id: 900_100 - i,
+}));
+
 _resetPlayoffsForTest();
+const paged = await loadHistory("pager", 12, start - 900);
+assert.equal(paged.length, 57, "a full page is followed by the next; a short page ends the walk");
+assert.equal(calls.filter((c) => c.includes("/users/pager/")).length, 2);
+// A game inside the window stops the walk early even on a full page: the histories only have to
+// reach back as far as the slot.
+_resetPlayoffsForTest();
+calls.length = 0;
+assert.equal((await loadHistory("pager", 12, start + 3600)).length, 50, "one page covered the slot");
+assert.equal(calls.filter((c) => c.includes("/users/pager/")).length, 1);
+
+_resetPlayoffsForTest();
+calls.length = 0;
 const found = await playoffContextFor({ ...g2, timelines: [], completions: [] });
 assert.deepEqual(
   found && { ...found, seeds: found.seeds.map((s) => [s.nickname, s.label, s.seasonEloRate]) },

@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { describeError } from "./errorText.js";
-import { getUser } from "./mcsrApi.js";
+import { cacheMatch, getUser } from "./mcsrApi.js";
 import type { MatchInfo, MatchVod } from "./types.js";
 import { estimatedRunSec } from "./vodAcquisition.js";
 
@@ -142,5 +142,11 @@ export async function withDiscoveredVods(
 ): Promise<MatchInfo> {
   if (match.vod.length >= 2) return match;
   const discovered = await discoverVods(match, deps);
-  return discovered.length ? { ...match, vod: [...match.vod, ...discovered] } : match;
+  if (discovered.length === 0) return match;
+  // Back into getMatch's cache: a private room never satisfies the no-op above, so without this
+  // every caller that asks again (the nightly's eligibility probe, then the download stage that
+  // follows it) pays for the same archive listings a second time.
+  const merged = { ...match, vod: [...match.vod, ...discovered] };
+  cacheMatch(merged);
+  return merged;
 }

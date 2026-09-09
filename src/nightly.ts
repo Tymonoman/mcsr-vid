@@ -37,6 +37,7 @@ import { listProcessedMatchIds } from "./matchStatus.js";
 import { shortRunning, spawnShortJob, type ShortRunner } from "./shortsRoutes.js";
 import { snapshot, startScan } from "./suggestScan.js";
 import { getMatch } from "./mcsrApi.js";
+import type { MatchInfo } from "./types.js";
 import { withDiscoveredVods } from "./vodDiscovery.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -191,14 +192,32 @@ export async function pickNightlyCandidate<T extends { metrics: { matchId: numbe
  * and that same game would be picked again the next night, and the next, for the whole
  * tournament. False here makes the picker fall through to the following candidate instead.
  */
-export async function playoffVodsReady(pick: NightlyPick): Promise<boolean> {
+const noVods = new Set<number>();
+
+/** The playoff games this process has probed and found unstreamed, for the skip notification. */
+export const playoffsWithoutVods = (): number[] => [...noVods];
+
+export async function playoffVodsReady(
+  pick: NightlyPick,
+  // The probe is the pipeline's own first step, injected so the test does not shell out to yt-dlp.
+  probe: (id: number) => Promise<MatchInfo> = async (id) => withDiscoveredVods(await getMatch(id)),
+): Promise<boolean> {
   if (pick.bucket !== "playoffs") return true;
   const id = pick.metrics.matchId;
+  // A listing is ~8 s of yt-dlp and the answer does not change: a game older than the eight
+  // archives Twitch lists can never become ready, so re-probing it every night of the tournament
+  // is the whole bracket's worth of delay in front of the game that would render. Only a settled
+  // "they did not stream" is remembered — a failed listing is retried tomorrow.
+  if (noVods.has(id)) return false;
   try {
-    // getMatch is cached for ten minutes, and withDiscoveredVods is a no-op once two are attached.
-    const match = await withDiscoveredVods(await getMatch(id));
+    // getMatch is cached for ten minutes and withDiscoveredVods writes what it finds back into
+    // that cache, so the download stage does not list the same archives again.
+    const match = await probe(id);
     const ready = match.players.every((p) => match.vod.some((v) => v.uuid === p.uuid));
-    if (!ready) console.error(`nightly: playoff game #${id} skipped — no VOD for both players`);
+    if (!ready) {
+      noVods.add(id);
+      console.error(`nightly: playoff game #${id} skipped — no VOD for both players`);
+    }
     return ready;
   } catch (err) {
     console.error(`nightly: playoff game #${id} skipped — ${describeError(err)}`);
@@ -454,7 +473,15 @@ export async function runNightlyOnce(
   if (!suggestions) return skip("no suggestions available");
 
   const pick = await pickNightlyCandidate(suggestions, await pickContext(), playoffVodsReady);
-  if (!pick) return skip("every candidate is processed, hidden or without VODs, or the disk is full");
+  if (!pick) {
+    // Naming them: a bracket whose players stream on someone else's channel would otherwise
+    // produce nothing but "nothing to render" for a fortnight, with the reason only in the log.
+    const unstreamed = playoffsWithoutVods();
+    return skip(
+      "every candidate is processed, hidden or without VODs, or the disk is full" +
+        (unstreamed.length ? ` (no VOD: ${unstreamed.map((id) => `#${id}`).join(", ")})` : ""),
+    );
+  }
   // Checked again after the awaits above: a render clicked while the list was being ranked
   // must not get a second one started on top of it.
   if (busy()) return skip("a render is already in flight", true);

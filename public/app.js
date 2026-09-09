@@ -178,7 +178,13 @@ function hookCounter(meta) {
   if (!input || !meta.hook) return;
   const n = input.value.length;
   const { min, max } = meta.hook;
-  out.textContent = `${n} / ${min}-${max} chars`;
+  // A zero budget means the generated half alone has hit the 100-character ceiling (a playoff
+  // suffix plus two long nicknames), not that a zero-length hook is wanted. "0 / 0-0 chars"
+  // would read as the latter.
+  out.textContent =
+    max === 0
+      ? `no room: ${meta.hook.placeholder.length - "<HOOK>".length} of 100 chars without a hook`
+      : `${n} / ${min}-${max} chars`;
   out.className = "counter" + (n > max ? " over" : n >= min ? " good" : "");
   $("#hookpreview").textContent = input.value
     ? `${input.value} | ${meta.hook.generated}`

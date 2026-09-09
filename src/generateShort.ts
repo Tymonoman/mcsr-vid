@@ -9,6 +9,7 @@ import { distinctShortMoments, runMsOf, SHORT_WINDOW_SEC } from "./shortMoment.j
 import { reasonShortMoments } from "./shortReason.js";
 import { renderShort } from "./shortRender.js";
 import { eloAtMatchStart } from "./overlayProps.js";
+import { playoffContextFor, playoffTitleTail } from "./playoffs.js";
 import { buildShortDescription, buildShortTitle, resolveShortHookFor } from "./shortHook.js";
 import { readChatTimes } from "./twitchChat.js";
 
@@ -47,6 +48,12 @@ const topCrop = parseCrop("top-crop");
 const bottomCrop = parseCrop("bottom-crop");
 
 const match = await getMatch(matchId);
+// Before any elo is read. A playoff game carries no `changes[]`, so `eloAtMatchStart` answers
+// from the frozen season-end rating this resolves; the Short is a separate process from the
+// pipeline, so without it the board falls back to the *new* season's live rating — a different
+// number for the same match than the overlay, the thumbnail and the description show, or `0`
+// right after the rollover, when the live rating is still null.
+const playoff = await playoffContextFor(match);
 const [playerLeft, playerRight] = match.players;
 if (!playerLeft || !playerRight) throw new Error(`Match ${matchId} does not have two players.`);
 
@@ -162,6 +169,7 @@ await writeFile(
     playerRight.nickname,
     config.youtubePlaylistUrl,
     config.supportUrl,
+    playoff ? playoffTitleTail(playoff) : undefined,
   ),
   "utf8",
 );

@@ -47,6 +47,17 @@ export async function getMatch(matchId: number): Promise<MatchInfo> {
   return match;
 }
 
+/**
+ * Replaces the cached record of a match already fetched, keeping its original expiry — this
+ * enriches a fetch rather than being one. `withDiscoveredVods` uses it so the archive listings
+ * it spent (~8 s of yt-dlp per player, and a private room needs two) are not spent again by the
+ * next caller of `getMatch` for the same id.
+ */
+export function cacheMatch(match: MatchInfo): void {
+  const at = matchCache.get(match.id)?.at ?? Date.now();
+  matchCache.set(match.id, { at, match });
+}
+
 export interface RecentMatchQuery {
   /** Page size. The API caps this at 100. */
   count?: number;

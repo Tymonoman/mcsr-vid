@@ -17,11 +17,14 @@ import {
   msUntilNextRun,
   pickNightlyCandidate,
   playoffPicks,
+  playoffsWithoutVods,
+  playoffVodsReady,
   readNightlyState,
   runNightlyOnce,
   writeNightlyState,
 } from "./nightly.js";
 import type { PlayoffBoard } from "./playoffs.js";
+import type { MatchInfo } from "./types.js";
 import type { ShortRunner } from "./shortsRoutes.js";
 
 const HOUR = 3_600_000;
@@ -248,6 +251,45 @@ try {
   const before = msUntilNextRun(now, 3);
   await runNightlyOnce("", { renderInFlight: () => true });
   assert.equal(msUntilNextRun(now, 3), before, "a manual run leaves the schedule alone");
+
+  // --- The VOD probe. A playoff game is a private room, so the API attaches nothing and both
+  // VODs are found on Twitch; a game whose players never streamed must be skipped rather than
+  // fail the pipeline before the match directory that would remember it exists. The probe is
+  // injected because the real one shells out to yt-dlp.
+  {
+    const probed: number[] = [];
+    const probe = async (id: number): Promise<MatchInfo> => {
+      probed.push(id);
+      if (id === 7) throw new Error("yt-dlp exploded");
+      return {
+        players: [{ uuid: "a" }, { uuid: "b" }],
+        vod: id === 1 ? [{ uuid: "a" }, { uuid: "b" }] : [{ uuid: "a" }],
+      } as unknown as MatchInfo;
+    };
+    const pick = (matchId: number, bucket = "playoffs") => ({
+      metrics: { matchId, players: ["a", "b"] as [string, string] },
+      bucket,
+    });
+
+    assert.equal(await playoffVodsReady(pick(9, "upset"), probe), true, "an ordinary suggestion");
+    assert.deepEqual(probed, [], "and it costs no listing — the API already attached its VODs");
+    assert.equal(await playoffVodsReady(pick(1), probe), true, "both players streamed");
+    assert.equal(await playoffVodsReady(pick(2), probe), false, "one of two is not enough");
+    assert.equal(await playoffVodsReady(pick(7), probe), false, "a dead listing is not a render");
+    assert.deepEqual(probed, [1, 2, 7]);
+
+    assert.equal(await playoffVodsReady(pick(2), probe), false);
+    assert.equal(await playoffVodsReady(pick(7), probe), false);
+    assert.deepEqual(probed, [1, 2, 7, 7], "a settled no-VOD is remembered; a failure is retried");
+    assert.deepEqual(playoffsWithoutVods(), [2]);
+
+    // And the night that renders nothing says so where the operator will see it, not only in
+    // the log: an unstreamed bracket would otherwise be a fortnight of "nothing to render".
+    const named = await runNightlyOnce("", { renderInFlight: () => false, ranked: async () => [] });
+    assert.deepEqual(named, {
+      skipped: "every candidate is processed, hidden or without VODs, or the disk is full (no VOD: #2)",
+    });
+  }
 } finally {
   await rm(media, { recursive: true, force: true });
 }

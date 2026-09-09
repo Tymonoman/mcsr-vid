@@ -63,8 +63,14 @@ export function formatTitle(built: BuiltTitle): string {
   return [
     built.title,
     "",
-    `Replace ${HOOK_PLACEHOLDER} with ${built.hookMin}-${built.hookMax} characters ` +
-      `(title lands at ${base + built.hookMin}-${base + built.hookMax}).`,
+    // A zero budget is not "write a zero-character hook": it means the derived half alone has
+    // reached the ceiling, which a playoff suffix plus two long nicknames does. Say that, or the
+    // instruction reads as an impossible one.
+    built.hookMax === 0
+      ? `No room for a hook: the line above is already ${base} characters without one, ` +
+        `against a ${HARD_MAX}-character ceiling. Drop the ${HOOK_PLACEHOLDER} and the separator.`
+      : `Replace ${HOOK_PLACEHOLDER} with ${built.hookMin}-${built.hookMax} characters ` +
+        `(title lands at ${base + built.hookMin}-${base + built.hookMax}).`,
     `Both nicknames come from the API — don't retype them.`,
   ].join("\n");
 }

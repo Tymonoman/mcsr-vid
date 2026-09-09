@@ -86,17 +86,26 @@ function VersusRecord({ props, opacity }: { props: OverlayProps; opacity: number
     <div className="intro-h2h" style={{ opacity }}>
       {/* The tournament line rides on the centre block, not the date line at the bottom: at this
           size a line that long wraps into the stat columns on both sides. */}
-      {props.playoffLabel && <span className="intro-h2h-playoff">{props.playoffLabel}</span>}
-      <span className="intro-h2h-label">Head to Head</span>
-      {left === 0 && right === 0 ? (
-        // "0 – 0" reads as a scoreline someone forgot to fill in; say what it means instead.
-        <span className="intro-h2h-first">First Meeting</span>
+      {props.playoffLabel ? (
+        // The head-to-head is dropped for a playoff game, not just pushed down. It is the
+        // *lifetime ranked* record, which type-3 games never enter, so it can never become the
+        // series score — but sitting one line under "GAME 2 OF 5" a bare "6 – 1" reads as
+        // exactly that, and a series score is the one number this channel never shows.
+        <span className="intro-h2h-playoff">{props.playoffLabel}</span>
       ) : (
-        <span className="intro-h2h-record">
-          <b className={left > right ? "l" : ""}>{left}</b>
-          <span className="dash">–</span>
-          <b className={right > left ? "r" : ""}>{right}</b>
-        </span>
+        <>
+          <span className="intro-h2h-label">Head to Head</span>
+          {left === 0 && right === 0 ? (
+            // "0 – 0" reads as a scoreline someone forgot to fill in; say what it means instead.
+            <span className="intro-h2h-first">First Meeting</span>
+          ) : (
+            <span className="intro-h2h-record">
+              <b className={left > right ? "l" : ""}>{left}</b>
+              <span className="dash">–</span>
+              <b className={right > left ? "r" : ""}>{right}</b>
+            </span>
+          )}
+        </>
       )}
       {seed && <span className="intro-h2h-seed">{seed}</span>}
     </div>

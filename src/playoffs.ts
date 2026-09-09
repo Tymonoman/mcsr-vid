@@ -242,9 +242,11 @@ async function gamesOf(
  * A hit is remembered for the process — once numbered, a game does not move — so the synchronous
  * `playoffEloFor` below can answer from it.
  *
- * The histories are read fresh here, unlike the dashboard's board: this is the packaging path,
- * one match at a time and once per process, and the operator pasting an id minutes after the
- * game is exactly the case the shared half-hour cache gets wrong.
+ * What makes the number right is `include`: the match being packaged is folded into whatever
+ * history came back, so it is always among the games it is counted against — a game the API has
+ * not indexed yet cannot be numbered short by itself. The `fresh` refetch below that only helps
+ * the *other* games, and only on a first resolve: the memo above is consulted first, so a number
+ * the board already derived from its half-hour-cached histories is what the packaging gets.
  */
 export async function playoffContextFor(match: MatchInfo | FeedMatch): Promise<PlayoffContext | null> {
   const known = contexts.get(match.id);

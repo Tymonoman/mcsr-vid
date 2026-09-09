@@ -413,7 +413,7 @@ const server = createServer(async (req, res) => {
 
     // The current bracket with its detected games, for the section above the suggestions. Cached
     // for suggestCacheTtlMin in src/playoffs.ts; outside a tournament it is one cached read.
-    if (resource === "playoffs" && req.method === "GET") {
+    if (resource === "playoffs" && idRaw === undefined && req.method === "GET") {
       json(res, 200, await playoffBoard());
       return;
     }
