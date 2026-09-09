@@ -1126,6 +1126,8 @@ function nightlyInner() {
         ? `<a href="#" data-act="nightly-open" data-id="${lastRun.matchId}">${label}</a> &mdash; `
         : `${label} &mdash; `;
     const why = lastRun.reason ? `: ${lastRun.reason}` : "";
+    // "started" with no later record is a render the server did not live to finish.
+    const said = lastRun.outcome === "started" ? "started, not finished" : lastRun.outcome;
     const short =
       lastRun.short === "done"
         ? ' <span class="ok">+ Short rendered</span>'
@@ -1139,7 +1141,7 @@ function nightlyInner() {
           ? ' <span class="bad">+ export failed</span>'
           : "";
     const cls = lastRun.outcome === "done" ? "ok" : lastRun.outcome === "failed" ? "bad" : "muted";
-    last = `${lastLabel} ${who}<span class="${cls}">${esc(lastRun.outcome + why)}</span>${short}${exported}`;
+    last = `${lastLabel} ${who}<span class="${cls}">${esc(said + why)}</span>${short}${exported}`;
   }
 
   const failed = nightly.runError ? `<div class="bad">Run now failed: ${esc(nightly.runError)}</div>` : "";
