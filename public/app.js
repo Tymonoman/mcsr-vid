@@ -402,7 +402,10 @@ async function loadChecklist(id) {
           void refresh();
         } catch (err) {
           btn.disabled = false;
-          alert(err.message);
+          // Where it was clicked, like every other failure on this page: a blocking alert() was
+          // the only thing on the dashboard that had to be dismissed before reading anything.
+          el.querySelector(".pillfail")?.remove();
+          el.insertAdjacentHTML("beforeend", `<span class="pill bad pillfail">${esc(err.message)}</span>`);
         }
       }),
     );

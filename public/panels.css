@@ -526,6 +526,12 @@
   transform: none;
   border-bottom-width: 1px;
 }
+/* A toggle the server refused, said next to the pill that was pressed. */
+.checklist .pill.bad {
+  color: var(--crimson);
+  border-color: var(--crimson);
+  white-space: normal;
+}
 
 /* --- Touch targets --------------------------------------------------------------------------
    Measured on the live dashboard at phone and tablet widths: the match-id field was 28px tall,
