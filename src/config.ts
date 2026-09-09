@@ -188,6 +188,14 @@ export interface Config {
   suggestFollowerWeight: number;
   /** Per-term weights for the closeness and chaos scores. */
   suggestWeights: ScoreWeights;
+  /**
+   * An LLM CLI to ask reasoning questions (src/reasoner.ts), as an argv array; an argument that
+   * is exactly `{prompt}` (whole, not `--prompt={prompt}`) is replaced by the prompt, and when
+   * none is, the prompt goes on stdin. Null (the default) turns every question into its heuristic fallback. The first use
+   * is the Short's cut: it picks among the scored candidates (src/shortReason.ts). Antigravity:
+   * `["agy", "-p", "{prompt}", "--output-format", "json", "--effort", "high"]` — see README.
+   */
+  reasonerCommand: string[] | null;
 }
 
 const DEFAULTS: Config = {
@@ -233,6 +241,7 @@ const DEFAULTS: Config = {
   suggestSlowRunCutoffSec: 600,
   suggestFollowerWeight: 3,
   suggestWeights: DEFAULT_WEIGHTS,
+  reasonerCommand: null,
 };
 
 const CONFIG_PATH = path.resolve("mcsr-vid.config.json");
@@ -275,6 +284,12 @@ export function validateOverrides(raw: Record<string, unknown>): void {
         throw new Error(
           `${CONFIG_PATH}: "${key}" must be a whole hour 0-23 (UTC)${nullable ? ", or null" : ""}.`,
         );
+      }
+      continue;
+    }
+    if (key === "reasonerCommand") {
+      if (value !== null && !(Array.isArray(value) && value.every((s) => typeof s === "string"))) {
+        throw new Error(`${CONFIG_PATH}: "${key}" must be an array of strings or null.`);
       }
       continue;
     }

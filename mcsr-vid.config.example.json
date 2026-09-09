@@ -46,5 +46,6 @@
     "chaosLeadChanges": 1.5,
     "chaosSwing": 2,
     "chaosSpeed": 0.5
-  }
+  },
+  "reasonerCommand": ["agy", "-p", "{prompt}", "--output-format", "json", "--effort", "high"]
 }

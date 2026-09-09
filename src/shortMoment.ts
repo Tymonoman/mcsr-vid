@@ -103,6 +103,9 @@ export function leadChangeTimes(match: MatchInfo, leftUuid: string, rightUuid: s
   return times;
 }
 
+/** A forfeit has no time; fifteen minutes is past any ranked run, so no window is refused. */
+export const runMsOf = (match: MatchInfo): number => match.result.time || 900_000;
+
 export interface ShortMomentOptions {
   leftUuid: string;
   rightUuid: string;
