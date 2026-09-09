@@ -3,7 +3,11 @@
  * proved rather than argued. Bundling is timed separately from rendering because it is a fixed
  * cost paid once per pipeline run, while the per-frame cost is what scales with match length.
  *
- *   npm run bench -- OverlayBottom --frames=600 [--concurrency=3] [--codec=prores] [--json]
+ *   npm run bench -- OverlayTimer --frames=600 [--concurrency=3] [--codec=h264|vp9|prores] [--pixelFormat=]
+ *                     [--prores=4444|hq] [--imageFormat=png|jpeg] [--out=file] [--json]
+ *
+ * Defaults are what the render actually uses now (src/overlayRender.ts): the timer strip as
+ * h264 yuv420p. `--prores` only means anything with `--codec=prores`.
  */
 import { bundle } from "@remotion/bundler";
 import { renderMedia, selectComposition } from "@remotion/renderer";
@@ -18,12 +22,13 @@ function flag(name: string): string | undefined {
   return hit?.slice(name.length + 3);
 }
 
-const compositionId = process.argv[2] ?? "OverlayBottom";
+const compositionId = process.argv[2] ?? "OverlayTimer";
 const frames = Number(flag("frames") ?? 600);
 const concurrency = flag("concurrency") ? Number(flag("concurrency")) : config.renderConcurrency;
-const codec = (flag("codec") ?? "prores") as "prores" | "vp9" | "h264";
+const codec = (flag("codec") ?? "h264") as "prores" | "vp9" | "h264";
 const proResProfile = (flag("prores") ?? "4444") as "4444" | "hq" | "standard" | "light";
-const pixelFormat = flag("pixelFormat") ?? (codec === "vp9" ? "yuva420p" : "yuva444p10le");
+const pixelFormat =
+  flag("pixelFormat") ?? (codec === "vp9" ? "yuva420p" : codec === "prores" ? "yuva444p10le" : "yuv420p");
 const imageFormat = (flag("imageFormat") ?? "png") as "png" | "jpeg";
 const asJson = process.argv.includes("--json");
 
@@ -48,7 +53,8 @@ async function main() {
   // under test (checking a codec's alpha survives MLT, say) rather than the throughput.
   const keep = flag("out");
   const dir = keep ? null : await mkdtemp(path.join(tmpdir(), "mcsr-bench-"));
-  const out = keep ?? path.join(dir!, codec === "vp9" ? "out.webm" : "out.mov");
+  const out =
+    keep ?? path.join(dir!, codec === "vp9" ? "out.webm" : codec === "prores" ? "out.mov" : "out.mp4");
 
   const t1 = performance.now();
   await renderMedia({

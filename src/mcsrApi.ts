@@ -30,8 +30,21 @@ async function getJson<T>(path: string): Promise<T> {
   return body.data;
 }
 
-export function getMatch(matchId: number): Promise<MatchInfo> {
-  return getJson<MatchInfo>(`/matches/${matchId}`);
+/**
+ * Ten minutes, not forever: a match record keeps changing after the game — players attach
+ * `vod[]` later, and the pipeline's VOD guard reads that — but within one dashboard page the
+ * same match is asked for by the metadata, the hooks, the splits and the Short panel, against
+ * a 500-per-10-minute budget.
+ */
+const MATCH_TTL_MS = 10 * 60_000;
+const matchCache = new Map<number, { at: number; match: MatchInfo }>();
+
+export async function getMatch(matchId: number): Promise<MatchInfo> {
+  const hit = matchCache.get(matchId);
+  if (hit && Date.now() - hit.at < MATCH_TTL_MS) return hit.match;
+  const match = await getJson<MatchInfo>(`/matches/${matchId}`);
+  matchCache.set(matchId, { at: Date.now(), match });
+  return match;
 }
 
 export interface RecentMatchQuery {

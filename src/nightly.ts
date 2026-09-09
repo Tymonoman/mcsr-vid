@@ -26,16 +26,18 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { capacity } from "./archive.js";
-import { config, matchDir } from "./config.js";
+import { config } from "./config.js";
 import { describeError } from "./errorText.js";
-import { startFastExport } from "./exportRoutes.js";
+import { exportRunning, startFastExport } from "./exportRoutes.js";
 import { getJob, startJob, type Job } from "./jobs.js";
 import { hiddenMatchIds } from "./matchShelf.js";
 import { orderForDisplay } from "./suggestPresent.js";
-import { playoffBoard } from "./playoffs.js";
+import { playoffBoard, type PlayoffBoard } from "./playoffs.js";
 import { listProcessedMatchIds } from "./matchStatus.js";
-import { spawnShortJob, type ShortRunner } from "./shortsRoutes.js";
+import { shortRunning, spawnShortJob, type ShortRunner } from "./shortsRoutes.js";
 import { snapshot, startScan } from "./suggestScan.js";
+import { getMatch } from "./mcsrApi.js";
+import { withDiscoveredVods } from "./vodDiscovery.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -60,7 +62,8 @@ const NOTIFY_TIMEOUT_MS = 10_000;
  * disagree about how a night went.
  */
 
-type NightlyOutcome = "done" | "failed" | "aborted" | "skipped";
+/** `started` is written the moment a render begins; a restart mid-night leaves it as the record. */
+type NightlyOutcome = "started" | "done" | "failed" | "aborted" | "skipped";
 type ShortOutcome = "done" | "failed" | "skipped";
 
 export interface NightlyLastRun {
@@ -134,12 +137,16 @@ export interface NightlyPick {
 /**
  * The current bracket's detected games, oldest first, as picks — ahead of every suggestion when
  * `playoffsFirst` is on. Game order is series order, which is also the playlist's.
+ *
+ * `playoffsFirst` is off by default and the operator turns it on for the tournament: a config
+ * default that changes what tonight's render is would be a house-rule violation.
  */
-export async function playoffPicks(): Promise<NightlyPick[]> {
+export async function playoffPicks(
+  board: () => Promise<PlayoffBoard> = playoffBoard,
+): Promise<NightlyPick[]> {
   if (!config.playoffsFirst) return [];
   try {
-    const board = await playoffBoard();
-    return board.slots
+    return (await board()).slots
       .flatMap((slot) =>
         slot.games.map((g) => ({
           metrics: {
@@ -158,15 +165,45 @@ export async function playoffPicks(): Promise<NightlyPick[]> {
   }
 }
 
-export function pickNightlyCandidate<T extends { metrics: { matchId: number } }>(
+export async function pickNightlyCandidate<T extends { metrics: { matchId: number } }>(
   suggestions: readonly T[],
   { processedIds, hiddenIds, freeMatches }: NightlyPickContext,
-): T | null {
+  eligible: (candidate: T) => Promise<boolean> = async () => true,
+): Promise<T | null> {
   if (freeMatches < MIN_FREE_MATCHES) return null;
   const processed = new Set(processedIds);
-  return (
-    suggestions.find((s) => !processed.has(s.metrics.matchId) && !hiddenIds.has(s.metrics.matchId)) ?? null
-  );
+  for (const s of suggestions) {
+    if (processed.has(s.metrics.matchId) || hiddenIds.has(s.metrics.matchId)) continue;
+    // One at a time and in order: `eligible` costs API calls, and the first candidate that passes
+    // is the pick, so a whole bracket is never probed to choose its first game.
+    if (await eligible(s)) return s;
+  }
+  return null;
+}
+
+/**
+ * Whether the pipeline would get past its VOD guard for this pick — asked before the night is
+ * committed to it, and only of a playoff game.
+ *
+ * A playoff game is a private room, so the API attaches no VOD at all and both are found on
+ * Twitch (`withDiscoveredVods`, the pipeline's own first step). When the players did not stream,
+ * `runStages` throws *before* `matchDir` exists, so `listProcessedMatchIds` never learns the id
+ * and that same game would be picked again the next night, and the next, for the whole
+ * tournament. False here makes the picker fall through to the following candidate instead.
+ */
+export async function playoffVodsReady(pick: NightlyPick): Promise<boolean> {
+  if (pick.bucket !== "playoffs") return true;
+  const id = pick.metrics.matchId;
+  try {
+    // getMatch is cached for ten minutes, and withDiscoveredVods is a no-op once two are attached.
+    const match = await withDiscoveredVods(await getMatch(id));
+    const ready = match.players.every((p) => match.vod.some((v) => v.uuid === p.uuid));
+    if (!ready) console.error(`nightly: playoff game #${id} skipped — no VOD for both players`);
+    return ready;
+  } catch (err) {
+    console.error(`nightly: playoff game #${id} skipped — ${describeError(err)}`);
+    return false;
+  }
 }
 
 export interface NightlyOptions {
@@ -181,9 +218,11 @@ export interface NightlyOptions {
  */
 let lastStartedId: number | null = null;
 
+/** A pipeline, an encode or a Short on this match: the same three the delete guard refuses for. */
+const busyWith = (id: number): boolean => getJob(id)?.done === false || exportRunning(id) || shortRunning(id);
+
 const renderInFlight = (): boolean =>
-  (lastStartedId !== null && getJob(lastStartedId)?.done === false) ||
-  listProcessedMatchIds().some((id) => getJob(id)?.done === false);
+  (lastStartedId !== null && busyWith(lastStartedId)) || listProcessedMatchIds().some(busyWith);
 
 /** A failure to notify is worth a log line and nothing more — the render still happened. */
 async function notify(url: string, body: string): Promise<void> {
@@ -200,7 +239,7 @@ async function notify(url: string, body: string): Promise<void> {
 }
 
 export interface JobVerdict {
-  outcome: Exclude<NightlyOutcome, "skipped">;
+  outcome: Exclude<NightlyOutcome, "skipped" | "started">;
   /** The pipeline's error text can be a multi-KB stderr tail; a notification wants a line. */
   reason?: string;
 }
@@ -266,7 +305,7 @@ export async function chainShort(
 /** Starts the encode and settles with its error line, or null. Injected by the tests. */
 export type ExportStarter = (matchId: number) => Promise<string | null>;
 
-const startFastExportOf: ExportStarter = (matchId) => startFastExport(matchId, matchDir(matchId)).finished;
+const startFastExportOf: ExportStarter = (matchId) => startFastExport(matchId).finished;
 
 /**
  * The finished MP4 after the Short, as its clause. Same gate as the Short: only a clean `done`,
@@ -375,7 +414,9 @@ const pickContext = async (): Promise<NightlyPickContext> => ({
 export async function nightlyCandidate(): Promise<NightlyPick | null> {
   const result = snapshot().result;
   return result
-    ? pickNightlyCandidate(
+    ? // No VOD probe: a GET the browser polls must not spend a yt-dlp listing per candidate. The
+      // preview may therefore name a game the run itself falls through — it is a preview.
+      pickNightlyCandidate(
         [...(await playoffPicks()), ...orderForDisplay(result.suggestions)],
         await pickContext(),
       )
@@ -395,23 +436,25 @@ export async function runNightlyOnce(
 ): Promise<NightlyRunResult> {
   const { renderInFlight: busy = renderInFlight, ranked = liveRanked } = deps;
   const startedAt = new Date().toISOString();
-  const skip = (reason: string, conflict = false): NightlyRunResult => {
+  const skip = async (reason: string, conflict = false): Promise<NightlyRunResult> => {
     console.error(`nightly: skipped — ${reason}`);
     // A conflict is the one skip that is not an outcome: the route answers it 409 and the run
     // already in flight is what the night produced. Recording it would replace last night's
-    // real result with "skipped" on the strip.
-    if (!conflict) writeNightlyState({ startedAt, matchId: null, players: [], outcome: "skipped", reason });
+    // real result with "skipped" on the strip — and a push for it would wake nobody usefully.
+    if (!conflict) {
+      writeNightlyState({ startedAt, matchId: null, players: [], outcome: "skipped", reason });
+      if (notifyUrl) await notify(notifyUrl, `Nightly skipped — ${reason}`);
+    }
     return { skipped: reason, ...(conflict ? { busy: true } : {}) };
   };
 
-  if (snapshot().scanning) return skip("a suggestion scan is running");
   if (busy()) return skip("a render is already in flight", true);
 
   const suggestions = await ranked();
   if (!suggestions) return skip("no suggestions available");
 
-  const pick = pickNightlyCandidate(suggestions, await pickContext());
-  if (!pick) return skip("every suggestion is processed or hidden, or the disk is full");
+  const pick = await pickNightlyCandidate(suggestions, await pickContext(), playoffVodsReady);
+  if (!pick) return skip("every candidate is processed, hidden or without VODs, or the disk is full");
   // Checked again after the awaits above: a render clicked while the list was being ranked
   // must not get a second one started on top of it.
   if (busy()) return skip("a render is already in flight", true);
@@ -425,6 +468,8 @@ export async function runNightlyOnce(
   // The same call `POST /api/render` makes, so a nightly render and a clicked one are one code
   // path: startJob de-duplicates by match id and owns the whole pipeline invocation.
   const job = startJob(matchId);
+  // Recorded now, so a restart mid-render leaves "started" on the strip rather than nothing.
+  writeNightlyState({ startedAt, matchId, players: [...players], outcome: "started" });
   afterSettled(job, async (verdict, shortClause, exportClause) => {
     // State first, then the push, from the same values: a panel that disagreed with the
     // notification would be worse than either on its own.

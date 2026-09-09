@@ -1,20 +1,21 @@
 /**
- * The MCSR Ranked Playoffs, as the pipeline needs them: which bracket slot a match is a game of,
- * which game of the series it is, and the series score *going in*.
+ * The MCSR Ranked Playoffs, as the pipeline needs them: which bracket slot a match is a game of
+ * and which game of the series it is. Round and game number, and never a series score — "Round of
+ * 16 · Game 2 of 5" says where in the bracket a viewer is without saying who has been winning it,
+ * which is the same spoiler rule the rest of the channel runs on.
  *
  * The bracket (`/playoffs`) knows the series but not the games. The games are ordinary
  * private-room matches (type 3) between the two participants, with a referee spectating and no
  * elo changes, found through each participant's own history. A game is the slot's when both
  * players are its participants and it was played inside the slot's window; games are numbered by
- * date. The score before a game is counted from the games before it — never from the bracket's
- * `roundScore`, which is the score now and would name the winner of the game being packaged.
+ * date.
  *
  * Seasons: a bracket is season N's playoffs, but its games are played after the rollover and the
  * API stamps them with season N+1. Every lookup here goes through that offset.
  */
 import { config } from "./config.js";
 import { describeError } from "./errorText.js";
-import { getPlayoffs, getUserMatches, McsrApiError } from "./mcsrApi.js";
+import { getMatch, getPlayoffs, getUserMatches, McsrApiError } from "./mcsrApi.js";
 import type { FeedMatch, MatchInfo, PlayoffBracket, PlayoffSlot } from "./types.js";
 
 export interface PlayoffSeed {
@@ -35,19 +36,18 @@ export interface PlayoffContext {
   bestOf: number;
   /** In the slot's participant order. */
   seeds: [PlayoffSeed, PlayoffSeed];
-  /** Series wins before this game, in `seeds` order. */
-  scoreBefore: [number, number];
 }
 
 export interface PlayoffGame {
   matchId: number;
   dateSec: number;
   gameNo: number;
-  scoreBefore: [number, number];
 }
 
 /** A game may start a little before the slot's listed time, and a Bo7 can run past three hours. */
 const BEFORE_START_SEC = 15 * 60;
+// ponytail: four Round of 16 slots share one listed start; played back to back on one stream the
+// fourth Bo5 could run past this and lose its late games. Raise towards 8 h if that ever happens.
 const AFTER_START_SEC = 6 * 60 * 60;
 /** An unscheduled slot takes any game inside the tournament: this long from the first listed start. */
 const TOURNAMENT_SPAN_SEC = 30 * 24 * 60 * 60;
@@ -73,12 +73,11 @@ export const playoffTitleTail = (ctx: PlayoffContext): string =>
 export const playoffIntroLabel = (ctx: PlayoffContext): string =>
   `Season ${ctx.season} Playoffs · ${ctx.round} · Game ${ctx.gameNo}`;
 
-/** The description's paragraph: round, game, seeds, the score going in, the bracket, the broadcast. */
+/** The description's paragraph: round, game, seeds, the bracket, the broadcast. No series score. */
 export function playoffParagraph(ctx: PlayoffContext): string {
   const [a, b] = ctx.seeds;
   return [
     `Season ${ctx.season} Playoffs, ${playoffLabel(ctx)}: ${a.nickname} (${a.label}, ${a.seasonEloRate} elo) vs ${b.nickname} (${b.label}, ${b.seasonEloRate} elo).`,
-    `Series going in: ${a.nickname} ${ctx.scoreBefore[0]}–${ctx.scoreBefore[1]} ${b.nickname}.`,
     `Bracket: https://mcsrranked.com/playoffs/${ctx.season}`,
     "Official broadcast: https://twitch.tv/mcsrranked · https://youtube.com/@MCSR_Ranked",
   ].join("\n");
@@ -124,9 +123,10 @@ export function slotFor(bracket: PlayoffBracket, match: FeedMatch): PlayoffSlot 
 }
 
 /**
- * The slot's games in date order, numbered, each with the series score before it. `history` is
- * whatever the participants' histories returned — duplicates (both players list the same game)
- * and unrelated matches are dropped here.
+ * The slot's games in date order, numbered. `history` is whatever the participants' histories
+ * returned — duplicates (both players list the same game) and unrelated matches are dropped here.
+ * The number is a pure function of what this call was given, so a caller packaging one match
+ * hands its own copy in and gets a number that counts it (see `gamesOf`).
  */
 export function slotGames(
   bracket: PlayoffBracket,
@@ -137,14 +137,9 @@ export function slotGames(
   if (!seeds) return [];
   const byId = new Map<number, FeedMatch>();
   for (const m of history) if (gameBelongs(bracket, slot, m)) byId.set(m.id, m);
-  const games = [...byId.values()].sort((x, y) => x.date - y.date);
-  const score: [number, number] = [0, 0];
-  return games.map((m, i) => {
-    const game: PlayoffGame = { matchId: m.id, dateSec: m.date, gameNo: i + 1, scoreBefore: [...score] };
-    if (m.result.uuid === seeds[0].uuid) score[0] += 1;
-    else if (m.result.uuid === seeds[1].uuid) score[1] += 1;
-    return game;
-  });
+  return [...byId.values()]
+    .sort((x, y) => x.date - y.date)
+    .map((m, i) => ({ matchId: m.id, dateSec: m.date, gameNo: i + 1 }));
 }
 
 /** Everything the packaging needs about one game, or null when the match is not one of the slot's. */
@@ -163,7 +158,6 @@ export function contextOf(
     gameNo: game.gameNo,
     bestOf: bestOfSlot(slot),
     seeds,
-    scoreBefore: game.scoreBefore,
   };
 }
 
@@ -221,13 +215,25 @@ export function loadHistory(uuid: string, season: number, sinceSec: number): Pro
   return matches;
 }
 
-async function gamesOf(bracket: PlayoffBracket, slot: PlayoffSlot): Promise<PlayoffGame[]> {
+/**
+ * The slot's detected games. `include` is folded into the history and `fresh` drops the cached
+ * histories first — both for the packaging path: a game that finished after the last warm is in
+ * neither a half-hour-old cache nor, for a minute or two, the API's own history, and a game
+ * numbered from a history that does not contain it is numbered one short, silently.
+ */
+async function gamesOf(
+  bracket: PlayoffBracket,
+  slot: PlayoffSlot,
+  include: readonly FeedMatch[] = [],
+  fresh = false,
+): Promise<PlayoffGame[]> {
   const seeds = slotSeeds(bracket, slot);
   const window = slotWindow(bracket, slot);
   if (!seeds || !window) return [];
   const season = gameSeasonOf(bracket);
+  if (fresh) for (const s of seeds) histories.delete(`${s.uuid}:${season}:${window[0]}`);
   const [a, b] = await Promise.all(seeds.map((s) => loadHistory(s.uuid, season, window[0])));
-  return slotGames(bracket, slot, [...a, ...b]);
+  return slotGames(bracket, slot, [...a, ...b, ...include]);
 }
 
 /**
@@ -235,6 +241,10 @@ async function gamesOf(bracket: PlayoffBracket, slot: PlayoffSlot): Promise<Play
  * one cached bracket read and no history fetch unless both players hold seats in one slot.
  * A hit is remembered for the process — once numbered, a game does not move — so the synchronous
  * `playoffEloFor` below can answer from it.
+ *
+ * The histories are read fresh here, unlike the dashboard's board: this is the packaging path,
+ * one match at a time and once per process, and the operator pasting an id minutes after the
+ * game is exactly the case the shared half-hour cache gets wrong.
  */
 export async function playoffContextFor(match: MatchInfo | FeedMatch): Promise<PlayoffContext | null> {
   const known = contexts.get(match.id);
@@ -243,17 +253,23 @@ export async function playoffContextFor(match: MatchInfo | FeedMatch): Promise<P
   let bracket: PlayoffBracket | null;
   try {
     bracket = await loadBracket(match.season - 1);
+    if (!bracket) return null;
+    const slot = slotFor(bracket, match);
+    if (!slot) return null;
+    const ctx = contextOf(bracket, slot, await gamesOf(bracket, slot, [match], true), match.id);
+    if (ctx) contexts.set(match.id, ctx);
+    return ctx;
   } catch (err) {
     console.error(`playoffs: ${describeError(err)} (packaging as an ordinary match)`);
     return null;
   }
-  if (!bracket) return null;
-  const slot = slotFor(bracket, match);
-  if (!slot) return null;
-  const ctx = contextOf(bracket, slot, await gamesOf(bracket, slot), match.id);
-  if (ctx) contexts.set(match.id, ctx);
-  return ctx;
 }
+
+/** The same by id, for callers holding only the id. An unreadable match reads as an ordinary one. */
+export const playoffContextForId = (matchId: number): Promise<PlayoffContext | null> =>
+  getMatch(matchId)
+    .then(playoffContextFor)
+    .catch(() => null);
 
 /**
  * The frozen season-end rating of a seed in a playoff game already resolved by
@@ -320,7 +336,6 @@ export async function playoffBoard(nowSec: number = Date.now() / 1000): Promise<
           gameNo: game.gameNo,
           bestOf: slot.bestOf,
           seeds: slot.seeds,
-          scoreBefore: game.scoreBefore,
         });
       }
     }

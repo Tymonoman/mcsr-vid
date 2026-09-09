@@ -13,9 +13,12 @@ import { readFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import { describeError } from "./errorText.js";
-import type { ExportRouteContext } from "./exportRoutes.js";
+import { locateExport, type ExportRouteContext } from "./exportRoutes.js";
+import { ANCHOR_SEC } from "./kdenliveProject.js";
 import { getMatch, getUser } from "./mcsrApi.js";
-import { distinctShortMoments, SHORT_WINDOW_SEC } from "./shortMoment.js";
+import { reasonerConfigured } from "./reasoner.js";
+import { distinctShortMoments, runMsOf, SHORT_WINDOW_SEC } from "./shortMoment.js";
+import { reasonShortMoments } from "./shortReason.js";
 import { buildShortHook, resolveShortHookFor } from "./shortHook.js";
 import { sendVideo } from "./rangeStream.js";
 import { readChatTimes } from "./twitchChat.js";
@@ -60,7 +63,7 @@ export type ShortRunner = (matchId: number, pick: number) => ChildProcess;
 const spawnShortCli: ShortRunner = (matchId, pick) =>
   // The CLI is the one code path that renders a Short, so the dashboard drives it rather than
   // duplicating the moment-picking and ffmpeg assembly. Same reason exportRoutes shells out to
-  // export.sh instead of reimplementing melt's invocation.
+  // `npm run export:fast` instead of reimplementing the encode.
   spawn("npm", ["run", "--silent", "short", "--", String(matchId), `--pick=${pick}`], {
     stdio: ["ignore", "pipe", "pipe"],
     cwd: process.cwd(),
@@ -143,17 +146,19 @@ export async function handleShortsRoute(
       }
       // The same options the CLI cuts with — chat included — or the panel would offer one list
       // and "Cut this" would render another.
-      const moments = distinctShortMoments(
-        match,
-        {
-          leftUuid: left.uuid,
-          rightUuid: right.uuid,
-          runMs: match.result.time || 900_000,
-          windowSec: SHORT_WINDOW_SEC,
-          chatAtSec: readChatTimes(dir),
-        },
-        5,
-      );
+      const momentOpts = {
+        leftUuid: left.uuid,
+        rightUuid: right.uuid,
+        runMs: runMsOf(match),
+        windowSec: SHORT_WINDOW_SEC,
+        chatAtSec: readChatTimes(dir),
+      };
+      // The reasoner's choice goes first, as it does in the CLI, and its answer is saved in the
+      // match directory, so the row "Cut this" sends by index is the window the CLI cuts.
+      // Not configured: the heuristic order, unchanged.
+      const { moments, reasoner } = reasonerConfigured()
+        ? await reasonShortMoments(match, distinctShortMoments(match, momentOpts, 5), momentOpts, dir)
+        : { moments: distinctShortMoments(match, momentOpts, 5), reasoner: { applied: false } };
 
       // What a render would actually burn in (see resolveShortHook), which is usually not the
       // per-moment line. Resolved for the top moment, the panel's default — a lower pick differs
@@ -176,6 +181,13 @@ export async function handleShortsRoute(
           hook: buildShortHook(m, left.nickname, right.nickname),
         })),
         rendered: existsSync(file) ? path.basename(file) : null,
+        // Lets the panel seek the final video to a window: match start sits at ANCHOR_SEC in
+        // the export, so final-video time = finalOffsetSec + startMs / 1000. Sent rather than
+        // hardcoded client-side so the two cannot drift apart. Assumes an untrimmed head: a
+        // hand-cut Kdenlive export counts as the final video too, and a trimmed one seeks off.
+        finalOffsetSec: ANCHOR_SEC,
+        finalVideo: (await locateExport(matchId, dir)) !== null,
+        reasoner,
         hook,
         // The title the last render wrote, for the manual upload. Absent until something has
         // been rendered, which is exactly when there is nothing to paste anywhere.

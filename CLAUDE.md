@@ -33,7 +33,7 @@ Use the script, don't reconstruct the shell line. Extra arguments go after `--`.
 | `npm run chat -- <matchId>` | Fetch both players' Twitch chat to `chat-<nick>.json` for a match the pipeline saved none for (it does this itself after `download-vods`). Existing files are kept; delete one to refetch. |
 | `npm run bench -- <Composition> [--frames=N] [--codec=] [--pixelFormat=] [--concurrency=N]` | Render throughput for one composition. Measure before claiming a render change is faster. |
 | `npm run analytics -- <videoId> [--traffic-sources] [--days N]` | YouTube Analytics via `~/.claude/skills/claude-youtube/` (outside the repo; token at `~/.claude/.tmp/youtube_oauth_token.json`). |
-| `python3 scripts/reap.py <command…>` | Run anything that spawns Chromium through this (see Pitfalls). |
+| `python3 scripts/reap.py <command…>` | Subreaper wrapper, only needed if zombies ever climb again (see Pitfalls). |
 | `bash scripts/browser-checks/run-all.sh <url>` | Drives the dashboard in a real browser the way the operator does (17 Playwright checks, self-configuring from `/api/matches`). Needs `npx playwright install chromium` once and a server with real data. |
 
 Lab timings for a 10-minute match: overlay render ~9 min, `export:fast` ~10 min, a Short in
@@ -116,12 +116,16 @@ they differ (`code: { boot, now }` from `src/repoHead.ts`). Client changes need 
   strip's `Run now` is the same path, as is a card's "Render + Short + MP4".
 - **Playoffs** (`src/playoffs.ts`): the bracket (`/playoffs`) knows the series, not the games;
   the games are private-room matches (type 3) found in each seed's history, and the API stamps
-  them with the season *after* the bracket's (a Season 11 bracket's games are season 12). The
-  series score in every surface is the score *before* the game, counted from the earlier games —
-  never the bracket's `roundScore`, which is the score now. A "Playoffs" section sits above the
-  suggestions while a slot is within 14 days (`GET /api/playoffs`), its games go first in the
-  nightly's order (`playoffsFirst`), and `playoffContextFor(match)` drives the title tail, the
-  description paragraph, the intro line, the tournament playlist and the frozen season-end elo.
+  them with the season *after* the bracket's (a Season 11 bracket's games are season 12). **No
+  surface prints a series score** — round and game number only, "Round of 16 · Game 2 of 5"; a
+  1–0 going in is as much of a spoiler as the result, so the score is not even computed. A
+  "Playoffs" section sits above the suggestions while a slot is within 14 days
+  (`GET /api/playoffs`), and `playoffContextFor(match)` drives the title tail, the description
+  paragraph, the intro line, the tournament playlist and the frozen season-end elo. The nightly
+  puts detected games ahead of the suggestions only when the operator sets `playoffsFirst`
+  (default **false** — it changes what tonight renders); a game whose players did not stream is
+  skipped by `playoffVodsReady` and the pick falls through to the next candidate, because the
+  pipeline's VOD guard throws before a match directory exists and nothing would remember it.
 - Phones (<= 860px): list and match are two screens with a back bar; rows carry no Hide/Delete
   on a coarse pointer; the match screen offers jump links to the video, the kit and the Short.
 - `docs/` is the GitHub Pages site (`mcsr.sezamki.site`: the OAuth homepage, privacy and terms
@@ -166,17 +170,15 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
 - **The intro card's centre block must sit above the VS badge**: `.intro-player` positions the
   columns with a `transform` that `PlayerCard`'s inline transform replaces, so the names sit at
   y≈790 and anything under the badge collides with them.
-- **PID 1 in the Claude container is `sleep infinity` and never reaps.** Zombies count against
-  the pids cgroup limit (`/sys/fs/cgroup/pids.max`), and nothing can fork past it. Run anything
-  that spawns Chromium — Playwright, `npm test` — through `python3 scripts/reap.py <command…>`,
-  tell subagents to, and watch `ps -eo stat | grep -c '^Z'`.
+- **tini is PID 1 since 830321f**; if `ps -eo stat | grep -c ^Z` ever climbs, wrap the command
+  in `python3 scripts/reap.py`.
 - **No `ss`, `lsof` or `fuser` in the container.** Find a server with
   `ps -eo pid,args | grep 'src/server.ts'` and kill by PID; the process `comm` is `MainThread`.
 - **Country flags render as tofu** without a colour-emoji font (cosmetic, intro card).
 - **Verify visual changes by rendering** (`npm run still`, then read the PNG).
-- **Run `npm test` after touching rendering or asset generation, and keep it green** — not
-  after every edit: it drives Chromium and ffmpeg. The PostToolUse hook's `prettier` +
-  `tsc --noEmit` covers per-edit mistakes.
+- **`npm run test:unit` after any edit; `npm test` after touching rendering or asset
+  generation** — the full run adds the three tests that drive Chromium and ffmpeg. The
+  PostToolUse hook's `prettier` + `tsc --noEmit` covers per-edit mistakes.
 - **Generated projects carry `<mlt root>`** with every resource relative to it, which is what
   lets a project rendered on the lab open on the desktop.
 

@@ -50,7 +50,8 @@ export interface DescriptionInput {
 /**
  * The only 150-200 characters most viewers ever read, since that's all YouTube shows before
  * "Show more". Both nicknames go first because they are the search terms in this niche, and
- * "MCSR Ranked 1v1" lands before character 50 so it survives the mobile truncation.
+ * "MCSR Ranked 1v1" lands before character 50 so it survives the mobile truncation (a playoff
+ * opening is longer and does not; the round and game number are worth the cut).
  *
  * No result, ever: the description is read before the match is watched, and the ending is the
  * reason to watch it. Who won stays on the timer.
@@ -72,7 +73,7 @@ function buildOpening(input: DescriptionInput): string {
   const body = "Full same-seed race, synced dual-POV with live split comparison.";
 
   // Runners search by seed type — the closest competitor puts it in every title. It goes after
-  // the body so the nicknames and "MCSR Ranked 1v1" keep the front of the Show-more preview.
+  // the body so the nicknames and the format keep the front of the Show-more preview.
   const seed = [seedPhrase(match), bastionPhrase(match)].filter(Boolean).join(", ");
   return seed ? `${head} ${body} ${seed[0].toUpperCase()}${seed.slice(1)}.` : `${head} ${body}`;
 }
@@ -89,8 +90,8 @@ export function buildDescription(input: DescriptionInput): string {
   return [
     buildOpening(input),
     "",
-    // The series context a playoff viewer arrives with: which round, which game, what the score
-    // was going in. Going in, never after — the result stays on the timer.
+    // The series context a playoff viewer arrives with: which round, which game, which seeds.
+    // Never the series score — that is as much of a spoiler as the result is.
     ...(input.playoff ? [playoffParagraph(input.playoff), ""] : []),
     "Chapters:",
     formatChapters(chapters),

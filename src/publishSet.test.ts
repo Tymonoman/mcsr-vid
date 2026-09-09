@@ -94,6 +94,14 @@ const unwanted = ["Aquacorde.mp4", "overlay-timer.mp4", "chat-x.json"];
 mkdirSync(path.join(source, "1"), { recursive: true });
 for (const name of [...wanted, ...unwanted]) writeFileSync(path.join(source, "1", name), name);
 
+// The rest of this file runs the generated command for real, so it needs rsync. The lab has it;
+// the Claude container does not (the publish set is pulled *by the operator's PC*, which is why
+// the image never needed an rsync or an ssh client). Skipped rather than failed there.
+if (execFileSync("bash", ["-c", "command -v rsync || true"], { encoding: "utf8" }).trim() === "") {
+  console.log("publishSet.test.ts: command shapes ok; the rsync round-trip needs rsync installed — skipped");
+  process.exit(0);
+}
+
 const bash = (script: string) => execFileSync("bash", ["-c", script], { encoding: "utf8" });
 bash(rsyncPullCommand(source, dest, 1));
 assert.deepEqual(

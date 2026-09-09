@@ -68,12 +68,19 @@ export interface StageEvent {
 export type PhaseWeights<P extends string> = Record<P, readonly [number, number]>;
 
 /**
- * The order the overlay render actually runs its sub-steps in. Exported so the weight bands and
- * the test that checks they tile read the same list.
+ * The order the overlay render actually runs its sub-steps in. The weight bands are keyed from
+ * it, and it must name every phase the render reports, so a phase added to one and not the other
+ * fails to compile rather than tiling wrong.
  */
-export const RENDER_PHASE_ORDER = ["bundling", "top", "splits", "intro", "rendering"] as const;
+export const RENDER_PHASE_ORDER = [
+  "bundling",
+  "top",
+  "splits",
+  "intro",
+  "rendering",
+] as const satisfies readonly RenderProgress["phase"][];
 
-export const RENDER_PHASE_WEIGHTS: PhaseWeights<RenderProgress["phase"]> = {
+export const RENDER_PHASE_WEIGHTS: PhaseWeights<(typeof RENDER_PHASE_ORDER)[number]> = {
   bundling: [0, 8],
   top: [8, 12],
   splits: [12, 22],

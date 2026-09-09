@@ -283,7 +283,7 @@ async function select(id, { open = false } = {}) {
     <div id="youtube"><div class="empty">loading&hellip;</div></div>
 
     <h2>Outputs</h2>
-    ${outputsHtml(meta.outputs)}`;
+    ${outputsHtml(meta.outputs, id)}`;
 
   if (meta.hook) {
     $("#hook").addEventListener("input", () => hookCounter(meta));
@@ -636,6 +636,8 @@ function watchExport(id) {
         if (btn) btn.disabled = false;
       } else {
         loadPreview(id);
+        // The Short panel's seek controls only render once the final video exists.
+        void loadShort(id);
         // The list's "ready to publish" badge and count read the same file.
         void refresh();
       }
@@ -860,11 +862,22 @@ async function loadShort(id) {
         : ""
     }
     ${data.hook ? `<div class="previewmeta"><span>burns in: &ldquo;${esc(data.hook)}&rdquo;</span></div>` : ""}
+    ${
+      // Operator-only: `why` is the model's unfiltered text and may name who finished. It is
+      // never published — keep it off the publish kit, the title and the description.
+      data.reasoner?.applied || data.reasoner?.why
+        ? `<div class="previewmeta"><span>reasoner: ${esc(data.reasoner.why || "(no reason given)")}</span></div>`
+        : ""
+    }
     <div class="moments">${data.moments
       .map(
         (m) => `
       <div class="moment" data-pick="${m.index}">
-        <span class="when">${runClock(m.startMs)}&ndash;${runClock(m.endMs)}</span>
+        <span class="when">${runClock(m.startMs)}&ndash;${runClock(m.endMs)}${
+          data.finalVideo
+            ? `<button type="button" class="seek" title="play this window in the final video">&#9654; ${runClock(data.finalOffsetSec * 1000 + m.startMs)}</button>`
+            : ""
+        }</span>
         <span class="why">${esc(m.reason)}</span>
         <span class="hook">&ldquo;${esc(m.hook)}&rdquo;</span>
         <button type="button" class="cut">Cut this</button>
@@ -885,6 +898,32 @@ async function loadShort(id) {
     el.querySelector('[data-act="recut"]')?.addEventListener("click", (ev) => {
       ev.preventDefault();
       el.querySelector(".moment .cut")?.click();
+    });
+  }
+
+  // What a cut would actually contain, before pressing "Cut this": the final video seeks to the
+  // window and stops at its end, so exactly the Short's 22 s play. The player sits above the
+  // Short panel, off-screen on a phone, hence the scroll.
+  for (const btn of el.querySelectorAll(".moment .seek")) {
+    btn.addEventListener("click", () => {
+      const v = $("#finalvideo");
+      if (!v) return;
+      const m = data.moments[Number(btn.closest(".moment").dataset.pick)];
+      const end = data.finalOffsetSec + m.endMs / 1000;
+      const stopAtEnd = () => {
+        if (v.currentTime < end) return;
+        v.pause();
+        v.removeEventListener("timeupdate", stopAtEnd);
+      };
+      // One window at a time: a previous click's listener still waiting for its own end would
+      // pause this window at the wrong second (the player outlives this panel's re-renders,
+      // so the handler lives on the element, not in this closure).
+      if (v.stopAtEnd) v.removeEventListener("timeupdate", v.stopAtEnd);
+      v.stopAtEnd = stopAtEnd;
+      v.currentTime = data.finalOffsetSec + m.startMs / 1000;
+      v.addEventListener("timeupdate", stopAtEnd);
+      $("#h-preview").scrollIntoView({ behavior: "smooth" });
+      v.play()?.catch(() => {});
     });
   }
 
@@ -945,15 +984,18 @@ const OUTPUT_LABELS = {
   syncPreview: "Sync preview",
 };
 
-function outputsHtml(outputs) {
+function outputsHtml(outputs, id) {
   if (!outputs) return '<div class="empty">nothing written yet</div>';
   return `<div class="outputs">${Object.entries(OUTPUT_LABELS)
-    .map(
-      ([key, label]) =>
-        `<div><span class="k">${label}</span><span class="v${outputs[key] ? "" : " missing"}">${
-          outputs[key] ? esc(outputs[key]) : "&mdash;"
-        }</span></div>`,
-    )
+    .map(([key, label]) => {
+      // The project is the one output you take somewhere else, so its path is its download.
+      const value = !outputs[key]
+        ? "&mdash;"
+        : key === "project"
+          ? `<a href="/api/export/project/${id}" download>${esc(outputs[key])}</a>`
+          : esc(outputs[key]);
+      return `<div><span class="k">${label}</span><span class="v${outputs[key] ? "" : " missing"}">${value}</span></div>`;
+    })
     .join("")}</div>`;
 }
 
@@ -1123,6 +1165,8 @@ function nightlyInner() {
         ? `<a href="#" data-act="nightly-open" data-id="${lastRun.matchId}">${label}</a> &mdash; `
         : `${label} &mdash; `;
     const why = lastRun.reason ? `: ${lastRun.reason}` : "";
+    // "started" with no later record is a render the server did not live to finish.
+    const said = lastRun.outcome === "started" ? "started, not finished" : lastRun.outcome;
     const short =
       lastRun.short === "done"
         ? ' <span class="ok">+ Short rendered</span>'
@@ -1136,7 +1180,7 @@ function nightlyInner() {
           ? ' <span class="bad">+ export failed</span>'
           : "";
     const cls = lastRun.outcome === "done" ? "ok" : lastRun.outcome === "failed" ? "bad" : "muted";
-    last = `${lastLabel} ${who}<span class="${cls}">${esc(lastRun.outcome + why)}</span>${short}${exported}`;
+    last = `${lastLabel} ${who}<span class="${cls}">${esc(said + why)}</span>${short}${exported}`;
   }
 
   const failed = nightly.runError ? `<div class="bad">Run now failed: ${esc(nightly.runError)}</div>` : "";
@@ -1367,8 +1411,8 @@ async function startRenderWithShort(id) {
 /* --- Playoffs --------------------------------------------------------------------------------
    The current bracket's seated slots and the games found for them, above the suggestions while
    a tournament is on. A game's Render is the header form's own start: the plain pipeline by id,
-   with the Short and the MP4, as the nightly would run it. The series score shown is the score
-   *before* the game, as the description carries it. */
+   with the Short and the MP4, as the nightly would run it. Round and game number only — a series
+   score is a spoiler here as much as on the video, so playoffs.ts never computes one. */
 let playoffData = null;
 
 function paintPlayoffs() {
@@ -1407,7 +1451,7 @@ function paintPlayoffs() {
           .map((g) => {
             const onShelf = matches.some((m) => m.matchId === g.matchId);
             return `<div class="game" data-id="${g.matchId}">
-            <span>Game ${g.gameNo} of ${s.bestOf} &middot; ${esc(s.seeds[0].nickname)} ${g.scoreBefore[0]}–${g.scoreBefore[1]} ${esc(s.seeds[1].nickname)} going in</span>
+            <span>Game ${g.gameNo} of ${s.bestOf}</span>
             <a href="https://mcsrranked.com/matches/${g.matchId}" target="_blank" rel="noopener">#${g.matchId}</a>
             ${onShelf ? `<button data-act="open">Rendered &middot; open</button>` : `<button data-act="render">Render</button>`}
           </div>`;

@@ -190,10 +190,19 @@ export interface Config {
   suggestWeights: ScoreWeights;
   /**
    * Whether detected playoff games (src/playoffs.ts) go ahead of the ordinary suggestions in
-   * the nightly's pick order. On by default: during a tournament the bracket is the channel's
-   * best material by a distance, and the games age out of Twitch like any other VOD.
+   * the nightly's pick order. Off by default, and deliberately so: a default that changes what
+   * tonight's nightly renders is a house-rule violation. The operator flips it to true when a
+   * tournament starts and back to false when the bracket is done.
    */
   playoffsFirst: boolean;
+  /**
+   * An LLM CLI to ask reasoning questions (src/reasoner.ts), as an argv array; an argument that
+   * is exactly `{prompt}` (whole, not `--prompt={prompt}`) is replaced by the prompt, and when
+   * none is, the prompt goes on stdin. Null (the default) turns every question into its heuristic fallback. The first use
+   * is the Short's cut: it picks among the scored candidates (src/shortReason.ts). Antigravity:
+   * `["agy", "-p", "{prompt}", "--output-format", "json", "--effort", "high"]` — see README.
+   */
+  reasonerCommand: string[] | null;
 }
 
 const DEFAULTS: Config = {
@@ -239,7 +248,8 @@ const DEFAULTS: Config = {
   suggestSlowRunCutoffSec: 600,
   suggestFollowerWeight: 3,
   suggestWeights: DEFAULT_WEIGHTS,
-  playoffsFirst: true,
+  playoffsFirst: false,
+  reasonerCommand: null,
 };
 
 const CONFIG_PATH = path.resolve("mcsr-vid.config.json");
@@ -282,6 +292,12 @@ export function validateOverrides(raw: Record<string, unknown>): void {
         throw new Error(
           `${CONFIG_PATH}: "${key}" must be a whole hour 0-23 (UTC)${nullable ? ", or null" : ""}.`,
         );
+      }
+      continue;
+    }
+    if (key === "reasonerCommand") {
+      if (value !== null && !(Array.isArray(value) && value.every((s) => typeof s === "string"))) {
+        throw new Error(`${CONFIG_PATH}: "${key}" must be an array of strings or null.`);
       }
       continue;
     }

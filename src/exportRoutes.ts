@@ -1,15 +1,13 @@
 /**
- * The dashboard's export endpoints: the desktop round-trip.
+ * The dashboard's export endpoints: the headless encode, its progress, and the files it makes.
  *
- * The lab renders the assets, you cut in Kdenlive on the desktop, and the lab encodes the
- * finished MP4 — so the project file has to travel both ways. Split from server.ts for size,
- * like youtubeRoutes.ts. Transport only; the encodes live in scripts/export.sh (melt) and
- * src/exportFast.ts (ffmpeg).
+ * Split from server.ts for size, like youtubeRoutes.ts. Transport only; the encode lives in
+ * src/exportFast.ts (ffmpeg). The Kdenlive round-trip (upload the cut project, melt it here)
+ * was retired unused — the GET for the project stays, for a match that needs a human.
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { createReadStream, existsSync, readdirSync } from "node:fs";
 import { stat } from "node:fs/promises";
-import { writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import { describeError } from "./errorText.js";
@@ -27,15 +25,6 @@ export interface ExportRouteContext {
   parseId: (raw: string | undefined) => number | null;
 }
 
-/**
- * Kdenlive saved the project on the desktop, so `root` points at a path that does not exist on
- * the lab. Rewriting that one attribute relocates the whole timeline — which is the entire
- * reason kdenliveProject.ts emits `root` with relative resources.
- */
-export function relocateRoot(xml: string, dir: string): string {
-  return xml.replace(/(<mlt\b[^>]*?\broot=")[^"]*(")/, `$1${dir}$2`);
-}
-
 /** One encode in flight. Lines are retained so a browser joining late replays the whole run. */
 export interface ExportJob {
   matchId: number;
@@ -47,7 +36,7 @@ export interface ExportJob {
   proc: ChildProcess;
   /** Settles when the encode does, with `error` — the nightly awaits this, the browser polls. */
   finished: Promise<string | null>;
-  /** Output length the fast export announces up front; 0 until it has, and always for melt. */
+  /** Output length the fast export announces up front; 0 until it has. */
   totalSec: number;
 }
 
@@ -58,14 +47,12 @@ export function announcedTotalSec(line: string): number | null {
 }
 
 /**
- * The percentage one log line reports, or null for a line that is not progress. Two formats:
- * melt says `percentage: N` outright; ffmpeg's `-stats` line carries `time=HH:MM:SS.ss` of
- * output written, which is a percentage only against the total the fast export announced.
- * Capped at 99 — the promote-on-success rename is what makes it 100.
+ * The percentage one log line reports, or null for a line that is not progress. ffmpeg's
+ * `-stats` line carries `time=HH:MM:SS.ss` of output written, which is a percentage only against
+ * the total the fast export announced. Capped at 99 — the promote-on-success rename is what
+ * makes it 100.
  */
 export function percentOf(line: string, totalSec: number): number | null {
-  const melt = /percentage:\s*(\d+)/.exec(line);
-  if (melt) return Number(melt[1]);
   const at = /\btime=(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(line);
   if (!at || totalSec <= 0) return null;
   const secs = Number(at[1]) * 3600 + Number(at[2]) * 60 + Number(at[3]);
@@ -85,28 +72,28 @@ function broadcast(job: ExportJob, payload: unknown): void {
   for (const res of job.subscribers) res.write(frame);
 }
 
-/** The desktop round-trip's encode: melt over the (cut) project, via scripts/export.sh. */
-const meltArgv = (matchId: number, dir: string) => [
-  "bash",
-  "scripts/export.sh",
-  projectPath(dir, matchId),
-  finalPath(dir),
-];
-
 /** The headless encode: one ffmpeg pass, VAAPI, writes final-<id>.mp4 (see CLAUDE.md). */
 const fastArgv = (matchId: number) => ["npm", "run", "--silent", "export:fast", "--", String(matchId)];
 
-function startExport(matchId: number, dir: string, argv = meltArgv(matchId, dir)): ExportJob {
+/**
+ * The encode, from the button or the nightly. One job table, so the browser's progress panel
+ * shows either running, the delete guard holds while it writes, and the preview finds the file
+ * the moment it lands.
+ */
+export function startFastExport(matchId: number): ExportJob {
   const existing = jobs.get(matchId);
   // Concurrency 1 per match falls out of this. Two *different* matches encoding at once would
-  // contend for the lab's four cores; if that ever actually happens, flock in export.sh is the
-  // fix rather than a scheduler here.
+  // contend for the lab's four cores; if that ever actually happens, a lock in exportFast.ts is
+  // the fix rather than a scheduler here.
   if (existing && !existing.done) return existing;
 
-  const [cmd, ...args] = argv as [string, ...string[]];
+  const [cmd, ...args] = fastArgv(matchId) as [string, ...string[]];
   const proc = spawn(cmd, args, {
     cwd: path.resolve(new URL("..", import.meta.url).pathname),
     stdio: ["ignore", "pipe", "pipe"],
+    // Its own process group: the argv is `npm run`, and a SIGTERM to npm alone left the tsx and
+    // ffmpeg underneath it encoding for the rest of the hour. Stop kills the group (`-pid`).
+    detached: true,
   });
 
   let settle!: (error: string | null) => void;
@@ -127,8 +114,8 @@ function startExport(matchId: number, dir: string, argv = meltArgv(matchId, dir)
     for (const raw of chunk.toString("utf8").split(/\r?\n|\r/)) {
       const line = raw.trim();
       if (line === "") continue;
-      // melt reports every single frame, ffmpeg every second; an hour-long encode is tens of
-      // thousands of those. Keep the percentage, drop the noise.
+      // ffmpeg reports every second; a long encode is thousands of those. Keep the percentage,
+      // drop the noise.
       job.totalSec = announcedTotalSec(line) ?? job.totalSec;
       const pct = percentOf(line, job.totalSec);
       if (pct !== null) {
@@ -149,9 +136,11 @@ function startExport(matchId: number, dir: string, argv = meltArgv(matchId, dir)
 
   proc.on("close", (code) => {
     job.done = true;
-    // 137 is the OOM killer. export.sh already says so on stderr, but the browser shows status
-    // rather than the log tail, so the distinction has to survive up to here too.
-    if (code !== 0) {
+    // 137 is the OOM killer. The browser shows status rather than the log tail, so the
+    // distinction has to survive up to here.
+    // A null code is a signal — the Stop button, or a restart — not a broken encode.
+    if (code === null) job.error = "stopped";
+    else if (code !== 0) {
       job.error = code === 137 ? "killed by the OOM killer" : `export failed (exit ${code})`;
     }
     broadcast(job, { done: true, error: job.error, percent: job.error ? job.percent : 100 });
@@ -172,24 +161,27 @@ function startExport(matchId: number, dir: string, argv = meltArgv(matchId, dir)
   return job;
 }
 
-/**
- * The encode for a render nobody will cut by hand — the nightly's. Same job table as the
- * button's export, so the browser's progress panel shows it running, the delete guard holds
- * while it writes, and the preview finds the file the moment it lands.
- */
-export function startFastExport(matchId: number, dir: string): ExportJob {
-  return startExport(matchId, dir, fastArgv(matchId));
+/** Stops a running encode: the whole group, so ffmpeg goes with the npm that started it. */
+function stopExport(matchId: number): void {
+  const job = jobs.get(matchId);
+  if (!job || job.done || job.proc.pid === undefined) return;
+  try {
+    process.kill(-job.proc.pid, "SIGTERM");
+  } catch {
+    // Already gone; `close` is on its way.
+  }
 }
 
 /**
  * The finished video for a match, whichever way it was produced, or null.
  *
- * scripts/export.sh writes final.mp4; `npm run export:fast` writes final-<id>.mp4; and an export
- * cut by hand in Kdenlive can be named anything. findExportedVideo already encodes that last
- * rule (any video in the folder that is not a POV clip or a render intermediate), so this defers
- * to it rather than growing a second list of names to keep in sync.
+ * `npm run export:fast` writes final-<id>.mp4; the retired melt path wrote final.mp4 (older
+ * matches still have one); and an export cut by hand in Kdenlive can be named anything.
+ * findExportedVideo already encodes that last rule (any video in the folder that is not a POV
+ * clip or a render intermediate), so this defers to it rather than growing a second list of
+ * names to keep in sync.
  */
-async function locateExport(matchId: number, dir: string): Promise<string | null> {
+export async function locateExport(matchId: number, dir: string): Promise<string | null> {
   const canonical = finalPath(dir);
   if (existsSync(canonical)) return canonical;
   try {
@@ -218,7 +210,7 @@ export async function handleExportRoute(
   }
   const dir = ctx.matchDir(matchId);
 
-  // Pull the generated project down to cut it.
+  // The generated project, for a match that needs a human in Kdenlive.
   if (action === "project" && req.method === "GET") {
     const file = projectPath(dir, matchId);
     if (!existsSync(file)) {
@@ -234,37 +226,6 @@ export async function handleExportRoute(
     return true;
   }
 
-  // Send the cut project back.
-  if (action === "project" && req.method === "POST") {
-    const body = await ctx.readBody(req);
-    // Untrusted input: this is written to disk and then handed to melt. Refusing anything that
-    // is not an MLT document costs nothing compared with discovering it 50 minutes into an
-    // encode.
-    if (!/^\s*<\?xml/.test(body) || !body.includes("<mlt")) {
-      ctx.json(res, 400, { error: "not an MLT/Kdenlive project" });
-      return true;
-    }
-    // Absolute, always. matchDir is only absolute when config.mediaDir is (it is on the lab,
-    // "/media"; it is not on a desktop checkout, where it defaults to "media"). A relative root
-    // resolves against whatever cwd Kdenlive or melt happens to have, which is how a project
-    // opens with every clip offline.
-    const root = path.resolve(dir);
-    const relocated = relocateRoot(body, root);
-    await writeFile(projectPath(dir, matchId), relocated, "utf8");
-    ctx.json(res, 200, { matchId, root, rewritten: relocated !== body });
-    return true;
-  }
-
-  if (action === "run" && req.method === "POST") {
-    if (!existsSync(projectPath(dir, matchId))) {
-      ctx.json(res, 404, { error: "no project for that match — upload the cut one first" });
-      return true;
-    }
-    const job = startExport(matchId, dir);
-    ctx.json(res, 202, { matchId, running: !job.done });
-    return true;
-  }
-
   // The headless encode from the browser: what the nightly does for its own pick, for any
   // rendered match the operator wants today. The preview panel had told the operator to "run
   // the export, then reload" for months without offering a way to run one.
@@ -273,13 +234,14 @@ export async function handleExportRoute(
       ctx.json(res, 404, { error: "not rendered yet — the encode needs the overlays" });
       return true;
     }
-    const job = startFastExport(matchId, dir);
+    const job = startFastExport(matchId);
     ctx.json(res, 202, { matchId, running: !job.done });
     return true;
   }
 
-  if (action === "run" && req.method === "DELETE") {
-    jobs.get(matchId)?.proc.kill("SIGTERM");
+  // Stop: the fast encode is the only one left, so its DELETE sits under the same name.
+  if (action === "fast" && req.method === "DELETE") {
+    stopExport(matchId);
     ctx.json(res, 200, { matchId, aborted: true });
     return true;
   }
@@ -309,9 +271,9 @@ export async function handleExportRoute(
     return true;
   }
 
-  // Download. `finalPath` is where scripts/export.sh writes; anything else the export produced
-  // is found the same way the upload panel finds it, so `npm run export:fast` output
-  // (final-<id>.mp4) is offered here too rather than reading as "not exported yet".
+  // Download. Whatever the export produced is found the same way the upload panel finds it, so
+  // `npm run export:fast` output (final-<id>.mp4) is offered here rather than reading as "not
+  // exported yet".
   if (action === "final" && req.method === "GET") {
     const file = await locateExport(matchId, dir);
     if (file === null) {

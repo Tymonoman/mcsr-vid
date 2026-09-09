@@ -2,9 +2,10 @@ import { requireArg } from "./cliArgs.js";
 import { matchDir } from "./config.js";
 import { getMatch, parseMatchId } from "./mcsrApi.js";
 import { downloadMatchVods } from "./vodAcquisition.js";
+import { withDiscoveredVods } from "./vodDiscovery.js";
 
 const matchId = parseMatchId(requireArg("download-vods"));
-const match = await getMatch(matchId);
+const match = await withDiscoveredVods(await getMatch(matchId));
 
 if (match.vod.length === 0) {
   console.error(`Match ${matchId} has no VODs attached. Nothing to download.`);

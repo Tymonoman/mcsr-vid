@@ -1,7 +1,7 @@
 // Self-check for playoffs.ts on the saved Season 11 bracket (src/fixtures/playoffs-11.json), with
 // games synthesised around its Round of 16 slots: the API is stubbed at global fetch, so nothing
 // here touches the network. What is pinned is what would embarrass the channel if it slipped —
-// a game numbered out of order, a series score that names the game's own winner, a practice
+// a game numbered out of order or short by one, a series score anywhere at all, a practice
 // reset counted as a game, the wrong season's bracket.
 // Run: npx tsx src/playoffs.test.ts
 import assert from "node:assert/strict";
@@ -95,13 +95,19 @@ assert.equal(slotFor(bracket, otherPair), null, "edcr and Feinberg hold no slot 
 
 const games = slotGames(bracket, slot, [...edcrHistory, ...lauveerHistory]);
 assert.deepEqual(
-  games.map((g) => [g.matchId, g.gameNo, g.scoreBefore]),
+  games.map((g) => [g.matchId, g.gameNo]),
   [
-    [g1.id, 1, [0, 0]],
-    [g2.id, 2, [1, 0]],
-    [g3.id, 3, [1, 1]],
+    [g1.id, 1],
+    [g2.id, 2],
+    [g3.id, 3],
   ],
-  "numbered by date, deduplicated across both histories, scored before each game",
+  "numbered by date, deduplicated across both histories",
+);
+// The number is a pure function of the games handed in, so a caller that holds a game the
+// history has not indexed yet can fold it in and get the number that counts it.
+assert.deepEqual(
+  slotGames(bracket, slot, [g1, g2]).map((g) => g.gameNo),
+  [1, 2],
 );
 
 // An unscheduled slot takes any game of its pair inside the tournament's month.
@@ -117,7 +123,7 @@ assert.equal(quarter.startTime, null);
 assert.deepEqual(slotWindow(later, quarter), [start - 900, start + 30 * 86_400]);
 assert.equal(slotFor(later, game(edcr, feinberg, start + 3 * 86_400, edcr.uuid))?.id, 5);
 
-/* --- Wording: the round, the game, the seeds, the score going in; never the result ---------- */
+/* --- Wording: the round, the game, the seeds. Never a series score, never the result -------- */
 
 const ctx = {
   season: 11,
@@ -128,7 +134,6 @@ const ctx = {
     { uuid: edcr.uuid, nickname: "edcr", label: "#1 seed", seasonEloRate: 2688 },
     { uuid: lauveer.uuid, nickname: "lauveer", label: "LCQ", seasonEloRate: 2137 },
   ] as const,
-  scoreBefore: [1, 0] as [number, number],
 };
 assert.equal(playoffLabel({ ...ctx, seeds: [...ctx.seeds] }), "Round of 16 · Game 2 of 5");
 assert.equal(
@@ -137,7 +142,12 @@ assert.equal(
 );
 const para = playoffParagraph({ ...ctx, seeds: [...ctx.seeds] });
 assert.ok(para.includes("edcr (#1 seed, 2688 elo) vs lauveer (LCQ, 2137 elo)"));
-assert.ok(para.includes("Series going in: edcr 1–0 lauveer."));
+// The house rule, pinned: no surface prints a series score. "Game 2 of 5" is the only pair of
+// numbers allowed near each other, and 2688/2137 are the seeds' ratings.
+assert.ok(
+  !/\b\d+\s*[–-]\s*\d+\b/.test(para.replace("Game 2 of 5", "")),
+  `a score-shaped pair slipped into the paragraph:\n${para}`,
+);
 assert.ok(para.includes("https://mcsrranked.com/playoffs/11"));
 assert.ok(para.includes("twitch.tv/mcsrranked") && para.includes("youtube.com/@MCSR_Ranked"));
 
@@ -181,7 +191,6 @@ assert.deepEqual(
       ["edcr", "#1 seed", 2688],
       ["lauveer", "LCQ", 2137],
     ],
-    scoreBefore: [1, 0],
   },
 );
 assert.ok(calls[0]!.startsWith("/playoffs/11"), `a season-12 game reads the season-11 bracket: ${calls[0]}`);
@@ -199,6 +208,25 @@ assert.equal(
   1500,
   "an unresolved match keeps the live rating",
 );
+
+// A game finished after the histories were cached — the operator pasting an id minutes after the
+// slot, on a board the dashboard warmed half an hour ago. The packaging path reads the two
+// histories again rather than numbering the game one short, silently.
+const g4 = game(edcr, lauveer, start + 2100, lauveer.uuid);
+edcrHistory.unshift(g4);
+lauveerHistory.unshift(g4);
+const warm = calls.length;
+const fourth = await playoffContextFor({ ...g4, timelines: [], completions: [] });
+assert.equal(fourth?.gameNo, 4, "found on the refetch, not missed as an ordinary match");
+assert.equal(calls.length - warm, 2, "one history per seed, the bracket still cached");
+
+// And one the API has not indexed anywhere yet: the match being packaged is always counted
+// among the games it is numbered against, so the number can never be short by itself.
+const g5 = game(edcr, lauveer, start + 2700, edcr.uuid);
+const fifth = await playoffContextFor({ ...g5, timelines: [], completions: [] });
+assert.equal(fifth?.gameNo, 5, "numbered from the games known at that moment, itself included");
+edcrHistory.shift();
+lauveerHistory.shift();
 
 assert.equal(await playoffContextFor({ ...otherPair, timelines: [], completions: [] }), null);
 assert.equal(

@@ -196,7 +196,7 @@
 .sugg .muted {
   color: var(--muted);
 }
-/* One row per detected game under its slot; the score is the one going in, never after. */
+/* One row per detected game under its slot: round and game number, never a series score. */
 .sugg .game {
   display: flex;
   flex-wrap: wrap;
@@ -625,6 +625,16 @@
 .moment .when {
   font-variant-numeric: tabular-nums;
   color: var(--gold, #f0c93d);
+}
+/* The same window as a place in the final video: a control, dressed like the clock beside it. */
+.moment .seek {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 1px solid var(--edge, #2c2833);
+  margin-left: 6px;
+  padding: 1px 6px;
+  cursor: pointer;
 }
 .moment .why {
   color: var(--muted, #8d8695);

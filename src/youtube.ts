@@ -330,7 +330,7 @@ export function playoffPlaylistTitle(season: number): string {
 }
 
 export function playoffPlaylistDescription(season: number): string {
-  return `Every game of the MCSR Ranked Season ${season} Playoffs on MCSR Replayoffs, in bracket order — both POVs synced, with the live split comparison and the series score going in on the intro card. Bracket: https://mcsrranked.com/playoffs/${season}`;
+  return `Every game of the MCSR Ranked Season ${season} Playoffs on MCSR Replayoffs, in bracket order — both POVs synced, with the live split comparison and the round and game number on the intro card. Bracket: https://mcsrranked.com/playoffs/${season}`;
 }
 
 export function playerPlaylistDescription(nickname: string): string {

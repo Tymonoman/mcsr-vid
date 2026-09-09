@@ -19,8 +19,7 @@ import {
 import { config, matchDir } from "./config.js";
 import { describeError } from "./errorText.js";
 import { listProcessedMatchIds, matchStatusFor } from "./matchStatus.js";
-import { getMatch } from "./mcsrApi.js";
-import { playoffContextFor } from "./playoffs.js";
+import { playoffContextForId } from "./playoffs.js";
 import { readManifest, variantFellBack } from "./thumbnailVariants.js";
 import { HOOK_PLACEHOLDER } from "./title.js";
 import {
@@ -43,11 +42,6 @@ import {
 } from "./youtube.js";
 import { allUploads, findExportedVideo, readUpload, writeUpload, type UploadRecord } from "./youtubeStore.js";
 
-/** Which playoff game this is, if any. Unknowable (API down) reads as an ordinary match. */
-const playoffOf = (matchId: number) =>
-  getMatch(matchId)
-    .then(playoffContextFor)
-    .catch(() => null);
 import { yppProgress } from "./yppProgress.js";
 
 type Json = (res: ServerResponse, status: number, body: unknown) => void;
@@ -338,7 +332,7 @@ async function startUpload(
       // upload it cannot be quietly re-done later.
       if (status.leftNickname !== "?" && status.rightNickname !== "?") {
         // A playoff game joins the tournament's playlist instead: the bracket is the series.
-        const playoff = await playoffOf(matchId);
+        const playoff = await playoffContextForId(matchId);
         if (playoff) {
           await joinPlaylist(
             playoffPlaylistTitle(playoff.season),
