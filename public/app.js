@@ -200,6 +200,10 @@ async function select(id, { open = false } = {}) {
   if (selected !== id) return; // the operator moved on while this was in flight
   const m = matches.find((x) => x.matchId === id);
   const rendered = m && m.stages.render;
+  // Only the first line of the title file is a title; the rest is guidance formatTitle writes
+  // for the terminal (src/title.ts). The box shows the line, Save puts the guidance back, so
+  // the file keeps saying how long a hook may be.
+  const [titleLine, ...titleRest] = (meta.title ?? "").split("\n");
 
   $("#detail").innerHTML = `
     <div class="row">
@@ -251,7 +255,7 @@ async function select(id, { open = false } = {}) {
     <div id="splits"><div class="empty">loading&hellip;</div></div>
 
     <h2>Title ${meta.titleEdited ? '<span class="saved">(edited)</span>' : ""}</h2>
-    <textarea id="title" rows="4">${esc(meta.title ?? "")}</textarea>
+    <textarea id="title" rows="2">${esc(titleLine)}</textarea>
 
     <h2>Description ${meta.descriptionEdited ? '<span class="saved">(edited)</span>' : ""}</h2>
     <textarea id="description" rows="14">${esc(meta.description ?? "")}</textarea>
@@ -310,15 +314,17 @@ async function select(id, { open = false } = {}) {
     // placeholder in the title's first line takes it here, so the file on disk — what the
     // checklist reads and what the Short's hook resolves from — no longer says <HOOK>.
     const hook = $("#hook")?.value.trim();
-    const [first, ...rest] = $("#title").value.split("\n");
-    if (hook && first.includes("<HOOK>"))
-      $("#title").value = [first.replace("<HOOK>", hook), ...rest].join("\n");
+    if (hook && $("#title").value.includes("<HOOK>"))
+      $("#title").value = $("#title").value.replace("<HOOK>", hook);
     let saved;
     try {
       saved = await api(`/api/meta/${id}`, {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ title: $("#title").value, description: $("#description").value }),
+        body: JSON.stringify({
+          title: [$("#title").value, ...titleRest].join("\n"),
+          description: $("#description").value,
+        }),
       });
     } catch (e) {
       $("#savedmsg").textContent = e.message;
