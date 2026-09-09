@@ -24,10 +24,17 @@ const { chromium } = require("playwright");
       { timeout: 30000 },
     );
     const linkText = (await page.textContent('#youtube [data-act="checkchannel"]')).trim();
+    // The upload form is painted only when config.youtubeUploadEnabled is on — off, the panel is
+    // the check-the-channel line alone, which is the whole point of the gate. Assert whichever
+    // state the server is actually in rather than assuming the form is there.
+    const uploadsEnabled = await page.evaluate(async () =>
+      (await (await fetch("/api/youtube/status")).json()).uploadsEnabled === true,
+    );
+    const hasUploadButton = !!(await page.$("#ytUpload"));
     check(
-      "a real check that finds nothing says so and keeps the form",
-      /not on the channel yet/.test(linkText) && !!(await page.$("#ytUpload")),
-      linkText,
+      "a real check that finds nothing says so, and the form matches the upload gate",
+      /not on the channel yet/.test(linkText) && hasUploadButton === uploadsEnabled,
+      `${linkText} | uploadsEnabled=${uploadsEnabled} uploadButton=${hasUploadButton}`,
     );
     // (b) the channel now has it (mocked): panel, row and kit flip
     let fresh = 0;
