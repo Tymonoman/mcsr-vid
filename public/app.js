@@ -180,9 +180,6 @@ function hookCounter(meta) {
   const { min, max } = meta.hook;
   out.textContent = `${n} / ${min}-${max} chars`;
   out.className = "counter" + (n > max ? " over" : n >= min ? " good" : "");
-  $("#hookpreview").textContent = input.value
-    ? `${input.value} | ${meta.hook.generated}`
-    : meta.hook.placeholder;
 }
 
 /**
@@ -246,8 +243,7 @@ async function select(id, { open = false } = {}) {
               .map((s) => `<button type="button" class="chip">${esc(s)}</button>`)
               .join("")}</div>`
           : ""
-      }
-      <pre id="hookpreview" style="margin-top:8px"></pre>`
+      }`
         : ""
     }
 
