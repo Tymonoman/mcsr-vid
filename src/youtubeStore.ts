@@ -7,8 +7,20 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { matchDir } from "./config.js";
 import { listProcessedMatchIds } from "./matchStatus.js";
+import { readManifest } from "./thumbnailVariants.js";
+import { HOOK_PLACEHOLDER } from "./title.js";
 
-const UPLOAD_FILE = "youtube.json";
+/** The long-form and the Short are two videos with two records. */
+export type UploadKind = "video" | "short";
+
+const UPLOAD_FILE: Record<UploadKind, string> = { video: "youtube.json", short: "youtube-short.json" };
+
+/** Per step: null for done, else the error text. What "Finish on YouTube" reports and repeats. */
+export interface FinishedSteps {
+  thumbnail: string | null;
+  playlists: string | null;
+  comment: string | null;
+}
 
 export interface UploadRecord {
   videoId: string;
@@ -20,12 +32,17 @@ export interface UploadRecord {
   /** Which thumbnail variant was live at upload time — the A/B grouping key. */
   thumbnailVariant: string | null;
   title: string;
+  /** Absent on records written before Studio uploads were persisted: those were the dashboard's. */
+  source?: "dashboard" | "studio";
+  /** What `finishOnYouTube` did to it, once it has run. */
+  finished?: FinishedSteps;
 }
 
-const recordPath = (matchId: number): string => path.join(matchDir(matchId), UPLOAD_FILE);
+const recordPath = (matchId: number, kind: UploadKind): string =>
+  path.join(matchDir(matchId), UPLOAD_FILE[kind]);
 
-export async function readUpload(matchId: number): Promise<UploadRecord | null> {
-  const file = recordPath(matchId);
+export async function readUpload(matchId: number, kind: UploadKind = "video"): Promise<UploadRecord | null> {
+  const file = recordPath(matchId, kind);
   if (!existsSync(file)) return null;
   try {
     return JSON.parse(await readFile(file, "utf8")) as UploadRecord;
@@ -36,9 +53,58 @@ export async function readUpload(matchId: number): Promise<UploadRecord | null> 
   }
 }
 
-export async function writeUpload(matchId: number, record: UploadRecord): Promise<void> {
-  await writeFile(recordPath(matchId), JSON.stringify(record, null, 2), "utf8");
+export async function writeUpload(
+  matchId: number,
+  record: UploadRecord,
+  kind: UploadKind = "video",
+): Promise<void> {
+  await writeFile(recordPath(matchId, kind), JSON.stringify(record, null, 2), "utf8");
 }
+
+const readIfPresent = async (file: string): Promise<string | null> =>
+  existsSync(file) ? readFile(file, "utf8") : null;
+
+/**
+ * The title, description and tags an upload sends, read off the same files the publish kit
+ * pastes from (server.ts `readMeta`: the `.edited.txt` sibling wins over the generated text).
+ * Title is the first line only — the lines under it are guidance for the terminal (src/title.ts)
+ * — with the thumbnail manifest's headline standing in for `<HOOK>` when nobody edited one in;
+ * a title that still carries the placeholder is the caller's to refuse.
+ *
+ * The Short's text is the render's own (`short-<id>.title.txt`, first line); its tags are the
+ * long-form's, so both halves of a match are one channel to YouTube.
+ */
+export async function uploadTextFor(
+  matchId: number,
+  kind: UploadKind,
+): Promise<{ title: string; description: string; tags: string[] }> {
+  const dir = matchDir(matchId);
+  const base = kind === "short" ? `short-${matchId}` : `match-${matchId}`;
+  const edited = (what: string) =>
+    kind === "video" ? readIfPresent(path.join(dir, `${base}.${what}.edited.txt`)) : Promise.resolve(null);
+  const titleText =
+    (await edited("title")) ?? (await readIfPresent(path.join(dir, `${base}.title.txt`))) ?? "";
+  let title = titleText.split("\n")[0]!.trim();
+  if (title.includes(HOOK_PLACEHOLDER)) {
+    const hook = (await readManifest(dir))?.hookText?.trim();
+    if (hook) title = title.replace(HOOK_PLACEHOLDER, hook);
+  }
+  const description =
+    (await edited("description")) ?? (await readIfPresent(path.join(dir, `${base}.description.txt`))) ?? "";
+  const tags = ((await readIfPresent(path.join(dir, `match-${matchId}.tags.txt`))) ?? "")
+    .split("\n")
+    .map((t) => t.trim())
+    .filter(Boolean);
+  return { title, description, tags };
+}
+
+/**
+ * The first comment on a match video, which the operator pins in Studio (pinning has no API).
+ * The publish kit shows the same line: one question a viewer can answer without thinking, and
+ * the subscribe ask. Never names the winner.
+ */
+export const pinnedCommentText = (left: string | null, right: string | null): string =>
+  `${left ?? "Left"} vs ${right ?? "right"}, split for split. Who did you have winning before the nether? Subscribe if you want the next one on your feed.`;
 
 /** Every match that has been uploaded, for the stats table. */
 export async function allUploads(): Promise<Array<{ matchId: number; record: UploadRecord }>> {
