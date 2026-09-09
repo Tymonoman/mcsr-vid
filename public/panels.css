@@ -555,6 +555,14 @@
     margin: -8px 0;
     min-height: 32px;
   }
+
+  /* The moment's seek control is the one thing in that row a thumb aims at, and at 25px it was
+     the smallest target on the match screen. Padded rather than resized so the row still reads
+     as a clock with a button beside it. */
+  .moment .seek {
+    padding: 7px 10px;
+    min-height: 32px;
+  }
   .kitmore > summary {
     min-height: 32px;
     display: flex;
@@ -641,8 +649,10 @@
 #shortlog.hidden {
   display: none;
 }
-/* A phone gets one column; the grid above puts the hook off-screen otherwise. */
-@media (max-width: 640px) {
+/* A phone gets one column; the grid above puts the hook off-screen otherwise. 860px, not a
+   narrower breakpoint of its own: that is where the page becomes two screens (app.css), and
+   between 640 and 860 the four-column row was squeezing the hook to nothing. */
+@media (max-width: 860px) {
   .moment {
     grid-template-columns: 1fr;
     gap: 4px;
