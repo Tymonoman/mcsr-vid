@@ -36,8 +36,17 @@ try {
   process.exit(0);
 }
 
+/** Mirrors REQUIRED_SCOPES in src/youtube.ts; this script is plain node with no tsx to import it. */
+const REQUIRED_SCOPES = [
+  "https://www.googleapis.com/auth/youtube.upload",
+  "https://www.googleapis.com/auth/youtube.force-ssl",
+  "https://www.googleapis.com/auth/youtube.readonly",
+  "https://www.googleapis.com/auth/yt-analytics.readonly",
+];
+
 const controller = new AbortController();
 const timer = setTimeout(() => controller.abort(), 10_000);
+let accessToken = null;
 try {
   const res = await fetch(token.token_uri ?? "https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -57,6 +66,31 @@ try {
         `Re-run 'npm run youtube-auth' on a machine with a browser and copy youtube-token.json over.`,
     );
     process.exit(0);
+  }
+  accessToken = (await res.json()).access_token;
+
+  // A scope missing from the stored token fails on the day it is needed — a thumbnail set, a
+  // comment — with a 401 that says nothing about consent. Say it now.
+  for (const scope of REQUIRED_SCOPES) {
+    if (!(token.scopes ?? []).includes(scope)) {
+      warn(`token lacks ${scope.split("/").pop()}; re-run 'npm run youtube-auth' with prompt=consent`);
+    }
+  }
+
+  // One unit: which channel the token speaks for, and whether YouTube lets it upload past 15
+  // minutes (a phone-unverified channel cannot, and the API only says so after the bytes are up).
+  const ch = await fetch("https://www.googleapis.com/youtube/v3/channels?part=id,status&mine=true", {
+    headers: { authorization: `Bearer ${accessToken}` },
+    signal: controller.signal,
+  });
+  const items = ch.ok ? ((await ch.json()).items ?? []) : [];
+  if (!ch.ok) warn(`channels.list failed (HTTP ${ch.status}); cannot confirm the channel`);
+  else if (items.length === 0) warn("the token belongs to a Google account with no YouTube channel");
+  else {
+    const status = items[0].status?.longUploadsStatus;
+    console.log(`  youtube: channel ${items[0].id}`);
+    if (status !== "allowed" && status !== "eligible")
+      warn(`longUploadsStatus is "${status}" — verify the channel by phone before uploading a match`);
   }
 } catch (err) {
   // A network blip is not a credential problem; say so rather than crying wolf.

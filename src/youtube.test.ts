@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { config } from "./config.js";
-import { parseImpressionsCsv, REQUIRED_SCOPES } from "./youtube.js";
+import { parseImpressionsCsv, REQUIRED_SCOPES, uploadVideo } from "./youtube.js";
 import { findExportedVideo } from "./youtubeStore.js";
 
 // --- Reporting CSV: the only source of per-video CTR, so a misread here silently corrupts
@@ -132,17 +134,15 @@ assert.deepEqual(totalReach([{ date: "d", videoId: "v", impressions: 0, ctr: 0 }
 
 console.log("youtube: all checks passed");
 
-// --- upload refuses a title that still carries the hook placeholder ----------------------------
-// The YouTube panel pre-fills its title field from the generated title, and typing a hook does
-// not rewrite it (measured in a browser). Without this the form would happily upload
-// "<HOOK> | a vs b | MCSR Ranked 1v1" — the one string that must never reach YouTube.
+// --- the gate, then the placeholder ------------------------------------------------------------
+// Two refusals the form cannot be trusted to make. `youtubeUploadEnabled` is the branch's whole
+// point — an upload through the unaudited API project is locked private for good — and a title
+// still carrying "<HOOK>" is the one string that must never reach YouTube.
 {
   // `isConfigured()` looks for youtube-token.json in cwd, which is gitignored, so this case 503s
-  // in a fresh worktree or CI unless a token file exists. A dummy one is enough: the route
-  // refuses the placeholder title before any credential is read.
-  const tokenDir = await (
-    await import("node:fs/promises")
-  ).mkdtemp(path.join((await import("node:os")).tmpdir(), "mcsr-yt-route-test-"));
+  // in a fresh worktree or CI unless a token file exists. A dummy one is enough: both refusals
+  // happen before any credential is read.
+  const tokenDir = await mkdtemp(path.join(tmpdir(), "mcsr-yt-route-test-"));
   process.env.YOUTUBE_TOKEN_FILE = path.join(tokenDir, "token.json");
   await writeFile(
     process.env.YOUTUBE_TOKEN_FILE,
@@ -150,26 +150,50 @@ console.log("youtube: all checks passed");
   );
   const { handleYoutubeRoute } = await import("./youtubeRoutes.js");
   const { HOOK_PLACEHOLDER } = await import("./title.js");
-  // Holder object rather than a `let`: the assignment happens inside a callback, so TypeScript
-  // narrows a plain variable to `never` after the assert below.
-  const got: { r: { status: number; body: unknown } | null } = { r: null };
+  // The title comes off disk now, not out of the request body — the form has no title field.
+  const routeMatch = 424242;
+  const routeDir = path.join(config.mediaDir, String(routeMatch));
+  await mkdir(routeDir, { recursive: true });
+  await writeFile(
+    path.join(routeDir, `match-${routeMatch}.title.txt`),
+    `${HOOK_PLACEHOLDER} | a vs b | MCSR Ranked 1v1\n`,
+    "utf8",
+  );
+
+  // Appended to rather than reassigned: a variable written inside a callback narrows to `never`
+  // by the time the assert below reads it.
+  const answers: Array<{ status: number; body: unknown }> = [];
   const ctx = {
     json: (_res: unknown, status: number, body: unknown) => {
-      got.r = { status, body };
+      answers.push({ status, body });
     },
-    readBody: async () =>
-      JSON.stringify({ title: `${HOOK_PLACEHOLDER} | a vs b | MCSR Ranked 1v1`, description: "d" }),
+    readBody: async () => JSON.stringify({ kind: "video", privacyStatus: "private" }),
     matchDir: (id: number) => path.join(config.mediaDir, String(id)),
     parseId: (raw: string | undefined) => (raw && /^\d+$/.test(raw) ? Number(raw) : null),
   };
   const req = { method: "POST", headers: {} } as unknown as import("node:http").IncomingMessage;
   const res = {} as unknown as import("node:http").ServerResponse;
-  const handled = await handleYoutubeRoute(req, res, ["api", "youtube", "upload", "424242"], ctx);
-  assert.equal(handled, true, "the upload route should claim the request");
-  assert.ok(got.r, "the route must answer");
-  assert.equal(got.r.status, 400, "a placeholder title must be refused, not uploaded");
-  assert.match(String((got.r.body as { error: string }).error), /HOOK/);
-  console.log("OK: upload refuses a title that still contains the hook placeholder");
+  const post = async () => {
+    const handled = await handleYoutubeRoute(req, res, ["api", "youtube", "upload", String(routeMatch)], ctx);
+    assert.equal(handled, true, "the upload route should claim the request");
+    const answer = answers.at(-1);
+    assert.ok(answer, "the route must answer");
+    return { status: answer.status, error: String((answer.body as { error?: string }).error) };
+  };
+
+  config.youtubeUploadEnabled = false;
+  const gated = await post();
+  assert.equal(gated.status, 403, "uploads are off until the compliance audit clears");
+  assert.match(gated.error, /Studio/);
+
+  config.youtubeUploadEnabled = true;
+  const placeholder = await post();
+  assert.equal(placeholder.status, 400, "a placeholder title must be refused, not uploaded");
+  assert.match(placeholder.error, /HOOK/);
+  config.youtubeUploadEnabled = false;
+
+  console.log("OK: upload is gated off, and refuses a title that still contains the hook placeholder");
+  await rm(routeDir, { recursive: true, force: true });
   await rm(tokenDir, { recursive: true, force: true });
 }
 
@@ -210,4 +234,93 @@ console.log("youtube: all checks passed");
   // And a video with no Reporting row yet counts as a video with no CTR, not 0% CTR.
   assert.equal(groupByHook([{ hook: true, reach: null }])[0]!.ctr, null);
   console.log("OK: A/B groups text vs no text with impression-weighted CTR");
+}
+// --- the resumable upload ----------------------------------------------------------------------
+// The one loop that moves gigabytes. It goes wrong in two ways nobody sees until a real upload:
+// resuming from our own byte counter rather than from the Range YouTube actually kept (which
+// corrupts the video), and uploading a scheduled video as public (which publishes it at once).
+{
+  const dir = await mkdtemp(path.join(tmpdir(), "mcsr-yt-upload-test-"));
+  process.env.YOUTUBE_TOKEN_FILE = path.join(dir, "token.json");
+  await writeFile(
+    process.env.YOUTUBE_TOKEN_FILE,
+    JSON.stringify({
+      client_id: "c",
+      client_secret: "s",
+      refresh_token: "r",
+      token_uri: "https://token/",
+    }),
+  );
+  const CHUNK = 256 * 1024;
+  const file = path.join(dir, "clip.mp4");
+  await writeFile(file, Buffer.alloc(3 * CHUNK, 7));
+
+  // The token refresh deliberately keeps using global fetch, so stub that separately; anything
+  // else arriving there means an upload call slipped past the `fetchImpl` seam.
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    assert.equal(String(url), "https://token/", "only the token refresh may use global fetch");
+    return new Response(JSON.stringify({ access_token: "at", expires_in: 3600 }), { status: 200 });
+  }) as typeof fetch;
+
+  const ranges: string[] = [];
+  let metadata: {
+    snippet: Record<string, unknown>;
+    status: Record<string, unknown>;
+  } | null = null;
+  const scripted: typeof fetch = async (url, init) => {
+    if (init?.method === "POST") {
+      metadata = JSON.parse(String(init.body));
+      return new Response("", {
+        status: 200,
+        headers: { location: "https://upload/session" },
+      });
+    }
+    assert.equal(String(url), "https://upload/session");
+    ranges.push(String((init?.headers as Record<string, string>)["content-range"]));
+    // The first chunk is only half accepted — YouTube's Range, not our counter, says where to
+    // carry on from. The third completes the file.
+    if (ranges.length === 1)
+      return new Response("", {
+        status: 308,
+        headers: { range: "bytes=0-131071" },
+      });
+    if (ranges.length === 2)
+      return new Response("", {
+        status: 308,
+        headers: { range: "bytes=0-393215" },
+      });
+    return new Response(JSON.stringify({ id: "vidX", status: { privacyStatus: "private" } }), {
+      status: 200,
+    });
+  };
+
+  const result = await uploadVideo({
+    filePath: file,
+    title: "t",
+    description: "d",
+    // Asked for public with a publishAt: YouTube honours publishAt only while private, so a
+    // public insert would publish it immediately — the opposite of scheduling it.
+    privacyStatus: "public",
+    publishAt: "2026-09-20T19:00:00.000Z",
+    fetchImpl: scripted,
+    chunkBytes: CHUNK,
+  });
+  globalThis.fetch = realFetch;
+
+  assert.equal(result.videoId, "vidX");
+  assert.deepEqual(ranges, [
+    "bytes 0-262143/786432",
+    // 131072, not 262144: resumed from what YouTube kept, not from what we sent.
+    "bytes 131072-393215/786432",
+    "bytes 393216-655359/786432",
+  ]);
+  assert.equal(metadata!.status.privacyStatus, "private", "publishAt forces private");
+  assert.equal(metadata!.status.publishAt, "2026-09-20T19:00:00.000Z");
+  assert.equal(metadata!.snippet.defaultLanguage, "en");
+  // The session file is only useful to a retry; a finished upload leaves none behind.
+  assert.equal(existsSync(path.join(dir, ".upload-session.json")), false);
+
+  console.log("OK: the resumable upload resumes from YouTube's Range and schedules privately");
+  await rm(dir, { recursive: true, force: true });
 }
