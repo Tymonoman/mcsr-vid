@@ -183,6 +183,17 @@ function saveCache(cache: SuggestCache): void {
   writeFileSync(cachePath(), JSON.stringify(cache, null, 2));
 }
 
+/**
+ * A scan holds its own copy of the cache for minutes; a Dismiss (or its undo) meanwhile writes
+ * the file. The disk's list is the newer one, so it replaces the copy's before the scan saves,
+ * and the list being saved loses anything dismissed since it was ranked.
+ */
+export function reconcileDismissed(cache: SuggestCache): void {
+  cache.dismissed = loadCache().dismissed;
+  const gone = new Set(cache.dismissed);
+  cache.suggestions = cache.suggestions.filter((s) => !gone.has(s.metrics.matchId));
+}
+
 /** Match ids that must never be suggested: already worked on, or explicitly dismissed. */
 function excludedIds(cache: SuggestCache): Set<number> {
   return new Set<number>([...listProcessedMatchIds(), ...cache.dismissed]);
@@ -556,6 +567,7 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
   cache.suggestions = suggestions;
   cache.usedTwitchFollowers = usedTwitch;
   cache.stats = stats;
+  reconcileDismissed(cache);
   saveCache(cache);
 
   // A truncated scan still returns results, but say so rather than letting a short list
@@ -566,7 +578,7 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
   const notes = [scanNote, note].filter((n): n is string => n !== null);
 
   return {
-    suggestions,
+    suggestions: cache.suggestions,
     scannedAt: cache.scannedAt,
     usedTwitchFollowers: usedTwitch,
     note: notes.length > 0 ? notes.join(" · ") : null,
