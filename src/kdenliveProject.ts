@@ -77,6 +77,35 @@ export function placeOnTimeline(clip: {
   return { startOnTimelineSec: Math.max(0, origin), inSec, lengthSec: clip.durationSec - inSec };
 }
 
+const timecodeToSeconds = (tc: string): number => {
+  const [h = "0", m = "0", s = "0"] = tc.split(":");
+  return Number(h) * 3600 + Number(m) * 60 + Number(s);
+};
+
+/**
+ * The inverse of the placement above, read back out of a generated project.
+ *
+ * A track writes the entry at `startOnTimelineSec + inSec` (see buildTrack) preceded by that much
+ * blank, and `startOnTimelineSec` is `ANCHOR_SEC - matchOffsetIntoClipSec`, so the offset the
+ * sync stage decided on survives in the XML as `ANCHOR_SEC + inSec - blankBefore`. That is the
+ * only copy of it for matches rendered before sync.json existed (see syncStatusCli.ts).
+ *
+ * Null when the producer is not on any timeline playlist — including the bin, which lists every
+ * producer at in=out=0 and would otherwise answer with the anchor.
+ */
+export function offsetIntoClipFromProject(projectXml: string, producerId: string): number | null {
+  for (const [, body] of projectXml.matchAll(/<playlist id="(?!main_bin")[^"]*">([\s\S]*?)<\/playlist>/g)) {
+    const entry = new RegExp(`<entry in="([^"]+)" out="[^"]+" producer="${producerId}"`).exec(body);
+    if (!entry) continue;
+    const blankSec = [...body.slice(0, entry.index).matchAll(/<blank length="([^"]+)"\/>/g)].reduce(
+      (sum, b) => sum + timecodeToSeconds(b[1]!),
+      0,
+    );
+    return ANCHOR_SEC + timecodeToSeconds(entry[1]!) - blankSec;
+  }
+  return null;
+}
+
 export interface KdenliveMarkerInput {
   /** Absolute timeline position, in seconds from the start of the whole sequence. */
   positionSec: number;

@@ -30,6 +30,7 @@ Use the script, don't reconstruct the shell line. Extra arguments go after `--`.
 | `npm run export:fast -- <matchId> [--cpu] [--seconds=N] [--full-tail]` | The finished MP4 in one ffmpeg pass (Intel VAAPI on the lab), no Kdenlive. `--seconds` renders a short range as a smoke test. Open the `.kdenlive` when a match needs a human; both place clips through `placeOnTimeline`. |
 | `npm run export:nvenc -- media/<id>/match-<id>.kdenlive [out=N]` | melt + `h264_nvenc` to `out/export.mp4`. Needs an NVIDIA GPU; the lab has none. |
 | `npm run short -- <matchId> [--pick=N] [--seconds=22]` | The ~22 s vertical MP4 (`short-<id>.mp4`) plus its `.title.txt` / `.description.txt`. Needs the VODs. |
+| `npm run sync-status -- [matchId]` | Where a match's POV clips are placed. With an id and no `sync.json`, derives it from the `.kdenlive` and writes it, so a re-export picks the corrected offsets up without a re-render. No id lists every match and writes nothing. |
 | `npm run chat -- <matchId>` | Fetch both players' Twitch chat to `chat-<nick>.json` for a match the pipeline saved none for (it does this itself after `download-vods`). Existing files are kept; delete one to refetch. |
 | `npm run bench -- <Composition> [--frames=N] [--codec=] [--pixelFormat=] [--concurrency=N]` | Render throughput for one composition. Measure before claiming a render change is faster. |
 | `npm run analytics -- <videoId> [--traffic-sources] [--days N]` | YouTube Analytics via `~/.claude/skills/claude-youtube/` (outside the repo; token at `~/.claude/.tmp/youtube_oauth_token.json`). |
@@ -152,6 +153,10 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
 - **Timeline zero is the world-load thump** (`ANCHOR_SEC`, `src/kdenliveProject.ts`): match
   start lands at exactly 10 s. A clip whose match start is later than the anchor must be pushed
   into its own head, not un-blanked — the wrong fix renders perfectly and slides the overlay late.
+- **Every consumer places the clips from `<matchDir>/sync.json`** (`src/syncFile.ts`), which the
+  pipeline writes when the sync stage decides — refined or kept-coarse, `source` says which.
+  Without it `export:fast` and the Short fall back to `config.preRollSec` and run seconds early;
+  `npm run sync-status` backfills the matches rendered before the file existed.
 - **Sync reads the picture, not the audio.** Both players freeze through the 10 s countdown
   (`src/countdownDetect.ts`); opponents play separate worlds, so audio cross-correlation was
   12–32 s wrong. `src/sync.ts` keeps audio only as the fallback.

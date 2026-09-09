@@ -51,6 +51,7 @@ import {
   type StageTracker,
 } from "./stageProgress.js";
 import { computeSyncOffset } from "./sync.js";
+import { writeSyncOffsets, type SyncOffsets } from "./syncFile.js";
 import {
   downloadMatchVods,
   estimatedRunSec,
@@ -244,6 +245,7 @@ async function runStages(
   let rightOffsetSec = rightWindow.matchOffsetIntoClipSec;
   let syncConfidence: number | undefined;
   let syncDetail = "not run";
+  let syncSource: SyncOffsets["source"] = "coarse";
   try {
     const sync = await computeSyncOffset(
       leftWindow.path,
@@ -259,6 +261,7 @@ async function runStages(
       // left clip's estimate moves the whole published video.
       leftOffsetSec = sync.clipACueTimeSec;
       rightOffsetSec = sync.clipBCueTimeSec;
+      syncSource = "countdown";
       emit(done("sync", { message: sync.detail }));
     } else {
       emit(warn("sync", { message: `kept coarse offsets — ${sync.detail}` }));
@@ -266,6 +269,15 @@ async function runStages(
   } catch (err) {
     emit(warn("sync", { message: `refinement failed: ${describeError(err)}` }));
   }
+  // Written in the kept-coarse case too: export:fast and the Short must be able to tell "nobody
+  // has synced this yet" from "sync ran and the estimate was the answer".
+  writeSyncOffsets(outDir, {
+    left: leftOffsetSec,
+    right: rightOffsetSec,
+    confidence: syncConfidence ?? 0,
+    detail: syncDetail,
+    source: syncSource,
+  });
 
   const overlay = overlayPaths(outDir);
   const cachedStills = await readSplitStills(outDir);

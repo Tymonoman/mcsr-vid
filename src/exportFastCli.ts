@@ -4,6 +4,7 @@ import { requireArg } from "./cliArgs.js";
 import { config, matchDir } from "./config.js";
 import { getMatch, parseMatchId } from "./mcsrApi.js";
 import { overlayPaths, readSplitStills } from "./overlayRender.js";
+import { readSyncOffsets } from "./syncFile.js";
 import { exportOutputPath, runFastExport, vaapiAvailable } from "./exportFast.js";
 import { ANCHOR_SEC } from "./kdenliveProject.js";
 import { measureTail, suggestTailSec } from "./postRoll.js";
@@ -74,15 +75,29 @@ const [leftDur, rightDur, timerDur] = await Promise.all([
   probe(overlay.timer),
 ]);
 
+// The offsets the sync stage decided on, not the download estimate: without them the overlay
+// runs seconds early and the two POVs sit apart by the difference between their two errors.
+const sync = readSyncOffsets(outDir);
+const leftStartSec = sync?.left ?? config.preRollSec;
+const rightStartSec = sync?.right ?? config.preRollSec;
+console.error(
+  sync
+    ? `Sync: match start ${leftStartSec.toFixed(2)}s / ${rightStartSec.toFixed(2)}s into the clips ` +
+        `(sync.json, ${sync.source}, ${(sync.confidence * 100).toFixed(0)}%).`
+    : `Sync: no sync.json — placing both clips at the coarse ${config.preRollSec}s estimate. ` +
+        `npm run sync-status -- ${matchId} can derive it from the .kdenlive.`,
+);
+
 // Where the run ends on the timeline: match start sits at ANCHOR_SEC by construction.
 const runEndOnTimelineSec = ANCHOR_SEC + (match.result.time || 0) / 1000;
 let totalDurationSec = timerDur;
 if (!fullTail && match.result.time > 0 && timerDur > runEndOnTimelineSec + MIN_TAIL_SEC) {
   const maxTailSec = Math.min(config.postRollSec, timerDur - runEndOnTimelineSec);
   // Measured on the winner's POV — they are the one reacting.
-  const winnerNickname =
-    match.players.find((p) => p.uuid === match.result.uuid)?.nickname ?? playerLeft.nickname;
-  const runEndInClipSec = config.preRollSec + (match.result.time || 0) / 1000;
+  const winnerIsRight = match.result.uuid === playerRight.uuid;
+  const winnerNickname = (winnerIsRight ? playerRight : playerLeft).nickname;
+  // Into the winner's own clip, so the reaction is measured where it actually is.
+  const runEndInClipSec = (winnerIsRight ? rightStartSec : leftStartSec) + (match.result.time || 0) / 1000;
   const tail = await measureTail(clipFor(winnerNickname), runEndInClipSec, maxTailSec);
   const tailSec = suggestTailSec(tail, { minSec: MIN_TAIL_SEC, maxSec: maxTailSec });
   totalDurationSec = runEndOnTimelineSec + tailSec;
@@ -105,13 +120,13 @@ await runFastExport(
     leftClip: {
       path: clipFor(playerLeft.nickname),
       durationSec: leftDur,
-      matchOffsetIntoClipSec: config.preRollSec,
+      matchOffsetIntoClipSec: leftStartSec,
       clipName: `${playerLeft.nickname} POV`,
     },
     rightClip: {
       path: clipFor(playerRight.nickname),
       durationSec: rightDur,
-      matchOffsetIntoClipSec: config.preRollSec,
+      matchOffsetIntoClipSec: rightStartSec,
       clipName: `${playerRight.nickname} POV`,
     },
     topPath: overlay.top,
