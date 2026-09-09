@@ -14,6 +14,13 @@ await writeFile(
   JSON.stringify({ client_id: "c", client_secret: "s", refresh_token: "r" }),
 );
 
+// A refresh now records the Studio uploads it pairs, which walks every match directory and can
+// write into one and start an rsync. Pointed at an empty temp directory so this test cannot
+// reach the lab's `/media`: the fixture ids only happen not to exist there.
+const { config } = await import("./config.js");
+const mediaDir = config.mediaDir;
+config.mediaDir = path.join(dir, "media");
+
 const { channelShortFor, channelVideoFor, fetchChannelUploads, parseIsoDuration } =
   await import("./channelUploads.js");
 
@@ -81,6 +88,14 @@ try {
   assert.equal(parseIsoDuration("PT1H2M3S"), 3723);
   assert.equal(parseIsoDuration("PT22S"), 22);
   assert.equal(parseIsoDuration(undefined), 0);
+  // YouTube answers `P0D` while a video is still processing, which is exactly when "check the
+  // channel" is pressed. 0 is unknown, not zero seconds: read as a Short it would tick "the Short
+  // is up" on a match whose Short has never been uploaded, and leave the panel offering an upload
+  // form for the video that had just been uploaded.
+  assert.equal(parseIsoDuration("P0D"), 0);
+  const processing = { ...video("fresh", 12296170), durationSec: 0 };
+  assert.equal(channelVideoFor(12296170, [processing])?.videoId, "fresh", "unknown is the match video");
+  assert.equal(channelShortFor(12296170, [processing]), null, "and never the Short");
 
   // The hand-made uploads from before the pipeline name no match; those stay on the manual tick.
   assert.equal(
@@ -180,5 +195,6 @@ try {
   assert.equal(calls.length, after, "a fresh cache is not refreshed again by the stale check");
   console.log("channelUploads: all checks passed");
 } finally {
+  config.mediaDir = mediaDir;
   await rm(dir, { recursive: true, force: true });
 }
