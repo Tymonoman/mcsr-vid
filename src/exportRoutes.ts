@@ -107,6 +107,9 @@ function startExport(matchId: number, dir: string, argv = meltArgv(matchId, dir)
   const proc = spawn(cmd, args, {
     cwd: path.resolve(new URL("..", import.meta.url).pathname),
     stdio: ["ignore", "pipe", "pipe"],
+    // Its own process group: the argv is `npm run`, and a SIGTERM to npm alone left the tsx and
+    // ffmpeg underneath it encoding for the rest of the hour. Stop kills the group (`-pid`).
+    detached: true,
   });
 
   let settle!: (error: string | null) => void;
@@ -151,7 +154,9 @@ function startExport(matchId: number, dir: string, argv = meltArgv(matchId, dir)
     job.done = true;
     // 137 is the OOM killer. export.sh already says so on stderr, but the browser shows status
     // rather than the log tail, so the distinction has to survive up to here too.
-    if (code !== 0) {
+    // A null code is a signal — the Stop button, or a restart — not a broken encode.
+    if (code === null) job.error = "stopped";
+    else if (code !== 0) {
       job.error = code === 137 ? "killed by the OOM killer" : `export failed (exit ${code})`;
     }
     broadcast(job, { done: true, error: job.error, percent: job.error ? job.percent : 100 });
@@ -170,6 +175,17 @@ function startExport(matchId: number, dir: string, argv = meltArgv(matchId, dir)
   });
 
   return job;
+}
+
+/** Stops a running encode: the whole group, so ffmpeg goes with the npm that started it. */
+function stopExport(matchId: number): void {
+  const job = jobs.get(matchId);
+  if (!job || job.done || job.proc.pid === undefined) return;
+  try {
+    process.kill(-job.proc.pid, "SIGTERM");
+  } catch {
+    // Already gone; `close` is on its way.
+  }
 }
 
 /**
@@ -279,7 +295,7 @@ export async function handleExportRoute(
   }
 
   if (action === "run" && req.method === "DELETE") {
-    jobs.get(matchId)?.proc.kill("SIGTERM");
+    stopExport(matchId);
     ctx.json(res, 200, { matchId, aborted: true });
     return true;
   }
