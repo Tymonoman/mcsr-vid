@@ -69,6 +69,16 @@ dashboard and the Short CLI alike so a clicked row is the window that gets cut.
 `npm run reason -- <id>` prints the candidates, the prompt and the answer, asks
 afresh and saves it. Null or absent, everything keeps its heuristic.
 
+The dashboard runs in a container, and that is where this has to work — not on
+the host. Two things follow. The binary must be *in the image* (add the install
+line to the `Dockerfile`; installing it on the lab host puts it somewhere the
+container cannot see), and it must authenticate with an API key rather than the
+interactive sign-in: `agy`'s OAuth caches into the host's keyring
+(Secret Service/dbus), which no container has. Set `modelProvider: gemini` in
+`~/.gemini/antigravity-cli/settings.json` and put the key in the repo's `.env`
+as `GEMINI_API_KEY=…` — `.env` is inside the bind mount, so both containers read
+it, and `src/reasoner.ts` loads it before spawning the command.
+
 ## Tests
 
 Plain assertion scripts, no test framework — `npm test` runs every `*.test.ts`

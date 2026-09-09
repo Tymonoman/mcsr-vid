@@ -58,6 +58,9 @@ services:
 
     # No env_file needed: .env sits in the bind-mounted repo and src/twitch.ts:11-17
     # loads it natively via process.loadEnvFile, falling through to process.env.
+    # src/reasoner.ts does the same, so an LLM CLI's API key (GEMINI_API_KEY for
+    # Antigravity) goes in that same .env. The CLI itself has to be in the image —
+    # installing it on the lab host puts it where neither container can reach it.
 
   # Separate service, same image. Kept apart from `mcsr` deliberately: if the
   # dashboard were that container's command, a crash would restart the container

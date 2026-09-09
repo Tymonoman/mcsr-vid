@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { config } from "./config.js";
 
 /**
@@ -11,6 +12,20 @@ import { config } from "./config.js";
  * not installed, non-zero exit, timeout, no JSON — is a `null` and one stderr line. The caller
  * always has a heuristic answer of its own, so nothing here may throw or stall a render.
  */
+
+// The command inherits this process's environment, and an API key is how `agy` authenticates
+// where no browser and no keyring exist — which is every container the dashboard runs in. Loaded
+// here as well as in twitch.ts because otherwise the key reaches the child only as a side effect
+// of the Twitch module having been imported first, which is true today and one refactor from
+// being false. `loadEnvFile` does not overwrite variables already set, so a real env still wins.
+if (existsSync(".env")) {
+  try {
+    process.loadEnvFile(".env");
+  } catch {
+    // A malformed .env means "no key": the command will fail its own way and the caller falls
+    // back to the heuristic, which is what happens when it is not configured at all.
+  }
+}
 
 const PREAMBLE =
   "Answer with a single JSON object and nothing else: no prose before or after it, no code fence.";
