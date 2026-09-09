@@ -50,6 +50,18 @@ try {
     ["MCSR Replayoffs · Season 11"],
   );
 
+  // A playoff game takes the tournament's playlist in place of the matchup's: the bracket is the
+  // series, and the same pair's ranked games have no business in it. The per-player ones stay.
+  const playoffTitles = playlistTitlesFor(match, "video", { season: 11 }).map(([t]) => t);
+  assert.ok(playoffTitles.includes("MCSR Ranked Season 11 Playoffs · Replayoffs"));
+  assert.ok(!playoffTitles.includes("doogile vs Feinberg · MCSR Ranked"), "not both");
+  assert.equal(playoffTitles.length, 4);
+  // A Short of a playoff game is still season-only.
+  assert.deepEqual(
+    playlistTitlesFor(match, "short", { season: 11 }).map(([t]) => t),
+    ["MCSR Replayoffs · Season 11"],
+  );
+
   // No season playlist configured turns the step off rather than creating one called "".
   config.youtubePlaylistTitle = "";
   assert.deepEqual(playlistTitlesFor(match, "short"), []);

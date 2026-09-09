@@ -13,6 +13,7 @@ import type { ChannelVideo } from "./channelUploads.js";
 import { config, matchDir } from "./config.js";
 import { describeError } from "./errorText.js";
 import { matchStatusFor } from "./matchStatus.js";
+import { playoffContextForId } from "./playoffs.js";
 import { nextPublishSlot } from "./publishSlot.js";
 import { readManifest } from "./thumbnailVariants.js";
 import { HOOK_PLACEHOLDER } from "./title.js";
@@ -22,6 +23,8 @@ import {
   matchupPlaylistTitle,
   playerPlaylistDescription,
   playerPlaylistTitle,
+  playoffPlaylistDescription,
+  playoffPlaylistTitle,
   postComment,
   SEASON_PLAYLIST_DESCRIPTION,
   setThumbnail,
@@ -189,8 +192,8 @@ export async function beginUpload(matchId: number, req: UploadRequest): Promise<
 }
 
 /**
- * Every playlist a match video joins, as [title, description]. Playoffs mode (another branch)
- * adds its tournament playlist here.
+ * Every playlist a match video joins, as [title, description]. The one place that decides, for
+ * the dashboard upload, the nightly's and "Finish on YouTube".
  *
  * A Short joins the season playlist only. The matchup playlist is for the long-form: a rematch is
  * the strongest series signal this channel has — it is already what the best hook chips say
@@ -198,10 +201,16 @@ export async function beginUpload(matchId: number, req: UploadRequest): Promise<
  * the per-player one is the link a runner shares. Both are skipped when the nicknames are the
  * "?" `matchStatusFor` degrades to with the MCSR API down: a public playlist called "? vs ?" is
  * worse than none, and unlike the upload it cannot be quietly re-done later.
+ *
+ * A playoff game takes the tournament's playlist in place of the matchup's: the bracket is the
+ * series, and the same pair's ranked games have no business in it. `playoff` is passed in rather
+ * than looked up here so the shape stays pure and testable; `playoffContextForId` is one cached
+ * API read at the caller.
  */
 export const playlistTitlesFor = (
   match: { leftNickname: string; rightNickname: string },
   kind: UploadKind,
+  playoff: { season: number } | null = null,
 ): Array<[title: string, description: string]> => {
   const { leftNickname: l, rightNickname: r } = match;
   const season: Array<[string, string]> = config.youtubePlaylistTitle
@@ -210,7 +219,9 @@ export const playlistTitlesFor = (
   if (kind === "short" || l === "?" || r === "?") return season;
   return [
     ...season,
-    [matchupPlaylistTitle(l, r), matchupPlaylistDescription(l, r)],
+    playoff
+      ? [playoffPlaylistTitle(playoff.season), playoffPlaylistDescription(playoff.season)]
+      : [matchupPlaylistTitle(l, r), matchupPlaylistDescription(l, r)],
     [playerPlaylistTitle(l), playerPlaylistDescription(l)],
     [playerPlaylistTitle(r), playerPlaylistDescription(r)],
   ];
@@ -260,8 +271,11 @@ export async function finishOnYouTube(
   const finished: FinishedSteps = { ...already };
 
   if (todo("playlists")) {
+    // A playoff game joins the tournament's playlist instead of the matchup's. Read here rather
+    // than in `playlistTitlesFor` so that stays a pure function of what it is handed.
+    const playoff = kind === "video" ? await playoffContextForId(matchId) : null;
     const playlistErrors: string[] = [];
-    for (const [title, description] of playlistTitlesFor(status, kind)) {
+    for (const [title, description] of playlistTitlesFor(status, kind, playoff)) {
       const error = await attempt(() => addToPlaylist(videoId, title, description));
       if (error) playlistErrors.push(`"${title}": ${error}`);
     }
