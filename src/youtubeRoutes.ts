@@ -1,14 +1,11 @@
 /**
  * The dashboard's YouTube endpoints.
  *
- * Split from server.ts for size, and it keeps the same rule: transport only. Anything resembling a decision belongs in youtube.ts
- * (the API) or youtubeStore.ts (what we recorded about a match).
+ * Split from server.ts for size, and it keeps the same rule: transport only. Anything resembling
+ * a decision belongs in youtube.ts (the API), youtubeUpload.ts (what an upload does) or
+ * youtubeStore.ts (what we recorded about a match).
  */
-import { existsSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import path from "node:path";
-import { archiveMatch } from "./archive.js";
-import { auditState, readAudit, startAudit } from "./audit.js";
 import {
   channelUploadsSnapshot,
   channelVideoFor,
@@ -16,33 +13,24 @@ import {
   refreshChannelUploadsNow,
   type ChannelVideo,
 } from "./channelUploads.js";
+import { auditState, readAudit, startAudit } from "./audit.js";
 import { config, matchDir } from "./config.js";
 import { describeError } from "./errorText.js";
 import { listProcessedMatchIds, matchStatusFor } from "./matchStatus.js";
-import { playoffContextForId } from "./playoffs.js";
 import { readManifest, variantFellBack } from "./thumbnailVariants.js";
-import { HOOK_PLACEHOLDER } from "./title.js";
 import {
-  addToPlaylist,
   commentThreads,
   isConfigured,
   latestImpressions,
-  matchupPlaylistTitle,
-  playerPlaylistTitle,
-  playoffPlaylistDescription,
-  playoffPlaylistTitle,
   replyToComment,
-  setThumbnail,
-  uploadVideo,
   videoStats,
   type ImpressionsRow,
-  SEASON_PLAYLIST_DESCRIPTION,
-  matchupPlaylistDescription,
-  playerPlaylistDescription,
 } from "./youtube.js";
-import { allUploads, findExportedVideo, readUpload, writeUpload, type UploadRecord } from "./youtubeStore.js";
-
+import { allUploads, readUpload } from "./youtubeStore.js";
+import { beginUpload, finishOnYouTube, uploadProgress } from "./youtubeUpload.js";
 import { yppProgress } from "./yppProgress.js";
+
+export { uploadRunning } from "./youtubeUpload.js";
 
 type Json = (res: ServerResponse, status: number, body: unknown) => void;
 type ReadBody = (req: IncomingMessage) => Promise<string>;
@@ -53,30 +41,6 @@ export interface YoutubeRouteContext {
   matchDir: (matchId: number) => string;
   parseId: (raw: string | undefined) => number | null;
 }
-
-/** An upload in flight, so the browser can show a byte-level bar on a multi-GB file. */
-interface UploadProgress {
-  matchId: number;
-  uploaded: number;
-  total: number;
-  done: boolean;
-  error: string | null;
-  videoId: string | null;
-}
-
-const uploads = new Map<number, UploadProgress>();
-
-/** An upload reading this match's export right now. */
-export const uploadRunning = (matchId: number): boolean => uploads.get(matchId)?.done === false;
-
-const idle = (matchId: number): UploadProgress => ({
-  matchId,
-  uploaded: 0,
-  total: 0,
-  done: false,
-  error: null,
-  videoId: null,
-});
 
 /**
  * Returns true when it handled the request. Written as a predicate rather than a router so
@@ -101,7 +65,11 @@ export async function handleYoutubeRoute(
   }
 
   if (action === "status" && req.method === "GET") {
-    ctx.json(res, 200, { connected: isConfigured(), channelId: config.youtubeChannelId });
+    ctx.json(res, 200, {
+      connected: isConfigured(),
+      channelId: config.youtubeChannelId,
+      uploadsEnabled: config.youtubeUploadEnabled,
+    });
     return true;
   }
 
@@ -155,7 +123,29 @@ export async function handleYoutubeRoute(
   }
 
   if (action === "upload" && req.method === "GET") {
-    ctx.json(res, 200, uploads.get(matchId) ?? idle(matchId));
+    const kind = new URL(req.url ?? "/", "http://x").searchParams.get("kind") === "short" ? "short" : "video";
+    ctx.json(res, 200, uploadProgress(matchId, kind));
+    return true;
+  }
+
+  // A Studio upload is on the channel with YouTube's auto-thumbnail, in no playlist and with an
+  // empty comment box; this is the rest of what a dashboard upload would have done to it.
+  if (action === "finish" && req.method === "POST") {
+    const videoId =
+      (await readUpload(matchId))?.videoId ??
+      channelVideoFor(matchId, channelUploadsSnapshot())?.videoId ??
+      null;
+    if (!videoId) {
+      ctx.json(res, 409, {
+        error: `No channel video is paired to match ${matchId} yet — upload it in Studio with the match link in the description, then check the channel`,
+      });
+      return true;
+    }
+    try {
+      ctx.json(res, 200, { videoId, finished: await finishOnYouTube(matchId, videoId) });
+    } catch (err) {
+      ctx.json(res, 502, { error: describeError(err) });
+    }
     return true;
   }
 
@@ -214,34 +204,12 @@ async function startUpload(
   matchId: number,
   ctx: YoutubeRouteContext,
 ): Promise<void> {
-  const running = uploads.get(matchId);
-  if (running && !running.done) {
-    ctx.json(res, 409, { error: `Match ${matchId} is already uploading`, progress: running });
-    return;
-  }
-
   const body = JSON.parse(await ctx.readBody(req)) as {
-    title?: unknown;
-    description?: unknown;
-    tags?: unknown;
+    kind?: unknown;
     privacyStatus?: unknown;
     publishAt?: unknown;
     videoPath?: unknown;
   };
-  if (typeof body.title !== "string" || body.title.trim() === "") {
-    ctx.json(res, 400, { error: "title is required" });
-    return;
-  }
-  // Refuse a title still carrying the `<HOOK>` placeholder. The client gates the button too
-  // (youtube.js); this is the half that does not depend on any UI getting it right.
-  if (body.title.includes(HOOK_PLACEHOLDER)) {
-    ctx.json(res, 400, { error: `title still contains ${HOOK_PLACEHOLDER} — pick a hook first` });
-    return;
-  }
-  if (typeof body.description !== "string") {
-    ctx.json(res, 400, { error: "description is required" });
-    return;
-  }
   const privacyStatus =
     body.privacyStatus === "public" || body.privacyStatus === "unlisted" ? body.privacyStatus : "private";
 
@@ -261,119 +229,20 @@ async function startUpload(
     publishAt = when.toISOString();
   }
 
-  const status = await matchStatusFor(matchId);
-  const located =
-    typeof body.videoPath === "string" && body.videoPath.trim() !== ""
-      ? { path: body.videoPath }
-      : findExportedVideo(matchId, [status.leftNickname, status.rightNickname]);
-  if ("error" in located) {
-    ctx.json(res, 400, { error: located.error });
+  const begun = await beginUpload(matchId, {
+    kind: body.kind === "short" ? "short" : "video",
+    privacyStatus,
+    publishAt,
+    videoPath:
+      typeof body.videoPath === "string" && body.videoPath.trim() !== "" ? body.videoPath : undefined,
+  });
+  if ("error" in begun) {
+    ctx.json(res, begun.status, { error: begun.error });
     return;
   }
-  if (!existsSync(located.path)) {
-    ctx.json(res, 400, { error: `No such video file: ${located.path}` });
-    return;
-  }
-
-  const manifest = await readManifest(ctx.matchDir(matchId));
-  const progress = idle(matchId);
-  uploads.set(matchId, progress);
-
   // Answer immediately: a multi-GB upload outlives any sensible request timeout, so the browser
   // polls GET /api/youtube/upload/:id for the bar.
-  ctx.json(res, 202, { matchId, started: true, videoPath: located.path });
-
-  void (async () => {
-    try {
-      const result = await uploadVideo({
-        filePath: located.path,
-        title: body.title as string,
-        description: body.description as string,
-        tags: Array.isArray(body.tags) ? (body.tags as string[]) : [],
-        privacyStatus,
-        publishAt,
-        onProgress: (uploaded, total) => {
-          progress.uploaded = uploaded;
-          progress.total = total;
-        },
-      });
-      progress.videoId = result.videoId;
-
-      // Set the thumbnail after the video exists. Failing here is worth reporting but not worth
-      // pretending the upload failed — the video is up, it just has YouTube's auto-thumbnail.
-      const thumb = path.join(ctx.matchDir(matchId), "thumbnail.png");
-      if (existsSync(thumb)) {
-        try {
-          await setThumbnail(result.videoId, thumb);
-        } catch (err) {
-          progress.error = `Uploaded, but the thumbnail was rejected: ${describeError(err)}`;
-        }
-      }
-
-      // Same contract as the thumbnail: the video is up, so a playlist failure is worth saying
-      // out loud but must not read as a failed upload. Appended, not assigned — a thumbnail
-      // error above would otherwise be silently overwritten.
-      const joinPlaylist = async (title: string, description = "") => {
-        try {
-          await addToPlaylist(result.videoId, title, description);
-        } catch (err) {
-          const note = `Uploaded, but adding it to "${title}" failed: ${describeError(err)}`;
-          progress.error = progress.error ? `${progress.error} ${note}` : note;
-        }
-      };
-      if (config.youtubePlaylistTitle)
-        await joinPlaylist(config.youtubePlaylistTitle, SEASON_PLAYLIST_DESCRIPTION);
-      // And a playlist per matchup. A rematch is the strongest series signal this channel has —
-      // it is already what the best hook chips say ("Rematch: doogile leads 2-1") — and a
-      // playlist is how a viewer who liked one of them finds the rest.
-      //
-      // Skipped when the nicknames are the "?" `matchStatusFor` degrades to with the MCSR API
-      // down: a public playlist called "? vs ?" is worse than no playlist, and unlike the
-      // upload it cannot be quietly re-done later.
-      if (status.leftNickname !== "?" && status.rightNickname !== "?") {
-        // A playoff game joins the tournament's playlist instead: the bracket is the series.
-        const playoff = await playoffContextForId(matchId);
-        if (playoff) {
-          await joinPlaylist(
-            playoffPlaylistTitle(playoff.season),
-            playoffPlaylistDescription(playoff.season),
-          );
-        } else {
-          await joinPlaylist(
-            matchupPlaylistTitle(status.leftNickname, status.rightNickname),
-            matchupPlaylistDescription(status.leftNickname, status.rightNickname),
-          );
-        }
-        // And one per player: the link a runner shares, and the one their followers browse.
-        await joinPlaylist(
-          playerPlaylistTitle(status.leftNickname),
-          playerPlaylistDescription(status.leftNickname),
-        );
-        await joinPlaylist(
-          playerPlaylistTitle(status.rightNickname),
-          playerPlaylistDescription(status.rightNickname),
-        );
-      }
-
-      const record: UploadRecord = {
-        videoId: result.videoId,
-        uploadedAt: new Date().toISOString(),
-        publishAt: result.publishAt,
-        privacyStatus: result.privacyStatus,
-        thumbnailVariant: manifest?.chosen ?? null,
-        title: body.title as string,
-      };
-      await writeUpload(matchId, record);
-      // Published is the point the match is finished with, so it is the point worth backing up.
-      // Fire-and-forget (see archiveMatch's note); failures land in the server log and in
-      // GET /api/capacity, not here — a NAS blip must not read as a failed upload.
-      archiveMatch(matchId);
-    } catch (err) {
-      progress.error = describeError(err);
-    } finally {
-      progress.done = true;
-    }
-  })();
+  ctx.json(res, 202, { matchId, kind: begun.progress.kind, started: true });
 }
 
 /**
@@ -422,7 +291,8 @@ async function knownUploads() {
   const local = (await allUploads()).map((r) => ({
     matchId: r.matchId,
     ...r.record,
-    source: "dashboard" as const,
+    // Records written before Studio uploads were persisted carry no source and were the dashboard's.
+    source: r.record.source ?? ("dashboard" as const),
   }));
   const known = new Set(local.map((u) => u.matchId));
   const channel = channelUploadsSnapshot();
@@ -539,7 +409,7 @@ async function abTestPayload() {
     const manifest = await readManifest(matchDir(u.matchId));
     // A dashboard upload recorded which variant it sent; a Studio upload did not, and the
     // manifest's `chosen` is the one the dashboard handed over to be uploaded.
-    const variantKey = u.source === "dashboard" ? u.thumbnailVariant : (manifest?.chosen ?? undefined);
+    const variantKey = u.source === "channel" ? (manifest?.chosen ?? undefined) : u.thumbnailVariant;
     const key = variantKey ?? "(unknown)";
     const variant = manifest?.variants.find((v) => v.key === variantKey);
     const fellBack = variant ? variantFellBack(variant) : false;

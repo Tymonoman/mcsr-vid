@@ -56,7 +56,7 @@ import {
 } from "./matchShelf.js";
 import { handleShortsRoute, shortRunning } from "./shortsRoutes.js";
 import { handleYoutubeRoute, uploadRunning } from "./youtubeRoutes.js";
-import { readUpload } from "./youtubeStore.js";
+import { pinnedCommentText, readUpload } from "./youtubeStore.js";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -576,6 +576,9 @@ const server = createServer(async (req, res) => {
         shortDescription: await short("description"),
         videoUrl: videoId ? `https://youtu.be/${videoId}` : null,
         players: [entry.leftNickname ?? null, entry.rightNickname ?? null],
+        // The same line "Finish on YouTube" posts (src/youtubeUpload.ts), so the paste and the
+        // API call cannot say two different things.
+        pinnedComment: pinnedCommentText(entry.leftNickname ?? null, entry.rightNickname ?? null),
         // The slot to schedule for, so the morning's paste into Studio carries a time too.
         publishAt: nextPublishSlot(Date.now(), config.publishHourUtc).toISOString(),
         publishHourUtc: config.publishHourUtc,
@@ -606,7 +609,9 @@ const server = createServer(async (req, res) => {
                 ? "a thumbnail re-render"
                 : uploadRunning(matchId)
                   ? "an upload"
-                  : null;
+                  : allArchiveStates().some((a) => a.matchId === matchId && a.running)
+                    ? "an archive copy"
+                    : null;
       if (busy) {
         json(res, 409, { error: `Match ${matchId} has ${busy} in flight — stop it first` });
         return;
