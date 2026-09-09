@@ -18,16 +18,11 @@ assert.ok(media.startsWith(tmpdir()) && archive.startsWith(tmpdir()), "refusing 
 config.mediaDir = media;
 process.env.MCSR_ARCHIVE_DIR = archive;
 
-const {
-  deleteMatch,
-  hiddenMatchIds,
-  isArchived,
-  isExported,
-  isUploaded,
-  publishChecklist,
-  setHidden,
-  setPublishFlag,
-} = await import("./matchShelf.js");
+const { deleteMatch, hiddenMatchIds, isExported, isUploaded, publishChecklist, setHidden, setPublishFlag } =
+  await import("./matchShelf.js");
+// archive.ts owns ARCHIVE_ROOT, so it also owns the "is there a copy" test; imported after
+// MCSR_ARCHIVE_DIR is set, as matchShelf is.
+const { isArchived } = await import("./archive.js");
 
 function seed(matchId: number, bytes: number): string {
   const dir = path.join(media, String(matchId));

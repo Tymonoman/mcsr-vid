@@ -396,7 +396,7 @@ export function afterSettled(
     // default on both counts (`youtubeUploadEnabled`, `nightlyUpload`), so this line does
     // nothing tonight. Errors are the clause's; the render is not undone by a failed upload.
     const uploadClause =
-      exportClause === " + exported"
+      exportOutcome(exportClause) === "done"
         ? await nightlyUploads(job.matchId).catch((err: unknown) => ` + upload failed: ${describeError(err)}`)
         : "";
     await report?.(verdict, shortClause, exportClause, uploadClause);

@@ -39,14 +39,13 @@ import { nextPublishSlot } from "./publishSlot.js";
 import { playoffBoard, playoffContextForId, playoffTitleTail } from "./playoffs.js";
 import { refreshRivalPostsIfStale, rivalPostsSnapshot, rivalRecentPostFor } from "./rivalPosts.js";
 import { chooseVariant, readManifest, rerenderThumbnailVariants } from "./thumbnailVariants.js";
-import { buildTitle, type BuiltTitle } from "./title.js";
-import { allArchiveStates, capacity } from "./archive.js";
+import { buildTitle, metaPaths, type BuiltTitle } from "./title.js";
+import { allArchiveStates, capacity, isArchived } from "./archive.js";
 import { exportRunning, handleExportRoute } from "./exportRoutes.js";
 import {
   MANUAL_PUBLISH_KEYS,
   deleteMatch,
   hiddenMatchIds,
-  isArchived,
   isExported,
   isManualPublishKey,
   isUploaded,
@@ -106,15 +105,6 @@ function json(res: ServerResponse, status: number, body: unknown): void {
 
 async function readIfPresent(filePath: string): Promise<string | null> {
   return existsSync(filePath) ? readFile(filePath, "utf8") : null;
-}
-
-/**
- * Generated text is regenerable and the pipeline rewrites it on every run, so edits go
- * to a `.edited.txt` sibling rather than over the top. Reading prefers the edit.
- */
-function metaPaths(matchId: number, kind: "title" | "description") {
-  const base = path.join(matchDir(matchId), `match-${matchId}.${kind}`);
-  return { generated: `${base}.txt`, edited: `${base}.edited.txt` };
 }
 
 async function readMeta(matchId: number) {

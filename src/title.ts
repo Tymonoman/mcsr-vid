@@ -1,3 +1,6 @@
+import path from "node:path";
+import { matchDir } from "./config.js";
+
 /** The format half every upload shares, matching the titles already on the channel. */
 const FORMAT_SUFFIX = "MCSR Ranked 1v1";
 export const SEPARATOR = " | ";
@@ -73,4 +76,18 @@ export function formatTitle(built: BuiltTitle): string {
         `(title lands at ${base + built.hookMin}-${base + built.hookMax}).`,
     `Both nicknames come from the API — don't retype them.`,
   ].join("\n");
+}
+
+/**
+ * Where a match's title and description live. Generated text is regenerable and the pipeline
+ * rewrites it on every run, so edits go to a `.edited.txt` sibling rather than over the top, and
+ * every reader prefers the edit.
+ *
+ * Here rather than in the dashboard because four things read it — the title editor, the publish
+ * checklist, the publish kit and the upload (src/youtubeStore.ts `uploadTextFor`) — and a fourth
+ * copy of "the edit wins" is a fourth chance for the upload to send yesterday's title.
+ */
+export function metaPaths(matchId: number, kind: "title" | "description") {
+  const base = path.join(matchDir(matchId), `match-${matchId}.${kind}`);
+  return { generated: `${base}.txt`, edited: `${base}.edited.txt` };
 }

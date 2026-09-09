@@ -8,12 +8,16 @@
  * freeing space stays a separate, manual decision.
  */
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { statfs } from "node:fs/promises";
 import path from "node:path";
 import { config } from "./config.js";
 
 /** Where the NAS is mounted inside the container. See compose.yaml. */
 const ARCHIVE_ROOT = process.env.MCSR_ARCHIVE_DIR ?? "/archive";
+
+/** True when a copy of this match is on the NAS, i.e. a delete of it would be recoverable. */
+export const isArchived = (matchId: number): boolean => existsSync(path.join(ARCHIVE_ROOT, String(matchId)));
 
 export interface ArchiveState {
   matchId: number;
@@ -45,6 +49,14 @@ let queue: Promise<unknown> = Promise.resolve();
 export function archiveMatch(matchId: number): ArchiveState {
   const existing = states.get(matchId);
   if (existing?.running) return existing;
+  // Already backed up: nothing to do. Here rather than at each caller because every one of them
+  // is "this match is published, keep it" and would otherwise need the same test — the channel
+  // scan re-pairs a Studio upload whenever its record is missing, and a re-upload of a re-export
+  // would queue a second walk of 2.5 GB over CIFS for no change.
+  //
+  // ponytail: existence, not completeness — an rsync that died half way leaves a directory that
+  // reads as archived. Remove `<ARCHIVE_ROOT>/<id>` to force a fresh copy.
+  if (isArchived(matchId)) return existing ?? { matchId, running: false, error: null, tookMs: null };
 
   const state: ArchiveState = { matchId, running: true, error: null, tookMs: null };
   states.set(matchId, state);

@@ -16,14 +16,12 @@
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
+import { isArchived } from "./archive.js";
 import { channelShortFor, channelUploadsSnapshot, channelVideoFor } from "./channelUploads.js";
 import { config, matchDir } from "./config.js";
 import { readManifest } from "./thumbnailVariants.js";
-import { HOOK_PLACEHOLDER } from "./title.js";
+import { HOOK_PLACEHOLDER, metaPaths } from "./title.js";
 import { readUpload } from "./youtubeStore.js";
-
-/** Where the NAS is mounted inside the container. Same default as archive.ts. */
-const ARCHIVE_ROOT = process.env.MCSR_ARCHIVE_DIR ?? "/archive";
 
 /**
  * Dot-prefixed so `listProcessedMatchIds` — which takes every `^\d+$` *directory* — cannot
@@ -75,9 +73,6 @@ async function dirBytes(dir: string): Promise<number> {
   }
   return total;
 }
-
-/** True when an archived copy exists, so a delete can be reported as recoverable. */
-export const isArchived = (matchId: number): boolean => existsSync(path.join(ARCHIVE_ROOT, String(matchId)));
 
 /**
  * Removes a match's working directory, reporting what it freed.
@@ -203,7 +198,7 @@ export async function publishChecklist(
   projectPath: string | null,
 ): Promise<PublishChecklist> {
   const dir = matchDir(matchId);
-  const editedTitle = path.join(dir, `match-${matchId}.title.edited.txt`);
+  const editedTitle = metaPaths(matchId, "title").edited;
   // The same test the upload route runs before it will send anything (youtubeRoutes.ts): a title
   // still carrying the placeholder has no hook, whatever else was edited around it.
   const firstLine = existsSync(editedTitle) ? readFileSync(editedTitle, "utf8").split("\n")[0]!.trim() : "";
