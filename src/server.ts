@@ -16,7 +16,7 @@ import { channelUploadsSnapshot, channelVideoFor, refreshChannelUploadsIfStale }
 import { config, matchDir } from "./config.js";
 import { describeError } from "./errorText.js";
 import { codeVersions } from "./repoHead.js";
-import { buildHookSuggestions, suggestHooksExternally } from "./hooks.js";
+import { hookSuggestions } from "./hooks.js";
 import { computeMetrics } from "./matchScore.js";
 import { listMatchStatuses, matchStatusFor } from "./matchStatus.js";
 import { getMatch, getUser, getVersus, parseMatchId } from "./mcsrApi.js";
@@ -198,7 +198,7 @@ async function readHookSuggestions(matchId: number, budget: BuiltTitle): Promise
       minChars: budget.hookMin,
       versus,
     };
-    const hooks = (await suggestHooksExternally(input)) ?? buildHookSuggestions(input);
+    const hooks = await hookSuggestions(input);
     // Rank chips read live rank and drift within hours; the thumbnail's committed line wins so
     // both halves of a match agree. "Re-render with hook" rewrites the manifest, so choosing
     // differently is still one click.

@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
-import { buildHookSuggestions, hookFacts, suggestHooksExternally, type HookInput } from "./hooks.js";
+import {
+  buildHookSuggestions,
+  hookFacts,
+  spoilsTheResult,
+  suggestHooksExternally,
+  type HookInput,
+} from "./hooks.js";
 import type { MatchMetrics } from "./matchScore.js";
 import type { MatchInfo, UserDetails, VersusStats } from "./types.js";
 
@@ -240,3 +246,29 @@ delete process.env.HOOK_SUGGEST_CMD;
 assert.equal(await suggestHooksExternally(input()), null);
 
 console.log("hooks: all checks passed");
+
+// The generator is never handed the result, and never trusted to keep it either.
+{
+  const facts = hookFacts(input()) as Record<string, unknown>;
+  assert.ok(!("winner" in facts), "hookFacts must not name the winner");
+  assert.ok(!JSON.stringify(facts).includes('"winner"'), "nor nest it anywhere");
+
+  for (const spoiler of [
+    "Infume WINS from 20 seconds down",
+    "doogile takes the win on the last portal",
+    "edcr chokes the dragon fight",
+    "BeefSalad lost this at the bastion",
+  ]) {
+    assert.ok(spoilsTheResult(spoiler), `should be rejected: ${spoiler}`);
+  }
+  for (const safe of [
+    "Can the 1789 take down the 2080?",
+    "LOVERBOY VS ROBLOX KID",
+    "Rematch: doogile leads 2-1",
+    "Decided by 2.8 seconds",
+    "The lead changed 3 times",
+    "Who wins this one?",
+  ]) {
+    assert.ok(!spoilsTheResult(safe), `should be allowed: ${safe}`);
+  }
+}

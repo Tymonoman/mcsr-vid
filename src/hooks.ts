@@ -195,13 +195,19 @@ export function buildHookSuggestions(input: HookInput, limit = 5): string[] {
     .map((c) => c.text);
 }
 
-/** Exactly the facts a generator needs; no prose, so the prompt lives in the command, not here. */
+/**
+ * Exactly the facts a generator needs; no prose, so the prompt lives in the command, not here.
+ *
+ * `winner` is deliberately absent. The built-ins use it internally to decide *which* question to
+ * ask and never print it, but a generator handed the name writes "X DESTROYS Y" — and the first
+ * suggestion is what the pipeline burns into the thumbnail and the Short. Not sending it makes the
+ * house rule structural rather than a filter; `spoilsTheResult` below is the second line.
+ */
 export function hookFacts(input: HookInput) {
   const { metrics, match, userLeft, userRight } = input;
   return {
     matchId: metrics.matchId,
     players: metrics.players,
-    winner: metrics.winner,
     resultMs: metrics.resultMs,
     finishMarginMs: metrics.finishMarginMs,
     finishEstimated: metrics.finishEstimated,
@@ -238,6 +244,21 @@ export function hookFacts(input: HookInput) {
  * Any failure — unset, missing binary, timeout, empty output — falls back to the built-ins,
  * because an empty hook box is a worse outcome than a less clever hook.
  */
+/**
+ * Whether a line gives the result away.
+ *
+ * A question never does — "Can the 1789 take down the 2080?" is the channel's whole framing — so
+ * anything ending in "?" passes. Otherwise a verb of winning or losing next to anything is out.
+ * Deliberately blunt: a false positive costs one suggestion, a false negative costs the video.
+ */
+export function spoilsTheResult(text: string): boolean {
+  const line = text.trim();
+  if (line.endsWith("?")) return false;
+  return /\b(wins?|won|winner|beats?|beaten|destroys?|crushes|takes? (?:it|down|the win)|took (?:it|the win)|loses?|lost|loser|chokes?|choked|throws?|threw|clutch(?:es|ed)?|comeback complete|survives?|eliminat(?:es|ed))\b/i.test(
+    line,
+  );
+}
+
 export async function suggestHooksExternally(input: HookInput): Promise<string[] | null> {
   const command = process.env.HOOK_SUGGEST_CMD;
   if (!command || command.trim() === "") return null;
@@ -249,7 +270,8 @@ export async function suggestHooksExternally(input: HookInput): Promise<string[]
       .map((line) => line.trim())
       // Tolerate a numbered or bulleted list, which is what a model returns unless told twice.
       .map((line) => line.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, ""))
-      .filter((line) => line.length >= MIN_USEFUL_CHARS && line.length <= input.maxChars);
+      .filter((line) => line.length >= MIN_USEFUL_CHARS && line.length <= input.maxChars)
+      .filter((line) => !spoilsTheResult(line));
     return lines.length > 0 ? lines.slice(0, 5) : null;
   } catch (err) {
     console.error(`HOOK_SUGGEST_CMD failed, using built-in hooks: ${describeError(err)}`);
@@ -284,4 +306,15 @@ function runCommand(command: string, stdin: string): Promise<string> {
 
     proc.stdin.end(stdin);
   });
+}
+
+/**
+ * The suggestions, external generator first.
+ *
+ * The one place that decides; before this the command reached only the title editor, so a hook
+ * the operator liked in the browser was not the hook the nightly burned into the thumbnail and
+ * the Short. Async because the command is; the built-ins are the fallback on every failure.
+ */
+export async function hookSuggestions(input: HookInput): Promise<string[]> {
+  return (await suggestHooksExternally(input)) ?? buildHookSuggestions(input);
 }

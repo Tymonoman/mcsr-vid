@@ -26,7 +26,7 @@ import { computeSplits } from "./overlayProps.js";
 import { buildChapters, formatChapters } from "./chapters.js";
 import { buildSplitMarkers } from "./markers.js";
 import { buildDescription, buildTags } from "./description.js";
-import { buildHookSuggestions } from "./hooks.js";
+import { hookSuggestions } from "./hooks.js";
 import { computeMetrics } from "./matchScore.js";
 import { buildTitle, formatTitle } from "./title.js";
 import { overlayPaths, readSplitStills, renderOverlay, type SplitStill } from "./overlayRender.js";
@@ -327,15 +327,17 @@ async function runStages(
     // else, and without the record here it never appeared on a thumbnail.
     const hookText = carriedHookText(
       await readManifest(outDir),
-      buildHookSuggestions({
-        metrics: computeMetrics(match),
-        match,
-        userLeft,
-        userRight,
-        maxChars: title.hookMax,
-        minChars: title.hookMin,
-        versus,
-      })[0],
+      (
+        await hookSuggestions({
+          metrics: computeMetrics(match),
+          match,
+          userLeft,
+          userRight,
+          maxChars: title.hookMax,
+          minChars: title.hookMin,
+          versus,
+        })
+      )[0],
     );
     const manifest = await renderThumbnailVariants({
       match,

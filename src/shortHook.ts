@@ -1,7 +1,7 @@
 import path from "node:path";
 import { readFile } from "node:fs/promises";
 import { HASHTAGS } from "./description.js";
-import { buildHookSuggestions } from "./hooks.js";
+import { hookSuggestions } from "./hooks.js";
 import { computeMetrics } from "./matchScore.js";
 import type { ShortMoment } from "./shortMoment.js";
 import { readManifest } from "./thumbnailVariants.js";
@@ -109,14 +109,14 @@ export async function resolveShortHookFor(input: {
     editedTitle,
     [
       ...(committed ? [committed] : []),
-      ...buildHookSuggestions({
+      ...(await hookSuggestions({
         metrics: computeMetrics(match),
         match,
         userLeft,
         userRight,
         maxChars: budget.hookMax,
         minChars: budget.hookMin,
-      }),
+      })),
     ],
     buildShortHook(moment, userLeft.nickname, userRight.nickname),
   );
