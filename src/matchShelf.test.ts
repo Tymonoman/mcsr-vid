@@ -161,6 +161,7 @@ try {
       publishedAt: "2026-09-01T19:00:00Z",
       description: `Match data: https://mcsrranked.com/matches/${matchId}`,
       privacyStatus: "public",
+      durationSec: 612,
     },
   ];
   // 5570 is a different match whose id merely starts with ours; a substring test would tick 557.
@@ -169,6 +170,15 @@ try {
   _setChannelUploadsForTest(onChannel(557));
   assert.equal(await isUploaded(557), true, "the match link in a Studio upload's description");
   assert.equal((await publishChecklist(557, null)).uploaded, true, "and the checklist agrees");
+  assert.equal(
+    (await publishChecklist(557, null)).shortUploaded,
+    false,
+    "a 10-minute video is not the Short",
+  );
+  // The Short on the channel: same link, three minutes or under — no tick needed either.
+  _setChannelUploadsForTest(onChannel(557).map((v) => ({ ...v, videoId: "shortId", durationSec: 22 })));
+  assert.equal(await isUploaded(557), false, "a Short alone is not the match video");
+  assert.equal((await publishChecklist(557, null)).shortUploaded, true, "the Short by its length");
   _setChannelUploadsForTest([]);
 
   console.log("matchShelf: all checks passed");

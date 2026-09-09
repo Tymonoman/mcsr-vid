@@ -14,7 +14,8 @@ await writeFile(
   JSON.stringify({ client_id: "c", client_secret: "s", refresh_token: "r" }),
 );
 
-const { channelVideoFor, fetchChannelUploads } = await import("./channelUploads.js");
+const { channelShortFor, channelVideoFor, fetchChannelUploads, parseIsoDuration } =
+  await import("./channelUploads.js");
 
 try {
   /* --- Which video is which match ---------------------------------------------------------- */
@@ -25,6 +26,7 @@ try {
     publishedAt: "2026-09-01T19:00:00Z",
     description: `Chapters:\n0:00 Intro\n\nMatch data: https://mcsrranked.com/matches/${matchId}\n\nMCSR Replayoffs is an independent fan project.`,
     privacyStatus: "public",
+    durationSec: 612,
   });
   const videos = [video("aAX_ML4rHdo", 12296170), video("gRjV1jG4-Ng", 12396259)];
 
@@ -70,6 +72,16 @@ try {
     null,
     "a VOD id is /videos/, not /matches/",
   );
+  // The Short carries the same match link (src/shortHook.ts) and is told apart by length alone:
+  // a match video paired to its own Short would tick "uploaded" on a match with no long-form up.
+  const short = { ...video("shortId", 12296170), durationSec: 22 };
+  assert.equal(channelVideoFor(12296170, [short]), null, "a 22 s video is not the match video");
+  assert.equal(channelShortFor(12296170, [short])?.videoId, "shortId");
+  assert.equal(channelShortFor(12296170, videos), null, "and a 10-minute one is not the Short");
+  assert.equal(parseIsoDuration("PT1H2M3S"), 3723);
+  assert.equal(parseIsoDuration("PT22S"), 22);
+  assert.equal(parseIsoDuration(undefined), 0);
+
   // The hand-made uploads from before the pipeline name no match; those stay on the manual tick.
   assert.equal(
     channelVideoFor(12296170, [{ ...video("old", 1), description: "MCSR Ranked highlights" }]),
@@ -120,6 +132,7 @@ try {
             description: `Match data: https://mcsrranked.com/matches/${matchOf(id)}`,
           },
           status: { privacyStatus: "public" },
+          contentDetails: { duration: "PT10M12S" },
         })),
       });
     }
@@ -144,6 +157,8 @@ try {
 
   assert.equal(got[0]!.videoId, "vid0");
   assert.equal(got[0]!.privacyStatus, "public");
+  assert.equal(got[0]!.durationSec, 612, "contentDetails.duration is kept");
+  assert.ok(videoCalls[0]!.includes("contentDetails"), "videos.list asks for the duration");
   assert.equal(channelVideoFor(matchOf("vid59"), got)?.videoId, "vid59", "the last batch is kept");
 
   // "Check the channel" after a Studio upload: a forced refresh fills the snapshot whatever the

@@ -16,7 +16,7 @@
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
-import { channelUploadsSnapshot, channelVideoFor } from "./channelUploads.js";
+import { channelShortFor, channelUploadsSnapshot, channelVideoFor } from "./channelUploads.js";
 import { config, matchDir } from "./config.js";
 import { readManifest } from "./thumbnailVariants.js";
 import { HOOK_PLACEHOLDER } from "./title.js";
@@ -180,6 +180,15 @@ export async function isUploaded(matchId: number): Promise<boolean> {
   );
 }
 
+/** The Short, by the same three routes: its own record, the tick, or the channel (by length). */
+export async function isShortUploaded(matchId: number): Promise<boolean> {
+  return (
+    (await readUpload(matchId, "short")) !== null ||
+    readManual(matchId).shortUploaded ||
+    channelShortFor(matchId, channelUploadsSnapshot()) !== null
+  );
+}
+
 /**
  * A finished MP4 under either name the two encoders write. A hand-named export is still found
  * by the preview (`findExportedVideo`); this is the cheap read the match list can afford per row.
@@ -205,6 +214,7 @@ export async function publishChecklist(
     hookPicked: firstLine !== "" && !firstLine.includes(HOOK_PLACEHOLDER),
     thumbnailChosen: Boolean((await readManifest(dir))?.chosen),
     uploaded: await isUploaded(matchId),
+    shortUploaded: await isShortUploaded(matchId),
     shortRendered: existsSync(path.join(dir, `short-${matchId}.mp4`)),
     chatSaved: chatFiles(dir) >= 2,
   };
