@@ -267,9 +267,6 @@ async function select(id, { open = false } = {}) {
     <h2>Thumbnail</h2>
     <div id="variants"><div class="empty">loading&hellip;</div></div>
 
-    <h2>Chapters</h2>
-    <pre>${esc(meta.chapters ?? "not generated yet")}</pre>
-
     <h2 id="h-preview">Final video</h2>
     <div id="preview"><div class="empty">loading&hellip;</div></div>
 
