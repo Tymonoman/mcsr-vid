@@ -26,7 +26,7 @@ interface Call {
  * one entry per `playlists.list` call, so a test can hand back a nextPageToken and prove the
  * paging loop actually follows it.
  */
-function stubFetch(pages: unknown[], createdId = "PL_NEW"): Call[] {
+function stubFetch(pages: unknown[], createdId = "PL_NEW", alreadyIn = false): Call[] {
   const calls: Call[] = [];
   let page = 0;
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
@@ -45,6 +45,9 @@ function stubFetch(pages: unknown[], createdId = "PL_NEW"): Call[] {
     if (url.includes("oauth2.googleapis.com/token")) return ok({ access_token: "tok", expires_in: 3600 });
     if (url.includes("/playlists?") && method === "GET") return ok(pages[page++] ?? { items: [] });
     if (url.includes("/playlists?") && method === "POST") return ok({ id: createdId });
+    // The "is it already in there" probe, then the insert.
+    if (url.includes("/playlistItems?") && method === "GET")
+      return ok({ items: alreadyIn ? [{ id: "PLI_OLD" }] : [] });
     if (url.includes("/playlistItems?")) return ok({ id: "PLI_1" });
     throw new Error(`unexpected fetch: ${method} ${url}`);
   }) as typeof fetch;
@@ -70,7 +73,7 @@ try {
     !calls.some((c) => c.url.includes("/playlists?") && c.method === "POST"),
     "must NOT create a playlist when one with that title already exists",
   );
-  const insert = calls.find((c) => c.url.includes("/playlistItems?"));
+  const insert = calls.find((c) => c.url.includes("/playlistItems?") && c.method === "POST");
   assert.ok(insert, "should have inserted the video");
   assert.deepEqual(insert.body, {
     snippet: { playlistId: "PL_B", resourceId: { kind: "youtube#video", videoId: "VID1" } },
@@ -89,7 +92,7 @@ try {
     snippet: { title: "Season one", description: "" },
     status: { privacyStatus: "public" },
   });
-  const insert2 = calls.find((c) => c.url.includes("/playlistItems?"));
+  const insert2 = calls.find((c) => c.url.includes("/playlistItems?") && c.method === "POST");
   assert.equal(
     (insert2?.body as { snippet: { playlistId: string } }).snippet.playlistId,
     "PL_CREATED",
@@ -165,6 +168,22 @@ try {
   assert.equal(creates, 1, "the same title must be created once per process, not per upload");
   assert.equal(lists2, 1, "after creating, the id is remembered rather than listed again");
   console.log("OK: a freshly created playlist is reused without re-listing");
+
+  // --- 6. A video already in the playlist is not added again ---------------------------------
+  // "Finish on YouTube" runs on videos that have been through here before — a second press, or a
+  // retry after one of four joins failed — and a duplicate playlist item is a hand-removal in
+  // Studio. The probe costs 1 unit against the insert's 50.
+  calls = stubFetch([{ items: [{ id: "PL_DUP", snippet: { title: "Season four" } }] }], "PL_X", true);
+  await addToPlaylist("VID8", "Season four");
+  assert.ok(
+    calls.some((c) => c.url.includes("/playlistItems?") && c.method === "GET"),
+    "must ask before inserting",
+  );
+  assert.ok(
+    !calls.some((c) => c.url.includes("/playlistItems?") && c.method === "POST"),
+    "and must not add a video the playlist already has",
+  );
+  console.log("OK: a video already in the playlist is not added twice");
 
   console.log("playlist: all checks passed");
 } finally {

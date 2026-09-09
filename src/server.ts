@@ -39,14 +39,13 @@ import { nextPublishSlot } from "./publishSlot.js";
 import { playoffBoard, playoffContextForId, playoffTitleTail } from "./playoffs.js";
 import { refreshRivalPostsIfStale, rivalPostsSnapshot, rivalRecentPostFor } from "./rivalPosts.js";
 import { chooseVariant, readManifest, rerenderThumbnailVariants } from "./thumbnailVariants.js";
-import { buildTitle, type BuiltTitle } from "./title.js";
-import { allArchiveStates, capacity } from "./archive.js";
+import { buildTitle, metaPaths, type BuiltTitle } from "./title.js";
+import { allArchiveStates, capacity, isArchived } from "./archive.js";
 import { exportRunning, handleExportRoute } from "./exportRoutes.js";
 import {
   MANUAL_PUBLISH_KEYS,
   deleteMatch,
   hiddenMatchIds,
-  isArchived,
   isExported,
   isManualPublishKey,
   isUploaded,
@@ -56,7 +55,7 @@ import {
 } from "./matchShelf.js";
 import { handleShortsRoute, shortRunning } from "./shortsRoutes.js";
 import { handleYoutubeRoute, uploadRunning } from "./youtubeRoutes.js";
-import { readUpload } from "./youtubeStore.js";
+import { pinnedCommentText, readUpload } from "./youtubeStore.js";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -106,15 +105,6 @@ function json(res: ServerResponse, status: number, body: unknown): void {
 
 async function readIfPresent(filePath: string): Promise<string | null> {
   return existsSync(filePath) ? readFile(filePath, "utf8") : null;
-}
-
-/**
- * Generated text is regenerable and the pipeline rewrites it on every run, so edits go
- * to a `.edited.txt` sibling rather than over the top. Reading prefers the edit.
- */
-function metaPaths(matchId: number, kind: "title" | "description") {
-  const base = path.join(matchDir(matchId), `match-${matchId}.${kind}`);
-  return { generated: `${base}.txt`, edited: `${base}.edited.txt` };
 }
 
 async function readMeta(matchId: number) {
@@ -576,6 +566,9 @@ const server = createServer(async (req, res) => {
         shortDescription: await short("description"),
         videoUrl: videoId ? `https://youtu.be/${videoId}` : null,
         players: [entry.leftNickname ?? null, entry.rightNickname ?? null],
+        // The same line "Finish on YouTube" posts (src/youtubeUpload.ts), so the paste and the
+        // API call cannot say two different things.
+        pinnedComment: pinnedCommentText(entry.leftNickname ?? null, entry.rightNickname ?? null),
         // The slot to schedule for, so the morning's paste into Studio carries a time too.
         publishAt: nextPublishSlot(Date.now(), config.publishHourUtc).toISOString(),
         publishHourUtc: config.publishHourUtc,
@@ -606,7 +599,9 @@ const server = createServer(async (req, res) => {
                 ? "a thumbnail re-render"
                 : uploadRunning(matchId)
                   ? "an upload"
-                  : null;
+                  : allArchiveStates().some((a) => a.matchId === matchId && a.running)
+                    ? "an archive copy"
+                    : null;
       if (busy) {
         json(res, 409, { error: `Match ${matchId} has ${busy} in flight — stop it first` });
         return;

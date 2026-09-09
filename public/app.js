@@ -785,7 +785,8 @@ async function loadPublishKit(id, meta) {
       // its own, and the pinned slot is otherwise empty on every upload so far.
       block(
         "Pinned comment",
-        `${left ?? "Left"} vs ${right ?? "right"}, split for split. Who did you have winning before the nether? Subscribe if you want the next one on your feed.`,
+        kit.pinnedComment ??
+          `${left ?? "Left"} vs ${right ?? "right"}, split for split. Who did you have winning before the nether? Subscribe if you want the next one on your feed.`,
         3,
       ),
       // The Community tab is open to every channel now, and a post per upload is the cheapest

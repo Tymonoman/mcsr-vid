@@ -8,12 +8,16 @@
  * freeing space stays a separate, manual decision.
  */
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { statfs } from "node:fs/promises";
 import path from "node:path";
 import { config } from "./config.js";
 
 /** Where the NAS is mounted inside the container. See compose.yaml. */
 const ARCHIVE_ROOT = process.env.MCSR_ARCHIVE_DIR ?? "/archive";
+
+/** True when a copy of this match is on the NAS, i.e. a delete of it would be recoverable. */
+export const isArchived = (matchId: number): boolean => existsSync(path.join(ARCHIVE_ROOT, String(matchId)));
 
 export interface ArchiveState {
   matchId: number;
@@ -28,6 +32,16 @@ const states = new Map<number, ArchiveState>();
 export const allArchiveStates = (): ArchiveState[] => [...states.values()];
 
 /**
+ * One copy at a time. The first channel scan after a restart can pair a dozen Studio uploads at
+ * once (src/youtubeUpload.ts), and a dozen concurrent rsyncs over the CIFS mount are slower than
+ * one and can time the mount out. A queued match reports `running` from the moment it is asked
+ * for — from the operator's side it is in flight either way.
+ *
+ * ponytail: one global queue. Per-destination queues if a second archive target ever appears.
+ */
+let queue: Promise<unknown> = Promise.resolve();
+
+/**
  * rsync rather than cp: the NAS is a CIFS mount that can return an I/O error mid-write, and
  * rsync resumes instead of leaving a truncated file behind. Fire-and-forget: a match over the
  * CIFS mount takes minutes, which an upload response should not wait on.
@@ -35,43 +49,59 @@ export const allArchiveStates = (): ArchiveState[] => [...states.values()];
 export function archiveMatch(matchId: number): ArchiveState {
   const existing = states.get(matchId);
   if (existing?.running) return existing;
+  // Already backed up: nothing to do. Here rather than at each caller because every one of them
+  // is "this match is published, keep it" and would otherwise need the same test — the channel
+  // scan re-pairs a Studio upload whenever its record is missing, and a re-upload of a re-export
+  // would queue a second walk of 2.5 GB over CIFS for no change.
+  //
+  // ponytail: existence, not completeness — an rsync that died half way leaves a directory that
+  // reads as archived. Remove `<ARCHIVE_ROOT>/<id>` to force a fresh copy.
+  if (isArchived(matchId)) return existing ?? { matchId, running: false, error: null, tookMs: null };
 
   const state: ArchiveState = { matchId, running: true, error: null, tookMs: null };
   states.set(matchId, state);
-
-  const startedAt = Date.now();
-  const src = `${path.resolve(config.mediaDir, String(matchId))}/`;
-  const dest = `${path.join(ARCHIVE_ROOT, String(matchId))}/`;
-  // --partial so an interrupted transfer resumes rather than restarting the biggest clip.
-  const proc = spawn("rsync", ["-a", "--partial", src, dest], {
-    stdio: ["ignore", "ignore", "pipe"],
-  });
-
-  let stderr = "";
-  proc.stderr?.on("data", (chunk: Buffer) => {
-    stderr += chunk.toString("utf8");
-    if (stderr.length > 4000) stderr = stderr.slice(-4000);
-  });
-
-  proc.on("close", (code) => {
-    state.running = false;
-    state.tookMs = Date.now() - startedAt;
-    if (code !== 0) state.error = stderr.trim().split("\n").slice(-1)[0] || `rsync exited ${code}`;
-    console.error(
-      state.error
-        ? `archive ${matchId}: FAILED — ${state.error}`
-        : `archive ${matchId}: done in ${Math.round(state.tookMs / 1000)}s`,
-    );
-  });
-
-  proc.on("error", (err) => {
-    state.running = false;
-    state.error = err.message;
-    state.tookMs = Date.now() - startedAt;
-    console.error(`archive ${matchId}: FAILED — ${err.message}`);
-  });
-
+  queue = queue.then(() => copyToArchive(state));
   return state;
+}
+
+/** Resolves when this match's rsync has finished, however it finished — the queue's turnstile. */
+function copyToArchive(state: ArchiveState): Promise<void> {
+  return new Promise((resolve) => {
+    const { matchId } = state;
+    const startedAt = Date.now();
+    const src = `${path.resolve(config.mediaDir, String(matchId))}/`;
+    const dest = `${path.join(ARCHIVE_ROOT, String(matchId))}/`;
+    // --partial so an interrupted transfer resumes rather than restarting the biggest clip.
+    const proc = spawn("rsync", ["-a", "--partial", src, dest], {
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+
+    let stderr = "";
+    proc.stderr?.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString("utf8");
+      if (stderr.length > 4000) stderr = stderr.slice(-4000);
+    });
+
+    proc.on("close", (code) => {
+      state.running = false;
+      state.tookMs = Date.now() - startedAt;
+      if (code !== 0) state.error = stderr.trim().split("\n").slice(-1)[0] || `rsync exited ${code}`;
+      console.error(
+        state.error
+          ? `archive ${matchId}: FAILED — ${state.error}`
+          : `archive ${matchId}: done in ${Math.round(state.tookMs / 1000)}s`,
+      );
+      resolve();
+    });
+
+    proc.on("error", (err) => {
+      state.running = false;
+      state.error = err.message;
+      state.tookMs = Date.now() - startedAt;
+      console.error(`archive ${matchId}: FAILED — ${err.message}`);
+      resolve();
+    });
+  });
 }
 
 export interface Capacity {

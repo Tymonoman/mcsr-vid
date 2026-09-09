@@ -15,8 +15,10 @@ const mib = (bytes) => `${(bytes / 1024 / 1024).toFixed(0)} MiB`;
 /**
  * Upload form for a match that has not been published, or its live stats if it has.
  *
- * The title and description default to whatever the pipeline generated (or your saved edits),
- * so the common case is: glance at it, pick a publish time, press the button.
+ * No title or description here: the upload reads the match's own files server-side — the same
+ * `.edited.txt` the title editor writes and the publish kit pastes from — so there is one copy
+ * of the text. The form is visibility, the publish time and the button, and while uploads are
+ * off (the API audit, `youtubeUploadEnabled`) it is only the "check the channel" line.
  */
 async function loadYoutube(id, meta) {
   const el = $("#youtube");
@@ -42,16 +44,11 @@ async function loadYoutube(id, meta) {
     el.innerHTML = uploadedHtml(mine, all.statsError);
     $("#loadcomments")?.addEventListener("click", () => loadComments(id));
     $("#runaudit")?.addEventListener("click", () => requestAudit(id));
+    $("#ytFinish")?.addEventListener("click", (ev) => finishOnYouTube(id, meta, ev.currentTarget));
     loadAudit(id);
     return;
   }
 
-  // The generated title still carries the <HOOK> placeholder plus the guidance lines that
-  // formatTitle writes for the terminal; neither belongs in a YouTube title, so take the first
-  // line and let the hook you picked replace the placeholder.
-  const firstLine = (meta.title ?? "").split("\n")[0] ?? "";
-  const hook = $("#hook")?.value.trim();
-  const suggestedTitle = hook ? firstLine.replace("<HOOK>", hook) : firstLine;
   // Back from Studio: list the channel now, then repaint everything that says "published".
   const checkChannel = async (link) => {
     link.textContent = "checking…";
@@ -73,9 +70,10 @@ async function loadYoutube(id, meta) {
 
   el.innerHTML = `
     <div class="scanline">Uploaded it in Studio already? <a href="#" data-act="checkchannel">check the channel</a> <span class="muted">(otherwise it is noticed within six hours)</span></div>
-    <div class="upload">
-      <label>Title <input type="text" id="ytTitle" value="${esc(suggestedTitle)}"></label>
-      <label>Description <textarea id="ytDesc" rows="6">${esc(meta.description ?? "")}</textarea></label>
+    ${
+      status.uploadsEnabled
+        ? `<div class="upload">
+      <div class="scanline muted">Sends the title, description and tags from the match's files &mdash; edit them in the title editor above.</div>
       <div class="row">
         <label>Visibility
           <select id="ytPrivacy">
@@ -86,45 +84,28 @@ async function loadYoutube(id, meta) {
         </label>
         <label>Publish at <input type="datetime-local" id="ytWhen"></label>
       </div>
-      <label>Video file <input type="text" id="ytPath" placeholder="auto-detected from the match folder"></label>
       <div class="row">
         <button id="ytUpload">Upload</button>
         <span class="msg" id="ytMsg"></span>
       </div>
       <div class="bar" id="ytBarWrap" hidden><i id="ytBar"></i></div>
-    </div>`;
-  // The kit may have fetched the slot before this form existed (app.js prefillPublishAt).
-  if (typeof prefillPublishAt === "function") prefillPublishAt();
-
-  // The title field is seeded from the hook *once*, when this panel renders, so it follows the
-  // hook until the operator edits it by hand, and Upload is gated on the `<HOOK>` placeholder
-  // being gone. The server refuses such a title too; this is the half that explains itself.
-  const titleField = $("#ytTitle");
-  const uploadBtn = $("#ytUpload");
-  let titleEdited = false;
-  const gate = () => {
-    const t = titleField.value;
-    const blocked =
-      t.trim() === "" ? "Title is empty" : t.includes("<HOOK>") ? "Replace <HOOK> with a hook first" : "";
-    uploadBtn.disabled = blocked !== "";
-    uploadBtn.title = blocked;
-  };
-  titleField.addEventListener("input", () => {
-    titleEdited = true;
-    gate();
-  });
-  $("#hook")?.addEventListener("input", (e) => {
-    if (titleEdited) return;
-    const h = e.target.value.trim();
-    titleField.value = h ? firstLine.replace("<HOOK>", h) : firstLine;
-    gate();
-  });
-  gate();
+    </div>`
+        : ""
+    }`;
   $('#youtube [data-act="checkchannel"]')?.addEventListener("click", (ev) => {
     ev.preventDefault();
     void checkChannel(ev.currentTarget);
   });
+  if (!status.uploadsEnabled) return;
 
+  // The kit may have fetched the slot before this form existed (app.js prefillPublishAt).
+  if (typeof prefillPublishAt === "function") prefillPublishAt();
+
+  // No client-side hook gate. The server resolves `<HOOK>` from the edited title and, failing
+  // that, the thumbnail manifest's headline — a rule this file cannot see, and every copy of it
+  // here disagreed in both directions (a typed-but-unsaved hook enabled a button that 400s; a
+  // manifest headline with an empty input disabled one that would have worked). The refusal is
+  // free — it happens before a byte is sent — and lands in showFailure with the reason.
   $("#ytUpload").addEventListener("click", async () => {
     const when = $("#ytWhen").value;
     $("#ytMsg").textContent = "starting…";
@@ -133,13 +114,10 @@ async function loadYoutube(id, meta) {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          title: $("#ytTitle").value,
-          description: $("#ytDesc").value,
-          tags: meta.tags ?? [],
+          kind: "video",
           privacyStatus: $("#ytPrivacy").value,
           // datetime-local has no zone; the browser's own offset is what the operator meant.
           publishAt: when ? new Date(when).toISOString() : "",
-          videoPath: $("#ytPath").value.trim(),
         }),
       });
       $("#ytBarWrap").hidden = false;
@@ -164,13 +142,42 @@ async function pollUpload(id, meta) {
     uploadPoll = setTimeout(() => pollUpload(id, meta), 2000);
     return;
   }
+  // The video is up when there is an id; a rejected thumbnail or playlist after that is a
+  // problem to fix in Studio, not a failed upload to retry.
   if (p.error) showFailure("Upload failed", p.error);
+  else if (p.warnings?.length) showFailure("Uploaded, with a problem", p.warnings.join("\n"));
+  loadYoutube(id, meta);
+}
+
+/**
+ * The three steps a Studio upload still needs — the chosen thumbnail, its playlists, the first
+ * comment — done by the API. Safe to press twice: the server skips any step its record already
+ * marks done (src/youtubeUpload.ts), because a second comment and a second playlist join are
+ * writes to the live channel that only Studio can undo.
+ */
+async function finishOnYouTube(id, meta, btn) {
+  btn.disabled = true;
+  btn.textContent = "finishing…";
+  try {
+    const r = await api(`/api/youtube/finish/${id}`, { method: "POST" });
+    const failed = Object.entries(r.finished).filter(([, err]) => err);
+    if (failed.length)
+      showFailure("Finished, with a problem", failed.map(([s, e]) => `${s}: ${e}`).join("\n"));
+  } catch (e) {
+    showFailure("Finish failed", e.message);
+  }
   loadYoutube(id, meta);
 }
 
 function uploadedHtml(u, statsError) {
   const s = u.stats;
   const scheduled = u.publishAt ? `scheduled for ${new Date(u.publishAt).toLocaleString()}` : u.privacyStatus;
+  // What "Finish on YouTube" has done, per step; nothing yet reads as all three still to do.
+  const f = u.finished ?? {};
+  const stepLabel = (step) => (f[step] === null ? `${step} ✓` : f[step] ? `${step} ✗` : step);
+  const finishLine = `<span class="id" title="${esc(
+    Object.values(f).filter(Boolean).join("\n"),
+  )}">${["thumbnail", "playlists", "comment"].map(stepLabel).join(" · ")}</span>`;
   return `
     <div class="published">
       <div class="row">
@@ -179,12 +186,16 @@ function uploadedHtml(u, statsError) {
         ${
           // A Studio upload was recognised by the match link in its description, so there is no
           // youtube.json and no record of which thumbnail variant went out with it.
-          u.source === "channel"
+          u.source === "channel" || u.source === "studio"
             ? '<span class="id">found on the channel &mdash; uploaded from Studio</span>'
             : u.thumbnailVariant
               ? `<span class="id">thumbnail: ${esc(u.thumbnailVariant)}</span>`
               : ""
         }
+      </div>
+      <div class="row">
+        <button id="ytFinish" class="ghost">Finish on YouTube: thumbnail &middot; playlists &middot; first comment</button>
+        ${finishLine}
       </div>
       ${
         s

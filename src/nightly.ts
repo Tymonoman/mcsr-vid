@@ -39,6 +39,7 @@ import { snapshot, startScan } from "./suggestScan.js";
 import { getMatch } from "./mcsrApi.js";
 import type { MatchInfo } from "./types.js";
 import { withDiscoveredVods } from "./vodDiscovery.js";
+import { nightlyUploads } from "./youtubeUpload.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -375,7 +376,12 @@ export function requestExport(matchId: number): void {
  */
 export function afterSettled(
   job: Job,
-  report?: (verdict: JobVerdict, shortClause: string, exportClause: string) => Promise<void> | void,
+  report?: (
+    verdict: JobVerdict,
+    shortClause: string,
+    exportClause: string,
+    uploadClause: string,
+  ) => Promise<void> | void,
 ): void {
   const poll = () => void tick().catch((err: unknown) => console.error(`nightly: ${describeError(err)}`));
   const tick = async (): Promise<void> => {
@@ -386,7 +392,14 @@ export function afterSettled(
     const verdict = outcomeOf(job);
     const shortClause = await chainShort(job.matchId, verdict.outcome, wantsShort.delete(job.matchId));
     const exportClause = await chainExport(job.matchId, verdict.outcome, wantsExport.delete(job.matchId));
-    await report?.(verdict, shortClause, exportClause);
+    // Only after a finished MP4, and only when the config says uploads happen at all — off by
+    // default on both counts (`youtubeUploadEnabled`, `nightlyUpload`), so this line does
+    // nothing tonight. Errors are the clause's; the render is not undone by a failed upload.
+    const uploadClause =
+      exportOutcome(exportClause) === "done"
+        ? await nightlyUploads(job.matchId).catch((err: unknown) => ` + upload failed: ${describeError(err)}`)
+        : "";
+    await report?.(verdict, shortClause, exportClause, uploadClause);
   };
   poll();
 }
@@ -497,7 +510,7 @@ export async function runNightlyOnce(
   const job = startJob(matchId);
   // Recorded now, so a restart mid-render leaves "started" on the strip rather than nothing.
   writeNightlyState({ startedAt, matchId, players: [...players], outcome: "started" });
-  afterSettled(job, async (verdict, shortClause, exportClause) => {
+  afterSettled(job, async (verdict, shortClause, exportClause, uploadClause) => {
     // State first, then the push, from the same values: a panel that disagreed with the
     // notification would be worse than either on its own.
     writeNightlyState({
@@ -511,7 +524,10 @@ export async function runNightlyOnce(
     });
     const said = verdict.reason ? `${verdict.outcome}: ${verdict.reason}` : verdict.outcome;
     if (notifyUrl) {
-      await notify(notifyUrl, `Rendered #${matchId} ${label} — ${said}${shortClause}${exportClause}`);
+      await notify(
+        notifyUrl,
+        `Rendered #${matchId} ${label} — ${said}${shortClause}${exportClause}${uploadClause}`,
+      );
     }
   });
   return { matchId, players: [...players] };

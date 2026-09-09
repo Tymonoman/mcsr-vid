@@ -11,7 +11,7 @@
  * already writes, so the two are interchangeable.
  */
 import { createReadStream, existsSync, statSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const TOKEN_URI = "https://oauth2.googleapis.com/token";
@@ -135,7 +135,7 @@ async function describeApiFailure(res: Response, where: string): Promise<string>
   }
   const hint =
     res.status === 403 && /quota/i.test(reason)
-      ? "\nThe Data API's default quota is 10,000 units/day; uploads draw on a separate bucket."
+      ? "\nvideos.insert costs 1,600 of the 10,000 daily units; a long-form plus its Short is ~3,300; the quota resets at midnight Pacific."
       : res.status === 401
         ? "\nThe access token was rejected — the stored scopes may not cover this call."
         : "";
@@ -156,9 +156,51 @@ export interface UploadOptions {
    * uploading something public immediately.
    */
   publishAt?: string;
+  /** `notifySubscribers=false` on the insert: a Short must not push a second bell for one match. */
+  notifySubscribers?: boolean;
   onProgress?: (uploadedBytes: number, totalBytes: number) => void;
   signal?: AbortSignal;
+  /** Test seam for the start POST and the chunk PUTs; the token refresh still uses global fetch. */
+  fetchImpl?: typeof fetch;
+  /** Test seam: a 3-chunk file at 8 MiB a chunk is 24 MB of fixture. Multiples of 256 KiB only. */
+  chunkBytes?: number;
 }
+
+/**
+ * Where an interrupted upload's session URL is kept: beside the file, so the next attempt on the
+ * same bytes picks up where the last one stopped instead of re-sending a gigabyte. YouTube keeps
+ * a session for about a day. `total` guards a re-export under the same name.
+ *
+ * Named after the file, because a match's long-form and its Short share a directory and the
+ * nightly uploads them back to back: one shared name meant starting the Short threw away the
+ * long-form's resume, which is the whole point of the feature.
+ */
+const sessionPath = (filePath: string): string =>
+  path.join(path.dirname(filePath), `.upload-session-${path.basename(filePath)}.json`);
+
+async function readSession(filePath: string, total: number): Promise<string | null> {
+  try {
+    const s = JSON.parse(await readFile(sessionPath(filePath), "utf8")) as {
+      filePath?: string;
+      total?: number;
+      sessionUrl?: string;
+    };
+    return s.filePath === filePath && s.total === total && s.sessionUrl ? s.sessionUrl : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `Range: bytes=0-N` is the last byte YouTube holds. null for a header that is absent or in any
+ * other shape — the caller decides what that means, and the two callers mean different things:
+ * nothing landed yet on the resume probe, but "assume the chunk we just sent" in the loop.
+ * Reading an unparseable header as 0 there restarted the file from the beginning, forever.
+ */
+const acceptedBytes = (res: Response): number | null => {
+  const m = res.headers.get("range")?.match(/bytes=0-(\d+)/);
+  return m ? Number(m[1]) + 1 : null;
+};
 
 export interface UploadResult {
   videoId: string;
@@ -181,6 +223,10 @@ export async function uploadVideo(opts: UploadOptions): Promise<UploadResult> {
       description: opts.description,
       tags: opts.tags ?? [],
       categoryId: opts.categoryId ?? "20",
+      // Without a language YouTube guesses one from the audio and files the video under it;
+      // both POVs' chatter is English and so is every title.
+      defaultLanguage: "en",
+      defaultAudioLanguage: "en",
     },
     status: {
       privacyStatus,
@@ -189,28 +235,71 @@ export async function uploadVideo(opts: UploadOptions): Promise<UploadResult> {
     },
   };
 
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const chunkBytes = opts.chunkBytes ?? CHUNK_BYTES;
   const accessToken = await getAccessToken();
-  const start = await fetch(`${UPLOAD_API}/videos?uploadType=resumable&part=snippet,status`, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${accessToken}`,
-      "content-type": "application/json; charset=utf-8",
-      "x-upload-content-length": String(total),
-      "x-upload-content-type": "video/*",
-    },
-    body: JSON.stringify(metadata),
-    signal: opts.signal,
+
+  // The session file is only useful to a retry, so a terminal answer removes it either way.
+  const forget = () => rm(sessionPath(opts.filePath), { force: true });
+  const resultOf = (body: { id: string; status?: { privacyStatus?: string; publishAt?: string } }) => ({
+    videoId: body.id,
+    privacyStatus: body.status?.privacyStatus ?? privacyStatus,
+    publishAt: body.status?.publishAt ?? opts.publishAt ?? null,
   });
-  if (!start.ok) throw new Error(await describeApiFailure(start, "videos.insert (start)"));
 
-  const sessionUrl = start.headers.get("location");
-  if (!sessionUrl) throw new Error("YouTube did not return a resumable upload URL");
-
+  // A session left by an interrupted attempt on these exact bytes: ask YouTube how much it holds
+  // (`bytes */total`) and carry on from there.
+  let sessionUrl = await readSession(opts.filePath, total);
   let uploaded = 0;
+  if (sessionUrl) {
+    const probe = await fetchImpl(sessionUrl, {
+      method: "PUT",
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        "content-range": `bytes */${total}`,
+        "content-length": "0",
+      },
+      signal: opts.signal,
+    });
+    // 2xx means YouTube already accepted the last chunk and the process died before it could
+    // forget the session: the video exists. Starting over would upload the same match twice.
+    if (probe.ok) {
+      await forget();
+      opts.onProgress?.(total, total);
+      return resultOf((await probe.json()) as { id: string });
+    }
+    if (probe.status === 308) uploaded = acceptedBytes(probe) ?? 0;
+    // Anything else means the session is gone; a fresh start is the right answer.
+    else sessionUrl = null;
+  }
+
+  if (!sessionUrl) {
+    const notify = opts.notifySubscribers === false ? "&notifySubscribers=false" : "";
+    const start = await fetchImpl(`${UPLOAD_API}/videos?uploadType=resumable&part=snippet,status${notify}`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        "content-type": "application/json; charset=utf-8",
+        "x-upload-content-length": String(total),
+        "x-upload-content-type": "video/*",
+      },
+      body: JSON.stringify(metadata),
+      signal: opts.signal,
+    });
+    if (!start.ok) throw new Error(await describeApiFailure(start, "videos.insert (start)"));
+    sessionUrl = start.headers.get("location");
+    if (!sessionUrl) throw new Error("YouTube did not return a resumable upload URL");
+    await writeFile(
+      sessionPath(opts.filePath),
+      JSON.stringify({ filePath: opts.filePath, total, sessionUrl, startedAt: new Date().toISOString() }),
+      "utf8",
+    );
+  }
+
   while (uploaded < total) {
-    const end = Math.min(uploaded + CHUNK_BYTES, total) - 1;
+    const end = Math.min(uploaded + chunkBytes, total) - 1;
     const chunk = await readChunk(opts.filePath, uploaded, end);
-    const res = await fetch(sessionUrl, {
+    const res = await fetchImpl(sessionUrl, {
       method: "PUT",
       headers: {
         "content-length": String(chunk.byteLength),
@@ -223,23 +312,20 @@ export async function uploadVideo(opts: UploadOptions): Promise<UploadResult> {
     // 308 means "keep going"; the Range header is authoritative about how much actually landed,
     // so resuming from it rather than from our own counter survives a partially-accepted chunk.
     if (res.status === 308) {
-      const accepted = res.headers.get("range")?.match(/bytes=0-(\d+)/);
-      uploaded = accepted ? Number(accepted[1]) + 1 : end + 1;
+      // A Range we cannot read falls back to the chunk we just sent, as it always did: assuming
+      // 0 instead would re-send the whole file, and nothing here caps the attempts.
+      uploaded = acceptedBytes(res) ?? end + 1;
       opts.onProgress?.(uploaded, total);
       continue;
     }
     if (res.ok) {
-      const body = (await res.json()) as {
-        id: string;
-        status?: { privacyStatus?: string; publishAt?: string };
-      };
+      await forget();
       opts.onProgress?.(total, total);
-      return {
-        videoId: body.id,
-        privacyStatus: body.status?.privacyStatus ?? privacyStatus,
-        publishAt: body.status?.publishAt ?? opts.publishAt ?? null,
-      };
+      return resultOf((await res.json()) as { id: string });
     }
+    // 5xx and 429 are the retryable ones YouTube documents; the session file stays for those so
+    // the next attempt resumes. A 4xx is terminal — the same bytes would be refused again.
+    if (res.status < 500 && res.status !== 429) await forget();
     throw new Error(await describeApiFailure(res, "videos.insert (chunk)"));
   }
   throw new Error("Upload finished without YouTube returning a video id");
@@ -256,10 +342,14 @@ function readChunk(filePath: string, start: number, end: number): Promise<Buffer
 }
 
 /** Custom thumbnails require a phone-verified channel; the API says so in the error `reason`. */
-export async function setThumbnail(videoId: string, pngPath: string): Promise<void> {
+export async function setThumbnail(
+  videoId: string,
+  pngPath: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<void> {
   if (!existsSync(pngPath)) throw new Error(`No such thumbnail: ${pngPath}`);
   const accessToken = await getAccessToken();
-  const res = await fetch(`${UPLOAD_API}/thumbnails/set?videoId=${encodeURIComponent(videoId)}`, {
+  const res = await fetchImpl(`${UPLOAD_API}/thumbnails/set?videoId=${encodeURIComponent(videoId)}`, {
     method: "POST",
     headers: { authorization: `Bearer ${accessToken}`, "content-type": "image/png" },
     body: new Uint8Array(await readFile(pngPath)),
@@ -274,11 +364,18 @@ export async function setThumbnail(videoId: string, pngPath: string): Promise<vo
  * manual step this exists to remove. Uses `youtube.force-ssl`, already in the stored token, so
  * enabling this needs no re-consent.
  *
- * No de-duplication: this is only ever called on a video `videos.insert` returned seconds
- * earlier, so it cannot already be in the playlist.
+ * It asks before inserting. That used to be unnecessary — this only ever ran on a video
+ * `videos.insert` had returned seconds earlier — but "Finish on YouTube" runs on videos that
+ * have been through here before, including a retry after one of four joins failed. A duplicate
+ * playlist item is a hand-removal in Studio, and the list costs 1 unit against the insert's 50.
  */
 export async function addToPlaylist(videoId: string, playlistTitle: string, description = ""): Promise<void> {
   const playlistId = await findOrCreatePlaylist(playlistTitle, description);
+  const existing = await apiCall<{ items?: unknown[] }>(
+    DATA_API,
+    `/playlistItems?part=id&maxResults=1&playlistId=${encodeURIComponent(playlistId)}&videoId=${encodeURIComponent(videoId)}`,
+  );
+  if ((existing.items ?? []).length > 0) return;
   await apiCall(DATA_API, "/playlistItems?part=snippet", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -465,6 +562,20 @@ export async function commentThreads(videoId: string, channelId: string): Promis
       likeCount: top.likeCount,
       unanswered: !answered,
     };
+  });
+}
+
+/**
+ * A new top-level comment on a video — the first one, which the operator then pins in Studio
+ * (pinning has no API). Same scope as replying. 50 units.
+ */
+export async function postComment(videoId: string, text: string): Promise<void> {
+  await apiCall(DATA_API, "/commentThreads?part=snippet", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      snippet: { videoId, topLevelComment: { snippet: { textOriginal: text } } },
+    }),
   });
 }
 

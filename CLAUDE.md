@@ -14,6 +14,8 @@ what an agent cannot derive from the code; the rest is in the files it names.
   thumbnail. The upset hook is a question (`Can the 1789 take down the 2080?`).
 - No `videos.insert` until the YouTube API compliance audit clears (submitted 7 Sept 2026): an
   upload through an unaudited project is locked private for good. Uploads go through Studio.
+  The code holds that line with `youtubeUploadEnabled` (default false: `POST /api/youtube/upload`
+  answers 403 and the panel hides the form). Flip it, then `nightlyUpload`, only after the letter.
 - Nothing irreversible without the operator: deletions, retitles on the live channel, config
   that changes what a nightly render does.
 
