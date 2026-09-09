@@ -24,12 +24,12 @@ import path from "node:path";
 import { config } from "./config.js";
 import { ANCHOR_SEC } from "./kdenliveProject.js";
 import { frameMotion } from "./countdownDetect.js";
-import { overlayPaths, readSplitStills } from "./overlayRender.js";
+import { overlayPaths, readSplitStills, type SplitStill } from "./overlayRender.js";
 import { runFastExport, vaapiAvailable } from "./exportFast.js";
+import { listProcessedMatchIds } from "./matchStatus.js";
 import { getMatch } from "./mcsrApi.js";
 import { POV_WIDTH, STAGE_HEIGHT, STAGE_WIDTH, TOP_BAND_HEIGHT } from "../remotion/layout.js";
 
-const MATCH_ID = 12296170;
 const FPS = 60;
 /** Long enough to cover the intro (0-7s), the rest of the countdown, and gameplay past the anchor. */
 const RENDER_SEC = 14;
@@ -44,19 +44,36 @@ const skip = (why: string) => {
   process.exit(0);
 };
 
-const outDir = path.join(config.mediaDir, String(MATCH_ID));
-const overlay = overlayPaths(outDir);
-if (!existsSync(outDir)) skip(`no media for match ${MATCH_ID} (fixtures are 1.4 GB of VODs, not committed)`);
-const splits = await readSplitStills(outDir);
-if (splits === null) skip(`match ${MATCH_ID} has no rendered overlay — run the pipeline for it first`);
-
-const match = await getMatch(MATCH_ID).catch(() => null);
-if (match === null) skip("the MCSR API is unreachable, so the POV clips cannot be identified");
-const [playerLeft, playerRight] = match!.players;
+// Whichever match on this box has a rendered overlay and both POV clips, rather than a pinned
+// id: the fixtures are whatever the lab last rendered, and the desktop has none.
+const processed = listProcessedMatchIds();
+if (processed.length === 0) skip("no media at all (fixtures are 1.4 GB of VODs, not committed)");
+let outDir = "";
+let splits: SplitStill[] | null = null;
+let playerLeft: { nickname: string } | undefined;
+let playerRight: { nickname: string } | undefined;
 const clipFor = (nickname: string) => path.join(outDir, `${nickname}.mp4`);
-for (const p of [playerLeft, playerRight]) {
-  if (!p || !existsSync(clipFor(p.nickname))) skip(`missing POV clip for ${p?.nickname ?? "a player"}`);
+for (const id of processed) {
+  outDir = path.join(config.mediaDir, String(id));
+  splits = await readSplitStills(outDir);
+  if (splits === null) continue;
+  const match = await getMatch(id).catch(() => null);
+  if (match === null) skip("the MCSR API is unreachable, so the POV clips cannot be identified");
+  [playerLeft, playerRight] = match!.players;
+  if (
+    playerLeft &&
+    playerRight &&
+    existsSync(clipFor(playerLeft.nickname)) &&
+    existsSync(clipFor(playerRight.nickname))
+  ) {
+    console.log(`exportFrames: using match ${id} (${playerLeft.nickname} vs ${playerRight.nickname})`);
+    break;
+  }
+  playerLeft = playerRight = undefined;
 }
+if (!playerLeft || !playerRight)
+  skip("no match has both a rendered overlay and both POV clips — run the pipeline for one first");
+const overlay = overlayPaths(outDir);
 
 /** Raw pixels of one frame at a timestamp, as RGB triples. */
 function framePixels(file: string, atSec: number, decoder?: string): Promise<Uint8Array> {
