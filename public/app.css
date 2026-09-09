@@ -156,7 +156,10 @@ main > * {
   background: var(--panel);
   box-shadow: inset 3px 0 0 var(--warped);
 }
-.card img {
+/* The placeholder a match with no thumbnail yet gets, so the row's grid does not reflow when one
+   card is missing its image. Same box as .card img. */
+.card img,
+.card .nothumb {
   width: 112px;
   aspect-ratio: 16/9;
   object-fit: cover;

@@ -74,8 +74,15 @@ function renderList() {
       .map(
         (m) => `
     <div class="card" data-id="${m.matchId}" aria-selected="${selected === m.matchId}" role="button" tabindex="0">
-      <img src="/api/thumbnail/${m.matchId}" alt="" loading="lazy"
-           onerror="this.style.visibility='hidden'">
+      ${
+        // Only when one exists: the payload already knows, and asking for a thumbnail a match
+        // never rendered costs a 404 and a console error on every list paint. onerror still
+        // covers the race where the file is deleted between the scan and the paint.
+        m.stages.thumbnail
+          ? `<img src="/api/thumbnail/${m.matchId}" alt="" loading="lazy"
+           onerror="this.style.visibility='hidden'">`
+          : '<div class="nothumb" aria-hidden="true"></div>'
+      }
       <div>
         <div class="who">${esc(m.leftNickname)} vs ${esc(m.rightNickname)}</div>
         <div class="id">#${m.matchId}</div>
