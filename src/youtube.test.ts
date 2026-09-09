@@ -79,8 +79,8 @@ await writeFile(path.join(dir, "short-12345.mp4"), "a short", "utf8");
 const stillNone = findExportedVideo(matchId, ["nahhann", "Aquacorde"]);
 assert.ok("error" in stillNone, "POV clips and intermediates must never be upload candidates");
 
-// An export still in flight is not a candidate. scripts/export.sh writes final.part.mp4 and
-// renames on success, exactly as atomicOutput does, so offering it would publish half a video.
+// An export still in flight is not a candidate. exportFast.ts writes a .part.mp4 and renames on
+// success, exactly as atomicOutput does, so offering it would publish half a video.
 await writeFile(path.join(dir, "final.part.mp4"), "half a video", "utf8");
 const midExport = findExportedVideo(matchId, ["nahhann", "Aquacorde"]);
 assert.ok("error" in midExport, "a .part. file must never be offered for upload");

@@ -283,7 +283,7 @@ async function select(id, { open = false } = {}) {
     <div id="youtube"><div class="empty">loading&hellip;</div></div>
 
     <h2>Outputs</h2>
-    ${outputsHtml(meta.outputs)}`;
+    ${outputsHtml(meta.outputs, id)}`;
 
   if (meta.hook) {
     $("#hook").addEventListener("input", () => hookCounter(meta));
@@ -945,15 +945,18 @@ const OUTPUT_LABELS = {
   syncPreview: "Sync preview",
 };
 
-function outputsHtml(outputs) {
+function outputsHtml(outputs, id) {
   if (!outputs) return '<div class="empty">nothing written yet</div>';
   return `<div class="outputs">${Object.entries(OUTPUT_LABELS)
-    .map(
-      ([key, label]) =>
-        `<div><span class="k">${label}</span><span class="v${outputs[key] ? "" : " missing"}">${
-          outputs[key] ? esc(outputs[key]) : "&mdash;"
-        }</span></div>`,
-    )
+    .map(([key, label]) => {
+      // The project is the one output you take somewhere else, so its path is its download.
+      const value = !outputs[key]
+        ? "&mdash;"
+        : key === "project"
+          ? `<a href="/api/export/project/${id}" download>${esc(outputs[key])}</a>`
+          : esc(outputs[key]);
+      return `<div><span class="k">${label}</span><span class="v${outputs[key] ? "" : " missing"}">${value}</span></div>`;
+    })
     .join("")}</div>`;
 }
 

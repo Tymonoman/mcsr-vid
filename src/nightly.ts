@@ -26,7 +26,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { capacity } from "./archive.js";
-import { config, matchDir } from "./config.js";
+import { config } from "./config.js";
 import { describeError } from "./errorText.js";
 import { startFastExport } from "./exportRoutes.js";
 import { getJob, startJob, type Job } from "./jobs.js";
@@ -233,7 +233,7 @@ export async function chainShort(
 /** Starts the encode and settles with its error line, or null. Injected by the tests. */
 export type ExportStarter = (matchId: number) => Promise<string | null>;
 
-const startFastExportOf: ExportStarter = (matchId) => startFastExport(matchId, matchDir(matchId)).finished;
+const startFastExportOf: ExportStarter = (matchId) => startFastExport(matchId).finished;
 
 /**
  * The finished MP4 after the Short, as its clause. Same gate as the Short: only a clean `done`,
