@@ -280,7 +280,7 @@ async function select(id, { open = false } = {}) {
     <div id="youtube"><div class="empty">loading&hellip;</div></div>
 
     <h2>Outputs</h2>
-    ${outputsHtml(meta.outputs)}`;
+    ${outputsHtml(meta.outputs, id)}`;
 
   if (meta.hook) {
     $("#hook").addEventListener("input", () => hookCounter(meta));
@@ -938,7 +938,9 @@ async function loadShort(id) {
 /**
  * Where the run put things. The TUI's success summary lists all of these; the dashboard listed
  * none, so the one file you actually open by hand — the Kdenlive project — had no visible path.
- * These are container-side paths, hence text rather than links.
+ * These are container-side paths, hence text rather than links — except the project, which the
+ * server serves (GET /api/export/project/:id) and the rsync publish set leaves out, so on the
+ * PC that opens Kdenlive the path alone was useless.
  */
 const OUTPUT_LABELS = {
   project: "Kdenlive",
@@ -950,15 +952,17 @@ const OUTPUT_LABELS = {
   syncPreview: "Sync preview",
 };
 
-function outputsHtml(outputs) {
+function outputsHtml(outputs, id) {
   if (!outputs) return '<div class="empty">nothing written yet</div>';
   return `<div class="outputs">${Object.entries(OUTPUT_LABELS)
-    .map(
-      ([key, label]) =>
-        `<div><span class="k">${label}</span><span class="v${outputs[key] ? "" : " missing"}">${
-          outputs[key] ? esc(outputs[key]) : "&mdash;"
-        }</span></div>`,
-    )
+    .map(([key, label]) => {
+      const path = outputs[key];
+      const value =
+        key === "project" && path
+          ? `<a href="/api/export/project/${id}" download>${esc(path)}</a>`
+          : esc(path ?? "\u2014");
+      return `<div><span class="k">${label}</span><span class="v${path ? "" : " missing"}">${value}</span></div>`;
+    })
     .join("")}</div>`;
 }
 

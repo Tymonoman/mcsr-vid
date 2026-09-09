@@ -282,6 +282,11 @@
 .outputs .missing {
   color: var(--muted);
 }
+/* The Kdenlive project is the one row that is a download rather than a path to read: the rsync
+   publish set leaves the project out, so the PC that opens it gets it from here. */
+.outputs .v a {
+  color: var(--gold);
+}
 
 /* --- Hook suggestions ---------------------------------------------------------------------- */
 /* Facts from the match, phrased as openers. Clicking one fills the field to edit rather than
