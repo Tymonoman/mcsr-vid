@@ -762,6 +762,11 @@ async function loadPublishKit(id, meta) {
         3,
         counter(`${meta.tags?.length ?? 0} tags · ${tags.length} / 500 chars`, tags.length > 500),
       ),
+      // Everything below is pasted after the video is up, so it folds away: at 390px the kit was
+      // eleven copy blocks tall and the title — the first thing pasted — was the only one above
+      // the fold that mattered. The Copy handler is delegated from the panel, so it reaches in.
+      `<details class="kitmore after"${el.querySelector("details.after")?.open ? " open" : ""}>
+         <summary>after the upload &mdash; Short, pinned comment, community post, DMs</summary>`,
       kit.shortTitle
         ? block("Short title", kit.shortTitle, 2)
         : `<div class="kit"><div class="kithead"><span class="kitlabel">Short title</span></div>
@@ -786,6 +791,7 @@ async function loadPublishKit(id, meta) {
       ),
       block(`Message to ${left ?? "left player"}`, dm(left ?? "there", right ?? "your opponent"), 3),
       block(`Message to ${right ?? "right player"}`, dm(right ?? "there", left ?? "your opponent"), 3),
+      `</details>`,
     ].join("");
   };
   paint();
