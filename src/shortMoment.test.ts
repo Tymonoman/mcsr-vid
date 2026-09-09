@@ -20,24 +20,48 @@ const optsFor = (m: MatchInfo) => ({
   runMs: m.result.time || 900_000,
 });
 
-// --- 12730175: edcr vs doogile. Both players died within seconds of each other, and the lead
-// had just changed hands. That beats the dragon kill, which is the point: the finish is the
-// obvious moment and often not the best one.
+// --- 12730175: edcr vs doogile. Its ending is not dull — the dragon dies and both players get
+// there seconds apart — so the window that runs to the finish wins, which is what lets the Short
+// stamp its result card and stop on it (all three 30k+ reference Shorts do).
 //
-// The 9:08 stretch is the better story — the lead flips, they die 0.4s apart, and they enter the
-// End together — which is why the assertion is on the shape of the window, not the clock.
+// The mid-run story is still found, not lost: the 9:08 stretch, where the lead flips and they die
+// 0.4s apart, is the best window that stops short of the end, and `--pick=1` is how the operator
+// takes it. Asserted on the shape of the window, not the clock.
 {
   const match = load(12730175);
-  const best = pickShortMoment(match, optsFor(match))!;
+  const opts = optsFor(match);
+  const best = pickShortMoment(match, opts)!;
   assert.ok(best, "a match with events must yield a moment");
   assert.ok(
-    best.startMs >= 540_000 && best.endMs <= 575_000,
-    `expected the double-death window around 9:08, got ${best.startMs / 1000}-${best.endMs / 1000}s`,
+    best.endMs >= opts.runMs,
+    `expected the window that reaches the finish, got ${best.startMs / 1000}-${best.endMs / 1000}s`,
   );
-  assert.match(best.reason, /lead change/);
-  assert.match(best.reason, /death/);
-  const dragon = rankShortMoments(match, optsFor(match)).find((m) => m.reason.includes("dragon"));
-  assert.ok(dragon === undefined || best.score > dragon.score, "the double death must outrank the dragon");
+  assert.match(best.reason, /ends on the finish/);
+
+  const midRun = rankShortMoments(match, opts).find((m) => m.endMs < opts.runMs)!;
+  assert.ok(
+    midRun.startMs >= 540_000 && midRun.endMs <= 575_000,
+    `expected the double-death window around 9:08, got ${midRun.startMs / 1000}-${midRun.endMs / 1000}s`,
+  );
+  assert.match(midRun.reason, /lead change/);
+  assert.match(midRun.reason, /death/);
+}
+
+// --- A forfeit or a draw ends with nothing in `timelines` at all, so before the synthetic
+// terminal event the finish of one was unreachable — and the best-performing Short in the whole
+// reference set (42k views) is a draw. The run's end is now scoreable on its own.
+{
+  const match = load(12902901);
+  const drawn: MatchInfo = {
+    ...match,
+    result: { ...match.result, time: 0 },
+    timelines: [{ uuid: match.players[0]!.uuid, time: 120_000, type: "projectelo.timeline.blind_travel" }],
+  };
+  const opts = optsFor(drawn);
+  const best = pickShortMoment(drawn, opts)!;
+  assert.ok(best, "a match that ends without a dragon must still yield a moment");
+  assert.equal(best.endMs, opts.runMs, "the window must run to the end of the match");
+  assert.match(best.reason, /ends on the finish/);
 }
 
 // --- Where the payoff lands. The window is sized around completion rate: the reference Short
@@ -59,6 +83,9 @@ const optsFor = (m: MatchInfo) => ({
     `payoff should land 55-60% through the window, landed at ${(position * 100).toFixed(0)}%`,
   );
   assert.equal(best.endMs - 200_000, 9_000, "the reference Short's ~9s of reaction must survive");
+  // And the finish bonus does not swallow it: this run ends long after the only thing worth
+  // watching, so a window over its bare ending must still lose to the moment itself.
+  assert.doesNotMatch(best.reason, /ends on the finish/);
 }
 
 // --- Every window is exactly the configured length and lies inside the run.

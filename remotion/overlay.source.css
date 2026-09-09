@@ -764,6 +764,12 @@
   height: 104px;
   flex-shrink: 0;
 }
+/* Matched to the badge beside it: .player-head's 72px is sized for the 1920-wide overlay and
+   reads as a stamp on a 1080-wide board. */
+.short-plate .player-head {
+  width: 104px;
+  height: 104px;
+}
 .short-plate-text {
   display: flex;
   flex-direction: column;
@@ -858,6 +864,34 @@
     7px -7px 0 var(--panel-edge),
     -7px 7px 0 var(--panel-edge),
     14px 14px 0 var(--crimson);
+}
+/* The closing card, on the vertical centre of the board. It borrows .short-hook's outline
+   wholesale — one treatment for burned-in text, as the reference Shorts do — and only overrides
+   where it sits and how big it is. Dead centre, never sided: the competitor puts theirs over the
+   winner's pane, and that placement is itself a result. */
+.short-result {
+  top: 50%;
+  transform: translateY(-50%);
+  /* Full width, on the board's own slab: the reference channel burns its card straight over the
+     picture, but ours lands on the seam band, and text over the lower player's name was
+     unreadable both ways. The slab is the same furniture as the brand bar, so the last beat
+     reads as part of the board rather than a caption dropped on it. */
+  left: 0;
+  right: 0;
+  /* The 14px on the right is the optical centring the hook does with a translate, done as
+     padding instead so the slab itself stays flush to both frame edges: the outline reaches 7px
+     left of the glyphs and the crimson drop 14px right, so centred ink sits 7px right of centre. */
+  padding: 18px 14px 26px 0;
+  background: var(--panel-2);
+  border-top: 4px solid var(--panel-edge-light);
+  border-bottom: 4px solid var(--panel-edge-light);
+  font-size: 150px;
+  line-height: 1.05;
+}
+.short-result-label {
+  font-size: 56px;
+  color: var(--gold);
+  letter-spacing: 0.1em;
 }
 
 /* ===== chat replay panel (prototype) ===== */

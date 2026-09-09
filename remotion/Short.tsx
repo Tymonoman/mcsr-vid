@@ -1,5 +1,5 @@
 import type { FC } from "react";
-import { AbsoluteFill } from "remotion";
+import { AbsoluteFill, Img } from "remotion";
 import "./overlay.css";
 import { formatShortTime } from "./format.js";
 import { PixelBadge } from "./PixelBadge.js";
@@ -11,6 +11,21 @@ import {
   SHORT_NAMEPLATE_HEIGHT,
   SHORT_POV_HEIGHT,
 } from "./layout.js";
+
+/**
+ * What the vertical board carries on top of the props the dashboard's Shorts panel shares.
+ *
+ * Both are optional and both are absent for a good reason rather than by oversight: `headUrl`
+ * needs the player's uuid, which only the render path has, and `resultMs` is set *only* when the
+ * cut window actually reaches the finish — a Short that stops mid-run must not stamp a time the
+ * viewer never watched happen.
+ */
+export type ShortBoardProps = ShortProps & {
+  top: ShortProps["top"] & { headUrl?: string };
+  bottom: ShortProps["bottom"] & { headUrl?: string };
+  /** The run's length from the match record, never read off the board's own label. */
+  resultMs?: number;
+};
 
 /**
  * The 1080x1920 Shorts board: a nameplate above each POV pane, and a channel bar pinned to the
@@ -25,16 +40,22 @@ function Nameplate({
   nickname,
   eloRate,
   eloRank,
+  headUrl,
   side,
 }: {
   nickname: string;
   eloRate: number;
   eloRank: number | null;
+  headUrl?: string;
   side: "left" | "right";
 }) {
   return (
     <div className={`short-plate ${side}`} style={{ height: SHORT_NAMEPLATE_HEIGHT }}>
       <PixelBadge />
+      {/* The head, as the 16:9 overlay's IdentBar and the intro card both do it: every reference
+          Short and the official broadcast put a face beside the name, and on a phone it is the
+          only thing that tells the two panes apart at a glance. */}
+      {headUrl && <Img className="player-head" src={headUrl} />}
       <div className="short-plate-text">
         <span className="short-name">{nickname}</span>
         <span className="short-elo">
@@ -46,13 +67,14 @@ function Nameplate({
 }
 
 /** The board itself: everything that is on screen for the whole Short. */
-export const Short: FC<ShortProps> = (props) => {
+export const Short: FC<ShortBoardProps> = (props) => {
   return (
     <AbsoluteFill className="short">
       <Nameplate
         nickname={props.top.nickname}
         eloRate={props.top.eloRate}
         eloRank={props.top.eloRank}
+        headUrl={props.top.headUrl}
         side="left"
       />
       {/* Transparent: the POV clip is composited through this in the NLE. */}
@@ -61,6 +83,7 @@ export const Short: FC<ShortProps> = (props) => {
         nickname={props.bottom.nickname}
         eloRate={props.bottom.eloRate}
         eloRank={props.bottom.eloRank}
+        headUrl={props.bottom.headUrl}
         side="right"
       />
       <div className="short-pane" style={{ height: SHORT_POV_HEIGHT }} />
@@ -95,6 +118,30 @@ export const ShortHook: FC<ShortProps> = (props) => {
         {lines.map((line, i) => (
           <div key={i}>{line}</div>
         ))}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+/**
+ * The closing beat, on its own transparent frame so ffmpeg can fade it in over the last seconds.
+ *
+ * All three 30k+ reference Shorts end on one, and a time is the one result fact that never names
+ * a winner — which is also why this is centred on the frame rather than sided. The reference
+ * channel puts its card over the winner's pane, and that placement alone announces the result.
+ *
+ * Renders nothing when the window did not reach the finish; the render path skips the still
+ * entirely in that case, and this keeps the composition previewable either way.
+ */
+export const ShortResult: FC<ShortBoardProps> = (props) => {
+  if (props.resultMs === undefined) return null;
+  return (
+    <AbsoluteFill>
+      {/* Same white-on-outline treatment as the hook (.short-hook), re-anchored to the middle of
+          the board: the band between the two panes, equidistant from both. */}
+      <div className="short-hook short-result">
+        <div className="short-result-label">FINAL TIME</div>
+        <div>{formatShortTime(props.resultMs)}</div>
       </div>
     </AbsoluteFill>
   );

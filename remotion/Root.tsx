@@ -1,7 +1,7 @@
 import { Composition } from "remotion";
 import { Overlay, OverlayTop, OverlayBottom, OverlaySplits, OverlayTimer, OverlayIntro } from "./Overlay.js";
 import { Thumbnail } from "./Thumbnail.js";
-import { Short, ShortHook } from "./Short.js";
+import { Short, ShortHook, ShortResult, type ShortBoardProps } from "./Short.js";
 import { ChatPanel } from "./ChatPanel.js";
 import {
   BOTTOM_BAND_HEIGHT,
@@ -86,11 +86,22 @@ const thumbnailDefaultProps: ThumbnailProps = {
   headerLabel: "Minecraft · Speedrunning · Ranked",
 };
 
-const shortDefaultProps: ShortProps = {
-  top: { nickname: "edcr", eloRate: 2640, eloRank: 1 },
-  bottom: { nickname: "Ranik_", eloRate: 2132, eloRank: 51 },
+const shortDefaultProps: ShortBoardProps = {
+  top: {
+    nickname: "edcr",
+    eloRate: 2640,
+    eloRank: 1,
+    headUrl: "https://nmsr.nickac.dev/head/8667ba71-b85a-4004-af54-457a9734eed7",
+  },
+  bottom: {
+    nickname: "Ranik_",
+    eloRate: 2132,
+    eloRank: 51,
+    headUrl: "https://nmsr.nickac.dev/head/61699b2e-d327-4a01-9f1e-0ea8c3f06bc6",
+  },
   hook: "both blind at the same time",
   timerStartMs: 402_000,
+  resultMs: 505_356,
   durationInFrames: 900,
   fps: 30,
 };
@@ -200,6 +211,16 @@ export const RemotionRoot: React.FC = () => {
       <Composition
         id="ShortHook"
         component={ShortHook}
+        durationInFrames={1}
+        fps={30}
+        width={SHORT_WIDTH}
+        height={SHORT_HEIGHT}
+        defaultProps={shortDefaultProps}
+      />
+      {/* The closing card, separate for the same reason: it is faded in over the last seconds. */}
+      <Composition
+        id="ShortResult"
+        component={ShortResult}
         durationInFrames={1}
         fps={30}
         width={SHORT_WIDTH}

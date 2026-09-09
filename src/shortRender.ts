@@ -10,8 +10,11 @@ import {
   SHORT_POV_WIDTH,
   SHORT_WIDTH,
   SHORT_HOOK_SEC,
+  SHORT_RESULT_SEC,
 } from "../remotion/layout.js";
-import type { ShortProps } from "../remotion/types.js";
+// Type-only, and it must stay that way: Short.tsx imports overlay.css, which is a hard crash
+// outside the webpack bundle (see CLAUDE.md). `import type` is erased before it can happen.
+import type { ShortBoardProps } from "../remotion/Short.js";
 
 /**
  * Renders a finished, uploadable vertical Short.
@@ -31,7 +34,8 @@ export interface ShortRenderArgs {
   /** The window to cut, in ms from match start (RTA 0:00). */
   startMs: number;
   durationSec: number;
-  board: Omit<ShortProps, "durationInFrames" | "fps">;
+  /** `board.resultMs` set is what puts the closing result card on: see generateShort.ts. */
+  board: Omit<ShortBoardProps, "durationInFrames" | "fps">;
   /**
    * Crop each POV to this region before scaling it into its pane, as fractions of the frame.
    * Overrides detection; pass null to force no crop.
@@ -200,18 +204,24 @@ function run(command: string, args: string[], signal?: AbortSignal): Promise<voi
   });
 }
 
-/** The two board stills: the furniture, and the hook line on its own transparent frame. */
+/**
+ * The board stills: the furniture, the hook line on its own transparent frame, and — only when
+ * the window reached the finish — the result card on another.
+ */
 async function renderShortBoard(
   args: Pick<ShortRenderArgs, "board" | "durationSec" | "signal" | "onProgress">,
   boardPath: string,
   hookPath: string,
+  resultPath: string | null,
 ): Promise<void> {
   const serveUrl = await bundleOnce();
-  const inputProps: ShortProps = { ...args.board, durationInFrames: 1, fps: FPS };
-  for (const [id, output] of [
+  const inputProps: ShortBoardProps = { ...args.board, durationInFrames: 1, fps: FPS };
+  const stills: [string, string][] = [
     ["Short", boardPath],
     ["ShortHook", hookPath],
-  ] as const) {
+  ];
+  if (resultPath) stills.push(["ShortResult", resultPath]);
+  for (const [id, output] of stills) {
     const composition = await selectComposition({ serveUrl, id, inputProps });
     await atomicOutput(output, (temp) =>
       renderStill({ composition, serveUrl, output: temp, imageFormat: "png", inputProps }),
@@ -224,7 +234,12 @@ async function renderShortBoard(
  * One ffmpeg pass: seek each POV to the moment, scale it into its pane, stack the two, then lay
  * the board over the top. Audio is the two POVs mixed, matching the long-form.
  */
-async function compositeShort(args: ShortRenderArgs, boardPath: string, hookPath: string): Promise<void> {
+async function compositeShort(
+  args: ShortRenderArgs,
+  boardPath: string,
+  hookPath: string,
+  resultPath: string | null,
+): Promise<void> {
   const topSeek = args.topMatchStartSec + args.startMs / 1000;
   const bottomSeek = args.bottomMatchStartSec + args.startMs / 1000;
 
@@ -251,6 +266,9 @@ async function compositeShort(args: ShortRenderArgs, boardPath: string, hookPath
 
   // The hook is held flat and then faded rather than cut, so it never pops off mid-word.
   const fadeStart = Math.max(0, SHORT_HOOK_SEC - 0.4);
+  // The result card lands the other way round: faded up over a third of a second and then held
+  // flat to the hard cut, which is what all three reference Shorts do with theirs.
+  const resultStart = Math.max(0, args.durationSec - SHORT_RESULT_SEC);
   const filter = [
     `color=c=0x1a1820:s=${SHORT_WIDTH}x${SHORT_HEIGHT}:d=${args.durationSec}[bg]`,
     `[0:v]${paneFor(topCrop)}[top]`,
@@ -260,7 +278,13 @@ async function compositeShort(args: ShortRenderArgs, boardPath: string, hookPath
     // Both stills carry their own alpha, so a plain overlay blends them correctly.
     `[b][2:v]overlay=0:0[c]`,
     `[3:v]format=rgba,fade=t=out:st=${fadeStart}:d=0.4:alpha=1[hook]`,
-    `[c][hook]overlay=0:0:enable='lt(t,${SHORT_HOOK_SEC})'[v]`,
+    `[c][hook]overlay=0:0:enable='lt(t,${SHORT_HOOK_SEC})'[d]`,
+    ...(resultPath
+      ? [
+          `[4:v]format=rgba,fade=t=in:st=${resultStart}:d=0.3:alpha=1[result]`,
+          `[d][result]overlay=0:0:enable='gt(t,${resultStart})'[v]`,
+        ]
+      : [`[d]null[v]`]),
     `[0:a][1:a]amix=inputs=2:duration=shortest:normalize=0[a_out]`,
   ].join(";");
 
@@ -293,6 +317,7 @@ async function compositeShort(args: ShortRenderArgs, boardPath: string, hookPath
         String(args.durationSec),
         "-i",
         hookPath,
+        ...(resultPath ? ["-loop", "1", "-t", String(args.durationSec), "-i", resultPath] : []),
         "-filter_complex",
         filter,
         "-map",
@@ -330,7 +355,8 @@ export async function renderShort(args: ShortRenderArgs): Promise<{ path: string
   const dir = path.dirname(args.outPath);
   const boardPath = path.join(dir, "short-board.png");
   const hookPath = path.join(dir, "short-hook.png");
-  await renderShortBoard(args, boardPath, hookPath);
-  await compositeShort(args, boardPath, hookPath);
+  const resultPath = args.board.resultMs === undefined ? null : path.join(dir, "short-result.png");
+  await renderShortBoard(args, boardPath, hookPath, resultPath);
+  await compositeShort(args, boardPath, hookPath, resultPath);
   return { path: args.outPath };
 }
