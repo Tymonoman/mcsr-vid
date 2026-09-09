@@ -32,6 +32,7 @@ Use the script, don't reconstruct the shell line. Extra arguments go after `--`.
 | `npm run short -- <matchId> [--pick=N] [--seconds=22]` | The ~22 s vertical MP4 (`short-<id>.mp4`) plus its `.title.txt` / `.description.txt`. Needs the VODs. |
 | `npm run sync-status -- [matchId]` | Where a match's POV clips are placed. With an id and no `sync.json`, derives it from the `.kdenlive` and writes it, so a re-export picks the corrected offsets up without a re-render. No id lists every match and writes nothing. |
 | `npm run chat -- <matchId>` | Fetch both players' Twitch chat to `chat-<nick>.json` for a match the pipeline saved none for (it does this itself after `download-vods`). Existing files are kept; delete one to refetch. |
+| `npm run reason -- <matchId>` | Ask the configured `reasonerCommand` (Antigravity's `agy`) which 22 seconds to cut, printing the candidates, the prompt and the answer. Saves it to `short-reason.json`; delete that to ask again. Unconfigured, it says so and changes nothing. |
 | `npm run bench -- <Composition> [--frames=N] [--codec=] [--pixelFormat=] [--concurrency=N]` | Render throughput for one composition. Measure before claiming a render change is faster. |
 | `npm run analytics -- <videoId> [--traffic-sources] [--days N]` | YouTube Analytics via `~/.claude/skills/claude-youtube/` (outside the repo; token at `~/.claude/.tmp/youtube_oauth_token.json`). |
 | `python3 scripts/reap.py <command…>` | Subreaper wrapper, only needed if zombies ever climb again (see Pitfalls). |
