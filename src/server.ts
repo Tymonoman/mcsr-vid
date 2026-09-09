@@ -36,6 +36,7 @@ import { presentSuggestions } from "./suggestPresent.js";
 import { dismiss, restore, snapshot, startScan } from "./suggestScan.js";
 import { cronLine, rsyncPullAllCommand, rsyncPullCommand } from "./publishSet.js";
 import { nextPublishSlot } from "./publishSlot.js";
+import { playoffBoard, playoffContextForId, playoffTitleTail } from "./playoffs.js";
 import { refreshRivalPostsIfStale, rivalPostsSnapshot, rivalRecentPostFor } from "./rivalPosts.js";
 import { chooseVariant, readManifest, rerenderThumbnailVariants } from "./thumbnailVariants.js";
 import { buildTitle, type BuiltTitle } from "./title.js";
@@ -127,10 +128,15 @@ async function readMeta(matchId: number) {
 
   // The hook is the one part a human writes (src/title.ts:5). buildTitle also returns the
   // character budget that keeps the title in the 70-100 band while leaving both nicknames
-  // above YouTube's ~50-char mobile cutoff, which is what the editor counts against.
+  // above YouTube's ~50-char mobile cutoff, which is what the editor counts against. The same
+  // tail the pipeline wrote, playoff or ranked: a playoff tail is a third longer, so building the
+  // budget on "MCSR Ranked 1v1" would bless a hook ~18 characters too long and preview a title
+  // that is not the one on disk.
+  const playoff = await playoffContextForId(matchId);
   const budget = buildTitle({
     leftNickname: entry.leftNickname,
     rightNickname: entry.rightNickname,
+    ...(playoff ? { suffix: playoffTitleTail(playoff) } : {}),
   });
   const hookSuggestions = await readHookSuggestions(matchId, budget);
 
@@ -402,6 +408,13 @@ const server = createServer(async (req, res) => {
       const job = startJob(parsed);
       armFollowUps(job, url);
       json(res, 202, { matchId: parsed, running: !job.done });
+      return;
+    }
+
+    // The current bracket with its detected games, for the section above the suggestions. Cached
+    // for suggestCacheTtlMin in src/playoffs.ts; outside a tournament it is one cached read.
+    if (resource === "playoffs" && idRaw === undefined && req.method === "GET") {
+      json(res, 200, await playoffBoard());
       return;
     }
 

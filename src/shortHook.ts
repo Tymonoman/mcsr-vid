@@ -160,9 +160,11 @@ export function buildShortDescription(
   rightNickname: string,
   playlistUrl = "",
   supportUrl = "",
+  /** The long form's format half (`playoffTitleTail`), so a playoff Short is not sold as a 1v1. */
+  format = "MCSR Ranked 1v1",
 ): string {
   return [
-    `${leftNickname} vs ${rightNickname} — MCSR Ranked 1v1. Full synced dual-POV race on the channel.`,
+    `${leftNickname} vs ${rightNickname} — ${format}. Full synced dual-POV race on the channel.`,
     ...(playlistUrl ? [`Every match: ${playlistUrl}`] : []),
     `Match data: https://mcsrranked.com/matches/${matchId}`,
     ...(supportUrl ? [`Support the channel: ${supportUrl}`] : []),

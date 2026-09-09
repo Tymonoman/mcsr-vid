@@ -321,6 +321,18 @@ export function matchupPlaylistDescription(a: string, b: string): string {
   return `Every ranked 1v1 between ${first} and ${second} on MCSR Replayoffs, oldest first — both POVs synced, with the live split comparison and the head-to-head record on the intro card.`;
 }
 
+/**
+ * One playlist per tournament, in place of the matchup's: a playoff series is watched as a
+ * bracket, not as a rivalry, and the same pair's ranked games have no business in it.
+ */
+export function playoffPlaylistTitle(season: number): string {
+  return `MCSR Ranked Season ${season} Playoffs · Replayoffs`;
+}
+
+export function playoffPlaylistDescription(season: number): string {
+  return `Every game of the MCSR Ranked Season ${season} Playoffs on MCSR Replayoffs, in bracket order — both POVs synced, with the live split comparison and the round and game number on the intro card. Bracket: https://mcsrranked.com/playoffs/${season}`;
+}
+
 export function playerPlaylistDescription(nickname: string): string {
   return `Every MCSR Ranked 1v1 of ${nickname}'s on MCSR Replayoffs, oldest first — both POVs synced with a live split comparison.`;
 }

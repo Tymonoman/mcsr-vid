@@ -16,10 +16,15 @@ import {
   type ExportStarter,
   msUntilNextRun,
   pickNightlyCandidate,
+  playoffPicks,
+  playoffsWithoutVods,
+  playoffVodsReady,
   readNightlyState,
   runNightlyOnce,
   writeNightlyState,
 } from "./nightly.js";
+import type { PlayoffBoard } from "./playoffs.js";
+import type { MatchInfo } from "./types.js";
 import type { ShortRunner } from "./shortsRoutes.js";
 
 const HOUR = 3_600_000;
@@ -48,25 +53,89 @@ const suggestion = (matchId: number) => ({ metrics: { matchId } });
 const ranked = [suggestion(1), suggestion(2), suggestion(3), suggestion(4)];
 const roomy = { processedIds: [], hiddenIds: new Set<number>(), freeMatches: 9 };
 
+type Ctx = Parameters<typeof pickNightlyCandidate>[1];
+const picked = async (
+  list: readonly { metrics: { matchId: number } }[],
+  ctx: Ctx,
+  eligible?: (c: { metrics: { matchId: number } }) => Promise<boolean>,
+): Promise<number | null> => (await pickNightlyCandidate(list, ctx, eligible))?.metrics.matchId ?? null;
+
 // Ranked order is the whole point of the suggester, so the pick is the first survivor, never
 // a "best remaining" recomputed here.
-assert.equal(pickNightlyCandidate(ranked, roomy)?.metrics.matchId, 1);
-assert.equal(pickNightlyCandidate(ranked, { ...roomy, processedIds: [1, 2] })?.metrics.matchId, 3);
-assert.equal(pickNightlyCandidate(ranked, { ...roomy, hiddenIds: new Set([1, 3]) })?.metrics.matchId, 2);
+assert.equal(await picked(ranked, roomy), 1);
+assert.equal(await picked(ranked, { ...roomy, processedIds: [1, 2] }), 3);
+assert.equal(await picked(ranked, { ...roomy, hiddenIds: new Set([1, 3]) }), 2);
 // Both filters at once: 1 rendered before, 2 hidden, 3 rendered before.
+assert.equal(await picked(ranked, { processedIds: [1, 3], hiddenIds: new Set([2]), freeMatches: 9 }), 4);
+assert.equal(await picked(ranked, { ...roomy, processedIds: [1, 2, 3, 4] }), null);
+assert.equal(await picked([], roomy), null);
+
+// An ineligible candidate falls through to the next, and is not the end of the night. Without
+// this a playoff game whose players never streamed fails the pipeline before a match directory
+// exists, nothing remembers it, and every night of the tournament picks it again.
+const probed: number[] = [];
 assert.equal(
-  pickNightlyCandidate(ranked, { processedIds: [1, 3], hiddenIds: new Set([2]), freeMatches: 9 })?.metrics
-    .matchId,
-  4,
+  await picked(ranked, roomy, async (c) => {
+    probed.push(c.metrics.matchId);
+    return c.metrics.matchId === 3;
+  }),
+  3,
 );
-assert.equal(pickNightlyCandidate(ranked, { ...roomy, processedIds: [1, 2, 3, 4] }), null);
-assert.equal(pickNightlyCandidate([], roomy), null);
+assert.deepEqual(probed, [1, 2, 3], "in order, and no further than the first that passes");
+assert.equal(await picked(ranked, roomy, async () => false), null, "none eligible is a skip, not a hang");
 
 // A match is 2–2.5 GB. Starting one with a single slot left means a render that dies at the write
 // stage, having burned the night; unknown capacity is reported as 0 and must behave the same.
-assert.equal(pickNightlyCandidate(ranked, { ...roomy, freeMatches: 1 }), null);
-assert.equal(pickNightlyCandidate(ranked, { ...roomy, freeMatches: 0 }), null);
-assert.equal(pickNightlyCandidate(ranked, { ...roomy, freeMatches: 2 })?.metrics.matchId, 1);
+assert.equal(await picked(ranked, { ...roomy, freeMatches: 1 }), null);
+assert.equal(await picked(ranked, { ...roomy, freeMatches: 0 }), null);
+assert.equal(await picked(ranked, { ...roomy, freeMatches: 2 }), 1);
+
+// --- The bracket's games, in front and in series order, only when the operator has asked. The
+// default is off: a config default that changes what tonight's nightly renders is not ours to set.
+{
+  const seed = (nickname: string) => ({ uuid: nickname, nickname, label: "LCQ", seasonEloRate: 2000 });
+  const board: PlayoffBoard = {
+    season: 11,
+    slots: [
+      {
+        id: 9,
+        round: "Round of 16",
+        bestOf: 5,
+        startTime: 0,
+        seeds: [seed("edcr"), seed("lauveer")],
+        games: [
+          { matchId: 3, dateSec: 300, gameNo: 3 },
+          { matchId: 1, dateSec: 100, gameNo: 1 },
+          { matchId: 2, dateSec: 200, gameNo: 2 },
+        ],
+      },
+    ],
+  };
+  let loads = 0;
+  const load = async () => (loads++, board);
+
+  assert.equal(config.playoffsFirst, false, "off by default; the operator flips it for a tournament");
+  assert.deepEqual(await playoffPicks(load), [], "off means off");
+  assert.equal(loads, 0, "and costs no bracket read");
+
+  config.playoffsFirst = true;
+  const picks = await playoffPicks(load);
+  assert.deepEqual(
+    picks.map((p) => p.metrics.matchId),
+    [1, 2, 3],
+    "oldest first — series order, which is also the playlist's",
+  );
+  assert.equal(picks[0]?.bucket, "playoffs");
+  assert.deepEqual(picks[0]?.metrics.players, ["edcr", "lauveer"]);
+  assert.deepEqual(
+    await playoffPicks(async () => {
+      throw new Error("429");
+    }),
+    [],
+    "a dead bracket is not the reason a night renders nothing",
+  );
+  config.playoffsFirst = false;
+}
 
 // --- Whether the night ends with a Short. The spawn is injected: the real one is a full render,
 // and this is a test of the decision, not of ffmpeg.
@@ -164,10 +233,13 @@ try {
   // because the real one is a scan; the job lookup because this box has no jobs.
   const empty = await runNightlyOnce("", { renderInFlight: () => false, ranked: async () => [] });
   assert.deepEqual(empty, {
-    skipped: "every suggestion is processed or hidden, or the disk is full",
+    skipped: "every candidate is processed, hidden or without VODs, or the disk is full",
   });
   assert.equal(readNightlyState()?.outcome, "skipped", "an ordinary skip is recorded, with its reason");
-  assert.equal(readNightlyState()?.reason, "every suggestion is processed or hidden, or the disk is full");
+  assert.equal(
+    readNightlyState()?.reason,
+    "every candidate is processed, hidden or without VODs, or the disk is full",
+  );
   assert.equal(readNightlyState()?.matchId, null, "a skip chose nothing, so it names nothing");
   // No list at all is a different sentence — a cold process with a dead API, not a full disk.
   const none = await runNightlyOnce("", { renderInFlight: () => false, ranked: async () => null });
@@ -179,6 +251,45 @@ try {
   const before = msUntilNextRun(now, 3);
   await runNightlyOnce("", { renderInFlight: () => true });
   assert.equal(msUntilNextRun(now, 3), before, "a manual run leaves the schedule alone");
+
+  // --- The VOD probe. A playoff game is a private room, so the API attaches nothing and both
+  // VODs are found on Twitch; a game whose players never streamed must be skipped rather than
+  // fail the pipeline before the match directory that would remember it exists. The probe is
+  // injected because the real one shells out to yt-dlp.
+  {
+    const probed: number[] = [];
+    const probe = async (id: number): Promise<MatchInfo> => {
+      probed.push(id);
+      if (id === 7) throw new Error("yt-dlp exploded");
+      return {
+        players: [{ uuid: "a" }, { uuid: "b" }],
+        vod: id === 1 ? [{ uuid: "a" }, { uuid: "b" }] : [{ uuid: "a" }],
+      } as unknown as MatchInfo;
+    };
+    const pick = (matchId: number, bucket = "playoffs") => ({
+      metrics: { matchId, players: ["a", "b"] as [string, string] },
+      bucket,
+    });
+
+    assert.equal(await playoffVodsReady(pick(9, "upset"), probe), true, "an ordinary suggestion");
+    assert.deepEqual(probed, [], "and it costs no listing — the API already attached its VODs");
+    assert.equal(await playoffVodsReady(pick(1), probe), true, "both players streamed");
+    assert.equal(await playoffVodsReady(pick(2), probe), false, "one of two is not enough");
+    assert.equal(await playoffVodsReady(pick(7), probe), false, "a dead listing is not a render");
+    assert.deepEqual(probed, [1, 2, 7]);
+
+    assert.equal(await playoffVodsReady(pick(2), probe), false);
+    assert.equal(await playoffVodsReady(pick(7), probe), false);
+    assert.deepEqual(probed, [1, 2, 7, 7], "a settled no-VOD is remembered; a failure is retried");
+    assert.deepEqual(playoffsWithoutVods(), [2]);
+
+    // And the night that renders nothing says so where the operator will see it, not only in
+    // the log: an unstreamed bracket would otherwise be a fortnight of "nothing to render".
+    const named = await runNightlyOnce("", { renderInFlight: () => false, ranked: async () => [] });
+    assert.deepEqual(named, {
+      skipped: "every candidate is processed, hidden or without VODs, or the disk is full (no VOD: #2)",
+    });
+  }
 } finally {
   await rm(media, { recursive: true, force: true });
 }

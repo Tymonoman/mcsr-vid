@@ -5,6 +5,7 @@ import { config } from "./config.js";
 import type { ThumbnailProps } from "../remotion/types.js";
 import { resolveAvatarUrl, type ResolvedAvatar } from "./avatarUrl.js";
 import { eloAtMatchStart } from "./overlayProps.js";
+import { playoffContextFor } from "./playoffs.js";
 import type { MatchInfo, UserDetails } from "./types.js";
 
 /** One energetic, one calm — mirrors the reference thumbnail layout. Override via config. */
@@ -51,6 +52,10 @@ export async function computeThumbnailProps(
   const [leftAvatar, rightAvatar] = await Promise.all([
     resolveAvatarUrl(userLeft.uuid, poses.left),
     resolveAvatarUrl(userRight.uuid, poses.right),
+    // Resolved here rather than relied on being warm: `eloAtMatchStart` reads a playoff game's
+    // frozen rating out of a memo only this fills, and the re-render route reaches this function
+    // without going through the pipeline. Cached per process, so it costs nothing when it is.
+    playoffContextFor(match),
   ]);
 
   // `user.eloRate` is the rating *now*, which drifts from the rating carried into the match

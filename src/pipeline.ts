@@ -29,6 +29,7 @@ import { buildDescription, buildTags } from "./description.js";
 import { hookSuggestions } from "./hooks.js";
 import { computeMetrics } from "./matchScore.js";
 import { buildTitle, formatTitle } from "./title.js";
+import { playoffContextFor, playoffTitleTail } from "./playoffs.js";
 import { overlayPaths, readSplitStills, renderOverlay, type SplitStill } from "./overlayRender.js";
 import {
   carriedHookText,
@@ -169,10 +170,13 @@ async function runStages(
     throw new Error(`Match ${matchId}: could not find a VOD for both players[0] and players[1].`);
   }
 
-  const [userLeft, userRight, versus] = await Promise.all([
+  const [userLeft, userRight, versus, playoff] = await Promise.all([
     getUser(playerLeft.uuid),
     getUser(playerRight.uuid),
     getVersus(playerLeft.uuid, playerRight.uuid),
+    // Resolved here, first, because every later `eloAtMatchStart` answers from it: a playoff
+    // game has no elo changes, and the bracket's frozen rating is the one the broadcast shows.
+    playoffContextFor(match),
   ]);
   emit(done("fetch", { message: `${playerLeft.nickname} vs ${playerRight.nickname}` }));
 
@@ -319,6 +323,7 @@ async function runStages(
   const title = buildTitle({
     leftNickname: leftWindow.playerNickname,
     rightNickname: rightWindow.playerNickname,
+    ...(playoff ? { suffix: playoffTitleTail(playoff) } : {}),
   });
 
   const thumbnailPath = path.join(outDir, "thumbnail.png");
@@ -488,6 +493,7 @@ async function runStages(
     chapters,
     playlistUrl: config.youtubePlaylistUrl,
     supportUrl: config.supportUrl,
+    playoff,
   });
   const descriptionPath = path.join(outDir, `match-${matchId}.description.txt`);
   await writeFile(descriptionPath, description, "utf8");

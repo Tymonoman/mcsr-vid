@@ -15,6 +15,8 @@ const MOBILE_CUTOFF = 50;
 export interface TitleInput {
   leftNickname: string;
   rightNickname: string;
+  /** Replaces the format suffix — a playoff game's round and game number (src/playoffs.ts). */
+  suffix?: string;
 }
 
 export interface BuiltTitle {
@@ -35,8 +37,8 @@ export interface BuiltTitle {
  *
  * The hook is left as a placeholder, because that judgement is not derivable.
  */
-export function buildTitle({ leftNickname, rightNickname }: TitleInput): BuiltTitle {
-  const generated = `${leftNickname} vs ${rightNickname}${SEPARATOR}${FORMAT_SUFFIX}`;
+export function buildTitle({ leftNickname, rightNickname, suffix = FORMAT_SUFFIX }: TitleInput): BuiltTitle {
+  const generated = `${leftNickname} vs ${rightNickname}${SEPARATOR}${suffix}`;
   const hookMax = Math.max(
     0,
     Math.min(MOBILE_CUTOFF - SEPARATOR.length, HARD_MAX - SEPARATOR.length - generated.length),
@@ -61,8 +63,14 @@ export function formatTitle(built: BuiltTitle): string {
   return [
     built.title,
     "",
-    `Replace ${HOOK_PLACEHOLDER} with ${built.hookMin}-${built.hookMax} characters ` +
-      `(title lands at ${base + built.hookMin}-${base + built.hookMax}).`,
+    // A zero budget is not "write a zero-character hook": it means the derived half alone has
+    // reached the ceiling, which a playoff suffix plus two long nicknames does. Say that, or the
+    // instruction reads as an impossible one.
+    built.hookMax === 0
+      ? `No room for a hook: the line above is already ${base} characters without one, ` +
+        `against a ${HARD_MAX}-character ceiling. Drop the ${HOOK_PLACEHOLDER} and the separator.`
+      : `Replace ${HOOK_PLACEHOLDER} with ${built.hookMin}-${built.hookMax} characters ` +
+        `(title lands at ${base + built.hookMin}-${base + built.hookMax}).`,
     `Both nicknames come from the API — don't retype them.`,
   ].join("\n");
 }

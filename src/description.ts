@@ -1,6 +1,7 @@
 import type { VodWindow } from "./vodAcquisition.js";
 import { type ChapterMarker, formatChapters } from "./chapters.js";
 import { eloAtMatchStart } from "./overlayProps.js";
+import { playoffLabel, playoffParagraph, type PlayoffContext } from "./playoffs.js";
 import type { MatchInfo, UserDetails } from "./types.js";
 
 // Three: over 15 YouTube voids all of them, and only the first three render above the title, so
@@ -42,12 +43,15 @@ export interface DescriptionInput {
   playlistUrl?: string;
   /** `config.supportUrl`; empty or absent means no tip-jar line. */
   supportUrl?: string;
+  /** `playoffContextFor(match)`: the round and game replace "1v1" and earn a paragraph. */
+  playoff?: PlayoffContext | null;
 }
 
 /**
  * The only 150-200 characters most viewers ever read, since that's all YouTube shows before
  * "Show more". Both nicknames go first because they are the search terms in this niche, and
- * "MCSR Ranked 1v1" lands before character 50 so it survives the mobile truncation.
+ * "MCSR Ranked 1v1" lands before character 50 so it survives the mobile truncation (a playoff
+ * opening is longer and does not; the round and game number are worth the cut).
  *
  * No result, ever: the description is read before the match is watched, and the ending is the
  * reason to watch it. Who won stays on the timer.
@@ -61,12 +65,15 @@ function buildOpening(input: DescriptionInput): string {
   const leftElo = eloAtMatchStart(match, userLeft.uuid, userLeft.eloRate);
   const rightElo = eloAtMatchStart(match, userRight.uuid, userRight.eloRate);
 
-  const head = `${left} vs ${right} — MCSR Ranked 1v1, ${leftElo} vs ${rightElo} elo.`;
+  const format = input.playoff
+    ? `MCSR Ranked S${input.playoff.season} Playoffs, ${playoffLabel(input.playoff)}`
+    : "MCSR Ranked 1v1";
+  const head = `${left} vs ${right} — ${format}, ${leftElo} vs ${rightElo} elo.`;
   // Doubles as the "what does this channel add" line a YPP reviewer looks for.
   const body = "Full same-seed race, synced dual-POV with live split comparison.";
 
   // Runners search by seed type — the closest competitor puts it in every title. It goes after
-  // the body so the nicknames and "MCSR Ranked 1v1" keep the front of the Show-more preview.
+  // the body so the nicknames and the format keep the front of the Show-more preview.
   const seed = [seedPhrase(match), bastionPhrase(match)].filter(Boolean).join(", ");
   return seed ? `${head} ${body} ${seed[0].toUpperCase()}${seed.slice(1)}.` : `${head} ${body}`;
 }
@@ -83,6 +90,9 @@ export function buildDescription(input: DescriptionInput): string {
   return [
     buildOpening(input),
     "",
+    // The series context a playoff viewer arrives with: which round, which game, which seeds.
+    // Never the series score — that is as much of a spoiler as the result is.
+    ...(input.playoff ? [playoffParagraph(input.playoff), ""] : []),
     "Chapters:",
     formatChapters(chapters),
     "",

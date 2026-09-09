@@ -32,10 +32,13 @@ import { exportRunning, startFastExport } from "./exportRoutes.js";
 import { getJob, startJob, type Job } from "./jobs.js";
 import { hiddenMatchIds } from "./matchShelf.js";
 import { orderForDisplay } from "./suggestPresent.js";
+import { playoffBoard, type PlayoffBoard } from "./playoffs.js";
 import { listProcessedMatchIds } from "./matchStatus.js";
 import { shortRunning, spawnShortJob, type ShortRunner } from "./shortsRoutes.js";
-import type { Suggestion } from "./suggest.js";
 import { snapshot, startScan } from "./suggestScan.js";
+import { getMatch } from "./mcsrApi.js";
+import type { MatchInfo } from "./types.js";
+import { withDiscoveredVods } from "./vodDiscovery.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -126,15 +129,100 @@ interface NightlyPickContext {
  * and re-running it overnight would spend the night reproducing files that exist; anything
  * hidden is a match the operator has already said no to.
  */
-export function pickNightlyCandidate<T extends { metrics: { matchId: number } }>(
+/** What a pick needs to carry: a Suggestion, or a playoff game dressed as one. */
+export interface NightlyPick {
+  metrics: { matchId: number; players: [string, string] };
+  bucket: string;
+}
+
+/**
+ * The current bracket's detected games, oldest first, as picks — ahead of every suggestion when
+ * `playoffsFirst` is on. Game order is series order, which is also the playlist's.
+ *
+ * `playoffsFirst` is off by default and the operator turns it on for the tournament: a config
+ * default that changes what tonight's render is would be a house-rule violation.
+ */
+export async function playoffPicks(
+  board: () => Promise<PlayoffBoard> = playoffBoard,
+): Promise<NightlyPick[]> {
+  if (!config.playoffsFirst) return [];
+  try {
+    return (await board()).slots
+      .flatMap((slot) =>
+        slot.games.map((g) => ({
+          metrics: {
+            matchId: g.matchId,
+            players: [slot.seeds[0].nickname, slot.seeds[1].nickname] as [string, string],
+          },
+          bucket: "playoffs",
+          dateSec: g.dateSec,
+        })),
+      )
+      .sort((a, b) => a.dateSec - b.dateSec);
+  } catch (err) {
+    // The bracket is a bonus on top of the feed, never the reason a night renders nothing.
+    console.error(`nightly: playoffs unavailable — ${describeError(err)}`);
+    return [];
+  }
+}
+
+export async function pickNightlyCandidate<T extends { metrics: { matchId: number } }>(
   suggestions: readonly T[],
   { processedIds, hiddenIds, freeMatches }: NightlyPickContext,
-): T | null {
+  eligible: (candidate: T) => Promise<boolean> = async () => true,
+): Promise<T | null> {
   if (freeMatches < MIN_FREE_MATCHES) return null;
   const processed = new Set(processedIds);
-  return (
-    suggestions.find((s) => !processed.has(s.metrics.matchId) && !hiddenIds.has(s.metrics.matchId)) ?? null
-  );
+  for (const s of suggestions) {
+    if (processed.has(s.metrics.matchId) || hiddenIds.has(s.metrics.matchId)) continue;
+    // One at a time and in order: `eligible` costs API calls, and the first candidate that passes
+    // is the pick, so a whole bracket is never probed to choose its first game.
+    if (await eligible(s)) return s;
+  }
+  return null;
+}
+
+/**
+ * Whether the pipeline would get past its VOD guard for this pick — asked before the night is
+ * committed to it, and only of a playoff game.
+ *
+ * A playoff game is a private room, so the API attaches no VOD at all and both are found on
+ * Twitch (`withDiscoveredVods`, the pipeline's own first step). When the players did not stream,
+ * `runStages` throws *before* `matchDir` exists, so `listProcessedMatchIds` never learns the id
+ * and that same game would be picked again the next night, and the next, for the whole
+ * tournament. False here makes the picker fall through to the following candidate instead.
+ */
+const noVods = new Set<number>();
+
+/** The playoff games this process has probed and found unstreamed, for the skip notification. */
+export const playoffsWithoutVods = (): number[] => [...noVods];
+
+export async function playoffVodsReady(
+  pick: NightlyPick,
+  // The probe is the pipeline's own first step, injected so the test does not shell out to yt-dlp.
+  probe: (id: number) => Promise<MatchInfo> = async (id) => withDiscoveredVods(await getMatch(id)),
+): Promise<boolean> {
+  if (pick.bucket !== "playoffs") return true;
+  const id = pick.metrics.matchId;
+  // A listing is ~8 s of yt-dlp and the answer does not change: a game older than the eight
+  // archives Twitch lists can never become ready, so re-probing it every night of the tournament
+  // is the whole bracket's worth of delay in front of the game that would render. Only a settled
+  // "they did not stream" is remembered — a failed listing is retried tomorrow.
+  if (noVods.has(id)) return false;
+  try {
+    // getMatch is cached for ten minutes and withDiscoveredVods writes what it finds back into
+    // that cache, so the download stage does not list the same archives again.
+    const match = await probe(id);
+    const ready = match.players.every((p) => match.vod.some((v) => v.uuid === p.uuid));
+    if (!ready) {
+      noVods.add(id);
+      console.error(`nightly: playoff game #${id} skipped — no VOD for both players`);
+    }
+    return ready;
+  } catch (err) {
+    console.error(`nightly: playoff game #${id} skipped — ${describeError(err)}`);
+    return false;
+  }
 }
 
 export interface NightlyOptions {
@@ -316,16 +404,16 @@ export interface NightlyRunResult {
 export interface NightlyDeps {
   renderInFlight: () => boolean;
   /** The ranked list to pick from, or null when there is none. */
-  ranked: () => Promise<readonly Suggestion[] | null>;
+  ranked: () => Promise<readonly NightlyPick[] | null>;
 }
 
-const liveRanked = async (): Promise<readonly Suggestion[] | null> => {
+const liveRanked = async (): Promise<readonly NightlyPick[] | null> => {
   // Not `startScan(true)`: a forced rescan is hundreds of API requests. Unforced, the scan
   // returns the cache while it is fresh and walks only the matches played since the last one
   // when it is stale — so the pick is from tonight's feed, not from whenever the process booted.
   await startScan(false);
   const result = snapshot().result;
-  return result ? orderForDisplay(result.suggestions) : null;
+  return result ? [...(await playoffPicks()), ...orderForDisplay(result.suggestions)] : null;
 };
 
 /** The disk-and-shelf half of the pick, shared by the run and the dashboard's preview of it. */
@@ -342,9 +430,16 @@ const pickContext = async (): Promise<NightlyPickContext> => ({
  * Deliberately never scans: a GET the browser polls must not be able to spend a scan's worth of
  * the MCSR request budget. No cached list simply means nothing to promise yet.
  */
-export async function nightlyCandidate(): Promise<Suggestion | null> {
+export async function nightlyCandidate(): Promise<NightlyPick | null> {
   const result = snapshot().result;
-  return result ? pickNightlyCandidate(orderForDisplay(result.suggestions), await pickContext()) : null;
+  return result
+    ? // No VOD probe: a GET the browser polls must not spend a yt-dlp listing per candidate. The
+      // preview may therefore name a game the run itself falls through — it is a preview.
+      pickNightlyCandidate(
+        [...(await playoffPicks()), ...orderForDisplay(result.suggestions)],
+        await pickContext(),
+      )
+    : null;
 }
 
 /**
@@ -377,8 +472,16 @@ export async function runNightlyOnce(
   const suggestions = await ranked();
   if (!suggestions) return skip("no suggestions available");
 
-  const pick = pickNightlyCandidate(suggestions, await pickContext());
-  if (!pick) return skip("every suggestion is processed or hidden, or the disk is full");
+  const pick = await pickNightlyCandidate(suggestions, await pickContext(), playoffVodsReady);
+  if (!pick) {
+    // Naming them: a bracket whose players stream on someone else's channel would otherwise
+    // produce nothing but "nothing to render" for a fortnight, with the reason only in the log.
+    const unstreamed = playoffsWithoutVods();
+    return skip(
+      "every candidate is processed, hidden or without VODs, or the disk is full" +
+        (unstreamed.length ? ` (no VOD: ${unstreamed.map((id) => `#${id}`).join(", ")})` : ""),
+    );
+  }
   // Checked again after the awaits above: a render clicked while the list was being ranked
   // must not get a second one started on top of it.
   if (busy()) return skip("a render is already in flight", true);

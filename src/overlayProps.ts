@@ -1,5 +1,6 @@
 import { config } from "./config.js";
 import { resolveAvatarUrl } from "./avatarUrl.js";
+import { playoffContextFor, playoffEloFor, playoffIntroLabel } from "./playoffs.js";
 import type { MatchInfo, StatisticCategoryMap, UserDetails, VersusStats } from "./types.js";
 // PlayerIdentity/SplitRow/OverlayProps are defined once in remotion/types.ts (the component's
 // prop contract) and reused here, since computeOverlayProps's output crosses into Remotion via
@@ -51,10 +52,14 @@ export function pickStats(user: UserDetails): { stats: StatisticCategoryMap; sco
  * `user.eloRate` is the player's rating *now*, which diverges from the match's within days at the
  * top and goes null outright at a season rollover. The match record carries each player's
  * post-match rating plus the delta that produced it, so the rating carried in is exact.
+ *
+ * A playoff game has no `changes` at all (a private room), and its live rating is the new
+ * season's; the bracket's frozen season-end rating is what the broadcast shows, so it wins when
+ * `playoffContextFor` has resolved the game (the pipeline does so first thing).
  */
 export function eloAtMatchStart(match: MatchInfo, uuid: string, liveElo: number | null): number {
   const change = match.changes.find((c) => c.uuid === uuid);
-  if (change?.eloRate == null) return liveElo ?? 0;
+  if (change?.eloRate == null) return playoffEloFor(match.id, uuid) ?? liveElo ?? 0;
   return change.eloRate - (change.change ?? 0);
 }
 
@@ -132,6 +137,8 @@ export async function computeOverlayProps(
   const leftUuid = userLeft.uuid;
   const rightUuid = userRight.uuid;
   const splits = computeSplits(match, leftUuid, rightUuid);
+  // Before the elo reads below: they answer from the context this resolves.
+  const playoff = await playoffContextFor(match);
 
   const matchPlayedLabel = new Date(match.date * 1000).toLocaleDateString("en-US", {
     month: "short",
@@ -163,6 +170,7 @@ export async function computeOverlayProps(
       `https://nmsr.nickac.dev/head/${rightUuid}`,
     ),
     matchPlayedLabel,
+    ...(playoff ? { playoffLabel: playoffIntroLabel(playoff) } : {}),
     h2hLeftWins: versus.results.ranked[leftUuid] ?? 0,
     h2hRightWins: versus.results.ranked[rightUuid] ?? 0,
     splits,

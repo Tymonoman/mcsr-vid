@@ -189,6 +189,13 @@ export interface Config {
   /** Per-term weights for the closeness and chaos scores. */
   suggestWeights: ScoreWeights;
   /**
+   * Whether detected playoff games (src/playoffs.ts) go ahead of the ordinary suggestions in
+   * the nightly's pick order. Off by default, and deliberately so: a default that changes what
+   * tonight's nightly renders is a house-rule violation. The operator flips it to true when a
+   * tournament starts and back to false when the bracket is done.
+   */
+  playoffsFirst: boolean;
+  /**
    * An LLM CLI to ask reasoning questions (src/reasoner.ts), as an argv array; an argument that
    * is exactly `{prompt}` (whole, not `--prompt={prompt}`) is replaced by the prompt, and when
    * none is, the prompt goes on stdin. Null (the default) turns every question into its heuristic fallback. The first use
@@ -241,6 +248,7 @@ const DEFAULTS: Config = {
   suggestSlowRunCutoffSec: 600,
   suggestFollowerWeight: 3,
   suggestWeights: DEFAULT_WEIGHTS,
+  playoffsFirst: false,
   reasonerCommand: null,
 };
 
