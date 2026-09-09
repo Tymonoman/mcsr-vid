@@ -102,6 +102,7 @@ export async function askReasoner(
       proc = spawn(bin, args, {
         stdio: ["pipe", "pipe", "pipe"],
         timeout: opts.timeoutMs ?? 60_000,
+        // Kills the CLI only, not anything it forked; tini as PID 1 reaps what that orphans.
         killSignal: "SIGKILL",
       });
     } catch (err) {

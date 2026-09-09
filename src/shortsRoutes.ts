@@ -16,7 +16,7 @@ import { describeError } from "./errorText.js";
 import type { ExportRouteContext } from "./exportRoutes.js";
 import { getMatch, getUser } from "./mcsrApi.js";
 import { reasonerConfigured } from "./reasoner.js";
-import { distinctShortMoments, SHORT_WINDOW_SEC } from "./shortMoment.js";
+import { distinctShortMoments, runMsOf, SHORT_WINDOW_SEC } from "./shortMoment.js";
 import { reasonShortMoments } from "./shortReason.js";
 import { buildShortHook, resolveShortHookFor } from "./shortHook.js";
 import { sendVideo } from "./rangeStream.js";
@@ -148,14 +148,15 @@ export async function handleShortsRoute(
       const momentOpts = {
         leftUuid: left.uuid,
         rightUuid: right.uuid,
-        runMs: match.result.time || 900_000,
+        runMs: runMsOf(match),
         windowSec: SHORT_WINDOW_SEC,
         chatAtSec: readChatTimes(dir),
       };
-      // The reasoner's choice goes first, as it does in the CLI, so "Cut this" on the top row
-      // renders the moment the panel shows. Not configured: the heuristic order, unchanged.
+      // The reasoner's choice goes first, as it does in the CLI, and its answer is saved in the
+      // match directory, so the row "Cut this" sends by index is the window the CLI cuts.
+      // Not configured: the heuristic order, unchanged.
       const { moments, reasoner } = reasonerConfigured()
-        ? await reasonShortMoments(match, distinctShortMoments(match, momentOpts, 5), momentOpts)
+        ? await reasonShortMoments(match, distinctShortMoments(match, momentOpts, 5), momentOpts, dir)
         : { moments: distinctShortMoments(match, momentOpts, 5), reasoner: { applied: false } };
 
       // What a render would actually burn in (see resolveShortHook), which is usually not the

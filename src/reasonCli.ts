@@ -3,13 +3,17 @@
  *
  * The Short's reasoner exchange in the open: the heuristic's candidates, the exact prompt the
  * configured command receives, and its answer as applied. For trying `agy` by hand on the lab
- * before trusting it with a nightly cut; nothing is rendered or written.
+ * before trusting it with a nightly cut. It always asks afresh and saves the answer to
+ * `short-reason.json`, so it is also the way to make the panel and the CLI take a new one.
  */
+import { existsSync } from "node:fs";
+import { readFile, rm } from "node:fs/promises";
+import path from "node:path";
 import { matchDir } from "./config.js";
 import { getMatch, parseMatchId } from "./mcsrApi.js";
-import { askReasoner, reasonerConfigured, reasonerPrompt } from "./reasoner.js";
-import { distinctShortMoments } from "./shortMoment.js";
-import { applyShortReason, SHORT_REASON_TASK, shortReasonInput } from "./shortReason.js";
+import { reasonerConfigured, reasonerPrompt } from "./reasoner.js";
+import { distinctShortMoments, runMsOf } from "./shortMoment.js";
+import { REASON_FILE, reasonShortMoments, SHORT_REASON_TASK, shortReasonInput } from "./shortReason.js";
 import { readChatTimes } from "./twitchChat.js";
 
 const arg = process.argv[2];
@@ -22,11 +26,12 @@ const match = await getMatch(matchId);
 const [left, right] = match.players;
 if (!left || !right) throw new Error(`Match ${matchId} does not have two players.`);
 
+const dir = matchDir(matchId);
 const opts = {
   leftUuid: left.uuid,
   rightUuid: right.uuid,
-  runMs: match.result.time || 900_000,
-  chatAtSec: readChatTimes(matchDir(matchId)),
+  runMs: runMsOf(match),
+  chatAtSec: readChatTimes(dir),
 };
 const moments = distinctShortMoments(match, opts, 5);
 const mmss = (ms: number) =>
@@ -41,9 +46,14 @@ if (!reasonerConfigured()) {
   console.log("reasonerCommand is not set; the prompt above is what it would receive.");
   process.exit(0);
 }
-const answer = await askReasoner(SHORT_REASON_TASK, input);
-console.log("Answer:", JSON.stringify(answer));
-const applied = applyShortReason(moments, answer, opts.runMs);
+if (!existsSync(dir)) {
+  console.log(`${dir} does not exist (no VODs): nothing to cut, so nothing is asked or saved.`);
+  process.exit(0);
+}
+const file = path.join(dir, REASON_FILE);
+await rm(file, { force: true });
+const applied = await reasonShortMoments(match, moments, opts, dir);
+console.log("Answer:", JSON.parse(await readFile(file, "utf8")).answer, `(saved to ${file})`);
 console.log(
   applied.reasoner.applied
     ? `Applied: cut ${mmss(applied.moments[0]!.startMs)}-${mmss(applied.moments[0]!.endMs)} — ${applied.reasoner.why ?? "(no reason given)"}`

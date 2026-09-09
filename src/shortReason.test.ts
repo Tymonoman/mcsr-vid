@@ -2,9 +2,11 @@
 // what it answers must never move the cut outside the candidates or the run.
 // Run: npx tsx src/shortReason.test.ts
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { distinctShortMoments } from "./shortMoment.js";
-import { applyShortReason, reasonShortMoments, shortReasonInput } from "./shortReason.js";
+import { applyShortReason, REASON_FILE, reasonShortMoments, shortReasonInput } from "./shortReason.js";
 import type { MatchInfo } from "./types.js";
 
 const raw = JSON.parse(readFileSync(new URL("./fixtures/match-12730175.json", import.meta.url), "utf8"));
@@ -41,6 +43,9 @@ assert.ok(moments.length >= 2, "the fixture must offer alternatives");
   assert.equal(r.reasoner.why, "opens on the flip");
   assert.equal(r.moments[0]!.startMs, moments[1]!.startMs - 2000);
   assert.equal(r.moments[0]!.endMs, moments[1]!.endMs - 2000);
+  // The payoff sits 2 s later into a window that starts 2 s earlier.
+  const offset = (m: { reason: string }) => Number(/at \+(\d+)s/.exec(m.reason)![1]);
+  assert.equal(offset(r.moments[0]!), offset(moments[1]!) + 2);
   assert.deepEqual(
     r.moments.slice(1).map((m) => m.startMs),
     moments.filter((m) => m !== moments[1]).map((m) => m.startMs),
@@ -72,16 +77,39 @@ untouched({ pick: 0, shiftSec: -4.5 }, "shift past the cap, negative");
 assert.equal(applyShortReason(moments, { pick: 1 }, opts.runMs).moments[0]!.startMs, moments[1]!.startMs);
 
 // --- The exchange: a null answer (not configured, crashed, timed out) is the heuristic; one
-// candidate is never worth a question.
-{
-  const r = await reasonShortMoments(match, moments, opts, async () => null);
+// candidate is never worth a question; no match directory (no VODs) is never worth one either.
+const dir = mkdtempSync(path.join(tmpdir(), "short-reason-"));
+try {
+  const r = await reasonShortMoments(match, moments, opts, dir, async () => null);
   assert.equal(r.reasoner.applied, false);
   assert.deepEqual(r.moments, moments);
+  assert.match(r.reasoner.why!, /delete short-reason\.json/);
   let asked = 0;
-  await reasonShortMoments(match, moments.slice(0, 1), opts, async () => (asked++, { pick: 0 }));
+  const count = (answer: unknown) => async () => (asked++, answer);
+  await reasonShortMoments(match, moments.slice(0, 1), opts, dir, count({ pick: 0 }));
+  await reasonShortMoments(match, moments, opts, path.join(dir, "missing"), count({ pick: 1 }));
   assert.equal(asked, 0);
-  const applied = await reasonShortMoments(match, moments, opts, async () => ({ pick: 1, shiftSec: 1 }));
-  assert.equal(applied.moments[0]!.startMs, moments[1]!.startMs + 1000);
+
+  // Asked once per match: the answer is saved — a null too — and re-read while the candidates
+  // are the same, so the panel's row index and the CLI's --pick name the same window.
+  assert.deepEqual(
+    (await reasonShortMoments(match, moments, opts, dir, count({ pick: 1 }))).moments,
+    moments,
+  );
+  assert.equal(asked, 0, "a recorded null is not re-asked");
+  rmSync(path.join(dir, REASON_FILE));
+  const first = await reasonShortMoments(match, moments, opts, dir, count({ pick: 1, shiftSec: 1 }));
+  assert.equal(asked, 1);
+  assert.equal(first.moments[0]!.startMs, moments[1]!.startMs + 1000);
+  assert.ok(existsSync(path.join(dir, REASON_FILE)));
+  const again = await reasonShortMoments(match, moments, opts, dir, count({ pick: 2 }));
+  assert.equal(asked, 1, "the saved answer is used");
+  assert.deepEqual(again.moments, first.moments);
+  // Different candidates (chat arrived, another window length): the saved answer is not for them.
+  await reasonShortMoments(match, moments.slice(0, 2), opts, dir, count({ pick: 0 }));
+  assert.equal(asked, 2);
+} finally {
+  rmSync(dir, { recursive: true, force: true });
 }
 
 console.log("shortReason: all checks passed");

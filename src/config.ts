@@ -189,9 +189,9 @@ export interface Config {
   /** Per-term weights for the closeness and chaos scores. */
   suggestWeights: ScoreWeights;
   /**
-   * An LLM CLI to ask reasoning questions (src/reasoner.ts), as an argv array; the token
-   * `{prompt}` is replaced by the prompt, and when no argument carries it the prompt goes on
-   * stdin. Null (the default) turns every question into its heuristic fallback. The first use
+   * An LLM CLI to ask reasoning questions (src/reasoner.ts), as an argv array; an argument that
+   * is exactly `{prompt}` (whole, not `--prompt={prompt}`) is replaced by the prompt, and when
+   * none is, the prompt goes on stdin. Null (the default) turns every question into its heuristic fallback. The first use
    * is the Short's cut: it picks among the scored candidates (src/shortReason.ts). Antigravity:
    * `["agy", "-p", "{prompt}", "--output-format", "json", "--effort", "high"]` — see README.
    */

@@ -860,7 +860,13 @@ async function loadShort(id) {
         : ""
     }
     ${data.hook ? `<div class="previewmeta"><span>burns in: &ldquo;${esc(data.hook)}&rdquo;</span></div>` : ""}
-    ${data.reasoner?.applied ? `<div class="previewmeta"><span>reasoner: ${esc(data.reasoner.why || "picked the top moment")}</span></div>` : ""}
+    ${
+      // Operator-only: `why` is the model's unfiltered text and may name who finished. It is
+      // never published — keep it off the publish kit, the title and the description.
+      data.reasoner?.applied || data.reasoner?.why
+        ? `<div class="previewmeta"><span>reasoner: ${esc(data.reasoner.why || "(no reason given)")}</span></div>`
+        : ""
+    }
     <div class="moments">${data.moments
       .map(
         (m) => `

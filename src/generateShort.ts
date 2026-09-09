@@ -5,7 +5,7 @@ import { requireArg } from "./cliArgs.js";
 import { config, matchDir } from "./config.js";
 import { getMatch, getUser, parseMatchId } from "./mcsrApi.js";
 import { reasonerConfigured } from "./reasoner.js";
-import { distinctShortMoments, SHORT_WINDOW_SEC } from "./shortMoment.js";
+import { distinctShortMoments, runMsOf, SHORT_WINDOW_SEC } from "./shortMoment.js";
 import { reasonShortMoments } from "./shortReason.js";
 import { renderShort } from "./shortRender.js";
 import { eloAtMatchStart } from "./overlayProps.js";
@@ -69,7 +69,7 @@ if (chatAtSec.length > 0) console.error(`Chat: ${chatAtSec.length} messages info
 const momentOpts = {
   leftUuid: playerLeft.uuid,
   rightUuid: playerRight.uuid,
-  runMs: match.result.time || 900_000,
+  runMs: runMsOf(match),
   windowSec: seconds,
   chatAtSec,
 };
@@ -77,13 +77,13 @@ let moments = distinctShortMoments(match, momentOpts, 5);
 if (moments.length === 0) {
   throw new Error(`Match ${matchId} has no timeline events worth cutting a Short from.`);
 }
-// The reasoner's choice moves to index 0 — the nightly's `--pick=0` — so the same order the
-// dashboard panel shows is the one this cuts from.
+// The reasoner's choice moves to index 0 — the nightly's `--pick=0`. Its answer is read from
+// short-reason.json when the dashboard already asked, so the order here is the one the panel
+// showed and `--pick` means the row the operator clicked.
 if (reasonerConfigured()) {
-  const reasoned = await reasonShortMoments(match, moments, momentOpts);
+  const reasoned = await reasonShortMoments(match, moments, momentOpts, outDir);
   moments = reasoned.moments;
-  if (reasoned.reasoner.applied)
-    console.error(`Reasoner: ${reasoned.reasoner.why ?? "picked the top moment"}`);
+  if (reasoned.reasoner.applied) console.error(`Reasoner: ${reasoned.reasoner.why ?? "(no reason given)"}`);
 }
 
 const mmss = (ms: number) =>
