@@ -164,9 +164,9 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
   `ps -eo pid,args | grep 'src/server.ts'` and kill by PID; the process `comm` is `MainThread`.
 - **Country flags render as tofu** without a colour-emoji font (cosmetic, intro card).
 - **Verify visual changes by rendering** (`npm run still`, then read the PNG).
-- **Run `npm test` after touching rendering or asset generation, and keep it green** — not
-  after every edit: it drives Chromium and ffmpeg. The PostToolUse hook's `prettier` +
-  `tsc --noEmit` covers per-edit mistakes.
+- **`npm run test:unit` after any edit; `npm test` after touching rendering or asset
+  generation** — the full run adds the three tests that drive Chromium and ffmpeg. The
+  PostToolUse hook's `prettier` + `tsc --noEmit` covers per-edit mistakes.
 - **Generated projects carry `<mlt root>`** with every resource relative to it, which is what
   lets a project rendered on the lab open on the desktop.
 
