@@ -8,18 +8,22 @@ import path from "node:path";
 import { matchDir } from "./config.js";
 import { listProcessedMatchIds } from "./matchStatus.js";
 import { readManifest } from "./thumbnailVariants.js";
-import { HOOK_PLACEHOLDER } from "./title.js";
+import { HOOK_PLACEHOLDER, metaPaths } from "./title.js";
 
 /** The long-form and the Short are two videos with two records. */
 export type UploadKind = "video" | "short";
 
 const UPLOAD_FILE: Record<UploadKind, string> = { video: "youtube.json", short: "youtube-short.json" };
 
-/** Per step: null for done, else the error text. What "Finish on YouTube" reports and repeats. */
+/**
+ * Per step: null for done, the error text for failed, absent for not attempted (a Short has no
+ * thumbnail, a private video cannot be commented on). What "Finish on YouTube" reports — and what
+ * it reads back to know which steps it must not do a second time.
+ */
 export interface FinishedSteps {
-  thumbnail: string | null;
-  playlists: string | null;
-  comment: string | null;
+  thumbnail?: string | null;
+  playlists?: string | null;
+  comment?: string | null;
 }
 
 export interface UploadRecord {
@@ -80,8 +84,10 @@ export async function uploadTextFor(
 ): Promise<{ title: string; description: string; tags: string[] }> {
   const dir = matchDir(matchId);
   const base = kind === "short" ? `short-${matchId}` : `match-${matchId}`;
-  const edited = (what: string) =>
-    kind === "video" ? readIfPresent(path.join(dir, `${base}.${what}.edited.txt`)) : Promise.resolve(null);
+  // The Short's title and description are the render's own and have no editable sibling; the
+  // long-form's convention is `metaPaths`, shared with the title editor and the publish kit.
+  const edited = (what: "title" | "description") =>
+    kind === "video" ? readIfPresent(metaPaths(matchId, what).edited) : Promise.resolve(null);
   const titleText =
     (await edited("title")) ?? (await readIfPresent(path.join(dir, `${base}.title.txt`))) ?? "";
   let title = titleText.split("\n")[0]!.trim();

@@ -68,11 +68,6 @@ async function loadYoutube(id, meta) {
     loadChecklist(id);
   };
 
-  // The hook gate the server applies too (a title still carrying <HOOK> is refused); shown here
-  // so the button explains itself rather than failing.
-  const firstLine = (meta.title ?? "").split("\n")[0] ?? "";
-  const hookMissing = () => firstLine.includes("<HOOK>") && !$("#hook")?.value.trim();
-
   el.innerHTML = `
     <div class="scanline">Uploaded it in Studio already? <a href="#" data-act="checkchannel">check the channel</a> <span class="muted">(otherwise it is noticed within six hours)</span></div>
     ${
@@ -106,16 +101,12 @@ async function loadYoutube(id, meta) {
   // The kit may have fetched the slot before this form existed (app.js prefillPublishAt).
   if (typeof prefillPublishAt === "function") prefillPublishAt();
 
-  const uploadBtn = $("#ytUpload");
-  const gate = () => {
-    const blocked = hookMissing() ? "Pick a hook first" : "";
-    uploadBtn.disabled = blocked !== "";
-    uploadBtn.title = blocked;
-  };
-  $("#hook")?.addEventListener("input", gate);
-  gate();
-
-  uploadBtn.addEventListener("click", async () => {
+  // No client-side hook gate. The server resolves `<HOOK>` from the edited title and, failing
+  // that, the thumbnail manifest's headline — a rule this file cannot see, and every copy of it
+  // here disagreed in both directions (a typed-but-unsaved hook enabled a button that 400s; a
+  // manifest headline with an empty input disabled one that would have worked). The refusal is
+  // free — it happens before a byte is sent — and lands in showFailure with the reason.
+  $("#ytUpload").addEventListener("click", async () => {
     const when = $("#ytWhen").value;
     $("#ytMsg").textContent = "starting…";
     try {
@@ -160,8 +151,9 @@ async function pollUpload(id, meta) {
 
 /**
  * The three steps a Studio upload still needs — the chosen thumbnail, its playlists, the first
- * comment — done by the API. Idempotent enough to press twice: a playlist join repeats (YouTube
- * allows a duplicate item), so the button reports what it did rather than hiding.
+ * comment — done by the API. Safe to press twice: the server skips any step its record already
+ * marks done (src/youtubeUpload.ts), because a second comment and a second playlist join are
+ * writes to the live channel that only Studio can undo.
  */
 async function finishOnYouTube(id, meta, btn) {
   btn.disabled = true;

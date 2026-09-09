@@ -169,8 +169,10 @@ export async function beginUpload(matchId: number, req: UploadRequest): Promise<
       await writeUpload(matchId, record, req.kind);
       // The video is up; what follows is worth reporting but must not read as a failed upload.
       const steps = await finishOnYouTube(matchId, result.videoId, req.kind);
+      // Only the steps that actually failed: `null` is done and an absent step was never
+      // attempted (a Short's thumbnail, a private video's comment), neither of which is a problem.
       progress.warnings = Object.entries(steps)
-        .filter((e): e is [string, string] => e[1] !== null)
+        .filter((e): e is [string, string] => typeof e[1] === "string")
         .map(([step, error]) => `Uploaded, but the ${step} step failed: ${error}`);
       // Published is the point the match is finished with, so it is the point worth backing up.
       // Fire-and-forget (see archiveMatch's note); failures land in the server log and in
@@ -197,7 +199,7 @@ export async function beginUpload(matchId: number, req: UploadRequest): Promise<
  * "?" `matchStatusFor` degrades to with the MCSR API down: a public playlist called "? vs ?" is
  * worse than none, and unlike the upload it cannot be quietly re-done later.
  */
-const playlistTitlesFor = (
+export const playlistTitlesFor = (
   match: { leftNickname: string; rightNickname: string },
   kind: UploadKind,
 ): Array<[title: string, description: string]> => {
@@ -220,6 +222,13 @@ const playlistTitlesFor = (
  * rather than thrown — the video is up, and a rejected thumbnail must not read as a failed
  * upload. Written into the record so the panel can say what is still missing. A Short gets the
  * season playlist only: no custom thumbnail (Shorts show a frame) and no comment.
+ *
+ * Idempotent through that record, which is why it is read first: a step that already answered
+ * `null` is done and is skipped. Two of the three are writes to the live channel that only a
+ * human in Studio can undo — `postComment` de-duplicates nothing, and `addToPlaylist` documents
+ * that it never has to, because until this function existed it only ever ran on a video
+ * `videos.insert` had returned seconds earlier. The button is on every published match and the
+ * scan can auto-finish, so pressing it twice must be free.
  */
 export async function finishOnYouTube(
   matchId: number,
@@ -241,28 +250,43 @@ export async function finishOnYouTube(
     dir,
     manifest?.variants.find((v) => v.key === manifest.chosen)?.file ?? "thumbnail.png",
   );
+  const record = await readUpload(matchId, kind);
+  const already = record?.finished ?? {};
+  // A step is redone only if it has not already succeeded. `undefined` is "not attempted", so a
+  // Short that later needs nothing, or a comment skipped while the video was private, is retried
+  // — the same press that fixes a genuine failure.
+  const todo = (step: keyof FinishedSteps): boolean => already[step] !== null;
 
-  const playlistErrors: string[] = [];
-  for (const [title, description] of playlistTitlesFor(status, kind)) {
-    const error = await attempt(() => addToPlaylist(videoId, title, description));
-    if (error) playlistErrors.push(`"${title}": ${error}`);
+  const finished: FinishedSteps = { ...already };
+
+  if (todo("playlists")) {
+    const playlistErrors: string[] = [];
+    for (const [title, description] of playlistTitlesFor(status, kind)) {
+      const error = await attempt(() => addToPlaylist(videoId, title, description));
+      if (error) playlistErrors.push(`"${title}": ${error}`);
+    }
+    finished.playlists = playlistErrors.length ? playlistErrors.join("; ") : null;
   }
-  const finished: FinishedSteps = {
-    thumbnail:
+  if (todo("thumbnail")) {
+    // A Short shows a frame of itself; there is no custom thumbnail to set.
+    finished.thumbnail =
       kind === "short"
         ? null
         : existsSync(thumb)
           ? await attempt(() => setThumbnail(videoId, thumb))
-          : `no thumbnail at ${thumb}`,
-    playlists: playlistErrors.length ? playlistErrors.join("; ") : null,
-    comment:
-      kind === "short"
-        ? null
-        : await attempt(() =>
-            postComment(videoId, pinnedCommentText(status.leftNickname, status.rightNickname)),
-          ),
-  };
-  const record = await readUpload(matchId, kind);
+          : `no thumbnail at ${thumb}`;
+  }
+  if (todo("comment")) {
+    // A Short gets no comment. On the long-form, YouTube refuses comments while the video is
+    // private — and the nightly uploads private by design — so that is left unattempted rather
+    // than recorded as a failure, which would put ", with a problem" on every nightly push.
+    if (kind === "short") finished.comment = null;
+    else if (record?.privacyStatus !== "private") {
+      finished.comment = await attempt(() =>
+        postComment(videoId, pinnedCommentText(status.leftNickname, status.rightNickname)),
+      );
+    }
+  }
   if (record) await writeUpload(matchId, { ...record, finished }, kind);
   return finished;
 }
@@ -286,8 +310,8 @@ export async function recordStudioUpload(matchId: number, video: ChannelVideo): 
   console.error(`channel: #${matchId} is ${video.videoId}, uploaded from Studio`);
   // Published is the point a match is finished with, so it is the point worth backing up — and a
   // Studio upload never went through the dashboard's upload path, so this is its only chance.
-  // Unguarded by `isArchived`: rsync over an existing copy transfers nothing, and the copies are
-  // queued one at a time (src/archive.ts) so a first scan pairing a dozen does not storm the NAS.
+  // `archiveMatch` itself skips a match already on the NAS and queues the rest one at a time
+  // (src/archive.ts), so a first scan pairing a dozen does not storm it.
   archiveMatch(matchId);
   if (config.youtubeAutoFinish) await finishOnYouTube(matchId, video.videoId);
 }
@@ -297,14 +321,18 @@ export async function recordStudioUpload(matchId: number, video: ChannelVideo): 
  * gains. Nothing unless `youtubeUploadEnabled` and `nightlyUpload` both say so (src/config.ts).
  * Private either way; "scheduled" sets the next publish slot on the long-form and 18 h later on
  * the Short, so the Short lands while the long-form is still fresh in Browse. A refusal (a title
- * still carrying `<HOOK>`, no Short on disk) is a skip line, not a failure.
+ * still carrying `<HOOK>`, no Short on disk) is a skip line, not a failure. `begin` is the test's
+ * seam, as `chainShort`'s `run` is.
  */
-export async function nightlyUploads(matchId: number): Promise<string> {
+export async function nightlyUploads(
+  matchId: number,
+  begin: typeof beginUpload = beginUpload,
+): Promise<string> {
   if (!config.youtubeUploadEnabled || config.nightlyUpload === "off") return "";
   const slot =
     config.nightlyUpload === "scheduled" ? nextPublishSlot(Date.now(), config.publishHourUtc) : null;
   const one = async (kind: UploadKind, publishAt: Date | null): Promise<string> => {
-    const begun = await beginUpload(matchId, {
+    const begun = await begin(matchId, {
       kind,
       privacyStatus: "private",
       publishAt: publishAt?.toISOString(),
