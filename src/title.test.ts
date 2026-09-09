@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { buildTitle, formatTitle, HOOK_PLACEHOLDER } from "./title.js";
+import { buildTitle, formatTitle, HOOK_PLACEHOLDER, withHook } from "./title.js";
 
 // The two nicknames that were actually misspelled on the channel come through exactly as the
 // API spells them — that is the whole point of generating this half.
@@ -52,5 +52,30 @@ for (const [l, r] of [
 const file = formatTitle(edcr);
 assert.equal(file.split("\n")[0], edcr.title);
 assert.ok(file.includes("34-47 characters"));
+
+// --- The pipeline's own hook, dropped into the same line ---------------------------------------
+// The whole point: the title file arrives finished, so the operator edits a line instead of
+// retyping the decision the thumbnail and the Short already committed to.
+assert.equal(
+  withHook(edcr, "Can the 1789 take down the 2080?").title,
+  "Can the 1789 take down the 2080? | edcr vs doogile | MCSR Ranked 1v1",
+);
+assert.equal(withHook(edcr, "  padded  ").title, "padded | edcr vs doogile | MCSR Ranked 1v1");
+// No hook is the placeholder, not an empty slot: the upload route refuses on the placeholder,
+// which is exactly the refusal a hookless title deserves.
+for (const none of [undefined, null, "", "   "]) {
+  assert.equal(withHook(edcr, none).title, edcr.title, `${JSON.stringify(none)} leaves the placeholder`);
+}
+// Over budget is rejected rather than cut: a truncated hook stops mid-word on the one line that
+// has to earn the click, and the budget is what keeps both nicknames inside the mobile cutoff.
+assert.equal(withHook(edcr, "x".repeat(edcr.hookMax)).title.startsWith("x"), true, "the longest hook fits");
+assert.equal(withHook(edcr, "x".repeat(edcr.hookMax + 1)).title, edcr.title, "one over is refused whole");
+
+// The guidance still names the real budget once the hook is in place — the operator is editing,
+// not filling a blank, and the character band is the same either way.
+const filled = formatTitle(withHook(edcr, "YN vs TAS"));
+assert.equal(filled.split("\n")[0], "YN vs TAS | edcr vs doogile | MCSR Ranked 1v1");
+assert.ok(filled.includes("34-47 characters"), "the budget line survives a filled hook");
+assert.ok(!filled.includes(HOOK_PLACEHOLDER), "nothing tells you to replace a placeholder that is gone");
 
 console.log("title: all checks passed");

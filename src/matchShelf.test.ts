@@ -107,10 +107,21 @@ try {
     "a bare match directory should tick nothing",
   );
 
+  // The generated file counts when nothing has been edited: the pipeline writes its own hook
+  // into it now, so requiring an edited file would ask the operator to retype a decision that
+  // has already been made everywhere else.
+  writeFileSync(path.join(pubDir, "match-555.title.txt"), "Down to the last heart | a vs b\n");
+  assert.equal((await publishChecklist(555, null)).hookPicked, true, "the generated title has a hook");
+  writeFileSync(path.join(pubDir, "match-555.title.txt"), "<HOOK> | a vs b | MCSR Ranked 1v1\n");
+  assert.equal((await publishChecklist(555, null)).hookPicked, false, "a match with no chip is unhooked");
+
   // A title still carrying the placeholder is exactly the case the upload route refuses, so it
   // must not count as a picked hook — that is the whole reason this looks at the first line.
   writeFileSync(path.join(pubDir, "match-555.title.edited.txt"), "<HOOK> | a vs b | MCSR Ranked 1v1\n");
   assert.equal((await publishChecklist(555, null)).hookPicked, false, "the placeholder is not a hook");
+  // And the edit wins over the generated file in both directions.
+  writeFileSync(path.join(pubDir, "match-555.title.txt"), "A hook the operator threw away | a vs b\n");
+  assert.equal((await publishChecklist(555, null)).hookPicked, false, "the edited title is the answer");
   writeFileSync(path.join(pubDir, "match-555.title.edited.txt"), "Down to the last heart | a vs b\n");
   writeFileSync(path.join(pubDir, "thumbnail.json"), JSON.stringify({ chosen: "hero", variants: [] }));
   writeFileSync(path.join(pubDir, "youtube.json"), JSON.stringify({ videoId: "abc" }));
