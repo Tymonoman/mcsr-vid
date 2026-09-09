@@ -179,7 +179,8 @@ export async function handleShortsRoute(
         rendered: existsSync(file) ? path.basename(file) : null,
         // Lets the panel seek the final video to a window: match start sits at ANCHOR_SEC in
         // the export, so final-video time = finalOffsetSec + startMs / 1000. Sent rather than
-        // hardcoded client-side so the two cannot drift apart.
+        // hardcoded client-side so the two cannot drift apart. Assumes an untrimmed head: a
+        // hand-cut Kdenlive export counts as the final video too, and a trimmed one seeks off.
         finalOffsetSec: ANCHOR_SEC,
         finalVideo: (await locateExport(matchId, dir)) !== null,
         hook,

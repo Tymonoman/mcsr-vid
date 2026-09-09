@@ -35,6 +35,20 @@ const { chromium } = require("playwright");
       Math.abs(t - expected) < 1,
       `currentTime=${t} expected=${expected}`,
     );
+    // A second click must drop the first window's stop listener: with two rows, seek to the
+    // other one and make sure the first's end (or the second's start) does not pause it.
+    if (m.moments.length > 1) {
+      const other = pick === 1 ? 0 : 1;
+      await page.click(`#short .moment[data-pick="${other}"] .seek`);
+      await page.waitForTimeout(1500);
+      const s = await page.$eval("#finalvideo", (v) => ({ paused: v.paused, t: v.currentTime }));
+      const start = m.finalOffsetSec + m.moments[other].startMs / 1000;
+      check(
+        "a second click plays its own window, the first's listener gone",
+        !s.paused && s.t >= start && s.t < start + 3,
+        JSON.stringify({ ...s, start }),
+      );
+    }
     const label = (await page.textContent(`#short .moment[data-pick="${pick}"] .seek`)).trim();
     check("control shows the final-video clock", /\d+:\d\d$/.test(label), label);
     check("no page errors", errors.length === 0, errors.join(" | "));

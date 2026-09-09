@@ -636,6 +636,8 @@ function watchExport(id) {
         if (btn) btn.disabled = false;
       } else {
         loadPreview(id);
+        // The Short panel's seek controls only render once the final video exists.
+        void loadShort(id);
         // The list's "ready to publish" badge and count read the same file.
         void refresh();
       }
@@ -906,6 +908,11 @@ async function loadShort(id) {
         v.pause();
         v.removeEventListener("timeupdate", stopAtEnd);
       };
+      // One window at a time: a previous click's listener still waiting for its own end would
+      // pause this window at the wrong second (the player outlives this panel's re-renders,
+      // so the handler lives on the element, not in this closure).
+      if (v.stopAtEnd) v.removeEventListener("timeupdate", v.stopAtEnd);
+      v.stopAtEnd = stopAtEnd;
       v.currentTime = data.finalOffsetSec + m.startMs / 1000;
       v.addEventListener("timeupdate", stopAtEnd);
       $("#h-preview").scrollIntoView({ behavior: "smooth" });
