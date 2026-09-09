@@ -20,21 +20,23 @@ const fs = require("fs");
     await page.goto(base + "/", { waitUntil: "networkidle" });
     await page.evaluate((id) => select(Number(id), { open: true }), id);
     await page.waitForSelector("#publishkit .kit", { timeout: 30000 });
-    await page.waitForSelector("#ytTitle", { timeout: 30000 });
+    // The YouTube panel used to hold its own copy of the title; the upload reads the match's
+    // title file server-side now, so the panel is waited on by something that still exists.
+    await page.waitForSelector("#youtube", { timeout: 30000 });
     const chip = await page.$("#detail .chip");
     check("a hook chip exists", !!chip);
     const chipText = (await chip.textContent()).trim();
     await chip.click();
     await page.waitForTimeout(150);
-    const ytTitle = await page.$eval("#ytTitle", (e) => e.value);
+    const ytTitleInputs = await page.$$("#youtube textarea, #youtube input[type=text]");
     const kitTitle = await page.$eval(
       '#publishkit .kit:has(.kitlabel:text-is("Title")) textarea',
       (t) => t.value,
     );
     check(
-      "YouTube title follows the chip",
-      ytTitle.includes(chipText) && !ytTitle.includes("<HOOK>"),
-      ytTitle,
+      "the YouTube panel keeps no second copy of the title",
+      ytTitleInputs.length === 0,
+      `${ytTitleInputs.length} free-text field(s) in the panel`,
     );
     check(
       "kit title follows the chip",
@@ -62,11 +64,11 @@ const fs = require("fs");
     check("title file on disk carries the hook", onDisk.includes(chipText), onDisk);
     const after = (await page.textContent("#checklist")).replace(/\s+/g, " ");
     check("checklist hook fact ticked after save", /✓\s*hook/i.test(after), after.slice(0, 120));
-    const ytAfter = await page.$eval("#ytTitle", (e) => e.value);
+    const ytAfter = await page.$$("#youtube textarea, #youtube input[type=text]");
     check(
-      "YouTube panel repainted with the saved title",
-      ytAfter.includes(chipText) && !ytAfter.includes("<HOOK>"),
-      ytAfter,
+      "and still keeps none after a save",
+      ytAfter.length === 0,
+      `${ytAfter.length} free-text field(s) in the panel`,
     );
     const kitAfter = await page.$eval(
       '#publishkit .kit:has(.kitlabel:text-is("Title")) textarea',

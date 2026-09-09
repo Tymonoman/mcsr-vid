@@ -180,8 +180,10 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
   y≈790 and anything under the badge collides with them.
 - **tini is PID 1 since 830321f**; if `ps -eo stat | grep -c ^Z` ever climbs, wrap the command
   in `python3 scripts/reap.py`.
-- **No `ss`, `lsof` or `fuser` in the container.** Find a server with
-  `ps -eo pid,args | grep 'src/server.ts'` and kill by PID; the process `comm` is `MainThread`.
+- **`ss` is there, `lsof` and `fuser` are not.** `ss -tlnp | grep <port>` names the process that
+  actually holds a port — which is not always the one `ps -eo pid,args | grep 'src/server.ts'`
+  finds, because the listener's `comm` is `MainThread`. Killing the grep's PID and restarting can
+  leave the old listener up and the new server dead on `EADDRINUSE`.
 - **Country flags render as tofu** without a colour-emoji font (cosmetic, intro card).
 - **Verify visual changes by rendering** (`npm run still`, then read the PNG).
 - **`npm run test:unit` after any edit; `npm test` after touching rendering or asset
