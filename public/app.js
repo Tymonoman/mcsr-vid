@@ -864,7 +864,11 @@ async function loadShort(id) {
       .map(
         (m) => `
       <div class="moment" data-pick="${m.index}">
-        <span class="when">${runClock(m.startMs)}&ndash;${runClock(m.endMs)}</span>
+        <span class="when">${runClock(m.startMs)}&ndash;${runClock(m.endMs)}${
+          data.finalVideo
+            ? `<button type="button" class="seek" title="play this window in the final video">&#9654; ${runClock(data.finalOffsetSec * 1000 + m.startMs)}</button>`
+            : ""
+        }</span>
         <span class="why">${esc(m.reason)}</span>
         <span class="hook">&ldquo;${esc(m.hook)}&rdquo;</span>
         <button type="button" class="cut">Cut this</button>
@@ -885,6 +889,27 @@ async function loadShort(id) {
     el.querySelector('[data-act="recut"]')?.addEventListener("click", (ev) => {
       ev.preventDefault();
       el.querySelector(".moment .cut")?.click();
+    });
+  }
+
+  // What a cut would actually contain, before pressing "Cut this": the final video seeks to the
+  // window and stops at its end, so exactly the Short's 22 s play. The player sits above the
+  // Short panel, off-screen on a phone, hence the scroll.
+  for (const btn of el.querySelectorAll(".moment .seek")) {
+    btn.addEventListener("click", () => {
+      const v = $("#finalvideo");
+      if (!v) return;
+      const m = data.moments[Number(btn.closest(".moment").dataset.pick)];
+      const end = data.finalOffsetSec + m.endMs / 1000;
+      const stopAtEnd = () => {
+        if (v.currentTime < end) return;
+        v.pause();
+        v.removeEventListener("timeupdate", stopAtEnd);
+      };
+      v.currentTime = data.finalOffsetSec + m.startMs / 1000;
+      v.addEventListener("timeupdate", stopAtEnd);
+      $("#h-preview").scrollIntoView({ behavior: "smooth" });
+      v.play()?.catch(() => {});
     });
   }
 

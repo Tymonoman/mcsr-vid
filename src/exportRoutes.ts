@@ -189,7 +189,7 @@ export function startFastExport(matchId: number, dir: string): ExportJob {
  * rule (any video in the folder that is not a POV clip or a render intermediate), so this defers
  * to it rather than growing a second list of names to keep in sync.
  */
-async function locateExport(matchId: number, dir: string): Promise<string | null> {
+export async function locateExport(matchId: number, dir: string): Promise<string | null> {
   const canonical = finalPath(dir);
   if (existsSync(canonical)) return canonical;
   try {

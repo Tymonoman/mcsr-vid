@@ -13,7 +13,8 @@ import { readFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import { describeError } from "./errorText.js";
-import type { ExportRouteContext } from "./exportRoutes.js";
+import { locateExport, type ExportRouteContext } from "./exportRoutes.js";
+import { ANCHOR_SEC } from "./kdenliveProject.js";
 import { getMatch, getUser } from "./mcsrApi.js";
 import { distinctShortMoments, SHORT_WINDOW_SEC } from "./shortMoment.js";
 import { buildShortHook, resolveShortHookFor } from "./shortHook.js";
@@ -176,6 +177,11 @@ export async function handleShortsRoute(
           hook: buildShortHook(m, left.nickname, right.nickname),
         })),
         rendered: existsSync(file) ? path.basename(file) : null,
+        // Lets the panel seek the final video to a window: match start sits at ANCHOR_SEC in
+        // the export, so final-video time = finalOffsetSec + startMs / 1000. Sent rather than
+        // hardcoded client-side so the two cannot drift apart.
+        finalOffsetSec: ANCHOR_SEC,
+        finalVideo: (await locateExport(matchId, dir)) !== null,
         hook,
         // The title the last render wrote, for the manual upload. Absent until something has
         // been rendered, which is exactly when there is nothing to paste anywhere.
