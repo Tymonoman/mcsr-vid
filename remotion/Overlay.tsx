@@ -174,10 +174,22 @@ function SplitsPanel({
         {ctaFrame !== null && frame >= ctaFrame ? (
           // The post-roll: the run is over, the achievements have been on screen for the whole
           // match, and this is the one moment the band can ask for the next one.
-          <div className="cta">
-            <span className="cta-value">SUBSCRIBE</span>
-            <span className="cta-sub">for the next one</span>
-          </div>
+          <>
+            {/* The one fact that explains what was just watched without naming a winner: a time.
+                An elo delta or a placement would sign the result, so neither goes here. A
+                forfeit has no completion time (runResultMs null) and gets no number at all —
+                ctaFrameOf already withholds the whole card in that case. */}
+            {props.runResultMs !== null && (
+              <div className="final-time">
+                <span className="label">Final Time</span>
+                <span className="final-value">{formatTime(props.runResultMs)}</span>
+              </div>
+            )}
+            <div className="cta">
+              <span className="cta-value">SUBSCRIBE</span>
+              <span className="cta-sub">for the next one</span>
+            </div>
+          </>
         ) : (
           <>
             <span className="ach-label">Achievements</span>
