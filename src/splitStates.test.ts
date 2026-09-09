@@ -110,7 +110,10 @@ console.log("splitStates: all checks passed");
     !splitSegments({ ...props, postRollCta: false }).some((s) => s.startFrame === cta),
     "off: no extra still",
   );
-  assert.equal(ctaFrameOf({ ...props, runResultMs: null }), null, "no finish, no card");
+  // A forfeit arrives as runResultMs null (overlayProps maps result.time 0 to it), and that
+  // withholds the whole post-roll — the subscribe card and the final time above it — rather
+  // than stamping a finish time the match never produced.
+  assert.equal(ctaFrameOf({ ...props, runResultMs: null }), null, "forfeit: no card, no time");
   assert.equal(
     ctaFrameOf({ ...props, postRollCta: undefined }),
     cta,

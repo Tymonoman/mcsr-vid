@@ -227,6 +227,22 @@
   image-rendering: pixelated;
 }
 
+/* The finish time, above the post-roll card: the viewer has just watched the run end, and this
+   is the one result fact that names no winner. Same still as the card, so it costs no frames. */
+.col-meta .final-time {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.col-meta .final-value {
+  font-family: var(--pixel-font);
+  font-size: 34px;
+  color: var(--quartz);
+  font-variant-numeric: tabular-nums;
+  text-shadow: 3px 3px 0 var(--panel-edge);
+}
+
 /* The post-roll subscribe card, in the achievements' place (src/splitStates.ts decides the frame). */
 .col-meta .cta {
   margin-top: 18px;
