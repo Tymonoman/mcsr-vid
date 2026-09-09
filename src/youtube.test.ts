@@ -150,6 +150,10 @@ console.log("youtube: all checks passed");
   );
   const { handleYoutubeRoute } = await import("./youtubeRoutes.js");
   const { HOOK_PLACEHOLDER } = await import("./title.js");
+  // Under the temp directory, not the configured mediaDir: on the lab that is the `/media` bind
+  // mount, and a test has no business writing into it.
+  const realMediaDir = config.mediaDir;
+  config.mediaDir = path.join(tokenDir, "media");
   // The title comes off disk now, not out of the request body — the form has no title field.
   const routeMatch = 424242;
   const routeDir = path.join(config.mediaDir, String(routeMatch));
@@ -193,7 +197,7 @@ console.log("youtube: all checks passed");
   config.youtubeUploadEnabled = false;
 
   console.log("OK: upload is gated off, and refuses a title that still contains the hook placeholder");
-  await rm(routeDir, { recursive: true, force: true });
+  config.mediaDir = realMediaDir;
   await rm(tokenDir, { recursive: true, force: true });
 }
 
@@ -318,9 +322,70 @@ console.log("youtube: all checks passed");
   assert.equal(metadata!.status.privacyStatus, "private", "publishAt forces private");
   assert.equal(metadata!.status.publishAt, "2026-09-20T19:00:00.000Z");
   assert.equal(metadata!.snippet.defaultLanguage, "en");
-  // The session file is only useful to a retry; a finished upload leaves none behind.
-  assert.equal(existsSync(path.join(dir, ".upload-session.json")), false);
+  // The session file is only useful to a retry; a finished upload leaves none behind. Named after
+  // the file, so a match's long-form and its Short do not overwrite each other's resume.
+  const session = path.join(dir, ".upload-session-clip.mp4.json");
+  assert.equal(existsSync(session), false);
 
   console.log("OK: the resumable upload resumes from YouTube's Range and schedules privately");
+
+  // --- the two ways a resume goes wrong -------------------------------------------------------
+  // Both cost a second copy of the same match on the channel, which only Studio can undo.
+
+  // 1. The process died after YouTube accepted the last chunk but before the session file was
+  //    removed. The probe answers 200 with the video: that is done, not "start again".
+  await writeFile(
+    session,
+    JSON.stringify({ filePath: file, total: 3 * CHUNK, sessionUrl: "https://upload/session" }),
+  );
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify({ access_token: "at", expires_in: 3600 }))) as typeof fetch;
+  let sent = 0;
+  const finishedProbe: typeof fetch = async (_url, init) => {
+    sent += 1;
+    assert.equal(String((init?.headers as Record<string, string>)["content-range"]), "bytes */786432");
+    return new Response(JSON.stringify({ id: "vidDone", status: { privacyStatus: "private" } }), {
+      status: 200,
+    });
+  };
+  const resumed = await uploadVideo({
+    filePath: file,
+    title: "t",
+    description: "d",
+    privacyStatus: "private",
+    fetchImpl: finishedProbe,
+    chunkBytes: CHUNK,
+  });
+  assert.equal(resumed.videoId, "vidDone", "the video YouTube already has, not a second upload");
+  assert.equal(sent, 1, "nothing was re-sent");
+  assert.equal(existsSync(session), false, "and the session is forgotten");
+
+  // 2. A 308 whose Range is in some other shape. Reading it as 0 re-sends the whole file, and
+  //    nothing here caps the attempts — so an unreadable header means "the chunk we just sent".
+  const odd: string[] = [];
+  const oddRange: typeof fetch = async (url, init) => {
+    if (init?.method === "POST")
+      return new Response("", { status: 200, headers: { location: "https://upload/session" } });
+    odd.push(String((init?.headers as Record<string, string>)["content-range"]));
+    if (odd.length < 3) return new Response("", { status: 308, headers: { range: "0-something" } });
+    return new Response(JSON.stringify({ id: "vidOdd" }), { status: 200 });
+  };
+  const oddResult = await uploadVideo({
+    filePath: file,
+    title: "t",
+    description: "d",
+    privacyStatus: "private",
+    fetchImpl: oddRange,
+    chunkBytes: CHUNK,
+  });
+  assert.equal(oddResult.videoId, "vidOdd");
+  assert.deepEqual(odd, [
+    "bytes 0-262143/786432",
+    "bytes 262144-524287/786432",
+    "bytes 524288-786431/786432",
+  ]);
+
+  globalThis.fetch = realFetch;
+  console.log("OK: a finished session is not uploaded twice, and an odd Range does not restart it");
   await rm(dir, { recursive: true, force: true });
 }

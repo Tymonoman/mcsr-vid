@@ -170,8 +170,13 @@ export interface UploadOptions {
  * Where an interrupted upload's session URL is kept: beside the file, so the next attempt on the
  * same bytes picks up where the last one stopped instead of re-sending a gigabyte. YouTube keeps
  * a session for about a day. `total` guards a re-export under the same name.
+ *
+ * Named after the file, because a match's long-form and its Short share a directory and the
+ * nightly uploads them back to back: one shared name meant starting the Short threw away the
+ * long-form's resume, which is the whole point of the feature.
  */
-const sessionPath = (filePath: string): string => path.join(path.dirname(filePath), ".upload-session.json");
+const sessionPath = (filePath: string): string =>
+  path.join(path.dirname(filePath), `.upload-session-${path.basename(filePath)}.json`);
 
 async function readSession(filePath: string, total: number): Promise<string | null> {
   try {
@@ -186,10 +191,15 @@ async function readSession(filePath: string, total: number): Promise<string | nu
   }
 }
 
-/** `Range: bytes=0-N` is the last byte YouTube holds; absent means nothing landed yet. */
-const acceptedBytes = (res: Response): number => {
+/**
+ * `Range: bytes=0-N` is the last byte YouTube holds. null for a header that is absent or in any
+ * other shape — the caller decides what that means, and the two callers mean different things:
+ * nothing landed yet on the resume probe, but "assume the chunk we just sent" in the loop.
+ * Reading an unparseable header as 0 there restarted the file from the beginning, forever.
+ */
+const acceptedBytes = (res: Response): number | null => {
   const m = res.headers.get("range")?.match(/bytes=0-(\d+)/);
-  return m ? Number(m[1]) + 1 : 0;
+  return m ? Number(m[1]) + 1 : null;
 };
 
 export interface UploadResult {
@@ -229,9 +239,16 @@ export async function uploadVideo(opts: UploadOptions): Promise<UploadResult> {
   const chunkBytes = opts.chunkBytes ?? CHUNK_BYTES;
   const accessToken = await getAccessToken();
 
+  // The session file is only useful to a retry, so a terminal answer removes it either way.
+  const forget = () => rm(sessionPath(opts.filePath), { force: true });
+  const resultOf = (body: { id: string; status?: { privacyStatus?: string; publishAt?: string } }) => ({
+    videoId: body.id,
+    privacyStatus: body.status?.privacyStatus ?? privacyStatus,
+    publishAt: body.status?.publishAt ?? opts.publishAt ?? null,
+  });
+
   // A session left by an interrupted attempt on these exact bytes: ask YouTube how much it holds
-  // (`bytes */total`) and carry on from there. Anything but 308 means the session is gone or
-  // already finished, and a fresh start is the right answer to both.
+  // (`bytes */total`) and carry on from there.
   let sessionUrl = await readSession(opts.filePath, total);
   let uploaded = 0;
   if (sessionUrl) {
@@ -244,7 +261,15 @@ export async function uploadVideo(opts: UploadOptions): Promise<UploadResult> {
       },
       signal: opts.signal,
     });
-    if (probe.status === 308) uploaded = acceptedBytes(probe);
+    // 2xx means YouTube already accepted the last chunk and the process died before it could
+    // forget the session: the video exists. Starting over would upload the same match twice.
+    if (probe.ok) {
+      await forget();
+      opts.onProgress?.(total, total);
+      return resultOf((await probe.json()) as { id: string });
+    }
+    if (probe.status === 308) uploaded = acceptedBytes(probe) ?? 0;
+    // Anything else means the session is gone; a fresh start is the right answer.
     else sessionUrl = null;
   }
 
@@ -270,8 +295,6 @@ export async function uploadVideo(opts: UploadOptions): Promise<UploadResult> {
       "utf8",
     );
   }
-  // The session file is only useful to a retry, so a terminal answer removes it either way.
-  const forget = () => rm(sessionPath(opts.filePath), { force: true });
 
   while (uploaded < total) {
     const end = Math.min(uploaded + chunkBytes, total) - 1;
@@ -289,22 +312,16 @@ export async function uploadVideo(opts: UploadOptions): Promise<UploadResult> {
     // 308 means "keep going"; the Range header is authoritative about how much actually landed,
     // so resuming from it rather than from our own counter survives a partially-accepted chunk.
     if (res.status === 308) {
-      uploaded = res.headers.has("range") ? acceptedBytes(res) : end + 1;
+      // A Range we cannot read falls back to the chunk we just sent, as it always did: assuming
+      // 0 instead would re-send the whole file, and nothing here caps the attempts.
+      uploaded = acceptedBytes(res) ?? end + 1;
       opts.onProgress?.(uploaded, total);
       continue;
     }
     if (res.ok) {
-      const body = (await res.json()) as {
-        id: string;
-        status?: { privacyStatus?: string; publishAt?: string };
-      };
       await forget();
       opts.onProgress?.(total, total);
-      return {
-        videoId: body.id,
-        privacyStatus: body.status?.privacyStatus ?? privacyStatus,
-        publishAt: body.status?.publishAt ?? opts.publishAt ?? null,
-      };
+      return resultOf((await res.json()) as { id: string });
     }
     // 5xx and 429 are the retryable ones YouTube documents; the session file stays for those so
     // the next attempt resumes. A 4xx is terminal — the same bytes would be refused again.
