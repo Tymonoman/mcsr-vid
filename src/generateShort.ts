@@ -8,6 +8,7 @@ import { reasonerConfigured } from "./reasoner.js";
 import { distinctShortMoments, runMsOf, SHORT_WINDOW_SEC } from "./shortMoment.js";
 import { reasonShortMoments } from "./shortReason.js";
 import { renderShort } from "./shortRender.js";
+import { readSyncOffsets } from "./syncFile.js";
 import { eloAtMatchStart } from "./overlayProps.js";
 import { buildShortDescription, buildShortTitle, resolveShortHookFor } from "./shortHook.js";
 import { readChatTimes } from "./twitchChat.js";
@@ -111,19 +112,28 @@ const hook = await resolveShortHookFor({
 });
 console.error(`Hook: ${hook}`);
 
-// The same sync the long-form uses would be ideal here, but it costs a video scan per clip and a
-// Short is far more forgiving: it is cut from one moment, so a second of absolute drift shifts
-// which second you see rather than desyncing anything. The coarse estimate is what the download
-// window was built from, so it is exact by construction.
-const matchStartSec = config.preRollSec;
+// The offsets the pipeline's sync stage already paid for, so the two POVs show the same instant
+// and the moment starts where the scorer thinks it does. A Short is forgiving — it is cut from
+// one window, so drift shifts which second you see rather than desyncing anything — but the
+// measured error runs to five seconds, which is a quarter of the Short.
+// Without sync.json (a match rendered before it existed) the coarse download estimate stands.
+const sync = readSyncOffsets(outDir);
+const leftStartSec = sync?.left ?? config.preRollSec;
+const rightStartSec = sync?.right ?? config.preRollSec;
+console.error(
+  sync
+    ? `Sync: match start ${leftStartSec.toFixed(2)}s / ${rightStartSec.toFixed(2)}s into the clips ` +
+        `(sync.json, ${sync.source}, ${(sync.confidence * 100).toFixed(0)}%).`
+    : `Sync: no sync.json — using the coarse ${config.preRollSec}s estimate for both POVs.`,
+);
 
 const outPath = path.join(outDir, `short-${matchId}.mp4`);
 console.error(`\nRendering ${seconds}s Short from ${mmss(moment.startMs)}...`);
 await renderShort({
   topClipPath: clipFor(playerLeft.nickname),
-  topMatchStartSec: matchStartSec,
+  topMatchStartSec: leftStartSec,
   bottomClipPath: clipFor(playerRight.nickname),
-  bottomMatchStartSec: matchStartSec,
+  bottomMatchStartSec: rightStartSec,
   startMs: moment.startMs,
   durationSec: seconds,
   ...(topCrop ? { topCrop } : {}),

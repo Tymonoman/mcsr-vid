@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { LEFT_POV_RECT, RIGHT_POV_RECT } from "../remotion/layout.js";
-import { buildKdenliveProject, type KdenliveClipInput } from "./kdenliveProject.js";
+import {
+  buildKdenliveProject,
+  offsetIntoClipFromProject,
+  type KdenliveClipInput,
+} from "./kdenliveProject.js";
 
 const clip = (name: string): KdenliveClipInput => ({
   path: `/media/${name}.mp4`,
@@ -303,3 +307,35 @@ const bare = buildKdenliveProject({
   projectName: "Bare",
 });
 assert.ok(bare.includes('<property name="rect">0 0 960 1080 1</property>'));
+
+// The offsets the sync stage decided on survive in the project and nowhere else for matches
+// rendered before sync.json existed, so the inversion must round-trip exactly — both when match
+// start sits after the anchor (the usual 150s of pre-roll, trimmed off the head) and before it
+// (placed with leading blank). Getting it wrong backfills a wrong offset that renders perfectly.
+const synced = buildKdenliveProject({
+  fps: 60,
+  width: 1920,
+  height: 1080,
+  root: "/media",
+  leftClip: { ...clip("left"), matchOffsetIntoClipSec: 153.9 },
+  rightClip: { ...clip("right"), matchOffsetIntoClipSec: 155.2 },
+  overlayClips: [],
+  projectName: "Synced",
+});
+assert.equal(offsetIntoClipFromProject(synced, "chain_video_left"), 153.9);
+assert.equal(offsetIntoClipFromProject(synced, "chain_video_right"), 155.2);
+
+const early = buildKdenliveProject({
+  fps: 60,
+  width: 1920,
+  height: 1080,
+  root: "/media",
+  leftClip: { ...clip("left"), matchOffsetIntoClipSec: 4 },
+  rightClip: { ...clip("right"), matchOffsetIntoClipSec: 4 },
+  overlayClips: [],
+  projectName: "Early",
+});
+assert.equal(offsetIntoClipFromProject(early, "chain_video_left"), 4);
+
+// main_bin lists every producer at in=out=0; answering from there would hand back the anchor.
+assert.equal(offsetIntoClipFromProject(synced, "chain_video_missing"), null);

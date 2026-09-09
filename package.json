@@ -38,6 +38,8 @@
     "short": "npm run build-overlay-css && tsx src/generateShort.ts",
     "export:fast": "tsx src/exportFastCli.ts",
     "chat": "tsx src/chatCli.ts",
+    "//sync-status": "Where each match's clips are placed; with an id, backfills sync.json from an already-generated .kdenlive.",
+    "sync-status": "tsx src/syncStatusCli.ts",
     "//reason": "Ask the configured reasoner (reasonerCommand) which moment the Short should cut; prints the prompt and the answer.",
     "reason": "tsx src/reasonCli.ts"
   },
