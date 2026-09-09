@@ -140,6 +140,27 @@ export interface Config {
    */
   nightlyNotifyUrl: string;
   /**
+   * Whether the dashboard may call `videos.insert` at all. Off until the YouTube API compliance
+   * audit clears (submitted 7 Sept 2026): an upload through an unaudited project is locked
+   * private for good, so until the letter arrives every upload goes through Studio and
+   * POST /api/youtube/upload answers 403. Flip this first, by hand, after the audit.
+   */
+  youtubeUploadEnabled: boolean;
+  /**
+   * Whether a Studio upload the channel scan pairs to a match for the first time is finished by
+   * the dashboard on the spot — thumbnail, playlists, first comment — rather than waiting for
+   * the "Finish on YouTube" button. Off by default: those calls are visible on the live channel,
+   * and the button exists so the operator sees what a finish does before letting it run alone.
+   */
+  youtubeAutoFinish: boolean;
+  /**
+   * What the nightly does with the MP4 it just exported: nothing, upload it private, or upload
+   * it scheduled for the next publish slot (`publishHourUtc`; the Short follows 18 h later).
+   * Needs `youtubeUploadEnabled` too. "off" by default so no config default changes what a
+   * nightly render does tonight.
+   */
+  nightlyUpload: "off" | "private" | "scheduled";
+  /**
    * The hour (UTC, 0-23) the publish kit proposes for "Publish at", and the upload form's
    * default. 19 is the active competitor's measured slot — 36 of its last 50 uploads on the
    * dot, median 4.2k views there against 1.6k for its earlier 17:xx uploads — and 21:00 in
@@ -237,6 +258,9 @@ const DEFAULTS: Config = {
   postRollCta: true,
   nightlyRenderExport: true,
   nightlyNotifyUrl: "",
+  youtubeUploadEnabled: false,
+  youtubeAutoFinish: false,
+  nightlyUpload: "off",
   suggestCloseSlots: 8,
   suggestChaosSlots: 2,
   suggestCacheTtlMin: 30,
@@ -298,6 +322,14 @@ export function validateOverrides(raw: Record<string, unknown>): void {
     if (key === "reasonerCommand") {
       if (value !== null && !(Array.isArray(value) && value.every((s) => typeof s === "string"))) {
         throw new Error(`${CONFIG_PATH}: "${key}" must be an array of strings or null.`);
+      }
+      continue;
+    }
+    // Three words, not any string: a typo here ("scheduled " with a space) would silently be
+    // "off" at the one switch that decides whether a nightly upload happens.
+    if (key === "nightlyUpload") {
+      if (value !== "off" && value !== "private" && value !== "scheduled") {
+        throw new Error(`${CONFIG_PATH}: "nightlyUpload" must be "off", "private" or "scheduled".`);
       }
       continue;
     }
