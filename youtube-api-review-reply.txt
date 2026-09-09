@@ -1,0 +1,152 @@
+Hello,
+
+Thank you for the follow-up. Below is a written script of exactly what our API client does, step by step, followed by the channel link.
+
+Channel
+
+https://www.youtube.com/channel/UCm2mAyONTHlmIxZzNmi388w — MCSR Replayoffs.
+This is the channel that owns the OAuth credentials and the only channel the client ever writes
+to. There is no second channel, no end user other than the channel owner, and no way for anyone
+else to authorise the client: it is a self-hosted tool run by the channel owner on their own
+machine, with a single refresh token stored in a local file.
+
+What the tool is
+
+An editing pipeline for Minecraft speedrun race videos. It takes a public match id from MCSR
+Ranked (the community's ranked-1v1 ladder), downloads the two competitors' own Twitch VODs of
+that match, synchronises them, renders a split-timer overlay over the two camera angles, and
+produces one finished MP4 plus a vertical Short and a thumbnail. The YouTube API is used at the
+end of that pipeline, to publish the finished file to the owner's own channel and to read back
+how it performed.
+
+Scopes requested, and what each is for:
+
+  - youtube.upload: videos.insert — publishing the rendered MP4
+  - youtube.force-ssl: thumbnails.set, playlists.insert, playlistItems.insert, comments.insert (replying to comments on the channel's own videos)
+  - youtube.readonly: videos.list, playlists.list, commentThreads.list — reading back the channel's own videos
+  - yt-analytics.readonly: YouTube Reporting API job — thumbnail impressions and CTR for the channel's own videos
+
+No scope is used to read or write anything belonging to another channel.
+
+Demonstration script
+
+This is a walkthrough of one full publish, in the order the operator performs it. Every API call
+named here is issued by src/youtube.ts in the client's source; the file has no SDK dependency,
+so each call is a plain HTTPS request that can be read directly.
+
+0. Authorisation (once)
+
+The channel owner runs npm run youtube-auth on their own desktop. This opens Google's consent
+screen for the four scopes above, signed in as the MCSR Replayoffs channel. The resulting refresh
+token is written to a local file (youtube-token.json) on the owner's own hardware and copied to
+the machine that runs the pipeline. It is never transmitted anywhere else and there is no server
+component that holds credentials for anybody.
+
+On screen: the browser consent dialog, the four scopes, then the terminal confirming the token
+was stored.
+
+1. The finished video
+
+The operator opens the tool's local dashboard (npm run dashboard, reachable only on the home
+network) and selects a match that has finished rendering. The match page shows the rendered MP4,
+the generated title, description and tag list, and three candidate thumbnails.
+
+On screen: the match page, the video playing in the browser, the three thumbnail candidates.
+
+2. Upload — videos.insert
+
+The operator picks a thumbnail, checks the title and description, chooses a privacy status
+(private / unlisted / public) or a scheduled publish time, and presses Upload.
+
+The client then performs a resumable upload:
+
+1. POST https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status
+   with the metadata body — snippet.title, snippet.description, snippet.tags,
+   snippet.categoryId: "20" (Gaming), status.privacyStatus,
+   status.selfDeclaredMadeForKids: false, and status.publishAt when the upload is scheduled.
+2. The returned session URL is then PUT in 8 MiB chunks with a Content-Range header until
+   YouTube returns the created video resource. 308 responses are resumed from the authoritative
+   Range header rather than from a local counter.
+
+A scheduled upload is always sent as private, because publishAt is only honoured while the
+video is private.
+
+On screen: the progress bar advancing to 100%, then the video id the API returned.
+
+3. Thumbnail — thumbnails.set
+
+Immediately after the video id comes back, the client posts the chosen PNG:
+
+POST https://www.googleapis.com/upload/youtube/v3/thumbnails/set?videoId=<id> with
+Content-Type: image/png and the image as the body.
+
+A failure here (for example on a channel that is not phone-verified) is reported to the operator
+but is not treated as a failed upload — the video is up, it simply keeps YouTube's auto-generated
+thumbnail.
+
+On screen: the dashboard reporting the thumbnail was set, and the new thumbnail appearing on
+the video in YouTube Studio.
+
+4. Playlists — playlists.list / playlists.insert / playlistItems.insert
+
+The same publish step files the video into three of the channel's own playlists: the season
+playlist, a playlist for that pair of competitors, and one per competitor. Each is looked up with
+playlists.list?mine=true and created with playlists.insert if it does not exist yet, then the
+video is added with playlistItems.insert. mine=true means only the owner's own playlists are
+ever read or modified.
+
+On screen: the video appearing in the season playlist on the channel.
+
+5. Analytics — videos.list and the Reporting API
+
+Back on the dashboard's YouTube panel, the operator reviews how published videos are doing.
+
+- GET https://www.googleapis.com/youtube/v3/videos?part=snippet,status,statistics&id=<ids>
+  returns title, privacy status, view count, like count and comment count for the channel's own
+  uploads. These are rendered as the "Rendered / Uploaded" table.
+- The A/B tab reads thumbnail impressions and click-through rate from a standing YouTube
+  Reporting API job (GET https://youtubereporting.googleapis.com/v1/jobs/<jobId>/reports, then
+  the newest report's downloadUrl). The CSV columns used are date, video_id,
+  video_thumbnail_impressions and video_thumbnail_impressions_ctr. This is the only source of
+  impressions and CTR, and it is what the channel uses to decide which thumbnail style to keep.
+- GET .../commentThreads?part=snippet,replies&videoId=<id> lists comments on the channel's own
+  video and flags the ones the channel has not answered; the operator can answer one from the
+  dashboard, which posts comments.insert with the reply text they typed.
+
+On screen: the stats table with real view counts, the A/B tab showing impressions and CTR per
+thumbnail variant, and the comments list.
+
+6. End result
+
+The finished video on the channel — custom thumbnail, description with chapter timestamps and a
+link to the public match page it was made from, tags, and its place in the season playlist:
+
+https://www.youtube.com/channel/UCm2mAyONTHlmIxZzNmi388w/videos
+
+One point of transparency
+
+The upload path described in sections 2–4 is fully implemented in the client, but we have
+deliberately not run videos.insert in production yet: a video uploaded
+through a project whose compliance review has not cleared stays locked private permanently, which
+would waste the finished render. Videos on the channel today were therefore uploaded through
+YouTube Studio by hand, and the API client is used for the read paths (section 5) and is waiting
+on this review before it takes over publishing. That is exactly the manual work the quota
+increase is meant to remove.
+
+If a written script is not sufficient, we are glad to record a screencast of a real upload to a
+private test video on the same channel — please say so and we will send it within the same
+window.
+
+Content and ownership
+
+Every video is made from the two competitors' own publicly available Twitch VODs of a public
+ranked match, edited into a single synchronised replay with an original overlay, and published
+with credit and a link to the players in the description. The channel is an independent fan
+project and states so in every description; it is not affiliated with MCSR Ranked, Mojang or
+Microsoft. Nothing is downloaded from YouTube, and no YouTube content, data or metrics are ever
+shown to anyone but the channel owner, in their own local dashboard.
+
+Please let us know if anything above needs expanding, and we will send it right away.
+
+Thanks,
+MCSR Replayoffs

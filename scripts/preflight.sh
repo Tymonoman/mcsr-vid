@@ -32,8 +32,14 @@ if command -v gh >/dev/null 2>&1; then
     problems+=("gh is not authenticated — run: gh auth login --with-token  (needs Contents: Read and write)")
   fi
 else
-  # Not a blocker: pushes go through the credential helper, not gh. Only `gh pr create` needs it.
-  notes+=("gh not installed — push works via the credential helper; only 'gh pr create' is unavailable")
+  # No gh: only a real dry-run push proves a credential exists. The Claude container has none
+  # (9 Sept 2026: "could not read Username"), and /app is the lab's own checkout, so commits still
+  # reach production without a push — the GitHub mirror and remote-branch deletes wait for the operator.
+  if GIT_TERMINAL_PROMPT=0 timeout 15 git push --dry-run origin HEAD >/dev/null 2>&1; then
+    notes+=("gh not installed — push works via the credential helper; only 'gh pr create' is unavailable")
+  else
+    notes+=("no GitHub credential in this container — commits stay local (/app is the lab checkout); push from the operator's machine")
+  fi
 fi
 
 # --- the credential most likely to expire silently. See scripts/preflight-youtube.mjs.
