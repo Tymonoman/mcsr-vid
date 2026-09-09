@@ -15,7 +15,9 @@ const { chromium } = require("playwright");
   const legend = (await page.textContent(".bucketlegend .order")).replace(/\s+/g, " ").trim();
   check("legend names the bucket order", /CLOSE first, then CHAOS/.test(legend), legend);
   // dismiss mid-list: undo line stays in view
-  const cards = await page.$$("#suggestions .sugg");
+  // Direct children only: the playoffs section paints its bracket slots as `.sugg` cards too,
+  // nested in #playoffs, and those carry no Dismiss. Same rule app.js binds its handlers with.
+  const cards = await page.$$("#suggestions > .sugg");
   check("enough cards to dismiss the 7th", cards.length >= 7, String(cards.length));
   const seventh = cards[6];
   await seventh.scrollIntoViewIfNeeded();
@@ -37,7 +39,7 @@ const { chromium } = require("playwright");
   );
   await page.click('#suggestions .scanline.undo [data-act="undo"]');
   await page.waitForTimeout(1500);
-  const after = await page.$$("#suggestions .sugg");
+  const after = await page.$$("#suggestions > .sugg");
   check("undo restores the card", after.length === cards.length, `${after.length} vs ${cards.length}`);
   // kit position and placeholder guard
   await page.click("#tab-matches");

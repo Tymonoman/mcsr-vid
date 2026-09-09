@@ -1380,12 +1380,15 @@ function renderSuggestions(data) {
   if (nightly === null) void loadNightly();
   if (!data.suggestions.length) return;
 
-  el.querySelectorAll(".sugg").forEach((row) => {
+  // Direct children only: the playoffs section paints its slots as `.sugg` cards too, nested in
+  // #playoffs, and they carry no Dismiss — a descendant selector here threw on the first one and
+  // left every card after it without handlers.
+  el.querySelectorAll(":scope > .sugg").forEach((row) => {
     const id = Number(row.dataset.id);
     row.querySelector('[data-act="render"]')?.addEventListener("click", () => startRender(String(id)));
     row.querySelector('[data-act="render-short"]')?.addEventListener("click", () => startRenderWithShort(id));
     row.querySelector('[data-act="open"]')?.addEventListener("click", () => select(id, { open: true }));
-    row.querySelector('[data-act="dismiss"]').addEventListener("click", async (ev) => {
+    row.querySelector('[data-act="dismiss"]')?.addEventListener("click", async (ev) => {
       const s = data.suggestions.find((x) => x.matchId === id);
       let out;
       try {
