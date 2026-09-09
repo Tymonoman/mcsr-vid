@@ -80,5 +80,16 @@ export const SHORT_BRAND_BAR_HEIGHT = SHORT_HEIGHT - SHORT_NAMEPLATE_HEIGHT * 2 
 export const SHORT_TOP_POV_Y = SHORT_NAMEPLATE_HEIGHT;
 export const SHORT_BOTTOM_NAMEPLATE_Y = SHORT_TOP_POV_Y + SHORT_POV_HEIGHT;
 
-/** Seconds the hook line stays on screen before it is removed. */
-export const SHORT_HOOK_SEC = 4;
+/**
+ * Seconds the hook line stays on screen before it is removed.
+ *
+ * Three, not four: all three of the 30k+ reference Shorts have cleared their opening text by
+ * ~3.2s, and the hook is sitting on the lower player's nameplate the whole time it is up.
+ */
+export const SHORT_HOOK_SEC = 3;
+
+/**
+ * Seconds of result card at the end — the closing beat every reference Short stamps, held to a
+ * hard cut (1.2s on one, 4.3s on another; 2.5 is the middle of what they hold).
+ */
+export const SHORT_RESULT_SEC = 2.5;

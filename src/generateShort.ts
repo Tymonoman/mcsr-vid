@@ -5,13 +5,14 @@ import { requireArg } from "./cliArgs.js";
 import { config, matchDir } from "./config.js";
 import { getMatch, getUser, parseMatchId } from "./mcsrApi.js";
 import { reasonerConfigured } from "./reasoner.js";
-import { distinctShortMoments, runMsOf, SHORT_WINDOW_SEC } from "./shortMoment.js";
+import { distinctShortMoments, SHORT_WINDOW_SEC } from "./shortMoment.js";
 import { reasonShortMoments } from "./shortReason.js";
 import { renderShort } from "./shortRender.js";
 import { readSyncOffsets } from "./syncFile.js";
 import { eloAtMatchStart } from "./overlayProps.js";
 import { buildShortDescription, buildShortTitle, resolveShortHookFor } from "./shortHook.js";
 import { readChatTimes } from "./twitchChat.js";
+import { estimatedRunSec } from "./vodAcquisition.js";
 
 /**
  * npm run short -- <matchId> [--pick=N] [--seconds=22] [--top-crop=x,y,w,h] [--bottom-crop=...]
@@ -67,10 +68,14 @@ for (const p of [playerLeft, playerRight]) {
 const chatAtSec = readChatTimes(outDir);
 if (chatAtSec.length > 0) console.error(`Chat: ${chatAtSec.length} messages inform the moment`);
 
+// The one definition of how long the run was, shared with the VOD download window: result.time,
+// or the forfeit fallback when the match record has none. `momentOpts` is kept as a value because
+// the reasoner is handed the same options the ranking used.
+const runMs = estimatedRunSec(match) * 1000;
 const momentOpts = {
   leftUuid: playerLeft.uuid,
   rightUuid: playerRight.uuid,
-  runMs: runMsOf(match),
+  runMs,
   windowSec: seconds,
   chatAtSec,
 };
@@ -145,14 +150,22 @@ await renderShort({
       // the Short agrees with the overlay, the thumbnail and the description.
       eloRate: eloAtMatchStart(match, playerLeft.uuid, userLeft.eloRate),
       eloRank: userLeft.eloRank,
+      // The same head render the 16:9 overlay and the intro card use, from the same host.
+      headUrl: `https://nmsr.nickac.dev/head/${playerLeft.uuid}`,
     },
     bottom: {
       nickname: playerRight.nickname,
       eloRate: eloAtMatchStart(match, playerRight.uuid, userRight.eloRate),
       eloRank: userRight.eloRank,
+      headUrl: `https://nmsr.nickac.dev/head/${playerRight.uuid}`,
     },
     hook,
     timerStartMs: moment.startMs,
+    // The closing card, and only when the cut actually runs to the finish: a mid-run window must
+    // never stamp a number the viewer did not watch happen. The time comes from the match record
+    // rather than from anything on the board — the reference channel reads theirs off a clock and
+    // its card disagrees with the timer visible under it. A forfeit has no time to show at all.
+    ...(match.result.time > 0 && moment.endMs >= runMs ? { resultMs: match.result.time } : {}),
   },
   outPath,
   onProgress: (p) => console.error(`  ${p.phase}: ${p.percent}%`),

@@ -31,6 +31,17 @@ const HOOK_SEC = 2;
  * to see it coming, and the tail that carries the reaction without outstaying it.
  */
 const PAYOFF_TARGET = 0.59;
+/**
+ * What a window that runs to the end of the match is worth on top of what it scores anyway.
+ *
+ * Both 30k+ reference Shorts put their payoff at 97% of runtime, a shape PAYOFF_TARGET cannot
+ * express and deliberately should not — it is also the target for a mid-run moment. A separate
+ * term keeps both reachable: a dull finish still loses to a real mid-run moment (a lead change
+ * alone is worth more), and a match whose only story is its ending now has one.
+ */
+const FINISH_BONUS = 1;
+/** The synthetic event marking the end of the run; never emitted by the API. */
+const TERMINAL_TYPE = "mcsr.timeline.finish";
 
 /**
  * How much each event is worth as the payoff of a Short. Everything not listed scores zero:
@@ -52,6 +63,11 @@ const EVENT_WEIGHTS: Record<string, number> = {
   "nether.loot_bastion": 0.3,
   "nether.find_bastion": 0.3,
   "story.enter_the_nether": 0.25,
+  // The finish itself, which no timeline entry marks. `dragon_death` covers a run that ended
+  // well; a forfeit or a draw ends with nothing at all in `timelines`, so the shape of the
+  // best-performing reference Short in the set — a draw, 42k views — was unreachable.
+  // Injected in rankShortMoments, never present in a real match's timeline.
+  [TERMINAL_TYPE]: 1.0,
 };
 
 export interface ShortMoment {
@@ -155,8 +171,14 @@ export function chatBurst(
 export function rankShortMoments(match: MatchInfo, opts: ShortMomentOptions): ShortMoment[] {
   const windowSec = opts.windowSec ?? SHORT_WINDOW_SEC;
   const windowMs = windowSec * 1000;
-  const scored = match.timelines.filter((e) => weightOf(e.type) > 0).sort((a, b) => a.time - b.time);
-  if (scored.length === 0) return [];
+  const real = match.timelines.filter((e) => weightOf(e.type) > 0);
+  // A match whose timeline holds nothing watchable still gets no Short: the finish is an extra
+  // payoff to reach, not a reason to cut 22 seconds of footage nothing is known about.
+  if (real.length === 0) return [];
+  // One ms inside the run: a window may not end past `runMs` and events are counted with
+  // `time < endMs`, so an event sitting exactly on the end would belong to no window at all.
+  const terminal = { uuid: "", time: Math.max(0, opts.runMs - 1), type: TERMINAL_TYPE };
+  const scored = [...real, terminal].sort((a, b) => a.time - b.time);
 
   const flips = leadChangeTimes(match, opts.leftUuid, opts.rightUuid);
 
@@ -178,8 +200,16 @@ export function rankShortMoments(match: MatchInfo, opts: ShortMomentOptions): Sh
   // leaves behind (1 - 0.59 = 0.41), so that the ideal window is still reachable when the payoff
   // *is* the last event — at exactly 0.4 the search stops one stride short of its own target.
   const lastEnd = Math.min(opts.runMs, scored[scored.length - 1]!.time + windowMs * 0.45);
+  const starts: number[] = [];
+  for (let s = 0; s + windowMs <= Math.max(windowMs, lastEnd); s += STRIDE_SEC * 1000) starts.push(s);
+  // The window ending exactly on the finish, as a candidate in its own right. The stride is a
+  // whole second and a run length never is, so every stride-aligned window stops a fraction of a
+  // second short of the end — which is the one frame the closing window exists to reach.
+  const atFinish = opts.runMs - windowMs;
+  if (atFinish > 0 && !starts.includes(atFinish)) starts.push(atFinish);
+
   const moments: ShortMoment[] = [];
-  for (let startMs = 0; startMs + windowMs <= Math.max(windowMs, lastEnd); startMs += STRIDE_SEC * 1000) {
+  for (const startMs of starts) {
     const endMs = startMs + windowMs;
     const inside = scored.filter((e) => e.time >= startMs && e.time < endMs);
     if (inside.length === 0) continue;
@@ -198,6 +228,9 @@ export function rankShortMoments(match: MatchInfo, opts: ShortMomentOptions): Sh
       if (at >= startMs && at < endMs) simultaneity = Math.max(simultaneity, clamp01(1 - gap / 5000));
     }
 
+    // Reaching the end of the run is what lets the Short stamp a result card and stop on it.
+    const finish = endMs >= opts.runMs ? 1 : 0;
+
     const density = clamp01(inside.reduce((sum, e) => sum + weightOf(e.type), 0) / 3);
     const burst = opts.chatAtSec ? chatBurst(opts.chatAtSec, startMs, endMs, opts.runMs) : 0;
 
@@ -206,7 +239,13 @@ export function rankShortMoments(match: MatchInfo, opts: ShortMomentOptions): Sh
     // A chat burst is worth as much as the hook: the crowd's reaction breaks ties between
     // windows the timeline scores alike, and never outranks the event itself.
     const score =
-      3 * clamp01(payoff) + 2.5 * leadFlip + 2 * simultaneity + 1.5 * hook + 1 * density + 1.5 * burst;
+      3 * clamp01(payoff) +
+      2.5 * leadFlip +
+      2 * simultaneity +
+      1.5 * hook +
+      1 * density +
+      1.5 * burst +
+      FINISH_BONUS * finish;
 
     const reasons = [
       `payoff ${best.type.split(".").pop()} at +${((best.time - startMs) / 1000).toFixed(0)}s`,
@@ -215,6 +254,7 @@ export function rankShortMoments(match: MatchInfo, opts: ShortMomentOptions): Sh
     if (simultaneity > 0.5) reasons.push("both players within seconds");
     if (hook > 0) reasons.push("opens on an event");
     if (burst >= 0.5) reasons.push("chat burst");
+    if (finish) reasons.push("ends on the finish");
     moments.push({ startMs, endMs, score, reason: reasons.join(", "), events: inside });
   }
 
