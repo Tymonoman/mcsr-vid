@@ -28,11 +28,13 @@ const fs = require("fs");
     const chipText = (await chip.textContent()).trim();
     await chip.click();
     await page.waitForTimeout(150);
-    const ytTitleInputs = await page.$$("#youtube textarea, #youtube input[type=text]");
+    const ytTitleInputs = await page.$$("#youtube textarea, #youtube input[type=text]:not(#ytAdoptId)");
     const kitTitle = await page.$eval(
       '#publishkit .kit:has(.kitlabel:text-is("Title")) textarea',
       (t) => t.value,
     );
+    // Not "no inputs": the adopt control's video-id box is exempt by id below. What must never
+    // come back is a second title, which would drift from the title editor's.
     check(
       "the YouTube panel keeps no second copy of the title",
       ytTitleInputs.length === 0,
@@ -73,7 +75,7 @@ const fs = require("fs");
     check("title file on disk carries the hook", onDisk.includes(chipText), onDisk);
     const after = (await page.textContent("#checklist")).replace(/\s+/g, " ");
     check("checklist hook fact ticked after save", /✓\s*hook/i.test(after), after.slice(0, 120));
-    const ytAfter = await page.$$("#youtube textarea, #youtube input[type=text]");
+    const ytAfter = await page.$$("#youtube textarea, #youtube input[type=text]:not(#ytAdoptId)");
     check(
       "and still keeps none after a save",
       ytAfter.length === 0,
