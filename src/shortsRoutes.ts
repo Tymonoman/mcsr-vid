@@ -97,17 +97,27 @@ function broadcast(job: ShortJob, payload: unknown): void {
  * without starting seven real renders — which is exactly what the first version of that test
  * did, and it takes minutes per call.
  */
-export type ShortRunner = (matchId: number, pick: number) => ChildProcess;
+export type ShortRunner = (matchId: number, pick: number, atMs?: number) => ChildProcess;
 
 /** The one way a Short is rendered: exported so the nightly job chains this and not a second spawn. */
-const spawnShortCli: ShortRunner = (matchId, pick) =>
+const spawnShortCli: ShortRunner = (matchId, pick, atMs) =>
   // The CLI is the one code path that renders a Short, so the dashboard drives it rather than
   // duplicating the moment-picking and ffmpeg assembly. Same reason exportRoutes shells out to
   // `npm run export:fast` instead of reimplementing the encode.
-  spawn("npm", ["run", "--silent", "short", "--", String(matchId), `--pick=${pick}`], {
-    stdio: ["ignore", "pipe", "pipe"],
-    cwd: process.cwd(),
-  });
+  spawn(
+    "npm",
+    [
+      "run",
+      "--silent",
+      "short",
+      "--",
+      String(matchId),
+      // `--at` names the window; `--pick` names a row. The window is what survives the ranking
+      // changing under it, so it wins when the caller has one.
+      ...(atMs === undefined ? [`--pick=${pick}`] : [`--at=${Math.round(atMs)}`]),
+    ],
+    { stdio: ["ignore", "pipe", "pipe"], cwd: process.cwd() },
+  );
 
 /**
  * The runner the nightly chains: the same spawn, registered in this file's job table, so the
@@ -115,13 +125,14 @@ const spawnShortCli: ShortRunner = (matchId, pick) =>
  * exactly as they do for a Short the button started. Bypassing the table left a two-minute
  * window in which DELETE /api/match could remove the directory under the running CLI.
  */
-export const spawnShortJob: ShortRunner = (matchId, pick) => startShort(matchId, pick, spawnShortCli).proc;
+export const spawnShortJob: ShortRunner = (matchId, pick, atMs) =>
+  startShort(matchId, pick, spawnShortCli, atMs).proc;
 
-function startShort(matchId: number, pick: number, run: ShortRunner): ShortJob {
+function startShort(matchId: number, pick: number, run: ShortRunner, atMs?: number): ShortJob {
   const existing = jobs.get(matchId);
   if (existing && !existing.done) return existing;
 
-  const proc = run(matchId, pick);
+  const proc = run(matchId, pick, atMs);
 
   const job: ShortJob = {
     matchId,
@@ -266,8 +277,20 @@ export async function handleShortsRoute(
     } catch {
       // An unparseable body just means "render the best one".
     }
-    startShort(matchId, pick, run);
-    ctx.json(res, 202, { started: true, pick });
+    // `at` is the operator having watched the window in the final video and said "start here".
+    // Milliseconds from match start, the same origin the moment list uses; the CLI clamps it
+    // inside the run, so the only check here is that it is a sane non-negative integer.
+    let atMs: number | undefined;
+    try {
+      const parsed = JSON.parse(body || "{}") as { at?: unknown };
+      if (typeof parsed.at === "number" && Number.isFinite(parsed.at) && parsed.at >= 0) {
+        atMs = Math.round(parsed.at);
+      }
+    } catch {
+      // Same as an unparseable pick: fall back to the ranking.
+    }
+    startShort(matchId, pick, run, atMs);
+    ctx.json(res, 202, { started: true, ...(atMs === undefined ? { pick } : { at: atMs }) });
     return true;
   }
 

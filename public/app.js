@@ -934,6 +934,12 @@ async function loadShort(id) {
       </div>`,
       )
       .join("")}</div>
+    ${
+      // Only with a video to read a position from: without one there is nothing to be "here".
+      data.finalVideo
+        ? `<button type="button" id="cuthere" class="ghost" title="Cut a Short starting where the final video is paused">Cut from where I am watching</button>`
+        : ""
+    }
     <pre id="shortlog" class="hidden"></pre>`;
 
   // A thumbnail re-rendered with a new headline leaves the Short burned with the old one — the
@@ -987,36 +993,49 @@ async function loadShort(id) {
     });
   }
 
+  // One path for both ways of asking: a ranked row by index, or a window the operator picked by
+  // watching. The server takes `at` over `pick` when both could apply.
+  const startCut = async (body) => {
+    el.querySelectorAll(".cut, .cuthere").forEach((b) => (b.disabled = true));
+    const log = $("#shortlog");
+    log.classList.remove("hidden");
+    log.textContent = "starting\n";
+    await api(`/api/shorts/render/${id}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    // Same SSE shape as the export panel, so a phone that reconnects mid-render replays the
+    // whole run rather than joining blind.
+    const es = new EventSource(`/api/shorts/progress/${id}`);
+    es.onmessage = (ev) => {
+      const payload = JSON.parse(ev.data);
+      if (payload.line) {
+        log.textContent += `${payload.line}\n`;
+        log.scrollTop = log.scrollHeight;
+      }
+      if (payload.done) {
+        es.close();
+        log.textContent += payload.error ? `failed: ${payload.error}\n` : "done\n";
+        loadShort(id);
+      }
+    };
+    es.onerror = () => es.close();
+  };
+
   el.querySelectorAll(".moment .cut").forEach((btn) =>
-    btn.addEventListener("click", async () => {
-      const pick = Number(btn.closest(".moment").dataset.pick);
-      el.querySelectorAll(".cut").forEach((b) => (b.disabled = true));
-      const log = $("#shortlog");
-      log.classList.remove("hidden");
-      log.textContent = "starting\n";
-      await api(`/api/shorts/render/${id}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ pick }),
-      });
-      // Same SSE shape as the export panel, so a phone that reconnects mid-render replays the
-      // whole run rather than joining blind.
-      const es = new EventSource(`/api/shorts/progress/${id}`);
-      es.onmessage = (ev) => {
-        const payload = JSON.parse(ev.data);
-        if (payload.line) {
-          log.textContent += `${payload.line}\n`;
-          log.scrollTop = log.scrollHeight;
-        }
-        if (payload.done) {
-          es.close();
-          log.textContent += payload.error ? `failed: ${payload.error}\n` : "done\n";
-          loadShort(id);
-        }
-      };
-      es.onerror = () => es.close();
-    }),
+    btn.addEventListener("click", () => startCut({ pick: Number(btn.closest(".moment").dataset.pick) })),
   );
+
+  // Cut from where you are watching. The seek buttons above let you see a window; this is the
+  // other half — none of the five ranked windows has to be the one you want, and the player's
+  // position is already the answer. Final-video seconds minus the anchor is match time.
+  $("#cuthere")?.addEventListener("click", () => {
+    const v = $("#finalvideo");
+    if (!v) return;
+    const atMs = Math.max(0, Math.round((v.currentTime - data.finalOffsetSec) * 1000));
+    startCut({ at: atMs });
+  });
 }
 
 /**

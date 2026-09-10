@@ -5,7 +5,7 @@ import { requireArg } from "./cliArgs.js";
 import { config, matchDir } from "./config.js";
 import { getMatch, getUser, parseMatchId } from "./mcsrApi.js";
 import { reasonerConfigured } from "./reasoner.js";
-import { distinctShortMoments, SHORT_WINDOW_SEC } from "./shortMoment.js";
+import { distinctShortMoments, SHORT_WINDOW_SEC, type ShortMoment } from "./shortMoment.js";
 import { reasonShortMoments } from "./shortReason.js";
 import { renderShort } from "./shortRender.js";
 import { readSyncOffsets } from "./syncFile.js";
@@ -34,6 +34,11 @@ const flag = (name: string) =>
     .find((a) => a.startsWith(`--${name}=`))
     ?.slice(name.length + 3);
 const pick = Number(flag("pick") ?? 0);
+// An explicit window start, ms from match start. Row indices are not stable — the reasoner
+// reorders them and the scorer's weights change between releases — so anything reproducing a
+// particular cut (a re-cut, or the operator saying "start it here" while watching) names the
+// window rather than the row.
+const atMs = flag("at") === undefined ? null : Number(flag("at"));
 const seconds = Number(flag("seconds") ?? SHORT_WINDOW_SEC);
 
 function parseCrop(name: string): { x: number; y: number; w: number; h: number } | undefined {
@@ -99,6 +104,33 @@ if (reasonerConfigured()) {
   if (reasoned.reasoner.applied) console.error(`Reasoner: ${reasoned.reasoner.why ?? "(no reason given)"}`);
 }
 
+/**
+ * The window an operator asked for by time, clamped inside the run.
+ *
+ * It carries the scored events that fall inside it, so the closing card's "did this reach the
+ * finish" test and the log line read the same as a ranked window's. The score is 0 because
+ * nothing ranked it: a hand-picked window does not compete with the others, it replaces them.
+ */
+function windowAt(
+  startMs: number,
+  ranked: readonly ShortMoment[],
+  runMs: number,
+  windowSec: number,
+): ShortMoment {
+  const windowMs = windowSec * 1000;
+  const start = Math.max(0, Math.min(Math.round(startMs), Math.max(0, runMs - windowMs)));
+  const endMs = start + windowMs;
+  const seen = new Set();
+  const events = ranked
+    .flatMap((m) => m.events)
+    .filter((e) => e.time >= start && e.time < endMs)
+    .filter((e) =>
+      seen.has(`${e.time}:${e.type}:${e.uuid}`) ? false : seen.add(`${e.time}:${e.type}:${e.uuid}`),
+    )
+    .sort((a, b) => a.time - b.time);
+  return { startMs: start, endMs, score: 0, reason: "chosen by hand", events };
+}
+
 const mmss = (ms: number) =>
   `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, "0")}`;
 console.error(`Candidate moments for ${matchId}:`);
@@ -106,7 +138,8 @@ moments.forEach((m, i) => {
   console.error(`  ${i === pick ? ">" : " "} [${i}] ${mmss(m.startMs)}-${mmss(m.endMs)}  ${m.reason}`);
 });
 
-const moment = moments[pick];
+// `--at` wins over `--pick`: it is the operator saying where, having watched it.
+const moment = atMs === null ? moments[pick] : windowAt(atMs, moments, runMs, seconds);
 if (!moment) throw new Error(`--pick=${pick} is out of range; ${moments.length} moments found.`);
 
 const [userLeft, userRight] = await Promise.all([getUser(playerLeft.uuid), getUser(playerRight.uuid)]);

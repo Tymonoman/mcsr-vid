@@ -167,4 +167,25 @@ assert.ok(spawned.every((s) => s.matchId === 12296170));
   await rm(dir, { recursive: true, force: true });
 }
 
+// --- `at` names a window, and wins over a row index ------------------------------------------
+// The row indices this file hands out are not stable — the reasoner reorders them and the
+// scorer's weights change between releases — so an operator who watched a window and asked for
+// it by time must get that window, not whatever row happens to sit at some index today.
+{
+  const seen: { pick: number; at?: number }[] = [];
+  const spyRunner: ShortRunner = (matchId, pick, atMs) => {
+    seen.push({ pick, ...(atMs === undefined ? {} : { at: atMs }) });
+    return makeRunner(true)(matchId, pick);
+  };
+  const { ctx } = context('{"at": 300000, "pick": 4}');
+  await handleShortsRoute(req("POST"), res, ["", "shorts", "render", "515151"], ctx, spyRunner);
+  assert.deepEqual(seen, [{ pick: 4, at: 300000 }], "the window reaches the runner alongside the row");
+
+  seen.length = 0;
+  const { ctx: ctx2 } = context('{"at": -5}');
+  await handleShortsRoute(req("POST"), res, ["", "shorts", "render", "515152"], ctx2, spyRunner);
+  assert.deepEqual(seen, [{ pick: 0 }], "a negative start is no window at all, not a clamp to zero");
+  console.log("OK: `at` names a window and a bad one falls back to the ranking");
+}
+
 console.log("shortsRoutes: all checks passed");

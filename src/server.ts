@@ -722,7 +722,15 @@ const server = createServer(async (req, res) => {
           // headline, and resetting the window would throw away a row the operator chose. This
           // process's own job map first, then the sidecar `generateShort` leaves on disk — which
           // is what answers after a restart, when the map is empty but the Short is not.
-          if (recutShort) spawnShortJob(matchId, lastShortPick(matchId) ?? lastCutPick(matchId));
+          // Repeat the window, not the row: the ranking is not stable across a scorer change or
+          // a reasoner answer, so an index can silently mean a different 22 seconds tomorrow.
+          // The sidecar records the window the last cut used; the in-process pick is the
+          // fallback for a Short cut before the sidecar existed.
+          if (recutShort) {
+            const last = lastCutWindow(matchId);
+            if (last !== null) spawnShortJob(matchId, 0, last);
+            else spawnShortJob(matchId, lastShortPick(matchId) ?? 0);
+          }
         } catch (err) {
           thumbnailRerenderErrors.set(matchId, describeError(err));
           console.error(`thumbnail re-render failed for ${matchId}: ${describeError(err)}`);
@@ -806,17 +814,17 @@ server.listen(PORT, "0.0.0.0", () => {
 });
 
 /**
- * The `--pick` the Short's last render used, from the sidecar `generateShort` writes beside it.
- * Zero when there is none — a Short cut before the sidecar existed, or none at all.
+ * Where the Short's last render started, from the sidecar `generateShort` writes beside it.
+ * Null when there is none — a Short cut before the sidecar existed, or none at all.
  */
-function lastCutPick(matchId: number): number {
+function lastCutWindow(matchId: number): number | null {
   const file = path.join(matchDir(matchId), `short-${matchId}.cut.json`);
-  if (!existsSync(file)) return 0;
+  if (!existsSync(file)) return null;
   try {
-    const pick = (JSON.parse(readFileSync(file, "utf8")) as { pick?: unknown }).pick;
-    return typeof pick === "number" && Number.isInteger(pick) && pick >= 0 ? pick : 0;
+    const startMs = (JSON.parse(readFileSync(file, "utf8")) as { startMs?: unknown }).startMs;
+    return typeof startMs === "number" && Number.isFinite(startMs) && startMs >= 0 ? startMs : null;
   } catch {
     // A torn sidecar means "cut the best one", which is what it did before this existed.
-    return 0;
+    return null;
   }
 }
