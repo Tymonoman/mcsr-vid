@@ -38,7 +38,7 @@ Use the script, don't reconstruct the shell line. Extra arguments go after `--`.
 | `npm run bench -- <Composition> [--frames=N] [--codec=] [--pixelFormat=] [--concurrency=N]` | Render throughput for one composition. Measure before claiming a render change is faster. |
 | `npm run analytics -- <videoId> [--traffic-sources] [--days N]` | YouTube Analytics via `~/.claude/skills/claude-youtube/` (outside the repo; token at `~/.claude/.tmp/youtube_oauth_token.json`). |
 | `python3 scripts/reap.py <command…>` | Subreaper wrapper, only needed if zombies ever climb again (see Pitfalls). |
-| `bash scripts/browser-checks/run-all.sh <url>` | Drives the dashboard in a real browser the way the operator does (20 Playwright checks, self-configuring from `/api/matches` and `/api/playoffs`). Needs `npx playwright install chromium` once and a server with real data. |
+| `bash scripts/browser-checks/run-all.sh <url>` | Drives the dashboard in a real browser the way the operator does (21 Playwright checks, self-configuring from `/api/matches` and `/api/playoffs`). Needs `npx playwright install chromium` once and a server with real data. |
 
 Lab timings for a 10-minute match: overlay render ~9 min, `export:fast` ~10 min, a Short in
 seconds; a nightly render + Short takes ~12 min, ~21 min with the MP4.
@@ -211,6 +211,11 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
   y≈790 and anything under the badge collides with them.
 - **tini is PID 1 since 830321f**; if `ps -eo stat | grep -c ^Z` ever climbs, wrap the command
   in `python3 scripts/reap.py`.
+- **The upload form is dead code until the audit clears.** Everything inside
+  `status.uploadsEnabled` in `public/youtube.js` has never rendered, so a mistake there surfaces
+  on the day `youtubeUploadEnabled` goes true and not before — one such bug (a free `u`) shipped
+  that way. `post-audit-check` renders that branch by flipping the flag in the browser's copy of
+  `/api/youtube/status`; run it after touching that file.
 - **The playoffs board lives *inside* `#suggestions` and its rows carry `.sugg`.** Anything that
   means "the suggestion cards" must say `#suggestions > .sugg`; the descendant form also matches
   playoff rows, which are hidden inside the fold until the tournament is a day out, so a

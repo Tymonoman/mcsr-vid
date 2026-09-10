@@ -84,20 +84,6 @@ async function loadYoutube(id, meta) {
         </label>
         <label>Publish at <input type="datetime-local" id="ytWhen"></label>
       </div>
-      ${
-        // The pipeline writes eleven tags per match — both nicknames and the seed among them —
-        // and a Studio upload only carries what was typed into the box. Every video on the
-        // channel today has the same four generic ones, so the terms somebody actually searches
-        // for are missing. The kit's Tags block is the paste; this is what says it is needed.
-        u.inSeasonPlaylist === false
-          ? '<div class="scanline bad">not in the season playlist &mdash; which its own description links to</div>'
-          : ""
-      }
-      ${
-        u.missingTags && u.missingTags.length
-          ? `<div class="scanline bad">this upload is missing ${u.missingTags.length} of its tags &mdash; ${esc(u.missingTags.slice(0, 3).join(", "))}${u.missingTags.length > 3 ? "&hellip;" : ""} &middot; Finish on YouTube adds them, or paste the kit's Tags block in Studio</div>`
-          : ""
-      }
       <div class="row">
         <button id="ytUpload">Upload</button>
         <span class="msg" id="ytMsg"></span>
@@ -211,6 +197,22 @@ function uploadedHtml(u, statsError) {
         <button id="ytFinish" class="ghost">Finish on YouTube: thumbnail &middot; playlists &middot; first comment &middot; tags</button>
         ${finishLine}
       </div>
+      ${
+        // Both of these are facts about a video already on the channel, and both are what the
+        // button above exists to repair — so they belong here, next to it. They were written
+        // against `u` and sat in the pre-upload form, where `u` does not exist: dead until
+        // `uploadsEnabled` went true, and a ReferenceError the moment it did.
+        u.inSeasonPlaylist === false
+          ? '<div class="scanline bad">not in the season playlist &mdash; which its own description links to</div>'
+          : ""
+      }
+      ${
+        // The pipeline writes eleven tags per match — both nicknames and the seed among them —
+        // and a Studio upload only carries what was typed into the box.
+        u.missingTags && u.missingTags.length
+          ? `<div class="scanline bad">this upload is missing ${u.missingTags.length} of its tags &mdash; ${esc(u.missingTags.slice(0, 3).join(", "))}${u.missingTags.length > 3 ? "&hellip;" : ""} &middot; Finish on YouTube adds them</div>`
+          : ""
+      }
       ${
         s
           ? `<div class="stats">
