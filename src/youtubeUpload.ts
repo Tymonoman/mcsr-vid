@@ -229,14 +229,14 @@ export const playlistTitlesFor = (
 };
 
 /**
- * What a video needs after it exists on the channel: the chosen thumbnail, its playlists and the
- * first comment. The same three steps for a dashboard upload and a Studio one, each reported
+ * What a video needs after it exists on the channel: the chosen thumbnail, its playlists, the
+ * first comment and its tags. The same four steps for a dashboard upload and a Studio one, each reported
  * rather than thrown — the video is up, and a rejected thumbnail must not read as a failed
  * upload. Written into the record so the panel can say what is still missing. A Short gets the
  * season playlist only: no custom thumbnail (Shorts show a frame) and no comment.
  *
  * Idempotent through that record, which is why it is read first: a step that already answered
- * `null` is done and is skipped. Two of the three are writes to the live channel that only a
+ * `null` is done and is skipped. Three of the four are writes to the live channel that only a
  * human in Studio can undo — `postComment` de-duplicates nothing, and `addToPlaylist` documents
  * that it never has to, because until this function existed it only ever ran on a video
  * `videos.insert` had returned seconds earlier. The button is on every published match and the

@@ -150,8 +150,9 @@ async function pollUpload(id, meta) {
 }
 
 /**
- * The three steps a Studio upload still needs — the chosen thumbnail, its playlists, the first
- * comment — done by the API. Safe to press twice: the server skips any step its record already
+ * The four steps a Studio upload still needs — the chosen thumbnail, its playlists, the first
+ * comment and its tags — done by the API. None of them is `videos.insert`, so none is gated by
+ * the compliance audit. Safe to press twice: the server skips any step its record already
  * marks done (src/youtubeUpload.ts), because a second comment and a second playlist join are
  * writes to the live channel that only Studio can undo.
  */
