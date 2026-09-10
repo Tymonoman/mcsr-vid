@@ -509,7 +509,11 @@ export async function runNightlyOnce(
     // A conflict is the one skip that is not an outcome: the route answers it 409 and the run
     // already in flight is what the night produced. Recording it would replace last night's
     // real result with "skipped" on the strip — and a push for it would wake nobody usefully.
-    if (!conflict) {
+    // Neither is a chained run's skip, and that one is the common case: a match is 2–2.5 GB, so
+    // the render that just finished is usually what drops `freeMatches` under the guard. The
+    // night's outcome is the render this run was chained from, which has already written its
+    // "done" and pushed for it; recording this would put "skipped" over it.
+    if (!conflict && started === 1) {
       writeNightlyState({ startedAt, matchId: null, players: [], outcome: "skipped", reason });
       if (notifyUrl) await notify(notifyUrl, `Nightly skipped — ${reason}`);
     }
