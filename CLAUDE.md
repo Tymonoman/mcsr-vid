@@ -38,7 +38,7 @@ Use the script, don't reconstruct the shell line. Extra arguments go after `--`.
 | `npm run bench -- <Composition> [--frames=N] [--codec=] [--pixelFormat=] [--concurrency=N]` | Render throughput for one composition. Measure before claiming a render change is faster. |
 | `npm run analytics -- <videoId> [--traffic-sources] [--days N]` | YouTube Analytics via `~/.claude/skills/claude-youtube/` (outside the repo; token at `~/.claude/.tmp/youtube_oauth_token.json`). |
 | `python3 scripts/reap.py <command…>` | Subreaper wrapper, only needed if zombies ever climb again (see Pitfalls). |
-| `bash scripts/browser-checks/run-all.sh <url>` | Drives the dashboard in a real browser the way the operator does (22 Playwright checks, self-configuring from `/api/matches` and `/api/playoffs`). Needs `npx playwright install chromium` once and a server with real data. |
+| `bash scripts/browser-checks/run-all.sh <url>` | Drives the dashboard in a real browser the way the operator does (23 Playwright checks, self-configuring from `/api/matches` and `/api/playoffs`). Needs `npx playwright install chromium` once and a server with real data. |
 
 Lab timings for a 10-minute match: overlay render ~9 min, `export:fast` ~10 min, a Short in
 seconds; a nightly render + Short takes ~12 min, ~21 min with the MP4.
@@ -230,6 +230,15 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
 - **Timeline zero is the world-load thump** (`ANCHOR_SEC`, `src/kdenliveProject.ts`): match
   start lands at exactly 10 s. A clip whose match start is later than the anchor must be pushed
   into its own head, not un-blanked — the wrong fix renders perfectly and slides the overlay late.
+- **When the detector is not sure, a human settles it.** `GET/PUT /api/sync/:id` plus
+  `GET /api/sync/frame?match=&side=&t=&offset=` back the match screen's "Fix the sync by hand"
+  fold (`src/syncEdit.ts`): one frame out of each POV clip at the same second of the *finished*
+  timeline, which must show the same countdown digit because both players freeze through it.
+  `clipTimeFor(offset, t) = offset + (t - ANCHOR_SEC)` is the only arithmetic. Saving stamps
+  `source: "manual"` and `confidence: 1` — which clears the warning line and, in `src/pipeline.ts`,
+  makes the sync stage keep those numbers instead of re-running the detector, so re-rendering for
+  a new thumbnail cannot put the machine's rejected guess back. Only the clip placement changes,
+  so the fix is `export:fast` (~10 min), not a re-render.
 - **Every consumer places the clips from `<matchDir>/sync.json`** (`src/syncFile.ts`), which the
   pipeline writes when the sync stage decides — refined or kept-coarse, `source` says which.
   Without it `export:fast` and the Short fall back to `config.preRollSec` and run seconds early;

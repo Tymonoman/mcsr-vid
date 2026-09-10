@@ -21,8 +21,10 @@ export interface SyncOffsets {
    * `countdown` — the detector's numbers were taken. `coarse` — they were not (too little
    * confidence, or the stage failed), so these are the download estimate. `derived` — read back
    * out of an already-generated .kdenlive by `npm run sync-status` (see syncStatusCli.ts).
+   * `manual` — a human matched the two countdowns in the dashboard's sync editor, which outranks
+   * every other source and is never overwritten by a re-run.
    */
-  source: "countdown" | "coarse" | "derived";
+  source: "countdown" | "coarse" | "derived" | "manual";
 }
 
 export const syncFilePath = (matchDir: string): string => path.join(matchDir, "sync.json");

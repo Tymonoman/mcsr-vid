@@ -871,3 +871,41 @@
 .setrow.off {
   opacity: 0.6;
 }
+
+/* Manual sync: two frames of the same countdown, side by side, so the digits can be compared
+   without leaving the dashboard. Folded away — most matches never need it. */
+.syncedit > summary {
+  cursor: pointer;
+  color: var(--muted);
+  padding: 6px 0;
+}
+.syncedit > summary:hover {
+  color: var(--fg);
+}
+.syncsides {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  margin: 8px 0;
+}
+.syncside img {
+  width: 100%;
+  display: block;
+  border: 1px solid var(--line, #2a2a2a);
+  background: #000;
+  min-height: 90px;
+}
+.syncside .who {
+  font-family: var(--pixel-font, monospace);
+  padding-bottom: 4px;
+}
+.syncside input[data-off] {
+  max-width: 8ch;
+}
+.syncside .row {
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+.syncside .row button {
+  padding: 4px 6px;
+}

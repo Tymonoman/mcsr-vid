@@ -52,7 +52,7 @@ import {
   type StageTracker,
 } from "./stageProgress.js";
 import { computeSyncOffset } from "./sync.js";
-import { writeSyncOffsets, type SyncOffsets } from "./syncFile.js";
+import { readSyncOffsets, writeSyncOffsets, type SyncOffsets } from "./syncFile.js";
 import {
   downloadMatchVods,
   estimatedRunSec,
@@ -245,43 +245,57 @@ async function runStages(
   );
 
   emit(active("sync"));
+  // A human who matched the two countdowns in the dashboard's editor has settled it, and the
+  // detector has nothing to add: re-running the pipeline for a new thumbnail must not quietly put
+  // the machine's rejected guess back and slide the overlay by the seconds they just removed.
+  const manual = readSyncOffsets(outDir);
   let leftOffsetSec = leftWindow.matchOffsetIntoClipSec;
   let rightOffsetSec = rightWindow.matchOffsetIntoClipSec;
   let syncConfidence: number | undefined;
   let syncDetail = "not run";
   let syncSource: SyncOffsets["source"] = "coarse";
-  try {
-    const sync = await computeSyncOffset(
-      leftWindow.path,
-      rightWindow.path,
-      leftWindow.matchOffsetIntoClipSec,
-      rightWindow.matchOffsetIntoClipSec,
-      signal,
-    );
-    syncConfidence = sync.confidence;
-    syncDetail = sync.detail;
-    if (sync.confidence >= config.syncConfidenceThreshold) {
-      // BOTH offsets, not just the right one: timeline zero is the thump, so an error in the
-      // left clip's estimate moves the whole published video.
-      leftOffsetSec = sync.clipACueTimeSec;
-      rightOffsetSec = sync.clipBCueTimeSec;
-      syncSource = "countdown";
-      emit(done("sync", { message: sync.detail }));
-    } else {
-      emit(warn("sync", { message: `kept coarse offsets — ${sync.detail}` }));
+  if (manual?.source === "manual") {
+    leftOffsetSec = manual.left;
+    rightOffsetSec = manual.right;
+    syncConfidence = manual.confidence;
+    syncDetail = manual.detail;
+    syncSource = "manual";
+    emit(done("sync", { message: `kept the manual sync (${manual.left}s / ${manual.right}s)` }));
+    writeSyncOffsets(outDir, manual);
+  } else {
+    try {
+      const sync = await computeSyncOffset(
+        leftWindow.path,
+        rightWindow.path,
+        leftWindow.matchOffsetIntoClipSec,
+        rightWindow.matchOffsetIntoClipSec,
+        signal,
+      );
+      syncConfidence = sync.confidence;
+      syncDetail = sync.detail;
+      if (sync.confidence >= config.syncConfidenceThreshold) {
+        // BOTH offsets, not just the right one: timeline zero is the thump, so an error in the
+        // left clip's estimate moves the whole published video.
+        leftOffsetSec = sync.clipACueTimeSec;
+        rightOffsetSec = sync.clipBCueTimeSec;
+        syncSource = "countdown";
+        emit(done("sync", { message: sync.detail }));
+      } else {
+        emit(warn("sync", { message: `kept coarse offsets — ${sync.detail}` }));
+      }
+    } catch (err) {
+      emit(warn("sync", { message: `refinement failed: ${describeError(err)}` }));
     }
-  } catch (err) {
-    emit(warn("sync", { message: `refinement failed: ${describeError(err)}` }));
+    // Written in the kept-coarse case too: export:fast and the Short must be able to tell "nobody
+    // has synced this yet" from "sync ran and the estimate was the answer".
+    writeSyncOffsets(outDir, {
+      left: leftOffsetSec,
+      right: rightOffsetSec,
+      confidence: syncConfidence ?? 0,
+      detail: syncDetail,
+      source: syncSource,
+    });
   }
-  // Written in the kept-coarse case too: export:fast and the Short must be able to tell "nobody
-  // has synced this yet" from "sync ran and the estimate was the answer".
-  writeSyncOffsets(outDir, {
-    left: leftOffsetSec,
-    right: rightOffsetSec,
-    confidence: syncConfidence ?? 0,
-    detail: syncDetail,
-    source: syncSource,
-  });
 
   const overlay = overlayPaths(outDir);
   const cachedStills = await readSplitStills(outDir);

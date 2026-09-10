@@ -40,7 +40,9 @@ import { claimedPublishTimes, nextPublishSlot } from "./publishSlot.js";
 import { playoffBoard, playoffContextForId, playoffTitleTail } from "./playoffs.js";
 import { refreshRivalPostsIfStale, rivalPostsSnapshot, rivalRecentPostFor } from "./rivalPosts.js";
 import { chooseVariant, readManifest, rerenderThumbnailVariants } from "./thumbnailVariants.js";
-import { readSyncOffsets } from "./syncFile.js";
+import { ANCHOR_SEC } from "./kdenliveProject.js";
+import { readSyncOffsets, writeSyncOffsets } from "./syncFile.js";
+import { clipTimeFor, povClipExists, povClipPath, povFrame, validOffset } from "./syncEdit.js";
 import { buildTitle, metaPaths, type BuiltTitle } from "./title.js";
 import { allArchiveStates, capacity, isArchived } from "./archive.js";
 import { exportRunning, handleExportRoute } from "./exportRoutes.js";
@@ -346,6 +348,106 @@ const server = createServer(async (req, res) => {
     if (await handleShortsRoute(req, res, segments, { json, readBody, matchDir, parseId })) return;
 
     const [, resource, idRaw] = segments;
+
+    // --- Manual sync -------------------------------------------------------------------------
+    // The detector reports a confidence and the dashboard already warns when it is low; this is
+    // what the operator does about it. Both offsets are "seconds into that POV clip where match
+    // start falls", the same numbers every consumer reads out of sync.json.
+    if (resource === "sync" && idRaw === "frame" && req.method === "GET") {
+      const matchId = parseId(url.searchParams.get("match") ?? undefined);
+      if (matchId === null) {
+        json(res, 400, { error: "match id must be digits" });
+        return;
+      }
+      const status = await matchStatusFor(matchId);
+      const side = url.searchParams.get("side") === "right" ? "right" : "left";
+      const nickname = side === "left" ? status.leftNickname : status.rightNickname;
+      const offsets = readSyncOffsets(matchDir(matchId));
+      const offset = Number(
+        url.searchParams.get("offset") ?? (side === "left" ? offsets?.left : offsets?.right) ?? 0,
+      );
+      const timelineSec = Number(url.searchParams.get("t") ?? 5);
+      if (!nickname || !Number.isFinite(offset) || !Number.isFinite(timelineSec)) {
+        json(res, 400, { error: "expected ?match=<id>&side=left|right&t=<seconds>&offset=<seconds>" });
+        return;
+      }
+      const clip = povClipPath(matchDir(matchId), nickname);
+      if (!existsSync(clip)) {
+        json(res, 404, { error: `no POV clip for ${nickname} — the VODs are not on disk` });
+        return;
+      }
+      try {
+        const jpeg = await povFrame(clip, clipTimeFor(offset, timelineSec));
+        // No caching: the whole point is that the same URL answers differently once the operator
+        // nudges the offset, and a 304 would show them the frame they are trying to move away from.
+        res.writeHead(200, { "content-type": "image/jpeg", "cache-control": "no-store" });
+        res.end(jpeg);
+      } catch (err) {
+        json(res, 502, { error: describeError(err) });
+      }
+      return;
+    }
+
+    if (resource === "sync" && req.method === "GET") {
+      const matchId = parseId(idRaw);
+      if (matchId === null) {
+        json(res, 400, { error: "match id must be digits" });
+        return;
+      }
+      const status = await matchStatusFor(matchId);
+      const dir = matchDir(matchId);
+      json(res, 200, {
+        matchId,
+        sync: readSyncOffsets(dir),
+        /** Where the editor starts when nothing has synced this match yet. */
+        fallback: config.preRollSec,
+        anchorSec: ANCHOR_SEC,
+        threshold: config.syncConfidenceThreshold,
+        left: { nickname: status.leftNickname, clip: povClipExists(dir, status.leftNickname ?? "") },
+        right: { nickname: status.rightNickname, clip: povClipExists(dir, status.rightNickname ?? "") },
+      });
+      return;
+    }
+
+    if (resource === "sync" && req.method === "PUT") {
+      const matchId = parseId(idRaw);
+      if (matchId === null) {
+        json(res, 400, { error: "match id must be digits" });
+        return;
+      }
+      let body: { left?: unknown; right?: unknown };
+      try {
+        body = JSON.parse(await readBody(req)) as { left?: unknown; right?: unknown };
+      } catch (err) {
+        json(res, 400, { error: describeError(err) });
+        return;
+      }
+      const left = validOffset(body.left, "left offset");
+      const right = validOffset(body.right, "right offset");
+      if ("error" in left) {
+        json(res, 400, { error: left.error });
+        return;
+      }
+      if ("error" in right) {
+        json(res, 400, { error: right.error });
+        return;
+      }
+      const dir = matchDir(matchId);
+      const previous = readSyncOffsets(dir);
+      // Confidence 1: a human read the two countdowns, which is the measurement the detector was
+      // trying to approximate. The warning line keys off this, so leaving it low would keep
+      // telling them to verify an alignment they just verified.
+      writeSyncOffsets(dir, {
+        left: left.value,
+        right: right.value,
+        confidence: 1,
+        detail: `set in the dashboard, replacing ${previous?.source ?? "nothing"}`,
+        source: "manual",
+      });
+      console.error(`sync: match ${matchId} set by hand to ${left.value}s / ${right.value}s`);
+      json(res, 200, { sync: readSyncOffsets(dir) });
+      return;
+    }
 
     if (resource === "settings" && req.method === "GET") {
       json(res, 200, { ...settingsPayload(), nightlyArmedAt: nightlyArmedAtMs() });

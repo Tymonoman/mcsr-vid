@@ -297,6 +297,7 @@ async function select(id, { open = false } = {}) {
     <h2 id="h-preview">Final video</h2>
     ${syncLine(meta)}
     <div id="preview"><div class="empty">loading&hellip;</div></div>
+    <details id="syncedit" class="syncedit"><summary>Fix the sync by hand</summary><div class="empty">loading&hellip;</div></details>
 
     <h2 id="h-publishkit">Publish kit</h2>
     <div id="publishkit"><div class="empty">loading&hellip;</div></div>
@@ -373,6 +374,7 @@ async function select(id, { open = false } = {}) {
   loadVariants(id);
   loadSplits(id, meta);
   loadPreview(id);
+  loadSyncEdit(id);
   loadShort(id);
   loadYoutube(id, meta);
   loadPublishKit(id, meta);
@@ -1063,6 +1065,131 @@ const OUTPUT_LABELS = {
  * coarse estimate, so the POVs can sit seconds apart in a video that looks ready to publish.
  * Silent on a clean sync — the only interesting states are "partly" and "not at all".
  */
+/* --- Manual sync -------------------------------------------------------------------------------
+   The detector reads the countdown off the picture and says how sure it is; when it is not sure
+   there is nothing more to compute, and a person reading two digits settles it in seconds. Both
+   POVs freeze through the same 10-second countdown, so a frame from each at the SAME point on the
+   finished timeline has to show the same number. That is the whole instrument: two frames, four
+   nudges, save, re-export. */
+let syncEditState = null;
+
+async function loadSyncEdit(id) {
+  const el = $("#syncedit");
+  if (!el) return;
+  try {
+    const d = await api(`/api/sync/${id}`);
+    syncEditState = {
+      id,
+      t: 5,
+      left: d.sync ? d.sync.left : d.fallback,
+      right: d.sync ? d.sync.right : d.fallback,
+      data: d,
+    };
+  } catch (e) {
+    el.innerHTML = `<summary>Fix the sync by hand</summary><div class="scanline bad">${esc(e.message)}</div>`;
+    return;
+  }
+  paintSyncEdit();
+}
+
+function syncFrameUrl(side) {
+  const s = syncEditState;
+  const offset = side === "left" ? s.left : s.right;
+  // `v` busts the browser cache: the same match, side and t answer differently once nudged.
+  return `/api/sync/frame?match=${s.id}&side=${side}&t=${s.t}&offset=${offset}&v=${offset}`;
+}
+
+function paintSyncEdit() {
+  const el = $("#syncedit");
+  const s = syncEditState;
+  if (!el || !s) return;
+  const d = s.data;
+  const open = el.open;
+  if (!d.left.clip || !d.right.clip) {
+    el.innerHTML = `<summary>Fix the sync by hand</summary>
+      <div class="scanline">The POV clips are not on disk any more, so there is nothing to compare. Re-run the pipeline to fetch them, if the VODs have not expired.</div>`;
+    el.open = open;
+    return;
+  }
+  const side = (name, nickname) => `
+    <div class="syncside">
+      <div class="who">${esc(nickname ?? name)}</div>
+      <img src="${esc(syncFrameUrl(name))}" alt="${esc(nickname ?? name)} at ${s.t}s" loading="lazy">
+      <div class="row">
+        <button data-nudge="${name}:-1">-1s</button>
+        <button data-nudge="${name}:-0.1">-0.1</button>
+        <input type="number" step="0.1" data-off="${name}" value="${(name === "left" ? s.left : s.right).toFixed(2)}">
+        <button data-nudge="${name}:0.1">+0.1</button>
+        <button data-nudge="${name}:1">+1s</button>
+      </div>
+    </div>`;
+  el.innerHTML = `<summary>Fix the sync by hand</summary>
+    <div class="scanline">
+      Both players freeze through the countdown, so at the same moment of the finished video the
+      two frames below must show <strong>the same number</strong>. Nudge until they do, save, then
+      re-export &mdash; the overlay does not need re-rendering, only the clip placement changes.
+    </div>
+    <div class="row">
+      <label>Finished-video second
+        <input type="number" id="synct" min="0" max="10" step="1" value="${s.t}">
+      </label>
+      <span class="muted">match start is at ${d.anchorSec}s, so 0&ndash;${d.anchorSec} is the countdown</span>
+    </div>
+    <div class="syncsides">${side("left", d.left.nickname)}${side("right", d.right.nickname)}</div>
+    <div class="row">
+      <button id="syncsave">Save these offsets</button>
+      <button id="syncexport" class="ghost">Save and re-export</button>
+      <span class="msg" id="syncmsg">${d.sync ? esc(`now: ${d.sync.left}s / ${d.sync.right}s, ${d.sync.source}`) : "no sync.json yet"}</span>
+    </div>`;
+  el.open = open;
+  el.querySelectorAll("[data-nudge]").forEach((b) =>
+    b.addEventListener("click", () => {
+      const [which, by] = b.dataset.nudge.split(":");
+      const next = Math.max(0, (which === "left" ? s.left : s.right) + Number(by));
+      if (which === "left") s.left = next;
+      else s.right = next;
+      paintSyncEdit();
+    }),
+  );
+  el.querySelectorAll("[data-off]").forEach((i) =>
+    i.addEventListener("change", () => {
+      const v = Number(i.value);
+      if (!Number.isFinite(v) || v < 0) return;
+      if (i.dataset.off === "left") s.left = v;
+      else s.right = v;
+      paintSyncEdit();
+    }),
+  );
+  $("#synct").addEventListener("change", () => {
+    const v = Number($("#synct").value);
+    if (Number.isFinite(v) && v >= 0) s.t = v;
+    paintSyncEdit();
+  });
+  $("#syncsave").addEventListener("click", () => saveSync(false));
+  $("#syncexport").addEventListener("click", () => saveSync(true));
+}
+
+async function saveSync(thenExport) {
+  const s = syncEditState;
+  const msg = $("#syncmsg");
+  msg.textContent = "saving…";
+  try {
+    const r = await api(`/api/sync/${s.id}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ left: s.left, right: s.right }),
+    });
+    s.data.sync = r.sync;
+    paintSyncEdit();
+    $("#syncmsg").textContent = `saved ${r.sync.left}s / ${r.sync.right}s`;
+    // The Encode button is the same call; press it rather than keep a second copy of the flow.
+    if (thenExport) $("#encode")?.click();
+  } catch (e) {
+    msg.textContent = "";
+    showFailure("Sync not saved", e.message);
+  }
+}
+
 function syncLine(meta) {
   const s = meta.sync;
   if (!s) return "";
