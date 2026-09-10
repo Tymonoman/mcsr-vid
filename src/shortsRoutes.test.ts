@@ -5,7 +5,7 @@ import type { ChildProcess } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { handleShortsRoute, shortHookStale, type ShortRunner } from "./shortsRoutes.js";
+import { handleShortsRoute, lastShortPick, shortHookStale, type ShortRunner } from "./shortsRoutes.js";
 
 /** Stands in for the render process. Without this the tests below start real renders. */
 const spawned: Array<{ matchId: number; pick: number }> = [];
@@ -115,6 +115,16 @@ assert.ok(spawned.every((s) => s.matchId === 12296170));
   await handleShortsRoute(req("POST"), res, ["", "shorts", "render", "555"], ctx, busy);
   await handleShortsRoute(req("POST"), res, ["", "shorts", "render", "555"], ctx, busy);
   assert.equal(spawned.length - before, 1, "a second request must join the render already running");
+}
+
+// Which moment the last cut used, for the one re-cut nobody clicks (the thumbnail re-render's).
+// Moment 0 is a real answer, so a match this process never cut has to be null rather than 0 —
+// otherwise the fallback is indistinguishable from a deliberate pick.
+{
+  const { ctx } = context('{"pick": 2}');
+  await handleShortsRoute(req("POST"), res, ["", "shorts", "render", "424242"], ctx, fakeRunner);
+  assert.equal(lastShortPick(424242), 2, "a re-cut repeats the moment the operator chose");
+  assert.equal(lastShortPick(999), null, "nothing cut here yet");
 }
 
 // --- Whether a re-rendered thumbnail leaves the Short selling the old line --------------------

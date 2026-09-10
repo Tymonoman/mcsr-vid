@@ -26,6 +26,8 @@ import { readChatTimes } from "./twitchChat.js";
 /** One Short render in flight. Lines are retained so a browser joining late replays the run. */
 interface ShortJob {
   matchId: number;
+  /** The moment this render cut, so a re-cut this process starts by itself repeats it. */
+  pick: number;
   lines: string[];
   done: boolean;
   error: string | null;
@@ -37,6 +39,17 @@ const jobs = new Map<number, ShortJob>();
 
 /** A Short render writing into this match's directory right now. */
 export const shortRunning = (matchId: number): boolean => jobs.get(matchId)?.done === false;
+
+/**
+ * The moment the last Short of this match was cut from, or null.
+ *
+ * Nothing on disk records the pick, so this is per-process, like the playlist ids in
+ * src/youtube.ts. It exists for the one re-cut nobody clicked — the thumbnail re-render's
+ * (src/server.ts) — which would otherwise hand an operator who deliberately cut moment #2 a
+ * different 22 seconds as a side effect of retyping a headline. A restarted server has
+ * forgotten, and falls back to the top moment, which is what a click on the panel does anyway.
+ */
+export const lastShortPick = (matchId: number): number | null => jobs.get(matchId)?.pick ?? null;
 
 const shortPath = (dir: string, matchId: number) => path.join(dir, `short-${matchId}.mp4`);
 
@@ -101,6 +114,7 @@ function startShort(matchId: number, pick: number, run: ShortRunner): ShortJob {
 
   const job: ShortJob = {
     matchId,
+    pick,
     lines: [],
     done: false,
     error: null,

@@ -53,7 +53,13 @@ import {
   setHidden,
   setPublishFlag,
 } from "./matchShelf.js";
-import { handleShortsRoute, shortHookStale, shortRunning, spawnShortJob } from "./shortsRoutes.js";
+import {
+  handleShortsRoute,
+  lastShortPick,
+  shortHookStale,
+  shortRunning,
+  spawnShortJob,
+} from "./shortsRoutes.js";
 import { handleYoutubeRoute, uploadRunning } from "./youtubeRoutes.js";
 import { pinnedCommentText, readUpload } from "./youtubeStore.js";
 
@@ -703,7 +709,9 @@ const server = createServer(async (req, res) => {
           });
           // Only after the manifest is written: the Short resolves its hook from it, so cutting
           // any earlier would burn in the headline this render just replaced.
-          if (recutShort) spawnShortJob(matchId, 0);
+          // The moment the operator cut, not the top one: re-typing a headline must not also
+          // swap which 22 seconds the Short is (`lastShortPick`).
+          if (recutShort) spawnShortJob(matchId, lastShortPick(matchId) ?? 0);
         } catch (err) {
           thumbnailRerenderErrors.set(matchId, describeError(err));
           console.error(`thumbnail re-render failed for ${matchId}: ${describeError(err)}`);
