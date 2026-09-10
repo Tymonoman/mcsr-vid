@@ -95,7 +95,7 @@ async function loadYoutube(id, meta) {
       }
       ${
         u.missingTags && u.missingTags.length
-          ? `<div class="scanline bad">this upload is missing ${u.missingTags.length} of its tags &mdash; ${esc(u.missingTags.slice(0, 3).join(", "))}${u.missingTags.length > 3 ? "&hellip;" : ""} &middot; paste the kit's Tags block in Studio</div>`
+          ? `<div class="scanline bad">this upload is missing ${u.missingTags.length} of its tags &mdash; ${esc(u.missingTags.slice(0, 3).join(", "))}${u.missingTags.length > 3 ? "&hellip;" : ""} &middot; Finish on YouTube adds them, or paste the kit's Tags block in Studio</div>`
           : ""
       }
       <div class="row">
@@ -186,12 +186,12 @@ async function finishOnYouTube(id, meta, btn) {
 function uploadedHtml(u, statsError) {
   const s = u.stats;
   const scheduled = u.publishAt ? `scheduled for ${new Date(u.publishAt).toLocaleString()}` : u.privacyStatus;
-  // What "Finish on YouTube" has done, per step; nothing yet reads as all three still to do.
+  // What "Finish on YouTube" has done, per step; nothing yet reads as all four still to do.
   const f = u.finished ?? {};
   const stepLabel = (step) => (f[step] === null ? `${step} ✓` : f[step] ? `${step} ✗` : step);
   const finishLine = `<span class="id" title="${esc(
     Object.values(f).filter(Boolean).join("\n"),
-  )}">${["thumbnail", "playlists", "comment"].map(stepLabel).join(" · ")}</span>`;
+  )}">${["thumbnail", "playlists", "comment", "tags"].map(stepLabel).join(" · ")}</span>`;
   return `
     <div class="published">
       <div class="row">
@@ -208,7 +208,7 @@ function uploadedHtml(u, statsError) {
         }
       </div>
       <div class="row">
-        <button id="ytFinish" class="ghost">Finish on YouTube: thumbnail &middot; playlists &middot; first comment</button>
+        <button id="ytFinish" class="ghost">Finish on YouTube: thumbnail &middot; playlists &middot; first comment &middot; tags</button>
         ${finishLine}
       </div>
       ${

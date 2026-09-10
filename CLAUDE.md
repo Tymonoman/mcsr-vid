@@ -102,11 +102,16 @@ they differ (`code: { boot, now }` from `src/repoHead.ts`). Client changes need 
   old line. The Short reuses the manifest's hook so both halves of a match agree; the Short panel
   says when they do not. The checklist's thumbnail pill ticks on `chosenBy: "operator"` in the
   manifest — a rendered variant is not a chosen one; sidecars without the field keep ticking.
-- **The audit blocks `videos.insert`, not the rest.** `playlistItems.insert`, `thumbnails.set` and
-  `commentThreads.insert` are all inside the token's `force-ssl` scope and are unaffected, so
-  **Finish on YouTube** repairs a Studio upload today: playlists and the pinned comment. It leaves
-  the thumbnail alone on a video uploaded elsewhere whose variant nobody confirmed here, so it
-  cannot replace an image picked in Studio.
+- **The audit blocks `videos.insert`, not the rest.** `playlistItems.insert`, `thumbnails.set`,
+  `commentThreads.insert` and `videos.update` are all inside the token's `force-ssl` scope and are
+  unaffected, so **Finish on YouTube** repairs a Studio upload today: playlists, the pinned comment
+  and the tags. It leaves the thumbnail alone on a video uploaded elsewhere whose variant nobody
+  confirmed here, so it cannot replace an image picked in Studio.
+- **`videos.update` replaces the part it is given.** `addTags` (`src/youtube.ts`) reads the snippet
+  and sends it back whole — a `part=snippet` write that omits the description blanks it on a
+  published video. It only ever adds tags, so a tag typed in Studio survives, and it refuses to
+  write at all if the read returns no video. This is the project's only `videos.*` write, it is
+  operator-pressed, and it is not the call the audit gates.
 - **Upload** sends `match-<id>.tags.txt` and refuses a title still containing `<HOOK>`; it adds
   the video to the season playlist (`PLHG-jSA-dWDo`), a per-matchup and a per-player playlist
   (`src/youtube.ts`; ids remembered per process because YouTube's list is eventually consistent).

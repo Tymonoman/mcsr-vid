@@ -24,6 +24,7 @@ export interface FinishedSteps {
   thumbnail?: string | null;
   playlists?: string | null;
   comment?: string | null;
+  tags?: string | null;
 }
 
 export interface UploadRecord {

@@ -205,10 +205,19 @@ try {
   process.env.YOUTUBE_TOKEN_FILE = tokenFile;
 
   const hits: string[] = [];
+  /** What was actually PUT/POSTed, so a replace-the-whole-snippet call can be inspected. */
+  const sent: Array<{ url: string; body: unknown }> = [];
   const realFetch = globalThis.fetch;
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
     hits.push(`${init?.method ?? "GET"} ${url}`);
+    if (typeof init?.body === "string") {
+      try {
+        sent.push({ url, body: JSON.parse(init.body) });
+      } catch {
+        sent.push({ url, body: init.body });
+      }
+    }
     const body = (payload: unknown) =>
       new Response(JSON.stringify(payload), { status: 200, headers: { "content-type": "application/json" } });
     if (url.startsWith("https://oauth2.googleapis.com/"))
@@ -219,6 +228,16 @@ try {
         data: { players: [{ nickname: "doogile" }, { nickname: "Feinberg" }] },
       });
     if (url.includes("/playlists?")) return body({ items: [{ id: "PL1", snippet: { title: "x" } }] });
+    // videos.update replaces the part it is given, so addTags reads the snippet before writing.
+    if (url.includes("/videos?part=snippet"))
+      return body({
+        items: [
+          {
+            id: "vidX",
+            snippet: { title: "t", description: "d", categoryId: "20", tags: ["already-there"] },
+          },
+        ],
+      });
     // The video is not in the playlist yet, so the join goes ahead.
     if (url.includes("/playlistItems?") && (init?.method ?? "GET") === "GET") return body({ items: [] });
     return body({ id: "ok" });
@@ -238,11 +257,11 @@ try {
   // Everything already done: nothing is called again, and the record is unchanged.
   await writeUpload(matchId, {
     ...record,
-    finished: { thumbnail: null, playlists: null, comment: null },
+    finished: { thumbnail: null, playlists: null, comment: null, tags: null },
   });
   hits.length = 0;
   const again = await finishOnYouTube(matchId, "vidX");
-  assert.deepEqual(again, { thumbnail: null, playlists: null, comment: null });
+  assert.deepEqual(again, { thumbnail: null, playlists: null, comment: null, tags: null });
   assert.deepEqual(
     hits.filter((h) => h.includes("googleapis.com/youtube")),
     [],
@@ -252,7 +271,7 @@ try {
   // A step that failed last time is the one thing a second press is for.
   await writeUpload(matchId, {
     ...record,
-    finished: { thumbnail: null, playlists: '"Season 11": quota', comment: null },
+    finished: { thumbnail: null, playlists: '"Season 11": quota', comment: null, tags: null },
   });
   hits.length = 0;
   const retried = await finishOnYouTube(matchId, "vidX");
@@ -274,7 +293,7 @@ try {
 
   // A private video — every nightly upload — cannot be commented on. Left unattempted rather than
   // recorded as an error, or every nightly push would read ", with a problem".
-  await writeUpload(matchId, { ...record, privacyStatus: "private", finished: { playlists: null } });
+  await writeUpload(matchId, { ...record, privacyStatus: "private", finished: { playlists: null, tags: null } });
   hits.length = 0;
   const priv = await finishOnYouTube(matchId, "vidX");
   assert.equal("comment" in priv && priv.comment !== undefined, false, "no comment on a private video");
@@ -291,7 +310,46 @@ try {
   assert.ok(!hits.some((h) => h.includes("/thumbnails/set")), "and no thumbnails.set request was made");
   assert.equal(studio.playlists, null, "while the playlists it came for still happen");
 
+  // --- Tags: the manual paste that silently never happens ------------------------------------
+  // Every video on the channel is missing tags, both nicknames included, because pasting them is
+  // a separate step in Studio. `videos.update` is not `videos.insert`, so this is not gated by the
+  // compliance audit — and the merge only adds, so a tag typed in Studio survives.
+  await writeFile(path.join(dir, `match-${matchId}.tags.txt`), "doogile\nFeinberg\nalready-there\n");
+  await writeUpload(matchId, { ...record, source: "studio", finished: { thumbnail: null, playlists: null, comment: null } });
+  hits.length = 0;
+  sent.length = 0;
+  const tagged = await finishOnYouTube(matchId, "vidX");
+  assert.equal(tagged.tags, null, "the tags step succeeds");
+  const put = sent.find((r) => r.url.includes("/videos?part=snippet"));
+  assert.ok(put, "videos.update was called");
+  const snippet = (put!.body as { id: string; snippet: Record<string, unknown> }).snippet;
+  assert.equal((put!.body as { id: string }).id, "vidX", "the body carries the video id");
+  assert.deepEqual(
+    snippet.tags,
+    ["already-there", "doogile", "Feinberg"],
+    "what the video had, then what it was missing -- and no duplicate",
+  );
+  // The whole snippet goes back or YouTube blanks what was left out. This is the assertion that
+  // matters: a partial write here would wipe the description off a published video.
+  assert.equal(snippet.title, "t", "the title survives the replace");
+  assert.equal(snippet.description, "d", "and so does the description");
+  assert.equal(snippet.categoryId, "20", "and the category");
+
+  // Once recorded as done it is not written again -- a second press is for the steps that failed.
+  hits.length = 0;
+  const twice = await finishOnYouTube(matchId, "vidX");
+  assert.equal(twice.tags, null);
+  assert.ok(!hits.some((h) => h.includes("/videos?part=snippet")), "a second press writes nothing");
+
+  // A Short carries its tags in its title; there is nothing to update and nothing to spend.
+  await writeUpload(matchId, { ...record, finished: {} }, "short");
+  hits.length = 0;
+  const shortSteps = await finishOnYouTube(matchId, "vidX", "short");
+  assert.equal(shortSteps.tags, null, "a Short's tags step is a no-op");
+  assert.ok(!hits.some((h) => h.includes("/videos?part=snippet")), "and it calls nothing");
+
   globalThis.fetch = realFetch;
+  console.log("OK: the tags step adds what is missing without blanking the snippet");
   console.log("OK: finishing an already-finished video calls nothing");
   console.log("OK: a video uploaded elsewhere keeps the thumbnail it is wearing");
 } finally {

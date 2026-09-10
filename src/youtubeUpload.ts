@@ -18,6 +18,7 @@ import { nextPublishSlot } from "./publishSlot.js";
 import { readManifest } from "./thumbnailVariants.js";
 import { HOOK_PLACEHOLDER } from "./title.js";
 import {
+  addTags,
   addToPlaylist,
   matchupPlaylistDescription,
   matchupPlaylistTitle,
@@ -309,6 +310,23 @@ export async function finishOnYouTube(
       finished.comment = await attempt(() =>
         postComment(videoId, pinnedCommentText(status.leftNickname, status.rightNickname)),
       );
+    }
+  }
+  if (todo("tags")) {
+    // Tags are the step that silently gets skipped: they are pasted by hand in Studio, and every
+    // video on this channel is missing some of them, both player nicknames included. This is
+    // `videos.update`, not `videos.insert`, so the compliance audit does not gate it, and the
+    // merge only ever adds — nothing typed in Studio is lost. A Short carries its tags in its
+    // title, and there is nothing to add when the file lists none.
+    if (kind === "short") finished.tags = null;
+    else {
+      const { tags } = await uploadTextFor(matchId, kind);
+      finished.tags =
+        tags.length === 0
+          ? null
+          : await attempt(async () => {
+              await addTags(videoId, tags);
+            });
     }
   }
   if (record) await writeUpload(matchId, { ...record, finished }, kind);
