@@ -70,6 +70,9 @@ fixed layout has nothing to decide. Two Remotion stills (board, hook) plus one f
   Short's title is that hook plus `#minecraft #mcsr` unless the hook already carries a `#`.
 - **Auto-crop usually declines, and should**: streamers' panels reach the frame edges.
   `--top-crop=x,y,w,h` overrides it.
+- **A playoff game's nameplates show the seed, not the ladder rank** (`remotion/Short.tsx`,
+  `src/generateShort.ts`): a bracket has its own order, and the seed pair is what states an upset.
+  Ranked Shorts are unchanged.
 
 ## Dashboard
 
