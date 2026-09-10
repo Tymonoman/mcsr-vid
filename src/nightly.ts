@@ -506,12 +506,13 @@ export async function runNightlyOnce(
   const startedAt = new Date().toISOString();
   const skip = async (reason: string, conflict = false): Promise<NightlyRunResult> => {
     console.error(`nightly: skipped — ${reason}`);
-    // A conflict is not an outcome: the route answers it 409 and the run already in flight is what
-    // the night produced. Recording it would replace last night's real result with "skipped" on
-    // the strip — and a push for it would wake nobody usefully. A *chained* skip is the same
-    // shape: `started > 1` means a render already succeeded tonight and wrote its own state, so
-    // "nothing else was eligible" is the chain ending normally, not the night failing. Recording
-    // it would make the morning strip say the night was skipped when it rendered.
+    // A conflict is the one skip that is not an outcome: the route answers it 409 and the run
+    // already in flight is what the night produced. Recording it would replace last night's
+    // real result with "skipped" on the strip — and a push for it would wake nobody usefully.
+    // Neither is a chained run's skip, and that one is the common case: a match is 2–2.5 GB, so
+    // the render that just finished is usually what drops `freeMatches` under the guard. The
+    // night's outcome is the render this run was chained from, which has already written its
+    // "done" and pushed for it; recording this would put "skipped" over it.
     if (!conflict && started === 1) {
       writeNightlyState({ startedAt, matchId: null, players: [], outcome: "skipped", reason });
       if (notifyUrl) await notify(notifyUrl, `Nightly skipped — ${reason}`);

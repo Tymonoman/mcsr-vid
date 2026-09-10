@@ -265,6 +265,14 @@ try {
   const none = await runNightlyOnce("", { renderInFlight: () => false, ranked: async () => null });
   assert.deepEqual(none, { skipped: "no suggestions available" });
 
+  // ...but a chained run's skip is not the night's outcome. The second render of the night is
+  // the *usual* skip — the first render's own 2 GB is what takes the disk under the guard — and
+  // it must leave the record (and the push) the finished render wrote.
+  writeNightlyState(run);
+  const chained = await runNightlyOnce("", { renderInFlight: () => false, ranked: async () => [] }, 2);
+  assert.ok(chained.skipped, "the chained run still skips");
+  assert.deepEqual(readNightlyState(), run, "and the strip still shows the render that happened");
+
   // "Run now" must not move tonight's render. runNightlyOnce touches no timer, and this is the
   // assertion that keeps it that way if someone later reaches for `scheduleNightly` inside it.
   const now = at("2026-09-07T01:30:00Z");

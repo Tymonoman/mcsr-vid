@@ -78,14 +78,24 @@ const knownShort = (v: ChannelVideo): boolean => v.durationSec > 0 && v.duration
  * link to 13123456, which would report a match as published because a *different* one was.
  */
 export function channelVideoFor(matchId: number, videos: readonly ChannelVideo[]): ChannelVideo | null {
-  const link = new RegExp(`/matches/${matchId}(?![0-9])`);
-  return videos.find((v) => !knownShort(v) && link.test(v.description)) ?? null;
+  return videos.find((v) => !knownShort(v) && describesMatch(matchId, v)) ?? null;
 }
 
 /** The Short of this match: same link in its description (src/shortHook.ts), three minutes or under. */
 export function channelShortFor(matchId: number, videos: readonly ChannelVideo[]): ChannelVideo | null {
-  const link = new RegExp(`/matches/${matchId}(?![0-9])`);
-  return videos.find((v) => knownShort(v) && link.test(v.description)) ?? null;
+  return videos.find((v) => knownShort(v) && describesMatch(matchId, v)) ?? null;
+}
+
+/**
+ * Whether this video's description names this match — the test both lookups above share.
+ *
+ * Exported because a match has up to two videos on the channel and "the first one of them" is
+ * the wrong answer when the question is "everything that is this match's": the publish kit
+ * excludes its own match's booked slots (src/publishSlot.ts), and its own Short's day is not a
+ * day it has to move out of.
+ */
+export function describesMatch(matchId: number, video: ChannelVideo): boolean {
+  return new RegExp(`/matches/${matchId}(?![0-9])`).test(video.description);
 }
 
 /** YouTube's cap on ids per `videos.list`, and on rows per playlist page. */

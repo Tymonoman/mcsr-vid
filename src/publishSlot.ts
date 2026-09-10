@@ -12,7 +12,7 @@
  * `minLeadMs` skips a slot that is too close to upload for: a scheduled time YouTube has already
  * passed rejects the whole upload, and an 800 MB file is not on the platform in five minutes.
  */
-import { channelUploadsSnapshot, channelVideoFor } from "./channelUploads.js";
+import { channelUploadsSnapshot, describesMatch } from "./channelUploads.js";
 import { msUntilNextRun } from "./nightly.js";
 import { allUploads, readUpload } from "./youtubeStore.js";
 
@@ -52,11 +52,15 @@ export function nextPublishSlot(
  */
 export async function claimedPublishTimes(exceptMatchId: number): Promise<string[]> {
   const channel = channelUploadsSnapshot();
-  const ownVideoId =
-    channelVideoFor(exceptMatchId, channel)?.videoId ?? (await readUpload(exceptMatchId))?.videoId;
+  // Every video of this match, not the first: a Short's description carries the same
+  // `/matches/<id>` link, so excluding one video by id let the Short stand in for the long-form
+  // and the match's own booked slot pushed its kit into the day after.
+  const ownVideoId = (await readUpload(exceptMatchId))?.videoId;
   const uploads = await allUploads();
   return [
-    ...channel.filter((v) => v.videoId !== ownVideoId).map((v) => v.publishAt),
+    ...channel
+      .filter((v) => !describesMatch(exceptMatchId, v) && v.videoId !== ownVideoId)
+      .map((v) => v.publishAt),
     ...uploads.filter((u) => u.matchId !== exceptMatchId).map((u) => u.record.publishAt),
   ].filter((at): at is string => typeof at === "string" && at.trim() !== "");
 }

@@ -53,7 +53,13 @@ import {
   setHidden,
   setPublishFlag,
 } from "./matchShelf.js";
-import { handleShortsRoute, shortHookStale, shortRunning, spawnShortJob } from "./shortsRoutes.js";
+import {
+  handleShortsRoute,
+  lastShortPick,
+  shortHookStale,
+  shortRunning,
+  spawnShortJob,
+} from "./shortsRoutes.js";
 import { handleYoutubeRoute, uploadRunning } from "./youtubeRoutes.js";
 import { pinnedCommentText, readUpload } from "./youtubeStore.js";
 
@@ -704,8 +710,10 @@ const server = createServer(async (req, res) => {
           // Only after the manifest is written: the Short resolves its hook from it, so cutting
           // any earlier would burn in the headline this render just replaced.
           // The moment the last cut used, not the top-ranked one: a re-cut exists to change the
-          // headline, and resetting the window would throw away a row the operator chose.
-          if (recutShort) spawnShortJob(matchId, lastCutPick(matchId));
+          // headline, and resetting the window would throw away a row the operator chose. This
+          // process's own job map first, then the sidecar `generateShort` leaves on disk — which
+          // is what answers after a restart, when the map is empty but the Short is not.
+          if (recutShort) spawnShortJob(matchId, lastShortPick(matchId) ?? lastCutPick(matchId));
         } catch (err) {
           thumbnailRerenderErrors.set(matchId, describeError(err));
           console.error(`thumbnail re-render failed for ${matchId}: ${describeError(err)}`);

@@ -483,22 +483,20 @@ async function loadVariants(id) {
     `<div class="strip">${data.variants
       .map((v) => {
         const fellBack = v.leftProvider === "nmsr" || v.rightProvider === "nmsr";
+        const chosen = v.key === data.chosen;
+        // The variant the render picked needs a button too, or the operator who looks at all
+        // three and likes the default has no way to say so: the checklist pill means "chosen",
+        // not "rendered" (chosenBy in src/matchShelf.ts), and PUT on the key already in use is
+        // what stamps it. `chosenBy !== "auto"` mirrors the checklist exactly, so a manifest
+        // from before the field still reads as chosen and asks for no second click.
+        const confirmed = chosen && data.chosenBy !== "auto";
         return `
-      <figure class="variant ${v.key === data.chosen ? "chosen" : ""}" data-key="${esc(v.key)}">
+      <figure class="variant ${chosen ? "chosen" : ""}" data-key="${esc(v.key)}">
         <img src="/api/thumbnail/${id}?v=${encodeURIComponent(v.key)}" alt="${esc(v.key)}" loading="lazy">
         <figcaption>
           <span class="key">${esc(v.leftPose)} / ${esc(v.rightPose)}${v.hook === false ? " · no text (control)" : ""}</span>
           ${fellBack ? '<span class="fallback" title="This pose name has no camera, so it is the default NMSR view -- not the pose it is named after">static fallback</span>' : ""}
-          ${
-            v.key !== data.chosen
-              ? '<button type="button" class="use">Use this</button>'
-              : // The render's own default is "in use" but nobody has confirmed it, and the
-                // checklist's thumbnail fact means *chosen*, not *rendered*. Without this the one
-                // outcome you cannot record is the commonest one: the default was already right.
-                data.chosenBy === "operator"
-                ? '<span class="is-chosen">in use</span>'
-                : '<button type="button" class="use keep">Keep this one</button>'
-          }
+          ${confirmed ? '<span class="is-chosen">in use</span>' : `<button type="button" class="use">${chosen ? "Keep this" : "Use this"}</button>`}
         </figcaption>
       </figure>`;
       })
