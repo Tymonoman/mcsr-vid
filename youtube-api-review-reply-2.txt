@@ -1,0 +1,60 @@
+Hello,
+
+Thank you for coming back to us. Attached is a screen recording, in English, of the tool
+performing a complete publish to the channel it is authorised for: the upload, the thumbnail, the
+playlists, the analytics it reads back, and the finished video on the channel.
+
+Channel: https://www.youtube.com/channel/UCm2mAyONTHlmIxZzNmi388w — MCSR Replayoffs.
+
+One thing worth stating plainly, because it is visible in the recording. When we replied last
+time, we had deliberately never called videos.insert: an upload made through a project whose
+compliance review has not completed is locked private permanently, and we did not want to spend a
+finished video on it. Reading your follow-up, we think that was the gap — a written description of
+an upload path is not the same as showing the path run. So for this recording we did run it, on a
+real rendered match, knowing that video stays private for good. You will see it is private in
+Studio; that is the restriction, not a failure of the tool.
+
+What the recording shows, in order:
+
+1. The tool and the channel. A self-hosted pipeline run by the channel owner on their own machine.
+   It takes a public match id from MCSR Ranked, the Minecraft speedrunning ladder, downloads the
+   two competitors' own Twitch VODs of that race, synchronises them and renders a split-timer
+   overlay across both camera angles. The only channel it can write to is the one that authorised
+   it; the refresh token is a single file on that machine and there is no other user.
+
+2. videos.insert. A resumable upload — POST with part=snippet,status carrying the generated title,
+   description and tags, categoryId 20, the chosen privacy status and selfDeclaredMadeForKids
+   false, then the file in 8 MiB chunks against the returned session URL, resuming from YouTube's
+   own Range header if a chunk fails.
+
+3. thumbnails.set. The chosen PNG posted for the returned video id, then shown on the video in
+   Studio. A failure here is reported to the operator but does not read as a failed upload.
+
+   The same step files the video into three of the channel's own playlists, each looked up with
+   playlists.list?mine=true and created with playlists.insert if absent, and posts the channel's
+   own first comment on its own video.
+
+4. Analytics. videos.list with part=snippet,status,statistics for the channel's own uploads, shown
+   as a stats table with real view, like and comment counts; and thumbnail impressions and
+   click-through rate from a standing YouTube Reporting API job, which is what the channel uses to
+   decide which thumbnail style to keep. All of it is the channel's own data, shown only to the
+   channel owner in a dashboard reachable only on their home network.
+
+5. The end result. The finished replay on the channel with its custom thumbnail, its generated
+   description including a link to the public match page the video was made from, its tags and its
+   place in the season playlist.
+
+Every video is made from the two competitors' own publicly available Twitch VODs of a public
+ranked match, edited into one synchronised replay with an original overlay, and published with
+credit and a link to both players. The channel is an independent fan project and says so in every
+description; it is not affiliated with MCSR Ranked, Mojang or Microsoft. Nothing is downloaded
+from YouTube, and no YouTube content, data or metrics are shown to anyone but the channel owner.
+
+Publishing is done by hand in YouTube Studio today. Removing that manual step is the whole purpose
+of the request.
+
+Please tell us if any part of the recording needs to be re-shot or expanded, and we will send it
+within the same window.
+
+Thanks,
+MCSR Replayoffs
