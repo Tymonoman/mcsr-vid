@@ -16,6 +16,7 @@
  * fallback for what the link cannot find: the hand-made uploads from before the pipeline, whose
  * descriptions were written by hand and name no match.
  */
+import { config } from "./config.js";
 import { describeError } from "./errorText.js";
 import { listProcessedMatchIds } from "./matchStatus.js";
 import { recordStudioUpload } from "./youtubeUpload.js";
@@ -30,6 +31,11 @@ export interface ChannelVideo {
   privacyStatus: string;
   /** From contentDetails.duration; what tells the match video from its Short. */
   durationSec: number;
+  /**
+   * Whether the video is in the season playlist every description links to. `undefined` when the
+   * playlist could not be read (or is not configured), which is not the same as "no".
+   */
+  inSeasonPlaylist?: boolean;
   /**
    * The tags actually on the video. The pipeline writes eleven per match — both nicknames and the
    * seed among them — into `match-<id>.tags.txt`, but a Studio upload only carries what was typed
@@ -116,6 +122,13 @@ const PAGE = 50;
  * Descriptions only come from `videos.list` — the uploads playlist truncates them — so this is
  * three endpoints, not one.
  */
+/** The list id out of a playlist URL, or null when there is no playlist configured. */
+function seasonPlaylistIdFromUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const m = /[?&]list=([A-Za-z0-9_-]+)/.exec(url);
+  return m ? m[1]! : null;
+}
+
 export async function fetchChannelUploads(fetchImpl: typeof fetch = fetch): Promise<ChannelVideo[]> {
   const channel = await dataApiGet<{
     items?: Array<{ contentDetails?: { relatedPlaylists?: { uploads?: string } } }>;
@@ -138,6 +151,34 @@ export async function fetchChannelUploads(fetchImpl: typeof fetch = fetch): Prom
     pageToken = `&pageToken=${encodeURIComponent(page.nextPageToken)}`;
   }
 
+  // Which of them are in the season playlist. Every description links to it, so a video that is
+  // not in it advertises a playlist it is missing from — which happened once, silently, because a
+  // Studio upload has to be added by hand. One extra request; a failure leaves the answer unknown
+  // rather than wrong.
+  const seasonPlaylistId = seasonPlaylistIdFromUrl(config.youtubePlaylistUrl);
+  let inSeason: Set<string> | null = null;
+  if (seasonPlaylistId) {
+    try {
+      const ids: string[] = [];
+      let token = "";
+      for (;;) {
+        const page = await dataApiGet<{
+          items?: Array<{ contentDetails: { videoId: string } }>;
+          nextPageToken?: string;
+        }>(
+          `/playlistItems?part=contentDetails&maxResults=${PAGE}&playlistId=${encodeURIComponent(seasonPlaylistId)}${token}`,
+          fetchImpl,
+        );
+        ids.push(...(page.items ?? []).map((i) => i.contentDetails.videoId));
+        if (!page.nextPageToken) break;
+        token = `&pageToken=${encodeURIComponent(page.nextPageToken)}`;
+      }
+      inSeason = new Set(ids);
+    } catch (err) {
+      console.error(`season playlist unreadable, membership unknown: ${describeError(err)}`);
+    }
+  }
+
   const videos: ChannelVideo[] = [];
   for (let i = 0; i < videoIds.length; i += PAGE) {
     const batch = await dataApiGet<{
@@ -157,6 +198,7 @@ export async function fetchChannelUploads(fetchImpl: typeof fetch = fetch): Prom
         privacyStatus: v.status.privacyStatus,
         durationSec: parseIsoDuration(v.contentDetails?.duration),
         tags: v.snippet.tags ?? [],
+        ...(inSeason ? { inSeasonPlaylist: inSeason.has(v.id) } : {}),
         publishAt: v.status.publishAt ?? null,
       })),
     );

@@ -299,6 +299,7 @@ async function knownUploads() {
     // The tag gap is the same question whichever way the video got there — a record only means
     // the pairing was persisted, not that the tags were pasted.
     missingTags: missingTagsFor(r.matchId, channelVideoFor(r.matchId, channel)),
+    inSeasonPlaylist: channelVideoFor(r.matchId, channel)?.inSeasonPlaylist ?? null,
   }));
   const known = new Set(local.map((u) => u.matchId));
   const studio = listProcessedMatchIds()
@@ -313,6 +314,7 @@ async function knownUploads() {
       privacyStatus: video.privacyStatus,
       source: "channel" as const,
       missingTags: missingTagsFor(matchId, video),
+      inSeasonPlaylist: video.inSeasonPlaylist ?? null,
     }));
   return [...local, ...studio];
 }

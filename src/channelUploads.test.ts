@@ -158,9 +158,11 @@ try {
   const got = await fetchChannelUploads(stub);
   assert.equal(got.length, 60, "every video, across both playlist pages");
 
-  const playlistCalls = calls.filter((u) => u.includes("/playlistItems?"));
-  assert.equal(playlistCalls.length, 2, "followed nextPageToken");
-  assert.ok(playlistCalls[1]!.includes("pageToken=next"), "and sent it back");
+  // The uploads playlist only: the season-playlist read is a separate list id and is asserted
+  // below, so counting every playlistItems call would conflate the two.
+  const uploadsCalls = calls.filter((u) => u.includes("/playlistItems?") && u.includes("playlistId=UU"));
+  assert.equal(uploadsCalls.length, 2, "followed nextPageToken");
+  assert.ok(uploadsCalls[1]!.includes("pageToken=next"), "and sent it back");
 
   const videoCalls = calls.filter((u) => u.includes("/videos?"));
   assert.equal(videoCalls.length, 2, "videos.list takes at most fifty ids");
