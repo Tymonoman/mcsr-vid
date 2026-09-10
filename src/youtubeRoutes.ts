@@ -473,11 +473,16 @@ async function abTestPayload() {
   const note =
     impressions.length === 0
       ? "No Reporting API rows yet — reports land about 48h after the day they cover."
-      : withData < 2
-        ? "Not enough data to compare variants yet."
-        : rows.some((r) => r.fellBack)
-          ? "Some variants fell back to the static NMSR render, so their pose names are not distinct images."
-          : null;
+      : // The text-vs-no-text question cannot resolve without one of each published, and it never
+        // has been: every video so far used the hook: false control or a variant whose headline
+        // was empty. Waiting for data would be waiting forever, so say which arm is missing.
+        hookEntries.length > 0 && hookEntries.every((e) => e.hook !== true)
+        ? "No thumbnail with a headline has been published yet, so text-vs-no-text has nothing to compare — choose a hooked variant on one upload to start the arm."
+        : withData < 2
+          ? "Not enough data to compare variants yet."
+          : rows.some((r) => r.fellBack)
+            ? "Some variants fell back to the static NMSR render, so their pose names are not distinct images."
+            : null;
 
   return { rows, byHook: groupByHook(hookEntries), note, impressionsError };
 }
