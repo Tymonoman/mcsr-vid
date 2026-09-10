@@ -283,12 +283,22 @@ export async function finishOnYouTube(
   }
   if (todo("thumbnail")) {
     // A Short shows a frame of itself; there is no custom thumbnail to set.
+    //
+    // And a video already on the channel keeps the thumbnail it is wearing unless somebody chose
+    // one here: pressing this on a Studio upload should add it to its playlists and post its
+    // comment, not overwrite an image the operator picked in Studio with the renderer's own
+    // default. `chosenBy: "operator"` is the only evidence that the manifest's pick is a decision
+    // rather than a fallback — the same test the publish checklist uses.
+    const wasUploadedElsewhere = (record?.source ?? "dashboard") !== "dashboard";
+    const variantConfirmed = manifest?.chosenBy === "operator";
     finished.thumbnail =
       kind === "short"
         ? null
-        : existsSync(thumb)
-          ? await attempt(() => setThumbnail(videoId, thumb))
-          : `no thumbnail at ${thumb}`;
+        : wasUploadedElsewhere && !variantConfirmed
+          ? "left alone — this video was uploaded elsewhere and no variant was confirmed here"
+          : existsSync(thumb)
+            ? await attempt(() => setThumbnail(videoId, thumb))
+            : `no thumbnail at ${thumb}`;
   }
   if (todo("comment")) {
     // A Short gets no comment. On the long-form, YouTube refuses comments while the video is

@@ -280,8 +280,20 @@ try {
   assert.equal("comment" in priv && priv.comment !== undefined, false, "no comment on a private video");
   assert.ok(!hits.some((h) => h.includes("/commentThreads?")));
 
+  // A video uploaded elsewhere keeps the thumbnail it is wearing. "Finish on YouTube" is there to
+  // give it the playlists and the comment it never got; the manifest's `chosen` is the renderer's
+  // default unless somebody confirmed it here, and pushing that would replace a picture the
+  // operator picked in Studio.
+  await writeUpload(matchId, { ...record, source: "studio", finished: {} });
+  hits.length = 0;
+  const studio = await finishOnYouTube(matchId, "vidX");
+  assert.match(String(studio.thumbnail), /left alone/, "the thumbnail step declines");
+  assert.ok(!hits.some((h) => h.includes("/thumbnails/set")), "and no thumbnails.set request was made");
+  assert.equal(studio.playlists, null, "while the playlists it came for still happen");
+
   globalThis.fetch = realFetch;
   console.log("OK: finishing an already-finished video calls nothing");
+  console.log("OK: a video uploaded elsewhere keeps the thumbnail it is wearing");
 } finally {
   config.mediaDir = mediaDir;
   config.youtubePlaylistTitle = playlistTitle;
