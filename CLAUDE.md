@@ -206,6 +206,10 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
   y≈790 and anything under the badge collides with them.
 - **tini is PID 1 since 830321f**; if `ps -eo stat | grep -c ^Z` ever climbs, wrap the command
   in `python3 scripts/reap.py`.
+- **The playoffs board lives *inside* `#suggestions` and its rows carry `.sugg`.** Anything that
+  means "the suggestion cards" must say `#suggestions > .sugg`; the descendant form also matches
+  playoff rows, which are hidden inside the fold until the tournament is a day out, so a
+  `waitForSelector` on it waits forever on a row that is never shown.
 - **`ss` is there, `lsof` and `fuser` are not.** `ss -tlnp | grep <port>` names the process that
   actually holds a port — which is not always the one `ps -eo pid,args | grep 'src/server.ts'`
   finds, because the listener's `comm` is `MainThread`. Killing the grep's PID and restarting can
