@@ -819,6 +819,13 @@
 .short-rank {
   color: var(--muted);
 }
+/* The seed, where a ranked Short shows the ladder rank. Quartz, not the muted grey the rank uses
+   and not the gold of the elo beside it: on a bracket the seed pair is what frames the matchup —
+   the device every high-performing playoff Short in the set leans on — so it has to separate from
+   the number it sits next to rather than blend into it. */
+.short-seed {
+  color: var(--quartz);
+}
 /* The gameplay shows through here; nothing may be painted over it. */
 .short-pane {
   flex-shrink: 0;

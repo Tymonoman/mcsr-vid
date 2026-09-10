@@ -21,8 +21,8 @@ import {
  * viewer never watched happen.
  */
 export type ShortBoardProps = ShortProps & {
-  top: ShortProps["top"] & { headUrl?: string };
-  bottom: ShortProps["bottom"] & { headUrl?: string };
+  top: ShortProps["top"] & { headUrl?: string; seed?: string };
+  bottom: ShortProps["bottom"] & { headUrl?: string; seed?: string };
   /** The run's length from the match record, never read off the board's own label. */
   resultMs?: number;
 };
@@ -41,12 +41,15 @@ function Nameplate({
   eloRate,
   eloRank,
   headUrl,
+  seed,
   side,
 }: {
   nickname: string;
   eloRate: number;
   eloRank: number | null;
   headUrl?: string;
+  /** A playoff game's seed label ("#1 seed", "LCQ"); absent on a ranked match. */
+  seed?: string;
   side: "left" | "right";
 }) {
   return (
@@ -59,7 +62,15 @@ function Nameplate({
       <div className="short-plate-text">
         <span className="short-name">{nickname}</span>
         <span className="short-elo">
-          {eloRate} ELO{eloRank !== null && <span className="short-rank"> #{eloRank}</span>}
+          {/* On a playoff game the seed replaces the ladder rank: the rank is a ranked-ladder
+              fact and a bracket has its own order, and it is the seed pair that states an upset
+              without a word — the device every high-performing playoff Short in the set uses. */}
+          {eloRate} ELO
+          {seed !== undefined ? (
+            <span className="short-seed"> {seed}</span>
+          ) : (
+            eloRank !== null && <span className="short-rank"> #{eloRank}</span>
+          )}
         </span>
       </div>
     </div>
@@ -74,6 +85,7 @@ export const Short: FC<ShortBoardProps> = (props) => {
         nickname={props.top.nickname}
         eloRate={props.top.eloRate}
         eloRank={props.top.eloRank}
+        seed={props.top.seed}
         headUrl={props.top.headUrl}
         side="left"
       />
@@ -83,6 +95,7 @@ export const Short: FC<ShortBoardProps> = (props) => {
         nickname={props.bottom.nickname}
         eloRate={props.bottom.eloRate}
         eloRank={props.bottom.eloRank}
+        seed={props.bottom.seed}
         headUrl={props.bottom.headUrl}
         side="right"
       />

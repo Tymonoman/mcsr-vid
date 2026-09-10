@@ -139,6 +139,11 @@ console.error(
     : `Sync: no sync.json — using the coarse ${config.preRollSec}s estimate for both POVs.`,
 );
 
+// The seed each player carries in the bracket, by uuid — the slot's participant order is the
+// bracket's, not the match's, so it cannot be zipped positionally. Absent on a ranked match, and
+// then the nameplate keeps showing the ladder rank.
+const seedOf = (uuid: string): string | undefined => playoff?.seeds.find((s) => s.uuid === uuid)?.label;
+
 const outPath = path.join(outDir, `short-${matchId}.mp4`);
 console.error(`\nRendering ${seconds}s Short from ${mmss(moment.startMs)}...`);
 await renderShort({
@@ -157,6 +162,7 @@ await renderShort({
       // the Short agrees with the overlay, the thumbnail and the description.
       eloRate: eloAtMatchStart(match, playerLeft.uuid, userLeft.eloRate),
       eloRank: userLeft.eloRank,
+      ...(seedOf(playerLeft.uuid) ? { seed: seedOf(playerLeft.uuid) } : {}),
       // The same head render the 16:9 overlay and the intro card use, from the same host.
       headUrl: `https://nmsr.nickac.dev/head/${playerLeft.uuid}`,
     },
@@ -164,6 +170,7 @@ await renderShort({
       nickname: playerRight.nickname,
       eloRate: eloAtMatchStart(match, playerRight.uuid, userRight.eloRate),
       eloRank: userRight.eloRank,
+      ...(seedOf(playerRight.uuid) ? { seed: seedOf(playerRight.uuid) } : {}),
       headUrl: `https://nmsr.nickac.dev/head/${playerRight.uuid}`,
     },
     hook,
