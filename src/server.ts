@@ -53,7 +53,7 @@ import {
   setHidden,
   setPublishFlag,
 } from "./matchShelf.js";
-import { handleShortsRoute, shortRunning } from "./shortsRoutes.js";
+import { handleShortsRoute, shortHookStale, shortRunning, spawnShortJob } from "./shortsRoutes.js";
 import { handleYoutubeRoute, uploadRunning } from "./youtubeRoutes.js";
 import { readUpload } from "./youtubeStore.js";
 
@@ -668,6 +668,11 @@ const server = createServer(async (req, res) => {
       }
       thumbnailRerenders.add(matchId);
       thumbnailRerenderErrors.delete(matchId);
+      // A Short already cut with the old headline is the other half of this decision, and the
+      // operator had to notice the panel's warning and click "re-cut it" by hand. Decided before
+      // the render because it is a fact about what is on disk now, and reported in the 202 so the
+      // answer to "what did this start?" is one response.
+      const recutShort = await shortHookStale(matchDir(matchId), matchId, hookText);
       // Not awaited: the render outlives the request, which is what the 202 is saying.
       void (async () => {
         try {
@@ -683,6 +688,9 @@ const server = createServer(async (req, res) => {
             poses: config.thumbnailVariants,
             hookText,
           });
+          // Only after the manifest is written: the Short resolves its hook from it, so cutting
+          // any earlier would burn in the headline this render just replaced.
+          if (recutShort) spawnShortJob(matchId, 0);
         } catch (err) {
           thumbnailRerenderErrors.set(matchId, describeError(err));
           console.error(`thumbnail re-render failed for ${matchId}: ${describeError(err)}`);
@@ -690,7 +698,7 @@ const server = createServer(async (req, res) => {
           thumbnailRerenders.delete(matchId);
         }
       })();
-      json(res, 202, { matchId, hookText });
+      json(res, 202, { matchId, hookText, shortRecut: recutShort });
       return;
     }
 

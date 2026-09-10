@@ -490,8 +490,9 @@ async function loadVariants(id) {
     // What the manifest said before, so "nothing changed" can be told apart from "changed".
     const before = await api(`/api/thumbnails/${id}`).catch(() => null);
     let status = null;
+    let started = null;
     try {
-      await api(`/api/thumbnails/${id}/rerender`, {
+      started = await api(`/api/thumbnails/${id}/rerender`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ hookText }),
@@ -521,6 +522,9 @@ async function loadVariants(id) {
     else if ((before?.hookText ?? null) === want)
       said("muted", `already rendered with ${label} — nothing to change`);
     else said("ok", `rendered with ${label}`);
+    // The server re-cuts a Short that was burned with the old line, so the warning below clears
+    // itself; saying so keeps the minute it takes from looking like nothing happened.
+    if (started?.shortRecut) said("ok", "re-cutting the Short so both halves say the same thing");
   });
 }
 

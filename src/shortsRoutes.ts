@@ -44,6 +44,22 @@ const firstLine = (file: string): Promise<string | null> =>
     () => null,
   );
 
+/**
+ * Whether the Short on disk still burns in a line the thumbnail has moved on from.
+ *
+ * The same rule the Short panel paints its warning with (public/app.js): a Short's title is its
+ * hook plus the two tags, so a title that does not open with the hook was cut for a different
+ * one. An empty headline is not a disagreement — a re-cut would resolve a hook from the
+ * suggestions again and land on the line already burned in. A render in flight is not one
+ * either: it is cutting from the manifest that was just written.
+ */
+export async function shortHookStale(dir: string, matchId: number, hookText: string): Promise<boolean> {
+  const hook = hookText.trim();
+  if (hook === "" || shortRunning(matchId) || !existsSync(shortPath(dir, matchId))) return false;
+  const title = await firstLine(path.join(dir, `short-${matchId}.title.txt`));
+  return !(title ?? "").startsWith(hook);
+}
+
 function broadcast(job: ShortJob, payload: unknown): void {
   const frame = `data: ${JSON.stringify(payload)}\n\n`;
   for (const res of job.subscribers) res.write(frame);
