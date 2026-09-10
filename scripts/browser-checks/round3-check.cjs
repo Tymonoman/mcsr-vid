@@ -1,7 +1,8 @@
-const { chromium, devices } = require("playwright");
+const { devices } = require("playwright");
+const { launchFor } = require("./launch.cjs");
 (async () => {
   const [base] = process.argv.slice(2);
-  const browser = await chromium.launch();
+  const browser = await launchFor(base);
   let ok = true;
   const check = (n, c, d = "") => {
     console.log(`${c ? "PASS" : "FAIL"} ${n}${d ? " -- " + d : ""}`);

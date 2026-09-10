@@ -38,7 +38,7 @@ Use the script, don't reconstruct the shell line. Extra arguments go after `--`.
 | `npm run bench -- <Composition> [--frames=N] [--codec=] [--pixelFormat=] [--concurrency=N]` | Render throughput for one composition. Measure before claiming a render change is faster. |
 | `npm run analytics -- <videoId> [--traffic-sources] [--days N]` | YouTube Analytics via `~/.claude/skills/claude-youtube/` (outside the repo; token at `~/.claude/.tmp/youtube_oauth_token.json`). |
 | `python3 scripts/reap.py <command…>` | Subreaper wrapper, only needed if zombies ever climb again (see Pitfalls). |
-| `bash scripts/browser-checks/run-all.sh <url>` | Drives the dashboard in a real browser the way the operator does (23 Playwright checks, self-configuring from `/api/matches` and `/api/playoffs`). Needs `npx playwright install chromium` once and a server with real data. |
+| `bash scripts/browser-checks/run-all.sh <url>` | Drives the dashboard in a real browser the way the operator does (23 Playwright checks, self-configuring from `/api/matches` and `/api/playoffs`). Point it at the real dashboard (`http://mcsr-dashboard:8080` from the Claude container), not just a local test server — four checks only ever exercised a secure origin and hid a broken Copy button for it. Needs `npx playwright install chromium` once and a server with real data. |
 
 Lab timings for a 10-minute match: overlay render ~9 min, `export:fast` ~10 min, a Short in
 seconds; a nightly render + Short takes ~12 min, ~21 min with the MP4.
@@ -264,6 +264,15 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
   actually holds a port — which is not always the one `ps -eo pid,args | grep 'src/server.ts'`
   finds, because the listener's `comm` is `MainThread`. Killing the grep's PID and restarting can
   leave the old listener up and the new server dead on `EADDRINUSE`.
+- **There is no Clipboard API on the lab's dashboard.** `navigator.clipboard` exists only in a
+  secure context — https, or a localhost origin — and the dashboard is plain http on `actimel`, so
+  on every machine except the lab's own browser it is `undefined`. `copyText` (`public/app.js`)
+  falls back to `document.execCommand("copy")`, which does work there, and returns whether the
+  text actually arrived: never set a button to "Copied" without checking. The browser checks read
+  the clipboard by pasting (`readClipboard`, `scripts/browser-checks/launch.cjs`) for the same
+  reason — `navigator.clipboard.readText` made four of them pass against 127.0.0.1 and die against
+  the real dashboard. `--unsafely-treat-insecure-origin-as-secure` does not help: it needs a
+  persistent profile.
 - **Country flags render as tofu** without a colour-emoji font (cosmetic, intro card).
 - **Verify visual changes by rendering** (`npm run still`, then read the PNG).
 - **`npm run test:unit` after any edit; `npm test` after touching rendering or asset

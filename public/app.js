@@ -334,7 +334,10 @@ async function select(id, { open = false } = {}) {
     watch(id);
   });
   $("#stop").addEventListener("click", () => api(`/api/render/${id}`, { method: "DELETE" }));
-  $("#failcopy").addEventListener("click", () => navigator.clipboard?.writeText($("#failtext").textContent));
+  $("#failcopy").addEventListener("click", async () => {
+    const ok = await copyText($("#failtext").textContent);
+    $("#failcopy").textContent = ok ? "Copied" : "Blocked — select it by hand";
+  });
   $("#save").addEventListener("click", async () => {
     // The hook field is where the headline is written, and Save is where it is committed: the
     // hook slot in the title's first line takes it here, so the file on disk — what the
@@ -842,16 +845,12 @@ async function loadPublishKit(id, meta) {
   };
   paint();
 
-  el.addEventListener("click", (ev) => {
+  el.addEventListener("click", async (ev) => {
     const btn = ev.target.closest("button.copy");
     if (!btn) return;
-    navigator.clipboard
-      ?.writeText(btn.closest(".kit").querySelector("textarea").value)
-      .then(
-        () => (btn.textContent = "copied"),
-        () => (btn.textContent = "blocked"),
-      )
-      .finally(() => setTimeout(() => (btn.textContent = "Copy"), 1500));
+    const ok = await copyText(btn.closest(".kit").querySelector("textarea").value);
+    btn.textContent = ok ? "copied" : "blocked";
+    setTimeout(() => (btn.textContent = "Copy"), 1500);
   });
 
   // The hook is typed after this panel paints, and the YouTube panel rewrites #ytTitle from the
@@ -989,9 +988,11 @@ async function loadShort(id) {
   // wrote is how a hook picks up a typo the burned-in one doesn't have.
   const copyTitle = $("#shorttitlecopy");
   if (copyTitle) {
-    copyTitle.addEventListener("click", () => {
-      navigator.clipboard?.writeText(data.title);
-      copyTitle.textContent = "Copied";
+    copyTitle.addEventListener("click", async () => {
+      // Reporting the attempt rather than the outcome is how this said "Copied" on every machine
+      // that cannot copy. Select the text yourself when it says blocked.
+      copyTitle.textContent = (await copyText(data.title)) ? "Copied" : "Blocked";
+      setTimeout(() => (copyTitle.textContent = "Copy title"), 1500);
     });
   }
 
@@ -1187,6 +1188,42 @@ async function saveSync(thenExport) {
   } catch (e) {
     msg.textContent = "";
     showFailure("Sync not saved", e.message);
+  }
+}
+
+/**
+ * Copy text, on an origin that has no Clipboard API.
+ *
+ * `navigator.clipboard` exists only in a secure context — https, or localhost. The dashboard is
+ * served over plain http from the lab, so on every machine except the lab's own browser it is
+ * undefined, and `navigator.clipboard?.writeText(...)` short-circuits to nothing: the publish
+ * kit's Copy buttons did nothing at all, and the Short's said "Copied" while copying nothing.
+ * `document.execCommand("copy")` is deprecated but works on an insecure origin, which is exactly
+ * where it is needed. Returns whether the text actually got there — never claim it did otherwise.
+ */
+async function copyText(text) {
+  try {
+    if (navigator.clipboard) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // Denied permission or a detached document: fall through to the old way rather than give up.
+  }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    // Off-screen but not display:none, which would make it unselectable.
+    ta.style.cssText = "position:fixed;top:-1000px;opacity:0";
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, ta.value.length);
+    const ok = document.execCommand("copy");
+    ta.remove();
+    return ok;
+  } catch {
+    return false;
   }
 }
 

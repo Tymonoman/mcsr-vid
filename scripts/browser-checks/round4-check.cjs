@@ -2,10 +2,10 @@
 // terminal's guidance, the after-the-upload pastes folded, no Chapters panel, no disabled Stop,
 // the Kdenlive project as a download, and a refused checklist toggle that stays on the page.
 // Changes nothing: the only write it provokes (a publish toggle) is intercepted and refused.
-const { chromium } = require("playwright");
+const { launchFor, readClipboard } = require("./launch.cjs");
 (async () => {
   const [base, id] = process.argv.slice(2);
-  const browser = await chromium.launch();
+  const browser = await launchFor(base);
   const ctx = await browser.newContext({
     viewport: { width: 1280, height: 1000 },
     permissions: ["clipboard-read", "clipboard-write"],
@@ -54,7 +54,7 @@ const { chromium } = require("playwright");
     const text = await pinned.$eval("textarea", (t) => t.value);
     await pinned.$eval("button.copy", (b) => b.click());
     await page.waitForTimeout(300);
-    check("Copy works inside the fold", (await page.evaluate(() => navigator.clipboard.readText())) === text);
+    check("Copy works inside the fold", (await readClipboard(page)) === text);
 
     // 4. the description already is the chapter list
     const headings = await page.$$eval("#detail h2", (n) => n.map((e) => e.textContent.trim()));

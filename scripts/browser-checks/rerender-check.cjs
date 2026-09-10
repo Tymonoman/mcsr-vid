@@ -1,9 +1,9 @@
 // "Re-render with hook" says what happened: a failed render, a real render, and a no-op.
-const { chromium } = require("playwright");
+const { launchFor } = require("./launch.cjs");
 const fs = require("fs");
 (async () => {
   const [base, id, hook, scratch] = process.argv.slice(2);
-  const browser = await chromium.launch();
+  const browser = await launchFor(base);
   const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } });
   const errors = [];
   page.on("pageerror", (e) => errors.push("pageerror: " + e.message));

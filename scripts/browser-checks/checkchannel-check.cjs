@@ -1,9 +1,9 @@
 // "Uploaded it in Studio already? check the channel": a forced listing that finds the match
 // flips the panel, the row and the kit; one that does not says so and leaves the form.
-const { chromium } = require("playwright");
+const { launchFor } = require("./launch.cjs");
 (async () => {
   const [base, id] = process.argv.slice(2);
-  const browser = await chromium.launch();
+  const browser = await launchFor(base);
   const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } });
   const errors = [];
   page.on("pageerror", (e) => errors.push("pageerror: " + e.message));
@@ -27,8 +27,8 @@ const { chromium } = require("playwright");
     // The upload form is painted only when config.youtubeUploadEnabled is on — off, the panel is
     // the check-the-channel line alone, which is the whole point of the gate. Assert whichever
     // state the server is actually in rather than assuming the form is there.
-    const uploadsEnabled = await page.evaluate(async () =>
-      (await (await fetch("/api/youtube/status")).json()).uploadsEnabled === true,
+    const uploadsEnabled = await page.evaluate(
+      async () => (await (await fetch("/api/youtube/status")).json()).uploadsEnabled === true,
     );
     const hasUploadButton = !!(await page.$("#ytUpload"));
     check(

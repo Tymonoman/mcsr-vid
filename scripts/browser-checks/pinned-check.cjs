@@ -1,7 +1,7 @@
-const { chromium } = require("playwright");
+const { launchFor, readClipboard } = require("./launch.cjs");
 (async () => {
   const [base, id] = process.argv.slice(2);
-  const browser = await chromium.launch();
+  const browser = await launchFor(base);
   const ctx = await browser.newContext({
     viewport: { width: 1280, height: 1000 },
     permissions: ["clipboard-read", "clipboard-write"],
@@ -23,7 +23,7 @@ const { chromium } = require("playwright");
   console.log("text:", text);
   await kit.$eval("button.copy", (b) => b.click());
   await page.waitForTimeout(300);
-  const clip = await page.evaluate(() => navigator.clipboard.readText());
+  const clip = await readClipboard(page);
   console.log(
     "clipboard matches:",
     clip === text,

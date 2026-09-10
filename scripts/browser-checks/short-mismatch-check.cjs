@@ -1,7 +1,7 @@
-const { chromium } = require("playwright");
+const { launchFor } = require("./launch.cjs");
 (async () => {
   const [base, id] = process.argv.slice(2);
-  const browser = await chromium.launch();
+  const browser = await launchFor(base);
   const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } });
   const errors = [];
   page.on("pageerror", (e) => errors.push("pageerror: " + e.message));

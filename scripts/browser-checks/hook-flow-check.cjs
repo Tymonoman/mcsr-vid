@@ -1,13 +1,13 @@
 // The title-editor flow the morning depends on: a chip click reaches the YouTube title and the
 // kit; Save commits the hook into the title file, the checklist's hook fact flips, and the panels
 // repaint from the saved meta. Restores the edited title afterwards.
-const { chromium } = require("playwright");
+const { launchFor } = require("./launch.cjs");
 const fs = require("fs");
 (async () => {
   const [base, id] = process.argv.slice(2);
   const edited = `/media/${id}/match-${id}.title.edited.txt`;
   const had = fs.existsSync(edited) ? fs.readFileSync(edited, "utf8") : null;
-  const browser = await chromium.launch();
+  const browser = await launchFor(base);
   const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } });
   const errors = [];
   page.on("pageerror", (e) => errors.push("pageerror: " + e.message));

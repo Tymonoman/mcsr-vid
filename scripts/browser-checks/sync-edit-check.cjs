@@ -1,4 +1,4 @@
-const { chromium } = require("playwright");
+const { launchFor } = require("./launch.cjs");
 
 /* The manual sync editor. What it has to get right is the arithmetic between the finished
    timeline and each POV clip: both players freeze through the same countdown, so two frames taken
@@ -6,7 +6,7 @@ const { chromium } = require("playwright");
    offset is nudged. Nothing is saved — a PUT here would change what the next export produces. */
 (async () => {
   const [base, id] = process.argv.slice(2);
-  const browser = await chromium.launch();
+  const browser = await launchFor(base);
   const page = await browser.newPage({ viewport: { width: 1280, height: 1200 } });
   const errors = [];
   page.on("pageerror", (e) => errors.push("pageerror: " + e.message));
@@ -47,14 +47,24 @@ const { chromium } = require("playwright");
     const c = await frame(`side=left&t=4&offset=${at + 1}`);
     check("t and offset move the clip together", c.body.length > 2000 && !c.body.equals(b.body));
 
-    check("a bad side is still a frame, not a 500", (await frame(`side=nonsense&t=5&offset=${at}`)).status === 200);
-    check("a missing match is refused", (await (await page.request.get(`${base}/api/sync/frame?side=left&t=5`)).status()) === 400);
+    check(
+      "a bad side is still a frame, not a 500",
+      (await frame(`side=nonsense&t=5&offset=${at}`)).status === 200,
+    );
+    check(
+      "a missing match is refused",
+      (await (await page.request.get(`${base}/api/sync/frame?side=left&t=5`)).status()) === 400,
+    );
 
     // A refused offset must not reach the file. If a guard ever regresses, one of these WILL be
     // written, so the original is put back in the finally below rather than trusted not to move.
     const before = await (await page.request.get(`${base}/api/sync/${id}`)).json();
     original = before.sync;
-    for (const bad of [{ left: -1, right: 1 }, { left: "", right: 1 }, { left: 1, right: "abc" }]) {
+    for (const bad of [
+      { left: -1, right: 1 },
+      { left: "", right: 1 },
+      { left: 1, right: "abc" },
+    ]) {
       const r = await page.request.put(`${base}/api/sync/${id}`, { data: bad });
       check(`refused ${JSON.stringify(bad)}`, r.status() === 400, String(r.status()));
     }

@@ -1,4 +1,4 @@
-const { chromium } = require("playwright");
+const { launchFor } = require("./launch.cjs");
 
 /* The upload form is dead code until the YouTube compliance audit clears and `uploadsEnabled`
    flips true — which is exactly when a mistake in it would first be seen, on the live channel,
@@ -7,7 +7,7 @@ const { chromium } = require("playwright");
    flag is flipped in the browser's copy of the response, never on the server. */
 (async () => {
   const [base, ready, published] = process.argv.slice(2);
-  const browser = await chromium.launch();
+  const browser = await launchFor(base);
   const page = await browser.newPage({ viewport: { width: 1280, height: 1100 } });
   const errors = [];
   page.on("pageerror", (e) => errors.push("pageerror: " + e.message));
@@ -56,7 +56,10 @@ const { chromium } = require("playwright");
       await page.evaluate((id) => select(Number(id), { open: true }), published);
       await page.waitForSelector("#youtube #ytFinish", { timeout: 30000 });
       const text = await page.locator("#youtube").innerText();
-      check("a published video still shows its finished steps", /thumbnail.*playlists.*comment.*tags/s.test(text));
+      check(
+        "a published video still shows its finished steps",
+        /thumbnail.*playlists.*comment.*tags/s.test(text),
+      );
       check("no upload form on a published video", (await page.locator("#ytUpload").count()) === 0);
       check("no page errors on the published branch", errors.length === 0, errors.join(" | "));
     }

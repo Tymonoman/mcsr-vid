@@ -1,9 +1,9 @@
 // A late /api/export/preview-meta reply for a match the operator has already left must neither
 // paint into the current match's panel nor open a progress stream for the old match.
-const { chromium } = require("playwright");
+const { launchFor } = require("./launch.cjs");
 (async () => {
   const [base, a, b] = process.argv.slice(2);
-  const browser = await chromium.launch();
+  const browser = await launchFor(base);
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   const errors = [];
   page.on("pageerror", (e) => errors.push("pageerror: " + e.message));

@@ -1,10 +1,10 @@
 // Dashboard smoke test. Usage: node smoke.cjs http://host:port [outPrefix]
 // Fails (exit 1) on page errors, console errors, or any assertion below; writes screenshots.
-const { chromium } = require("playwright");
+const { launchFor } = require("./launch.cjs");
 const BASE = process.argv[2] || "http://mcsr-dashboard:8080";
 const OUT = process.argv[3] || require("path").join(require("os").tmpdir(), "smoke");
 (async () => {
-  const b = await chromium.launch({ args: ["--no-sandbox"] });
+  const b = await launchFor(BASE, ["--no-sandbox"]);
   const problems = [];
   const note = (s) => problems.push(s);
   for (const [tag, vp] of [

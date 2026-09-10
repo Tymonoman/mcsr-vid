@@ -1,11 +1,11 @@
-const { chromium } = require("playwright");
+const { launchFor } = require("./launch.cjs");
 
 /* The playoffs board is folded away until a game exists or the first slot is inside 24 h. Both
    branches are driven from a doctored /api/playoffs so the check means the same thing on the
    Tuesday before a bracket and on the Saturday of one; the live payload is checked too. */
 (async () => {
   const [base] = process.argv.slice(2);
-  const browser = await chromium.launch();
+  const browser = await launchFor(base);
   const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } });
   const errors = [];
   page.on("pageerror", (e) => errors.push("pageerror: " + e.message));
@@ -61,11 +61,19 @@ const { chromium } = require("playwright");
 
     // An hour out is the tournament: no fold to click past on the night it matters.
     const open = await board(3600);
-    check("an imminent slot is not folded", open.folds === 0 && open.rows === open.slots, JSON.stringify(open));
+    check(
+      "an imminent slot is not folded",
+      open.folds === 0 && open.rows === open.slots,
+      JSON.stringify(open),
+    );
 
     // A slot that has already started stays open too -- the games arrive during it.
     const during = await board(-3600);
-    check("a slot underway is not folded", during.folds === 0 && during.rows === during.slots, JSON.stringify(during));
+    check(
+      "a slot underway is not folded",
+      during.folds === 0 && during.rows === during.slots,
+      JSON.stringify(during),
+    );
 
     // Whatever the calendar says today, the live payload must render one board or the other.
     const now = await board(null);

@@ -1,8 +1,8 @@
 // The kit's community post block, and a failed scan that offers a retry which repaints the list.
-const { chromium } = require("playwright");
+const { launchFor, readClipboard } = require("./launch.cjs");
 (async () => {
   const [base, id] = process.argv.slice(2);
-  const browser = await chromium.launch();
+  const browser = await launchFor(base);
   const ctx = await browser.newContext({
     viewport: { width: 1280, height: 1000 },
     permissions: ["clipboard-read", "clipboard-write"],
@@ -58,7 +58,7 @@ const { chromium } = require("playwright");
     const text = await kit.$eval("textarea", (t) => t.value);
     await kit.$eval("button.copy", (b) => b.click());
     await page.waitForTimeout(300);
-    const clip = await page.evaluate(() => navigator.clipboard.readText());
+    const clip = await readClipboard(page);
     check(
       "community post carries the title and copies",
       /^New: .* vs .*Who did you have/.test(text) && clip === text,

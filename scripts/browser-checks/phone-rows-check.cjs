@@ -1,7 +1,8 @@
-const { chromium, devices } = require("playwright");
+const { devices } = require("playwright");
+const { launchFor } = require("./launch.cjs");
 (async () => {
   const [base] = process.argv.slice(2);
-  const browser = await chromium.launch();
+  const browser = await launchFor(base);
   const ctx = await browser.newContext({ ...devices["iPhone 13"] });
   const page = await ctx.newPage();
   await page.goto(base + "/", { waitUntil: "networkidle" });
