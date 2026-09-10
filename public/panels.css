@@ -606,7 +606,7 @@
   gap: 12px;
   padding: 8px 10px;
   background: var(--panel-2, #1a1820);
-  border: 1px solid var(--edge, #2c2833);
+  border: 1px solid var(--panel-edge-light);
 }
 /* The best pick reads as the default without being the only option. */
 .moment:first-child {
@@ -660,7 +660,7 @@
   max-height: 60vh;
   background: #000;
   display: block;
-  border: 1px solid var(--edge, #2c2833);
+  border: 1px solid var(--panel-edge-light);
 }
 .previewmeta {
   display: flex;
@@ -689,7 +689,7 @@
   max-height: 55vh;
   max-width: 100%;
   background: #000;
-  border: 1px solid var(--edge, #2c2833);
+  border: 1px solid var(--panel-edge-light);
 }
 
 /* Splits visualiser. Sized by width alone — the viewBox carries the real proportions, so the
@@ -749,7 +749,7 @@
 }
 .kitmore > summary {
   cursor: pointer;
-  font-family: var(--mono, ui-monospace, monospace);
+  font-family: var(--pixel-font);
   font-size: 12px;
   color: var(--muted);
   padding: 4px 0;
