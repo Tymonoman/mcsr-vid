@@ -46,12 +46,12 @@ async function loadYoutube(id, meta) {
     return;
   }
 
-  // The generated title still carries the <HOOK> placeholder plus the guidance lines that
-  // formatTitle writes for the terminal; neither belongs in a YouTube title, so take the first
-  // line and let the hook you picked replace the placeholder.
+  // The generated title carries the guidance lines formatTitle writes for the terminal, and a
+  // hook that is either the pipeline's own first suggestion or the placeholder; none of that
+  // belongs in a YouTube title, so take the first line and let the hook you picked win over
+  // whatever is in its slot (titleWithHook, app.js).
   const firstLine = (meta.title ?? "").split("\n")[0] ?? "";
-  const hook = $("#hook")?.value.trim();
-  const suggestedTitle = hook ? firstLine.replace("<HOOK>", hook) : firstLine;
+  const suggestedTitle = titleWithHook(firstLine, $("#hook")?.value.trim(), meta.hook?.generated);
   // Back from Studio: list the channel now, then repaint everything that says "published".
   const checkChannel = async (link) => {
     link.textContent = "checking…";
@@ -115,8 +115,7 @@ async function loadYoutube(id, meta) {
   });
   $("#hook")?.addEventListener("input", (e) => {
     if (titleEdited) return;
-    const h = e.target.value.trim();
-    titleField.value = h ? firstLine.replace("<HOOK>", h) : firstLine;
+    titleField.value = titleWithHook(firstLine, e.target.value.trim(), meta.hook?.generated);
     gate();
   });
   gate();

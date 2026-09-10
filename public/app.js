@@ -172,6 +172,20 @@ function renderList() {
   );
 }
 
+/**
+ * The title's first line carrying the hook that has been typed into the field.
+ *
+ * Two shapes, because the pipeline now writes its own first suggestion into the title file
+ * (src/title.ts): a line still holding the placeholder, and a line that already has a hook in
+ * front of the generated half. Either way the hook is everything before that half, so replacing
+ * it is one rule. A line whose tail has been edited by hand is left exactly as it is.
+ */
+function titleWithHook(firstLine, hook, generated) {
+  if (!hook) return firstLine;
+  if (firstLine.includes("<HOOK>")) return firstLine.replace("<HOOK>", hook);
+  return generated && firstLine.endsWith(generated) ? `${hook} | ${generated}` : firstLine;
+}
+
 function hookCounter(meta) {
   const input = $("#hook"),
     out = $("#hookcount");
@@ -180,9 +194,11 @@ function hookCounter(meta) {
   const { min, max } = meta.hook;
   out.textContent = `${n} / ${min}-${max} chars`;
   out.className = "counter" + (n > max ? " over" : n >= min ? " good" : "");
+  // Empty field: what the title file actually says, which is the pipeline's own hook far more
+  // often than the placeholder now.
   $("#hookpreview").textContent = input.value
     ? `${input.value} | ${meta.hook.generated}`
-    : meta.hook.placeholder;
+    : (meta.title ?? "").split("\n")[0] || meta.hook.placeholder;
 }
 
 /**
@@ -311,12 +327,12 @@ async function select(id, { open = false } = {}) {
   $("#failcopy").addEventListener("click", () => navigator.clipboard?.writeText($("#failtext").textContent));
   $("#save").addEventListener("click", async () => {
     // The hook field is where the headline is written, and Save is where it is committed: the
-    // placeholder in the title's first line takes it here, so the file on disk — what the
-    // checklist reads and what the Short's hook resolves from — no longer says <HOOK>.
+    // hook slot in the title's first line takes it here, so the file on disk — what the
+    // checklist reads and what the Short's hook resolves from — carries the operator's line and
+    // not the placeholder or the pipeline's own first suggestion.
     const hook = $("#hook")?.value.trim();
     const [first, ...rest] = $("#title").value.split("\n");
-    if (hook && first.includes("<HOOK>"))
-      $("#title").value = [first.replace("<HOOK>", hook), ...rest].join("\n");
+    $("#title").value = [titleWithHook(first, hook, meta.hook?.generated), ...rest].join("\n");
     let saved;
     try {
       saved = await api(`/api/meta/${id}`, {
@@ -700,8 +716,7 @@ async function loadPublishKit(id, meta) {
     const field = $("#ytTitle");
     if (field) return field.value;
     const firstLine = (meta.title ?? "").split("\n")[0] ?? "";
-    const hook = $("#hook")?.value.trim();
-    return hook ? firstLine.replace("<HOOK>", hook) : firstLine;
+    return titleWithHook(firstLine, $("#hook")?.value.trim(), meta.hook?.generated);
   };
 
   const counter = (text, over) => `<span class="counter${over ? " over" : ""}">${esc(text)}</span>`;
