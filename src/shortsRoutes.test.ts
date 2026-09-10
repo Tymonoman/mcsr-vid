@@ -142,6 +142,22 @@ assert.ok(spawned.every((s) => s.matchId === 12296170));
   assert.equal(await shortHookStale(dir, 777, "   "), false, "no headline is not a disagreement");
   assert.equal(await shortHookStale(dir, 778, hook), false, "nothing cut yet is nothing to re-cut");
 
+  // The operator's edited title outranks the typed headline in the render itself, so a
+  // thumbnail re-rendered with a different line would cut the *same* Short again: two minutes
+  // of ffmpeg for an identical file, under a banner still saying the two disagree.
+  await writeFile(path.join(dir, "match-777.title.edited.txt"), `${hook} | a vs b | Ranked\n`);
+  assert.equal(
+    await shortHookStale(dir, 777, "Two blinds, one second apart"),
+    false,
+    "the edited title still says what is burned in",
+  );
+  await writeFile(path.join(dir, "match-777.title.edited.txt"), "A new line entirely | a vs b\n");
+  assert.equal(
+    await shortHookStale(dir, 777, ""),
+    true,
+    "an edited title that moved on is a real disagreement, headline or not",
+  );
+
   // 555 still has a render in flight from the case above; a second one would be a competing
   // ffmpeg cutting from the manifest that was just written anyway.
   await writeFile(path.join(dir, "short-555.mp4"), "");

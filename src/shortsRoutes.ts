@@ -19,7 +19,7 @@ import { getMatch, getUser } from "./mcsrApi.js";
 import { reasonerConfigured } from "./reasoner.js";
 import { distinctShortMoments, runMsOf, SHORT_WINDOW_SEC } from "./shortMoment.js";
 import { reasonShortMoments } from "./shortReason.js";
-import { buildShortHook, resolveShortHookFor } from "./shortHook.js";
+import { buildShortHook, resolveShortHook, resolveShortHookFor } from "./shortHook.js";
 import { sendVideo } from "./rangeStream.js";
 import { readChatTimes } from "./twitchChat.js";
 
@@ -65,13 +65,24 @@ const firstLine = (file: string): Promise<string | null> =>
  *
  * The same rule the Short panel paints its warning with (public/app.js): a Short's title is its
  * hook plus the two tags, so a title that does not open with the hook was cut for a different
- * one. An empty headline is not a disagreement — a re-cut would resolve a hook from the
- * suggestions again and land on the line already burned in. A render in flight is not one
- * either: it is cutting from the manifest that was just written.
+ * one. Compared against what a re-cut would *resolve*, not against what was typed: an edited
+ * title's hook beats the manifest's (`resolveShortHookFor`), so with a title on disk a new
+ * headline would leave the burned-in line exactly where it is — and a render started for that
+ * spends two minutes reproducing the same file under a banner that then stays up.
+ *
+ * An empty result is not a disagreement — a re-cut would resolve a hook from the suggestions
+ * again and land on the line already burned in. A render in flight is not one either: it is
+ * cutting from the manifest that was just written.
  */
 export async function shortHookStale(dir: string, matchId: number, hookText: string): Promise<boolean> {
-  const hook = hookText.trim();
-  if (hook === "" || shortRunning(matchId) || !existsSync(shortPath(dir, matchId))) return false;
+  if (shortRunning(matchId) || !existsSync(shortPath(dir, matchId))) return false;
+  const editedTitle = await readFile(path.join(dir, `match-${matchId}.title.edited.txt`), "utf8").catch(
+    () => null,
+  );
+  // The same resolution the render will run, with the typed headline standing in for the
+  // suggestions it has not fetched: the operator's title hook first, the new headline second.
+  const hook = resolveShortHook(editedTitle, [hookText], "");
+  if (hook === "") return false;
   const title = await firstLine(path.join(dir, `short-${matchId}.title.txt`));
   return !(title ?? "").startsWith(hook);
 }
