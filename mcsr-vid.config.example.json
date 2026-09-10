@@ -27,6 +27,7 @@
   "publishHourUtc": 19,
   "postRollCta": true,
   "nightlyRenderExport": true,
+  "nightlyMaxRenders": 1,
   "nightlyNotifyUrl": "",
   "youtubeUploadEnabled": false,
   "youtubeAutoFinish": false,

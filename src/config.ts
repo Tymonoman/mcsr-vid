@@ -134,6 +134,14 @@ export interface Config {
    */
   nightlyRenderExport: boolean;
   /**
+   * How many matches one night may render, at most. 1 keeps the scheduler as timid as it was;
+   * raising it lets a clean run start the next eligible card while the lab is still idle, but
+   * only within four hours of `nightlyRenderHourUtc` and only through the same guards that
+   * decide the first render — disk, a render in flight, nothing eligible (see src/nightly.ts).
+   * Each match is 2–2.5 GB, so this is bounded by disk long before it is bounded by hours.
+   */
+  nightlyMaxRenders: number;
+  /**
    * Where to POST a one-line plain-text result when a nightly render settles — an ntfy.sh topic
    * URL takes exactly that body, which is why the body is plain text and nothing else. Empty
    * string turns the notification off; a failed POST is logged, never fatal.
@@ -257,6 +265,7 @@ const DEFAULTS: Config = {
   publishHourUtc: 19,
   postRollCta: true,
   nightlyRenderExport: true,
+  nightlyMaxRenders: 1,
   nightlyNotifyUrl: "",
   youtubeUploadEnabled: false,
   youtubeAutoFinish: false,
@@ -330,6 +339,15 @@ export function validateOverrides(raw: Record<string, unknown>): void {
     if (key === "nightlyUpload") {
       if (value !== "off" && value !== "private" && value !== "scheduled") {
         throw new Error(`${CONFIG_PATH}: "nightlyUpload" must be "off", "private" or "scheduled".`);
+      }
+      continue;
+    }
+    // Whole renders, at least one. 0 would turn the nightly off through a key that does not say
+    // so — `"nightlyRenderHourUtc": null` is how you do that — and a fraction would read as a
+    // limit while behaving like its floor.
+    if (key === "nightlyMaxRenders") {
+      if (!Number.isInteger(value) || (value as number) < 1) {
+        throw new Error(`${CONFIG_PATH}: "nightlyMaxRenders" must be a whole number of renders, 1 or more.`);
       }
       continue;
     }

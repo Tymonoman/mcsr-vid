@@ -92,8 +92,10 @@ they differ (`code: { boot, now }` from `src/repoHead.ts`). Client changes need 
   legible at YouTube's 246x138 grid size. The third variant is `hook: false`, the A/B control.
   `POST /api/thumbnails/:id/rerender` redoes the hooked variants with the typed hook and reports
   rendered / failed / nothing to change. A pipeline re-run keeps a manifest's headline; a still
-  is reused only under the same headline. The Short reuses the manifest's hook so both halves
-  of a match agree; the Short panel says when they do not.
+  is reused only under the same headline, and a re-render re-cuts a Short still burned with the
+  old line. The Short reuses the manifest's hook so both halves of a match agree; the Short panel
+  says when they do not. The checklist's thumbnail pill ticks on `chosenBy: "operator"` in the
+  manifest — a rendered variant is not a chosen one; sidecars without the field keep ticking.
 - **Upload** sends `match-<id>.tags.txt` and refuses a title still containing `<HOOK>`; it adds
   the video to the season playlist (`PLHG-jSA-dWDo`), a per-matchup and a per-player playlist
   (`src/youtube.ts`; ids remembered per process because YouTube's list is eventually consistent).
@@ -102,7 +104,8 @@ they differ (`code: { boot, now }` from `src/repoHead.ts`). Client changes need 
   YouTube panel's "check the channel" link lists the channel at once. The manual `uploaded`
   tick is the fallback for a video with no match link.
 - **Publish kit** (`GET /api/publishkit/:id`): copy buttons for the title, the publish slot
-  (`publishHourUtc`, default 19:00 UTC, the competitor's measured hour), description, tags, the
+  (`publishHourUtc`, default 19:00 UTC, the competitor's measured hour, on the first day no
+  other video is already scheduled for — `src/publishSlot.ts`), description, tags, the
   Short's title/description, a pinned comment, a community post, and a DM per player. When
   `pullSource` is set it opens with an rsync *pull* the operator's PC runs (`src/publishSet.ts`;
   the lab host's path, not the container's `/media`) — pull, not push, because the image has no
@@ -116,7 +119,9 @@ they differ (`code: { boot, now }` from `src/repoHead.ts`). Client changes need 
 - **Nightly** (`src/nightly.ts`): at `nightlyRenderHourUtc` (default 3 UTC; `null` disables) the
   server renders the first eligible card in dashboard order, skipping the night if a render is
   running or under two matches of disk remain, then the Short (`nightlyRenderShort`) and the MP4
-  (`nightlyRenderExport`); `nightlyNotifyUrl` gets one line on done / failed / aborted. The
+  (`nightlyRenderExport`); `nightlyNotifyUrl` gets one line on done / failed / aborted. With
+  `nightlyMaxRenders` above 1 a clean run starts the next card, within four hours of the hour
+  and through the same guards. The
   strip's `Run now` is the same path, as is a card's "Render + Short + MP4".
 - **Playoffs** (`src/playoffs.ts`): the bracket (`/playoffs`) knows the series, not the games;
   the games are private-room matches (type 3) found in each seed's history, and the API stamps

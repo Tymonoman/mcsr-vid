@@ -35,7 +35,7 @@ import { STAGE_LABELS, STAGE_ORDER, STAGE_SHORT_LABELS } from "./pipeline.js";
 import { presentSuggestions } from "./suggestPresent.js";
 import { dismiss, restore, snapshot, startScan } from "./suggestScan.js";
 import { cronLine, rsyncPullAllCommand, rsyncPullCommand } from "./publishSet.js";
-import { nextPublishSlot } from "./publishSlot.js";
+import { claimedPublishTimes, nextPublishSlot } from "./publishSlot.js";
 import { playoffBoard, playoffContextForId, playoffTitleTail } from "./playoffs.js";
 import { refreshRivalPostsIfStale, rivalPostsSnapshot, rivalRecentPostFor } from "./rivalPosts.js";
 import { chooseVariant, readManifest, rerenderThumbnailVariants } from "./thumbnailVariants.js";
@@ -53,7 +53,7 @@ import {
   setHidden,
   setPublishFlag,
 } from "./matchShelf.js";
-import { handleShortsRoute, shortRunning } from "./shortsRoutes.js";
+import { handleShortsRoute, shortHookStale, shortRunning, spawnShortJob } from "./shortsRoutes.js";
 import { handleYoutubeRoute, uploadRunning } from "./youtubeRoutes.js";
 import { pinnedCommentText, readUpload } from "./youtubeStore.js";
 
@@ -569,8 +569,13 @@ const server = createServer(async (req, res) => {
         // The same line "Finish on YouTube" posts (src/youtubeUpload.ts), so the paste and the
         // API call cannot say two different things.
         pinnedComment: pinnedCommentText(entry.leftNickname ?? null, entry.rightNickname ?? null),
-        // The slot to schedule for, so the morning's paste into Studio carries a time too.
-        publishAt: nextPublishSlot(Date.now(), config.publishHourUtc).toISOString(),
+        // The slot to schedule for, so the morning's paste into Studio carries a time too —
+        // and the first free one, not the same time every match ready this morning would show.
+        publishAt: nextPublishSlot(
+          Date.now(),
+          config.publishHourUtc,
+          await claimedPublishTimes(matchId),
+        ).toISOString(),
         publishHourUtc: config.publishHourUtc,
         // Commands for the operator's own shell, not this one: the publishing PC pulls.
         pull: config.pullSource
@@ -676,6 +681,11 @@ const server = createServer(async (req, res) => {
       }
       thumbnailRerenders.add(matchId);
       thumbnailRerenderErrors.delete(matchId);
+      // A Short already cut with the old headline is the other half of this decision, and the
+      // operator had to notice the panel's warning and click "re-cut it" by hand. Decided before
+      // the render because it is a fact about what is on disk now, and reported in the 202 so the
+      // answer to "what did this start?" is one response.
+      const recutShort = await shortHookStale(matchDir(matchId), matchId, hookText);
       // Not awaited: the render outlives the request, which is what the 202 is saying.
       void (async () => {
         try {
@@ -691,6 +701,9 @@ const server = createServer(async (req, res) => {
             poses: config.thumbnailVariants,
             hookText,
           });
+          // Only after the manifest is written: the Short resolves its hook from it, so cutting
+          // any earlier would burn in the headline this render just replaced.
+          if (recutShort) spawnShortJob(matchId, 0);
         } catch (err) {
           thumbnailRerenderErrors.set(matchId, describeError(err));
           console.error(`thumbnail re-render failed for ${matchId}: ${describeError(err)}`);
@@ -698,7 +711,7 @@ const server = createServer(async (req, res) => {
           thumbnailRerenders.delete(matchId);
         }
       })();
-      json(res, 202, { matchId, hookText });
+      json(res, 202, { matchId, hookText, shortRecut: recutShort });
       return;
     }
 

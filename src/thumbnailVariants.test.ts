@@ -66,6 +66,11 @@ assert.equal(await readFile(path.join(dir, "thumbnail.png"), "utf8"), "second");
 // ...and it is persisted, so a reload does not forget the choice.
 assert.equal((await readManifest(dir))?.chosen, "cheering-relaxing");
 
+// Promoting one is how the publish checklist learns a human looked at the strip: every render
+// writes a `chosen` key, so the key alone never meant anybody had chosen.
+assert.equal(updated.chosenBy, "operator");
+assert.equal((await readManifest(dir))?.chosenBy, "operator", "and it is persisted");
+
 // Switching back works, and does not disturb the variant list.
 await chooseVariant(dir, "walking-crossed");
 assert.equal(await readFile(path.join(dir, "thumbnail.png"), "utf8"), "first");

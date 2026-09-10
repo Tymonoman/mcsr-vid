@@ -30,6 +30,13 @@ export interface ChannelVideo {
   privacyStatus: string;
   /** From contentDetails.duration; what tells the match video from its Short. */
   durationSec: number;
+  /**
+   * The scheduled publish time YouTube holds a private video for, RFC 3339, or absent when there
+   * is none. Kept because a slot the channel has already booked is a slot the publish kit must
+   * not propose again (src/publishSlot.ts). Optional: a video published on upload has no such
+   * time, and neither do the fixtures the tests build.
+   */
+  publishAt?: string | null;
 }
 
 /** YouTube's line: at most three minutes is a Short. */
@@ -117,7 +124,7 @@ export async function fetchChannelUploads(fetchImpl: typeof fetch = fetch): Prom
       items?: Array<{
         id: string;
         snippet: { title: string; publishedAt: string; description?: string };
-        status: { privacyStatus: string };
+        status: { privacyStatus: string; publishAt?: string };
         contentDetails?: { duration?: string };
       }>;
     }>(`/videos?part=snippet,status,contentDetails&id=${videoIds.slice(i, i + PAGE).join(",")}`, fetchImpl);
@@ -129,6 +136,7 @@ export async function fetchChannelUploads(fetchImpl: typeof fetch = fetch): Prom
         description: v.snippet.description ?? "",
         privacyStatus: v.status.privacyStatus,
         durationSec: parseIsoDuration(v.contentDetails?.duration),
+        publishAt: v.status.publishAt ?? null,
       })),
     );
   }

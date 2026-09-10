@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { EventEmitter } from "node:events";
 import type { ChildProcess } from "node:child_process";
-import { handleShortsRoute, type ShortRunner } from "./shortsRoutes.js";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { handleShortsRoute, shortHookStale, type ShortRunner } from "./shortsRoutes.js";
 
 /** Stands in for the render process. Without this the tests below start real renders. */
 const spawned: Array<{ matchId: number; pick: number }> = [];
@@ -112,6 +115,30 @@ assert.ok(spawned.every((s) => s.matchId === 12296170));
   await handleShortsRoute(req("POST"), res, ["", "shorts", "render", "555"], ctx, busy);
   await handleShortsRoute(req("POST"), res, ["", "shorts", "render", "555"], ctx, busy);
   assert.equal(spawned.length - before, 1, "a second request must join the render already running");
+}
+
+// --- Whether a re-rendered thumbnail leaves the Short selling the old line --------------------
+// This is what decides whether `POST /api/thumbnails/:id/rerender` cuts a second Short by itself,
+// so a false positive burns a render and a false negative leaves the two halves disagreeing.
+{
+  const dir = await mkdtemp(path.join(tmpdir(), "mcsr-shorts-"));
+  const hook = "Down to the last heart";
+  await writeFile(path.join(dir, "short-777.mp4"), "");
+  // What `buildShortTitle` writes: the hook, then the two tags every Short carries.
+  await writeFile(path.join(dir, "short-777.title.txt"), `${hook} #minecraft #mcsr\n`);
+
+  assert.equal(await shortHookStale(dir, 777, hook), false, "the burned-in line is already the new one");
+  assert.equal(await shortHookStale(dir, 777, "Two blinds, one second apart"), true, "a new headline");
+  assert.equal(await shortHookStale(dir, 777, "   "), false, "no headline is not a disagreement");
+  assert.equal(await shortHookStale(dir, 778, hook), false, "nothing cut yet is nothing to re-cut");
+
+  // 555 still has a render in flight from the case above; a second one would be a competing
+  // ffmpeg cutting from the manifest that was just written anyway.
+  await writeFile(path.join(dir, "short-555.mp4"), "");
+  await writeFile(path.join(dir, "short-555.title.txt"), "an older line #minecraft #mcsr\n");
+  assert.equal(await shortHookStale(dir, 555, hook), false, "a render in flight is already re-cutting");
+
+  await rm(dir, { recursive: true, force: true });
 }
 
 console.log("shortsRoutes: all checks passed");

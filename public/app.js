@@ -179,6 +179,20 @@ function renderList() {
   );
 }
 
+/**
+ * The title's first line carrying the hook that has been typed into the field.
+ *
+ * Two shapes, because the pipeline now writes its own first suggestion into the title file
+ * (src/title.ts): a line still holding the placeholder, and a line that already has a hook in
+ * front of the generated half. Either way the hook is everything before that half, so replacing
+ * it is one rule. A line whose tail has been edited by hand is left exactly as it is.
+ */
+function titleWithHook(firstLine, hook, generated) {
+  if (!hook) return firstLine;
+  if (firstLine.includes("<HOOK>")) return firstLine.replace("<HOOK>", hook);
+  return generated && firstLine.endsWith(generated) ? `${hook} | ${generated}` : firstLine;
+}
+
 function hookCounter(meta) {
   const input = $("#hook"),
     out = $("#hookcount");
@@ -321,11 +335,14 @@ async function select(id, { open = false } = {}) {
   $("#failcopy").addEventListener("click", () => navigator.clipboard?.writeText($("#failtext").textContent));
   $("#save").addEventListener("click", async () => {
     // The hook field is where the headline is written, and Save is where it is committed: the
-    // placeholder in the title's first line takes it here, so the file on disk — what the
-    // checklist reads and what the Short's hook resolves from — no longer says <HOOK>.
+    // hook slot in the title's first line takes it here, so the file on disk — what the
+    // checklist reads and what the Short's hook resolves from — carries the operator's line and
+    // not the placeholder or the pipeline's own first suggestion.
     const hook = $("#hook")?.value.trim();
-    if (hook && $("#title").value.includes("<HOOK>"))
-      $("#title").value = $("#title").value.replace("<HOOK>", hook);
+    // The box holds one line now, and the title it holds already carries the pipeline's own
+    // hook far more often than the placeholder — so a clicked chip has to replace whichever of
+    // the two is there. titleWithHook does both.
+    $("#title").value = titleWithHook($("#title").value, hook, meta.hook?.generated);
     let saved;
     try {
       saved = await api(`/api/meta/${id}`, {
@@ -505,8 +522,9 @@ async function loadVariants(id) {
     // What the manifest said before, so "nothing changed" can be told apart from "changed".
     const before = await api(`/api/thumbnails/${id}`).catch(() => null);
     let status = null;
+    let started = null;
     try {
-      await api(`/api/thumbnails/${id}/rerender`, {
+      started = await api(`/api/thumbnails/${id}/rerender`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ hookText }),
@@ -536,6 +554,9 @@ async function loadVariants(id) {
     else if ((before?.hookText ?? null) === want)
       said("muted", `already rendered with ${label} — nothing to change`);
     else said("ok", `rendered with ${label}`);
+    // The server re-cuts a Short that was burned with the old line, so the warning below clears
+    // itself; saying so keeps the minute it takes from looking like nothing happened.
+    if (started?.shortRecut) said("ok", "re-cutting the Short so both halves say the same thing");
   });
 }
 
@@ -713,8 +734,7 @@ async function loadPublishKit(id, meta) {
     const field = $("#ytTitle");
     if (field) return field.value;
     const firstLine = (meta.title ?? "").split("\n")[0] ?? "";
-    const hook = $("#hook")?.value.trim();
-    return hook ? firstLine.replace("<HOOK>", hook) : firstLine;
+    return titleWithHook(firstLine, $("#hook")?.value.trim(), meta.hook?.generated);
   };
 
   const counter = (text, over) => `<span class="counter${over ? " over" : ""}">${esc(text)}</span>`;

@@ -58,11 +58,27 @@ export function buildTitle({ leftNickname, rightNickname, suffix = FORMAT_SUFFIX
   };
 }
 
+/**
+ * The same title with a hook already in it, or unchanged when there is none worth putting there.
+ *
+ * A hook over budget is left as the placeholder rather than cut to fit: the budget is what keeps
+ * both nicknames inside YouTube's mobile cutoff, and a silently truncated hook stops mid-word on
+ * the one line that has to earn the click. Rejecting it puts the decision back where it belongs.
+ */
+export function withHook(built: BuiltTitle, hook: string | null | undefined): BuiltTitle {
+  const text = hook?.trim() ?? "";
+  if (text === "" || text.length > built.hookMax) return built;
+  return { ...built, title: `${text}${SEPARATOR}${built.generated}` };
+}
+
 /** Renders the paste-and-edit file: the title on its own first line, then how to finish it. */
 export function formatTitle(built: BuiltTitle): string {
   // Length of everything but the hook, so the guidance can show what the budget actually buys —
   // the 70-100 band is the target, and a bare character count doesn't say whether you hit it.
-  const base = built.title.length - HOOK_PLACEHOLDER.length;
+  // Derived from `generated` rather than from the title's length, which no longer implies a
+  // placeholder: `withHook` may already have filled it in.
+  const base = SEPARATOR.length + built.generated.length;
+  const filled = !built.title.includes(HOOK_PLACEHOLDER);
   return [
     built.title,
     "",
@@ -72,7 +88,10 @@ export function formatTitle(built: BuiltTitle): string {
     built.hookMax === 0
       ? `No room for a hook: the line above is already ${base} characters without one, ` +
         `against a ${HARD_MAX}-character ceiling. Drop the ${HOOK_PLACEHOLDER} and the separator.`
-      : `Replace ${HOOK_PLACEHOLDER} with ${built.hookMin}-${built.hookMax} characters ` +
+      : (filled
+          ? `The hook is the pipeline's own first suggestion — replace it`
+          : `Replace ${HOOK_PLACEHOLDER}`) +
+        ` with ${built.hookMin}-${built.hookMax} characters ` +
         `(title lands at ${base + built.hookMin}-${base + built.hookMax}).`,
     `Both nicknames come from the API — don't retype them.`,
   ].join("\n");

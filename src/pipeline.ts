@@ -28,7 +28,7 @@ import { buildSplitMarkers } from "./markers.js";
 import { buildDescription, buildTags } from "./description.js";
 import { hookSuggestions } from "./hooks.js";
 import { computeMetrics } from "./matchScore.js";
-import { buildTitle, formatTitle } from "./title.js";
+import { buildTitle, formatTitle, withHook } from "./title.js";
 import { playoffContextFor, playoffTitleTail } from "./playoffs.js";
 import { overlayPaths, readSplitStills, renderOverlay, type SplitStill } from "./overlayRender.js";
 import {
@@ -326,6 +326,33 @@ async function runStages(
     ...(playoff ? { suffix: playoffTitleTail(playoff) } : {}),
   });
 
+  // On a cold start nobody has picked a hook yet — the operator does that in the dashboard's
+  // title editor, long after this runs — so the thumbnail and the title file open on the same
+  // opener that editor will offer first. `POST /api/thumbnails/:id/rerender` replaces it once a
+  // human has chosen, and a later re-run (a pose added to the config, a lost PNG) carries that
+  // choice forward rather than re-rendering it away under the chip. An unreadable match yields
+  // no suggestions, and then this renders the plain header strip and leaves the title's
+  // placeholder standing. With `versus`, so the thumbnail's hook is the dashboard's first chip —
+  // the rematch line outranks everything else, and without the record here it never appeared on
+  // a thumbnail.
+  //
+  // Hoisted above the thumbnail stage because the title file needs the same line, and a match
+  // whose variants are all on disk skips that stage entirely.
+  const hookText = carriedHookText(
+    await readManifest(outDir),
+    (
+      await hookSuggestions({
+        metrics: computeMetrics(match),
+        match,
+        userLeft,
+        userRight,
+        maxChars: title.hookMax,
+        minChars: title.hookMin,
+        versus,
+      })
+    )[0],
+  );
+
   const thumbnailPath = path.join(outDir, "thumbnail.png");
   const variants = config.thumbnailVariants;
   const allRendered =
@@ -334,28 +361,6 @@ async function runStages(
     emit(done("thumbnail", { message: `reused ${variants.length} variants` }));
   } else {
     emit(active("thumbnail", { percent: 0 }));
-    // On a cold start nobody has picked a hook yet — the operator does that in the dashboard's
-    // title editor, long after this runs — so the thumbnail opens on the same opener that editor
-    // will offer first. `POST /api/thumbnails/:id/rerender` replaces it once a human has chosen,
-    // and a later re-run (a pose added to the config, a lost PNG) carries that choice forward
-    // rather than re-rendering it away under the chip. An unreadable match yields no
-    // suggestions, and then this renders the plain header strip. With `versus`, so the
-    // thumbnail's hook is the dashboard's first chip — the rematch line outranks everything
-    // else, and without the record here it never appeared on a thumbnail.
-    const hookText = carriedHookText(
-      await readManifest(outDir),
-      (
-        await hookSuggestions({
-          metrics: computeMetrics(match),
-          match,
-          userLeft,
-          userRight,
-          maxChars: title.hookMax,
-          minChars: title.hookMin,
-          versus,
-        })
-      )[0],
-    );
     const manifest = await renderThumbnailVariants({
       match,
       userLeft,
@@ -506,7 +511,10 @@ async function runStages(
   );
 
   const titlePath = path.join(outDir, `match-${matchId}.title.txt`);
-  await writeFile(titlePath, formatTitle(title), "utf8");
+  // Carrying the same hook the thumbnail and the Short committed to, so the one editorial
+  // decision this run made reaches all three artifacts instead of being retyped into the title
+  // by hand. No hook, or one that overruns the budget, leaves the placeholder — see `withHook`.
+  await writeFile(titlePath, formatTitle(withHook(title, hookText)), "utf8");
   emit(done("write"));
 
   return {
