@@ -285,7 +285,8 @@ const DEFAULTS: Config = {
   reasonerCommand: null,
 };
 
-const CONFIG_PATH = path.resolve("mcsr-vid.config.json");
+/** The overrides file. Exported so the settings panel writes the same one the loader reads. */
+export const CONFIG_PATH = path.resolve("mcsr-vid.config.json");
 
 /**
  * The config file is hand-edited, so a wrong type (`"renderConcurrency": "4"`) would otherwise be

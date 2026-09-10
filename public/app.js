@@ -1605,7 +1605,113 @@ async function startRender(input, full = false) {
   }
 }
 
-const PANELS = { suggestions: "#suggestions", matches: "#list", abtest: "#abtest" };
+/* --- Settings ---------------------------------------------------------------------------------
+   The dashboard's own view of mcsr-vid.config.json, for the handful of keys worth changing without
+   an ssh session. The server allowlists what may be written and validates the merged file with the
+   loader's own rules, so this side only has to render fields and post what changed. What is NOT
+   here is deliberate: youtubeUploadEnabled and nightlyUpload are the compliance-audit gate, and a
+   mis-click there locks a video private for good. They are shown, greyed, with the reason. */
+let settingsData = null;
+
+async function loadSettings() {
+  const el = $("#settings");
+  if (!el) return;
+  try {
+    settingsData = await api("/api/settings");
+  } catch (e) {
+    el.innerHTML = `<div class="scanline bad">${esc(e.message)}</div>`;
+    return;
+  }
+  paintSettings();
+}
+
+function settingValue(f) {
+  if (f.kind === "boolean") return !!f.value;
+  if (f.kind === "words") return Array.isArray(f.value) ? f.value.join(" ") : "";
+  return f.value === null || f.value === undefined ? "" : String(f.value);
+}
+
+function paintSettings() {
+  const el = $("#settings");
+  if (!el || !settingsData) return;
+  const armed = settingsData.nightlyArmedAt;
+  const groups = [];
+  for (const f of settingsData.fields) {
+    let g = groups.find((x) => x.name === f.group);
+    if (!g) groups.push((g = { name: f.group, fields: [] }));
+    g.fields.push(f);
+  }
+  const row = (f) =>
+    f.kind === "boolean"
+      ? `<div class="setrow">
+           <label><input type="checkbox" data-key="${esc(f.key)}"${f.value ? " checked" : ""}> ${esc(f.label)}</label>
+           ${f.unattended ? '<span class="badge">unattended</span>' : ""}
+           <div class="sethelp">${esc(f.help)}</div>
+         </div>`
+      : `<div class="setrow">
+           <label>${esc(f.label)}
+             <input type="${f.kind === "int" || f.kind === "hour" ? "number" : "text"}" data-key="${esc(f.key)}" value="${esc(settingValue(f))}"${f.min !== undefined ? ` min="${f.min}"` : ""}${f.max !== undefined ? ` max="${f.max}"` : ""}${f.nullable ? ' placeholder="off"' : ""}>
+           </label>
+           ${f.unattended ? '<span class="badge">unattended</span>' : ""}
+           <div class="sethelp">${esc(f.help)}</div>
+         </div>`;
+  el.innerHTML = `
+    <div class="scanline">
+      Writes <code>mcsr-vid.config.json</code> and applies at once &mdash; no restart.
+      ${armed ? `Nightly armed for ${esc(new Date(armed).toLocaleString())}.` : "Nightly is <strong>off</strong>."}
+    </div>
+    ${groups
+      .map((g) => `<div class="setgroup"><h3>${esc(g.name)}</h3>${g.fields.map(row).join("")}</div>`)
+      .join("")}
+    <div class="setgroup">
+      <h3>Not changeable here</h3>
+      <div class="sethelp">The first two are the YouTube compliance-audit gate: an upload through an unaudited project is locked private for good, so they stay a deliberate edit on the box.</div>
+      ${settingsData.readOnly
+        .map(
+          (r) =>
+            `<div class="setrow off"><label>${esc(r.key)}</label> <code>${esc(JSON.stringify(r.value))}</code></div>`,
+        )
+        .join("")}
+    </div>
+    <div class="row">
+      <button id="setsave">Save</button>
+      <span class="msg" id="setmsg"></span>
+    </div>`;
+  $("#setsave").addEventListener("click", saveSettingsPanel);
+}
+
+async function saveSettingsPanel() {
+  const msg = $("#setmsg");
+  const patch = {};
+  for (const f of settingsData.fields) {
+    const input = $(`#settings [data-key="${f.key}"]`);
+    if (!input) continue;
+    const now = f.kind === "boolean" ? input.checked : input.value;
+    // Only what moved: the server counts a no-op as no change, and a patch of everything would
+    // rewrite the file every press.
+    if (String(now) !== String(settingValue(f))) patch[f.key] = now;
+  }
+  if (Object.keys(patch).length === 0) {
+    msg.textContent = "nothing changed";
+    return;
+  }
+  msg.textContent = "saving…";
+  try {
+    const r = await api("/api/settings", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+    settingsData = r;
+    paintSettings();
+    $("#setmsg").textContent = `saved ${r.changed.join(", ")}`;
+  } catch (e) {
+    msg.textContent = "";
+    showFailure("Settings not saved", e.message);
+  }
+}
+
+const PANELS = { suggestions: "#suggestions", matches: "#list", abtest: "#abtest", settings: "#settings" };
 
 function showTab(which) {
   for (const [name, selector] of Object.entries(PANELS)) {
@@ -1614,6 +1720,7 @@ function showTab(which) {
   }
   updateBackLabel();
   if (which === "abtest") loadAbTest();
+  if (which === "settings") loadSettings();
 }
 
 /* --- List screen / match screen -------------------------------------------------------------
@@ -1652,6 +1759,7 @@ function showList() {
   $("#tab-suggestions").addEventListener("click", () => showTab("suggestions"));
   $("#tab-matches").addEventListener("click", () => showTab("matches"));
   $("#tab-abtest").addEventListener("click", () => showTab("abtest"));
+  $("#tab-settings").addEventListener("click", () => showTab("settings"));
   $("#backtolist").addEventListener("click", showList);
 
   // A shelf that cannot be listed must not leave the whole page at "loading…": say so in the

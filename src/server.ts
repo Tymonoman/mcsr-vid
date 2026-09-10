@@ -28,6 +28,7 @@ import {
   requestExport,
   requestShort,
   runNightlyOnce,
+  nightlyArmedAtMs,
   scheduleNightly,
 } from "./nightly.js";
 import { abortJob, getJob, startJob, streamProgress, type Job } from "./jobs.js";
@@ -61,6 +62,7 @@ import {
   shortRunning,
   spawnShortJob,
 } from "./shortsRoutes.js";
+import { saveSettings, settingsPayload } from "./settings.js";
 import { handleYoutubeRoute, uploadRunning } from "./youtubeRoutes.js";
 import { pinnedCommentText, readUpload } from "./youtubeStore.js";
 
@@ -344,6 +346,37 @@ const server = createServer(async (req, res) => {
     if (await handleShortsRoute(req, res, segments, { json, readBody, matchDir, parseId })) return;
 
     const [, resource, idRaw] = segments;
+
+    if (resource === "settings" && req.method === "GET") {
+      json(res, 200, { ...settingsPayload(), nightlyArmedAt: nightlyArmedAtMs() });
+      return;
+    }
+
+    // The one route that writes mcsr-vid.config.json. `saveSettings` allowlists the keys and
+    // validates the merged file with the loader's own rules, so this stays transport.
+    if (resource === "settings" && req.method === "PUT") {
+      let patch: Record<string, unknown>;
+      try {
+        const parsed: unknown = JSON.parse(await readBody(req));
+        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+          throw new Error("expected a JSON object of settings");
+        }
+        patch = parsed as Record<string, unknown>;
+      } catch (err) {
+        json(res, 400, { error: describeError(err) });
+        return;
+      }
+      try {
+        const saved = saveSettings(patch);
+        // The nightly captured nothing, but its pending timer was armed for the old hour.
+        if (saved.rearmNightly) scheduleNightly({ notifyUrl: config.nightlyNotifyUrl });
+        if (saved.changed.length) console.error(`settings: changed ${saved.changed.join(", ")}`);
+        json(res, 200, { ...saved, ...settingsPayload(), nightlyArmedAt: nightlyArmedAtMs() });
+      } catch (err) {
+        json(res, 400, { error: describeError(err) });
+      }
+      return;
+    }
 
     if (resource === "stages" && req.method === "GET") {
       json(res, 200, { order: STAGE_ORDER, labels: STAGE_LABELS, short: STAGE_SHORT_LABELS });
@@ -805,12 +838,9 @@ server.listen(PORT, "0.0.0.0", () => {
   refreshChannelUploadsIfStale();
   // And then render one of them overnight, unattended. Waiting for a click is what caps output
   // at 7.24 videos a month: the render is cheap, the operator's attention is not.
-  if (config.nightlyRenderHourUtc !== null) {
-    scheduleNightly({
-      hourUtc: config.nightlyRenderHourUtc,
-      notifyUrl: config.nightlyNotifyUrl,
-    });
-  }
+  // Unconditional: scheduleNightly reads the hour from config itself and arms nothing when it is
+  // null, so the settings panel can switch the nightly on later without a restart.
+  scheduleNightly({ notifyUrl: config.nightlyNotifyUrl });
 });
 
 /**

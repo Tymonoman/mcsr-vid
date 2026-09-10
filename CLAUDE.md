@@ -38,7 +38,7 @@ Use the script, don't reconstruct the shell line. Extra arguments go after `--`.
 | `npm run bench -- <Composition> [--frames=N] [--codec=] [--pixelFormat=] [--concurrency=N]` | Render throughput for one composition. Measure before claiming a render change is faster. |
 | `npm run analytics -- <videoId> [--traffic-sources] [--days N]` | YouTube Analytics via `~/.claude/skills/claude-youtube/` (outside the repo; token at `~/.claude/.tmp/youtube_oauth_token.json`). |
 | `python3 scripts/reap.py <command…>` | Subreaper wrapper, only needed if zombies ever climb again (see Pitfalls). |
-| `bash scripts/browser-checks/run-all.sh <url>` | Drives the dashboard in a real browser the way the operator does (21 Playwright checks, self-configuring from `/api/matches` and `/api/playoffs`). Needs `npx playwright install chromium` once and a server with real data. |
+| `bash scripts/browser-checks/run-all.sh <url>` | Drives the dashboard in a real browser the way the operator does (22 Playwright checks, self-configuring from `/api/matches` and `/api/playoffs`). Needs `npx playwright install chromium` once and a server with real data. |
 
 Lab timings for a 10-minute match: overlay render ~9 min, `export:fast` ~10 min, a Short in
 seconds; a nightly render + Short takes ~12 min, ~21 min with the MP4.
@@ -140,6 +140,16 @@ they differ (`code: { boot, now }` from `src/repoHead.ts`). Client changes need 
   videos are paired to matches by the `/matches/<id>` segment in the pasted description; the
   YouTube panel's "check the channel" link lists the channel at once. The manual `uploaded`
   tick is the fallback for a video with no match link.
+- **Settings tab** (`src/settings.ts`, `GET`/`PUT /api/settings`): the handful of config keys worth
+  changing without an ssh session. It writes `mcsr-vid.config.json` atomically and applies to the
+  live `config` object, so nothing needs a restart — `scheduleNightly` reads the hour from `config`
+  on every arm and the route re-arms it when that key moves, or the setting would lie. The file is
+  read fresh and merged, so a hand-edited key the panel does not know about survives a save, and
+  the merged object goes through `validateOverrides` — the loader's own function — so the panel
+  cannot write a file that then fails to boot. **`youtubeUploadEnabled` and `nightlyUpload` are
+  deliberately not writable here**: they are the audit gate and a mis-click locks a video private
+  for good, so they stay a deliberate edit on the box and the panel only reports them. Add a key by
+  adding a `SettingField` to `SETTINGS`; the panel and both tests derive from that list.
 - **Publish kit** (`GET /api/publishkit/:id`): copy buttons for the title, the publish slot
   (`publishHourUtc`, default 19:00 UTC, the competitor's measured hour, on the first day no
   other video is already scheduled for — `src/publishSlot.ts`), description, tags, the

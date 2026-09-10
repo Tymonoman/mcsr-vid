@@ -832,3 +832,42 @@
   width: 15ch;
   font-family: var(--pixel-font, monospace);
 }
+
+/* Settings: a form the operator reads as much as fills in, so the help line is part of the row
+   rather than a tooltip nobody hovers. */
+.setgroup {
+  border-top: 1px solid var(--line, #2a2a2a);
+  padding: 10px 0 4px;
+}
+.setgroup h3 {
+  margin: 0 0 8px;
+  font-family: var(--pixel-font, monospace);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.setrow {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 10px;
+  padding: 6px 0;
+}
+.setrow label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.setrow input[type="text"],
+.setrow input[type="number"] {
+  max-width: 22ch;
+}
+.setrow .sethelp {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.setrow.off {
+  opacity: 0.6;
+}

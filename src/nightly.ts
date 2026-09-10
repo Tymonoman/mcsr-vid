@@ -261,7 +261,6 @@ export async function playoffVodsReady(
 }
 
 export interface NightlyOptions {
-  hourUtc: number;
   /** Empty string turns the notification off. */
   notifyUrl: string;
 }
@@ -585,16 +584,35 @@ export async function runNightlyOnce(
   return { matchId, players: [...players] };
 }
 
+let nightlyTimer: ReturnType<typeof setTimeout> | null = null;
+
 /**
  * Arms the nightly render and re-arms it after every run. Never throws: a scheduler that dies on
  * one bad night is worse than one that logs and tries again tomorrow.
+ *
+ * The hour is read from `config` on every arm rather than captured, so the settings panel can
+ * move it — or switch the nightly off — without a restart. Calling this again replaces the
+ * pending timer, which is what makes it safe as a re-arm: two timers would render twice.
  */
 export function scheduleNightly(options: NightlyOptions): void {
-  const delay = msUntilNextRun(Date.now(), options.hourUtc);
+  if (nightlyTimer) clearTimeout(nightlyTimer);
+  nightlyTimer = null;
+  const hourUtc = config.nightlyRenderHourUtc;
+  if (hourUtc === null) {
+    console.error("nightly: disabled (nightlyRenderHourUtc is null)");
+    return;
+  }
+  const delay = msUntilNextRun(Date.now(), hourUtc);
   console.error(`nightly: next auto-render at ${new Date(Date.now() + delay).toISOString()}`);
-  setTimeout(() => {
+  nightlyTimer = setTimeout(() => {
     runNightlyOnce(options.notifyUrl)
       .catch((err: unknown) => console.error(`nightly: ${describeError(err)}`))
       .finally(() => scheduleNightly(options));
   }, delay);
 }
+
+/** When the armed run is due, or null when nothing is armed. For the settings panel to state. */
+export const nightlyArmedAtMs = (): number | null =>
+  config.nightlyRenderHourUtc === null
+    ? null
+    : Date.now() + msUntilNextRun(Date.now(), config.nightlyRenderHourUtc);
