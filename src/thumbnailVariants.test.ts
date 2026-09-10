@@ -162,6 +162,14 @@ assert.deepEqual(
 // The headline is still recorded at manifest level: the control opts out of it, it is not absent
 // from the render, and the dashboard's "Re-render with hook" box is prefilled from this.
 assert.equal(rendered.hookText, "WANNABE vs REAL GOAT");
+// The rank travels with the headline. A hook can name it ("#9 vs #3"), the headline is frozen
+// here, and the API has no match-time rank to read back — so a Short re-rendered weeks later put
+// the frozen line over live plates that disagreed with it.
+assert.deepEqual(
+  rendered.ranks,
+  { "u-left": null, "u-right": null },
+  "one entry per player by uuid, null where the user record has no rank",
+);
 // It survives a reload the same way, rather than being backfilled to the manifest's headline.
 assert.deepEqual(
   (await readManifest(dir))?.variants.map((v) => v.hook),

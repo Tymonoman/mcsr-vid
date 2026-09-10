@@ -65,6 +65,17 @@ export interface VariantsManifest {
    * field at all, which reads as null.
    */
   hookText: string | null;
+  /**
+   * Each player's ladder rank at the moment the headline was chosen, by uuid.
+   *
+   * `eloAtMatchStart` freezes the rating because "the same match shows different numbers in
+   * different places" otherwise (CLAUDE.md); the rank has the same problem and no match-time
+   * value in the API to read back. A hook can name it — "#9 vs #3" is a real suggestion — and the
+   * hook is frozen here while the Short's nameplate read the live rank, so a Short re-rendered
+   * weeks later showed "#9 VS #3" over plates saying "#3" and "#6". Recorded once, beside the
+   * line that may quote it. Absent on manifests written before this, which then fall back to live.
+   */
+  ranks?: Record<string, number | null>;
 }
 
 export interface RenderVariantsArgs {
@@ -247,6 +258,15 @@ export async function renderThumbnailVariants(args: RenderVariantsArgs): Promise
     ...(chosenBy ? { chosenBy } : {}),
     variants: records,
     hookText: args.hookText?.trim() ? args.hookText : null,
+    // Frozen alongside the headline, because a headline may quote it. Carried over with a kept
+    // choice so a re-render behind the same line does not re-read a rank that has since moved.
+    ranks:
+      kept && previous?.ranks
+        ? previous.ranks
+        : {
+            [args.userLeft.uuid]: args.userLeft.eloRank ?? null,
+            [args.userRight.uuid]: args.userRight.eloRank ?? null,
+          },
   };
   await writeFile(manifestPath(args.outDir), JSON.stringify(manifest, null, 2), "utf8");
   await copyFile(

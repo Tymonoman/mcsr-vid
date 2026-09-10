@@ -7,6 +7,7 @@ import { getMatch, getUser, parseMatchId } from "./mcsrApi.js";
 import { reasonerConfigured } from "./reasoner.js";
 import { distinctShortMoments, SHORT_WINDOW_SEC, type ShortMoment } from "./shortMoment.js";
 import { reasonShortMoments } from "./shortReason.js";
+import { readManifest } from "./thumbnailVariants.js";
 import { renderShort } from "./shortRender.js";
 import { readSyncOffsets } from "./syncFile.js";
 import { eloAtMatchStart } from "./overlayProps.js";
@@ -175,6 +176,13 @@ console.error(
 // The seed each player carries in the bracket, by uuid — the slot's participant order is the
 // bracket's, not the match's, so it cannot be zipped positionally. Absent on a ranked match, and
 // then the nameplate keeps showing the ladder rank.
+// The rank as it stood when the headline was chosen, not as it stands now. The burned-in hook is
+// frozen — it may even quote the rank ("#9 vs #3") — so reading a live rank beside it put two
+// contradictory numbers in one frame. Falls back to live for a manifest written before the field.
+const committedRanks = (await readManifest(outDir))?.ranks;
+const frozenRank = (uuid: string, live: number | null): number | null =>
+  committedRanks && uuid in committedRanks ? (committedRanks[uuid] ?? null) : live;
+
 const seedOf = (uuid: string): string | undefined => playoff?.seeds.find((s) => s.uuid === uuid)?.label;
 
 const outPath = path.join(outDir, `short-${matchId}.mp4`);
@@ -194,7 +202,7 @@ await renderShort({
       // The rating at the time of the match, never user.eloRate (which is the rating now), so
       // the Short agrees with the overlay, the thumbnail and the description.
       eloRate: eloAtMatchStart(match, playerLeft.uuid, userLeft.eloRate),
-      eloRank: userLeft.eloRank,
+      eloRank: frozenRank(playerLeft.uuid, userLeft.eloRank),
       ...(seedOf(playerLeft.uuid) ? { seed: seedOf(playerLeft.uuid) } : {}),
       // The same head render the 16:9 overlay and the intro card use, from the same host.
       headUrl: `https://nmsr.nickac.dev/head/${playerLeft.uuid}`,
@@ -202,7 +210,7 @@ await renderShort({
     bottom: {
       nickname: playerRight.nickname,
       eloRate: eloAtMatchStart(match, playerRight.uuid, userRight.eloRate),
-      eloRank: userRight.eloRank,
+      eloRank: frozenRank(playerRight.uuid, userRight.eloRank),
       ...(seedOf(playerRight.uuid) ? { seed: seedOf(playerRight.uuid) } : {}),
       headUrl: `https://nmsr.nickac.dev/head/${playerRight.uuid}`,
     },
