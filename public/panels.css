@@ -303,6 +303,11 @@
 .outputs .missing {
   color: var(--muted);
 }
+/* The Kdenlive project is the one row that is a download rather than a path to read: the rsync
+   publish set leaves the project out, so the PC that opens it gets it from here. */
+.outputs .v a {
+  color: var(--gold);
+}
 
 /* --- Hook suggestions ---------------------------------------------------------------------- */
 /* Facts from the match, phrased as openers. Clicking one fills the field to edit rather than
@@ -542,6 +547,12 @@
   transform: none;
   border-bottom-width: 1px;
 }
+/* A toggle the server refused, said next to the pill that was pressed. */
+.checklist .pill.bad {
+  color: var(--crimson);
+  border-color: var(--crimson);
+  white-space: normal;
+}
 
 /* --- Touch targets --------------------------------------------------------------------------
    Measured on the live dashboard at phone and tablet widths: the match-id field was 28px tall,
@@ -624,7 +635,7 @@
   gap: 12px;
   padding: 8px 10px;
   background: var(--panel-2, #1a1820);
-  border: 1px solid var(--edge, #2c2833);
+  border: 1px solid var(--panel-edge-light);
 }
 /* The best pick reads as the default without being the only option. */
 .moment:first-child {
@@ -690,7 +701,7 @@
   max-height: 60vh;
   background: #000;
   display: block;
-  border: 1px solid var(--edge, #2c2833);
+  border: 1px solid var(--panel-edge-light);
 }
 .previewmeta {
   display: flex;
@@ -719,7 +730,7 @@
   max-height: 55vh;
   max-width: 100%;
   background: #000;
-  border: 1px solid var(--edge, #2c2833);
+  border: 1px solid var(--panel-edge-light);
 }
 
 /* Splits visualiser. Sized by width alone — the viewBox carries the real proportions, so the
@@ -779,7 +790,7 @@
 }
 .kitmore > summary {
   cursor: pointer;
-  font-family: var(--mono, ui-monospace, monospace);
+  font-family: var(--pixel-font);
   font-size: 12px;
   color: var(--muted);
   padding: 4px 0;

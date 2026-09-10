@@ -193,9 +193,6 @@ function hookCounter(meta) {
       ? `no room: ${meta.hook.placeholder.length - "<HOOK>".length} of 100 chars without a hook`
       : `${n} / ${min}-${max} chars`;
   out.className = "counter" + (n > max ? " over" : n >= min ? " good" : "");
-  $("#hookpreview").textContent = input.value
-    ? `${input.value} | ${meta.hook.generated}`
-    : meta.hook.placeholder;
 }
 
 /**
@@ -216,11 +213,15 @@ async function select(id, { open = false } = {}) {
   if (selected !== id) return; // the operator moved on while this was in flight
   const m = matches.find((x) => x.matchId === id);
   const rendered = m && m.stages.render;
+  // Only the first line of the title file is a title; the rest is guidance formatTitle writes
+  // for the terminal (src/title.ts). The box shows the line, Save puts the guidance back, so
+  // the file keeps saying how long a hook may be.
+  const [titleLine, ...titleRest] = (meta.title ?? "").split("\n");
 
   $("#detail").innerHTML = `
     <div class="row">
       <button id="run" class="${rendered ? "ghost" : ""}">${rendered ? "Re-run pipeline" : "Run pipeline"}</button>
-      <button id="stop" class="ghost">Stop</button>
+      <button id="stop" class="danger" title="Abort the running pipeline" hidden>Stop</button>
       <span class="id">#${id} &mdash; ${esc(meta.leftNickname)} vs ${esc(meta.rightNickname)}</span>
       ${rendered ? '<span class="jump"><a href="#h-preview">Final video</a> &middot; <a href="#h-publishkit">Publish kit</a> &middot; <a href="#h-short">Short</a></span>' : ""}
     </div>
@@ -259,8 +260,7 @@ async function select(id, { open = false } = {}) {
               .map((s) => `<button type="button" class="chip">${esc(s)}</button>`)
               .join("")}</div>`
           : ""
-      }
-      <pre id="hookpreview" style="margin-top:8px"></pre>`
+      }`
         : ""
     }
 
@@ -268,7 +268,7 @@ async function select(id, { open = false } = {}) {
     <div id="splits"><div class="empty">loading&hellip;</div></div>
 
     <h2>Title ${meta.titleEdited ? '<span class="saved">(edited)</span>' : ""}</h2>
-    <textarea id="title" rows="4">${esc(meta.title ?? "")}</textarea>
+    <textarea id="title" rows="2">${esc(titleLine)}</textarea>
 
     <h2>Description ${meta.descriptionEdited ? '<span class="saved">(edited)</span>' : ""}</h2>
     <textarea id="description" rows="14">${esc(meta.description ?? "")}</textarea>
@@ -279,9 +279,6 @@ async function select(id, { open = false } = {}) {
 
     <h2>Thumbnail</h2>
     <div id="variants"><div class="empty">loading&hellip;</div></div>
-
-    <h2>Chapters</h2>
-    <pre>${esc(meta.chapters ?? "not generated yet")}</pre>
 
     <h2 id="h-preview">Final video</h2>
     <div id="preview"><div class="empty">loading&hellip;</div></div>
@@ -327,15 +324,17 @@ async function select(id, { open = false } = {}) {
     // placeholder in the title's first line takes it here, so the file on disk — what the
     // checklist reads and what the Short's hook resolves from — no longer says <HOOK>.
     const hook = $("#hook")?.value.trim();
-    const [first, ...rest] = $("#title").value.split("\n");
-    if (hook && first.includes("<HOOK>"))
-      $("#title").value = [first.replace("<HOOK>", hook), ...rest].join("\n");
+    if (hook && $("#title").value.includes("<HOOK>"))
+      $("#title").value = $("#title").value.replace("<HOOK>", hook);
     let saved;
     try {
       saved = await api(`/api/meta/${id}`, {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ title: $("#title").value, description: $("#description").value }),
+        body: JSON.stringify({
+          title: [$("#title").value, ...titleRest].join("\n"),
+          description: $("#description").value,
+        }),
       });
     } catch (e) {
       $("#savedmsg").textContent = e.message;
@@ -416,7 +415,10 @@ async function loadChecklist(id) {
           void refresh();
         } catch (err) {
           btn.disabled = false;
-          alert(err.message);
+          // Where it was clicked, like every other failure on this page: a blocking alert() was
+          // the only thing on the dashboard that had to be dismissed before reading anything.
+          el.querySelector(".pillfail")?.remove();
+          el.insertAdjacentHTML("beforeend", `<span class="pill bad pillfail">${esc(err.message)}</span>`);
         }
       }),
     );
@@ -775,6 +777,11 @@ async function loadPublishKit(id, meta) {
         3,
         counter(`${meta.tags?.length ?? 0} tags · ${tags.length} / 500 chars`, tags.length > 500),
       ),
+      // Everything below is pasted after the video is up, so it folds away: at 390px the kit was
+      // eleven copy blocks tall and the title — the first thing pasted — was the only one above
+      // the fold that mattered. The Copy handler is delegated from the panel, so it reaches in.
+      `<details class="kitmore after"${el.querySelector("details.after")?.open ? " open" : ""}>
+         <summary>after the upload &mdash; Short, pinned comment, community post, DMs</summary>`,
       kit.shortTitle
         ? block("Short title", kit.shortTitle, 2)
         : `<div class="kit"><div class="kithead"><span class="kitlabel">Short title</span></div>
@@ -800,6 +807,7 @@ async function loadPublishKit(id, meta) {
       ),
       block(`Message to ${left ?? "left player"}`, dm(left ?? "there", right ?? "your opponent"), 3),
       block(`Message to ${right ?? "right player"}`, dm(right ?? "there", left ?? "your opponent"), 3),
+      `</details>`,
     ].join("");
   };
   paint();
@@ -986,7 +994,9 @@ async function loadShort(id) {
 /**
  * Where the run put things. The TUI's success summary lists all of these; the dashboard listed
  * none, so the one file you actually open by hand — the Kdenlive project — had no visible path.
- * These are container-side paths, hence text rather than links.
+ * These are container-side paths, hence text rather than links — except the project, which the
+ * server serves (GET /api/export/project/:id) and the rsync publish set leaves out, so on the
+ * PC that opens Kdenlive the path alone was useless.
  */
 const OUTPUT_LABELS = {
   project: "Kdenlive",
@@ -1037,14 +1047,10 @@ function paintElapsed() {
   }
 }
 
-/** Stop is a no-op when nothing is running and destructive when something is, so it looks it. */
+/** Stop exists only while a run does: a permanently disabled button is furniture on every card. */
 function armStop(on) {
   const btn = $("#stop");
-  if (!btn) return;
-  btn.classList.toggle("danger", on);
-  btn.classList.toggle("ghost", !on);
-  btn.disabled = !on;
-  btn.title = on ? "Abort the running pipeline" : "Nothing is running";
+  if (btn) btn.hidden = !on;
 }
 
 function watch(id, quiet) {
