@@ -17,6 +17,17 @@ const { chromium } = require("playwright");
     if (!c) ok = false;
   };
 
+  /** The panel paints asynchronously into an #youtube that is already in the DOM, so waiting on
+      the container proves nothing; wait for the thing itself and report absence rather than throw. */
+  const appears = async (sel) => {
+    try {
+      await page.waitForSelector(sel, { timeout: 30000 });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   try {
     await page.route("**/api/youtube/status", async (route) => {
       const res = await route.fetch();
@@ -24,6 +35,11 @@ const { chromium } = require("playwright");
       await route.fulfill({ response: res, json: { ...data, uploadsEnabled: true } });
     });
     await page.goto(base + "/", { waitUntil: "networkidle" });
+
+    // Adopting a Studio draft is videos.update, not videos.insert, so the control must be there
+    // whether or not the audit has cleared. This half of the check runs with the flag ON.
+    await page.evaluate((id) => select(Number(id), { open: true }), ready);
+    check("the adopt control renders with uploads enabled", await appears("#ytAdopt"));
 
     // A match not on the channel: the upload form itself, which nothing has ever rendered.
     await page.evaluate((id) => select(Number(id), { open: true }), ready);
@@ -44,6 +60,13 @@ const { chromium } = require("playwright");
       check("no upload form on a published video", (await page.locator("#ytUpload").count()) === 0);
       check("no page errors on the published branch", errors.length === 0, errors.join(" | "));
     }
+    // ...and again with the flag at its real value, which is how the operator sees it today.
+    errors.length = 0;
+    await page.unrouteAll();
+    await page.goto(base + "/", { waitUntil: "networkidle" });
+    await page.evaluate((id) => select(Number(id), { open: true }), ready);
+    check("and with uploads off, which is the state that matters today", await appears("#ytAdopt"));
+    check("no page errors with the flag at its real value", errors.length === 0, errors.join(" | "));
   } finally {
     await browser.close();
   }

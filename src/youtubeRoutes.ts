@@ -21,6 +21,7 @@ import { describeError } from "./errorText.js";
 import { listProcessedMatchIds, matchStatusFor } from "./matchStatus.js";
 import { readManifest, variantFellBack } from "./thumbnailVariants.js";
 import {
+  applyMetadata,
   commentThreads,
   isConfigured,
   latestImpressions,
@@ -28,8 +29,9 @@ import {
   videoStats,
   type ImpressionsRow,
 } from "./youtube.js";
-import { allUploads, readUpload } from "./youtubeStore.js";
+import { allUploads, readUpload, uploadTextFor, writeUpload } from "./youtubeStore.js";
 import { beginUpload, finishOnYouTube, uploadProgress } from "./youtubeUpload.js";
+import { HOOK_PLACEHOLDER } from "./title.js";
 import { yppProgress } from "./yppProgress.js";
 
 export { uploadRunning } from "./youtubeUpload.js";
@@ -127,6 +129,76 @@ export async function handleYoutubeRoute(
   if (action === "upload" && req.method === "GET") {
     const kind = new URL(req.url ?? "/", "http://x").searchParams.get("kind") === "short" ? "short" : "video";
     ctx.json(res, 200, uploadProgress(matchId, kind));
+    return true;
+  }
+
+  /**
+   * Adopt a bare Studio draft: the operator drops the file in and pastes the video id, and the
+   * title, description and tags go on through `videos.update`, followed by the finish steps.
+   *
+   * This exists because the pairing everything else relies on is the `/matches/<id>` link in the
+   * description (`describesMatch`) — which a draft with an empty description does not have. Once
+   * the description is written the video pairs itself and the rest of the dashboard sees it.
+   *
+   * It REPLACES the title and description, so it is deliberately one explicit press on a video
+   * the operator names by id, never something a scan or the nightly can reach.
+   */
+  if (action === "adopt" && req.method === "POST") {
+    const body = JSON.parse(await ctx.readBody(req)) as { videoId?: unknown };
+    const videoId = typeof body.videoId === "string" ? body.videoId.trim() : "";
+    // A YouTube id, not a URL and not a search: this reaches an API call and a stored record.
+    if (!/^[A-Za-z0-9_-]{11}$/.test(videoId)) {
+      ctx.json(res, 400, {
+        error: `"${videoId}" is not a YouTube video id (11 characters from the Studio URL)`,
+      });
+      return true;
+    }
+    const claimed = (await allUploads()).find((u) => u.record.videoId === videoId && u.matchId !== matchId);
+    if (claimed) {
+      ctx.json(res, 409, {
+        error: `${videoId} is already this dashboard's video for match ${claimed.matchId}`,
+      });
+      return true;
+    }
+    const { title, description, tags } = await uploadTextFor(matchId, "video");
+    if (title.includes(HOOK_PLACEHOLDER)) {
+      ctx.json(res, 409, { error: `The title still reads ${HOOK_PLACEHOLDER} — pick a hook first` });
+      return true;
+    }
+    if (!description.includes(`/matches/${matchId}`)) {
+      // Without it the video would not pair, and every later lookup would call it unpublished.
+      ctx.json(res, 409, {
+        error: `The description does not link /matches/${matchId}, so the video would not pair`,
+      });
+      return true;
+    }
+    try {
+      const [live] = await videoStats([videoId]);
+      if (!live) {
+        ctx.json(res, 404, { error: `No video ${videoId} is readable with this account` });
+        return true;
+      }
+      const applied = await applyMetadata(videoId, { title, description, tags }, config.youtubeChannelId);
+      await writeUpload(matchId, {
+        videoId,
+        uploadedAt: live.publishedAt,
+        publishAt: live.publishAt,
+        privacyStatus: live.privacyStatus,
+        thumbnailVariant: null,
+        title,
+        source: "studio",
+        finished: {},
+      });
+      ctx.json(res, 200, {
+        videoId,
+        replacedTitle: applied.replacedTitle,
+        addedTags: applied.addedTags,
+        skippedTags: applied.skippedTags,
+        finished: await finishOnYouTube(matchId, videoId),
+      });
+    } catch (err) {
+      ctx.json(res, 502, { error: describeError(err) });
+    }
     return true;
   }
 

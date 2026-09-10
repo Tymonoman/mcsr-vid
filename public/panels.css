@@ -826,3 +826,9 @@
 .playoffsoon > summary:hover {
   color: var(--fg);
 }
+
+/* Eleven characters from the Studio URL — a full-width box invites pasting a whole link. */
+#ytAdoptId {
+  width: 15ch;
+  font-family: var(--pixel-font, monospace);
+}

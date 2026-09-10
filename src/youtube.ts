@@ -593,56 +593,42 @@ export async function postComment(videoId: string, text: string): Promise<void> 
  */
 const TAG_BUDGET_CHARS = 500;
 
+interface VideoSnippet {
+  channelId: string;
+  title: string;
+  description: string;
+  categoryId: string;
+  tags?: string[];
+  defaultLanguage?: string;
+  defaultAudioLanguage?: string;
+}
+
 /**
- * Adds tags to a video that is already on the channel, keeping every tag it already has.
- *
- * `videos.update` REPLACES the part it is given, so a `part=snippet` write that omits the title
- * or the description blanks them. This reads the snippet first and sends it back whole; a video
- * the read does not return is a throw, never a write of an empty snippet. Not `videos.insert`,
- * so the compliance audit does not gate it. 50 units.
+ * The snippet of a video, or a throw. Every write below goes through this first: `videos.update`
+ * REPLACES the part it is given, so a `part=snippet` write that omits the description blanks it
+ * on a published video. A video the read does not return is a throw, never a write of an empty
+ * snippet. Not `videos.insert`, so the compliance audit does not gate any of it.
  */
-export async function addTags(
-  videoId: string,
-  tags: readonly string[],
-  fetchImpl: typeof fetch = fetch,
-): Promise<{ added: string[]; skipped: string[] }> {
-  const body = await apiCall<{
-    items: Array<{
-      id: string;
-      snippet: {
-        title: string;
-        description: string;
-        categoryId: string;
-        tags?: string[];
-        defaultLanguage?: string;
-        defaultAudioLanguage?: string;
-      };
-    }>;
-  }>(DATA_API, `/videos?part=snippet&id=${encodeURIComponent(videoId)}`, {}, fetchImpl);
-
+async function readSnippet(videoId: string, fetchImpl: typeof fetch): Promise<VideoSnippet> {
+  const body = await apiCall<{ items: Array<{ id: string; snippet: VideoSnippet }> }>(
+    DATA_API,
+    `/videos?part=snippet&id=${encodeURIComponent(videoId)}`,
+    {},
+    fetchImpl,
+  );
   const snippet = body.items[0]?.snippet;
-  if (!snippet) throw new Error(`No video ${videoId} on this channel — refusing to write a snippet.`);
+  if (!snippet) throw new Error(`No video ${videoId} is readable — refusing to write a snippet.`);
+  return snippet;
+}
 
-  const have = snippet.tags ?? [];
-  const seen = new Set(have.map((t) => t.toLowerCase()));
-  // A tag with a space is quoted in YouTube's accounting, so it costs two characters more.
-  const cost = (t: string) => t.length + (t.includes(" ") ? 2 : 0);
-  let used = have.reduce((n, t) => n + cost(t) + 1, 0);
-  const added: string[] = [];
-  const skipped: string[] = [];
-  for (const raw of tags) {
-    const tag = raw.trim();
-    if (!tag || seen.has(tag.toLowerCase())) continue;
-    if (used + cost(tag) + 1 > TAG_BUDGET_CHARS) {
-      skipped.push(tag);
-      continue;
-    }
-    seen.add(tag.toLowerCase());
-    used += cost(tag) + 1;
-    added.push(tag);
-  }
-  if (added.length === 0) return { added, skipped };
-
+/** The whole snippet back, with `patch` over it. 50 units. */
+async function writeSnippet(
+  videoId: string,
+  snippet: VideoSnippet,
+  patch: Partial<VideoSnippet>,
+  fetchImpl: typeof fetch,
+): Promise<void> {
+  const merged = { ...snippet, ...patch };
   await apiCall(
     DATA_API,
     "/videos?part=snippet",
@@ -653,18 +639,86 @@ export async function addTags(
       body: JSON.stringify({
         id: videoId,
         snippet: {
-          title: snippet.title,
-          description: snippet.description,
-          categoryId: snippet.categoryId,
-          tags: [...have, ...added],
-          ...(snippet.defaultLanguage ? { defaultLanguage: snippet.defaultLanguage } : {}),
-          ...(snippet.defaultAudioLanguage ? { defaultAudioLanguage: snippet.defaultAudioLanguage } : {}),
+          title: merged.title,
+          description: merged.description,
+          categoryId: merged.categoryId,
+          ...(merged.tags ? { tags: merged.tags } : {}),
+          ...(merged.defaultLanguage ? { defaultLanguage: merged.defaultLanguage } : {}),
+          ...(merged.defaultAudioLanguage ? { defaultAudioLanguage: merged.defaultAudioLanguage } : {}),
         },
       }),
     },
     fetchImpl,
   );
-  return { added, skipped };
+}
+
+/** `wanted` folded into `have`: never a duplicate, never past YouTube's 500-character budget. */
+function mergeTags(
+  have: readonly string[],
+  wanted: readonly string[],
+): { tags: string[]; added: string[]; skipped: string[] } {
+  const seen = new Set(have.map((t) => t.toLowerCase()));
+  // A tag with a space is quoted in YouTube's accounting, so it costs two characters more.
+  const cost = (t: string) => t.length + (t.includes(" ") ? 2 : 0);
+  let used = have.reduce((n, t) => n + cost(t) + 1, 0);
+  const added: string[] = [];
+  const skipped: string[] = [];
+  for (const raw of wanted) {
+    const tag = raw.trim();
+    if (!tag || seen.has(tag.toLowerCase())) continue;
+    if (used + cost(tag) + 1 > TAG_BUDGET_CHARS) {
+      skipped.push(tag);
+      continue;
+    }
+    seen.add(tag.toLowerCase());
+    used += cost(tag) + 1;
+    added.push(tag);
+  }
+  return { tags: [...have, ...added], added, skipped };
+}
+
+/** Adds tags to a video already on the channel, keeping every tag it already has. */
+export async function addTags(
+  videoId: string,
+  tags: readonly string[],
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ added: string[]; skipped: string[] }> {
+  const snippet = await readSnippet(videoId, fetchImpl);
+  const merged = mergeTags(snippet.tags ?? [], tags);
+  if (merged.added.length === 0) return { added: [], skipped: merged.skipped };
+  await writeSnippet(videoId, snippet, { tags: merged.tags }, fetchImpl);
+  return { added: merged.added, skipped: merged.skipped };
+}
+
+/**
+ * The title and description the dashboard holds, onto a video that is already on the channel —
+ * the two fields a Studio upload still needs typed by hand, and the ones the dashboard is the
+ * source of truth for (the title editor's hook lives here, not in Studio).
+ *
+ * This one REPLACES the title and the description, which is the point: it is how a bare draft
+ * becomes a finished video. Tags still only merge. It refuses a video on another channel, because
+ * the id is typed by a human and `videos.list` will happily read somebody else's.
+ */
+export async function applyMetadata(
+  videoId: string,
+  meta: { title: string; description: string; tags?: readonly string[] },
+  channelId: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ replacedTitle: string; addedTags: string[]; skippedTags: string[] }> {
+  const title = meta.title.trim();
+  if (!title) throw new Error("Refusing to write an empty title.");
+  const snippet = await readSnippet(videoId, fetchImpl);
+  if (channelId && snippet.channelId && snippet.channelId !== channelId) {
+    throw new Error(`Video ${videoId} belongs to channel ${snippet.channelId}, not yours — nothing written.`);
+  }
+  const merged = mergeTags(snippet.tags ?? [], meta.tags ?? []);
+  await writeSnippet(
+    videoId,
+    snippet,
+    { title, description: meta.description, tags: merged.tags },
+    fetchImpl,
+  );
+  return { replacedTitle: snippet.title, addedTags: merged.added, skippedTags: merged.skipped };
 }
 
 /** Needs `youtube.force-ssl`; the read scopes alone cannot post. */

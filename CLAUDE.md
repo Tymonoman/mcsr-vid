@@ -107,6 +107,16 @@ they differ (`code: { boot, now }` from `src/repoHead.ts`). Client changes need 
   unaffected, so **Finish on YouTube** repairs a Studio upload today: playlists, the pinned comment
   and the tags. It leaves the thumbnail alone on a video uploaded elsewhere whose variant nobody
   confirmed here, so it cannot replace an image picked in Studio.
+- **Adopt a Studio draft** (`POST /api/youtube/adopt/:id`, the panel's "Adopt this draft"): the
+  operator drops the file into Studio leaving every box empty, pastes the 11-character id, and the
+  title, description and tags go on through `videos.update`, then the finish steps run. It exists
+  because the pairing everything else relies on is the `/matches/<id>` link *in the description*,
+  which a blank draft has not got — so the write is what makes the video findable. It replaces the
+  title and description, so it is one explicit press on a video named by id: never something a
+  scan, the nightly or `finishOnYouTube` can reach. It refuses a malformed id, a video already
+  paired to another match, a title still reading `<HOOK>`, a description that would not pair, and
+  a video on someone else's channel — all before any request. It is **not** behind
+  `youtubeUploadEnabled`: `videos.update` is not the call the audit gates.
 - **`videos.update` replaces the part it is given.** `addTags` (`src/youtube.ts`) reads the snippet
   and sends it back whole — a `part=snippet` write that omits the description blanks it on a
   published video. It only ever adds tags, so a tag typed in Studio survives, and it refuses to

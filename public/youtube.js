@@ -70,6 +70,15 @@ async function loadYoutube(id, meta) {
 
   el.innerHTML = `
     <div class="scanline">Uploaded it in Studio already? <a href="#" data-act="checkchannel">check the channel</a> <span class="muted">(otherwise it is noticed within six hours)</span></div>
+    <div class="scanline">
+      Or drop the file into Studio and leave every box empty &mdash; paste its id here and the
+      title, description, tags, thumbnail, playlists and first comment all go on from here.
+      <div class="row">
+        <input id="ytAdoptId" type="text" placeholder="video id from the Studio URL" maxlength="11" size="14" spellcheck="false">
+        <button id="ytAdopt" class="ghost">Adopt this draft</button>
+        <span class="msg" id="ytAdoptMsg"></span>
+      </div>
+    </div>
     ${
       status.uploadsEnabled
         ? `<div class="upload">
@@ -96,6 +105,31 @@ async function loadYoutube(id, meta) {
     ev.preventDefault();
     void checkChannel(ev.currentTarget);
   });
+  // Adopting is videos.update, not videos.insert, so it works with uploads still switched off —
+  // it is the whole point of the control, and it must not sit behind the audit's flag.
+  $("#ytAdopt")?.addEventListener("click", async () => {
+    const videoId = $("#ytAdoptId").value.trim();
+    const msg = $("#ytAdoptMsg");
+    msg.textContent = "writing…";
+    try {
+      const r = await api(`/api/youtube/adopt/${id}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ videoId }),
+      });
+      const failed = Object.entries(r.finished ?? {}).filter(([, err]) => err);
+      if (failed.length)
+        showFailure("Adopted, with a problem", failed.map(([k, v]) => `${k}: ${v}`).join("\n"));
+      await refresh();
+      loadYoutube(id, meta);
+      loadPublishKit(id, meta);
+      loadChecklist(id);
+    } catch (e) {
+      msg.textContent = "";
+      showFailure("Could not adopt that video", e.message);
+    }
+  });
+
   if (!status.uploadsEnabled) return;
 
   // The kit may have fetched the slot before this form existed (app.js prefillPublishAt).

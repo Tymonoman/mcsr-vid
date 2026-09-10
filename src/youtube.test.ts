@@ -389,3 +389,179 @@ console.log("youtube: all checks passed");
   console.log("OK: a finished session is not uploaded twice, and an odd Range does not restart it");
   await rm(dir, { recursive: true, force: true });
 }
+
+// --- applyMetadata: the write that replaces a title on a live video ----------------------------
+// This is the only call in the project that overwrites what a viewer already sees, so what it
+// sends is asserted field by field. `videos.update` REPLACES the part it is given: a snippet write
+// that omits the description blanks it, and a video the read did not return must never be written.
+{
+  const dir = await mkdtemp(path.join(tmpdir(), "mcsr-meta-test-"));
+  process.env.YOUTUBE_TOKEN_FILE = path.join(dir, "token.json");
+  await writeFile(
+    process.env.YOUTUBE_TOKEN_FILE,
+    JSON.stringify({ client_id: "c", client_secret: "s", refresh_token: "r" }),
+  );
+
+  let readItems: unknown[] = [];
+  const sent: Array<{ method: string; url: string; body: unknown }> = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    const method = init?.method ?? "GET";
+    if (typeof init?.body === "string" && url.includes("/videos?")) {
+      sent.push({ method, url, body: JSON.parse(init.body) });
+    }
+    const ok = (payload: unknown) =>
+      new Response(JSON.stringify(payload), { status: 200, headers: { "content-type": "application/json" } });
+    if (url.startsWith("https://oauth2.googleapis.com/")) return ok({ access_token: "t", expires_in: 3600 });
+    if (method === "GET" && url.includes("/videos?")) return ok({ items: readItems });
+    return ok({ id: "ok" });
+  }) as typeof fetch;
+
+  const { applyMetadata } = await import("./youtube.js");
+  const live = {
+    id: "vidMeta",
+    snippet: {
+      channelId: "UCmine",
+      title: "match-13223455.mp4",
+      description: "",
+      categoryId: "20",
+      tags: ["mcsr"],
+      defaultLanguage: "en",
+    },
+  };
+
+  readItems = [live];
+  sent.length = 0;
+  const applied = await applyMetadata(
+    "vidMeta",
+    { title: "Down to the last heart | a vs b", description: "…/matches/13223455", tags: ["a", "MCSR", "b"] },
+    "UCmine",
+  );
+  const put = sent.find((r) => r.method === "PUT");
+  assert.ok(put, "videos.update was called");
+  const snippet = (put!.body as { id: string; snippet: Record<string, unknown> }).snippet;
+  assert.equal((put!.body as { id: string }).id, "vidMeta");
+  assert.equal(snippet.title, "Down to the last heart | a vs b", "the title is replaced");
+  assert.equal(snippet.description, "…/matches/13223455", "and so is the description");
+  assert.equal(snippet.categoryId, "20", "the category survives the replace");
+  assert.equal(snippet.defaultLanguage, "en", "and the language");
+  assert.deepEqual(snippet.tags, ["mcsr", "a", "b"], "tags merge, case-insensitively, never replace");
+  assert.equal(applied.replacedTitle, "match-13223455.mp4", "what it overwrote is reported back");
+
+  // Somebody else's video: `videos.list` reads any public video, and the id is typed by a human.
+  readItems = [{ ...live, snippet: { ...live.snippet, channelId: "UCsomeoneelse" } }];
+  sent.length = 0;
+  await assert.rejects(
+    () => applyMetadata("vidMeta", { title: "t", description: "d" }, "UCmine"),
+    /belongs to channel UCsomeoneelse/,
+  );
+  assert.ok(!sent.some((r) => r.method === "PUT"), "and nothing was written");
+
+  // A read that returns nothing is a throw, never a write of an empty snippet.
+  readItems = [];
+  sent.length = 0;
+  await assert.rejects(
+    () => applyMetadata("vidGone", { title: "t", description: "d" }, "UCmine"),
+    /refusing to write/,
+  );
+  assert.ok(!sent.some((r) => r.method === "PUT"), "no write against a video that is not there");
+
+  // An empty title would leave the video untitled on the channel; refuse before reading anything.
+  readItems = [live];
+  sent.length = 0;
+  await assert.rejects(
+    () => applyMetadata("vidMeta", { title: "   ", description: "d" }, "UCmine"),
+    /empty title/,
+  );
+  assert.equal(sent.length, 0, "and it does not even read");
+
+  globalThis.fetch = realFetch;
+  console.log("OK: applyMetadata replaces title and description, merges tags, refuses the rest");
+  await rm(dir, { recursive: true, force: true });
+}
+
+// --- The adopt route refuses before it writes ---------------------------------------------------
+// Adopt REPLACES a live video's title and description from an id a human typed, so every way of
+// naming the wrong video has to be turned away before any request is made.
+{
+  const dir = await mkdtemp(path.join(tmpdir(), "mcsr-adopt-test-"));
+  process.env.YOUTUBE_TOKEN_FILE = path.join(dir, "token.json");
+  await writeFile(
+    process.env.YOUTUBE_TOKEN_FILE,
+    JSON.stringify({ client_id: "c", client_secret: "s", refresh_token: "r" }),
+  );
+  const realMediaDir = config.mediaDir;
+  config.mediaDir = path.join(dir, "media");
+  const matchId = 13223455;
+  const matchPath = path.join(config.mediaDir, String(matchId));
+  await mkdir(matchPath, { recursive: true });
+
+  const { handleYoutubeRoute } = await import("./youtubeRoutes.js");
+  const { HOOK_PLACEHOLDER } = await import("./title.js");
+
+  // Any network call is a failure of the guards, so there is no stub that answers one.
+  const realFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls += 1;
+    throw new Error("the guards should have refused before any request");
+  }) as typeof fetch;
+
+  const answers: Array<{ status: number; body: unknown }> = [];
+  const adopt = async (videoId: unknown) => {
+    answers.length = 0;
+    await handleYoutubeRoute(
+      { method: "POST", headers: {} } as unknown as import("node:http").IncomingMessage,
+      {} as unknown as import("node:http").ServerResponse,
+      ["", "youtube", "adopt", String(matchId)],
+      {
+        json: (_r: unknown, status: number, body: unknown) => answers.push({ status, body }),
+        readBody: async () => JSON.stringify({ videoId }),
+        matchDir: (id: number) => path.join(config.mediaDir, String(id)),
+        parseId: (raw: string | undefined) => (raw && /^\d+$/.test(raw) ? Number(raw) : null),
+      },
+    );
+    return answers[0]!;
+  };
+
+  for (const bad of ["", "not-an-id", "https://youtu.be/aAX_ML4rHdo", "aAX_ML4rHdo_toolong", 42, null]) {
+    const a = await adopt(bad);
+    assert.equal(a.status, 400, `rejected ${JSON.stringify(bad)}`);
+    assert.match(String((a.body as { error: string }).error), /not a YouTube video id/);
+  }
+
+  // A title still carrying the placeholder would go on the channel verbatim.
+  await writeFile(
+    path.join(matchPath, `match-${matchId}.title.txt`),
+    `${HOOK_PLACEHOLDER} | a vs b | MCSR Ranked 1v1\n`,
+    "utf8",
+  );
+  await writeFile(
+    path.join(matchPath, `match-${matchId}.description.txt`),
+    `x /matches/${matchId} y\n`,
+    "utf8",
+  );
+  {
+    const a = await adopt("aAX_ML4rHdo");
+    assert.equal(a.status, 409);
+    assert.match(String((a.body as { error: string }).error), /pick a hook first/);
+  }
+
+  // A description with no match link pairs with nothing: every later lookup would call the match
+  // unpublished, and the operator would have overwritten a live video for nothing.
+  await writeFile(path.join(matchPath, `match-${matchId}.title.txt`), "A real title | a vs b\n", "utf8");
+  await writeFile(path.join(matchPath, `match-${matchId}.description.txt`), "no link here\n", "utf8");
+  {
+    const a = await adopt("aAX_ML4rHdo");
+    assert.equal(a.status, 409);
+    assert.match(String((a.body as { error: string }).error), /would not pair/);
+  }
+
+  assert.equal(calls, 0, "not one of those refusals touched the network");
+
+  globalThis.fetch = realFetch;
+  config.mediaDir = realMediaDir;
+  console.log("OK: adopt refuses a bad id, an unpicked hook and a description that would not pair");
+  await rm(dir, { recursive: true, force: true });
+}
