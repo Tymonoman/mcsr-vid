@@ -18,6 +18,7 @@ import {
   pickNightlyCandidate,
   readNightlyState,
   runNightlyOnce,
+  shouldChainNextRender,
   writeNightlyState,
 } from "./nightly.js";
 import type { ShortRunner } from "./shortsRoutes.js";
@@ -42,6 +43,25 @@ assert.equal(msUntilNextRun(at("2026-09-06T23:59:59Z"), 0), 1000);
 // local-hour schedule would skip or repeat a day; in UTC every gap is exactly 24h.
 for (const day of ["2026-03-28", "2026-03-29", "2026-10-25"]) {
   assert.equal(msUntilNextRun(at(`${day}T03:00:00Z`), 3), DAY, `${day} must be a plain 24h`);
+}
+
+// --- Room for a second render. The guards that stop one are re-run by runNightlyOnce itself,
+// so this is only the count and the clock.
+{
+  const night = at("2026-09-07T03:00:00Z");
+  // Default config: one render, and nothing chains. This is the assertion that keeps tonight's
+  // behaviour unchanged when the feature is left alone.
+  assert.equal(shouldChainNextRender(1, 1, night, 3), false, "the default limit stops at one");
+  assert.equal(shouldChainNextRender(1, 2, night, 3), true);
+  assert.equal(shouldChainNextRender(2, 2, night, 3), false, "the limit is a limit");
+  // Inside the window and outside it. Four hours after the hour is already the morning.
+  assert.equal(shouldChainNextRender(1, 3, night + 3.9 * HOUR, 3), true);
+  assert.equal(shouldChainNextRender(1, 3, night + 4 * HOUR, 3), false, "the window has closed");
+  assert.equal(shouldChainNextRender(1, 3, night + 20 * HOUR, 3), false, "and tomorrow is not tonight");
+  // A run that started before the hour (the dashboard's "Run now" at midday) is not a night.
+  assert.equal(shouldChainNextRender(1, 3, night - HOUR, 3), false, "an hour early is 23 hours late");
+  // No schedule means every run is a click, and a click asks for one render.
+  assert.equal(shouldChainNextRender(1, 9, night, null), false, "a disabled nightly chains nothing");
 }
 
 const suggestion = (matchId: number) => ({ metrics: { matchId } });

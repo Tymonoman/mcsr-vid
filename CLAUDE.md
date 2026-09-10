@@ -114,7 +114,9 @@ they differ (`code: { boot, now }` from `src/repoHead.ts`). Client changes need 
 - **Nightly** (`src/nightly.ts`): at `nightlyRenderHourUtc` (default 3 UTC; `null` disables) the
   server renders the first eligible card in dashboard order, skipping the night if a render is
   running or under two matches of disk remain, then the Short (`nightlyRenderShort`) and the MP4
-  (`nightlyRenderExport`); `nightlyNotifyUrl` gets one line on done / failed / aborted. The
+  (`nightlyRenderExport`); `nightlyNotifyUrl` gets one line on done / failed / aborted. With
+  `nightlyMaxRenders` above 1 a clean run starts the next card, within four hours of the hour
+  and through the same guards. The
   strip's `Run now` is the same path, as is a card's "Render + Short + MP4".
 - Phones (<= 860px): list and match are two screens with a back bar; rows carry no Hide/Delete
   on a coarse pointer; the match screen offers jump links to the video, the kit and the Short.

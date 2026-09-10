@@ -7,7 +7,9 @@
  * is starting the top-ranked untouched match while the lab is idle. The morning question then
  * becomes "publish this?" with a preview, rather than "render this?" with a chart.
  *
- * Deliberately timid — it starts *one* render, and only when nothing else is going on:
+ * Deliberately timid — it starts one render (`nightlyMaxRenders`, default 1; a higher limit
+ * starts the next card only after a clean run, only within four hours of the configured hour,
+ * and only through these same guards), and only when nothing else is going on:
  *
  *   - it never forces a rescan. A forced scan is hundreds of feed requests against a
  *     500-per-10-minute budget; it runs the same unforced scan the timer does — the cache while
@@ -107,6 +109,38 @@ export function msUntilNextRun(nowMs: number, hourUtc: number): number {
   // Landing exactly on the hour means today's run has already happened (this is the reschedule
   // at the end of one), so the next is tomorrow's — never a zero-delay timer that re-fires now.
   return ms > 0 ? ms : ms + DAY_MS;
+}
+
+/**
+ * How long after the configured hour a second render may still start. Four hours: the lab is
+ * idle until the morning, but a render that begins at 09:00 because the 03:00 one crawled is a
+ * render competing with the operator's own dashboard, and its Short and export would run later
+ * still. The window is measured from the configured hour, not from when the last run finished,
+ * so a slow night narrows it by itself.
+ */
+const CHAIN_WINDOW_MS = 4 * 60 * 60 * 1000;
+
+/**
+ * Whether the night has room for another render.
+ *
+ * Only the count and the clock: every reason a render should not start — the disk, a render in
+ * flight, nothing left to render — is re-checked by `runNightlyOnce` itself, so the second
+ * render passes exactly the gate the first one did rather than a copy of it that can drift.
+ *
+ * A disabled schedule (`hourUtc === null`) chains nothing: the only way to get here then is the
+ * dashboard's `Run now`, which is one click asking for one render.
+ */
+export function shouldChainNextRender(
+  started: number,
+  maxRenders: number,
+  nowMs: number,
+  hourUtc: number | null,
+  windowMs: number = CHAIN_WINDOW_MS,
+): boolean {
+  if (started >= maxRenders || hourUtc === null) return false;
+  // msUntilNextRun counts forward to the next hour and never returns 0, so a whole day minus it
+  // is how long ago today's hour was.
+  return DAY_MS - msUntilNextRun(nowMs, hourUtc) < windowMs;
 }
 
 interface NightlyPickContext {
@@ -354,6 +388,8 @@ export async function nightlyCandidate(): Promise<Suggestion | null> {
 export async function runNightlyOnce(
   notifyUrl: string,
   deps: Partial<NightlyDeps> = {},
+  /** Which render of the night this is; `nightlyMaxRenders` is the last one. */
+  started = 1,
 ): Promise<NightlyRunResult> {
   const { renderInFlight: busy = renderInFlight, ranked = liveRanked } = deps;
   const startedAt = new Date().toISOString();
@@ -402,6 +438,18 @@ export async function runNightlyOnce(
     const said = verdict.reason ? `${verdict.outcome}: ${verdict.reason}` : verdict.outcome;
     if (notifyUrl) {
       await notify(notifyUrl, `Rendered #${matchId} ${label} — ${said}${shortClause}${exportClause}`);
+    }
+    // A lab that finished at 04:30 is idle for the rest of the night, and the operator's morning
+    // is the bottleneck this scheduler exists to widen. The next card goes through the whole of
+    // this function again — the scan, the disk check, the busy check — so nothing that stops the
+    // first render can be skipped by the second. Only a clean run earns one, as the Short and
+    // the export do; the state file then describes the later render, which is the one still
+    // worth acting on.
+    if (
+      verdict.outcome === "done" &&
+      shouldChainNextRender(started, config.nightlyMaxRenders, Date.now(), config.nightlyRenderHourUtc)
+    ) {
+      await runNightlyOnce(notifyUrl, deps, started + 1);
     }
   });
   return { matchId, players: [...players] };

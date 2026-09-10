@@ -27,6 +27,7 @@
   "publishHourUtc": 19,
   "postRollCta": true,
   "nightlyRenderExport": true,
+  "nightlyMaxRenders": 1,
   "nightlyNotifyUrl": "",
   "suggestCloseSlots": 8,
   "suggestChaosSlots": 2,
