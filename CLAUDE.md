@@ -150,6 +150,12 @@ they differ (`code: { boot, now }` from `src/repoHead.ts`). Client changes need 
   (default **false** — it changes what tonight renders); a game whose players did not stream is
   skipped by `playoffVodsReady` and the pick falls through to the next candidate, because the
   pipeline's VOD guard throws before a match directory exists and nothing would remember it.
+  Season 11's bracket (verified live, 10 Sept): the Round of 16 is **eight** slots over **two**
+  evenings — Sat 12 and Sun 13 Sept, 17:00 Warsaw — so `playoffsFirst` wants to be on for both
+  nights, not one. Quarterfinals onward carry `startTime: null` and no participants until the
+  round below resolves; a slot with no participants matches no game, so such a game packages as
+  an ordinary private match — the video is still made, it just loses the round/game framing until
+  the bracket fills in (the 30-minute cache picks that up by itself).
 - Phones (<= 860px): list and match are two screens with a back bar; rows carry no Hide/Delete
   on a coarse pointer; the match screen offers jump links to the video, the kit and the Short.
 - `docs/` is the GitHub Pages site (`mcsr.sezamki.site`: the OAuth homepage, privacy and terms
