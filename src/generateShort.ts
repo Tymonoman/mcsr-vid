@@ -1,7 +1,8 @@
 import path from "node:path";
 import { existsSync } from "node:fs";
-import { writeFile } from "node:fs/promises";
+import { appendFile, writeFile } from "node:fs/promises";
 import { requireArg } from "./cliArgs.js";
+import { describeError } from "./errorText.js";
 import { config, matchDir } from "./config.js";
 import { getMatch, getUser, parseMatchId } from "./mcsrApi.js";
 import { reasonerConfigured } from "./reasoner.js";
@@ -93,6 +94,10 @@ const momentOpts = {
   chatAtSec,
 };
 let moments = distinctShortMoments(match, momentOpts, 5);
+// The heuristic's own answer, before the reasoner is allowed to reorder it: the tuning log needs
+// the two predictions separately or it cannot tell them apart later.
+const heuristicTop = moments[0];
+let reasonerApplied = false;
 if (moments.length === 0) {
   throw new Error(`Match ${matchId} has no timeline events worth cutting a Short from.`);
 }
@@ -102,6 +107,7 @@ if (moments.length === 0) {
 if (reasonerConfigured()) {
   const reasoned = await reasonShortMoments(match, moments, momentOpts, outDir);
   moments = reasoned.moments;
+  reasonerApplied = reasoned.reasoner.applied;
   if (reasoned.reasoner.applied) console.error(`Reasoner: ${reasoned.reasoner.why ?? "(no reason given)"}`);
 }
 
@@ -253,6 +259,31 @@ await writeFile(
   JSON.stringify({ pick, startMs: moment.startMs, endMs: moment.endMs }, null, 2),
   "utf8",
 );
+
+// One line per render, across every match, so the weights can eventually be tuned against
+// something. Right now nothing records which window won or who chose it, so there is no way to
+// tell whether the reasoner picks better than the heuristic or whether either beats the
+// operator — and that evidence can only be gathered going forward. The operator's own choice is
+// the ground truth; the heuristic's top and the reasoner's answer are the two predictions.
+// Append-only and best-effort: a Short is not worth failing over a log line.
+try {
+  await appendFile(
+    path.join(config.mediaDir, ".short-picks.jsonl"),
+    JSON.stringify({
+      matchId,
+      cutStartMs: moment.startMs,
+      chosenBy: atMs !== null ? "operator-window" : pick === 0 ? "top" : "operator-row",
+      heuristicTopStartMs: heuristicTop?.startMs ?? null,
+      heuristicTopScore: heuristicTop ? Number(heuristicTop.score.toFixed(2)) : null,
+      reasonerApplied: reasonerApplied,
+      reachedFinish: moment.endMs >= runMs,
+      windowSec: seconds,
+    }) + "\n",
+    "utf8",
+  );
+} catch (err) {
+  console.error(`could not record the pick: ${describeError(err)}`);
+}
 
 console.error(`\nDone: ${outPath}`);
 console.log(

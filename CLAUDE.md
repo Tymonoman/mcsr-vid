@@ -68,6 +68,9 @@ fixed layout has nothing to decide. Two Remotion stills (board, hook) plus one f
 - **The hook line is the title hook** (`resolveShortHook`, `src/shortHook.ts`): the edited
   title's hook, else the first rivalry chip, else the per-moment line, burned in for 4 s. The
   Short's title is that hook plus `#minecraft #mcsr` unless the hook already carries a `#`.
+- **Every cut appends a line to `<mediaDir>/.short-picks.jsonl`**: what the heuristic proposed,
+  whether the reasoner overrode it, what was cut and by whom. Nothing reads it yet — it is the
+  evidence for tuning `EVENT_WEIGHTS`, and it can only be collected going forward.
 - **Auto-crop usually declines, and should**: streamers' panels reach the frame edges.
   `--top-crop=x,y,w,h` overrides it.
 - **A playoff game's nameplates show the seed, not the ladder rank** (`remotion/Short.tsx`,
