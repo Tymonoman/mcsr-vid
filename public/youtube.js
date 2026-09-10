@@ -289,20 +289,28 @@ async function loadComments(id) {
   }
   // Unanswered first: that is the list you are actually here to clear.
   const threads = data.threads.slice().sort((a, b) => Number(b.unanswered) - Number(a.unanswered));
+  // The kit writes a pinned comment for every video and there is no artifact that would show it
+  // was posted — so the only honest check is whether the channel has said anything under its own
+  // video at all. None of them ever had one.
+  const pinned = threads.some((t) => t.byChannel)
+    ? ""
+    : '<div class="scanline bad">no comment from the channel on this video &mdash; the kit has one written under "Pinned comment"</div>';
   if (!threads.length) {
-    el.innerHTML = '<div class="empty">no comments yet</div>';
+    el.innerHTML = pinned + '<div class="empty">no comments yet</div>';
     return;
   }
-  el.innerHTML = threads
-    .map(
-      (t) => `
+  el.innerHTML =
+    pinned +
+    threads
+      .map(
+        (t) => `
       <div class="comment ${t.unanswered ? "unanswered" : ""}" data-thread="${esc(t.threadId)}">
         <div class="who">${esc(t.author)} ${t.unanswered ? '<span class="badge">unanswered</span>' : ""}</div>
         <div class="body">${esc(t.text)}</div>
         ${t.unanswered ? '<div class="row"><input type="text" class="replytext" placeholder="Reply…"><button class="reply">Send</button></div>' : ""}
       </div>`,
-    )
-    .join("");
+      )
+      .join("");
 
   el.querySelectorAll(".comment .reply").forEach((btn) =>
     btn.addEventListener("click", async () => {

@@ -519,6 +519,13 @@ export interface CommentThread {
   likeCount: number;
   /** True when nobody from the channel has replied in this thread. */
   unanswered: boolean;
+  /**
+   * True when the channel wrote the top-level comment — which is what the publish kit's pinned
+   * comment is. Distinguishing it costs nothing here and is the only way to tell whether that
+   * comment was ever posted: there is no artifact on disk to check, and no tick that could not
+   * simply be wrong.
+   */
+  byChannel: boolean;
 }
 
 /**
@@ -561,6 +568,7 @@ export async function commentThreads(videoId: string, channelId: string): Promis
       publishedAt: top.publishedAt,
       likeCount: top.likeCount,
       unanswered: !answered,
+      byChannel: top.authorChannelId?.value === channelId,
     };
   });
 }
