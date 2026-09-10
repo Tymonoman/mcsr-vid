@@ -295,6 +295,7 @@ async function select(id, { open = false } = {}) {
     <div id="variants"><div class="empty">loading&hellip;</div></div>
 
     <h2 id="h-preview">Final video</h2>
+    ${syncLine(meta)}
     <div id="preview"><div class="empty">loading&hellip;</div></div>
 
     <h2 id="h-publishkit">Publish kit</h2>
@@ -1034,6 +1035,28 @@ const OUTPUT_LABELS = {
   chapters: "Chapters",
   syncPreview: "Sync preview",
 };
+
+/**
+ * Where the two POVs were placed, and how sure the detector was.
+ *
+ * Worth a line because a half-synced match is invisible otherwise: when the countdown freeze is
+ * found for one player and not the other, the found side is corrected and the other keeps the
+ * coarse estimate, so the POVs can sit seconds apart in a video that looks ready to publish.
+ * Silent on a clean sync — the only interesting states are "partly" and "not at all".
+ */
+function syncLine(meta) {
+  const s = meta.sync;
+  if (!s) return "";
+  const drift = Math.abs(s.left - s.right);
+  const weak = s.confidence < (meta.syncThreshold ?? 0.15);
+  if (!weak && drift < 0.5) return "";
+  const why = weak
+    ? "the estimate was kept — verify the alignment before publishing"
+    : `the two POVs sit ${drift.toFixed(1)}s apart`;
+  return `<div class="scanline bad" title="${esc(s.detail ?? "")}">sync ${Math.round(
+    s.confidence * 100,
+  )}% &middot; ${esc(why)}</div>`;
+}
 
 function outputsHtml(outputs, id) {
   if (!outputs) return '<div class="empty">nothing written yet</div>';

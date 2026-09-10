@@ -39,6 +39,7 @@ import { claimedPublishTimes, nextPublishSlot } from "./publishSlot.js";
 import { playoffBoard, playoffContextForId, playoffTitleTail } from "./playoffs.js";
 import { refreshRivalPostsIfStale, rivalPostsSnapshot, rivalRecentPostFor } from "./rivalPosts.js";
 import { chooseVariant, readManifest, rerenderThumbnailVariants } from "./thumbnailVariants.js";
+import { readSyncOffsets } from "./syncFile.js";
 import { buildTitle, metaPaths, type BuiltTitle } from "./title.js";
 import { allArchiveStates, capacity, isArchived } from "./archive.js";
 import { exportRunning, handleExportRoute } from "./exportRoutes.js";
@@ -159,6 +160,14 @@ async function readMeta(matchId: number) {
       /** Ranked openers built from the match's own numbers; empty when the match is unreadable. */
       suggestions: hookSuggestions,
     },
+    // Where the two POVs actually got placed. Both exporters read this file, nothing showed it,
+    // and a half-synced match looks exactly like a clean one on the page: when the countdown
+    // detector finds one player's freeze and not the other's, the found side is corrected and
+    // the other keeps the coarse estimate, so the two POVs can sit seconds apart in a video that
+    // is otherwise ready to publish. Null for a match rendered before sync.json existed —
+    // `npm run sync-status` derives one from the project.
+    sync: readSyncOffsets(matchDir(matchId)),
+    syncThreshold: config.syncConfidenceThreshold,
     matchUrl: `${MCSR_MATCH_URL}${matchId}`,
     /** Why the entry is degraded (API unreachable), or null. Surfaced so "?" is never a lie. */
     error: entry.error,
