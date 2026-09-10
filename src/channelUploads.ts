@@ -56,7 +56,7 @@ export interface ChannelVideo {
 }
 
 /** YouTube's line: at most three minutes is a Short. */
-const SHORT_MAX_SEC = 180;
+export const SHORT_MAX_SEC = 180;
 
 /**
  * `PT1H2M3S` → seconds. YouTube never sends days here; a shape it does not match reads as 0,

@@ -11,6 +11,8 @@ import path from "node:path";
 import {
   channelUploadsSnapshot,
   channelVideoFor,
+  parseIsoDuration,
+  SHORT_MAX_SEC,
   refreshChannelUploadsIfStale,
   refreshChannelUploadsNow,
   type ChannelVideo,
@@ -29,7 +31,7 @@ import {
   videoStats,
   type ImpressionsRow,
 } from "./youtube.js";
-import { allUploads, readUpload, uploadTextFor, writeUpload } from "./youtubeStore.js";
+import { allUploads, readUpload, uploadTextFor, videoIdOwner, writeUpload } from "./youtubeStore.js";
 import { beginUpload, finishOnYouTube, uploadProgress } from "./youtubeUpload.js";
 import { HOOK_PLACEHOLDER } from "./title.js";
 import { yppProgress } from "./yppProgress.js";
@@ -153,10 +155,12 @@ export async function handleYoutubeRoute(
       });
       return true;
     }
-    const claimed = (await allUploads()).find((u) => u.record.videoId === videoId && u.matchId !== matchId);
-    if (claimed) {
+    // Across both kinds: the id most likely to be pasted by mistake is this match's own Short,
+    // which sits beside the long-form in Studio and which `allUploads` cannot see.
+    const owner = await videoIdOwner(videoId);
+    if (owner && !(owner.matchId === matchId && owner.kind === "video")) {
       ctx.json(res, 409, {
-        error: `${videoId} is already this dashboard's video for match ${claimed.matchId}`,
+        error: `${videoId} is already this dashboard's ${owner.kind === "short" ? "Short" : "video"} for match ${owner.matchId}`,
       });
       return true;
     }
@@ -172,13 +176,38 @@ export async function handleYoutubeRoute(
       });
       return true;
     }
+    // The thumbnail step declines on a video uploaded elsewhere unless a variant was confirmed
+    // here, so without this the happy path would quietly leave YouTube's auto frame on. Refused
+    // up front, like the hook above, rather than reported as a problem afterwards.
+    const manifest = await readManifest(matchDir(matchId));
+    if (manifest?.chosenBy !== "operator") {
+      ctx.json(res, 409, {
+        error: `No thumbnail variant is confirmed — press "Keep this" on the strip first, or the video would keep YouTube's auto frame`,
+      });
+      return true;
+    }
     try {
       const [live] = await videoStats([videoId]);
       if (!live) {
         ctx.json(res, 404, { error: `No video ${videoId} is readable with this account` });
         return true;
       }
+      // A match video runs ten-odd minutes; three minutes or less is a Short, and adopting one
+      // would put the long-form's title and description on it. 0 means "unknown" (still
+      // processing), which is not a reason to refuse.
+      const durationSec = parseIsoDuration(live.duration);
+      if (durationSec > 0 && durationSec <= SHORT_MAX_SEC) {
+        ctx.json(res, 409, {
+          error: `${videoId} is ${durationSec}s long — that is a Short, not the match video`,
+        });
+        return true;
+      }
       const applied = await applyMetadata(videoId, { title, description, tags }, config.youtubeChannelId);
+      // Re-adopting the SAME video keeps the finish ledger: it is the only thing between a second
+      // press and a second pinned comment, which `postComment` de-duplicates not at all. A
+      // different video for this match is a different video, and starts a fresh ledger.
+      const previous = await readUpload(matchId);
+      const carried = previous?.videoId === videoId ? (previous.finished ?? {}) : {};
       await writeUpload(matchId, {
         videoId,
         uploadedAt: live.publishedAt,
@@ -187,14 +216,22 @@ export async function handleYoutubeRoute(
         thumbnailVariant: null,
         title,
         source: "studio",
-        finished: {},
+        finished: carried,
       });
+      const finished = await finishOnYouTube(matchId, videoId);
+      // The A/B tab reads `thumbnailVariant` for a local record and falls back to the manifest
+      // only for a channel-derived one, so leaving this null drops an adopted video out of the
+      // hook-vs-control comparison. Recorded only once the image has actually gone up.
+      if (finished.thumbnail === null) {
+        const written = await readUpload(matchId);
+        if (written) await writeUpload(matchId, { ...written, thumbnailVariant: manifest.chosen });
+      }
       ctx.json(res, 200, {
         videoId,
         replacedTitle: applied.replacedTitle,
         addedTags: applied.addedTags,
         skippedTags: applied.skippedTags,
-        finished: await finishOnYouTube(matchId, videoId),
+        finished,
       });
     } catch (err) {
       ctx.json(res, 502, { error: describeError(err) });

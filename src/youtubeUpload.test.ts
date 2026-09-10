@@ -204,6 +204,8 @@ try {
   await writeFile(tokenFile, JSON.stringify({ client_id: "c", client_secret: "s", refresh_token: "r" }));
   process.env.YOUTUBE_TOKEN_FILE = tokenFile;
 
+  /** What YouTube says the video's privacy is *now*, which the record may disagree with. */
+  let livePrivacy = "public";
   const hits: string[] = [];
   /** What was actually PUT/POSTed, so a replace-the-whole-snippet call can be inspected. */
   const sent: Array<{ url: string; body: unknown }> = [];
@@ -228,8 +230,13 @@ try {
         data: { players: [{ nickname: "doogile" }, { nickname: "Feinberg" }] },
       });
     if (url.includes("/playlists?")) return body({ items: [{ id: "PL1", snippet: { title: "x" } }] });
+    // The finish flow re-reads the live privacy before it skips the comment step.
+    if (url.includes("/videos?part=snippet,status,statistics"))
+      return body({
+        items: [{ id: "vidX", snippet: { title: "t" }, status: { privacyStatus: livePrivacy } }],
+      });
     // videos.update replaces the part it is given, so addTags reads the snippet before writing.
-    if (url.includes("/videos?part=snippet"))
+    if (url.includes("/videos?part=snippet&"))
       return body({
         items: [
           {
@@ -293,11 +300,33 @@ try {
 
   // A private video — every nightly upload — cannot be commented on. Left unattempted rather than
   // recorded as an error, or every nightly push would read ", with a problem".
-  await writeUpload(matchId, { ...record, privacyStatus: "private", finished: { playlists: null, tags: null } });
+  livePrivacy = "private";
+  await writeUpload(matchId, {
+    ...record,
+    privacyStatus: "private",
+    finished: { playlists: null, tags: null },
+  });
   hits.length = 0;
   const priv = await finishOnYouTube(matchId, "vidX");
   assert.equal("comment" in priv && priv.comment !== undefined, false, "no comment on a private video");
   assert.ok(!hits.some((h) => h.includes("/commentThreads?")));
+
+  // ...but the record's privacy is whatever it was at upload and is never updated, so a draft
+  // adopted while private and published an hour later would carry "private" for ever and never
+  // get its first comment. The record is the cheap "not yet"; YouTube is what decides.
+  livePrivacy = "public";
+  await writeUpload(matchId, {
+    ...record,
+    privacyStatus: "private",
+    finished: { playlists: null, tags: null },
+  });
+  hits.length = 0;
+  const published = await finishOnYouTube(matchId, "vidX");
+  assert.equal(published.comment, null, "a record that says private is re-checked against the live video");
+  assert.ok(
+    hits.some((h) => h.startsWith("POST") && h.includes("/commentThreads?")),
+    "and the comment actually goes up once it really is public",
+  );
 
   // A video uploaded elsewhere keeps the thumbnail it is wearing. "Finish on YouTube" is there to
   // give it the playlists and the comment it never got; the manifest's `chosen` is the renderer's
@@ -315,7 +344,11 @@ try {
   // a separate step in Studio. `videos.update` is not `videos.insert`, so this is not gated by the
   // compliance audit — and the merge only adds, so a tag typed in Studio survives.
   await writeFile(path.join(dir, `match-${matchId}.tags.txt`), "doogile\nFeinberg\nalready-there\n");
-  await writeUpload(matchId, { ...record, source: "studio", finished: { thumbnail: null, playlists: null, comment: null } });
+  await writeUpload(matchId, {
+    ...record,
+    source: "studio",
+    finished: { thumbnail: null, playlists: null, comment: null },
+  });
   hits.length = 0;
   sent.length = 0;
   const tagged = await finishOnYouTube(matchId, "vidX");

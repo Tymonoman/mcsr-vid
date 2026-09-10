@@ -484,6 +484,8 @@ export interface VideoStats {
   views: number;
   likes: number;
   comments: number;
+  /** ISO 8601, `""` when unknown — what tells a match video from its Short. */
+  duration: string;
 }
 
 export async function videoStats(videoIds: string[]): Promise<VideoStats[]> {
@@ -494,20 +496,28 @@ export async function videoStats(videoIds: string[]): Promise<VideoStats[]> {
       snippet: { title: string; publishedAt: string };
       status: { privacyStatus: string; publishAt?: string };
       statistics: { viewCount?: string; likeCount?: string; commentCount?: string };
+      contentDetails?: { duration?: string };
     }>;
-  }>(DATA_API, `/videos?part=snippet,status,statistics&id=${videoIds.map(encodeURIComponent).join(",")}`);
+  }>(
+    DATA_API,
+    `/videos?part=snippet,status,statistics,contentDetails&id=${videoIds.map(encodeURIComponent).join(",")}`,
+  );
 
-  return body.items.map((v) => ({
+  // `?? []` because a videos.list for an id that is gone answers 200 with no `items` at all.
+  return (body.items ?? []).map((v) => ({
     videoId: v.id,
-    title: v.snippet.title,
-    publishedAt: v.snippet.publishedAt,
-    privacyStatus: v.status.privacyStatus,
-    publishAt: v.status.publishAt ?? null,
+    title: v.snippet?.title ?? "",
+    publishedAt: v.snippet?.publishedAt ?? "",
+    privacyStatus: v.status?.privacyStatus ?? "",
+    publishAt: v.status?.publishAt ?? null,
+    // Raw ISO 8601. Parsed by the caller (`parseIsoDuration`, src/channelUploads.ts) rather than
+    // here, so this module keeps no second copy of that shape. Free: parts cost no extra quota.
+    duration: v.contentDetails?.duration ?? "",
     // Absent rather than zero when the owner has hidden the count, so `?? 0` is a display
     // choice, not a measurement.
-    views: Number(v.statistics.viewCount ?? 0),
-    likes: Number(v.statistics.likeCount ?? 0),
-    comments: Number(v.statistics.commentCount ?? 0),
+    views: Number(v.statistics?.viewCount ?? 0),
+    likes: Number(v.statistics?.likeCount ?? 0),
+    comments: Number(v.statistics?.commentCount ?? 0),
   }));
 }
 

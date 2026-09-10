@@ -558,6 +558,59 @@ console.log("youtube: all checks passed");
     assert.match(String((a.body as { error: string }).error), /would not pair/);
   }
 
+  // No confirmed thumbnail variant. finishOnYouTube declines to set a thumbnail on a video
+  // uploaded elsewhere unless somebody chose one here, so adopting now would leave YouTube's auto
+  // frame on a video the operator believes is finished. Refused up front instead.
+  await writeFile(
+    path.join(matchPath, `match-${matchId}.description.txt`),
+    `x /matches/${matchId} y\n`,
+    "utf8",
+  );
+  {
+    const a = await adopt("aAX_ML4rHdo");
+    assert.equal(a.status, 409);
+    assert.match(String((a.body as { error: string }).error), /Keep this/);
+  }
+
+  // A rendered strip is not a chosen one: only `chosenBy: "operator"` counts.
+  const { manifestPath } = await import("./thumbnailVariants.js");
+  await writeFile(
+    manifestPath(matchPath),
+    JSON.stringify({ chosen: "walking-crossed", variants: [], chosenBy: "auto" }),
+    "utf8",
+  );
+  {
+    const a = await adopt("aAX_ML4rHdo");
+    assert.equal(a.status, 409);
+    assert.match(String((a.body as { error: string }).error), /Keep this/);
+  }
+
+  // This match's own Short is the id most likely to be pasted by mistake, and `allUploads` — the
+  // check this route used to make — reads only youtube.json and cannot see it.
+  await writeFile(
+    manifestPath(matchPath),
+    JSON.stringify({ chosen: "walking-crossed", variants: [], chosenBy: "operator" }),
+    "utf8",
+  );
+  const { writeUpload } = await import("./youtubeStore.js");
+  await writeUpload(
+    matchId,
+    {
+      videoId: "shortVid123",
+      uploadedAt: "2026-09-09T19:00:00Z",
+      publishAt: null,
+      privacyStatus: "public",
+      thumbnailVariant: null,
+      title: "s",
+    },
+    "short",
+  );
+  {
+    const a = await adopt("shortVid123");
+    assert.equal(a.status, 409);
+    assert.match(String((a.body as { error: string }).error), /already this dashboard's Short/);
+  }
+
   assert.equal(calls, 0, "not one of those refusals touched the network");
 
   globalThis.fetch = realFetch;

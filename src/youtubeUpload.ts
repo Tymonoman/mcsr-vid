@@ -30,6 +30,7 @@ import {
   SEASON_PLAYLIST_DESCRIPTION,
   setThumbnail,
   uploadVideo,
+  videoStats,
 } from "./youtube.js";
 import {
   findExportedVideo,
@@ -305,11 +306,22 @@ export async function finishOnYouTube(
     // A Short gets no comment. On the long-form, YouTube refuses comments while the video is
     // private — and the nightly uploads private by design — so that is left unattempted rather
     // than recorded as a failure, which would put ", with a problem" on every nightly push.
+    //
+    // The record's `privacyStatus` is whatever it was when the video was uploaded or adopted, and
+    // it is never updated: a draft adopted while private and published an hour later would carry
+    // "private" for ever, and this step would skip for ever with it. So the record is the cheap
+    // "definitely not yet" and the live status is what actually decides.
     if (kind === "short") finished.comment = null;
-    else if (record?.privacyStatus !== "private") {
-      finished.comment = await attempt(() =>
-        postComment(videoId, pinnedCommentText(status.leftNickname, status.rightNickname)),
-      );
+    else {
+      const live =
+        record?.privacyStatus === "private"
+          ? ((await videoStats([videoId]))[0]?.privacyStatus ?? "private")
+          : record?.privacyStatus;
+      if (live !== "private") {
+        finished.comment = await attempt(() =>
+          postComment(videoId, pinnedCommentText(status.leftNickname, status.rightNickname)),
+        );
+      }
     }
   }
   if (todo("tags")) {

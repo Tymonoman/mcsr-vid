@@ -113,6 +113,22 @@ export async function uploadTextFor(
 export const pinnedCommentText = (left: string | null, right: string | null): string =>
   `${left ?? "Left"} vs ${right ?? "right"}, split for split. Who did you have winning before the nether? Subscribe if you want the next one on your feed.`;
 
+/**
+ * The match whose record already names this video id, across BOTH kinds, or null.
+ *
+ * `allUploads` reads only `youtube.json`, so a check built on it cannot see a Short — and the
+ * Short of a match is exactly the id an operator is most likely to paste by mistake, since both
+ * sit next to each other in Studio.
+ */
+export async function videoIdOwner(videoId: string): Promise<{ matchId: number; kind: UploadKind } | null> {
+  for (const matchId of listProcessedMatchIds()) {
+    for (const kind of ["video", "short"] as const) {
+      if ((await readUpload(matchId, kind))?.videoId === videoId) return { matchId, kind };
+    }
+  }
+  return null;
+}
+
 /** Every match that has been uploaded, for the stats table. */
 export async function allUploads(): Promise<Array<{ matchId: number; record: UploadRecord }>> {
   const entries = await Promise.all(

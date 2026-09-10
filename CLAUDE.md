@@ -113,10 +113,21 @@ they differ (`code: { boot, now }` from `src/repoHead.ts`). Client changes need 
   because the pairing everything else relies on is the `/matches/<id>` link *in the description*,
   which a blank draft has not got — so the write is what makes the video findable. It replaces the
   title and description, so it is one explicit press on a video named by id: never something a
-  scan, the nightly or `finishOnYouTube` can reach. It refuses a malformed id, a video already
-  paired to another match, a title still reading `<HOOK>`, a description that would not pair, and
-  a video on someone else's channel — all before any request. It is **not** behind
-  `youtubeUploadEnabled`: `videos.update` is not the call the audit gates.
+  scan, the nightly or `finishOnYouTube` can reach. It refuses a malformed id, an id already
+  recorded for another match **or as any match's Short** (`videoIdOwner` reads both kinds —
+  `allUploads` reads only `youtube.json` and cannot see a Short, which is the id most likely to be
+  pasted by mistake), a video three minutes or shorter, a title still reading `<HOOK>`, a
+  description that would not pair, a strip with no `chosenBy: "operator"` variant (the thumbnail
+  step would otherwise decline and leave YouTube's auto frame on), and a video on someone else's
+  channel. It is **not** behind `youtubeUploadEnabled`: `videos.update` is not the call the audit
+  gates. Re-adopting the *same* video carries the finish ledger forward — that ledger is the only
+  thing between a second press and a second pinned comment, which `postComment` does not
+  de-duplicate.
+- **A record's `privacyStatus` is from upload time and is never updated**, so the comment step
+  re-reads the live status before it skips: a draft adopted while private and published an hour
+  later would otherwise carry "private" for ever and never get its first comment. The comment
+  still cannot go up while the video really is private, so a scheduled video needs one more press
+  of **Finish on YouTube** after it goes public.
 - **`videos.update` replaces the part it is given.** `addTags` (`src/youtube.ts`) reads the snippet
   and sends it back whole — a `part=snippet` write that omits the description blanks it on a
   published video. It only ever adds tags, so a tag typed in Studio survives, and it refuses to
