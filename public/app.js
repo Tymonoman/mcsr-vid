@@ -489,7 +489,16 @@ async function loadVariants(id) {
         <figcaption>
           <span class="key">${esc(v.leftPose)} / ${esc(v.rightPose)}${v.hook === false ? " · no text (control)" : ""}</span>
           ${fellBack ? '<span class="fallback" title="This pose name has no camera, so it is the default NMSR view -- not the pose it is named after">static fallback</span>' : ""}
-          ${v.key === data.chosen ? '<span class="is-chosen">in use</span>' : '<button type="button" class="use">Use this</button>'}
+          ${
+            v.key !== data.chosen
+              ? '<button type="button" class="use">Use this</button>'
+              : // The render's own default is "in use" but nobody has confirmed it, and the
+                // checklist's thumbnail fact means *chosen*, not *rendered*. Without this the one
+                // outcome you cannot record is the commonest one: the default was already right.
+                data.chosenBy === "operator"
+                ? '<span class="is-chosen">in use</span>'
+                : '<button type="button" class="use keep">Keep this one</button>'
+          }
         </figcaption>
       </figure>`;
       })

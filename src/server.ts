@@ -7,7 +7,7 @@
  *
  * Serves on 0.0.0.0 so the homelab's Tailscale interface publishes it too.
  */
-import { createReadStream, existsSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import path from "node:path";
@@ -703,7 +703,9 @@ const server = createServer(async (req, res) => {
           });
           // Only after the manifest is written: the Short resolves its hook from it, so cutting
           // any earlier would burn in the headline this render just replaced.
-          if (recutShort) spawnShortJob(matchId, 0);
+          // The moment the last cut used, not the top-ranked one: a re-cut exists to change the
+          // headline, and resetting the window would throw away a row the operator chose.
+          if (recutShort) spawnShortJob(matchId, lastCutPick(matchId));
         } catch (err) {
           thumbnailRerenderErrors.set(matchId, describeError(err));
           console.error(`thumbnail re-render failed for ${matchId}: ${describeError(err)}`);
@@ -785,3 +787,19 @@ server.listen(PORT, "0.0.0.0", () => {
     });
   }
 });
+
+/**
+ * The `--pick` the Short's last render used, from the sidecar `generateShort` writes beside it.
+ * Zero when there is none — a Short cut before the sidecar existed, or none at all.
+ */
+function lastCutPick(matchId: number): number {
+  const file = path.join(matchDir(matchId), `short-${matchId}.cut.json`);
+  if (!existsSync(file)) return 0;
+  try {
+    const pick = (JSON.parse(readFileSync(file, "utf8")) as { pick?: unknown }).pick;
+    return typeof pick === "number" && Number.isInteger(pick) && pick >= 0 ? pick : 0;
+  } catch {
+    // A torn sidecar means "cut the best one", which is what it did before this existed.
+    return 0;
+  }
+}

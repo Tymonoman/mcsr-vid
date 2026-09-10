@@ -197,6 +197,15 @@ await writeFile(
   "utf8",
 );
 
+// Which window this render actually cut, so a re-cut can repeat it. `POST /api/thumbnails/:id/
+// rerender` re-cuts the Short behind a new headline, and without this it would reset the moment
+// to the top-ranked one — silently discarding a row the operator picked by hand.
+await writeFile(
+  path.join(outDir, `short-${matchId}.cut.json`),
+  JSON.stringify({ pick, startMs: moment.startMs, endMs: moment.endMs }, null, 2),
+  "utf8",
+);
+
 console.error(`\nDone: ${outPath}`);
 console.log(
   JSON.stringify(

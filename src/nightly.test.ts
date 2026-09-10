@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import type { ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -315,3 +315,34 @@ try {
 }
 
 console.log("nightly: all checks passed");
+
+// --- A chained skip must not overwrite the render it followed -------------------------------
+// With nightlyMaxRenders raised, the second run of a night usually finds nothing left. That is
+// the chain ending, not the night failing: the state file has to keep describing the render that
+// actually happened, or the morning strip says the night was skipped when it rendered.
+{
+  // The blocks above tear their temp mediaDir down again, so make sure there is one to write into.
+  mkdirSync(config.mediaDir, { recursive: true });
+  const stateFile = path.join(config.mediaDir, ".nightly.json");
+  const before = existsSync(stateFile) ? readFileSync(stateFile, "utf8") : null;
+  try {
+    writeNightlyState({
+      startedAt: "2026-09-10T03:00:00.000Z",
+      matchId: 4242,
+      players: ["edcr", "doogile"],
+      outcome: "done",
+    });
+    // started = 2: the chained run, with nothing eligible left.
+    const out = await runNightlyOnce("", { renderInFlight: () => false, ranked: async () => [] }, 2);
+    assert.ok(out.skipped, "the chained run still reports that it found nothing");
+    const after = JSON.parse(readFileSync(stateFile, "utf8")) as {
+      lastRun: { outcome: string; matchId: number | null };
+    };
+    assert.equal(after.lastRun.outcome, "done", "the render's outcome survives the chained skip");
+    assert.equal(after.lastRun.matchId, 4242, "and so does the match it rendered");
+    console.log("OK: a chained skip leaves the night's real result standing");
+  } finally {
+    if (before === null) rmSync(stateFile, { force: true });
+    else writeFileSync(stateFile, before);
+  }
+}
