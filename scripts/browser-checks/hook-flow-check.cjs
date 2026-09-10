@@ -44,10 +44,19 @@ const fs = require("fs");
       kitTitle,
     );
     const before = (await page.textContent("#checklist")).replace(/\s+/g, " ");
+    // The pipeline writes its own first suggestion into the generated title now, and the
+    // checklist falls through to that file, so a rendered match arrives hooked — the pill was
+    // only ever unticked because nothing had filled the placeholder. What still has to hold is
+    // that the pill agrees with the title: ticked exactly when no <HOOK> is left standing.
+    // Read at this moment, not at script start: the same fallback the server uses (edited first,
+    // then generated), so the assertion cannot be fooled by a file another run left behind.
+    const firstLineOf = (f) => (fs.existsSync(f) ? fs.readFileSync(f, "utf8").split("\n")[0] : null);
+    const onDiskNow = firstLineOf(edited) ?? firstLineOf(`/media/${id}/match-${id}.title.txt`) ?? "";
+    const hookedOnDisk = onDiskNow !== "" && !onDiskNow.includes("<HOOK>");
     check(
-      "checklist hook fact unticked before save",
-      /·\s*hook/i.test(before) || !/✓\s*hook/i.test(before),
-      before.slice(0, 120),
+      "the hook pill agrees with the title on disk",
+      /✓\s*hook/i.test(before) === hookedOnDisk,
+      `pill ${/✓\s*hook/i.test(before) ? "ticked" : "unticked"}, title ${hookedOnDisk ? "hooked" : "still <HOOK>"}`,
     );
     await page.click("#save");
     await page.waitForFunction(() => document.querySelector("#savedmsg")?.textContent === "saved", {
