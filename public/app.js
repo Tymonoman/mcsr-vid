@@ -1528,11 +1528,15 @@ function paintPlayoffs() {
           hour: "2-digit",
           minute: "2-digit",
         });
-  el.innerHTML = `
-    <div class="bucketlegend"><span class="bucket playoffs">PLAYOFFS</span><span>Season ${esc(String(playoffData.season))} bracket &middot; <a href="https://mcsrranked.com/playoffs/${esc(String(playoffData.season))}" target="_blank" rel="noopener">mcsrranked.com</a></span></div>
-    ${slots
-      .map(
-        (s) => `
+  // Until a game exists or the first one is a day out, every row reads "no games found yet":
+  // eight of those above the suggestions is the tournament shouting days before it starts.
+  const soon = slots.some((s) => s.games.length || (s.startTime !== null && s.startTime < now + 86400));
+  const rounds = [...new Set(slots.map((s) => s.round))].join(", ");
+  const firstStart = Math.min(...slots.map((s) => s.startTime ?? Infinity));
+  const summary = `${rounds} &middot; ${slots.length} series &middot; first ${esc(when(Number.isFinite(firstStart) ? firstStart : null))}`;
+  const rows = slots
+    .map(
+      (s) => `
       <div class="sugg playoff">
         <div class="top">
           <span class="bucket playoffs">${esc(s.round.toUpperCase())}</span>
@@ -1550,8 +1554,11 @@ function paintPlayoffs() {
           })
           .join("")}
       </div>`,
-      )
-      .join("")}`;
+    )
+    .join("");
+  el.innerHTML = `
+    <div class="bucketlegend"><span class="bucket playoffs">PLAYOFFS</span><span>Season ${esc(String(playoffData.season))} bracket &middot; <a href="https://mcsrranked.com/playoffs/${esc(String(playoffData.season))}" target="_blank" rel="noopener">mcsrranked.com</a></span></div>
+    ${soon ? rows : `<details class="playoffsoon"><summary>${summary}</summary>${rows}</details>`}`;
   el.querySelectorAll(".game").forEach((row) => {
     const id = Number(row.dataset.id);
     row.querySelector('[data-act="render"]')?.addEventListener("click", () => startRender(String(id), true));

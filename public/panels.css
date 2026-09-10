@@ -815,3 +815,14 @@
   field-sizing: content;
   max-height: 40vh;
 }
+
+/* Days before the first game every slot reads "no games found yet", which is eight rows of
+   nothing above the work. Collapsed until a game exists or the first one is a day out. */
+.playoffsoon > summary {
+  cursor: pointer;
+  color: var(--muted);
+  padding: 4px 0;
+}
+.playoffsoon > summary:hover {
+  color: var(--fg);
+}
