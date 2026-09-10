@@ -102,6 +102,11 @@ they differ (`code: { boot, now }` from `src/repoHead.ts`). Client changes need 
   old line. The Short reuses the manifest's hook so both halves of a match agree; the Short panel
   says when they do not. The checklist's thumbnail pill ticks on `chosenBy: "operator"` in the
   manifest — a rendered variant is not a chosen one; sidecars without the field keep ticking.
+- **The audit blocks `videos.insert`, not the rest.** `playlistItems.insert`, `thumbnails.set` and
+  `commentThreads.insert` are all inside the token's `force-ssl` scope and are unaffected, so
+  **Finish on YouTube** repairs a Studio upload today: playlists and the pinned comment. It leaves
+  the thumbnail alone on a video uploaded elsewhere whose variant nobody confirmed here, so it
+  cannot replace an image picked in Studio.
 - **Upload** sends `match-<id>.tags.txt` and refuses a title still containing `<HOOK>`; it adds
   the video to the season playlist (`PLHG-jSA-dWDo`), a per-matchup and a per-player playlist
   (`src/youtube.ts`; ids remembered per process because YouTube's list is eventually consistent).
