@@ -31,6 +31,16 @@ export interface ChannelVideo {
   /** From contentDetails.duration; what tells the match video from its Short. */
   durationSec: number;
   /**
+   * The tags actually on the video. The pipeline writes eleven per match — both nicknames and the
+   * seed among them — into `match-<id>.tags.txt`, but a Studio upload only carries what was typed
+   * into the box, and every video on the channel today has the same four generic ones. Kept so
+   * the dashboard can say when an upload is missing the tags that were generated for it.
+   *
+   * Optional, and absent is not empty: absent means nothing recorded them (a fixture, a scan from
+   * before this field), while `[]` means the video really has none.
+   */
+  tags?: string[];
+  /**
    * The scheduled publish time YouTube holds a private video for, RFC 3339, or absent when there
    * is none. Kept because a slot the channel has already booked is a slot the publish kit must
    * not propose again (src/publishSlot.ts). Optional: a video published on upload has no such
@@ -133,7 +143,7 @@ export async function fetchChannelUploads(fetchImpl: typeof fetch = fetch): Prom
     const batch = await dataApiGet<{
       items?: Array<{
         id: string;
-        snippet: { title: string; publishedAt: string; description?: string };
+        snippet: { title: string; publishedAt: string; description?: string; tags?: string[] };
         status: { privacyStatus: string; publishAt?: string };
         contentDetails?: { duration?: string };
       }>;
@@ -146,6 +156,7 @@ export async function fetchChannelUploads(fetchImpl: typeof fetch = fetch): Prom
         description: v.snippet.description ?? "",
         privacyStatus: v.status.privacyStatus,
         durationSec: parseIsoDuration(v.contentDetails?.duration),
+        tags: v.snippet.tags ?? [],
         publishAt: v.status.publishAt ?? null,
       })),
     );

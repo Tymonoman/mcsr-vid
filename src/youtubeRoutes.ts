@@ -5,7 +5,9 @@
  * a decision belongs in youtube.ts (the API), youtubeUpload.ts (what an upload does) or
  * youtubeStore.ts (what we recorded about a match).
  */
+import { readFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import path from "node:path";
 import {
   channelUploadsSnapshot,
   channelVideoFor,
@@ -288,14 +290,17 @@ async function reachFor(videoId: string): Promise<{ impressions: number; ctr: nu
  * the channel.
  */
 async function knownUploads() {
+  const channel = channelUploadsSnapshot();
   const local = (await allUploads()).map((r) => ({
     matchId: r.matchId,
     ...r.record,
     // Records written before Studio uploads were persisted carry no source and were the dashboard's.
     source: r.record.source ?? ("dashboard" as const),
+    // The tag gap is the same question whichever way the video got there — a record only means
+    // the pairing was persisted, not that the tags were pasted.
+    missingTags: missingTagsFor(r.matchId, channelVideoFor(r.matchId, channel)),
   }));
   const known = new Set(local.map((u) => u.matchId));
-  const channel = channelUploadsSnapshot();
   const studio = listProcessedMatchIds()
     .filter((matchId) => !known.has(matchId))
     .map((matchId) => ({ matchId, video: channelVideoFor(matchId, channel) }))
@@ -307,8 +312,35 @@ async function knownUploads() {
       publishedAt: video.publishedAt,
       privacyStatus: video.privacyStatus,
       source: "channel" as const,
+      missingTags: missingTagsFor(matchId, video),
     }));
   return [...local, ...studio];
+}
+
+/**
+ * The tags the pipeline generated for this match that the video on the channel does not carry.
+ *
+ * A Studio upload only has what was typed into the tag box, and every video on this channel has
+ * the same four generic ones — while `match-<id>.tags.txt` holds eleven, both nicknames and the
+ * seed among them, which are the terms somebody actually searches. The kit has had a Copy button
+ * for them all along; nothing ever said when it had not been used.
+ *
+ * Null when there is nothing to compare: no tag file, or a scan that predates recording them.
+ */
+function missingTagsFor(matchId: number, video: ChannelVideo | null): string[] | null {
+  if (!video || video.tags === undefined) return null;
+  let generated: string[];
+  try {
+    generated = readFileSync(path.join(matchDir(matchId), `match-${matchId}.tags.txt`), "utf8")
+      .split("\n")
+      .map((t: string) => t.trim())
+      .filter(Boolean);
+  } catch {
+    return null;
+  }
+  if (generated.length === 0) return null;
+  const have = new Set(video.tags.map((t) => t.toLowerCase()));
+  return generated.filter((t) => !have.has(t.toLowerCase()));
 }
 
 async function uploadsPayload() {
