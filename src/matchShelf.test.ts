@@ -133,6 +133,18 @@ try {
     "every derived fact should follow its file",
   );
 
+  // The thumbnail pill is "somebody chose one", not "a render produced one". Three sidecars:
+  // the legacy shape (no `chosenBy`) keeps ticking, a fresh render's default does not, and the
+  // dashboard's "Use this" does.
+  const sidecar = (extra: object) =>
+    writeFileSync(path.join(pubDir, "thumbnail.json"), JSON.stringify({ chosen: "hero", ...extra }));
+  sidecar({ variants: [] });
+  assert.equal((await publishChecklist(555, null)).thumbnailChosen, true, "a sidecar with no field");
+  sidecar({ chosenBy: "auto", variants: [] });
+  assert.equal((await publishChecklist(555, null)).thumbnailChosen, false, "the renderer's default");
+  sidecar({ chosenBy: "operator", variants: [] });
+  assert.equal((await publishChecklist(555, null)).thumbnailChosen, true, "the operator picked it");
+
   setPublishFlag(555, "playersNotified", true);
   assert.equal((await publishChecklist(555, null)).playersNotified, true, "a toggle must persist");
   setPublishFlag(555, "relatedLinkSet", true);

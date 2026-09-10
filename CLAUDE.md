@@ -88,8 +88,10 @@ they differ (`code: { boot, now }` from `src/repoHead.ts`). Client changes need 
   legible at YouTube's 246x138 grid size. The third variant is `hook: false`, the A/B control.
   `POST /api/thumbnails/:id/rerender` redoes the hooked variants with the typed hook and reports
   rendered / failed / nothing to change. A pipeline re-run keeps a manifest's headline; a still
-  is reused only under the same headline. The Short reuses the manifest's hook so both halves
-  of a match agree; the Short panel says when they do not.
+  is reused only under the same headline, and a re-render re-cuts a Short still burned with the
+  old line. The Short reuses the manifest's hook so both halves of a match agree; the Short panel
+  says when they do not. The checklist's thumbnail pill ticks on `chosenBy: "operator"` in the
+  manifest — a rendered variant is not a chosen one; sidecars without the field keep ticking.
 - **Upload** sends `match-<id>.tags.txt` and refuses a title still containing `<HOOK>`; it adds
   the video to the season playlist (`PLHG-jSA-dWDo`), a per-matchup and a per-player playlist
   (`src/youtube.ts`; ids remembered per process because YouTube's list is eventually consistent).

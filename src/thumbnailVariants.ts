@@ -47,6 +47,16 @@ interface VariantRecord {
 
 export interface VariantsManifest {
   chosen: string;
+  /**
+   * Who `chosen` came from: the operator picking one in the dashboard, or the renderer defaulting
+   * to the first variant. The publish checklist ticks the thumbnail on "operator" alone —
+   * a render producing a PNG is not somebody having looked at three of them.
+   *
+   * Optional because sidecars predating it cannot be told apart either way, and guessing would
+   * either retro-untick every published match or retro-tick every unreviewed one; they keep the
+   * meaning they have always had, which is "ticked" (see publishChecklist).
+   */
+  chosenBy?: "operator" | "auto";
   variants: VariantRecord[];
   /**
    * The headline every variant was rendered with, or null for none. Recorded because it is the
@@ -109,7 +119,9 @@ export async function chooseVariant(outDir: string, key: string): Promise<Varian
     );
   }
   await copyFile(path.join(outDir, variant.file), path.join(outDir, "thumbnail.png"));
-  const updated: VariantsManifest = { ...manifest, chosen: key };
+  // The one path a human takes to a thumbnail: the dashboard's "Use this". Recorded here rather
+  // than at the route, so nothing that promotes a variant can forget to say who did.
+  const updated: VariantsManifest = { ...manifest, chosen: key, chosenBy: "operator" };
   await writeFile(manifestPath(outDir), JSON.stringify(updated, null, 2), "utf8");
   return updated;
 }
@@ -223,10 +235,16 @@ export async function renderThumbnailVariants(args: RenderVariantsArgs): Promise
   // Keep an earlier choice if that variant still exists, so re-running the pipeline does not
   // silently swap the thumbnail out from under a video you already picked one for.
   const keys = new Set(records.map((r) => r.key));
-  const chosen = previous && keys.has(previous.chosen) ? previous.chosen : records[0]!.key;
+  const kept = previous !== null && keys.has(previous.chosen);
+  const chosen = kept ? previous.chosen : records[0]!.key;
+  // A choice carried over keeps whatever it said about itself — including nothing, for a sidecar
+  // written before the field, whose pill must not change meaning because a pose was added to the
+  // config. A fresh default says so: nobody has picked this one yet.
+  const chosenBy = kept ? previous.chosenBy : "auto";
 
   const manifest: VariantsManifest = {
     chosen,
+    ...(chosenBy ? { chosenBy } : {}),
     variants: records,
     hookText: args.hookText?.trim() ? args.hookText : null,
   };

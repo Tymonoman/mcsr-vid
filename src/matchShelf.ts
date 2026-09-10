@@ -205,11 +205,19 @@ export async function publishChecklist(
   // still carrying the placeholder has no hook, whatever else was edited around it.
   const firstLine = titleFile ? readFileSync(titleFile, "utf8").split("\n")[0]!.trim() : "";
 
+  // "The operator chose one", not "a render produced one": every render writes a `chosen` key,
+  // so the old test ticked this pill before anybody had looked at the variants. A sidecar with
+  // no `chosenBy` predates the distinction and keeps the answer it has always given — retro-
+  // unticking would mark matches already on the channel as unfinished.
+  const thumbnails = await readManifest(dir);
+
   return {
     ...readManual(matchId),
     rendered: projectPath !== null,
     hookPicked: firstLine !== "" && !firstLine.includes(HOOK_PLACEHOLDER),
-    thumbnailChosen: Boolean((await readManifest(dir))?.chosen),
+    thumbnailChosen:
+      thumbnails !== null &&
+      (thumbnails.chosenBy === undefined ? Boolean(thumbnails.chosen) : thumbnails.chosenBy === "operator"),
     uploaded: await isUploaded(matchId),
     shortRendered: existsSync(path.join(dir, `short-${matchId}.mp4`)),
     chatSaved: chatFiles(dir) >= 2,
