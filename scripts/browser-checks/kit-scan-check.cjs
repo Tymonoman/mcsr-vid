@@ -36,8 +36,8 @@ const { chromium } = require("playwright");
       line,
     );
     await page.click('#suggestions .scanline.bad [data-act="rescan"]');
-    await page.waitForSelector("#suggestions .sugg", { timeout: 10000 });
-    const n = (await page.$$("#suggestions .sugg")).length;
+    await page.waitForSelector("#suggestions > .sugg", { timeout: 10000 });
+    const n = (await page.$$("#suggestions > .sugg")).length;
     check("try again repaints the list", n > 0, `${n} cards`);
     const tip = await page.$eval('#suggestions [data-act="rescan"]', (a) => a.title);
     check(

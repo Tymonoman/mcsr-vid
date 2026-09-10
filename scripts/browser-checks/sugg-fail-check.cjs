@@ -30,11 +30,11 @@ const { chromium } = require("playwright");
       scan.slice(0, 120),
     );
     check("rescan link still there", !!(await page.$('[data-act="rescan"]')));
-    const n0 = (await page.$$("#suggestions .sugg")).length;
-    await page.click('#suggestions .sugg [data-act="dismiss"]');
+    const n0 = (await page.$$("#suggestions > .sugg")).length;
+    await page.click('#suggestions > .sugg [data-act="dismiss"]');
     await page.waitForTimeout(500);
-    const acts = (await page.textContent("#suggestions .sugg .acts")).replace(/\s+/g, " ");
-    const n1 = (await page.$$("#suggestions .sugg")).length;
+    const acts = (await page.textContent("#suggestions > .sugg .acts")).replace(/\s+/g, " ");
+    const n1 = (await page.$$("#suggestions > .sugg")).length;
     check(
       "dismiss failure shown on the card, card kept",
       /dismiss failed: cache write failed/.test(acts) && n0 === n1,
