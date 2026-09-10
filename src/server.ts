@@ -35,7 +35,7 @@ import { STAGE_LABELS, STAGE_ORDER, STAGE_SHORT_LABELS } from "./pipeline.js";
 import { presentSuggestions } from "./suggestPresent.js";
 import { dismiss, restore, snapshot, startScan } from "./suggestScan.js";
 import { cronLine, rsyncPullAllCommand, rsyncPullCommand } from "./publishSet.js";
-import { nextPublishSlot } from "./publishSlot.js";
+import { claimedPublishTimes, nextPublishSlot } from "./publishSlot.js";
 import { refreshRivalPostsIfStale, rivalPostsSnapshot, rivalRecentPostFor } from "./rivalPosts.js";
 import { chooseVariant, readManifest, rerenderThumbnailVariants } from "./thumbnailVariants.js";
 import { buildTitle, type BuiltTitle } from "./title.js";
@@ -563,8 +563,13 @@ const server = createServer(async (req, res) => {
         shortDescription: await short("description"),
         videoUrl: videoId ? `https://youtu.be/${videoId}` : null,
         players: [entry.leftNickname ?? null, entry.rightNickname ?? null],
-        // The slot to schedule for, so the morning's paste into Studio carries a time too.
-        publishAt: nextPublishSlot(Date.now(), config.publishHourUtc).toISOString(),
+        // The slot to schedule for, so the morning's paste into Studio carries a time too —
+        // and the first free one, not the same time every match ready this morning would show.
+        publishAt: nextPublishSlot(
+          Date.now(),
+          config.publishHourUtc,
+          await claimedPublishTimes(matchId),
+        ).toISOString(),
         publishHourUtc: config.publishHourUtc,
         // Commands for the operator's own shell, not this one: the publishing PC pulls.
         pull: config.pullSource

@@ -100,7 +100,8 @@ they differ (`code: { boot, now }` from `src/repoHead.ts`). Client changes need 
   YouTube panel's "check the channel" link lists the channel at once. The manual `uploaded`
   tick is the fallback for a video with no match link.
 - **Publish kit** (`GET /api/publishkit/:id`): copy buttons for the title, the publish slot
-  (`publishHourUtc`, default 19:00 UTC, the competitor's measured hour), description, tags, the
+  (`publishHourUtc`, default 19:00 UTC, the competitor's measured hour, on the first day no
+  other video is already scheduled for — `src/publishSlot.ts`), description, tags, the
   Short's title/description, a pinned comment, a community post, and a DM per player. When
   `pullSource` is set it opens with an rsync *pull* the operator's PC runs (`src/publishSet.ts`;
   the lab host's path, not the container's `/media`) — pull, not push, because the image has no

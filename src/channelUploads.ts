@@ -25,6 +25,13 @@ export interface ChannelVideo {
   publishedAt: string;
   description: string;
   privacyStatus: string;
+  /**
+   * The scheduled publish time YouTube holds a private video for, RFC 3339, or absent when there
+   * is none. Kept because a slot the channel has already booked is a slot the publish kit must
+   * not propose again (src/publishSlot.ts). Optional: a video published on upload has no such
+   * time, and neither do the fixtures the tests build.
+   */
+  publishAt?: string | null;
 }
 
 /**
@@ -81,7 +88,7 @@ export async function fetchChannelUploads(fetchImpl: typeof fetch = fetch): Prom
       items?: Array<{
         id: string;
         snippet: { title: string; publishedAt: string; description?: string };
-        status: { privacyStatus: string };
+        status: { privacyStatus: string; publishAt?: string };
       }>;
     }>(`/videos?part=snippet,status&id=${videoIds.slice(i, i + PAGE).join(",")}`, fetchImpl);
     videos.push(
@@ -91,6 +98,7 @@ export async function fetchChannelUploads(fetchImpl: typeof fetch = fetch): Prom
         publishedAt: v.snippet.publishedAt,
         description: v.snippet.description ?? "",
         privacyStatus: v.status.privacyStatus,
+        publishAt: v.status.publishAt ?? null,
       })),
     );
   }
