@@ -119,6 +119,10 @@ they differ (`code: { boot, now }` from `src/repoHead.ts`). Client changes need 
   to publish next.
 - **Dismiss** hides a suggestion (`DELETE /api/suggestions/:id`) with an undo line
   (`POST …/restore`). **Delete** refuses while any job writes into the match directory.
+- **A test server arms its own nightly.** Any `PORT=… npm run dashboard` schedules a render at
+  `nightlyRenderHourUtc` against the same `/media` as production, and neither knows the other is
+  running — two of them at 03:00 pick the same card and render into one directory. Kill a test
+  server before the hour, or set `nightlyRenderHourUtc: null` for it.
 - **Nightly** (`src/nightly.ts`): at `nightlyRenderHourUtc` (default 3 UTC; `null` disables) the
   server renders the first eligible card in dashboard order, skipping the night if a render is
   running or under two matches of disk remain, then the Short (`nightlyRenderShort`) and the MP4
