@@ -1173,6 +1173,7 @@ function paintSyncEdit() {
 async function saveSync(thenExport) {
   const s = syncEditState;
   const msg = $("#syncmsg");
+  clearFailAt("#syncsave");
   msg.textContent = "saving…";
   try {
     const r = await api(`/api/sync/${s.id}`, {
@@ -1187,7 +1188,7 @@ async function saveSync(thenExport) {
     if (thenExport) $("#encode")?.click();
   } catch (e) {
     msg.textContent = "";
-    showFailure("Sync not saved", e.message);
+    failAt("#syncsave", "Sync not saved", e.message);
   }
 }
 
@@ -1262,6 +1263,52 @@ function showFailure(title, text) {
   $("#failtitle").textContent = title;
   $("#failtext").textContent = text;
   box.classList.add("live");
+}
+
+/* --- Failures, where they happened -------------------------------------------------------------
+   #failure sits near the top of the match pane, above the hook, the title editor, the preview, the
+   sync editor, the publish kit, the Short and the YouTube panel. A press at the bottom of that
+   column reported itself a screen and a half away, often off-view entirely: the button went quiet
+   and the reason was somewhere you had to go looking for. The panels.css note about the undo line
+   being sticky rather than "1,200px up at the top of the panel" is the same complaint.
+
+   So a failure reports next to the control that caused it. The banner is kept for the two that
+   have no control -- a stage or pipeline error arriving over SSE -- and as the fallback when the
+   anchor has been repainted away, because a message in the wrong place still beats none. */
+
+/** The element an inline failure hangs under: the control's own row, else the control itself. */
+function failHost(anchor) {
+  const el = typeof anchor === "string" ? $(anchor) : anchor;
+  return el ? (el.closest(".row, .setrow, .syncside, .kit, .comment") ?? el) : null;
+}
+
+/** Removes the inline failure under `anchor`, if there is one. */
+function clearFailAt(anchor) {
+  const next = failHost(anchor)?.nextElementSibling;
+  if (next?.classList.contains("inlinefail")) next.remove();
+}
+
+/**
+ * Reports `title`/`text` immediately under the control named by `anchor`.
+ *
+ * Falls back to the top banner when the anchor is not on the page -- several of these fire after
+ * the panel has been repainted, and a failure that lands nowhere is the bug being fixed.
+ */
+function failAt(anchor, title, text) {
+  const host = failHost(anchor);
+  if (!host) {
+    showFailure(title, text);
+    return;
+  }
+  clearFailAt(anchor);
+  const box = document.createElement("div");
+  box.className = "inlinefail";
+  box.innerHTML = `<div class="head"><span></span><button type="button" class="ghost dismiss">dismiss</button></div><pre></pre>`;
+  // textContent, not innerHTML: this is server text and an API error can carry anything.
+  box.querySelector(".head span").textContent = title;
+  box.querySelector("pre").textContent = text;
+  box.querySelector(".dismiss").addEventListener("click", () => box.remove());
+  host.after(box);
 }
 
 /**
@@ -1859,6 +1906,7 @@ async function saveSettingsPanel() {
     msg.textContent = "nothing changed";
     return;
   }
+  clearFailAt("#setsave");
   msg.textContent = "saving…";
   try {
     const r = await api("/api/settings", {
@@ -1871,7 +1919,7 @@ async function saveSettingsPanel() {
     $("#setmsg").textContent = `saved ${r.changed.join(", ")}`;
   } catch (e) {
     msg.textContent = "";
-    showFailure("Settings not saved", e.message);
+    failAt("#setsave", "Settings not saved", e.message);
   }
 }
 

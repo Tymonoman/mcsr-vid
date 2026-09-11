@@ -110,6 +110,7 @@ async function loadYoutube(id, meta) {
   $("#ytAdopt")?.addEventListener("click", async () => {
     const videoId = $("#ytAdoptId").value.trim();
     const msg = $("#ytAdoptMsg");
+    clearFailAt("#ytAdoptId");
     msg.textContent = "writing…";
     try {
       const r = await api(`/api/youtube/adopt/${id}`, {
@@ -118,15 +119,16 @@ async function loadYoutube(id, meta) {
         body: JSON.stringify({ videoId }),
       });
       const failed = Object.entries(r.finished ?? {}).filter(([, err]) => err);
-      if (failed.length)
-        showFailure("Adopted, with a problem", failed.map(([k, v]) => `${k}: ${v}`).join("\n"));
       await refresh();
-      loadYoutube(id, meta);
+      // After the repaint, or the panel this message hangs under is replaced from under it.
+      await loadYoutube(id, meta);
       loadPublishKit(id, meta);
       loadChecklist(id);
+      if (failed.length)
+        failAt("#ytFinish", "Adopted, with a problem", failed.map(([k, v]) => `${k}: ${v}`).join("\n"));
     } catch (e) {
       msg.textContent = "";
-      showFailure("Could not adopt that video", e.message);
+      failAt("#ytAdoptId", "Could not adopt that video", e.message);
     }
   });
 
@@ -139,9 +141,10 @@ async function loadYoutube(id, meta) {
   // that, the thumbnail manifest's headline — a rule this file cannot see, and every copy of it
   // here disagreed in both directions (a typed-but-unsaved hook enabled a button that 400s; a
   // manifest headline with an empty input disabled one that would have worked). The refusal is
-  // free — it happens before a byte is sent — and lands in showFailure with the reason.
+  // free — it happens before a byte is sent — and lands under the button with the reason.
   $("#ytUpload").addEventListener("click", async () => {
     const when = $("#ytWhen").value;
+    clearFailAt("#ytUpload");
     $("#ytMsg").textContent = "starting…";
     try {
       await api(`/api/youtube/upload/${id}`, {
@@ -158,7 +161,7 @@ async function loadYoutube(id, meta) {
       pollUpload(id, meta);
     } catch (e) {
       $("#ytMsg").textContent = "";
-      showFailure("Upload rejected", e.message);
+      failAt("#ytUpload", "Upload rejected", e.message);
     }
   });
 }
@@ -178,9 +181,11 @@ async function pollUpload(id, meta) {
   }
   // The video is up when there is an id; a rejected thumbnail or playlist after that is a
   // problem to fix in Studio, not a failed upload to retry.
-  if (p.error) showFailure("Upload failed", p.error);
-  else if (p.warnings?.length) showFailure("Uploaded, with a problem", p.warnings.join("\n"));
-  loadYoutube(id, meta);
+  await loadYoutube(id, meta);
+  // After the repaint: the panel has just become the published view, and #ytFinish is the row
+  // these problems are about -- a thumbnail or a playlist that did not take.
+  if (p.error) failAt("#ytFinish", "Upload failed", p.error);
+  else if (p.warnings?.length) failAt("#ytFinish", "Uploaded, with a problem", p.warnings.join("\n"));
 }
 
 /**
@@ -191,17 +196,20 @@ async function pollUpload(id, meta) {
  * writes to the live channel that only Studio can undo.
  */
 async function finishOnYouTube(id, meta, btn) {
+  clearFailAt("#ytFinish");
   btn.disabled = true;
   btn.textContent = "finishing…";
   try {
     const r = await api(`/api/youtube/finish/${id}`, { method: "POST" });
     const failed = Object.entries(r.finished).filter(([, err]) => err);
+    await loadYoutube(id, meta);
     if (failed.length)
-      showFailure("Finished, with a problem", failed.map(([s, e]) => `${s}: ${e}`).join("\n"));
+      failAt("#ytFinish", "Finished, with a problem", failed.map(([s, e]) => `${s}: ${e}`).join("\n"));
+    return;
   } catch (e) {
-    showFailure("Finish failed", e.message);
+    await loadYoutube(id, meta);
+    failAt("#ytFinish", "Finish failed", e.message);
   }
-  loadYoutube(id, meta);
 }
 
 function uploadedHtml(u, statsError) {
@@ -285,7 +293,7 @@ async function requestAudit(id) {
     await api(`/api/youtube/audit/${id}`, { method: "POST" });
   } catch (e) {
     el.innerHTML = "";
-    showFailure("Audit could not start", e.message);
+    failAt("#runaudit", "Audit could not start", e.message);
     return;
   }
   pollAudit(id);
@@ -362,7 +370,7 @@ async function loadComments(id) {
         });
         loadComments(id);
       } catch (e) {
-        showFailure("Reply failed", e.message);
+        failAt(btn, "Reply failed", e.message);
       }
     }),
   );
