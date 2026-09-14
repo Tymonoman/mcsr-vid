@@ -116,6 +116,38 @@ try {
   await assert.rejects(() => addToPlaylist("VID3", "MCSR Ranked matches"), /playlistNotFound/);
   console.log("OK: an API failure throws, with the actionable reason in the message");
 
+  // --- 3b. A playlist created seconds ago is not there yet ----------------------------------
+  // `playlists.insert` returns an id that playlistItems answers 404 playlistNotFound for a few
+  // seconds; one upload left two new playlists empty that way. The add must wait it out — but
+  // only for a playlist it created itself (case 3 above: an existing id's 404 throws at once).
+  {
+    let notFound = 2;
+    const calls: Call[] = [];
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      calls.push({ url, method, body: null });
+      const ok = (payload: unknown) => new Response(JSON.stringify(payload), { status: 200 });
+      if (url.includes("oauth2.googleapis.com/token")) return ok({ access_token: "tok", expires_in: 3600 });
+      if (url.includes("/playlists?") && method === "GET") return ok({ items: [] });
+      if (url.includes("/playlists?") && method === "POST") return ok({ id: "PL_FRESH" });
+      if (url.includes("/playlistItems?") && method === "GET" && notFound-- > 0)
+        return new Response(
+          JSON.stringify({ error: { message: "Playlist not found", errors: [{ reason: "playlistNotFound" }] } }),
+          { status: 404 },
+        );
+      if (url.includes("/playlistItems?") && method === "GET") return ok({ items: [] });
+      if (url.includes("/playlistItems?")) return ok({ id: "PLI_FRESH" });
+      throw new Error(`unexpected fetch: ${method} ${url}`);
+    }) as typeof fetch;
+    await addToPlaylist("VID8", "Fresh one", "", 10);
+    const probes = calls.filter((c) => c.url.includes("/playlistItems?") && c.method === "GET").length;
+    const inserts = calls.filter((c) => c.url.includes("/playlistItems?") && c.method === "POST").length;
+    assert.equal(probes, 3, "two 404s then success: three probes");
+    assert.equal(inserts, 1, "the insert happens once the playlist has settled");
+    console.log("OK: a just-created playlist's 404 is waited out, then the insert goes through");
+  }
+
   // --- 4. One matchup, one playlist, whichever seat each player got -------------------------
   // Purely local: the title is the whole guard against a rematch creating a second playlist,
   // since `findOrCreatePlaylist` matches on the exact string.

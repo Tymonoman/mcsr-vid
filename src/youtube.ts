@@ -369,20 +369,39 @@ export async function setThumbnail(
  * have been through here before, including a retry after one of four joins failed. A duplicate
  * playlist item is a hand-removal in Studio, and the list costs 1 unit against the insert's 50.
  */
-export async function addToPlaylist(videoId: string, playlistTitle: string, description = ""): Promise<void> {
+export async function addToPlaylist(
+  videoId: string,
+  playlistTitle: string,
+  description = "",
+  settleMs = 3000,
+): Promise<void> {
   const playlistId = await findOrCreatePlaylist(playlistTitle, description);
-  const existing = await apiCall<{ items?: unknown[] }>(
-    DATA_API,
-    `/playlistItems?part=id&maxResults=1&playlistId=${encodeURIComponent(playlistId)}&videoId=${encodeURIComponent(videoId)}`,
-  );
-  if ((existing.items ?? []).length > 0) return;
-  await apiCall(DATA_API, "/playlistItems?part=snippet", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      snippet: { playlistId, resourceId: { kind: "youtube#video", videoId } },
-    }),
-  });
+  // A playlist `playlists.insert` returned seconds ago answers playlistItems with 404
+  // playlistNotFound for a while (the same eventual consistency `playlistIds` exists for): one
+  // upload left two brand-new playlists empty that way, and the retry found them fine. Only a
+  // playlist created in this process gets the retry — a 404 on an id that came back from
+  // `playlists.list` is a real error and should surface at once.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const existing = await apiCall<{ items?: unknown[] }>(
+        DATA_API,
+        `/playlistItems?part=id&maxResults=1&playlistId=${encodeURIComponent(playlistId)}&videoId=${encodeURIComponent(videoId)}`,
+      );
+      if ((existing.items ?? []).length > 0) return;
+      await apiCall(DATA_API, "/playlistItems?part=snippet", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          snippet: { playlistId, resourceId: { kind: "youtube#video", videoId } },
+        }),
+      });
+      return;
+    } catch (err) {
+      const fresh = createdPlaylists.has(playlistId);
+      if (!fresh || attempt >= 5 || !String((err as Error).message).includes("playlistNotFound")) throw err;
+      await new Promise((r) => setTimeout(r, settleMs));
+    }
+  }
 }
 
 /**
@@ -442,6 +461,8 @@ export function playerPlaylistDescription(nickname: string): string {
  * grows a duplicate playlist per upload.
  */
 const playlistIds = new Map<string, string>();
+/** Ids `playlists.insert` returned in this process — the ones `addToPlaylist` may have to wait for. */
+const createdPlaylists = new Set<string>();
 
 /** Exported for the test; `addToPlaylist` is the entry point everything else should use. */
 export async function findOrCreatePlaylist(title: string, description = ""): Promise<string> {
@@ -472,6 +493,7 @@ async function lookupOrCreatePlaylist(title: string, description: string): Promi
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ snippet: { title, description }, status: { privacyStatus: "public" } }),
   });
+  createdPlaylists.add(created.id);
   return created.id;
 }
 
