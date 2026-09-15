@@ -736,9 +736,9 @@ async function loadPublishKit(id, meta) {
   const [left, right] = kit.players;
   const url = kit.videoUrl ?? "<link once uploaded>";
   // Plain, and it offers the takedown in the same breath: this goes to someone who never asked
-  // to be on the channel, and one line of "just say" is cheaper than a strike.
+  // to be on the channel, and one line of "say so" is cheaper than a strike. No ask to share.
   const dm = (who, opponent) =>
-    `Hey ${who} — your ranked match vs ${opponent} is up on MCSR Replayoffs, both POVs synced with the split timer: ${url}. Share it with your chat if you like — and if you'd rather it came down, just say.`;
+    `Hi ${who}, your ranked match vs ${opponent} is up on MCSR Replayoffs, both streams side by side with the split timer: ${url}\nIf you'd rather it wasn't up, say so and I'll take it down.`;
 
   // The YouTube panel's field is the one an operator may have edited by hand, so it wins while
   // it is on the page; otherwise the generated first line with the hook substituted in. Never
@@ -820,20 +820,20 @@ async function loadPublishKit(id, meta) {
         : `<div class="kit"><div class="kithead"><span class="kitlabel">Short title</span></div>
              <div class="empty">no Short title yet</div></div>`,
       kit.shortDescription ? block("Short description", kit.shortDescription, 4) : "",
-      // A first comment to pin: one question a viewer can answer without thinking, and the
-      // subscribe ask — comments are the one engagement signal a two-POV replay does not get on
-      // its own, and the pinned slot is otherwise empty on every upload so far.
+      // A first comment to pin: what the video is and where to report a sync slip, in the
+      // operator's voice. The server's line wins; the fallback is the same text for a server one
+      // restart behind (src/youtubeStore.ts).
       block(
         "Pinned comment",
         kit.pinnedComment ??
-          `${left ?? "Left"} vs ${right ?? "right"}, split for split. Who did you have winning before the nether? Subscribe if you want the next one on your feed.`,
+          "Both POVs are the players' own streams, lined up on the countdown. If the timer looks off anywhere, drop the timestamp here and I'll fix it.",
         3,
       ),
       // The Community tab is open to every channel now, and a post per upload is the cheapest
-      // reach a 41-subscriber channel has: the same question as the pinned comment, with the link.
+      // reach a 41-subscriber channel has: the title, one line on what it is, the link.
       block(
         "Community post",
-        `New: ${title} — both POVs synced to the split timer. Who did you have winning before the nether? ${url}`,
+        `New video: ${title}\nBoth streams side by side, split timer between them.\n${url}`,
         3,
         // The same flag as the Title block: this quotes the title, so it carries the same hole.
         title.includes("<HOOK>") ? counter("pick a hook first", true) : "",

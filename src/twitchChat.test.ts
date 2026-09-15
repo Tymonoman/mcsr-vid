@@ -77,16 +77,23 @@ function stub(pages: unknown[]) {
 
 {
   const text = [
-    "Chapters:",
-    "Watch Aquacorde's POV: https://www.twitch.tv/videos/2868185091?t=4990s",
-    "Watch Infume's POV: https://www.twitch.tv/videos/2868235527?t=1176s",
-    "Match data: https://mcsrranked.com/matches/13171737",
+    "0:00 Start",
+    "Aquacorde's stream: https://www.twitch.tv/videos/2868185091?t=4990s",
+    "Infume's stream: https://www.twitch.tv/videos/2868235527?t=1176s",
+    "Match page: https://mcsrranked.com/matches/13171737",
   ].join("\n");
   assert.deepEqual(chatWindowsFromDescription(text), [
     { nickname: "Aquacorde", videoId: "2868185091", fromSec: 4990 },
     { nickname: "Infume", videoId: "2868235527", fromSec: 1176 },
   ]);
-  console.log("OK: both POV windows read back from the description");
+  // The line every description on disk carried before the copy changed still reads back.
+  const old = [
+    "Chapters:",
+    "Watch Aquacorde's POV: https://www.twitch.tv/videos/2868185091?t=4990s",
+    "Watch Infume's POV: https://www.twitch.tv/videos/2868235527?t=1176s",
+  ].join("\n");
+  assert.deepEqual(chatWindowsFromDescription(old), chatWindowsFromDescription(text));
+  console.log("OK: both POV windows read back from the description, old wording and new");
 }
 console.log("twitchChat: all checks passed");
 

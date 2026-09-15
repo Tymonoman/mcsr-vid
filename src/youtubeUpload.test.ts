@@ -30,8 +30,17 @@ try {
   assert.ok(titles.includes("doogile · MCSR Ranked matches"));
   assert.ok(titles.includes("Feinberg · MCSR Ranked matches"));
   // Every entry carries a description: it is set at creation, and a playlist created without one
-  // stays without one for good.
-  assert.ok(playlistTitlesFor(match, "video").every(([, d]) => d.length > 0));
+  // stays without one for good. Pinned word for word — this is public copy on the channel, in the
+  // same plain voice as the video description, with no subscribe ask and no pipeline talk.
+  assert.deepEqual(
+    playlistTitlesFor(match, "video").map(([, d]) => d),
+    [
+      "Every MCSR Ranked 1v1 on the channel, oldest first. Both players' streams side by side with the split timer between them.",
+      "doogile vs Feinberg: every match between them on the channel, oldest first.",
+      "doogile's MCSR Ranked matches on the channel, oldest first.",
+      "Feinberg's MCSR Ranked matches on the channel, oldest first.",
+    ],
+  );
 
   // A Short is a pointer at the long-form, not a second entry in the series.
   assert.deepEqual(
@@ -52,8 +61,13 @@ try {
 
   // A playoff game takes the tournament's playlist in place of the matchup's: the bracket is the
   // series, and the same pair's ranked games have no business in it. The per-player ones stay.
-  const playoffTitles = playlistTitlesFor(match, "video", { season: 11 }).map(([t]) => t);
+  const playoffLists = playlistTitlesFor(match, "video", { season: 11 });
+  const playoffTitles = playoffLists.map(([t]) => t);
   assert.ok(playoffTitles.includes("MCSR Ranked Season 11 Playoffs · Replayoffs"));
+  assert.equal(
+    playoffLists.find(([t]) => t.includes("Playoffs"))?.[1],
+    "MCSR Ranked Season 11 Playoffs, game by game in bracket order.",
+  );
   assert.ok(!playoffTitles.includes("doogile vs Feinberg · MCSR Ranked"), "not both");
   assert.equal(playoffTitles.length, 4);
   // A Short of a playoff game is still season-only.

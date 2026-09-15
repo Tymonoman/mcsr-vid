@@ -164,10 +164,10 @@ export function buildShortDescription(
   format = "MCSR Ranked 1v1",
 ): string {
   return [
-    `${leftNickname} vs ${rightNickname} — ${format}. Full synced dual-POV race on the channel.`,
-    ...(playlistUrl ? [`Every match: ${playlistUrl}`] : []),
-    `Match data: https://mcsrranked.com/matches/${matchId}`,
-    ...(supportUrl ? [`Support the channel: ${supportUrl}`] : []),
+    `${leftNickname} vs ${rightNickname}, ${format}. The whole match is on the channel, both streams side by side.`,
+    ...(playlistUrl ? [`All the matches: ${playlistUrl}`] : []),
+    `Match page: https://mcsrranked.com/matches/${matchId}`,
+    ...(supportUrl ? [`Tip jar: ${supportUrl}`] : []),
     HASHTAGS.join(" "),
   ].join("\n");
 }

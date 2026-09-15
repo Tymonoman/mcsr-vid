@@ -107,11 +107,11 @@ export async function uploadTextFor(
 
 /**
  * The first comment on a match video, which the operator pins in Studio (pinning has no API).
- * The publish kit shows the same line: one question a viewer can answer without thinking, and
- * the subscribe ask. Never names the winner.
+ * The publish kit shows the same line. What the video is and where to report a sync slip, in
+ * the operator's own voice; no question, no subscribe ask, and never the winner.
  */
-export const pinnedCommentText = (left: string | null, right: string | null): string =>
-  `${left ?? "Left"} vs ${right ?? "right"}, split for split. Who did you have winning before the nether? Subscribe if you want the next one on your feed.`;
+export const PINNED_COMMENT =
+  "Both POVs are the players' own streams, lined up on the countdown. If the timer looks off anywhere, drop the timestamp here and I'll fix it.";
 
 /**
  * The match whose record already names this video id, across BOTH kinds, or null.

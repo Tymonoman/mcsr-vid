@@ -62,49 +62,70 @@ assert.ok(
   opening.indexOf("edcr") < 50 && opening.indexOf("doogile") < 50,
   "both nicknames must survive the ~50-char mobile truncation",
 );
+assert.ok(text.slice(0, 150).includes("MCSR Ranked"), "the format survives the preview cut");
 
 // Elo comes from changes[].eloRate - changes[].change, never the live rating.
-assert.match(opening, /2546 vs 2440 elo/, "must use match-time elo, not the live 2615/2370");
+assert.match(opening, /2546 vs 2440 elo going in\./, "must use match-time elo, not the live 2615/2370");
 // Never the result: the description is read before the match is watched.
 assert.ok(!opening.includes("Result:") && !opening.includes("8:52"), "the opening must not say who won");
 
+// The exact opening, as a person would type it: what the video is, and nothing about how it was
+// made. A viewer called the old copy out for reading like a machine wrote it.
+assert.equal(
+  opening,
+  "edcr vs doogile, MCSR Ranked 1v1 on the same seed. Both streams side by side, split timer between them. 2546 vs 2440 elo going in.",
+);
+for (const slop of [
+  "synced",
+  "dual-POV",
+  "pipeline",
+  "automation",
+  "maintained",
+  "Subscribe",
+  "Full ",
+  " — ",
+]) {
+  assert.ok(!text.includes(slop), `"${slop}" must be gone from the description`);
+}
+
 assert.match(
   text,
-  /Watch edcr's POV: https:\/\/www\.twitch\.tv\/videos\/edcrVodId\?t=1847s/,
+  /^edcr's stream: https:\/\/www\.twitch\.tv\/videos\/edcrVodId\?t=1847s$/m,
   "deep link must round to whole seconds and use Twitch's ?t=Ns format",
 );
-assert.match(text, /Watch doogile's POV: .*\?t=932s/);
-assert.match(text, /^Chapters:\n0:00 Start\n2:07 Nether Enter$/m, "chapters block must be included verbatim");
-assert.match(text, /Match data: https:\/\/mcsrranked\.com\/matches\/12730175/);
+assert.match(text, /^doogile's stream: .*\?t=932s$/m);
+// The chapter list goes in bare: YouTube reads the 0:00 lines without a heading over them.
+assert.match(text, /\n\n0:00 Start\n2:07 Nether Enter\n\n/, "chapters block must be included verbatim");
+assert.ok(!text.includes("Chapters:"), "no heading over the chapter list");
+assert.match(text, /^Match page: https:\/\/mcsrranked\.com\/matches\/12730175$/m);
 
-// The playlist link is opt-in (the playlist exists only after the first upload) and sits above
-// the Twitch links: keep the viewer on the channel before pointing them off it.
-assert.ok(!text.includes("Every match on the channel"), "no playlist line until the URL is configured");
+// The links, one per line, in this order: the two streams, the match page, then the opt-in two.
+const links = text.split("\n\n")[2]!.split("\n");
+assert.deepEqual(
+  links.map((l) => l.split(":")[0]),
+  ["edcr's stream", "doogile's stream", "Match page"],
+  "no playlist or tip-jar line until the URLs are configured",
+);
 {
   const url = "https://www.youtube.com/playlist?list=PLHG-jSA-dWDo";
-  const withList = build(match(), { playlistUrl: url });
-  const at = withList.indexOf(`Every match on the channel: ${url}`);
-  assert.ok(at > 0, "playlist line present once configured");
-  assert.ok(at < withList.indexOf("Watch edcr's POV"), "playlist link comes before the Twitch links");
-  assert.ok(at > withList.indexOf("Chapters:"), "but stays below the chapters, out of the preview");
+  const withBoth = build(match(), {
+    playlistUrl: url,
+    supportUrl: "https://ko-fi.com/mcsrreplayoffs",
+  });
+  assert.deepEqual(withBoth.split("\n\n")[2]!.split("\n").slice(3), [
+    `All the matches: ${url}`,
+    "Tip jar: https://ko-fi.com/mcsrreplayoffs",
+  ]);
 }
 
-// The tip jar is opt-in and sits between the links and the disclaimer.
-assert.ok(!text.includes("Support the channel"), "no tip-jar line until a URL is configured");
-{
-  const withTip = build(match(), { supportUrl: "https://ko-fi.com/mcsrreplayoffs" });
-  const at = withTip.indexOf("Support the channel: https://ko-fi.com/mcsrreplayoffs");
-  assert.ok(at > withTip.indexOf("Match data:"), "below the links");
-  assert.ok(at < withTip.indexOf("independent fan project"), "above the disclaimer");
-}
-assert.match(text, /independent fan project, not affiliated with MCSR Ranked/);
-assert.match(text, /synced dual-POV with live split comparison/, "the added-value line YPP review looks for");
-
-// VOD links moved below the chapters, so the preview is prose rather than URLs.
-assert.ok(
-  text.indexOf("Chapters:") < text.indexOf("Watch edcr's POV"),
-  "chapters must precede the VOD links",
+// The closer: who this is, and where to report a sync slip. Then the hashtags, and nothing else.
+assert.equal(
+  text.split("\n\n").slice(-2).join("\n\n"),
+  "Fan project, not affiliated with MCSR Ranked. If the sync looks off anywhere, say so in the comments and I'll fix it.\n\n#MCSRRanked #MCSR #MinecraftSpeedrunning",
 );
+
+// VOD links sit below the chapters, so the preview is prose rather than URLs.
+assert.ok(text.indexOf("0:00 Start") < text.indexOf("edcr's stream"), "chapters must precede the VOD links");
 
 // Exactly the three hashtags, and nothing per-player or per-checkpoint.
 assert.match(text, /^#MCSRRanked #MCSR #MinecraftSpeedrunning$/m);
@@ -120,17 +141,46 @@ assert.ok(!/forfeit|Result:/.test(ff.split("\n")[0]), "a forfeit is not announce
 // No recorded winner: drop the clause rather than render a bogus one.
 const draw = build(match({ result: { uuid: null, time: 0 } }));
 assert.ok(!draw.split("\n")[0].includes("Result:"), "no winner means no result clause");
-assert.match(draw.split("\n")[0], /^edcr vs doogile — MCSR Ranked 1v1/);
+assert.match(draw.split("\n")[0], /^edcr vs doogile, MCSR Ranked 1v1/);
+
+// A playoff game: the round and game number replace "1v1", the seeds paragraph follows the
+// opening, and the series score is nowhere.
+{
+  const po = build(match(), {
+    playoff: {
+      season: 11,
+      round: "Round of 16",
+      gameNo: 2,
+      bestOf: 5,
+      seeds: [
+        { uuid: EDCR, nickname: "edcr", label: "#1 seed", seasonEloRate: 2546 },
+        {
+          uuid: DOOGILE,
+          nickname: "doogile",
+          label: "#16 seed",
+          seasonEloRate: 2440,
+        },
+      ],
+    },
+  });
+  const [poOpening, poParagraph] = po.split("\n\n");
+  assert.equal(
+    poOpening,
+    "edcr vs doogile, MCSR Ranked S11 Playoffs, Round of 16 · Game 2 of 5. Both streams side by side, split timer between them. 2546 vs 2440 elo going in.",
+  );
+  assert.match(poParagraph!, /^Season 11 Playoffs, Round of 16 · Game 2 of 5: edcr \(#1 seed, 2546 elo\)/);
+  assert.ok(!/\b[0-9][–-][0-9]\b/.test(po), "no series score anywhere");
+}
 
 // --- Seed type ---------------------------------------------------------------------------
 // The base match carries no seedType, so the assertions above already cover "omit it entirely".
-assert.ok(!opening.includes("seed."), "no seedType means no seed sentence");
+assert.ok(opening.endsWith("elo going in."), "no seedType means no seed sentence");
 assert.ok(!/bastion/.test(opening), "no bastionType means no bastion clause");
 
 const seeded = build(match({ seedType: "VILLAGE", bastionType: "BRIDGE" })).split("\n")[0];
 assert.match(seeded, /Village seed, bridge bastion\./, "both halves, first letter capitalised");
-assert.match(seeded, /^edcr vs doogile — MCSR Ranked 1v1/, "nicknames still lead the preview");
-assert.ok(seeded.indexOf("Village seed") > seeded.indexOf("dual-POV"), "seed follows the body sentence");
+assert.match(seeded, /^edcr vs doogile, MCSR Ranked 1v1/, "nicknames still lead the preview");
+assert.ok(seeded.indexOf("Village seed") > seeded.indexOf("elo going in"), "seed follows the elo sentence");
 assert.ok(seeded.trimEnd().endsWith("bastion."), "and ends the opening");
 
 const seedOnly = build(match({ seedType: "DESERT_TEMPLE" })).split("\n")[0];

@@ -53,6 +53,9 @@ export interface DescriptionInput {
  * "MCSR Ranked 1v1" lands before character 50 so it survives the mobile truncation (a playoff
  * opening is longer and does not; the round and game number are worth the cut).
  *
+ * Written the way a person would type it: what the video is, in short sentences, and nothing
+ * about how it was made. A viewer called the old copy out for reading like a machine wrote it.
+ *
  * No result, ever: the description is read before the match is watched, and the ending is the
  * reason to watch it. Who won stays on the timer.
  */
@@ -67,15 +70,13 @@ function buildOpening(input: DescriptionInput): string {
 
   const format = input.playoff
     ? `MCSR Ranked S${input.playoff.season} Playoffs, ${playoffLabel(input.playoff)}`
-    : "MCSR Ranked 1v1";
-  const head = `${left} vs ${right} — ${format}, ${leftElo} vs ${rightElo} elo.`;
-  // Doubles as the "what does this channel add" line a YPP reviewer looks for.
-  const body = "Full same-seed race, synced dual-POV with live split comparison.";
+    : "MCSR Ranked 1v1 on the same seed";
+  const head = `${left} vs ${right}, ${format}. Both streams side by side, split timer between them. ${leftElo} vs ${rightElo} elo going in.`;
 
-  // Runners search by seed type — the closest competitor puts it in every title. It goes after
-  // the body so the nicknames and the format keep the front of the Show-more preview.
+  // Runners search by seed type — the closest competitor puts it in every title. It goes last
+  // so the nicknames and the format keep the front of the Show-more preview.
   const seed = [seedPhrase(match), bastionPhrase(match)].filter(Boolean).join(", ");
-  return seed ? `${head} ${body} ${seed[0].toUpperCase()}${seed.slice(1)}.` : `${head} ${body}`;
+  return seed ? `${head} ${seed[0].toUpperCase()}${seed.slice(1)}.` : head;
 }
 
 /**
@@ -93,21 +94,21 @@ export function buildDescription(input: DescriptionInput): string {
     // The series context a playoff viewer arrives with: which round, which game, which seeds.
     // Never the series score — that is as much of a spoiler as the result is.
     ...(input.playoff ? [playoffParagraph(input.playoff), ""] : []),
-    "Chapters:",
+    // No "Chapters:" heading: YouTube reads the 0:00 list on its own, and the heading was one
+    // more line between the preview and the links.
     formatChapters(chapters),
     "",
-    // First in the links block, above the two that leave for Twitch: a playlist link is the one
-    // thing in a description that turns one view into a session, and sessions are watch hours.
-    ...(input.playlistUrl ? [`Every match on the channel: ${input.playlistUrl}`] : []),
-    `Watch ${userLeft.nickname}'s POV: ${vodDeepLink(leftWindow)}`,
-    `Watch ${userRight.nickname}'s POV: ${vodDeepLink(rightWindow)}`,
-    `Match data: https://mcsrranked.com/matches/${matchId}`,
+    `${userLeft.nickname}'s stream: ${vodDeepLink(leftWindow)}`,
+    `${userRight.nickname}'s stream: ${vodDeepLink(rightWindow)}`,
+    // The `/matches/<id>` segment is what pairs a Studio upload back to its match
+    // (src/channelUploads.ts): keep the line however the label changes.
+    `Match page: https://mcsrranked.com/matches/${matchId}`,
+    // A playlist link is the one thing in a description that turns one view into a session.
+    ...(input.playlistUrl ? [`All the matches: ${input.playlistUrl}`] : []),
+    // The one line that can earn before the Partner Programme does.
+    ...(input.supportUrl ? [`Tip jar: ${input.supportUrl}`] : []),
     "",
-    // Below the links and above the disclaimer: the one line that can earn before the
-    // Partner Programme does, and where the competitor puts its PayPal.me.
-    ...(input.supportUrl ? [`Support the channel: ${input.supportUrl}`, ""] : []),
-    "MCSR Replayoffs is an independent fan project, not affiliated with MCSR Ranked.",
-    "Spot a sync issue or a stat error? Flag it — this pipeline is actively maintained, not fire-and-forget automation.",
+    "Fan project, not affiliated with MCSR Ranked. If the sync looks off anywhere, say so in the comments and I'll fix it.",
     "",
     HASHTAGS.join(" "),
   ].join("\n");
