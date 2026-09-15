@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 /**
@@ -46,3 +46,27 @@ export function readSyncOffsets(matchDir: string): SyncOffsets | null {
     return null;
   }
 }
+
+/**
+ * Whether `sync.json` was written after the finished export was — in which case the export
+ * placed the clips by numbers the operator has since corrected, and uploading it publishes the
+ * misalignment the correction was for. One video reached the channel exactly that way. Pure mtime
+ * arithmetic: the export reads the file at its start, so a newer file is a newer decision.
+ * `syncAt` is null when there is no sync.json, which is never stale.
+ *
+ * ponytail: a save made *during* an encode lands before the encode's rename and reads as fresh;
+ * compare against the export job's start time if that ever bites.
+ */
+export function exportStale(
+  matchDir: string,
+  videoPath: string,
+): { stale: boolean; syncAt: Date | null; exportAt: Date } {
+  const exportAt = statSync(videoPath).mtime;
+  const file = syncFilePath(matchDir);
+  const syncAt = existsSync(file) ? statSync(file).mtime : null;
+  return { stale: syncAt !== null && syncAt.getTime() > exportAt.getTime(), syncAt, exportAt };
+}
+
+/** The one refusal, worded once: the upload, the nightly's skip line and the adopt route all say it. */
+export const staleExportMessage = (matchId: number): string =>
+  `sync changed after this export — re-export first (npm run export:fast -- ${matchId})`;

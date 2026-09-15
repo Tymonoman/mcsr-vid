@@ -21,6 +21,7 @@ import { auditState, readAudit, startAudit } from "./audit.js";
 import { config, matchDir } from "./config.js";
 import { describeError } from "./errorText.js";
 import { listProcessedMatchIds, matchStatusFor } from "./matchStatus.js";
+import { exportStale, staleExportMessage } from "./syncFile.js";
 import { readManifest, variantFellBack } from "./thumbnailVariants.js";
 import {
   applyMetadata,
@@ -31,7 +32,14 @@ import {
   videoStats,
   type ImpressionsRow,
 } from "./youtube.js";
-import { allUploads, readUpload, uploadTextFor, videoIdOwner, writeUpload } from "./youtubeStore.js";
+import {
+  allUploads,
+  findExportedVideo,
+  readUpload,
+  uploadTextFor,
+  videoIdOwner,
+  writeUpload,
+} from "./youtubeStore.js";
 import { beginUpload, finishOnYouTube, uploadProgress } from "./youtubeUpload.js";
 import { HOOK_PLACEHOLDER } from "./title.js";
 import { yppProgress } from "./yppProgress.js";
@@ -184,6 +192,15 @@ export async function handleYoutubeRoute(
       ctx.json(res, 409, {
         error: `No thumbnail variant is confirmed — press "Keep this" on the strip first, or the video would keep YouTube's auto frame`,
       });
+      return true;
+    }
+    // The draft in Studio is the export on disk, and a sync.json written after that export means
+    // the export places the clips by numbers the operator has since corrected. The same refusal
+    // the Upload button gets (`beginUpload`); no export at all is not stale, only unverifiable.
+    const status = await matchStatusFor(matchId);
+    const located = findExportedVideo(matchId, [status.leftNickname, status.rightNickname]);
+    if (!("error" in located) && exportStale(matchDir(matchId), located.path).stale) {
+      ctx.json(res, 409, { error: staleExportMessage(matchId) });
       return true;
     }
     try {
@@ -340,12 +357,16 @@ async function startUpload(
     publishAt = when.toISOString();
   }
 
+  const kind = body.kind === "short" ? "short" : "video";
   const begun = await beginUpload(matchId, {
-    kind: body.kind === "short" ? "short" : "video",
+    kind,
     privacyStatus,
     publishAt,
     videoPath:
       typeof body.videoPath === "string" && body.videoPath.trim() !== "" ? body.videoPath : undefined,
+    // The Short follows the long-form by itself (src/youtubeUpload.ts `shortAfterUpload`); its
+    // line lands in this upload's progress, which is what the panel polls.
+    thenShort: kind === "video",
   });
   if ("error" in begun) {
     ctx.json(res, begun.status, { error: begun.error });

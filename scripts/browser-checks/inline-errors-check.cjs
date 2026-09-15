@@ -68,9 +68,11 @@ const { launchFor } = require("./launch.cjs");
       await page.fill("#ytAdoptId", "not-an-id");
       await page.click("#ytAdopt");
       await page.waitForSelector("#youtube .inlinefail", { timeout: 15000 });
+      // `.first()`: with uploads enabled and a sync corrected after the export, the Upload button
+      // lower down already wears its own refusal (app.js guardUpload); the adopt row's is above it.
       check(
         "a refused adopt reports inside the YouTube panel",
-        /not a YouTube video id/.test(await page.locator("#youtube .inlinefail pre").innerText()),
+        /not a YouTube video id/.test(await page.locator("#youtube .inlinefail pre").first().innerText()),
       );
       check("and not only in the banner at the top", (await bannerLit()) === false);
     }

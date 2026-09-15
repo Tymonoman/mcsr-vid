@@ -1,10 +1,16 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { ANCHOR_SEC } from "./kdenliveProject.js";
 import { clipTimeFor, povClipExists, povClipPath, validOffset } from "./syncEdit.js";
-import { readSyncOffsets, writeSyncOffsets } from "./syncFile.js";
+import {
+  exportStale,
+  readSyncOffsets,
+  staleExportMessage,
+  syncFilePath,
+  writeSyncOffsets,
+} from "./syncFile.js";
 
 // The one arithmetic in the editor: match start sits at ANCHOR_SEC on the finished timeline, so a
 // given second of the video comes from `offset + (t - ANCHOR_SEC)` of that POV's clip. Get the
@@ -56,4 +62,39 @@ console.log("syncEdit: the timeline arithmetic and every refusal");
 
   await rm(dir, { recursive: true, force: true });
   console.log("syncEdit: a manual sync round-trips and clears the warning");
+}
+
+// --- An export made before the sync was corrected is stale ---------------------------------------
+// One upload reached the channel out of sync because sync.json was fixed by hand AFTER the MP4
+// was exported and nobody re-exported. Pure mtime arithmetic, so the clocks are set by hand.
+{
+  const dir = await mkdtemp(path.join(tmpdir(), "mcsr-stale-"));
+  const video = path.join(dir, "final-1.mp4");
+  await writeFile(video, "");
+  const at = (file: string, iso: string) => utimes(file, new Date(iso), new Date(iso));
+  await at(video, "2026-09-10T12:00:00Z");
+
+  const none = exportStale(dir, video);
+  assert.equal(none.stale, false, "no sync.json: nothing to be newer than the export");
+  assert.equal(none.syncAt, null);
+  assert.equal(none.exportAt.toISOString(), "2026-09-10T12:00:00.000Z");
+
+  writeSyncOffsets(dir, { left: 1, right: 1, confidence: 1, detail: "", source: "manual" });
+  await at(syncFilePath(dir), "2026-09-10T11:00:00Z");
+  assert.equal(exportStale(dir, video).stale, false, "the export read this sync.json: fresh");
+  await at(syncFilePath(dir), "2026-09-10T12:00:00Z");
+  assert.equal(exportStale(dir, video).stale, false, "the same second is not newer");
+
+  await at(syncFilePath(dir), "2026-09-10T12:00:01Z");
+  const stale = exportStale(dir, video);
+  assert.equal(stale.stale, true, "sync.json written after the export: the export is stale");
+  assert.equal(stale.syncAt?.toISOString(), "2026-09-10T12:00:01.000Z");
+  // The refusal names the fix, with the id in it, so it can be pasted as is.
+  assert.equal(
+    staleExportMessage(13171737),
+    "sync changed after this export — re-export first (npm run export:fast -- 13171737)",
+  );
+
+  await rm(dir, { recursive: true, force: true });
+  console.log("syncEdit: an export older than sync.json is stale, and only then");
 }

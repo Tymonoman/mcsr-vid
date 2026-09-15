@@ -41,7 +41,7 @@ import { playoffBoard, playoffContextForId, playoffTitleTail } from "./playoffs.
 import { refreshRivalPostsIfStale, rivalPostsSnapshot, rivalRecentPostFor } from "./rivalPosts.js";
 import { chooseVariant, readManifest, rerenderThumbnailVariants } from "./thumbnailVariants.js";
 import { ANCHOR_SEC } from "./kdenliveProject.js";
-import { readSyncOffsets, writeSyncOffsets } from "./syncFile.js";
+import { exportStale, readSyncOffsets, staleExportMessage, writeSyncOffsets } from "./syncFile.js";
 import { clipTimeFor, povClipExists, povClipPath, povFrame, validOffset } from "./syncEdit.js";
 import { buildTitle, metaPaths, type BuiltTitle } from "./title.js";
 import { allArchiveStates, capacity, isArchived } from "./archive.js";
@@ -66,7 +66,7 @@ import {
 } from "./shortsRoutes.js";
 import { saveSettings, settingsPayload } from "./settings.js";
 import { handleYoutubeRoute, uploadRunning } from "./youtubeRoutes.js";
-import { pinnedCommentText, readUpload } from "./youtubeStore.js";
+import { findExportedVideo, pinnedCommentText, readUpload } from "./youtubeStore.js";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -181,6 +181,33 @@ async function readMeta(matchId: number) {
      * the one thing it could not tell you the path of.
      */
     outputs: outputPaths(matchId, entry.projectPath),
+  };
+}
+
+/**
+ * What the sync editor and the sync check read: the offsets, the clips, and whether the finished
+ * export was made from them. `syncStale` is the mtime test `beginUpload` and the adopt route
+ * refuse on (src/syncFile.ts), so the page can disable the Upload button for the same reason the
+ * server would give; `exported` is what puts the sync check on the page at all. One shape for
+ * the GET and the PUT — saving offsets is exactly what makes an export stale.
+ */
+async function syncPayload(matchId: number) {
+  const status = await matchStatusFor(matchId);
+  const dir = matchDir(matchId);
+  const located = findExportedVideo(matchId, [status.leftNickname, status.rightNickname]);
+  const staleness = "error" in located ? null : exportStale(dir, located.path);
+  return {
+    matchId,
+    sync: readSyncOffsets(dir),
+    /** Where the editor starts when nothing has synced this match yet. */
+    fallback: config.preRollSec,
+    anchorSec: ANCHOR_SEC,
+    threshold: config.syncConfidenceThreshold,
+    left: { nickname: status.leftNickname, clip: povClipExists(dir, status.leftNickname ?? "") },
+    right: { nickname: status.rightNickname, clip: povClipExists(dir, status.rightNickname ?? "") },
+    exported: staleness !== null,
+    syncStale: staleness?.stale ?? false,
+    staleMessage: staleness?.stale ? staleExportMessage(matchId) : null,
   };
 }
 
@@ -394,18 +421,7 @@ const server = createServer(async (req, res) => {
         json(res, 400, { error: "match id must be digits" });
         return;
       }
-      const status = await matchStatusFor(matchId);
-      const dir = matchDir(matchId);
-      json(res, 200, {
-        matchId,
-        sync: readSyncOffsets(dir),
-        /** Where the editor starts when nothing has synced this match yet. */
-        fallback: config.preRollSec,
-        anchorSec: ANCHOR_SEC,
-        threshold: config.syncConfidenceThreshold,
-        left: { nickname: status.leftNickname, clip: povClipExists(dir, status.leftNickname ?? "") },
-        right: { nickname: status.rightNickname, clip: povClipExists(dir, status.rightNickname ?? "") },
-      });
+      json(res, 200, await syncPayload(matchId));
       return;
     }
 
@@ -445,7 +461,9 @@ const server = createServer(async (req, res) => {
         source: "manual",
       });
       console.error(`sync: match ${matchId} set by hand to ${left.value}s / ${right.value}s`);
-      json(res, 200, { sync: readSyncOffsets(dir) });
+      // The same shape as the GET: the save is what makes the export stale, and the page repaints
+      // its sync check and the Upload button from this answer.
+      json(res, 200, await syncPayload(matchId));
       return;
     }
 
