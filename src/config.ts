@@ -67,7 +67,7 @@ export interface Config {
    */
   rivalChannelHandle: string;
   /**
-   * A tip-jar URL (Ko-fi, PayPal.me) for the description's "Support the channel" line. The
+   * A tip-jar URL (Ko-fi, PayPal.me) for the description's "Tip jar" line. The
    * audit named it the one revenue stream not gated at 41 subscribers, and the active
    * competitor runs a PayPal.me link in every description. Empty: no line.
    */
@@ -341,7 +341,9 @@ export function validateOverrides(raw: Record<string, unknown>): void {
             typeof p.right === "string",
         );
       if (bad) {
-        throw new Error(`${CONFIG_PATH}: "thumbnailVariants" must be a non-empty array of { left, right } pose names.`);
+        throw new Error(
+          `${CONFIG_PATH}: "thumbnailVariants" must be a non-empty array of { left, right } pose names.`,
+        );
       }
       continue;
     }

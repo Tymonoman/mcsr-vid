@@ -192,8 +192,15 @@ export async function beginUpload(matchId: number, req: UploadRequest): Promise<
         .filter((e): e is [string, string] => typeof e[1] === "string")
         .map(([step, error]) => `Uploaded, but the ${step} step failed: ${error}`);
       // Before `done`, so the line is on the progress the browser's last poll reads.
+      // Its own catch: the video is up whatever happens to the Short, so a throw here is a
+      // warning line, never `progress.error`.
       if (req.thenShort && req.kind === "video")
-        progress.warnings.push(await shortAfterUpload(matchId, { ...req, publishAt: result.publishAt }));
+        progress.warnings.push(
+          await shortAfterUpload(matchId, {
+            privacyStatus: req.privacyStatus,
+            publishAt: result.publishAt,
+          }).catch((err: unknown) => `short upload failed: ${describeError(err)}`),
+        );
       // Published is the point the match is finished with, so it is the point worth backing up.
       // Fire-and-forget (see archiveMatch's note); failures land in the server log and in
       // GET /api/capacity, not here — a NAS blip must not read as a failed upload.

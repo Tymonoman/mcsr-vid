@@ -606,7 +606,7 @@ async function abTestPayload() {
     impressions.length === 0
       ? "No Reporting API rows yet — reports land about 48h after the day they cover."
       : // The text-vs-no-text question cannot resolve without one of each published, and it never
-        // has been: every video so far used the hook: false control or a variant whose headline
+        // has been: every video so far went out on a plain variant or one whose headline
         // was empty. Waiting for data would be waiting forever, so say which arm is missing.
         hookEntries.length > 0 && hookEntries.every((e) => e.hook !== true)
         ? "No thumbnail with a headline has been published yet, so text-vs-no-text has nothing to compare — choose a hooked variant on one upload to start the arm."
