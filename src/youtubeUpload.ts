@@ -34,7 +34,7 @@ import {
 } from "./youtube.js";
 import {
   findExportedVideo,
-  pinnedCommentText,
+  PINNED_COMMENT,
   readUpload,
   uploadTextFor,
   writeUpload,
@@ -318,9 +318,7 @@ export async function finishOnYouTube(
           ? ((await videoStats([videoId]))[0]?.privacyStatus ?? "private")
           : record?.privacyStatus;
       if (live !== "private") {
-        finished.comment = await attempt(() =>
-          postComment(videoId, pinnedCommentText(status.leftNickname, status.rightNickname)),
-        );
+        finished.comment = await attempt(() => postComment(videoId, PINNED_COMMENT));
       }
     }
   }

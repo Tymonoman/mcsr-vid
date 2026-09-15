@@ -430,11 +430,11 @@ export function playerPlaylistTitle(nickname: string): string {
  * only — an existing playlist keeps whatever it has, so a hand-edited one is never overwritten.
  */
 export const SEASON_PLAYLIST_DESCRIPTION =
-  "Every MCSR Ranked 1v1 on MCSR Replayoffs, oldest first: top-bracket matches, both POVs synced with a live split comparison, head-to-head record and seed on the intro card. Subscribe for the next one.";
+  "Every MCSR Ranked 1v1 on the channel, oldest first. Both players' streams side by side with the split timer between them.";
 
 export function matchupPlaylistDescription(a: string, b: string): string {
   const [first, second] = [a, b].sort((x, y) => x.toLowerCase().localeCompare(y.toLowerCase()));
-  return `Every ranked 1v1 between ${first} and ${second} on MCSR Replayoffs, oldest first — both POVs synced, with the live split comparison and the head-to-head record on the intro card.`;
+  return `${first} vs ${second}: every match between them on the channel, oldest first.`;
 }
 
 /**
@@ -446,11 +446,11 @@ export function playoffPlaylistTitle(season: number): string {
 }
 
 export function playoffPlaylistDescription(season: number): string {
-  return `Every game of the MCSR Ranked Season ${season} Playoffs on MCSR Replayoffs, in bracket order — both POVs synced, with the live split comparison and the round and game number on the intro card. Bracket: https://mcsrranked.com/playoffs/${season}`;
+  return `MCSR Ranked Season ${season} Playoffs, game by game in bracket order.`;
 }
 
 export function playerPlaylistDescription(nickname: string): string {
-  return `Every MCSR Ranked 1v1 of ${nickname}'s on MCSR Replayoffs, oldest first — both POVs synced with a live split comparison.`;
+  return `${nickname}'s MCSR Ranked matches on the channel, oldest first.`;
 }
 
 /**

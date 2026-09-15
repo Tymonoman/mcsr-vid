@@ -197,14 +197,15 @@ export const vodIdFromUrl = (url: string): string | null => /videos\/(\d+)/.exec
 
 /**
  * The two POVs' VOD ids and match offsets, read back from the description the pipeline wrote —
- * `Watch <nick>'s POV: https://www.twitch.tv/videos/<id>?t=<n>s`. The pipeline holds these as
- * `VodWindow`s in memory and persists nothing else with them, so the description is the durable
- * copy for `npm run chat` on a match rendered before the pipeline saved chat itself.
+ * `<nick>'s stream: https://www.twitch.tv/videos/<id>?t=<n>s`, or the older `Watch <nick>'s POV:`
+ * line that every description written before the copy changed still carries. The pipeline holds
+ * these as `VodWindow`s in memory and persists nothing else with them, so the description is the
+ * durable copy for `npm run chat` on a match rendered before the pipeline saved chat itself.
  */
 export function chatWindowsFromDescription(text: string): ChatWindow[] {
   const out: ChatWindow[] = [];
   for (const m of text.matchAll(
-    /^Watch (.+?)'s POV: https:\/\/www\.twitch\.tv\/videos\/(\d+)\?t=(\d+)s$/gm,
+    /^(?:Watch )?(.+?)'s (?:POV|stream): https:\/\/www\.twitch\.tv\/videos\/(\d+)\?t=(\d+)s$/gm,
   )) {
     out.push({ nickname: m[1]!, videoId: m[2]!, fromSec: Number(m[3]) });
   }
