@@ -8,20 +8,17 @@ export interface Config {
   rightPose: string;
   /**
    * Pose pairs rendered as thumbnail variants on every pipeline run, for A/B testing which
-   * poses earn clicks. The first entry is what `thumbnail.png` becomes unless you pick another
-   * in the dashboard, so keep `leftPose`/`rightPose` first to preserve the current look.
+   * poses earn clicks. Each pair renders twice — plain, and with the title headline in a smaller
+   * band (`src/thumbnailVariants.ts`) — so the set is three poses with a hooked twin each. The
+   * first entry's plain render is what `thumbnail.png` becomes unless you pick another in the
+   * dashboard, so keep `leftPose`/`rightPose` first to preserve the current look.
    *
    * Pose names map to NMSR camera settings in `src/avatarUrl.ts` (`POSE_CAMERAS`). Every name
    * here must have an entry there with a distinct silhouette, or the variant renders NMSR's
    * default view — the dashboard flags it as a fallback — and CTR grouped by pose compares a
    * variable that never varied.
-   *
-   * `hook: false` renders that pair without the title headline. Pose barely moves clicks, so a
-   * set that varies only pose cannot answer the question the channel actually has — does text on
-   * the thumbnail lift CTR? — and Studio's Test & compare takes three images, one of which should
-   * be the text-free control. Keep it off the first entry, which is what `thumbnail.png` becomes.
    */
-  thumbnailVariants: Array<{ left: string; right: string; hook?: boolean }>;
+  thumbnailVariants: Array<{ left: string; right: string }>;
   /** Minimum cross-correlation confidence (sync.ts) to trust the refined audio sync offset. */
   syncConfidenceThreshold: number;
   /** VOD trim window: seconds of buffer before the estimated match start. */
@@ -241,8 +238,7 @@ const DEFAULTS: Config = {
     // First is the existing look, so nothing changes for a match already published.
     { left: "walking", right: "crossed" },
     { left: "cheering", right: "relaxing" },
-    // The control: same layout, no headline, so the A/B set varies text and not just pose.
-    { left: "marching", right: "crouching", hook: false },
+    { left: "marching", right: "crouching" },
   ],
   syncConfidenceThreshold: 0.15,
   preRollSec: 150,
@@ -326,6 +322,26 @@ export function validateOverrides(raw: Record<string, unknown>): void {
         throw new Error(
           `${CONFIG_PATH}: "${key}" must be a whole hour 0-23 (UTC)${nullable ? ", or null" : ""}.`,
         );
+      }
+      continue;
+    }
+    // Two pose names per entry and nothing else. The per-pair `hook` flag was dropped when every
+    // pair started rendering a hooked twin; a config still carrying it would be quietly ignored.
+    if (key === "thumbnailVariants") {
+      const pairs = Array.isArray(value) ? value : null;
+      const bad =
+        pairs === null ||
+        pairs.length === 0 ||
+        !pairs.every(
+          (p) =>
+            typeof p === "object" &&
+            p !== null &&
+            Object.keys(p).every((k) => k === "left" || k === "right") &&
+            typeof p.left === "string" &&
+            typeof p.right === "string",
+        );
+      if (bad) {
+        throw new Error(`${CONFIG_PATH}: "thumbnailVariants" must be a non-empty array of { left, right } pose names.`);
       }
       continue;
     }

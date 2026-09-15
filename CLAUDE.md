@@ -96,12 +96,16 @@ they differ (`code: { boot, now }` from `src/repoHead.ts`). Client changes need 
   pair). A posted match sorts after the fresh ones, in the nightly's order too.
 - **Hook chips** (`src/hooks.ts`) put rivalry framing first: the audit measured rivalry hooks at
   9.36% CTR against 2.25% for descriptive ones.
-- **Thumbnails carry a hook** (`hookText` in `thumbnail.json`; `src/thumbnailVariants.ts`),
-  legible at YouTube's 246x138 grid size. The third variant is `hook: false`, the A/B control.
-  `POST /api/thumbnails/:id/rerender` redoes the hooked variants with the typed hook and reports
-  rendered / failed / nothing to change. A pipeline re-run keeps a manifest's headline; a still
-  is reused only under the same headline, and a re-render re-cuts a Short still burned with the
-  old line. The Short reuses the manifest's hook so both halves of a match agree; the Short panel
+- **Thumbnails are three poses, plain by default, plus a hooked twin of each** (`hookText` in
+  `thumbnail.json`; `src/thumbnailVariants.ts`): keys `<left>-<right>` and `<left>-<right>-hook`,
+  pair by pair, plain first, so the auto default is the first pair's plain render. The hooked
+  band is 96/84 px (`remotion/Thumbnail.tsx`), legible at YouTube's 246x138 grid size; the plain
+  ones are the A/B control. No headline, no twins. `POST /api/thumbnails/:id/rerender` redoes
+  only the hooked twins with the typed hook and reports rendered / failed / nothing to change. A
+  pipeline re-run keeps a manifest's headline; a hooked still is reused only under the same
+  headline, a plain one always — except one an old three-variant manifest recorded as hooked,
+  which is re-rendered, and an old hooked choice maps to its `-hook` twin (`carriedChoice`). A
+  re-render re-cuts a Short still burned with the old line. The Short reuses the manifest's hook so both halves of a match agree; the Short panel
   says when they do not. The checklist's thumbnail pill ticks on `chosenBy: "operator"` in the
   manifest — a rendered variant is not a chosen one; sidecars without the field keep ticking.
 - **The audit blocks `videos.insert`, not the rest.** `playlistItems.insert`, `thumbnails.set`,

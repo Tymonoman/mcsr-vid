@@ -15,18 +15,23 @@ const HOOK_LINE_WIDTH = 1248;
  * letter-spacing .thumb-hook sets.
  */
 const HOOK_ADVANCE_EM = 0.682;
-/** Font-size steps, largest first. 96 is the floor: below it the hook stops reading at 246px wide. */
-const HOOK_SIZES = [150, 120, 108, 96];
-/** Two lines at 150 would eat half the frame, so only a single line gets the largest step. */
-const HOOK_TWO_LINE_MAX = 120;
+/**
+ * Font-size steps, largest first. 96 is the ceiling: the 150px band it replaced ate a third of
+ * the frame and the operator asked for the text back off the avatars. 84 still reads at 246px
+ * wide — the ink is the outline more than the glyph at that size — and below it the hook stops.
+ */
+const HOOK_FLOOR = 84;
+const HOOK_SIZES = [96, HOOK_FLOOR];
+/** Two lines at 96 would be the old band again, so only a single line gets the larger step. */
+const HOOK_TWO_LINE_MAX = HOOK_FLOOR;
 /** Padding above and below the hook inside the band. */
-const HOOK_PAD = 18;
+const HOOK_PAD = 12;
 /** How far the avatars are allowed to run up behind the band's lower edge. */
 const HOOK_OVERLAP = 40;
 
 const charBudget = (fontSize: number): number => Math.floor(HOOK_LINE_WIDTH / (fontSize * HOOK_ADVANCE_EM));
 
-/** Greedy wrap, one word per line minimum. Only reached by hooks too long for two lines at 96px. */
+/** Greedy wrap, one word per line minimum. Only reached by hooks too long for two lines at the floor. */
 function wrapWords(words: string[], maxChars: number): string[] {
   const lines: string[] = [];
   for (const word of words) {
@@ -57,8 +62,8 @@ function balancedPair(words: string[]): string[] {
  * A step function in JS rather than a CSS `clamp` — see `layoutShortHook` in
  * shortHookLayout.ts for why: two renders of the same hook must give the same image.
  *
- * ponytail: a hook too long for two lines even at the 96px floor wraps to three rather than
- * shrinking past legibility — the title budget allows ~47 characters and 96px fits 19 a line.
+ * ponytail: a hook too long for two lines even at the 84px floor wraps to three rather than
+ * shrinking past legibility — the title budget allows ~47 characters and 84px fits 21 a line.
  * If those ever need to stay at two lines, condense the text, not the type.
  */
 function layoutHook(text: string): { lines: string[]; fontSize: number } {
@@ -71,7 +76,7 @@ function layoutHook(text: string): { lines: string[]; fontSize: number } {
     const pair = balancedPair(words);
     if (Math.max(...pair.map((l) => l.length)) <= charBudget(fontSize)) return { lines: pair, fontSize };
   }
-  return { lines: wrapWords(words, charBudget(96)), fontSize: 96 };
+  return { lines: wrapWords(words, charBudget(HOOK_FLOOR)), fontSize: HOOK_FLOOR };
 }
 
 /** Band height and the body offset that keeps the avatars mostly clear of it. */

@@ -42,6 +42,16 @@ assert.doesNotThrow(() =>
 );
 assert.throws(() => validateOverrides({ pullSource: true }), /pullSource/);
 assert.doesNotThrow(() => validateOverrides({ suggestWeights: { closeMargin: 4 } }));
+// Pose pairs are two names and nothing else: the per-pair `hook` flag is gone (every pair now
+// renders a hooked twin), and a config still carrying it would be quietly ignored.
+assert.doesNotThrow(() => validateOverrides({ thumbnailVariants: [{ left: "walking", right: "crossed" }] }));
+assert.throws(
+  () => validateOverrides({ thumbnailVariants: [{ left: "marching", right: "crouching", hook: false }] }),
+  /thumbnailVariants/,
+);
+assert.throws(() => validateOverrides({ thumbnailVariants: [] }), /thumbnailVariants/);
+assert.throws(() => validateOverrides({ thumbnailVariants: [{ left: "walking" }] }), /thumbnailVariants/);
+assert.throws(() => validateOverrides({ thumbnailVariants: "walking-crossed" }), /thumbnailVariants/);
 assert.doesNotThrow(() => validateOverrides({}));
 
 console.log("config: all checks passed");

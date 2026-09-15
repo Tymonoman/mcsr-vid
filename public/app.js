@@ -455,8 +455,8 @@ async function loadChecklist(id) {
 }
 
 /**
- * The rendered pose variants, one per configured pair. Picking one copies it over
- * thumbnail.png, which is the file that gets uploaded.
+ * The rendered pose variants, a column per configured pair: the plain render above its hooked
+ * twin. Picking one copies it over thumbnail.png, which is the file that gets uploaded.
  *
  * A variant whose avatars came back un-posed is labelled as a fallback rather than shown as a
  * distinct pose: it is the default NMSR view, so every such variant is the same image, and
@@ -477,35 +477,45 @@ async function loadVariants(id) {
     return;
   }
 
-  // The headline the strip was rendered with — every variant except any marked control. Not
-  // visible in the shrunken previews once it wraps, and it is the whole reason a re-render
-  // happens.
+  // The headline the hooked twins were rendered with. Not visible in the shrunken previews once
+  // it wraps, and it is the whole reason a re-render happens.
   const headline = data.hookText
     ? `<div class="counter">headline: &ldquo;${esc(data.hookText)}&rdquo;</div>`
     : "";
 
-  el.innerHTML =
-    headline +
-    `<div class="strip">${data.variants
-      .map((v) => {
-        const fellBack = v.leftProvider === "nmsr" || v.rightProvider === "nmsr";
-        const chosen = v.key === data.chosen;
-        // The variant the render picked needs a button too, or the operator who looks at all
-        // three and likes the default has no way to say so: the checklist pill means "chosen",
-        // not "rendered" (chosenBy in src/matchShelf.ts), and PUT on the key already in use is
-        // what stamps it. `chosenBy !== "auto"` mirrors the checklist exactly, so a manifest
-        // from before the field still reads as chosen and asks for no second click.
-        const confirmed = chosen && data.chosenBy !== "auto";
-        return `
+  const tile = (v) => {
+    const fellBack = v.leftProvider === "nmsr" || v.rightProvider === "nmsr";
+    const chosen = v.key === data.chosen;
+    // The variant the render picked needs a button too, or the operator who looks at all
+    // six and likes the default has no way to say so: the checklist pill means "chosen",
+    // not "rendered" (chosenBy in src/matchShelf.ts), and PUT on the key already in use is
+    // what stamps it. `chosenBy !== "auto"` mirrors the checklist exactly, so a manifest
+    // from before the field still reads as chosen and asks for no second click.
+    const confirmed = chosen && data.chosenBy !== "auto";
+    return `
       <figure class="variant ${chosen ? "chosen" : ""}" data-key="${esc(v.key)}">
         <img src="/api/thumbnail/${id}?v=${encodeURIComponent(v.key)}" alt="${esc(v.key)}" loading="lazy">
         <figcaption>
-          <span class="key">${esc(v.leftPose)} / ${esc(v.rightPose)}${v.hook === false ? " · no text (control)" : ""}</span>
+          <span class="key">${esc(v.leftPose)} / ${esc(v.rightPose)}${v.hook ? " · with hook" : ""}</span>
           ${fellBack ? '<span class="fallback" title="This pose name has no camera, so it is the default NMSR view -- not the pose it is named after">static fallback</span>' : ""}
           ${confirmed ? '<span class="is-chosen">in use</span>' : `<button type="button" class="use">${chosen ? "Keep this" : "Use this"}</button>`}
         </figcaption>
       </figure>`;
-      })
+  };
+
+  // One column per pose pair, in manifest order: the plain render, then its hooked twin. Grouped
+  // by pose rather than by position, so a sidecar from before the twins (three tiles, no pairs)
+  // still lays out as three columns of one.
+  const columns = new Map();
+  for (const v of data.variants) {
+    const pair = `${v.leftPose}-${v.rightPose}`;
+    columns.set(pair, [...(columns.get(pair) ?? []), v]);
+  }
+
+  el.innerHTML =
+    headline +
+    `<div class="strip">${[...columns.values()]
+      .map((column) => `<div class="poses">${column.map(tile).join("")}</div>`)
       .join("")}</div>` +
     '<button type="button" class="ghost" id="rerender">Re-render with hook</button>';
 

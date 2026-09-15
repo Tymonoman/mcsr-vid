@@ -37,6 +37,7 @@ import {
   renderThumbnailVariants,
   variantFellBack,
   variantFile,
+  variantSlots,
 } from "./thumbnailVariants.js";
 import { describeError } from "./errorText.js";
 import {
@@ -369,10 +370,15 @@ async function runStages(
 
   const thumbnailPath = path.join(outDir, "thumbnail.png");
   const variants = config.thumbnailVariants;
+  // Plain and hooked alike: a match rendered before the twins existed has three files under the
+  // plain names, and the stage has to run to give it the other three (and to redo any of those
+  // three the old manifest recorded as hooked — variantStillReusable knows which).
+  const slots = variantSlots(variants, hookText);
   const allRendered =
-    existsSync(thumbnailPath) && variants.every((p) => existsSync(path.join(outDir, variantFile(p))));
+    existsSync(thumbnailPath) &&
+    slots.every((s) => existsSync(path.join(outDir, variantFile(s.poses, s.hook))));
   if (allRendered) {
-    emit(done("thumbnail", { message: `reused ${variants.length} variants` }));
+    emit(done("thumbnail", { message: `reused ${slots.length} variants` }));
   } else {
     emit(active("thumbnail", { percent: 0 }));
     const manifest = await renderThumbnailVariants({

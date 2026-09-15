@@ -341,9 +341,17 @@
   overflow-x: auto;
   padding-bottom: 4px;
 }
+/* One column per pose pair: the plain render, its hooked twin under it. The width sits on the
+   column, not the tile -- a basis on the tile would be its height inside the column. Three
+   columns overflow a phone the way three tiles did, inside the strip's own scroll. */
+.poses {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 0 0 260px;
+}
 .variant {
   margin: 0;
-  flex: 0 0 260px;
   border: 1px solid var(--panel-edge-light);
   background: var(--panel);
 }
