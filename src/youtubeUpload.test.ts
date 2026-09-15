@@ -2,11 +2,18 @@
 // Nothing here touches the network or the real media directory.
 // Run: npx tsx src/youtubeUpload.test.ts
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { config } from "./config.js";
-import { beginUpload, nightlyUploads, playlistTitlesFor } from "./youtubeUpload.js";
+import {
+  beginUpload,
+  nightlyUploads,
+  playlistTitlesFor,
+  SHORT_DELAY_MS,
+  shortAfterUpload,
+} from "./youtubeUpload.js";
+import { staleExportMessage, writeSyncOffsets } from "./syncFile.js";
 import type { UploadProgress } from "./youtubeUpload.js";
 
 const media = await mkdtemp(path.join(tmpdir(), "mcsr-upload-test-"));
@@ -110,6 +117,51 @@ try {
   const inside = await tryPath(path.join(dir, "final.mp4"));
   assert.match(inside.error, /No such video file/);
 
+  /* --- An export older than its sync.json ---------------------------------------------------- */
+  // One video reached the channel out of sync because the offsets were corrected by hand after
+  // the MP4 was exported and nobody re-exported. The export file is empty so that a request the
+  // guard lets through fails at `uploadVideo`'s first line, before any token or network — which
+  // is how "not refused" is told apart from "refused" without uploading anything.
+  const exportFile = path.join(dir, `final-${matchId}.mp4`);
+  const shortFile = path.join(dir, `short-${matchId}.mp4`);
+  await writeFile(exportFile, "");
+  await writeFile(shortFile, "");
+  await writeFile(path.join(dir, `short-${matchId}.title.txt`), "A hook #minecraft #mcsr\n");
+  const stamp = (file: string, iso: string) => utimes(file, new Date(iso), new Date(iso));
+  await stamp(exportFile, "2026-09-10T12:00:00Z");
+  await stamp(shortFile, "2026-09-10T12:00:00Z");
+  writeSyncOffsets(dir, { left: 150, right: 150, confidence: 1, detail: "", source: "manual" });
+  await stamp(path.join(dir, "sync.json"), "2026-09-10T13:00:00Z");
+
+  const staleVideo = await beginUpload(matchId, {
+    kind: "video",
+    privacyStatus: "private",
+    videoPath: exportFile,
+  });
+  assert.ok("error" in staleVideo, "a stale export is refused");
+  assert.equal(staleVideo.status, 400);
+  assert.equal(staleVideo.error, staleExportMessage(matchId), "with the exact re-export line");
+
+  // The Short is cut from the VODs with sync.json directly, so the same clock says nothing about it.
+  const staleShort = await beginUpload(matchId, { kind: "short", privacyStatus: "private" });
+  assert.ok(!("error" in staleShort), "the Short is not held by the video's staleness");
+  assert.match(String((await staleShort.finished).error), /is empty/, "and got as far as the file");
+
+  // Re-exported: the file is newer than the correction, and the guard steps aside.
+  await stamp(exportFile, "2026-09-10T14:00:00Z");
+  const freshVideo = await beginUpload(matchId, {
+    kind: "video",
+    privacyStatus: "private",
+    videoPath: exportFile,
+  });
+  assert.ok(!("error" in freshVideo), "a fresh export is not refused");
+  assert.match(String((await freshVideo.finished).error), /is empty/);
+
+  await rm(exportFile);
+  await rm(shortFile);
+  await rm(path.join(dir, "sync.json"));
+  console.log("OK: a video whose sync.json is newer than its export is refused; a Short never is");
+
   // The gate itself: off, nothing is even looked at.
   config.youtubeUploadEnabled = false;
   const gated = await beginUpload(matchId, { kind: "video", privacyStatus: "private" });
@@ -204,8 +256,82 @@ try {
     18 * 3600_000,
     "the Short is 18h after the match video",
   );
+  assert.equal(SHORT_DELAY_MS, 18 * 3600_000, "and that is the one constant the dashboard's chain shares");
+
+  // A stale export is a skip line the operator can act on, and the Short stays home with it.
+  asked.length = 0;
+  const stale = await nightlyUploads(matchId, (async () => ({
+    status: 400,
+    error: staleExportMessage(matchId),
+  })) as unknown as typeof beginUpload);
+  assert.equal(
+    stale,
+    ` + video upload skipped: sync changed after this export — re-export first (npm run export:fast -- ${matchId})`,
+  );
 
   console.log("OK: playlists, the videoPath guard and the nightly's clause");
+
+  /* --- The Short that follows a dashboard upload --------------------------------------------- */
+  // The nightly sends both; the operator's press sent only the long-form and the Short waited for
+  // a second press that was easy to forget. Same visibility, the same 18 h after the video's
+  // publish time, and one line into the video's warnings saying what became of it.
+
+  asked.length = 0;
+  const followed = await shortAfterUpload(
+    matchId,
+    { privacyStatus: "unlisted", publishAt: "2026-09-16T19:00:00.000Z" },
+    fake(() => ({ videoId: "vidS", error: null, warnings: [] })),
+  );
+  assert.deepEqual(asked, [
+    { kind: "short", privacyStatus: "unlisted", publishAt: "2026-09-17T13:00:00.000Z" },
+  ]);
+  assert.equal(followed, "short uploaded vidS (scheduled 2026-09-17T13:00:00.000Z)");
+
+  // No publish time on the video: none on the Short either, it is simply as private as the video.
+  asked.length = 0;
+  const unscheduled = await shortAfterUpload(
+    matchId,
+    { privacyStatus: "private", publishAt: null },
+    fake(() => ({ videoId: "vidS", error: null, warnings: [] })),
+  );
+  assert.equal(asked[0]?.publishAt, undefined);
+  assert.equal(unscheduled, "short uploaded vidS (private)");
+
+  // beginUpload's refusal (no short-<id>.mp4, say) is the reason, not a failure.
+  const noFile = await shortAfterUpload(
+    matchId,
+    { privacyStatus: "private", publishAt: null },
+    (async () => ({
+      status: 400,
+      error: `No such video file: ${dir}/short-${matchId}.mp4`,
+    })) as unknown as typeof beginUpload,
+  );
+  assert.match(noFile, /^short upload skipped: No such video file/);
+
+  // A Short already on the channel is not sent twice: a duplicate is a Studio clean-up.
+  const { writeUpload: writeRecord } = await import("./youtubeStore.js");
+  await writeRecord(
+    matchId,
+    {
+      videoId: "vidOld",
+      uploadedAt: "2026-09-01T00:00:00Z",
+      publishAt: null,
+      privacyStatus: "private",
+      thumbnailVariant: null,
+      title: "t",
+    },
+    "short",
+  );
+  asked.length = 0;
+  const already = await shortAfterUpload(
+    matchId,
+    { privacyStatus: "private", publishAt: null },
+    fake(() => ({ videoId: "vidS", error: null, warnings: [] })),
+  );
+  assert.equal(already, "short upload skipped: already up as vidOld");
+  assert.deepEqual(asked, [], "and beginUpload was not called");
+  await rm(path.join(dir, "youtube-short.json"));
+  console.log("OK: the Short follows a dashboard upload, once, at the same visibility, 18h later");
 
   /* --- Finishing twice ----------------------------------------------------------------------- */
   // "Finish on YouTube" is on every published match and the channel scan can run it by itself, so

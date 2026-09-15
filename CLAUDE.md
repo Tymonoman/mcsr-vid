@@ -244,7 +244,11 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
   `source: "manual"` and `confidence: 1` — which clears the warning line and, in `src/pipeline.ts`,
   makes the sync stage keep those numbers instead of re-running the detector, so re-rendering for
   a new thumbnail cannot put the machine's rejected guess back. Only the clip placement changes,
-  so the fix is `export:fast` (~10 min), not a re-render.
+  so the fix is `export:fast` (~10 min), not a re-render — and it is not optional: a video went
+  out of sync to the channel because sync.json was corrected *after* `final-<id>.mp4` was exported.
+  `exportStale` (`src/syncFile.ts`, mtime of sync.json vs the export) now refuses the Upload
+  button, the nightly's video and the adopt route with one line, and the match page's "Sync check"
+  (both POVs at 9.6 s, above the YouTube panel) is the look that catches the rest.
 - **Every consumer places the clips from `<matchDir>/sync.json`** (`src/syncFile.ts`), which the
   pipeline writes when the sync stage decides — refined or kept-coarse, `source` says which.
   Without it `export:fast` and the Short fall back to `config.preRollSec` and run seconds early;

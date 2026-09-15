@@ -305,6 +305,8 @@ async function select(id, { open = false } = {}) {
     <h2 id="h-short">Short</h2>
     <div id="short"><div class="empty">loading&hellip;</div></div>
 
+    <div id="synccheck"></div>
+
     <h2>YouTube</h2>
     <div id="youtube"><div class="empty">loading&hellip;</div></div>
 
@@ -695,6 +697,8 @@ function watchExport(id) {
         if (btn) btn.disabled = false;
       } else {
         loadPreview(id);
+        // A fresh export is not stale: the sync check and the Upload button read that from here.
+        void loadSyncEdit(id);
         // The Short panel's seek controls only render once the final video exists.
         void loadShort(id);
         // The list's "ready to publish" badge and count read the same file.
@@ -1101,13 +1105,70 @@ async function loadSyncEdit(id) {
     return;
   }
   paintSyncEdit();
+  paintSyncCheck();
 }
 
-function syncFrameUrl(side) {
+function syncFrameUrl(side, t = syncEditState.t, offset = null) {
   const s = syncEditState;
-  const offset = side === "left" ? s.left : s.right;
+  if (offset === null) offset = side === "left" ? s.left : s.right;
   // `v` busts the browser cache: the same match, side and t answer differently once nudged.
-  return `/api/sync/frame?match=${s.id}&side=${side}&t=${s.t}&offset=${offset}&v=${offset}`;
+  return `/api/sync/frame?match=${s.id}&side=${side}&t=${t}&offset=${offset}&v=${offset}`;
+}
+
+/* --- Sync check ----------------------------------------------------------------------------------
+   The mandatory look before an upload. Two videos reached the channel out of sync; one of them
+   because the offsets were corrected by hand after the MP4 was exported and nobody re-exported.
+   So, whenever an export exists: the last countdown digit out of each POV at the offsets on disk,
+   side by side above the YouTube panel, and a red line — plus a disabled Upload button — when
+   sync.json is newer than the export. Painted from the same answer the editor uses. */
+const SYNC_CHECK_SEC = 9.6;
+
+function paintSyncCheck() {
+  const el = $("#synccheck");
+  const s = syncEditState;
+  if (!el || !s) return;
+  const d = s.data;
+  if (!d.exported) {
+    el.innerHTML = "";
+    guardUpload();
+    return;
+  }
+  // What is on disk, not the editor's unsaved nudges: this is what the export was — or was
+  // not — made from.
+  const offset = (side) => (d.sync ? d.sync[side] : d.fallback);
+  const side = (name, nickname) => `
+    <div class="syncside">
+      <div class="who">${esc(nickname ?? name)}</div>
+      <img src="${esc(syncFrameUrl(name, SYNC_CHECK_SEC, offset(name)))}" alt="${esc(nickname ?? name)} at ${SYNC_CHECK_SEC}s" loading="lazy">
+    </div>`;
+  el.innerHTML = `<h2>Sync check</h2>
+    ${
+      d.left.clip && d.right.clip
+        ? `<div class="syncsides">${side("left", d.left.nickname)}${side("right", d.right.nickname)}</div>`
+        : '<div class="scanline">The POV clips are not on disk any more, so there is nothing to compare.</div>'
+    }
+    <div class="scanline">Both should show the same countdown digit. If they do not, <a href="#syncedit" data-act="fixsync">fix the sync</a> below and re-export before uploading.</div>
+    ${d.syncStale ? `<div class="scanline bad" id="syncstale">${esc(d.staleMessage)}</div>` : ""}`;
+  el.querySelector('[data-act="fixsync"]')?.addEventListener("click", () => {
+    const fold = $("#syncedit");
+    if (fold) fold.open = true;
+  });
+  guardUpload();
+}
+
+/**
+ * The Upload button, held while the export is stale — with the server's own refusal under it,
+ * so a press that would 400 is explained before it is made. Called from both sides of a race:
+ * the YouTube panel (which owns the button) and the sync check (which knows the answer) render
+ * independently, and whichever finishes second gets to do it.
+ */
+function guardUpload() {
+  const btn = $("#ytUpload");
+  const d = syncEditState?.data;
+  if (!btn || !d || d.matchId !== selected) return;
+  clearFailAt("#ytUpload");
+  btn.disabled = !!d.syncStale;
+  if (d.syncStale) failAt("#ytUpload", "Sync changed after this export", d.staleMessage);
 }
 
 function paintSyncEdit() {
@@ -1191,8 +1252,11 @@ async function saveSync(thenExport) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ left: s.left, right: s.right }),
     });
-    s.data.sync = r.sync;
+    // The PUT answers with the GET's shape: the save is what just made the export stale, and the
+    // sync check and the Upload button follow it from here.
+    s.data = r;
     paintSyncEdit();
+    paintSyncCheck();
     $("#syncmsg").textContent = `saved ${r.sync.left}s / ${r.sync.right}s`;
     // The Encode button is the same call; press it rather than keep a second copy of the flow.
     if (thenExport) $("#encode")?.click();

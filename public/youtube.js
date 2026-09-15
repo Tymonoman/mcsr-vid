@@ -136,6 +136,9 @@ async function loadYoutube(id, meta) {
 
   // The kit may have fetched the slot before this form existed (app.js prefillPublishAt).
   if (typeof prefillPublishAt === "function") prefillPublishAt();
+  // And the sync check may have found the export stale before this button existed (app.js
+  // guardUpload): the same refusal the server gives, under the button, before the press.
+  guardUpload();
 
   // No client-side hook gate. The server resolves `<HOOK>` from the edited title and, failing
   // that, the thumbnail manifest's headline — a rule this file cannot see, and every copy of it
@@ -182,10 +185,20 @@ async function pollUpload(id, meta) {
   // The video is up when there is an id; a rejected thumbnail or playlist after that is a
   // problem to fix in Studio, not a failed upload to retry.
   await loadYoutube(id, meta);
+  // The Short followed the long-form by itself (src/youtubeUpload.ts `shortAfterUpload`) and
+  // says so in one line of the warnings: scheduled when, or why it was skipped. Its own line,
+  // because "short uploaded" is not a problem and must not be reported as one.
+  const shortLine = (p.warnings ?? []).find((w) => w.startsWith("short "));
+  const problems = (p.warnings ?? []).filter((w) => w !== shortLine);
+  if (shortLine)
+    $("#youtube .published")?.insertAdjacentHTML(
+      "afterbegin",
+      `<div class="scanline${/skipped|failed/.test(shortLine) ? " bad" : ""}">${esc(shortLine)}</div>`,
+    );
   // After the repaint: the panel has just become the published view, and #ytFinish is the row
   // these problems are about -- a thumbnail or a playlist that did not take.
   if (p.error) failAt("#ytFinish", "Upload failed", p.error);
-  else if (p.warnings?.length) failAt("#ytFinish", "Uploaded, with a problem", p.warnings.join("\n"));
+  else if (problems.length) failAt("#ytFinish", "Uploaded, with a problem", problems.join("\n"));
 }
 
 /**
