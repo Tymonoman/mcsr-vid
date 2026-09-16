@@ -149,7 +149,7 @@ assert.ok(
   !/\b\d+\s*[–-]\s*\d+\b/.test(para.replace("Game 2 of 5", "")),
   `a score-shaped pair slipped into the paragraph:\n${para}`,
 );
-assert.ok(para.includes("https://mcsrranked.com/playoffs/11"));
+assert.ok(para.includes("https://magmamcsr.com/events/playoffs/s11/bracket"));
 assert.ok(para.includes("twitch.tv/mcsrranked") && para.includes("youtube.com/@MCSR_Ranked"));
 
 /* --- Fetching: the bracket by season offset, histories paged and cached --------------------- */

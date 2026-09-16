@@ -1,4 +1,5 @@
 import type { VodWindow } from "./vodAcquisition.js";
+import { matchPageUrl } from "./mcsrApi.js";
 import { type ChapterMarker, formatChapters } from "./chapters.js";
 import { eloAtMatchStart } from "./overlayProps.js";
 import { playoffLabel, playoffParagraph, type PlayoffContext } from "./playoffs.js";
@@ -102,7 +103,7 @@ export function buildDescription(input: DescriptionInput): string {
     `${userRight.nickname}'s stream: ${vodDeepLink(rightWindow)}`,
     // The `/matches/<id>` segment is what pairs a Studio upload back to its match
     // (src/channelUploads.ts): keep the line however the label changes.
-    `Match page: https://mcsrranked.com/matches/${matchId}`,
+    `Match page: ${matchPageUrl(matchId, userLeft.nickname, input.match.season)}`,
     // A playlist link is the one thing in a description that turns one view into a session.
     ...(input.playlistUrl ? [`All the matches: ${input.playlistUrl}`] : []),
     // The one line that can earn before the Partner Programme does.

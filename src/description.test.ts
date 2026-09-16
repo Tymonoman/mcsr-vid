@@ -97,7 +97,10 @@ assert.match(text, /^doogile's stream: .*\?t=932s$/m);
 // The chapter list goes in bare: YouTube reads the 0:00 lines without a heading over them.
 assert.match(text, /\n\n0:00 Start\n2:07 Nether Enter\n\n/, "chapters block must be included verbatim");
 assert.ok(!text.includes("Chapters:"), "no heading over the chapter list");
-assert.match(text, /^Match page: https:\/\/mcsrranked\.com\/matches\/12730175$/m);
+assert.match(
+  text,
+  /^Match page: https:\/\/magmamcsr\.com\/ranked\/player\/edcr\/matches\/12730175(\?season=\d+)?$/m,
+);
 
 // The links, one per line, in this order: the two streams, the match page, then the opt-in two.
 const links = text.split("\n\n")[2]!.split("\n");

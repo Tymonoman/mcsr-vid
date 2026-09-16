@@ -116,6 +116,7 @@ assert.equal(await picked(ranked, { ...roomy, freeMatches: 2 }), 1);
   const seed = (nickname: string) => ({ uuid: nickname, nickname, label: "LCQ", seasonEloRate: 2000 });
   const board: PlayoffBoard = {
     season: 11,
+    bracketUrl: "",
     slots: [
       {
         id: 9,
@@ -124,9 +125,9 @@ assert.equal(await picked(ranked, { ...roomy, freeMatches: 2 }), 1);
         startTime: 0,
         seeds: [seed("edcr"), seed("lauveer")],
         games: [
-          { matchId: 3, dateSec: 300, gameNo: 3 },
-          { matchId: 1, dateSec: 100, gameNo: 1 },
-          { matchId: 2, dateSec: 200, gameNo: 2 },
+          { matchId: 3, url: "", dateSec: 300, gameNo: 3 },
+          { matchId: 1, url: "", dateSec: 100, gameNo: 1 },
+          { matchId: 2, url: "", dateSec: 200, gameNo: 2 },
         ],
       },
     ],

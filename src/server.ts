@@ -19,7 +19,7 @@ import { codeVersions } from "./repoHead.js";
 import { hookSuggestions } from "./hooks.js";
 import { computeMetrics } from "./matchScore.js";
 import { listMatchStatuses, matchStatusFor } from "./matchStatus.js";
-import { getMatch, getUser, getVersus, parseMatchId } from "./mcsrApi.js";
+import { getMatch, getUser, getVersus, matchPageUrl, parseMatchId } from "./mcsrApi.js";
 import {
   afterSettled,
   msUntilNextRun,
@@ -70,9 +70,6 @@ import { findExportedVideo, PINNED_COMMENT, readUpload } from "./youtubeStore.js
 
 const PORT = Number(process.env.PORT ?? 8080);
 const ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
-
-/** Same match page the generated description links to (src/description.ts). */
-const MCSR_MATCH_URL = "https://mcsrranked.com/matches/";
 
 /**
  * The page's own assets. An explicit allowlist rather than serving public/ as a directory,
@@ -172,7 +169,7 @@ async function readMeta(matchId: number) {
     // `npm run sync-status` derives one from the project.
     sync: readSyncOffsets(matchDir(matchId)),
     syncThreshold: config.syncConfidenceThreshold,
-    matchUrl: `${MCSR_MATCH_URL}${matchId}`,
+    matchUrl: matchPageUrl(matchId, entry.leftNickname, entry.season),
     /** Why the entry is degraded (API unreachable), or null. Surfaced so "?" is never a lie. */
     error: entry.error,
     /**
@@ -298,7 +295,7 @@ function suggestionsPayload() {
     rivalPostsSnapshot(),
   ).map((card) => ({
     ...card,
-    matchUrl: `${MCSR_MATCH_URL}${card.matchId}`,
+    matchUrl: matchPageUrl(card.matchId, card.players[0]),
   }));
 
   return {

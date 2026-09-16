@@ -1679,7 +1679,7 @@ function renderSuggestions(data) {
         ${splitsChart(s.splits, { left: s.players[0], right: s.players[1], compact: true })}
         <div class="expiry${s.expiring ? " warn" : ""}">${esc(s.expiryLabel)}</div>
         <div class="links">
-          <a href="${esc(s.matchUrl)}" target="_blank" rel="noopener">mcsrranked #${s.matchId}</a>
+          <a href="${esc(s.matchUrl)}" target="_blank" rel="noopener">match page #${s.matchId}</a>
           ${s.vodUrls.map((u, i) => `<a href="${esc(u)}" target="_blank" rel="noopener">VOD ${i + 1}</a>`).join("")}
         </div>
         <div class="acts">
@@ -1833,7 +1833,7 @@ function paintPlayoffs() {
             const onShelf = matches.some((m) => m.matchId === g.matchId);
             return `<div class="game" data-id="${g.matchId}">
             <span>Game ${g.gameNo} of ${s.bestOf}</span>
-            <a href="https://mcsrranked.com/matches/${g.matchId}" target="_blank" rel="noopener">#${g.matchId}</a>
+            <a href="${esc(g.url)}" target="_blank" rel="noopener">#${g.matchId}</a>
             ${onShelf ? `<button data-act="open">Rendered &middot; open</button>` : `<button data-act="render">Render</button>`}
           </div>`;
           })
@@ -1842,7 +1842,7 @@ function paintPlayoffs() {
     )
     .join("");
   el.innerHTML = `
-    <div class="bucketlegend"><span class="bucket playoffs">PLAYOFFS</span><span>Season ${esc(String(playoffData.season))} bracket &middot; <a href="https://mcsrranked.com/playoffs/${esc(String(playoffData.season))}" target="_blank" rel="noopener">mcsrranked.com</a></span></div>
+    <div class="bucketlegend"><span class="bucket playoffs">PLAYOFFS</span><span>Season ${esc(String(playoffData.season))} bracket &middot; <a href="${esc(playoffData.bracketUrl ?? "")}" target="_blank" rel="noopener">magmamcsr.com</a></span></div>
     ${soon ? rows : `<details class="playoffsoon"><summary>${summary}</summary>${rows}</details>`}`;
   el.querySelectorAll(".game").forEach((row) => {
     const id = Number(row.dataset.id);

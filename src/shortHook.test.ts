@@ -100,7 +100,7 @@ const FALLBACK = "watch the lead flip here";
     description.split("\n")[0],
     "edcr vs doogile, MCSR Ranked 1v1. The whole match is on the channel, both streams side by side.",
   );
-  assert.ok(description.includes("Match page: https://mcsrranked.com/matches/12730175"));
+  assert.ok(description.includes("Match page: https://magmamcsr.com/ranked/player/edcr/matches/12730175"));
   // The same three the long-form carries, not a second set — both halves of a match should look
   // like one channel to YouTube.
   assert.ok(description.includes(HASHTAGS.join(" ")));

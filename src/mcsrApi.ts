@@ -117,6 +117,20 @@ export function getVersus(identifier1: string, identifier2: string): Promise<Ver
   );
 }
 
+/**
+ * The match page, on Magma. mcsrranked.com's own `/matches/<id>` pages went 404 in Sept 2026 and
+ * Magma's only match route sits under a player (`/ranked/matches/<id>` bounces to the
+ * leaderboard); either player will do. The site appends `?season=` itself when it is left out.
+ * Keep the `/matches/<id>` segment: it is what pairs a channel upload back to its match
+ * (src/channelUploads.ts).
+ */
+export const matchPageUrl = (matchId: number, nickname: string, season?: number | null): string =>
+  `https://magmamcsr.com/ranked/player/${encodeURIComponent(nickname)}/matches/${matchId}${season ? `?season=${season}` : ""}`;
+
+/** The live tournament lives under /events; an archived season moves to /ranked/playoffs/s<N>/bracket. */
+export const playoffsBracketUrl = (season: number): string =>
+  `https://magmamcsr.com/events/playoffs/s${season}/bracket`;
+
 /** Accepts a full match URL (any site, with or without query/hash) or a bare match ID. */
 export function parseMatchId(input: string): number {
   const withoutQueryOrHash = input.split(/[?#]/)[0];

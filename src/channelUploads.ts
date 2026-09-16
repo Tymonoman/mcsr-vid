@@ -5,7 +5,7 @@
  * 2026), so nothing on disk records those.
  *
  * The link back is the description. Every description the pipeline writes carries
- * `Match page: https://mcsrranked.com/matches/<id>` (src/description.ts) and that description is
+ * `Match page: https://magmamcsr.com/ranked/player/<nick>/matches/<id>` (src/description.ts) and that description is
  * what the operator pastes into Studio, so the channel itself says which match a video is —
  * without a tick, a file, or a step to forget. What survives the hand-editing that line gets is
  * the `/matches/<id>` segment, not the host; see `channelVideoFor`.

@@ -1,4 +1,5 @@
 import path from "node:path";
+import { matchPageUrl } from "./mcsrApi.js";
 import { readFile } from "node:fs/promises";
 import { HASHTAGS } from "./description.js";
 import { hookSuggestions } from "./hooks.js";
@@ -162,11 +163,12 @@ export function buildShortDescription(
   supportUrl = "",
   /** The long form's format half (`playoffTitleTail`), so a playoff Short is not sold as a 1v1. */
   format = "MCSR Ranked 1v1",
+  season?: number,
 ): string {
   return [
     `${leftNickname} vs ${rightNickname}, ${format}. The whole match is on the channel, both streams side by side.`,
     ...(playlistUrl ? [`All the matches: ${playlistUrl}`] : []),
-    `Match page: https://mcsrranked.com/matches/${matchId}`,
+    `Match page: ${matchPageUrl(matchId, leftNickname, season)}`,
     ...(supportUrl ? [`Tip jar: ${supportUrl}`] : []),
     HASHTAGS.join(" "),
   ].join("\n");

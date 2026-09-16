@@ -15,7 +15,14 @@
  */
 import { config } from "./config.js";
 import { describeError } from "./errorText.js";
-import { getMatch, getPlayoffs, getUserMatches, McsrApiError } from "./mcsrApi.js";
+import {
+  McsrApiError,
+  getMatch,
+  getPlayoffs,
+  getUserMatches,
+  matchPageUrl,
+  playoffsBracketUrl,
+} from "./mcsrApi.js";
 import type { FeedMatch, MatchInfo, PlayoffBracket, PlayoffSlot } from "./types.js";
 
 export interface PlayoffSeed {
@@ -40,6 +47,8 @@ export interface PlayoffContext {
 
 export interface PlayoffGame {
   matchId: number;
+  /** The match page (src/mcsrApi.ts), so the board never hardcodes the site's host. */
+  url: string;
   dateSec: number;
   gameNo: number;
 }
@@ -78,7 +87,7 @@ export function playoffParagraph(ctx: PlayoffContext): string {
   const [a, b] = ctx.seeds;
   return [
     `Season ${ctx.season} Playoffs, ${playoffLabel(ctx)}: ${a.nickname} (${a.label}, ${a.seasonEloRate} elo) vs ${b.nickname} (${b.label}, ${b.seasonEloRate} elo).`,
-    `Bracket: https://mcsrranked.com/playoffs/${ctx.season}`,
+    `Bracket: ${playoffsBracketUrl(ctx.season)}`,
     "Official broadcast: https://twitch.tv/mcsrranked · https://youtube.com/@MCSR_Ranked",
   ].join("\n");
 }
@@ -139,7 +148,12 @@ export function slotGames(
   for (const m of history) if (gameBelongs(bracket, slot, m)) byId.set(m.id, m);
   return [...byId.values()]
     .sort((x, y) => x.date - y.date)
-    .map((m, i) => ({ matchId: m.id, dateSec: m.date, gameNo: i + 1 }));
+    .map((m, i) => ({
+      matchId: m.id,
+      url: matchPageUrl(m.id, seeds[0].nickname),
+      dateSec: m.date,
+      gameNo: i + 1,
+    }));
 }
 
 /** Everything the packaging needs about one game, or null when the match is not one of the slot's. */
@@ -295,6 +309,7 @@ export interface PlayoffBoardSlot {
 
 export interface PlayoffBoard {
   season: number | null;
+  bracketUrl: string | null;
   slots: PlayoffBoardSlot[];
 }
 
@@ -317,7 +332,12 @@ export function bracketActive(bracket: PlayoffBracket, nowSec: number): boolean 
  */
 export async function playoffBoard(nowSec: number = Date.now() / 1000): Promise<PlayoffBoard> {
   const bracket = await loadBracket();
-  if (!bracket || !bracketActive(bracket, nowSec)) return { season: bracket?.season ?? null, slots: [] };
+  if (!bracket || !bracketActive(bracket, nowSec))
+    return {
+      season: bracket?.season ?? null,
+      bracketUrl: bracket ? playoffsBracketUrl(bracket.season) : null,
+      slots: [],
+    };
   const seated = bracket.matches.filter((slot) => slotSeeds(bracket, slot) !== null);
   const slots = await Promise.all(
     seated.map(async (slot) => ({
@@ -344,6 +364,7 @@ export async function playoffBoard(nowSec: number = Date.now() / 1000): Promise<
   }
   return {
     season: bracket.season,
+    bracketUrl: playoffsBracketUrl(bracket.season),
     slots: slots.sort((x, y) => (x.startTime ?? Infinity) - (y.startTime ?? Infinity) || x.id - y.id),
   };
 }

@@ -247,6 +247,7 @@ await writeFile(
     config.youtubePlaylistUrl,
     config.supportUrl,
     playoff ? playoffTitleTail(playoff) : undefined,
+    match.season,
   ),
   "utf8",
 );

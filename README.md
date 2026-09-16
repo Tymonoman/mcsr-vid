@@ -18,7 +18,7 @@ The videos go up as [MCSR Replayoffs](https://www.youtube.com/channel/UCm2mAyONT
 
 ## Commands
 
-Pass a full `mcsrranked.com` match URL or a bare match ID; extra arguments go
+Pass a full match page URL (magmamcsr.com) or a bare match ID; extra arguments go
 after `--`. Each stage can be run standalone against an already-downloaded
 match — existing files under `media/<id>/` are reused instead of re-fetched.
 
