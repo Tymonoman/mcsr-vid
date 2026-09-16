@@ -78,7 +78,7 @@ const idle = (matchId: number, kind: UploadKind): UploadProgress => ({
 });
 
 /** The gate on `videos.insert`. See `youtubeUploadEnabled` in src/config.ts. */
-const UPLOADS_OFF = "uploads go through Studio until the API compliance audit clears";
+const UPLOADS_OFF = "uploads are switched off (youtubeUploadEnabled) — this one goes through Studio";
 
 /** What the browser polls; an idle answer for a match nothing has started on. */
 export const uploadProgress = (matchId: number, kind: UploadKind): UploadProgress =>

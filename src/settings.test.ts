@@ -21,7 +21,7 @@ const { config, CONFIG_PATH } = await import("./config.js");
 const { coerce, saveSettings, SETTINGS, settingsPayload, READ_ONLY } = await import("./settings.js");
 assert.equal(CONFIG_PATH, path.join(dir, "mcsr-vid.config.json"), "the test owns the file it writes");
 
-// The audit gate is not something a mis-click may reach: an upload through an unaudited project
+// The upload switches are not something a mis-click may reach: they change what goes on the channel
 // is locked private for good, so those two stay a deliberate edit on the box.
 const writable = new Set(SETTINGS.map((f) => f.key as string));
 assert.ok(!writable.has("youtubeUploadEnabled"), "youtubeUploadEnabled is not writable here");

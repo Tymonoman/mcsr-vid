@@ -187,7 +187,7 @@ console.log("youtube: all checks passed");
 
   config.youtubeUploadEnabled = false;
   const gated = await post();
-  assert.equal(gated.status, 403, "uploads are off until the compliance audit clears");
+  assert.equal(gated.status, 403, "uploads are off while youtubeUploadEnabled is false");
   assert.match(gated.error, /Studio/);
 
   config.youtubeUploadEnabled = true;

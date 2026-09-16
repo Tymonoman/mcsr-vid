@@ -714,7 +714,7 @@ const server = createServer(async (req, res) => {
 
     // The four facts the publish-kit panel needs that /api/meta has no reason to know: the
     // Short's own metadata, the video's public URL, and who to send the two DMs to. Uploading
-    // stays manual while the API audit is pending, and the Related Video link and the player
+    // was manual while the API audit was pending, and the Related Video link and the player
     // DMs have no API at all, so what the operator actually needs is every paste in one place.
     // Its own route rather than more fields on readMeta: this reads two files and the upload
     // record that a title editor never looks at.

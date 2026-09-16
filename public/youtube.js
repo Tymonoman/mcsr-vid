@@ -18,7 +18,7 @@ const mib = (bytes) => `${(bytes / 1024 / 1024).toFixed(0)} MiB`;
  * No title or description here: the upload reads the match's own files server-side — the same
  * `.edited.txt` the title editor writes and the publish kit pastes from — so there is one copy
  * of the text. The form is visibility, the publish time and the button, and while uploads are
- * off (the API audit, `youtubeUploadEnabled`) it is only the "check the channel" line.
+ * off (`youtubeUploadEnabled`) it is only the "check the channel" line.
  */
 async function loadYoutube(id, meta) {
   const el = $("#youtube");

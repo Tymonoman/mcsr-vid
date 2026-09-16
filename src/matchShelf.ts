@@ -94,8 +94,8 @@ export async function deleteMatch(matchId: number): Promise<DeleteResult> {
 
 /* --- Publish checklist ----------------------------------------------------------------------
  *
- * Uploading is manual while the YouTube API compliance audit is pending (videos.insert would
- * lock every upload private), so "is this match actually out the door?" lives in the operator's
+ * Uploading was manual while the YouTube API compliance audit was pending (cleared 15 Sept
+ * 2026), and the Studio-era matches are still tracked this way, so "is this match actually out the door?" lives in the operator's
  * head. Ten facts answer it; the five that happen in Studio or in a DM are stored here, the rest
  * are read off disk, because a stored copy of a derivable fact is a second thing that can be wrong.
  */

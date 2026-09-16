@@ -8,9 +8,9 @@
  * (`preRollSec`, `overlayLeadInSec` — see the ANCHOR_SEC pitfall in CLAUDE.md). A web form is the
  * wrong place to discover that changing one silently slides every overlay late.
  *
- * **`youtubeUploadEnabled` and `nightlyUpload` are deliberately not here.** They are the audit
- * gate: an upload through an unaudited project is locked private for good, so the cost of a
- * mis-click is a video that can never be published. That one stays a deliberate edit on the box.
+ * **`youtubeUploadEnabled` and `nightlyUpload` are deliberately not here.** One switches the
+ * live channel's upload path, the other what a nightly does with its MP4, and a mis-click on
+ * either shows up on the channel. They stay a deliberate edit on the box.
  * Both are reported read-only so the panel can still say where they stand.
  */
 import { readFileSync, writeFileSync, renameSync, existsSync } from "node:fs";

@@ -145,10 +145,9 @@ export interface Config {
    */
   nightlyNotifyUrl: string;
   /**
-   * Whether the dashboard may call `videos.insert` at all. Off until the YouTube API compliance
-   * audit clears (submitted 7 Sept 2026): an upload through an unaudited project is locked
-   * private for good, so until the letter arrives every upload goes through Studio and
-   * POST /api/youtube/upload answers 403. Flip this first, by hand, after the audit.
+   * Whether the dashboard may call `videos.insert` at all. Off, POST /api/youtube/upload answers
+   * 403 and every upload goes through Studio. The default stayed false while the YouTube API
+   * compliance audit was pending (cleared 15 Sept 2026); the lab's config sets it true.
    */
   youtubeUploadEnabled: boolean;
   /**

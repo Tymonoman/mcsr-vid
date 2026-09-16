@@ -414,7 +414,7 @@ async function reachFor(videoId: string): Promise<{ impressions: number; ctr: nu
  * Uploaded matches with their live stats, or the record alone when YouTube is unreachable.
  *
  * Two sources, because only one of them is written here. A match uploaded through Studio — every
- * upload while the API audit is pending — has no youtube.json; what it has is the match link in
+ * upload while the API audit was pending, cleared 15 Sept 2026 — has no youtube.json; what it has is the match link in
  * its description, which is enough to pair it with the directory it came from
  * (src/channelUploads.ts). Without those the panel offered an upload form for videos already on
  * the channel.

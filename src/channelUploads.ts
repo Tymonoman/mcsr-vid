@@ -1,8 +1,8 @@
 /**
  * What is actually on the channel, matched back to the match that produced it.
  *
- * Uploads go through YouTube Studio by hand while the API audit is pending, so nothing on disk
- * records them.
+ * Uploads went through YouTube Studio by hand while the API audit was pending (cleared 15 Sept
+ * 2026), so nothing on disk records those.
  *
  * The link back is the description. Every description the pipeline writes carries
  * `Match page: https://mcsrranked.com/matches/<id>` (src/description.ts) and that description is

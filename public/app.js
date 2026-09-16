@@ -387,9 +387,9 @@ async function select(id, { open = false } = {}) {
 }
 
 /**
- * The publish checklist, in the order the work actually happens. Uploading is manual until the
- * YouTube compliance audit clears, so this row is the only place that knows whether a rendered
- * match ever left the box. Pills that are facts read off disk are not clickable; the ones that
+ * The publish checklist, in the order the work actually happens. Uploading was manual while the
+ * YouTube compliance audit was pending (cleared 15 Sept 2026), so this row is the only place that
+ * knows whether a Studio-era match ever left the box. Pills that are facts read off disk are not clickable; the ones that
  * happen in Studio or in a DM are buttons.
  */
 const CHECKLIST = [
@@ -729,8 +729,8 @@ function prefillPublishAt() {
 /**
  * Every paste a manual publish needs, in the order it gets used.
  *
- * Uploading is manual while the YouTube compliance audit is pending, and two parts of it stay
- * manual afterwards: a Short's Related Video link has no API, and telling the two players their
+ * Uploading was manual while the YouTube compliance audit was pending, and two parts of it stay
+ * manual now it has cleared: a Short's Related Video link has no API, and telling the two players their
  * match is up is a DM. Today those pastes are transcribed by hand out of four different panels,
  * which is exactly how a title picks up a stray newline. Nothing here is stored -- every block
  * is derived from the metadata already on the page plus /api/publishkit.
@@ -1894,8 +1894,8 @@ async function startRender(input, full = false) {
    The dashboard's own view of mcsr-vid.config.json, for the handful of keys worth changing without
    an ssh session. The server allowlists what may be written and validates the merged file with the
    loader's own rules, so this side only has to render fields and post what changed. What is NOT
-   here is deliberate: youtubeUploadEnabled and nightlyUpload are the compliance-audit gate, and a
-   mis-click there locks a video private for good. They are shown, greyed, with the reason. */
+   here is deliberate: youtubeUploadEnabled and nightlyUpload change what goes on the live channel
+   (the upload path, and what a nightly does with its MP4). They are shown, greyed, with the reason. */
 let settingsData = null;
 
 async function loadSettings() {
@@ -1950,7 +1950,7 @@ function paintSettings() {
       .join("")}
     <div class="setgroup">
       <h3>Not changeable here</h3>
-      <div class="sethelp">The first two are the YouTube compliance-audit gate: an upload through an unaudited project is locked private for good, so they stay a deliberate edit on the box.</div>
+      <div class="sethelp">The first two change what goes on the live channel — the upload path, and what a nightly does with its MP4 — so they stay a deliberate edit on the box.</div>
       ${settingsData.readOnly
         .map(
           (r) =>

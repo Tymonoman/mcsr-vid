@@ -12,12 +12,12 @@ what an agent cannot derive from the code; the rest is in the files it names.
   cut earlier where the winner goes quiet, never under 15 s).
 - Nothing names the winner: no result line in the description, no winner in a hook or on a
   thumbnail. The upset hook is a question (`Can the 1789 take down the 2080?`).
-- No `videos.insert` until the YouTube API compliance audit clears (submitted 7 Sept 2026): Google
-  says an upload through an unaudited project is locked private for good. One upload was made for
-  the round-2 audit recording (14 Sept, `2Q91qSW0mtE`) and was *not* locked — Studio scheduled it
-  like any other — but one sample is not the policy, so uploads still go through Studio.
-  The code holds that line with `youtubeUploadEnabled` (default false: `POST /api/youtube/upload`
-  answers 403 and the panel hides the form). Flip it, then `nightlyUpload`, only after the letter.
+- **The YouTube API compliance audit cleared on 15 Sept 2026** ("completed your review and don't
+  require any further actions"; submitted 7 Sept, round-2 recording 14 Sept — the reply texts are
+  `youtube-api-review-reply*.txt`). `videos.insert` is allowed; `youtubeUploadEnabled` is true on
+  the lab and the dashboard uploads. `nightlyUpload` is still `"off"` — turning it on changes what
+  a nightly render does, so it is the operator's edit. Google may re-review: keep every API call
+  inside what the recording showed (own channel, own data, nothing shown to anyone else).
 - Nothing irreversible without the operator: deletions, retitles on the live channel, config
   that changes what a nightly render does.
 
@@ -153,8 +153,9 @@ they differ (`code: { boot, now }` from `src/repoHead.ts`). Client changes need 
   read fresh and merged, so a hand-edited key the panel does not know about survives a save, and
   the merged object goes through `validateOverrides` — the loader's own function — so the panel
   cannot write a file that then fails to boot. **`youtubeUploadEnabled` and `nightlyUpload` are
-  deliberately not writable here**: they are the audit gate and a mis-click locks a video private
-  for good, so they stay a deliberate edit on the box and the panel only reports them. Add a key by
+  deliberately not writable here**: one switches the live channel's upload path, the other what
+  a nightly does with its MP4, so they stay a deliberate edit on the box and the panel only
+  reports them. Add a key by
   adding a `SettingField` to `SETTINGS`; the panel and both tests derive from that list.
 - **Publish kit** (`GET /api/publishkit/:id`): copy buttons for the title, the publish slot
   (`publishHourUtc`, default 19:00 UTC, the competitor's measured hour, on the first day no
@@ -261,10 +262,10 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
   y≈790 and anything under the badge collides with them.
 - **tini is PID 1 since 830321f**; if `ps -eo stat | grep -c ^Z` ever climbs, wrap the command
   in `python3 scripts/reap.py`.
-- **The upload form is dead code until the audit clears.** Everything inside
-  `status.uploadsEnabled` in `public/youtube.js` has never rendered, so a mistake there surfaces
-  on the day `youtubeUploadEnabled` goes true and not before — one such bug (a free `u`) shipped
-  that way. `post-audit-check` renders that branch by flipping the flag in the browser's copy of
+- **The upload form rendered for the first time on 14 Sept 2026.** Everything inside
+  `status.uploadsEnabled` in `public/youtube.js` sat unrendered for a week while the audit was
+  pending, so a mistake there surfaced only when `youtubeUploadEnabled` went true — one such bug
+  (a free `u`) shipped that way. `post-audit-check` renders that branch by flipping the flag in the browser's copy of
   `/api/youtube/status`; run it after touching that file.
 - **The playoffs board lives *inside* `#suggestions` and its rows carry `.sugg`.** Anything that
   means "the suggestion cards" must say `#suggestions > .sugg`; the descendant form also matches
