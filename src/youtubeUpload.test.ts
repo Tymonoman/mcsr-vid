@@ -10,6 +10,7 @@ import {
   beginUpload,
   nightlyUploads,
   playlistTitlesFor,
+  retryFailedPlaylists,
   SHORT_DELAY_MS,
   shortAfterUpload,
 } from "./youtubeUpload.js";
@@ -520,6 +521,17 @@ try {
   const shortSteps = await finishOnYouTube(matchId, "vidX", "short");
   assert.equal(shortSteps.tags, null, "a Short's tags step is a no-op");
   assert.ok(!hits.some((h) => h.includes("/videos?part=snippet")), "and it calls nothing");
+
+  // The nightly's retry presses only the records whose playlist step failed — any string, the
+  // cap's line included — and leaves a clean (null) or never-attempted (absent) one alone.
+  await writeUpload(matchId, { ...record, finished: { playlists: `"x": ${"cap"}`, thumbnail: null } });
+  await writeUpload(matchId, { ...record, finished: { playlists: null } }, "short");
+  const pressed: string[] = [];
+  await retryFailedPlaylists(async (id, videoId, kind) => {
+    pressed.push(`${id}/${kind}/${videoId}`);
+    return { playlists: null };
+  });
+  assert.deepEqual(pressed, [`${matchId}/video/vidX`], "only the failed step is pressed again");
 
   globalThis.fetch = realFetch;
   console.log("OK: the tags step adds what is missing without blanking the snippet");

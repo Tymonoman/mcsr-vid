@@ -41,7 +41,7 @@ import { snapshot, startScan } from "./suggestScan.js";
 import { getMatch } from "./mcsrApi.js";
 import type { MatchInfo } from "./types.js";
 import { withDiscoveredVods } from "./vodDiscovery.js";
-import { nightlyUploads } from "./youtubeUpload.js";
+import { nightlyUploads, retryFailedPlaylists } from "./youtubeUpload.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -605,6 +605,9 @@ export function scheduleNightly(options: NightlyOptions): void {
   const delay = msUntilNextRun(Date.now(), hourUtc);
   console.error(`nightly: next auto-render at ${new Date(Date.now() + delay).toISOString()}`);
   nightlyTimer = setTimeout(() => {
+    // The daily tick is also the press that clears a playlist step YouTube's creation cap refused
+    // (src/youtubeUpload.ts); it is not part of the run so a skipped night still makes it.
+    retryFailedPlaylists().catch((err: unknown) => console.error(`playlists: ${describeError(err)}`));
     runNightlyOnce(options.notifyUrl)
       .catch((err: unknown) => console.error(`nightly: ${describeError(err)}`))
       .finally(() => scheduleNightly(options));

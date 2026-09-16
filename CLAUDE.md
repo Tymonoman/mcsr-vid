@@ -142,6 +142,9 @@ they differ (`code: { boot, now }` from `src/repoHead.ts`). Client changes need 
 - **Upload** sends `match-<id>.tags.txt` and refuses a title still containing `<HOOK>`; it adds
   the video to the season playlist (`PLHG-jSA-dWDo`), a per-matchup and a per-player playlist
   (`src/youtube.ts`; ids remembered per process because YouTube's list is eventually consistent).
+  **YouTube caps `playlists.insert` at about a dozen per rolling 24 h** (429 RATE_LIMIT_EXCEEDED;
+  measured 15–16 Sept 2026): the step records the refusal in the ledger and the nightly's tick
+  presses again (`retryFailedPlaylists`), so a cap line in the panel needs no press from anyone.
   **A Studio upload is recognised without a tick** (`src/channelUploads.ts`): the channel's
   videos are paired to matches by the `/matches/<id>` segment in the pasted description; the
   YouTube panel's "check the channel" link lists the channel at once. The manual `uploaded`

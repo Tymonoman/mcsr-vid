@@ -12,7 +12,7 @@ import { archiveMatch } from "./archive.js";
 import type { ChannelVideo } from "./channelUploads.js";
 import { config, matchDir } from "./config.js";
 import { describeError } from "./errorText.js";
-import { matchStatusFor } from "./matchStatus.js";
+import { listProcessedMatchIds, matchStatusFor } from "./matchStatus.js";
 import { playoffContextForId } from "./playoffs.js";
 import { nextPublishSlot } from "./publishSlot.js";
 import { exportStale, staleExportMessage } from "./syncFile.js";
@@ -301,7 +301,8 @@ export async function finishOnYouTube(
     const playlistErrors: string[] = [];
     for (const [title, description] of playlistTitlesFor(status, kind, playoff)) {
       const error = await attempt(() => addToPlaylist(videoId, title, description));
-      if (error) playlistErrors.push(`"${title}": ${error}`);
+      if (error)
+        playlistErrors.push(`"${title}": ${error.includes("RATE_LIMIT_EXCEEDED") ? PLAYLIST_CAP : error}`);
     }
     finished.playlists = playlistErrors.length ? playlistErrors.join("; ") : null;
   }
@@ -435,6 +436,30 @@ export async function shortAfterUpload(
     },
     begin,
   );
+}
+
+/**
+ * YouTube caps `playlists.insert` at about a dozen per rolling 24 h. Undocumented: twelve went
+ * through in one minute at 19:27 UTC on 15 Sept 2026, the thirteenth was refused with 429
+ * RATE_LIMIT_EXCEEDED, and so was one more at 18:00 the next day — 23 h later. A press the
+ * following day succeeds.
+ */
+const PLAYLIST_CAP = "YouTube's playlist-creation cap (about a dozen a day) — the nightly retries it";
+
+/**
+ * The press that clears a playlist step which failed — the cap above, or any other refusal — on
+ * every record still carrying one, videos and Shorts both. The nightly's tick makes it, at an
+ * hour the cap has rolled over. `finish` is the test's seam.
+ */
+export async function retryFailedPlaylists(finish: typeof finishOnYouTube = finishOnYouTube): Promise<void> {
+  for (const matchId of listProcessedMatchIds()) {
+    for (const kind of ["video", "short"] as const) {
+      const record = await readUpload(matchId, kind);
+      if (typeof record?.finished?.playlists !== "string") continue;
+      const { playlists } = await finish(matchId, record.videoId, kind);
+      console.error(`playlists: #${matchId} ${kind} ${playlists ?? "done"}`);
+    }
+  }
 }
 
 /**
