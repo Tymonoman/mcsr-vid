@@ -65,7 +65,11 @@ assert.ok(
 assert.ok(text.slice(0, 150).includes("MCSR Ranked"), "the format survives the preview cut");
 
 // Elo comes from changes[].eloRate - changes[].change, never the live rating.
-assert.match(opening, /2546 vs 2440 elo going in\./, "must use match-time elo, not the live 2615/2370");
+assert.match(
+  opening,
+  /edcr came in at 2546 elo, doogile at 2440\./,
+  "must use match-time elo, not the live 2615/2370",
+);
 // Never the result: the description is read before the match is watched.
 assert.ok(!opening.includes("Result:") && !opening.includes("8:52"), "the opening must not say who won");
 
@@ -73,7 +77,7 @@ assert.ok(!opening.includes("Result:") && !opening.includes("8:52"), "the openin
 // made. A viewer called the old copy out for reading like a machine wrote it.
 assert.equal(
   opening,
-  "edcr vs doogile, MCSR Ranked 1v1 on the same seed. Both streams side by side, split timer between them. 2546 vs 2440 elo going in.",
+  "edcr vs doogile, MCSR Ranked 1v1 on the same seed. Both streams run side by side with the split timer between them. edcr came in at 2546 elo, doogile at 2440.",
 );
 for (const slop of [
   "synced",
@@ -124,7 +128,7 @@ assert.deepEqual(
 // The closer: who this is, and where to report a sync slip. Then the hashtags, and nothing else.
 assert.equal(
   text.split("\n\n").slice(-2).join("\n\n"),
-  "Fan project, not affiliated with MCSR Ranked. If the sync looks off anywhere, say so in the comments and I'll fix it.\n\n#MCSRRanked #MCSR #MinecraftSpeedrunning",
+  "This is a fan channel, not run by MCSR Ranked. If the sync looks off anywhere, say so in the comments and I'll fix it.\n\n#MCSRRanked #MCSR #MinecraftSpeedrunning",
 );
 
 // VOD links sit below the chapters, so the preview is prose rather than URLs.
@@ -169,7 +173,7 @@ assert.match(draw.split("\n")[0], /^edcr vs doogile, MCSR Ranked 1v1/);
   const [poOpening, poParagraph] = po.split("\n\n");
   assert.equal(
     poOpening,
-    "edcr vs doogile, MCSR Ranked S11 Playoffs, Round of 16 · Game 2 of 5. Both streams side by side, split timer between them. 2546 vs 2440 elo going in.",
+    "edcr vs doogile, MCSR Ranked S11 Playoffs, Round of 16 · Game 2 of 5. Both streams run side by side with the split timer between them. edcr came in at 2546 elo, doogile at 2440.",
   );
   assert.match(poParagraph!, /^Season 11 Playoffs, Round of 16 · Game 2 of 5: edcr \(#1 seed, 2546 elo\)/);
   assert.ok(!/\b[0-9][–-][0-9]\b/.test(po), "no series score anywhere");
@@ -177,13 +181,16 @@ assert.match(draw.split("\n")[0], /^edcr vs doogile, MCSR Ranked 1v1/);
 
 // --- Seed type ---------------------------------------------------------------------------
 // The base match carries no seedType, so the assertions above already cover "omit it entirely".
-assert.ok(opening.endsWith("elo going in."), "no seedType means no seed sentence");
+assert.ok(opening.endsWith("doogile at 2440."), "no seedType means no seed sentence");
 assert.ok(!/bastion/.test(opening), "no bastionType means no bastion clause");
 
 const seeded = build(match({ seedType: "VILLAGE", bastionType: "BRIDGE" })).split("\n")[0];
 assert.match(seeded, /Village seed, bridge bastion\./, "both halves, first letter capitalised");
 assert.match(seeded, /^edcr vs doogile, MCSR Ranked 1v1/, "nicknames still lead the preview");
-assert.ok(seeded.indexOf("Village seed") > seeded.indexOf("elo going in"), "seed follows the elo sentence");
+assert.ok(
+  seeded.indexOf("Village seed") > seeded.indexOf("doogile at 2440"),
+  "seed follows the elo sentence",
+);
 assert.ok(seeded.trimEnd().endsWith("bastion."), "and ends the opening");
 
 const seedOnly = build(match({ seedType: "DESERT_TEMPLE" })).split("\n")[0];

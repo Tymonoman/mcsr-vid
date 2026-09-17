@@ -98,7 +98,7 @@ const FALLBACK = "watch the lead flip here";
   // The same voice as the long-form description: what it is, in a sentence a person would type.
   assert.equal(
     description.split("\n")[0],
-    "edcr vs doogile, MCSR Ranked 1v1. The whole match is on the channel, both streams side by side.",
+    "edcr vs doogile, MCSR Ranked 1v1. The whole match is on the channel with both streams side by side.",
   );
   assert.ok(description.includes("Match page: https://magmamcsr.com/ranked/player/edcr/matches/12730175"));
   // The same three the long-form carries, not a second set — both halves of a match should look

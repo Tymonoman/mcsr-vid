@@ -847,7 +847,7 @@ async function loadPublishKit(id, meta) {
       // reach a 41-subscriber channel has: the title, one line on what it is, the link.
       block(
         "Community post",
-        `New video: ${title}\nBoth streams side by side, split timer between them.\n${url}`,
+        `New video: ${title}\nBoth streams run side by side with the split timer between them.\n${url}`,
         3,
         // The same flag as the Title block: this quotes the title, so it carries the same hole.
         title.includes("<HOOK>") ? counter("pick a hook first", true) : "",

@@ -72,7 +72,7 @@ function buildOpening(input: DescriptionInput): string {
   const format = input.playoff
     ? `MCSR Ranked S${input.playoff.season} Playoffs, ${playoffLabel(input.playoff)}`
     : "MCSR Ranked 1v1 on the same seed";
-  const head = `${left} vs ${right}, ${format}. Both streams side by side, split timer between them. ${leftElo} vs ${rightElo} elo going in.`;
+  const head = `${left} vs ${right}, ${format}. Both streams run side by side with the split timer between them. ${left} came in at ${leftElo} elo, ${right} at ${rightElo}.`;
 
   // Runners search by seed type — the closest competitor puts it in every title. It goes last
   // so the nicknames and the format keep the front of the Show-more preview.
@@ -109,7 +109,7 @@ export function buildDescription(input: DescriptionInput): string {
     // The one line that can earn before the Partner Programme does.
     ...(input.supportUrl ? [`Tip jar: ${input.supportUrl}`] : []),
     "",
-    "Fan project, not affiliated with MCSR Ranked. If the sync looks off anywhere, say so in the comments and I'll fix it.",
+    "This is a fan channel, not run by MCSR Ranked. If the sync looks off anywhere, say so in the comments and I'll fix it.",
     "",
     HASHTAGS.join(" "),
   ].join("\n");
