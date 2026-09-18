@@ -10,6 +10,9 @@ what an agent cannot derive from the code; the rest is in the files it names.
 - The match footage is never cut. The two editable regions — before the match and after the run
   — are automated (`ANCHOR_SEC`, `src/postRoll.ts`; the tail is at most `postRollSec` = 30 s,
   cut earlier where the winner goes quiet, never under 15 s).
+- Each POV's audio leans toward its side of the frame (`povAudioPan`, default 0.7; 0.5 is the
+  centred mix everything before 18 Sept 2026 shipped with) in `export:fast` only — the Kdenlive
+  project's MLT mix stays centred, and so does the Short (stacked top/bottom).
 - Nothing names the winner: no result line in the description, no winner in a hook or on a
   thumbnail. The upset hook is a question (`Can the 1789 take down the 2080?`).
 - **The YouTube API compliance audit cleared on 15 Sept 2026** ("completed your review and don't
@@ -31,7 +34,7 @@ Use the script, don't reconstruct the shell line. Extra arguments go after `--`.
 | `npm start` | The terminal UI (`src/tui.tsx`). |
 | `npm run still -- <Composition> <out.png> [--frame=N] [--props=p.json]` | One Remotion frame to PNG — the fast visual check. Rebuilds overlay CSS first. Composition ids are in `remotion/Root.tsx`. |
 | `npm run validate-project -- media/<id>/match-<id>.kdenlive` | Load the generated MLT XML through the MLT engine. Exit 0 = parses. Malformed XML only: it passes a project whose media is missing. |
-| `npm run export:fast -- <matchId> [--cpu] [--seconds=N] [--full-tail]` | The finished MP4 in one ffmpeg pass (Intel VAAPI on the lab), no Kdenlive. `--seconds` renders a short range as a smoke test. Open the `.kdenlive` when a match needs a human; both place clips through `placeOnTimeline`. |
+| `npm run export:fast -- <matchId> [--cpu] [--seconds=N] [--full-tail]` | The finished MP4 in one ffmpeg pass (Intel VAAPI on the lab), no Kdenlive. `--seconds` renders a short range as a smoke test, to `smoke-<id>.mp4` (it once wrote over a published match's final). Open the `.kdenlive` when a match needs a human; both place clips through `placeOnTimeline`. |
 | `npm run export:nvenc -- media/<id>/match-<id>.kdenlive [out=N]` | melt + `h264_nvenc` to `out/export.mp4`. Needs an NVIDIA GPU; the lab has none. |
 | `npm run short -- <matchId> [--pick=N \| --at=<ms>] [--seconds=22]` | The ~22 s vertical MP4 (`short-<id>.mp4`) plus its `.title.txt` / `.description.txt`. Needs the VODs. `--at` names the window in ms from match start and beats `--pick`: row indices move when the scorer or the reasoner reorders them, a window does not. The cut is recorded in `short-<id>.cut.json`, which is what a re-cut repeats. |
 | `npm run sync-status -- [matchId]` | Where a match's POV clips are placed. With an id and no `sync.json`, derives it from the `.kdenlive` and writes it, so a re-export picks the corrected offsets up without a re-render. No id lists every match and writes nothing. |

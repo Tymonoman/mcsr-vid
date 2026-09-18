@@ -176,6 +176,8 @@ export function findExportedVideo(
         // "the finished match export". Without this the Shorts pipeline makes every rendered
         // match ambiguous, which silently disables the upload panel and the preview player.
         !name.startsWith("short-") &&
+        // `export:fast --seconds` writes smoke-<id>.mp4: a range, never the deliverable.
+        !name.startsWith("smoke-") &&
         !name.includes(".part.") &&
         name !== "sync-preview.mp4",
     );

@@ -108,7 +108,11 @@ if (!fullTail && match.result.time > 0 && timerDur > runEndOnTimelineSec + MIN_T
 }
 
 const useVaapi = !forceCpu && vaapiAvailable();
-const outPath = exportOutputPath(outDir, matchId);
+// A `--seconds` run is a smoke test and must not land on the finished MP4: it did once, and a
+// published match's final-<id>.mp4 became a 20-second stub.
+const outPath = Number.isFinite(limitSec)
+  ? path.join(outDir, `smoke-${matchId}.mp4`)
+  : exportOutputPath(outDir, matchId);
 console.error(
   `Exporting match ${matchId} (${playerLeft.nickname} vs ${playerRight.nickname}) ` +
     `with ${useVaapi ? "h264_vaapi" : "libx264"}...`,
@@ -140,6 +144,7 @@ await runFastExport(
     totalDurationSec: Number.isFinite(limitSec) ? limitSec : totalDurationSec,
     outPath,
     useVaapi,
+    povAudioPan: config.povAudioPan,
   },
   (line) => process.stderr.write(`  ${line}\n`),
 );

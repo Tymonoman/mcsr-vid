@@ -13,6 +13,7 @@ const base = {
   timerPath: "/m/overlay-timer.mp4",
   introPath: "/m/overlay-intro.webm",
   introOffsetSec: 0,
+  povAudioPan: 0.7,
   fps: 60,
   totalDurationSec: 70,
   outPath: "/m/final.mp4",
@@ -62,6 +63,16 @@ assert.ok(filter.includes("repeatlast=0"), "the intro's last frame must not be h
 // MLT's mix transition sums its inputs (sum=1); ffmpeg's amix halves each by default, which
 // would put the headless export 6dB below the Kdenlive one.
 assert.ok(filter.includes("normalize=0"), "audio must be summed, not averaged");
+// Each POV toward its own side of the frame, both still audible in both ears.
+assert.ok(
+  filter.includes("[0:a]aformat=channel_layouts=stereo,pan=stereo|c0=0.70*c0+0.70*c1|c1=0.30*c0+0.30*c1[A0]"),
+  "left POV leans left",
+);
+assert.ok(
+  filter.includes("[1:a]aformat=channel_layouts=stereo,pan=stereo|c0=0.30*c0+0.30*c1|c1=0.70*c0+0.70*c1[A1]"),
+  "right POV leans right",
+);
+assert.ok(filter.includes("[A0][A1]amix=inputs=2"), "and the two panned streams are what gets summed");
 
 // A VOD that isn't 16:9 must be letterboxed, as qtblend distort=0 does — not stretched.
 assert.ok(filter.includes("force_original_aspect_ratio=decrease"), "POVs must letterboxed, not stretched");

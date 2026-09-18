@@ -24,6 +24,14 @@ export interface Config {
   /** VOD trim window: seconds of buffer before the estimated match start. */
   preRollSec: number;
   /**
+   * How far each POV's audio sits toward its own side of the frame in the fast export: 0.5 is
+   * both in the centre (the mix before 18 Sept 2026), 1 is hard left/right, 0.7 keeps both
+   * voices in both ears with each clearly where its stream is. A viewer asked for it; a hard pan
+   * is tiring on headphones and phone speakers are mono anyway. The Short is stacked top/bottom
+   * and stays centred.
+   */
+  povAudioPan: number;
+  /**
    * Seconds kept after the finish, at most (the tail is cut earlier where the winner goes quiet
    * and still, never under 15 s). 30, not 60: measured on the same match the competitor posted,
    * their video ends ~10 s after the finish and ours ran 59 s into the winner's stats screen; the
@@ -242,6 +250,7 @@ const DEFAULTS: Config = {
   ],
   syncConfidenceThreshold: 0.15,
   preRollSec: 150,
+  povAudioPan: 0.7,
   postRollSec: 30,
   defaultRunSec: 900,
   mediaDir: "media",
@@ -321,6 +330,14 @@ export function validateOverrides(raw: Record<string, unknown>): void {
       ) {
         throw new Error(
           `${CONFIG_PATH}: "${key}" must be a whole hour 0-23 (UTC)${nullable ? ", or null" : ""}.`,
+        );
+      }
+      continue;
+    }
+    if (key === "povAudioPan") {
+      if (typeof value !== "number" || !(value >= 0.5 && value <= 1)) {
+        throw new Error(
+          `${CONFIG_PATH}: "povAudioPan" must be a number from 0.5 (centred) to 1 (hard left/right).`,
         );
       }
       continue;

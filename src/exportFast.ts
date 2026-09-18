@@ -41,6 +41,8 @@ export interface FastExportInput {
   /** The intro card — the one layer that really is alpha-composited. */
   introPath: string;
   introOffsetSec: number;
+  /** `config.povAudioPan`: 0.5 centred … 1 hard left/right. Absent means centred. */
+  povAudioPan?: number;
   fps: number;
   totalDurationSec: number;
   outPath: string;
@@ -131,9 +133,19 @@ export function buildFastExportCommand(input: FastExportInput): BuiltCommand {
   chains.push(`[STAGE][INTRO]overlay=0:0:format=yuv420:eof_action=pass:repeatlast=0${videoOut}`);
   if (input.useVaapi) chains.push(`[STAGEI]format=nv12,hwupload[V]`);
 
+  // Each POV folded to mono and placed toward its own side: the left ear gets `p` of the left
+  // stream and `1-p` of the right, mirrored for the right ear. At p=0.5 both ears get half of
+  // each stream's two channels — the same level as summing the raw stereo pairs was. Stereo
+  // first so a mono VOD has a c1 to name.
+  const p = input.povAudioPan ?? 0.5;
+  const q = 1 - p;
+  const pan = (near: number, far: number) =>
+    `pan=stereo|c0=${near.toFixed(2)}*c0+${near.toFixed(2)}*c1|c1=${far.toFixed(2)}*c0+${far.toFixed(2)}*c1`;
+  chains.push(`[0:a]aformat=channel_layouts=stereo,${pan(p, q)}[A0]`);
+  chains.push(`[1:a]aformat=channel_layouts=stereo,${pan(q, p)}[A1]`);
   // normalize=0 because MLT's `mix` transition sums its inputs (sum=1); ffmpeg's amix halves
   // each by default, which would quietly drop both POVs 6dB relative to the Kdenlive export.
-  chains.push(`[0:a][1:a]amix=inputs=2:duration=longest:normalize=0,aresample=48000:async=1:first_pts=0[A]`);
+  chains.push(`[A0][A1]amix=inputs=2:duration=longest:normalize=0,aresample=48000:async=1:first_pts=0[A]`);
 
   args.push("-filter_complex", chains.join(";"));
   args.push("-map", "[V]", "-map", "[A]");
