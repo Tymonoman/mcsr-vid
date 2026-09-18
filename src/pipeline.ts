@@ -370,10 +370,10 @@ async function runStages(
 
   const thumbnailPath = path.join(outDir, "thumbnail.png");
   const variants = config.thumbnailVariants;
-  // Plain and hooked alike: a match rendered before the twins existed has three files under the
-  // plain names, and the stage has to run to give it the other three (and to redo any of those
-  // three the old manifest recorded as hooked — variantStillReusable knows which).
-  const slots = variantSlots(variants, hookText);
+  // Plain only: the hook stays on the title and the Short, not the thumbnail (the operator took
+  // the text off on 18 Sept 2026). A match rendered with hooked twins keeps those files; the
+  // panel does not show them.
+  const slots = variantSlots(variants, undefined);
   const allRendered =
     existsSync(thumbnailPath) &&
     slots.every((s) => existsSync(path.join(outDir, variantFile(s.poses, s.hook))));
@@ -387,7 +387,7 @@ async function runStages(
       userRight,
       outDir,
       poses: variants,
-      hookText,
+      hookText: undefined,
       signal,
       onProgress: (p) =>
         emit(

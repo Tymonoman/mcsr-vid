@@ -89,6 +89,12 @@ assert.equal(await picked(ranked, { ...roomy, hiddenIds: new Set([1, 3]) }), 2);
 assert.equal(await picked(ranked, { processedIds: [1, 3], hiddenIds: new Set([2]), freeMatches: 9 }), 4);
 assert.equal(await picked(ranked, { ...roomy, processedIds: [1, 2, 3, 4] }), null);
 assert.equal(await picked([], roomy), null);
+// The operator's queue outranks the ranking, in its own order; a queued id that is processed,
+// hidden or no longer on the list drops through to the next entry, then to the ranking.
+assert.equal(await picked(ranked, { ...roomy, queue: [3, 2] }), 3);
+assert.equal(await picked(ranked, { ...roomy, queue: [3, 2], processedIds: [3] }), 2);
+assert.equal(await picked(ranked, { ...roomy, queue: [99, 4] }), 4);
+assert.equal(await picked(ranked, { ...roomy, queue: [99] }), 1);
 
 // An ineligible candidate falls through to the next, and is not the end of the night. Without
 // this a playoff game whose players never streamed fails the pipeline before a match directory

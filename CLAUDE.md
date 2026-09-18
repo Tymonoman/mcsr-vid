@@ -96,18 +96,13 @@ they differ (`code: { boot, now }` from `src/repoHead.ts`). Client changes need 
   pair). A posted match sorts after the fresh ones, in the nightly's order too.
 - **Hook chips** (`src/hooks.ts`) put rivalry framing first: the audit measured rivalry hooks at
   9.36% CTR against 2.25% for descriptive ones.
-- **Thumbnails are three poses, plain by default, plus a hooked twin of each** (`hookText` in
-  `thumbnail.json`; `src/thumbnailVariants.ts`): keys `<left>-<right>` and `<left>-<right>-hook`,
-  pair by pair, plain first, so the auto default is the first pair's plain render. The hooked
-  band is 96/84 px (`remotion/Thumbnail.tsx`), legible at YouTube's 246x138 grid size; the plain
-  ones are the A/B control. No headline, no twins. `POST /api/thumbnails/:id/rerender` redoes
-  only the hooked twins with the typed hook and reports rendered / failed / nothing to change. A
-  pipeline re-run keeps a manifest's headline; a hooked still is reused only under the same
-  headline, a plain one always — except one an old three-variant manifest recorded as hooked,
-  which is re-rendered, and an old hooked choice maps to its `-hook` twin (`carriedChoice`). A
-  re-render re-cuts a Short still burned with the old line. The Short reuses the manifest's hook so both halves of a match agree; the Short panel
-  says when they do not. The checklist's thumbnail pill ticks on `chosenBy: "operator"` in the
-  manifest — a rendered variant is not a chosen one; sidecars without the field keep ticking.
+- **Thumbnails are plain poses, no text** (`src/thumbnailVariants.ts`): four pairs from
+  `thumbnailVariants`, the first (`walking`/`crossed`) is the auto default, `default`/`default`
+  is both players straight on. The hooked-twin machinery (`hookText`, `-hook` keys,
+  `POST /api/thumbnails/:id/rerender`) is still in the code but the pipeline no longer asks for
+  it and the panel hides hooked stills — the operator took the text off on 18 Sept 2026. The
+  hook stays on the title and the Short. The checklist's thumbnail pill ticks on
+  `chosenBy: "operator"` in the manifest — a rendered variant is not a chosen one.
 - **The audit blocks `videos.insert`, not the rest.** `playlistItems.insert`, `thumbnails.set`,
   `commentThreads.insert` and `videos.update` are all inside the token's `force-ssl` scope and are
   unaffected, so **Finish on YouTube** repairs a Studio upload today: playlists, the pinned comment
@@ -203,7 +198,12 @@ they differ (`code: { boot, now }` from `src/repoHead.ts`). Client changes need 
   an ordinary private match — the video is still made, it just loses the round/game framing until
   the bracket fills in (the 30-minute cache picks that up by itself).
 - Phones (<= 860px): list and match are two screens with a back bar; rows carry no Hide/Delete
-  on a coarse pointer; the match screen offers jump links to the video, the kit and the Short.
+  on a coarse pointer — the match screen's **Manage** block at the bottom has them; the playoffs
+  board is folded; the tabs wrap; cards drop their splits chart.
+- **Tonight's queue** (`queue` in `<mediaDir>/.dashboard.json`, `src/matchShelf.ts`;
+  `PUT /api/nightly/queue` takes the whole list): a card's "Queue for tonight" puts it ahead of the
+  ranked pick, in the strip's order (↑ / ×); the nightly drops an entry the moment its render
+  starts, and skips one that is processed, hidden or gone from the list.
 - `docs/` is the GitHub Pages site (`mcsr.sezamki.site`: the OAuth homepage, privacy and terms
   pages Google checks). `deploy/mcsr-claude.service` is the lab's systemd user unit for the
   Claude container. Only `~/.claude` is a persisted volume in that container: save loose ends
@@ -252,7 +252,9 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
   out of sync to the channel because sync.json was corrected *after* `final-<id>.mp4` was exported.
   `exportStale` (`src/syncFile.ts`, mtime of sync.json vs the export) now refuses the Upload
   button, the nightly's video and the adopt route with one line, and the match page's "Sync check"
-  (both POVs at 9.6 s, above the YouTube panel) is the look that catches the rest.
+  (both POVs at 9.6 s, above the YouTube panel) is the look that catches the rest. "Save and
+  re-export" presses the Final video panel's encode button, which an exported match now also has
+  ("Re-encode MP4") — for months it did not, so the button saved and encoded nothing.
 - **Every consumer places the clips from `<matchDir>/sync.json`** (`src/syncFile.ts`), which the
   pipeline writes when the sync stage decides — refined or kept-coarse, `source` says which.
   Without it `export:fast` and the Short fall back to `config.preRollSec` and run seconds early;

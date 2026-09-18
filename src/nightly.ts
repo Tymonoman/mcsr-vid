@@ -32,7 +32,7 @@ import { config } from "./config.js";
 import { describeError } from "./errorText.js";
 import { exportRunning, startFastExport } from "./exportRoutes.js";
 import { getJob, startJob, type Job } from "./jobs.js";
-import { hiddenMatchIds } from "./matchShelf.js";
+import { hiddenMatchIds, nightlyQueue, setNightlyQueue } from "./matchShelf.js";
 import { orderForDisplay } from "./suggestPresent.js";
 import { playoffBoard, type PlayoffBoard } from "./playoffs.js";
 import { listProcessedMatchIds } from "./matchStatus.js";
@@ -153,6 +153,8 @@ interface NightlyPickContext {
   processedIds: readonly number[];
   /** Ids the operator has hidden — `hiddenMatchIds()`. */
   hiddenIds: ReadonlySet<number>;
+  /** Ids the operator queued, in order — `nightlyQueue()`. Rendered before the ranked pick. */
+  queue?: readonly number[];
   /** `capacity().working.matchesLeft`; treat "unknown" as zero. */
   freeMatches: number;
 }
@@ -203,12 +205,17 @@ export async function playoffPicks(
 
 export async function pickNightlyCandidate<T extends { metrics: { matchId: number } }>(
   suggestions: readonly T[],
-  { processedIds, hiddenIds, freeMatches }: NightlyPickContext,
+  { processedIds, hiddenIds, freeMatches, queue = [] }: NightlyPickContext,
   eligible: (candidate: T) => Promise<boolean> = async () => true,
 ): Promise<T | null> {
   if (freeMatches < MIN_FREE_MATCHES) return null;
   const processed = new Set(processedIds);
-  for (const s of suggestions) {
+  // The queue is the operator's order and outranks the ranking; an id no longer on the list (the
+  // VODs expired, the card was dismissed) has nothing to render and drops through.
+  const queued = queue
+    .map((id) => suggestions.find((s) => s.metrics.matchId === id))
+    .filter((s): s is T => s !== undefined);
+  for (const s of [...queued, ...suggestions]) {
     if (processed.has(s.metrics.matchId) || hiddenIds.has(s.metrics.matchId)) continue;
     // One at a time and in order: `eligible` costs API calls, and the first candidate that passes
     // is the pick, so a whole bracket is never probed to choose its first game.
@@ -466,6 +473,7 @@ const liveRanked = async (): Promise<readonly NightlyPick[] | null> => {
 const pickContext = async (): Promise<NightlyPickContext> => ({
   processedIds: listProcessedMatchIds(),
   hiddenIds: hiddenMatchIds(),
+  queue: nightlyQueue(),
   // A missing capacity reading (statfs failed, mediaDir gone) is not a licence to fill a disk.
   freeMatches: (await capacity()).working?.matchesLeft ?? 0,
 });
@@ -542,6 +550,8 @@ export async function runNightlyOnce(
   const label = `${players[0]} vs ${players[1]}`;
   console.error(`nightly: starting render of #${matchId} ${label}`);
   lastStartedId = matchId;
+  // A queue entry is one night's work: out of the list the moment its render starts.
+  setNightlyQueue(nightlyQueue().filter((id) => id !== matchId));
   if (config.nightlyRenderShort) requestShort(matchId);
   if (config.nightlyRenderExport) requestExport(matchId);
   // The same call `POST /api/render` makes, so a nightly render and a clicked one are one code

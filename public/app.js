@@ -124,59 +124,66 @@ function renderList() {
 
   // stopPropagation on every row control: the card itself is a click target that selects the
   // match, and hiding a match you did not mean to open is a poor trade.
-  el.querySelectorAll(".card .hide").forEach((btn) =>
-    btn.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      const card = btn.closest(".card");
-      const id = Number(card.dataset.id);
-      const nowHidden = btn.textContent === "Hide";
-      await api(`/api/hidden/${id}`, {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ hidden: nowHidden }),
-      });
-      await refresh();
-    }),
-  );
-
-  // Two-step rather than a confirm(): the second click is the confirmation, and the button says
-  // what it is about to cost. An unarchived match has no copy anywhere, so it says so.
+  el.querySelectorAll(".card .hide").forEach((btn) => wireHide(btn, Number(btn.closest(".card").dataset.id)));
   el.querySelectorAll(".card .del").forEach((btn) =>
-    btn.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      const card = btn.closest(".card");
-      const id = Number(card.dataset.id);
-      const m = matches.find((x) => x.matchId === id);
-      if (btn.dataset.armed !== "1") {
-        btn.dataset.armed = "1";
-        btn.classList.remove("ghost");
-        btn.classList.add("danger");
-        btn.textContent = m && m.archived ? "Delete (archived)" : "Delete forever?";
-        setTimeout(() => {
-          if (!btn.isConnected || btn.dataset.armed !== "1") return;
-          btn.dataset.armed = "0";
-          btn.classList.add("ghost");
-          btn.classList.remove("danger");
-          btn.textContent = "Delete";
-        }, 5000);
-        return;
-      }
-      btn.disabled = true;
-      btn.textContent = "deleting";
-      try {
-        const out = await api(`/api/match/${id}`, { method: "DELETE" });
-        const mb = (out.bytesFreed / 1073741824).toFixed(1);
-        $("#entryerr").textContent =
-          `deleted #${id}, freed ${mb} GB${out.archived ? "" : " (no archived copy)"}`;
-      } catch (err) {
-        $("#entryerr").textContent = err.message;
-        btn.disabled = false;
-        btn.textContent = "Delete";
-      }
-      if (selected === id) selected = null;
-      await refresh();
-    }),
+    wireDelete(btn, Number(btn.closest(".card").dataset.id)),
   );
+}
+
+function wireHide(btn, id) {
+  btn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    const nowHidden = btn.textContent === "Hide";
+    await api(`/api/hidden/${id}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ hidden: nowHidden }),
+    });
+    await refresh();
+  });
+}
+
+/** Two-step rather than a confirm(): the second click is the confirmation, and the button says
+    what it is about to cost. An unarchived match has no copy anywhere, so it says so. The row's
+    button and the match screen's (the phone's only one — a row's sits inside the tap target that
+    opens the match) share this. */
+function wireDelete(btn, id) {
+  btn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    const m = matches.find((x) => x.matchId === id);
+    if (btn.dataset.armed !== "1") {
+      btn.dataset.armed = "1";
+      btn.classList.remove("ghost");
+      btn.classList.add("danger");
+      btn.textContent = m && m.archived ? "Delete (archived)" : "Delete forever?";
+      setTimeout(() => {
+        if (!btn.isConnected || btn.dataset.armed !== "1") return;
+        btn.dataset.armed = "0";
+        btn.classList.add("ghost");
+        btn.classList.remove("danger");
+        btn.textContent = "Delete";
+      }, 5000);
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = "deleting";
+    try {
+      const out = await api(`/api/match/${id}`, { method: "DELETE" });
+      const mb = (out.bytesFreed / 1073741824).toFixed(1);
+      $("#entryerr").textContent =
+        `deleted #${id}, freed ${mb} GB${out.archived ? "" : " (no archived copy)"}`;
+    } catch (err) {
+      $("#entryerr").textContent = err.message;
+      btn.disabled = false;
+      btn.textContent = "Delete";
+    }
+    if (selected === id) {
+      selected = null;
+      // On a phone this button is on the match screen, which has just been deleted from under it.
+      document.body.classList.remove("view-match");
+    }
+    await refresh();
+  });
 }
 
 /**
@@ -311,7 +318,11 @@ async function select(id, { open = false } = {}) {
     <div id="youtube"><div class="empty">loading&hellip;</div></div>
 
     <h2>Outputs</h2>
-    ${outputsHtml(meta.outputs, id)}`;
+    ${outputsHtml(meta.outputs, id)}
+    ${manageHtml(id)}`;
+
+  $("#mhide") && wireHide($("#mhide"), id);
+  $("#mdel") && wireDelete($("#mdel"), id);
 
   if (meta.hook) {
     $("#hook").addEventListener("input", () => hookCounter(meta));
@@ -481,9 +492,6 @@ async function loadVariants(id) {
 
   // The headline the hooked twins were rendered with. Not visible in the shrunken previews once
   // it wraps, and it is the whole reason a re-render happens.
-  const headline = data.hookText
-    ? `<div class="counter">headline: &ldquo;${esc(data.hookText)}&rdquo;</div>`
-    : "";
 
   const tile = (v) => {
     const fellBack = v.leftProvider === "nmsr" || v.rightProvider === "nmsr";
@@ -505,21 +513,17 @@ async function loadVariants(id) {
       </figure>`;
   };
 
-  // One column per pose pair, in manifest order: the plain render, then its hooked twin. Grouped
-  // by pose rather than by position, so a sidecar from before the twins (three tiles, no pairs)
-  // still lays out as three columns of one.
+  // One column per pose pair, in manifest order. The hooked twins a match rendered before
+  // 18 Sept 2026 still has on disk are not offered: the text came off the thumbnails.
   const columns = new Map();
-  for (const v of data.variants) {
+  for (const v of data.variants.filter((v) => !v.hook)) {
     const pair = `${v.leftPose}-${v.rightPose}`;
     columns.set(pair, [...(columns.get(pair) ?? []), v]);
   }
 
-  el.innerHTML =
-    headline +
-    `<div class="strip">${[...columns.values()]
-      .map((column) => `<div class="poses">${column.map(tile).join("")}</div>`)
-      .join("")}</div>` +
-    '<button type="button" class="ghost" id="rerender">Re-render with hook</button>';
+  el.innerHTML = `<div class="strip">${[...columns.values()]
+    .map((column) => `<div class="poses">${column.map(tile).join("")}</div>`)
+    .join("")}</div>`;
 
   el.querySelectorAll(".variant .use").forEach((btn) =>
     btn.addEventListener("click", async () => {
@@ -532,57 +536,6 @@ async function loadVariants(id) {
       await refresh();
     }),
   );
-
-  // The pipeline renders thumbnails before anyone has watched the match, so the headline in the
-  // image is only its first guess. This is how it catches up with the hook the title editor got.
-  // That field lives in the metadata panel, which is absent when the match has no metadata yet.
-  $("#rerender").addEventListener("click", async (ev) => {
-    const btn = ev.currentTarget;
-    const hookText = $("#hook")?.value.trim() ?? "";
-    const want = hookText || null;
-    const said = (cls, text) =>
-      $("#variants")?.insertAdjacentHTML("beforeend", `<div class="scanline ${cls}">${esc(text)}</div>`);
-    btn.disabled = true;
-    btn.textContent = "Rendering\u2026";
-    // What the manifest said before, so "nothing changed" can be told apart from "changed".
-    const before = await api(`/api/thumbnails/${id}`).catch(() => null);
-    let status = null;
-    let started = null;
-    try {
-      started = await api(`/api/thumbnails/${id}/rerender`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ hookText }),
-      });
-      // 202 only means it started. The server says when it stopped running and whether it
-      // failed; a server without that field (older code) is polled on the manifest's headline.
-      for (let i = 0; i < 90; i++) {
-        await new Promise((r) => setTimeout(r, 2000));
-        status = await api(`/api/thumbnails/${id}`).catch(() => null);
-        if (status && status.rerender ? !status.rerender.running : status && status.hookText === want) break;
-      }
-    } catch (e) {
-      btn.disabled = false;
-      btn.textContent = "Re-render with hook";
-      said("bad", `re-render failed: ${e.message}`);
-      return;
-    }
-    await loadVariants(id);
-    await refresh();
-    // The Short panel decides from the manifest whether its burned-in hook still matches.
-    void loadShort(id);
-    const label = want ? `"${want}"` : "no headline";
-    if (!status) said("bad", "re-render: could not reach the server to confirm — reload to see");
-    else if (status.rerender?.error) said("bad", `re-render failed: ${status.rerender.error}`);
-    else if (status.rerender?.running)
-      said("bad", "re-render is still running after three minutes — check the server log");
-    else if ((before?.hookText ?? null) === want)
-      said("muted", `already rendered with ${label} — nothing to change`);
-    else said("ok", `rendered with ${label}`);
-    // The server re-cuts a Short that was burned with the old line, so the warning below clears
-    // itself; saying so keeps the minute it takes from looking like nothing happened.
-    if (started?.shortRecut) said("ok", "re-cutting the Short so both halves say the same thing");
-  });
 }
 
 /**
@@ -627,41 +580,44 @@ async function loadPreview(id) {
   // The operator may have opened another match while this was in flight; a late reply must not
   // paint its bar into that match's panel, nor close its live export stream via watchExport.
   if (selected !== id) return;
-  if (!meta.exported) {
-    // The one-pass encode the nightly runs, on demand. ~10 minutes on the lab, so the button
-    // hands over to a bar fed by the same progress stream the nightly's encode writes to.
-    el.innerHTML = `
+  // The one-pass encode the nightly runs, on demand. ~10 minutes on the lab, so the button
+  // hands over to a bar fed by the same progress stream the nightly's encode writes to. Offered
+  // on an exported match too: a sync fixed by hand needs exactly this re-run, and "Save and
+  // re-export" presses this button — which, for the exported case, used to not exist.
+  const encode = (label, idle) => `
       <div class="row">
-        <button id="encode" ${meta.running ? "disabled" : ""}>Encode MP4 (~10 min)</button>
-        <span id="encodestate" class="muted">${meta.running ? "encoding…" : "not exported yet"}</span>
+        <button id="encode" ${meta.running ? "disabled" : ""}>${label}</button>
+        <span id="encodestate" class="muted">${meta.running ? "encoding…" : idle}</span>
       </div>
       <div class="bar exportbar${meta.running ? "" : " hidden"}"><i style="width:${meta.percent ?? 0}%"></i></div>`;
-    $("#encode").addEventListener("click", async () => {
-      const btn = $("#encode");
-      btn.disabled = true;
-      try {
-        await api(`/api/export/fast/${id}`, { method: "POST" });
-        $("#encodestate").textContent = "encoding…";
-        $(".exportbar").classList.remove("hidden");
-        watchExport(id);
-      } catch (e) {
-        $("#encodestate").textContent = e.message;
-        btn.disabled = false;
-      }
-    });
-    if (meta.running) watchExport(id);
-    return;
-  }
-  const mb = (meta.bytes / 1048576).toFixed(0);
-  el.innerHTML = `
-    <video id="finalvideo" controls preload="metadata" playsinline
+  if (!meta.exported) {
+    el.innerHTML = encode("Encode MP4 (~10 min)", "not exported yet");
+  } else {
+    const mb = (meta.bytes / 1048576).toFixed(0);
+    el.innerHTML =
+      `<video id="finalvideo" controls preload="metadata" playsinline
            src="/api/export/preview/${id}" poster="/api/thumbnail/${id}"></video>
     <div class="previewmeta">
       <span>${esc(meta.name)}</span>
       <span>${mb} MB</span>
       <a href="/api/export/final/${id}" download>Download</a>
       <a href="/api/export/bundle/${id}" download>Bundle (.tar)</a>
-    </div>`;
+    </div>` + encode("Re-encode MP4 (~10 min)", "");
+  }
+  $("#encode").addEventListener("click", async () => {
+    const btn = $("#encode");
+    btn.disabled = true;
+    try {
+      await api(`/api/export/fast/${id}`, { method: "POST" });
+      $("#encodestate").textContent = "encoding…";
+      $(".exportbar").classList.remove("hidden");
+      watchExport(id);
+    } catch (e) {
+      $("#encodestate").textContent = e.message;
+      btn.disabled = false;
+    }
+  });
+  if (meta.running) watchExport(id);
 }
 
 /** Follows one encode to its end, then swaps the bar for the player. The stream replays what
@@ -871,6 +827,20 @@ async function loadPublishKit(id, meta) {
   // same event. Deferring a tick means this reads that field after it has been rewritten,
   // whichever of the two panels happened to register its listener first.
   $("#hook")?.addEventListener("input", () => setTimeout(paint, 0));
+}
+
+/** Hide and Delete for the open match. The row has them on a desktop; on a phone the row is one
+    tap target and carries nothing destructive (panels.css), so this is where they live. */
+function manageHtml(id) {
+  const m = matches.find((x) => x.matchId === id);
+  if (!m) return "";
+  return `
+    <h2>Manage</h2>
+    <div class="manage">
+      <button type="button" class="ghost" id="mhide">${m.hidden ? "Unhide" : "Hide"}</button>
+      <button type="button" class="ghost" id="mdel" data-armed="0">Delete</button>
+      <span class="muted">${m.archived ? "archived on the NAS" : "no archived copy"}</span>
+    </div>`;
 }
 
 function runClock(ms) {
@@ -1259,7 +1229,18 @@ async function saveSync(thenExport) {
     paintSyncCheck();
     $("#syncmsg").textContent = `saved ${r.sync.left}s / ${r.sync.right}s`;
     // The Encode button is the same call; press it rather than keep a second copy of the flow.
-    if (thenExport) $("#encode")?.click();
+    // It sits in the Final video panel above this fold, so say here that it was pressed.
+    if (thenExport) {
+      const btn = $("#encode");
+      if (btn && !btn.disabled) {
+        btn.click();
+        $("#syncmsg").textContent += " · re-encoding, ~10 min (Final video above)";
+      } else {
+        $("#syncmsg").textContent += btn
+          ? " · an encode is already running"
+          : " · open Final video to encode";
+      }
+    }
   } catch (e) {
     msg.textContent = "";
     failAt("#syncsave", "Sync not saved", e.message);
@@ -1494,6 +1475,40 @@ function ago(t) {
   return m < 60 ? `${m}m ago` : m < 2880 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`;
 }
 
+/** 1-based position of a match in tonight's queue, or 0. */
+const queued = (id) => (nightly?.queue ?? []).findIndex((q) => q.matchId === id) + 1;
+
+/** The whole list, then the strip and the cards repaint from the server's answer. */
+async function putQueue(ids) {
+  const out = await api("/api/nightly/queue", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ queue: ids }),
+  });
+  // Names come with the next /api/nightly; until then keep the ones already known.
+  const known = new Map((nightly?.queue ?? []).map((q) => [q.matchId, q.players]));
+  nightly = {
+    ...nightly,
+    queue: out.queue.map((matchId) => ({ matchId, players: known.get(matchId) ?? null })),
+  };
+  paintNightly();
+  void loadNightly();
+}
+
+function queueHtml() {
+  const q = nightly?.queue ?? [];
+  if (!q.length) return "";
+  return `<ol class="queue">${q
+    .map(
+      (e, i) => `<li data-id="${e.matchId}">
+        <span>${e.players ? esc(`${e.players[0]} vs ${e.players[1]}`) : `#${e.matchId} <span class="muted">(not on the list any more)</span>`}</span>
+        ${i > 0 ? `<a href="#" data-act="queue-up" title="earlier">&uarr;</a>` : ""}
+        <a href="#" data-act="queue-drop" title="remove">&times;</a>
+      </li>`,
+    )
+    .join("")}</ol>`;
+}
+
 function nightlyInner() {
   if (!nightly) return '<div class="lines"><span class="muted">nightly&hellip;</span></div>';
   if (nightly.stale) {
@@ -1519,7 +1534,7 @@ function nightlyInner() {
   const plan = !enabled
     ? '<span class="muted">nightly off</span>'
     : candidate
-      ? `${esc(at)} &middot; will render <b>${esc(candidate.players[0])} vs ${esc(candidate.players[1])}</b>`
+      ? `${esc(at)} &middot; will render <b>${esc(candidate.players[0])} vs ${esc(candidate.players[1])}</b>${queued(candidate.matchId) ? " (queued)" : ""}`
       : `${esc(at)} &middot; <span class="muted">nothing eligible</span>`;
 
   // "Last run", not "last night": the Run now button records here too, and a label that lied
@@ -1561,6 +1576,7 @@ function nightlyInner() {
   return `<div class="lines">${behind}
       <div class="plan" title="${esc(nextRunAt ?? "no schedule")}">${plan}</div>
       <div class="last" title="${esc(lastRun ? lastRun.startedAt : "")}">${last}</div>${failed}
+      ${queueHtml()}
     </div>
     <button data-act="nightly-run">Run now</button>`;
 }
@@ -1578,9 +1594,28 @@ function paintNightly() {
       void select(Number(open.dataset.id), { open: true });
     });
   }
+  el.querySelectorAll('[data-act="queue-up"], [data-act="queue-drop"]').forEach((a) =>
+    a.addEventListener("click", async (ev) => {
+      ev.preventDefault();
+      const id = Number(a.closest("li").dataset.id);
+      const ids = (nightly?.queue ?? []).map((q) => q.matchId);
+      const i = ids.indexOf(id);
+      if (a.dataset.act === "queue-drop") ids.splice(i, 1);
+      else if (i > 0) [ids[i - 1], ids[i]] = [ids[i], ids[i - 1]];
+      try {
+        await putQueue(ids);
+      } catch (e) {
+        $("#entryerr").textContent = `queue: ${e.message}`;
+        return;
+      }
+      // The cards' Queue buttons carry the position.
+      if (suggestData) renderSuggestions(suggestData);
+    }),
+  );
 }
 
 async function loadNightly() {
+  const before = JSON.stringify((nightly?.queue ?? []).map((q) => q.matchId));
   try {
     nightly = await api("/api/nightly");
   } catch (e) {
@@ -1592,6 +1627,9 @@ async function loadNightly() {
     nightly = { error: e.message, stale };
   }
   paintNightly();
+  // The cards' Queue buttons carry the position, so they repaint when the queue is news to them.
+  if (suggestData && JSON.stringify((nightly?.queue ?? []).map((q) => q.matchId)) !== before)
+    renderSuggestions(suggestData);
 }
 
 /** The same body the clock runs. A skip repaints the strip with its reason; a start is watched
@@ -1689,6 +1727,11 @@ function renderSuggestions(data) {
               : `<button data-act="render-short">Render + Short + MP4</button>
           <button data-act="render" class="ghost">Render only</button>`
           }
+          ${
+            onShelf
+              ? ""
+              : `<button data-act="queue" class="ghost${queued(s.matchId) ? " queued" : ""}">${queued(s.matchId) ? `Queued #${queued(s.matchId)}` : "Queue for tonight"}</button>`
+          }
           <button data-act="dismiss" class="ghost">Dismiss</button>
         </div>
       </div>`;
@@ -1749,6 +1792,16 @@ function renderSuggestions(data) {
     row.querySelector('[data-act="render"]')?.addEventListener("click", () => startRender(String(id)));
     row.querySelector('[data-act="render-short"]')?.addEventListener("click", () => startRenderWithShort(id));
     row.querySelector('[data-act="open"]')?.addEventListener("click", () => select(id, { open: true }));
+    row.querySelector('[data-act="queue"]')?.addEventListener("click", async (ev) => {
+      const ids = (nightly?.queue ?? []).map((q) => q.matchId);
+      try {
+        await putQueue(queued(id) ? ids.filter((x) => x !== id) : [...ids, id]);
+      } catch (e) {
+        failed(ev.target.closest(".acts") ?? row, `queue: ${e.message}`);
+        return;
+      }
+      renderSuggestions(data);
+    });
     row.querySelector('[data-act="dismiss"]')?.addEventListener("click", async (ev) => {
       const s = data.suggestions.find((x) => x.matchId === id);
       let out;
@@ -1841,9 +1894,14 @@ function paintPlayoffs() {
       </div>`,
     )
     .join("");
+  // On a phone the board is eight series of game rows above the suggestions, a whole screen of
+  // it: folded there whatever the date, and it stays open once opened across repaints.
+  const phone = window.matchMedia("(max-width: 860px)").matches;
+  const wasOpen = el.querySelector("details.playoffsoon")?.open;
+  const open = wasOpen ?? (soon && !phone);
   el.innerHTML = `
     <div class="bucketlegend"><span class="bucket playoffs">PLAYOFFS</span><span>Season ${esc(String(playoffData.season))} bracket &middot; <a href="${esc(playoffData.bracketUrl ?? "")}" target="_blank" rel="noopener">magmamcsr.com</a></span></div>
-    ${soon ? rows : `<details class="playoffsoon"><summary>${summary}</summary>${rows}</details>`}`;
+    <details class="playoffsoon"${open ? " open" : ""}><summary>${summary}</summary>${rows}</details>`;
   el.querySelectorAll(".game").forEach((row) => {
     const id = Number(row.dataset.id);
     row.querySelector('[data-act="render"]')?.addEventListener("click", () => startRender(String(id), true));

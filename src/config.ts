@@ -8,9 +8,9 @@ export interface Config {
   rightPose: string;
   /**
    * Pose pairs rendered as thumbnail variants on every pipeline run, for A/B testing which
-   * poses earn clicks. Each pair renders twice — plain, and with the title headline in a smaller
-   * band (`src/thumbnailVariants.ts`) — so the set is three poses with a hooked twin each. The
-   * first entry's plain render is what `thumbnail.png` becomes unless you pick another in the
+   * poses earn clicks. Plain renders only: the hooked twins (`src/thumbnailVariants.ts`) are no
+   * longer asked for — the operator took the text off the thumbnails on 18 Sept 2026. The
+   * first entry's render is what `thumbnail.png` becomes unless you pick another in the
    * dashboard, so keep `leftPose`/`rightPose` first to preserve the current look.
    *
    * Pose names map to NMSR camera settings in `src/avatarUrl.ts` (`POSE_CAMERAS`). Every name
@@ -236,6 +236,7 @@ const DEFAULTS: Config = {
   thumbnailVariants: [
     // First is the existing look, so nothing changes for a match already published.
     { left: "walking", right: "crossed" },
+    { left: "default", right: "default" },
     { left: "cheering", right: "relaxing" },
     { left: "marching", right: "crouching" },
   ],

@@ -51,6 +51,8 @@ import {
   deleteMatch,
   hiddenMatchIds,
   isExported,
+  nightlyQueue,
+  setNightlyQueue,
   isManualPublishKey,
   isUploaded,
   publishChecklist,
@@ -632,8 +634,31 @@ const server = createServer(async (req, res) => {
           players: pick.metrics.players,
           bucket: pick.bucket,
         },
+        // In the operator's order; `players` is null for an entry no longer on the list.
+        queue: nightlyQueue().map((matchId) => ({
+          matchId,
+          players: suggestionsPayload().suggestions.find((c) => c.matchId === matchId)?.players ?? null,
+        })),
         lastRun: readNightlyState(),
       });
+      return;
+    }
+
+    // The whole queue in one write: the panel sends the list it shows after every move.
+    if (resource === "nightly" && idRaw === "queue" && req.method === "PUT") {
+      let queue: unknown;
+      try {
+        queue = (JSON.parse(await readBody(req)) as { queue?: unknown }).queue;
+      } catch (err) {
+        json(res, 400, { error: describeError(err) });
+        return;
+      }
+      if (!Array.isArray(queue) || !queue.every((n) => Number.isSafeInteger(n) && n > 0)) {
+        json(res, 400, { error: "queue must be a list of match ids" });
+        return;
+      }
+      setNightlyQueue(queue as number[]);
+      json(res, 200, { queue: nightlyQueue() });
       return;
     }
 

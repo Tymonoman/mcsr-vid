@@ -917,3 +917,51 @@
 .syncside .row button {
   padding: 4px 6px;
 }
+
+/* --- Manage, on the match screen ---------------------------------------------------------- */
+/* The row's Hide/Delete are hidden on a coarse pointer (above); this is the phone's only pair,
+   at the very bottom of the match screen where nothing else is aimed at. */
+.manage {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+
+/* --- Tonight's queue, in the nightly strip -------------------------------------------------- */
+.queue {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+}
+.queue li {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-height: 24px;
+}
+.queue li span {
+  flex: 1 1 auto;
+}
+.queue a {
+  color: var(--quartz);
+  text-decoration: none;
+  padding: 4px 10px;
+}
+button.queued {
+  border-color: var(--warped);
+  color: var(--warped);
+}
+
+/* --- Phone: less on the list screen ------------------------------------------------------- */
+@media (max-width: 860px) {
+  /* Four tabs did not fit on 390px; the last one was cut off. */
+  .tabs {
+    flex-wrap: wrap;
+  }
+  /* The splits chart is unreadable at card width on a phone; the facts line says the same. */
+  .sugg svg {
+    display: none;
+  }
+}

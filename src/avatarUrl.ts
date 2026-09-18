@@ -10,6 +10,8 @@ const NMSR = "https://nmsr.nickac.dev/fullbody";
  * variants stop being comparable at a glance.
  */
 const POSE_CAMERAS: Record<string, string> = {
+  /** Straight on, arms down: the skin as its owner sees it in the launcher. */
+  default: "yaw=0&arms=0",
   walking: "yaw=-20&arms=25",
   crossed: "yaw=20&arms=0",
   cheering: "yaw=0&arms=150",

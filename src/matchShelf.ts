@@ -32,18 +32,33 @@ const statePath = () => path.join(config.mediaDir, ".dashboard.json");
 
 interface ShelfState {
   hidden: number[];
+  /** Match ids the nightly renders before its ranked pick, in this order (src/nightly.ts). */
+  queue: number[];
 }
 
 function read(): ShelfState {
   const file = statePath();
-  if (!existsSync(file)) return { hidden: [] };
+  if (!existsSync(file)) return { hidden: [], queue: [] };
   try {
     const parsed = JSON.parse(readFileSync(file, "utf8")) as Partial<ShelfState>;
-    return { hidden: (parsed.hidden ?? []).filter((n) => Number.isSafeInteger(n)) };
+    return {
+      hidden: (parsed.hidden ?? []).filter((n) => Number.isSafeInteger(n)),
+      queue: (parsed.queue ?? []).filter((n) => Number.isSafeInteger(n)),
+    };
   } catch {
     // A corrupt preferences file must not take the dashboard down over a cosmetic setting.
-    return { hidden: [] };
+    return { hidden: [], queue: [] };
   }
+}
+
+/** Tonight's queue, in render order. */
+export function nightlyQueue(): number[] {
+  return read().queue;
+}
+
+/** The whole list at once: reorder, add and remove are all one write from the panel. */
+export function setNightlyQueue(queue: readonly number[]): void {
+  writeFileSync(statePath(), JSON.stringify({ ...read(), queue: [...new Set(queue)] }, null, 2));
 }
 
 export function hiddenMatchIds(): Set<number> {
@@ -54,7 +69,7 @@ export function setHidden(matchId: number, hidden: boolean): void {
   const state = read();
   const next = state.hidden.filter((id) => id !== matchId);
   if (hidden) next.push(matchId);
-  writeFileSync(statePath(), JSON.stringify({ hidden: next.sort((a, b) => a - b) }, null, 2));
+  writeFileSync(statePath(), JSON.stringify({ ...state, hidden: next.sort((a, b) => a - b) }, null, 2));
 }
 
 export interface DeleteResult {
