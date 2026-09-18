@@ -69,15 +69,17 @@ function buildOpening(input: DescriptionInput): string {
   const leftElo = eloAtMatchStart(match, userLeft.uuid, userLeft.eloRate);
   const rightElo = eloAtMatchStart(match, userRight.uuid, userRight.eloRate);
 
+  // Lowercase throughout, like the operator's own comments under the videos (18 Sept 2026:
+  // "make it read like the comments I write myself"). Nicknames keep their own casing.
   const format = input.playoff
-    ? `MCSR Ranked S${input.playoff.season} Playoffs, ${playoffLabel(input.playoff)}`
-    : "MCSR Ranked 1v1 on the same seed";
-  const head = `${left} vs ${right}, ${format}. Both streams run side by side with the split timer between them. ${left} came in at ${leftElo} elo, ${right} at ${rightElo}.`;
+    ? `mcsr ranked s${input.playoff.season} playoffs, ${playoffLabel(input.playoff)}`
+    : "mcsr ranked 1v1 on the same seed";
+  const head = `${left} vs ${right}, ${format}. both streams side by side with the split timer in the middle. ${left} came in at ${leftElo} elo, ${right} at ${rightElo}.`;
 
   // Runners search by seed type — the closest competitor puts it in every title. It goes last
   // so the nicknames and the format keep the front of the Show-more preview.
   const seed = [seedPhrase(match), bastionPhrase(match)].filter(Boolean).join(", ");
-  return seed ? `${head} ${seed[0].toUpperCase()}${seed.slice(1)}.` : head;
+  return seed ? `${head} ${seed}.` : head;
 }
 
 /**
@@ -103,13 +105,13 @@ export function buildDescription(input: DescriptionInput): string {
     `${userRight.nickname}'s stream: ${vodDeepLink(rightWindow)}`,
     // The `/matches/<id>` segment is what pairs a Studio upload back to its match
     // (src/channelUploads.ts): keep the line however the label changes.
-    `Match page: ${matchPageUrl(matchId, userLeft.nickname, input.match.season)}`,
+    `match page: ${matchPageUrl(matchId, userLeft.nickname, input.match.season)}`,
     // A playlist link is the one thing in a description that turns one view into a session.
-    ...(input.playlistUrl ? [`All the matches: ${input.playlistUrl}`] : []),
+    ...(input.playlistUrl ? [`all the matches: ${input.playlistUrl}`] : []),
     // The one line that can earn before the Partner Programme does.
-    ...(input.supportUrl ? [`Tip jar: ${input.supportUrl}`] : []),
+    ...(input.supportUrl ? [`tip jar: ${input.supportUrl}`] : []),
     "",
-    "This is a fan channel, not run by MCSR Ranked. If the sync looks off anywhere, say so in the comments and I'll fix it.",
+    "fan channel, mcsr ranked has no idea i exist. if the sync looks off anywhere say where in the comments and ill fix it.",
     "",
     HASHTAGS.join(" "),
   ].join("\n");

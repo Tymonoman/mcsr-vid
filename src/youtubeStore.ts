@@ -111,7 +111,7 @@ export async function uploadTextFor(
  * the operator's own voice; no question, no subscribe ask, and never the winner.
  */
 export const PINNED_COMMENT =
-  "Both POVs are the players' own streams, lined up on the countdown. If the timer looks off anywhere, drop the timestamp here and I'll fix it.";
+  "both povs are the players own streams, synced on the countdown. if the timer looks off anywhere drop the timestamp here and ill fix it";
 
 /**
  * The match whose record already names this video id, across BOTH kinds, or null.

@@ -708,7 +708,7 @@ async function loadPublishKit(id, meta) {
   // Plain, and it offers the takedown in the same breath: this goes to someone who never asked
   // to be on the channel, and one line of "say so" is cheaper than a strike. No ask to share.
   const dm = (who, opponent) =>
-    `Hi ${who}, your ranked match vs ${opponent} is up on MCSR Replayoffs, both streams side by side with the split timer: ${url}\nIf you'd rather it wasn't up, say so and I'll take it down.`;
+    `hi ${who}, your ranked match vs ${opponent} is up on MCSR Replayoffs, both streams side by side with the split timer: ${url}\nif youd rather it wasnt up say so and ill take it down`;
 
   // The YouTube panel's field is the one an operator may have edited by hand, so it wins while
   // it is on the page; otherwise the generated first line with the hook substituted in. Never
@@ -796,14 +796,14 @@ async function loadPublishKit(id, meta) {
       block(
         "Pinned comment",
         kit.pinnedComment ??
-          "Both POVs are the players' own streams, lined up on the countdown. If the timer looks off anywhere, drop the timestamp here and I'll fix it.",
+          "both povs are the players own streams, synced on the countdown. if the timer looks off anywhere drop the timestamp here and ill fix it",
         3,
       ),
       // The Community tab is open to every channel now, and a post per upload is the cheapest
       // reach a 41-subscriber channel has: the title, one line on what it is, the link.
       block(
         "Community post",
-        `New video: ${title}\nBoth streams run side by side with the split timer between them.\n${url}`,
+        `new video: ${title}\nboth streams side by side with the split timer in the middle\n${url}`,
         3,
         // The same flag as the Title block: this quotes the title, so it carries the same hole.
         title.includes("<HOOK>") ? counter("pick a hook first", true) : "",

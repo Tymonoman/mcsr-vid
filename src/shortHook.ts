@@ -166,10 +166,10 @@ export function buildShortDescription(
   season?: number,
 ): string {
   return [
-    `${leftNickname} vs ${rightNickname}, ${format}. The whole match is on the channel with both streams side by side.`,
-    ...(playlistUrl ? [`All the matches: ${playlistUrl}`] : []),
-    `Match page: ${matchPageUrl(matchId, leftNickname, season)}`,
-    ...(supportUrl ? [`Tip jar: ${supportUrl}`] : []),
+    `${leftNickname} vs ${rightNickname}, ${format.toLowerCase()}. the whole match is on the channel with both streams side by side.`,
+    ...(playlistUrl ? [`all the matches: ${playlistUrl}`] : []),
+    `match page: ${matchPageUrl(matchId, leftNickname, season)}`,
+    ...(supportUrl ? [`tip jar: ${supportUrl}`] : []),
     HASHTAGS.join(" "),
   ].join("\n");
 }

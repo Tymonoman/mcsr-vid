@@ -57,12 +57,12 @@ assert.ok(
   `opening must fit the Show-more preview, got ${opening.length}: ${opening}`,
 );
 assert.ok(!opening.includes("http"), "opening must not lead with a URL");
-assert.match(opening, /MCSR Ranked 1v1/, "format keyword must be in the preview");
+assert.match(opening, /mcsr ranked 1v1/, "format keyword must be in the preview");
 assert.ok(
   opening.indexOf("edcr") < 50 && opening.indexOf("doogile") < 50,
   "both nicknames must survive the ~50-char mobile truncation",
 );
-assert.ok(text.slice(0, 150).includes("MCSR Ranked"), "the format survives the preview cut");
+assert.ok(text.slice(0, 150).includes("mcsr ranked"), "the format survives the preview cut");
 
 // Elo comes from changes[].eloRate - changes[].change, never the live rating.
 assert.match(
@@ -77,7 +77,7 @@ assert.ok(!opening.includes("Result:") && !opening.includes("8:52"), "the openin
 // made. A viewer called the old copy out for reading like a machine wrote it.
 assert.equal(
   opening,
-  "edcr vs doogile, MCSR Ranked 1v1 on the same seed. Both streams run side by side with the split timer between them. edcr came in at 2546 elo, doogile at 2440.",
+  "edcr vs doogile, mcsr ranked 1v1 on the same seed. both streams side by side with the split timer in the middle. edcr came in at 2546 elo, doogile at 2440.",
 );
 for (const slop of [
   "synced",
@@ -103,14 +103,14 @@ assert.match(text, /\n\n0:00 Start\n2:07 Nether Enter\n\n/, "chapters block must
 assert.ok(!text.includes("Chapters:"), "no heading over the chapter list");
 assert.match(
   text,
-  /^Match page: https:\/\/magmamcsr\.com\/ranked\/player\/edcr\/matches\/12730175(\?season=\d+)?$/m,
+  /^match page: https:\/\/magmamcsr\.com\/ranked\/player\/edcr\/matches\/12730175(\?season=\d+)?$/m,
 );
 
 // The links, one per line, in this order: the two streams, the match page, then the opt-in two.
 const links = text.split("\n\n")[2]!.split("\n");
 assert.deepEqual(
   links.map((l) => l.split(":")[0]),
-  ["edcr's stream", "doogile's stream", "Match page"],
+  ["edcr's stream", "doogile's stream", "match page"],
   "no playlist or tip-jar line until the URLs are configured",
 );
 {
@@ -120,15 +120,15 @@ assert.deepEqual(
     supportUrl: "https://ko-fi.com/mcsrreplayoffs",
   });
   assert.deepEqual(withBoth.split("\n\n")[2]!.split("\n").slice(3), [
-    `All the matches: ${url}`,
-    "Tip jar: https://ko-fi.com/mcsrreplayoffs",
+    `all the matches: ${url}`,
+    "tip jar: https://ko-fi.com/mcsrreplayoffs",
   ]);
 }
 
 // The closer: who this is, and where to report a sync slip. Then the hashtags, and nothing else.
 assert.equal(
   text.split("\n\n").slice(-2).join("\n\n"),
-  "This is a fan channel, not run by MCSR Ranked. If the sync looks off anywhere, say so in the comments and I'll fix it.\n\n#MCSRRanked #MCSR #MinecraftSpeedrunning",
+  "fan channel, mcsr ranked has no idea i exist. if the sync looks off anywhere say where in the comments and ill fix it.\n\n#MCSRRanked #MCSR #MinecraftSpeedrunning",
 );
 
 // VOD links sit below the chapters, so the preview is prose rather than URLs.
@@ -148,7 +148,7 @@ assert.ok(!/forfeit|Result:/.test(ff.split("\n")[0]), "a forfeit is not announce
 // No recorded winner: drop the clause rather than render a bogus one.
 const draw = build(match({ result: { uuid: null, time: 0 } }));
 assert.ok(!draw.split("\n")[0].includes("Result:"), "no winner means no result clause");
-assert.match(draw.split("\n")[0], /^edcr vs doogile, MCSR Ranked 1v1/);
+assert.match(draw.split("\n")[0], /^edcr vs doogile, mcsr ranked 1v1/);
 
 // A playoff game: the round and game number replace "1v1", the seeds paragraph follows the
 // opening, and the series score is nowhere.
@@ -173,7 +173,7 @@ assert.match(draw.split("\n")[0], /^edcr vs doogile, MCSR Ranked 1v1/);
   const [poOpening, poParagraph] = po.split("\n\n");
   assert.equal(
     poOpening,
-    "edcr vs doogile, MCSR Ranked S11 Playoffs, Round of 16 · Game 2 of 5. Both streams run side by side with the split timer between them. edcr came in at 2546 elo, doogile at 2440.",
+    "edcr vs doogile, mcsr ranked s11 playoffs, Round of 16 · Game 2 of 5. both streams side by side with the split timer in the middle. edcr came in at 2546 elo, doogile at 2440.",
   );
   assert.match(poParagraph!, /^Season 11 Playoffs, Round of 16 · Game 2 of 5: edcr \(#1 seed, 2546 elo\)/);
   assert.ok(!/\b[0-9][–-][0-9]\b/.test(po), "no series score anywhere");
@@ -185,20 +185,20 @@ assert.ok(opening.endsWith("doogile at 2440."), "no seedType means no seed sente
 assert.ok(!/bastion/.test(opening), "no bastionType means no bastion clause");
 
 const seeded = build(match({ seedType: "VILLAGE", bastionType: "BRIDGE" })).split("\n")[0];
-assert.match(seeded, /Village seed, bridge bastion\./, "both halves, first letter capitalised");
-assert.match(seeded, /^edcr vs doogile, MCSR Ranked 1v1/, "nicknames still lead the preview");
+assert.match(seeded, /village seed, bridge bastion\./, "both halves, lowercase like the rest");
+assert.match(seeded, /^edcr vs doogile, mcsr ranked 1v1/, "nicknames still lead the preview");
 assert.ok(
-  seeded.indexOf("Village seed") > seeded.indexOf("doogile at 2440"),
+  seeded.indexOf("village seed") > seeded.indexOf("doogile at 2440"),
   "seed follows the elo sentence",
 );
 assert.ok(seeded.trimEnd().endsWith("bastion."), "and ends the opening");
 
 const seedOnly = build(match({ seedType: "DESERT_TEMPLE" })).split("\n")[0];
-assert.match(seedOnly, /Desert temple seed\./, "underscores become spaces");
+assert.match(seedOnly, /desert temple seed\./, "underscores become spaces");
 assert.ok(!seedOnly.includes("bastion"), "a null bastion drops only its own half");
 
 // An enum value nobody has seen yet must render, not throw.
-assert.match(build(match({ seedType: "NEW_THING_HERE" })).split("\n")[0], /New thing here seed\./);
+assert.match(build(match({ seedType: "NEW_THING_HERE" })).split("\n")[0], /new thing here seed\./);
 
 // --- Tags ----------------------------------------------------------------------------------
 const tagsFor = (m: MatchInfo, left = "edcr", right = "doogile", max?: number) =>

@@ -98,23 +98,23 @@ const FALLBACK = "watch the lead flip here";
   // The same voice as the long-form description: what it is, in a sentence a person would type.
   assert.equal(
     description.split("\n")[0],
-    "edcr vs doogile, MCSR Ranked 1v1. The whole match is on the channel with both streams side by side.",
+    "edcr vs doogile, mcsr ranked 1v1. the whole match is on the channel with both streams side by side.",
   );
-  assert.ok(description.includes("Match page: https://magmamcsr.com/ranked/player/edcr/matches/12730175"));
+  assert.ok(description.includes("match page: https://magmamcsr.com/ranked/player/edcr/matches/12730175"));
   // The same three the long-form carries, not a second set — both halves of a match should look
   // like one channel to YouTube.
   assert.ok(description.includes(HASHTAGS.join(" ")));
-  assert.ok(!description.includes("All the matches"), "no playlist line until the URL is configured");
+  assert.ok(!description.includes("all the matches"), "no playlist line until the URL is configured");
   const url = "https://www.youtube.com/playlist?list=PLHG-jSA-dWDo";
   assert.equal(
     buildShortDescription(12730175, "edcr", "doogile", url).split("\n")[1],
-    `All the matches: ${url}`,
+    `all the matches: ${url}`,
     "the playlist link sits on line two, above the match page",
   );
   const tip = buildShortDescription(12730175, "edcr", "doogile", url, "https://ko-fi.com/x").split("\n");
   assert.equal(
     tip[3],
-    "Tip jar: https://ko-fi.com/x",
+    "tip jar: https://ko-fi.com/x",
     "the tip jar sits under the match page, above the hashtags",
   );
   assert.ok(tip[4]!.startsWith("#"), "hashtags stay last");
