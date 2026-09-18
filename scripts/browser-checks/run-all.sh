@@ -8,16 +8,25 @@
 set -u
 BASE="${1:?usage: run-all.sh <dashboard url>}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# `published` is a Studio upload -- one the channel scan paired by its description, with no
+# youtube.json -- because studio-upload-check is about exactly that; since the dashboard's own
+# uploads began (15 Sept) the newest uploaded match is usually not one.
 pick() { curl -s "$BASE/api/matches" | python3 -c "
-import json,sys; ms=json.load(sys.stdin)['matches']
+import json,sys,urllib.request; ms=json.load(sys.stdin)['matches']
 want=sys.argv[1]
+studio=set()
+if want=='published':
+    try:
+        ups=json.load(urllib.request.urlopen(sys.argv[2]+'/api/youtube/uploads'))['uploads']
+        studio={u['matchId'] for u in ups if u.get('source') in ('studio','channel')}
+    except Exception: pass
 for m in ms:
     if want=='ready' and m['exported'] and not m['uploaded'] and not m['hidden']: print(m['matchId']); break
     if want=='ready2' and m['exported'] and not m['uploaded'] and not m['hidden']: want='ready2b'; continue
     if want=='ready2b' and m['exported'] and not m['uploaded'] and not m['hidden']: print(m['matchId']); break
-    if want=='published' and m['uploaded']: print(m['matchId']); break
+    if want=='published' and m['uploaded'] and not m['hidden'] and (not studio or m['matchId'] in studio): print(m['matchId']); break
     if want=='unexported' and not m['exported'] and not m['hidden']: print(m['matchId']); break
-" "$1"; }
+" "$1" "$BASE"; }
 READY="$(pick ready)"; READY2="$(pick ready2)"; PUBLISHED="$(pick published)"; UNEXPORTED="$(pick unexported)"
 echo "ready=$READY ready2=$READY2 published=$PUBLISHED unexported=$UNEXPORTED"
 fail=0

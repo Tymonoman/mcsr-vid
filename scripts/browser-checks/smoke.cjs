@@ -45,21 +45,17 @@ const OUT = process.argv[3] || require("path").join(require("os").tmpdir(), "smo
         note("mob: back bar not visible on the match screen");
       if (await p.locator("#left").isVisible()) note("mob: sidebar still visible on the match screen");
     } else if (await p.locator("#backtolist").isVisible()) note("desk: back bar visible on desktop");
-    if ((await p.locator(".variant").count()) && !(await p.locator("#rerender").count()))
-      note(`${tag}: thumbnail variants shown but no re-render control`);
-    // Hook -> YouTube title sync + upload guard.
+    // Hook -> YouTube title sync. On a phone the groups are one at a time: the hook is in
+    // Package (the section bar switches to it).
     if (await p.locator("#hook").count()) {
+      if (tag === "mob") await p.click("#detail .jump a[data-panel=package]");
       await p.fill("#hook", "WANNABE vs REAL GOAT");
       await p.waitForTimeout(500);
       const yt = await p.inputValue("#ytTitle").catch(() => null);
       if (yt !== null && yt.includes("<HOOK>"))
         note(`${tag}: #ytTitle still has <HOOK> after typing a hook: "${yt}"`);
-      const upBtn = p.locator("button", { hasText: /^Upload$/ }).first();
-      if (await upBtn.count()) {
-        await p.fill("#ytTitle", "<HOOK> | x vs y");
-        await p.waitForTimeout(300);
-        if (!(await upBtn.isDisabled())) note(`${tag}: Upload is enabled while title contains <HOOK>`);
-      }
+      // No `#ytTitle` block: the YouTube panel keeps no second copy of the title (hook-flow-check
+      // pins that) and the `<HOOK>` refusal is the server's, under the button (youtube.js).
     }
     await p.screenshot({ path: `${OUT}-${tag}-detail.png`, fullPage: true });
     await ctx.close();

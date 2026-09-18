@@ -21,42 +21,83 @@
   font-size: 12px;
 }
 
-/* --- Left column tabs -------------------------------------------------------------------- */
+/* --- The four list tabs: a rail beside the work area, a bottom bar on a phone or tablet ------
+   Each cell is the tab's name over its count ("RENDERED" / "2 ready"). The rail is the way back
+   from a desktop match screen, so it is sticky; the bar is fixed and body padding clears it. */
 .tabs {
   display: flex;
-  border-bottom: 2px solid var(--panel-edge);
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  background: var(--panel);
+  border-right: 2px solid var(--panel-edge);
 }
 .tabs button {
-  /* Sized to the label, not a third each: "Rendered (4 ready)" wrapped onto two lines in a
-     third of the list column at 1280px, and a tab that wraps reads as two tabs. */
-  flex: 1 1 auto;
-  white-space: nowrap;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 64px;
+  padding: 8px 2px;
   border: 0;
-  border-bottom: 3px solid transparent;
+  border-left: 3px solid transparent;
   background: transparent;
   color: var(--muted);
-  font-size: 12px;
-  letter-spacing: 1px;
+  font-size: 10px;
+  letter-spacing: 0.5px;
   text-transform: uppercase;
-  padding: 10px 6px;
+  white-space: nowrap;
+}
+.tabs button small {
+  font-size: 9px;
+  color: var(--gold);
+  min-height: 1em;
 }
 .tabs button[aria-selected="true"] {
   color: var(--quartz);
-  border-bottom-color: var(--warped);
+  border-left-color: var(--warped);
+  background: var(--panel-2);
 }
 .tabs button:active {
   transform: none;
 }
 
-/* On a phone the tabs are the only navigation, and the `pointer: coarse` block at the bottom of
-   this file does not fire for a narrow desktop window. A real hit area, and an active tab that
-   reads as a selected screen rather than a slightly brighter word. */
 @media (max-width: 860px) {
+  .tabs {
+    flex-direction: row;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    z-index: 3;
+    min-height: 0;
+    height: calc(56px + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+    border-right: 0;
+    border-top: 2px solid var(--panel-edge);
+  }
   .tabs button {
+    flex: 1;
     min-height: 44px;
+    font-size: 11px;
+    letter-spacing: 1px;
+    border-left: 0;
+    border-top: 3px solid transparent;
   }
   .tabs button[aria-selected="true"] {
-    background: var(--panel);
+    border-top-color: var(--warped);
+  }
+  /* The match screen's section bar (app.css .jump) takes this slot. */
+  body.view-match .tabs {
+    display: none;
+  }
+  /* The bar is fixed; nothing may end up under it. */
+  body {
+    padding-bottom: calc(64px + env(safe-area-inset-bottom));
   }
 }
 
@@ -78,6 +119,12 @@
 .nightly .lines {
   flex: 1;
   min-width: 0;
+  overflow-wrap: anywhere;
+}
+/* The strip's warnings -- server behind, run failed -- are direct children, so the phone match
+   screen can keep exactly those and drop the plan, the queue and the button (below). */
+.nightly > .bad {
+  flex-basis: 100%;
   overflow-wrap: anywhere;
 }
 .nightly .last {
@@ -211,20 +258,6 @@
   font-size: 12px;
   border-bottom-width: 3px;
 }
-.bucketlegend .order {
-  flex-basis: 100%;
-  color: var(--muted);
-}
-.bucketlegend {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 8px;
-  padding: 6px 12px;
-  font-size: 11px;
-  color: var(--muted);
-  border-bottom: 1px solid var(--panel-edge);
-}
 /* The competitor already has this matchup up: it competes with their video for the same
    browse session, so the card says so and the order puts it after the fresh ones. */
 .sugg .rival {
@@ -246,11 +279,9 @@
   font-variant-numeric: tabular-nums;
 }
 /* Expiry is the only thing on a card that can make it un-renderable, so it is also the only
-   thing allowed to shout -- and only when it is nearly out of time. */
+   thing allowed to shout -- and only when it is nearly out of time. On the facts line. */
 .sugg .expiry {
-  font-size: 11px;
   color: var(--muted);
-  margin-top: 2px;
 }
 .sugg .expiry.warn {
   color: var(--gold);
@@ -516,14 +547,18 @@
 }
 
 /* --- Publish checklist ---------------------------------------------------------------------
-   Eight pills on one row: five facts read off disk, three the operator ticks. Wraps rather than
-   scrolls -- at 390px it lands as three lines, and a horizontal scroller would hide the last
-   pill, which is the one ("players notified") most likely to be forgotten. */
+   Ten pills in the DOM, four on screen: the six facts read off disk (rendered, hook, thumbnail,
+   uploaded, Short rendered, chat saved) are what the groups below already show, so only the four
+   the operator ticks by hand are drawn. All ten stay in the DOM -- hook-flow-check reads the
+   row's text. Wraps rather than scrolls: the page must never feel like it scrolls sideways. */
 .checklist {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   margin: 10px 0 4px;
+}
+.checklist span.pill:not(.bad) {
+  display: none;
 }
 .checklist .pill {
   background: transparent;
@@ -567,10 +602,11 @@
    the suggestion buttons 26px, the hook chips 23px. iOS asks for 44pt and Android 48dp, and
    below ~30px these are genuinely fiddly one-handed.
 
-   Scoped to `pointer: coarse` rather than a width query on purpose: it catches a tablet in
-   landscape at 1024px, which a max-width rule would miss, and leaves the mouse-driven desktop
-   layout exactly as it was. */
-@media (pointer: coarse) {
+   `pointer: coarse` catches a tablet in landscape at 1024px, which a width rule would miss; the
+   width catches a phone or tablet whose browser does not report its pointer (and Playwright's
+   emulation, which drops the coarse pointer after a full-page screenshot). A mouse-driven
+   desktop window is left exactly as it was. */
+@media (pointer: coarse), (max-width: 860px) {
   button,
   [role="tab"],
   select,
@@ -579,32 +615,42 @@
     min-height: 44px;
   }
 
-  /* Inline links in a suggestion card are a row of separate destinations, not prose, so they
-     need a real hit area too -- 32px plus a wider gap, rather than 44px each, which would push
-     a row of three past the width of a phone. */
+  input[type="number"] {
+    min-height: 44px;
+  }
   .sugg .links {
     gap: 16px;
   }
 
-  /* The 12px text links that are really controls -- rescan, try again, undo, Download, Bundle --
-     get a thumb-sized hit area without changing how the line reads. */
+  /* The 12px text links that are really controls -- rescan, try again, undo, Download, Bundle,
+     the queue arrows, the last-run link -- get a thumb-sized hit area without changing how the
+     line reads: the negative margin keeps the line box where it was. */
   .scanline a,
-  .previewmeta a {
-    display: inline-block;
-    padding: 8px 6px;
-    margin: -8px 0;
-    min-height: 32px;
+  .previewmeta a,
+  .nightly a,
+  .outputs a,
+  .sugg .game a,
+  .sugg .links a {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 6px;
+    margin: -12px 0;
+    min-height: 44px;
   }
-
-  /* The moment's seek control is the one thing in that row a thumb aims at, and at 25px it was
-     the smallest target on the match screen. Padded rather than resized so the row still reads
-     as a clock with a button beside it. */
+  /* One glyph each (↑, ×), side by side: padding alone leaves a 28px target. */
+  .queue a {
+    min-width: 44px;
+    justify-content: center;
+  }
   .moment .seek {
-    padding: 7px 10px;
-    min-height: 32px;
+    padding: 0 10px;
+    min-height: 44px;
   }
-  .kitmore > summary {
-    min-height: 32px;
+  .kitmore > summary,
+  .fold > summary,
+  .syncedit > summary,
+  .playoffsoon > summary {
+    min-height: 44px;
     display: flex;
     align-items: center;
   }
@@ -616,12 +662,6 @@
   .card .rowacts {
     display: none;
   }
-  .sugg .links a {
-    display: inline-flex;
-    align-items: center;
-    min-height: 32px;
-  }
-
   /* Denser controls sit inside scrolling lists, so give them room to breathe as well. */
   .sugg .acts,
   .variant figcaption,
@@ -638,9 +678,12 @@
 }
 .moment {
   display: grid;
-  grid-template-columns: auto 1fr auto auto;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas:
+    "when why cut"
+    "when hook cut";
   align-items: center;
-  gap: 12px;
+  gap: 4px 12px;
   padding: 8px 10px;
   background: var(--panel-2, #1a1820);
   border: 1px solid var(--panel-edge-light);
@@ -650,8 +693,12 @@
   border-color: var(--gold, #f0c93d);
 }
 .moment .when {
+  grid-area: when;
   font-variant-numeric: tabular-nums;
   color: var(--gold, #f0c93d);
+}
+.moment .cut {
+  grid-area: cut;
 }
 /* The same window as a place in the final video: a control, dressed like the clock beside it. */
 .moment .seek {
@@ -664,16 +711,17 @@
   cursor: pointer;
 }
 .moment .why {
+  grid-area: why;
   color: var(--muted, #8d8695);
   font-size: 0.9em;
 }
+/* Under the reason rather than beside it: in a half-width column the four-across row squeezed
+   the reason into a strip one word wide. */
 .moment .hook {
+  grid-area: hook;
   color: var(--quartz, #f3ede2);
   font-style: italic;
-  max-width: 32ch;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 0.9em;
 }
 #shortlog {
   margin-top: 10px;
@@ -695,11 +743,8 @@
 @media (max-width: 860px) {
   .moment {
     grid-template-columns: 1fr;
+    grid-template-areas: "when" "why" "hook" "cut";
     gap: 4px;
-  }
-  .moment .hook {
-    max-width: none;
-    white-space: normal;
   }
 }
 
@@ -719,6 +764,18 @@
   margin-top: 6px;
   font-size: 0.85em;
   color: var(--muted, #8d8695);
+}
+/* The final video's line is one row at every width -- the file name gives way, the links do
+   not: on a phone it sits between the video and the sync frames, and a second row pushed the
+   frames off the first screen. The Short's lines (hook, reasoner) keep wrapping. */
+#preview .previewmeta {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+#preview .previewmeta > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 /* Pushes the download link to the right without a spacer element. */
 .previewmeta a {
@@ -829,7 +886,8 @@
 .playoffsoon > summary {
   cursor: pointer;
   color: var(--muted);
-  padding: 4px 0;
+  /* The same side gutter as the scan line above it, or the marker sits on the panel edge. */
+  padding: 4px 12px;
 }
 .playoffsoon > summary:hover {
   color: var(--fg);
@@ -927,6 +985,11 @@
   align-items: center;
   flex-wrap: wrap;
   font-size: 12px;
+  margin-bottom: 12px;
+}
+/* Re-run sits in the same row as Delete now; a gap so a thumb for one does not land on the other. */
+.manage #mdel {
+  margin-left: 16px;
 }
 
 /* --- Tonight's queue, in the nightly strip -------------------------------------------------- */
@@ -955,13 +1018,27 @@ button.queued {
 }
 
 /* --- Phone: less on the list screen ------------------------------------------------------- */
-@media (max-width: 860px) {
-  /* Four tabs did not fit on 390px; the last one was cut off. */
-  .tabs {
-    flex-wrap: wrap;
-  }
-  /* The splits chart is unreadable at card width on a phone; the facts line says the same. */
+@media (max-width: 600px) {
+  /* The splits chart is unreadable at card width on a phone; the facts line says the same.
+     A tablet keeps it. */
   .sugg svg {
     display: none;
+  }
+}
+/* The phone match screen keeps only the strip's warnings: "server behind" and "run failed" must
+   be above the match head on the box where they matter most; the plan and the queue are the
+   list screen's. A direct-child rule, so no :has(). */
+@media (max-width: 860px) {
+  body.view-match #nightly {
+    padding: 0;
+    border-bottom: 0;
+    gap: 0;
+  }
+  body.view-match #nightly > :not(.bad) {
+    display: none;
+  }
+  body.view-match #nightly > .bad {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--panel-edge);
   }
 }

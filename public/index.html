@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>MCSR Replayoffs</title>
     <!-- Styles and behaviour live in siblings rather than inline: this file grows a section per
      dashboard feature, and CLAUDE.md caps a file at 500 lines. Both are served by src/server.ts
@@ -29,19 +29,32 @@
       <span class="meta" id="hostmeta"></span>
     </header>
 
-    <!-- Below 860px the list and the detail are two screens (app.css); this is the way back.
-     Outside <main> so it can stick to the page rather than to its own grid row, and outside
-     #detail because select() rewrites that whole subtree on every match. -->
+    <!-- The nightly strip: what the clock will do tonight, what it did last time, and the two
+     lines that must be read before anything else -- a failed run, a server one restart behind.
+     Under the header rather than inside a tab so it is on every screen (app.js paintNightly). -->
+    <div id="nightly" class="nightly"></div>
+
+    <!-- The list and the match are two screens at every width; this is the way back on a phone
+     or tablet (on a desktop the rail is). Outside <main> so it can stick to the page rather than
+     to its own grid row, and outside #detail because select() rewrites that whole subtree. -->
     <button type="button" id="backtolist"></button>
 
     <main>
+      <!-- The only navigation: a fixed bottom bar up to 860px, a rail on a desktop. Each cell is
+       the tab's name over its count (app.js writes the <small>). -->
+      <nav class="tabs" role="tablist">
+        <button id="tab-suggestions" role="tab" aria-selected="true">
+          <span>Tonight</span><small></small>
+        </button>
+        <button id="tab-matches" role="tab" aria-selected="false">
+          <span>Rendered</span><small></small>
+        </button>
+        <button id="tab-abtest" role="tab" aria-selected="false"><span>A/B</span><small></small></button>
+        <button id="tab-settings" role="tab" aria-selected="false">
+          <span>Settings</span><small></small>
+        </button>
+      </nav>
       <section id="left">
-        <div class="tabs" role="tablist">
-          <button id="tab-suggestions" role="tab" aria-selected="true">Suggestions</button>
-          <button id="tab-matches" role="tab" aria-selected="false">Rendered</button>
-          <button id="tab-abtest" role="tab" aria-selected="false">A/B</button>
-          <button id="tab-settings" role="tab" aria-selected="false">Settings</button>
-        </div>
         <div id="suggestions"><div class="empty">Scanning&hellip;</div></div>
         <div id="list" hidden><div class="empty">Loading&hellip;</div></div>
         <div id="abtest" hidden><div class="empty">Loading&hellip;</div></div>

@@ -23,7 +23,7 @@ const { launchFor } = require("./launch.cjs");
   console.log("youtube panel:", yt.slice(0, 220));
   await page.waitForSelector("#publishkit .kit", { timeout: 20000 });
   const dm = await page.$$eval("#publishkit .kit", (n) =>
-    n.map((k) => k.querySelector("textarea").value).find((v) => v.startsWith("Hey ")),
+    n.map((k) => k.querySelector("textarea").value).find((v) => /^hi /.test(v)),
   );
   console.log("dm:", dm.slice(0, 150));
   console.log("errors:", errors.length ? errors : "none");

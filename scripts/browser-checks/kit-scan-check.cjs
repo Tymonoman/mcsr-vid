@@ -61,7 +61,7 @@ const { launchFor, readClipboard } = require("./launch.cjs");
     const clip = await readClipboard(page);
     check(
       "community post carries the title and copies",
-      /^New video: .* vs .*\nBoth streams side by side/.test(text) && clip === text,
+      /^new video: .* vs .*\nboth streams side by side/.test(text) && clip === text,
       text.slice(0, 140),
     );
     check("no page errors", errors.length === 0, errors.join(" | "));

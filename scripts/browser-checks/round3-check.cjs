@@ -43,7 +43,10 @@ const { launchFor } = require("./launch.cjs");
     );
     check("no page errors (desktop)", errors.length === 0, errors.join(" | "));
     await p.close();
-    // (3) phone: jump links exist and land the heading under the back bar
+    // (3) phone: the section bar's four links exist, and Publish shows its heading (YouTube, the
+    // first thing in that group) on the first screen with the head -- match id, #headwarn --
+    // still above it: the tap scrolls to the top, not to the heading, so the sync-stale mirror
+    // is on the panel that holds Upload
     const ctx = await browser.newContext({ ...devices["iPhone 13"] });
     p = await ctx.newPage();
     errors = [];
@@ -52,23 +55,31 @@ const { launchFor } = require("./launch.cjs");
     await p.click("#tab-matches");
     await p.evaluate(() => select(13172029, { open: true }));
     await p.waitForSelector("#detail .jump a", { timeout: 30000 });
-    await p.waitForSelector("#publishkit .kit", { timeout: 30000 });
+    // Attached, not visible: the kit is in the Publish group, which the phone shows only once
+    // its bar link is tapped -- the tap below.
+    await p.waitForSelector("#publishkit .kit", { state: "attached", timeout: 30000 });
     const links = await p.$$eval("#detail .jump a", (n) =>
       n.map((a) => a.textContent.trim() + "→" + a.getAttribute("href")),
     );
-    await p.click('#detail .jump a[href="#h-publishkit"]');
+    await p.click('#detail .jump a[href="#h-youtube"]');
     await p.waitForTimeout(600);
-    const y = await p.$eval("#h-publishkit", (h) => Math.round(h.getBoundingClientRect().top));
+    const y = await p.$eval("#h-youtube", (h) => Math.round(h.getBoundingClientRect().top));
     const barH = await p
       .$eval("#backtolist", (b) => Math.round(b.getBoundingClientRect().height))
       .catch(() => 0);
-    const vis = await p.$eval("#h-publishkit", (h) => h.checkVisibility());
-    check("phone jump links present", links.length === 3, links.join(" "));
-    check(
-      "Publish kit heading lands under the back bar",
-      vis && y >= barH && y < 200,
-      `heading top ${y}px, back bar ${barH}px`,
+    const vis = await p.$eval("#h-youtube", (h) => h.checkVisibility());
+    const scrollY = await p.evaluate(() => window.scrollY);
+    const headwarnVis = await p.$eval(
+      "#headwarn",
+      (h) => h.checkVisibility() && h.getBoundingClientRect().top >= 0,
     );
+    check("phone section bar has the four groups", links.length === 4, links.join(" "));
+    check(
+      "Publish opens at the top with the YouTube heading on the first screen",
+      vis && scrollY === 0 && y >= barH && y < 400,
+      `heading top ${y}px, back bar ${barH}px, scrollY ${scrollY}`,
+    );
+    check("#headwarn is on screen on Publish", headwarnVis, String(headwarnVis));
     const deskJump = await (async () => {
       const d = await browser.newPage({ viewport: { width: 1280, height: 900 } });
       await d.goto(base + "/", { waitUntil: "networkidle" });

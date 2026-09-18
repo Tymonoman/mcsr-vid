@@ -11,9 +11,6 @@ const { launchFor } = require("./launch.cjs");
     if (!c) ok = false;
   };
   await page.goto(base + "/", { waitUntil: "networkidle" });
-  // legend text
-  const legend = (await page.textContent(".bucketlegend .order")).replace(/\s+/g, " ").trim();
-  check("legend names the bucket order", /CLOSE first, then CHAOS/.test(legend), legend);
   // dismiss mid-list: undo line stays in view
   // Direct children only: the playoffs section paints its bracket slots as `.sugg` cards too,
   // nested in #playoffs, and those carry no Dismiss. Same rule app.js binds its handlers with.
@@ -41,22 +38,24 @@ const { launchFor } = require("./launch.cjs");
   await page.waitForTimeout(1500);
   const after = await page.$$("#suggestions > .sugg");
   check("undo restores the card", after.length === cards.length, `${after.length} vs ${cards.length}`);
-  // kit position and placeholder guard
+  // section order and placeholder guard: the Check group opens on the video with the sync
+  // frames right under it, and the Publish group leads with YouTube, the kit under it
   await page.click("#tab-matches");
   await page.evaluate(() => select(13172029, { open: true }));
   await page.waitForSelector("#publishkit .kit", { timeout: 30000 });
+  await page.waitForSelector("#synccheck h2", { timeout: 30000 });
   const order = await page.$$eval("#detail h2", (n) => n.map((h) => h.textContent.trim().split(" ")[0]));
   check(
-    "Publish kit sits right after Final video",
-    order.indexOf("Publish") === order.indexOf("Final") + 1,
+    "Sync check sits right after Final video",
+    order.indexOf("Sync") === order.indexOf("Final") + 1,
     order.join(" > "),
   );
   const kitTop = await page.$eval("#publishkit", (e) => e.getBoundingClientRect().top + window.scrollY);
   const ytTop = await page.$eval("#youtube", (e) => e.getBoundingClientRect().top + window.scrollY);
   check(
-    "kit above the YouTube form",
-    kitTop < ytTop,
-    `kit@${Math.round(kitTop)} youtube@${Math.round(ytTop)}`,
+    "YouTube form above the kit",
+    ytTop < kitTop,
+    `youtube@${Math.round(ytTop)} kit@${Math.round(kitTop)}`,
   );
   const counter = await page.$eval("#publishkit .kit .counter", (e) => ({
     t: e.textContent.trim(),

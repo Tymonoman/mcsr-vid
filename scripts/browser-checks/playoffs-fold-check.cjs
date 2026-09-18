@@ -1,8 +1,9 @@
 const { launchFor } = require("./launch.cjs");
 
-/* The playoffs board is folded away until a game exists or the first slot is inside 24 h. Both
-   branches are driven from a doctored /api/playoffs so the check means the same thing on the
-   Tuesday before a bracket and on the Saturday of one; the live payload is checked too. */
+/* The playoffs board is folded whatever the date: eleven series of game rows is a screen and a
+   half above the first suggestion at any width, and the summary line names the round and the next
+   slot. Three dates are driven from a doctored /api/playoffs so the check means the same thing on
+   the Tuesday before a bracket and on the Saturday of one; the live payload is checked too. */
 (async () => {
   const [base] = process.argv.slice(2);
   const browser = await launchFor(base);
@@ -59,29 +60,17 @@ const { launchFor } = require("./launch.cjs");
       `${shut.slots} slots`,
     );
 
-    // An hour out is the tournament: no fold to click past on the night it matters.
+    // An hour out, and during a slot, the board is still one line: the tournament's own night is
+    // the nightly's `playoffsFirst`, and the evening skim is the suggestions under it. One tap
+    // opens the whole board, and it stays open across the strip's repaints.
     const open = await board(3600);
-    check(
-      "an imminent slot is not folded",
-      open.folds === 0 && open.rows === open.slots,
-      JSON.stringify(open),
-    );
-
-    // A slot that has already started stays open too -- the games arrive during it.
+    check("an imminent slot is folded too", open.folds === 1 && open.rows === 0, JSON.stringify(open));
     const during = await board(-3600);
-    check(
-      "a slot underway is not folded",
-      during.folds === 0 && during.rows === during.slots,
-      JSON.stringify(during),
-    );
+    check("a slot underway is folded too", during.folds === 1 && during.rows === 0, JSON.stringify(during));
 
-    // Whatever the calendar says today, the live payload must render one board or the other.
+    // Whatever the calendar says today, the live payload folds the same way.
     const now = await board(null);
-    check(
-      "the live bracket renders exactly one way",
-      (now.folds === 1 && now.rows === 0) || (now.folds === 0 && now.rows === now.slots),
-      JSON.stringify(now),
-    );
+    check("the live bracket is folded", now.folds === 1 && now.rows === 0, JSON.stringify(now));
     check("no page errors", errors.length === 0, errors.join(" | "));
   } finally {
     await browser.close();

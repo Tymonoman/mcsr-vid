@@ -53,10 +53,18 @@ header .meta {
   font-size: 12px;
   margin-left: auto;
 }
+.muted {
+  color: var(--muted);
+}
 
+/* --- Two screens, one bar ---------------------------------------------------------------------
+   The list and the match are two screens at every width: `body.view-match` swaps them, and the
+   four list tabs are the only navigation -- a rail beside the work area on a desktop, a fixed
+   bottom bar below 860px (panels.css). The desktop used to keep a 420px column of cards open
+   next to a one-column match screen; the match screen now gets the whole width, in two columns. */
 main {
   display: grid;
-  grid-template-columns: minmax(320px, 420px) 1fr;
+  grid-template-columns: 72px 1fr;
   gap: 0;
   align-items: start;
 }
@@ -67,41 +75,114 @@ main {
 main > * {
   min-width: 0;
 }
-/* Below 860px the sidebar and the detail stop sharing one column and become two screens. With
-   ten suggestion cards the page measured ~5,600px tall, so the panel the operator actually acts
-   in started thousands of pixels down and a tap on a card changed nothing you could see. The
-   `view-match` class is toggled at every width and only means anything in here. */
-/* On a phone the preview and the kit start two thousand pixels down the match screen; the
-   first row offers a jump to each, and the headings land under the sticky back bar, not behind it. */
+#left,
+#detail {
+  grid-column: 2;
+}
+#detail {
+  display: none;
+}
+body.view-match #left {
+  display: none;
+}
+body.view-match #detail {
+  display: block;
+}
+/* Both lists are ranked, so they stay one column: a grid would snake the order. */
+#left {
+  max-width: 720px;
+  width: 100%;
+}
+#detail {
+  padding: 18px;
+}
+#detail h2 {
+  scroll-margin-top: 8px;
+}
+
+/* The match screen: a head that is always on view, then four groups in the order the morning
+   happens -- Check, Package, Publish, After. Two columns on a desktop (Check + After left,
+   Package + Publish right); one group at a time below 860px, switched by the .jump bar. */
+.cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 28px;
+  align-items: start;
+}
+.panel + .panel {
+  margin-top: 28px;
+  border-top: 1px solid var(--panel-edge-light);
+}
 .jump {
   display: none;
-  font-size: 12px;
 }
-.jump a {
-  color: var(--warped);
+/* The one warning slot the head has: the detector's own doubt, and a mirror of the sync-stale
+   line the Check group paints -- so switching to Package to pick a hook never hides it. */
+#headwarn:empty {
+  display: none;
 }
-@media (max-width: 860px) {
-  .jump {
-    display: inline-block;
-    width: 100%;
-    margin-top: 6px;
-  }
-  #detail h2 {
-    scroll-margin-top: 52px;
-  }
-}
+
 @media (max-width: 860px) {
   main {
     grid-template-columns: 1fr;
   }
+  #left,
   #detail {
+    grid-column: 1;
+  }
+  #left {
+    max-width: none;
+  }
+  #hostmeta {
     display: none;
   }
-  body.view-match #left {
-    display: none;
+  #detail h2 {
+    scroll-margin-top: 52px;
   }
-  body.view-match #detail {
+  /* The four groups are panels switched by the bar; the columns dissolve. */
+  .cols {
     display: block;
+  }
+  .col {
+    display: contents;
+  }
+  .panel:not(.on) {
+    display: none;
+  }
+  .panel + .panel {
+    margin-top: 0;
+    border-top: 0;
+  }
+  /* The section bar takes the bottom-bar slot the list tabs use (panels.css hides .tabs here). */
+  .jump {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 3;
+    height: calc(56px + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+    background: var(--panel);
+    border-top: 2px solid var(--panel-edge);
+  }
+  .jump a {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 12px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    border-top: 3px solid transparent;
+  }
+  .jump a[aria-current] {
+    color: var(--quartz);
+    border-top-color: var(--warped);
+    background: var(--panel-2);
   }
   /* Sticky rather than pinned to the top of the detail: the detail is taller than the screen,
      and the way back has to stay reachable from the bottom of it. */
@@ -128,19 +209,17 @@ main > * {
   }
 }
 
-/* Never on the desktop layout, where both columns are already on screen. */
+/* Never on the desktop layout, where the rail is the way back. */
 #backtolist {
   display: none;
 }
 
-#left {
-  border-right: 2px solid var(--panel-edge);
-  min-height: calc(100vh - 52px);
-}
+/* --- Rendered rows: thumbnail, names + id, one state line naming the next action ---------- */
 .card {
   display: grid;
-  grid-template-columns: 112px 1fr;
-  gap: 10px;
+  grid-template-columns: 120px 1fr auto;
+  gap: 12px;
+  align-items: center;
   padding: 10px 12px;
   border-bottom: 1px solid var(--panel-edge);
   cursor: pointer;
@@ -160,7 +239,7 @@ main > * {
    card is missing its image. Same box as .card img. */
 .card img,
 .card .nothumb {
-  width: 112px;
+  width: 100%;
   aspect-ratio: 16/9;
   object-fit: cover;
   display: block;
@@ -170,70 +249,35 @@ main > * {
 .card .who {
   font-weight: 700;
 }
-.card .id {
+.card .who .id {
+  font-weight: 400;
+  color: var(--muted);
+  font-size: 12px;
+  margin-left: 6px;
+}
+.card .state {
   color: var(--muted);
   font-size: 12px;
 }
-
-/* The pips used to be six anonymous coloured tiles with only a title= tooltip, which is
-   unreadable on a phone and unmemorable anywhere. The legend above the list names them once,
-   in stage order, so a glance at a card is decodable without hovering. */
-.legend {
-  display: flex;
-  gap: 3px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--panel-edge);
-  font-size: 10px;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  color: var(--muted);
+.card .state.ready {
+  color: var(--gold);
 }
-.legend span {
-  flex: 1;
-  text-align: center;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.card .state.rival {
+  color: var(--crimson);
 }
-
-.stages {
-  display: flex;
-  gap: 3px;
-  margin-top: 6px;
-}
-.pip {
-  width: 100%;
-  height: 6px;
-  background: var(--panel-edge-light);
-  border: 1px solid var(--panel-edge);
-}
-.pip.done {
-  background: var(--warped);
-}
-
 /* A match whose MCSR API lookup failed: nicknames came off the filenames and their
    left/right order is a guess. Saying so beats silently showing "?" as if it were a fact. */
 .card .degraded {
   color: var(--gold);
   font-size: 11px;
 }
-.card .state {
-  color: var(--muted);
-  font-size: 11px;
-  letter-spacing: 0.4px;
-  text-transform: uppercase;
-}
-.card .state.ready {
-  color: var(--gold);
-}
-.card .rival {
-  color: var(--crimson);
-  font-size: 11px;
+@media (max-width: 860px) {
+  .card {
+    grid-template-columns: 64px 1fr auto;
+    gap: 10px;
+  }
 }
 
-#detail {
-  padding: 18px;
-}
 .empty {
   color: var(--muted);
   padding: 40px 8px;
@@ -326,6 +370,65 @@ pre {
   overflow-x: auto;
   font-size: 12px;
   margin: 0;
+}
+
+/* The hook field and its Save on one row: Save is what commits the hook into the title, and it
+   sat under the description, a screen below the field it belongs to. */
+.hookrow {
+  flex-wrap: nowrap;
+  margin-bottom: 6px;
+}
+.hookrow input {
+  flex: 1;
+  min-width: 0;
+}
+#savedmsg {
+  font-size: 12px;
+  min-height: 18px;
+}
+#savedmsg.saved {
+  color: var(--warped);
+}
+/* Reference and once-a-week edits fold away: the splits chart, the title and description
+   editors, the Manage row with the output paths. A native disclosure, styled as a heading. */
+.fold {
+  margin-top: 22px;
+}
+.fold > summary {
+  cursor: pointer;
+  font-size: 13px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 6px 0;
+}
+.fold > summary:hover {
+  color: var(--quartz);
+}
+/* A summary set to display:flex (the touch block) loses the browser's triangle; one drawn here
+   keeps every fold reading as a fold at every width. */
+.fold > summary,
+.kitmore > summary,
+.syncedit > summary,
+.playoffsoon > summary {
+  list-style: none;
+}
+.fold > summary::before,
+.kitmore > summary::before,
+.syncedit > summary::before,
+.playoffsoon > summary::before {
+  content: ">";
+  display: inline-block;
+  width: 1.2em;
+}
+.fold[open] > summary::before,
+.kitmore[open] > summary::before,
+.syncedit[open] > summary::before,
+.playoffsoon[open] > summary::before {
+  content: "v";
+}
+.fold > h2:first-of-type {
+  margin-top: 8px;
 }
 
 #progress {
@@ -424,19 +527,12 @@ pre {
   border-top: 1px solid var(--panel-edge-light);
 }
 
-.listorder {
-  font-family: var(--pixel-font);
-  font-size: 11px;
-  color: var(--muted);
-  padding: 6px 12px 8px;
-  border-bottom: 1px solid var(--panel-edge);
-}
 /* Row controls sit inside the card, which is itself a click target, so they need to read as
    separate affordances rather than decoration. Small and quiet until the delete arms itself. */
 .rowacts {
   display: flex;
+  flex-direction: column;
   gap: 6px;
-  margin-top: 6px;
 }
 .rowacts button {
   font-size: 10px;

@@ -89,6 +89,47 @@ run `docker restart mcsr-dashboard` on the lab (both containers share one image;
 `/media` are bind mounts). The nightly strip names the running and the checked-out commit when
 they differ (`code: { boot, now }` from `src/repoHead.ts`). Client changes need only a reload.
 
+- **Two screens, one bar.** The list and the match are two screens at every width
+  (`body.view-match`, `public/app.css`), not just under 860 px: the desktop no longer keeps a
+  card column open beside the match. The four list tabs are the only navigation — a 72 px rail
+  on a desktop, a fixed bottom bar on a phone or tablet — and a tab tap is also the way back
+  (`showTab` calls `showList`); `#backtolist` exists only under 860 px. Each tab cell is the name
+  over its count (`#tab-* small`); the button ids are unchanged. The nightly strip is a static
+  `#nightly` under the header on every screen; its warnings (`server behind`, `Run now failed`)
+  are direct children with `.bad`, which is what lets the phone match screen keep exactly those
+  and hide the plan, the queue and the button (`body.view-match #nightly > :not(.bad)`, no `:has()`).
+- **The match screen is a head and four groups** in the order the morning happens, and the
+  order is the point: **Check** (`#h-preview` final video · `#synccheck` · `#syncedit` fold) ·
+  **Package** (`#h-hook` hook + `#save` + chips · thumbnails · Splits fold · Title & description
+  fold) · **Publish** (`#h-youtube` YouTube panel, then `#h-publishkit`) · **After** (`#h-short`
+  Short · Manage fold). On a desktop they are two columns (Check + After left, Package + Publish
+  right); under 860 px one group is shown at a time (`.panel.on`), switched by the `.jump` bar in
+  the bottom-bar slot — a tap `preventDefault`s the hash link and scrolls to the top: the group is
+  the whole screen and the head above it is 70 px, and the hash scroll put the head, `#headwarn`
+  with it, under the back bar on the very panels that hold Upload and Adopt. Re-selecting the
+  match on screen (the strip's last-run link, a card's "Rendered · open") keeps the group that
+  was open; a different match opens on Check. Any phone check that fills a Package or Publish
+  control taps `.jump [data-panel=…]` first. The head is short on purpose — the match id,
+  `#failure`, and `#headwarn` (the detector's confidence line plus a mirror of `#syncstale`, so
+  leaving Check never hides the sync warning) — because the sync frames must start on the phone's
+  first screen; `#checklist` (six fact pills hidden by CSS, all ten still in the DOM —
+  hook-flow-check reads its text) sits at the bottom of Publish, since every pill left on view is
+  a post-upload tick. `#preview .previewmeta` is one row for the same reason (the file name gets
+  the ellipsis; the Short's `.previewmeta` lines still wrap). `#run`/`#stop` are the head's primary button for an unrendered match and live in
+  the Manage fold (with `#mhide`, `#mdel`, the outputs table) once it is rendered; `armStop`
+  opens that fold. `#save` sits beside the hook field and typing into `#hook` writes "not saved"
+  into `#savedmsg`. The kit's description + tags are one more fold; its "after the upload" fold
+  opens itself once `kit.videoUrl` exists.
+- **Rendered rows are two lines**: names + id, then one state line naming the next action
+  (`ready — check · pick · upload`, `@mcsrmatches posted 1d ago`, `in progress · overlay`,
+  `published`). Deleted, not folded: the stage pips and their legend, the list's order line, the
+  suggestions' bucket legend, the head's jump-link row, the old Re-run at the top of a rendered
+  match, `#hostmeta` on phones. "Render only" is a text link in a suggestion card's links row
+  (`a[data-act="render"]`, same handler); the button row is Render + Short + MP4 · Queue · Dismiss.
+- **The touch-target block fires on `pointer: coarse` OR `max-width: 860px`.** Playwright's
+  Chromium drops the coarse-pointer emulation after a full-page screenshot on a mobile context,
+  so a width-only measurement of a phone page found 28 px inputs the real phone never shows; the
+  width clause makes the 44 px targets a fact of the layout rather than of the emulation.
 - **Suggestions** (`src/suggest.ts`, `src/suggestPresent.ts`): scored candidates, cached in
   `<mediaDir>/.suggest-cache.json`; bumping `CACHE_VERSION` re-fetches everything on the next
   scan (~340 MCSR API calls against 500/10 min). Scanned at boot, every `suggestCacheTtlMin`
@@ -200,9 +241,11 @@ they differ (`code: { boot, now }` from `src/repoHead.ts`). Client changes need 
   round below resolves; a slot with no participants matches no game, so such a game packages as
   an ordinary private match — the video is still made, it just loses the round/game framing until
   the bracket fills in (the 30-minute cache picks that up by itself).
-- Phones (<= 860px): list and match are two screens with a back bar; rows carry no Hide/Delete
-  on a coarse pointer — the match screen's **Manage** block at the bottom has them; the playoffs
-  board is folded; the tabs wrap; cards drop their splits chart.
+- Phones (<= 860px): rows carry no Hide/Delete on a coarse pointer — the match screen's Manage
+  fold has them; cards drop their splits chart only under 600 px, so a tablet keeps it. The
+  playoffs board is folded at every width whatever the date (eleven series of game rows put the
+  first suggestion 1,700 px down a desktop list); the summary line names the rounds and the next
+  slot, and the fold stays open once opened across repaints.
 - **Tonight's queue** (`queue` in `<mediaDir>/.dashboard.json`, `src/matchShelf.ts`;
   `PUT /api/nightly/queue` takes the whole list): a card's "Queue for tonight" puts it ahead of the
   ranked pick, in the strip's order (↑ / ×); the nightly drops an entry the moment its render
@@ -275,9 +318,18 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
   pending, so a mistake there surfaced only when `youtubeUploadEnabled` went true — one such bug
   (a free `u`) shipped that way. `post-audit-check` renders that branch by flipping the flag in the browser's copy of
   `/api/youtube/status`; run it after touching that file.
+- **Five browser checks pinned copy or controls that later commits changed on purpose**, and the
+  redesign brought them back in line rather than silently: `smoke` no longer fills `#ytTitle`
+  (the panel keeps no second title — hook-flow-check asserts it) or looks for `#rerender` (gone
+  with plain thumbnails); `kit-scan`, `pinned` and `studio-upload` match the lowercase copy of
+  8da852d; `playoffs-fold` asserts the board is folded on every date, an hour out included;
+  `run-all.sh` picks a *Studio* upload for `published`, since the newest uploaded
+  match has been a dashboard upload since 15 Sept. `round1-fixes` now asserts Final video → Sync check and YouTube above the kit,
+  `round3` four `.jump` links and that Publish opens at the top with `#headwarn` and `#h-youtube`
+  both on the first screen — those are the design.
 - **The playoffs board lives *inside* `#suggestions` and its rows carry `.sugg`.** Anything that
   means "the suggestion cards" must say `#suggestions > .sugg`; the descendant form also matches
-  playoff rows, which are hidden inside the fold until the tournament is a day out, so a
+  playoff rows, which are hidden inside the fold until the operator opens it, so a
   `waitForSelector` on it waits forever on a row that is never shown.
 - **`ss` is there, `lsof` and `fuser` are not.** `ss -tlnp | grep <port>` names the process that
   actually holds a port — which is not always the one `ps -eo pid,args | grep 'src/server.ts'`

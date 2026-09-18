@@ -32,7 +32,7 @@ const { launchFor, readClipboard } = require("./launch.cjs");
   );
   console.log("errors:", errors.length ? errors : "none");
   await browser.close();
-  process.exit(clip === text && /^Both POVs are the players.*I.ll fix it\.$/.test(text) ? 0 : 1);
+  process.exit(clip === text && /^both povs are the players.*ill fix it$/.test(text) ? 0 : 1);
 })().catch((e) => {
   console.error(e);
   process.exit(1);

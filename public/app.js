@@ -4,7 +4,7 @@ let STAGES = { order: [], labels: {}, short: {} };
 let showHidden = false;
 let matches = [];
 let selected = null;
-// The competitor's handle as the suggestions payload names it; the list's order line reads it too.
+// The competitor's handle as the suggestions payload names it; the Rendered rows' state line reads it too.
 let rivalHandle = null;
 const rivalHandleOrDefault = () => rivalHandle ?? "mcsrmatches";
 let stream = null;
@@ -42,14 +42,6 @@ function renderList() {
     el.innerHTML = '<div class="empty">No matches in mediaDir yet.</div>';
     return;
   }
-  // Named once here rather than as a title= on every pip: a tooltip is unreachable on a phone,
-  // which is exactly where this dashboard gets used.
-  const legend = `<div class="legend">${STAGES.order
-    .map((s) => `<span title="${esc(STAGES.labels[s])}">${esc(STAGES.short[s] ?? STAGES.labels[s])}</span>`)
-    .join(
-      "",
-    )}</div><div class="listorder">ready to publish first &middot; then the ones @${esc(rivalHandleOrDefault())} already posted &middot; then in progress &middot; published last</div>`;
-
   // In the order the morning asks its question: what do I upload next? Ready first, the ready
   // ones the competitor already posted after them, then what is still in progress, and what is
   // published last — newest first within each. The server's newest-first order was right for
@@ -62,14 +54,24 @@ function renderList() {
   // The morning's number: finished MP4s nobody has published. Hidden matches are out of it, so
   // parking an old one keeps the count honest.
   const ready = matches.filter((m) => !m.hidden && m.exported && !m.uploaded).length;
-  $("#tab-matches").textContent = ready ? `Rendered (${ready} ready)` : "Rendered";
+  $("#tab-matches small").textContent = ready ? `${ready} ready` : "";
+  updateBackLabel();
+  // One line naming the next action. The six stage pips and their legend used to say the same
+  // thing in a code the operator had to decode; the match screen's Check group has the detail.
+  const state = (m) => {
+    if (m.uploaded) return '<div class="state">published</div>';
+    if (m.exported && m.rivalPosted)
+      return `<div class="state rival" title="${esc(m.rivalPosted.title)}">@${esc(rivalHandleOrDefault())} posted this ${m.rivalPosted.daysAgo === 0 ? "today" : `${m.rivalPosted.daysAgo}d ago`}</div>`;
+    if (m.exported) return '<div class="state ready">ready &mdash; check &middot; pick &middot; upload</div>';
+    const next = STAGES.order.find((s) => !m.stages[s]);
+    return `<div class="state">in progress${next ? ` &middot; ${esc(STAGES.short?.[next] ?? STAGES.labels[next] ?? next).toLowerCase()}` : ""}</div>`;
+  };
   const toggle = hiddenCount
     ? `<button type="button" id="showhidden" class="ghost">${showHidden ? "Hide" : "Show"} ${hiddenCount} hidden</button>`
     : "";
 
   el.innerHTML =
     toggle +
-    legend +
     visible
       .map(
         (m) => `
@@ -84,23 +86,13 @@ function renderList() {
           : '<div class="nothumb" aria-hidden="true"></div>'
       }
       <div>
-        <div class="who">${esc(m.leftNickname)} vs ${esc(m.rightNickname)}</div>
-        <div class="id">#${m.matchId}</div>
-        ${m.uploaded ? '<div class="state">published</div>' : m.exported ? '<div class="state ready">ready to publish</div>' : ""}
-        ${m.rivalPosted && !m.uploaded ? `<div class="rival" title="${esc(m.rivalPosted.title)}">rival posted this pair ${m.rivalPosted.daysAgo === 0 ? "today" : `${m.rivalPosted.daysAgo}d ago`}</div>` : ""}
+        <div class="who">${esc(m.leftNickname)} vs ${esc(m.rightNickname)}<span class="id">#${m.matchId}</span></div>
+        ${state(m)}
         ${m.error ? `<div class="degraded" title="${esc(m.error)}">names from filenames &mdash; API lookup failed</div>` : ""}
-        <div class="rowacts">
-          <button type="button" class="hide ghost">${m.hidden ? "Unhide" : "Hide"}</button>
-          <button type="button" class="del ghost" data-armed="0">Delete</button>
-        </div>
-        <div class="stages">${STAGES.order
-          .map(
-            (s) =>
-              `<span class="pip ${m.stages[s] ? "done" : ""}" role="img"
-                     aria-label="${esc(STAGES.labels[s])}: ${m.stages[s] ? "done" : "not done"}"
-                     title="${esc(STAGES.labels[s])}"></span>`,
-          )
-          .join("")}</div>
+      </div>
+      <div class="rowacts">
+        <button type="button" class="hide ghost">${m.hidden ? "Unhide" : "Hide"}</button>
+        <button type="button" class="del ghost" data-armed="0">Delete</button>
       </div>
     </div>`,
       )
@@ -218,11 +210,20 @@ function hookCounter(meta) {
 
 /**
  * `open` is set only when a human asked for this match -- a tapped card, or a render they just
- * started. Below 860px the list and the detail are two screens (see app.css), so opening one
- * hides the other; on the two-column desktop layout the class is inert. First load asks for
- * nothing, which is how the phone stays on the list while the desktop still auto-selects.
+ * started. The list and the detail are two screens at every width (see app.css), so opening one
+ * hides the other. First load asks for nothing: the detail is painted behind the list, and the
+ * strip's last-run link or a row is the tap that shows it.
+ *
+ * The match screen is a head and four groups in the order the morning happens: Check (the
+ * video, the sync frames, the sync editor), Package (hook, thumbnails; splits and the title
+ * editors folded), Publish (YouTube, then the kit), After (the Short, then Manage). Two columns
+ * on a desktop, one group at a time below 860px, switched by the .jump bar.
  */
 async function select(id, { open = false } = {}) {
+  // Re-selecting the match on screen (the strip's last-run link, a card's "Rendered · open")
+  // rebuilds the markup; the group the operator was in must survive it, or a phone drops back to
+  // Check mid-Package.
+  const keepPanel = selected === id ? $("#detail .panel.on")?.dataset.panel : undefined;
   selected = id;
   if (exportStream) {
     exportStream.close();
@@ -239,93 +240,126 @@ async function select(id, { open = false } = {}) {
   // the file keeps saying how long a hook may be.
   const [titleLine, ...titleRest] = (meta.title ?? "").split("\n");
 
+  const runButtons = `<button id="run" class="${rendered ? "ghost" : ""}">${rendered ? "Re-run pipeline" : "Run pipeline"}</button>
+      <button id="stop" class="danger" title="Abort the running pipeline" hidden>Stop</button>`;
   $("#detail").innerHTML = `
-    <div class="row">
-      <button id="run" class="${rendered ? "ghost" : ""}">${rendered ? "Re-run pipeline" : "Run pipeline"}</button>
-      <button id="stop" class="danger" title="Abort the running pipeline" hidden>Stop</button>
-      <span class="id">#${id} &mdash; ${esc(meta.leftNickname)} vs ${esc(meta.rightNickname)}</span>
-      ${rendered ? '<span class="jump"><a href="#h-preview">Final video</a> &middot; <a href="#h-publishkit">Publish kit</a> &middot; <a href="#h-short">Short</a></span>' : ""}
+    <div class="head">
+      <div class="row">
+        ${rendered ? "" : runButtons}
+        <span class="id">#${id} &mdash; ${esc(meta.leftNickname)} vs ${esc(meta.rightNickname)}</span>
+      </div>
+
+      <div id="progress">
+        ${STAGES.order
+          .map(
+            (s) => `
+          <div class="stagerow" data-stage="${s}">
+            <span class="label">${esc(STAGES.labels[s])}</span>
+            <span class="bar"><i></i></span>
+            <span class="pct"></span>
+            <span class="elapsed"></span>
+          </div>`,
+          )
+          .join("")}
+        <div class="msg" id="msg"></div>
+      </div>
+
+      <div id="failure">
+        <div class="title" id="failtitle"></div>
+        <pre id="failtext"></pre>
+        <div class="actions"><button id="failcopy" class="ghost">Copy error</button></div>
+      </div>
+      <div id="headwarn">${syncLine(meta)}</div>
+      <nav class="jump">
+        <a href="#h-preview" data-panel="check" aria-current="page">Check</a>
+        <a href="#h-hook" data-panel="package">Package</a>
+        <a href="#h-youtube" data-panel="publish">Publish</a>
+        <a href="#h-short" data-panel="after">After</a>
+      </nav>
     </div>
 
-    <div id="progress">
-      ${STAGES.order
-        .map(
-          (s) => `
-        <div class="stagerow" data-stage="${s}">
-          <span class="label">${esc(STAGES.labels[s])}</span>
-          <span class="bar"><i></i></span>
-          <span class="pct"></span>
-          <span class="elapsed"></span>
-        </div>`,
-        )
-        .join("")}
-      <div class="msg" id="msg"></div>
-    </div>
+    <div class="cols">
+      <div class="col">
+        <section class="panel on" data-panel="check">
+          <h2 id="h-preview">Final video</h2>
+          <div id="preview"><div class="empty">loading&hellip;</div></div>
+          <div id="synccheck"></div>
+          <details id="syncedit" class="syncedit"><summary>Fix the sync by hand</summary><div class="empty">loading&hellip;</div></details>
+        </section>
+        <section class="panel" data-panel="after">
+          <h2 id="h-short">Short</h2>
+          <div id="short"><div class="empty">loading&hellip;</div></div>
+          ${manageHtml(id, rendered ? runButtons : "", meta.outputs)}
+        </section>
+      </div>
+      <div class="col">
+        <section class="panel" data-panel="package">
+          <h2 id="h-hook">Hook ${meta.hook ? '<span class="counter" id="hookcount"></span>' : ""}</h2>
+          <div class="row hookrow">
+            ${
+              meta.hook
+                ? `<input type="text" id="hook" placeholder="${esc(meta.hook.suggestions[0] ?? "The one part worth writing by hand")}">`
+                : '<span class="muted">no hook data for this match</span>'
+            }
+            <button id="save" title="Commit the hook into the title, and save the title and description">Save</button>
+          </div>
+          <div id="savedmsg"></div>
+          ${
+            meta.hook?.suggestions.length
+              ? `<div class="chips">${meta.hook.suggestions
+                  .map((s) => `<button type="button" class="chip">${esc(s)}</button>`)
+                  .join("")}</div>`
+              : ""
+          }
 
-    <div class="checklist" id="checklist"></div>
+          <h2>Thumbnail</h2>
+          <div id="variants"><div class="empty">loading&hellip;</div></div>
 
-    <div id="failure">
-      <div class="title" id="failtitle"></div>
-      <pre id="failtext"></pre>
-      <div class="actions"><button id="failcopy" class="ghost">Copy error</button></div>
-    </div>
+          <details class="fold"><summary>Splits</summary>
+            <div id="splits"><div class="empty">loading&hellip;</div></div>
+          </details>
+          <details class="fold"><summary>Title &amp; description ${meta.titleEdited || meta.descriptionEdited ? '<span class="saved">(edited)</span>' : ""}</summary>
+            <h2>Title ${meta.titleEdited ? '<span class="saved">(edited)</span>' : ""}</h2>
+            <textarea id="title" rows="2">${esc(titleLine)}</textarea>
+            <h2>Description ${meta.descriptionEdited ? '<span class="saved">(edited)</span>' : ""}</h2>
+            <textarea id="description" rows="14">${esc(meta.description ?? "")}</textarea>
+          </details>
+        </section>
+        <section class="panel" data-panel="publish">
+          <h2 id="h-youtube">YouTube</h2>
+          <div id="youtube"><div class="empty">loading&hellip;</div></div>
 
-    ${
-      meta.hook
-        ? `
-      <h2>Hook <span class="counter" id="hookcount"></span></h2>
-      <input type="text" id="hook" placeholder="${esc(meta.hook.suggestions[0] ?? "The one part worth writing by hand")}">
-      ${
-        meta.hook.suggestions.length
-          ? `<div class="chips">${meta.hook.suggestions
-              .map((s) => `<button type="button" class="chip">${esc(s)}</button>`)
-              .join("")}</div>`
-          : ""
-      }`
-        : ""
-    }
+          <h2 id="h-publishkit">Publish kit</h2>
+          <div id="publishkit"><div class="empty">loading&hellip;</div></div>
 
-    <h2>Splits</h2>
-    <div id="splits"><div class="empty">loading&hellip;</div></div>
+          <h2>Done by hand</h2>
+          <div class="checklist" id="checklist"></div>
+        </section>
+      </div>
+    </div>`;
 
-    <h2>Title ${meta.titleEdited ? '<span class="saved">(edited)</span>' : ""}</h2>
-    <textarea id="title" rows="2">${esc(titleLine)}</textarea>
-
-    <h2>Description ${meta.descriptionEdited ? '<span class="saved">(edited)</span>' : ""}</h2>
-    <textarea id="description" rows="14">${esc(meta.description ?? "")}</textarea>
-
-    <div class="row" style="margin-top:12px">
-      <button id="save">Save edits</button><span class="saved" id="savedmsg"></span>
-    </div>
-
-    <h2>Thumbnail</h2>
-    <div id="variants"><div class="empty">loading&hellip;</div></div>
-
-    <h2 id="h-preview">Final video</h2>
-    ${syncLine(meta)}
-    <div id="preview"><div class="empty">loading&hellip;</div></div>
-    <details id="syncedit" class="syncedit"><summary>Fix the sync by hand</summary><div class="empty">loading&hellip;</div></details>
-
-    <h2 id="h-publishkit">Publish kit</h2>
-    <div id="publishkit"><div class="empty">loading&hellip;</div></div>
-
-    <h2 id="h-short">Short</h2>
-    <div id="short"><div class="empty">loading&hellip;</div></div>
-
-    <div id="synccheck"></div>
-
-    <h2>YouTube</h2>
-    <div id="youtube"><div class="empty">loading&hellip;</div></div>
-
-    <h2>Outputs</h2>
-    ${outputsHtml(meta.outputs, id)}
-    ${manageHtml(id)}`;
+  // The section bar: the group is the whole screen and the head above it is short, so a tap
+  // lands at the top -- the hash scroll would put the head, and #headwarn with it, under the
+  // back bar on the very panels that hold Upload and Adopt.
+  $("#detail .jump").addEventListener("click", (ev) => {
+    const a = ev.target.closest("a[data-panel]");
+    if (!a) return;
+    ev.preventDefault();
+    showPanel(a.dataset.panel);
+    window.scrollTo(0, 0);
+  });
+  showPanel(keepPanel ?? "check");
 
   $("#mhide") && wireHide($("#mhide"), id);
   $("#mdel") && wireDelete($("#mdel"), id);
 
   if (meta.hook) {
-    $("#hook").addEventListener("input", () => hookCounter(meta));
+    $("#hook").addEventListener("input", () => {
+      hookCounter(meta);
+      // Typed is not saved: the upload and the Short read the title file, which Save writes.
+      $("#savedmsg").textContent = "not saved \u2014 Upload sends the saved title";
+      $("#savedmsg").className = "muted";
+    });
     // A chip fills the field rather than committing anything: the suggestion is a starting
     // point to edit, which is the whole reason the hook is hand-written in the first place.
     $("#detail")
@@ -342,11 +376,13 @@ async function select(id, { open = false } = {}) {
     hookCounter(meta);
   }
 
-  $("#run").addEventListener("click", async () => {
+  // Both live in the head for an unrendered match and in the Manage fold once it is rendered;
+  // neither exists when the match has no directory on the shelf yet.
+  $("#run")?.addEventListener("click", async () => {
     await api(`/api/render/${id}`, { method: "POST" });
     watch(id);
   });
-  $("#stop").addEventListener("click", () => api(`/api/render/${id}`, { method: "DELETE" }));
+  $("#stop")?.addEventListener("click", () => api(`/api/render/${id}`, { method: "DELETE" }));
   $("#failcopy").addEventListener("click", async () => {
     const ok = await copyText($("#failtext").textContent);
     $("#failcopy").textContent = ok ? "Copied" : "Blocked — select it by hand";
@@ -373,10 +409,14 @@ async function select(id, { open = false } = {}) {
       });
     } catch (e) {
       $("#savedmsg").textContent = e.message;
+      $("#savedmsg").className = "bad";
       return;
     }
     $("#savedmsg").textContent = "saved";
-    setTimeout(() => ($("#savedmsg").textContent = ""), 2000);
+    $("#savedmsg").className = "saved";
+    setTimeout(() => {
+      if ($("#savedmsg")?.textContent === "saved") $("#savedmsg").textContent = "";
+    }, 2000);
     // The panels that quote the title and description were painted from the meta this detail
     // opened with; after a save they would still show the old text until the match was reopened.
     // The PUT answers with the merged meta, so no follow-up GET.
@@ -769,6 +809,10 @@ async function loadPublishKit(id, meta) {
         ),
       ),
       slot ? block("Publish at", slotText, 1) : "",
+      // Pasted once each, into Studio, after the title: folded so the morning's three blocks stay
+      // above the fold on a phone.
+      `<details class="kitmore more"${el.querySelector("details.more")?.open ? " open" : ""}>
+         <summary>description &middot; tags</summary>`,
       // A server one restart behind still writes "Result: X 9:47." into the file (removed in
       // 10f584a); what gets pasted into Studio must never say who won, whichever build wrote it.
       block("Description", (meta.description ?? "").replace(/ Result: [^.\n]*\./, ""), 10),
@@ -780,10 +824,12 @@ async function loadPublishKit(id, meta) {
         3,
         counter(`${meta.tags?.length ?? 0} tags · ${tags.length} / 500 chars`, tags.length > 500),
       ),
+      `</details>`,
       // Everything below is pasted after the video is up, so it folds away: at 390px the kit was
       // eleven copy blocks tall and the title — the first thing pasted — was the only one above
       // the fold that mattered. The Copy handler is delegated from the panel, so it reaches in.
-      `<details class="kitmore after"${el.querySelector("details.after")?.open ? " open" : ""}>
+      // Once the video is on the channel this half is the morning, so the fold opens itself.
+      `<details class="kitmore after"${(el.querySelector("details.after")?.open ?? !!kit.videoUrl) ? " open" : ""}>
          <summary>after the upload &mdash; Short, pinned comment, community post, DMs</summary>`,
       kit.shortTitle
         ? block("Short title", kit.shortTitle, 2)
@@ -829,18 +875,23 @@ async function loadPublishKit(id, meta) {
   $("#hook")?.addEventListener("input", () => setTimeout(paint, 0));
 }
 
-/** Hide and Delete for the open match. The row has them on a desktop; on a phone the row is one
-    tap target and carries nothing destructive (panels.css), so this is where they live. */
-function manageHtml(id) {
+/** The maintenance fold at the bottom of After: Re-run (for a rendered match -- it is the head's
+    primary button until then), Hide and Delete, and the output paths. The row has Hide/Delete on
+    a desktop; on a phone the row is one tap target and carries nothing destructive (panels.css),
+    so this is where they live. */
+function manageHtml(id, runButtons, outputs) {
   const m = matches.find((x) => x.matchId === id);
   if (!m) return "";
   return `
-    <h2>Manage</h2>
-    <div class="manage">
-      <button type="button" class="ghost" id="mhide">${m.hidden ? "Unhide" : "Hide"}</button>
-      <button type="button" class="ghost" id="mdel" data-armed="0">Delete</button>
-      <span class="muted">${m.archived ? "archived on the NAS" : "no archived copy"}</span>
-    </div>`;
+    <details class="fold manage-fold"><summary>Manage</summary>
+      <div class="manage">
+        ${runButtons}
+        <button type="button" class="ghost" id="mhide">${m.hidden ? "Unhide" : "Hide"}</button>
+        <button type="button" class="ghost" id="mdel" data-armed="0">Delete</button>
+        <span class="muted">${m.archived ? "archived on the NAS" : "no archived copy"}</span>
+      </div>
+      ${outputsHtml(outputs, id)}
+    </details>`;
 }
 
 function runClock(ms) {
@@ -1123,6 +1174,14 @@ function paintSyncCheck() {
     const fold = $("#syncedit");
     if (fold) fold.open = true;
   });
+  // The same line in the head, above the groups: Package, Publish and After hide the Check group
+  // on a phone, and this is the one warning that must survive the switch.
+  const head = $("#headwarn");
+  if (head) {
+    head.querySelector(".stale")?.remove();
+    if (d.syncStale)
+      head.insertAdjacentHTML("beforeend", `<div class="scanline bad stale">${esc(d.staleMessage)}</div>`);
+  }
   guardUpload();
 }
 
@@ -1385,7 +1444,11 @@ function paintElapsed() {
 /** Stop exists only while a run does: a permanently disabled button is furniture on every card. */
 function armStop(on) {
   const btn = $("#stop");
-  if (btn) btn.hidden = !on;
+  if (!btn) return;
+  btn.hidden = !on;
+  // A rendered match keeps Stop in the Manage fold; a run that is on must be stoppable without
+  // hunting for it.
+  if (on) btn.closest("details")?.setAttribute("open", "");
 }
 
 function watch(id, quiet) {
@@ -1463,9 +1526,10 @@ async function refresh() {
    The whole of the scheduler's UI: what it will pick tonight, what the last run did, and a
    button that stops you waiting for 03:00 UTC to find out.
 
-   It rides at the top of the Suggestions panel rather than being its own element, because
-   renderSuggestions() rebuilds that panel on every scan poll and a sibling would have to be
-   hidden and shown in step with the tab. The payload is cached so the repaint costs no request. */
+   A static element under the header (index.html), on every screen: its warnings -- a failed run,
+   a server one restart behind -- are the first thing the morning reads. Those are direct children
+   with the `bad` class, which is what lets the phone match screen keep exactly them (panels.css).
+   The payload is cached so a repaint costs no request. */
 
 let nightly = null;
 
@@ -1512,9 +1576,9 @@ function queueHtml() {
 function nightlyInner() {
   if (!nightly) return '<div class="lines"><span class="muted">nightly&hellip;</span></div>';
   if (nightly.stale) {
-    return `<div class="lines"><span class="bad">The server is running older code than this page</span> &middot; <code>docker restart mcsr-dashboard</code> on the lab enables the nightly render and the newer panels.</div>`;
+    return `<div class="bad">The server is running older code than this page &middot; <code>docker restart mcsr-dashboard</code> on the lab enables the nightly render and the newer panels.</div>`;
   }
-  if (nightly.error) return `<div class="lines"><span class="bad">${esc(nightly.error)}</span></div>`;
+  if (nightly.error) return `<div class="bad">${esc(nightly.error)}</div>`;
   // One restart behind is invisible otherwise: the page is served from disk and looks current,
   // the server still writes yesterday's descriptions and hooks.
   const { boot, now } = nightly.code ?? {};
@@ -1573,9 +1637,9 @@ function nightlyInner() {
   }
 
   const failed = nightly.runError ? `<div class="bad">Run now failed: ${esc(nightly.runError)}</div>` : "";
-  return `<div class="lines">${behind}
+  return `${behind}${failed}<div class="lines">
       <div class="plan" title="${esc(nextRunAt ?? "no schedule")}">${plan}</div>
-      <div class="last" title="${esc(lastRun ? lastRun.startedAt : "")}">${last}</div>${failed}
+      <div class="last" title="${esc(lastRun ? lastRun.startedAt : "")}">${last}</div>
       ${queueHtml()}
     </div>
     <button data-act="nightly-run">Run now</button>`;
@@ -1666,8 +1730,7 @@ function renderSuggestions(data) {
   if (data.rivalHandle) rivalHandle = data.rivalHandle;
   suggestData = data;
   const el = $("#suggestions");
-  $("#tab-suggestions").textContent =
-    `Suggestions${data.suggestions.length ? ` (${data.suggestions.length})` : ""}`;
+  $("#tab-suggestions small").textContent = data.suggestions.length ? String(data.suggestions.length) : "";
   updateBackLabel();
 
   // A failed scan keeps whatever list it had: a stale suggestion is still a renderable match.
@@ -1682,12 +1745,6 @@ function renderSuggestions(data) {
         // on this link, nothing else, so the age is worth reading.
         `<div class="scanline">scanned ${data.scannedAtMs ? ago(data.scannedAtMs) : "earlier"}${data.stats ? ` &middot; ${data.stats.matchesScanned} matches, ${data.stats.candidates} with two VODs` : ""}${data.note ? ` &middot; ${esc(data.note)}` : ""} &middot; <a href="#" data-act="rescan" title="Scan everything again now (~340 MCSR API calls). New matches are picked up on their own every ${data.ttlMin ?? 30} minutes.">rescan</a></div>`;
 
-  // The two words on every card, explained once. The stage strip had the same gap: labels that
-  // are obvious to whoever wrote the scorer and to nobody else.
-  const legend = data.suggestions.length
-    ? `<div class="bucketlegend"><span class="bucket close">CLOSE</span><span>decided by seconds at the finish</span><span class="bucket chaos">CHAOS</span><span>lead changes, deaths, the mess</span><span class="order">&middot; CLOSE first, then CHAOS &middot; within each: VODs about to expire, then not yet posted by ${data.rivalHandle ? `@${esc(data.rivalHandle)}` : "the competitor"}, then biggest audience</span></div>`
-    : "";
-
   // Undo line, above the cards, until it is used or the next dismiss replaces it.
   const undo = lastDismissed
     ? `<div class="scanline undo">Dismissed <b>${esc(lastDismissed.who)}</b> &middot; <a href="#" data-act="undo">undo</a>${lastDismissed.note ? ` <span class="muted">${esc(lastDismissed.note)}</span>` : ""}</div>`
@@ -1699,9 +1756,10 @@ function renderSuggestions(data) {
         .map((s) => {
           // Rendered since the list was scored — by the nightly, or a click: the card stays, since
           // the list is the operator's reading order, but its verb changes. Pressing render on a
-          // finished match was the morning's easiest mistake. The full chain is the primary
+          // finished match was the morning's easiest mistake. The full chain is the only
           // button: it is what the nightly does, and a finished MP4 is what "render" means to
-          // the operator; "Render only" is the Kdenlive round-trip's first half.
+          // the operator; "Render only" -- the Kdenlive round-trip's first half -- is a link in
+          // the row of links, where it is found when wanted and not weighed when not.
           const onShelf = matches.some((m) => m.matchId === s.matchId);
           // Every line but the chart and the links is prose the server assembled, so it all goes
           // through esc() — including `bucket`, which reaches a class attribute.
@@ -1712,25 +1770,20 @@ function renderSuggestions(data) {
           <span class="who">${esc(s.players[0])} vs ${esc(s.players[1])}</span>
         </div>
         ${s.story ? `<div class="story">${esc(s.story)}</div>` : ""}
-        <div class="facts">${esc(s.facts)}</div>
+        <div class="facts">${esc(s.facts)} &middot; <span class="expiry${s.expiring ? " warn" : ""}">${esc(s.expiryLabel)}</span></div>
         ${s.rivalPosted ? `<div class="rival" title="${esc(s.rivalPosted.title)}">@${esc(data.rivalHandle ?? "rival")} posted this ${s.rivalPosted.daysAgo === 0 ? "today" : `${s.rivalPosted.daysAgo}d ago`}</div>` : ""}
         ${splitsChart(s.splits, { left: s.players[0], right: s.players[1], compact: true })}
-        <div class="expiry${s.expiring ? " warn" : ""}">${esc(s.expiryLabel)}</div>
         <div class="links">
           <a href="${esc(s.matchUrl)}" target="_blank" rel="noopener">match page #${s.matchId}</a>
           ${s.vodUrls.map((u, i) => `<a href="${esc(u)}" target="_blank" rel="noopener">VOD ${i + 1}</a>`).join("")}
+          ${onShelf ? "" : '<a href="#" data-act="render" title="The plain pipeline, for a match headed to Kdenlive: no Short, no MP4">Render only</a>'}
         </div>
         <div class="acts">
-          ${
-            onShelf
-              ? `<button data-act="open">Rendered &middot; open</button>`
-              : `<button data-act="render-short">Render + Short + MP4</button>
-          <button data-act="render" class="ghost">Render only</button>`
-          }
+          ${onShelf ? `<button data-act="open">Rendered &middot; open</button>` : `<button data-act="render-short">Render + Short + MP4</button>`}
           ${
             onShelf
               ? ""
-              : `<button data-act="queue" class="ghost${queued(s.matchId) ? " queued" : ""}">${queued(s.matchId) ? `Queued #${queued(s.matchId)}` : "Queue for tonight"}</button>`
+              : `<button data-act="queue" class="ghost${queued(s.matchId) ? " queued" : ""}">${queued(s.matchId) ? `Queued #${queued(s.matchId)}` : "Queue"}</button>`
           }
           <button data-act="dismiss" class="ghost">Dismiss</button>
         </div>
@@ -1738,8 +1791,9 @@ function renderSuggestions(data) {
         })
         .join("");
 
-  el.innerHTML =
-    '<div id="nightly" class="nightly"></div>' + undo + scan + '<div id="playoffs"></div>' + legend + cards;
+  el.innerHTML = undo + scan + '<div id="playoffs"></div>' + cards;
+  // The strip is under the header now, but its "will render" line and the cards' Queue buttons
+  // read the same queue, and the shelf it names may have just changed.
   paintNightly();
   paintPlayoffs();
   // A failed action says so where it was clicked — the scan line, the undo line, the card —
@@ -1779,9 +1833,6 @@ function renderSuggestions(data) {
     el.querySelector(`.sugg[data-id="${id}"] [data-act="dismiss"]`)?.focus();
     void loadNightly();
   });
-  // First paint fetches it; every later paint reuses the cache, so polling a running scan does
-  // not also poll the scheduler.
-  if (nightly === null) void loadNightly();
   if (!data.suggestions.length) return;
 
   // Direct children only: the playoffs section paints its slots as `.sugg` cards too, nested in
@@ -1789,7 +1840,10 @@ function renderSuggestions(data) {
   // left every card after it without handlers.
   el.querySelectorAll(":scope > .sugg").forEach((row) => {
     const id = Number(row.dataset.id);
-    row.querySelector('[data-act="render"]')?.addEventListener("click", () => startRender(String(id)));
+    row.querySelector('[data-act="render"]')?.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      startRender(String(id));
+    });
     row.querySelector('[data-act="render-short"]')?.addEventListener("click", () => startRenderWithShort(id));
     row.querySelector('[data-act="open"]')?.addEventListener("click", () => select(id, { open: true }));
     row.querySelector('[data-act="queue"]')?.addEventListener("click", async (ev) => {
@@ -1866,9 +1920,6 @@ function paintPlayoffs() {
           hour: "2-digit",
           minute: "2-digit",
         });
-  // Until a game exists or the first one is a day out, every row reads "no games found yet":
-  // eight of those above the suggestions is the tournament shouting days before it starts.
-  const soon = slots.some((s) => s.games.length || (s.startTime !== null && s.startTime < now + 86400));
   const rounds = [...new Set(slots.map((s) => s.round))].join(", ");
   const firstStart = Math.min(...slots.map((s) => s.startTime ?? Infinity));
   const summary = `${rounds} &middot; ${slots.length} series &middot; first ${esc(when(Number.isFinite(firstStart) ? firstStart : null))}`;
@@ -1894,13 +1945,12 @@ function paintPlayoffs() {
       </div>`,
     )
     .join("");
-  // On a phone the board is eight series of game rows above the suggestions, a whole screen of
-  // it: folded there whatever the date, and it stays open once opened across repaints.
-  const phone = window.matchMedia("(max-width: 860px)").matches;
-  const wasOpen = el.querySelector("details.playoffsoon")?.open;
-  const open = wasOpen ?? (soon && !phone);
+  // The board is eight series of game rows above the suggestions, a whole screen of it at any
+  // width: folded whatever the date (the summary names the round and the next slot), and it
+  // stays open once opened across repaints.
+  const open = el.querySelector("details.playoffsoon")?.open ?? false;
   el.innerHTML = `
-    <div class="bucketlegend"><span class="bucket playoffs">PLAYOFFS</span><span>Season ${esc(String(playoffData.season))} bracket &middot; <a href="${esc(playoffData.bracketUrl ?? "")}" target="_blank" rel="noopener">magmamcsr.com</a></span></div>
+    <div class="scanline"><span class="bucket playoffs">PLAYOFFS</span> Season ${esc(String(playoffData.season))} bracket &middot; <a href="${esc(playoffData.bracketUrl ?? "")}" target="_blank" rel="noopener">magmamcsr.com</a></div>
     <details class="playoffsoon"${open ? " open" : ""}><summary>${summary}</summary>${rows}</details>`;
   el.querySelectorAll(".game").forEach((row) => {
     const id = Number(row.dataset.id);
@@ -2057,37 +2107,51 @@ async function saveSettingsPanel() {
 
 const PANELS = { suggestions: "#suggestions", matches: "#list", abtest: "#abtest", settings: "#settings" };
 
+/** A tab is also the way back from the match screen: the rail on a desktop, the bar on a phone. */
 function showTab(which) {
   for (const [name, selector] of Object.entries(PANELS)) {
     $(selector).hidden = name !== which;
     $(`#tab-${name === "matches" ? "matches" : name}`).setAttribute("aria-selected", String(name === which));
   }
-  updateBackLabel();
+  showList();
   if (which === "abtest") loadAbTest();
   if (which === "settings") loadSettings();
 }
 
 /* --- List screen / match screen -------------------------------------------------------------
-   Only the class moves. Whether it means anything is the @media (max-width: 860px) block's
-   business, so there is no width test in here to drift out of step with the CSS. */
+   Only the class moves; app.css swaps the two screens at every width. */
 
 /** The tab's own label already carries the count, so the way back names where it goes. */
 function updateBackLabel() {
   const tab = $('.tabs [aria-selected="true"]');
-  $("#backtolist").textContent = `\u2190 Back to ${tab ? tab.textContent : "list"}`;
+  const count = tab?.querySelector("small")?.textContent;
+  $("#backtolist").textContent =
+    `\u2190 Back to ${tab ? tab.querySelector("span").textContent : "list"}${count ? ` (${count})` : ""}`;
+}
+
+/** One of the four groups on a phone; on a desktop all four are on screen and this only marks
+    the bar, which is hidden there. */
+function showPanel(name) {
+  document
+    .querySelectorAll("#detail .panel")
+    .forEach((p) => p.classList.toggle("on", p.dataset.panel === name));
+  document.querySelectorAll("#detail .jump a").forEach((a) => {
+    if (a.dataset.panel === name) a.setAttribute("aria-current", "page");
+    else a.removeAttribute("aria-current");
+  });
 }
 
 function showMatch() {
   document.body.classList.add("view-match");
   updateBackLabel();
-  // Only when the CSS actually swapped screens: hiding the list shortens the page, and the
-  // browser would leave you clamped somewhere in the middle of the detail. Asking the back
-  // bar whether it is on screen beats re-testing the width the stylesheet already tested.
-  if ($("#backtolist").offsetParent) window.scrollTo(0, 0);
+  // Hiding the list shortens the page, and the browser would leave you clamped somewhere in
+  // the middle of the detail.
+  window.scrollTo(0, 0);
 }
 
 function showList() {
   document.body.classList.remove("view-match");
+  updateBackLabel();
   window.scrollTo(0, 0);
 }
 
@@ -2113,8 +2177,12 @@ function showList() {
   } catch (e) {
     $("#list").innerHTML = `<div class="scanline bad">Could not load matches: ${esc(e.message)}</div>`;
   }
-  // The top card in display order — the one the list's legend says is next — not the server's
-  // newest, which is a published or half-encoded match the morning after any upload.
+  // The strip is on every screen, so it does not wait for the suggestions scan. After the shelf,
+  // so its last-run line can link to the match.
+  void loadNightly();
+  // The top card in display order — the one to publish next — not the server's newest, which
+  // is a published or half-encoded match the morning after any upload. Painted behind the list;
+  // a row or the strip's last-run link is what shows it.
   const first = $("#list .card");
   if (first) select(Number(first.dataset.id));
   // Not awaited: the first scan can take a minute against a cold cache, and the rendered-match
