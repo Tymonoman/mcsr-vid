@@ -16,7 +16,7 @@
  */
 import { spawn } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
-import { copyFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { config, matchDir } from "./config.js";
 import { buildSeriesDescription, buildTags, type SeriesDescriptionGame } from "./description.js";
@@ -153,32 +153,135 @@ export function chapterStarts(durations: readonly number[]): number[] {
  * series file newer than every game's export is left alone and only the text is rewritten.
  * Games 2..n are hidden from the list here, since their videos are inside game 1's.
  */
-/** Test seams: the join and the probe are ffmpeg/ffprobe by default. */
+/** Test seams: the join, the probe and the extraction are ffmpeg/ffprobe by default. */
 export interface JoinSeams {
   join?: (files: readonly string[], outPath: string) => Promise<void>;
   probe?: (file: string) => Promise<number>;
+  extract?: (seriesPath: string, startSec: number, durationSec: number, outPath: string) => Promise<void>;
 }
 
+/**
+ * A game's export taken back out of the joined series: a copy from the recorded offset for the
+ * recorded length. Exact, because the join placed each game's first frame — a keyframe, the
+ * start of its own file — at that offset.
+ */
+async function extractFromSeries(
+  seriesPath: string,
+  startSec: number,
+  durationSec: number,
+  outPath: string,
+): Promise<void> {
+  const part = outPath.replace(/\.mp4$/, ".part.mp4");
+  await new Promise<void>((resolve, reject) => {
+    const proc = spawn(
+      "ffmpeg",
+      [
+        "-hide_banner",
+        "-y",
+        "-ss",
+        startSec.toFixed(3),
+        "-i",
+        seriesPath,
+        "-t",
+        durationSec.toFixed(3),
+        "-c",
+        "copy",
+        "-avoid_negative_ts",
+        "make_zero",
+        "-movflags",
+        "+faststart",
+        part,
+      ],
+      { stdio: ["ignore", "ignore", "pipe"] },
+    );
+    let tail = "";
+    proc.stderr.on("data", (d: Buffer) => (tail = (tail + d.toString()).slice(-2000)));
+    proc.on("error", reject);
+    proc.on("close", (code) =>
+      code === 0 ? resolve() : reject(new Error(`ffmpeg extract exited ${code}:\n${tail}`)),
+    );
+  });
+  await rename(part, outPath);
+}
+
+/** The game's sync.json mtime in ms, or null. */
+const syncAtMs = (matchId: number): number | null => {
+  const file = path.join(matchDir(matchId), "sync.json");
+  return existsSync(file) ? statSync(file).mtimeMs : null;
+};
+
+/**
+ * Whether the joined series still holds this game as it should be: the series exists, the
+ * record names the game at this position, and the game's sync has not moved since the join.
+ * Such a game's export is recoverable from the series (`extractFromSeries`) and need not be
+ * re-encoded — which is what lets the join delete the games' exports (a series is fifty
+ * minutes of 1080p60 and the disk holds one copy of it, not two).
+ */
+export function heldBySeries(
+  record: SeriesRecord | null,
+  seriesPath: string,
+  game: { matchId: number; gameNo: number },
+): boolean {
+  if (!record || !existsSync(seriesPath)) return false;
+  const held = record.games[game.gameNo - 1];
+  if (!held || held.matchId !== game.matchId) return false;
+  const syncAt = syncAtMs(game.matchId);
+  return syncAt === null || syncAt <= statSync(seriesPath).mtimeMs;
+}
+
+/**
+ * Joins the series this game belongs to, once every game of it has an export — on disk, or
+ * held by the joined series already (see `heldBySeries`). Idempotent: a series file newer than
+ * every game's export is left alone and only the text is rewritten. The games' exports are
+ * deleted after a join (the series holds them; `prune: false` keeps them), and games 2..n are
+ * hidden from the list, since their videos are inside game 1's.
+ */
 export async function assembleSeries(
   anyGameId: number,
-  opts: { log?: (line: string) => void; force?: boolean; adoptShort?: boolean } & JoinSeams = {},
+  opts: {
+    log?: (line: string) => void;
+    force?: boolean;
+    adoptShort?: boolean;
+    prune?: boolean;
+  } & JoinSeams = {},
 ): Promise<AssembleResult> {
   const log = opts.log ?? ((line: string) => console.error(line));
   const join = opts.join ?? concatVideos;
   const probe = opts.probe ?? probeDuration;
+  const extract = opts.extract ?? extractFromSeries;
   const match = await getMatch(anyGameId);
   const series = await seriesOf(match);
   if (!series || series.games.length === 0) return { kind: "not-a-series", matchId: anyGameId };
   const first = series.games[0]!;
   const outDir = matchDir(first.matchId);
+  const outPath = seriesOutputPath(outDir, first.matchId);
+  const previous = await readSeriesRecord(outDir);
   const finals = series.games.map((g) => exportOutputPath(matchDir(g.matchId), g.matchId));
-  const missing = series.games.filter((_, i) => !existsSync(finals[i]!)).map((g) => g.matchId);
+
+  // A game whose export the join deleted comes back out of the series, as long as nothing
+  // about it moved; one whose sync moved since is the caller's to re-export.
+  const missing: number[] = [];
+  const stale: number[] = [];
+  let recovered = 0;
+  for (const [i, g] of series.games.entries()) {
+    const final = finals[i]!;
+    if (existsSync(final)) {
+      if (exportStale(matchDir(g.matchId), final).stale) stale.push(g.matchId);
+      continue;
+    }
+    if (!heldBySeries(previous, outPath, g)) {
+      (syncAtMs(g.matchId) !== null && previous?.games.some((h) => h.matchId === g.matchId)
+        ? stale
+        : missing
+      ).push(g.matchId);
+      continue;
+    }
+    const starts = chapterStarts(previous!.games.map((h) => h.durationSec));
+    log(`series ${first.matchId}: game ${g.gameNo} taken back out of the series`);
+    await extract(outPath, starts[i]!, previous!.games[i]!.durationSec, final);
+    recovered++;
+  }
   if (missing.length > 0) return { kind: "incomplete", firstGameId: first.matchId, missing };
-  // A game whose sync moved after its export is not joined as it is: the fix is that game's
-  // export, and the join follows it (src/exportRoutes.ts).
-  const stale = series.games
-    .filter((g, i) => exportStale(matchDir(g.matchId), finals[i]!).stale)
-    .map((g) => g.matchId);
   if (stale.length > 0) {
     log(
       `series ${first.matchId}: not joined — sync changed after the export of ${stale.map((id) => `#${id}`).join(", ")}`,
@@ -186,20 +289,21 @@ export async function assembleSeries(
     return { kind: "stale", firstGameId: first.matchId, stale };
   }
 
-  const outPath = seriesOutputPath(outDir, first.matchId);
   const newestExport = Math.max(...finals.map((f) => statSync(f).mtimeMs));
+  // Recovered exports are newer than the series by construction and change nothing about it.
   const current =
     !opts.force &&
     existsSync(outPath) &&
-    statSync(outPath).mtimeMs > newestExport &&
-    existsSync(path.join(outDir, SERIES_FILE));
-  const durations = await Promise.all(finals.map(probe));
+    previous !== null &&
+    (recovered === series.games.length || statSync(outPath).mtimeMs > newestExport);
+  const durations = current
+    ? previous!.games.map((g) => g.durationSec)
+    : await Promise.all(finals.map(probe));
   if (!current) {
     log(`series: joining ${finals.length} games into ${outPath}`);
     await join(finals, outPath);
   }
 
-  const previous = await readSeriesRecord(outDir);
   const record: SeriesRecord = {
     season: series.bracket.season,
     slotId: series.slot.id,
@@ -219,6 +323,10 @@ export async function assembleSeries(
   await writeFile(path.join(outDir, SERIES_FILE), JSON.stringify(record, null, 2), "utf8");
   await writeSeriesText(first.matchId, series, record);
   for (const g of series.games.slice(1)) setHidden(g.matchId, true);
+  if (opts.prune !== false) {
+    for (const final of finals) await rm(final, { force: true });
+    log(`series ${first.matchId}: the games' exports deleted — the series holds them`);
+  }
   // The series' Short from the best game that already has one — the nightly cuts a Short per
   // game, so by the time the last game lands there is one to pick. Cutting a missing one is
   // `renderSeries`' job.
@@ -447,9 +555,13 @@ export async function renderSeries(
     return { kind: "incomplete", firstGameId: first.matchId, missing: series.games.map((g) => g.matchId) };
   };
   try {
+    const record = await readSeriesRecord(matchDir(first.matchId));
+    const seriesPath = seriesOutputPath(matchDir(first.matchId), first.matchId);
     for (const g of series.games) {
       const dir = matchDir(g.matchId);
-      if (existsSync(exportOutputPath(dir, g.matchId))) continue;
+      const final = exportOutputPath(dir, g.matchId);
+      // Exported and current, or held by the joined series as it is: nothing to do.
+      if (existsSync(final) ? !exportStale(dir, final).stale : heldBySeries(record, seriesPath, g)) continue;
       const label = `game ${g.gameNo} of ${series.games.length}`;
       // The pipeline, unless its overlay *and* its sync are on disk: with the stills present it
       // reuses them and only re-syncs, and the export must not place the clips on the coarse
@@ -505,7 +617,11 @@ export async function seriesState(slot: PlayoffBoardSlot): Promise<SeriesState |
   const record = await readSeriesRecord(matchDir(first.matchId));
   return {
     firstGameId: first.matchId,
-    exported: slot.games.map((g) => existsSync(exportOutputPath(matchDir(g.matchId), g.matchId))),
+    exported: slot.games.map(
+      (g) =>
+        existsSync(exportOutputPath(matchDir(g.matchId), g.matchId)) ||
+        heldBySeries(record, seriesOutputPath(matchDir(first.matchId), first.matchId), g),
+    ),
     joined: existsSync(seriesOutputPath(matchDir(first.matchId), first.matchId)),
     assembledAt: record?.assembledAt ?? null,
     shortFromMatchId: record?.shortFromMatchId ?? null,

@@ -257,9 +257,14 @@ they differ (`code: { boot, now }` from `src/repoHead.ts`). Client changes need 
   card — and the exports are joined with `ffmpeg -f concat -c copy` (all exports are the same
   h264 1080p60/aac) into `series-<g1>.mp4`, which `findExportedVideo` prefers, so the upload,
   the kit and the pairing (game 1's `/matches/<id>` link first) work on game 1 as on any match.
-  `series.json` beside it names the games and their lengths: `exportStale` reads it, so a sync
-  fix on game 3 makes the series stale, and a re-run re-joins from the newer export. Games 2..n
-  are hidden once joined; the series' head lists them (each has its own sync check). The Short
+  `series.json` beside it names the games and their lengths. **The join deletes the games'
+  own exports** — a series is fifty minutes of 1080p60 and the disk holds one copy — and takes a
+  game back out of the series (`-c copy` at its recorded offset, exact because every game
+  starts on its own keyframe) whenever a re-join needs it. `exportStale` reads the record, so a
+  sync fix on game 3 makes the series stale and names game 3; its Re-encode re-exports the game
+  and the join follows (`startFastExport` settles through `assembleSeries`), the other games
+  extracted rather than re-encoded. Games 2..n are hidden once joined; the series' head lists
+  them (each has its own sync check). The Short
   is the best-scoring game's, copied in as `short-<g1>.*` with a description that links the
   series (`shortFromMatchId`); cut another game's by hand and `adoptSeriesShort` makes it the
   series'. The board's slot row shows what is exported / the run in flight / the joined video,

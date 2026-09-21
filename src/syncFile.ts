@@ -81,8 +81,10 @@ export function exportStale(
   for (const g of games) {
     const syncAt = syncAtOf(g.dir);
     if (syncAt && (newestSync === null || syncAt > newestSync)) newestSync = syncAt;
-    if (!existsSync(g.final)) continue;
-    if (syncAt && syncAt.getTime() > statSync(g.final).mtime.getTime())
+    // A game's export lives in the series once the join has deleted it (src/series.ts), so
+    // the series' own time is what its sync is measured against then.
+    const ref = existsSync(g.final) ? statSync(g.final).mtime : exportAt;
+    if (syncAt && syncAt.getTime() > ref.getTime())
       return { stale: true, syncAt, exportAt, staleMatchId: g.matchId };
   }
   const rejoin = games.some(

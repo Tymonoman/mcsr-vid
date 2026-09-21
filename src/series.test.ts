@@ -152,6 +152,19 @@ writeFileSync(final(102), "x");
 
 const log: string[] = [];
 const joins: string[][] = [];
+const extracted: number[] = [];
+const seams = {
+  join: async (files: readonly string[], out: string) => {
+    joins.push([...files]);
+    writeFileSync(out, "joined");
+  },
+  probe: async (file: string) =>
+    file.endsWith("final-101.mp4") ? 600 : file.endsWith("final-102.mp4") ? 500 : 700,
+  extract: async (_series: string, startSec: number, _dur: number, out: string) => {
+    extracted.push(startSec);
+    writeFileSync(out, "extracted");
+  },
+};
 const result = await renderSeries(
   101,
   {
@@ -170,14 +183,7 @@ const result = await renderSeries(
     },
     log: () => {},
   },
-  {
-    join: async (files, out) => {
-      joins.push([...files]);
-      writeFileSync(out, "joined");
-    },
-    probe: async (file) =>
-      file.endsWith("final-101.mp4") ? 600 : file.endsWith("final-102.mp4") ? 500 : 700,
-  },
+  seams,
 );
 assert.equal(result.kind, "joined");
 assert.deepEqual(
@@ -187,6 +193,10 @@ assert.deepEqual(
 );
 assert.deepEqual(joins, [[final(101), final(102), final(103)]]);
 assert.ok(existsSync(path.join(dir(101), "series-101.mp4")), "the series is game 1's");
+assert.ok(
+  [101, 102, 103].every((id) => !existsSync(final(id))),
+  "the games' exports are deleted: the series holds them",
+);
 
 const record = (await readSeriesRecord(dir(101)))!;
 assert.deepEqual(
@@ -224,26 +234,65 @@ assert.deepEqual(tags.slice(0, 4), ["edcr", "lauveer", "mcsr ranked playoffs", "
 const shelf = JSON.parse(readFileSync(path.join(config.mediaDir, ".dashboard.json"), "utf8"));
 assert.deepEqual(shelf.hidden, [102, 103], "games 2 and 3 are inside game 1's video");
 
-// Current: nothing newer, so the join is not redone.
+// Current: every game held by the series, nothing newer — the join is not redone, and nothing
+// is rendered either.
 const again = await assembleSeries(101, {
+  ...seams,
   join: async () => assert.fail("re-joined a current series"),
-  probe: async () => 1,
 });
 assert.equal(again.kind, "current");
+log.length = 0;
+const nothing = await renderSeries(
+  101,
+  {
+    renderGame: async (id) => {
+      log.push(`render ${id}`);
+      return null;
+    },
+    exportGame: async (id) => {
+      log.push(`export ${id}`);
+      return null;
+    },
+    cutShort: async () => "no",
+    log: () => {},
+  },
+  seams,
+);
+assert.equal(nothing.kind, "current");
+assert.deepEqual(log, [], "a current series renders nothing");
 
-// A newer export re-joins.
+// A newer export of one game re-joins: the other two come back out of the series at their
+// recorded offsets, the three are joined, the exports go again.
 await new Promise((r) => setTimeout(r, 20));
 writeFileSync(final(103), "xx");
 joins.length = 0;
-const rejoined = await assembleSeries(101, {
-  join: async (files, out) => {
-    joins.push([...files]);
-    writeFileSync(out, "joined again");
-  },
-  probe: async () => 1,
-});
+extracted.length = 0;
+const rejoined = await assembleSeries(101, seams);
 assert.equal(rejoined.kind, "joined");
 assert.equal(joins.length, 1);
+assert.deepEqual(extracted, [0, 600], "games 1 and 2 extracted at their chapter offsets");
+assert.ok(!existsSync(final(103)));
+
+// A game whose sync moved after the join is stale, and the series says which one.
+writeFileSync(
+  path.join(dir(102), "sync.json"),
+  JSON.stringify({ left: 1, right: 1, confidence: 1, detail: "", source: "manual" }),
+);
+await new Promise((r) => setTimeout(r, 20));
+const { utimesSync } = await import("node:fs");
+const later = new Date(Date.now() + 5000);
+utimesSync(path.join(dir(102), "sync.json"), later, later);
+const staleNow = await assembleSeries(101, seams);
+assert.deepEqual(staleNow, { kind: "stale", firstGameId: 101, stale: [102] });
+const { exportStale } = await import("./syncFile.js");
+assert.equal(exportStale(dir(101), path.join(dir(101), "series-101.mp4")).staleMatchId, 102);
+// Its export re-done, the join follows and the series is fresh again.
+writeFileSync(final(102), "resynced");
+utimesSync(final(102), new Date(Date.now() + 10000), new Date(Date.now() + 10000));
+const fixed = await assembleSeries(101, seams);
+assert.equal(fixed.kind, "joined");
+utimesSync(path.join(dir(101), "series-101.mp4"), new Date(Date.now() + 20000), new Date(Date.now() + 20000));
+assert.equal(exportStale(dir(101), path.join(dir(101), "series-101.mp4")).stale, false);
 
 /* --- The Short adopted from another game links the series, not the game ------------------ */
 
@@ -271,7 +320,7 @@ assert.deepEqual(JSON.parse(readFileSync(path.join(dir(101), "short-101.cut.json
 assert.equal((await readSeriesRecord(dir(101)))!.shortFromMatchId, 103);
 
 // The next assemble keeps the adopted Short.
-const kept = await assembleSeries(101, { join: async () => {}, probe: async () => 1, adoptShort: true });
+const kept = await assembleSeries(101, { ...seams, adoptShort: true });
 assert.equal(kept.kind, "current");
 assert.equal((await readSeriesRecord(dir(101)))!.shortFromMatchId, 103);
 
