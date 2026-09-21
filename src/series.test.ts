@@ -221,7 +221,8 @@ const description = readFileSync(path.join(dir(101), "match-101.description.txt"
 assert.ok(description.includes("0:00 game 1\n10:00 game 2\n18:20 game 3"));
 assert.ok(
   description.includes(
-    "game 2: https://magmamcsr.com/ranked/player/edcr/matches/102?season=12 · lauveer's stream https://www.twitch.tv/videos/2?t=420s · edcr's stream https://www.twitch.tv/videos/1?t=520s",
+    // Game 2's room seated them the other way round; the line keeps game 1's order.
+    "game 2: https://magmamcsr.com/ranked/player/edcr/matches/102?season=12 · edcr's stream https://www.twitch.tv/videos/1?t=520s · lauveer's stream https://www.twitch.tv/videos/2?t=420s",
   ),
   description,
 );
