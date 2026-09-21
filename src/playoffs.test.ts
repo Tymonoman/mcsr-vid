@@ -46,6 +46,7 @@ const game = (
   }) as FeedMatch;
 
 const g1 = game(edcr, lauveer, start + 300, edcr.uuid);
+const seat = (uuid: string, nickname: string) => ({ uuid, nickname }) as FeedMatch["players"][number];
 const g2 = game(lauveer, edcr, start + 900, lauveer.uuid); // seated the other way round
 const g3 = game(edcr, lauveer, start + 1500, edcr.uuid);
 const reset = game(edcr, lauveer, start - 600, null, {
@@ -85,6 +86,39 @@ assert.ok(gameBelongs(bracket, slot, g1));
 assert.ok(gameBelongs(bracket, slot, g2), "seat order is the room's, not the bracket's");
 assert.ok(!gameBelongs(bracket, slot, reset), "a forfeit inside a minute is a room reset");
 assert.ok(!gameBelongs(bracket, slot, otherPair));
+assert.ok(
+  !gameBelongs(
+    bracket,
+    slot,
+    game(edcr, lauveer, start + 1200, null, { forfeited: true, result: { uuid: null, time: 145_000 } }),
+  ),
+  "a forfeit nobody won is a reset however long it ran (S11 edcr–lauveer, 2:25)",
+);
+assert.ok(
+  gameBelongs(
+    bracket,
+    slot,
+    game(edcr, lauveer, start + 1200, lauveer.uuid, {
+      forfeited: true,
+      result: { uuid: lauveer.uuid, time: 614_000 },
+    }),
+  ),
+  "a forfeit with a winner is a game",
+);
+assert.ok(
+  gameBelongs(bracket, slot, {
+    ...g1,
+    players: [seat("6174765b6174765b6174765b6174765b", "OliverSR"), ...g1.players],
+  }),
+  "the host seated as a third player does not hide the game (S11 13333220)",
+);
+assert.ok(
+  !gameBelongs(bracket, slot, {
+    ...g1,
+    players: [seat("a", "x"), seat("b", "y"), ...g1.players],
+  }),
+  "four seats is not a 1v1",
+);
 assert.ok(!gameBelongs(bracket, slot, tooLate), "six hours after the listed start is another day");
 assert.ok(!gameBelongs(bracket, slot, tooEarly), "an hour before it is practice");
 assert.ok(

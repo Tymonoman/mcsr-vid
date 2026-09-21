@@ -42,9 +42,23 @@ const matchCache = new Map<number, { at: number; match: MatchInfo }>();
 export async function getMatch(matchId: number): Promise<MatchInfo> {
   const hit = matchCache.get(matchId);
   if (hit && Date.now() - hit.at < MATCH_TTL_MS) return hit.match;
-  const match = await getJson<MatchInfo>(`/matches/${matchId}`);
+  const match = withoutGhostPlayers(await getJson<MatchInfo>(`/matches/${matchId}`));
   matchCache.set(matchId, { at: Date.now(), match });
   return match;
+}
+
+/**
+ * A private room's player list without anyone who never played: the host joined S11 playoff
+ * game 13333220 as a third player and stayed at spawn, so the API lists three players and the
+ * timeline names two. Dropped only when more than two are listed and only when the timeline
+ * has nothing on them, so a real 2-player match is never touched.
+ */
+export function withoutGhostPlayers(match: MatchInfo): MatchInfo {
+  if (match.type !== 3 || match.players.length <= 2) return match;
+  const active = new Set(match.timelines.map((t) => t.uuid));
+  if (match.result.uuid) active.add(match.result.uuid);
+  const players = match.players.filter((p) => active.has(p.uuid));
+  return players.length === match.players.length ? match : { ...match, players };
 }
 
 /**

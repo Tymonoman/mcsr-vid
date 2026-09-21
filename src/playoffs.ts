@@ -62,6 +62,12 @@ const AFTER_START_SEC = 6 * 60 * 60;
 const TOURNAMENT_SPAN_SEC = 30 * 24 * 60 * 60;
 /** A forfeit inside the first minute is a room reset, not a game. */
 const PRACTICE_FORFEIT_MS = 60_000;
+/**
+ * The host once joined a room as a third player and never left spawn (13333220, S11 R16 game 1):
+ * the API lists three players, the timeline has two. `getMatch` drops the ghost; a feed entry
+ * carries no timeline, so here the seat count is allowed one extra as long as both seeds sit.
+ */
+const MAX_ROOM_PLAYERS = 3;
 /** The last twelve seeds come through the last-chance qualifier, unseeded. */
 const LCQ_FROM_SEED = 12;
 
@@ -115,15 +121,22 @@ export function slotWindow(bracket: PlayoffBracket, slot: PlayoffSlot): [number,
   return [first - BEFORE_START_SEC, first + TOURNAMENT_SPAN_SEC];
 }
 
-/** Whether this match is a game of this slot: the right two players, inside the window, not a reset. */
+/**
+ * Whether this match is a game of this slot: the right two players, inside the window, not a
+ * reset. A forfeit nobody won (`result.uuid` null) is a room reset whatever its length — S11's
+ * edcr–lauveer had one at 2:25 that the minute rule let through and numbered as game 3 of 6.
+ */
 export function gameBelongs(bracket: PlayoffBracket, slot: PlayoffSlot, match: FeedMatch): boolean {
   const seeds = slotSeeds(bracket, slot);
-  if (!seeds || match.type !== 3 || match.players.length !== 2) return false;
+  if (!seeds || match.type !== 3) return false;
+  if (match.players.length < 2 || match.players.length > MAX_ROOM_PLAYERS) return false;
   const uuids = new Set(match.players.map((p) => p.uuid));
   if (!uuids.has(seeds[0].uuid) || !uuids.has(seeds[1].uuid)) return false;
   const window = slotWindow(bracket, slot);
   if (!window || match.date < window[0] || match.date > window[1]) return false;
-  return !(match.forfeited && match.result.time < PRACTICE_FORFEIT_MS);
+  if (match.forfeited && (match.result.uuid === null || match.result.time < PRACTICE_FORFEIT_MS))
+    return false;
+  return true;
 }
 
 /** The slot whose game this match is, or null. A pair meets once per bracket, so the first fits. */

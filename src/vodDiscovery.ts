@@ -1,4 +1,8 @@
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { matchDir } from "./config.js";
 import { describeError } from "./errorText.js";
 import { cacheMatch, getUser } from "./mcsrApi.js";
 import type { MatchInfo, MatchVod } from "./types.js";
@@ -18,8 +22,12 @@ const vodUrl = (id: string): string => `https://www.twitch.tv/videos/${id.replac
 
 /** A stream that started this long after the estimated match start is still a plausible VOD of it. */
 const LATE_START_TOLERANCE_SEC = 5 * 60;
-/** The archives listing is capped: ~8 s already, and a match older than eight streams is not fresh. */
-const ARCHIVE_COUNT = 8;
+/**
+ * How far back the archives listing reaches. Eight covered a fresh ranked match; a playoff game
+ * packaged a week later sits behind every stream since (Feinberg's Round of 16 VOD was his ninth
+ * by the 21st), and the listing is one request either way.
+ */
+const ARCHIVE_COUNT = 40;
 
 export interface Archive {
   id: string;
@@ -135,18 +143,47 @@ export async function discoverVods(match: MatchInfo, deps: Partial<DiscoveryDeps
   return found.filter((v): v is MatchVod => v !== null);
 }
 
-/** The match with discovered VODs merged in when fewer than two are attached; a no-op otherwise. */
+/**
+ * Where a match directory remembers the VODs discovery found (`[{uuid, url, startsAt}]`). A
+ * Twitch archive outlives a stream by 14 days for most players; the downloaded clips outlive
+ * that, and a re-render or a chat save after the archive is gone still needs to know which VOD
+ * the clip came from and where the match sat in it.
+ */
+const vodsFile = (matchId: number): string => path.join(matchDir(matchId), "vods.json");
+
+async function readSavedVods(matchId: number): Promise<MatchVod[]> {
+  const file = vodsFile(matchId);
+  if (!existsSync(file)) return [];
+  try {
+    return JSON.parse(await readFile(file, "utf8")) as MatchVod[];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The match with discovered VODs merged in when fewer than two are attached; a no-op otherwise.
+ * What discovery finds is written to `vods.json` in the match directory (created if needed) and
+ * read back first the next time, so a listing is spent once per match and an expired archive
+ * does not un-find a VOD whose clip is already on disk.
+ */
 export async function withDiscoveredVods(
   match: MatchInfo,
   deps?: Partial<DiscoveryDeps>,
 ): Promise<MatchInfo> {
   if (match.vod.length >= 2) return match;
-  const discovered = await discoverVods(match, deps);
-  if (discovered.length === 0) return match;
+  const saved = (await readSavedVods(match.id)).filter((v) => !match.vod.some((m) => m.uuid === v.uuid));
+  const known = { ...match, vod: [...match.vod, ...saved] };
+  const discovered = known.vod.length >= 2 ? [] : await discoverVods(known, deps);
+  if (discovered.length > 0) {
+    await mkdir(matchDir(match.id), { recursive: true });
+    await writeFile(vodsFile(match.id), JSON.stringify([...saved, ...discovered], null, 2), "utf8");
+  }
+  if (saved.length === 0 && discovered.length === 0) return match;
   // Back into getMatch's cache: a private room never satisfies the no-op above, so without this
   // every caller that asks again (the nightly's eligibility probe, then the download stage that
   // follows it) pays for the same archive listings a second time.
-  const merged = { ...match, vod: [...match.vod, ...discovered] };
+  const merged = { ...known, vod: [...known.vod, ...discovered] };
   cacheMatch(merged);
   return merged;
 }

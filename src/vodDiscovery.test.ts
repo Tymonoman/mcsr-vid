@@ -5,11 +5,19 @@
 // Run: npx tsx src/vodDiscovery.test.ts
 import assert from "node:assert/strict";
 import { discoverVods, parseArchives, pickArchive, withDiscoveredVods } from "./vodDiscovery.js";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { config } from "./config.js";
 import type { MatchInfo, UserDetails } from "./types.js";
+
+// withDiscoveredVods writes vods.json into the match directory: keep the test out of /media.
+config.mediaDir = mkdtempSync(path.join(tmpdir(), "vodDiscovery-"));
 
 const STEEZ = "a5d83ff042164ff1b862dedc118c1dae";
 const ROWL = "70eb9286e3e24153a8b37c8f884f1292";
 const match = {
+  id: 13213922,
   date: 1788969894,
   result: { uuid: STEEZ, time: 431518 },
   players: [
@@ -44,6 +52,21 @@ const merged = await withDiscoveredVods(
   { getUser, listArchives: async (n) => listings[n]!, log },
 );
 assert.deepEqual(merged.vod, [attached, found[0]]);
+// …and what it found is remembered on disk, and read back before any listing is spent.
+assert.deepEqual(JSON.parse(readFileSync(path.join(config.mediaDir, "13213922", "vods.json"), "utf8")), [
+  found[0],
+]);
+const remembered = await withDiscoveredVods(
+  { ...match, vod: [attached] },
+  {
+    getUser,
+    listArchives: async () => {
+      throw new Error("listing spent");
+    },
+    log,
+  },
+);
+assert.deepEqual(remembered.vod, [attached, found[0]]);
 
 /* --- Nothing found → [] ------------------------------------------------------------------- */
 assert.deepEqual(

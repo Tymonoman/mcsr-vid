@@ -240,7 +240,13 @@ they differ (`code: { boot, now }` from `src/repoHead.ts`). Client changes need 
   nights, not one. Quarterfinals onward carry `startTime: null` and no participants until the
   round below resolves; a slot with no participants matches no game, so such a game packages as
   an ordinary private match — the video is still made, it just loses the round/game framing until
-  the bracket fills in (the 30-minute cache picks that up by itself).
+  the bracket fills in (the 30-minute cache picks that up by itself). Two things S11's rooms did
+  that the detection now allows for: the host joined game 13333220 as a *third player* and never
+  left spawn (`withoutGhostPlayers` in `getMatch` drops a private room's extra seat with no
+  timeline; `gameBelongs` tolerates the third seat since a feed entry has no timeline), and a
+  forfeit nobody won is a room reset however long it ran (edcr–lauveer's 2:25 one was numbered
+  game 3 of 6 under the old one-minute rule). The S11 bracket has **14** played series, not 15:
+  the edcr–Feinberg quarterfinal was a walkover (`results[]` carries a `player: null` fifth).
 - Phones (<= 860px): rows carry no Hide/Delete on a coarse pointer — the match screen's Manage
   fold has them; cards drop their splits chart only under 600 px, so a tablet keeps it. The
   playoffs board is folded at every width whatever the date (eleven series of game rows put the
@@ -301,6 +307,13 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
   (both POVs at 9.6 s, above the YouTube panel) is the look that catches the rest. "Save and
   re-export" presses the Final video panel's encode button, which an exported match now also has
   ("Re-encode MP4") — for months it did not, so the button saved and encoded nothing.
+- **A Twitch archive outlives the stream by 14 days for most players** (60 for partners), and the
+  chat goes with it. `withDiscoveredVods` writes what it finds to `<matchDir>/vods.json` and reads
+  it back first, so a clip on disk stays renderable after the archive is gone — before 21 Sept
+  2026 a re-render re-listed the channel and threw "1/2 VODs" once it had expired. `npm run
+  download-vods -- <id>` is the way to secure a match ahead of its render (it saves the chat too);
+  the listing reaches 40 archives back, since a playoff game packaged a week later sits behind
+  every stream since.
 - **Every consumer places the clips from `<matchDir>/sync.json`** (`src/syncFile.ts`), which the
   pipeline writes when the sync stage decides — refined or kept-coarse, `source` says which.
   Without it `export:fast` and the Short fall back to `config.preRollSec` and run seconds early;
