@@ -220,6 +220,27 @@ assert.deepEqual(tagsFor(match({ seedType: "VILLAGE", bastionType: "BRIDGE" })),
   "minecraft",
 ]);
 
+// The Twitch name goes in after the nicknames when it differs (Pinne streams as Skycrab, and
+// "Skycrab" is what the broadcast and the reaction channels call him); the same name, in any
+// case, adds nothing.
+{
+  const withTwitch = (nickname: string, twitch: string) =>
+    ({
+      uuid: nickname,
+      nickname,
+      eloRate: 2400,
+      connections: { twitch: { id: "1", name: twitch } },
+    }) as unknown as UserDetails;
+  const tags = buildTags(match(), withTwitch("Pinne", "Skycrab"), withTwitch("lowk3y_", "lowkey"));
+  assert.deepEqual(tags.slice(0, 4), ["Pinne", "lowk3y_", "Skycrab", "lowkey"]);
+  const same = buildTags(match(), withTwitch("edcr", "edcrSpeedruns"), withTwitch("doogile", "Doogile"));
+  assert.deepEqual(
+    same.slice(0, 3),
+    ["edcr", "doogile", "edcrSpeedruns"],
+    "a name that only differs in case is the nickname",
+  );
+}
+
 // No seed known: the two seed tags are simply absent and nothing else shifts.
 const plain = tagsFor(match());
 assert.ok(!plain.some((t) => t.includes("seed") || t.includes("bastion")), "null seed adds no tags");

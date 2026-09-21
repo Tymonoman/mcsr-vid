@@ -193,9 +193,17 @@ export function buildTags(
   userRight: UserDetails,
   maxTotalChars = 450,
 ): string[] {
+  // The Twitch name where it differs from the nickname: the broadcast and the reaction channels
+  // call Pinne "Skycrab" and lowk3y_ "Lowkey", and that is what a viewer types.
+  const twitchName = (user: UserDetails): string | null => {
+    const name = user.connections?.twitch?.name;
+    return name && name.toLowerCase() !== user.nickname.toLowerCase() ? name : null;
+  };
   const wanted = [
     userLeft.nickname,
     userRight.nickname,
+    twitchName(userLeft),
+    twitchName(userRight),
     "mcsr ranked",
     "mcsr",
     "minecraft speedrun",
