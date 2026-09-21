@@ -27,14 +27,28 @@ function AchievementRow({ player }: { player: PlayerIdentity }) {
   );
 }
 
+/** The series dots the official broadcast shows: one per game needed, filled per game won. */
+function SeriesDots({ firstTo, won }: { firstTo: number; won: number }) {
+  return (
+    <span className="series-dots">
+      {Array.from({ length: firstTo }, (_, i) => (
+        <span key={i} className={`dot${i < won ? " won" : ""}`} />
+      ))}
+    </span>
+  );
+}
+
 function IdentBar({ props }: { props: OverlayProps }) {
+  const { series } = props;
   return (
     <div className="row1">
       <div className="half crimson">
         <Img className="player-head" src={props.left.headUrl} />
         <span className="name">{props.left.nickname}</span>
+        {series && <SeriesDots firstTo={series.firstTo} won={series.leftWins} />}
       </div>
       <div className="half warped">
+        {series && <SeriesDots firstTo={series.firstTo} won={series.rightWins} />}
         <span className="name">{props.right.nickname}</span>
         <Img className="player-head" src={props.right.headUrl} />
       </div>
@@ -50,7 +64,13 @@ function InfoBar({ props }: { props: OverlayProps }) {
         <div className="id-line">
           <span className="flag">{left.countryFlag}</span>
           <span className="elo">{left.eloRate} ELO</span>
-          {left.eloRank !== null && <span className="rank">#{left.eloRank} WORLD</span>}
+          {/* On a playoff game the seed replaces the ladder rank: a bracket has its own order
+              (the Short's nameplates do the same, remotion/Short.tsx). */}
+          {left.seed !== undefined ? (
+            <span className="rank">{left.seed.toUpperCase()}</span>
+          ) : (
+            left.eloRank !== null && <span className="rank">#{left.eloRank} WORLD</span>
+          )}
         </div>
         <div className="deep-line">
           PB <b>{formatTime(left.pbMs)}</b>
@@ -68,7 +88,11 @@ function InfoBar({ props }: { props: OverlayProps }) {
       </div>
       <div className="half right">
         <div className="id-line">
-          {right.eloRank !== null && <span className="rank">#{right.eloRank} WORLD</span>}
+          {right.seed !== undefined ? (
+            <span className="rank">{right.seed.toUpperCase()}</span>
+          ) : (
+            right.eloRank !== null && <span className="rank">#{right.eloRank} WORLD</span>
+          )}
           <span className="elo">{right.eloRate} ELO</span>
           <span className="flag">{right.countryFlag}</span>
         </div>

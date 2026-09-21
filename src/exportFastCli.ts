@@ -134,6 +134,10 @@ await runFastExport(
       clipName: `${playerRight.nickname} POV`,
     },
     topPath: overlay.top,
+    // The winner's dot fills where the run ends; a ranked match has no second still.
+    ...(existsSync(overlay.topEnd) && match.result.time > 0
+      ? { topEndPath: overlay.topEnd, topEndAtSec: runEndOnTimelineSec }
+      : {}),
     splits,
     timerPath: overlay.timer,
     introPath: overlay.intro,

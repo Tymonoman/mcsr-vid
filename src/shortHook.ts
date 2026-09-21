@@ -164,9 +164,11 @@ export function buildShortDescription(
   /** The long form's format half (`playoffTitleTail`), so a playoff Short is not sold as a 1v1. */
   format = "MCSR Ranked 1v1",
   season?: number,
+  /** What the long form is: a playoff series' Short points at the whole series (src/series.ts). */
+  what: "match" | "series" = "match",
 ): string {
   return [
-    `${leftNickname} vs ${rightNickname}, ${format.toLowerCase()}. the whole match is on the channel with both streams side by side.`,
+    `${leftNickname} vs ${rightNickname}, ${format.toLowerCase()}. the whole ${what} is on the channel with both streams side by side.`,
     ...(playlistUrl ? [`all the matches: ${playlistUrl}`] : []),
     `match page: ${matchPageUrl(matchId, leftNickname, season)}`,
     ...(supportUrl ? [`tip jar: ${supportUrl}`] : []),

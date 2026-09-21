@@ -100,6 +100,13 @@ assert.ok("error" in ambiguous && /Several possible videos/.test(ambiguous.error
 assert.match((ambiguous as { error: string }).error, /final-render\.mp4/);
 assert.match((ambiguous as { error: string }).error, /final-render-v2\.mp4/);
 
+// A playoff series is game 1's deliverable (src/series.ts): the joined video beside the game's
+// own export is the one to upload, and it settles what would otherwise be ambiguous.
+await writeFile(path.join(dir, `series-${matchId}.mp4`), "every game", "utf8");
+const series = findExportedVideo(matchId, ["nahhann", "Aquacorde"]);
+assert.ok("path" in series);
+assert.equal(path.basename(series.path), `series-${matchId}.mp4`);
+
 await rm(dir, { recursive: true, force: true });
 
 // --- Impressions-weighted CTR. This is the number the A/B table picks a pose from, so getting

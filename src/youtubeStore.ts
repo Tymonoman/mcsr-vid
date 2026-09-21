@@ -182,6 +182,11 @@ export function findExportedVideo(
         name !== "sync-preview.mp4",
     );
 
+  // A playoff series is the deliverable of its first game's directory (src/series.ts): the
+  // joined video beside the game's own export, and the one to upload.
+  const series = candidates.find((name) => name === `series-${matchId}.mp4`);
+  if (series) return { path: path.join(dir, series) };
+
   if (candidates.length === 0) {
     return {
       error:

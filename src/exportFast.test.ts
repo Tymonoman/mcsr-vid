@@ -102,4 +102,27 @@ assert.throws(
   /trim the whole clip away/,
 );
 
+// A playoff game's top band is two stills switched at the run's end: the winner's dot fills
+// there and nowhere else. The second still is the last input, after the splits.
+{
+  const two = buildFastExportCommand({ ...base, topEndPath: "/m/overlay-top-end.png", topEndAtSec: 45.5 });
+  const f = two.args[two.args.indexOf("-filter_complex") + 1]!;
+  const endIndex = two.args.indexOf("/m/overlay-top-end.png");
+  assert.ok(endIndex > two.args.indexOf("/m/overlay-splits-1.png"), "the end still is the last input");
+  const inputNo = two.args.slice(0, endIndex).filter((a) => a === "-i").length - 1;
+  assert.ok(
+    f.includes(`[2:v]scale=1920:194:flags=bilinear,format=yuv420p,setsar=1,loop=loop=${45.5 * 60 - 1}`),
+  );
+  assert.ok(
+    f.includes(
+      `[${inputNo}:v]scale=1920:194:flags=bilinear,format=yuv420p,setsar=1,loop=loop=${(70 - 45.5) * 60 - 1}`,
+    ),
+  );
+  assert.ok(f.includes("[T0][T1]concat=n=2:v=1:a=0,settb=1/60[TOP]"));
+  // The switch past the end, or at zero, is one still — nothing to concat.
+  const late = buildFastExportCommand({ ...base, topEndPath: "/m/overlay-top-end.png", topEndAtSec: 90 });
+  assert.ok(!late.args[late.args.indexOf("-filter_complex") + 1]!.includes("[T1]"));
+  assert.ok(!filter.includes("[T1]"), "a ranked match's band is the one still it always was");
+}
+
 console.log("exportFast: all checks passed");

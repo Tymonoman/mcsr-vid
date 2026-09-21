@@ -67,6 +67,24 @@
   flex-shrink: 0;
   image-rendering: pixelated;
 }
+/* The series dots, as the broadcast draws them: one hollow square per game needed, filled per
+   game won. Square, not round — the whole band is pixel art — and in the name's ink so they
+   read as part of the nameplate on either half. */
+.series-dots {
+  display: flex;
+  gap: 12px;
+  margin: 0 14px;
+  flex-shrink: 0;
+}
+.series-dots .dot {
+  width: 34px;
+  height: 34px;
+  border: 6px solid #16151a;
+  background: transparent;
+}
+.series-dots .dot.won {
+  background: #16151a;
+}
 
 .badge {
   position: absolute;

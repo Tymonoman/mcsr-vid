@@ -118,4 +118,27 @@ const splitTimeline = [
   assert.equal(splits.find((s) => s.label === "Nether Enter")!.leftMs, 100_000);
 }
 
+// The after-the-run band: the winner's dot fills, by the room's seat, and a ranked match (no
+// series) or a game with no winner gets no second still.
+{
+  const { seriesWinner } = await import("./overlayRender.js");
+  const props = { series: { firstTo: 3, leftWins: 1, rightWins: 1 }, other: "kept" };
+  const players = [{ uuid: "L" }, { uuid: "R" }] as MatchInfo["players"];
+  assert.deepEqual(seriesWinner(props, { result: { uuid: "R", time: 1 }, players }), {
+    series: { firstTo: 3, leftWins: 1, rightWins: 2 },
+    other: "kept",
+  });
+  assert.deepEqual(seriesWinner(props, { result: { uuid: "L", time: 1 }, players })?.series, {
+    firstTo: 3,
+    leftWins: 2,
+    rightWins: 1,
+  });
+  assert.equal(seriesWinner(props, { result: { uuid: null, time: 1 }, players }), null);
+  assert.equal(
+    seriesWinner({ other: "ranked" } as typeof props, { result: { uuid: "L", time: 1 }, players }),
+    null,
+  );
+  assert.deepEqual(props.series, { firstTo: 3, leftWins: 1, rightWins: 1 }, "the input is not mutated");
+}
+
 console.log("overlayProps: all checks passed");

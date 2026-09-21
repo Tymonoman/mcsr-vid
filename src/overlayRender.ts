@@ -59,6 +59,11 @@ export interface RenderOverlayResult {
   /** RTA column — the only part rendered per frame. */
   timerPath: string;
   topPath: string;
+  /**
+   * The top band from the run's end on, for a playoff game with a winner: the same still with
+   * the winner's series dot filled, as the broadcast fills it. Absent for a ranked match.
+   */
+  topEndPath?: string;
   introPath: string;
   /** Meta + splits region, as stills held across the frames where nothing changes. */
   splits: SplitStill[];
@@ -70,6 +75,7 @@ export interface RenderOverlayResult {
 
 export const overlayPaths = (outDir: string) => ({
   top: path.join(outDir, "overlay-top.png"),
+  topEnd: path.join(outDir, "overlay-top-end.png"),
   timer: path.join(outDir, "overlay-timer.mp4"),
   intro: path.join(outDir, "overlay-intro.webm"),
   manifest: path.join(outDir, SPLITS_MANIFEST),
@@ -87,6 +93,23 @@ export async function readSplitStills(outDir: string): Promise<SplitStill[] | nu
   } catch {
     return null;
   }
+}
+
+/**
+ * The same props with the winner's series dot filled, or null when there is no series or no
+ * winner on record. The room's seat order is the props' left/right; the winner is the match's.
+ */
+export function seriesWinner<P extends { series?: { leftWins: number; rightWins: number } }>(
+  props: P,
+  match: Pick<MatchInfo, "result" | "players">,
+): P | null {
+  if (!props.series || !match.result.uuid) return null;
+  const side = match.players.findIndex((p) => p.uuid === match.result.uuid);
+  if (side !== 0 && side !== 1) return null;
+  const series = { ...props.series };
+  if (side === 0) series.leftWins += 1;
+  else series.rightWins += 1;
+  return { ...props, series };
 }
 
 export async function renderOverlay(args: RenderOverlayArgs): Promise<RenderOverlayResult> {
@@ -112,16 +135,20 @@ export async function renderOverlay(args: RenderOverlayArgs): Promise<RenderOver
     if (want("top")) {
       args.onProgress?.({ phase: "top", percent: 0 });
       const topComposition = await selectComposition({ serveUrl, id: "OverlayTop", inputProps: renderProps });
-      await atomicOutput(out.top, (output) =>
+      const renderTop = (output: string, inputProps: typeof renderProps) =>
         renderStill({
           composition: topComposition,
           serveUrl,
           output,
           imageFormat: "png",
-          inputProps: renderProps,
+          inputProps,
           cancelSignal,
-        }),
-      );
+        });
+      await atomicOutput(out.top, (output) => renderTop(output, renderProps));
+      // The band after the run: the winner's dot filled. Rendered as a second still and switched
+      // in at the run's end by the export — the only thing in the top band that ever changes.
+      const wonBy = seriesWinner(renderProps, args.match);
+      if (wonBy) await atomicOutput(out.topEnd, (output) => renderTop(output, wonBy));
       args.onProgress?.({ phase: "top", percent: 100 });
     }
 
@@ -235,6 +262,7 @@ export async function renderOverlay(args: RenderOverlayArgs): Promise<RenderOver
   return {
     timerPath: out.timer,
     topPath: out.top,
+    ...(props.series && existsSync(out.topEnd) ? { topEndPath: out.topEnd } : {}),
     introPath: out.intro,
     splits: stills,
     matchOffsetIntoClipSec: LEAD_IN_SEC,

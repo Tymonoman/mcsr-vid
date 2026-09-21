@@ -156,21 +156,42 @@ export async function computeOverlayProps(
   const leftAvatarUrl = leftAvatar.url;
   const rightAvatarUrl = rightAvatar.url;
 
+  // The band reads the bracket's order, not the ladder's: the seed in the rank's place, and the
+  // series dots at the score this game started on (the after-the-run still fills the winner's,
+  // see overlayRender.ts). `score` is in the slot's seed order, which need not be the room's.
+  const seedOf = (uuid: string) => playoff?.seeds.find((s) => s.uuid === uuid);
+  const series = playoff && {
+    firstTo: playoff.firstTo,
+    leftWins: playoff.score[playoff.seeds[0].uuid === leftUuid ? 0 : 1],
+    rightWins: playoff.score[playoff.seeds[0].uuid === rightUuid ? 0 : 1],
+  };
+  const withSeed = (identity: PlayerIdentity, uuid: string): PlayerIdentity => {
+    const seed = seedOf(uuid);
+    return seed ? { ...identity, seed: seed.label } : identity;
+  };
+
   return {
-    left: playerIdentity(
-      userLeft,
-      eloAtMatchStart(match, leftUuid, userLeft.eloRate),
-      leftAvatarUrl,
-      `https://nmsr.nickac.dev/head/${leftUuid}`,
+    left: withSeed(
+      playerIdentity(
+        userLeft,
+        eloAtMatchStart(match, leftUuid, userLeft.eloRate),
+        leftAvatarUrl,
+        `https://nmsr.nickac.dev/head/${leftUuid}`,
+      ),
+      leftUuid,
     ),
-    right: playerIdentity(
-      userRight,
-      eloAtMatchStart(match, rightUuid, userRight.eloRate),
-      rightAvatarUrl,
-      `https://nmsr.nickac.dev/head/${rightUuid}`,
+    right: withSeed(
+      playerIdentity(
+        userRight,
+        eloAtMatchStart(match, rightUuid, userRight.eloRate),
+        rightAvatarUrl,
+        `https://nmsr.nickac.dev/head/${rightUuid}`,
+      ),
+      rightUuid,
     ),
     matchPlayedLabel,
     ...(playoff ? { playoffLabel: playoffIntroLabel(playoff) } : {}),
+    ...(series ? { series } : {}),
     h2hLeftWins: versus.results.ranked[leftUuid] ?? 0,
     h2hRightWins: versus.results.ranked[rightUuid] ?? 0,
     splits,

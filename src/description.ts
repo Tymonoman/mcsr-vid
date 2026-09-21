@@ -117,6 +117,66 @@ export function buildDescription(input: DescriptionInput): string {
   ].join("\n");
 }
 
+/** One game of a series, as its lines in the series description. */
+export interface SeriesDescriptionGame {
+  matchId: number;
+  gameNo: number;
+  /** Where the game starts in the joined video — its chapter. */
+  startSec: number;
+  pageUrl: string;
+  /** Each player's stream, deep-linked to the game's start; absent when a VOD was never found. */
+  streams: Array<{ nickname: string; url: string }>;
+}
+
+export interface SeriesDescriptionInput {
+  season: number;
+  round: string;
+  bestOf: number;
+  /** In the video's seat order (game 1's), with the bracket's labels and frozen ratings. */
+  left: { nickname: string; label: string; seasonEloRate: number };
+  right: { nickname: string; label: string; seasonEloRate: number };
+  games: SeriesDescriptionGame[];
+  bracketUrl: string;
+  playlistUrl?: string;
+  supportUrl?: string;
+}
+
+/** "as the #1 seed" / "from the lcq" — the label in a sentence. */
+const seedClause = (label: string): string =>
+  label.toUpperCase() === "LCQ" ? "from the lcq" : `as the ${label.toLowerCase()}`;
+
+/**
+ * The description of a whole series (src/series.ts): every game of it in one video. The same
+ * shape as a match's — opening, chapters, links, the closer — with a chapter per game and a
+ * link line per game. Game 1's `/matches/<id>` link comes first because that segment is what
+ * pairs a channel upload to its match (src/channelUploads.ts), and the series is game 1's
+ * directory. No score anywhere: the chapter count already says how long it went, the dots on
+ * the video say the rest as it happens.
+ */
+export function buildSeriesDescription(input: SeriesDescriptionInput): string {
+  const { left, right } = input;
+  const format = `mcsr ranked s${input.season} playoffs, ${input.round.toLowerCase()}, best of ${input.bestOf}`;
+  return [
+    `${left.nickname} vs ${right.nickname}, ${format}. every game of the series, both streams side by side with the split timer in the middle. ${left.nickname} came in ${seedClause(left.label)} at ${left.seasonEloRate} elo, ${right.nickname} ${seedClause(right.label)} at ${right.seasonEloRate}.`,
+    "",
+    formatChapters(input.games.map((g) => ({ label: `game ${g.gameNo}`, timeSec: g.startSec }))),
+    "",
+    ...input.games.map(
+      (g) =>
+        `game ${g.gameNo}: ${g.pageUrl}` +
+        g.streams.map((s) => ` · ${s.nickname}'s stream ${s.url}`).join(""),
+    ),
+    `bracket: ${input.bracketUrl}`,
+    "official broadcast: https://twitch.tv/mcsrranked · https://youtube.com/@MCSR_Ranked",
+    ...(input.playlistUrl ? [`all the matches: ${input.playlistUrl}`] : []),
+    ...(input.supportUrl ? [`tip jar: ${input.supportUrl}`] : []),
+    "",
+    "fan channel, mcsr ranked has no idea i exist. if the sync looks off anywhere say where in the comments and ill fix it.",
+    "",
+    HASHTAGS.join(" "),
+  ].join("\n");
+}
+
 /** YouTube rejects any tag over 30 characters, silently dropping the rest of the list with it. */
 const MAX_TAG_CHARS = 30;
 

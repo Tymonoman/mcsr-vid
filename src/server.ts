@@ -37,7 +37,8 @@ import { presentSuggestions } from "./suggestPresent.js";
 import { dismiss, restore, snapshot, startScan } from "./suggestScan.js";
 import { cronLine, rsyncPullAllCommand, rsyncPullCommand } from "./publishSet.js";
 import { claimedPublishTimes, nextPublishSlot } from "./publishSlot.js";
-import { playoffBoard, playoffContextForId, playoffTitleTail } from "./playoffs.js";
+import { playoffBoard, playoffContextForId, playoffSeriesTail, playoffTitleTail } from "./playoffs.js";
+import { readSeriesRecord, renderSeries, seriesState, type SeriesRunners } from "./series.js";
 import { refreshRivalPostsIfStale, rivalPostsSnapshot, rivalRecentPostFor } from "./rivalPosts.js";
 import { chooseVariant, readManifest, rerenderThumbnailVariants } from "./thumbnailVariants.js";
 import { ANCHOR_SEC } from "./kdenliveProject.js";
@@ -45,7 +46,7 @@ import { exportStale, readSyncOffsets, staleExportMessage, writeSyncOffsets } fr
 import { clipTimeFor, povClipExists, povClipPath, povFrame, validOffset } from "./syncEdit.js";
 import { buildTitle, metaPaths, type BuiltTitle } from "./title.js";
 import { allArchiveStates, capacity, isArchived } from "./archive.js";
-import { exportRunning, handleExportRoute } from "./exportRoutes.js";
+import { exportRunning, handleExportRoute, startFastExport } from "./exportRoutes.js";
 import {
   MANUAL_PUBLISH_KEYS,
   deleteMatch,
@@ -133,10 +134,17 @@ async function readMeta(matchId: number) {
   // budget on "MCSR Ranked 1v1" would bless a hook ~18 characters too long and preview a title
   // that is not the one on disk.
   const playoff = await playoffContextForId(matchId);
+  // A joined series is game 1's directory (src/series.ts): its title carries the round without
+  // a game number, so the budget is built on that tail.
+  const series = await readSeriesRecord(matchDir(matchId));
   const budget = buildTitle({
     leftNickname: entry.leftNickname,
     rightNickname: entry.rightNickname,
-    ...(playoff ? { suffix: playoffTitleTail(playoff) } : {}),
+    ...(series
+      ? { suffix: playoffSeriesTail(series.season, series.round) }
+      : playoff
+        ? { suffix: playoffTitleTail(playoff) }
+        : {}),
   });
   const hookSuggestions = await readHookSuggestions(matchId, budget);
 
@@ -172,6 +180,15 @@ async function readMeta(matchId: number) {
     sync: readSyncOffsets(matchDir(matchId)),
     syncThreshold: config.syncConfidenceThreshold,
     matchUrl: matchPageUrl(matchId, entry.leftNickname, entry.season),
+    // The games inside a joined series, for the head's line: each has its own sync check.
+    series: series
+      ? {
+          round: series.round,
+          bestOf: series.bestOf,
+          games: series.games.map((g) => ({ matchId: g.matchId, gameNo: g.gameNo })),
+          shortFromMatchId: series.shortFromMatchId ?? null,
+        }
+      : null,
     /** Why the entry is degraded (API unreachable), or null. Surfaced so "?" is never a lie. */
     error: entry.error,
     /**
@@ -250,6 +267,24 @@ async function readHookSuggestions(matchId: number, budget: BuiltTitle): Promise
     return [];
   }
 }
+
+/** How a series run drives the three steps inside the server (src/series.ts `renderSeries`). */
+const serverSeriesRunners: SeriesRunners = {
+  renderGame: (matchId) =>
+    new Promise((resolve) => {
+      const job = startJob(matchId);
+      const poll = () => (job.done ? resolve(job.aborted ? "stopped" : job.error) : setTimeout(poll, 5000));
+      poll();
+    }),
+  exportGame: (matchId) => startFastExport(matchId).finished,
+  cutShort: (matchId) =>
+    new Promise((resolve) => {
+      const proc = spawnShortJob(matchId, 0);
+      proc.on("error", (err) => resolve(describeError(err)));
+      proc.on("close", (code) => resolve(code === 0 ? null : `exit code ${code}`));
+    }),
+  log: (line) => console.error(line),
+};
 
 /**
  * `?short=1` / `?export=1` on either render route — the entry box's and the card's "Render +
@@ -570,8 +605,30 @@ const server = createServer(async (req, res) => {
 
     // The current bracket with its detected games, for the section above the suggestions. Cached
     // for suggestCacheTtlMin in src/playoffs.ts; outside a tournament it is one cached read.
+    // Each slot carries its series' state (src/series.ts): which games are exported, whether the
+    // joined video exists, the run in flight.
     if (resource === "playoffs" && idRaw === undefined && req.method === "GET") {
-      json(res, 200, await playoffBoard());
+      const board = await playoffBoard();
+      const slots = await Promise.all(
+        board.slots.map(async (slot) => ({ ...slot, series: await seriesState(slot) })),
+      );
+      json(res, 200, { ...board, slots });
+      return;
+    }
+
+    // Render a whole playoff series — every game not yet exported, one after another, then the
+    // join and the Short — from any of its games' ids. The same three runners the dashboard's
+    // own buttons use: the pipeline job (progress on the list as usual), export:fast, the Short.
+    if (resource === "series" && idRaw !== undefined && segments[3] === "render" && req.method === "POST") {
+      const matchId = Number(idRaw);
+      if (!Number.isInteger(matchId)) {
+        json(res, 400, { error: "expected a match id" });
+        return;
+      }
+      void renderSeries(matchId, serverSeriesRunners).catch((err: unknown) =>
+        console.error(`series ${matchId}: ${describeError(err)}`),
+      );
+      json(res, 202, { matchId });
       return;
     }
 

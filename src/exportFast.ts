@@ -34,6 +34,12 @@ export interface FastExportInput {
   rightClip: KdenliveClipInput;
   /** The static top band. */
   topPath: string;
+  /**
+   * The band from `topEndAtSec` on — a playoff game's dots with the winner's filled
+   * (src/overlayRender.ts). Absent for a ranked match; then the top band is one still.
+   */
+  topEndPath?: string;
+  topEndAtSec?: number;
   /** Splits stills in timeline order, each held for its own span. */
   splits: Array<{ path: string; startSec: number; durationSec: number }>;
   /** The RTA column video. */
@@ -92,6 +98,9 @@ export function buildFastExportCommand(input: FastExportInput): BuiltCommand {
   // without this the intro composites as an opaque card and its fades become hard cuts.
   args.push("-c:v", "libvpx-vp9", "-i", input.introPath);
   for (const still of input.splits) args.push("-i", still.path);
+  const topEnd = input.topEndPath !== undefined && input.topEndAtSec !== undefined;
+  const TOP_END_INDEX = 5 + input.splits.length;
+  if (topEnd) args.push("-i", input.topEndPath!);
 
   const SPLIT_BASE = 5;
   const chains: string[] = [];
@@ -106,7 +115,20 @@ export function buildFastExportCommand(input: FastExportInput): BuiltCommand {
   chains.push(povChain(0, "L"), povChain(1, "R"), `[L][R]hstack=inputs=2[POV]`);
 
   const totalFrames = Math.round(input.totalDurationSec * fps);
-  chains.push(`${stillChain(2, STAGE_WIDTH, TOP_BAND_HEIGHT, totalFrames, fps)}[TOP]`);
+  // A playoff game's top band is two stills: the run, then the winner's dot filled from the
+  // run's end — the same still concat the splits band below is made of.
+  const topEndFrame = topEnd
+    ? Math.min(totalFrames, Math.max(0, Math.round(input.topEndAtSec! * fps)))
+    : totalFrames;
+  if (topEnd && topEndFrame < totalFrames && topEndFrame > 0) {
+    chains.push(`${stillChain(2, STAGE_WIDTH, TOP_BAND_HEIGHT, topEndFrame, fps)}[T0]`);
+    chains.push(
+      `${stillChain(TOP_END_INDEX, STAGE_WIDTH, TOP_BAND_HEIGHT, totalFrames - topEndFrame, fps)}[T1]`,
+    );
+    chains.push(`[T0][T1]concat=n=2:v=1:a=0,settb=1/${fps}[TOP]`);
+  } else {
+    chains.push(`${stillChain(2, STAGE_WIDTH, TOP_BAND_HEIGHT, totalFrames, fps)}[TOP]`);
+  }
 
   // The splits band is a sequence of stills concatenated to the full timeline length.
   const splitLabels: string[] = [];

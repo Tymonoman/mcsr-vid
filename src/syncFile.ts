@@ -62,9 +62,27 @@ export function exportStale(
   videoPath: string,
 ): { stale: boolean; syncAt: Date | null; exportAt: Date } {
   const exportAt = statSync(videoPath).mtime;
-  const file = syncFilePath(matchDir);
-  const syncAt = existsSync(file) ? statSync(file).mtime : null;
+  // A series video is every game's sync: the newest sync.json across them is the one that
+  // counts, or a fix on game 3 would leave game 1's directory reading fresh.
+  const dirs = [matchDir, ...seriesGameDirs(matchDir)];
+  const syncAt = dirs
+    .map((dir) => syncFilePath(dir))
+    .filter((file) => existsSync(file))
+    .map((file) => statSync(file).mtime)
+    .reduce<Date | null>((newest, at) => (newest === null || at > newest ? at : newest), null);
   return { stale: syncAt !== null && syncAt.getTime() > exportAt.getTime(), syncAt, exportAt };
+}
+
+/** The other games' directories a series record in `matchDir` names, or none (src/series.ts). */
+function seriesGameDirs(matchDir: string): string[] {
+  const file = path.join(matchDir, "series.json");
+  if (!existsSync(file)) return [];
+  try {
+    const record = JSON.parse(readFileSync(file, "utf8")) as { games?: Array<{ matchId: number }> };
+    return (record.games ?? []).map((g) => path.join(path.dirname(matchDir), String(g.matchId)));
+  } catch {
+    return [];
+  }
 }
 
 /** The one refusal, worded once: the upload, the nightly's skip line and the adopt route all say it. */

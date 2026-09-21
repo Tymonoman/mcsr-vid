@@ -37,7 +37,17 @@ export function buildChapters(splits: SplitRow[], match: MatchInfo, leadInSec: n
   return filtered;
 }
 
+/** `M:SS`, or `H:MM:SS` past the hour — a series video runs to fifty minutes and more. */
+export function formatChapterTime(timeSec: number): string {
+  const total = Math.max(0, Math.floor(timeSec));
+  if (total < 3600) return formatShortTime(total * 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const sec = total % 60;
+  return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+}
+
 /** Formats chapters as YouTube-description-ready `M:SS Label` lines, one per line. */
 export function formatChapters(chapters: ChapterMarker[]): string {
-  return chapters.map((c) => `${formatShortTime(c.timeSec * 1000)} ${c.label}`).join("\n");
+  return chapters.map((c) => `${formatChapterTime(c.timeSec)} ${c.label}`).join("\n");
 }

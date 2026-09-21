@@ -36,6 +36,7 @@ import { hiddenMatchIds, nightlyQueue, setNightlyQueue } from "./matchShelf.js";
 import { orderForDisplay } from "./suggestPresent.js";
 import { playoffBoard, type PlayoffBoard } from "./playoffs.js";
 import { listProcessedMatchIds } from "./matchStatus.js";
+import { assembleSeries } from "./series.js";
 import { shortRunning, spawnShortJob, type ShortRunner } from "./shortsRoutes.js";
 import { snapshot, startScan } from "./suggestScan.js";
 import { getMatch } from "./mcsrApi.js";
@@ -432,6 +433,17 @@ export function afterSettled(
     const verdict = outcomeOf(job);
     const shortClause = await chainShort(job.matchId, verdict.outcome, wantsShort.delete(job.matchId));
     const exportClause = await chainExport(job.matchId, verdict.outcome, wantsExport.delete(job.matchId));
+    // A playoff game's export may have completed its series: joined here so a series queued
+    // game by game needs no press once the last one lands. Anything but a full series is a
+    // no-op, and a failure to join is a log line — the game's own export stands.
+    if (exportOutcome(exportClause) === "done") {
+      await assembleSeries(job.matchId, { adoptShort: true })
+        .then((r) => {
+          if (r.kind === "joined")
+            console.error(`nightly: series ${r.firstGameId} joined (${r.games.length} games)`);
+        })
+        .catch((err: unknown) => console.error(`nightly: series join failed — ${describeError(err)}`));
+    }
     // Only after a finished MP4, and only when the config says uploads happen at all — off by
     // default on both counts (`youtubeUploadEnabled`, `nightlyUpload`), so this line does
     // nothing tonight. Errors are the clause's; the render is not undone by a failed upload.

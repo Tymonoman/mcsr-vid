@@ -73,6 +73,9 @@ const {
   seedLabel,
   slotFor,
   slotGames,
+  slotSeeds,
+  scoreBefore,
+  contextOf,
   slotWindow,
 } = await import("./playoffs.js");
 
@@ -144,6 +147,19 @@ assert.deepEqual(
   slotGames(bracket, slot, [g1, g2]).map((g) => g.gameNo),
   [1, 2],
 );
+// The score going into each game, in the slot's seed order, for the band's dots: g1 edcr,
+// g2 lauveer, g3 edcr.
+const seeds = slotSeeds(bracket, slot)!;
+assert.deepEqual(
+  games.map((g) => scoreBefore(seeds, games, g.gameNo)),
+  [
+    [0, 0],
+    [1, 0],
+    [1, 1],
+  ],
+);
+assert.deepEqual(contextOf(bracket, slot, games, g3.id)?.score, [1, 1]);
+assert.equal(contextOf(bracket, slot, games, g3.id)?.firstTo, 3);
 
 // An unscheduled slot takes any game of its pair inside the tournament's month.
 const quarter = {
@@ -165,6 +181,10 @@ const ctx = {
   round: "Round of 16",
   gameNo: 2,
   bestOf: 5,
+  firstTo: 3,
+  // Carried for the band's dots and for nothing printed: the paragraph check below runs with
+  // a score in hand and must still find none.
+  score: [1, 0] as [number, number],
   seeds: [
     { uuid: edcr.uuid, nickname: "edcr", label: "#1 seed", seasonEloRate: 2688 },
     { uuid: lauveer.uuid, nickname: "lauveer", label: "LCQ", seasonEloRate: 2137 },
@@ -248,6 +268,9 @@ assert.deepEqual(
     round: "Round of 16",
     gameNo: 2,
     bestOf: 5,
+    firstTo: 3,
+    // g1 was edcr's: the dots at g2's start.
+    score: [1, 0],
     seeds: [
       ["edcr", "#1 seed", 2688],
       ["lauveer", "LCQ", 2137],

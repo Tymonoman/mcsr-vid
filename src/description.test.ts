@@ -158,6 +158,8 @@ assert.match(draw.split("\n")[0], /^edcr vs doogile, mcsr ranked 1v1/);
       season: 11,
       round: "Round of 16",
       gameNo: 2,
+      firstTo: 3,
+      score: [1, 0],
       bestOf: 5,
       seeds: [
         { uuid: EDCR, nickname: "edcr", label: "#1 seed", seasonEloRate: 2546 },

@@ -258,6 +258,22 @@
   font-size: 12px;
   border-bottom-width: 3px;
 }
+/* The series line under a slot (src/series.ts): what is exported, the run in flight, or the
+   joined video; the same three colours the list's state line uses. */
+.sugg.playoff .state {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 6px;
+}
+.sugg.playoff .state.ready {
+  color: var(--gold);
+}
+.sugg.playoff .state.bad {
+  color: var(--crimson);
+}
+.sugg.playoff .btns {
+  margin-top: 8px;
+}
 /* The competitor already has this matchup up: it competes with their video for the same
    browse session, so the card says so and the order puts it after the fresh ones. */
 .sugg .rival {

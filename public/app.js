@@ -270,6 +270,13 @@ async function select(id, { open = false } = {}) {
         <div class="actions"><button id="failcopy" class="ghost">Copy error</button></div>
       </div>
       <div id="headwarn">${syncLine(meta)}</div>
+      ${
+        meta.series
+          ? `<div id="serieshead">series &middot; ${esc(meta.series.round.toLowerCase())} &middot; best of ${meta.series.bestOf} &middot; games: ${meta.series.games
+              .map((g) => `<a href="#" data-game="${g.matchId}">${g.gameNo}</a>`)
+              .join(" ")}${meta.series.shortFromMatchId ? ` &middot; short from game ${meta.series.games.find((g) => g.matchId === meta.series.shortFromMatchId)?.gameNo ?? "?"}` : ""}</div>`
+          : ""
+      }
       <nav class="jump">
         <a href="#h-preview" data-panel="check" aria-current="page">Check</a>
         <a href="#h-hook" data-panel="package">Package</a>
@@ -352,6 +359,13 @@ async function select(id, { open = false } = {}) {
 
   $("#mhide") && wireHide($("#mhide"), id);
   $("#mdel") && wireDelete($("#mdel"), id);
+  // A series' games are hidden rows; the head's numbers open each one (its own sync check).
+  document.querySelectorAll("#serieshead [data-game]").forEach((a) =>
+    a.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      select(Number(a.dataset.game), { open: true });
+    }),
+  );
 
   if (meta.hook) {
     $("#hook").addEventListener("input", () => {
@@ -1895,8 +1909,9 @@ async function startRenderWithShort(id) {
 /* --- Playoffs --------------------------------------------------------------------------------
    The current bracket's seated slots and the games found for them, above the suggestions while
    a tournament is on. A game's Render is the header form's own start: the plain pipeline by id,
-   with the Short and the MP4, as the nightly would run it. Round and game number only — a series
-   score is a spoiler here as much as on the video, so playoffs.ts never computes one. */
+   with the Short and the MP4, as the nightly would run it; a series row's button renders the lot
+   and joins them (src/series.ts). Round and game number only — the series score is for the
+   video's own dots, never for a line here. */
 let playoffData = null;
 
 function paintPlayoffs() {
@@ -1923,25 +1938,57 @@ function paintPlayoffs() {
   const rounds = [...new Set(slots.map((s) => s.round))].join(", ");
   const firstStart = Math.min(...slots.map((s) => s.startTime ?? Infinity));
   const summary = `${rounds} &middot; ${slots.length} series &middot; first ${esc(when(Number.isFinite(firstStart) ? firstStart : null))}`;
+  // A series is one video (src/series.ts): the row's button renders every game left and joins
+  // them; game 1's directory is the video, so "open" on the series goes there. A game's own
+  // line says what it is on disk — a directory holding only the downloads is not rendered.
+  const seriesLine = (s) => {
+    const st = s.series;
+    if (!st) return "";
+    const n = s.games.length;
+    const done = st.exported.filter(Boolean).length;
+    if (st.progress && !/^(done|failed)/.test(st.progress)) return `<div class="state">series &middot; ${esc(st.progress)}</div>`;
+    if (st.progress && st.progress.startsWith("failed")) return `<div class="state bad">series &middot; ${esc(st.progress)}</div>`;
+    if (st.joined) return `<div class="state ready">series video ready${st.shortFromMatchId ? " &middot; short" : ""} &middot; open #${st.firstGameId}</div>`;
+    return `<div class="state">${done} of ${n} games exported</div>`;
+  };
+  const gameState = (g) => {
+    const m = matches.find((x) => x.matchId === g.matchId);
+    if (!m) return null;
+    if (m.exported) return "exported";
+    if (m.stages && m.stages.render) return "rendered";
+    return "downloaded";
+  };
   const rows = slots
     .map(
       (s) => `
-      <div class="sugg playoff">
+      <div class="sugg playoff" data-first="${s.series ? s.series.firstGameId : ""}">
         <div class="top">
           <span class="bucket playoffs">${esc(s.round.toUpperCase())}</span>
           <span class="who">${esc(s.seeds[0].nickname)} <span class="muted">(${esc(s.seeds[0].label)})</span> vs ${esc(s.seeds[1].nickname)} <span class="muted">(${esc(s.seeds[1].label)})</span></span>
         </div>
         <div class="facts">Bo${s.bestOf} &middot; ${esc(when(s.startTime))}${s.games.length ? "" : " &middot; no games found yet"}</div>
+        ${seriesLine(s)}
         ${s.games
           .map((g) => {
-            const onShelf = matches.some((m) => m.matchId === g.matchId);
+            const state = gameState(g);
             return `<div class="game" data-id="${g.matchId}">
             <span>Game ${g.gameNo} of ${s.bestOf}</span>
             <a href="${esc(g.url)}" target="_blank" rel="noopener">#${g.matchId}</a>
-            ${onShelf ? `<button data-act="open">Rendered &middot; open</button>` : `<button data-act="render">Render</button>`}
+            ${state ? `<button data-act="open">${state} &middot; open</button>` : `<button data-act="render">Render</button>`}
           </div>`;
           })
           .join("")}
+        ${
+          s.series && s.games.length
+            ? `<div class="btns">${
+                s.series.joined
+                  ? `<button data-act="open-series">Open the series</button>`
+                  : s.series.progress && !/^(done|failed)/.test(s.series.progress)
+                    ? ""
+                    : `<button data-act="render-series">Render the series</button>`
+              }</div>`
+            : ""
+        }
       </div>`,
     )
     .join("");
@@ -1957,7 +2004,28 @@ function paintPlayoffs() {
     row.querySelector('[data-act="render"]')?.addEventListener("click", () => startRender(String(id), true));
     row.querySelector('[data-act="open"]')?.addEventListener("click", () => select(id, { open: true }));
   });
+  el.querySelectorAll(".sugg.playoff").forEach((row) => {
+    const first = Number(row.dataset.first);
+    if (!first) return;
+    row.querySelector('[data-act="open-series"]')?.addEventListener("click", () => select(first, { open: true }));
+    row.querySelector('[data-act="render-series"]')?.addEventListener("click", async (ev) => {
+      const btn = ev.currentTarget;
+      btn.disabled = true;
+      try {
+        await api(`/api/series/${first}/render`, { method: "POST" });
+        await pollSuggestions();
+      } catch (e) {
+        failAt(btn, "Render the series failed", e.message);
+        btn.disabled = false;
+      }
+    });
+  });
+  // A series in flight repaints itself: the board is the only place its progress shows.
+  clearTimeout(seriesPoll);
+  if (slots.some((s) => s.series && s.series.progress && !/^(done|failed)/.test(s.series.progress)))
+    seriesPoll = setTimeout(pollSuggestions, 15000);
 }
+let seriesPoll = null;
 
 async function pollSuggestions() {
   const data = await api("/api/suggestions");

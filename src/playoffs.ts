@@ -1,8 +1,10 @@
 /**
  * The MCSR Ranked Playoffs, as the pipeline needs them: which bracket slot a match is a game of
- * and which game of the series it is. Round and game number, and never a series score — "Round of
- * 16 · Game 2 of 5" says where in the bracket a viewer is without saying who has been winning it,
- * which is the same spoiler rule the rest of the channel runs on.
+ * and which game of the series it is. Round and game number, and never a series score on any
+ * printed surface — "Round of 16 · Game 2 of 5" says where in the bracket a viewer is without
+ * saying who has been winning it, which is the same spoiler rule the rest of the channel runs on.
+ * The score going into a game is carried (`PlayoffContext.score`) for one reader only: the top
+ * band's series dots, which fill as the games are won on screen, as the broadcast's do.
  *
  * The bracket (`/playoffs`) knows the series but not the games. The games are ordinary
  * private-room matches (type 3) between the two participants, with a referee spectating and no
@@ -41,8 +43,16 @@ export interface PlayoffContext {
   round: string;
   gameNo: number;
   bestOf: number;
+  /** Games needed to take the series — `maxRoundScore`, the number of dots. */
+  firstTo: number;
   /** In the slot's participant order. */
   seeds: [PlayoffSeed, PlayoffSeed];
+  /**
+   * Games won *before* this one, in `seeds` order — the dots' state at the game's start. Read by
+   * the overlay only; the description, the title, the board and the kit print the round and
+   * the game number and nothing else (pinned in playoffs.test.ts).
+   */
+  score: [number, number];
 }
 
 export interface PlayoffGame {
@@ -51,6 +61,8 @@ export interface PlayoffGame {
   url: string;
   dateSec: number;
   gameNo: number;
+  /** Who took it, or null for a game with no winner on record. Never printed (see `score`). */
+  winnerUuid: string | null;
 }
 
 /** A game may start a little before the slot's listed time, and a Bo7 can run past three hours. */
@@ -83,6 +95,10 @@ export const playoffLabel = (ctx: PlayoffContext): string =>
 /** The title's format half, replacing "MCSR Ranked 1v1" (src/title.ts). */
 export const playoffTitleTail = (ctx: PlayoffContext): string =>
   `MCSR Ranked S${ctx.season} Playoffs · ${ctx.round} · Game ${ctx.gameNo}`;
+
+/** The series video's format half: the round without a game number (src/series.ts). */
+export const playoffSeriesTail = (season: number, round: string): string =>
+  `MCSR Ranked S${season} Playoffs · ${round}`;
 
 /** The intro card's context line; CSS uppercases it. */
 export const playoffIntroLabel = (ctx: PlayoffContext): string =>
@@ -166,7 +182,18 @@ export function slotGames(
       url: matchPageUrl(m.id, seeds[0].nickname),
       dateSec: m.date,
       gameNo: i + 1,
+      winnerUuid: m.result.uuid,
     }));
+}
+
+/** Games won by each seed among the games *before* `gameNo`, in seeds order. */
+export function scoreBefore(
+  seeds: [PlayoffSeed, PlayoffSeed],
+  games: readonly PlayoffGame[],
+  gameNo: number,
+): [number, number] {
+  const won = (uuid: string) => games.filter((g) => g.gameNo < gameNo && g.winnerUuid === uuid).length;
+  return [won(seeds[0].uuid), won(seeds[1].uuid)];
 }
 
 /** Everything the packaging needs about one game, or null when the match is not one of the slot's. */
@@ -184,7 +211,9 @@ export function contextOf(
     round: slot.name,
     gameNo: game.gameNo,
     bestOf: bestOfSlot(slot),
+    firstTo: slot.maxRoundScore,
     seeds,
+    score: scoreBefore(seeds, games, game.gameNo),
   };
 }
 
@@ -278,20 +307,40 @@ async function gamesOf(
 export async function playoffContextFor(match: MatchInfo | FeedMatch): Promise<PlayoffContext | null> {
   const known = contexts.get(match.id);
   if (known) return known;
-  if (match.type !== 3 || match.players.length !== 2) return null;
-  let bracket: PlayoffBracket | null;
   try {
-    bracket = await loadBracket(match.season - 1);
-    if (!bracket) return null;
-    const slot = slotFor(bracket, match);
-    if (!slot) return null;
-    const ctx = contextOf(bracket, slot, await gamesOf(bracket, slot, [match], true), match.id);
+    const series = await seriesOf(match);
+    if (!series) return null;
+    const ctx = contextOf(series.bracket, series.slot, series.games, match.id);
     if (ctx) contexts.set(match.id, ctx);
     return ctx;
   } catch (err) {
     console.error(`playoffs: ${describeError(err)} (packaging as an ordinary match)`);
     return null;
   }
+}
+
+/** A game's series: the bracket, the slot, its seeds and every game of it found so far, in order. */
+export interface PlayoffSeries {
+  bracket: PlayoffBracket;
+  slot: PlayoffSlot;
+  seeds: [PlayoffSeed, PlayoffSeed];
+  games: PlayoffGame[];
+}
+
+/**
+ * The series this match is a game of, or null for the ordinary case. What `playoffContextFor`
+ * resolves through, and what the series video (src/series.ts) needs whole: the other games,
+ * their order and their winners. Throws on an API failure; the context reader above catches.
+ */
+export async function seriesOf(match: MatchInfo | FeedMatch): Promise<PlayoffSeries | null> {
+  if (match.type !== 3 || match.players.length !== 2) return null;
+  const bracket = await loadBracket(match.season - 1);
+  if (!bracket) return null;
+  const slot = slotFor(bracket, match);
+  if (!slot) return null;
+  const seeds = slotSeeds(bracket, slot);
+  if (!seeds) return null;
+  return { bracket, slot, seeds, games: await gamesOf(bracket, slot, [match], true) };
 }
 
 /** The same by id, for callers holding only the id. An unreadable match reads as an ordinary one. */
@@ -315,6 +364,7 @@ export interface PlayoffBoardSlot {
   id: number;
   round: string;
   bestOf: number;
+  firstTo: number;
   startTime: number | null;
   seeds: [PlayoffSeed, PlayoffSeed];
   games: PlayoffGame[];
@@ -357,6 +407,7 @@ export async function playoffBoard(nowSec: number = Date.now() / 1000): Promise<
       id: slot.id,
       round: slot.name,
       bestOf: bestOfSlot(slot),
+      firstTo: slot.maxRoundScore,
       startTime: slot.startTime,
       seeds: slotSeeds(bracket, slot)!,
       games: await gamesOf(bracket, slot),
@@ -370,7 +421,9 @@ export async function playoffBoard(nowSec: number = Date.now() / 1000): Promise<
           round: slot.round,
           gameNo: game.gameNo,
           bestOf: slot.bestOf,
+          firstTo: slot.firstTo,
           seeds: slot.seeds,
+          score: scoreBefore(slot.seeds, slot.games, game.gameNo),
         });
       }
     }

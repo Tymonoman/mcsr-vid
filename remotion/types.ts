@@ -11,6 +11,8 @@ export interface PlayerIdentity {
   eloRate: number;
   /** Render-time world rank; null when unranked or between seasons, and then simply not shown. */
   eloRank: number | null;
+  /** A playoff game's seed label ("#5 seed", "LCQ"); shown in the rank's place, since a bracket has its own order. */
+  seed?: string;
   statsScope: StatsScope;
   /** Lifetime best, even when statsScope is SEASON — "PB" means all-time in speedrunning. */
   pbMs: number;
@@ -39,6 +41,12 @@ export type OverlayProps = {
   playoffLabel?: string;
   h2hLeftWins: number;
   h2hRightWins: number;
+  /**
+   * A playoff series as the broadcast shows it: one dot per game needed, filled per game won.
+   * Absent on a ranked match. The counts are the score *going into* this game; the render of
+   * the after-the-run band passes the winner's dot filled (src/overlayRender.ts).
+   */
+  series?: { firstTo: number; leftWins: number; rightWins: number };
   splits: SplitRow[];
   /** Frame at which the RTA timer starts counting from 0 (the synced match-start frame). */
   timerStartFrame: number;

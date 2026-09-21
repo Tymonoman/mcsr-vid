@@ -36,6 +36,8 @@
     "youtube-auth": "tsx src/youtubeAuth.ts",
     "bench": "npm run build-overlay-css && tsx src/benchRender.ts",
     "short": "npm run build-overlay-css && tsx src/generateShort.ts",
+    "//series": "A playoff series as one video: every game rendered, joined into game 1's series-<id>.mp4, the Short from the best game.",
+    "series": "npm run build-overlay-css && tsx src/seriesCli.ts",
     "export:fast": "tsx src/exportFastCli.ts",
     "chat": "tsx src/chatCli.ts",
     "//sync-status": "Where each match's clips are placed; with an id, backfills sync.json from an already-generated .kdenlive.",
