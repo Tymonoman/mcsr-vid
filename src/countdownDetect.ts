@@ -145,12 +145,243 @@ export function findMatchStartIndex(
   };
 }
 
-/** Decodes a window of the clip as tiny grayscale frames. */
+/* --- The countdown digit itself ------------------------------------------------------------- */
+
+/**
+ * The second way to see the countdown: the digit in the middle of the screen. A private room
+ * (every playoff game) lets the player look around during the ten seconds, so there is no freeze
+ * to find — but the white "10" … "1" sits at the centre of the game window, each digit a
+ * different number of white pixels, one per second, gone at 0:00. Measured on the S11 Pinne–7rowl
+ * game 1: a 96x72 crop of the centre carries 600–1,500 pixels over 235 for the ten seconds and
+ * a few dozen otherwise, on a full-width window and on a narrow "tall" one alike, since the
+ * digit is drawn at GUI scale and not at window scale.
+ *
+ * Match start is the digit's onset plus ten seconds — the onset rather than the end, because a
+ * player who opens a menu on "2" dims the last digits (7rowl did) while the "10" is always clean.
+ */
+const DIGIT_CROP = "crop=iw*0.10:ih*0.16:iw*0.45:ih*0.40";
+const DIGIT_WIDTH = 96;
+const DIGIT_HEIGHT = 72;
+const DIGIT_WHITE = 235;
+/** White pixels in the crop that mean a digit is showing; the floor is a tenth of the "10". */
+const DIGIT_MIN_PIXELS = 200;
+/** Of the ten seconds, this many must show a digit, from the onset on. */
+const DIGIT_MIN_SECONDS = 6;
+/** Consecutive digits differ in pixel count by at least this much: a static bright patch does not. */
+const DIGIT_STEP_FRACTION = 0.05;
+const DIGIT_MIN_STEPS = 4;
+
+/** White pixels per frame in the centre crop. */
+export function whiteCounts(frames: Uint8Array[], white = DIGIT_WHITE): number[] {
+  return frames.map((f) => {
+    let n = 0;
+    for (let k = 0; k < f.length; k++) if (f[k]! >= white) n++;
+    return n;
+  });
+}
+
+/**
+ * The pure core: the onset of the countdown's "10" in a white-count series, or null.
+ *
+ * A candidate is a rise into the "10" (see the loop) followed by ten one-second plateaus of
+ * which at least `DIGIT_MIN_SECONDS` from the first show a digit, with at least
+ * `DIGIT_MIN_STEPS` changes of `DIGIT_STEP_FRACTION` between consecutive plateaus — a static
+ * bright patch has none. The nearest to the expected index wins; the score is how many seconds
+ * and steps it has, and how far it sits from the estimate.
+ */
+export function findCountdownOnset(
+  counts: number[],
+  expectedIndex: number,
+  fps: number = SAMPLE_FPS,
+): { index: number | null; endIndex: number | null; confidence: number; seconds: number; detail: string } {
+  const need = Math.round(COUNTDOWN_SEC * fps);
+  if (counts.length < need + fps)
+    return {
+      index: null,
+      endIndex: null,
+      confidence: 0,
+      seconds: 0,
+      detail: "clip window too short to judge",
+    };
+  const plateau = (from: number): number => {
+    const slice = counts.slice(from, from + fps).sort((a, b) => a - b);
+    return slice.length ? slice[Math.floor(slice.length / 2)]! : 0;
+  };
+  const candidates: Array<{ index: number; endIndex: number | null; seconds: number; steps: number }> = [];
+  for (let i = 1; i + need <= counts.length; i++) {
+    // The "10" is the fattest digit — half again the pixels of any other — so the onset is a
+    // rise into a second no later plateau exceeds. Its own level is the second's maximum, not
+    // its median: a digit that blinks for half a second (a client hiccup, a chat opened) is
+    // still the "10". The frame before is under two thirds of it: a "ready" glyph of a few
+    // hundred pixels precedes the "10" on some clients.
+    const ten = Math.max(...counts.slice(i, i + fps));
+    if (ten < DIGIT_MIN_PIXELS || counts[i]! < ten * 0.9 || counts[i - 1]! >= ten * (2 / 3)) continue;
+    const plateaus = Array.from({ length: COUNTDOWN_SEC }, (_, k) => (k === 0 ? ten : plateau(i + k * fps)));
+    if (plateaus.some((p) => p > ten)) continue;
+    let seconds = 0;
+    while (seconds < COUNTDOWN_SEC && plateaus[seconds]! >= DIGIT_MIN_PIXELS) seconds++;
+    if (seconds < DIGIT_MIN_SECONDS) continue;
+    let steps = 0;
+    for (let k = 1; k < seconds; k++) {
+      const a = plateaus[k - 1]!;
+      const b = plateaus[k]!;
+      if (Math.abs(a - b) >= DIGIT_STEP_FRACTION * Math.max(a, b)) steps++;
+    }
+    if (steps < DIGIT_MIN_STEPS) continue;
+    // The end: the first frame after the last digit, between eight and eleven seconds in, with
+    // nothing showing for the half second after it. The "1" vanishing *is* 0:00, so this beats
+    // onset-plus-ten when it is there; a menu opened on "2" (7rowl, S11) hides it, and then
+    // the onset carries the answer alone.
+    let endIndex: number | null = null;
+    for (let j = i + Math.round(8 * fps); j <= Math.min(counts.length - 1, i + Math.round(11 * fps)); j++) {
+      if (counts[j]! < DIGIT_MIN_PIXELS / 2) continue;
+      const after = counts.slice(j + 1, j + 1 + Math.round(fps / 2));
+      if (after.length && after.every((n) => n < DIGIT_MIN_PIXELS / 2)) {
+        endIndex = j + 1;
+        break; // the first quiet half second: a flash after 0:00 (a client's "go") is not the end
+      }
+    }
+    candidates.push({ index: i, endIndex, seconds, steps });
+  }
+  if (candidates.length === 0) {
+    return {
+      index: null,
+      endIndex: null,
+      confidence: 0,
+      seconds: 0,
+      detail: "no countdown digit found at the centre of the frame",
+    };
+  }
+  candidates.sort(
+    (a, b) => Math.abs(a.index - expectedIndex) - Math.abs(b.index - expectedIndex) || b.seconds - a.seconds,
+  );
+  const best = candidates[0]!;
+  const offBySec = Math.abs(best.index - expectedIndex) / fps;
+  const confidence =
+    clamp01(best.seconds / COUNTDOWN_SEC) *
+    clamp01(best.steps / (COUNTDOWN_SEC - 1)) *
+    clamp01(1 - offBySec / 20);
+  return {
+    index: best.index,
+    endIndex: best.endIndex,
+    confidence,
+    seconds: best.seconds,
+    detail:
+      `digit for ${best.seconds}s with ${best.steps} steps, ${offBySec.toFixed(1)}s from the estimate` +
+      (best.endIndex === null ? ", end not seen" : "") +
+      (candidates.length > 1 ? `, ${candidates.length} candidates` : ""),
+  };
+}
+
+/**
+ * The centre-digit detection for one clip, as a `MatchStartDetection` so src/sync.ts can weigh
+ * it against the freeze. Two decodes: the window at 10 fps to find the second, then one second
+ * around the onset at the clip's own rate to land on the frame.
+ */
+export async function detectCountdownDigits(
+  clipPath: string,
+  expectedStartSec: number,
+  radiusSec = 25,
+  signal?: AbortSignal,
+): Promise<MatchStartDetection> {
+  const windowStart = Math.max(0, expectedStartSec - radiusSec);
+  const crop = { vf: DIGIT_CROP, width: DIGIT_WIDTH, height: DIGIT_HEIGHT };
+  let coarse: Uint8Array[];
+  try {
+    coarse = await readFrames(clipPath, windowStart, radiusSec * 2, signal, { ...crop, fps: SAMPLE_FPS });
+  } catch (err) {
+    if ((err as { name?: string }).name === "AbortError") throw err;
+    return {
+      matchStartSec: null,
+      confidence: 0,
+      stillRunSec: 0,
+      detail: `no video to read: ${describe(err)}`,
+    };
+  }
+  const expectedIndex = Math.round((expectedStartSec - COUNTDOWN_SEC - windowStart) * SAMPLE_FPS);
+  const counts = whiteCounts(coarse);
+  const found = findCountdownOnset(counts, expectedIndex);
+  if (found.index === null)
+    return { matchStartSec: null, confidence: 0, stillRunSec: 0, detail: found.detail };
+
+  // A frame at 10 fps brackets the moment within 100 ms; a second decode of that instant at
+  // 60 fps lands on the frame. The end is the first frame with no digit; the onset the first at
+  // the "10"'s full level.
+  const fine = async (aroundSec: number, hit: (n: number) => boolean): Promise<number | null> => {
+    try {
+      const at = whiteCounts(
+        await readFrames(clipPath, aroundSec - 0.2, 0.4, signal, { ...crop, fps: FINE_FPS }),
+      );
+      const k = at.findIndex(hit);
+      return k >= 0 ? aroundSec - 0.2 + k / FINE_FPS : null;
+    } catch {
+      return null; // the coarse answer stands; a decode hiccup is not a reason to lose the detection
+    }
+  };
+  let matchStartSec: number;
+  if (found.endIndex !== null) {
+    const endSec = windowStart + found.endIndex / SAMPLE_FPS;
+    const digitOff = (n: number) => n < DIGIT_MIN_PIXELS / 2;
+    // The fine window starts on the last digit frame, so the first frame without one is the end.
+    matchStartSec = (await fine(endSec, digitOff)) ?? endSec;
+  } else {
+    const onsetSec = windowStart + found.index / SAMPLE_FPS;
+    const ten = counts[found.index]!;
+    matchStartSec = ((await fine(onsetSec, (n) => n >= ten * 0.9)) ?? onsetSec) + COUNTDOWN_SEC;
+  }
+  return {
+    matchStartSec,
+    confidence: found.confidence * (found.endIndex === null ? 0.8 : 1),
+    stillRunSec: found.seconds,
+    detail: found.detail,
+  };
+}
+
+const FINE_FPS = 60;
+/** The digit detector's own scale: a clean countdown scores 0.7–1, one whose end a menu hid ~0.4. */
+const DIGITS_TRUSTED = 0.3;
+
+/**
+ * Both readings of one clip, settled: the digit's when it is trusted — the "1" vanishing is
+ * 0:00 by definition, and the freeze cannot see a player who looks around during the countdown
+ * (every private room, so every playoff game) — the freeze's otherwise. The two agreeing within
+ * half a second is worth a little more confidence; the detail carries both so the sync marker
+ * says what each saw.
+ */
+export async function detectMatchStartAny(
+  clipPath: string,
+  expectedStartSec: number,
+  radiusSec = 25,
+  signal?: AbortSignal,
+): Promise<MatchStartDetection> {
+  const [freeze, digits] = await Promise.all([
+    detectMatchStart(clipPath, expectedStartSec, radiusSec, signal),
+    detectCountdownDigits(clipPath, expectedStartSec, radiusSec, signal),
+  ]);
+  if (digits.matchStartSec !== null && digits.confidence >= DIGITS_TRUSTED) {
+    const agree =
+      freeze.matchStartSec !== null && Math.abs(freeze.matchStartSec - digits.matchStartSec) <= 0.5;
+    return {
+      ...digits,
+      confidence: Math.min(1, digits.confidence + (agree ? 0.1 : 0)),
+      detail: `digit: ${digits.detail}; freeze: ${freeze.detail}`,
+    };
+  }
+  return { ...freeze, detail: `freeze: ${freeze.detail}; digit: ${digits.detail}` };
+}
+const describe = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+
+/** Decodes a window of the clip as tiny grayscale frames — the whole picture, or a crop of it. */
 function readFrames(
   clipPath: string,
   startSec: number,
   durationSec: number,
   signal?: AbortSignal,
+  shape: { vf?: string; width: number; height: number; fps: number } = {
+    width: FRAME_WIDTH,
+    height: FRAME_HEIGHT,
+    fps: SAMPLE_FPS,
+  },
 ): Promise<Uint8Array[]> {
   return new Promise((resolve, reject) => {
     const proc = spawn(
@@ -165,7 +396,7 @@ function readFrames(
         "-i",
         clipPath,
         "-vf",
-        `fps=${SAMPLE_FPS},scale=${FRAME_WIDTH}:${FRAME_HEIGHT},format=gray`,
+        `fps=${shape.fps},${shape.vf ? `${shape.vf},` : ""}scale=${shape.width}:${shape.height},format=gray`,
         "-f",
         "rawvideo",
         "-",
@@ -180,7 +411,7 @@ function readFrames(
     proc.on("close", (code) => {
       if (code !== 0) return reject(new Error(`ffmpeg exited with ${code}: ${stderr.slice(-400)}`));
       const buf = Buffer.concat(chunks);
-      const size = FRAME_WIDTH * FRAME_HEIGHT;
+      const size = shape.width * shape.height;
       const frames: Uint8Array[] = [];
       for (let i = 0; i + size <= buf.length; i += size) {
         frames.push(new Uint8Array(buf.subarray(i, i + size)));

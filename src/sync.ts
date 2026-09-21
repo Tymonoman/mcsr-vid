@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { readWavMono16 } from "./wav.js";
 import { detectThump, type ThumpDetection } from "./thumpDetect.js";
-import { detectMatchStart, type MatchStartDetection } from "./countdownDetect.js";
+import { detectMatchStartAny, type MatchStartDetection } from "./countdownDetect.js";
 
 const SAMPLE_RATE = 8000;
 // Only keeps the thump inside clip A's probe; it does not correct error in expectedClipACueSec,
@@ -231,12 +231,12 @@ export async function computeSyncOffset(
   expectedClipBCueSec: number,
   signal?: AbortSignal,
 ): Promise<SyncResult> {
-  // Picture first (countdownDetect.ts); audio is the fallback. MCSR freezes both players through
-  // the countdown, so match start is visible in each VOD on its own — no dependency on the two
-  // streams sharing anything.
+  // Picture first (countdownDetect.ts); audio is the fallback. The countdown is visible in each
+  // VOD on its own — the digit at the centre of the screen, and the freeze on a client that
+  // locks the camera — so there is no dependency on the two streams sharing anything.
   const [videoA, videoB] = await Promise.all([
-    detectMatchStart(clipAPath, expectedClipACueSec, DETECT_RADIUS_SEC, signal),
-    detectMatchStart(clipBPath, expectedClipBCueSec, DETECT_RADIUS_SEC, signal),
+    detectMatchStartAny(clipAPath, expectedClipACueSec, DETECT_RADIUS_SEC, signal),
+    detectMatchStartAny(clipBPath, expectedClipBCueSec, DETECT_RADIUS_SEC, signal),
   ]);
 
   const videoResult = fromVideo(videoA, videoB, expectedClipACueSec, expectedClipBCueSec);
@@ -262,7 +262,7 @@ function fromVideo(
   if (!okA && !okB) return null;
 
   const describe = () =>
-    `countdown freeze A ${okA ? `${videoA.matchStartSec!.toFixed(2)}s (${videoA.detail})` : `not found (${videoA.detail})`}; ` +
+    `countdown A ${okA ? `${videoA.matchStartSec!.toFixed(2)}s (${videoA.detail})` : `not found (${videoA.detail})`}; ` +
     `B ${okB ? `${videoB.matchStartSec!.toFixed(2)}s (${videoB.detail})` : `not found (${videoB.detail})`}`;
 
   // Each clip is anchored on its own evidence, so one player tabbing out costs only that clip's

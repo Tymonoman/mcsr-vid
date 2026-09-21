@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { findMatchStartIndex, frameMotion } from "./countdownDetect.js";
+import { findCountdownOnset, findMatchStartIndex, frameMotion, whiteCounts } from "./countdownDetect.js";
 
 const FPS = 10;
 
@@ -108,3 +108,109 @@ function series(spec: Array<[seconds: number, level: number]>): number[] {
 }
 
 console.log("countdownDetect: all checks passed");
+
+/* --- The digit at the centre of the screen (private rooms let the player look around) ------ */
+
+// White pixels per digit, measured on S11 Pinne–7rowl game 1 in a 96x72 crop of the centre.
+const DIGITS = [1532, 715, 809, 599, 726, 800, 750, 662, 766, 607];
+const digitSeries = (spec: Array<[seconds: number, count: number]>): number[] => series(spec);
+
+{
+  // The shape a real countdown has: a "ready" glyph, the "10" at 14.0s, one digit per second,
+  // gone at 24.0s — 0:00 is the end, and the onset is the "10".
+  const counts = digitSeries([[13, 0], [1, 407], ...DIGITS.map((n): [number, number] => [1, n]), [6, 3]]);
+  const found = findCountdownOnset(counts, 14 * FPS, FPS);
+  assert.equal(found.index, 14 * FPS, `expected the "10" at 14s, got ${found.index! / FPS}s`);
+  assert.equal(found.endIndex, 24 * FPS, `expected the end at 24s, got ${found.endIndex! / FPS}s`);
+  assert.equal(found.seconds, 10);
+  assert.ok(found.confidence > 0.7, `a textbook countdown should be confident, got ${found.confidence}`);
+}
+
+{
+  // A menu on "2" hides the last digits (7rowl): the onset still carries the answer, the end
+  // is reported unseen, and the score says so.
+  const counts = digitSeries([
+    [13, 0],
+    [1, 407],
+    ...DIGITS.slice(0, 8).map((n): [number, number] => [1, n]),
+    [2, 23],
+    [6, 0],
+  ]);
+  const found = findCountdownOnset(counts, 14 * FPS, FPS);
+  assert.equal(found.index, 14 * FPS);
+  assert.equal(found.endIndex, null);
+  assert.equal(found.seconds, 8);
+  assert.match(found.detail, /end not seen/);
+}
+
+{
+  // The "10" blinking off for half its second (Pinne, game 2) is still the "10".
+  const counts = digitSeries([
+    [13, 0],
+    [1, 407],
+    [0.4, 1532],
+    [0.6, 69],
+    ...DIGITS.slice(1).map((n): [number, number] => [1, n]),
+    [6, 0],
+  ]);
+  const found = findCountdownOnset(counts, 14 * FPS, FPS);
+  assert.equal(found.index, 14 * FPS);
+  assert.equal(found.endIndex, 24 * FPS);
+}
+
+{
+  // A flash after 0:00 (a client's "go") does not move the end.
+  const counts = digitSeries([
+    [13, 0],
+    [1, 407],
+    ...DIGITS.map((n): [number, number] => [1, n]),
+    [0.5, 1],
+    [0.3, 320],
+    [6, 0],
+  ]);
+  assert.equal(findCountdownOnset(counts, 14 * FPS, FPS).endIndex, 24 * FPS);
+}
+
+{
+  // A static bright patch in the middle of the frame — snow, a white overlay — has no steps and
+  // is not a countdown; nor is a digit that shows for three seconds.
+  assert.equal(
+    findCountdownOnset(
+      digitSeries([
+        [10, 0],
+        [12, 900],
+        [8, 0],
+      ]),
+      10 * FPS,
+      FPS,
+    ).index,
+    null,
+  );
+  assert.equal(
+    findCountdownOnset(
+      digitSeries([
+        [10, 0],
+        [1, 1532],
+        [1, 715],
+        [1, 809],
+        [17, 0],
+      ]),
+      10 * FPS,
+      FPS,
+    ).index,
+    null,
+  );
+}
+
+{
+  // Two countdowns in the window (a room reset): the one nearer the estimate wins.
+  const one = [[1, 407], ...DIGITS.map((n): [number, number] => [1, n]), [4, 0]] as Array<[number, number]>;
+  const counts = digitSeries([[5, 0], ...one, ...one, [5, 0]]);
+  assert.equal(findCountdownOnset(counts, 22 * FPS, FPS).index, 21 * FPS);
+  assert.equal(findCountdownOnset(counts, 8 * FPS, FPS).index, 6 * FPS);
+}
+
+// whiteCounts counts what is at or over the threshold.
+assert.deepEqual(whiteCounts([new Uint8Array([0, 235, 255, 234]), new Uint8Array([255])]), [2, 1]);
+
+console.log("countdownDetect: digit checks passed");
