@@ -25,6 +25,7 @@ import { exportOutputPath } from "./exportFast.js";
 import { setHidden } from "./matchShelf.js";
 import { getMatch, getUser, matchPageUrl, playoffsBracketUrl } from "./mcsrApi.js";
 import { readSplitStills } from "./overlayRender.js";
+import { readSyncOffsets } from "./syncFile.js";
 import {
   playoffSeriesTail,
   seriesOf,
@@ -438,7 +439,10 @@ export async function renderSeries(
       const dir = matchDir(g.matchId);
       if (existsSync(exportOutputPath(dir, g.matchId))) continue;
       const label = `game ${g.gameNo} of ${series.games.length}`;
-      if ((await readSplitStills(dir)) === null) {
+      // The pipeline, unless its overlay *and* its sync are on disk: with the stills present it
+      // reuses them and only re-syncs, and the export must not place the clips on the coarse
+      // estimate because the render happened to be there.
+      if ((await readSplitStills(dir)) === null || readSyncOffsets(dir) === null) {
         step(`${label} · render`);
         const err = await runners.renderGame(g.matchId);
         if (err) return fail(`${label} render: ${err}`);
