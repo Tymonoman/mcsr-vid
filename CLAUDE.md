@@ -144,7 +144,9 @@ they differ (`code: { boot, now }` from `src/repoHead.ts`). Client changes need 
   video is the run plus a few seconds; a post of the wrong length is another match of the same
   pair). A posted match sorts after the fresh ones, in the nightly's order too.
 - **Hook chips** (`src/hooks.ts`) put rivalry framing first: the audit measured rivalry hooks at
-  9.36% CTR against 2.25% for descriptive ones.
+  9.36% CTR against 2.25% for descriptive ones. A playoff game's chips are its seeds, in words
+  ("Can the LCQ take down the 7th seed?", "The 7th seed vs the LCQ") in place of the ladder-rank
+  chip — a bracket has its own order, and a `#` in a hook is a hashtag on the Short's title.
 - **Thumbnails are plain poses, no text** (`src/thumbnailVariants.ts`): four pairs from
   `thumbnailVariants`, the first (`walking`/`crossed`) is the auto default, `default`/`default`
   is both players straight on. The hooked-twin machinery (`hookText`, `-hook` keys,
@@ -309,6 +311,12 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
 - **Season vs career stats.** `pickStats` (`src/overlayProps.ts`) falls back to career totals
   only when the season bucket has no ranked games, and the overlay then labels itself CAREER.
   Both paths are pinned by `src/overlayProps.test.ts`; don't "fix" the fallback away.
+- **A private room's two seats are ordered by uuid** (`withoutGhostPlayers`, `src/mcsrApi.ts`):
+  a room seats its players in join order, and game 3 of the S11 Pinne–7rowl pilot came out with
+  the sides swapped after two games the other way. Everything left/right hangs off
+  `match.players` — sync.json, the clips' placement, the band's colours — so the order is
+  settled where the match is read. Ranked matches keep the API's order: the matches rendered
+  before 21 Sept 2026 carry sync files written against it.
 - **Elo must come from the match, not the user.** `user.eloRate` is the rating now; use
   `eloAtMatchStart()` everywhere or the same match shows different numbers in different places.
 - **Props functions are async.** `computeOverlayProps` and `computeThumbnailProps` return
