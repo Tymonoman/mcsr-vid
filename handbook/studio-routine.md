@@ -1,13 +1,16 @@
-# MCSR Replayoffs — the per-upload Studio routine
+# MCSR Replayoffs — the Studio routine (the fallback)
 
-The one-time channel setup (handle, logo, banner, phone verification, upload
-defaults) is done. What is left is this: the manual steps in YouTube Studio for
-each video, until the API upload audit clears and the dashboard can do it.
+The dashboard uploads since the API review cleared (15 Sept 2026): Package → Publish →
+**Upload** sends the file, title, description, tags and thumbnail, schedules it, and **Finish
+on YouTube** adds the playlists, the pinned comment and the tags. This page is for the other
+two cases: a video uploaded by hand in Studio (paste the 11-character id into **Adopt this
+draft** and the dashboard writes the rest), and anything Studio still owns — pinning the
+comment, the Short's related-video link, an end screen.
 
 Everything you paste is pre-generated. Open the match in the dashboard and use
 the **Publish kit** panel — it has a copy button per field below, with the
 `<HOOK>` already substituted — rather than opening the files by hand. The files
-are `media/<matchId>/match-<matchId>.{title,description,tags}.txt` and the
+are `/media/<matchId>/match-<matchId>.{title,description,tags}.txt` and the
 thumbnail PNGs beside them.
 
 Menu labels match Studio's 2026 layout; if one has moved, its own search bar is

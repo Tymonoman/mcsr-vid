@@ -17,7 +17,7 @@ what an agent cannot derive from the code; the rest is in the files it names.
   thumbnail. The upset hook is a question (`Can the 1789 take down the 2080?`).
 - **The YouTube API compliance audit cleared on 15 Sept 2026** ("completed your review and don't
   require any further actions"; submitted 7 Sept, round-2 recording 14 Sept — the reply texts are
-  `youtube-api-review-reply*.txt`). `videos.insert` is allowed; `youtubeUploadEnabled` is true on
+  `handbook/api-review/`). `videos.insert` is allowed; `youtubeUploadEnabled` is true on
   the lab and the dashboard uploads. `nightlyUpload` is still `"off"` — turning it on changes what
   a nightly render does, so it is the operator's edit. Google may re-review: keep every API call
   inside what the recording showed (own channel, own data, nothing shown to anyone else).
