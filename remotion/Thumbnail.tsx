@@ -93,23 +93,46 @@ function PlayerRender({ player, side }: { player: ThumbnailPlayer; side: "left" 
   );
 }
 
-function PlayerTag({ player, side }: { player: ThumbnailPlayer; side: "left" | "right" }) {
+/** The nameplate: the rating, or on a playoff the seed — a bracket has its own order. */
+function PlayerTag({
+  player,
+  side,
+  seed,
+}: {
+  player: ThumbnailPlayer;
+  side: "left" | "right";
+  seed?: string;
+}) {
   return (
     <div className={`thumb-tag ${side}`}>
-      <span className="elo">[{player.eloRate}]</span>
+      {seed !== undefined ? (
+        <span className="elo seed">{seed}</span>
+      ) : (
+        <span className="elo">[{player.eloRate}]</span>
+      )}
       <span className="nick">{player.nickname}</span>
     </div>
   );
 }
 
+/** The trophy band: PLAYOFFS as the wordmark, the round under it; the same band height as a two-line hook. */
+const TROPHY_BAND_HEIGHT = HOOK_PAD * 2 + Math.round(96 * 1.04) + 44;
+
 export const Thumbnail: FC<ThumbnailProps> = (props) => {
   const hook = props.hookText?.trim() ? layoutHook(props.hookText) : null;
-  const layout = hook ? hookLayout(hook.lines, hook.fontSize) : null;
+  const playoff = props.playoff;
+  const trophy = playoff?.style === "trophy" && !hook;
+  const layout = hook
+    ? hookLayout(hook.lines, hook.fontSize)
+    : trophy
+      ? { bandHeight: TROPHY_BAND_HEIGHT, bodyTop: TROPHY_BAND_HEIGHT - HOOK_OVERLAP }
+      : null;
+  const roundLabel = playoff ? `Season ${playoff.season} Playoffs · ${playoff.round}` : null;
 
   return (
-    <AbsoluteFill className="thumb">
+    <AbsoluteFill className={`thumb${playoff ? ` playoff ${playoff.style}` : ""}`}>
       <div
-        className={`thumb-header${hook ? " has-hook" : ""}`}
+        className={`thumb-header${hook ? " has-hook" : ""}${trophy ? " trophy" : ""}`}
         style={layout ? { height: layout.bandHeight } : undefined}
       >
         {hook ? (
@@ -118,8 +141,15 @@ export const Thumbnail: FC<ThumbnailProps> = (props) => {
               <div key={line}>{line}</div>
             ))}
           </div>
+        ) : trophy ? (
+          <div className="thumb-trophy">
+            <div className="thumb-hook wordmark" style={{ fontSize: 96 }}>
+              Playoffs
+            </div>
+            <span className="label round">{`Season ${playoff!.season} · ${playoff!.round}`}</span>
+          </div>
         ) : (
-          <span className="label">{props.headerLabel}</span>
+          <span className={`label${playoff ? " round" : ""}`}>{roundLabel ?? props.headerLabel}</span>
         )}
       </div>
       {/* The body is pushed down by the band it would otherwise be hidden behind: everything
@@ -129,8 +159,9 @@ export const Thumbnail: FC<ThumbnailProps> = (props) => {
         <PlayerRender player={props.left} side="left" />
         <PlayerRender player={props.right} side="right" />
         <span className="thumb-vs">VS</span>
-        <PlayerTag player={props.left} side="left" />
-        <PlayerTag player={props.right} side="right" />
+        {playoff && <span className="thumb-bestof">Best of {playoff.bestOf}</span>}
+        <PlayerTag player={props.left} side="left" seed={playoff?.leftSeed} />
+        <PlayerTag player={props.right} side="right" seed={playoff?.rightSeed} />
         <div className="thumb-logo">
           <PixelBadge />
         </div>

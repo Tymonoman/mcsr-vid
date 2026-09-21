@@ -82,6 +82,19 @@ export type ThumbnailProps = {
    * exactly as it always did, so already-published matches do not change under a re-render.
    */
   hookText?: string;
+  /**
+   * A playoff series' framing, absent on a ranked match: the round in the band, the seed in the
+   * nameplate where the rating is, the series length under the VS. `bracket` keeps the band its
+   * usual height; `trophy` grows it for a gold PLAYOFFS wordmark and frames the body.
+   */
+  playoff?: {
+    season: number;
+    round: string;
+    bestOf: number;
+    leftSeed: string;
+    rightSeed: string;
+    style: "bracket" | "trophy";
+  };
 };
 
 /** One player as a Shorts nameplate shows them. */

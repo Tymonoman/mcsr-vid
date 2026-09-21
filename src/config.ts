@@ -229,6 +229,14 @@ export interface Config {
    */
   playoffsFirst: boolean;
   /**
+   * How a playoff game's thumbnails are framed (remotion/Thumbnail.tsx `playoff`): "plain" is the
+   * ranked look (a category band, the rating in the nameplate); "bracket" puts the round in the
+   * band, the seed in the nameplate and the series length under the VS; "trophy" grows the band
+   * for a gold PLAYOFFS wordmark and frames the body. The operator's pick, 22 Sept 2026 — the
+   * renders of both are in the night's report. A ranked match is never framed.
+   */
+  playoffThumbnailStyle: "plain" | "bracket" | "trophy";
+  /**
    * An LLM CLI to ask reasoning questions (src/shorts/reasoner.ts), as an argv array; an argument that
    * is exactly `{prompt}` (whole, not `--prompt={prompt}`) is replaced by the prompt, and when
    * none is, the prompt goes on stdin. Null (the default) turns every question into its heuristic fallback. The first use
@@ -238,7 +246,8 @@ export interface Config {
   reasonerCommand: string[] | null;
 }
 
-const DEFAULTS: Config = {
+/** Every key at its default; `mcsr-vid.config.example.json` is this object, written by `npm run config:example`. */
+export const DEFAULTS: Config = {
   leftPose: "walking",
   rightPose: "crossed",
   thumbnailVariants: [
@@ -287,6 +296,7 @@ const DEFAULTS: Config = {
   suggestFollowerWeight: 3,
   suggestWeights: DEFAULT_WEIGHTS,
   playoffsFirst: false,
+  playoffThumbnailStyle: "plain",
   reasonerCommand: null,
 };
 
@@ -331,6 +341,12 @@ export function validateOverrides(raw: Record<string, unknown>): void {
         throw new Error(
           `${CONFIG_PATH}: "${key}" must be a whole hour 0-23 (UTC)${nullable ? ", or null" : ""}.`,
         );
+      }
+      continue;
+    }
+    if (key === "playoffThumbnailStyle") {
+      if (value !== "plain" && value !== "bracket" && value !== "trophy") {
+        throw new Error(`${CONFIG_PATH}: "playoffThumbnailStyle" must be "plain", "bracket" or "trophy".`);
       }
       continue;
     }

@@ -26,6 +26,8 @@
     "status": "tsx src/cli/status.ts",
     "score": "tsx src/cli/scoreCli.ts",
     "start": "npm run build-overlay-css && tsx src/cli/tui.tsx",
+    "//config:example": "Rewrite mcsr-vid.config.example.json from src/config.ts DEFAULTS.",
+    "config:example": "tsx scripts/write-config-example.mts",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
     "//archive": "Copy a finished match to the NAS. Copies, never moves - nothing is deleted.",

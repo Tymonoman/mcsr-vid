@@ -47,6 +47,13 @@ export const SETTINGS: readonly SettingField[] = [
     unattended: true,
   },
   {
+    key: "playoffThumbnailStyle",
+    label: "Playoff thumbnails",
+    help: "How a playoff game's thumbnails are framed: plain (the ranked look), bracket (the round in the band, the seed in the nameplate, the series length under the VS) or trophy (a gold PLAYOFFS wordmark and frame). Applies to the next render; re-render a series' game 1 to change one already on disk.",
+    kind: "text",
+    group: "Nightly",
+  },
+  {
     key: "nightlyRenderHourUtc",
     label: "Nightly hour (UTC)",
     help: "When the unattended render starts. Empty switches the nightly off entirely. Takes effect at once — the pending timer is re-armed.",

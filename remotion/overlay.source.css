@@ -797,6 +797,66 @@
   white-space: nowrap;
 }
 
+/* ===== the playoff framing (remotion/Thumbnail.tsx `playoff`) ===== */
+/* The round in the band, in gold on a gold rule: the tournament is the reason to click, and
+   the band is where the category label was. */
+.thumb.playoff .thumb-header {
+  border-bottom: 10px solid var(--gold);
+}
+.thumb-header .label.round {
+  color: var(--gold);
+}
+/* The seed where the rating was: "#7 SEED", "LCQ". Uppercase like the band. */
+.thumb-tag .elo.seed {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 28px;
+}
+/* The series length under the VS, a small plate so it reads at 246px. */
+.thumb-bestof {
+  position: absolute;
+  top: 62%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 4;
+  font-weight: 700;
+  font-size: 30px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--quartz);
+  background: var(--panel);
+  border: 3px solid var(--gold);
+  padding: 8px 18px;
+  white-space: nowrap;
+}
+/* The trophy band: the wordmark in gold with the hook's outline, the round beneath it, and a
+   gold frame inside the body so the whole card reads as the tournament's. */
+.thumb-header.trophy {
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 40px;
+}
+.thumb-trophy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.thumb-hook.wordmark {
+  color: var(--gold);
+  letter-spacing: 0.12em;
+}
+.thumb-header.trophy .label.round {
+  font-size: 26px;
+  color: var(--quartz);
+}
+.thumb.trophy .thumb-body {
+  box-shadow: inset 0 0 0 12px var(--gold);
+}
+.thumb.trophy .thumb-vs {
+  color: var(--gold);
+}
+
 /* ===== shorts board (1080x1920 vertical) ===== */
 /* Same palette and font as the 16:9 overlay — a Short has to read as the same channel at a
    glance, and at 1080 wide the pixel font is the only thing legible on a phone anyway. */

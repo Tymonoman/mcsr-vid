@@ -168,6 +168,11 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   9.36% CTR against 2.25% for descriptive ones. A playoff game's chips are its seeds, in words
   ("Can the LCQ take down the 7th seed?", "The 7th seed vs the LCQ") in place of the ladder-rank
   chip — a bracket has its own order, and a `#` in a hook is a hashtag on the Short's title.
+- **A playoff game's thumbnails can carry the tournament** (`playoffThumbnailStyle`, in the
+  Settings tab; `remotion/Thumbnail.tsx` `playoff`): "bracket" puts the round in the band, the
+  seed where the rating was and "Best of 5" under the VS; "trophy" grows the band for a gold
+  PLAYOFFS wordmark and frames the body. Default "plain" — the operator picks from the renders
+  in the 22 Sept report. A ranked match is never framed.
 - **Thumbnails are plain poses, no text** (`src/thumbnails/thumbnailVariants.ts`): four pairs from
   `thumbnailVariants`, the first (`walking`/`crossed`) is the auto default, `default`/`default`
   is both players straight on. The hooked-twin machinery (`hookText`, `-hook` keys,
