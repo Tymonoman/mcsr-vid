@@ -134,10 +134,12 @@ export async function renderOverlay(args: RenderOverlayArgs): Promise<RenderOver
     // beats silence, which cannot tell a slow still from a hung one.
     if (want("top")) {
       args.onProgress?.({ phase: "top", percent: 0 });
-      const topComposition = await selectComposition({ serveUrl, id: "OverlayTop", inputProps: renderProps });
-      const renderTop = (output: string, inputProps: typeof renderProps) =>
+      // Selected per props set: the composition object carries the props it was selected with,
+      // and renderStill draws those — an `inputProps` that differs from them is not what lands
+      // on the PNG (the first end still came out identical to the band before it).
+      const renderTop = async (output: string, inputProps: typeof renderProps) =>
         renderStill({
-          composition: topComposition,
+          composition: await selectComposition({ serveUrl, id: "OverlayTop", inputProps }),
           serveUrl,
           output,
           imageFormat: "png",
