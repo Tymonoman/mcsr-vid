@@ -37,6 +37,7 @@ Use the script, don't reconstruct the shell line. Extra arguments go after `--`.
 | `npm run export:fast -- <matchId> [--cpu] [--seconds=N] [--full-tail]` | The finished MP4 in one ffmpeg pass (Intel VAAPI on the lab), no Kdenlive. `--seconds` renders a short range as a smoke test, to `smoke-<id>.mp4` (it once wrote over a published match's final). Open the `.kdenlive` when a match needs a human; both place clips through `placeOnTimeline`. |
 | `npm run export:nvenc -- media/<id>/match-<id>.kdenlive [out=N]` | melt + `h264_nvenc` to `out/export.mp4`. Needs an NVIDIA GPU; the lab has none. |
 | `npm run short -- <matchId> [--pick=N \| --at=<ms>] [--seconds=22]` | The ~22 s vertical MP4 (`short-<id>.mp4`) plus its `.title.txt` / `.description.txt`. Needs the VODs. `--at` names the window in ms from match start and beats `--pick`: row indices move when the scorer or the reasoner reorders them, a window does not. The cut is recorded in `short-<id>.cut.json`, which is what a re-cut repeats. |
+| `npm run series -- <matchId \| all> [--join-only]` | A playoff series as one video (`src/series.ts`): renders every game of the slot that has no export, joins them into game 1's `series-<g1>.mp4`, rewrites game 1's title/description/chapters/tags for the series, cuts the Short from the best game. `all` walks the board in date order; `--join-only` joins what is exported. The dashboard's nightly cannot see a run here: start one in the daytime. |
 | `npm run sync-status -- [matchId]` | Where a match's POV clips are placed. With an id and no `sync.json`, derives it from the `.kdenlive` and writes it, so a re-export picks the corrected offsets up without a re-render. No id lists every match and writes nothing. |
 | `npm run chat -- <matchId>` | Fetch both players' Twitch chat to `chat-<nick>.json` for a match the pipeline saved none for (it does this itself after `download-vods`). Existing files are kept; delete one to refetch. |
 | `npm run reason -- <matchId>` | Ask the configured `reasonerCommand` (Antigravity's `agy`) which 22 seconds to cut, printing the candidates, the prompt and the answer. Saves it to `short-reason.json`; delete that to ask again. Unconfigured, it says so and changes nothing. |
@@ -52,7 +53,11 @@ seconds; a nightly render + Short takes ~12 min, ~21 min with the MP4.
 
 Almost nothing in the overlay moves, so the render is stills plus one strip (`src/overlayRender.ts`):
 
-- `overlay-top.png` — the identity/stats band, static.
+- `overlay-top.png` — the identity/stats band, static. On a playoff game it carries the series
+  dots (one hollow square per game needed, filled per game won, at the score the game started
+  on) and the seed in the rank's place; `overlay-top-end.png` is the same band with the
+  winner's dot filled, and `export:fast` switches to it at the run's end (`topEndAtSec`). The
+  Kdenlive project does not know the second still.
 - `overlay-splits-<n>.png` + `overlay-splits.json` — the meta+splits region (1440x346), one still
   per distinct state (`src/splitStates.ts`). The manifest is written last and means "the render
   finished". The last state is the subscribe card (`postRollCta`, `ctaFrameOf`).
@@ -247,6 +252,24 @@ they differ (`code: { boot, now }` from `src/repoHead.ts`). Client changes need 
   forfeit nobody won is a room reset however long it ran (edcr–lauveer's 2:25 one was numbered
   game 3 of 6 under the old one-minute rule). The S11 bracket has **14** played series, not 15:
   the edcr–Feinberg quarterfinal was a walkover (`results[]` carries a `player: null` fifth).
+- **A series is one video, and game 1's directory is the series** (`src/series.ts`, 21 Sept
+  2026). Each game is rendered by the pipeline unchanged — its own sync, overlay and intro
+  card — and the exports are joined with `ffmpeg -f concat -c copy` (all exports are the same
+  h264 1080p60/aac) into `series-<g1>.mp4`, which `findExportedVideo` prefers, so the upload,
+  the kit and the pairing (game 1's `/matches/<id>` link first) work on game 1 as on any match.
+  `series.json` beside it names the games and their lengths: `exportStale` reads it, so a sync
+  fix on game 3 makes the series stale, and a re-run re-joins from the newer export. Games 2..n
+  are hidden once joined; the series' head lists them (each has its own sync check). The Short
+  is the best-scoring game's, copied in as `short-<g1>.*` with a description that links the
+  series (`shortFromMatchId`); cut another game's by hand and `adoptSeriesShort` makes it the
+  series'. The board's slot row shows what is exported / the run in flight / the joined video,
+  and "Render the series" (`POST /api/series/:id/render`) runs the lot in the server; the
+  nightly joins a series by itself when the last game's export lands. `PlayoffContext.score`
+  (the going-in score) exists for the band's dots only — the description, the title, the board
+  and the kit still print the round and the game number and nothing else, pinned in
+  `playoffs.test.ts` and `series.test.ts`. Posting order is chronological (a Grand Finals
+  title gives both semis away). The operator's calls, 21 Sept: chronological, ranked uploads
+  keep going meanwhile, the dots as the official broadcast draws them.
 - Phones (<= 860px): rows carry no Hide/Delete on a coarse pointer — the match screen's Manage
   fold has them; cards drop their splits chart only under 600 px, so a tablet keeps it. The
   playoffs board is folded at every width whatever the date (eleven series of game rows put the
