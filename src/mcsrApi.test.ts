@@ -59,12 +59,18 @@ assert.deepEqual(
   "the third seat with no timeline is dropped",
 );
 const twoUp = { ...room, players: room.players.slice(1) };
-assert.equal(withoutGhostPlayers(twoUp), twoUp, "a two-player room is returned as is");
+assert.equal(withoutGhostPlayers(twoUp), twoUp, "a two-player room already in uuid order is returned as is");
+const swapped = { ...room, players: [room.players[2]!, room.players[1]!] };
+assert.deepEqual(
+  withoutGhostPlayers(swapped).players.map((p) => p.nickname),
+  ["7rowl", "Pinne"],
+  "a private room's seats are ordered by uuid, the same way in every game of a series",
+);
 const ranked = { ...room, type: 2 };
 assert.equal(withoutGhostPlayers(ranked), ranked, "only private rooms are touched");
 const winnerSilent = { ...room, result: { uuid: "host", time: 1 }, timelines: room.timelines.slice(1) };
 assert.deepEqual(
-  withoutGhostPlayers(winnerSilent).players.map((p) => p.nickname),
+  withoutGhostPlayers(winnerSilent).players.map((p) => p.nickname).sort(),
   ["OliverSR", "Pinne"],
   "the winner stays even with no timeline",
 );

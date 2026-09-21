@@ -54,11 +54,18 @@ export async function getMatch(matchId: number): Promise<MatchInfo> {
  * has nothing on them, so a real 2-player match is never touched.
  */
 export function withoutGhostPlayers(match: MatchInfo): MatchInfo {
-  if (match.type !== 3 || match.players.length <= 2) return match;
+  if (match.type !== 3) return match;
   const active = new Set(match.timelines.map((t) => t.uuid));
   if (match.result.uuid) active.add(match.result.uuid);
-  const players = match.players.filter((p) => active.has(p.uuid));
-  return players.length === match.players.length ? match : { ...match, players };
+  const seated = match.players.length > 2 ? match.players.filter((p) => active.has(p.uuid)) : match.players;
+  // A private room seats its two players in whatever order they joined, and a series' games
+  // came out with the sides swapped between game 2 and game 3 (S11 Pinne–7rowl). Ordered by
+  // uuid, the same pair sits the same way in every game — the left/right that sync.json, the
+  // clips' placement and the band's colours all hang off. Ranked matches keep the API's order:
+  // eighteen rendered matches carry sync files written against it.
+  const players = [...seated].sort((a, b) => (a.uuid < b.uuid ? -1 : a.uuid > b.uuid ? 1 : 0));
+  const same = players.length === match.players.length && players.every((p, i) => p === match.players[i]);
+  return same ? match : { ...match, players };
 }
 
 /**
