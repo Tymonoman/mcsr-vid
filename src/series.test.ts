@@ -212,9 +212,10 @@ assert.equal(record.firstTo, 3);
 assert.equal(record.shortFromMatchId, undefined, "no game had a moment to cut");
 
 const title = readFileSync(path.join(dir(101), "match-101.title.txt"), "utf8").split("\n")[0];
+// lauveer left, edcr right: a private room's seats are ordered by uuid (src/mcsrApi.ts).
 assert.equal(
   title,
-  "<HOOK> | edcr vs lauveer | MCSR Ranked S11 Playoffs · Round of 16",
+  "<HOOK> | lauveer vs edcr | MCSR Ranked S11 Playoffs · Round of 16",
   "no game number on a series",
 );
 const description = readFileSync(path.join(dir(101), "match-101.description.txt"), "utf8");
@@ -222,7 +223,7 @@ assert.ok(description.includes("0:00 game 1\n10:00 game 2\n18:20 game 3"));
 assert.ok(
   description.includes(
     // Game 2's room seated them the other way round; the line keeps game 1's order.
-    "game 2: https://magmamcsr.com/ranked/player/edcr/matches/102?season=12 · edcr's stream https://www.twitch.tv/videos/1?t=520s · lauveer's stream https://www.twitch.tv/videos/2?t=420s",
+    "game 2: https://magmamcsr.com/ranked/player/lauveer/matches/102?season=12 · lauveer's stream https://www.twitch.tv/videos/2?t=420s · edcr's stream https://www.twitch.tv/videos/1?t=520s",
   ),
   description,
 );
@@ -231,7 +232,7 @@ assert.equal(
   "0:00 game 1\n10:00 game 2\n18:20 game 3",
 );
 const tags = readFileSync(path.join(dir(101), "match-101.tags.txt"), "utf8").split("\n");
-assert.deepEqual(tags.slice(0, 4), ["edcr", "lauveer", "mcsr ranked playoffs", "playoffs"]);
+assert.deepEqual(tags.slice(0, 4), ["lauveer", "edcr", "mcsr ranked playoffs", "playoffs"]);
 const shelf = JSON.parse(readFileSync(path.join(config.mediaDir, ".dashboard.json"), "utf8"));
 assert.deepEqual(shelf.hidden, [102, 103], "games 2 and 3 are inside game 1's video");
 
