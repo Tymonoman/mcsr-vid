@@ -240,9 +240,30 @@
   gap: 8px;
 }
 .ach-row img {
-  width: 42px;
-  height: 42px;
+  width: 36px;
+  height: 36px;
   image-rendering: pixelated;
+}
+/* Whose badges: the nickname in the player's colour, as the head-to-head line above colours it. */
+.ach-row .ach-who {
+  font-family: var(--pixel-font);
+  font-size: 18px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ach-row.left .ach-who {
+  color: var(--crimson);
+  filter: brightness(1.3);
+}
+.ach-row.right .ach-who {
+  color: var(--warped);
+}
+.ach-row .ach-none {
+  font-family: var(--pixel-font);
+  font-size: 18px;
+  color: var(--muted);
 }
 
 /* The finish time, above the post-roll card: the viewer has just watched the run end, and this

@@ -13,16 +13,20 @@ import { ctaFrameOf } from "../src/splitStates.js";
 
 /** Up to 3 highlighted-achievement badges for one player, shown in the splits panel.
  * Unmapped ids/levels are skipped entirely, per resolveAchievementIcon's contract. */
-function AchievementRow({ player }: { player: PlayerIdentity }) {
+function AchievementRow({ player, side }: { player: PlayerIdentity; side: "left" | "right" }) {
   const icons = player.achievements
     .map((a) => resolveAchievementIcon(a.id, a.level))
     .filter((src): src is string => src !== null);
-  if (icons.length === 0) return null;
+  // Named and in the player's colour, and a row even when there is nothing to show: two bare
+  // rows of icons read as one list belonging to nobody (the operator, 21 Sept 2026).
   return (
-    <div className="ach-row">
-      {icons.map((src, i) => (
-        <Img key={`${src}-${i}`} src={src} />
-      ))}
+    <div className={`ach-row ${side}`}>
+      <span className="ach-who">{player.nickname}</span>
+      {icons.length === 0 ? (
+        <span className="ach-none">—</span>
+      ) : (
+        icons.map((src, i) => <Img key={`${src}-${i}`} src={src} />)
+      )}
     </div>
   );
 }
@@ -228,8 +232,8 @@ function SplitsPanel({
           <>
             <span className="ach-label">Achievements</span>
             <div className="ach-cols">
-              <AchievementRow player={props.left} />
-              <AchievementRow player={props.right} />
+              <AchievementRow player={props.left} side="left" />
+              <AchievementRow player={props.right} side="right" />
             </div>
           </>
         )}
