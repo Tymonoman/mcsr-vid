@@ -223,7 +223,7 @@ async function syncPayload(matchId: number) {
     right: { nickname: status.rightNickname, clip: povClipExists(dir, status.rightNickname ?? "") },
     exported: staleness !== null,
     syncStale: staleness?.stale ?? false,
-    staleMessage: staleness?.stale ? staleExportMessage(matchId) : null,
+    staleMessage: staleness?.stale ? staleExportMessage(matchId, staleness.staleMatchId) : null,
   };
 }
 

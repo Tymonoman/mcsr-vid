@@ -25,7 +25,7 @@ import { exportOutputPath } from "./exportFast.js";
 import { setHidden } from "./matchShelf.js";
 import { getMatch, getUser, matchPageUrl, playoffsBracketUrl } from "./mcsrApi.js";
 import { readSplitStills } from "./overlayRender.js";
-import { readSyncOffsets } from "./syncFile.js";
+import { exportStale, readSyncOffsets } from "./syncFile.js";
 import {
   playoffSeriesTail,
   seriesOf,
@@ -134,6 +134,7 @@ async function concatVideos(files: readonly string[], outPath: string): Promise<
 export type AssembleResult =
   | { kind: "not-a-series"; matchId: number }
   | { kind: "incomplete"; firstGameId: number; missing: number[] }
+  | { kind: "stale"; firstGameId: number; stale: number[] }
   | { kind: "joined" | "current"; firstGameId: number; path: string; games: SeriesGame[] };
 
 /** Chapter start of each game: the sum of the exports before it. */
@@ -173,6 +174,17 @@ export async function assembleSeries(
   const finals = series.games.map((g) => exportOutputPath(matchDir(g.matchId), g.matchId));
   const missing = series.games.filter((_, i) => !existsSync(finals[i]!)).map((g) => g.matchId);
   if (missing.length > 0) return { kind: "incomplete", firstGameId: first.matchId, missing };
+  // A game whose sync moved after its export is not joined as it is: the fix is that game's
+  // export, and the join follows it (src/exportRoutes.ts).
+  const stale = series.games
+    .filter((g, i) => exportStale(matchDir(g.matchId), finals[i]!).stale)
+    .map((g) => g.matchId);
+  if (stale.length > 0) {
+    log(
+      `series ${first.matchId}: not joined — sync changed after the export of ${stale.map((id) => `#${id}`).join(", ")}`,
+    );
+    return { kind: "stale", firstGameId: first.matchId, stale };
+  }
 
   const outPath = seriesOutputPath(outDir, first.matchId);
   const newestExport = Math.max(...finals.map((f) => statSync(f).mtimeMs));

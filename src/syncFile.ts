@@ -60,31 +60,58 @@ export function readSyncOffsets(matchDir: string): SyncOffsets | null {
 export function exportStale(
   matchDir: string,
   videoPath: string,
-): { stale: boolean; syncAt: Date | null; exportAt: Date } {
+): { stale: boolean; syncAt: Date | null; exportAt: Date; staleMatchId: number | null } {
   const exportAt = statSync(videoPath).mtime;
-  // A series video is every game's sync: the newest sync.json across them is the one that
-  // counts, or a fix on game 3 would leave game 1's directory reading fresh.
-  const dirs = [matchDir, ...seriesGameDirs(matchDir)];
-  const syncAt = dirs
-    .map((dir) => syncFilePath(dir))
-    .filter((file) => existsSync(file))
-    .map((file) => statSync(file).mtime)
-    .reduce<Date | null>((newest, at) => (newest === null || at > newest ? at : newest), null);
-  return { stale: syncAt !== null && syncAt.getTime() > exportAt.getTime(), syncAt, exportAt };
+  const syncAtOf = (dir: string): Date | null => {
+    const file = syncFilePath(dir);
+    return existsSync(file) ? statSync(file).mtime : null;
+  };
+  const games = seriesGames(matchDir);
+  if (games.length === 0) {
+    const syncAt = syncAtOf(matchDir);
+    const stale = syncAt !== null && syncAt.getTime() > exportAt.getTime();
+    return { stale, syncAt, exportAt, staleMatchId: stale ? Number(path.basename(matchDir)) || null : null };
+  }
+  // A series video (src/series.ts) is every game's export: a game whose sync moved after its
+  // own export is the one to re-export, and a game re-exported after the join wants the join
+  // redone — which `staleMatchId: null` says, so the message can name the right command.
+  let newestSync: Date | null = null;
+  for (const g of games) {
+    const syncAt = syncAtOf(g.dir);
+    if (syncAt && (newestSync === null || syncAt > newestSync)) newestSync = syncAt;
+    if (!existsSync(g.final)) continue;
+    if (syncAt && syncAt.getTime() > statSync(g.final).mtime.getTime())
+      return { stale: true, syncAt, exportAt, staleMatchId: g.matchId };
+  }
+  const rejoin = games.some(
+    (g) => existsSync(g.final) && statSync(g.final).mtime.getTime() > exportAt.getTime(),
+  );
+  return { stale: rejoin, syncAt: newestSync, exportAt, staleMatchId: null };
 }
 
-/** The other games' directories a series record in `matchDir` names, or none (src/series.ts). */
-function seriesGameDirs(matchDir: string): string[] {
+/** The games a series record in `matchDir` names — their directories and exports — or none. */
+function seriesGames(matchDir: string): Array<{ matchId: number; dir: string; final: string }> {
   const file = path.join(matchDir, "series.json");
   if (!existsSync(file)) return [];
   try {
     const record = JSON.parse(readFileSync(file, "utf8")) as { games?: Array<{ matchId: number }> };
-    return (record.games ?? []).map((g) => path.join(path.dirname(matchDir), String(g.matchId)));
+    return (record.games ?? []).map((g) => {
+      const dir = path.join(path.dirname(matchDir), String(g.matchId));
+      return { matchId: g.matchId, dir, final: path.join(dir, `final-${g.matchId}.mp4`) };
+    });
   } catch {
     return [];
   }
 }
 
-/** The one refusal, worded once: the upload, the nightly's skip line and the adopt route all say it. */
-export const staleExportMessage = (matchId: number): string =>
-  `sync changed after this export — re-export first (npm run export:fast -- ${matchId})`;
+/**
+ * The one refusal, worded once: the upload, the nightly's skip line and the adopt route all say
+ * it. `staleMatchId` is `exportStale`'s: the game of a series whose export is behind its sync,
+ * or null when the games are fine and the series itself is behind them.
+ */
+export const staleExportMessage = (matchId: number, staleMatchId: number | null = matchId): string =>
+  staleMatchId === null
+    ? `a game was re-exported after the series was joined — re-join it (npm run series -- ${matchId} --join-only)`
+    : staleMatchId === matchId
+      ? `sync changed after this export — re-export first (npm run export:fast -- ${matchId})`
+      : `sync of game #${staleMatchId} changed after its export — re-export that game first (npm run export:fast -- ${staleMatchId}); the series re-joins itself`;

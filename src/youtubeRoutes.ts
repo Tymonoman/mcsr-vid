@@ -199,8 +199,9 @@ export async function handleYoutubeRoute(
     // the Upload button gets (`beginUpload`); no export at all is not stale, only unverifiable.
     const status = await matchStatusFor(matchId);
     const located = findExportedVideo(matchId, [status.leftNickname, status.rightNickname]);
-    if (!("error" in located) && exportStale(matchDir(matchId), located.path).stale) {
-      ctx.json(res, 409, { error: staleExportMessage(matchId) });
+    const staleness = "error" in located ? null : exportStale(matchDir(matchId), located.path);
+    if (staleness?.stale) {
+      ctx.json(res, 409, { error: staleExportMessage(matchId, staleness.staleMatchId) });
       return true;
     }
     try {

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { ANCHOR_SEC } from "./kdenliveProject.js";
@@ -97,4 +97,56 @@ console.log("syncEdit: the timeline arithmetic and every refusal");
 
   await rm(dir, { recursive: true, force: true });
   console.log("syncEdit: an export older than sync.json is stale, and only then");
+}
+
+// A series (src/series.ts): game 1's directory holds series.json and the joined video; the
+// games' own exports and syncs are what can go stale, each in its own way.
+{
+  const media = await mkdtemp(path.join(tmpdir(), "mcsr-series-stale-"));
+  const at = (file: string, iso: string) => utimes(file, new Date(iso), new Date(iso));
+  const dirs = [101, 102].map((id) => path.join(media, String(id)));
+  for (const [i, dir] of dirs.entries()) {
+    await mkdir(dir);
+    await writeFile(path.join(dir, `final-${101 + i}.mp4`), "");
+    await at(path.join(dir, `final-${101 + i}.mp4`), "2026-09-21T12:00:00Z");
+    writeSyncOffsets(dir, { left: 1, right: 1, confidence: 1, detail: "", source: "manual" });
+    await at(syncFilePath(dir), "2026-09-21T11:00:00Z");
+  }
+  const series = path.join(dirs[0]!, "series-101.mp4");
+  await writeFile(series, "");
+  await at(series, "2026-09-21T13:00:00Z");
+  await writeFile(
+    path.join(dirs[0]!, "series.json"),
+    JSON.stringify({ games: [{ matchId: 101 }, { matchId: 102 }] }),
+  );
+
+  assert.equal(
+    exportStale(dirs[0]!, series).stale,
+    false,
+    "every game exported after its sync, joined after both",
+  );
+
+  // Game 2's sync moved after its export: the series is stale, and the fix is game 2's export.
+  await at(syncFilePath(dirs[1]!), "2026-09-21T12:30:00Z");
+  const game = exportStale(dirs[0]!, series);
+  assert.equal(game.stale, true);
+  assert.equal(game.staleMatchId, 102);
+  assert.match(staleExportMessage(101, game.staleMatchId), /game #102 .*export:fast -- 102.*re-joins itself/);
+
+  // Game 2 re-exported, but after the join: the games are fine and the join is what is behind.
+  await at(path.join(dirs[1]!, "final-102.mp4"), "2026-09-21T14:00:00Z");
+  const join = exportStale(dirs[0]!, series);
+  assert.equal(join.stale, true);
+  assert.equal(join.staleMatchId, null);
+  assert.match(
+    staleExportMessage(101, join.staleMatchId),
+    /re-join it \(npm run series -- 101 --join-only\)/,
+  );
+
+  // Joined again: fresh.
+  await at(series, "2026-09-21T15:00:00Z");
+  assert.equal(exportStale(dirs[0]!, series).stale, false);
+
+  await rm(media, { recursive: true, force: true });
+  console.log("syncEdit: a series is stale by the game whose export is behind, or by the join");
 }

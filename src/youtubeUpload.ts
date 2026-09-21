@@ -151,7 +151,10 @@ export async function beginUpload(matchId: number, req: UploadRequest): Promise<
   // encoded, so it carries the misalignment the correction was for. The Short is cut from the
   // VODs with sync.json directly, so only the long-form can be stale. `videoPath` too: a
   // hand-named export was still made from the offsets of its day.
-  if (req.kind === "video" && exportStale(dir, filePath).stale) return bad(staleExportMessage(matchId));
+  if (req.kind === "video") {
+    const staleness = exportStale(dir, filePath);
+    if (staleness.stale) return bad(staleExportMessage(matchId, staleness.staleMatchId));
+  }
 
   const manifest = await readManifest(dir);
   const progress = idle(matchId, req.kind);

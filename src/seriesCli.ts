@@ -61,6 +61,6 @@ let failed = 0;
 for (const id of ids) {
   const result = joinOnly ? await assembleSeries(id) : await renderSeries(id, runners);
   console.log(JSON.stringify(result));
-  if (result.kind === "incomplete" || result.kind === "not-a-series") failed++;
+  if (result.kind !== "joined" && result.kind !== "current") failed++;
 }
 process.exit(failed === 0 ? 0 : 1);
