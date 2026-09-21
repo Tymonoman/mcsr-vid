@@ -341,9 +341,14 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
   pipeline writes when the sync stage decides — refined or kept-coarse, `source` says which.
   Without it `export:fast` and the Short fall back to `config.preRollSec` and run seconds early;
   `npm run sync-status` backfills the matches rendered before the file existed.
-- **Sync reads the picture, not the audio.** Both players freeze through the 10 s countdown
-  (`src/countdownDetect.ts`); opponents play separate worlds, so audio cross-correlation was
-  12–32 s wrong. `src/sync.ts` keeps audio only as the fallback.
+- **Sync reads the picture, not the audio.** Two readings per clip (`src/countdownDetect.ts`,
+  settled by `detectMatchStartAny`): the countdown digit at the centre of the screen — a 96x72
+  crop's white-pixel count, the "10" the fattest, one step a second, 0:00 the frame the "1"
+  vanishes — and the 10 s camera freeze. The digit is the one that works in a private room
+  (every playoff game), where the player can look around through the countdown and there is no
+  freeze; both POVs of S11 Pinne–7rowl game 1 came back coarse before it (21 Sept 2026).
+  Opponents play separate worlds, so audio cross-correlation was 12–32 s wrong; `src/sync.ts`
+  keeps audio only as the fallback.
 - **The intro card's centre block must sit above the VS badge**: `.intro-player` positions the
   columns with a `transform` that `PlayerCard`'s inline transform replaces, so the names sit at
   y≈790 and anything under the badge collides with them.
