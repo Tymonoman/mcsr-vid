@@ -12,14 +12,21 @@
  * `minLeadMs` skips a slot that is too close to upload for: a scheduled time YouTube has already
  * passed rejects the whole upload, and an 800 MB file is not on the platform in five minutes.
  */
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { config } from "../config.js";
 import { channelUploadsSnapshot, describesMatch } from "./channelUploads.js";
 import { msUntilNextRun } from "../dashboard/nightly.js";
 import { allUploads, readUpload } from "./youtubeStore.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** Which UTC day a moment falls on. Every slot is at the same hour, so days are the whole test. */
-const dayOf = (ms: number): number => Math.floor(ms / DAY_MS);
+/**
+ * Which UTC day and hour a moment falls on. A ranked match and a playoff series have their own
+ * hours (`publishHourUtc`, `seriesPublishHourUtc`), so a day another kind has claimed is still
+ * free for this one: the test is the slot, not the day.
+ */
+const slotOf = (ms: number): string => `${Math.floor(ms / DAY_MS)}:${new Date(ms).getUTCHours()}`;
 
 export function nextPublishSlot(
   nowMs: number,
@@ -34,13 +41,17 @@ export function nextPublishSlot(
       // A slot in the past cannot collide with one we are about to propose, and an unparseable
       // date is not a reason to push every upload a day out.
       .filter((ms) => Number.isFinite(ms) && ms > nowMs)
-      .map(dayOf),
+      .map(slotOf),
   );
   let at = nowMs + msUntilNextRun(nowMs, hourUtc);
   if (at - nowMs < minLeadMs) at += DAY_MS;
-  while (taken.has(dayOf(at))) at += DAY_MS;
+  while (taken.has(slotOf(at))) at += DAY_MS;
   return new Date(at);
 }
+
+/** The hour a match publishes at: a series video (`series.json` in its directory) has its own. */
+export const publishHourFor = (matchDir: string): number =>
+  existsSync(path.join(matchDir, "series.json")) ? config.seriesPublishHourUtc : config.publishHourUtc;
 
 /**
  * The publish times already spoken for, for everything but this match.

@@ -100,8 +100,19 @@ export async function uploadTextFor(
     const hook = (await readManifest(dir))?.hookText?.trim();
     if (hook) title = title.replace(HOOK_PLACEHOLDER, hook);
   }
-  const description =
+  let description =
     (await edited("description")) ?? (await readIfPresent(path.join(dir, `${base}.description.txt`))) ?? "";
+  // A Short's description is written when it is cut, before the long-form has an id; by the
+  // time it uploads (18 h after the video) the id is in youtube.json, and a Short whose job is
+  // to send viewers to the match had better say where the match is (the 22 Sept 2026 audit:
+  // three Shorts, 1.8k views, nothing sent on).
+  if (kind === "short") {
+    const videoId = (await readUpload(matchId, "video"))?.videoId;
+    if (videoId && !description.includes(videoId)) {
+      const what = existsSync(path.join(dir, "series.json")) ? "the whole series" : "the whole match";
+      description = description.replace(/^(.*?)\n/, `$1\n${what}: https://youtu.be/${videoId}\n`);
+    }
+  }
   const tags = ((await readIfPresent(path.join(dir, `match-${matchId}.tags.txt`))) ?? "")
     .split("\n")
     .map((t) => t.trim())

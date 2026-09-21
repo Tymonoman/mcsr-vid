@@ -180,6 +180,13 @@ export interface Config {
    */
   publishHourUtc: number;
   /**
+   * The publish hour for a playoff series video (a match directory holding `series.json`,
+   * src/playoffs/series.ts), its own slot so a series and that day's ranked match do not compete
+   * for the same hour or push each other a day out. 23:00 UTC is 19:00 ET, a lean-back hour for
+   * a 40-minute video on a channel a quarter of whose views are American (the 22 Sept 2026 audit).
+   */
+  seriesPublishHourUtc: number;
+  /**
    * Whether the bottom band's meta column turns into a subscribe card a few seconds after the
    * finish, for the post-roll. Subscribers are the binding Partner Programme gate (500; the
    * hours gate levels off under 4,000 at any cadence this channel can run), and the post-roll
@@ -277,6 +284,7 @@ export const DEFAULTS: Config = {
   nightlyRenderHourUtc: 3,
   nightlyRenderShort: true,
   publishHourUtc: 19,
+  seriesPublishHourUtc: 23,
   postRollCta: true,
   nightlyRenderExport: true,
   nightlyMaxRenders: 1,

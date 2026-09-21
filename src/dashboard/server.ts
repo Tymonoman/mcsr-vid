@@ -40,7 +40,7 @@ import { STAGE_LABELS, STAGE_ORDER, STAGE_SHORT_LABELS } from "../pipeline/pipel
 import { presentSuggestions } from "./suggestPresent.js";
 import { dismiss, restore, snapshot, startScan } from "./suggestScan.js";
 import { cronLine, rsyncPullAllCommand, rsyncPullCommand } from "./publishSet.js";
-import { claimedPublishTimes, nextPublishSlot } from "../youtube/publishSlot.js";
+import { claimedPublishTimes, nextPublishSlot, publishHourFor } from "../youtube/publishSlot.js";
 import {
   playoffBoard,
   playoffContextFor,
@@ -834,10 +834,10 @@ const server = createServer(async (req, res) => {
         // and the first free one, not the same time every match ready this morning would show.
         publishAt: nextPublishSlot(
           Date.now(),
-          config.publishHourUtc,
+          publishHourFor(matchDir(matchId)),
           await claimedPublishTimes(matchId),
         ).toISOString(),
-        publishHourUtc: config.publishHourUtc,
+        publishHourUtc: publishHourFor(matchDir(matchId)),
         // Commands for the operator's own shell, not this one: the publishing PC pulls.
         pull: config.pullSource
           ? {

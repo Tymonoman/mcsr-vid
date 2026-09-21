@@ -29,8 +29,16 @@ assert.equal(
   slot("10"),
   "and so is tomorrow — walk day by day, do not stack",
 );
-// Out of order, and a claim in a slot of its own hour: the day is what collides, not the minute.
-assert.equal(iso(nextPublishSlot(morning, 19, [slot("10"), "2026-09-08T21:14:00Z", slot("09")])), slot("11"));
+// Out of order, and a claim in another hour: the slot is the day *and* the hour, so a video
+// scheduled for 21:14 on the 8th leaves 19:00 on the 8th free — a series has its own hour
+// (`seriesPublishHourUtc`) precisely so it and the ranked match of the day do not push each other
+// a day out.
+assert.equal(iso(nextPublishSlot(morning, 19, [slot("10"), "2026-09-08T21:14:00Z", slot("09")])), slot("08"));
+assert.equal(
+  iso(nextPublishSlot(morning, 23, [slot("08"), slot("09"), "2026-09-08T23:00:00Z"])),
+  "2026-09-09T23:00:00.000Z",
+  "the series hour walks its own days",
+);
 // A day nothing claims is free even when later ones are taken — the queue does not push forward
 // past the first gap.
 assert.equal(iso(nextPublishSlot(morning, 19, [slot("09"), slot("10")])), slot("08"));

@@ -103,6 +103,13 @@ export const SETTINGS: readonly SettingField[] = [
     group: "Publishing",
   },
   {
+    key: "seriesPublishHourUtc",
+    label: "Series publish hour (UTC)",
+    help: "The slot a playoff series video takes, its own so it and the day's ranked match do not compete. 23:00 UTC is 19:00 on the US east coast.",
+    kind: "hour",
+    group: "Publishing",
+  },
+  {
     key: "youtubeAutoFinish",
     label: "Finish a Studio upload automatically",
     help: "When the channel scan pairs a new Studio upload, give it its thumbnail, playlists, first comment and tags without waiting to be asked. Not gated by the audit — none of those is videos.insert.",

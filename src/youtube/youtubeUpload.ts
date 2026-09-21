@@ -14,7 +14,7 @@ import { config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { listProcessedMatchIds, matchStatusFor } from "../dashboard/matchStatus.js";
 import { playoffContextForId } from "../playoffs/playoffs.js";
-import { nextPublishSlot } from "./publishSlot.js";
+import { claimedPublishTimes, nextPublishSlot, publishHourFor } from "./publishSlot.js";
 import { exportStale, staleExportMessage } from "../pipeline/syncFile.js";
 import { readManifest } from "../thumbnails/thumbnailVariants.js";
 import { HOOK_PLACEHOLDER } from "../pipeline/title.js";
@@ -36,6 +36,7 @@ import {
 import {
   findExportedVideo,
   PINNED_COMMENT,
+  allUploads,
   readUpload,
   uploadTextFor,
   writeUpload,
@@ -255,6 +256,24 @@ export const playlistTitlesFor = (
 };
 
 /**
+ * The channel's video of another match between the same two players, or null: the matchup
+ * playlist exists from the second meeting on. Reads the upload records on disk — the pairing
+ * this dashboard made — and each match's status for the names.
+ */
+async function earlierVideoOfPair(
+  matchId: number,
+  status: { leftNickname: string; rightNickname: string },
+): Promise<string | null> {
+  const pair = new Set([status.leftNickname, status.rightNickname]);
+  for (const { matchId: other, record } of await allUploads()) {
+    if (other === matchId) continue;
+    const s = await matchStatusFor(other);
+    if (pair.has(s.leftNickname) && pair.has(s.rightNickname)) return record.videoId;
+  }
+  return null;
+}
+
+/**
  * What a video needs after it exists on the channel: the chosen thumbnail, its playlists, the
  * first comment and its tags. The same four steps for a dashboard upload and a Studio one, each reported
  * rather than thrown — the video is up, and a rejected thumbnail must not read as a failed
@@ -301,11 +320,18 @@ export async function finishOnYouTube(
     // A playoff game joins the tournament's playlist instead of the matchup's. Read here rather
     // than in `playlistTitlesFor` so that stays a pure function of what it is handed.
     const playoff = kind === "video" ? await playoffContextForId(matchId) : null;
+    // A matchup playlist waits for the pair's second video: 22 of the channel's 28 playlists held
+    // one video (the 22 Sept 2026 audit), each a `playlists.insert` against the day's cap of a
+    // dozen. The earlier video is added alongside when the second arrives.
+    const earlier = kind === "video" && !playoff ? await earlierVideoOfPair(matchId, status) : null;
     const playlistErrors: string[] = [];
     for (const [title, description] of playlistTitlesFor(status, kind, playoff)) {
+      const isMatchup = !playoff && title === matchupPlaylistTitle(status.leftNickname, status.rightNickname);
+      if (isMatchup && earlier === null) continue;
       const error = await attempt(() => addToPlaylist(videoId, title, description));
       if (error)
         playlistErrors.push(`"${title}": ${error.includes("RATE_LIMIT_EXCEEDED") ? PLAYLIST_CAP : error}`);
+      else if (isMatchup && earlier) await attempt(() => addToPlaylist(earlier, title, description));
     }
     finished.playlists = playlistErrors.length ? playlistErrors.join("; ") : null;
   }
@@ -479,7 +505,9 @@ export async function nightlyUploads(
 ): Promise<string> {
   if (!config.youtubeUploadEnabled || config.nightlyUpload === "off") return "";
   const slot =
-    config.nightlyUpload === "scheduled" ? nextPublishSlot(Date.now(), config.publishHourUtc) : null;
+    config.nightlyUpload === "scheduled"
+      ? nextPublishSlot(Date.now(), publishHourFor(matchDir(matchId)), await claimedPublishTimes(matchId))
+      : null;
   const one = async (kind: UploadKind, publishAt: Date | null): Promise<string> =>
     ` + ${await uploadLine(matchId, { kind, privacyStatus: "private", publishAt: publishAt?.toISOString() }, begin)}`;
   const video = await one("video", slot);
