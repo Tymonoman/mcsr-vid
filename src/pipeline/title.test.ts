@@ -5,27 +5,28 @@ import { buildTitle, formatTitle, HOOK_PLACEHOLDER, withHook } from "./title.js"
 // API spells them — that is the whole point of generating this half.
 assert.equal(
   buildTitle({ leftNickname: "Feinberg", rightNickname: "Infume" }).generated,
-  "Feinberg vs Infume | MCSR Ranked 1v1",
+  "Feinberg vs Infume | MCSR Ranked 1v1 | Minecraft Speedrun",
 );
 assert.equal(
   buildTitle({ leftNickname: "ANJOUU", rightNickname: "silverrruns" }).generated,
-  "ANJOUU vs silverrruns | MCSR Ranked 1v1",
+  "ANJOUU vs silverrruns | MCSR Ranked 1v1 | Minecraft Speedrun",
 );
 
 // Nicknames are passed through verbatim: casing, underscores and repeated letters all survive.
 assert.equal(
   buildTitle({ leftNickname: "lowk3y_", rightNickname: "Aquacorde" }).generated,
-  "lowk3y_ vs Aquacorde | MCSR Ranked 1v1",
+  "lowk3y_ vs Aquacorde | MCSR Ranked 1v1 | Minecraft Speedrun",
 );
 
 const edcr = buildTitle({ leftNickname: "edcr", rightNickname: "doogile" });
-assert.equal(edcr.title, "<HOOK> | edcr vs doogile | MCSR Ranked 1v1");
+assert.equal(edcr.title, "<HOOK> | edcr vs doogile | MCSR Ranked 1v1 | Minecraft Speedrun");
 assert.equal(edcr.title.startsWith(HOOK_PLACEHOLDER), true);
 
-// Hook budget for that match: 34 gets the title to 70 characters, 47 is the most that still
-// leaves both nicknames inside YouTube's ~50-character mobile cutoff.
-assert.equal(edcr.hookMin, 34);
-assert.equal(edcr.hookMax, 47);
+// Hook budget for that match: 13 gets the title to 70 characters (the tail carries most of it
+// since "Minecraft Speedrun" joined it), 32 is the most that still ends both nicknames inside
+// YouTube's ~50-character mobile cutoff — "edcr vs doogile" is 15, the separator 3.
+assert.equal(edcr.hookMin, 13);
+assert.equal(edcr.hookMax, 32);
 // The hook actually shipped ("YN vs TAS", 9 chars) was well under — the tool would have said so.
 assert.ok("YN vs TAS".length < edcr.hookMin);
 
@@ -33,7 +34,10 @@ assert.ok("YN vs TAS".length < edcr.hookMin);
 for (const len of [edcr.hookMin, edcr.hookMax]) {
   const finished = edcr.title.replace(HOOK_PLACEHOLDER, "x".repeat(len));
   assert.ok(finished.length <= 100, `hook of ${len} overruns the 100-char hard limit`);
-  assert.ok(finished.indexOf("edcr") <= 50, `hook of ${len} pushes the names past the mobile cut`);
+  assert.ok(
+    finished.indexOf("doogile") + "doogile".length <= 50,
+    `hook of ${len} pushes the names past the mobile cut`,
+  );
 }
 assert.ok(edcr.title.replace(HOOK_PLACEHOLDER, "x".repeat(edcr.hookMin)).length >= 70);
 
@@ -51,16 +55,19 @@ for (const [l, r] of [
 // The file leads with the title on its own line, so line 1 is what gets pasted.
 const file = formatTitle(edcr);
 assert.equal(file.split("\n")[0], edcr.title);
-assert.ok(file.includes("34-47 characters"));
+assert.ok(file.includes("13-32 characters"));
 
 // --- The pipeline's own hook, dropped into the same line ---------------------------------------
 // The whole point: the title file arrives finished, so the operator edits a line instead of
 // retyping the decision the thumbnail and the Short already committed to.
 assert.equal(
   withHook(edcr, "Can the 1789 take down the 2080?").title,
-  "Can the 1789 take down the 2080? | edcr vs doogile | MCSR Ranked 1v1",
+  "Can the 1789 take down the 2080? | edcr vs doogile | MCSR Ranked 1v1 | Minecraft Speedrun",
 );
-assert.equal(withHook(edcr, "  padded  ").title, "padded | edcr vs doogile | MCSR Ranked 1v1");
+assert.equal(
+  withHook(edcr, "  padded  ").title,
+  "padded | edcr vs doogile | MCSR Ranked 1v1 | Minecraft Speedrun",
+);
 // No hook is the placeholder, not an empty slot: the upload route refuses on the placeholder,
 // which is exactly the refusal a hookless title deserves.
 for (const none of [undefined, null, "", "   "]) {
@@ -74,8 +81,8 @@ assert.equal(withHook(edcr, "x".repeat(edcr.hookMax + 1)).title, edcr.title, "on
 // The guidance still names the real budget once the hook is in place — the operator is editing,
 // not filling a blank, and the character band is the same either way.
 const filled = formatTitle(withHook(edcr, "YN vs TAS"));
-assert.equal(filled.split("\n")[0], "YN vs TAS | edcr vs doogile | MCSR Ranked 1v1");
-assert.ok(filled.includes("34-47 characters"), "the budget line survives a filled hook");
+assert.equal(filled.split("\n")[0], "YN vs TAS | edcr vs doogile | MCSR Ranked 1v1 | Minecraft Speedrun");
+assert.ok(filled.includes("13-32 characters"), "the budget line survives a filled hook");
 assert.ok(!filled.includes(HOOK_PLACEHOLDER), "nothing tells you to replace a placeholder that is gone");
 
 console.log("title: all checks passed");

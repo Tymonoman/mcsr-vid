@@ -74,7 +74,7 @@ try {
   assert.ok(playoffTitles.includes("MCSR Ranked Season 11 Playoffs · Replayoffs"));
   assert.equal(
     playoffLists.find(([t]) => t.includes("Playoffs"))?.[1],
-    "MCSR Ranked Season 11 Playoffs, game by game in bracket order.",
+    "MCSR Ranked Season 11 Playoffs — every series as one video, both streams side by side, in bracket order.",
   );
   assert.ok(!playoffTitles.includes("doogile vs Feinberg · MCSR Ranked"), "not both");
   assert.equal(playoffTitles.length, 4);

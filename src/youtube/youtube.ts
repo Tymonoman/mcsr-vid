@@ -446,7 +446,7 @@ export function playoffPlaylistTitle(season: number): string {
 }
 
 export function playoffPlaylistDescription(season: number): string {
-  return `MCSR Ranked Season ${season} Playoffs, game by game in bracket order.`;
+  return `MCSR Ranked Season ${season} Playoffs — every series as one video, both streams side by side, in bracket order.`;
 }
 
 export function playerPlaylistDescription(nickname: string): string {

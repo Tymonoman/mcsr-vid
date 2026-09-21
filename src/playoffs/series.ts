@@ -27,6 +27,7 @@ import { getMatch, getUser, matchPageUrl, playoffsBracketUrl } from "../api/mcsr
 import { readSplitStills } from "../pipeline/overlayRender.js";
 import { exportStale, readSyncOffsets } from "../pipeline/syncFile.js";
 import {
+  playoffPhrase,
   playoffSeriesTail,
   seriesOf,
   type PlayoffBoardSlot,
@@ -413,8 +414,16 @@ async function writeSeriesText(
 
   const [userLeft, userRight] = await Promise.all([getUser(left.uuid), getUser(right.uuid)]);
   const tags = buildTags(first, userLeft, userRight);
-  // The tournament's own terms after the names, before the format ones YouTube weights lower.
-  tags.splice(2, 0, "mcsr ranked playoffs", "playoffs");
+  // The tournament's own terms after the names, before the format ones YouTube weights lower:
+  // the season as the broadcast says it, the round, and the generic pair.
+  tags.splice(
+    2,
+    0,
+    `mcsr ranked season ${record.season} playoffs`,
+    record.round.toLowerCase(),
+    "mcsr ranked playoffs",
+    "playoffs",
+  );
   await writeFile(path.join(outDir, `match-${firstGameId}.tags.txt`), `${tags.join("\n")}\n`, "utf8");
 
   const title = buildTitle({
@@ -489,7 +498,7 @@ export async function adoptSeriesShort(firstGameId: number, fromMatchId: number)
       r?.nickname ?? "",
       config.youtubePlaylistUrl,
       config.supportUrl,
-      record ? playoffSeriesTail(record.season, record.round) : undefined,
+      record ? playoffPhrase(record.season, record.round) : undefined,
       first.season,
       "series",
     ),

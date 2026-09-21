@@ -12,7 +12,7 @@ import { readManifest } from "../thumbnails/thumbnailVariants.js";
 import { renderShort } from "./shortRender.js";
 import { readSyncOffsets } from "../pipeline/syncFile.js";
 import { eloAtMatchStart } from "../pipeline/overlayProps.js";
-import { playoffContextFor, playoffTitleTail } from "../playoffs/playoffs.js";
+import { playoffContextFor, playoffPhrase } from "../playoffs/playoffs.js";
 import { buildShortDescription, buildShortTitle, resolveShortHookFor } from "./shortHook.js";
 import { readChatTimes } from "../api/twitchChat.js";
 import { estimatedRunSec } from "../pipeline/vodAcquisition.js";
@@ -246,7 +246,7 @@ await writeFile(
     playerRight.nickname,
     config.youtubePlaylistUrl,
     config.supportUrl,
-    playoff ? playoffTitleTail(playoff) : undefined,
+    playoff ? playoffPhrase(playoff.season, playoff.round, playoff.gameNo) : undefined,
     match.season,
   ),
   "utf8",

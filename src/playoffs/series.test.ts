@@ -115,7 +115,7 @@ const desc = buildSeriesDescription({
 });
 assert.match(
   desc,
-  /^edcr vs lauveer, mcsr ranked s11 playoffs, round of 16, best of 5\. every game of the series/,
+  /^edcr vs lauveer, mcsr ranked season 11 playoffs, round of 16, best of 5\. every game of the series/,
 );
 assert.ok(desc.includes("edcr came in as the #1 seed at 2688 elo, lauveer from the lcq at 2137."));
 assert.ok(
@@ -215,7 +215,7 @@ const title = readFileSync(path.join(dir(101), "match-101.title.txt"), "utf8").s
 // lauveer left, edcr right: a private room's seats are ordered by uuid (src/api/mcsrApi.ts).
 assert.equal(
   title,
-  "<HOOK> | lauveer vs edcr | MCSR Ranked S11 Playoffs · Round of 16",
+  "<HOOK> | lauveer vs edcr | MCSR Ranked Season 11 Playoffs | Round of 16",
   "no game number on a series",
 );
 const description = readFileSync(path.join(dir(101), "match-101.description.txt"), "utf8");
@@ -232,7 +232,14 @@ assert.equal(
   "0:00 game 1\n10:00 game 2\n18:20 game 3",
 );
 const tags = readFileSync(path.join(dir(101), "match-101.tags.txt"), "utf8").split("\n");
-assert.deepEqual(tags.slice(0, 4), ["lauveer", "edcr", "mcsr ranked playoffs", "playoffs"]);
+assert.deepEqual(tags.slice(0, 6), [
+  "lauveer",
+  "edcr",
+  "mcsr ranked season 11 playoffs",
+  "round of 16",
+  "mcsr ranked playoffs",
+  "playoffs",
+]);
 const shelf = JSON.parse(readFileSync(path.join(config.mediaDir, ".dashboard.json"), "utf8"));
 assert.deepEqual(shelf.hidden, [102, 103], "games 2 and 3 are inside game 1's video");
 

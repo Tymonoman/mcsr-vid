@@ -77,18 +77,11 @@ assert.ok(!opening.includes("Result:") && !opening.includes("8:52"), "the openin
 // made. A viewer called the old copy out for reading like a machine wrote it.
 assert.equal(
   opening,
-  "edcr vs doogile, mcsr ranked 1v1 on the same seed. both streams side by side with the split timer in the middle. edcr came in at 2546 elo, doogile at 2440.",
+  "edcr vs doogile, mcsr ranked 1v1 on the same seed. a minecraft speedrun race, both streams side by side with the split timer in the middle. edcr came in at 2546 elo, doogile at 2440.",
 );
-for (const slop of [
-  "synced",
-  "dual-POV",
-  "pipeline",
-  "automation",
-  "maintained",
-  "Subscribe",
-  "Full ",
-  " — ",
-]) {
+// "synced" left this list on 22 Sept 2026: the closer says what the channel's own work is
+// ("synced to the frame off the countdown"), in the words of the operator's own pinned comment.
+for (const slop of ["dual-POV", "pipeline", "automation", "maintained", "Subscribe", "Full ", " — "]) {
   assert.ok(!text.includes(slop), `"${slop}" must be gone from the description`);
 }
 
@@ -128,7 +121,7 @@ assert.deepEqual(
 // The closer: who this is, and where to report a sync slip. Then the hashtags, and nothing else.
 assert.equal(
   text.split("\n\n").slice(-2).join("\n\n"),
-  "fan channel, mcsr ranked has no idea i exist. if the sync looks off anywhere say where in the comments and ill fix it.\n\n#MCSRRanked #MCSR #MinecraftSpeedrunning",
+  "fan channel, mcsr ranked has no idea i exist. both streams are synced to the frame off the countdown, the splits and elo come straight from the ranked api. if the sync looks off anywhere say where in the comments and ill fix it.\n\n#MCSRRanked #MCSR #MinecraftSpeedrunning",
 );
 
 // VOD links sit below the chapters, so the preview is prose rather than URLs.
@@ -175,7 +168,7 @@ assert.match(draw.split("\n")[0], /^edcr vs doogile, mcsr ranked 1v1/);
   const [poOpening, poParagraph] = po.split("\n\n");
   assert.equal(
     poOpening,
-    "edcr vs doogile, mcsr ranked s11 playoffs, Round of 16 · Game 2 of 5. both streams side by side with the split timer in the middle. edcr came in at 2546 elo, doogile at 2440.",
+    "edcr vs doogile, mcsr ranked season 11 playoffs, round of 16, game 2. a minecraft speedrun race, both streams side by side with the split timer in the middle. edcr came in at 2546 elo, doogile at 2440.",
   );
   assert.match(poParagraph!, /^Season 11 Playoffs, Round of 16 · Game 2 of 5: edcr \(#1 seed, 2546 elo\)/);
   assert.ok(!/\b[0-9][–-][0-9]\b/.test(po), "no series score anywhere");

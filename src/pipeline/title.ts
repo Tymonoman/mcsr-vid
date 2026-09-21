@@ -1,8 +1,12 @@
 import path from "node:path";
 import { matchDir } from "../config.js";
 
-/** The format half every upload shares, matching the titles already on the channel. */
-const FORMAT_SUFFIX = "MCSR Ranked 1v1";
+/**
+ * The format half every upload shares. "Minecraft Speedrun" was added on 22 Sept 2026 after the
+ * channel audit found the category keyword in none of fourteen titles; the competitor's every
+ * title ends the same way. The fourteen live titles keep the old tail until the operator retitles.
+ */
+const FORMAT_SUFFIX = "MCSR Ranked 1v1 | Minecraft Speedrun";
 export const SEPARATOR = " | ";
 /** Stands in for the editorial hook, which is the one part worth writing by hand. */
 export const HOOK_PLACEHOLDER = "<HOOK>";
@@ -42,9 +46,13 @@ export interface BuiltTitle {
  */
 export function buildTitle({ leftNickname, rightNickname, suffix = FORMAT_SUFFIX }: TitleInput): BuiltTitle {
   const generated = `${leftNickname} vs ${rightNickname}${SEPARATOR}${suffix}`;
+  // The names have to end before the mobile cut, not merely start before it: the budget is
+  // what is left of the cutoff after the hook's separator and both names. (Until 22 Sept 2026
+  // it capped the hook alone at 47, and three titles pushed the second name past 50.)
+  const names = `${leftNickname} vs ${rightNickname}`;
   const hookMax = Math.max(
     0,
-    Math.min(MOBILE_CUTOFF - SEPARATOR.length, HARD_MAX - SEPARATOR.length - generated.length),
+    Math.min(MOBILE_CUTOFF - SEPARATOR.length - names.length, HARD_MAX - SEPARATOR.length - generated.length),
   );
   // With short nicknames there is no hook that satisfies both limits; keeping the names findable
   // on mobile beats padding to 70 characters, so the mobile cutoff wins.

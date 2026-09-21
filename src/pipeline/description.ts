@@ -2,7 +2,7 @@ import type { VodWindow } from "./vodAcquisition.js";
 import { matchPageUrl } from "../api/mcsrApi.js";
 import { type ChapterMarker, formatChapters } from "./chapters.js";
 import { eloAtMatchStart } from "./overlayProps.js";
-import { playoffLabel, playoffParagraph, type PlayoffContext } from "../playoffs/playoffs.js";
+import { playoffParagraph, playoffPhrase, type PlayoffContext } from "../playoffs/playoffs.js";
 import type { MatchInfo, UserDetails } from "../api/types.js";
 
 // Three: over 15 YouTube voids all of them, and only the first three render above the title, so
@@ -72,9 +72,11 @@ function buildOpening(input: DescriptionInput): string {
   // Lowercase throughout, like the operator's own comments under the videos (18 Sept 2026:
   // "make it read like the comments I write myself"). Nicknames keep their own casing.
   const format = input.playoff
-    ? `mcsr ranked s${input.playoff.season} playoffs, ${playoffLabel(input.playoff)}`
+    ? playoffPhrase(input.playoff.season, input.playoff.round, input.playoff.gameNo)
     : "mcsr ranked 1v1 on the same seed";
-  const head = `${left} vs ${right}, ${format}. both streams side by side with the split timer in the middle. ${left} came in at ${leftElo} elo, ${right} at ${rightElo}.`;
+  // "a minecraft speedrun race" is the category keyword inside the first 25 words: the 22 Sept
+  // 2026 audit found it in none of fourteen descriptions.
+  const head = `${left} vs ${right}, ${format}. a minecraft speedrun race, both streams side by side with the split timer in the middle. ${left} came in at ${leftElo} elo, ${right} at ${rightElo}.`;
 
   // Runners search by seed type — the closest competitor puts it in every title. It goes last
   // so the nicknames and the format keep the front of the Show-more preview.
@@ -111,11 +113,20 @@ export function buildDescription(input: DescriptionInput): string {
     // The one line that can earn before the Partner Programme does.
     ...(input.supportUrl ? [`tip jar: ${input.supportUrl}`] : []),
     "",
-    "fan channel, mcsr ranked has no idea i exist. if the sync looks off anywhere say where in the comments and ill fix it.",
+    CLOSER,
     "",
     HASHTAGS.join(" "),
   ].join("\n");
 }
+
+/**
+ * The last line before the hashtags, on every video and every series. What the video is and
+ * what is the channel's own work — the sync and the data layer — said plainly, so a reviewer
+ * (or a viewer) does not read the channel as a compilation of other people's streams; the
+ * monetisation audit of 22 Sept 2026 asked for the transformation to be legible.
+ */
+export const CLOSER =
+  "fan channel, mcsr ranked has no idea i exist. both streams are synced to the frame off the countdown, the splits and elo come straight from the ranked api. if the sync looks off anywhere say where in the comments and ill fix it.";
 
 /** One game of a series, as its lines in the series description. */
 export interface SeriesDescriptionGame {
@@ -155,9 +166,9 @@ const seedClause = (label: string): string =>
  */
 export function buildSeriesDescription(input: SeriesDescriptionInput): string {
   const { left, right } = input;
-  const format = `mcsr ranked s${input.season} playoffs, ${input.round.toLowerCase()}, best of ${input.bestOf}`;
+  const format = `${playoffPhrase(input.season, input.round)}, best of ${input.bestOf}`;
   return [
-    `${left.nickname} vs ${right.nickname}, ${format}. every game of the series, both streams side by side with the split timer in the middle. ${left.nickname} came in ${seedClause(left.label)} at ${left.seasonEloRate} elo, ${right.nickname} ${seedClause(right.label)} at ${right.seasonEloRate}.`,
+    `${left.nickname} vs ${right.nickname}, ${format}. every game of the series, a minecraft speedrun race with both streams side by side and the split timer in the middle. ${left.nickname} came in ${seedClause(left.label)} at ${left.seasonEloRate} elo, ${right.nickname} ${seedClause(right.label)} at ${right.seasonEloRate}.`,
     "",
     formatChapters(input.games.map((g) => ({ label: `game ${g.gameNo}`, timeSec: g.startSec }))),
     "",
@@ -171,7 +182,7 @@ export function buildSeriesDescription(input: SeriesDescriptionInput): string {
     ...(input.playlistUrl ? [`all the matches: ${input.playlistUrl}`] : []),
     ...(input.supportUrl ? [`tip jar: ${input.supportUrl}`] : []),
     "",
-    "fan channel, mcsr ranked has no idea i exist. if the sync looks off anywhere say where in the comments and ill fix it.",
+    CLOSER,
     "",
     HASHTAGS.join(" "),
   ].join("\n");

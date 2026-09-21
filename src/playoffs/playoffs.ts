@@ -94,11 +94,19 @@ export const playoffLabel = (ctx: PlayoffContext): string =>
 
 /** The title's format half, replacing "MCSR Ranked 1v1" (src/pipeline/title.ts). */
 export const playoffTitleTail = (ctx: PlayoffContext): string =>
-  `MCSR Ranked S${ctx.season} Playoffs · ${ctx.round} · Game ${ctx.gameNo}`;
+  `MCSR Ranked Season ${ctx.season} Playoffs | ${ctx.round} | Game ${ctx.gameNo}`;
 
 /** The series video's format half: the round without a game number (src/playoffs/series.ts). */
 export const playoffSeriesTail = (season: number, round: string): string =>
-  `MCSR Ranked S${season} Playoffs · ${round}`;
+  `MCSR Ranked Season ${season} Playoffs | ${round}`;
+
+/**
+ * The format phrase a description sentence wants — "mcsr ranked season 11 playoffs, grand finals,
+ * game 1" — where the title tail's pipes would read as noise (the audit's search terms and every
+ * rival title say "Season 11", none say "S11").
+ */
+export const playoffPhrase = (season: number, round: string, gameNo?: number): string =>
+  `mcsr ranked season ${season} playoffs, ${round.toLowerCase()}${gameNo === undefined ? "" : `, game ${gameNo}`}`;
 
 /** The intro card's context line; CSS uppercases it. */
 export const playoffIntroLabel = (ctx: PlayoffContext): string =>

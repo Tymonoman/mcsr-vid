@@ -193,7 +193,7 @@ const ctx = {
 assert.equal(playoffLabel({ ...ctx, seeds: [...ctx.seeds] }), "Round of 16 · Game 2 of 5");
 assert.equal(
   playoffTitleTail({ ...ctx, seeds: [...ctx.seeds] }),
-  "MCSR Ranked S11 Playoffs · Round of 16 · Game 2",
+  "MCSR Ranked Season 11 Playoffs | Round of 16 | Game 2",
 );
 const para = playoffParagraph({ ...ctx, seeds: [...ctx.seeds] });
 assert.ok(para.includes("edcr (#1 seed, 2688 elo) vs lauveer (LCQ, 2137 elo)"));
