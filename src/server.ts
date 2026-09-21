@@ -37,7 +37,13 @@ import { presentSuggestions } from "./suggestPresent.js";
 import { dismiss, restore, snapshot, startScan } from "./suggestScan.js";
 import { cronLine, rsyncPullAllCommand, rsyncPullCommand } from "./publishSet.js";
 import { claimedPublishTimes, nextPublishSlot } from "./publishSlot.js";
-import { playoffBoard, playoffContextForId, playoffSeriesTail, playoffTitleTail } from "./playoffs.js";
+import {
+  playoffBoard,
+  playoffContextFor,
+  playoffContextForId,
+  playoffSeriesTail,
+  playoffTitleTail,
+} from "./playoffs.js";
 import { readSeriesRecord, renderSeries, seriesState, type SeriesRunners } from "./series.js";
 import { refreshRivalPostsIfStale, rivalPostsSnapshot, rivalRecentPostFor } from "./rivalPosts.js";
 import { chooseVariant, readManifest, rerenderThumbnailVariants } from "./thumbnailVariants.js";
@@ -255,6 +261,7 @@ async function readHookSuggestions(matchId: number, budget: BuiltTitle): Promise
       match,
       userLeft,
       userRight,
+      playoff: await playoffContextFor(match),
       maxChars: budget.hookMax,
       minChars: budget.hookMin,
       versus,

@@ -361,6 +361,7 @@ async function runStages(
         match,
         userLeft,
         userRight,
+        playoff,
         maxChars: title.hookMax,
         minChars: title.hookMin,
         versus,

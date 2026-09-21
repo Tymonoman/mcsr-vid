@@ -3,6 +3,7 @@ import { matchPageUrl } from "./mcsrApi.js";
 import { readFile } from "node:fs/promises";
 import { HASHTAGS } from "./description.js";
 import { hookSuggestions } from "./hooks.js";
+import { playoffContextFor } from "./playoffs.js";
 import { computeMetrics } from "./matchScore.js";
 import type { ShortMoment } from "./shortMoment.js";
 import { readManifest } from "./thumbnailVariants.js";
@@ -115,6 +116,7 @@ export async function resolveShortHookFor(input: {
         match,
         userLeft,
         userRight,
+        playoff: await playoffContextFor(match),
         maxChars: budget.hookMax,
         minChars: budget.hookMin,
       })),

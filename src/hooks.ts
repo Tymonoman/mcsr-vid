@@ -19,6 +19,7 @@ import { formatShortTime } from "../remotion/format.js";
 import { describeError } from "./errorText.js";
 import type { MatchMetrics } from "./matchScore.js";
 import { eloAtMatchStart } from "./overlayProps.js";
+import type { PlayoffContext } from "./playoffs.js";
 import type { MatchInfo, UserDetails, VersusStats } from "./types.js";
 
 /**
@@ -38,6 +39,8 @@ export interface HookInput {
   match: MatchInfo;
   userLeft: UserDetails;
   userRight: UserDetails;
+  /** A playoff game's context: the seeds frame the matchup where the ladder rank would. */
+  playoff?: PlayoffContext | null;
   /** buildTitle().hookMax — the longest hook that keeps both nicknames above the mobile cutoff. */
   maxChars: number;
   /** buildTitle().hookMin — shorter than this and the title falls under the 70-char band. */
@@ -100,6 +103,24 @@ function candidates(input: HookInput): Candidate[] {
     }
   }
 
+  // A playoff game: the bracket's own order is the story, and it is what a viewer of the
+  // official broadcast already has in mind. The seeds in words, never "#7" — a hash in a hook
+  // reads as a hashtag on the Short's title (src/shortHook.ts). The question form is the upset
+  // framing, asked whenever the seeds differ; the plain pairing is the ranking chip's playoff
+  // twin and sits where the ladder rank would.
+  if (input.playoff) {
+    const seedOf = (uuid: string) => input.playoff!.seeds.find((s) => s.uuid === uuid);
+    const l = seedOf(userLeft.uuid);
+    const r = seedOf(userRight.uuid);
+    if (l && r) {
+      const word = (label: string): string => (label === "LCQ" ? "the LCQ" : `the ${ordinal(label)} seed`);
+      const [lower, higher] = seedRank(l.label) >= seedRank(r.label) ? [l, r] : [r, l];
+      if (l.label !== r.label)
+        out.push({ text: `Can ${word(lower.label)} take down ${word(higher.label)}?`, weight: 125 });
+      out.push({ text: `${capital(word(l.label))} vs ${word(r.label)}`, weight: 115 });
+    }
+  }
+
   // The favourite and the underdog, never the winner: the ending is the reason to watch, and
   // "The 1789 takes down the 2080" gave it away on the thumbnail. A question, and asked whenever
   // the gap is wide enough to be one — if it only appeared for upsets, it would answer itself.
@@ -117,6 +138,7 @@ function candidates(input: HookInput): Candidate[] {
   const leftRank = userLeft.eloRank;
   const rightRank = userRight.eloRank;
   if (
+    !input.playoff &&
     typeof leftRank === "number" &&
     typeof rightRank === "number" &&
     leftRank <= RECOGNISABLE_RANK &&
@@ -318,3 +340,15 @@ function runCommand(command: string, stdin: string): Promise<string> {
 export async function hookSuggestions(input: HookInput): Promise<string[]> {
   return (await suggestHooksExternally(input)) ?? buildHookSuggestions(input);
 }
+
+/** "#7 seed" -> "7th"; the bracket's labels are src/playoffs.ts `seedLabel`. */
+function ordinal(label: string): string {
+  const n = Number(/\d+/.exec(label)?.[0] ?? 0);
+  const suffix = n % 100 >= 11 && n % 100 <= 13 ? "th" : (["th", "st", "nd", "rd"][n % 10] ?? "th");
+  return `${n}${suffix}`;
+}
+
+/** The seed as a rank for "who is the underdog": an LCQ entrant sits below every seed. */
+const seedRank = (label: string): number => (label === "LCQ" ? 99 : Number(/\d+/.exec(label)?.[0] ?? 99));
+
+const capital = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1);

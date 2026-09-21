@@ -128,6 +128,49 @@ assert.deepEqual(rivalry, [
   "2050 vs 1850",
 ]);
 
+// A playoff game: the seeds frame it, in words (a "#7" in a hook becomes a hashtag on the
+// Short's title), the underdog asking the question, and the ladder rank chip stays out —
+// a bracket has its own order.
+{
+  const playoff = {
+    season: 11,
+    round: "Round of 16",
+    gameNo: 1,
+    bestOf: 5,
+    firstTo: 3,
+    score: [0, 0] as [number, number],
+    seeds: [
+      { uuid: "uuid-r", nickname: "doogile", label: "LCQ", seasonEloRate: 2137 },
+      { uuid: "uuid-l", nickname: "edcr", label: "#1 seed", seasonEloRate: 2688 },
+    ] as [never, never],
+  };
+  const po = buildHookSuggestions(
+    input({}, ELO_GAP, {
+      userLeft: user("edcr", "uuid-l", 4),
+      userRight: user("doogile", "uuid-r", 11),
+      playoff: playoff as unknown as HookInput["playoff"],
+    }),
+    4,
+  );
+  assert.ok(po.includes("Can the LCQ take down the 1st seed?"), po.join(" | "));
+  assert.ok(po.includes("The 1st seed vs the LCQ"), po.join(" | "));
+  assert.ok(!po.some((h) => h.includes("#")), `no hash in a playoff hook: ${po.join(" | ")}`);
+  const seeded = buildHookSuggestions(
+    input({}, ELO_GAP, {
+      playoff: {
+        ...playoff,
+        seeds: [
+          { uuid: "uuid-l", nickname: "edcr", label: "#3 seed", seasonEloRate: 2600 },
+          { uuid: "uuid-r", nickname: "doogile", label: "#12 seed", seasonEloRate: 2300 },
+        ],
+      } as unknown as HookInput["playoff"],
+    }),
+    6,
+  );
+  assert.ok(seeded.includes("Can the 12th seed take down the 3rd seed?"), seeded.join(" | "));
+  assert.ok(seeded.includes("The 3rd seed vs the 12th seed"), seeded.join(" | "));
+}
+
 // A tie is still a rivalry, but nobody "leads" it.
 assert.equal(buildHookSuggestions(input({}, ELO_GAP, { versus: versus(2, 2) }))[0], "Rematch: 2-2 all time");
 

@@ -344,10 +344,18 @@ export async function assembleSeries(
 
 const shortPath = (matchId: number): string => path.join(matchDir(matchId), `short-${matchId}.mp4`);
 
-/** Each player's stream deep-linked to the game's start, from the VODs the download recorded. */
-async function streamLinks(match: MatchInfo): Promise<Array<{ nickname: string; url: string }>> {
+/**
+ * Each player's stream deep-linked to the game's start, from the VODs the download recorded, in
+ * the order given (game 1's seats), so the lines read the same from game to game whatever way
+ * round a room seated them.
+ */
+async function streamLinks(
+  match: MatchInfo,
+  order: readonly string[],
+): Promise<Array<{ nickname: string; url: string }>> {
   const withVods = await withDiscoveredVods(match).catch(() => match);
-  return match.players.flatMap((p) => {
+  const seated = [...match.players].sort((a, b) => order.indexOf(a.uuid) - order.indexOf(b.uuid));
+  return seated.flatMap((p) => {
     const vod = withVods.vod.find((v) => v.uuid === p.uuid);
     if (!vod) return [];
     const at = Math.max(0, Math.round(matchStartIntoVodSec(match, vod)));
@@ -382,7 +390,7 @@ async function writeSeriesText(
       gameNo: g.gameNo,
       startSec: starts[i]!,
       pageUrl: matchPageUrl(g.matchId, left.nickname, m.season),
-      streams: await streamLinks(m),
+      streams: await streamLinks(m, [left.uuid, right.uuid]),
     });
   }
   const description = buildSeriesDescription({
