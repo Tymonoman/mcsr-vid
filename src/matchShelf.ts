@@ -218,7 +218,10 @@ export async function publishChecklist(
   // Falling through to it also keeps the pill honest the other way: the generated file only ever
   // shows the placeholder when the match yielded no chip at all.
   const titlePaths = metaPaths(matchId, "title");
-  const titleFile = [titlePaths.edited, titlePaths.generated].find((file) => existsSync(file));
+  // A 0-byte edit is no edit, as every other reader of the pair treats it.
+  const titleFile = [titlePaths.edited, titlePaths.generated].find(
+    (file) => existsSync(file) && readFileSync(file, "utf8").trim() !== "",
+  );
   // The same test the upload route runs before it will send anything (youtubeRoutes.ts): a title
   // still carrying the placeholder has no hook, whatever else was edited around it.
   const firstLine = titleFile ? readFileSync(titleFile, "utf8").split("\n")[0]!.trim() : "";

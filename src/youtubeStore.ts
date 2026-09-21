@@ -66,8 +66,12 @@ export async function writeUpload(
   await writeFile(recordPath(matchId, kind), JSON.stringify(record, null, 2), "utf8");
 }
 
-const readIfPresent = async (file: string): Promise<string | null> =>
-  existsSync(file) ? readFile(file, "utf8") : null;
+/** The file's text, or null when absent — or empty: a 0-byte `.edited.txt` is no edit. */
+const readIfPresent = async (file: string): Promise<string | null> => {
+  if (!existsSync(file)) return null;
+  const text = await readFile(file, "utf8");
+  return text.trim() === "" ? null : text;
+};
 
 /**
  * The title, description and tags an upload sends, read off the same files the publish kit

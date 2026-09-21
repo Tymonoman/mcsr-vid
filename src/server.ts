@@ -8,7 +8,7 @@
  * Serves on 0.0.0.0 so the homelab's Tailscale interface publishes it too.
  */
 import { createReadStream, existsSync, readFileSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -114,8 +114,11 @@ function json(res: ServerResponse, status: number, body: unknown): void {
   res.end(payload);
 }
 
+/** The file's text, or null when it is absent — or empty: a 0-byte edit is no edit. */
 async function readIfPresent(filePath: string): Promise<string | null> {
-  return existsSync(filePath) ? readFile(filePath, "utf8") : null;
+  if (!existsSync(filePath)) return null;
+  const text = await readFile(filePath, "utf8");
+  return text.trim() === "" ? null : text;
 }
 
 async function readMeta(matchId: number) {
@@ -981,12 +984,15 @@ const server = createServer(async (req, res) => {
 
     if (resource === "meta" && req.method === "PUT") {
       const body = JSON.parse(await readBody(req)) as { title?: string; description?: string };
-      if (typeof body.title === "string") {
-        await writeFile(metaPaths(matchId, "title").edited, body.title, "utf8");
-      }
-      if (typeof body.description === "string") {
-        await writeFile(metaPaths(matchId, "description").edited, body.description, "utf8");
-      }
+      // An empty box saved is "back to the generated text", not an empty title: the edit file
+      // goes, rather than winning as nothing (two 0-byte edits from 19 Sept blanked a kit).
+      const save = async (kind: "title" | "description", text: string) => {
+        const file = metaPaths(matchId, kind).edited;
+        if (text.trim() === "") await rm(file, { force: true });
+        else await writeFile(file, text, "utf8");
+      };
+      if (typeof body.title === "string") await save("title", body.title);
+      if (typeof body.description === "string") await save("description", body.description);
       json(res, 200, await readMeta(matchId));
       return;
     }
