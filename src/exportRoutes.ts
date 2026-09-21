@@ -11,6 +11,7 @@ import { stat } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import { describeError } from "./errorText.js";
+import { assembleSeries } from "./series.js";
 import { sendVideo } from "./rangeStream.js";
 import { matchStatusFor } from "./matchStatus.js";
 import { inPublishSet } from "./publishSet.js";
@@ -96,7 +97,7 @@ export function startFastExport(matchId: number): ExportJob {
     detached: true,
   });
 
-  let settle!: (error: string | null) => void;
+  let settleExport!: (error: string | null) => void;
   const job: ExportJob = {
     matchId,
     lines: [],
@@ -105,8 +106,22 @@ export function startFastExport(matchId: number): ExportJob {
     error: null,
     subscribers: new Set(),
     proc,
-    finished: new Promise((resolve) => (settle = resolve)),
+    finished: new Promise((resolve) => (settleExport = resolve)),
     totalSec: 0,
+  };
+  // A playoff game's export may complete its series (src/series.ts): joined here, the one place
+  // every export settles — the nightly's chain, the Re-encode button, a series run. Anything
+  // but a full series is a no-op; a failed join is a log line and the export stands.
+  const settle = (error: string | null): void => {
+    if (error !== null) return settleExport(error);
+    assembleSeries(matchId, { adoptShort: true })
+      .then((r) => {
+        if (r.kind === "joined") console.error(`series ${r.firstGameId}: joined (${r.games.length} games)`);
+      })
+      .catch((err: unknown) =>
+        console.error(`series: join after export ${matchId} failed — ${describeError(err)}`),
+      )
+      .finally(() => settleExport(null));
   };
   jobs.set(matchId, job);
 

@@ -263,8 +263,9 @@ they differ (`code: { boot, now }` from `src/repoHead.ts`). Client changes need 
   is the best-scoring game's, copied in as `short-<g1>.*` with a description that links the
   series (`shortFromMatchId`); cut another game's by hand and `adoptSeriesShort` makes it the
   series'. The board's slot row shows what is exported / the run in flight / the joined video,
-  and "Render the series" (`POST /api/series/:id/render`) runs the lot in the server; the
-  nightly joins a series by itself when the last game's export lands. `PlayoffContext.score`
+  and "Render the series" (`POST /api/series/:id/render`) runs the lot in the server; every
+  export settles through `startFastExport` (the nightly's chain, Re-encode, a series run), and
+  that is where a series joins itself once its last game's export lands. `PlayoffContext.score`
   (the going-in score) exists for the band's dots only — the description, the title, the board
   and the kit still print the round and the game number and nothing else, pinned in
   `playoffs.test.ts` and `series.test.ts`. Posting order is chronological (a Grand Finals
