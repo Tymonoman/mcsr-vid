@@ -66,7 +66,9 @@ export function exportStale(
     const file = syncFilePath(dir);
     return existsSync(file) ? statSync(file).mtime : null;
   };
-  const games = seriesGames(matchDir);
+  // The series rule applies to the series video only: game 1's own export, asked about by its
+  // own name, is one game like any other.
+  const games = path.basename(videoPath).startsWith("series-") ? seriesGames(matchDir) : [];
   if (games.length === 0) {
     const syncAt = syncAtOf(matchDir);
     const stale = syncAt !== null && syncAt.getTime() > exportAt.getTime();
