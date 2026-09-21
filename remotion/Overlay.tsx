@@ -179,12 +179,22 @@ function SplitsPanel({
       <div className="splits-col col-meta">
         <span className="label">Match Played</span>
         <span className="value">{props.matchPlayedLabel}</span>
-        <span className="seed-chip">
-          <BastionIcon bastionType={props.bastionType} />
-          <span className="seed-label">
-            {formatConstantLabel(props.seedType)} · {formatConstantLabel(props.bastionType)}
+        {/* A private room (every playoff game) carries no seed or bastion type: the round takes
+            the chip's place rather than "Unknown · Unknown". */}
+        {props.seedType === null && props.bastionType === null ? (
+          props.playoffLabel !== undefined && (
+            <span className="seed-chip">
+              <span className="seed-label">{props.playoffLabel.replace(/^Season \d+ Playoffs · /, "")}</span>
+            </span>
+          )
+        ) : (
+          <span className="seed-chip">
+            <BastionIcon bastionType={props.bastionType} />
+            <span className="seed-label">
+              {formatConstantLabel(props.seedType)} · {formatConstantLabel(props.bastionType)}
+            </span>
           </span>
-        </span>
+        )}
         <span className="h2h-label">Head-to-Head (Season)</span>
         <span className="h2h-value">
           <span className="l">
