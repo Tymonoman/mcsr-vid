@@ -9,7 +9,7 @@ import { PixelBadge } from "./PixelBadge.js";
 import { BastionIcon } from "./BastionIcon.js";
 import { STAGE_WIDTH, STAGE_HEIGHT, BOTTOM_BAND_Y, RTA_COL_X } from "./layout.js";
 import { resolveAchievementIcon } from "./achievementBadges.js";
-import { ctaFrameOf } from "../src/splitStates.js";
+import { ctaFrameOf } from "../src/pipeline/splitStates.js";
 
 /** Up to 3 highlighted-achievement badges for one player, shown in the splits panel.
  * Unmapped ids/levels are skipped entirely, per resolveAchievementIcon's contract. */
@@ -339,7 +339,7 @@ export const OverlayTop: FC<OverlayProps> = (props) => (
         the badge (173px) is taller than IdentBar (9% of frame height) and
         overlaps into InfoBar's box. Same fix as the unbanded Overlay export
         above; this is the composition actually used by the real render
-        pipeline (src/overlayRender.ts), so it needs it too. */}
+        pipeline (src/pipeline/overlayRender.ts), so it needs it too. */}
     <PixelBadge />
   </Band>
 );
@@ -360,7 +360,7 @@ export const OverlayBottom: FC<OverlayProps> = (props) => {
 
 /**
  * The bottom band's left region: match meta (static all match) plus the splits table, which
- * only changes on a split's reveal frame. Still, not video — see src/splitStates.ts for the
+ * only changes on a split's reveal frame. Still, not video — see src/pipeline/splitStates.ts for the
  * frames it changes on.
  */
 export const OverlaySplits: FC<OverlayProps> = (props) => {
@@ -375,7 +375,7 @@ export const OverlaySplits: FC<OverlayProps> = (props) => {
 /**
  * The RTA column — the only thing in the whole overlay that genuinely changes every frame, and
  * so the only thing still rendered as video. Opaque, like the rest of the band, so it needs no
- * alpha channel (see src/overlayRender.ts).
+ * alpha channel (see src/pipeline/overlayRender.ts).
  */
 export const OverlayTimer: FC<OverlayProps> = (props) => {
   const { frame, fps, elapsedMs, runEndFrame } = useTimer(props);

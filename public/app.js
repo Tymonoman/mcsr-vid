@@ -182,7 +182,7 @@ function wireDelete(btn, id) {
  * The title's first line carrying the hook that has been typed into the field.
  *
  * Two shapes, because the pipeline now writes its own first suggestion into the title file
- * (src/title.ts): a line still holding the placeholder, and a line that already has a hook in
+ * (src/pipeline/title.ts): a line still holding the placeholder, and a line that already has a hook in
  * front of the generated half. Either way the hook is everything before that half, so replacing
  * it is one rule. A line whose tail has been edited by hand is left exactly as it is.
  */
@@ -236,7 +236,7 @@ async function select(id, { open = false } = {}) {
   const m = matches.find((x) => x.matchId === id);
   const rendered = m && m.stages.render;
   // Only the first line of the title file is a title; the rest is guidance formatTitle writes
-  // for the terminal (src/title.ts). The box shows the line, Save puts the guidance back, so
+  // for the terminal (src/pipeline/title.ts). The box shows the line, Save puts the guidance back, so
   // the file keeps saying how long a hook may be.
   const [titleLine, ...titleRest] = (meta.title ?? "").split("\n");
 
@@ -552,7 +552,7 @@ async function loadVariants(id) {
     const chosen = v.key === data.chosen;
     // The variant the render picked needs a button too, or the operator who looks at all
     // six and likes the default has no way to say so: the checklist pill means "chosen",
-    // not "rendered" (chosenBy in src/matchShelf.ts), and PUT on the key already in use is
+    // not "rendered" (chosenBy in src/dashboard/matchShelf.ts), and PUT on the key already in use is
     // what stamps it. `chosenBy !== "auto"` mirrors the checklist exactly, so a manifest
     // from before the field still reads as chosen and asks for no second click.
     const confirmed = chosen && data.chosenBy !== "auto";
@@ -766,7 +766,7 @@ async function loadPublishKit(id, meta) {
 
   // The YouTube panel's field is the one an operator may have edited by hand, so it wins while
   // it is on the page; otherwise the generated first line with the hook substituted in. Never
-  // the whole file: the lines under it are guidance for the terminal (src/title.ts).
+  // the whole file: the lines under it are guidance for the terminal (src/pipeline/title.ts).
   const titleText = () => {
     const field = $("#ytTitle");
     if (field) return field.value;
@@ -796,7 +796,7 @@ async function loadPublishKit(id, meta) {
 
   // Getting the files onto the PC that publishes, which is step zero of the Studio phase and the
   // only part of this panel that is a command rather than a paste. Pull, not push
-  // (src/publishSet.ts). Absent unless `pullSource` is configured.
+  // (src/dashboard/publishSet.ts). Absent unless `pullSource` is configured.
   // The per-match line is the morning's; the other two are pasted once and then never again,
   // so they fold away rather than push the title down the page every day.
   const pull = kit.pull
@@ -852,7 +852,7 @@ async function loadPublishKit(id, meta) {
       kit.shortDescription ? block("Short description", kit.shortDescription, 4) : "",
       // A first comment to pin: what the video is and where to report a sync slip, in the
       // operator's voice. The server's line wins; the fallback is the same text for a server one
-      // restart behind (src/youtubeStore.ts).
+      // restart behind (src/youtube/youtubeStore.ts).
       block(
         "Pinned comment",
         kit.pinnedComment ??
@@ -917,7 +917,7 @@ function runClock(ms) {
  * The candidate windows, best first, and a button to cut one.
  *
  * Ranked rather than chosen for you: the scorer is a set of informed guesses about what makes a
- * Short watchable (see src/shortMoment.ts) and has no retention data behind it yet, so the top
+ * Short watchable (see src/shorts/shortMoment.ts) and has no retention data behind it yet, so the top
  * pick is a strong default and not a verdict. Each row shows why it won and the line it would
  * carry if nothing better existed, which is the part worth disagreeing with.
  *
@@ -1910,7 +1910,7 @@ async function startRenderWithShort(id) {
    The current bracket's seated slots and the games found for them, above the suggestions while
    a tournament is on. A game's Render is the header form's own start: the plain pipeline by id,
    with the Short and the MP4, as the nightly would run it; a series row's button renders the lot
-   and joins them (src/series.ts). Round and game number only — the series score is for the
+   and joins them (src/playoffs/series.ts). Round and game number only — the series score is for the
    video's own dots, never for a line here. */
 let playoffData = null;
 
@@ -1938,7 +1938,7 @@ function paintPlayoffs() {
   const rounds = [...new Set(slots.map((s) => s.round))].join(", ");
   const firstStart = Math.min(...slots.map((s) => s.startTime ?? Infinity));
   const summary = `${rounds} &middot; ${slots.length} series &middot; first ${esc(when(Number.isFinite(firstStart) ? firstStart : null))}`;
-  // A series is one video (src/series.ts): the row's button renders every game left and joins
+  // A series is one video (src/playoffs/series.ts): the row's button renders every game left and joins
   // them; game 1's directory is the video, so "open" on the series goes there. A game's own
   // line says what it is on disk — a directory holding only the downloads is not rendered.
   const seriesLine = (s) => {

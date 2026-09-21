@@ -7,7 +7,7 @@
  * width is its length times one advance — which means the wrap the panel renders can be computed
  * without a browser, and the line count the panel is capped at is exact rather than a guess.
  */
-import type { ChatMessage } from "../src/twitchChat.js";
+import type { ChatMessage } from "../src/api/twitchChat.js";
 
 /** Monocraft's advance, in em. Measured for the thumbnail; shortHookLayout.ts uses the same. */
 const ADVANCE_EM = 0.662;

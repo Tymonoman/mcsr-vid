@@ -2,7 +2,7 @@
 # binary and will not load on musl/Alpine.
 FROM node:24-bookworm-slim
 
-# ffmpeg brings ffprobe too (src/pipeline.ts probes durations, src/sync.ts
+# ffmpeg brings ffprobe too (src/pipeline/pipeline.ts probes durations, src/pipeline/sync.ts
 # extracts audio). The lib* set is what chrome-headless-shell needs to start —
 # Remotion downloads the shell itself into node_modules/.remotion on first render.
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -77,7 +77,7 @@ RUN printf '%s\n' \
 # measured and is a non-issue: every service a Kdenlive save uses here
 # (audiolevel, avformat-novalidate, color, mix, panner, qimage, qtblend, volume)
 # exists in 7.12.
-# rsync is not optional: src/archive.ts and `npm run archive` both shell out to it to copy a
+# rsync is not optional: src/dashboard/archive.ts and `npm run archive` both shell out to it to copy a
 # published match to the NAS, and it is preferred over cp precisely because the CIFS mount can
 # I/O-error mid-write. Without it, archiving fails with ENOENT after every upload.
 #

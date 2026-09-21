@@ -1,7 +1,7 @@
 /**
  * Geometry shared by the Remotion compositions and the Node-side render/NLE code.
  *
- * Deliberately free of CSS and JSX imports: `src/pipeline.ts` and `src/overlayRender.ts` import
+ * Deliberately free of CSS and JSX imports: `src/pipeline/pipeline.ts` and `src/pipeline/overlayRender.ts` import
  * these under plain Node, where a transitive `import "./overlay.css"` is a hard crash
  * (ERR_UNKNOWN_FILE_EXTENSION) — webpack only resolves that inside the Remotion bundle.
  */

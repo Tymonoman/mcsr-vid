@@ -5,7 +5,7 @@
  * `McsrApiError`, the `cause` chain, and non-Error throws. Nothing here truncates, because the
  * child processes attach stderr tails on purpose; the dashboard renders the result in a <pre>.
  */
-import { McsrApiError } from "./mcsrApi.js";
+import { McsrApiError } from "./api/mcsrApi.js";
 
 /** 429 is the one status worth naming: it means wait, not retry harder. */
 function apiHint(status: number): string {

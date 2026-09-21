@@ -36,7 +36,7 @@ try {
   process.exit(0);
 }
 
-/** Mirrors REQUIRED_SCOPES in src/youtube.ts; this script is plain node with no tsx to import it. */
+/** Mirrors REQUIRED_SCOPES in src/youtube/youtube.ts; this script is plain node with no tsx to import it. */
 const REQUIRED_SCOPES = [
   "https://www.googleapis.com/auth/youtube.upload",
   "https://www.googleapis.com/auth/youtube.force-ssl",

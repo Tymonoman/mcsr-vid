@@ -22,12 +22,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { config } from "./config.js";
-import { ANCHOR_SEC } from "./kdenliveProject.js";
-import { frameMotion } from "./countdownDetect.js";
-import { overlayPaths, readSplitStills, type SplitStill } from "./overlayRender.js";
-import { runFastExport, vaapiAvailable } from "./exportFast.js";
-import { listProcessedMatchIds } from "./matchStatus.js";
-import { getMatch } from "./mcsrApi.js";
+import { ANCHOR_SEC } from "./pipeline/kdenliveProject.js";
+import { frameMotion } from "./pipeline/countdownDetect.js";
+import { overlayPaths, readSplitStills, type SplitStill } from "./pipeline/overlayRender.js";
+import { runFastExport, vaapiAvailable } from "./pipeline/exportFast.js";
+import { listProcessedMatchIds } from "./dashboard/matchStatus.js";
+import { getMatch } from "./api/mcsrApi.js";
 import { POV_WIDTH, STAGE_HEIGHT, STAGE_WIDTH, TOP_BAND_HEIGHT } from "../remotion/layout.js";
 
 const FPS = 60;

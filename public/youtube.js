@@ -185,7 +185,7 @@ async function pollUpload(id, meta) {
   // The video is up when there is an id; a rejected thumbnail or playlist after that is a
   // problem to fix in Studio, not a failed upload to retry.
   await loadYoutube(id, meta);
-  // The Short followed the long-form by itself (src/youtubeUpload.ts `shortAfterUpload`) and
+  // The Short followed the long-form by itself (src/youtube/youtubeUpload.ts `shortAfterUpload`) and
   // says so in one line of the warnings: scheduled when, or why it was skipped. Its own line,
   // because "short uploaded" is not a problem and must not be reported as one.
   const shortLine = (p.warnings ?? []).find((w) => w.startsWith("short "));
@@ -205,7 +205,7 @@ async function pollUpload(id, meta) {
  * The four steps a Studio upload still needs — the chosen thumbnail, its playlists, the first
  * comment and its tags — done by the API. None of them is `videos.insert`, so none is gated by
  * the compliance audit. Safe to press twice: the server skips any step its record already
- * marks done (src/youtubeUpload.ts), because a second comment and a second playlist join are
+ * marks done (src/youtube/youtubeUpload.ts), because a second comment and a second playlist join are
  * writes to the live channel that only Studio can undo.
  */
 async function finishOnYouTube(id, meta, btn) {

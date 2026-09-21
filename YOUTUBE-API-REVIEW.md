@@ -38,7 +38,7 @@ No scope is used to read or write anything belonging to another channel.
 ## Demonstration script
 
 This is a walkthrough of one full publish, in the order the operator performs it. Every API call
-named here is issued by `src/youtube.ts` in the client's source; the file has no SDK dependency,
+named here is issued by `src/youtube/youtube.ts` in the client's source; the file has no SDK dependency,
 so each call is a plain HTTPS request that can be read directly.
 
 ### 0. Authorisation (once)

@@ -1,0 +1,139 @@
+/**
+ * Copying a published match to the NAS, and reporting how much room is left.
+ *
+ * Deliberately a copy, never a move: nothing is deleted. That is the policy, and it has a
+ * consequence worth stating rather than discovering at 95% — archiving does NOT reclaim the lab
+ * SSD. A finished match is 2–2.5 GB (two POV clips and the final MP4; the overlay artifacts are a
+ * few MB), so the SSD fills at that rate however diligently this runs. The NAS copy is a backup;
+ * freeing space stays a separate, manual decision.
+ */
+import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import { statfs } from "node:fs/promises";
+import path from "node:path";
+import { config } from "../config.js";
+
+/** Where the NAS is mounted inside the container. See compose.yaml. */
+const ARCHIVE_ROOT = process.env.MCSR_ARCHIVE_DIR ?? "/archive";
+
+/** True when a copy of this match is on the NAS, i.e. a delete of it would be recoverable. */
+export const isArchived = (matchId: number): boolean => existsSync(path.join(ARCHIVE_ROOT, String(matchId)));
+
+export interface ArchiveState {
+  matchId: number;
+  running: boolean;
+  error: string | null;
+  /** null until a run finishes; milliseconds. */
+  tookMs: number | null;
+}
+
+const states = new Map<number, ArchiveState>();
+
+export const allArchiveStates = (): ArchiveState[] => [...states.values()];
+
+/**
+ * One copy at a time. The first channel scan after a restart can pair a dozen Studio uploads at
+ * once (src/youtube/youtubeUpload.ts), and a dozen concurrent rsyncs over the CIFS mount are slower than
+ * one and can time the mount out. A queued match reports `running` from the moment it is asked
+ * for — from the operator's side it is in flight either way.
+ *
+ * ponytail: one global queue. Per-destination queues if a second archive target ever appears.
+ */
+let queue: Promise<unknown> = Promise.resolve();
+
+/**
+ * rsync rather than cp: the NAS is a CIFS mount that can return an I/O error mid-write, and
+ * rsync resumes instead of leaving a truncated file behind. Fire-and-forget: a match over the
+ * CIFS mount takes minutes, which an upload response should not wait on.
+ */
+export function archiveMatch(matchId: number): ArchiveState {
+  const existing = states.get(matchId);
+  if (existing?.running) return existing;
+  // Already backed up: nothing to do. Here rather than at each caller because every one of them
+  // is "this match is published, keep it" and would otherwise need the same test — the channel
+  // scan re-pairs a Studio upload whenever its record is missing, and a re-upload of a re-export
+  // would queue a second walk of 2.5 GB over CIFS for no change.
+  //
+  // ponytail: existence, not completeness — an rsync that died half way leaves a directory that
+  // reads as archived. Remove `<ARCHIVE_ROOT>/<id>` to force a fresh copy.
+  if (isArchived(matchId)) return existing ?? { matchId, running: false, error: null, tookMs: null };
+
+  const state: ArchiveState = { matchId, running: true, error: null, tookMs: null };
+  states.set(matchId, state);
+  queue = queue.then(() => copyToArchive(state));
+  return state;
+}
+
+/** Resolves when this match's rsync has finished, however it finished — the queue's turnstile. */
+function copyToArchive(state: ArchiveState): Promise<void> {
+  return new Promise((resolve) => {
+    const { matchId } = state;
+    const startedAt = Date.now();
+    const src = `${path.resolve(config.mediaDir, String(matchId))}/`;
+    const dest = `${path.join(ARCHIVE_ROOT, String(matchId))}/`;
+    // --partial so an interrupted transfer resumes rather than restarting the biggest clip.
+    const proc = spawn("rsync", ["-a", "--partial", src, dest], {
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+
+    let stderr = "";
+    proc.stderr?.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString("utf8");
+      if (stderr.length > 4000) stderr = stderr.slice(-4000);
+    });
+
+    proc.on("close", (code) => {
+      state.running = false;
+      state.tookMs = Date.now() - startedAt;
+      if (code !== 0) state.error = stderr.trim().split("\n").slice(-1)[0] || `rsync exited ${code}`;
+      console.error(
+        state.error
+          ? `archive ${matchId}: FAILED — ${state.error}`
+          : `archive ${matchId}: done in ${Math.round(state.tookMs / 1000)}s`,
+      );
+      resolve();
+    });
+
+    proc.on("error", (err) => {
+      state.running = false;
+      state.error = err.message;
+      state.tookMs = Date.now() - startedAt;
+      console.error(`archive ${matchId}: FAILED — ${err.message}`);
+      resolve();
+    });
+  });
+}
+
+export interface Capacity {
+  path: string;
+  freeBytes: number;
+  totalBytes: number;
+  /** Roughly how many more matches fit, at 3 GB each. */
+  matchesLeft: number;
+}
+
+// Measured 1.9–2.4 GB on the shelf (two POV clips and the final MP4); budgeted with headroom.
+const MATCH_BYTES = 3 * 1024 ** 3;
+
+async function capacityOf(target: string): Promise<Capacity | null> {
+  try {
+    const fs = await statfs(target);
+    const freeBytes = fs.bavail * fs.bsize;
+    return {
+      path: target,
+      freeBytes,
+      totalBytes: fs.blocks * fs.bsize,
+      matchesLeft: Math.floor(freeBytes / MATCH_BYTES),
+    };
+  } catch {
+    // The NAS is not mounted on a desktop checkout, and a soft CIFS mount can vanish. Missing
+    // capacity is not worth failing a dashboard request over.
+    return null;
+  }
+}
+
+/** Both tiers, because archiving fills the NAS but never drains the SSD. */
+export async function capacity(): Promise<{ working: Capacity | null; archive: Capacity | null }> {
+  const [working, archive] = await Promise.all([capacityOf(config.mediaDir), capacityOf(ARCHIVE_ROOT)]);
+  return { working, archive };
+}

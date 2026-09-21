@@ -77,7 +77,7 @@ interactive sign-in: `agy`'s OAuth caches into the host's keyring
 (Secret Service/dbus), which no container has. Set `modelProvider: gemini` in
 `~/.gemini/antigravity-cli/settings.json` and put the key in the repo's `.env`
 as `GEMINI_API_KEY=…` — `.env` is inside the bind mount, so both containers read
-it, and `src/reasoner.ts` loads it before spawning the command.
+it, and `src/shorts/reasoner.ts` loads it before spawning the command.
 
 ## Tests
 

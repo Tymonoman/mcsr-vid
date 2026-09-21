@@ -8,7 +8,7 @@ what an agent cannot derive from the code; the rest is in the files it names.
 ## House rules
 
 - The match footage is never cut. The two editable regions — before the match and after the run
-  — are automated (`ANCHOR_SEC`, `src/postRoll.ts`; the tail is at most `postRollSec` = 30 s,
+  — are automated (`ANCHOR_SEC`, `src/pipeline/postRoll.ts`; the tail is at most `postRollSec` = 30 s,
   cut earlier where the winner goes quiet, never under 15 s).
 - Each POV's audio leans toward its side of the frame (`povAudioPan`, default 0.7; 0.5 is the
   centred mix everything before 18 Sept 2026 shipped with) in `export:fast` only — the Kdenlive
@@ -24,6 +24,27 @@ what an agent cannot derive from the code; the rest is in the files it names.
 - Nothing irreversible without the operator: deletions, retitles on the live channel, config
   that changes what a nightly render does.
 
+## Layout
+
+`src/` is grouped by what the code is for; a module's folder is the first thing its path says.
+
+| Folder | What lives there |
+| --- | --- |
+| `src/api/` | The outside services read: MCSR Ranked (`mcsrApi.ts`, `types.ts`), Twitch (`twitch.ts`, `twitchChat.ts`), avatar renders. |
+| `src/pipeline/` | A match to a finished video: fetch, VOD download/discovery, sync (`countdownDetect.ts`, `sync.ts`, `syncFile.ts`, `syncEdit.ts`), the overlay (`overlayProps.ts`, `overlayRender.ts`, `splitStates.ts`), the Kdenlive project and `export:fast`, and the text it writes (`title.ts`, `description.ts`, `hooks.ts`, `chapters.ts`). `pipeline.ts` is the stage runner. |
+| `src/thumbnails/` | The variant strip and its manifest. |
+| `src/shorts/` | The moment scorer, the reasoner, the vertical render, `generateShort.ts`. |
+| `src/playoffs/` | The bracket and its games (`playoffs.ts`), a series as one video (`series.ts`, `seriesCli.ts`). |
+| `src/youtube/` | The Data API client and auth, upload records, the upload itself, the channel pairing, the publish slot. |
+| `src/dashboard/` | The web server and its routes, jobs, the nightly, suggestions, the shelf (hidden/queue/checklist), the publish set. |
+| `src/cli/` | Entry points nothing else imports: batch, status, score, chat, bench, the TUI. |
+| `src/` root | `config.ts`, `cliArgs.ts`, `errorText.ts`, and the tests that cut across folders. |
+
+Tests sit beside what they test (`foo.test.ts` next to `foo.ts`); fixtures are `src/fixtures/`.
+`remotion/` is the compositions; `public/` the dashboard's browser files; `scripts/` the
+browser checks and the small build/preflight helpers; `docs/` the GitHub Pages site (not repo
+docs — see the root `README.md`).
+
 ## Commands
 
 Use the script, don't reconstruct the shell line. Extra arguments go after `--`.
@@ -31,13 +52,13 @@ Use the script, don't reconstruct the shell line. Extra arguments go after `--`.
 | Script | What it does |
 | --- | --- |
 | `npm run dashboard` | The web dashboard (`PORT`, default 8080). |
-| `npm start` | The terminal UI (`src/tui.tsx`). |
+| `npm start` | The terminal UI (`src/cli/tui.tsx`). |
 | `npm run still -- <Composition> <out.png> [--frame=N] [--props=p.json]` | One Remotion frame to PNG — the fast visual check. Rebuilds overlay CSS first. Composition ids are in `remotion/Root.tsx`. |
 | `npm run validate-project -- media/<id>/match-<id>.kdenlive` | Load the generated MLT XML through the MLT engine. Exit 0 = parses. Malformed XML only: it passes a project whose media is missing. |
 | `npm run export:fast -- <matchId> [--cpu] [--seconds=N] [--full-tail]` | The finished MP4 in one ffmpeg pass (Intel VAAPI on the lab), no Kdenlive. `--seconds` renders a short range as a smoke test, to `smoke-<id>.mp4` (it once wrote over a published match's final). Open the `.kdenlive` when a match needs a human; both place clips through `placeOnTimeline`. |
 | `npm run export:nvenc -- media/<id>/match-<id>.kdenlive [out=N]` | melt + `h264_nvenc` to `out/export.mp4`. Needs an NVIDIA GPU; the lab has none. |
 | `npm run short -- <matchId> [--pick=N \| --at=<ms>] [--seconds=22]` | The ~22 s vertical MP4 (`short-<id>.mp4`) plus its `.title.txt` / `.description.txt`. Needs the VODs. `--at` names the window in ms from match start and beats `--pick`: row indices move when the scorer or the reasoner reorders them, a window does not. The cut is recorded in `short-<id>.cut.json`, which is what a re-cut repeats. |
-| `npm run series -- <matchId \| all> [--join-only]` | A playoff series as one video (`src/series.ts`): renders every game of the slot that has no export, joins them into game 1's `series-<g1>.mp4`, rewrites game 1's title/description/chapters/tags for the series, cuts the Short from the best game. `all` walks the board in date order; `--join-only` joins what is exported. The dashboard's nightly cannot see a run here: start one in the daytime. |
+| `npm run series -- <matchId \| all> [--join-only]` | A playoff series as one video (`src/playoffs/series.ts`): renders every game of the slot that has no export, joins them into game 1's `series-<g1>.mp4`, rewrites game 1's title/description/chapters/tags for the series, cuts the Short from the best game. `all` walks the board in date order; `--join-only` joins what is exported. The dashboard's nightly cannot see a run here: start one in the daytime. |
 | `npm run sync-status -- [matchId]` | Where a match's POV clips are placed. With an id and no `sync.json`, derives it from the `.kdenlive` and writes it, so a re-export picks the corrected offsets up without a re-render. No id lists every match and writes nothing. |
 | `npm run chat -- <matchId>` | Fetch both players' Twitch chat to `chat-<nick>.json` for a match the pipeline saved none for (it does this itself after `download-vods`). Existing files are kept; delete one to refetch. |
 | `npm run reason -- <matchId>` | Ask the configured `reasonerCommand` (Antigravity's `agy`) which 22 seconds to cut, printing the candidates, the prompt and the answer. Saves it to `short-reason.json`; delete that to ask again. Unconfigured, it says so and changes nothing. |
@@ -51,7 +72,7 @@ seconds; a nightly render + Short takes ~12 min, ~21 min with the MP4.
 
 ## What the render produces
 
-Almost nothing in the overlay moves, so the render is stills plus one strip (`src/overlayRender.ts`):
+Almost nothing in the overlay moves, so the render is stills plus one strip (`src/pipeline/overlayRender.ts`):
 
 - `overlay-top.png` — the identity/stats band, static. On a playoff game it carries the series
   dots (one hollow square per game needed, filled per game won, at the score the game started
@@ -59,7 +80,7 @@ Almost nothing in the overlay moves, so the render is stills plus one strip (`sr
   winner's dot filled, and `export:fast` switches to it at the run's end (`topEndAtSec`). The
   Kdenlive project does not know the second still.
 - `overlay-splits-<n>.png` + `overlay-splits.json` — the meta+splits region (1440x346), one still
-  per distinct state (`src/splitStates.ts`). The manifest is written last and means "the render
+  per distinct state (`src/pipeline/splitStates.ts`). The manifest is written last and means "the render
   finished". The last state is the subscribe card (`postRollCta`, `ctaFrameOf`).
   `renderOverlay({ only: ["splits"] })` redoes just the stills in seconds.
 - `overlay-timer.mp4` — the RTA column (480x346), the only thing rendered per frame.
@@ -69,13 +90,13 @@ Almost nothing in the overlay moves, so the render is stills plus one strip (`sr
 
 `npm run short` cuts from VODs already downloaded, with no Kdenlive project on purpose: 22 s of
 fixed layout has nothing to decide. Two Remotion stills (board, hook) plus one ffmpeg pass
-(`src/shortRender.ts`).
+(`src/shorts/shortRender.ts`).
 
-- **Which 22 seconds** is `src/shortMoment.ts`, scored from `match.timelines` and the saved
+- **Which 22 seconds** is `src/shorts/shortMoment.ts`, scored from `match.timelines` and the saved
   chat only, no video decoding. The weights are informed guesses; re-tune against retention.
 - **Nothing on the board animates**, deliberately: the RTA is a static "at 6:57" label, not a
   counter; a 900-frame render took ten minutes for furniture.
-- **The hook line is the title hook** (`resolveShortHook`, `src/shortHook.ts`): the edited
+- **The hook line is the title hook** (`resolveShortHook`, `src/shorts/shortHook.ts`): the edited
   title's hook, else the first rivalry chip, else the per-moment line, burned in for 4 s. The
   Short's title is that hook plus `#minecraft #mcsr` unless the hook already carries a `#`.
 - **Every cut appends a line to `<mediaDir>/.short-picks.jsonl`**: what the heuristic proposed,
@@ -84,7 +105,7 @@ fixed layout has nothing to decide. Two Remotion stills (board, hook) plus one f
 - **Auto-crop usually declines, and should**: streamers' panels reach the frame edges.
   `--top-crop=x,y,w,h` overrides it.
 - **A playoff game's nameplates show the seed, not the ladder rank** (`remotion/Short.tsx`,
-  `src/generateShort.ts`): a bracket has its own order, and the seed pair is what states an upset.
+  `src/shorts/generateShort.ts`): a bracket has its own order, and the seed pair is what states an upset.
   Ranked Shorts are unchanged.
 
 ## Dashboard
@@ -92,7 +113,7 @@ fixed layout has nothing to decide. Two Remotion stills (board, hook) plus one f
 `src/` is read at boot; `public/` is served from disk per request. After pulling server changes
 run `docker restart mcsr-dashboard` on the lab (both containers share one image; the repo and
 `/media` are bind mounts). The nightly strip names the running and the checked-out commit when
-they differ (`code: { boot, now }` from `src/repoHead.ts`). Client changes need only a reload.
+they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client changes need only a reload.
 
 - **Two screens, one bar.** The list and the match are two screens at every width
   (`body.view-match`, `public/app.css`), not just under 860 px: the desktop no longer keeps a
@@ -135,19 +156,19 @@ they differ (`code: { boot, now }` from `src/repoHead.ts`). Client changes need 
   Chromium drops the coarse-pointer emulation after a full-page screenshot on a mobile context,
   so a width-only measurement of a phone page found 28 px inputs the real phone never shows; the
   width clause makes the 44 px targets a fact of the layout rather than of the emulation.
-- **Suggestions** (`src/suggest.ts`, `src/suggestPresent.ts`): scored candidates, cached in
+- **Suggestions** (`src/dashboard/suggest.ts`, `src/dashboard/suggestPresent.ts`): scored candidates, cached in
   `<mediaDir>/.suggest-cache.json`; bumping `CACHE_VERSION` re-fetches everything on the next
   scan (~340 MCSR API calls against 500/10 min). Scanned at boot, every `suggestCacheTtlMin`
   (30) for new matches, before the nightly picks, and fully on the `rescan` link.
-- **Rival posts** (`src/rivalPosts.ts`): the competitor's (`rivalChannelHandle`, default
+- **Rival posts** (`src/dashboard/rivalPosts.ts`): the competitor's (`rivalChannelHandle`, default
   `mcsrmatches`) last 50 uploads, matched to cards by nickname pair, date and run length (their
   video is the run plus a few seconds; a post of the wrong length is another match of the same
   pair). A posted match sorts after the fresh ones, in the nightly's order too.
-- **Hook chips** (`src/hooks.ts`) put rivalry framing first: the audit measured rivalry hooks at
+- **Hook chips** (`src/pipeline/hooks.ts`) put rivalry framing first: the audit measured rivalry hooks at
   9.36% CTR against 2.25% for descriptive ones. A playoff game's chips are its seeds, in words
   ("Can the LCQ take down the 7th seed?", "The 7th seed vs the LCQ") in place of the ladder-rank
   chip — a bracket has its own order, and a `#` in a hook is a hashtag on the Short's title.
-- **Thumbnails are plain poses, no text** (`src/thumbnailVariants.ts`): four pairs from
+- **Thumbnails are plain poses, no text** (`src/thumbnails/thumbnailVariants.ts`): four pairs from
   `thumbnailVariants`, the first (`walking`/`crossed`) is the auto default, `default`/`default`
   is both players straight on. The hooked-twin machinery (`hookText`, `-hook` keys,
   `POST /api/thumbnails/:id/rerender`) is still in the code but the pipeline no longer asks for
@@ -180,22 +201,22 @@ they differ (`code: { boot, now }` from `src/repoHead.ts`). Client changes need 
   later would otherwise carry "private" for ever and never get its first comment. The comment
   still cannot go up while the video really is private, so a scheduled video needs one more press
   of **Finish on YouTube** after it goes public.
-- **`videos.update` replaces the part it is given.** `addTags` (`src/youtube.ts`) reads the snippet
+- **`videos.update` replaces the part it is given.** `addTags` (`src/youtube/youtube.ts`) reads the snippet
   and sends it back whole — a `part=snippet` write that omits the description blanks it on a
   published video. It only ever adds tags, so a tag typed in Studio survives, and it refuses to
   write at all if the read returns no video. This is the project's only `videos.*` write, it is
   operator-pressed, and it is not the call the audit gates.
 - **Upload** sends `match-<id>.tags.txt` and refuses a title still containing `<HOOK>`; it adds
   the video to the season playlist (`PLHG-jSA-dWDo`), a per-matchup and a per-player playlist
-  (`src/youtube.ts`; ids remembered per process because YouTube's list is eventually consistent).
+  (`src/youtube/youtube.ts`; ids remembered per process because YouTube's list is eventually consistent).
   **YouTube caps `playlists.insert` at about a dozen per rolling 24 h** (429 RATE_LIMIT_EXCEEDED;
   measured 15–16 Sept 2026): the step records the refusal in the ledger and the nightly's tick
   presses again (`retryFailedPlaylists`), so a cap line in the panel needs no press from anyone.
-  **A Studio upload is recognised without a tick** (`src/channelUploads.ts`): the channel's
+  **A Studio upload is recognised without a tick** (`src/youtube/channelUploads.ts`): the channel's
   videos are paired to matches by the `/matches/<id>` segment in the pasted description; the
   YouTube panel's "check the channel" link lists the channel at once. The manual `uploaded`
   tick is the fallback for a video with no match link.
-- **Settings tab** (`src/settings.ts`, `GET`/`PUT /api/settings`): the handful of config keys worth
+- **Settings tab** (`src/dashboard/settings.ts`, `GET`/`PUT /api/settings`): the handful of config keys worth
   changing without an ssh session. It writes `mcsr-vid.config.json` atomically and applies to the
   live `config` object, so nothing needs a restart — `scheduleNightly` reads the hour from `config`
   on every arm and the route re-arms it when that key moves, or the setting would lie. The file is
@@ -208,14 +229,14 @@ they differ (`code: { boot, now }` from `src/repoHead.ts`). Client changes need 
   adding a `SettingField` to `SETTINGS`; the panel and both tests derive from that list.
 - **Publish kit** (`GET /api/publishkit/:id`): copy buttons for the title, the publish slot
   (`publishHourUtc`, default 19:00 UTC, the competitor's measured hour, on the first day no
-  other video is already scheduled for — `src/publishSlot.ts`), description, tags, the
+  other video is already scheduled for — `src/youtube/publishSlot.ts`), description, tags, the
   Short's title/description, a pinned comment, a community post, and a DM per player. When
-  `pullSource` is set it opens with an rsync *pull* the operator's PC runs (`src/publishSet.ts`;
+  `pullSource` is set it opens with an rsync *pull* the operator's PC runs (`src/dashboard/publishSet.ts`;
   the lab host's path, not the container's `/media`) — pull, not push, because the image has no
   ssh client and the PC already reaches the lab. `GET /api/export/bundle/:id` is the same
   publish set as one `.tar`.
 - **Publish checklist**: facts from disk plus manual toggles in `<mediaDir>/<id>/publish.json`
-  (`src/matchShelf.ts`). The Rendered tab counts exported-and-not-uploaded and is ordered by what
+  (`src/dashboard/matchShelf.ts`). The Rendered tab counts exported-and-not-uploaded and is ordered by what
   to publish next.
 - **Dismiss** hides a suggestion (`DELETE /api/suggestions/:id`) with an undo line
   (`POST …/restore`). **Delete** refuses while any job writes into the match directory.
@@ -223,14 +244,14 @@ they differ (`code: { boot, now }` from `src/repoHead.ts`). Client changes need 
   `nightlyRenderHourUtc` against the same `/media` as production, and neither knows the other is
   running — two of them at 03:00 pick the same card and render into one directory. Kill a test
   server before the hour, or set `nightlyRenderHourUtc: null` for it.
-- **Nightly** (`src/nightly.ts`): at `nightlyRenderHourUtc` (default 3 UTC; `null` disables) the
+- **Nightly** (`src/dashboard/nightly.ts`): at `nightlyRenderHourUtc` (default 3 UTC; `null` disables) the
   server renders the first eligible card in dashboard order, skipping the night if a render is
   running or under two matches of disk remain, then the Short (`nightlyRenderShort`) and the MP4
   (`nightlyRenderExport`); `nightlyNotifyUrl` gets one line on done / failed / aborted. With
   `nightlyMaxRenders` above 1 a clean run starts the next card, within four hours of the hour
   and through the same guards. The
   strip's `Run now` is the same path, as is a card's "Render + Short + MP4".
-- **Playoffs** (`src/playoffs.ts`): the bracket (`/playoffs`) knows the series, not the games;
+- **Playoffs** (`src/playoffs/playoffs.ts`): the bracket (`/playoffs`) knows the series, not the games;
   the games are private-room matches (type 3) found in each seed's history, and the API stamps
   them with the season *after* the bracket's (a Season 11 bracket's games are season 12). **No
   surface prints a series score** — round and game number only, "Round of 16 · Game 2 of 5"; a
@@ -254,7 +275,7 @@ they differ (`code: { boot, now }` from `src/repoHead.ts`). Client changes need 
   forfeit nobody won is a room reset however long it ran (edcr–lauveer's 2:25 one was numbered
   game 3 of 6 under the old one-minute rule). The S11 bracket has **14** played series, not 15:
   the edcr–Feinberg quarterfinal was a walkover (`results[]` carries a `player: null` fifth).
-- **A series is one video, and game 1's directory is the series** (`src/series.ts`, 21 Sept
+- **A series is one video, and game 1's directory is the series** (`src/playoffs/series.ts`, 21 Sept
   2026). Each game is rendered by the pipeline unchanged — its own sync, overlay and intro
   card — and the exports are joined with `ffmpeg -f concat -c copy` (all exports are the same
   h264 1080p60/aac) into `series-<g1>.mp4`, which `findExportedVideo` prefers, so the upload,
@@ -283,7 +304,7 @@ they differ (`code: { boot, now }` from `src/repoHead.ts`). Client changes need 
   playoffs board is folded at every width whatever the date (eleven series of game rows put the
   first suggestion 1,700 px down a desktop list); the summary line names the rounds and the next
   slot, and the fold stays open once opened across repaints.
-- **Tonight's queue** (`queue` in `<mediaDir>/.dashboard.json`, `src/matchShelf.ts`;
+- **Tonight's queue** (`queue` in `<mediaDir>/.dashboard.json`, `src/dashboard/matchShelf.ts`;
   `PUT /api/nightly/queue` takes the whole list): a card's "Queue for tonight" puts it ahead of the
   ranked pick, in the strip's order (↑ / ×); the nightly drops an entry the moment its render
   starts, and skips one that is processed, hidden or gone from the list.
@@ -294,11 +315,11 @@ they differ (`code: { boot, now }` from `src/repoHead.ts`). Client changes need 
 
 ## Chat replay (prototype)
 
-`src/twitchChat.ts` fetches a VOD's chat through Twitch's web GQL persisted query without a
+`src/api/twitchChat.ts` fetches a VOD's chat through Twitch's web GQL persisted query without a
 login, paging by **offset** — the cursor fails Twitch's integrity check without a browser token.
 The pipeline saves it after `download-vods` and the Short scorer reads it. `remotion/ChatPanel.tsx`
 renders it; where it sits in the frame is the operator's call, and nothing is wired into
-`src/pipeline.ts` until then.
+`src/pipeline/pipeline.ts` until then.
 
 ## Session preflight
 
@@ -308,10 +329,10 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
 
 ## Known pitfalls
 
-- **Season vs career stats.** `pickStats` (`src/overlayProps.ts`) falls back to career totals
+- **Season vs career stats.** `pickStats` (`src/pipeline/overlayProps.ts`) falls back to career totals
   only when the season bucket has no ranked games, and the overlay then labels itself CAREER.
   Both paths are pinned by `src/overlayProps.test.ts`; don't "fix" the fallback away.
-- **A private room's two seats are ordered by uuid** (`withoutGhostPlayers`, `src/mcsrApi.ts`):
+- **A private room's two seats are ordered by uuid** (`withoutGhostPlayers`, `src/api/mcsrApi.ts`):
   a room seats its players in join order, and game 3 of the S11 Pinne–7rowl pilot came out with
   the sides swapped after two games the other way. Everything left/right hangs off
   `match.players` — sync.json, the clips' placement, the band's colours — so the order is
@@ -326,20 +347,20 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
 - **MLT silently drops ProRes 4444's alpha.** VP9 `yuva420p` is the only alpha format Remotion
   emits that MLT composites; when spot-checking, decode with `-c:v libvpx-vp9` or the alpha
   looks missing when it is not. ProRes is also ~1.9x slower in Remotion (no parallel encoding).
-- **Timeline zero is the countdown's first second** (`ANCHOR_SEC`, `src/kdenliveProject.ts`): match
+- **Timeline zero is the countdown's first second** (`ANCHOR_SEC`, `src/pipeline/kdenliveProject.ts`): match
   start lands at exactly 10 s. A clip whose match start is later than the anchor must be pushed
   into its own head, not un-blanked — the wrong fix renders perfectly and slides the overlay late.
 - **When the detector is not sure, a human settles it.** `GET/PUT /api/sync/:id` plus
   `GET /api/sync/frame?match=&side=&t=&offset=` back the match screen's "Fix the sync by hand"
-  fold (`src/syncEdit.ts`): one frame out of each POV clip at the same second of the *finished*
+  fold (`src/pipeline/syncEdit.ts`): one frame out of each POV clip at the same second of the *finished*
   timeline, which must show the same countdown digit because both players freeze through it.
   `clipTimeFor(offset, t) = offset + (t - ANCHOR_SEC)` is the only arithmetic. Saving stamps
-  `source: "manual"` and `confidence: 1` — which clears the warning line and, in `src/pipeline.ts`,
+  `source: "manual"` and `confidence: 1` — which clears the warning line and, in `src/pipeline/pipeline.ts`,
   makes the sync stage keep those numbers instead of re-running the detector, so re-rendering for
   a new thumbnail cannot put the machine's rejected guess back. Only the clip placement changes,
   so the fix is `export:fast` (~10 min), not a re-render — and it is not optional: a video went
   out of sync to the channel because sync.json was corrected *after* `final-<id>.mp4` was exported.
-  `exportStale` (`src/syncFile.ts`, mtime of sync.json vs the export) now refuses the Upload
+  `exportStale` (`src/pipeline/syncFile.ts`, mtime of sync.json vs the export) now refuses the Upload
   button, the nightly's video and the adopt route with one line, and the match page's "Sync check"
   (both POVs at 9.6 s, above the YouTube panel) is the look that catches the rest. "Save and
   re-export" presses the Final video panel's encode button, which an exported match now also has
@@ -351,12 +372,12 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
   download-vods -- <id>` is the way to secure a match ahead of its render (it saves the chat too);
   the listing reaches 40 archives back, since a playoff game packaged a week later sits behind
   every stream since.
-- **Every consumer places the clips from `<matchDir>/sync.json`** (`src/syncFile.ts`), which the
+- **Every consumer places the clips from `<matchDir>/sync.json`** (`src/pipeline/syncFile.ts`), which the
   pipeline writes when the sync stage decides — refined or kept-coarse, `source` says which.
   Without it `export:fast` and the Short fall back to `config.preRollSec` and run seconds early;
   `npm run sync-status` backfills the matches rendered before the file existed.
 - **Sync reads the picture, and only the picture.** Two readings per clip
-  (`src/countdownDetect.ts`, settled by `detectMatchStartAny`): the countdown digit at the centre
+  (`src/pipeline/countdownDetect.ts`, settled by `detectMatchStartAny`): the countdown digit at the centre
   of the screen — a 96x72 crop's white-pixel count, the "10" the fattest, one step a second,
   0:00 the frame the "1" vanishes — and the 10 s camera freeze. The digit is the one that works
   in a private room (every playoff game), where the player can look around through the countdown
@@ -389,7 +410,7 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
   playoff rows, which are hidden inside the fold until the operator opens it, so a
   `waitForSelector` on it waits forever on a row that is never shown.
 - **`ss` is there, `lsof` and `fuser` are not.** `ss -tlnp | grep <port>` names the process that
-  actually holds a port — which is not always the one `ps -eo pid,args | grep 'src/server.ts'`
+  actually holds a port — which is not always the one `ps -eo pid,args | grep 'src/dashboard/server.ts'`
   finds, because the listener's `comm` is `MainThread`. Killing the grep's PID and restarting can
   leave the old listener up and the new server dead on `EADDRINUSE`.
 - **A failure reports under the control that caused it** (`failAt`, `public/app.js`), not in

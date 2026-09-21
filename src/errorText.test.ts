@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describeError } from "./errorText.js";
-import { McsrApiError } from "./mcsrApi.js";
+import { McsrApiError } from "./api/mcsrApi.js";
 
 // The whole reason McsrApiError carries a status: nothing in the project read it, so being
 // rate-limited looked exactly like any other failure and you retried into the same wall.

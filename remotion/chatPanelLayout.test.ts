@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import type { ChatMessage } from "../src/twitchChat.js";
+import type { ChatMessage } from "../src/api/twitchChat.js";
 import { chatCharsPerLine, chatMaxLines, readableColor, visibleMessages } from "./chatPanelLayout.js";
 
 const msg = (atSec: number, name: string, text: string, color: string | null = null): ChatMessage => ({

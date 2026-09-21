@@ -1,4 +1,4 @@
-import type { ChatMessage } from "../src/twitchChat.js";
+import type { ChatMessage } from "../src/api/twitchChat.js";
 
 /** Which bucket the form stats (avg/games/WR/FF) were taken from — shown on the overlay so the
  *  numbers can't be misread as career totals (or as season stats) the way they were before. */
@@ -44,7 +44,7 @@ export type OverlayProps = {
   /**
    * A playoff series as the broadcast shows it: one dot per game needed, filled per game won.
    * Absent on a ranked match. The counts are the score *going into* this game; the render of
-   * the after-the-run band passes the winner's dot filled (src/overlayRender.ts).
+   * the after-the-run band passes the winner's dot filled (src/pipeline/overlayRender.ts).
    */
   series?: { firstTo: number; leftWins: number; rightWins: number };
   splits: SplitRow[];

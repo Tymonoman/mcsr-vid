@@ -4,7 +4,7 @@
  * pipeline writes because it is only ever a *default prop* — the Studio and `npm run still` need a
  * panel with something in it, and neither can reach /media.
  */
-import type { ChatMessage } from "../../src/twitchChat.js";
+import type { ChatMessage } from "../../src/api/twitchChat.js";
 
 export const INFUME_CHAT_NICKNAME = "Infume";
 

@@ -43,7 +43,7 @@ services:
     volumes:
       # Repo lives on the lab host, so edits and node_modules survive image rebuilds.
       - /home/homelab/mcsr-vid:/app
-      # Working dir on the SSD (~3 GB a match, see src/archive.ts). Deliberately NOT the NAS:
+      # Working dir on the SSD (~3 GB a match, see src/dashboard/archive.ts). Deliberately NOT the NAS:
       # measured at 17.7 MB/s write over a *soft* CIFS mount, where a network blip
       # returns an I/O error and would kill an hour-long render.
       - /home/homelab/mcsr-media:/media
@@ -56,9 +56,9 @@ services:
       # the theme picker) and every `claude mcp add`. Bind-mounted so it survives.
       - /home/homelab/claude-home.json:/home/node/.claude.json
 
-    # No env_file needed: .env sits in the bind-mounted repo and src/twitch.ts:11-17
+    # No env_file needed: .env sits in the bind-mounted repo and src/api/twitch.ts:11-17
     # loads it natively via process.loadEnvFile, falling through to process.env.
-    # src/reasoner.ts does the same, so an LLM CLI's API key (GEMINI_API_KEY for
+    # src/shorts/reasoner.ts does the same, so an LLM CLI's API key (GEMINI_API_KEY for
     # Antigravity) goes in that same .env. The CLI itself has to be in the image —
     # installing it on the lab host puts it where neither container can reach it.
 

@@ -1,19 +1,19 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { DEFAULT_WEIGHTS, type ScoreWeights } from "./matchScore.js";
+import { DEFAULT_WEIGHTS, type ScoreWeights } from "./pipeline/matchScore.js";
 
 export interface Config {
-  /** Pose name for the left/right player's avatar (overlay + thumbnail); see POSE_CAMERAS in src/avatarUrl.ts. */
+  /** Pose name for the left/right player's avatar (overlay + thumbnail); see POSE_CAMERAS in src/api/avatarUrl.ts. */
   leftPose: string;
   rightPose: string;
   /**
    * Pose pairs rendered as thumbnail variants on every pipeline run, for A/B testing which
-   * poses earn clicks. Plain renders only: the hooked twins (`src/thumbnailVariants.ts`) are no
+   * poses earn clicks. Plain renders only: the hooked twins (`src/thumbnails/thumbnailVariants.ts`) are no
    * longer asked for — the operator took the text off the thumbnails on 18 Sept 2026. The
    * first entry's render is what `thumbnail.png` becomes unless you pick another in the
    * dashboard, so keep `leftPose`/`rightPose` first to preserve the current look.
    *
-   * Pose names map to NMSR camera settings in `src/avatarUrl.ts` (`POSE_CAMERAS`). Every name
+   * Pose names map to NMSR camera settings in `src/api/avatarUrl.ts` (`POSE_CAMERAS`). Every name
    * here must have an entry there with a distinct silhouette, or the variant renders NMSR's
    * default view — the dashboard flags it as a fallback — and CTR grouped by pose compares a
    * variable that never varied.
@@ -50,7 +50,7 @@ export interface Config {
   youtubeChannelId: string;
   /**
    * Standing YouTube Reporting API job producing `channel_reach_basic_a1`, the only source of
-   * per-video thumbnail impressions and CTR (see src/youtube.ts).
+   * per-video thumbnail impressions and CTR (see src/youtube/youtube.ts).
    */
   youtubeReportingJobId: string;
   /**
@@ -68,7 +68,7 @@ export interface Config {
    */
   youtubePlaylistUrl: string;
   /**
-   * The competitor whose uploads the suggestion cards are checked against (src/rivalPosts.ts):
+   * The competitor whose uploads the suggestion cards are checked against (src/dashboard/rivalPosts.ts):
    * MCSR Matches posts the same matches this channel picks, a day later, to 37x the
    * subscribers. A matchup it has already covered is flagged on the card and ordered after the
    * fresh ones. Empty string turns the check off; it also needs the YouTube token.
@@ -84,7 +84,7 @@ export interface Config {
    * Where the PC that publishes pulls finished files *from*, as an rsync/ssh target — e.g.
    * `homelab@actimel:/home/homelab/mcsr-media`, which is this container's `/media` seen from
    * the lab host (compose bind mount), not the container path. A pull target, not a push (see
-   * src/publishSet.ts). Empty string hides the publish kit's pull block; nothing here is ever
+   * src/dashboard/publishSet.ts). Empty string hides the publish kit's pull block; nothing here is ever
    * executed by the server.
    */
   pullSource: string;
@@ -119,7 +119,7 @@ export interface Config {
    * never. 3 is 05:00 in Poland: the lab is idle, and a render that runs unattended is finished
    * long before anyone looks, which is the whole point — the bottleneck on output is operator
    * minutes, not compute, so the morning question becomes "publish this?" with a preview
-   * rather than "render this?" with a chart. See src/nightly.ts for what it will and won't do.
+   * rather than "render this?" with a chart. See src/dashboard/nightly.ts for what it will and won't do.
    */
   nightlyRenderHourUtc: number | null;
   /**
@@ -142,7 +142,7 @@ export interface Config {
    * How many matches one night may render, at most. 1 keeps the scheduler as timid as it was;
    * raising it lets a clean run start the next eligible card while the lab is still idle, but
    * only within four hours of `nightlyRenderHourUtc` and only through the same guards that
-   * decide the first render — disk, a render in flight, nothing eligible (see src/nightly.ts).
+   * decide the first render — disk, a render in flight, nothing eligible (see src/dashboard/nightly.ts).
    * Each match is 2–2.5 GB, so this is bounded by disk long before it is bounded by hours.
    */
   nightlyMaxRenders: number;
@@ -176,7 +176,7 @@ export interface Config {
    * The hour (UTC, 0-23) the publish kit proposes for "Publish at", and the upload form's
    * default. 19 is the active competitor's measured slot — 36 of its last 50 uploads on the
    * dot, median 4.2k views there against 1.6k for its earlier 17:xx uploads — and 21:00 in
-   * Poland, 15:00 on the US east coast. See src/publishSlot.ts.
+   * Poland, 15:00 on the US east coast. See src/youtube/publishSlot.ts.
    */
   publishHourUtc: number;
   /**
@@ -222,17 +222,17 @@ export interface Config {
   /** Per-term weights for the closeness and chaos scores. */
   suggestWeights: ScoreWeights;
   /**
-   * Whether detected playoff games (src/playoffs.ts) go ahead of the ordinary suggestions in
+   * Whether detected playoff games (src/playoffs/playoffs.ts) go ahead of the ordinary suggestions in
    * the nightly's pick order. Off by default, and deliberately so: a default that changes what
    * tonight's nightly renders is a house-rule violation. The operator flips it to true when a
    * tournament starts and back to false when the bracket is done.
    */
   playoffsFirst: boolean;
   /**
-   * An LLM CLI to ask reasoning questions (src/reasoner.ts), as an argv array; an argument that
+   * An LLM CLI to ask reasoning questions (src/shorts/reasoner.ts), as an argv array; an argument that
    * is exactly `{prompt}` (whole, not `--prompt={prompt}`) is replaced by the prompt, and when
    * none is, the prompt goes on stdin. Null (the default) turns every question into its heuristic fallback. The first use
-   * is the Short's cut: it picks among the scored candidates (src/shortReason.ts). Antigravity:
+   * is the Short's cut: it picks among the scored candidates (src/shorts/shortReason.ts). Antigravity:
    * `["agy", "-p", "{prompt}", "--output-format", "json", "--effort", "high"]` — see README.
    */
   reasonerCommand: string[] | null;
