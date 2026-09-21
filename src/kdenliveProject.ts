@@ -1,13 +1,13 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { THUMP_LEAD_SEC } from "./sync.js";
+import { COUNTDOWN_SEC } from "./countdownDetect.js";
 
 /**
- * Timeline zero, expressed as seconds before match start: the world-load thump, which is when
- * the 10s ready-countdown appears. Every clip is placed against this, so match start always
- * lands at exactly ANCHOR_SEC and the exported video opens on the countdown.
+ * Timeline zero, expressed as seconds before match start: where the 10 s ready-countdown
+ * appears. Every clip is placed against this, so match start always lands at exactly
+ * ANCHOR_SEC and the exported video opens on the countdown.
  */
-export const ANCHOR_SEC = THUMP_LEAD_SEC;
+export const ANCHOR_SEC = COUNTDOWN_SEC;
 
 export interface KdenliveClipInput {
   /** Absolute path to the media file. Written out relative to `KdenliveProjectInput.root`. */
@@ -42,7 +42,7 @@ interface StillSegment {
 }
 
 /**
- * Where one clip sits once the timeline is anchored on the thump.
+ * Where one clip sits once the timeline is anchored on the countdown.
  *
  * Exported because the Kdenlive project and the direct-ffmpeg export (src/exportFast.ts) must
  * place every clip identically — they are two renderings of one timeline, and the whole point of
@@ -71,7 +71,7 @@ export function placeOnTimeline(clip: {
   if (inSec >= clip.durationSec) {
     throw new Error(
       `${clip.clipName}: match start is ${clip.matchOffsetIntoClipSec}s into a ` +
-        `${clip.durationSec}s clip, so anchoring it at the thump would trim the whole clip away.`,
+        `${clip.durationSec}s clip, so anchoring it at the countdown would trim the whole clip away.`,
     );
   }
   return { startOnTimelineSec: Math.max(0, origin), inSec, lengthSec: clip.durationSec - inSec };
@@ -298,7 +298,7 @@ export function buildKdenliveProject(input: KdenliveProjectInput): string {
   const timelineOriginOf = (clip: KdenliveClipInput) => ANCHOR_SEC - clip.matchOffsetIntoClipSec;
 
   /**
-   * One video/audio clip placed against the thump. `inSec` skips the head that falls before
+   * One video/audio clip placed against the countdown. `inSec` skips the head that falls before
    * timeline zero, so a POV clip carrying 150s of sync headroom starts on screen immediately
    * rather than after 140s of black.
    */

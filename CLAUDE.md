@@ -326,7 +326,7 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
 - **MLT silently drops ProRes 4444's alpha.** VP9 `yuva420p` is the only alpha format Remotion
   emits that MLT composites; when spot-checking, decode with `-c:v libvpx-vp9` or the alpha
   looks missing when it is not. ProRes is also ~1.9x slower in Remotion (no parallel encoding).
-- **Timeline zero is the world-load thump** (`ANCHOR_SEC`, `src/kdenliveProject.ts`): match
+- **Timeline zero is the countdown's first second** (`ANCHOR_SEC`, `src/kdenliveProject.ts`): match
   start lands at exactly 10 s. A clip whose match start is later than the anchor must be pushed
   into its own head, not un-blanked — the wrong fix renders perfectly and slides the overlay late.
 - **When the detector is not sure, a human settles it.** `GET/PUT /api/sync/:id` plus
@@ -355,14 +355,16 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
   pipeline writes when the sync stage decides — refined or kept-coarse, `source` says which.
   Without it `export:fast` and the Short fall back to `config.preRollSec` and run seconds early;
   `npm run sync-status` backfills the matches rendered before the file existed.
-- **Sync reads the picture, not the audio.** Two readings per clip (`src/countdownDetect.ts`,
-  settled by `detectMatchStartAny`): the countdown digit at the centre of the screen — a 96x72
-  crop's white-pixel count, the "10" the fattest, one step a second, 0:00 the frame the "1"
-  vanishes — and the 10 s camera freeze. The digit is the one that works in a private room
-  (every playoff game), where the player can look around through the countdown and there is no
-  freeze; both POVs of S11 Pinne–7rowl game 1 came back coarse before it (21 Sept 2026).
-  Opponents play separate worlds, so audio cross-correlation was 12–32 s wrong; `src/sync.ts`
-  keeps audio only as the fallback.
+- **Sync reads the picture, and only the picture.** Two readings per clip
+  (`src/countdownDetect.ts`, settled by `detectMatchStartAny`): the countdown digit at the centre
+  of the screen — a 96x72 crop's white-pixel count, the "10" the fattest, one step a second,
+  0:00 the frame the "1" vanishes — and the 10 s camera freeze. The digit is the one that works
+  in a private room (every playoff game), where the player can look around through the countdown
+  and there is no freeze; both POVs of S11 Pinne–7rowl game 1 came back coarse before it
+  (21 Sept 2026). The audio cross-correlation fallback is gone (22 Sept): opponents play separate
+  worlds, it was 12–32 s wrong on real footage, and in a year it never once answered on a match
+  on disk. A clip the picture cannot read keeps the coarse estimate at confidence 0 and the
+  dashboard's sync editor settles it.
 - **The intro card's centre block must sit above the VS badge**: `.intro-player` positions the
   columns with a `transform` that `PlayerCard`'s inline transform replaces, so the names sit at
   y≈790 and anything under the badge collides with them.

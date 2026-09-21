@@ -26,8 +26,12 @@ const MIN_STILL_SEC = 5;
 const SUSTAINED_SEC = 2;
 /** ...and be moving for at least this fraction of that window. */
 const SUSTAINED_FRACTION = 0.6;
-/** Nominal countdown length, and so the gap from the freeze's start to gameplay. */
-const COUNTDOWN_SEC = 10;
+/**
+ * Nominal countdown length, and so the gap from the freeze's start to gameplay — and the
+ * timeline's anchor: match start lands at exactly this many seconds into the export
+ * (src/kdenliveProject.ts `ANCHOR_SEC`).
+ */
+export const COUNTDOWN_SEC = 10;
 
 export interface MatchStartDetection {
   /** Seconds into the clip where gameplay starts (RTA 0:00), or null if nothing qualified. */

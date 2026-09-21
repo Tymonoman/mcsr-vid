@@ -94,13 +94,13 @@ export interface Config {
    * Seconds of overlay before the RTA timer starts.
    *
    * This is also where the published video begins: the timeline is anchored on the world-load
-   * thump (kdenliveProject.ANCHOR_SEC), so an overlay lead-in equal to that anchor puts the
+   * countdown (kdenliveProject.ANCHOR_SEC), so an overlay lead-in equal to that anchor puts the
    * overlay, the intro and the footage all at timeline 0 with nothing trimmed. Changing it
    * away from 10 makes the overlay clips get head-trimmed to keep match start in place, which
    * is correct but wastes render, and an intro shorter than the difference is rejected outright.
    *
    * The VOD clips keep a much larger `preRollSec` because the audio-sync search needs room to
-   * hunt for the thump; that headroom is trimmed off the timeline rather than shown.
+   * hunt for the countdown; that headroom is trimmed off the timeline rather than shown.
    */
   overlayLeadInSec: number;
   /**

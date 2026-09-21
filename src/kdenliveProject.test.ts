@@ -104,7 +104,7 @@ assert.equal(
   `duplicate kdenlive:id across layered clips: ${layeredBinIds}`,
 );
 
-// Timeline zero is the world-load thump, so every clip's head that falls before it is trimmed
+// Timeline zero is the countdown, so every clip's head that falls before it is trimmed
 // away and match start lands at exactly 10s no matter how much sync pre-roll a clip carries.
 const preRollClip = (name: string, offsetSec: number): KdenliveClipInput => ({
   ...clip(name),
@@ -126,14 +126,14 @@ const trimmed = buildKdenliveProject({
 assert.match(
   trimmed,
   /<entry in="00:02:20\.000" out="[^"]*" producer="chain_video_left"/,
-  "left POV clip should be trimmed to 00:02:20.000 (150s offset - 10s thump lead-in)",
+  "left POV clip should be trimmed to 00:02:20.000 (150s offset - 10s countdown)",
 );
 assert.match(
   trimmed,
   /<entry in="00:01:50\.000" out="[^"]*" producer="chain_video_right"/,
-  "right POV clip should be trimmed to 00:01:50.000 (120s offset - 10s thump lead-in)",
+  "right POV clip should be trimmed to 00:01:50.000 (120s offset - 10s countdown)",
 );
-// An overlay whose own lead-in already equals the thump lead-in needs no trim at all.
+// An overlay whose own lead-in already equals the countdown needs no trim at all.
 assert.match(
   trimmed,
   /<entry in="00:00:00\.000" out="00:10:00\.000" producer="chain_overlay_0"/,
@@ -155,7 +155,7 @@ assert.ok(
   "the overlay track must start at timeline 0, with no leading blank",
 );
 
-// A clip whose match offset is *smaller* than the thump lead-in has no footage for the first
+// A clip whose match offset is *smaller* than the countdown has no footage for the first
 // few seconds, so it gets a real (short) blank instead of being dragged back to a negative
 // position — which MLT cannot express.
 const late = buildKdenliveProject({

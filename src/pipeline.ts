@@ -275,7 +275,7 @@ async function runStages(
       syncConfidence = sync.confidence;
       syncDetail = sync.detail;
       if (sync.confidence >= config.syncConfidenceThreshold) {
-        // BOTH offsets, not just the right one: timeline zero is the thump, so an error in the
+        // BOTH offsets, not just the right one: timeline zero is the countdown, so an error in the
         // left clip's estimate moves the whole published video.
         leftOffsetSec = sync.clipACueTimeSec;
         rightOffsetSec = sync.clipBCueTimeSec;
