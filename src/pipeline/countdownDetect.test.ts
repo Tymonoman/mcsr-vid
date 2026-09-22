@@ -210,6 +210,69 @@ const digitSeries = (spec: Array<[seconds: number, count: number]>): number[] =>
   assert.equal(findCountdownOnset(counts, 8 * FPS, FPS).index, 6 * FPS);
 }
 
+{
+  // A late world load (BeefSalad, 13549300, measured): the loading screen's "100%" holds 416
+  // white pixels through the "10" and the "9", the world comes in on "8", the "1" vanishes at
+  // 148 s. No rise into a fattest digit exists; the drop at the end is the reading.
+  const counts = digitSeries([
+    [6, 0],
+    [4, 416],
+    ...[590, 724, 831, 831, 719, 770, 766, 607].map((n): [number, number] => [1, n]),
+    [6, 15],
+  ]);
+  const found = findCountdownOnset(counts, 8 * FPS, FPS);
+  assert.equal(found.endIndex, 18 * FPS, `expected the end at 18s, got ${found.endIndex}`);
+  assert.equal(found.index, 8 * FPS);
+  // The loading screen's two seconds read as digits too; the answer does not depend on them.
+  assert.ok(found.seconds >= 8);
+  assert.ok(found.confidence > 0.5, `eight stepping digits are a countdown, got ${found.confidence}`);
+}
+
+{
+  // A full countdown 53 s from the estimate (Aquacorde, 13559245: the VOD's clock ran ahead of
+  // the API's) is the countdown, not a candidate the distance term scores to zero.
+  const counts = digitSeries([[10, 0], [1, 407], ...DIGITS.map((n): [number, number] => [1, n]), [60, 0]]);
+  const found = findCountdownOnset(counts, 64 * FPS, FPS);
+  assert.equal(found.index, 11 * FPS);
+  assert.ok(
+    found.confidence > 0.6,
+    `a complete countdown far from the estimate stays trusted, got ${found.confidence}`,
+  );
+  // ...while four digits that far out do not clear the trust line on their own.
+  const partial = digitSeries([
+    [10, 0],
+    [1, 407],
+    ...DIGITS.slice(6).map((n): [number, number] => [1, n]),
+    [60, 0],
+  ]);
+  assert.ok(findCountdownOnset(partial, 64 * FPS, FPS).confidence < 0.3);
+}
+
+{
+  // A static screen through the "7" (Feinberg, 13395245, measured: 388 white pixels of a
+  // waiting screen), then six digits and the drop. The onset pass reads the "6" as a "10" with
+  // no end in sight; the end-read candidate has the "1" vanishing, and that outranks distance.
+  const counts = digitSeries([
+    [6, 388],
+    ...[728, 800, 752, 664, 768, 608].map((n): [number, number] => [1, n]),
+    [6, 10],
+  ]);
+  const found = findCountdownOnset(counts, 3 * FPS, FPS);
+  assert.equal(found.endIndex, 12 * FPS);
+  assert.equal(found.index, 2 * FPS);
+}
+
+{
+  // The world going dark is not a countdown ending: a snowfield (the whole crop white) into a
+  // cave has a drop and varying seconds, and more white than any digit.
+  const counts = digitSeries([
+    [5, 0],
+    ...[6200, 5900, 6400, 6100, 5800, 6300].map((n): [number, number] => [1, n]),
+    [6, 0],
+  ]);
+  assert.equal(findCountdownOnset(counts, 6 * FPS, FPS).index, null);
+}
+
 // whiteCounts counts what is at or over the threshold.
 assert.deepEqual(whiteCounts([new Uint8Array([0, 235, 255, 234]), new Uint8Array([255])]), [2, 1]);
 

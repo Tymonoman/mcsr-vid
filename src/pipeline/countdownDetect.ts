@@ -160,8 +160,10 @@ export function findMatchStartIndex(
  * a few dozen otherwise, on a full-width window and on a narrow "tall" one alike, since the
  * digit is drawn at GUI scale and not at window scale.
  *
- * Match start is the digit's onset plus ten seconds — the onset rather than the end, because a
- * player who opens a menu on "2" dims the last digits (7rowl did) while the "10" is always clean.
+ * Match start is the frame the "1" vanishes when that is seen, else the "10"'s onset plus ten
+ * seconds: a player who opens a menu on "2" dims the last digits (7rowl did), and a player whose
+ * world loads late has the loading screen over the first ones (BeefSalad, 13549300) — between
+ * the two ends, one is clean.
  */
 const DIGIT_CROP = "crop=iw*0.10:ih*0.16:iw*0.45:ih*0.40";
 const DIGIT_WIDTH = 96;
@@ -174,6 +176,27 @@ const DIGIT_MIN_SECONDS = 6;
 /** Consecutive digits differ in pixel count by at least this much: a static bright patch does not. */
 const DIGIT_STEP_FRACTION = 0.05;
 const DIGIT_MIN_STEPS = 4;
+/**
+ * The "10" is two glyphs: 1,532 pixels against 809 for the fattest single digit (S11 Pinne–7rowl
+ * game 1), 1.9x. An onset whose "10" is not half again the digits after it is a later digit
+ * read as the first (Feinberg, 13395245: 800 against 768, the "6" after a waiting screen).
+ */
+const TEN_OVER_DIGIT = 1.4;
+/** More white than this in the crop is the world (snow, clouds), not a digit: the "10" peaks ~1,500. */
+const DIGIT_MAX_PIXELS = 3000;
+/**
+ * A countdown read from its end (see `findCountdownOnset`): how many of its last seconds must
+ * show a digit, and step. Eight are there when the world comes in on "8".
+ */
+const END_MIN_SECONDS = 4;
+const END_MIN_STEPS = 3;
+/**
+ * The second look when the near window is empty. The estimate is the API's clock against the
+ * VOD's, and a VOD that lost a segment earlier in the stream runs ahead of it by a minute
+ * (Aquacorde, 13559245: 53 s; 13257079's left clip: 80 s) — outside a ±25 s window, and the
+ * countdown was there to read all along. The decode is the cost, so only when needed.
+ */
+const WIDE_RADIUS_SEC = 150;
 
 /** White pixels per frame in the centre crop. */
 export function whiteCounts(frames: Uint8Array[], white = DIGIT_WHITE): number[] {
@@ -190,8 +213,10 @@ export function whiteCounts(frames: Uint8Array[], white = DIGIT_WHITE): number[]
  * A candidate is a rise into the "10" (see the loop) followed by ten one-second plateaus of
  * which at least `DIGIT_MIN_SECONDS` from the first show a digit, with at least
  * `DIGIT_MIN_STEPS` changes of `DIGIT_STEP_FRACTION` between consecutive plateaus — a static
- * bright patch has none. The nearest to the expected index wins; the score is how many seconds
- * and steps it has, and how far it sits from the estimate.
+ * bright patch has none — or, when the first digits were never on screen, a drop out of the
+ * last digit with `END_MIN_SECONDS` stepping seconds before it (the second loop). The nearest
+ * to the expected index wins; the score is how many seconds and steps it has, and how far it
+ * sits from the estimate.
  */
 export function findCountdownOnset(
   counts: number[],
@@ -219,9 +244,10 @@ export function findCountdownOnset(
     // still the "10". The frame before is under two thirds of it: a "ready" glyph of a few
     // hundred pixels precedes the "10" on some clients.
     const ten = Math.max(...counts.slice(i, i + fps));
-    if (ten < DIGIT_MIN_PIXELS || counts[i]! < ten * 0.9 || counts[i - 1]! >= ten * (2 / 3)) continue;
+    if (ten < DIGIT_MIN_PIXELS || ten > DIGIT_MAX_PIXELS) continue;
+    if (counts[i]! < ten * 0.9 || counts[i - 1]! >= ten * (2 / 3)) continue;
     const plateaus = Array.from({ length: COUNTDOWN_SEC }, (_, k) => (k === 0 ? ten : plateau(i + k * fps)));
-    if (plateaus.some((p) => p > ten)) continue;
+    if (ten < TEN_OVER_DIGIT * Math.max(...plateaus.slice(1))) continue;
     let seconds = 0;
     while (seconds < COUNTDOWN_SEC && plateaus[seconds]! >= DIGIT_MIN_PIXELS) seconds++;
     if (seconds < DIGIT_MIN_SECONDS) continue;
@@ -247,6 +273,35 @@ export function findCountdownOnset(
     }
     candidates.push({ index: i, endIndex, seconds, steps });
   }
+  // The same countdown read from its end, for the player whose world came in late: the loading
+  // screen ("100%", the RANKED card) covers the "10" and the "9", the world appears on "8"
+  // (BeefSalad, 13549300), and no rise into a fattest digit exists — but the "1" still vanishes,
+  // and the seconds before that drop step like digits. The onset is put ten seconds before the
+  // end. A drop inside a countdown the onset pass found is left to it, so a clean countdown is
+  // one candidate.
+  const half = Math.round(fps / 2);
+  for (let j = END_MIN_SECONDS * fps; j + half <= counts.length; j++) {
+    if (counts[j - 1]! < DIGIT_MIN_PIXELS || counts[j - 1]! > DIGIT_MAX_PIXELS) continue;
+    if (!counts.slice(j, j + half).every((n) => n < DIGIT_MIN_PIXELS / 2)) continue;
+    const plateaus: number[] = [];
+    for (let k = 1; k <= COUNTDOWN_SEC && j - k * fps >= 0; k++) {
+      const p = plateau(j - k * fps);
+      if (p < DIGIT_MIN_PIXELS || p > DIGIT_MAX_PIXELS) break;
+      plateaus.push(p);
+    }
+    if (plateaus.length < END_MIN_SECONDS) continue;
+    let steps = 0;
+    for (let k = 1; k < plateaus.length; k++) {
+      const a = plateaus[k - 1]!;
+      const b = plateaus[k]!;
+      if (Math.abs(a - b) >= DIGIT_STEP_FRACTION * Math.max(a, b)) steps++;
+    }
+    if (steps < END_MIN_STEPS) continue;
+    // A drop inside an onset candidate's ten seconds is that countdown's, and the onset pass has
+    // judged it: within eight seconds of the "10" it is a menu dimming the digits (7rowl), not 0:00.
+    if (candidates.some((c) => j > c.index && j <= c.index + need)) continue;
+    candidates.push({ index: j - need, endIndex: j, seconds: plateaus.length, steps });
+  }
   if (candidates.length === 0) {
     return {
       index: null,
@@ -256,15 +311,25 @@ export function findCountdownOnset(
       detail: "no countdown digit found at the centre of the frame",
     };
   }
+  // A seen end outranks distance: the "1" vanishing is 0:00 by definition, while an onset with
+  // no end may be a later digit read as the "10" (Feinberg, 13395245: a static screen through
+  // the "7", the onset pass took the "6" for the "10" and put 0:00 four seconds late).
   candidates.sort(
-    (a, b) => Math.abs(a.index - expectedIndex) - Math.abs(b.index - expectedIndex) || b.seconds - a.seconds,
+    (a, b) =>
+      Number(b.endIndex !== null) - Number(a.endIndex !== null) ||
+      Math.abs(a.index - expectedIndex) - Math.abs(b.index - expectedIndex) ||
+      b.seconds - a.seconds,
   );
   const best = candidates[0]!;
   const offBySec = Math.abs(best.index - expectedIndex) / fps;
+  // The estimate ranks the candidates; it does not veto one. A full ten-digit countdown a
+  // minute from the estimate is the countdown (Aquacorde, 13559245, 53 s off: the old
+  // `1 - off / 20` scored it zero and the match went to the sync editor). Far from the
+  // estimate the shape has to be near complete — the product with the two shape terms does that.
   const confidence =
     clamp01(best.seconds / COUNTDOWN_SEC) *
     clamp01(best.steps / (COUNTDOWN_SEC - 1)) *
-    clamp01(1 - offBySec / 20);
+    clamp01(1 - offBySec / 240);
   return {
     index: best.index,
     endIndex: best.endIndex,
@@ -305,8 +370,11 @@ export async function detectCountdownDigits(
   const expectedIndex = Math.round((expectedStartSec - COUNTDOWN_SEC - windowStart) * SAMPLE_FPS);
   const counts = whiteCounts(coarse);
   const found = findCountdownOnset(counts, expectedIndex);
-  if (found.index === null)
+  if (found.index === null) {
+    if (radiusSec < WIDE_RADIUS_SEC)
+      return detectCountdownDigits(clipPath, expectedStartSec, WIDE_RADIUS_SEC, signal);
     return { matchStartSec: null, confidence: 0, stillRunSec: 0, detail: found.detail };
+  }
 
   // A frame at 10 fps brackets the moment within 100 ms; a second decode of that instant at
   // 60 fps lands on the frame. The end is the first frame with no digit; the onset the first at
