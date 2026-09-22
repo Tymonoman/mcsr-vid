@@ -172,6 +172,36 @@ const digitSeries = (spec: Array<[seconds: number, count: number]>): number[] =>
 }
 
 {
+  // A pause menu opened on 0:00 (doogile, 13223455, measured): the "1" drops to 4 in one frame,
+  // then the menu's button text holds 70–191 white pixels for half a second. The end is the drop.
+  const counts = digitSeries([
+    [13, 0],
+    [1, 407],
+    ...DIGITS.map((n): [number, number] => [1, n]),
+    [0.1, 4],
+    [0.4, 120],
+    [0.2, 92],
+    [6, 0],
+  ]);
+  assert.equal(findCountdownOnset(counts, 14 * FPS, FPS).endIndex, 24 * FPS);
+}
+
+{
+  // No "10" to anchor on (v_strid, 13141080: the countdown was drawn small through the "9"),
+  // and a one-frame flash half a second after the "1" vanishes. The end is the "1"'s drop, not
+  // the flash's — a second that is mostly empty is not a digit plateau.
+  const counts = digitSeries([
+    [6, 30],
+    ...DIGITS.slice(2).map((n): [number, number] => [1, n]),
+    [0.5, 0],
+    [0.1, 234],
+    [6, 0],
+  ]);
+  const found = findCountdownOnset(counts, 4 * FPS, FPS);
+  assert.equal(found.endIndex, 14 * FPS, `expected the end at 14s, got ${found.endIndex! / FPS}s`);
+}
+
+{
   // A static bright patch in the middle of the frame — snow, a white overlay — has no steps and
   // is not a countdown; nor is a digit that shows for three seconds.
   assert.equal(

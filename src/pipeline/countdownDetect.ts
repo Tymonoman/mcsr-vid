@@ -232,9 +232,12 @@ export function findCountdownOnset(
       seconds: 0,
       detail: "clip window too short to judge",
     };
+  // A second's level is its 30th percentile, not its median: a second that is a one-frame
+  // flash after 0:00 plus the tail of the "1" (v_strid, 13141080) has a median in the digits
+  // and no digit for most of its frames. A real digit second is constant.
   const plateau = (from: number): number => {
     const slice = counts.slice(from, from + fps).sort((a, b) => a - b);
-    return slice.length ? slice[Math.floor(slice.length / 2)]! : 0;
+    return slice.length ? slice[Math.floor(slice.length * 0.3)]! : 0;
   };
   const candidates: Array<{ index: number; endIndex: number | null; seconds: number; steps: number }> = [];
   for (let i = 1; i + need <= counts.length; i++) {
@@ -262,11 +265,15 @@ export function findCountdownOnset(
     // nothing showing for the half second after it. The "1" vanishing *is* 0:00, so this beats
     // onset-plus-ten when it is there; a menu opened on "2" (7rowl, S11) hides it, and then
     // the onset carries the answer alone.
+    // "Nothing" is relative to the digit: a pause menu opened on 0:00 keeps 120–190 white
+    // pixels of button text in the crop (doogile, 13223455), and an absolute floor read that
+    // as the digit still showing and put the end 0.35 s late.
     let endIndex: number | null = null;
     for (let j = i + Math.round(8 * fps); j <= Math.min(counts.length - 1, i + Math.round(11 * fps)); j++) {
-      if (counts[j]! < DIGIT_MIN_PIXELS / 2) continue;
+      const level = counts[j]!;
+      if (level < DIGIT_MIN_PIXELS / 2) continue;
       const after = counts.slice(j + 1, j + 1 + Math.round(fps / 2));
-      if (after.length && after.every((n) => n < DIGIT_MIN_PIXELS / 2)) {
+      if (after.length && after.every((n) => n < level / 2)) {
         endIndex = j + 1;
         break; // the first quiet half second: a flash after 0:00 (a client's "go") is not the end
       }
@@ -281,8 +288,9 @@ export function findCountdownOnset(
   // one candidate.
   const half = Math.round(fps / 2);
   for (let j = END_MIN_SECONDS * fps; j + half <= counts.length; j++) {
-    if (counts[j - 1]! < DIGIT_MIN_PIXELS || counts[j - 1]! > DIGIT_MAX_PIXELS) continue;
-    if (!counts.slice(j, j + half).every((n) => n < DIGIT_MIN_PIXELS / 2)) continue;
+    const level = counts[j - 1]!;
+    if (level < DIGIT_MIN_PIXELS || level > DIGIT_MAX_PIXELS) continue;
+    if (!counts.slice(j, j + half).every((n) => n < level / 2)) continue;
     const plateaus: number[] = [];
     for (let k = 1; k <= COUNTDOWN_SEC && j - k * fps >= 0; k++) {
       const p = plateau(j - k * fps);
@@ -393,7 +401,8 @@ export async function detectCountdownDigits(
   let matchStartSec: number;
   if (found.endIndex !== null) {
     const endSec = windowStart + found.endIndex / SAMPLE_FPS;
-    const digitOff = (n: number) => n < DIGIT_MIN_PIXELS / 2;
+    const level = counts[found.endIndex - 1]!;
+    const digitOff = (n: number) => n < level / 2;
     // The fine window starts on the last digit frame, so the first frame without one is the end.
     matchStartSec = (await fine(endSec, digitOff)) ?? endSec;
   } else {
