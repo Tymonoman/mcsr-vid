@@ -415,14 +415,17 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
   on disk. A clip the picture cannot read keeps the coarse estimate at confidence 0 and the
   dashboard's sync editor settles it. **Ranked matches went to the editor for two reasons the
   detector now covers** (22 Sept 2026, replayed on the 13 ranked matches with clips on disk:
-  26 of 26 clips read, 11 of 13 pairs within 0.05 s of the frame): the API's estimate can be a
+  26 of 26 clips read, 25 of them to the frame the "1" vanishes): the API's estimate can be a
   minute off (a VOD that lost a segment runs ahead of the API's clock; Aquacorde, 13559245:
   53 s, and `1 - off / 20` scored the countdown it found to zero), so an empty ±25 s window is
   followed by one ±150 s pass and the distance term is soft; and a world that loads late has
   the loading screen over the "10" (BeefSalad, 13549300), so a countdown is also read from its
   end — the drop out of the last digit with stepping seconds before it — and an onset has to be
   a real "10", half again the fattest digit after it, or the "6" after a waiting screen becomes
-  the "10" (Feinberg, 13395245). Still unread: a digit that shrinks mid-countdown (a scene
+  the "10" (Feinberg, 13395245). The end is a drop to under half the digit's own pixels (a
+  pause menu opened on 0:00 keeps button text in the crop, doogile 13223455), and a second
+  counts as a digit only when most of its frames are (a one-frame flash after the "1",
+  v_strid 13141080). Still unread: a digit that shrinks mid-countdown (a scene
   switch on "2", BeefSalad 13257079 — 1.2 s early; a digit fills a third of its bounding box, a
   crosshair a twentieth, which is the test to add if it recurs). **The hand editor's anchor is
   coarse**: it matches the same digit on both POVs at 9.6 s, which fixes the two clips to each
