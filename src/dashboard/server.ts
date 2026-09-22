@@ -51,9 +51,7 @@ import {
 import { readSeriesRecord, renderSeries, seriesState, type SeriesRunners } from "../playoffs/series.js";
 import { refreshRivalPostsIfStale, rivalPostsSnapshot, rivalRecentPostFor } from "./rivalPosts.js";
 import { chooseVariant, readManifest, rerenderThumbnailVariants } from "../thumbnails/thumbnailVariants.js";
-import { ANCHOR_SEC } from "../pipeline/kdenliveProject.js";
-import { exportStale, readSyncOffsets, staleExportMessage, writeSyncOffsets } from "../pipeline/syncFile.js";
-import { clipTimeFor, povClipExists, povClipPath, povFrame, validOffset } from "../pipeline/syncEdit.js";
+import { readSyncOffsets } from "../pipeline/syncFile.js";
 import { buildTitle, metaPaths, type BuiltTitle } from "../pipeline/title.js";
 import { allArchiveStates, capacity, isArchived } from "./archive.js";
 import { exportRunning, handleExportRoute, startFastExport } from "./exportRoutes.js";
@@ -79,7 +77,8 @@ import {
 } from "./shortsRoutes.js";
 import { saveSettings, settingsPayload } from "./settings.js";
 import { handleYoutubeRoute, uploadRunning } from "./youtubeRoutes.js";
-import { findExportedVideo, PINNED_COMMENT, readUpload } from "../youtube/youtubeStore.js";
+import { handleSyncRoute, syncPayload } from "./syncRoutes.js";
+import { PINNED_COMMENT, readUpload } from "../youtube/youtubeStore.js";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const ROOT = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
@@ -210,33 +209,6 @@ async function readMeta(matchId: number) {
      * the one thing it could not tell you the path of.
      */
     outputs: outputPaths(matchId, entry.projectPath),
-  };
-}
-
-/**
- * What the sync editor and the sync check read: the offsets, the clips, and whether the finished
- * export was made from them. `syncStale` is the mtime test `beginUpload` and the adopt route
- * refuse on (src/pipeline/syncFile.ts), so the page can disable the Upload button for the same reason the
- * server would give; `exported` is what puts the sync check on the page at all. One shape for
- * the GET and the PUT — saving offsets is exactly what makes an export stale.
- */
-async function syncPayload(matchId: number) {
-  const status = await matchStatusFor(matchId);
-  const dir = matchDir(matchId);
-  const located = findExportedVideo(matchId, [status.leftNickname, status.rightNickname]);
-  const staleness = "error" in located ? null : exportStale(dir, located.path);
-  return {
-    matchId,
-    sync: readSyncOffsets(dir),
-    /** Where the editor starts when nothing has synced this match yet. */
-    fallback: config.preRollSec,
-    anchorSec: ANCHOR_SEC,
-    threshold: config.syncConfidenceThreshold,
-    left: { nickname: status.leftNickname, clip: povClipExists(dir, status.leftNickname ?? "") },
-    right: { nickname: status.rightNickname, clip: povClipExists(dir, status.rightNickname ?? "") },
-    exported: staleness !== null,
-    syncStale: staleness?.stale ?? false,
-    staleMessage: staleness?.stale ? staleExportMessage(matchId, staleness.staleMatchId) : null,
   };
 }
 
@@ -424,96 +396,8 @@ const server = createServer(async (req, res) => {
 
     const [, resource, idRaw] = segments;
 
-    // --- Manual sync -------------------------------------------------------------------------
-    // The detector reports a confidence and the dashboard already warns when it is low; this is
-    // what the operator does about it. Both offsets are "seconds into that POV clip where match
-    // start falls", the same numbers every consumer reads out of sync.json.
-    if (resource === "sync" && idRaw === "frame" && req.method === "GET") {
-      const matchId = parseId(url.searchParams.get("match") ?? undefined);
-      if (matchId === null) {
-        json(res, 400, { error: "match id must be digits" });
-        return;
-      }
-      const status = await matchStatusFor(matchId);
-      const side = url.searchParams.get("side") === "right" ? "right" : "left";
-      const nickname = side === "left" ? status.leftNickname : status.rightNickname;
-      const offsets = readSyncOffsets(matchDir(matchId));
-      const offset = Number(
-        url.searchParams.get("offset") ?? (side === "left" ? offsets?.left : offsets?.right) ?? 0,
-      );
-      const timelineSec = Number(url.searchParams.get("t") ?? 5);
-      if (!nickname || !Number.isFinite(offset) || !Number.isFinite(timelineSec)) {
-        json(res, 400, { error: "expected ?match=<id>&side=left|right&t=<seconds>&offset=<seconds>" });
-        return;
-      }
-      const clip = povClipPath(matchDir(matchId), nickname);
-      if (!existsSync(clip)) {
-        json(res, 404, { error: `no POV clip for ${nickname} — the VODs are not on disk` });
-        return;
-      }
-      try {
-        const jpeg = await povFrame(clip, clipTimeFor(offset, timelineSec));
-        // No caching: the whole point is that the same URL answers differently once the operator
-        // nudges the offset, and a 304 would show them the frame they are trying to move away from.
-        res.writeHead(200, { "content-type": "image/jpeg", "cache-control": "no-store" });
-        res.end(jpeg);
-      } catch (err) {
-        json(res, 502, { error: describeError(err) });
-      }
-      return;
-    }
-
-    if (resource === "sync" && req.method === "GET") {
-      const matchId = parseId(idRaw);
-      if (matchId === null) {
-        json(res, 400, { error: "match id must be digits" });
-        return;
-      }
-      json(res, 200, await syncPayload(matchId));
-      return;
-    }
-
-    if (resource === "sync" && req.method === "PUT") {
-      const matchId = parseId(idRaw);
-      if (matchId === null) {
-        json(res, 400, { error: "match id must be digits" });
-        return;
-      }
-      let body: { left?: unknown; right?: unknown };
-      try {
-        body = JSON.parse(await readBody(req)) as { left?: unknown; right?: unknown };
-      } catch (err) {
-        json(res, 400, { error: describeError(err) });
-        return;
-      }
-      const left = validOffset(body.left, "left offset");
-      const right = validOffset(body.right, "right offset");
-      if ("error" in left) {
-        json(res, 400, { error: left.error });
-        return;
-      }
-      if ("error" in right) {
-        json(res, 400, { error: right.error });
-        return;
-      }
-      const dir = matchDir(matchId);
-      const previous = readSyncOffsets(dir);
-      // Confidence 1: a human read the two countdowns, which is the measurement the detector was
-      // trying to approximate. The warning line keys off this, so leaving it low would keep
-      // telling them to verify an alignment they just verified.
-      writeSyncOffsets(dir, {
-        left: left.value,
-        right: right.value,
-        confidence: 1,
-        detail: `set in the dashboard, replacing ${previous?.source ?? "nothing"}`,
-        source: "manual",
-      });
-      console.error(`sync: match ${matchId} set by hand to ${left.value}s / ${right.value}s`);
-      // The same shape as the GET: the save is what makes the export stale, and the page repaints
-      // its sync check and the Upload button from this answer.
-      json(res, 200, await syncPayload(matchId));
-      return;
-    }
+    // The sync editor — the frames, the offsets, the save — is its own group (syncRoutes.ts).
+    if (await handleSyncRoute(req, res, segments, { json, readBody, matchDir, parseId })) return;
 
     if (resource === "settings" && req.method === "GET") {
       json(res, 200, { ...settingsPayload(), nightlyArmedAt: nightlyArmedAtMs() });

@@ -36,7 +36,7 @@ what an agent cannot derive from the code; the rest is in the files it names.
 | `src/shorts/` | The moment scorer, the reasoner, the vertical render, `generateShort.ts`. |
 | `src/playoffs/` | The bracket and its games (`playoffs.ts`), a series as one video (`series.ts`, `seriesCli.ts`). |
 | `src/youtube/` | The Data API client and auth, upload records, the upload itself, the channel pairing, the publish slot. |
-| `src/dashboard/` | The web server and its routes, jobs, the nightly, suggestions, the shelf (hidden/queue/checklist), the publish set. |
+| `src/dashboard/` | The web server (`server.ts`, one dispatch chain) and its route groups (`youtubeRoutes`, `exportRoutes`, `shortsRoutes`, `syncRoutes`), jobs, the nightly, suggestions, the shelf (hidden/queue/checklist), the publish set. |
 | `src/cli/` | Entry points nothing else imports: batch, status, score, chat, bench, the TUI. |
 | `src/` root | `config.ts`, `cliArgs.ts`, `errorText.ts`, and the tests that cut across folders. |
 
