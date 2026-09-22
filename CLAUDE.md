@@ -63,6 +63,8 @@ Use the script, don't reconstruct the shell line. Extra arguments go after `--`.
 | `npm run chat -- <matchId>` | Fetch both players' Twitch chat to `chat-<nick>.json` for a match the pipeline saved none for (it does this itself after `download-vods`). Existing files are kept; delete one to refetch. |
 | `npm run reason -- <matchId>` | Ask the configured `reasonerCommand` (Antigravity's `agy`) which 22 seconds to cut, printing the candidates, the prompt and the answer. Saves it to `short-reason.json`; delete that to ask again. Unconfigured, it says so and changes nothing. |
 | `npm run bench -- <Composition> [--frames=N] [--codec=] [--pixelFormat=] [--concurrency=N]` | Render throughput for one composition. Measure before claiming a render change is faster. |
+| `npm run retention -- <videoId>… [--days=90]` | The audience retention curve per video (Analytics API `audienceWatchRatio` by `elapsedVideoTimeRatio`), printed at every tenth. Measured 22 Sept 2026: 16–22 points go between 3% and 10% of the video — the first minute after the intro, the least eventful stretch of a run — then a slow drift; the finish lifts the curve again. |
+| `npm run config:example` | Rewrites `mcsr-vid.config.example.json` from `DEFAULTS` in `src/config.ts`, so the example cannot drift (it had, by seven keys). Run it after adding a key. |
 | `npm run analytics -- <videoId> [--traffic-sources] [--days N]` | YouTube Analytics via `~/.claude/skills/claude-youtube/` (outside the repo; token at `~/.claude/.tmp/youtube_oauth_token.json`). |
 | `python3 scripts/reap.py <command…>` | Subreaper wrapper, only needed if zombies ever climb again (see Pitfalls). |
 | `bash scripts/browser-checks/run-all.sh <url>` | Drives the dashboard in a real browser the way the operator does (24 Playwright checks, self-configuring from `/api/matches` and `/api/playoffs`). Point it at the real dashboard (`http://mcsr-dashboard:8080` from the Claude container), not just a local test server — four checks only ever exercised a secure origin and hid a broken Copy button for it. Needs `npx playwright install chromium` once and a server with real data. |
@@ -214,6 +216,10 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
 - **Upload** sends `match-<id>.tags.txt` and refuses a title still containing `<HOOK>`; it adds
   the video to the season playlist (`PLHG-jSA-dWDo`), a per-matchup and a per-player playlist
   (`src/youtube/youtube.ts`; ids remembered per process because YouTube's list is eventually consistent).
+  A matchup playlist is created on a pair's *second* video, with the first added alongside
+  (22 of 28 playlists held one video on 22 Sept 2026). The Season 11 playoffs playlist exists
+  (`PLBtNy46ii7uU`). A Short's description gains "the whole match: https://youtu.be/<id>" at
+  upload time, once the long-form's id is in `youtube.json`.
   **YouTube caps `playlists.insert` at about a dozen per rolling 24 h** (429 RATE_LIMIT_EXCEEDED;
   measured 15–16 Sept 2026): the step records the refusal in the ledger and the nightly's tick
   presses again (`retryFailedPlaylists`), so a cap line in the panel needs no press from anyone.
@@ -233,8 +239,9 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   reports them. Add a key by
   adding a `SettingField` to `SETTINGS`; the panel and both tests derive from that list.
 - **Publish kit** (`GET /api/publishkit/:id`): copy buttons for the title, the publish slot
-  (`publishHourUtc`, default 19:00 UTC, the competitor's measured hour, on the first day no
-  other video is already scheduled for — `src/youtube/publishSlot.ts`), description, tags, the
+  (`publishHourUtc`, default 19:00 UTC, the competitor's measured hour; a series video takes
+  `seriesPublishHourUtc`, 23:00, its own slot — the test is the day *and* the hour, so the two
+  kinds never push each other a day out — `src/youtube/publishSlot.ts`), description, tags, the
   Short's title/description, a pinned comment, a community post, and a DM per player. When
   `pullSource` is set it opens with an rsync *pull* the operator's PC runs (`src/dashboard/publishSet.ts`;
   the lab host's path, not the container's `/media`) — pull, not push, because the image has no

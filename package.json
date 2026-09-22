@@ -44,6 +44,8 @@
     "chat": "tsx src/cli/chatCli.ts",
     "//sync-status": "Where each match's clips are placed; with an id, backfills sync.json from an already-generated .kdenlive.",
     "sync-status": "tsx src/pipeline/syncStatusCli.ts",
+    "//retention": "Audience retention curve per video from the Analytics API — where the viewers leave.",
+    "retention": "tsx src/cli/retentionCli.ts",
     "//reason": "Ask the configured reasoner (reasonerCommand) which moment the Short should cut; prints the prompt and the answer.",
     "reason": "tsx src/shorts/reasonCli.ts"
   },
