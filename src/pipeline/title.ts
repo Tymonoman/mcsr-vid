@@ -1,5 +1,5 @@
 import path from "node:path";
-import { matchDir } from "../config.js";
+import { config, matchDir } from "../config.js";
 
 /**
  * The format half every upload shares. "Minecraft Speedrun" was added on 22 Sept 2026 after the
@@ -44,7 +44,12 @@ export interface BuiltTitle {
  *
  * The hook is left as a placeholder, because that judgement is not derivable.
  */
-export function buildTitle({ leftNickname, rightNickname, suffix = FORMAT_SUFFIX }: TitleInput): BuiltTitle {
+/** The name the title shows for a nickname: the API's spelling unless `config.titleNames` says otherwise. */
+export const titleName = (nickname: string): string => config.titleNames[nickname] ?? nickname;
+
+export function buildTitle({ leftNickname: left, rightNickname: right, suffix = FORMAT_SUFFIX }: TitleInput): BuiltTitle {
+  const leftNickname = titleName(left);
+  const rightNickname = titleName(right);
   const generated = `${leftNickname} vs ${rightNickname}${SEPARATOR}${suffix}`;
   // The names have to end before the mobile cut, not merely start before it: the budget is
   // what is left of the cutoff after the hook's separator and both names. (Until 22 Sept 2026

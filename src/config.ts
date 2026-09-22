@@ -196,9 +196,9 @@ export interface Config {
   postRollCta: boolean;
   /**
    * A subscribe line in the meta column during the race, this many seconds after match start,
-   * for `midRollCtaSec` seconds; null (the default) shows none. The 22 Sept 2026 audit measured
-   * the post-roll card reaching 25–45% of viewers and the first split comparison (~90 s) 50–60%.
-   * It is a visible change to every video, so it stays the operator's switch.
+   * for `midRollCtaSec` seconds; null shows none. The 22 Sept 2026 audit measured the post-roll
+   * card reaching 25–45% of viewers and the first split comparison (~90 s) 50–60%; the operator
+   * switched it on by default that morning, and the Round of 16 series were re-rendered with it.
    */
   midRollCtaAtSec: number | null;
   midRollCtaSec: number;
@@ -243,6 +243,13 @@ export interface Config {
    * tournament starts and back to false when the bracket is done.
    */
   playoffsFirst: boolean;
+  /**
+   * Nicknames the *title* spells differently: the broadcast and the reaction channels call
+   * Pinne "Skycrab" and lowk3y_ "lowkey" (their Twitch names), and that is what a viewer of the
+   * playoffs types. The operator's call, 22 Sept 2026 — the title only; the overlay, the
+   * description and the tags keep the API spelling (the tags carry both).
+   */
+  titleNames: Record<string, string>;
   /**
    * How a playoff game's thumbnails are framed (remotion/Thumbnail.tsx `playoff`): "plain" is the
    * ranked look (a category band, the rating in the nameplate); "bracket" puts the round in the
@@ -294,7 +301,7 @@ export const DEFAULTS: Config = {
   publishHourUtc: 19,
   seriesPublishHourUtc: 23,
   postRollCta: true,
-  midRollCtaAtSec: null,
+  midRollCtaAtSec: 90,
   midRollCtaSec: 4,
   nightlyRenderExport: true,
   nightlyMaxRenders: 1,
@@ -314,6 +321,7 @@ export const DEFAULTS: Config = {
   suggestFollowerWeight: 3,
   suggestWeights: DEFAULT_WEIGHTS,
   playoffsFirst: false,
+  titleNames: { Pinne: "Skycrab", lowk3y_: "lowkey" },
   playoffThumbnailStyle: "plain",
   reasonerCommand: null,
 };
@@ -369,6 +377,15 @@ export function validateOverrides(raw: Record<string, unknown>): void {
           `${CONFIG_PATH}: "${key}" must be seconds from 0 to 3600${nullable ? ", or null" : ""}.`,
         );
       }
+      continue;
+    }
+    if (key === "titleNames") {
+      const ok =
+        typeof value === "object" &&
+        value !== null &&
+        !Array.isArray(value) &&
+        Object.values(value as Record<string, unknown>).every((v) => typeof v === "string" && v.trim() !== "");
+      if (!ok) throw new Error(`${CONFIG_PATH}: "titleNames" must map nicknames to the names the title shows.`);
       continue;
     }
     if (key === "playoffThumbnailStyle") {

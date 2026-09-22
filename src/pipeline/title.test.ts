@@ -12,10 +12,15 @@ assert.equal(
   "ANJOUU vs silverrruns | MCSR Ranked 1v1 | Minecraft Speedrun",
 );
 
-// Nicknames are passed through verbatim: casing, underscores and repeated letters all survive.
+// Nicknames are passed through verbatim — casing, underscores and repeated letters all survive —
+// except the two the title spells the broadcast's way (config.titleNames, 22 Sept 2026).
 assert.equal(
   buildTitle({ leftNickname: "lowk3y_", rightNickname: "Aquacorde" }).generated,
-  "lowk3y_ vs Aquacorde | MCSR Ranked 1v1 | Minecraft Speedrun",
+  "lowkey vs Aquacorde | MCSR Ranked 1v1 | Minecraft Speedrun",
+);
+assert.equal(
+  buildTitle({ leftNickname: "7rowl", rightNickname: "Pinne" }).generated,
+  "7rowl vs Skycrab | MCSR Ranked 1v1 | Minecraft Speedrun",
 );
 
 const edcr = buildTitle({ leftNickname: "edcr", rightNickname: "doogile" });

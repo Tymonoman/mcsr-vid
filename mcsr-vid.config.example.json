@@ -41,7 +41,7 @@
   "publishHourUtc": 19,
   "seriesPublishHourUtc": 23,
   "postRollCta": true,
-  "midRollCtaAtSec": null,
+  "midRollCtaAtSec": 90,
   "midRollCtaSec": 4,
   "nightlyRenderExport": true,
   "nightlyMaxRenders": 1,
@@ -69,6 +69,10 @@
     "chaosSpeed": 0.5
   },
   "playoffsFirst": false,
+  "titleNames": {
+    "Pinne": "Skycrab",
+    "lowk3y_": "lowkey"
+  },
   "playoffThumbnailStyle": "plain",
   "reasonerCommand": [
     "agy",
