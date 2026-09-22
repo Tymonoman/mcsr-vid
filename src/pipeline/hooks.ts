@@ -114,10 +114,14 @@ function candidates(input: HookInput): Candidate[] {
     const r = seedOf(userRight.uuid);
     if (l && r) {
       const word = (label: string): string => (label === "LCQ" ? "the LCQ" : `the ${ordinal(label)} seed`);
+      // The pairing without articles — "LCQ vs 7th seed", 15 characters — so it fits the hook
+      // budget a long pair of nicknames leaves (21–32) and the Short's; the question keeps
+      // its form and is for the Short and the short-named pairs.
+      const bare = (label: string): string => (label === "LCQ" ? "LCQ" : `${ordinal(label)} seed`);
       const [lower, higher] = seedRank(l.label) >= seedRank(r.label) ? [l, r] : [r, l];
       if (l.label !== r.label)
         out.push({ text: `Can ${word(lower.label)} take down ${word(higher.label)}?`, weight: 125 });
-      out.push({ text: `${capital(word(l.label))} vs ${word(r.label)}`, weight: 115 });
+      out.push({ text: `${bare(l.label)} vs ${bare(r.label)}`, weight: 115 });
     }
   }
 
@@ -350,5 +354,3 @@ function ordinal(label: string): string {
 
 /** The seed as a rank for "who is the underdog": an LCQ entrant sits below every seed. */
 const seedRank = (label: string): number => (label === "LCQ" ? 99 : Number(/\d+/.exec(label)?.[0] ?? 99));
-
-const capital = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1);

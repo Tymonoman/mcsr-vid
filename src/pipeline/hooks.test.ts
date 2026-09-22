@@ -153,7 +153,7 @@ assert.deepEqual(rivalry, [
     4,
   );
   assert.ok(po.includes("Can the LCQ take down the 1st seed?"), po.join(" | "));
-  assert.ok(po.includes("The 1st seed vs the LCQ"), po.join(" | "));
+  assert.ok(po.includes("1st seed vs LCQ"), po.join(" | "));
   assert.ok(!po.some((h) => h.includes("#")), `no hash in a playoff hook: ${po.join(" | ")}`);
   const seeded = buildHookSuggestions(
     input({}, ELO_GAP, {
@@ -168,7 +168,7 @@ assert.deepEqual(rivalry, [
     6,
   );
   assert.ok(seeded.includes("Can the 12th seed take down the 3rd seed?"), seeded.join(" | "));
-  assert.ok(seeded.includes("The 3rd seed vs the 12th seed"), seeded.join(" | "));
+  assert.ok(seeded.includes("3rd seed vs 12th seed"), seeded.join(" | "));
 }
 
 // A tie is still a rivalry, but nobody "leads" it.
