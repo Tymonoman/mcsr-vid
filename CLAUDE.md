@@ -18,8 +18,8 @@ what an agent cannot derive from the code; the rest is in the files it names.
 - **The YouTube API compliance audit cleared on 15 Sept 2026** ("completed your review and don't
   require any further actions"; submitted 7 Sept, round-2 recording 14 Sept — the reply texts are
   `handbook/api-review/`). `videos.insert` is allowed; `youtubeUploadEnabled` is true on
-  the lab and the dashboard uploads. `nightlyUpload` is still `"off"` — turning it on changes what
-  a nightly render does, so it is the operator's edit. Google may re-review: keep every API call
+  the lab and the dashboard uploads. `nightlyUpload` is `"scheduled"` since 22 Sept 2026 (the
+  operator's edit — it changes what a nightly render does). Google may re-review: keep every API call
   inside what the recording showed (own channel, own data, nothing shown to anyone else).
 - Nothing irreversible without the operator: deletions, retitles on the live channel, config
   that changes what a nightly render does.
@@ -170,11 +170,22 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   9.36% CTR against 2.25% for descriptive ones. A playoff game's chips are its seeds, in words
   ("Can the LCQ take down the 7th seed?", "The 7th seed vs the LCQ") in place of the ladder-rank
   chip — a bracket has its own order, and a `#` in a hook is a hashtag on the Short's title.
-- **A subscribe line during the race** (`midRollCtaAtSec`, Settings → Publishing; default
+- **A subscribe line during the race** (`midRollCtaAtSec`, Settings → Publishing; default 90,
   null = none): the post-roll card in the meta column reaches 25–45% of viewers, the first split
-  (~90 s) 50–60% (`npm run retention`, 22 Sept 2026). On, the meta column shows SUBSCRIBE for
+  (~90 s) 50–60% (`npm run retention`, 22 Sept 2026). The meta column shows SUBSCRIBE for
   `midRollCtaSec` (4) seconds at that moment — two more stills (`midRollFramesOf`,
-  `src/pipeline/splitStates.ts`). A visible change to every video, so it is the operator's switch.
+  `src/pipeline/splitStates.ts`). The operator switched it on that morning; the five Round of 16
+  series were re-exported with it.
+- **The title spells two players the broadcast's way** (`titleNames`, default
+  `{ Pinne: "Skycrab", lowk3y_: "lowkey" }`, `titleName` in `src/pipeline/title.ts`): the title
+  only — the overlay, the description and the tags keep the API spelling, and the tags carry
+  both. The operator's call, 22 Sept 2026; the fourteen live titles were rewritten the same
+  morning (the `| Minecraft Speedrun` tail with it).
+- **`nightlyUpload` is `"scheduled"` on the lab since 22 Sept 2026** (the operator's call:
+  "whatever gets the most views"): a nightly render uploads itself, private, scheduled for the
+  next free 19:00 UTC slot — a series for 23:00 — and its Short 18 h later. A fresh render's
+  title carries the pipeline's first hook chip, which is what lets the upload through the
+  `<HOOK>` refusal. Still not writable from the Settings tab.
 - **A playoff game's thumbnails can carry the tournament** (`playoffThumbnailStyle`, in the
   Settings tab; `remotion/Thumbnail.tsx` `playoff`): "bracket" puts the round in the band, the
   seed where the rating was and "Best of 5" under the VS; "trophy" grows the band for a gold
