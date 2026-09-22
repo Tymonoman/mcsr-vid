@@ -205,7 +205,15 @@ export async function isShortUploaded(matchId: number): Promise<boolean> {
  */
 export function isExported(matchId: number): boolean {
   const dir = matchDir(matchId);
-  return existsSync(path.join(dir, "final.mp4")) || existsSync(path.join(dir, `final-${matchId}.mp4`));
+  return (
+    existsSync(path.join(dir, "final.mp4")) ||
+    existsSync(path.join(dir, `final-${matchId}.mp4`)) ||
+    // A joined series is game 1's directory and the join deletes the games' own finals
+    // (src/playoffs/series.ts), so the only finished video there is series-<g1>.mp4. Without
+    // this the five Round of 16 series read as unrendered: absent from the Rendered tab, and
+    // the match screen offering Render as its primary button — on a series already joined.
+    existsSync(path.join(dir, `series-${matchId}.mp4`))
+  );
 }
 
 export async function publishChecklist(

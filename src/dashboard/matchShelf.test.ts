@@ -164,6 +164,9 @@ try {
   assert.equal(isExported(556), false, "no MP4 yet");
   writeFileSync(path.join(readyDir, "final-556.mp4"), "");
   assert.equal(isExported(556), true, "the fast export's name counts as exported");
+  // A joined series is game 1's directory with no final-<id>.mp4 in it (the join deletes them).
+  writeFileSync(path.join(seed(557, 1), "series-557.mp4"), "");
+  assert.equal(isExported(557), true, "a joined series is the finished video of game 1's match");
   assert.equal(await isUploaded(556), false, "nothing says it was uploaded");
   setPublishFlag(556, "uploaded", true);
   assert.equal(await isUploaded(556), true, "a Studio upload is ticked by hand");
