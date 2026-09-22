@@ -13,6 +13,8 @@ import type { MatchInfo, UserDetails } from "../api/types.js";
 /** YouTube's hard cap on a title, and the tags that ride along on every Short. */
 const TITLE_MAX_CHARS = 100;
 const SHORT_TAGS = " #minecraft #mcsr";
+/** The longest suggested hook for a Short: the shelf shows ~60 characters, the tags take 17. */
+const SHORT_HOOK_MAX = 60 - SHORT_TAGS.length;
 
 /**
  * The line that has to earn the scroll, written from what the window actually contains.
@@ -117,8 +119,11 @@ export async function resolveShortHookFor(input: {
         userLeft,
         userRight,
         playoff: await playoffContextFor(match),
-        maxChars: budget.hookMax,
-        minChars: budget.hookMin,
+        // The Short's title is the hook alone plus two tags, so its ceiling is the Shorts
+        // shelf's ~60 characters, not the long title's mobile cut: the seed question ("Can the
+        // LCQ take down the 7th seed?") is 35 and a long pair of nicknames leaves the title 21.
+        maxChars: Math.max(budget.hookMax, SHORT_HOOK_MAX),
+        minChars: Math.min(budget.hookMin, SHORT_HOOK_MAX),
       })),
     ],
     buildShortHook(moment, userLeft.nickname, userRight.nickname),
