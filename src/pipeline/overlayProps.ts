@@ -198,6 +198,9 @@ export async function computeOverlayProps(
     timerStartFrame: 0,
     runResultMs: match.result.time > 0 ? match.result.time : null,
     postRollCta: config.postRollCta,
+    ...(config.midRollCtaAtSec !== null
+      ? { midRollCta: { atSec: config.midRollCtaAtSec, forSec: config.midRollCtaSec } }
+      : {}),
     seedType: match.seedType,
     bastionType: match.bastionType,
   };

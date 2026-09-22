@@ -23,7 +23,7 @@ export interface SplitSegment {
 
 type StateProps = Pick<
   OverlayProps,
-  "splits" | "timerStartFrame" | "runResultMs" | "durationInFrames" | "fps" | "postRollCta"
+  "splits" | "timerStartFrame" | "runResultMs" | "durationInFrames" | "fps" | "postRollCta" | "midRollCta"
 >;
 
 /** Seconds after the finish before the meta column becomes the subscribe card. */
@@ -37,6 +37,19 @@ export const CTA_DELAY_SEC = 3;
 export function ctaFrameOf(props: StateProps): number | null {
   if (props.postRollCta === false || props.runResultMs === null) return null;
   return Math.ceil(runEndFrameOf(props) + CTA_DELAY_SEC * props.fps);
+}
+
+/**
+ * The frames [start, end) of the mid-race subscribe line, or null when there is none or it
+ * would not fit before the run ends. Read by the overlay and by the state enumeration, so the
+ * stills that carry it start and stop on exactly these frames.
+ */
+export function midRollFramesOf(props: StateProps): [number, number] | null {
+  const cta = props.midRollCta;
+  if (!cta || cta.forSec <= 0) return null;
+  const start = Math.ceil(props.timerStartFrame + cta.atSec * props.fps);
+  const end = Math.ceil(start + cta.forSec * props.fps);
+  return end <= runEndFrameOf(props) ? [start, end] : null;
 }
 
 /** Mirrors Overlay.tsx's useTimer: a run with no recorded result never resolves to DNF. */
@@ -61,8 +74,11 @@ function fingerprint(props: StateProps, frame: number): string {
       return `${show(l)}|${show(r)}`;
     })
     .join(",");
-  // The meta column is part of the same still, so the card's appearance is a state change too.
-  return `${rows};cta:${ctaFrame !== null && frame >= ctaFrame}`;
+  // The meta column is part of the same still, so the card's appearance is a state change too —
+  // and so is the mid-race line's, both edges.
+  const mid = midRollFramesOf(props);
+  const midOn = mid !== null && frame >= mid[0] && frame < mid[1];
+  return `${rows};cta:${ctaFrame !== null && frame >= ctaFrame};mid:${midOn}`;
 }
 
 /**
@@ -88,6 +104,11 @@ function candidateFrames(props: StateProps): number[] {
   if (hasMissingSide) frames.add(Math.ceil(runEndFrame));
   const ctaFrame = ctaFrameOf(props);
   if (ctaFrame !== null) frames.add(ctaFrame);
+  const mid = midRollFramesOf(props);
+  if (mid) {
+    frames.add(mid[0]);
+    frames.add(mid[1]);
+  }
   return [...frames].filter((f) => f >= 0 && f < props.durationInFrames).sort((a, b) => a - b);
 }
 

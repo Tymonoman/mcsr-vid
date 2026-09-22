@@ -121,3 +121,32 @@ console.log("splitStates: all checks passed");
   );
   console.log("OK: the subscribe card is one more still, three seconds after the finish");
 }
+
+// --- The mid-race subscribe line is two more stills, on at `atSec` and off `forSec` later; none
+// when it is not configured, and none when it would run into the finish.
+{
+  const { midRollFramesOf } = await import("./splitStates.js");
+  const props = {
+    ...base,
+    postRollCta: false,
+    splits: [{ label: "Nether Enter", leftMs: 123693, rightMs: 151021 }],
+    midRollCta: { atSec: 90, forSec: 4 },
+  };
+  const on = Math.ceil(base.timerStartFrame + 90 * base.fps);
+  const off = Math.ceil(on + 4 * base.fps);
+  assert.deepEqual(midRollFramesOf(props), [on, off]);
+  const starts = splitSegments(props).map((s) => s.startFrame);
+  assert.ok(starts.includes(on) && starts.includes(off), `stills start on both edges: ${starts}`);
+  assert.equal(midRollFramesOf({ ...props, midRollCta: undefined }), null, "unset: none");
+  assert.ok(
+    !splitSegments({ ...props, midRollCta: undefined })
+      .map((s) => s.startFrame)
+      .includes(on),
+  );
+  assert.equal(
+    midRollFramesOf({ ...props, midRollCta: { atSec: base.runResultMs / 1000 - 1, forSec: 4 } }),
+    null,
+    "a line that would outlast the run is not shown",
+  );
+  console.log("OK: the mid-race line is two more stills, and none by default");
+}

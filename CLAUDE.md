@@ -170,6 +170,11 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   9.36% CTR against 2.25% for descriptive ones. A playoff game's chips are its seeds, in words
   ("Can the LCQ take down the 7th seed?", "The 7th seed vs the LCQ") in place of the ladder-rank
   chip — a bracket has its own order, and a `#` in a hook is a hashtag on the Short's title.
+- **A subscribe line during the race** (`midRollCtaAtSec`, Settings → Publishing; default
+  null = none): the post-roll card in the meta column reaches 25–45% of viewers, the first split
+  (~90 s) 50–60% (`npm run retention`, 22 Sept 2026). On, the meta column shows SUBSCRIBE for
+  `midRollCtaSec` (4) seconds at that moment — two more stills (`midRollFramesOf`,
+  `src/pipeline/splitStates.ts`). A visible change to every video, so it is the operator's switch.
 - **A playoff game's thumbnails can carry the tournament** (`playoffThumbnailStyle`, in the
   Settings tab; `remotion/Thumbnail.tsx` `playoff`): "bracket" puts the round in the band, the
   seed where the rating was and "Best of 5" under the VS; "trophy" grows the band for a gold

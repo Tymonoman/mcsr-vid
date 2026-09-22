@@ -103,6 +103,16 @@ export const SETTINGS: readonly SettingField[] = [
     group: "Publishing",
   },
   {
+    key: "midRollCtaAtSec",
+    label: "Subscribe line during the race (seconds in)",
+    help: "A subscribe line in the meta column this many seconds after match start, for four seconds; empty shows none. The post-roll card reaches 25–45% of viewers, the first split (~90 s) 50–60% (22 Sept 2026 audit). Applies to the next render.",
+    kind: "int",
+    group: "Publishing",
+    min: 0,
+    max: 3600,
+    nullable: true,
+  },
+  {
     key: "seriesPublishHourUtc",
     label: "Series publish hour (UTC)",
     help: "The slot a playoff series video takes, its own so it and the day's ranked match do not compete. 23:00 UTC is 19:00 on the US east coast.",

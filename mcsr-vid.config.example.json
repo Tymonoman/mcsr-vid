@@ -41,6 +41,8 @@
   "publishHourUtc": 19,
   "seriesPublishHourUtc": 23,
   "postRollCta": true,
+  "midRollCtaAtSec": null,
+  "midRollCtaSec": 4,
   "nightlyRenderExport": true,
   "nightlyMaxRenders": 1,
   "nightlyNotifyUrl": "",

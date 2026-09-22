@@ -195,6 +195,14 @@ export interface Config {
    */
   postRollCta: boolean;
   /**
+   * A subscribe line in the meta column during the race, this many seconds after match start,
+   * for `midRollCtaSec` seconds; null (the default) shows none. The 22 Sept 2026 audit measured
+   * the post-roll card reaching 25–45% of viewers and the first split comparison (~90 s) 50–60%.
+   * It is a visible change to every video, so it stays the operator's switch.
+   */
+  midRollCtaAtSec: number | null;
+  midRollCtaSec: number;
+  /**
    * Suggestion slots per bucket. Close races and entertaining messes are ranked
    * separately so a run of very tight matches can't crowd the funny ones off the list.
    */
@@ -286,6 +294,8 @@ export const DEFAULTS: Config = {
   publishHourUtc: 19,
   seriesPublishHourUtc: 23,
   postRollCta: true,
+  midRollCtaAtSec: null,
+  midRollCtaSec: 4,
   nightlyRenderExport: true,
   nightlyMaxRenders: 1,
   nightlyNotifyUrl: "",
@@ -348,6 +358,15 @@ export function validateOverrides(raw: Record<string, unknown>): void {
       ) {
         throw new Error(
           `${CONFIG_PATH}: "${key}" must be a whole hour 0-23 (UTC)${nullable ? ", or null" : ""}.`,
+        );
+      }
+      continue;
+    }
+    if (key === "midRollCtaAtSec" || key === "midRollCtaSec") {
+      const nullable = key === "midRollCtaAtSec";
+      if (!((nullable && value === null) || (typeof value === "number" && value >= 0 && value <= 3600))) {
+        throw new Error(
+          `${CONFIG_PATH}: "${key}" must be seconds from 0 to 3600${nullable ? ", or null" : ""}.`,
         );
       }
       continue;

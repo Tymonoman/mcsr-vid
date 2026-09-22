@@ -54,6 +54,13 @@ export type OverlayProps = {
   runResultMs: number | null;
   /** Show the subscribe card in the meta column after the finish (config.postRollCta). */
   postRollCta?: boolean;
+  /**
+   * A subscribe line in the meta column *during* the race, from `atSec` after match start for
+   * `forSec` (config.midRollCtaAtSec / midRollCtaSec). Absent means none: the audit of 22 Sept
+   * 2026 found most viewers gone before the post-roll card, but a strip inside the race is a
+   * visible change to every video and the operator's to switch on.
+   */
+  midRollCta?: { atSec: number; forSec: number };
   /** Overworld structure near spawn, e.g. "DESERT_TEMPLE". null if unknown. */
   seedType: string | null;
   /** Bastion remnant type, e.g. "STABLES". null if unknown. */
