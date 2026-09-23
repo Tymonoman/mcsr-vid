@@ -1024,6 +1024,106 @@
   color: var(--gold);
   letter-spacing: 0.1em;
 }
+/* The end card's second line ("FULL MATCH ON THE CHANNEL"): the result label's gold, smaller and
+   free to wrap, since the caller writes it and the headline above already owns the big type. */
+.short-endcard-sub {
+  margin-top: 14px;
+  padding: 0 40px;
+  font-size: 48px;
+  letter-spacing: 0.04em;
+  color: var(--gold);
+  white-space: normal;
+}
+
+/* The bar with a running clock: flush left, the badge at nameplate size, and the right-hand side
+   left empty for ffmpeg's drawtext (SHORT_CLOCK_FONT_PX, right-aligned SHORT_CLOCK_MARGIN_PX in).
+   Monocraft is monospaced, so "10:00.00" at 52px is 277px: the wordmark ends by x≈715 and even a
+   ten-minute clock starts at 763. */
+.short-brand.clocked {
+  justify-content: flex-start;
+  gap: 24px;
+  padding-left: 36px;
+}
+.short-brand.clocked .badge {
+  width: 104px;
+  height: 104px;
+}
+.short-brand.clocked .short-wordmark {
+  letter-spacing: 0.04em;
+}
+
+/* The caption strip: one line of board furniture, full width, that the data captions sit on
+   (SHORT_CAPTION_HEIGHT). The board draws it empty — or, with one POV, naming the opponent — and
+   each caption still paints an identical strip over it, so a caption replaces what was there
+   rather than stacking on it. */
+.short-strip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: var(--panel-2);
+  border-top: 4px solid var(--panel-edge-light);
+  border-bottom: 4px solid var(--panel-edge);
+  font-family: var(--pixel-font);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  color: var(--quartz);
+  text-shadow: 4px 4px 0 var(--panel-edge);
+}
+/* Absolutely placed on a bare frame, over the board's own strip. */
+.short-caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+}
+/* Whose line it is, in the players' colours; a neutral line stays quartz. */
+.short-caption.left {
+  color: var(--crimson);
+}
+.short-caption.right {
+  color: var(--warped);
+}
+.short-vs {
+  font-size: 40px;
+  letter-spacing: 0.06em;
+}
+.short-vs.left {
+  color: var(--crimson);
+}
+.short-vs.right {
+  color: var(--warped);
+}
+
+/* Both POVs with captions: the lower plate keeps its colour edge and its content, at the size
+   the 130px the strip leaves it can hold. */
+.short-plate.compact .badge,
+.short-plate.compact .player-head {
+  width: 80px;
+  height: 80px;
+}
+.short-plate.compact .short-name {
+  font-size: 50px;
+}
+.short-plate.compact .short-elo {
+  font-size: 28px;
+}
+.short-plate.compact .short-plate-text {
+  gap: 0;
+}
+
+/* One POV: the only plate, flush left whatever its side (the colour edge still says which), and
+   the hook hanging under the caption strip rather than sitting on a seam. */
+.short-plate.solo {
+  flex-direction: row;
+}
+.short-plate.solo .short-plate-text {
+  align-items: flex-start;
+}
+.short-hook.solo {
+  transform: none;
+}
 
 /* ===== chat replay panel (prototype) ===== */
 /* One player's Twitch chat beside the splits. Sized by props, but designed against 480x346 —
