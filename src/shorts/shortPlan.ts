@@ -62,13 +62,44 @@ export type ShortState =
   | "published"
   | "failed";
 
-/** `GET /api/shorts/plan/:id`. `PUT /api/shorts/hooks/:id` with `{ titleHook, shortHook }` answers 202 with the same shape; `POST /api/shorts/pick/:id` re-runs the picker. */
+/**
+ * `PUT /api/shorts/hooks/:id`. `noShort: true` with `shortHook: null` is "this match gets no
+ * Short": the long-form still goes out once its title hook is saved.
+ */
+export interface SaveHooksRequest {
+  titleHook: string;
+  shortHook: string | null;
+  noShort?: boolean;
+}
+
+/** What `GET /api/matches` adds to each row, for the list's state line and its order. */
+export interface MatchRowShort {
+  shortState: ShortState;
+  /** e.g. "Short 6:21–7:02, 41 s, both" or "model failed, heuristic pick". */
+  shortDetail?: string;
+}
+
+/** What `GET /api/nightly` adds, for the strip's "3 waiting for a hook ›" and "1 failed ›". */
+export interface NightlyShortSummary {
+  waitingForHook: number[];
+  failed: number[];
+  /** The picker's health across the box: `ok: false` when the model cannot be reached at all (e.g. not signed in). */
+  picker: { ok: boolean; message?: string };
+}
+
+/** `GET /api/shorts/plan/:id`. `PUT /api/shorts/hooks/:id` (a `SaveHooksRequest`) answers 202 with the same shape; `POST /api/shorts/pick/:id` re-runs the picker. */
 export interface ShortPlanResponse {
   matchId: number;
   pick: ShortPick | null;
+  /** The picker's queue for this match: waiting its turn, or watching the video now. */
+  pickActivity?: "queued" | "running";
   /** The saved hooks; null until the operator saves them. */
   shortHook: string | null;
   titleHook: string | null;
+  /** The operator chose no Short for this match. */
+  noShort?: boolean;
+  /** The sync detector was not sure: the panel opens the sync frames and the save button says so. */
+  syncWeak?: boolean;
   suggestions: { short: string[]; title: string[] };
   state: ShortState;
   /** One line on what is happening, or what failed and what to do about it. */
