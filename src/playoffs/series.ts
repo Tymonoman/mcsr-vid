@@ -474,7 +474,6 @@ const runs = new Map<number, SeriesProgress>();
 
 /** The series runs this process has started, by game 1's id — for the board. */
 export const seriesProgress = (firstGameId: number): SeriesProgress | undefined => runs.get(firstGameId);
-export const seriesRunning = (): boolean => [...runs.values()].some((r) => !r.done);
 
 /**
  * Renders every game of the series that is not exported yet and joins them. One game at a time —

@@ -43,7 +43,6 @@ import { playoffBoard } from "../playoffs/playoffs.js";
 import { renderSeries, seriesState, type SeriesRunners } from "../playoffs/series.js";
 import { refreshRivalPostsIfStale, rivalPostsSnapshot, rivalRecentPostFor } from "./rivalPosts.js";
 import { chooseVariant, readManifest, rerenderThumbnailVariants } from "../thumbnails/thumbnailVariants.js";
-import { readSyncOffsets } from "../pipeline/syncFile.js";
 import { metaPaths } from "../pipeline/title.js";
 import { allArchiveStates, capacity, isArchived } from "./archive.js";
 import { exportRunning, handleExportRoute, startFastExport } from "./exportRoutes.js";
@@ -64,7 +63,7 @@ import { handleShortsRoute, shortRunning } from "./shortsRoutes.js";
 import { ensurePick, matchRowShort, nightlyShortSummary, pickActivity, shortTick } from "./shortFlow.js";
 import { saveSettings, settingsPayload } from "./settings.js";
 import { handleYoutubeRoute, uploadRunning } from "./youtubeRoutes.js";
-import { handleSyncRoute, syncPayload } from "./syncRoutes.js";
+import { handleSyncRoute } from "./syncRoutes.js";
 import { readIfPresent, readMeta } from "./matchMeta.js";
 import { PINNED_COMMENT, readUpload } from "../youtube/youtubeStore.js";
 
