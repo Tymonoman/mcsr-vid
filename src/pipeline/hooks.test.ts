@@ -301,6 +301,12 @@ console.log("hooks: all checks passed");
     "doogile takes the win on the last portal",
     "edcr chokes the dragon fight",
     "BeefSalad lost this at the bastion",
+    // Placements tell a bracket's outcome (23 Sept 2026, a live title).
+    "WINNER vs 3rd PLACE",
+    "3RD PLACE vs THE LCQ",
+    "the runner-up returns",
+    "two finalists on one seed",
+    "SEASON 11 CHAMPION vs #14",
   ]) {
     assert.ok(spoilsTheResult(spoiler), `should be rejected: ${spoiler}`);
   }
@@ -311,6 +317,8 @@ console.log("hooks: all checks passed");
     "Decided by 2.8 seconds",
     "The lead changed 3 times",
     "Who wins this one?",
+    "Can the 3rd place take down the champion?",
+    "PLAYOFFS | SWEPT vs TAS",
   ]) {
     assert.ok(!spoilsTheResult(safe), `should be allowed: ${safe}`);
   }

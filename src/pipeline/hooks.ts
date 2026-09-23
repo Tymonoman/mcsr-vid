@@ -280,7 +280,10 @@ export function hookFacts(input: HookInput) {
 export function spoilsTheResult(text: string): boolean {
   const line = text.trim();
   if (line.endsWith("?")) return false;
-  return /\b(wins?|won|winner|beats?|beaten|destroys?|crushes|takes? (?:it|down|the win)|took (?:it|the win)|loses?|lost|loser|chokes?|choked|throws?|threw|clutch(?:es|ed)?|comeback complete|survives?|eliminat(?:es|ed))\b/i.test(
+  // Placements are results too: a playoff placing in a ranked video's title ("WINNER vs 3rd
+  // PLACE", 23 Sept 2026) told the Season 11 bracket's outcome while its series were still
+  // going out from the Round of 16.
+  return /\b(wins?|won|winner|beats?|beaten|destroys?|crushes|takes? (?:it|down|the win)|took (?:it|the win)|loses?|lost|loser|chokes?|choked|throws?|threw|clutch(?:es|ed)?|comeback complete|survives?|eliminat(?:es|ed)|(?:1st|2nd|3rd|4th|first|second|third|fourth) place|runners?[- ]up|(?:semi-?)?finalists?|champions?|podium)\b/i.test(
     line,
   );
 }
