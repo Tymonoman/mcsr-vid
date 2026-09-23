@@ -41,6 +41,12 @@ for (const id of ids) {
   }
   const rows = (body.rows ?? []).map(([at, ratio]) => ({ at: at!, ratio: ratio! }));
   out[id] = rows;
+  // Analytics lags two to three days: a new video has no rows yet, and one such id used to
+  // throw on rows[0] and abort the whole batch.
+  if (rows.length === 0) {
+    console.error(`${id}: no retention data yet (Analytics lags 2–3 days behind the upload)`);
+    continue;
+  }
   // The curve at every tenth, plus the intro's end (the first 3% of a 10-minute video).
   const at = (t: number) =>
     rows.reduce((best, r) => (Math.abs(r.at - t) < Math.abs(best.at - t) ? r : best), rows[0]!);
