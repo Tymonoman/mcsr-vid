@@ -122,14 +122,24 @@ export const SHORT_SOLO_POV_HEIGHT = SHORT_HEIGHT - SHORT_SOLO_POV_Y - SHORT_BRA
 export const shortCaptionY = (pov: "both" | "left" | "right"): number =>
   pov === "both" ? SHORT_BOTTOM_NAMEPLATE_Y : SHORT_SOLO_CAPTION_Y;
 
-/** Top of the brand bar; the running clock is drawn into it by ffmpeg, not by the board still. */
-export const SHORT_BRAND_BAR_Y = SHORT_HEIGHT - SHORT_BRAND_BAR_HEIGHT;
-/** The clock's size and right margin in the bar. Monocraft is monospaced, so "10:00.00" is 8 x 0.667em. */
-export const SHORT_CLOCK_FONT_PX = 52;
-export const SHORT_CLOCK_MARGIN_PX = 40;
-
 /** Monocraft's advance: 720 units on a 1080 em, the same in both weights (hmtx). */
 const MONOCRAFT_ADVANCE_EM = 720 / 1080;
+
+/**
+ * The running clock, drawn by ffmpeg (not the board still) on the right of the TOP nameplate —
+ * both layouts. It sat in the bottom bar until 23 Sept 2026, which is where YouTube's own title
+ * and channel row cover the bottom ~20% of a Short. Its centre is in the plate's lower half, level
+ * with the elo line, which keeps it under the Shorts player's own top-right icons.
+ */
+export const SHORT_CLOCK_FONT_PX = 52;
+export const SHORT_CLOCK_MARGIN_PX = 40;
+export const SHORT_CLOCK_Y = SHORT_NAMEPLATE_HEIGHT - 64;
+/**
+ * What the top plate keeps free on its right for the clock: "10:00.00" (Monocraft is
+ * monospaced, so 8 x 0.667em), its margin and a gap — a long name ellipses short of it.
+ */
+export const SHORT_CLOCK_RESERVE_PX =
+  Math.ceil(8 * SHORT_CLOCK_FONT_PX * MONOCRAFT_ADVANCE_EM) + SHORT_CLOCK_MARGIN_PX + 24;
 const CAPTION_MAX_PX = 60;
 const CAPTION_LETTER_SPACING_EM = 0.02;
 

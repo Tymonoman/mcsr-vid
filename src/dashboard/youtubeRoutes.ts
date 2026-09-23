@@ -365,9 +365,8 @@ async function startUpload(
     publishAt,
     videoPath:
       typeof body.videoPath === "string" && body.videoPath.trim() !== "" ? body.videoPath : undefined,
-    // The Short follows the long-form by itself (src/youtube/youtubeUpload.ts `shortAfterUpload`); its
-    // line lands in this upload's progress, which is what the panel polls.
-    thenShort: kind === "video",
+    // No Short follows by itself any more: with the hooks saved the dashboard's chain sends both
+    // (src/dashboard/shortFlow.ts), and this press is the Publish fallback for one video at a time.
   });
   if ("error" in begun) {
     ctx.json(res, begun.status, { error: begun.error });

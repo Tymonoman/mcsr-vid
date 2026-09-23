@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
+  SHORT_CLOCK_FONT_PX,
+  SHORT_CLOCK_MARGIN_PX,
+  SHORT_CLOCK_RESERVE_PX,
+  SHORT_CLOCK_Y,
   STAGE_WIDTH,
   STAGE_HEIGHT,
   POV_WIDTH,
@@ -92,5 +96,13 @@ assert.equal(
 );
 assert.equal(SHORT_TOP_POV_Y, SHORT_NAMEPLATE_HEIGHT);
 assert.equal(SHORT_BOTTOM_NAMEPLATE_Y, SHORT_NAMEPLATE_HEIGHT + SHORT_POV_HEIGHT);
+// The running clock is in the top nameplate (YouTube's own rows cover the bottom of a Short): its
+// line fits inside the plate, and the room the plate keeps holds a ten-minute reading.
+assert.ok(
+  SHORT_CLOCK_Y - SHORT_CLOCK_FONT_PX / 2 > 8 &&
+    SHORT_CLOCK_Y + SHORT_CLOCK_FONT_PX / 2 < SHORT_NAMEPLATE_HEIGHT,
+  `the clock at y=${SHORT_CLOCK_Y} leaves the top nameplate`,
+);
+assert.ok(SHORT_CLOCK_RESERVE_PX >= 8 * SHORT_CLOCK_FONT_PX * (720 / 1080) + SHORT_CLOCK_MARGIN_PX);
 
 console.log("layout invariants ok");

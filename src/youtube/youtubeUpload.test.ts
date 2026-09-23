@@ -6,22 +6,13 @@ import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { config } from "../config.js";
-import {
-  beginUpload,
-  nightlyUploads,
-  playlistTitlesFor,
-  retryFailedPlaylists,
-  SHORT_DELAY_MS,
-  shortAfterUpload,
-} from "./youtubeUpload.js";
+import { beginUpload, playlistTitlesFor, retryFailedPlaylists, SHORT_DELAY_MS } from "./youtubeUpload.js";
 import { staleExportMessage, writeSyncOffsets } from "../pipeline/syncFile.js";
-import type { UploadProgress } from "./youtubeUpload.js";
 
 const media = await mkdtemp(path.join(tmpdir(), "mcsr-upload-test-"));
 const mediaDir = config.mediaDir;
 const playlistTitle = config.youtubePlaylistTitle;
 const uploadEnabled = config.youtubeUploadEnabled;
-const nightly = config.nightlyUpload;
 config.mediaDir = media;
 config.youtubePlaylistTitle = "MCSR Replayoffs · Season 11";
 
@@ -99,6 +90,52 @@ try {
   await writeFile(path.join(dir, `match-${matchId}.title.txt`), "A hook | a vs b | MCSR Ranked 1v1\n");
 
   config.youtubeUploadEnabled = true;
+
+  /* --- Nothing goes up before the hooks are saved (23 Sept 2026) ----------------------------- */
+  // The generated title carries the pipeline's first chip, which used to be enough: now the
+  // operator's saved title hook (the edited title) is what lets the long-form through.
+  const titleEdited = path.join(dir, `match-${matchId}.title.edited.txt`);
+  const noHook = await beginUpload(matchId, { kind: "video", privacyStatus: "private" });
+  assert.ok("error" in noHook && noHook.status === 409 && /no saved title hook/.test(noHook.error));
+  await writeFile(titleEdited, "<HOOK> | a vs b | MCSR Ranked 1v1\n");
+  const placeholder = await beginUpload(matchId, { kind: "video", privacyStatus: "private" });
+  assert.ok(
+    "error" in placeholder && placeholder.status === 400 && /<HOOK>/.test(placeholder.error),
+    "a placeholder is no hook",
+  );
+  await writeFile(titleEdited, "A hook | a vs b | MCSR Ranked 1v1\n");
+
+  // The Short: its confirmed hook, burned into the file being sent, and only once.
+  const shortHookPath = path.join(dir, `short-${matchId}.hook.txt`);
+  const cutPath = path.join(dir, `short-${matchId}.cut.json`);
+  const cutWith = (hook: string) =>
+    writeFile(
+      cutPath,
+      JSON.stringify({
+        gameMatchId: matchId,
+        startMs: 0,
+        endMs: 20000,
+        pov: "both",
+        hook,
+        pickCreatedAt: "t",
+        renderedAt: "t",
+      }),
+    );
+  const noShortHook = await beginUpload(matchId, { kind: "short", privacyStatus: "private" });
+  assert.ok("error" in noShortHook && /waiting for the Short's hook/.test(noShortHook.error));
+  await writeFile(shortHookPath, "Down to the last heart\n");
+  await cutWith("An older line");
+  const oldCut = await beginUpload(matchId, { kind: "short", privacyStatus: "private" });
+  assert.ok(
+    "error" in oldCut && /cut behind another hook/.test(oldCut.error),
+    "a Short cut behind another hook",
+  );
+  await cutWith("Down to the last heart");
+  await writeFile(path.join(dir, "youtube-short.json"), JSON.stringify({ videoId: "vidS" }));
+  const shortTwice = await beginUpload(matchId, { kind: "short", privacyStatus: "private" });
+  assert.ok("error" in shortTwice && /already on the channel/.test(shortTwice.error), "a Short goes up once");
+  await rm(path.join(dir, "youtube-short.json"));
+  console.log("OK: no upload without its saved hook, no Short behind another hook, no Short twice");
   const tryPath = async (videoPath: string) => {
     const begun = await beginUpload(matchId, { kind: "video", privacyStatus: "private", videoPath });
     assert.ok("error" in begun, `${videoPath} should have been refused`);
@@ -168,171 +205,8 @@ try {
   const gated = await beginUpload(matchId, { kind: "video", privacyStatus: "private" });
   assert.ok("error" in gated && gated.status === 403 && /Studio/.test(gated.error));
 
-  /* --- The nightly's clause ------------------------------------------------------------------ */
-  // What the 3 a.m. push actually says, and the order it does things in. The uploader is injected
-  // so this exercises the assembly and never the API.
-
-  const asked: Array<{ kind: string; publishAt?: string; privacyStatus: string }> = [];
-  const fake = (
-    result: (kind: string) => { videoId: string | null; error: string | null; warnings: string[] },
-  ) =>
-    (async (id: number, req: { kind: string; privacyStatus: string; publishAt?: string }) => {
-      asked.push({ kind: req.kind, privacyStatus: req.privacyStatus, publishAt: req.publishAt });
-      const r = result(req.kind);
-      const progress = {
-        matchId: id,
-        kind: req.kind,
-        uploaded: 0,
-        total: 0,
-        done: true,
-        ...r,
-      } as unknown as UploadProgress;
-      return { progress, finished: Promise.resolve(progress) };
-    }) as unknown as typeof beginUpload;
-
-  const both = () => ({ videoId: "vidX", error: null, warnings: [] });
-
-  // Off on either switch is silence, not a skip line: the operator has not asked for uploads.
-  config.youtubeUploadEnabled = false;
-  config.nightlyUpload = "private";
-  assert.equal(await nightlyUploads(matchId, fake(both)), "");
-  config.youtubeUploadEnabled = true;
-  config.nightlyUpload = "off";
-  assert.equal(await nightlyUploads(matchId, fake(both)), "");
-
-  config.nightlyUpload = "private";
-  asked.length = 0;
-  const clause = await nightlyUploads(matchId, fake(both));
-  assert.match(clause, /\+ video uploaded vidX \(private\)/);
-  assert.match(clause, /\+ short uploaded vidX \(private\)/);
-  assert.deepEqual(
-    asked.map((a) => a.kind),
-    ["video", "short"],
-    "long-form first",
-  );
-  assert.ok(
-    asked.every((a) => a.privacyStatus === "private" && a.publishAt === undefined),
-    '"private" schedules nothing',
-  );
-
-  // A post-insert problem is reported, but the video is still up: never "failed".
-  const warned = await nightlyUploads(
-    matchId,
-    fake((kind) => ({
-      videoId: "vidX",
-      error: null,
-      warnings: kind === "video" ? ["thumbnail rejected"] : [],
-    })),
-  );
-  assert.match(warned, /video uploaded vidX \(private, with a problem\)/);
-  assert.doesNotMatch(warned, /video upload failed/);
-
-  // No Short without its long-form — the Short's whole job is to send viewers to the match.
-  asked.length = 0;
-  const failed = await nightlyUploads(
-    matchId,
-    fake((kind) => ({
-      videoId: kind === "video" ? null : "vidS",
-      error: kind === "video" ? "network went away" : null,
-      warnings: [],
-    })),
-  );
-  assert.match(failed, /video upload failed: network went away/);
-  assert.doesNotMatch(failed, /short/);
-  assert.deepEqual(
-    asked.map((a) => a.kind),
-    ["video"],
-    "the Short is not attempted",
-  );
-
-  // "scheduled": the long-form takes the next slot and the Short lands 18h later, while the
-  // long-form is still fresh in Browse.
-  config.nightlyUpload = "scheduled";
-  asked.length = 0;
-  await nightlyUploads(matchId, fake(both));
-  const [video, short] = asked;
-  assert.ok(video?.publishAt && short?.publishAt, "both are scheduled");
-  assert.equal(
-    Date.parse(short.publishAt) - Date.parse(video.publishAt),
-    18 * 3600_000,
-    "the Short is 18h after the match video",
-  );
-  assert.equal(SHORT_DELAY_MS, 18 * 3600_000, "and that is the one constant the dashboard's chain shares");
-
-  // A stale export is a skip line the operator can act on, and the Short stays home with it.
-  asked.length = 0;
-  const stale = await nightlyUploads(matchId, (async () => ({
-    status: 400,
-    error: staleExportMessage(matchId),
-  })) as unknown as typeof beginUpload);
-  assert.equal(
-    stale,
-    ` + video upload skipped: sync changed after this export — re-export first (npm run export:fast -- ${matchId})`,
-  );
-
-  console.log("OK: playlists, the videoPath guard and the nightly's clause");
-
-  /* --- The Short that follows a dashboard upload --------------------------------------------- */
-  // The nightly sends both; the operator's press sent only the long-form and the Short waited for
-  // a second press that was easy to forget. Same visibility, the same 18 h after the video's
-  // publish time, and one line into the video's warnings saying what became of it.
-
-  asked.length = 0;
-  const followed = await shortAfterUpload(
-    matchId,
-    { privacyStatus: "unlisted", publishAt: "2026-09-16T19:00:00.000Z" },
-    fake(() => ({ videoId: "vidS", error: null, warnings: [] })),
-  );
-  assert.deepEqual(asked, [
-    { kind: "short", privacyStatus: "unlisted", publishAt: "2026-09-17T13:00:00.000Z" },
-  ]);
-  assert.equal(followed, "short uploaded vidS (scheduled 2026-09-17T13:00:00.000Z)");
-
-  // No publish time on the video: none on the Short either, it is simply as private as the video.
-  asked.length = 0;
-  const unscheduled = await shortAfterUpload(
-    matchId,
-    { privacyStatus: "private", publishAt: null },
-    fake(() => ({ videoId: "vidS", error: null, warnings: [] })),
-  );
-  assert.equal(asked[0]?.publishAt, undefined);
-  assert.equal(unscheduled, "short uploaded vidS (private)");
-
-  // beginUpload's refusal (no short-<id>.mp4, say) is the reason, not a failure.
-  const noFile = await shortAfterUpload(
-    matchId,
-    { privacyStatus: "private", publishAt: null },
-    (async () => ({
-      status: 400,
-      error: `No such video file: ${dir}/short-${matchId}.mp4`,
-    })) as unknown as typeof beginUpload,
-  );
-  assert.match(noFile, /^short upload skipped: No such video file/);
-
-  // A Short already on the channel is not sent twice: a duplicate is a Studio clean-up.
-  const { writeUpload: writeRecord } = await import("./youtubeStore.js");
-  await writeRecord(
-    matchId,
-    {
-      videoId: "vidOld",
-      uploadedAt: "2026-09-01T00:00:00Z",
-      publishAt: null,
-      privacyStatus: "private",
-      thumbnailVariant: null,
-      title: "t",
-    },
-    "short",
-  );
-  asked.length = 0;
-  const already = await shortAfterUpload(
-    matchId,
-    { privacyStatus: "private", publishAt: null },
-    fake(() => ({ videoId: "vidS", error: null, warnings: [] })),
-  );
-  assert.equal(already, "short upload skipped: already up as vidOld");
-  assert.deepEqual(asked, [], "and beginUpload was not called");
-  await rm(path.join(dir, "youtube-short.json"));
-  console.log("OK: the Short follows a dashboard upload, once, at the same visibility, 18h later");
+  // The Short's delay is the chain's one constant (src/dashboard/shortFlow.ts `shortPublishAt`).
+  assert.equal(SHORT_DELAY_MS, 18 * 3600_000);
 
   /* --- Finishing twice ----------------------------------------------------------------------- */
   // "Finish on YouTube" is on every published match and the channel scan can run it by itself, so
@@ -392,6 +266,36 @@ try {
   }) as typeof fetch;
 
   const { finishOnYouTube } = await import("./youtubeUpload.js");
+
+  // `send` is videos.insert: what goes to it, and the record written from its answer. A Short, so
+  // no archive copy starts (a long-form's would rsync this directory to the NAS).
+  {
+    const file = path.join(dir, `short-${matchId}.mp4`);
+    await writeFile(file, "x");
+    config.youtubeUploadEnabled = true;
+    const sent: Array<{ title: string; publishAt?: string }> = [];
+    const begun = await beginUpload(
+      matchId,
+      { kind: "short", privacyStatus: "private", publishAt: "2030-01-02T13:00:00.000Z" },
+      async (args) => {
+        sent.push({ title: args.title, publishAt: args.publishAt });
+        return { videoId: "vidNew", publishAt: args.publishAt ?? null, privacyStatus: "private" };
+      },
+    );
+    assert.ok(!("error" in begun), `the saved hook's cut goes up: ${JSON.stringify(begun)}`);
+    const done = await begun.finished;
+    assert.equal(done.error, null);
+    assert.deepEqual(sent, [{ title: "A hook #minecraft #mcsr", publishAt: "2030-01-02T13:00:00.000Z" }]);
+    const { readUpload } = await import("./youtubeStore.js");
+    assert.equal((await readUpload(matchId, "short"))?.publishAt, "2030-01-02T13:00:00.000Z");
+    const again = await beginUpload(matchId, { kind: "short", privacyStatus: "private" }, async () => {
+      throw new Error("sent twice");
+    });
+    assert.ok("error" in again, "and a Short that is up is not sent again");
+    await rm(file);
+    await rm(path.join(dir, "youtube-short.json"));
+    console.log("OK: the send seam gets the Short's title and time, once");
+  }
   const { writeUpload } = await import("./youtubeStore.js");
   const record = {
     videoId: "vidX",
@@ -541,6 +445,5 @@ try {
   config.mediaDir = mediaDir;
   config.youtubePlaylistTitle = playlistTitle;
   config.youtubeUploadEnabled = uploadEnabled;
-  config.nightlyUpload = nightly;
   await rm(media, { recursive: true, force: true });
 }

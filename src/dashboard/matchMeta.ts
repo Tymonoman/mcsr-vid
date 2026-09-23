@@ -19,7 +19,7 @@ import {
   playoffSeriesTail,
   playoffTitleTail,
 } from "../playoffs/playoffs.js";
-import { readSeriesRecord } from "../playoffs/series.js";
+import { readSeriesRecord, seriesShortGame } from "../playoffs/series.js";
 import { readManifest } from "../thumbnails/thumbnailVariants.js";
 import { matchStatusFor } from "./matchStatus.js";
 
@@ -98,7 +98,8 @@ export async function readMeta(matchId: number) {
           round: series.round,
           bestOf: series.bestOf,
           games: series.games.map((g) => ({ matchId: g.matchId, gameNo: g.gameNo })),
-          shortFromMatchId: series.shortFromMatchId ?? null,
+          // The game the Short shows: its cut, else its pick (a series is picked like any match).
+          shortFromMatchId: await seriesShortGame(matchId),
         }
       : null,
     /** Why the entry is degraded (API unreachable), or null. Surfaced so "?" is never a lie. */

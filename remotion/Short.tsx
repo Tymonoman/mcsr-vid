@@ -10,6 +10,7 @@ import {
   SHORT_BOTTOM_NAMEPLATE_Y,
   SHORT_BRAND_BAR_HEIGHT,
   SHORT_CAPTION_HEIGHT,
+  SHORT_CLOCK_RESERVE_PX,
   SHORT_COMPACT_NAMEPLATE_HEIGHT,
   SHORT_NAMEPLATE_HEIGHT,
   SHORT_POV_HEIGHT,
@@ -58,9 +59,9 @@ export type ShortStillProps = ShortBoardProps & {
  *
  * Rendered as *stills*, not video, for the same reason the 16:9 overlay is: nothing here moves,
  * and ffmpeg switches the hook, the captions and the closing card on and off by itself. The one
- * thing that does move — the running race clock in the bar — is drawn by ffmpeg too (drawtext,
- * Monocraft), so it costs no Remotion frames; with `clock` off the bar keeps the static "at m:ss"
- * label instead.
+ * thing that does move — the running race clock, on the right of the top nameplate — is drawn
+ * by ffmpeg too (drawtext, Monocraft), so it costs no Remotion frames; the plate keeps that side
+ * free for it. With `clock` off the bar keeps the static "at m:ss" label instead.
  *
  * With one POV (`pov: "left" | "right"`) the board is that player's nameplate, the caption strip
  * naming the opponent, one tall pane and the bar.
@@ -74,6 +75,7 @@ function Nameplate({
   seed,
   side,
   variant,
+  clockRoom,
 }: {
   nickname: string;
   eloRate: number;
@@ -88,11 +90,16 @@ function Nameplate({
    * mirrored with the other plate there.
    */
   variant?: "compact" | "solo";
+  /** The top plate with the running clock: its right side is left to ffmpeg's drawtext. */
+  clockRoom?: boolean;
 }) {
   return (
     <div
       className={`short-plate ${side}${variant ? ` ${variant}` : ""}`}
-      style={{ height: variant === "compact" ? SHORT_COMPACT_NAMEPLATE_HEIGHT : SHORT_NAMEPLATE_HEIGHT }}
+      style={{
+        height: variant === "compact" ? SHORT_COMPACT_NAMEPLATE_HEIGHT : SHORT_NAMEPLATE_HEIGHT,
+        ...(clockRoom ? { paddingRight: SHORT_CLOCK_RESERVE_PX } : {}),
+      }}
     >
       <PixelBadge />
       {/* The head, as the 16:9 overlay's IdentBar and the intro card both do it: every reference
@@ -117,7 +124,12 @@ function Nameplate({
   );
 }
 
-const plateOf = (player: ShortBoardProps["top"], side: "left" | "right", variant?: "compact" | "solo") => (
+const plateOf = (
+  player: ShortBoardProps["top"],
+  side: "left" | "right",
+  variant?: "compact" | "solo",
+  clockRoom?: boolean,
+) => (
   <Nameplate
     nickname={player.nickname}
     eloRate={player.eloRate}
@@ -126,16 +138,18 @@ const plateOf = (player: ShortBoardProps["top"], side: "left" | "right", variant
     headUrl={player.headUrl}
     side={side}
     variant={variant}
+    clockRoom={clockRoom}
   />
 );
 
 /**
- * The channel bar. With `clock` it is laid out flush left and leaves its right-hand side empty:
- * ffmpeg draws the running race clock there (shortRender.ts) in the same font.
+ * The channel bar: the badge and the wordmark, centred. The running clock is in the top
+ * nameplate now (YouTube's title and channel row cover this bar on a phone); without it the bar
+ * carries the static "at m:ss" label.
  */
 function BrandBar({ timerStartMs, clock }: { timerStartMs: number; clock: boolean }) {
   return (
-    <div className={`short-brand${clock ? " clocked" : ""}`} style={{ height: SHORT_BRAND_BAR_HEIGHT }}>
+    <div className="short-brand" style={{ height: SHORT_BRAND_BAR_HEIGHT }}>
       <PixelBadge />
       <span className="short-wordmark">MCSR Replayoffs</span>
       {!clock && <span className="short-rta">at {formatShortTime(timerStartMs)}</span>}
@@ -146,14 +160,15 @@ function BrandBar({ timerStartMs, clock }: { timerStartMs: number; clock: boolea
 /** The board itself: everything that is on screen for the whole Short. */
 export const Short: FC<ShortStillProps> = (props) => {
   const pov = props.pov ?? "both";
-  const bar = <BrandBar timerStartMs={props.timerStartMs} clock={props.clock ?? false} />;
+  const clock = props.clock ?? false;
+  const bar = <BrandBar timerStartMs={props.timerStartMs} clock={clock} />;
   if (pov !== "both") {
     // One player's POV alone. The strip under the plate names the opponent, so a Short of one
     // player's death still reads as a race; the captions cover it from the hook's end on.
     const [shown, other] = pov === "left" ? [props.top, props.bottom] : [props.bottom, props.top];
     return (
       <AbsoluteFill className="short">
-        {plateOf(shown, pov, "solo")}
+        {plateOf(shown, pov, "solo", clock)}
         <div className="short-strip" style={{ height: SHORT_CAPTION_HEIGHT }}>
           <span className={`short-vs ${pov === "left" ? "right" : "left"}`}>vs {other.nickname}</span>
         </div>
@@ -164,7 +179,7 @@ export const Short: FC<ShortStillProps> = (props) => {
   }
   return (
     <AbsoluteFill className="short">
-      {plateOf(props.top, "left")}
+      {plateOf(props.top, "left", undefined, clock)}
       {/* Transparent: the POV clip is composited through this in the NLE. */}
       <div className="short-pane" style={{ height: SHORT_POV_HEIGHT }} />
       {props.captionStrip && <div className="short-strip" style={{ height: SHORT_CAPTION_HEIGHT }} />}

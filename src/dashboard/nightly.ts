@@ -20,15 +20,16 @@
  *   - it stops well before the SSD does (a finished match is 2–2.5 GB), because a render that dies
  *     at the write stage has burned the whole night for nothing.
  *
- * What it does do unprompted is cut the Short of the match it just rendered (`nightlyRenderShort`)
- * and encode the finished MP4 (`nightlyRenderExport`), because that is the same footage, already
- * on disk, and a morning with a project file and no video is a morning with the publishing not
- * started.
+ * What it does do unprompted is encode the finished MP4 (`nightlyRenderExport`) and have the model
+ * pick the Short's moment from it (src/dashboard/shortFlow.ts, queued where every export settles),
+ * because a morning with a project file and no video is a morning with the publishing not started.
+ * It renders no Short and uploads nothing: those wait for the operator's hooks (23 Sept 2026), and
+ * the notification says how many matches are waiting for one.
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { capacity } from "./archive.js";
-import { config } from "../config.js";
+import { config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { exportRunning, startFastExport } from "./exportRoutes.js";
 import { getJob, startJob, type Job } from "./jobs.js";
@@ -36,12 +37,14 @@ import { hiddenMatchIds, nightlyQueue, setNightlyQueue } from "./matchShelf.js";
 import { orderForDisplay } from "./suggestPresent.js";
 import { playoffBoard, type PlayoffBoard } from "../playoffs/playoffs.js";
 import { listProcessedMatchIds } from "./matchStatus.js";
-import { shortRunning, spawnShortJob, type ShortRunner } from "./shortsRoutes.js";
+import { shortRunning } from "./shortsRoutes.js";
+import { nightlyShortSummary, picksIdle, shortTick } from "./shortFlow.js";
 import { snapshot, startScan } from "./suggestScan.js";
 import { getMatch } from "../api/mcsrApi.js";
 import type { MatchInfo } from "../api/types.js";
 import { withDiscoveredVods } from "../pipeline/vodDiscovery.js";
-import { nightlyUploads, retryFailedPlaylists } from "../youtube/youtubeUpload.js";
+import { retryFailedPlaylists } from "../youtube/youtubeUpload.js";
+import { pickFile, type ShortPick } from "../shorts/shortPlan.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -78,7 +81,10 @@ export interface NightlyLastRun {
   outcome: NightlyOutcome;
   /** The failure's first line, or why the run was skipped. */
   reason?: string;
+  /** Records from before 23 Sept 2026, when the nightly cut the Short itself. */
   short?: ShortOutcome;
+  /** Who picked the Short's moment after the export: the model, or the heuristic standing in. */
+  pick?: "agy" | "heuristic";
   /** The finished MP4, in the same three states. */
   export?: ShortOutcome;
 }
@@ -284,6 +290,12 @@ const busyWith = (id: number): boolean => getJob(id)?.done === false || exportRu
 const renderInFlight = (): boolean =>
   (lastStartedId !== null && busyWith(lastStartedId)) || listProcessedMatchIds().some(busyWith);
 
+/** The notification's reminder line: "\n3 waiting for a hook", or nothing when none is. */
+async function waitingLine(): Promise<string> {
+  const n = (await nightlyShortSummary().catch(() => null))?.waitingForHook.length ?? 0;
+  return n > 0 ? `\n${n} waiting for a hook` : "";
+}
+
 /** A failure to notify is worth a log line and nothing more — the render still happened. */
 async function notify(url: string, body: string): Promise<void> {
   try {
@@ -310,57 +322,9 @@ function outcomeOf(job: Job): JobVerdict {
   return { outcome: "failed", reason: job.error.split("\n")[0]?.slice(0, 200) ?? "unknown" };
 }
 
-/** The clause `chainShort` returns, as the tri-state the state file records. */
-const shortOutcome = (clause: string): ShortOutcome =>
-  clause === "" ? "skipped" : clause.startsWith(" + Short rendered") ? "done" : "failed";
-
-/** Likewise for `chainExport`. */
+/** The clause `chainExport` returns, as the tri-state the state file records. */
 const exportOutcome = (clause: string): ShortOutcome =>
   clause === "" ? "skipped" : clause === " + exported" ? "done" : "failed";
-
-/**
- * The Short that follows the render, as the clause the notification gains for it.
- *
- * Chained here rather than left for the morning because the two halves of a match are one job:
- * the VODs are on disk, the moment scorer needs no video decoding, and the cut is minutes next
- * to the render itself. Only a clean `done` earns one — a failed pipeline may have left
- * nothing to cut from, and an abort is the operator saying stop, which a Short would ignore.
- *
- * `--pick=0` through shortsRoutes' own runner, so the dashboard button and the small hours run
- * the same command; nothing here duplicates the spawn.
- */
-export async function chainShort(
-  matchId: number,
-  outcome: string,
-  enabled: boolean,
-  run: ShortRunner = spawnShortJob,
-): Promise<string> {
-  if (!enabled || outcome !== "done") return "";
-
-  const proc = run(matchId, 0);
-  // Drained as much as read: an unconsumed stdio pipe fills at 64 KB and stalls the render it
-  // belongs to. The last line is kept because that is where the CLI puts its failure.
-  let tail = "";
-  const keep = (chunk: Buffer) => {
-    const lines = chunk
-      .toString()
-      .split("\n")
-      .map((l) => l.trim())
-      .filter(Boolean);
-    if (lines.length > 0) tail = lines[lines.length - 1]!;
-  };
-  proc.stdout?.on("data", keep);
-  proc.stderr?.on("data", keep);
-
-  return new Promise<string>((resolve) => {
-    proc.on("error", (err) => resolve(` + Short failed: ${describeError(err)}`));
-    proc.on("close", (code) =>
-      resolve(
-        code === 0 ? " + Short rendered" : ` + Short failed: ${tail.slice(0, 120) || `exit code ${code}`}`,
-      ),
-    );
-  });
-}
 
 /** Starts the encode and settles with its error line, or null. Injected by the tests. */
 export type ExportStarter = (matchId: number) => Promise<string | null>;
@@ -368,10 +332,9 @@ export type ExportStarter = (matchId: number) => Promise<string | null>;
 const startFastExportOf: ExportStarter = (matchId) => startFastExport(matchId).finished;
 
 /**
- * The finished MP4 after the Short, as its clause. Same gate as the Short: only a clean `done`,
- * and only when asked — a match the operator will cut in Kdenlive first has no business being
- * encoded uncut. Ten minutes on the lab's VAAPI, which is why it runs at 03:00 and not at the
- * first click of the morning.
+ * The finished MP4 after the render, as its clause: only a clean `done`, and only when asked — a
+ * match the operator will cut in Kdenlive first has no business being encoded uncut. Ten minutes
+ * on the lab's VAAPI, which is why it runs at 03:00 and not at the first click of the morning.
  */
 export async function chainExport(
   matchId: number,
@@ -385,19 +348,27 @@ export async function chainExport(
 }
 
 /**
- * Match ids whose render has a Short waiting on it — the nightly's own pick, and anything the
- * operator started with the dashboard's "Render + Short" — and, separately, those whose render
- * is to be encoded as well, which is the nightly's pick alone.
- *
- * Sets here rather than flags on the job, because jobs.ts is the plain render path shared with
- * the button and the TUI and has no business knowing what happens afterwards. `afterSettled` is
- * the only reader, and it consumes the entry, so two pollers on one job cannot cut two Shorts.
+ * Match ids whose render is to be encoded as well — the nightly's pick and a card's "Render +
+ * Short + MP4". A set rather than a flag on the job, because jobs.ts is the plain render path;
+ * `afterSettled` consumes the entry, so two pollers on one job cannot encode twice.
  */
-const wantsShort = new Set<number>();
 const wantsExport = new Set<number>();
 
-export function requestShort(matchId: number): void {
-  wantsShort.add(matchId);
+/**
+ * The pick after the export, as its clause. The export settles through `startFastExport`, which
+ * queues the pick (the series' own once its last game is in); this waits for the queue and says
+ * who picked. Nothing for a series game whose series is not joined yet — its pick is game 1's.
+ */
+export async function pickClause(matchId: number, idle: () => Promise<void> = picksIdle): Promise<string> {
+  await idle();
+  const file = pickFile(matchDir(matchId), matchId);
+  if (!existsSync(file)) return "";
+  try {
+    const pick = JSON.parse(readFileSync(file, "utf8")) as ShortPick;
+    return pick.source === "agy" ? " + picked by the model" : " + heuristic pick (the model failed)";
+  } catch {
+    return "";
+  }
 }
 
 export function requestExport(matchId: number): void {
@@ -405,23 +376,15 @@ export function requestExport(matchId: number): void {
 }
 
 /**
- * Waits out the render, cuts its Short and encodes the MP4 if asked for, and reports how it all
- * went.
+ * Waits out the render, encodes the MP4 if asked for, waits for the pick that follows it, and
+ * reports how it all went — one notification for the lot, which is what anybody reads.
  *
- * The one poller. The nightly and "Render + Short" both land here, so there is a single place
- * that decides a Short is earned and a single 30s timer per render. `report` is awaited after
- * both rather than before, because one notification for the lot is what anybody reads: three
- * pushes in the small hours for one match is two too many. The Short goes first: it is two
- * minutes to the export's ten, and if the encode dies the Short is at least on disk.
+ * The one poller. The nightly and "Render + Short + MP4" both land here. No Short is rendered and
+ * nothing is uploaded: both wait for the operator's hooks (src/dashboard/shortFlow.ts).
  */
 export function afterSettled(
   job: Job,
-  report?: (
-    verdict: JobVerdict,
-    shortClause: string,
-    exportClause: string,
-    uploadClause: string,
-  ) => Promise<void> | void,
+  report?: (verdict: JobVerdict, exportClause: string, pickClause: string) => Promise<void> | void,
 ): void {
   const poll = () => void tick().catch((err: unknown) => console.error(`nightly: ${describeError(err)}`));
   const tick = async (): Promise<void> => {
@@ -430,16 +393,9 @@ export function afterSettled(
       return;
     }
     const verdict = outcomeOf(job);
-    const shortClause = await chainShort(job.matchId, verdict.outcome, wantsShort.delete(job.matchId));
     const exportClause = await chainExport(job.matchId, verdict.outcome, wantsExport.delete(job.matchId));
-    // Only after a finished MP4, and only when the config says uploads happen at all — off by
-    // default on both counts (`youtubeUploadEnabled`, `nightlyUpload`), so this line does
-    // nothing tonight. Errors are the clause's; the render is not undone by a failed upload.
-    const uploadClause =
-      exportOutcome(exportClause) === "done"
-        ? await nightlyUploads(job.matchId).catch((err: unknown) => ` + upload failed: ${describeError(err)}`)
-        : "";
-    await report?.(verdict, shortClause, exportClause, uploadClause);
+    const picked = exportOutcome(exportClause) === "done" ? await pickClause(job.matchId) : "";
+    await report?.(verdict, exportClause, picked);
   };
   poll();
 }
@@ -522,7 +478,7 @@ export async function runNightlyOnce(
     // "done" and pushed for it; recording this would put "skipped" over it.
     if (!conflict && started === 1) {
       writeNightlyState({ startedAt, matchId: null, players: [], outcome: "skipped", reason });
-      if (notifyUrl) await notify(notifyUrl, `Nightly skipped — ${reason}`);
+      if (notifyUrl) await notify(notifyUrl, `Nightly skipped — ${reason}${await waitingLine()}`);
     }
     return { skipped: reason, ...(conflict ? { busy: true } : {}) };
   };
@@ -552,14 +508,13 @@ export async function runNightlyOnce(
   lastStartedId = matchId;
   // A queue entry is one night's work: out of the list the moment its render starts.
   setNightlyQueue(nightlyQueue().filter((id) => id !== matchId));
-  if (config.nightlyRenderShort) requestShort(matchId);
   if (config.nightlyRenderExport) requestExport(matchId);
   // The same call `POST /api/render` makes, so a nightly render and a clicked one are one code
   // path: startJob de-duplicates by match id and owns the whole pipeline invocation.
   const job = startJob(matchId);
   // Recorded now, so a restart mid-render leaves "started" on the strip rather than nothing.
   writeNightlyState({ startedAt, matchId, players: [...players], outcome: "started" });
-  afterSettled(job, async (verdict, shortClause, exportClause, uploadClause) => {
+  afterSettled(job, async (verdict, exportClause, picked) => {
     // State first, then the push, from the same values: a panel that disagreed with the
     // notification would be worse than either on its own.
     writeNightlyState({
@@ -568,14 +523,14 @@ export async function runNightlyOnce(
       players: [...players],
       outcome: verdict.outcome,
       ...(verdict.reason ? { reason: verdict.reason } : {}),
-      short: shortOutcome(shortClause),
       export: exportOutcome(exportClause),
+      ...(picked ? { pick: picked.startsWith(" + picked") ? "agy" : "heuristic" } : {}),
     });
     const said = verdict.reason ? `${verdict.outcome}: ${verdict.reason}` : verdict.outcome;
     if (notifyUrl) {
       await notify(
         notifyUrl,
-        `Rendered #${matchId} ${label} — ${said}${shortClause}${exportClause}${uploadClause}`,
+        `Rendered #${matchId} ${label} — ${said}${exportClause}${picked}${await waitingLine()}`,
       );
     }
     // A lab that finished at 04:30 is idle for the rest of the night, and the operator's morning
@@ -618,6 +573,8 @@ export function scheduleNightly(options: NightlyOptions): void {
     // The daily tick is also the press that clears a playlist step YouTube's creation cap refused
     // (src/youtube/youtubeUpload.ts); it is not part of the run so a skipped night still makes it.
     retryFailedPlaylists().catch((err: unknown) => console.error(`playlists: ${describeError(err)}`));
+    // And the tick that asks the model again for a pick the heuristic stood in for.
+    shortTick().catch((err: unknown) => console.error(`shorts: ${describeError(err)}`));
     runNightlyOnce(options.notifyUrl)
       .catch((err: unknown) => console.error(`nightly: ${describeError(err)}`))
       .finally(() => scheduleNightly(options));
