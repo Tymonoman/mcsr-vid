@@ -88,7 +88,7 @@ export interface ShortStatus {
   pickRetriedOn?: string;
 }
 
-export const statusFile = (dir: string, matchId: number): string =>
+const statusFile = (dir: string, matchId: number): string =>
   path.join(dir, `short-${matchId}.status.json`);
 
 export function readStatus(matchId: number): ShortStatus {
@@ -260,7 +260,7 @@ const shortCurrent = (f: Facts): boolean =>
   f.pick !== null &&
   f.cut.pickCreatedAt === f.pick.createdAt;
 
-export const uploadsOn = (): boolean => config.youtubeUploadEnabled && config.nightlyUpload !== "off";
+const uploadsOn = (): boolean => config.youtubeUploadEnabled && config.nightlyUpload !== "off";
 
 const UPLOADS_OFF =
   "uploads are off (youtubeUploadEnabled / nightlyUpload) — the Short is rendered; Publish is the way";
@@ -844,16 +844,4 @@ export async function shortTick(deps: Partial<ChainDeps> = {}, nowMs = Date.now(
   } finally {
     ticking = false;
   }
-}
-
-/** For the tests: forget the queue, the chains and the tick between cases. */
-export function _resetShortFlowForTest(): void {
-  queued.clear();
-  forced.clear();
-  chains.clear();
-  again.clear();
-  chainStep.clear();
-  pickingNow = null;
-  tail = Promise.resolve();
-  ticking = false;
 }
