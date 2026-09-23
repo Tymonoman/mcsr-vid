@@ -68,6 +68,17 @@ assert.ok(prompt.indexOf("pick one") < prompt.indexOf('"k": "v"'));
     "--sandbox",
   ]);
   assert.deepEqual(reasonerArgs(argv, "P"), ["-p", "P", "--sandbox"]);
+  // Several directories (the proxy's and /watch's stills) repeat the flag, once per directory.
+  assert.deepEqual(reasonerArgs(["--add-dir", "{dir}", "--sandbox"], "P", { dir: ["/a", "/b", "/c"] }), [
+    "--add-dir",
+    "/a",
+    "--add-dir",
+    "/b",
+    "--add-dir",
+    "/c",
+    "--sandbox",
+  ]);
+  assert.deepEqual(reasonerArgs(["--add-dir", "{dir}", "--sandbox"], "P", { dir: [] }), ["--sandbox"]);
 
   // `--json-schema` puts the answer in `structured_output`, and it wins over `response`.
   const structured = await runReasoner("x", {
@@ -104,14 +115,29 @@ assert.ok(prompt.indexOf("pick one") < prompt.indexOf('"k": "v"'));
   });
   assert.match(!errored.ok ? errored.error : "", /exited 1: answered ERROR: quota exhausted/);
 
+  // The headless permission denial: status SUCCESS, an empty response, the tool named — measured
+  // on agy 1.2.9 when the model tried a shell command. It is the reason, and asking again can fix it.
+  const denied = await runReasoner("x", {
+    command: nodeE(
+      `console.log(JSON.stringify({status:"SUCCESS",response:"",denied_actions:[{action:"command",display_name:"RunCommand"}]}))`,
+    ),
+  });
+  assert.deepEqual(
+    [!denied.ok && denied.error, !denied.ok && denied.retryable],
+    ['node answered nothing: headless mode denied the "command" tool', true],
+  );
+  // A command that ran to its end with nothing usable may be asked again; sign-in and a timeout not.
+  assert.equal(!errored.ok && errored.retryable, true);
+  assert.equal(!envelopeOnly.ok && envelopeOnly.retryable, undefined);
+
   // The timeout says so, and `raw` keeps what was printed.
   const slow = await runReasoner("x", {
     command: nodeE(`console.log("thinking");setTimeout(()=>{},5000)`),
     timeoutMs: 200,
   });
   assert.deepEqual(
-    [slow.ok, !slow.ok && slow.error, slow.raw],
-    [false, "node timed out after 200 ms", "thinking"],
+    [slow.ok, !slow.ok && slow.error, slow.raw, !slow.ok && slow.retryable],
+    [false, "node timed out after 200 ms", "thinking", undefined],
   );
 
   // An abort is the one rejection: the caller asked for it.

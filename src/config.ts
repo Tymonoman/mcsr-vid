@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { DEFAULT_WEIGHTS, type ScoreWeights } from "./pipeline/matchScore.js";
 
@@ -261,19 +262,48 @@ export interface Config {
   /**
    * An LLM CLI to ask reasoning questions (src/shorts/reasoner.ts), as an argv array. Whole
    * arguments (not `--prompt={prompt}`) are placeholders: `{prompt}` is the prompt — when no
-   * argument is, it goes on stdin — `{schema}` a JSON Schema the answer is held to and `{dir}` a
-   * directory the CLI may read; a caller with no schema or directory drops that argument and the
-   * flag before it, so one argv serves every caller. Null (the default) turns every question into
-   * its heuristic fallback. The callers: the Short's moment picker, which has the model watch the
-   * finished video (src/shorts/videoPick.ts, `npm run pick`), and the older re-ranking of the
-   * scored windows (src/shorts/shortReason.ts). The lab's Antigravity CLI, signed in under its own
-   * HOME and never with --dangerously-skip-permissions (the prompt carries Twitch chat):
-   * `["env", "HOME=/app/.tools/agy-home", "/app/.tools/bin/agy", "-p", "{prompt}",
-   * "--output-format", "json", "--json-schema", "{schema}", "--add-dir", "{dir}", "--sandbox",
-   * "--print-timeout", "900s"]`.
+   * argument is, it goes on stdin — `{schema}` a JSON Schema the answer is held to and `{dir}` the
+   * directories the CLI may read (the flag before it is repeated per directory); a caller with no
+   * schema or directory drops that argument and the flag before it, so one argv serves every
+   * caller. Null (the default) turns every question into its heuristic fallback. The callers: the
+   * Short's moment picker, which has the model watch the finished video (src/shorts/videoPick.ts,
+   * `npm run pick`), and the older re-ranking of the scored windows (src/shorts/shortReason.ts).
+   * The lab's (LAB_REASONER_COMMAND, the example file's value): Antigravity's CLI, signed in on the
+   * operator's subscription under its own HOME, Gemini 3.8 Flash at high effort (the operator's
+   * choice, 23 Sept 2026: a whole 8:52 match in 93–136 s), and never with
+   * --dangerously-skip-permissions — the prompt carries Twitch chat, and `--sandbox` keeps the
+   * model to reading files.
    */
   reasonerCommand: string[] | null;
+  /**
+   * The /watch skill's `watch.py` (the claude-watch plugin), which the Short's picker runs on each
+   * player's own POV clip for full-resolution stills of the match (src/shorts/watchPov.ts), and
+   * a transcript of the stream when GROQ_API_KEY or OPENAI_API_KEY is set. Run as `python3
+   * <watchScript>`. Missing on disk, it is skipped with one log line and the pick goes on without
+   * it; null turns it off.
+   */
+  watchScript: string | null;
 }
+
+/** The lab's `reasonerCommand`: see its comment in `Config`. */
+export const LAB_REASONER_COMMAND: readonly string[] = [
+  "env",
+  "HOME=/app/.tools/agy-home",
+  "/app/.tools/bin/agy",
+  "-p",
+  "{prompt}",
+  "--model",
+  "gemini-3.8-flash-high",
+  "--output-format",
+  "json",
+  "--json-schema",
+  "{schema}",
+  "--add-dir",
+  "{dir}",
+  "--sandbox",
+  "--print-timeout",
+  "1400s",
+];
 
 /** Every key at its default; `mcsr-vid.config.example.json` is this object, written by `npm run config:example`. */
 export const DEFAULTS: Config = {
@@ -331,6 +361,7 @@ export const DEFAULTS: Config = {
   titleNames: { Pinne: "Skycrab", lowk3y_: "lowkey" },
   playoffThumbnailStyle: "plain",
   reasonerCommand: null,
+  watchScript: path.join(os.homedir(), ".claude/plugins/cache/claude-watch/watch/0.2.0/scripts/watch.py"),
 };
 
 /** The overrides file. Exported so the settings panel writes the same one the loader reads. */
@@ -437,6 +468,12 @@ export function validateOverrides(raw: Record<string, unknown>): void {
     if (key === "reasonerCommand") {
       if (value !== null && !(Array.isArray(value) && value.every((s) => typeof s === "string"))) {
         throw new Error(`${CONFIG_PATH}: "${key}" must be an array of strings or null.`);
+      }
+      continue;
+    }
+    if (key === "watchScript") {
+      if (value !== null && (typeof value !== "string" || value.trim() === "")) {
+        throw new Error(`${CONFIG_PATH}: "${key}" must be the path to watch.py, or null.`);
       }
       continue;
     }

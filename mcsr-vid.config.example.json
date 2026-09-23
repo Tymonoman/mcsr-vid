@@ -75,12 +75,22 @@
   },
   "playoffThumbnailStyle": "plain",
   "reasonerCommand": [
-    "agy",
+    "env",
+    "HOME=/app/.tools/agy-home",
+    "/app/.tools/bin/agy",
     "-p",
     "{prompt}",
+    "--model",
+    "gemini-3.8-flash-high",
     "--output-format",
     "json",
-    "--effort",
-    "high"
-  ]
+    "--json-schema",
+    "{schema}",
+    "--add-dir",
+    "{dir}",
+    "--sandbox",
+    "--print-timeout",
+    "1400s"
+  ],
+  "watchScript": "/home/node/.claude/plugins/cache/claude-watch/watch/0.2.0/scripts/watch.py"
 }
