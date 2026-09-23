@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync } from "node:fs";
 import { config } from "../config.js";
 
@@ -9,8 +9,9 @@ import { config } from "../config.js";
  * --output-format json`) is a black box that takes a prompt and prints text. Everything about
  * what it prints is handled defensively: the CLI's own envelope is unwrapped when there is one,
  * the first balanced `{...}` is taken from whatever remains, and every failure — not configured,
- * not installed, non-zero exit, timeout, no JSON — is a `null` and one stderr line. The caller
- * always has a heuristic answer of its own, so nothing here may throw or stall a render.
+ * not installed, not signed in, non-zero exit, timeout, no JSON — is a reason (`runReasoner`) or
+ * a `null` and one stderr line (`askReasoner`). The caller always has a heuristic answer of its
+ * own, so nothing here may throw or stall a render; only an abort the caller asked for rejects.
  */
 
 // The command inherits this process's environment, and an API key is how `agy` authenticates
@@ -67,79 +68,183 @@ export function firstJsonObject(text: string): unknown {
   return null;
 }
 
-/** The CLI's envelope, `{ response: "…" }`, unwrapped; anything else is taken as the answer itself. */
-function unwrap(stdout: string): string {
+/**
+ * The answer inside what the CLI printed. Antigravity's `--output-format json` is one envelope —
+ * `{ status, response, error, … }`, plus `structured_output` when `--json-schema` was given — so
+ * the answer is the structured output when there is one, else the first object in `response`.
+ * Output that is not an envelope is taken as the answer itself, prose around it and all.
+ */
+function answerIn(stdout: string): { answer: object } | { error: string } {
+  let envelope: Record<string, unknown> | null = null;
   try {
-    const parsed: unknown = JSON.parse(stdout);
-    if (typeof parsed === "object" && parsed !== null && "response" in parsed) {
-      const response = (parsed as { response: unknown }).response;
-      if (typeof response === "string") return response;
-    }
+    const parsed: unknown = JSON.parse(stdout.trim());
+    if (typeof parsed === "object" && parsed !== null) envelope = parsed as Record<string, unknown>;
   } catch {
     // Not an envelope: the CLI printed the answer bare.
   }
-  return stdout;
+  if (envelope && ("response" in envelope || "structured_output" in envelope)) {
+    const { structured_output: structured, response, status, error } = envelope;
+    if (typeof structured === "object" && structured !== null) return { answer: structured };
+    const text = typeof structured === "string" ? structured : typeof response === "string" ? response : "";
+    const inner = firstJsonObject(text);
+    if (inner) return { answer: inner as object };
+    return {
+      error:
+        status === undefined || status === "SUCCESS"
+          ? "answered with no JSON object"
+          : `answered ${String(status)}${error ? `: ${String(error)}` : ""}`,
+    };
+  }
+  const bare = firstJsonObject(stdout);
+  return bare ? { answer: bare as object } : { error: "printed no JSON object" };
 }
 
 export interface ReasonerOptions {
-  /** Default 60 s; the command is killed on expiry. */
+  /** Default 60 s; the command is stopped on expiry (SIGTERM, then SIGKILL 5 s later). */
   timeoutMs?: number;
   /** The command to run instead of the configured one (tests). */
   command?: readonly string[] | null;
+  /**
+   * Fills an argument that is exactly `{schema}` with this JSON Schema, inline — agy's
+   * `--json-schema` takes a string and holds the answer to it. Without a schema the argument goes,
+   * and so does the flag before it, so one `reasonerCommand` serves every caller.
+   */
+  schema?: object;
+  /** Fills `{dir}`: a directory the CLI may read (agy's `--add-dir`). Dropped with its flag when absent. */
+  dir?: string;
+  /** Stops the command and rejects with the signal's reason. */
+  signal?: AbortSignal;
 }
 
+export type ReasonerReply =
+  { ok: true; answer: object; raw: string } | { ok: false; error: string; raw: string };
+
+/** What the operator is told when agy is installed but has no login to use. */
+export const NOT_SIGNED_IN =
+  "Antigravity is not signed in — run: HOME=/app/.tools/agy-home /app/.tools/bin/agy";
+
+/**
+ * How agy says so. Unauthenticated, print mode writes "Authentication required. Please visit the
+ * URL to log in" to stderr and waits a minute for a code nobody will paste, then prints an ERROR
+ * envelope, "authentication failed or timed out"; `agy models` says "Please sign in". Seen on
+ * agy 1.2.9 in the Claude container, 23 Sept 2026. The command is stopped the moment it shows.
+ */
+const SIGN_IN_WANTED =
+  /Authentication required|Please sign in|not logged into Antigravity|authentication failed/i;
+
+/** The argv with its placeholders filled; a placeholder with no value is dropped with its flag. */
+export function reasonerArgs(
+  rest: readonly string[],
+  prompt: string,
+  opts: Pick<ReasonerOptions, "schema" | "dir"> = {},
+): string[] {
+  const out: string[] = [];
+  for (const a of rest) {
+    const value =
+      a === "{prompt}"
+        ? prompt
+        : a === "{schema}"
+          ? opts.schema
+            ? JSON.stringify(opts.schema)
+            : null
+          : a === "{dir}"
+            ? (opts.dir ?? null)
+            : a;
+    if (value !== null) out.push(value);
+    else if (out[out.length - 1]?.startsWith("-")) out.pop();
+  }
+  return out;
+}
+
+/** How long a stopped command gets to shut down (agy takes its language server with it) before SIGKILL. */
+const STOP_GRACE_MS = 5_000;
+
+/**
+ * Runs the configured command once on `prompt`: its JSON answer, or why there is none. `raw` is
+ * everything it printed, for the CLI and the logs. Resolves on every failure; rejects only with
+ * the abort reason when `signal` fires.
+ */
+export async function runReasoner(prompt: string, opts: ReasonerOptions = {}): Promise<ReasonerReply> {
+  const command = opts.command === undefined ? config.reasonerCommand : opts.command;
+  const [bin, ...rest] = command ?? [];
+  if (!bin) return { ok: false, error: "not configured (reasonerCommand)", raw: "" };
+  opts.signal?.throwIfAborted();
+  const args = reasonerArgs(rest, prompt, opts);
+  const timeoutMs = opts.timeoutMs ?? 60_000;
+
+  return new Promise<ReasonerReply>((resolve, reject) => {
+    let stdout = "";
+    let stderr = "";
+    const raw = () =>
+      [stdout.trim(), stderr.trim() && `[stderr] ${stderr.trim()}`].filter(Boolean).join("\n");
+    let proc: ChildProcessWithoutNullStreams;
+    try {
+      proc = spawn(bin, args, { stdio: ["pipe", "pipe", "pipe"] });
+    } catch (err) {
+      resolve({ ok: false, error: `spawn failed: ${(err as Error).message}`, raw: "" });
+      return;
+    }
+    // A missing binary raises `error` and then `close`; one verdict is enough.
+    let done = false;
+    const finish = (reply: ReasonerReply | { abort: unknown }) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      opts.signal?.removeEventListener("abort", onAbort);
+      if ("abort" in reply) reject(reply.abort);
+      else resolve(reply);
+    };
+    // Why the command was stopped, once it was.
+    let stopped: string | null = null;
+    const stop = (why: string) => {
+      if (stopped !== null) return;
+      stopped = why;
+      // SIGTERM first: agy shuts its language server down on it, where SIGKILL would orphan it.
+      proc.kill("SIGTERM");
+      setTimeout(() => {
+        if (proc.exitCode === null && proc.signalCode === null) proc.kill("SIGKILL");
+      }, STOP_GRACE_MS).unref();
+    };
+    const limit = timeoutMs < 1000 ? `${timeoutMs} ms` : `${Math.round(timeoutMs / 1000)} s`;
+    const timer = setTimeout(() => stop(`${bin} timed out after ${limit}`), timeoutMs);
+    const onAbort = () => stop("aborted");
+    opts.signal?.addEventListener("abort", onAbort, { once: true });
+
+    proc.stdout.on("data", (chunk: Buffer) => (stdout += chunk.toString()));
+    proc.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
+      if (SIGN_IN_WANTED.test(stderr)) stop(NOT_SIGNED_IN);
+    });
+    proc.on("error", (err) => finish({ ok: false, error: `${bin}: ${err.message}`, raw: raw() }));
+    proc.on("close", (code) => {
+      if (stopped === "aborted") return finish({ abort: opts.signal?.reason ?? new Error("aborted") });
+      if (stopped) return finish({ ok: false, error: stopped, raw: raw() });
+      const found = answerIn(stdout);
+      if (code === 0 && "answer" in found) return finish({ ok: true, answer: found.answer, raw: raw() });
+      if (SIGN_IN_WANTED.test(stdout)) return finish({ ok: false, error: NOT_SIGNED_IN, raw: raw() });
+      const why = "error" in found && stdout.trim() ? found.error : (stderr.trim().split("\n").pop() ?? "");
+      finish({
+        ok: false,
+        error: code === 0 ? `${bin} ${why}` : `${bin} exited ${code}: ${why}`,
+        raw: raw(),
+      });
+    });
+    // The prompt goes on stdin unless the argv carries it, in which case stdin is closed at once
+    // so a CLI that reads it to EOF does not hang.
+    proc.stdin.on("error", () => {}); // EPIPE from a command that exits before reading; close reports it
+    if (!rest.includes("{prompt}")) proc.stdin.write(prompt);
+    proc.stdin.end();
+  });
+}
+
+/** `runReasoner` on the task and its input: the answer, or null and one stderr line saying why. */
 export async function askReasoner(
   task: string,
   input: unknown,
   opts: ReasonerOptions = {},
 ): Promise<unknown> {
-  const command = opts.command === undefined ? config.reasonerCommand : opts.command;
-  const fail = (reason: string): null => {
-    console.error(`reasoner: ${reason}`);
-    return null;
-  };
-  const [bin, ...rest] = command ?? [];
-  if (!bin) return fail("not configured (reasonerCommand)");
-
-  const prompt = reasonerPrompt(task, input);
-  const viaArgv = rest.includes("{prompt}");
-  const args = rest.map((a) => (a === "{prompt}" ? prompt : a));
-
-  return new Promise<unknown>((resolve) => {
-    // A missing binary raises `error` and then `close`; one verdict is enough.
-    let settled = false;
-    const settle = (value: unknown) => {
-      if (!settled) resolve(value);
-      settled = true;
-    };
-    let proc;
-    try {
-      proc = spawn(bin, args, {
-        stdio: ["pipe", "pipe", "pipe"],
-        timeout: opts.timeoutMs ?? 60_000,
-        // Kills the CLI only, not anything it forked; tini as PID 1 reaps what that orphans.
-        killSignal: "SIGKILL",
-      });
-    } catch (err) {
-      settle(fail(`spawn failed: ${(err as Error).message}`));
-      return;
-    }
-    let stdout = "";
-    let stderr = "";
-    proc.stdout.on("data", (chunk: Buffer) => (stdout += chunk.toString()));
-    proc.stderr.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
-    proc.on("error", (err) => settle(fail(`${bin}: ${err.message}`)));
-    proc.on("close", (code, signal) => {
-      if (settled) return;
-      if (signal) return settle(fail(`${bin} killed by ${signal} (timeout ${opts.timeoutMs ?? 60_000} ms)`));
-      if (code !== 0) return settle(fail(`${bin} exited ${code}: ${stderr.trim().split("\n").pop() ?? ""}`));
-      const answer = firstJsonObject(unwrap(stdout));
-      settle(answer ?? fail(`${bin} printed no JSON object`));
-    });
-    // The prompt goes on stdin unless the argv carries it, in which case stdin is closed at once
-    // so a CLI that reads it to EOF does not hang.
-    proc.stdin.on("error", () => {}); // EPIPE from a command that exits before reading; close reports it
-    if (!viaArgv) proc.stdin.write(prompt);
-    proc.stdin.end();
-  });
+  const reply = await runReasoner(reasonerPrompt(task, input), opts);
+  if (reply.ok) return reply.answer;
+  console.error(`reasoner: ${reply.error}`);
+  return null;
 }

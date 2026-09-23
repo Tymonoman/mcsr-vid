@@ -259,11 +259,18 @@ export interface Config {
    */
   playoffThumbnailStyle: "plain" | "bracket" | "trophy";
   /**
-   * An LLM CLI to ask reasoning questions (src/shorts/reasoner.ts), as an argv array; an argument that
-   * is exactly `{prompt}` (whole, not `--prompt={prompt}`) is replaced by the prompt, and when
-   * none is, the prompt goes on stdin. Null (the default) turns every question into its heuristic fallback. The first use
-   * is the Short's cut: it picks among the scored candidates (src/shorts/shortReason.ts). Antigravity:
-   * `["agy", "-p", "{prompt}", "--output-format", "json", "--effort", "high"]` — see README.
+   * An LLM CLI to ask reasoning questions (src/shorts/reasoner.ts), as an argv array. Whole
+   * arguments (not `--prompt={prompt}`) are placeholders: `{prompt}` is the prompt — when no
+   * argument is, it goes on stdin — `{schema}` a JSON Schema the answer is held to and `{dir}` a
+   * directory the CLI may read; a caller with no schema or directory drops that argument and the
+   * flag before it, so one argv serves every caller. Null (the default) turns every question into
+   * its heuristic fallback. The callers: the Short's moment picker, which has the model watch the
+   * finished video (src/shorts/videoPick.ts, `npm run pick`), and the older re-ranking of the
+   * scored windows (src/shorts/shortReason.ts). The lab's Antigravity CLI, signed in under its own
+   * HOME and never with --dangerously-skip-permissions (the prompt carries Twitch chat):
+   * `["env", "HOME=/app/.tools/agy-home", "/app/.tools/bin/agy", "-p", "{prompt}",
+   * "--output-format", "json", "--json-schema", "{schema}", "--add-dir", "{dir}", "--sandbox",
+   * "--print-timeout", "900s"]`.
    */
   reasonerCommand: string[] | null;
 }
@@ -384,8 +391,11 @@ export function validateOverrides(raw: Record<string, unknown>): void {
         typeof value === "object" &&
         value !== null &&
         !Array.isArray(value) &&
-        Object.values(value as Record<string, unknown>).every((v) => typeof v === "string" && v.trim() !== "");
-      if (!ok) throw new Error(`${CONFIG_PATH}: "titleNames" must map nicknames to the names the title shows.`);
+        Object.values(value as Record<string, unknown>).every(
+          (v) => typeof v === "string" && v.trim() !== "",
+        );
+      if (!ok)
+        throw new Error(`${CONFIG_PATH}: "titleNames" must map nicknames to the names the title shows.`);
       continue;
     }
     if (key === "playoffThumbnailStyle") {

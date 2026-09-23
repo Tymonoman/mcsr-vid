@@ -13,7 +13,9 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
+import { config } from "../config.js";
 import { describeError } from "../errorText.js";
+import { readSyncOffsets } from "../pipeline/syncFile.js";
 
 const GQL_URL = "https://gql.twitch.tv/gql";
 const WEB_CLIENT_ID = "kimne78kx3ncx6brgo4mv6wki5h1ko";
@@ -169,27 +171,66 @@ export async function saveChats(
 }
 
 /**
- * Every saved message's time for a match, both chats merged, in seconds after match start —
- * the shape `shortMoment.ts` scores with. No files, or unreadable ones, is an empty list: the
- * moment picker must behave exactly as before chat existed.
+ * Seconds to add to a saved chat's `atSec` to put it on the match clock.
+ *
+ * A chat file's times count from `fromSec`, the API's *estimate* of match start in the VOD. The
+ * clip was cut from `max(0, fromSec - preRollSec)` of that VOD, and sync.json says where match
+ * start really is in the clip, so the true start sits `min(fromSec, preRollSec) - clipOffsetSec`
+ * before the estimate — 53.4 s for Aquacorde on 13559245, whose VOD had lost a segment.
  */
-export function readChatTimes(dir: string): number[] {
+export const chatClockShiftSec = (fromSec: number, clipOffsetSec: number): number =>
+  Math.min(fromSec, config.preRollSec) - clipOffsetSec;
+
+/**
+ * Each saved chat of a match, its times moved onto the match clock (see `chatClockShiftSec`)
+ * when `players` names whose POV is left (`players[0]`) and right, and sync.json has both
+ * offsets. Without them the times are as saved: seconds after the estimated start. Missing or
+ * unreadable files are skipped: a match without chat is still a match.
+ */
+export function readChats(
+  dir: string,
+  players?: readonly { nickname: string }[],
+): Array<{ nickname: string; messages: ChatMessage[] }> {
   let files: string[];
   try {
     files = readdirSync(dir).filter((f) => /^chat-.+\.json$/.test(f));
   } catch {
     return [];
   }
+  const sync = players ? readSyncOffsets(dir) : null;
   return files.flatMap((f) => {
     try {
       const parsed = JSON.parse(readFileSync(path.join(dir, f), "utf8")) as {
-        messages?: Array<{ atSec: number }>;
+        nickname?: string;
+        fromSec?: number;
+        messages?: ChatMessage[];
       };
-      return (parsed.messages ?? []).map((m) => m.atSec).filter((t) => Number.isFinite(t));
+      const nickname = parsed.nickname ?? f.slice("chat-".length, -".json".length);
+      const side = players?.findIndex((p) => p.nickname === nickname) ?? -1;
+      const offset = side === 0 ? sync?.left : side === 1 ? sync?.right : undefined;
+      const shift =
+        offset !== undefined && Number.isFinite(parsed.fromSec)
+          ? chatClockShiftSec(parsed.fromSec!, offset)
+          : 0;
+      const messages = (parsed.messages ?? [])
+        .filter((m) => Number.isFinite(m.atSec))
+        .map((m) => ({ ...m, atSec: m.atSec + shift }));
+      return [{ nickname, messages }];
     } catch {
       return [];
     }
   });
+}
+
+/**
+ * Every saved message's time for a match, both chats merged, in seconds after match start —
+ * the shape `shortMoment.ts` scores with. Pass the match's `players` to have each side's chat
+ * corrected by its sync offset (`readChats`); without them the times are the uncorrected ones.
+ * No files, or unreadable ones, is an empty list: the moment picker must behave exactly as
+ * before chat existed.
+ */
+export function readChatTimes(dir: string, players?: readonly { nickname: string }[]): number[] {
+  return readChats(dir, players).flatMap((c) => c.messages.map((m) => m.atSec));
 }
 
 /** The VOD id in a `https://www.twitch.tv/videos/<id>` URL, or null. */
