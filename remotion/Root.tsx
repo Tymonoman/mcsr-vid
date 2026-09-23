@@ -1,7 +1,7 @@
 import { Composition } from "remotion";
 import { Overlay, OverlayTop, OverlayBottom, OverlaySplits, OverlayTimer, OverlayIntro } from "./Overlay.js";
 import { Thumbnail } from "./Thumbnail.js";
-import { Short, ShortHook, ShortResult, type ShortBoardProps } from "./Short.js";
+import { Short, ShortCaption, ShortEndCard, ShortHook, ShortResult, type ShortStillProps } from "./Short.js";
 import { ChatPanel } from "./ChatPanel.js";
 import {
   BOTTOM_BAND_HEIGHT,
@@ -86,7 +86,9 @@ const thumbnailDefaultProps: ThumbnailProps = {
   headerLabel: "Minecraft · Speedrunning · Ranked",
 };
 
-const shortDefaultProps: ShortBoardProps = {
+/* The board as the render passes it before 23 Sept 2026's fields; `npm run still --props` sets
+   `pov`, `clock`, `captionStrip`, `caption` or `endCard` to preview the new states. */
+const shortDefaultProps: ShortStillProps = {
   top: {
     nickname: "edcr",
     eloRate: 2640,
@@ -102,6 +104,8 @@ const shortDefaultProps: ShortBoardProps = {
   hook: "both blind at the same time",
   timerStartMs: 402_000,
   resultMs: 505_356,
+  caption: { text: "8 s apart at the eyes", side: "right" },
+  endCard: "Who took it? Full match on the channel",
   durationInFrames: 900,
   fps: 30,
 };
@@ -197,8 +201,9 @@ export const RemotionRoot: React.FC = () => {
           fps: props.fps,
         })}
       />
-      {/* Both are stills: nothing on the Shorts board animates. The hook is separate only so
-          ffmpeg can fade it out without the board going with it. */}
+      {/* All stills: nothing on the Shorts board animates (the running clock is ffmpeg's
+          drawtext). The hook, each caption and the closing card are separate frames only so
+          ffmpeg can switch them on and off without the board going with them. */}
       <Composition
         id="Short"
         component={Short}
@@ -217,10 +222,28 @@ export const RemotionRoot: React.FC = () => {
         height={SHORT_HEIGHT}
         defaultProps={shortDefaultProps}
       />
-      {/* The closing card, separate for the same reason: it is faded in over the last seconds. */}
+      <Composition
+        id="ShortCaption"
+        component={ShortCaption}
+        durationInFrames={1}
+        fps={30}
+        width={SHORT_WIDTH}
+        height={SHORT_HEIGHT}
+        defaultProps={shortDefaultProps}
+      />
+      {/* The closing cards, separate for the same reason: faded in over the last seconds. */}
       <Composition
         id="ShortResult"
         component={ShortResult}
+        durationInFrames={1}
+        fps={30}
+        width={SHORT_WIDTH}
+        height={SHORT_HEIGHT}
+        defaultProps={shortDefaultProps}
+      />
+      <Composition
+        id="ShortEndCard"
+        component={ShortEndCard}
         durationInFrames={1}
         fps={30}
         width={SHORT_WIDTH}

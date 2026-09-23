@@ -1,5 +1,83 @@
 import assert from "node:assert/strict";
-import { activeRegionFromFrames, densestSpan } from "./shortRender.js";
+import {
+  activeRegionFromFrames,
+  captionWindows,
+  clockText,
+  densestSpan,
+  shortAudioFilter,
+} from "./shortRender.js";
+import {
+  SHORT_HOOK_SEC,
+  SHORT_POV_WIDTH,
+  SHORT_SOLO_POV_HEIGHT,
+  SHORT_WIDTH,
+  shortCaptionFontSize,
+} from "../../remotion/layout.js";
+
+// --- captionWindows: each caption from its atMs to the next, never under the hook.
+{
+  const cap = (atMs: number, text: string) => ({ atMs, text, side: null });
+  const w = captionWindows([cap(12_000, "c"), cap(0, "a"), cap(7_000, "b")], 33.5);
+  assert.deepEqual(
+    w.map((x) => [x.caption.text, x.fromSec, x.toSec]),
+    [
+      ["a", SHORT_HOOK_SEC, 7],
+      ["b", 7, 12],
+      ["c", 12, 33.5],
+    ],
+    "sorted by atMs, the first takes over from the hook, the last runs to the closing card",
+  );
+  // A first caption timed after the hook still replaces it at the hook's end: no bare seconds.
+  assert.equal(captionWindows([cap(6_000, "late")], 20)[0]!.fromSec, SHORT_HOOK_SEC);
+  // Two captions under the hook: the later one is what is true when the hook leaves.
+  assert.deepEqual(
+    captionWindows([cap(0, "stale"), cap(2_000, "current")], 20).map((x) => x.caption.text),
+    ["current"],
+  );
+  // Nothing after the closing card starts, and a Short too short for captions shows none.
+  assert.deepEqual(
+    captionWindows([cap(0, "a"), cap(19_000, "b")], 18.5).map((x) => [x.caption.text, x.toSec]),
+    [["a", 18.5]],
+  );
+  assert.deepEqual(captionWindows([cap(0, "a")], 3), []);
+}
+
+// --- the audio graph: today's centred mix unless a focus side is named.
+assert.equal(
+  shortAudioFilter(false),
+  "[0:a][1:a]amix=inputs=2:duration=shortest:normalize=0[a_out]",
+  "no focus must stay the mix every Short before 23 Sept 2026 shipped with",
+);
+assert.equal(
+  shortAudioFilter(false, "right"),
+  "[0:a]volume=-12dB[a0];[a0][1:a]amix=inputs=2:duration=shortest:normalize=0[a_out]",
+  "focus right lowers the top (left) POV",
+);
+assert.equal(
+  shortAudioFilter(false, "left"),
+  "[1:a]volume=-12dB[a1];[0:a][a1]amix=inputs=2:duration=shortest:normalize=0[a_out]",
+);
+assert.equal(shortAudioFilter(true, "left"), "[0:a]anull[a_out]", "one POV carries only its own audio");
+
+// --- the clock counts the match clock from the window's start, escaped for a filtergraph.
+{
+  const text = clockText(466_000);
+  assert.ok(text.includes("(466.000+t)"), text);
+  assert.ok(!/[^\\][:,]/.test(text.replace(/%\{eif/g, "")), `unescaped : or , in ${text}`);
+}
+
+// --- the single pane keeps the whole hotbar: 728px at GUI scale 4 on a 1080p stream, centred.
+{
+  const sourceWidthShown = (1080 * SHORT_POV_WIDTH) / SHORT_SOLO_POV_HEIGHT;
+  assert.ok(sourceWidthShown >= 760, `the solo crop shows only ${sourceWidthShown.toFixed(0)}px of 1920`);
+}
+
+// --- a caption is one line at any length: the size shrinks, the text never runs off the strip.
+assert.equal(shortCaptionFontSize("8 s apart"), 60);
+for (const text of ["Feinberg 8 s behind at the eyes", "silverrruns into the End with 12 s in hand"]) {
+  const size = shortCaptionFontSize(text);
+  assert.ok(text.length * size * (720 / 1080 + 0.02) <= SHORT_WIDTH - 80, `${text} at ${size}px overflows`);
+}
 
 // --- densestSpan: the narrowest window holding most of the mass.
 {
