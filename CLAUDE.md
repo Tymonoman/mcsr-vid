@@ -12,7 +12,7 @@ what an agent cannot derive from the code; the rest is in the files it names.
   cut earlier where the winner goes quiet, never under 15 s).
 - Each POV's audio leans toward its side of the frame (`povAudioPan`, default 0.7; 0.5 is the
   centred mix everything before 18 Sept 2026 shipped with) in `export:fast` only — the Kdenlive
-  project's MLT mix stays centred, and so does the Short (stacked top/bottom).
+  project's MLT mix stays centred, and the Short (stacked top/bottom) lowers the POV the moment is not about by 12 dB instead (`focus`, 23 Sept 2026).
 - Nothing names the winner: no result line in the description, no winner in a hook or on a
   thumbnail. The upset hook is a question (`Can the 1789 take down the 2080?`).
 - **The YouTube API compliance audit cleared on 15 Sept 2026** ("completed your review and don't
@@ -57,11 +57,11 @@ Use the script, don't reconstruct the shell line. Extra arguments go after `--`.
 | `npm run validate-project -- media/<id>/match-<id>.kdenlive` | Load the generated MLT XML through the MLT engine. Exit 0 = parses. Malformed XML only: it passes a project whose media is missing. |
 | `npm run export:fast -- <matchId> [--cpu] [--seconds=N] [--full-tail]` | The finished MP4 in one ffmpeg pass (Intel VAAPI on the lab), no Kdenlive. `--seconds` renders a short range as a smoke test, to `smoke-<id>.mp4` (it once wrote over a published match's final). Open the `.kdenlive` when a match needs a human; both place clips through `placeOnTimeline`. |
 | `npm run export:nvenc -- media/<id>/match-<id>.kdenlive [out=N]` | melt + `h264_nvenc` to `out/export.mp4`. Needs an NVIDIA GPU; the lab has none. |
-| `npm run short -- <matchId> [--pick=N \| --at=<ms>] [--seconds=22]` | The ~22 s vertical MP4 (`short-<id>.mp4`) plus its `.title.txt` / `.description.txt`. Needs the VODs. `--at` names the window in ms from match start and beats `--pick`: row indices move when the scorer or the reasoner reorders them, a window does not. The cut is recorded in `short-<id>.cut.json`, which is what a re-cut repeats. |
-| `npm run series -- <matchId \| all> [--join-only]` | A playoff series as one video (`src/playoffs/series.ts`): renders every game of the slot that has no export, joins them into game 1's `series-<g1>.mp4`, rewrites game 1's title/description/chapters/tags for the series, cuts the Short from the best game. `all` walks the board in date order; `--join-only` joins what is exported. The dashboard's nightly cannot see a run here: start one in the daytime. |
+| `npm run short -- <matchId> [--at=<ms>] [--seconds=N]` | The vertical Short (`short-<id>.mp4`) plus its `.title.txt` / `.description.txt`, cut from the pick's window (`short-<id>.pick.json`). Refuses without the operator's hook (`short-<id>.hook.txt`) or once the Short is on YouTube. `--at`/`--seconds` override the window by hand. The cut is recorded in `short-<id>.cut.json` with the hook it used. |
+| `npm run series -- <matchId \| all> [--join-only]` | A playoff series as one video (`src/playoffs/series.ts`): renders every game of the slot that has no export, joins them into game 1's `series-<g1>.mp4`, rewrites game 1's title/description/chapters/tags for the series; the series' Short is picked and cut like any match's, from game 1's directory, once the hooks are saved. `all` walks the board in date order; `--join-only` joins what is exported. The dashboard's nightly cannot see a run here: start one in the daytime. |
 | `npm run sync-status -- [matchId]` | Where a match's POV clips are placed. With an id and no `sync.json`, derives it from the `.kdenlive` and writes it, so a re-export picks the corrected offsets up without a re-render. No id lists every match and writes nothing. |
 | `npm run chat -- <matchId>` | Fetch both players' Twitch chat to `chat-<nick>.json` for a match the pipeline saved none for (it does this itself after `download-vods`). Existing files are kept; delete one to refetch. |
-| `npm run reason -- <matchId>` | Ask the configured `reasonerCommand` (Antigravity's `agy`) which 22 seconds to cut, printing the candidates, the prompt and the answer. Saves it to `short-reason.json`; delete that to ask again. Unconfigured, it says so and changes nothing. |
+| `npm run pick -- <matchId \| all> [--force]` | Ask the model for the Short's moment (see Shorts): prints the prompt size, the model's raw answer, any validation failure and the pick. Without `--force` a pick newer than the export is kept. |
 | `npm run bench -- <Composition> [--frames=N] [--codec=] [--pixelFormat=] [--concurrency=N]` | Render throughput for one composition. Measure before claiming a render change is faster. |
 | `npm run retention -- <videoId>… [--days=90]` | The audience retention curve per video (Analytics API `audienceWatchRatio` by `elapsedVideoTimeRatio`), printed at every tenth. Measured 22 Sept 2026: 16–22 points go between 3% and 10% of the video — the first minute after the intro, the least eventful stretch of a run — then a slow drift; the finish lifts the curve again. |
 | `npm run config:example` | Rewrites `mcsr-vid.config.example.json` from `DEFAULTS` in `src/config.ts`, so the example cannot drift (it had, by seven keys). Run it after adding a key. |
@@ -90,25 +90,48 @@ Almost nothing in the overlay moves, so the render is stills plus one strip (`sr
 
 ## Shorts
 
-`npm run short` cuts from VODs already downloaded, with no Kdenlive project on purpose: 22 s of
-fixed layout has nothing to decide. Two Remotion stills (board, hook) plus one ffmpeg pass
-(`src/shorts/shortRender.ts`).
+Rebuilt on 23 Sept 2026 (the operator's calls; contract `src/shorts/shortPlan.ts`, research in
+`~/.claude/projects/-app/research/shorts-2026-09-23/`). The old Shorts were fixed 22 s windows
+that ended on the finish 80% of the time: 21–31% of feed plays became engaged views and 2,819
+views brought 0 subscribers.
 
-- **Which 22 seconds** is `src/shorts/shortMoment.ts`, scored from `match.timelines` and the saved
-  chat only, no video decoding. The weights are informed guesses; re-tune against retention.
-- **Nothing on the board animates**, deliberately: the RTA is a static "at 6:57" label, not a
-  counter; a 900-frame render took ten minutes for furniture.
-- **The hook line is the title hook** (`resolveShortHook`, `src/shorts/shortHook.ts`): the edited
-  title's hook, else the first rivalry chip, else the per-moment line, burned in for 4 s. The
-  Short's title is that hook plus `#minecraft #mcsr` unless the hook already carries a `#`.
-- **Every cut appends a line to `<mediaDir>/.short-picks.jsonl`**: what the heuristic proposed,
-  whether the reasoner overrode it, what was cut and by whom. Nothing reads it yet — it is the
-  evidence for tuning `EVENT_WEIGHTS`, and it can only be collected going forward.
+- **A model watches the whole match and picks the moment** (`src/shorts/videoPick.ts`,
+  `pickShortMoment`): a 2 fps 640x360 proxy of the export (`short-proxy.mp4`, proxy time = match
+  clock; 1 fps for a series), /watch's stills and transcripts per player (`src/shorts/watchPov.ts`
+  → `watchScript`, the plugin copied to `/app/.tools/watch/` because the dashboard container
+  cannot see `~/.claude`; transcripts need `GROQ_API_KEY` in `/app/.env`), then Antigravity
+  (`reasonerCommand`: `agy` with `gemini-3.8-flash-high`, `--sandbox`, never
+  `--dangerously-skip-permissions` — the prompt carries Twitch chat). The answer is one
+  continuous window of 12–60 s (`SHORT_MIN_MS`/`SHORT_MAX_MS`), both POVs or one player's alone
+  (a death, a zero cycle), a focus side, a hook suggestion and a one-line why — the why can
+  exaggerate (it once made a 7→5.5-heart hit "half a heart"), so it is for the operator's eyes
+  only. Validation: bounds, `rtaAtStart` within ±2 s of the start (the answer must be tied to the
+  footage), a series window ends before its game is decided. One retry on an empty answer
+  (Flash sometimes reaches for a shell command, which headless mode denies), then the old
+  timeline heuristic (`src/shorts/shortMoment.ts`) stands in and `short-<id>.pick-error.json`
+  says why. The pick is `short-<id>.pick.json`; `npm run pick -- <id|all> [--force]` asks again.
+  A whole match costs ~1.5–5 min and ~80–140k tokens on the operator's subscription.
+- **No Short renders and nothing uploads before the operator saves the hooks** (the gate is in
+  `generateShort.ts`, `youtubeUpload.ts` `hookRefusal`, and every render path): the Short's hook
+  is its own field, `short-<id>.hook.txt`, prefilled on the dashboard with the model's
+  suggestion; the long-form's title hook is the edited title. Saving both
+  (`PUT /api/shorts/hooks/:id`) starts the chain in `src/dashboard/shortFlow.ts`: render the
+  Short, upload the long-form at its slot, upload the Short 18 h later. A hook changed before the
+  upload re-renders; after the upload the hooks lock. "No Short for this one" lets the long-form
+  go alone. `short-<id>.status.json` holds each step's state and errors.
+- **On screen** (`src/shorts/shortRender.ts`, `remotion/Short.tsx`): the hook for 4 s
+  (`SHORT_HOOK_SEC`), then captions from the race data (`raceCaptions`, `src/shorts/raceGap.ts`:
+  "SILVERRRUNS 8 S UP AT THE EYES" — a leader may be named mid-race, never the result), a running
+  clock in the top nameplate (YouTube's own UI covers the bottom ~20%), the off-focus POV lowered
+  12 dB, and a closing card: "WHO TOOK IT? FULL MATCH ON THE CHANNEL" when the window ends before
+  the match is decided, else "FULL MATCH ON THE CHANNEL" ("SERIES" for a series). The single-POV
+  layout is a centre crop that keeps the crosshair and the hotbar.
+- **The Short's title** is `<hook> | <left> vs <right>` with `titleName` (Skycrab, lowkey), plus
+  `#mcsr #minecraft` when it fits in 100 characters — the only Short with a player name in its
+  title drew the search traffic.
+- **A playoff game's nameplates show the seed, not the ladder rank**: a bracket has its own
+  order. A series is picked and cut from game 1's directory, the clips from the picked game's.
 - **Auto-crop usually declines, and should**: streamers' panels reach the frame edges.
-  `--top-crop=x,y,w,h` overrides it.
-- **A playoff game's nameplates show the seed, not the ladder rank** (`remotion/Short.tsx`,
-  `src/shorts/generateShort.ts`): a bracket has its own order, and the seed pair is what states an upset.
-  Ranked Shorts are unchanged.
 
 ## Dashboard
 
@@ -182,10 +205,10 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   both. The operator's call, 22 Sept 2026; the fourteen live titles were rewritten the same
   morning (the `| Minecraft Speedrun` tail with it).
 - **`nightlyUpload` is `"scheduled"` on the lab since 22 Sept 2026** (the operator's call:
-  "whatever gets the most views"): a nightly render uploads itself, private, scheduled for the
-  next free 19:00 UTC slot — a series for 23:00 — and its Short 18 h later. A fresh render's
-  title carries the pipeline's first hook chip, which is what lets the upload through the
-  `<HOOK>` refusal. Still not writable from the Settings tab.
+  "whatever gets the most views"), and since 23 Sept it decides how the chain uploads once the
+  hooks are saved: private, scheduled for the next free 19:00 UTC slot — a series for 23:00 —
+  and the Short 18 h later (`"private"`: no publish time; `"off"`: the chain stops after the
+  render). The nightly itself never uploads any more. Still not writable from the Settings tab.
 - **A playoff game's thumbnails can carry the tournament** (`playoffThumbnailStyle`, in the
   Settings tab; `remotion/Thumbnail.tsx` `playoff`): "bracket" puts the round in the band, the
   seed where the rating was and "Best of 5" under the VS; "trophy" grows the band for a gold
@@ -274,8 +297,9 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   server before the hour, or set `nightlyRenderHourUtc: null` for it.
 - **Nightly** (`src/dashboard/nightly.ts`): at `nightlyRenderHourUtc` (default 3 UTC; `null` disables) the
   server renders the first eligible card in dashboard order, skipping the night if a render is
-  running or under two matches of disk remain, then the Short (`nightlyRenderShort`) and the MP4
-  (`nightlyRenderExport`); `nightlyNotifyUrl` gets one line on done / failed / aborted. With
+  running or under two matches of disk remain, then the MP4 (`nightlyRenderExport`), then queues
+  the Short's pick — no Short and no upload: those wait for the operator's hooks (see Shorts).
+  `nightlyNotifyUrl` gets one line on done / failed / aborted, plus "N waiting for a hook". With
   `nightlyMaxRenders` above 1 a clean run starts the next card, within four hours of the hour
   and through the same guards. The
   strip's `Run now` is the same path, as is a card's "Render + Short + MP4".
