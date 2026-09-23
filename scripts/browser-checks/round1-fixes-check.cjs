@@ -38,7 +38,7 @@ const { launchFor } = require("./launch.cjs");
   await page.waitForTimeout(1500);
   const after = await page.$$("#suggestions > .sugg");
   check("undo restores the card", after.length === cards.length, `${after.length} vs ${cards.length}`);
-  // section order and placeholder guard: the Check group opens on the video with the sync
+  // section order and placeholder guard: the Check group leads with the video, the sync
   // frames right under it, and the Publish group leads with YouTube, the kit under it
   await page.click("#tab-matches");
   await page.evaluate(() => select(13172029, { open: true }));

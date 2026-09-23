@@ -4,6 +4,8 @@ let STAGES = { order: [], labels: {}, short: {} };
 let showHidden = false;
 let matches = [];
 let selected = null;
+/** The /api/meta answer the match screen was painted from; the NOW group (paintNow) reads it too. */
+let selectedMeta = null;
 // The competitor's handle as the suggestions payload names it; the Rendered rows' state line reads it too.
 let rivalHandle = null;
 const rivalHandleOrDefault = () => rivalHandle ?? "mcsrmatches";
@@ -36,35 +38,62 @@ function formatDuration(ms) {
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
 }
 
+/** Where a row's Short state puts it (MatchRowShort, src/shorts/shortPlan.ts): what needs the
+    operator first, what is on its way, what is done last. */
+const SHORT_ORDER = { failed: 0, "waiting-for-hook": 1, scheduled: 3, published: 4 };
+const SHORT_LINE = {
+  failed: ["failed", "bad"],
+  "waiting-for-hook": ["waiting for hook", "ready"],
+  picking: ["exported &middot; the model is picking the Short&hellip;", ""],
+  rendering: ["rendering the Short&hellip;", ""],
+  uploading: ["uploading&hellip;", ""],
+  scheduled: ["scheduled", "ok"],
+  published: ["published", ""],
+};
+
+/**
+ * The list in the order the morning asks its question -- what needs me? A failure first, then
+ * the matches waiting for a hook, then what is on its way, then scheduled, then published; the
+ * ones the competitor already posted after the fresh ones, newest first within each. A server
+ * one restart behind sends no `shortState`, and its rows sort the old way: ready, in progress,
+ * published.
+ */
+function orderedMatches() {
+  const stage = (m) =>
+    m.shortState ? (SHORT_ORDER[m.shortState] ?? 2) : m.uploaded ? 4 : m.exported ? 1 : 2;
+  return (showHidden ? matches : matches.filter((m) => !m.hidden))
+    .slice()
+    .sort((a, b) => stage(a) - stage(b) || !!a.rivalPosted - !!b.rivalPosted || b.matchId - a.matchId);
+}
+
 function renderList() {
   const el = $("#list");
   if (!matches.length) {
     el.innerHTML = '<div class="empty">No matches in mediaDir yet.</div>';
     return;
   }
-  // In the order the morning asks its question: what do I upload next? Ready first, the ready
-  // ones the competitor already posted after them, then what is still in progress, and what is
-  // published last — newest first within each. The server's newest-first order was right for
-  // finding what just rendered and wrong for a shelf of four finished MP4s and a published one.
-  const stage = (m) => (m.uploaded ? 3 : m.exported ? (m.rivalPosted ? 1 : 0) : 2);
-  const visible = (showHidden ? matches : matches.filter((m) => !m.hidden))
-    .slice()
-    .sort((a, b) => stage(a) - stage(b) || b.matchId - a.matchId);
+  const visible = orderedMatches();
   const hiddenCount = matches.filter((m) => m.hidden).length;
-  // The morning's number: finished MP4s nobody has published. Hidden matches are out of it, so
-  // parking an old one keeps the count honest.
-  const ready = matches.filter((m) => !m.hidden && m.exported && !m.uploaded).length;
-  $("#tab-matches small").textContent = ready ? `${ready} ready` : "";
+  // The morning's number: matches waiting for the operator's hooks, the only thing between them
+  // and the channel now. Hidden matches are out of it, so parking an old one keeps it honest.
+  const shown = matches.filter((m) => !m.hidden);
+  const hooks = shown.filter((m) => m.shortState === "waiting-for-hook").length;
+  const ready = shown.filter((m) => !m.shortState && m.exported && !m.uploaded).length;
+  $("#tab-matches small").textContent = hooks ? `${hooks} hooks` : ready ? `${ready} ready` : "";
   updateBackLabel();
-  // One line naming the next action. The six stage pips and their legend used to say the same
-  // thing in a code the operator had to decode; the match screen's Check group has the detail.
+  // One line naming where the match stands, from the server's plan (shortState + shortDetail).
+  const rival = (m) =>
+    m.rivalPosted && m.shortState !== "published"
+      ? ` &middot; <span class="rival" title="${esc(m.rivalPosted.title)}">@${esc(rivalHandleOrDefault())} posted ${m.rivalPosted.daysAgo === 0 ? "today" : `${m.rivalPosted.daysAgo}d ago`}</span>`
+      : "";
   const state = (m) => {
-    if (m.uploaded) return '<div class="state">published</div>';
-    if (m.exported && m.rivalPosted)
-      return `<div class="state rival" title="${esc(m.rivalPosted.title)}">@${esc(rivalHandleOrDefault())} posted this ${m.rivalPosted.daysAgo === 0 ? "today" : `${m.rivalPosted.daysAgo}d ago`}</div>`;
-    if (m.exported) return '<div class="state ready">ready &mdash; check &middot; pick &middot; upload</div>';
+    const line = SHORT_LINE[m.shortState];
+    if (line)
+      return `<div class="state ${line[1]}">${line[0]}${m.shortDetail ? ` &middot; ${esc(m.shortDetail)}` : ""}${rival(m)}</div>`;
+    if (!m.shortState && m.uploaded) return '<div class="state">published</div>';
+    if (!m.shortState && m.exported) return `<div class="state ready">ready${rival(m)}</div>`;
     const next = STAGES.order.find((s) => !m.stages[s]);
-    return `<div class="state">in progress${next ? ` &middot; ${esc(STAGES.short?.[next] ?? STAGES.labels[next] ?? next).toLowerCase()}` : ""}</div>`;
+    return `<div class="state">${next ? `in progress &middot; ${esc(STAGES.short?.[next] ?? STAGES.labels[next] ?? next).toLowerCase()}` : "rendered &middot; not exported yet"}</div>`;
   };
   const toggle = hiddenCount
     ? `<button type="button" id="showhidden" class="ghost">${showHidden ? "Hide" : "Show"} ${hiddenCount} hidden</button>`
@@ -183,13 +212,23 @@ function wireDelete(btn, id) {
  *
  * Two shapes, because the pipeline now writes its own first suggestion into the title file
  * (src/pipeline/title.ts): a line still holding the placeholder, and a line that already has a hook in
- * front of the generated half. Either way the hook is everything before that half, so replacing
- * it is one rule. A line whose tail has been edited by hand is left exactly as it is.
+ * front of the generated half. Either way the hook is everything before the name pair, so
+ * replacing it is one rule, and the tail after it stays as it is on disk. A line without the pair
+ * is left exactly as it is.
  */
 function titleWithHook(firstLine, hook, generated) {
   if (!hook) return firstLine;
   if (firstLine.includes("<HOOK>")) return firstLine.replace("<HOOK>", hook);
-  return generated && firstLine.endsWith(generated) ? `${hook} | ${generated}` : firstLine;
+  const old = hookOfTitle(firstLine, generated);
+  return old === null ? firstLine : hook + firstLine.slice(old.length);
+}
+
+/** The hook in a title's first line: what stands before " | <left> vs <right> | ". Not the first
+    " | " -- a hook may carry one ("PLAYOFFS | SWEPT vs TAS") -- and not the whole generated tail,
+    which a title written before a tail change no longer ends with. Null for "<HOOK>". */
+function hookOfTitle(line, generated) {
+  const at = generated && !line.includes("<HOOK>") ? line.indexOf(` | ${generated.split(" | ")[0]} | `) : -1;
+  return at > 0 ? line.slice(0, at) : null;
 }
 
 function hookCounter(meta) {
@@ -214,17 +253,19 @@ function hookCounter(meta) {
  * hides the other. First load asks for nothing: the detail is painted behind the list, and the
  * strip's last-run link or a row is the tap that shows it.
  *
- * The match screen is a head and four groups in the order the morning happens: Check (the
- * video, the sync frames, the sync editor), Package (hook, thumbnails; splits and the title
- * editors folded), Publish (YouTube, then the kit), After (the Short, then Manage). Two columns
- * on a desktop, one group at a time below 860px, switched by the .jump bar.
+ * The match screen is a head and four groups: Now (the steps from the export to the channel,
+ * with the two hooks -- paintNow), Check (the video, the sync frames, the sync editor), Package
+ * (thumbnails; splits and the title editors folded), Publish (YouTube, the kit, Manage). Two
+ * columns on a desktop, one group at a time below 860px, switched by the .jump bar. Every match
+ * opens on Now: the hooks are the only thing between a finished video and the channel.
  */
 async function select(id, { open = false } = {}) {
   // Re-selecting the match on screen (the strip's last-run link, a card's "Rendered · open")
   // rebuilds the markup; the group the operator was in must survive it, or a phone drops back to
-  // Check mid-Package.
+  // Now mid-Package.
   const keepPanel = selected === id ? $("#detail .panel.on")?.dataset.panel : undefined;
   selected = id;
+  clearTimeout(nowPoll);
   if (exportStream) {
     exportStream.close();
     exportStream = null;
@@ -233,6 +274,7 @@ async function select(id, { open = false } = {}) {
   renderList();
   const meta = await api(`/api/meta/${id}`);
   if (selected !== id) return; // the operator moved on while this was in flight
+  selectedMeta = meta;
   const m = matches.find((x) => x.matchId === id);
   const rendered = m && m.stages.render;
   // Only the first line of the title file is a title; the rest is guidance formatTitle writes
@@ -274,52 +316,32 @@ async function select(id, { open = false } = {}) {
         meta.series
           ? `<div id="serieshead">series &middot; ${esc(meta.series.round.toLowerCase())} &middot; best of ${meta.series.bestOf} &middot; games: ${meta.series.games
               .map((g) => `<a href="#" data-game="${g.matchId}">${g.gameNo}</a>`)
-              .join(" ")}${meta.series.shortFromMatchId ? ` &middot; short from game ${meta.series.games.find((g) => g.matchId === meta.series.shortFromMatchId)?.gameNo ?? "?"}` : ""}</div>`
+              .join(" ")}</div>`
           : ""
       }
       <nav class="jump">
-        <a href="#h-preview" data-panel="check" aria-current="page">Check</a>
-        <a href="#h-hook" data-panel="package">Package</a>
+        <a href="#now" data-panel="now" aria-current="page">Now</a>
+        <a href="#h-preview" data-panel="check">Check</a>
+        <a href="#h-thumbs" data-panel="package">Package</a>
         <a href="#h-youtube" data-panel="publish">Publish</a>
-        <a href="#h-short" data-panel="after">After</a>
       </nav>
     </div>
 
     <div class="cols">
       <div class="col">
-        <section class="panel on" data-panel="check">
+        <section class="panel on" data-panel="now">
+          <div id="now"><div class="empty">loading&hellip;</div></div>
+        </section>
+        <section class="panel" data-panel="check">
           <h2 id="h-preview">Final video</h2>
           <div id="preview"><div class="empty">loading&hellip;</div></div>
           <div id="synccheck"></div>
           <details id="syncedit" class="syncedit"><summary>Fix the sync by hand</summary><div class="empty">loading&hellip;</div></details>
         </section>
-        <section class="panel" data-panel="after">
-          <h2 id="h-short">Short</h2>
-          <div id="short"><div class="empty">loading&hellip;</div></div>
-          ${manageHtml(id, rendered ? runButtons : "", meta.outputs)}
-        </section>
       </div>
       <div class="col">
         <section class="panel" data-panel="package">
-          <h2 id="h-hook">Hook ${meta.hook ? '<span class="counter" id="hookcount"></span>' : ""}</h2>
-          <div class="row hookrow">
-            ${
-              meta.hook
-                ? `<input type="text" id="hook" placeholder="${esc(meta.hook.suggestions[0] ?? "The one part worth writing by hand")}">`
-                : '<span class="muted">no hook data for this match</span>'
-            }
-            <button id="save" title="Commit the hook into the title, and save the title and description">Save</button>
-          </div>
-          <div id="savedmsg"></div>
-          ${
-            meta.hook?.suggestions.length
-              ? `<div class="chips">${meta.hook.suggestions
-                  .map((s) => `<button type="button" class="chip">${esc(s)}</button>`)
-                  .join("")}</div>`
-              : ""
-          }
-
-          <h2>Thumbnail</h2>
+          <h2 id="h-thumbs">Thumbnail</h2>
           <div id="variants"><div class="empty">loading&hellip;</div></div>
 
           <details class="fold"><summary>Splits</summary>
@@ -330,6 +352,10 @@ async function select(id, { open = false } = {}) {
             <textarea id="title" rows="2">${esc(titleLine)}</textarea>
             <h2>Description ${meta.descriptionEdited ? '<span class="saved">(edited)</span>' : ""}</h2>
             <textarea id="description" rows="14">${esc(meta.description ?? "")}</textarea>
+            <div class="row">
+              <button type="button" id="savetext" class="ghost">Save text</button>
+              <span class="msg" id="savetextmsg">the hook is saved in Now; this saves the text as typed</span>
+            </div>
           </details>
         </section>
         <section class="panel" data-panel="publish">
@@ -341,6 +367,7 @@ async function select(id, { open = false } = {}) {
 
           <h2>Done by hand</h2>
           <div class="checklist" id="checklist"></div>
+          ${manageHtml(id, rendered ? runButtons : "", meta.outputs)}
         </section>
       </div>
     </div>`;
@@ -355,7 +382,8 @@ async function select(id, { open = false } = {}) {
     showPanel(a.dataset.panel);
     window.scrollTo(0, 0);
   });
-  showPanel(keepPanel ?? "check");
+  showPanel(keepPanel ?? "now");
+  wireNow(id);
 
   $("#mhide") && wireHide($("#mhide"), id);
   $("#mdel") && wireDelete($("#mdel"), id);
@@ -366,29 +394,6 @@ async function select(id, { open = false } = {}) {
       select(Number(a.dataset.game), { open: true });
     }),
   );
-
-  if (meta.hook) {
-    $("#hook").addEventListener("input", () => {
-      hookCounter(meta);
-      // Typed is not saved: the upload and the Short read the title file, which Save writes.
-      $("#savedmsg").textContent = "not saved \u2014 Upload sends the saved title";
-      $("#savedmsg").className = "muted";
-    });
-    // A chip fills the field rather than committing anything: the suggestion is a starting
-    // point to edit, which is the whole reason the hook is hand-written in the first place.
-    $("#detail")
-      .querySelectorAll(".chip")
-      .forEach((chip) =>
-        chip.addEventListener("click", () => {
-          $("#hook").value = chip.textContent;
-          // Through the same event a keystroke raises: the YouTube title and the publish kit
-          // follow the field from that, and a chip that only set the value left both behind.
-          $("#hook").dispatchEvent(new Event("input"));
-          $("#hook").focus();
-        }),
-      );
-    hookCounter(meta);
-  }
 
   // Both live in the head for an unrendered match and in the Manage fold once it is rendered;
   // neither exists when the match has no directory on the shelf yet.
@@ -401,16 +406,13 @@ async function select(id, { open = false } = {}) {
     const ok = await copyText($("#failtext").textContent);
     $("#failcopy").textContent = ok ? "Copied" : "Blocked — select it by hand";
   });
-  $("#save").addEventListener("click", async () => {
-    // The hook field is where the headline is written, and Save is where it is committed: the
-    // hook slot in the title's first line takes it here, so the file on disk — what the
-    // checklist reads and what the Short's hook resolves from — carries the operator's line and
-    // not the placeholder or the pipeline's own first suggestion.
-    const hook = $("#hook")?.value.trim();
-    // The box holds one line now, and the title it holds already carries the pipeline's own
-    // hook far more often than the placeholder — so a clicked chip has to replace whichever of
-    // the two is there. titleWithHook does both.
-    $("#title").value = titleWithHook($("#title").value, hook, meta.hook?.generated);
+  // The title and description as typed, for the day one needs more than a hook. The hook itself
+  // is saved in Now (PUT /api/shorts/hooks), which is what lets the uploads go; this writes the
+  // two files and nothing else.
+  $("#savetext").addEventListener("click", async () => {
+    const msg = $("#savetextmsg");
+    clearFailAt("#savetext");
+    msg.textContent = "saving…";
     let saved;
     try {
       saved = await api(`/api/meta/${id}`, {
@@ -422,18 +424,12 @@ async function select(id, { open = false } = {}) {
         }),
       });
     } catch (e) {
-      $("#savedmsg").textContent = e.message;
-      $("#savedmsg").className = "bad";
+      msg.textContent = "";
+      failAt("#savetext", "Text not saved", e.message);
       return;
     }
-    $("#savedmsg").textContent = "saved";
-    $("#savedmsg").className = "saved";
-    setTimeout(() => {
-      if ($("#savedmsg")?.textContent === "saved") $("#savedmsg").textContent = "";
-    }, 2000);
-    // The panels that quote the title and description were painted from the meta this detail
-    // opened with; after a save they would still show the old text until the match was reopened.
-    // The PUT answers with the merged meta, so no follow-up GET.
+    msg.textContent = "saved";
+    // The PUT answers with the merged meta, so the panels that quote the text repaint from it.
     Object.assign(meta, saved);
     loadChecklist(id);
     loadYoutube(id, meta);
@@ -445,7 +441,7 @@ async function select(id, { open = false } = {}) {
   loadSplits(id, meta);
   loadPreview(id);
   loadSyncEdit(id);
-  loadShort(id);
+  loadPlan(id);
   loadYoutube(id, meta);
   loadPublishKit(id, meta);
   watch(id, true);
@@ -464,7 +460,7 @@ const CHECKLIST = [
   ["uploaded", "uploaded", true],
   ["shortRendered", "Short rendered"],
   ["chatSaved", "chat saved"],
-  ["shortUploaded", "Short uploaded", true],
+  ["shortUploaded", "Short uploaded"],
   ["relatedLinkSet", "related link", true],
   ["endScreenSet", "end screen", true],
   ["playersNotified", "players notified", true],
@@ -477,6 +473,16 @@ async function loadChecklist(id) {
   // Repainted from whatever the server last returned — including the PUT reply, which is the
   // whole merged object, so a toggle needs no follow-up GET.
   const paint = (state) => {
+    // The hook and the Short are the plan's facts now: a hook counts once it is saved, which is
+    // what lets the uploads go, not once the title file has one (the pipeline writes its own).
+    const plan = nowPlan?.matchId === id ? nowPlan : null;
+    if (plan) {
+      state = {
+        ...state,
+        hookPicked: plan.titleHook !== null,
+        shortUploaded: !!plan.uploads.short || state.shortUploaded,
+      };
+    }
     el.innerHTML = CHECKLIST.map(([key, label, manual]) => {
       const on = state[key] === true;
       // The tick is not decoration: filled-vs-outlined is a colour difference, and this row is
@@ -709,9 +715,9 @@ function watchExport(id) {
         loadPreview(id);
         // A fresh export is not stale: the sync check and the Upload button read that from here.
         void loadSyncEdit(id);
-        // The Short panel's seek controls only render once the final video exists.
-        void loadShort(id);
-        // The list's "ready to publish" badge and count read the same file.
+        // An export is what the picker waits for (a GET on an exported match queues a pick).
+        void loadPlan(id);
+        // The list's state line and count read the same file.
         void refresh();
       }
     }
@@ -793,6 +799,8 @@ async function loadPublishKit(id, meta) {
     : "";
   publishSlotAt = slot;
   prefillPublishAt();
+  // Now's "Video up" names this slot until the video has one of its own.
+  if (nowPlan?.matchId === id && !nowPlan.uploads.video) paintNow(nowPlan, true);
 
   // Getting the files onto the PC that publishes, which is step zero of the Studio phase and the
   // only part of this panel that is a command rather than a paste. Pull, not push
@@ -886,10 +894,11 @@ async function loadPublishKit(id, meta) {
   // The hook is typed after this panel paints, and the YouTube panel rewrites #ytTitle from the
   // same event. Deferring a tick means this reads that field after it has been rewritten,
   // whichever of the two panels happened to register its listener first.
-  $("#hook")?.addEventListener("input", () => setTimeout(paint, 0));
+  // Delegated from #now: the NOW group repaints its fields, and #now itself outlives that.
+  $("#now")?.addEventListener("input", (ev) => ev.target.id === "hook" && setTimeout(paint, 0));
 }
 
-/** The maintenance fold at the bottom of After: Re-run (for a rendered match -- it is the head's
+/** The maintenance fold at the bottom of Publish: Re-run (for a rendered match -- it is the head's
     primary button until then), Hide and Delete, and the output paths. The row has Hide/Delete on
     a desktop; on a phone the row is one tap target and carries nothing destructive (panels.css),
     so this is where they live. */
@@ -914,179 +923,572 @@ function runClock(ms) {
 }
 
 /**
- * The candidate windows, best first, and a button to cut one.
+ * The NOW group: one column of steps in pipeline order -- Video, Pick, Hooks, Short, Video up,
+ * Short up -- painted from GET /api/shorts/plan/:id (src/shorts/shortPlan.ts, ShortPlanResponse).
  *
- * Ranked rather than chosen for you: the scorer is a set of informed guesses about what makes a
- * Short watchable (see src/shorts/shortMoment.ts) and has no retention data behind it yet, so the top
- * pick is a strong default and not a verdict. Each row shows why it won and the line it would
- * carry if nothing better existed, which is the part worth disagreeing with.
+ * Nothing uploads and no Short renders until the operator has saved the hooks; after that the
+ * chain runs by itself, so this group is a glance at the pick, two fields and a status list. A
+ * finished step is one line; the step that needs the operator, or failed, is open, with the
+ * server's error for it under its head (failAt, app.js) and its fix beside it.
  *
- * `data.hook` is the line that will actually be burned in — the edited title's hook, or the
- * top-ranked suggestion, and only then the per-row one.
+ * Here rather than in a file of its own: server.ts serves public/ from an allowlist, and a new
+ * script there is a server change.
  */
-async function loadShort(id) {
-  const el = $("#short");
+
+/** The plan on screen, and its JSON: a poll that brings nothing new repaints nothing. */
+let nowPlan = null;
+let nowPlanJson = "";
+let nowPoll = null;
+/** Steps the operator opened or closed by hand, for the match on screen. */
+let nowOpen = {};
+
+const PLAN_RUNNING = ["picking", "rendering", "uploading"];
+
+const nowWhen = (iso) =>
+  new Date(iso).toLocaleString([], {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+async function loadPlan(id) {
+  clearTimeout(nowPoll);
+  const el = $("#now");
   if (!el) return;
-  let data;
+  let plan;
   try {
-    data = await api(`/api/shorts/moments/${id}`);
+    plan = await api(`/api/shorts/plan/${id}`);
   } catch (e) {
-    el.innerHTML = `<div class="scanline bad">${esc(e.message)}</div>`;
+    if (selected === id) el.innerHTML = `<div class="scanline">${esc(e.message)}</div>`;
     return;
   }
-  if (!data.moments.length) {
-    el.innerHTML =
-      '<div class="empty">no moment worth cutting &mdash; this match has no scored timeline events</div>';
-    return;
-  }
-
-  el.innerHTML = `
-    ${
-      data.rendered
-        ? `<div class="shortplayer">
-             <video id="shortvideo" controls preload="metadata" playsinline
-                    src="/api/shorts/preview/${id}"></video>
-             <div class="previewmeta">
-               <span>${esc(data.rendered)}</span>
-               <a href="/api/shorts/preview/${id}" download>Download</a>
-             </div>
-           </div>`
-        : ""
-    }
-    ${
-      data.title
-        ? `<div class="previewmeta">
-             <span id="shorttitle">${esc(data.title)}</span>
-             <button type="button" id="shorttitlecopy" class="ghost">Copy title</button>
-           </div>`
-        : ""
-    }
-    ${data.hook ? `<div class="previewmeta"><span>burns in: &ldquo;${esc(data.hook)}&rdquo;</span></div>` : ""}
-    ${
-      // Operator-only: `why` is the model's unfiltered text and may name who finished. It is
-      // never published — keep it off the publish kit, the title and the description.
-      data.reasoner?.applied || data.reasoner?.why
-        ? `<div class="previewmeta"><span>reasoner: ${esc(data.reasoner.why || "(no reason given)")}</span></div>`
-        : ""
-    }
-    <div class="moments">${data.moments
-      .map(
-        (m) => `
-      <div class="moment" data-pick="${m.index}">
-        <span class="when">${runClock(m.startMs)}&ndash;${runClock(m.endMs)}${
-          data.finalVideo
-            ? `<button type="button" class="seek" title="play this window in the final video">&#9654; ${runClock(data.finalOffsetSec * 1000 + m.startMs)}</button>`
-            : ""
-        }</span>
-        <span class="why">${esc(m.reason)}</span>
-        <span class="hook">&ldquo;${esc(m.hook)}&rdquo;</span>
-        <button type="button" class="cut">Cut this</button>
-      </div>`,
-      )
-      .join("")}</div>
-    ${
-      // Only with a video to read a position from: without one there is nothing to be "here".
-      data.finalVideo
-        ? `<button type="button" id="cuthere" class="ghost" title="Cut a Short starting where the final video is paused">Cut from where I am watching</button>`
-        : ""
-    }
-    <pre id="shortlog" class="hidden"></pre>`;
-
-  // A thumbnail re-rendered with a new headline leaves the Short burned with the old one — the
-  // two halves of a match then disagree, which is the one thing the shared hook exists to
-  // prevent. `hook` is what a cut would use now; `title` is what the last cut wrote.
-  if (data.rendered && data.title && data.hook && !data.title.startsWith(data.hook)) {
-    const burned = data.title.replace(/\s*#minecraft #mcsr$/, "");
-    el.insertAdjacentHTML(
-      "afterbegin",
-      `<div class="scanline bad">The Short still says &ldquo;${esc(burned)}&rdquo;; the thumbnail now says &ldquo;${esc(data.hook)}&rdquo; &middot; <a href="#" data-act="recut">re-cut it</a></div>`,
+  if (selected !== id) return;
+  // The plan has no "rendered" flag, and with uploads off the chain stops after the render in a
+  // state that does not say so: the checklist's file fact is the reading that cannot lie (a HEAD
+  // on the Short itself would log a 404 on every match that has none).
+  if (plan.titleHook !== null && !plan.noShort && plan.state !== "rendering") {
+    plan.shortFile = await api(`/api/publish/${id}`).then(
+      (c) => c.shortRendered === true,
+      () => false,
     );
-    el.querySelector('[data-act="recut"]')?.addEventListener("click", (ev) => {
-      ev.preventDefault();
-      el.querySelector(".moment .cut")?.click();
+    if (selected !== id) return;
+  }
+  const first = nowPlan?.matchId !== id;
+  paintNow(plan);
+  // The checklist's hook and Short pills read the plan (loadChecklist).
+  if (first) loadChecklist(id);
+  if (plan.pickActivity || PLAN_RUNNING.includes(plan.state))
+    nowPoll = setTimeout(() => loadPlan(id), 4000);
+}
+
+/** The newest error for a step, while it still stands: `errors` is never cleared, so an old
+    failure the chain has since got past is not shown. */
+function stepError(plan, step) {
+  const e = plan.errors.find((x) => x.step === step);
+  if (!e) return null;
+  if (step === "pick") return plan.pick?.source === "agy" || plan.pickActivity ? null : e;
+  // Only the failure that stopped the chain: a pick error may be newer, and it stops nothing.
+  return plan.state === "failed" && plan.errors.find((x) => x.step !== "pick") === e ? e : null;
+}
+
+const ERROR_TITLE = {
+  pick: "The model failed, the heuristic stands in",
+  render: "Short render failed",
+  "upload-video": "Video upload failed",
+  "upload-short": "Short upload failed",
+};
+
+function nowSteps(plan, meta) {
+  const id = plan.matchId;
+  const nick = (side) => (side === "left" ? meta.leftNickname : meta.rightNickname);
+  const saved = plan.titleHook !== null;
+  const titleLocked = !!plan.uploads.video;
+  const shortLocked = !!plan.uploads.short;
+  const sync = syncEditState?.data?.matchId === id ? syncEditState.data : null;
+  const steps = [];
+  const retry = `<div class="row"><button type="button" class="ghost" data-act="retry">Retry</button></div>`;
+  const toCheck = `<div class="row"><button type="button" class="ghost" data-act="to-check">Re-encode in Check &rsaquo;</button></div>`;
+  const checkLink = `<a href="#" data-act="to-check">check &rsaquo;</a>`;
+
+  // --- Video: exported, and whether the sync is worth a look ---------------------------------
+  const conf = meta.sync ? `sync ${Math.round(meta.sync.confidence * 100)}%` : "no sync.json";
+  if (plan.state === "no-export") {
+    steps.push({ key: "video", status: "todo", name: "Video", sum: "not exported yet &middot; Check has the encode" });
+  } else if (sync?.syncStale) {
+    steps.push({
+      key: "video",
+      status: "fail",
+      name: "Video",
+      sum: `exported &middot; ${conf}`,
+      aside: checkLink,
+      error: { title: "Sync changed after this export", text: sync.staleMessage },
+      body: `${toCheck}<div id="nowsync"></div>`,
+    });
+  } else {
+    steps.push({
+      key: "video",
+      status: plan.syncWeak ? "warn" : "done",
+      name: "Video",
+      sum: `exported &middot; ${conf}${plan.syncWeak ? " &mdash; look at the frames" : ""}`,
+      aside: checkLink,
+      open: !!plan.syncWeak,
+      body: `<div id="nowsync"></div>
+        <div class="muted small">Both should show the same countdown digit. If they do not, fix the sync in Check and re-encode before saving.</div>`,
     });
   }
 
-  // What a cut would actually contain, before pressing "Cut this": the final video seeks to the
-  // window and stops at its end, so exactly the Short's 22 s play. The player sits above the
-  // Short panel, off-screen on a phone, hence the scroll.
-  for (const btn of el.querySelectorAll(".moment .seek")) {
-    btn.addEventListener("click", () => {
-      const v = $("#finalvideo");
-      if (!v) return;
-      const m = data.moments[Number(btn.closest(".moment").dataset.pick)];
-      const end = data.finalOffsetSec + m.endMs / 1000;
-      const stopAtEnd = () => {
-        if (v.currentTime < end) return;
-        v.pause();
-        v.removeEventListener("timeupdate", stopAtEnd);
+  // --- Pick: the model's window, or the heuristic standing in ---------------------------------
+  const pick = plan.pick;
+  const pickErr = stepError(plan, "pick");
+  const againBtn = `<div class="row"><button type="button" class="ghost" data-act="pick-again"${shortLocked ? " disabled" : ""}>Pick again</button>
+    <span class="muted small">${shortLocked ? "the Short is on the channel" : "the model watches the match again"}</span></div>`;
+  if (plan.pickActivity) {
+    steps.push({
+      key: "pick",
+      status: "run",
+      name: "Pick",
+      sum: plan.pickActivity === "running" ? "the model is watching the match&hellip;" : "queued for the model",
+    });
+  } else if (!pick) {
+    steps.push({
+      key: "pick",
+      status: plan.state === "no-export" ? "todo" : "fail",
+      name: "Pick",
+      sum: plan.state === "no-export" ? "once the video is exported" : "no pick yet",
+      // No pick at all: nothing stands in, so the title says only that the picker failed.
+      error: pickErr && { title: "The picker failed", text: pickErr.message, at: pickErr.at },
+      body: plan.state === "no-export" ? "" : againBtn,
+      open: plan.state !== "no-export",
+    });
+  } else {
+    const game = meta.series?.games.find((g) => g.matchId === pick.gameMatchId && g.matchId !== id)?.gameNo;
+    const secs = Math.round((pick.endMs - pick.startMs) / 1000);
+    const source =
+      pick.source === "agy" ? `model${pick.model ? ` (${esc(pick.model)})` : ""}` : "heuristic stands in";
+    const pov =
+      pick.pov === "both"
+        ? `both POVs${pick.focus ? `, ${esc(nick(pick.focus))}'s audio up` : ""}`
+        : `${esc(nick(pick.pov))}'s POV alone`;
+    const p = plan.preview;
+    steps.push({
+      key: "pick",
+      status: pick.source === "agy" ? "done" : "warn",
+      name: "Pick",
+      sum: `${source} &middot; ${game ? `game ${game} &middot; ` : ""}${runClock(pick.startMs)}&ndash;${runClock(pick.endMs)} &middot; ${secs} s`,
+      open: plan.state === "waiting-for-hook" || pick.source !== "agy",
+      error: pickErr && { title: ERROR_TITLE.pick, text: pickErr.message, at: pickErr.at },
+      // The window plays inside the long-form's own video: the fragment starts and stops it,
+      // no timeupdate listener to outlive the panel. The fix goes right under an error.
+      body: `${pickErr ? againBtn : ""}${
+        p
+          ? `<video class="pickvideo" controls preload="metadata" playsinline src="${esc(p.videoUrl)}#t=${p.startSec},${p.endSec}"></video>
+             <div class="previewmeta"><span>${runClock(p.startSec * 1000)}&ndash;${runClock(p.endSec * 1000)} of the ${meta.series ? "series" : "final"} video</span></div>`
+          : ""
+      }
+        <div class="pickwhat">${pov} &middot; ${pick.kind === "race" ? "a race" : "one play"}</div>
+        ${
+          // Operator-only: the model's own words, which may name who finished. Never published.
+          pick.why ? `<div class="why">&ldquo;${esc(pick.why)}&rdquo;</div>` : ""
+        }
+        ${pickErr ? "" : againBtn}`,
+    });
+  }
+
+  // --- Hooks: the two lines the operator confirms ---------------------------------------------
+  const titleChips = plan.suggestions.title.length ? plan.suggestions.title : (meta.hook?.suggestions ?? []);
+  const chips = (list, target) =>
+    list.length
+      ? `<div class="chips" data-for="${target}">${list.map((s) => `<button type="button" class="chip">${esc(s)}</button>`).join("")}</div>`
+      : "";
+  // The title's own hook first: a saved or typed one must not be swapped for a chip by a press
+  // that only meant "confirm".
+  const titleVal = plan.titleHook ?? hookOfTitle((meta.title ?? "").split("\n")[0], meta.hook?.generated) ?? titleChips[0] ?? "";
+  const shortVal = plan.shortHook ?? pick?.hookSuggestion ?? "";
+  const lockNote = titleLocked
+    ? `<div class="scanline">The video is on the channel, so its hook is locked: a new one would mean a re-upload, which is your call.${shortLocked ? " The Short is up too." : ""}</div>`
+    : "";
+  steps.push({
+    key: "hooks",
+    status: saved ? "done" : "need",
+    name: "Hooks",
+    sum: saved
+      ? `saved &middot; &ldquo;${esc(plan.titleHook)}&rdquo;${plan.noShort ? " &middot; no Short" : plan.shortHook ? ` &middot; &ldquo;${esc(plan.shortHook)}&rdquo;` : ""}${titleLocked ? " &middot; locked" : ""}`
+      : "save both and the rest runs itself",
+    open: !saved,
+    body: `${lockNote}
+      <label class="hooklabel" for="hook"><span>Title hook</span><span class="counter" id="hookcount"></span></label>
+      <input type="text" id="hook" value="${esc(titleVal)}"${titleLocked ? " disabled" : ""} spellcheck="false">
+      ${titleLocked ? "" : chips(titleChips, "hook")}
+      <label class="hooklabel" for="shorthook"><span>Short hook &middot; on screen for 4 s</span><span class="counter" id="shorthookcount"></span></label>
+      <input type="text" id="shorthook" value="${esc(shortVal)}"${shortLocked || plan.noShort ? " disabled" : ""} placeholder="${pick ? "" : "the model's line lands here once it has picked"}" spellcheck="false">
+      ${shortLocked ? "" : chips(plan.suggestions.short, "shorthook")}
+      <label class="noshort"><input type="checkbox" id="noshort"${plan.noShort ? " checked" : ""}${shortLocked ? " disabled" : ""}> No Short for this one &mdash; the video goes out alone</label>`,
+  });
+
+  // --- Short: renders once the hooks are saved -------------------------------------------------
+  const renderErr = stepError(plan, "render");
+  const rendered =
+    !!plan.uploads.short ||
+    ["uploading", "scheduled", "published"].includes(plan.state) ||
+    (plan.state === "failed" && /^upload/.test(plan.errors.find((x) => x.step !== "pick")?.step ?? "")) ||
+    !!plan.shortFile;
+  const secs = pick ? `${Math.round((pick.endMs - pick.startMs) / 1000)} s` : "";
+  if (plan.noShort) {
+    steps.push({ key: "short", status: "skip", name: "Short", sum: "none for this one &mdash; your call" });
+  } else if (renderErr) {
+    steps.push({
+      key: "short",
+      status: "fail",
+      name: "Short",
+      sum: "render failed",
+      error: { title: ERROR_TITLE.render, text: renderErr.message, at: renderErr.at },
+      body: retry,
+    });
+  } else if (plan.state === "rendering") {
+    steps.push({ key: "short", status: "run", name: "Short", sum: "rendering&hellip;" });
+  } else if (saved && rendered) {
+    steps.push({
+      key: "short",
+      status: "done",
+      name: "Short",
+      sum: `rendered${secs ? ` &middot; ${secs}` : ""} &middot; &#9654; watch`,
+      body: `<div class="shortplayer"><video controls preload="none" playsinline src="/api/shorts/preview/${id}"></video>
+        <div class="previewmeta"><a href="/api/shorts/preview/${id}" download>Download</a></div></div>`,
+    });
+  } else {
+    steps.push({ key: "short", status: "todo", name: "Short", sum: "renders once the hooks are saved" });
+  }
+
+  // --- Video up, Short up ----------------------------------------------------------------------
+  // The slot the upload will take is the kit's (publishSlotAt, app.js loadPublishKit): the same
+  // publishSlot.ts answer, a series' hour included.
+  const up = (key, name, rec, err, pending, link) => {
+    if (rec) {
+      const said =
+        plan.state === "published" ? "published" : rec.publishAt ? `scheduled ${nowWhen(rec.publishAt)}` : "up, private";
+      return {
+        key,
+        status: "done",
+        name,
+        sum: said,
+        aside: `<a href="${link(rec.videoId)}" target="_blank" rel="noopener">open &rsaquo;</a>`,
       };
-      // One window at a time: a previous click's listener still waiting for its own end would
-      // pause this window at the wrong second (the player outlives this panel's re-renders,
-      // so the handler lives on the element, not in this closure).
-      if (v.stopAtEnd) v.removeEventListener("timeupdate", v.stopAtEnd);
-      v.stopAtEnd = stopAtEnd;
-      v.currentTime = data.finalOffsetSec + m.startMs / 1000;
-      v.addEventListener("timeupdate", stopAtEnd);
-      $("#h-preview").scrollIntoView({ behavior: "smooth" });
-      v.play()?.catch(() => {});
-    });
+    }
+    // Uploads switched off on the box: the chain stopped after the render, on purpose. Not a
+    // failure to retry -- Publish is the way (decision 1).
+    if (!err && uploadsOff)
+      return {
+        key,
+        status: "warn",
+        name,
+        sum: key === "videoup" ? esc(plan.detail) : "uploads are off",
+        aside: `<a href="#" data-act="to-publish">Publish &rsaquo;</a>`,
+      };
+    if (err)
+      return {
+        key,
+        status: "fail",
+        name,
+        sum: "upload failed",
+        error: { title: ERROR_TITLE[`upload-${key === "videoup" ? "video" : "short"}`], text: err.message, at: err.at },
+        body: `${retry}${sync?.syncStale && key === "videoup" ? toCheck : ""}`,
+      };
+    return { key, status: "todo", name, sum: pending };
+  };
+  // The contract has no "uploads off" state: it is "failed" with nothing standing past the pick,
+  // the Short rendered (a pick exists, or none is wanted), and the detail saying so.
+  const uploadsOff =
+    plan.state === "failed" &&
+    !!plan.detail &&
+    (plan.noShort || !!pick) &&
+    !plan.errors.some((x) => x.step !== "pick" && stepError(plan, x.step));
+  const videoAt = plan.uploads.video?.publishAt ?? publishSlotAt?.toISOString();
+  const waitSuffix = saved ? "" : " &middot; once the hooks are saved";
+  const videoUp = up(
+    "videoup",
+    "Video up",
+    plan.uploads.video,
+    stepError(plan, "upload-video"),
+    `${videoAt ? nowWhen(videoAt) : "the next free slot"}${waitSuffix}`,
+    (v) => `https://youtu.be/${encodeURIComponent(v)}`,
+  );
+  if (plan.state === "uploading" && !plan.uploads.video) Object.assign(videoUp, { status: "run", sum: "uploading&hellip;" });
+  steps.push(videoUp);
+  if (!plan.noShort) {
+    // The long-form's time + 18 h, or an hour from now if that has passed (decision 1).
+    const shortAt = videoAt
+      ? new Date(Math.max(new Date(videoAt).getTime() + 18 * 3600e3, Date.now() + 3600e3)).toISOString()
+      : null;
+    const shortUp = up(
+      "shortup",
+      "Short up",
+      plan.uploads.short,
+      stepError(plan, "upload-short"),
+      `${shortAt ? nowWhen(shortAt) : "18 h after the video"}${waitSuffix}`,
+      (v) => `https://youtube.com/shorts/${encodeURIComponent(v)}`,
+    );
+    if (plan.state === "uploading" && plan.uploads.video && !plan.uploads.short)
+      Object.assign(shortUp, { status: "run", sum: "uploading&hellip;" });
+    steps.push(shortUp);
   }
+  return steps;
+}
 
-  // The Short's title is typed into Studio by hand, and retyping a line the render already
-  // wrote is how a hook picks up a typo the burned-in one doesn't have.
-  const copyTitle = $("#shorttitlecopy");
-  if (copyTitle) {
-    copyTitle.addEventListener("click", async () => {
-      // Reporting the attempt rather than the outcome is how this said "Copied" on every machine
-      // that cannot copy. Select the text yourself when it says blocked.
-      copyTitle.textContent = (await copyText(data.title)) ? "Copied" : "Blocked";
-      setTimeout(() => (copyTitle.textContent = "Copy title"), 1500);
-    });
+const STEP_MARK = { done: "&#10004;", todo: "&#9675;", run: "&#9679;", need: "&#9679;", warn: "!", fail: "&#10008;", skip: "&ndash;" };
+
+function paintNow(plan = nowPlan, force = false) {
+  const el = $("#now");
+  const meta = selectedMeta;
+  if (!el || !plan || !meta || plan.matchId !== selected) return;
+  const json = JSON.stringify(plan);
+  if (!force && json === nowPlanJson && nowPlan?.matchId === plan.matchId) return;
+  if (nowPlan?.matchId !== plan.matchId) nowOpen = {};
+  nowPlan = plan;
+  nowPlanJson = json;
+
+  // What is typed and not saved survives a repaint: a poll must not take the operator's words.
+  const draft = [...el.querySelectorAll("input[data-dirty]")].map((f) => [f.id, f.type === "checkbox" ? f.checked : f.value]);
+  const msg = $("#savedmsg");
+  const said = msg ? [msg.innerHTML, msg.className] : null;
+  const steps = nowSteps(plan, meta);
+  const saveAt = steps.findIndex((s) => s.key === "hooks") + 1;
+  const stepHtml = (s) => {
+    const open = nowOpen[s.key] ?? !!(s.open || s.error);
+    return `<div class="step s-${s.status}${open ? " open" : ""}" data-step="${s.key}">
+      <div class="stephead">
+        <button type="button" class="steptoggle" aria-expanded="${open}"${s.body ? "" : " disabled"}>
+          <span class="mark" aria-hidden="true">${STEP_MARK[s.status]}</span><span class="name">${s.name}</span><span class="sum">${s.sum}</span>
+        </button>${s.aside ?? ""}
+      </div>
+      ${s.body ? `<div class="stepbody">${s.body}</div>` : ""}
+    </div>`;
+  };
+  el.innerHTML = `
+    ${plan.detail ? `<div class="nowdetail${plan.state === "failed" ? " bad" : ""}">${esc(plan.detail)}</div>` : ""}
+    ${steps.slice(0, saveAt).map(stepHtml).join("")}
+    <div class="row saverow"><button type="button" id="save" hidden></button></div>
+    <div id="savedmsg"></div>
+    ${steps.slice(saveAt).map(stepHtml).join("")}`;
+
+  for (const [fid, v] of draft) {
+    const f = document.getElementById(fid);
+    if (!f || f.disabled) continue;
+    if (f.type === "checkbox") f.checked = v;
+    else f.value = v;
+    f.dataset.dirty = "1";
   }
+  if ($("#noshort")?.checked) $("#shorthook").disabled = true;
+  if (draft.length) setSavedMsg("not saved &mdash; nothing uploads until you save", "muted");
+  else if (said) setSavedMsg(...said);
+  hookCounter(meta);
+  shortHookCounter();
+  paintNowSync();
+  paintSave();
+  for (const s of steps)
+    if (s.error)
+      failAt(`#now .step[data-step="${s.key}"] .stephead`, `${s.error.title}${s.error.at ? ` · ${ago(s.error.at)}` : ""}`, s.error.text);
+}
 
-  // One path for both ways of asking: a ranked row by index, or a window the operator picked by
-  // watching. The server takes `at` over `pick` when both could apply.
-  const startCut = async (body) => {
-    el.querySelectorAll(".cut, .cuthere").forEach((b) => (b.disabled = true));
-    const log = $("#shortlog");
-    log.classList.remove("hidden");
-    log.textContent = "starting\n";
-    await api(`/api/shorts/render/${id}`, {
-      method: "POST",
+/** The Short hook's length. 40 is the picker's own ceiling for a line burned in for 4 s
+    (HOOK_MAX_CHARS, src/shorts/videoPick.ts); past it the line wraps on the Short. */
+function shortHookCounter() {
+  const f = $("#shorthook"),
+    out = $("#shorthookcount");
+  if (!f || !out) return;
+  out.textContent = f.disabled ? "" : `${f.value.length} / 40`;
+  out.className = "counter" + (f.value.length > 40 ? " over" : f.value.length ? " good" : "");
+}
+
+function setSavedMsg(html, cls) {
+  const m = $("#savedmsg");
+  if (!m) return;
+  m.innerHTML = html;
+  m.className = cls;
+}
+
+/** The two 9.6 s frames in the Video step: the same look as Check's sync check, here because a
+    weak sync is the one thing worth seeing before the hooks are saved. */
+function paintNowSync() {
+  const el = $("#nowsync");
+  const d = syncEditState?.data;
+  if (!el || !d || d.matchId !== selected) return;
+  if (!d.left.clip || !d.right.clip) {
+    el.innerHTML = '<div class="muted small">The POV clips are not on disk any more, so there is nothing to compare.</div>';
+    return;
+  }
+  const offset = (side) => (d.sync ? d.sync[side] : d.fallback);
+  el.innerHTML = `<div class="syncsides">${["left", "right"]
+    .map(
+      (side) => `<div class="syncside"><div class="who">${esc(d[side].nickname ?? side)}</div>
+        <img src="${esc(syncFrameUrl(side, SYNC_CHECK_SEC, offset(side)))}" alt="${esc(d[side].nickname ?? side)} at ${SYNC_CHECK_SEC}s" loading="lazy"></div>`,
+    )
+    .join("")}</div>`;
+}
+
+/** Matches waiting for a hook, in the list's order, other than the one on screen. */
+const waitingOthers = () =>
+  orderedMatches().filter((m) => m.shortState === "waiting-for-hook" && m.matchId !== selected);
+
+/** One primary button: save while the hooks are open to edit, then the next match waiting. */
+function paintSave() {
+  const btn = $("#save");
+  const plan = nowPlan;
+  if (!btn || !plan) return;
+  const hooksOpen = $('#now .step[data-step="hooks"]')?.classList.contains("open");
+  const editable = !plan.uploads.video || !plan.uploads.short;
+  const next = waitingOthers()[0];
+  btn.hidden = false;
+  if (editable && hooksOpen) {
+    btn.dataset.mode = "save";
+    btn.textContent =
+      plan.titleHook !== null
+        ? "Save hooks"
+        : plan.syncWeak
+          ? "Sync looks right — save hooks and schedule"
+          : "Save hooks and schedule";
+  } else if (next) {
+    btn.dataset.mode = "next";
+    btn.dataset.id = String(next.matchId);
+    btn.textContent = "Next waiting ›";
+  } else {
+    btn.hidden = true;
+  }
+  btn.closest(".saverow").hidden = btn.hidden;
+}
+
+/** A refused save under the save row -- which a phone pins to the bottom of the screen, so the
+    box lands in the page's flow at the end of the Hooks step, and is scrolled to. */
+function failSave(title, text) {
+  failAt("#save", title, text);
+  $(".saverow + .inlinefail")?.scrollIntoView({ block: "center" });
+}
+
+async function saveHooks(id, btn) {
+  const noShort = !!$("#noshort")?.checked;
+  const body = {
+    titleHook: $("#hook").value.trim(),
+    shortHook: noShort ? null : $("#shorthook").value.trim(),
+    ...(noShort ? { noShort: true } : {}),
+  };
+  clearFailAt("#save");
+  if (!body.titleHook) return failSave("Hooks not saved", "The title hook is empty.");
+  if (!noShort && !body.shortHook)
+    return failSave("Hooks not saved", "The Short hook is empty: write one, or tick “No Short for this one”.");
+  btn.disabled = true;
+  setSavedMsg("saving&hellip;", "muted");
+  await putHooks(id, body, "#save", "Hooks not saved");
+}
+
+/** PUT /api/shorts/hooks answers 202 with the plan; everything after it runs server-side. The
+    same call is Retry: saving the saved hooks again is what restarts a chain that failed. */
+async function putHooks(id, body, anchor, failTitle) {
+  let plan;
+  try {
+    plan = await api(`/api/shorts/hooks/${id}`, {
+      method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     });
-    // Same SSE shape as the export panel, so a phone that reconnects mid-render replays the
-    // whole run rather than joining blind.
-    const es = new EventSource(`/api/shorts/progress/${id}`);
-    es.onmessage = (ev) => {
-      const payload = JSON.parse(ev.data);
-      if (payload.line) {
-        log.textContent += `${payload.line}\n`;
-        log.scrollTop = log.scrollHeight;
-      }
-      if (payload.done) {
-        es.close();
-        log.textContent += payload.error ? `failed: ${payload.error}\n` : "done\n";
-        loadShort(id);
-      }
-    };
-    es.onerror = () => es.close();
-  };
+  } catch (e) {
+    const b = typeof anchor === "string" ? $(anchor) : anchor;
+    if (b) b.disabled = false;
+    setSavedMsg("", "");
+    if (anchor === "#save") failSave(failTitle, e.message);
+    else failAt(anchor, failTitle, e.message);
+    return;
+  }
+  if (selected !== id) return;
+  nowOpen = {};
+  // Saved is not a draft any more: the repaint must not keep it, nor say "not saved".
+  $("#now")
+    .querySelectorAll("[data-dirty]")
+    .forEach((f) => delete f.dataset.dirty);
+  paintNow(plan, true);
+  setSavedMsg("saved", "saved");
+  // The hook pill reads the plan, which says "saved" now.
+  loadChecklist(id);
+  if (PLAN_RUNNING.includes(plan.state)) nowPoll = setTimeout(() => loadPlan(id), 4000);
+  // The title file carries the hook now: the kit, the title box and the checklist quote it.
+  api(`/api/meta/${id}`)
+    .then((meta) => {
+      if (selected !== id) return;
+      Object.assign(selectedMeta, meta);
+      if ($("#title")) $("#title").value = (meta.title ?? "").split("\n")[0];
+      loadPublishKit(id, selectedMeta);
+    })
+    .catch(() => {});
+  await refresh();
+  void loadNightly();
+  paintSave();
+}
 
-  el.querySelectorAll(".moment .cut").forEach((btn) =>
-    btn.addEventListener("click", () => startCut({ pick: Number(btn.closest(".moment").dataset.pick) })),
-  );
-
-  // Cut from where you are watching. The seek buttons above let you see a window; this is the
-  // other half — none of the five ranked windows has to be the one you want, and the player's
-  // position is already the answer. Final-video seconds minus the anchor is match time.
-  $("#cuthere")?.addEventListener("click", () => {
-    const v = $("#finalvideo");
-    if (!v) return;
-    const atMs = Math.max(0, Math.round((v.currentTime - data.finalOffsetSec) * 1000));
-    startCut({ at: atMs });
+/** The group's controls, bound once per select(): #now outlives its own repaints. */
+function wireNow(id) {
+  const el = $("#now");
+  el.addEventListener("click", async (ev) => {
+    const t = ev.target;
+    const toggle = t.closest(".steptoggle");
+    if (toggle) {
+      const step = toggle.closest(".step");
+      const open = !step.classList.contains("open");
+      step.classList.toggle("open", open);
+      toggle.setAttribute("aria-expanded", String(open));
+      nowOpen[step.dataset.step] = open;
+      if (step.dataset.step === "hooks") paintSave();
+      return;
+    }
+    const chip = t.closest(".chip");
+    if (chip) {
+      const f = document.getElementById(chip.closest(".chips").dataset.for);
+      if (!f || f.disabled) return;
+      f.value = chip.textContent;
+      // Through the event a keystroke raises: the counter, "not saved" and the kit follow it.
+      f.dispatchEvent(new Event("input", { bubbles: true }));
+      f.focus();
+      return;
+    }
+    const save = t.closest("#save");
+    if (save) {
+      if (save.dataset.mode === "next") void select(Number(save.dataset.id), { open: true });
+      else await saveHooks(id, save);
+      return;
+    }
+    const act = t.closest("[data-act]");
+    if (!act) return;
+    if (act.dataset.act === "to-check" || act.dataset.act === "to-publish") {
+      ev.preventDefault();
+      const check = act.dataset.act === "to-check";
+      showPanel(check ? "check" : "publish");
+      $(check ? "#h-preview" : "#h-youtube")?.scrollIntoView();
+    } else if (act.dataset.act === "pick-again") {
+      clearFailAt(act);
+      act.disabled = true;
+      try {
+        await api(`/api/shorts/pick/${id}`, { method: "POST" });
+      } catch (e) {
+        act.disabled = false;
+        failAt(act, "Pick again failed", e.message);
+        return;
+      }
+      await loadPlan(id);
+    } else if (act.dataset.act === "retry") {
+      clearFailAt(act);
+      act.disabled = true;
+      const p = nowPlan;
+      await putHooks(id, { titleHook: p.titleHook, shortHook: p.shortHook, ...(p.noShort ? { noShort: true } : {}) }, act, "Retry failed");
+    }
+  });
+  el.addEventListener("input", (ev) => {
+    const f = ev.target;
+    if (!["hook", "shorthook", "noshort"].includes(f.id)) return;
+    f.dataset.dirty = "1";
+    if (f.id === "noshort") $("#shorthook").disabled = f.checked || !!nowPlan?.uploads.short;
+    if (f.id === "hook") hookCounter(selectedMeta);
+    shortHookCounter();
+    // Typed is not saved: nothing uploads, and no Short renders, until Save.
+    setSavedMsg("not saved &mdash; nothing uploads until you save", "muted");
   });
 }
 
@@ -1188,7 +1590,7 @@ function paintSyncCheck() {
     const fold = $("#syncedit");
     if (fold) fold.open = true;
   });
-  // The same line in the head, above the groups: Package, Publish and After hide the Check group
+  // The same line in the head, above the groups: Now, Package and Publish hide the Check group
   // on a phone, and this is the one warning that must survive the switch.
   const head = $("#headwarn");
   if (head) {
@@ -1197,6 +1599,8 @@ function paintSyncCheck() {
       head.insertAdjacentHTML("beforeend", `<div class="scanline bad stale">${esc(d.staleMessage)}</div>`);
   }
   guardUpload();
+  // Now's Video step shows the same two frames, and fails on the same stale export.
+  paintNow(nowPlan, true);
 }
 
 /**
@@ -1407,7 +1811,7 @@ function showFailure(title, text) {
 /** The element an inline failure hangs under: the control's own row, else the control itself. */
 function failHost(anchor) {
   const el = typeof anchor === "string" ? $(anchor) : anchor;
-  return el ? (el.closest(".row, .setrow, .syncside, .kit, .comment") ?? el) : null;
+  return el ? (el.closest(".row, .setrow, .syncside, .kit, .comment, .stephead") ?? el) : null;
 }
 
 /** Removes the inline failure under `anchor`, if there is one. */
@@ -1634,11 +2038,12 @@ function nightlyInner() {
     const why = lastRun.reason ? `: ${lastRun.reason}` : "";
     // "started" with no later record is a render the server did not live to finish.
     const said = lastRun.outcome === "started" ? "started, not finished" : lastRun.outcome;
+    // A nightly picks the Short's moment; the render waits for the operator's hooks.
     const short =
       lastRun.short === "done"
-        ? ' <span class="ok">+ Short rendered</span>'
+        ? ' <span class="ok">+ Short picked</span>'
         : lastRun.short === "failed"
-          ? ' <span class="bad">+ Short failed</span>'
+          ? ' <span class="bad">+ picker failed</span>'
           : "";
     const exported =
       lastRun.export === "done"
@@ -1651,9 +2056,26 @@ function nightlyInner() {
   }
 
   const failed = nightly.runError ? `<div class="bad">Run now failed: ${esc(nightly.runError)}</div>` : "";
-  return `${behind}${failed}<div class="lines">
+  // The morning's two numbers (NightlyShortSummary): what waits for a hook, and what failed on
+  // its way to the channel. The failure is a direct `.bad` child, so a phone's match screen
+  // keeps it; each opens the first such match in the list's order.
+  const ns = nightly.shorts ?? nightly;
+  const hooks = ns.waitingForHook?.length
+    ? `<div class="hooks"><a href="#" data-act="open-first" data-ids="${ns.waitingForHook.join(",")}">${ns.waitingForHook.length} waiting for a hook &rsaquo;</a></div>`
+    : "";
+  const shortsFailed = ns.failed?.length
+    ? `<div class="bad"><a href="#" data-act="open-first" data-ids="${ns.failed.join(",")}">${ns.failed.length} failed &rsaquo;</a></div>`
+    : "";
+  // The model down for the whole box: every pick is the heuristic's until someone signs in.
+  const picker =
+    ns.picker && ns.picker.ok === false
+      ? `<div class="pickerline">Short picker: ${esc(ns.picker.message ?? "the model cannot be reached")} &middot; picks come from the heuristic &middot; <a href="#" data-act="signin">how to sign in &rsaquo;</a>
+          <div class="signinhow" hidden>On the lab, <code>docker exec -it mcsr-dashboard agy</code>. It prints a URL and a code: open the URL on your PC and sign in with the Google account that has the Gemini subscription. Then press <b>Pick again</b> on a match, or leave it: the nightly retries the heuristic's picks once the model answers.</div></div>`
+      : "";
+  return `${behind}${failed}${shortsFailed}${picker}<div class="lines">
       <div class="plan" title="${esc(nextRunAt ?? "no schedule")}">${plan}</div>
       <div class="last" title="${esc(lastRun ? lastRun.startedAt : "")}">${last}</div>
+      ${hooks}
       ${queueHtml()}
     </div>
     <button data-act="nightly-run">Run now</button>`;
@@ -1672,6 +2094,19 @@ function paintNightly() {
       void select(Number(open.dataset.id), { open: true });
     });
   }
+  el.querySelectorAll('[data-act="open-first"]').forEach((a) =>
+    a.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      const ids = a.dataset.ids.split(",").map(Number);
+      const first = orderedMatches().find((m) => ids.includes(m.matchId))?.matchId ?? ids[0];
+      void select(first, { open: true });
+    }),
+  );
+  el.querySelector('[data-act="signin"]')?.addEventListener("click", (ev) => {
+    ev.preventDefault();
+    const how = el.querySelector(".signinhow");
+    how.hidden = !how.hidden;
+  });
   el.querySelectorAll('[data-act="queue-up"], [data-act="queue-drop"]').forEach((a) =>
     a.addEventListener("click", async (ev) => {
       ev.preventDefault();
@@ -1793,7 +2228,7 @@ function renderSuggestions(data) {
           ${onShelf ? "" : '<a href="#" data-act="render" title="The plain pipeline, for a match headed to Kdenlive: no Short, no MP4">Render only</a>'}
         </div>
         <div class="acts">
-          ${onShelf ? `<button data-act="open">Rendered &middot; open</button>` : `<button data-act="render-short">Render + Short + MP4</button>`}
+          ${onShelf ? `<button data-act="open">Rendered &middot; open</button>` : `<button data-act="render-short" title="Render, encode the MP4 and let the model pick the Short's moment; the Short renders once you save its hook">Render + MP4 + pick</button>`}
           ${
             onShelf
               ? ""
@@ -2189,12 +2624,18 @@ function showTab(which) {
 /* --- List screen / match screen -------------------------------------------------------------
    Only the class moves; app.css swaps the two screens at every width. */
 
-/** The tab's own label already carries the count, so the way back names where it goes. */
+/** The tab's own label already carries the count, so the way back names where it goes; beside
+    it, the other matches waiting for a hook, the next one a tap away. */
 function updateBackLabel() {
   const tab = $('.tabs [aria-selected="true"]');
   const count = tab?.querySelector("small")?.textContent;
   $("#backtolist").textContent =
-    `\u2190 Back to ${tab ? tab.querySelector("span").textContent : "list"}${count ? ` (${count})` : ""}`;
+    `\u2190 ${tab ? tab.querySelector("span").textContent : "List"}${count ? ` \u00b7 ${count}` : ""}`;
+  const waiting = waitingOthers();
+  const next = $("#nextwaiting");
+  next.hidden = !waiting.length;
+  next.textContent = `${waiting.length} more waiting \u203a`;
+  next.dataset.id = String(waiting[0]?.matchId ?? "");
 }
 
 /** One of the four groups on a phone; on a desktop all four are on screen and this only marks
@@ -2237,6 +2678,7 @@ function showList() {
   $("#tab-abtest").addEventListener("click", () => showTab("abtest"));
   $("#tab-settings").addEventListener("click", () => showTab("settings"));
   $("#backtolist").addEventListener("click", showList);
+  $("#nextwaiting").addEventListener("click", (ev) => select(Number(ev.currentTarget.dataset.id), { open: true }));
 
   // A shelf that cannot be listed must not leave the whole page at "loading…": say so in the
   // list, and let the suggestions poll below run regardless.

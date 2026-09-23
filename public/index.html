@@ -23,7 +23,7 @@
           placeholder="Match ID or match page URL"
           aria-label="Match ID or match page URL"
         />
-        <button type="submit" title="Render, cut the Short and encode the MP4">Render</button>
+        <button type="submit" title="Render, encode the MP4 and let the model pick the Short's moment">Render</button>
       </form>
       <span class="err" id="entryerr"></span>
       <span class="meta" id="hostmeta"></span>
@@ -35,9 +35,13 @@
     <div id="nightly" class="nightly"></div>
 
     <!-- The list and the match are two screens at every width; this is the way back on a phone
-     or tablet (on a desktop the rail is). Outside <main> so it can stick to the page rather than
-     to its own grid row, and outside #detail because select() rewrites that whole subtree. -->
-    <button type="button" id="backtolist"></button>
+     or tablet (on a desktop the rail is), with the next match waiting for a hook beside it.
+     Outside <main> so it can stick to the page rather than to its own grid row, and outside
+     #detail because select() rewrites that whole subtree. -->
+    <div id="backbar">
+      <button type="button" id="backtolist"></button>
+      <button type="button" id="nextwaiting" hidden></button>
+    </div>
 
     <main>
       <!-- The only navigation: a fixed bottom bar up to 860px, a rail on a desktop. Each cell is

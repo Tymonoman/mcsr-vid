@@ -38,6 +38,9 @@ async function loadYoutube(id, meta) {
   }
 
   const all = await api("/api/youtube/uploads").catch(() => ({ uploads: [], statsError: null }));
+  // The operator moved on while this was in flight ("Next waiting ›" is one tap): the #youtube
+  // above is detached, and the controls below would be looked up in the next match's panel.
+  if (selected !== id || !el.isConnected) return;
   const mine = all.uploads.find((u) => u.matchId === id);
 
   if (mine) {
@@ -80,9 +83,11 @@ async function loadYoutube(id, meta) {
       </div>
     </div>
     ${
+      // Folded: the video uploads itself once the hooks are saved in Now, and a failed upload's
+      // Retry is in Now's Video up step. This is for the day the operator wants it by hand.
       status.uploadsEnabled
-        ? `<div class="upload">
-      <div class="scanline muted">Sends the title, description and tags from the match's files &mdash; edit them in the title editor above.</div>
+        ? `<details class="fold upload" id="byhand"><summary>Upload by hand</summary>
+      <div class="scanline muted">Sends the title, description and tags from the match's files &mdash; edit them in Package's Title &amp; description.</div>
       <div class="row">
         <label>Visibility
           <select id="ytPrivacy">
@@ -98,7 +103,7 @@ async function loadYoutube(id, meta) {
         <span class="msg" id="ytMsg"></span>
       </div>
       <div class="bar" id="ytBarWrap" hidden><i id="ytBar"></i></div>
-    </div>`
+    </details>`
         : ""
     }`;
   $('#youtube [data-act="checkchannel"]')?.addEventListener("click", (ev) => {
