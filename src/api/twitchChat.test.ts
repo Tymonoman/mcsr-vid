@@ -175,3 +175,61 @@ console.log("twitchChat: all checks passed");
     await rm(dir, { recursive: true, force: true });
   }
 }
+
+// --- readChats / readChatTimes with the players: each side moved onto the match clock ----------
+{
+  const { mkdtemp, rm, writeFile } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const path = (await import("node:path")).default;
+  const { readChats, readChatTimes, chatClockShiftSec } = await import("./twitchChat.js");
+  const dir = await mkdtemp(path.join(tmpdir(), "mcsr-chatsync-"));
+  try {
+    // 13559245 as saved on the lab: the API's estimate put match start 8042.028 s into
+    // Aquacorde's (right) VOD, but the countdown in the clip — cut 150 s before that estimate —
+    // sits at 96.63 s, so each of her messages happened 53.37 s later on the match clock than
+    // its `atSec` says. doogile's (left) countdown is 1.35 s off the estimate.
+    await writeFile(
+      path.join(dir, "chat-Aquacorde.json"),
+      JSON.stringify({ nickname: "Aquacorde", fromSec: 8042.028, messages: [{ atSec: 10, text: "gl" }] }),
+    );
+    await writeFile(
+      path.join(dir, "chat-doogile.json"),
+      JSON.stringify({ nickname: "doogile", fromSec: 9042.028, messages: [{ atSec: 20, text: "go" }] }),
+    );
+    await writeFile(path.join(dir, "sync.json"), JSON.stringify({ left: 148.65, right: 96.63333333333333 }));
+    const players = [{ nickname: "doogile" }, { nickname: "Aquacorde" }];
+    const chats = readChats(dir, players);
+    const at = Object.fromEntries(chats.map((c) => [c.nickname, c.messages[0]!.atSec]));
+    assert.ok(
+      Math.abs(at.Aquacorde! - 63.367) < 0.01,
+      `Aquacorde's chat moves 53.4 s later: ${at.Aquacorde}`,
+    );
+    assert.ok(Math.abs(at.doogile! - 21.35) < 0.01, `doogile's moves 1.35 s: ${at.doogile}`);
+    assert.equal(
+      chats.find((c) => c.nickname === "Aquacorde")!.messages[0]!.text,
+      "gl",
+      "the text rides along",
+    );
+    assert.deepEqual(
+      [...readChatTimes(dir, players)].map((t) => Math.round(t)).sort((a, b) => a - b),
+      [21, 63],
+      "readChatTimes with the players is the corrected merge",
+    );
+    assert.deepEqual(
+      [...readChatTimes(dir)].sort((a, b) => a - b),
+      [10, 20],
+      "without the players the times are as saved — a caller that passes none is unchanged",
+    );
+    // A VOD that began less than the pre-roll before the estimate: the clip starts at its 0.
+    assert.equal(chatClockShiftSec(40, 38), 2);
+    // No sync.json: nothing to correct against.
+    await rm(path.join(dir, "sync.json"));
+    assert.deepEqual(
+      [...readChatTimes(dir, players)].sort((a, b) => a - b),
+      [10, 20],
+    );
+    console.log("OK: each side's chat lands on the match clock by its sync offset");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
