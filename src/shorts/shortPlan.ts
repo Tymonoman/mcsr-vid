@@ -79,12 +79,34 @@ export interface MatchRowShort {
   shortDetail?: string;
 }
 
+/** A step running right now: the panel's live status line ("asking Gemini 3.8 Flash · 1:10"). */
+export interface ShortActivity {
+  step: "pick" | "render" | "upload-video" | "upload-short";
+  /** What it is doing now, in the operator's words: "running /watch on silverrruns' stream". */
+  line: string;
+  /** ISO 8601 UTC: when this line started, for the elapsed time. */
+  since: string;
+  percent?: number;
+}
+
+/** One line of `short-<id>.log.jsonl`: every stage of the pick, the render and the uploads writes here. */
+export interface ShortLogLine {
+  at: string;
+  step: "pick" | "render" | "upload-video" | "upload-short" | "chain";
+  level: "info" | "warn" | "error";
+  text: string;
+  /** Long material for the Details fold: the model's raw answer, a validation reason, a command's stderr tail. */
+  detail?: string;
+}
+
 /** What `GET /api/nightly` adds, for the strip's "3 waiting for a hook ›" and "1 failed ›". */
 export interface NightlyShortSummary {
   waitingForHook: number[];
   failed: number[];
   /** The picker's health across the box: `ok: false` when the model cannot be reached at all (e.g. not signed in). */
   picker: { ok: boolean; message?: string };
+  /** The strip's Activity line: what the box is doing now and what waits its turn. */
+  activity: { running: Array<{ matchId: number } & ShortActivity>; queued: number[] };
 }
 
 /** `GET /api/shorts/plan/:id`. `PUT /api/shorts/hooks/:id` (a `SaveHooksRequest`) answers 202 with the same shape; `POST /api/shorts/pick/:id` re-runs the picker. */
@@ -106,6 +128,10 @@ export interface ShortPlanResponse {
   detail?: string;
   /** Every problem on the way, newest first, each naming the step it came from — the panel shows them under that step. */
   errors: Array<{ step: "pick" | "render" | "upload-video" | "upload-short"; at: string; message: string }>;
+  /** The step running now, if any. */
+  activity?: ShortActivity;
+  /** The last lines of `short-<id>.log.jsonl`, newest last (at most 60). */
+  log: ShortLogLine[];
   /** The picked window inside the long-form's own video, for a preview player. */
   preview?: { videoUrl: string; startSec: number; endSec: number };
   uploads: {

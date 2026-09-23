@@ -88,8 +88,7 @@ export interface ShortStatus {
   pickRetriedOn?: string;
 }
 
-const statusFile = (dir: string, matchId: number): string =>
-  path.join(dir, `short-${matchId}.status.json`);
+const statusFile = (dir: string, matchId: number): string => path.join(dir, `short-${matchId}.status.json`);
 
 export function readStatus(matchId: number): ShortStatus {
   try {
@@ -366,7 +365,8 @@ export async function nightlyShortSummary(): Promise<NightlyShortSummary> {
     if (state === "waiting-for-hook" && f.pick) waitingForHook.push(id);
     if (state === "failed") failed.push(id);
   }
-  return { waitingForHook, failed, picker: await pickerHealth(ids) };
+  // ponytail: activity is filled by the status-lines work (stage 3); empty until then.
+  return { waitingForHook, failed, picker: await pickerHealth(ids), activity: { running: [], queued: [] } };
 }
 
 /* --- The plan ---------------------------------------------------------------------------------- */
@@ -536,6 +536,7 @@ export async function shortPlan(matchId: number, opts: { queue?: boolean } = {})
   return {
     matchId,
     pick: f.pick,
+    log: [],
     ...(activity ? { pickActivity: activity } : {}),
     shortHook: f.shortHook,
     titleHook: f.titleHook,
