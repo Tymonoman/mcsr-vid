@@ -22,3 +22,4 @@ __pycache__/
 
 # Playwright MCP screenshots/snapshots taken during a session
 .playwright-mcp/
+.tools/
