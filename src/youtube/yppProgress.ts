@@ -2,17 +2,34 @@
  * Where the channel stands on the Partner Programme's gates, and when each lands at the current
  * rate. The dashboard is what the operator opens every morning; the thresholds were in a report.
  *
- * Three gates, of which the channel needs the first and either of the other two:
- *   - 500 subscribers,
- *   - 4,000 public watch hours in the trailing 365 days, or
- *   - 10,000,000 public Shorts views in the trailing 90 days.
+ * Two tiers (YouTube Help 13429240, 72851 and 12843009, read 23 Sept 2026):
+ *   - expanded (fan funding: memberships, Supers, Thanks) — 500 subscribers, 3 public uploads in
+ *     the last 90 days, and either 3,000 public long-form watch hours in 365 days or 3M Shorts
+ *     views in 90 days. Unchanged by the 2027 update, and the channel's next target.
+ *   - full (ads) — 1,000 subscribers and either 4,000 hours or 10M Shorts views; from
+ *     1 Feb 2027, 8,000 hours or 20M Shorts views for new applicants.
+ * Watch hours count long-form only ("watch hours from Shorts views in the Shorts Feed won't
+ * count"), so hours are read per `creatorContentType` and the Shorts rows left out.
  * Rates are measured over the last 28 days for hours and Shorts, and the last 7 for subscribers
  * — subscribers move on each upload, hours accumulate.
  */
 import { describeError } from "../errorText.js";
 import { dataApiGet, getAccessToken, isConfigured } from "./youtube.js";
 
-export const YPP = { subscribers: 500, watchHours: 4000, shortsViews: 10_000_000 } as const;
+/** The day the full tier's thresholds double for new applicants. */
+export const FULL_TIER_2027_MS = Date.UTC(2027, 1, 1);
+
+export function yppThresholds(nowMs: number = Date.now()) {
+  const after2027 = nowMs >= FULL_TIER_2027_MS;
+  return {
+    expanded: { subscribers: 500, uploads90d: 3, watchHours: 3000, shortsViews: 3_000_000 },
+    full: {
+      subscribers: 1000,
+      watchHours: after2027 ? 8000 : 4000,
+      shortsViews: after2027 ? 20_000_000 : 10_000_000,
+    },
+  } as const;
+}
 
 interface YppSnapshot {
   fetchedAt: string;
@@ -22,6 +39,8 @@ interface YppSnapshot {
   watchHoursPer28d: number;
   shortsViews90d: number;
   shortsViewsPer28d: number;
+  /** Public uploads in the last 90 days, or null when the count could not be read. */
+  uploads90d: number | null;
 }
 
 interface YppGate {
@@ -40,11 +59,19 @@ interface YppGate {
   needPerDay?: number;
 }
 
-export interface YppProgress {
-  fetchedAt: string;
+interface YppTier {
   subscribers: YppGate;
   watchHours: YppGate;
   shortsViews: YppGate;
+}
+
+export interface YppProgress extends YppTier {
+  fetchedAt: string;
+  /** The top-level gates are the expanded tier's, the channel's next target; both tiers here. */
+  tiers: {
+    expanded: YppTier & { uploads90d: { have: number | null; need: number } };
+    full: YppTier;
+  };
 }
 
 /** The arithmetic on its own, so it can be pinned without an API. */
@@ -74,12 +101,14 @@ export function projectYpp(s: YppSnapshot, nowMs: number = Date.now()): YppProgr
           : null;
     return out;
   };
-  return {
-    fetchedAt: s.fetchedAt,
-    subscribers: gate(s.subscribers, YPP.subscribers, s.subscribersPer7d, 7),
-    watchHours: gate(s.watchHours365d, YPP.watchHours, s.watchHoursPer28d, 28, 365),
-    shortsViews: gate(s.shortsViews90d, YPP.shortsViews, s.shortsViewsPer28d, 28, 90),
-  };
+  const t = yppThresholds(nowMs);
+  const tier = (need: { subscribers: number; watchHours: number; shortsViews: number }): YppTier => ({
+    subscribers: gate(s.subscribers, need.subscribers, s.subscribersPer7d, 7),
+    watchHours: gate(s.watchHours365d, need.watchHours, s.watchHoursPer28d, 28, 365),
+    shortsViews: gate(s.shortsViews90d, need.shortsViews, s.shortsViewsPer28d, 28, 90),
+  });
+  const expanded = { ...tier(t.expanded), uploads90d: { have: s.uploads90d, need: t.expanded.uploads90d } };
+  return { fetchedAt: s.fetchedAt, ...tier(t.expanded), tiers: { expanded, full: tier(t.full) } };
 }
 
 const ymd = (d: Date) => d.toISOString().slice(0, 10);
@@ -108,39 +137,57 @@ async function fetchYppSnapshot(nowMs: number = Date.now()): Promise<YppSnapshot
     endDate: ymd(now),
     metrics: "subscribersGained,subscribersLost",
   });
-  const h365 = await analytics(token, {
-    startDate: daysAgo(365),
-    endDate: ymd(now),
-    metrics: "estimatedMinutesWatched",
-  });
-  const h28 = await analytics(token, {
-    startDate: daysAgo(28),
-    endDate: ymd(now),
-    metrics: "estimatedMinutesWatched",
-  });
-  // Shorts views: the Analytics API separates them by creatorContentType.
-  const shorts = async (days: number) => {
-    try {
-      const rows = await analytics(token, {
-        startDate: daysAgo(days),
-        endDate: ymd(now),
-        metrics: "views",
-        dimensions: "creatorContentType",
-      });
-      return rows.filter((r) => String(r[0]) === "SHORTS").reduce((a, r) => a + Number(r[1] ?? 0), 0);
-    } catch {
-      return 0;
-    }
-  };
+  // Both split by creatorContentType, whose values the API spells "videoOnDemand", "liveStream",
+  // "shorts" and "creatorContentTypeUnspecified" — the panel compared against "SHORTS" and read
+  // 0 Shorts views for weeks (3,146 on 23 Sept 2026), and counted Shorts minutes as watch hours.
+  const byType = (days: number, metric: string) =>
+    analytics(token, {
+      startDate: daysAgo(days),
+      endDate: ymd(now),
+      metrics: metric,
+      dimensions: "creatorContentType",
+    });
+  const typed = (rows: number[][], keep: (type: string) => boolean) =>
+    rows.filter((r) => keep(String(r[0]).toLowerCase())).reduce((a, r) => a + Number(r[1] ?? 0), 0);
+  const longForm = (type: string) => type === "videoondemand" || type === "livestream";
+  const h365 = typed(await byType(365, "estimatedMinutesWatched"), longForm);
+  const h28 = typed(await byType(28, "estimatedMinutesWatched"), longForm);
+  const shorts = async (days: number) => typed(await byType(days, "views"), (type) => type === "shorts");
   return {
     fetchedAt: now.toISOString(),
     subscribers: Number(stats?.subscriberCount ?? 0),
     subscribersPer7d: sum(subs, 0) - sum(subs, 1),
-    watchHours365d: sum(h365) / 60,
-    watchHoursPer28d: sum(h28) / 60,
+    watchHours365d: h365 / 60,
+    watchHoursPer28d: h28 / 60,
     shortsViews90d: await shorts(90),
     shortsViewsPer28d: await shorts(28),
+    uploads90d: await publicUploads90d(nowMs),
   };
+}
+
+/**
+ * Public uploads in the last 90 days, from the channel's uploads playlist (the expanded tier's
+ * third gate). A scheduled video sits in the playlist before it is public, so publish times in
+ * the future are left out. Null when it cannot be read — the gate then shows as unknown.
+ */
+async function publicUploads90d(nowMs: number): Promise<number | null> {
+  try {
+    const ch = await dataApiGet<{
+      items?: Array<{ contentDetails: { relatedPlaylists: { uploads: string } } }>;
+    }>("/channels?part=contentDetails&mine=true");
+    const uploads = ch.items?.[0]?.contentDetails.relatedPlaylists.uploads;
+    if (!uploads) return null;
+    const list = await dataApiGet<{ items?: Array<{ contentDetails: { videoPublishedAt?: string } }> }>(
+      `/playlistItems?part=contentDetails&maxResults=50&playlistId=${uploads}`,
+    );
+    const from = nowMs - 90 * 86_400_000;
+    return (list.items ?? []).filter((i) => {
+      const at = Date.parse(i.contentDetails.videoPublishedAt ?? "");
+      return Number.isFinite(at) && at >= from && at <= nowMs;
+    }).length;
+  } catch {
+    return null;
+  }
 }
 
 const REFRESH_MS = 6 * 60 * 60 * 1000;
