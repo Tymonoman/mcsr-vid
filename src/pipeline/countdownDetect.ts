@@ -191,6 +191,16 @@ const DIGIT_MAX_PIXELS = 3000;
 const END_MIN_SECONDS = 4;
 const END_MIN_STEPS = 3;
 /**
+ * A hidden "1": a menu opened on the "1" drops the digit early (silverrruns, 13301662 game 1 —
+ * the "1" showed for one frame, 9.1 s after the "10", and the operator moved the offset back by
+ * exactly a second). An end is read as that only when BOTH hold: it comes this much short of ten
+ * seconds after the "10", and the last digit was on screen under `SHORT_LAST_DIGIT_SEC`. The gap
+ * alone is not enough — a world that loads late cuts the "10" short instead (lowk3y_, 12296170:
+ * the "10" showed 0.4 s, the gap was 9.4 s, and the end was the truth to 0.05 s).
+ */
+const HIDDEN_ONE_SEC = 0.4;
+const SHORT_LAST_DIGIT_SEC = 0.6;
+/**
  * The second look when the near window is empty. The estimate is the API's clock against the
  * VOD's, and a VOD that lost a segment earlier in the stream runs ahead of it by a minute
  * (Aquacorde, 13559245: 53 s; 13257079's left clip: 80 s) — outside a ±25 s window, and the
@@ -277,6 +287,14 @@ export function findCountdownOnset(
         endIndex = j + 1;
         break; // the first quiet half second: a flash after 0:00 (a client's "go") is not the end
       }
+    }
+    // Too early to be 0:00 and the last digit barely shown: the "1" was hidden, and the onset
+    // carries the answer alone.
+    if (endIndex !== null && endIndex < i + Math.round((COUNTDOWN_SEC - HIDDEN_ONE_SEC) * fps)) {
+      const last = counts[endIndex - 1]!;
+      let from = endIndex - 1;
+      while (from > i && Math.abs(counts[from - 1]! - last) <= 0.1 * last) from--;
+      if (endIndex - from < SHORT_LAST_DIGIT_SEC * fps) endIndex = null;
     }
     candidates.push({ index: i, endIndex, seconds, steps });
   }

@@ -202,6 +202,40 @@ const digitSeries = (spec: Array<[seconds: number, count: number]>): number[] =>
 }
 
 {
+  // A menu opened on the "1" (silverrruns, 13301662 game 1, measured): the "1" shows for one
+  // frame 9.0 s after the "10" and the crop goes dark. That drop is not 0:00 — the onset is.
+  const counts = digitSeries([
+    [13, 0],
+    [1, 416],
+    ...[1552, 736, 824, 607, 726, 800, 750, 662, 766].map((n): [number, number] => [1, n]),
+    [0.1, 607],
+    [6, 21],
+  ]);
+  const found = findCountdownOnset(counts, 14 * FPS, FPS);
+  assert.equal(found.index, 14 * FPS, `expected the "10" at 14s, got ${found.index! / FPS}s`);
+  assert.equal(found.endIndex, null, "a drop 9.1 s after the 10 is a hidden 1, not the end");
+  assert.match(found.detail, /end not seen/);
+}
+
+{
+  // The other way round (lowk3y_, 12296170, measured): a world loading late cuts the "10" to
+  // 0.4 s, so the gap from the visible "10" to the drop is 9.4 s — but the "1" showed its full
+  // second, and the drop is 0:00.
+  const counts = digitSeries([
+    [13, 0],
+    [0.4, 1546],
+    ...[730, 820, 599, 730, 804, 751, 666, 766, 607].map((n): [number, number] => [1, n]),
+    [6, 0],
+  ]);
+  const found = findCountdownOnset(counts, 13 * FPS, FPS);
+  assert.equal(
+    found.endIndex,
+    Math.round(22.4 * FPS),
+    `expected the end at 22.4s, got ${found.endIndex! / FPS}s`,
+  );
+}
+
+{
   // A static bright patch in the middle of the frame — snow, a white overlay — has no steps and
   // is not a countdown; nor is a digit that shows for three seconds.
   assert.equal(
