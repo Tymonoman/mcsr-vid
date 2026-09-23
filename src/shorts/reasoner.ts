@@ -83,11 +83,17 @@ function answerIn(stdout: string): { answer: object } | { error: string } {
     // Not an envelope: the CLI printed the answer bare.
   }
   if (envelope && ("response" in envelope || "structured_output" in envelope)) {
-    const { structured_output: structured, response, status, error } = envelope;
+    const { structured_output: structured, response, status, error, denied_actions: denied } = envelope;
     if (typeof structured === "object" && structured !== null) return { answer: structured };
     const text = typeof structured === "string" ? structured : typeof response === "string" ? response : "";
     const inner = firstJsonObject(text);
     if (inner) return { answer: inner as object };
+    // Headless agy denies a tool it would have to ask about ("command" when the model tries a
+    // shell) and then answers "" with status SUCCESS: the denial is the reason.
+    const actions = Array.isArray(denied)
+      ? denied.map((d) => String((d as { action?: unknown })?.action ?? "?")).join(", ")
+      : "";
+    if (actions) return { error: `answered nothing: headless mode denied the "${actions}" tool` };
     return {
       error:
         status === undefined || status === "SUCCESS"
@@ -110,14 +116,22 @@ export interface ReasonerOptions {
    * and so does the flag before it, so one `reasonerCommand` serves every caller.
    */
   schema?: object;
-  /** Fills `{dir}`: a directory the CLI may read (agy's `--add-dir`). Dropped with its flag when absent. */
-  dir?: string;
+  /**
+   * Fills `{dir}`: a directory the CLI may read (agy's `--add-dir`). Several repeat the flag
+   * before it, once per directory. Dropped with its flag when absent or empty.
+   */
+  dir?: string | readonly string[];
   /** Stops the command and rejects with the signal's reason. */
   signal?: AbortSignal;
 }
 
+/**
+ * `retryable` is set when the command ran to its end and gave no usable answer — nothing, a tool
+ * denied, no JSON, a non-zero exit — which a second ask can fix. Not signed in, a timeout, a
+ * missing binary and no configuration cannot be fixed by asking again.
+ */
 export type ReasonerReply =
-  { ok: true; answer: object; raw: string } | { ok: false; error: string; raw: string };
+  { ok: true; answer: object; raw: string } | { ok: false; error: string; raw: string; retryable?: boolean };
 
 /** What the operator is told when agy is installed but has no login to use. */
 export const NOT_SIGNED_IN =
@@ -139,7 +153,13 @@ export function reasonerArgs(
   opts: Pick<ReasonerOptions, "schema" | "dir"> = {},
 ): string[] {
   const out: string[] = [];
+  const dirs = typeof opts.dir === "string" ? [opts.dir] : [...(opts.dir ?? [])];
   for (const a of rest) {
+    if (a === "{dir}" && dirs.length > 1) {
+      const flag = out[out.length - 1]?.startsWith("-") ? out[out.length - 1]! : null;
+      dirs.forEach((d, i) => (i > 0 && flag ? out.push(flag, d) : out.push(d)));
+      continue;
+    }
     const value =
       a === "{prompt}"
         ? prompt
@@ -148,7 +168,7 @@ export function reasonerArgs(
             ? JSON.stringify(opts.schema)
             : null
           : a === "{dir}"
-            ? (opts.dir ?? null)
+            ? (dirs[0] ?? null)
             : a;
     if (value !== null) out.push(value);
     else if (out[out.length - 1]?.startsWith("-")) out.pop();
@@ -227,6 +247,7 @@ export async function runReasoner(prompt: string, opts: ReasonerOptions = {}): P
         ok: false,
         error: code === 0 ? `${bin} ${why}` : `${bin} exited ${code}: ${why}`,
         raw: raw(),
+        retryable: true,
       });
     });
     // The prompt goes on stdin unless the argv carries it, in which case stdin is closed at once
