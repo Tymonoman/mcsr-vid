@@ -9,7 +9,9 @@ import type { ChildProcess } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { handleShortsRoute, type ShortOverride, type ShortRunner } from "./shortsRoutes.js";
+import { config } from "../config.js";
+import { readShortLog, stepActivity } from "../shorts/shortLog.js";
+import { handleShortsRoute, renderFailure, type ShortOverride, type ShortRunner } from "./shortsRoutes.js";
 
 /** Stands in for the render process. Without this the tests below start real renders. */
 const spawned: Array<{ matchId: number } & ShortOverride> = [];
@@ -28,6 +30,8 @@ function makeRunner(finishImmediately: boolean): ShortRunner {
 const run = makeRunner(true);
 
 const media = await mkdtemp(path.join(tmpdir(), "mcsr-shorts-routes-"));
+// The Short log is written under config's media dir: never the real one from a test.
+config.mediaDir = media;
 
 /** Minimal stand-ins: these routes are tested for dispatch and input handling, not for HTTP. */
 function context(body = "") {
@@ -130,6 +134,92 @@ try {
     const { ctx, calls } = context();
     await handleShortsRoute(req("POST"), res, ["", "shorts", "pick", "515153"], ctx);
     assert.equal(calls[0]!.status, 409);
+  }
+
+  // The render's story in the Short log and its live line: what generateShort prints becomes the
+  // activity's line and percent; the end is a line, a failure its words with the output as detail.
+  {
+    const id = 515154;
+    await mkdir(path.join(media, String(id)), { recursive: true });
+    await writeFile(path.join(media, String(id), `short-${id}.hook.txt`), "Down to the last heart\n");
+    let proc: ChildProcess | null = null;
+    const scripted: ShortRunner = (matchId, override = {}) => {
+      spawned.push({ matchId, ...override });
+      proc = makeRunner(false)(matchId, override);
+      return proc;
+    };
+    const say = (line: string) =>
+      (proc as unknown as { stderr: EventEmitter }).stderr.emit("data", Buffer.from(`${line}\n`));
+    const { ctx } = context("{}");
+    await handleShortsRoute(req("POST"), res, ["", "shorts", "render", String(id)], ctx, { run: scripted });
+    assert.equal(stepActivity(id, "render")?.line, "cutting the Short");
+    say(`Short of ${id}: 5:00–5:30, both\nHook: Down to the last heart`);
+    say("  board: 100%");
+    say("  compositing: 30%");
+    assert.deepEqual(
+      { ...stepActivity(id, "render"), since: "" },
+      { step: "render", line: "encoding the Short", percent: 30, since: "" },
+    );
+    say(
+      "the window 5:00–5:30 runs past the end of edcr's clip (it ends at 5:10 on the match clock) — Pick again, or cut it by hand earlier",
+    );
+    proc!.emit("close", 1, null);
+    await settle();
+    assert.equal(stepActivity(id, "render"), undefined, "no live line once it ends");
+    const log = readShortLog(id);
+    assert.deepEqual(
+      log.map((l) => [l.level, l.text]),
+      [
+        ["info", "cutting the Short"],
+        ["info", `cutting the Short of ${id}: 5:00–5:30, both`],
+        ["info", "encoding the Short · 30%"],
+        [
+          "error",
+          "the Short could not be cut: the window 5:00–5:30 runs past the end of edcr's clip (it ends at 5:10 on the match clock) — Pick again, or cut it by hand earlier",
+        ],
+      ],
+    );
+    assert.match(log.at(-1)!.detail!, /board: 100%[\s\S]*runs past the end/, "the output is the detail");
+
+    await handleShortsRoute(req("POST"), res, ["", "shorts", "render", String(id)], ctx, { run: scripted });
+    proc!.emit("close", 0, null);
+    await settle();
+    assert.match(readShortLog(id).at(-1)!.text, /^the Short is cut \(\d+ s\)$/);
+    console.log("OK: a render's lines are its live line and percent, and its end or its failure a log line");
+  }
+
+  // A failed render in words: the box's own failures, the MCSR API, else the CLI's last say.
+  {
+    assert.match(
+      renderFailure(137, null, ["  compositing: 40%"]),
+      /^the Short's render was killed — out of memory/,
+    );
+    assert.match(renderFailure(null, "SIGKILL", []), /out of memory/);
+    assert.match(
+      renderFailure(1, null, [
+        "Error: ffmpeg exited with 1: [out#0] Error writing trailer: No space left on device",
+      ]),
+      /^the Short's render failed: the disk is full/,
+    );
+    assert.match(renderFailure(1, null, ["Error: spawn ffmpeg ENOENT"]), /ffmpeg is not installed/);
+    assert.match(
+      renderFailure(1, null, ["McsrApiError: MCSR Ranked API /matches/1 -> 503 Service Unavailable"]),
+      /^the MCSR API could not be reached — the Short was not cut; save the hooks again/,
+    );
+    assert.equal(
+      renderFailure(1, null, [
+        "file:///app/src/shorts/generateShort.ts:120",
+        "  throw new Error(`Match 1 does not have two players.`);",
+        "        ^",
+        "Error: Match 1 does not have two players.",
+        "    at file:///app/src/shorts/generateShort.ts:120:9",
+        "Node.js v24.20.0",
+      ]),
+      "the Short could not be cut: Match 1 does not have two players.",
+      "a crash: its Error line, not the stack",
+    );
+    assert.equal(renderFailure(2, null, []), "the Short could not be cut: exit code 2");
+    console.log("OK: a failed render is named — memory, disk, a missing tool, the API, a refusal, a crash");
   }
 } finally {
   await rm(media, { recursive: true, force: true });

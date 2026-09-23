@@ -13,6 +13,7 @@ import path from "node:path";
 import { describeError } from "../errorText.js";
 import type { ExportRouteContext } from "./exportRoutes.js";
 import { readShortHook, WAITING_FOR_HOOK } from "../shorts/shortHook.js";
+import { activityProgress, boxFailure, endActivity, shortLog, startActivity } from "../shorts/shortLog.js";
 import { sendVideo } from "./rangeStream.js";
 import { isExported } from "./matchShelf.js";
 import { queuePick, readStatus, saveHooks, shortPlan, startChain, type ChainDeps } from "./shortFlow.js";
@@ -72,15 +73,51 @@ const spawnShortCli: ShortRunner = (matchId, override = {}) =>
 
 /**
  * The runner the chain uses: the same spawn, registered in this file's job table, so the delete
- * guard refuses and the progress stream answers while the chained Short is writing.
+ * guard refuses and the progress stream answers while the chained Short is writing. Settles with
+ * the render's failure in the operator's words, or null. A render already running for the match
+ * (a press on the panel) is waited for rather than doubled.
  */
-export const spawnShortJob = (matchId: number, override?: ShortOverride): ChildProcess =>
-  startShort(matchId, spawnShortCli, override).proc;
+export const spawnShortJob = (matchId: number, override?: ShortOverride): Promise<string | null> => {
+  const job = startShort(matchId, spawnShortCli, override);
+  return job.done
+    ? Promise.resolve(job.error)
+    : new Promise((resolve) => job.proc.on("close", () => resolve(job.error)));
+};
+
+/** Node's and npm's own lines around a crash: never the reason. */
+const NOISE = /^(at |node:|Node\.js v|npm (ERR|error|warn)|\^|file:\/\/|[{}[\]"]|> )/;
+
+/**
+ * A failed render as "what happened — what to do": the box's own failures (the memory cap, the
+ * disk, a missing tool), the MCSR API, else what the CLI said last — a refusal is one line and
+ * exit 1, a crash is the `Error:` line above its stack.
+ */
+export function renderFailure(code: number | null, signal: string | null, lines: readonly string[]): string {
+  const tail = lines.slice(-40).join("\n");
+  const box = boxFailure("the Short's render", tail, { code, signal });
+  if (box) return box;
+  if (/McsrApiError|MCSR Ranked API|fetch failed/.test(tail))
+    return "the MCSR API could not be reached — the Short was not cut; save the hooks again once it answers";
+  const errorLine = [...lines].reverse().find((l) => /^\w*Error: /.test(l));
+  const said =
+    errorLine?.replace(/^Error: /, "") ??
+    [...lines].reverse().find((l) => !NOISE.test(l) && !/^(board|compositing): \d+%$/.test(l)) ??
+    `exit code ${code ?? signal}`;
+  return `the Short could not be cut: ${said}`;
+}
 
 function startShort(matchId: number, run: ShortRunner, override?: ShortOverride): ShortJob {
   const existing = jobs.get(matchId);
   if (existing && !existing.done) return existing;
 
+  const started = Date.now();
+  startActivity(
+    matchId,
+    "render",
+    override?.atMs !== undefined || override?.seconds !== undefined
+      ? "cutting the Short at the operator's window"
+      : "cutting the Short",
+  );
   const proc = run(matchId, override);
   const job: ShortJob = { matchId, lines: [], done: false, error: null, subscribers: new Set(), proc };
   jobs.set(matchId, job);
@@ -91,17 +128,27 @@ function startShort(matchId: number, run: ShortRunner, override?: ShortOverride)
       if (text === "") continue;
       job.lines.push(text);
       broadcast(job, { line: text });
+      // What generateShort.ts prints: the window, then the stills, then the encode's percent.
+      const pct = /^(board|compositing): (\d+)%$/.exec(text);
+      if (pct?.[1] === "board") activityProgress(matchId, "render", 0, "encoding the Short");
+      else if (pct) activityProgress(matchId, "render", Number(pct[2]));
+      else if (text.startsWith("Short of ")) shortLog(matchId, "render", `cutting the ${text}`);
     }
   };
   proc.stdout?.on("data", push);
   proc.stderr?.on("data", push);
 
   proc.on("error", (err) => {
-    job.error = describeError(err);
+    const text = describeError(err);
+    job.error = boxFailure("the Short's render", text) ?? text;
   });
-  proc.on("close", (code) => {
+  proc.on("close", (code, signal) => {
     job.done = true;
-    if (code !== 0 && job.error === null) job.error = `short render exited with code ${code}`;
+    if (code !== 0 && job.error === null) job.error = renderFailure(code, signal, job.lines);
+    if (job.error === null)
+      shortLog(matchId, "render", `the Short is cut (${Math.round((Date.now() - started) / 1000)} s)`);
+    else shortLog(matchId, "render", job.error, { level: "error", detail: job.lines.slice(-40).join("\n") });
+    endActivity(matchId, "render");
     broadcast(job, { done: true, error: job.error });
     for (const res of job.subscribers) res.end();
     job.subscribers.clear();

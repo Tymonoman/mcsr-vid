@@ -28,7 +28,11 @@ import { config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { povClipPath } from "../pipeline/syncEdit.js";
 import { readSyncOffsets } from "../pipeline/syncFile.js";
+import { boxFailure, type LogExtra } from "./shortLog.js";
 import { runMsOf } from "./shortMoment.js";
+
+/** A line of the pick's story (videoPick.ts writes it to the match's Short log). */
+type Log = (line: string, extra?: LogExtra) => void;
 
 export interface PovWatch {
   side: "left" | "right";
@@ -60,13 +64,78 @@ function whisperKey(): boolean {
   }
 }
 
-/** watch.py to completion: its stdout, or a rejection naming the last thing it said. */
-function runWatch(args: string[], signal: AbortSignal | undefined): Promise<string> {
+/** A failed run: `message` in the operator's words, `detail` what watch.py last said. */
+class WatchFailure extends Error {
+  constructor(
+    message: string,
+    readonly detail: string,
+  ) {
+    super(message);
+  }
+}
+
+/**
+ * What a failed watch.py run means, from its exit and its stderr's tail: the box's own failures
+ * (python3 or ffmpeg missing, the disk full, the memory cap), the time limit, or its last line.
+ */
+export function watchFailure(
+  code: number | null,
+  tail: string,
+  timedOut = false,
+  signal: string | null = null,
+): string {
+  if (timedOut) return `watch.py ran over ${WATCH_TIMEOUT_MS / 60_000} min and was stopped`;
+  const box = boxFailure("/watch", tail, { code, signal });
+  if (box) return box;
+  if (/ffmpeg is not installed/.test(tail)) return "/watch failed: ffmpeg is not installed in this container";
+  if (code === 127) return "/watch failed: python3 is not installed in this container";
+  return `watch.py exited ${code}: ${tail.trim().split("\n").pop() ?? ""}`;
+}
+
+/**
+ * Why a POV has no transcript, or null when it has one. watch.py survives a Whisper failure — it
+ * prints "[watch] whisper fallback failed: …" and goes on with the stills — so the reason is in
+ * its stderr, not its exit. `transient`: worth another run next time (not cached).
+ */
+export function transcriptProblem(
+  stderr: string,
+  whisper: boolean,
+  lines: number,
+): { text: string; transient: boolean } | null {
+  if (lines > 0) return null;
+  if (!whisper)
+    return {
+      text: "no transcript — no GROQ_API_KEY (add it to /app/.env for the streamers' speech)",
+      transient: false,
+    };
+  const failed = /whisper fallback failed: (.*)/.exec(stderr)?.[1]?.trim();
+  if (!failed) return { text: "no transcript — Whisper heard no speech in the match", transient: false };
+  if (/\b401\b|unauthori[sz]ed|invalid.api.key/i.test(failed))
+    return {
+      text: "no transcript — Groq refused the key (401): replace GROQ_API_KEY in /app/.env (console.groq.com → API Keys)",
+      transient: true,
+    };
+  if (/\b429\b|rate.?limit|too many requests/i.test(failed))
+    return {
+      text: "no transcript — Groq rate-limited the transcription (429); the next pick tries again",
+      transient: true,
+    };
+  if (/no audio/i.test(failed))
+    return { text: "no transcript — the clip has no audio track", transient: false };
+  return { text: `no transcript — Whisper failed: ${failed}`, transient: true };
+}
+
+/** watch.py to completion: its stdout and stderr, or a `WatchFailure`. */
+function runWatch(
+  args: string[],
+  signal: AbortSignal | undefined,
+): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     // Its own process group, so a stop takes the ffmpeg it runs with it.
     const proc = spawn("nice", ["-n", "19", "python3", ...args], { detached: true, stdio: "pipe" });
     let stdout = "";
     let tail = "";
+    let timedOut = false;
     const kill = () => {
       try {
         process.kill(-proc.pid!, "SIGKILL");
@@ -75,20 +144,20 @@ function runWatch(args: string[], signal: AbortSignal | undefined): Promise<stri
       }
     };
     const timer = setTimeout(() => {
+      timedOut = true;
       kill();
-      tail = `timed out after ${WATCH_TIMEOUT_MS / 60_000} min`;
     }, WATCH_TIMEOUT_MS);
     const onAbort = () => kill();
     signal?.addEventListener("abort", onAbort, { once: true });
     proc.stdout.on("data", (d: Buffer) => (stdout += d.toString()));
-    proc.stderr.on("data", (d: Buffer) => (tail = (tail + d.toString()).slice(-1000)));
-    proc.on("error", (err) => (tail = err.message));
-    proc.on("close", (code) => {
+    proc.stderr.on("data", (d: Buffer) => (tail = (tail + d.toString()).slice(-4000)));
+    proc.on("error", (err) => (tail += `\n${err.message}`));
+    proc.on("close", (code, sig) => {
       clearTimeout(timer);
       signal?.removeEventListener("abort", onAbort);
       if (signal?.aborted) reject(signal.reason);
-      else if (code === 0) resolve(stdout);
-      else reject(new Error(`watch.py exited ${code}: ${tail.trim().split("\n").pop() ?? ""}`));
+      else if (code === 0 && !timedOut) resolve({ stdout, stderr: tail });
+      else reject(new WatchFailure(watchFailure(code, tail, timedOut, sig), tail.trim()));
     });
   });
 }
@@ -128,13 +197,16 @@ async function watchOne(
   side: PovWatch["side"],
   script: string,
   signal: AbortSignal | undefined,
-  log: (line: string) => void,
+  log: Log,
 ): Promise<PovWatch | null> {
   const dir = matchDir(match.id);
   const nick = match.players[side === "left" ? 0 : 1]?.nickname;
   const clip = nick ? povClipPath(dir, nick) : null;
   if (!clip || !existsSync(clip)) {
-    log(`watch ${side}: no clip (${clip ?? "no player"}) — skipped`);
+    log(
+      `/watch skipped on the ${side} POV: no clip on disk (${clip ?? "no player"}) — npm run download-vods -- ${match.id} fetches it while the VOD lasts`,
+      { level: "warn" },
+    );
     return null;
   }
   const sync = readSyncOffsets(dir);
@@ -143,6 +215,11 @@ async function watchOne(
   const fps = Math.min(2, MAX_FRAMES / endSec);
   const out = watchDir(dir, side);
   const notes = sync ? [] : [`no sync.json: the clip placed at preRollSec ${config.preRollSec} s`];
+  if (!sync && side === "left")
+    log(
+      `no sync.json for #${match.id}: the stills are placed by the coarse estimate and may sit seconds off — npm run sync-status -- ${match.id}`,
+      { level: "warn" },
+    );
   const whisper = whisperKey();
   if (!whisper) notes.push("--no-whisper: no GROQ_API_KEY or OPENAI_API_KEY");
   // prettier-ignore
@@ -159,7 +236,7 @@ async function watchOne(
       const cached = JSON.parse(readFileSync(cacheFile, "utf8")) as PovWatch & { args: string[] };
       if (JSON.stringify(cached.args) === JSON.stringify(args)) {
         const { args: _args, ...watched } = cached;
-        log(`watch ${side}: ${path.relative(dir, cacheFile)} is newer than ${nick}.mp4 — kept`);
+        log(`/watch on ${nick}'s stream is up to date — kept (${watched.frames.length} stills)`);
         return watched;
       }
     } catch {
@@ -167,18 +244,23 @@ async function watchOne(
     }
   }
   const started = Date.now();
-  log(`watch ${side}: ${nick}.mp4 ${offsetSec.toFixed(1)}–${(offsetSec + endSec).toFixed(1)} s (nice 19)`);
-  const parsed = parseWatchOutput(await runWatch(args, signal), {
-    side,
-    offsetSec,
-    fps,
-    endSec,
-  });
-  if (parsed.frames.length === 0) throw new Error("watch.py listed no frames");
-  const watched = { ...parsed, notes: [...parsed.notes, ...notes] };
-  await writeJsonAtomic(cacheFile, { ...watched, args });
+  log(`running /watch on ${nick}'s stream (${side}, ${Math.round(endSec)} s of match, nice 19)`);
+  const run = await runWatch(args, signal);
+  const parsed = parseWatchOutput(run.stdout, { side, offsetSec, fps, endSec });
+  if (parsed.frames.length === 0) throw new WatchFailure("watch.py listed no frames", run.stderr.trim());
+  const missing = transcriptProblem(run.stderr, whisper, parsed.transcript?.length ?? 0);
+  // Without a key the --no-whisper note already says why.
+  const watched = {
+    ...parsed,
+    notes: [...parsed.notes, ...notes, ...(missing && whisper ? [missing.text] : [])],
+  };
+  // A Whisper failure that may pass (a rate limit, a key since fixed) is not kept: the next pick
+  // runs /watch again rather than inheriting the missing transcript.
+  if (!missing?.transient) await writeJsonAtomic(cacheFile, { ...watched, args });
+  const secs = Math.round((Date.now() - started) / 1000);
   log(
-    `watch ${side}: ${watched.frames.length} stills, ${watched.transcript?.length ?? "no"} transcript lines in ${Math.round((Date.now() - started) / 1000)} s`,
+    `/watch on ${nick}: ${watched.frames.length} stills, ${missing ? missing.text : `transcript: ${watched.transcript!.length} lines`} (${secs} s)`,
+    missing?.transient ? { level: "warn", detail: run.stderr.trim() } : {},
   );
   return watched;
 }
@@ -189,13 +271,16 @@ async function watchOne(
  */
 export async function watchPovs(
   match: MatchInfo,
-  opts: { signal?: AbortSignal; log?: (line: string) => void } = {},
+  opts: { signal?: AbortSignal; log?: Log } = {},
 ): Promise<PovWatch[]> {
   const log = opts.log ?? (() => {});
   const script = config.watchScript;
   if (!script) return [];
   if (!existsSync(script)) {
-    log(`watch: ${script} not found — the pick goes on without /watch`);
+    log(
+      `/watch is not installed (${script} not found) — the model picks from the video alone; reinstall the claude-watch plugin or set watchScript`,
+      { level: "warn" },
+    );
     return [];
   }
   const out: PovWatch[] = [];
@@ -206,7 +291,11 @@ export async function watchPovs(
       if (watched) out.push(watched);
     } catch (err) {
       if (opts.signal?.aborted) throw err;
-      log(`watch ${side}: ${describeError(err)} — the pick goes on without it`);
+      const nick = match.players[side === "left" ? 0 : 1]?.nickname ?? side;
+      log(`/watch failed on ${nick}'s stream: ${describeError(err)} — the pick goes on without it`, {
+        level: "warn",
+        ...(err instanceof WatchFailure && err.detail ? { detail: err.detail } : {}),
+      });
     }
   }
   return out;
