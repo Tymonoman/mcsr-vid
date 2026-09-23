@@ -1,12 +1,13 @@
 /**
  * What an upload does, from the files on disk to the finished video on the channel.
  *
- * Shared by the route (src/dashboard/youtubeRoutes.ts), the nightly (src/dashboard/nightly.ts) and the channel scan
+ * Shared by the route (src/dashboard/youtubeRoutes.ts), the Short chain (src/dashboard/shortFlow.ts) and the channel scan
  * (src/youtube/channelUploads.ts, for a Studio upload it pairs), so the three cannot drift on what gets
  * refused, what gets sent, or what happens after the insert. Nothing here calls `videos.insert`
  * while `youtubeUploadEnabled` is off — see src/config.ts and CLAUDE.md.
  */
 import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { archiveMatch } from "../dashboard/archive.js";
 import type { ChannelVideo } from "./channelUploads.js";
@@ -14,10 +15,10 @@ import { config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { listProcessedMatchIds, matchStatusFor } from "../dashboard/matchStatus.js";
 import { playoffContextForId } from "../playoffs/playoffs.js";
-import { claimedPublishTimes, nextPublishSlot, publishHourFor } from "./publishSlot.js";
 import { exportStale, staleExportMessage } from "../pipeline/syncFile.js";
 import { readManifest } from "../thumbnails/thumbnailVariants.js";
-import { HOOK_PLACEHOLDER } from "../pipeline/title.js";
+import { HOOK_PLACEHOLDER, metaPaths } from "../pipeline/title.js";
+import { readShortCut, readShortHook, WAITING_FOR_HOOK } from "../shorts/shortHook.js";
 import {
   addTags,
   addToPlaylist,
@@ -59,7 +60,7 @@ export interface UploadProgress {
   videoId: string | null;
 }
 
-/** The long-form and the Short of one match can be in flight together (the nightly runs them back to back). */
+/** The long-form and the Short of one match are two uploads, tracked apart (the chain runs them back to back). */
 const uploads = new Map<string, UploadProgress>();
 const progressKey = (matchId: number, kind: UploadKind) => `${kind}:${matchId}`;
 
@@ -92,27 +93,55 @@ export interface UploadRequest {
   publishAt?: string;
   /** Escape hatch for a hand-named export; must sit inside the match directory. */
   videoPath?: string;
-  /**
-   * After the long-form is up, send the Short too (`shortAfterUpload`). The dashboard's upload
-   * sets it; the nightly does not, because it runs the Short itself and reports it in its own
-   * clause — both would otherwise race for the same Short.
-   */
-  thenShort?: boolean;
 }
 
 type Begun =
   { status: number; error: string } | { progress: UploadProgress; finished: Promise<UploadProgress> };
 
 /**
+ * Nothing goes up before the operator has saved the hooks (23 Sept 2026). The long-form needs a
+ * saved title hook — the edited title, not the generated one the pipeline fills with its first
+ * chip; the Short needs its confirmed hook, burned into the file being sent (the cut records
+ * which), and goes up once: a second Short of one match is a duplicate only Studio removes.
+ */
+export async function hookRefusal(
+  matchId: number,
+  kind: UploadKind,
+): Promise<{ status: number; error: string } | null> {
+  const dir = matchDir(matchId);
+  if (kind === "video") {
+    const edited = await readFile(metaPaths(matchId, "title").edited, "utf8").catch(() => "");
+    const line = edited.split("\n")[0]!.trim();
+    if (line === "") return { status: 409, error: "no saved title hook — save the hooks first" };
+    if (line.includes(HOOK_PLACEHOLDER))
+      return { status: 400, error: `title still contains ${HOOK_PLACEHOLDER} — save the hooks first` };
+    return null;
+  }
+  if (existsSync(path.join(dir, "youtube-short.json")))
+    return { status: 409, error: `the Short of match ${matchId} is already on the channel` };
+  const hook = await readShortHook(dir, matchId);
+  if (hook === null) return { status: 409, error: `${WAITING_FOR_HOOK} — save the hooks first` };
+  const cut = await readShortCut(dir, matchId);
+  if (cut?.hook !== hook)
+    return { status: 409, error: "the Short on disk was cut behind another hook — it re-renders before it uploads" };
+  return null;
+}
+
+/**
  * Everything an upload is, minus the HTTP: the route answers 202 with `progress` and lets the
- * browser poll it, the nightly awaits `finished`. One place, so the two cannot drift on what
+ * browser poll it, the chain awaits `finished`. One place, so the two cannot drift on what
  * gets refused, what gets sent, or what happens after the insert.
  *
  * Title, description and tags come off the match's files (`uploadTextFor`), not the request:
  * the dashboard's title editor already writes the `.edited.txt` the publish kit pastes from, and
  * a second copy of the text in a form was how a title picked up a stray newline.
  */
-export async function beginUpload(matchId: number, req: UploadRequest): Promise<Begun> {
+export async function beginUpload(
+  matchId: number,
+  req: UploadRequest,
+  /** `videos.insert` itself — the one seam the tests and the end-to-end run replace. */
+  send: typeof uploadVideo = uploadVideo,
+): Promise<Begun> {
   if (!config.youtubeUploadEnabled) return { status: 403, error: UPLOADS_OFF };
   const key = progressKey(matchId, req.kind);
   const running = uploads.get(key);
@@ -120,6 +149,8 @@ export async function beginUpload(matchId: number, req: UploadRequest): Promise<
     return { status: 409, error: `Match ${matchId} is already uploading its ${req.kind}` };
 
   const dir = path.resolve(matchDir(matchId));
+  const refused = await hookRefusal(matchId, req.kind);
+  if (refused) return refused;
   const text = await uploadTextFor(matchId, req.kind);
   const bad = (error: string): Begun => ({ status: 400, error });
   if (text.title === "") return bad(`no title on disk for the ${req.kind} of match ${matchId}`);
@@ -163,7 +194,7 @@ export async function beginUpload(matchId: number, req: UploadRequest): Promise<
 
   const finished = (async () => {
     try {
-      const result = await uploadVideo({
+      const result = await send({
         filePath,
         title: text.title,
         description: text.description,
@@ -195,16 +226,6 @@ export async function beginUpload(matchId: number, req: UploadRequest): Promise<
       progress.warnings = Object.entries(steps)
         .filter((e): e is [string, string] => typeof e[1] === "string")
         .map(([step, error]) => `Uploaded, but the ${step} step failed: ${error}`);
-      // Before `done`, so the line is on the progress the browser's last poll reads.
-      // Its own catch: the video is up whatever happens to the Short, so a throw here is a
-      // warning line, never `progress.error`.
-      if (req.thenShort && req.kind === "video")
-        progress.warnings.push(
-          await shortAfterUpload(matchId, {
-            privacyStatus: req.privacyStatus,
-            publishAt: result.publishAt,
-          }).catch((err: unknown) => `short upload failed: ${describeError(err)}`),
-        );
       // Published is the point the match is finished with, so it is the point worth backing up.
       // Fire-and-forget (see archiveMatch's note); failures land in the server log and in
       // GET /api/capacity, not here — a NAS blip must not read as a failed upload.
@@ -422,50 +443,9 @@ export async function recordStudioUpload(matchId: number, video: ChannelVideo): 
 
 /**
  * How long after the long-form the Short goes live: the Short lands while the match video is
- * still fresh in Browse. The nightly and the dashboard's chained Short both schedule by it.
+ * still fresh in Browse. The dashboard's chain schedules by it (src/dashboard/shortFlow.ts).
  */
 export const SHORT_DELAY_MS = 18 * 3600_000;
-
-/**
- * One upload from `begin` to the line that says what became of it — the nightly's clause and
- * the dashboard's Short note read the same words. A refusal is "skipped", a failed insert is
- * "failed", and a post-insert problem is a parenthesis on an upload that did happen.
- */
-async function uploadLine(matchId: number, req: UploadRequest, begin: typeof beginUpload): Promise<string> {
-  const begun = await begin(matchId, req);
-  if ("error" in begun) return `${req.kind} upload skipped: ${begun.error.slice(0, 120)}`;
-  const done = await begun.finished;
-  if (done.error) return `${req.kind} upload failed: ${done.error.slice(0, 120)}`;
-  const when = req.publishAt ? `scheduled ${req.publishAt}` : req.privacyStatus;
-  return `${req.kind} uploaded ${done.videoId} (${when}${done.warnings.length ? ", with a problem" : ""})`;
-}
-
-/**
- * The Short, sent on the heels of a dashboard upload of the long-form: same visibility, and
- * `SHORT_DELAY_MS` after the video's publish time when it has one. Skipped, with the reason as
- * the line, when there is no `short-<id>.mp4` (beginUpload's own refusal) or the Short is
- * already up — a second Short of the same match is a duplicate on the channel that only Studio
- * removes. `begin` is the test's seam, as it is for `nightlyUploads`.
- */
-export async function shortAfterUpload(
-  matchId: number,
-  video: { privacyStatus: UploadRequest["privacyStatus"]; publishAt: string | null },
-  begin: typeof beginUpload = beginUpload,
-): Promise<string> {
-  const existing = await readUpload(matchId, "short");
-  if (existing) return `short upload skipped: already up as ${existing.videoId}`;
-  return uploadLine(
-    matchId,
-    {
-      kind: "short",
-      privacyStatus: video.privacyStatus,
-      publishAt: video.publishAt
-        ? new Date(Date.parse(video.publishAt) + SHORT_DELAY_MS).toISOString()
-        : undefined,
-    },
-    begin,
-  );
-}
 
 /**
  * YouTube caps `playlists.insert` at about a dozen per rolling 24 h. Undocumented: twelve went
@@ -489,29 +469,4 @@ export async function retryFailedPlaylists(finish: typeof finishOnYouTube = fini
       console.error(`playlists: #${matchId} ${kind} ${playlists ?? "done"}`);
     }
   }
-}
-
-/**
- * The nightly's uploads of the MP4 it just exported and the Short, as the clause its notification
- * gains. Nothing unless `youtubeUploadEnabled` and `nightlyUpload` both say so (src/config.ts).
- * Private either way; "scheduled" sets the next publish slot on the long-form and
- * `SHORT_DELAY_MS` later on the Short. A refusal (a title still carrying `<HOOK>`, no Short on
- * disk, a sync corrected after the export) is a skip line, not a failure. `begin` is the test's
- * seam, as `chainShort`'s `run` is.
- */
-export async function nightlyUploads(
-  matchId: number,
-  begin: typeof beginUpload = beginUpload,
-): Promise<string> {
-  if (!config.youtubeUploadEnabled || config.nightlyUpload === "off") return "";
-  const slot =
-    config.nightlyUpload === "scheduled"
-      ? nextPublishSlot(Date.now(), publishHourFor(matchDir(matchId)), await claimedPublishTimes(matchId))
-      : null;
-  const one = async (kind: UploadKind, publishAt: Date | null): Promise<string> =>
-    ` + ${await uploadLine(matchId, { kind, privacyStatus: "private", publishAt: publishAt?.toISOString() }, begin)}`;
-  const video = await one("video", slot);
-  // No Short without its long-form: the Short's job is to send viewers to the match.
-  if (!video.includes(" uploaded ")) return video;
-  return video + (await one("short", slot ? new Date(slot.getTime() + SHORT_DELAY_MS) : null));
 }

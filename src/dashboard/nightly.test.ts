@@ -3,8 +3,8 @@
 // The timer itself is not tested: that would be a test of setTimeout.
 // Run: npx tsx src/nightly.test.ts
 import assert from "node:assert/strict";
-import type { ChildProcess } from "node:child_process";
-import { EventEmitter } from "node:events";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -12,9 +12,9 @@ import path from "node:path";
 import { config } from "../config.js";
 import {
   chainExport,
-  chainShort,
   type ExportStarter,
   msUntilNextRun,
+  pickClause,
   pickNightlyCandidate,
   playoffPicks,
   playoffsWithoutVods,
@@ -26,7 +26,6 @@ import {
 } from "./nightly.js";
 import type { PlayoffBoard } from "../playoffs/playoffs.js";
 import type { MatchInfo } from "../api/types.js";
-import type { ShortRunner } from "./shortsRoutes.js";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -165,38 +164,6 @@ assert.equal(await picked(ranked, { ...roomy, freeMatches: 2 }), 1);
   config.playoffsFirst = false;
 }
 
-// --- Whether the night ends with a Short. The spawn is injected: the real one is a full render,
-// and this is a test of the decision, not of ffmpeg.
-{
-  const spawned: Array<{ matchId: number; pick: number }> = [];
-  const runner =
-    (code: number): ShortRunner =>
-    (matchId, pick) => {
-      spawned.push({ matchId, pick });
-      const proc = new EventEmitter() as ChildProcess;
-      // The close listener is attached after the runner returns, so it cannot fire synchronously.
-      setImmediate(() => proc.emit("close", code));
-      return proc;
-    };
-
-  assert.equal(await chainShort(1, "done", true, runner(0)), " + Short rendered");
-  // The flag is the whole point of the flag.
-  assert.equal(await chainShort(2, "done", false, runner(0)), "");
-  // An abort is the operator saying stop, and a failed render may have left nothing to cut from;
-  // neither is a licence to spend the rest of the night on a Short.
-  assert.equal(await chainShort(3, "aborted", true, runner(0)), "");
-  assert.equal(await chainShort(4, "failed: ffmpeg died", true, runner(0)), "");
-  assert.deepEqual(
-    spawned,
-    [{ matchId: 1, pick: 0 }],
-    "only a clean render with the flag on may spawn, and always the top moment",
-  );
-
-  // A Short that fails does not turn a rendered match into a failure — it is a clause, not a
-  // verdict, and the notification has to carry both halves.
-  assert.match(await chainShort(5, "done", true, runner(1)), /Short failed/);
-}
-
 // --- And whether it ends with a finished MP4. Same gate, same clause shape; the starter is
 // injected because the real one is a ten-minute ffmpeg encode.
 {
@@ -325,6 +292,52 @@ try {
     assert.deepEqual(named, {
       skipped: "every candidate is processed, hidden or without VODs, or the disk is full (no VOD: #2)",
     });
+  }
+
+  // --- The night's new ending (23 Sept 2026): after the export, the pick — never a Short, never
+  // an upload — and the push says how many matches wait for a hook.
+  {
+    const id = 13559245;
+    const dir = path.join(media, String(id));
+    mkdirSync(dir, { recursive: true });
+    // Nothing picked (a series game whose series is not joined): no clause at all.
+    assert.equal(await pickClause(id, async () => {}), "");
+    const pick = (source: string) =>
+      writeFileSync(
+        path.join(dir, `short-${id}.pick.json`),
+        JSON.stringify({ gameMatchId: id, startMs: 0, endMs: 20000, pov: "both", source, createdAt: "t" }),
+      );
+    pick("agy");
+    let waited = false;
+    assert.equal(
+      await pickClause(id, async () => {
+        waited = true;
+      }),
+      " + picked by the model",
+    );
+    assert.ok(waited, "the clause waits for the pick queue first");
+    pick("heuristic");
+    assert.equal(await pickClause(id, async () => {}), " + heuristic pick (the model failed)");
+
+    // The push: a skipped night still reminds, one line under the reason. Exported, picked, no
+    // hook saved: that is one match waiting.
+    writeFileSync(path.join(dir, `final-${id}.mp4`), "x");
+    const bodies: string[] = [];
+    const server = createServer((req, res) => {
+      let body = "";
+      req.on("data", (c: Buffer) => (body += c.toString()));
+      req.on("end", () => {
+        bodies.push(body);
+        res.end("ok");
+      });
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
+    await runNightlyOnce(url, { renderInFlight: () => false, ranked: async () => [] });
+    server.close();
+    assert.equal(bodies.length, 1, "one push");
+    assert.match(bodies[0]!, /^Nightly skipped — .*\n1 waiting for a hook$/s, bodies[0]);
+    console.log("OK: the night ends on the pick, and the push counts the hooks waiting");
   }
 } finally {
   await rm(media, { recursive: true, force: true });

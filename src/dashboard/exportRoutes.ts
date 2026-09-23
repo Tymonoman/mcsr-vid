@@ -16,6 +16,7 @@ import { sendVideo } from "./rangeStream.js";
 import { matchStatusFor } from "./matchStatus.js";
 import { inPublishSet } from "./publishSet.js";
 import { findExportedVideo } from "../youtube/youtubeStore.js";
+import { ensurePick } from "./shortFlow.js";
 
 type Json = (res: ServerResponse, status: number, body: unknown) => void;
 
@@ -112,11 +113,21 @@ export function startFastExport(matchId: number): ExportJob {
   // A playoff game's export may complete its series (src/playoffs/series.ts): joined here, the one place
   // every export settles — the nightly's chain, the Re-encode button, a series run. Anything
   // but a full series is a no-op; a failed join is a log line and the export stands.
+  // Then the model picks the Short's moment from the finished video: the match's own, or the
+  // series' once its last game is in — queued before `finished` settles, so the nightly can wait
+  // for it. A match that already has a pick keeps it (src/dashboard/shortFlow.ts `ensurePick`).
   const settle = (error: string | null): void => {
     if (error !== null) return settleExport(error);
-    assembleSeries(matchId, { adoptShort: true })
+    assembleSeries(matchId)
       .then((r) => {
         if (r.kind === "joined") console.error(`series ${r.firstGameId}: joined (${r.games.length} games)`);
+        const pickFor =
+          r.kind === "not-a-series"
+            ? matchId
+            : r.kind === "joined" || r.kind === "current"
+              ? r.firstGameId
+              : null;
+        if (pickFor !== null) void ensurePick(pickFor);
       })
       .catch((err: unknown) =>
         console.error(`series: join after export ${matchId} failed — ${describeError(err)}`),

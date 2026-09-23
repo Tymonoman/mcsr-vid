@@ -73,14 +73,6 @@ export const SETTINGS: readonly SettingField[] = [
     unattended: true,
   },
   {
-    key: "nightlyRenderShort",
-    label: "Cut the Short too",
-    help: "Seconds of work after the overlay render, and the Short is the half of a match that travels.",
-    kind: "boolean",
-    group: "Nightly",
-    unattended: true,
-  },
-  {
     key: "nightlyRenderExport",
     label: "Export the MP4 too",
     help: "Off leaves a project file and no video, which is a morning with nothing to publish.",

@@ -16,7 +16,7 @@
  */
 import { spawn } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
-import { copyFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { config, matchDir } from "../config.js";
 import { buildSeriesDescription, buildTags, type SeriesDescriptionGame } from "../pipeline/description.js";
@@ -27,21 +27,16 @@ import { getMatch, getUser, matchPageUrl, playoffsBracketUrl } from "../api/mcsr
 import { readSplitStills } from "../pipeline/overlayRender.js";
 import { exportStale, readSyncOffsets } from "../pipeline/syncFile.js";
 import {
-  playoffPhrase,
   playoffSeriesTail,
   seriesOf,
   type PlayoffBoardSlot,
-  type PlayoffGame,
   type PlayoffSeed,
   type PlayoffSeries,
 } from "./playoffs.js";
-import { buildShortDescription } from "../shorts/shortHook.js";
-import { distinctShortMoments, SHORT_WINDOW_SEC } from "../shorts/shortMoment.js";
 import { readManifest } from "../thumbnails/thumbnailVariants.js";
 import { buildTitle, formatTitle, withHook } from "../pipeline/title.js";
-import { readChatTimes } from "../api/twitchChat.js";
 import type { MatchInfo } from "../api/types.js";
-import { estimatedRunSec, matchStartIntoVodSec } from "../pipeline/vodAcquisition.js";
+import { matchStartIntoVodSec } from "../pipeline/vodAcquisition.js";
 import { withDiscoveredVods } from "../pipeline/vodDiscovery.js";
 
 export const SERIES_FILE = "series.json";
@@ -67,7 +62,10 @@ export interface SeriesRecord {
   seeds: [PlayoffSeed, PlayoffSeed];
   games: SeriesGame[];
   assembledAt: string;
-  /** Which game the series' Short was cut from, when one was. */
+  /**
+   * Which game the series' Short was copied from — records before 23 Sept 2026 only. A series'
+   * Short is now picked and cut like any match's, from game 1's directory (`seriesShortGame`).
+   */
   shortFromMatchId?: number;
 }
 
@@ -242,7 +240,6 @@ export async function assembleSeries(
   opts: {
     log?: (line: string) => void;
     force?: boolean;
-    adoptShort?: boolean;
     prune?: boolean;
   } & JoinSeams = {},
 ): Promise<AssembleResult> {
@@ -319,7 +316,6 @@ export async function assembleSeries(
       durationSec: durations[i]!,
     })),
     assembledAt: current && previous ? previous.assembledAt : new Date().toISOString(),
-    ...(previous?.shortFromMatchId !== undefined ? { shortFromMatchId: previous.shortFromMatchId } : {}),
   };
   await writeFile(path.join(outDir, SERIES_FILE), JSON.stringify(record, null, 2), "utf8");
   await writeSeriesText(first.matchId, series, record);
@@ -328,13 +324,6 @@ export async function assembleSeries(
     for (const final of finals) await rm(final, { force: true });
     log(`series ${first.matchId}: the games' exports deleted — the series holds them`);
   }
-  // The series' Short from the best game that already has one — the nightly cuts a Short per
-  // game, so by the time the last game lands there is one to pick. Cutting a missing one is
-  // `renderSeries`' job.
-  if (opts.adoptShort && record.shortFromMatchId === undefined) {
-    const from = await bestShortGame(series.games.filter((g) => existsSync(shortPath(g.matchId))));
-    if (from !== null) await adoptSeriesShort(first.matchId, from);
-  }
   return {
     kind: current ? "current" : "joined",
     firstGameId: first.matchId,
@@ -342,8 +331,6 @@ export async function assembleSeries(
     games: record.games,
   };
 }
-
-const shortPath = (matchId: number): string => path.join(matchDir(matchId), `short-${matchId}.mp4`);
 
 /**
  * Each player's stream deep-linked to the game's start, from the VODs the download recorded, in
@@ -443,74 +430,25 @@ async function writeSeriesText(
 /* --- The Short ---------------------------------------------------------------------------- */
 
 /**
- * Which game the series' Short should come from: the one whose best window scores highest
- * (src/shorts/shortMoment.ts, chat included). The operator's judgement can replace it — cut any game's
- * Short by hand and run `adoptSeriesShort` with that game — but the first answer is this one.
+ * Which game the series' Short shows: the cut's (`short-<g1>.cut.json`), else the pick's — a
+ * series is picked like any match, in game 1's directory, and the pick names the game (the
+ * picker keeps its window before that game is decided). Null before either exists.
  */
-export async function bestShortGame(games: readonly PlayoffGame[]): Promise<number | null> {
-  let best: { matchId: number; score: number } | null = null;
-  for (const g of games) {
-    const m = await getMatch(g.matchId);
-    const [l, r] = m.players;
-    if (!l || !r) continue;
-    const top = distinctShortMoments(
-      m,
-      {
-        leftUuid: l.uuid,
-        rightUuid: r.uuid,
-        runMs: estimatedRunSec(m) * 1000,
-        windowSec: SHORT_WINDOW_SEC,
-        chatAtSec: readChatTimes(matchDir(g.matchId)),
-      },
-      1,
-    )[0];
-    if (top && (best === null || top.score > best.score)) best = { matchId: g.matchId, score: top.score };
+export async function seriesShortGame(firstGameId: number): Promise<number | null> {
+  const dir = matchDir(firstGameId);
+  for (const file of [`short-${firstGameId}.cut.json`, `short-${firstGameId}.pick.json`]) {
+    try {
+      const saved = JSON.parse(await readFile(path.join(dir, file), "utf8")) as {
+        gameMatchId?: number;
+        fromMatchId?: number;
+      };
+      const game = saved.gameMatchId ?? saved.fromMatchId;
+      if (typeof game === "number") return game;
+    } catch {
+      // Not there yet.
+    }
   }
-  return best?.matchId ?? null;
-}
-
-/**
- * Makes a game's rendered Short the series' own: copied into game 1's directory under game 1's
- * name, with a description that links the series video, not the game. `short-<g1>.*` is what the
- * Short panel, the kit and the upload read for the series.
- */
-export async function adoptSeriesShort(firstGameId: number, fromMatchId: number): Promise<void> {
-  const outDir = matchDir(firstGameId);
-  const fromDir = matchDir(fromMatchId);
-  const src = (ext: string) => path.join(fromDir, `short-${fromMatchId}${ext}`);
-  const dst = (ext: string) => path.join(outDir, `short-${firstGameId}${ext}`);
-  if (!existsSync(src(".mp4")))
-    throw new Error(`No Short rendered for game ${fromMatchId} (${src(".mp4")}).`);
-  await mkdir(outDir, { recursive: true });
-  await copyFile(src(".mp4"), dst(".mp4"));
-  await copyFile(src(".title.txt"), dst(".title.txt"));
-  const cut = existsSync(src(".cut.json")) ? JSON.parse(await readFile(src(".cut.json"), "utf8")) : {};
-  await writeFile(dst(".cut.json"), JSON.stringify({ ...cut, fromMatchId }, null, 2), "utf8");
-
-  const record = await readSeriesRecord(outDir);
-  const first = await getMatch(firstGameId);
-  const [l, r] = first.players;
-  await writeFile(
-    dst(".description.txt"),
-    buildShortDescription(
-      firstGameId,
-      l?.nickname ?? "",
-      r?.nickname ?? "",
-      config.youtubePlaylistUrl,
-      config.supportUrl,
-      record ? playoffPhrase(record.season, record.round) : undefined,
-      first.season,
-      "series",
-    ),
-    "utf8",
-  );
-  if (record) {
-    await writeFile(
-      path.join(outDir, SERIES_FILE),
-      JSON.stringify({ ...record, shortFromMatchId: fromMatchId }, null, 2),
-      "utf8",
-    );
-  }
+  return (await readSeriesRecord(dir))?.shortFromMatchId ?? null;
 }
 
 /* --- Rendering a whole series ------------------------------------------------------------- */
@@ -521,14 +459,12 @@ export interface SeriesRunners {
   renderGame: (matchId: number) => Promise<string | null>;
   /** `export:fast` for one game; failure text or null. */
   exportGame: (matchId: number) => Promise<string | null>;
-  /** `npm run short -- <id> --pick=0`; failure text or null. */
-  cutShort: (matchId: number) => Promise<string | null>;
   log: (line: string) => void;
 }
 
 export interface SeriesProgress {
   firstGameId: number;
-  /** "game 2 of 4 · render", "joining", "short", "done", "failed: …". */
+  /** "game 2 of 4 · render", "joining", "done", "failed: …". */
   stage: string;
   startedAt: string;
   done: boolean;
@@ -541,9 +477,10 @@ export const seriesProgress = (firstGameId: number): SeriesProgress | undefined 
 export const seriesRunning = (): boolean => [...runs.values()].some((r) => !r.done);
 
 /**
- * Renders every game of the series that is not exported yet, joins them, and cuts the Short
- * from the best game. One game at a time — the lab has four cores and one GPU — and a game's
- * failure stops the run where it is, with the games before it kept.
+ * Renders every game of the series that is not exported yet and joins them. One game at a time —
+ * the lab has four cores and one GPU — and a game's failure stops the run where it is, with the
+ * games before it kept. No Short: the model picks the series' moment once it is joined, and the
+ * Short waits for the operator's hook like any match's (src/dashboard/shortFlow.ts).
  */
 export async function renderSeries(
   anyGameId: number,
@@ -596,15 +533,6 @@ export async function renderSeries(
     const joined = await assembleSeries(first.matchId, { log: runners.log, ...seams });
     if (joined.kind !== "joined" && joined.kind !== "current") return fail(`join: ${JSON.stringify(joined)}`);
 
-    if ((await readSeriesRecord(matchDir(first.matchId)))?.shortFromMatchId === undefined) {
-      step("short");
-      const from = await bestShortGame(series.games);
-      if (from !== null) {
-        const err = existsSync(shortPath(from)) ? null : await runners.cutShort(from);
-        if (err) runners.log(`series ${first.matchId}: Short from game ${from} failed — ${err}`);
-        else await adoptSeriesShort(first.matchId, from);
-      }
-    }
     progress.stage = "done";
     progress.done = true;
     return joined;
@@ -641,7 +569,7 @@ export async function seriesState(slot: PlayoffBoardSlot): Promise<SeriesState |
     ),
     joined: existsSync(seriesOutputPath(matchDir(first.matchId), first.matchId)),
     assembledAt: record?.assembledAt ?? null,
-    shortFromMatchId: record?.shortFromMatchId ?? null,
+    shortFromMatchId: await seriesShortGame(first.matchId),
     progress: seriesProgress(first.matchId)?.stage ?? null,
   };
 }

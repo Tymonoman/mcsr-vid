@@ -198,6 +198,15 @@ console.log("youtube: all checks passed");
   assert.match(gated.error, /Studio/);
 
   config.youtubeUploadEnabled = true;
+  // The generated title is not a saved hook (23 Sept 2026): only the edited one lets it through.
+  const unsaved = await post();
+  assert.equal(unsaved.status, 409, "no saved title hook, no upload");
+  assert.match(unsaved.error, /save the hooks/);
+  await writeFile(
+    path.join(routeDir, `match-${routeMatch}.title.edited.txt`),
+    `${HOOK_PLACEHOLDER} | a vs b | MCSR Ranked 1v1\n`,
+    "utf8",
+  );
   const placeholder = await post();
   assert.equal(placeholder.status, 400, "a placeholder title must be refused, not uploaded");
   assert.match(placeholder.error, /HOOK/);

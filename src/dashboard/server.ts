@@ -7,7 +7,7 @@
  *
  * Serves on 0.0.0.0 so the homelab's Tailscale interface publishes it too.
  */
-import { createReadStream, existsSync, readFileSync } from "node:fs";
+import { createReadStream, existsSync } from "node:fs";
 import { rm, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import path from "node:path";
@@ -29,7 +29,6 @@ import {
   nightlyCandidate,
   readNightlyState,
   requestExport,
-  requestShort,
   runNightlyOnce,
   nightlyArmedAtMs,
   scheduleNightly,
@@ -61,13 +60,8 @@ import {
   setHidden,
   setPublishFlag,
 } from "./matchShelf.js";
-import {
-  handleShortsRoute,
-  lastShortPick,
-  shortHookStale,
-  shortRunning,
-  spawnShortJob,
-} from "./shortsRoutes.js";
+import { handleShortsRoute, shortRunning } from "./shortsRoutes.js";
+import { ensurePick, matchRowShort, nightlyShortSummary, pickActivity, shortTick } from "./shortFlow.js";
 import { saveSettings, settingsPayload } from "./settings.js";
 import { handleYoutubeRoute, uploadRunning } from "./youtubeRoutes.js";
 import { handleSyncRoute, syncPayload } from "./syncRoutes.js";
@@ -126,26 +120,19 @@ const serverSeriesRunners: SeriesRunners = {
       poll();
     }),
   exportGame: (matchId) => startFastExport(matchId).finished,
-  cutShort: (matchId) =>
-    new Promise((resolve) => {
-      const proc = spawnShortJob(matchId, 0);
-      proc.on("error", (err) => resolve(describeError(err)));
-      proc.on("close", (code) => resolve(code === 0 ? null : `exit code ${code}`));
-    }),
   log: (line) => console.error(line),
 };
 
 /**
- * `?short=1` / `?export=1` on either render route — the entry box's and the card's "Render +
- * Short + MP4": the same render, plus a note for `afterSettled` (nightly.ts) to chain the Short
- * and the MP4. Nothing about the render itself changes.
+ * `?export=1` on either render route — the entry box's and the card's "Render + Short + MP4": the
+ * same render, plus a note for `afterSettled` (nightly.ts) to encode the MP4, after which the
+ * model picks the Short's moment. `?short=1` asks for nothing more: the Short itself waits for
+ * the operator's hooks (src/dashboard/shortFlow.ts).
  */
 function armFollowUps(job: Job, url: URL): void {
-  const wantShort = url.searchParams.get("short") === "1";
-  const wantExport = url.searchParams.get("export") === "1";
-  if (wantShort) requestShort(job.matchId);
-  if (wantExport) requestExport(job.matchId);
-  if (wantShort || wantExport) afterSettled(job);
+  if (url.searchParams.get("export") !== "1") return;
+  requestExport(job.matchId);
+  afterSettled(job);
 }
 
 /**
@@ -308,6 +295,8 @@ const server = createServer(async (req, res) => {
             archived: isArchived(m.matchId),
             exported: isExported(m.matchId),
             uploaded: await isUploaded(m.matchId),
+            // Where the match stands on its way to the channel (src/dashboard/shortFlow.ts).
+            ...(await matchRowShort(m.matchId)),
             rivalPosted: posted
               ? {
                   daysAgo: Math.max(0, Math.floor((now - posted.publishedAtMs) / 86_400_000)),
@@ -359,17 +348,19 @@ const server = createServer(async (req, res) => {
     }
 
     // Render a whole playoff series — every game not yet exported, one after another, then the
-    // join and the Short — from any of its games' ids. The same three runners the dashboard's
-    // own buttons use: the pipeline job (progress on the list as usual), export:fast, the Short.
+    // join and the model's pick for its Short — from any of its games' ids. The same runners the
+    // dashboard's own buttons use: the pipeline job (progress on the list as usual), export:fast.
     if (resource === "series" && idRaw !== undefined && segments[3] === "render" && req.method === "POST") {
       const matchId = Number(idRaw);
       if (!Number.isInteger(matchId)) {
         json(res, 400, { error: "expected a match id" });
         return;
       }
-      void renderSeries(matchId, serverSeriesRunners).catch((err: unknown) =>
-        console.error(`series ${matchId}: ${describeError(err)}`),
-      );
+      void renderSeries(matchId, serverSeriesRunners)
+        .then((r) => {
+          if (r.kind === "joined" || r.kind === "current") void ensurePick(r.firstGameId);
+        })
+        .catch((err: unknown) => console.error(`series ${matchId}: ${describeError(err)}`));
       json(res, 202, { matchId });
       return;
     }
@@ -439,6 +430,8 @@ const server = createServer(async (req, res) => {
           players: suggestionsPayload().suggestions.find((c) => c.matchId === matchId)?.players ?? null,
         })),
         lastRun: readNightlyState(),
+        // "3 waiting for a hook ›", "1 failed ›", and whether the model can be reached at all.
+        ...(await nightlyShortSummary()),
       });
       return;
     }
@@ -589,13 +582,15 @@ const server = createServer(async (req, res) => {
             ? "an export"
             : shortRunning(matchId)
               ? "a Short render"
-              : thumbnailRerenders.has(matchId)
-                ? "a thumbnail re-render"
-                : uploadRunning(matchId)
-                  ? "an upload"
-                  : allArchiveStates().some((a) => a.matchId === matchId && a.running)
-                    ? "an archive copy"
-                    : null;
+              : pickActivity(matchId) === "running"
+                ? "the model's pick (it writes the proxy there)"
+                : thumbnailRerenders.has(matchId)
+                  ? "a thumbnail re-render"
+                  : uploadRunning(matchId)
+                    ? "an upload"
+                    : allArchiveStates().some((a) => a.matchId === matchId && a.running)
+                      ? "an archive copy"
+                      : null;
       if (busy) {
         json(res, 409, { error: `Match ${matchId} has ${busy} in flight — stop it first` });
         return;
@@ -670,11 +665,6 @@ const server = createServer(async (req, res) => {
       }
       thumbnailRerenders.add(matchId);
       thumbnailRerenderErrors.delete(matchId);
-      // A Short already cut with the old headline is the other half of this decision, and the
-      // operator had to notice the panel's warning and click "re-cut it" by hand. Decided before
-      // the render because it is a fact about what is on disk now, and reported in the 202 so the
-      // answer to "what did this start?" is one response.
-      const recutShort = await shortHookStale(matchDir(matchId), matchId, hookText);
       // Not awaited: the render outlives the request, which is what the 202 is saying.
       void (async () => {
         try {
@@ -690,21 +680,6 @@ const server = createServer(async (req, res) => {
             poses: config.thumbnailVariants,
             hookText,
           });
-          // Only after the manifest is written: the Short resolves its hook from it, so cutting
-          // any earlier would burn in the headline this render just replaced.
-          // The moment the last cut used, not the top-ranked one: a re-cut exists to change the
-          // headline, and resetting the window would throw away a row the operator chose. This
-          // process's own job map first, then the sidecar `generateShort` leaves on disk — which
-          // is what answers after a restart, when the map is empty but the Short is not.
-          // Repeat the window, not the row: the ranking is not stable across a scorer change or
-          // a reasoner answer, so an index can silently mean a different 22 seconds tomorrow.
-          // The sidecar records the window the last cut used; the in-process pick is the
-          // fallback for a Short cut before the sidecar existed.
-          if (recutShort) {
-            const last = lastCutWindow(matchId);
-            if (last !== null) spawnShortJob(matchId, 0, last);
-            else spawnShortJob(matchId, lastShortPick(matchId) ?? 0);
-          }
         } catch (err) {
           thumbnailRerenderErrors.set(matchId, describeError(err));
           console.error(`thumbnail re-render failed for ${matchId}: ${describeError(err)}`);
@@ -712,7 +687,9 @@ const server = createServer(async (req, res) => {
           thumbnailRerenders.delete(matchId);
         }
       })();
-      json(res, 202, { matchId, hookText, shortRecut: recutShort });
+      // The Short no longer follows the thumbnail's headline: its hook is the operator's own
+      // (short-<id>.hook.txt), so nothing here re-cuts it.
+      json(res, 202, { matchId, hookText });
       return;
     }
 
@@ -785,20 +762,9 @@ server.listen(PORT, "0.0.0.0", () => {
   // Unconditional: scheduleNightly reads the hour from config itself and arms nothing when it is
   // null, so the settings panel can switch the nightly on later without a restart.
   scheduleNightly({ notifyUrl: config.nightlyNotifyUrl });
+  // The Short chains a restart cut short resume now, and every quarter hour after; the same tick
+  // re-asks the model, once a day per match, for a pick the heuristic stood in for.
+  const tick = () => void shortTick().catch((err: unknown) => console.error(`shorts: ${describeError(err)}`));
+  tick();
+  setInterval(tick, 15 * 60_000).unref();
 });
-
-/**
- * Where the Short's last render started, from the sidecar `generateShort` writes beside it.
- * Null when there is none — a Short cut before the sidecar existed, or none at all.
- */
-function lastCutWindow(matchId: number): number | null {
-  const file = path.join(matchDir(matchId), `short-${matchId}.cut.json`);
-  if (!existsSync(file)) return null;
-  try {
-    const startMs = (JSON.parse(readFileSync(file, "utf8")) as { startMs?: unknown }).startMs;
-    return typeof startMs === "number" && Number.isFinite(startMs) && startMs >= 0 ? startMs : null;
-  } catch {
-    // A torn sidecar means "cut the best one", which is what it did before this existed.
-    return null;
-  }
-}

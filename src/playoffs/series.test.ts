@@ -2,8 +2,8 @@
 // games, the API stubbed at global fetch, ffmpeg and ffprobe stubbed at the seams. What is pinned:
 // the games render and export in order and only the missing ones, the join lands in game 1's
 // directory and is left alone when it is current, game 1's text is the series' (chapters per
-// game, game 1's link first, no score anywhere), the other games are hidden, and the Short
-// adopted from another game links the series.
+// game, game 1's link first, no score anywhere), the other games are hidden, and no game's Short
+// is copied in: a series' Short is picked and cut in game 1's directory like any match's.
 // Run: npx tsx src/series.test.ts
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -80,7 +80,7 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   throw new Error(`unexpected fetch: ${url}`);
 }) as typeof fetch;
 
-const { adoptSeriesShort, assembleSeries, chapterStarts, concatList, readSeriesRecord, renderSeries } =
+const { assembleSeries, chapterStarts, concatList, readSeriesRecord, renderSeries, seriesShortGame } =
   await import("./series.js");
 const { buildSeriesDescription } = await import("../pipeline/description.js");
 const { formatChapterTime } = await import("../pipeline/chapters.js");
@@ -177,10 +177,6 @@ const result = await renderSeries(
       writeFileSync(final(id), "x");
       return null;
     },
-    cutShort: async (id) => {
-      log.push(`short ${id}`);
-      return "no timeline events";
-    },
     log: () => {},
   },
   seams,
@@ -209,7 +205,7 @@ assert.deepEqual(
 );
 assert.equal(record.round, "Round of 16");
 assert.equal(record.firstTo, 3);
-assert.equal(record.shortFromMatchId, undefined, "no game had a moment to cut");
+assert.equal(record.shortFromMatchId, undefined, "a run cuts no Short: the pick and the hook come first");
 
 const title = readFileSync(path.join(dir(101), "match-101.title.txt"), "utf8").split("\n")[0];
 // lauveer left, edcr right: a private room's seats are ordered by uuid (src/api/mcsrApi.ts).
@@ -262,7 +258,6 @@ const nothing = await renderSeries(
       log.push(`export ${id}`);
       return null;
     },
-    cutShort: async () => "no",
     log: () => {},
   },
   seams,
@@ -303,34 +298,20 @@ assert.equal(fixed.kind, "joined");
 utimesSync(path.join(dir(101), "series-101.mp4"), new Date(Date.now() + 20000), new Date(Date.now() + 20000));
 assert.equal(exportStale(dir(101), path.join(dir(101), "series-101.mp4")).stale, false);
 
-/* --- The Short adopted from another game links the series, not the game ------------------ */
+/* --- No game's Short is copied in; the series' Short game is its cut's, else its pick's ------- */
 
 writeFileSync(path.join(dir(103), "short-103.mp4"), "s");
-writeFileSync(
-  path.join(dir(103), "short-103.title.txt"),
-  "Can the LCQ take down the #1 seed? #minecraft #mcsr\n",
-);
-writeFileSync(
-  path.join(dir(103), "short-103.cut.json"),
-  JSON.stringify({ pick: 0, startMs: 1000, endMs: 23000 }),
-);
-await adoptSeriesShort(101, 103);
-assert.equal(readFileSync(path.join(dir(101), "short-101.mp4"), "utf8"), "s");
-const shortDesc = readFileSync(path.join(dir(101), "short-101.description.txt"), "utf8");
-assert.ok(shortDesc.includes("the whole series is on the channel"));
-assert.ok(shortDesc.includes("/matches/101?season=12"), "the Short pairs to the series video");
-assert.ok(!shortDesc.includes("/matches/103"));
-assert.deepEqual(JSON.parse(readFileSync(path.join(dir(101), "short-101.cut.json"), "utf8")), {
-  pick: 0,
-  startMs: 1000,
-  endMs: 23000,
-  fromMatchId: 103,
-});
-assert.equal((await readSeriesRecord(dir(101)))!.shortFromMatchId, 103);
-
-// The next assemble keeps the adopted Short.
-const kept = await assembleSeries(101, { ...seams, adoptShort: true });
+writeFileSync(path.join(dir(103), "short-103.title.txt"), "Can the LCQ take down the #1 seed? #minecraft #mcsr\n");
+const kept = await assembleSeries(101, seams);
 assert.equal(kept.kind, "current");
-assert.equal((await readSeriesRecord(dir(101)))!.shortFromMatchId, 103);
+assert.ok(!existsSync(path.join(dir(101), "short-101.mp4")), "a game's own Short is never adopted by the series");
+assert.equal(await seriesShortGame(101), null, "nothing picked, nothing cut");
+writeFileSync(path.join(dir(101), "short-101.pick.json"), JSON.stringify({ gameMatchId: 102 }));
+assert.equal(await seriesShortGame(101), 102, "the pick names the game");
+writeFileSync(path.join(dir(101), "short-101.cut.json"), JSON.stringify({ gameMatchId: 103 }));
+assert.equal(await seriesShortGame(101), 103, "and the cut, once there is one, is what went out");
+// A Short copied in before 23 Sept 2026 recorded where it came from as `fromMatchId`.
+writeFileSync(path.join(dir(101), "short-101.cut.json"), JSON.stringify({ pick: 0, startMs: 1, fromMatchId: 102 }));
+assert.equal(await seriesShortGame(101), 102);
 
 console.log("series: all checks passed");

@@ -1,33 +1,25 @@
 /**
- * The dashboard's Shorts endpoints.
+ * The dashboard's Shorts endpoints: the plan, the hooks, the pick, and the Short render's own job
+ * table. The decisions live in shortFlow.ts; this is transport.
  *
  * Its own job map rather than jobs.ts, following exportRoutes.ts, audit.ts and youtubeRoutes.ts:
  * jobs.ts is keyed by matchId alone, so a Short and a pipeline run on the same match would
  * collide — `startJob` would hand back the render job, and "stop" would abort the wrong one.
- * A fourth small map is zero risk to the render path; unifying them is a refactor for the day
- * something actually needs shared scheduling.
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import { describeError } from "../errorText.js";
-import { locateExport, type ExportRouteContext } from "./exportRoutes.js";
-import { ANCHOR_SEC } from "../pipeline/kdenliveProject.js";
-import { getMatch, getUser } from "../api/mcsrApi.js";
-import { reasonerConfigured } from "../shorts/reasoner.js";
-import { distinctShortMoments, runMsOf, SHORT_WINDOW_SEC } from "../shorts/shortMoment.js";
-import { reasonShortMoments } from "../shorts/shortReason.js";
-import { buildShortHook, resolveShortHook, resolveShortHookFor } from "../shorts/shortHook.js";
+import type { ExportRouteContext } from "./exportRoutes.js";
+import { readShortHook, WAITING_FOR_HOOK } from "../shorts/shortHook.js";
 import { sendVideo } from "./rangeStream.js";
-import { readChatTimes } from "../api/twitchChat.js";
+import { isExported } from "./matchShelf.js";
+import { queuePick, readStatus, saveHooks, shortPlan, startChain, type ChainDeps } from "./shortFlow.js";
 
 /** One Short render in flight. Lines are retained so a browser joining late replays the run. */
 interface ShortJob {
   matchId: number;
-  /** The moment this render cut, so a re-cut this process starts by itself repeats it. */
-  pick: number;
   lines: string[];
   done: boolean;
   error: string | null;
@@ -40,70 +32,30 @@ const jobs = new Map<number, ShortJob>();
 /** A Short render writing into this match's directory right now. */
 export const shortRunning = (matchId: number): boolean => jobs.get(matchId)?.done === false;
 
-/**
- * The moment the last Short of this match was cut from, or null.
- *
- * Nothing on disk records the pick, so this is per-process, like the playlist ids in
- * src/youtube/youtube.ts. It exists for the one re-cut nobody clicked — the thumbnail re-render's
- * (src/dashboard/server.ts) — which would otherwise hand an operator who deliberately cut moment #2 a
- * different 22 seconds as a side effect of retyping a headline. A restarted server has
- * forgotten, and falls back to the top moment, which is what a click on the panel does anyway.
- */
-export const lastShortPick = (matchId: number): number | null => jobs.get(matchId)?.pick ?? null;
-
 const shortPath = (dir: string, matchId: number) => path.join(dir, `short-${matchId}.mp4`);
-
-/** The first line of a written file, or null when it is missing — a file nothing wrote yet. */
-const firstLine = (file: string): Promise<string | null> =>
-  readFile(file, "utf8").then(
-    (text) => text.split("\n")[0]!.trim() || null,
-    () => null,
-  );
-
-/**
- * Whether the Short on disk still burns in a line the thumbnail has moved on from.
- *
- * The same rule the Short panel paints its warning with (public/app.js): a Short's title is its
- * hook plus the two tags, so a title that does not open with the hook was cut for a different
- * one. Compared against what a re-cut would *resolve*, not against what was typed: an edited
- * title's hook beats the manifest's (`resolveShortHookFor`), so with a title on disk a new
- * headline would leave the burned-in line exactly where it is — and a render started for that
- * spends two minutes reproducing the same file under a banner that then stays up.
- *
- * An empty result is not a disagreement — a re-cut would resolve a hook from the suggestions
- * again and land on the line already burned in. A render in flight is not one either: it is
- * cutting from the manifest that was just written.
- */
-export async function shortHookStale(dir: string, matchId: number, hookText: string): Promise<boolean> {
-  if (shortRunning(matchId) || !existsSync(shortPath(dir, matchId))) return false;
-  const editedTitle = await readFile(path.join(dir, `match-${matchId}.title.edited.txt`), "utf8").catch(
-    () => null,
-  );
-  // The same resolution the render will run, with the typed headline standing in for the
-  // suggestions it has not fetched: the operator's title hook first, the new headline second.
-  const hook = resolveShortHook(editedTitle, [hookText], "");
-  if (hook === "") return false;
-  const title = await firstLine(path.join(dir, `short-${matchId}.title.txt`));
-  return !(title ?? "").startsWith(hook);
-}
 
 function broadcast(job: ShortJob, payload: unknown): void {
   const frame = `data: ${JSON.stringify(payload)}\n\n`;
   for (const res of job.subscribers) res.write(frame);
 }
 
+/** The operator's override of the pick's window: `--at` (ms of the game's match clock) and `--seconds`. */
+export interface ShortOverride {
+  atMs?: number;
+  seconds?: number;
+}
+
 /**
  * Spawns the render. Injectable so the route tests can exercise dispatch and input handling
- * without starting seven real renders — which is exactly what the first version of that test
- * did, and it takes minutes per call.
+ * without starting real renders.
  */
-export type ShortRunner = (matchId: number, pick: number, atMs?: number) => ChildProcess;
+export type ShortRunner = (matchId: number, override?: ShortOverride) => ChildProcess;
 
-/** The one way a Short is rendered: exported so the nightly job chains this and not a second spawn. */
-const spawnShortCli: ShortRunner = (matchId, pick, atMs) =>
-  // The CLI is the one code path that renders a Short, so the dashboard drives it rather than
-  // duplicating the moment-picking and ffmpeg assembly. Same reason exportRoutes shells out to
-  // `npm run export:fast` instead of reimplementing the encode.
+/**
+ * The one way a Short is rendered: `npm run short`, which refuses without the saved hook — the
+ * same gate whichever button, chain or tick asked.
+ */
+const spawnShortCli: ShortRunner = (matchId, override = {}) =>
   spawn(
     "npm",
     [
@@ -112,37 +64,25 @@ const spawnShortCli: ShortRunner = (matchId, pick, atMs) =>
       "short",
       "--",
       String(matchId),
-      // `--at` names the window; `--pick` names a row. The window is what survives the ranking
-      // changing under it, so it wins when the caller has one.
-      ...(atMs === undefined ? [`--pick=${pick}`] : [`--at=${Math.round(atMs)}`]),
+      ...(override.atMs === undefined ? [] : [`--at=${Math.round(override.atMs)}`]),
+      ...(override.seconds === undefined ? [] : [`--seconds=${override.seconds}`]),
     ],
     { stdio: ["ignore", "pipe", "pipe"], cwd: process.cwd() },
   );
 
 /**
- * The runner the nightly chains: the same spawn, registered in this file's job table, so the
- * delete guard refuses and the progress stream answers while the chained Short is writing —
- * exactly as they do for a Short the button started. Bypassing the table left a two-minute
- * window in which DELETE /api/match could remove the directory under the running CLI.
+ * The runner the chain uses: the same spawn, registered in this file's job table, so the delete
+ * guard refuses and the progress stream answers while the chained Short is writing.
  */
-export const spawnShortJob: ShortRunner = (matchId, pick, atMs) =>
-  startShort(matchId, pick, spawnShortCli, atMs).proc;
+export const spawnShortJob = (matchId: number, override?: ShortOverride): ChildProcess =>
+  startShort(matchId, spawnShortCli, override).proc;
 
-function startShort(matchId: number, pick: number, run: ShortRunner, atMs?: number): ShortJob {
+function startShort(matchId: number, run: ShortRunner, override?: ShortOverride): ShortJob {
   const existing = jobs.get(matchId);
   if (existing && !existing.done) return existing;
 
-  const proc = run(matchId, pick, atMs);
-
-  const job: ShortJob = {
-    matchId,
-    pick,
-    lines: [],
-    done: false,
-    error: null,
-    subscribers: new Set(),
-    proc,
-  };
+  const proc = run(matchId, override);
+  const job: ShortJob = { matchId, lines: [], done: false, error: null, subscribers: new Set(), proc };
   jobs.set(matchId, job);
 
   const push = (chunk: Buffer) => {
@@ -170,15 +110,22 @@ function startShort(matchId: number, pick: number, run: ShortRunner, atMs?: numb
   return job;
 }
 
+export interface ShortsRouteOptions {
+  run?: ShortRunner;
+  /** The chain's seams, for the tests: a fake render and a fake uploader. */
+  chain?: Partial<ChainDeps>;
+}
+
 export async function handleShortsRoute(
   req: IncomingMessage,
   res: ServerResponse,
   segments: string[],
   ctx: ExportRouteContext,
-  run: ShortRunner = spawnShortCli,
+  opts: ShortsRouteOptions = {},
 ): Promise<boolean> {
   const [, resource, action, idRaw] = segments;
   if (resource !== "shorts") return false;
+  const run = opts.run ?? spawnShortCli;
 
   const matchId = ctx.parseId(idRaw);
   if (matchId === null) {
@@ -187,73 +134,49 @@ export async function handleShortsRoute(
   }
   const dir = ctx.matchDir(matchId);
 
-  // Which moments are on offer, and whether one has already been rendered.
-  if (action === "moments" && req.method === "GET") {
-    try {
-      const match = await getMatch(matchId);
-      const [left, right] = match.players;
-      if (!left || !right) {
-        ctx.json(res, 404, { error: "match does not have two players" });
-        return true;
-      }
-      // The same options the CLI cuts with — chat included — or the panel would offer one list
-      // and "Cut this" would render another.
-      const momentOpts = {
-        leftUuid: left.uuid,
-        rightUuid: right.uuid,
-        runMs: runMsOf(match),
-        windowSec: SHORT_WINDOW_SEC,
-        chatAtSec: readChatTimes(dir),
-      };
-      // The reasoner's choice goes first, as it does in the CLI, and its answer is saved in the
-      // match directory, so the row "Cut this" sends by index is the window the CLI cuts.
-      // Not configured: the heuristic order, unchanged.
-      const { moments, reasoner } = reasonerConfigured()
-        ? await reasonShortMoments(match, distinctShortMoments(match, momentOpts, 5), momentOpts, dir)
-        : { moments: distinctShortMoments(match, momentOpts, 5), reasoner: { applied: false } };
-
-      // What a render would actually burn in (see resolveShortHook), which is usually not the
-      // per-moment line. Resolved for the top moment, the panel's default — a lower pick differs
-      // only in the fallback.
-      const top = moments[0];
-      let hook: string | null = null;
-      if (top) {
-        const [userLeft, userRight] = await Promise.all([getUser(left.uuid), getUser(right.uuid)]);
-        hook = await resolveShortHookFor({ matchId, match, moment: top, userLeft, userRight, matchDir: dir });
-      }
-
-      const file = shortPath(dir, matchId);
-      ctx.json(res, 200, {
-        moments: moments.map((m, index) => ({
-          index,
-          startMs: m.startMs,
-          endMs: m.endMs,
-          score: Number(m.score.toFixed(2)),
-          reason: m.reason,
-          hook: buildShortHook(m, left.nickname, right.nickname),
-        })),
-        rendered: existsSync(file) ? path.basename(file) : null,
-        // Lets the panel seek the final video to a window: match start sits at ANCHOR_SEC in
-        // the export, so final-video time = finalOffsetSec + startMs / 1000. Sent rather than
-        // hardcoded client-side so the two cannot drift apart. Assumes an untrimmed head: a
-        // hand-cut Kdenlive export counts as the final video too, and a trimmed one seeks off.
-        finalOffsetSec: ANCHOR_SEC,
-        finalVideo: (await locateExport(matchId, dir)) !== null,
-        reasoner,
-        hook,
-        // The title the last render wrote, for the manual upload. Absent until something has
-        // been rendered, which is exactly when there is nothing to paste anywhere.
-        title: await firstLine(path.join(dir, `short-${matchId}.title.txt`)),
-      });
-    } catch (err) {
-      ctx.json(res, 502, { error: describeError(err) });
-    }
+  // Where the match stands on its way to the channel. Opening an exported match with no pick
+  // queues one, so the backlog fills in as it is looked at.
+  if (action === "plan" && req.method === "GET") {
+    ctx.json(res, 200, await shortPlan(matchId, { queue: true }));
     return true;
   }
 
-  // Playback, byte-ranged like the export preview. A Short is ~10 MB rather than ~800 MB, but
-  // it still needs ranges: without them a <video> cannot seek, and scrubbing a 30-second clip is
-  // the whole point of previewing one.
+  // The operator's one press: both hooks (or no Short), then everything runs by itself.
+  if (action === "hooks" && req.method === "PUT") {
+    let body: unknown;
+    try {
+      body = JSON.parse((await ctx.readBody(req)) || "{}");
+    } catch {
+      ctx.json(res, 400, { error: "expected a JSON body { titleHook, shortHook, noShort? }" });
+      return true;
+    }
+    const refused = await saveHooks(matchId, body, opts.chain);
+    if (refused) ctx.json(res, refused.status, { error: refused.error });
+    else ctx.json(res, 202, await shortPlan(matchId));
+    return true;
+  }
+
+  // "Pick again": the model watches the match afresh. Its pick is the cut; with the hooks saved,
+  // the chain re-cuts behind the same hook once it lands.
+  if (action === "pick" && req.method === "POST") {
+    if (!isExported(matchId)) {
+      ctx.json(res, 409, { error: "not exported yet — the model watches the finished video" });
+      return true;
+    }
+    if (existsSync(path.join(dir, "youtube-short.json"))) {
+      ctx.json(res, 409, {
+        error: "the Short is already on the channel — a new pick would need a re-upload",
+      });
+      return true;
+    }
+    void queuePick(matchId, true).then(() => {
+      if (readStatus(matchId).hooksSavedAt) void startChain(matchId, opts.chain);
+    });
+    ctx.json(res, 202, await shortPlan(matchId));
+    return true;
+  }
+
+  // Playback, byte-ranged like the export preview: without ranges a <video> cannot seek.
   if (action === "preview" && (req.method === "GET" || req.method === "HEAD")) {
     const file = shortPath(dir, matchId);
     if (!existsSync(file)) {
@@ -264,33 +187,34 @@ export async function handleShortsRoute(
     return true;
   }
 
+  // A render by hand: the pick's window, or the operator's (`at` ms of the game's match clock,
+  // `seconds`). Refused here without the saved hook, as the CLI itself refuses — and, with the
+  // hooks saved, the chain carries on to the uploads once it lands.
   if (action === "render" && req.method === "POST") {
-    const body = await ctx.readBody(req);
-    let pick = 0;
-    try {
-      const parsed = JSON.parse(body || "{}") as { pick?: unknown };
-      // A path is built from this downstream, so it is a trust boundary: coerce to a small
-      // non-negative integer rather than passing whatever arrived into a shell argument.
-      if (typeof parsed.pick === "number" && Number.isInteger(parsed.pick)) {
-        pick = Math.max(0, Math.min(4, parsed.pick));
-      }
-    } catch {
-      // An unparseable body just means "render the best one".
+    if ((await readShortHook(dir, matchId)) === null) {
+      ctx.json(res, 409, { error: `${WAITING_FOR_HOOK} — save the hooks first` });
+      return true;
     }
-    // `at` is the operator having watched the window in the final video and said "start here".
-    // Milliseconds from match start, the same origin the moment list uses; the CLI clamps it
-    // inside the run, so the only check here is that it is a sane non-negative integer.
-    let atMs: number | undefined;
-    try {
-      const parsed = JSON.parse(body || "{}") as { at?: unknown };
-      if (typeof parsed.at === "number" && Number.isFinite(parsed.at) && parsed.at >= 0) {
-        atMs = Math.round(parsed.at);
-      }
-    } catch {
-      // Same as an unparseable pick: fall back to the ranking.
+    if (existsSync(path.join(dir, "youtube-short.json"))) {
+      ctx.json(res, 409, { error: "the Short is already on the channel — a new cut would need a re-upload" });
+      return true;
     }
-    startShort(matchId, pick, run, atMs);
-    ctx.json(res, 202, { started: true, ...(atMs === undefined ? { pick } : { at: atMs }) });
+    const override: ShortOverride = {};
+    try {
+      const parsed = JSON.parse((await ctx.readBody(req)) || "{}") as { at?: unknown; seconds?: unknown };
+      // These reach a spawned process's argv: plain finite numbers or nothing.
+      if (typeof parsed.at === "number" && Number.isFinite(parsed.at) && parsed.at >= 0)
+        override.atMs = Math.round(parsed.at);
+      if (typeof parsed.seconds === "number" && Number.isFinite(parsed.seconds) && parsed.seconds > 0)
+        override.seconds = Math.round(parsed.seconds);
+    } catch {
+      // An unparseable body is "the pick's window".
+    }
+    const job = startShort(matchId, run, override);
+    job.proc.on("close", () => {
+      if (readStatus(matchId).hooksSavedAt) void startChain(matchId, opts.chain);
+    });
+    ctx.json(res, 202, { started: true, ...override });
     return true;
   }
 

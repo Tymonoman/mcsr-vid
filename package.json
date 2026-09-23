@@ -38,7 +38,7 @@
     "youtube-auth": "tsx src/youtube/youtubeAuth.ts",
     "bench": "npm run build-overlay-css && tsx src/cli/benchRender.ts",
     "short": "npm run build-overlay-css && tsx src/shorts/generateShort.ts",
-    "//series": "A playoff series as one video: every game rendered, joined into game 1's series-<id>.mp4, the Short from the best game.",
+    "//series": "A playoff series as one video: every game rendered, joined into game 1's series-<id>.mp4.",
     "series": "npm run build-overlay-css && tsx src/playoffs/seriesCli.ts",
     "export:fast": "tsx src/pipeline/exportFastCli.ts",
     "chat": "tsx src/cli/chatCli.ts",
@@ -46,8 +46,6 @@
     "sync-status": "tsx src/pipeline/syncStatusCli.ts",
     "//retention": "Audience retention curve per video from the Analytics API — where the viewers leave.",
     "retention": "tsx src/cli/retentionCli.ts",
-    "//reason": "Ask the configured reasoner (reasonerCommand) which moment the Short should cut; prints the prompt and the answer.",
-    "reason": "tsx src/shorts/reasonCli.ts",
     "//pick": "Have the model (reasonerCommand) watch the finished video and pick the Short's window; prints the prompt size, the raw answer and why it was rejected. <matchId|all> [--force]",
     "pick": "tsx src/shorts/pickCli.ts"
   },

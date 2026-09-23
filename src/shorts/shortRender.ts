@@ -5,10 +5,9 @@ import { fileURLToPath } from "node:url";
 import { atomicOutput } from "../pipeline/atomicOutput.js";
 import { bundleOnce } from "../pipeline/remotionBundle.js";
 import {
-  SHORT_BRAND_BAR_HEIGHT,
-  SHORT_BRAND_BAR_Y,
   SHORT_CLOCK_FONT_PX,
   SHORT_CLOCK_MARGIN_PX,
+  SHORT_CLOCK_Y,
   SHORT_END_CARD_SEC,
   SHORT_HEIGHT,
   SHORT_NAMEPLATE_HEIGHT,
@@ -66,7 +65,7 @@ interface ShortRenderCommon {
    * the hook, and the last runs until the closing card. Absent or empty: the hook fades out.
    */
   captions?: ShortCaption[];
-  /** A running race clock (m:ss.cs, the match clock) in the bottom bar. Default true; false keeps the static "at m:ss". */
+  /** A running race clock (m:ss.cs, the match clock) in the top nameplate's right side. Default true; false keeps the bar's static "at m:ss". */
   clock?: boolean;
   /**
    * The closing card's text, e.g. "Who took it? Full match on the channel", on screen for the
@@ -497,11 +496,11 @@ async function compositeShort(args: ShortRenderArgs, panes: Pane[], stills: Shor
   then((v) => `${v}[${board}:v]overlay=0:0`);
 
   if (args.clock ?? true) {
-    const centreY = SHORT_BRAND_BAR_Y + SHORT_BRAND_BAR_HEIGHT / 2;
+    // In the top nameplate's right side (SHORT_CLOCK_Y), clear of YouTube's own bottom rows.
     then(
       (v) =>
         `${v}drawtext=fontfile='${CLOCK_FONT}':fontsize=${SHORT_CLOCK_FONT_PX}:fontcolor=${CLOCK_COLOUR}` +
-        `:x=${SHORT_WIDTH - SHORT_CLOCK_MARGIN_PX}-tw:y=${centreY}-th/2:text='${clockText(args.startMs)}'`,
+        `:x=${SHORT_WIDTH - SHORT_CLOCK_MARGIN_PX}-tw:y=${SHORT_CLOCK_Y}-th/2:text='${clockText(args.startMs)}'`,
     );
   }
 
