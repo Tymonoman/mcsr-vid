@@ -4,86 +4,10 @@ import "./overlay.css";
 import type { ThumbnailProps, ThumbnailPlayer } from "./types.js";
 import { PixelBadge } from "./PixelBadge.js";
 
-/**
- * The widest a hook line may render before it reads as touching the frame. The band's own
- * padding is wider than this on purpose: a line at the limit may bleed into it.
- */
-const HOOK_LINE_WIDTH = 1248;
-/**
- * Monocraft is monospace. Measured off two renders (a 6-glyph line at 150px and a 10-glyph one
- * at 120px, solving out the ink bearings and the outline): 0.662em advance plus the 0.02em
- * letter-spacing .thumb-hook sets.
- */
-const HOOK_ADVANCE_EM = 0.682;
-/**
- * Font-size steps, largest first. 96 is the ceiling: the 150px band it replaced ate a third of
- * the frame and the operator asked for the text back off the avatars. 84 still reads at 246px
- * wide — the ink is the outline more than the glyph at that size — and below it the hook stops.
- */
-const HOOK_FLOOR = 84;
-const HOOK_SIZES = [96, HOOK_FLOOR];
-/** Two lines at 96 would be the old band again, so only a single line gets the larger step. */
-const HOOK_TWO_LINE_MAX = HOOK_FLOOR;
-/** Padding above and below the hook inside the band. */
-const HOOK_PAD = 12;
+/** Padding above and below the wordmark inside the trophy band. */
+const BAND_PAD = 12;
 /** How far the avatars are allowed to run up behind the band's lower edge. */
-const HOOK_OVERLAP = 40;
-
-const charBudget = (fontSize: number): number => Math.floor(HOOK_LINE_WIDTH / (fontSize * HOOK_ADVANCE_EM));
-
-/** Greedy wrap, one word per line minimum. Only reached by hooks too long for two lines at the floor. */
-function wrapWords(words: string[], maxChars: number): string[] {
-  const lines: string[] = [];
-  for (const word of words) {
-    const last = lines[lines.length - 1];
-    if (last !== undefined && last.length + 1 + word.length <= maxChars) {
-      lines[lines.length - 1] = `${last} ${word}`;
-    } else {
-      lines.push(word);
-    }
-  }
-  return lines;
-}
-
-/** The two-line split with the smallest longest line: a greedy wrap orphans the last word. */
-function balancedPair(words: string[]): string[] {
-  let best = { longest: Infinity, lines: [words.join(" ")] };
-  for (let i = 1; i < words.length; i++) {
-    const lines = [words.slice(0, i).join(" "), words.slice(i).join(" ")];
-    const longest = Math.max(lines[0]!.length, lines[1]!.length);
-    if (longest < best.longest) best = { longest, lines };
-  }
-  return best.lines;
-}
-
-/**
- * Lines and font size for one hook: the largest step at which it fits on one line, else on two.
- *
- * A step function in JS rather than a CSS `clamp` — see `layoutShortHook` in
- * shortHookLayout.ts for why: two renders of the same hook must give the same image.
- *
- * ponytail: a hook too long for two lines even at the 84px floor wraps to three rather than
- * shrinking past legibility — the title budget allows ~47 characters and 84px fits 21 a line.
- * If those ever need to stay at two lines, condense the text, not the type.
- */
-function layoutHook(text: string): { lines: string[]; fontSize: number } {
-  const words = text.trim().split(/\s+/);
-  const single = words.join(" ");
-
-  for (const fontSize of HOOK_SIZES) {
-    if (single.length <= charBudget(fontSize)) return { lines: [single], fontSize };
-    if (fontSize > HOOK_TWO_LINE_MAX || words.length < 2) continue;
-    const pair = balancedPair(words);
-    if (Math.max(...pair.map((l) => l.length)) <= charBudget(fontSize)) return { lines: pair, fontSize };
-  }
-  return { lines: wrapWords(words, charBudget(HOOK_FLOOR)), fontSize: HOOK_FLOOR };
-}
-
-/** Band height and the body offset that keeps the avatars mostly clear of it. */
-function hookLayout(lines: string[], fontSize: number) {
-  const bandHeight = HOOK_PAD * 2 + lines.length * Math.round(fontSize * 1.04);
-  return { bandHeight, bodyTop: bandHeight - HOOK_OVERLAP };
-}
+const BAND_OVERLAP = 40;
 
 function PlayerRender({ player, side }: { player: ThumbnailPlayer; side: "left" | "right" }) {
   return (
@@ -115,33 +39,24 @@ function PlayerTag({
   );
 }
 
-/** The trophy band: PLAYOFFS as the wordmark, the round under it; the same band height as a two-line hook. */
-const TROPHY_BAND_HEIGHT = HOOK_PAD * 2 + Math.round(96 * 1.04) + 44;
+/** The trophy band: PLAYOFFS as the wordmark, the round under it. */
+const TROPHY_BAND_HEIGHT = BAND_PAD * 2 + Math.round(96 * 1.04) + 44;
 
 export const Thumbnail: FC<ThumbnailProps> = (props) => {
-  const hook = props.hookText?.trim() ? layoutHook(props.hookText) : null;
   const playoff = props.playoff;
-  const trophy = playoff?.style === "trophy" && !hook;
-  const layout = hook
-    ? hookLayout(hook.lines, hook.fontSize)
-    : trophy
-      ? { bandHeight: TROPHY_BAND_HEIGHT, bodyTop: TROPHY_BAND_HEIGHT - HOOK_OVERLAP }
-      : null;
+  const trophy = playoff?.style === "trophy";
+  const layout = trophy
+    ? { bandHeight: TROPHY_BAND_HEIGHT, bodyTop: TROPHY_BAND_HEIGHT - BAND_OVERLAP }
+    : null;
   const roundLabel = playoff ? `Season ${playoff.season} Playoffs · ${playoff.round}` : null;
 
   return (
     <AbsoluteFill className={`thumb${playoff ? ` playoff ${playoff.style}` : ""}`}>
       <div
-        className={`thumb-header${hook ? " has-hook" : ""}${trophy ? " trophy" : ""}`}
+        className={`thumb-header${trophy ? " trophy" : ""}`}
         style={layout ? { height: layout.bandHeight } : undefined}
       >
-        {hook ? (
-          <div className="thumb-hook" style={{ fontSize: hook.fontSize }}>
-            {hook.lines.map((line) => (
-              <div key={line}>{line}</div>
-            ))}
-          </div>
-        ) : trophy ? (
+        {trophy ? (
           <div className="thumb-trophy">
             <div className="thumb-hook wordmark" style={{ fontSize: 96 }}>
               Playoffs

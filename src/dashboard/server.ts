@@ -22,7 +22,7 @@ import { describeError } from "../errorText.js";
 import { codeVersions } from "./repoHead.js";
 import { computeMetrics } from "../pipeline/matchScore.js";
 import { listMatchStatuses, matchStatusFor } from "./matchStatus.js";
-import { getMatch, getUser, matchPageUrl, parseMatchId } from "../api/mcsrApi.js";
+import { getMatch, matchPageUrl, parseMatchId } from "../api/mcsrApi.js";
 import {
   afterSettled,
   msUntilNextRun,
@@ -42,7 +42,7 @@ import { claimedPublishTimes, nextPublishSlot, publishHourFor } from "../youtube
 import { playoffBoard } from "../playoffs/playoffs.js";
 import { renderSeries, seriesState, type SeriesRunners } from "../playoffs/series.js";
 import { refreshRivalPostsIfStale, rivalPostsSnapshot, rivalRecentPostFor } from "./rivalPosts.js";
-import { chooseVariant, readManifest, rerenderThumbnailVariants } from "../thumbnails/thumbnailVariants.js";
+import { chooseVariant, readManifest } from "../thumbnails/thumbnailVariants.js";
 import { metaPaths } from "../pipeline/title.js";
 import { allArchiveStates, capacity, isArchived } from "./archive.js";
 import { exportRunning, handleExportRoute, startFastExport } from "./exportRoutes.js";
@@ -87,11 +87,6 @@ const STATIC_ASSETS: Record<string, { file: string; type: string }> = {
   "/favicon.png": { file: "favicon.png", type: "image/png" },
 };
 
-/** Thumbnail re-renders in flight, so a second POST cannot delete the files the first is writing. */
-const thumbnailRerenders = new Set<number>();
-/** The last re-render failure per match, for the panel: a background render that dies would
-    otherwise be a console line nobody sees and a button that quietly comes back. */
-const thumbnailRerenderErrors = new Map<number, string>();
 
 /** Match ids come from the URL, so they gate a path join and must be digits only. */
 function parseId(raw: string | undefined): number | null {
@@ -583,13 +578,11 @@ const server = createServer(async (req, res) => {
               ? "a Short render"
               : pickActivity(matchId) === "running"
                 ? "the model's pick (it writes the proxy there)"
-                : thumbnailRerenders.has(matchId)
-                  ? "a thumbnail re-render"
-                  : uploadRunning(matchId)
-                    ? "an upload"
-                    : allArchiveStates().some((a) => a.matchId === matchId && a.running)
-                      ? "an archive copy"
-                      : null;
+                : uploadRunning(matchId)
+                  ? "an upload"
+                  : allArchiveStates().some((a) => a.matchId === matchId && a.running)
+                    ? "an archive copy"
+                    : null;
       if (busy) {
         json(res, 409, { error: `Match ${matchId} has ${busy} in flight — stop it first` });
         return;
@@ -621,13 +614,7 @@ const server = createServer(async (req, res) => {
     }
 
     if (resource === "thumbnails" && req.method === "GET") {
-      json(res, 200, {
-        ...((await readManifest(matchDir(matchId))) ?? { chosen: null, hookText: null, variants: [] }),
-        rerender: {
-          running: thumbnailRerenders.has(matchId),
-          error: thumbnailRerenderErrors.get(matchId) ?? null,
-        },
-      });
+      json(res, 200, (await readManifest(matchDir(matchId))) ?? { chosen: null, hookText: null, variants: [] });
       return;
     }
 
@@ -643,52 +630,6 @@ const server = createServer(async (req, res) => {
       } catch (err) {
         json(res, 400, { error: describeError(err) });
       }
-      return;
-    }
-
-    // Re-render every variant behind a headline the operator has actually chosen. The pipeline
-    // renders thumbnails long before anyone has watched the match, so the hook it used is only
-    // ever its first suggestion, and this is how it gets replaced. 202 plus the existing GET is
-    // the whole protocol: a re-render is a handful of stills, and the manifest's hookText is the
-    // answer the poll is waiting for.
-    if (resource === "thumbnails" && segments[3] === "rerender" && req.method === "POST") {
-      const body = JSON.parse(await readBody(req)) as { hookText?: unknown };
-      const hookText = body.hookText;
-      if (typeof hookText !== "string") {
-        json(res, 400, { error: 'expected { hookText: "<headline>" }, empty string for none' });
-        return;
-      }
-      if (thumbnailRerenders.has(matchId) || getJob(matchId)?.done === false) {
-        json(res, 409, { error: `Match ${matchId} is already rendering thumbnails` });
-        return;
-      }
-      thumbnailRerenders.add(matchId);
-      thumbnailRerenderErrors.delete(matchId);
-      // Not awaited: the render outlives the request, which is what the 202 is saying.
-      void (async () => {
-        try {
-          const match = await getMatch(matchId);
-          const [left, right] = match.players;
-          if (!left || !right) throw new Error(`match ${matchId} does not have two players`);
-          const [userLeft, userRight] = await Promise.all([getUser(left.uuid), getUser(right.uuid)]);
-          await rerenderThumbnailVariants({
-            match,
-            userLeft,
-            userRight,
-            outDir: matchDir(matchId),
-            poses: config.thumbnailVariants,
-            hookText,
-          });
-        } catch (err) {
-          thumbnailRerenderErrors.set(matchId, describeError(err));
-          console.error(`thumbnail re-render failed for ${matchId}: ${describeError(err)}`);
-        } finally {
-          thumbnailRerenders.delete(matchId);
-        }
-      })();
-      // The Short no longer follows the thumbnail's headline: its hook is the operator's own
-      // (short-<id>.hook.txt), so nothing here re-cuts it.
-      json(res, 202, { matchId, hookText });
       return;
     }
 
