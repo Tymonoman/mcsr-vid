@@ -1,7 +1,7 @@
 # TASKS — resume point, 23 Sept 2026 21:40 UTC
 
 Work stopped at the operator's usage limit mid-way through the overnight goal. Every branch below
-carries its own `TASKS.md` at its root with DONE / TODO. Main is `07d3931` + this file; the lab
+carries its own `TASKS.md` at its root with DONE / TODO. **All four WIP branches are pushed to origin.** Main is `07d3931` + this file; the lab
 dashboard runs `ad30046` (restart pending for everything after it).
 
 ## The goal (the operator, 23 Sept 22:12 Polish, verbatim)
@@ -36,7 +36,7 @@ dashboard for easier debugging"; layout B (NOW tab); Gemini 3.8 Flash; /watch in
 | `worktree-wf_d5f53274-045-2` | `.claude/worktrees/wf_d5f53274-045-2` | `c6413e5` wip | server status lines, `short-<id>.log.jsonl`, edge-case errors (tsc ok, tests not run) |
 | `worktree-wf_f1d590fa-8eb-1` | `.claude/worktrees/wf_f1d590fa-8eb-1` | `d7c210e` wip | the NOW tab UI + status lines + declutter (unverified in a browser) |
 | `worktree-wf_f1d590fa-8eb-2` | `.claude/worktrees/wf_f1d590fa-8eb-2` | `9091b5a` wip | cleanup / dead code (tsc ok, tests not run) |
-| `worktree-agent-ad306227e8a5ce950` | `.claude/worktrees/agent-ad306227e8a5ce950` | `dd66022` wip | first-minute "COMING UP" teaser (code in, tests/render/config:example pending) |
+| `worktree-agent-ad306227e8a5ce950` | `.claude/worktrees/agent-ad306227e8a5ce950` | `dd66022` wip | first-minute "COMING UP" teaser (code in; **unit suite passes** as of 21:50 UTC; teaser-specific tests, render check, `npm run config:example` still pending) |
 | — | `~/.claude/projects/-app/research/rewind-eval/` | — | rewind eval kit (proxies + bumps + eval.mts; see its TASKS.md/README) |
 
 Not started: GitHub CI + README refresh; the audience/target research; the audit
