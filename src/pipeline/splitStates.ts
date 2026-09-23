@@ -23,7 +23,14 @@ export interface SplitSegment {
 
 type StateProps = Pick<
   OverlayProps,
-  "splits" | "timerStartFrame" | "runResultMs" | "durationInFrames" | "fps" | "postRollCta" | "midRollCta"
+  | "splits"
+  | "timerStartFrame"
+  | "runResultMs"
+  | "durationInFrames"
+  | "fps"
+  | "postRollCta"
+  | "midRollCta"
+  | "teaser"
 >;
 
 /** Seconds after the finish before the meta column becomes the subscribe card. */
@@ -39,17 +46,35 @@ export function ctaFrameOf(props: StateProps): number | null {
   return Math.ceil(runEndFrameOf(props) + CTA_DELAY_SEC * props.fps);
 }
 
+/** Frames [start, end) of a line shown `atSec` after match start for `forSec`, if it ends before the run does. */
+function windowOf(props: StateProps, atSec: number, forSec: number): [number, number] | null {
+  if (forSec <= 0) return null;
+  const start = Math.ceil(props.timerStartFrame + atSec * props.fps);
+  const end = Math.ceil(start + forSec * props.fps);
+  return end <= runEndFrameOf(props) ? [start, end] : null;
+}
+
 /**
  * The frames [start, end) of the mid-race subscribe line, or null when there is none or it
  * would not fit before the run ends. Read by the overlay and by the state enumeration, so the
  * stills that carry it start and stop on exactly these frames.
  */
 export function midRollFramesOf(props: StateProps): [number, number] | null {
-  const cta = props.midRollCta;
-  if (!cta || cta.forSec <= 0) return null;
-  const start = Math.ceil(props.timerStartFrame + cta.atSec * props.fps);
-  const end = Math.ceil(start + cta.forSec * props.fps);
-  return end <= runEndFrameOf(props) ? [start, end] : null;
+  return props.midRollCta ? windowOf(props, props.midRollCta.atSec, props.midRollCta.forSec) : null;
+}
+
+/**
+ * The frames [start, end) of the first-minute "COMING UP" line (src/pipeline/teaser.ts), or null
+ * when there is none: nothing qualified, it is switched off, it would still be up when the moment
+ * it promises arrives, or it would share a frame with the mid-race subscribe line — that one
+ * wins, as the older setting and the one the operator measured.
+ */
+export function teaserFramesOf(props: StateProps): [number, number] | null {
+  const t = props.teaser;
+  const w = t ? windowOf(props, t.atSec, t.forSec) : null;
+  if (!t || !w || w[1] > props.timerStartFrame + (t.momentMs / 1000) * props.fps) return null;
+  const mid = midRollFramesOf(props);
+  return mid && w[0] < mid[1] && mid[0] < w[1] ? null : w;
 }
 
 /** Mirrors Overlay.tsx's useTimer: a run with no recorded result never resolves to DNF. */
@@ -75,10 +100,9 @@ function fingerprint(props: StateProps, frame: number): string {
     })
     .join(",");
   // The meta column is part of the same still, so the card's appearance is a state change too —
-  // and so is the mid-race line's, both edges.
-  const mid = midRollFramesOf(props);
-  const midOn = mid !== null && frame >= mid[0] && frame < mid[1];
-  return `${rows};cta:${ctaFrame !== null && frame >= ctaFrame};mid:${midOn}`;
+  // and so are the mid-race line's and the teaser's, both edges.
+  const on = (w: [number, number] | null) => w !== null && frame >= w[0] && frame < w[1];
+  return `${rows};cta:${ctaFrame !== null && frame >= ctaFrame};mid:${on(midRollFramesOf(props))};teaser:${on(teaserFramesOf(props))}`;
 }
 
 /**
@@ -104,10 +128,8 @@ function candidateFrames(props: StateProps): number[] {
   if (hasMissingSide) frames.add(Math.ceil(runEndFrame));
   const ctaFrame = ctaFrameOf(props);
   if (ctaFrame !== null) frames.add(ctaFrame);
-  const mid = midRollFramesOf(props);
-  if (mid) {
-    frames.add(mid[0]);
-    frames.add(mid[1]);
+  for (const w of [midRollFramesOf(props), teaserFramesOf(props)]) {
+    if (w) w.forEach((f) => frames.add(f));
   }
   return [...frames].filter((f) => f >= 0 && f < props.durationInFrames).sort((a, b) => a - b);
 }

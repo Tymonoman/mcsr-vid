@@ -204,6 +204,15 @@ export interface Config {
   midRollCtaAtSec: number | null;
   midRollCtaSec: number;
   /**
+   * A "COMING UP · 5:22 / THE LEAD CHANGES AT THE FORTRESS" card in the meta column this many
+   * seconds after match start, for `teaserSec` seconds; null shows none. Every long-form loses
+   * 16–22 points of retention between 3% and 10% of the video (22 Sept 2026); at 10 s the card
+   * lands at 3% of a ten-minute match's video, 13 s after the intro card clears. The moment is
+   * chosen from the timeline (src/pipeline/teaser.ts); a match with none shows nothing.
+   */
+  teaserAtSec: number | null;
+  teaserSec: number;
+  /**
    * Suggestion slots per bucket. Close races and entertaining messes are ranked
    * separately so a run of very tight matches can't crowd the funny ones off the list.
    */
@@ -340,6 +349,8 @@ export const DEFAULTS: Config = {
   postRollCta: true,
   midRollCtaAtSec: 90,
   midRollCtaSec: 4,
+  teaserAtSec: 10,
+  teaserSec: 5,
   nightlyRenderExport: true,
   nightlyMaxRenders: 1,
   nightlyNotifyUrl: "",
@@ -408,8 +419,8 @@ export function validateOverrides(raw: Record<string, unknown>): void {
       }
       continue;
     }
-    if (key === "midRollCtaAtSec" || key === "midRollCtaSec") {
-      const nullable = key === "midRollCtaAtSec";
+    if (key === "midRollCtaAtSec" || key === "midRollCtaSec" || key === "teaserAtSec" || key === "teaserSec") {
+      const nullable = key === "midRollCtaAtSec" || key === "teaserAtSec";
       if (!((nullable && value === null) || (typeof value === "number" && value >= 0 && value <= 3600))) {
         throw new Error(
           `${CONFIG_PATH}: "${key}" must be seconds from 0 to 3600${nullable ? ", or null" : ""}.`,
