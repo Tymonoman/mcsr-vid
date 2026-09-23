@@ -271,6 +271,17 @@ body.view-match #detail {
 .card .state {
   color: var(--muted);
   font-size: 12px;
+  /* Two lines at most: a failed row's line is the server's whole error, and the match screen is
+     where it is read in full. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+/* The directories with nothing rendered, folded at the bottom of the list. */
+#list .parked {
+  margin: 12px 12px 0;
 }
 .card .state.ready {
   color: var(--gold);

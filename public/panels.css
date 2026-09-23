@@ -171,6 +171,16 @@
   margin-top: 4px;
   color: var(--quartz);
 }
+.nightly .warn {
+  color: var(--gold);
+}
+/* What the box is doing now, each running step a link to its match. */
+.nightly .activity {
+  margin-bottom: 2px;
+}
+.nightly .activity a {
+  color: var(--gold);
+}
 
 /* --- Suggestions -------------------------------------------------------------------------- */
 /* The three Partner Programme gates, above the A/B tables: what the operator is actually
@@ -711,16 +721,98 @@
 }
 
 /* ===== Now: one column of steps, the export to the channel (paintNow, app.js) ===============
-   A finished step is one line: a mark, the name, what happened. The step that needs the operator
-   or failed is open, its error under its head (.inlinefail via failAt) and its fix in the body.
+   A finished step is one line: a mark, the name, what happened. The step that needs the operator,
+   runs or failed is open: a running one has its clock and bar, a failed one the server's error
+   under its head with the fix under that, and each has its Details fold of log lines.
    The marks carry the state as a glyph and a colour both, since a phone is read at a glance. */
-.nowdetail {
-  font-size: 12px;
-  color: var(--muted);
-  margin: 0 0 6px;
+.nowconn {
+  padding: 6px 0;
+  border: 0;
 }
-.nowdetail.bad {
+.clock {
+  font-variant-numeric: tabular-nums;
+}
+/* A running step's percentage, under its head whether or not the step is open. */
+.stepbar {
+  height: 6px;
+  margin: 0 0 8px calc(1.2em + 10px);
+}
+.stepbar > i {
+  background: var(--gold);
+}
+/* What to do about the failure above it: the fix the server's message implies. */
+.inlinefail .fix {
+  padding: 8px 10px;
+  border-top: 1px solid var(--panel-edge-light);
+  font-size: 12px;
+  color: var(--quartz);
+  overflow-wrap: anywhere;
+}
+/* An earlier attempt the chain has since got past, or a problem an upload lived with: the same
+   box, in the warning colour. */
+.inlinefail.warn {
+  border-color: var(--gold);
+}
+.inlinefail.warn .head {
+  color: var(--gold);
+}
+.longnote {
+  color: var(--gold);
+}
+/* The Details fold: the step's log lines, newest last, a line's detail one tap away. */
+.steplog {
+  margin-top: 10px;
+  font-size: 12px;
+}
+.steplog > summary {
+  cursor: pointer;
+  color: var(--muted);
+  padding: 4px 0;
+}
+.loglines {
+  max-height: 260px;
+  overflow: auto;
+  background: var(--panel-2);
+  border: 1px solid var(--panel-edge-light);
+  padding: 4px 8px;
+}
+.logline {
+  padding: 2px 0;
+  overflow-wrap: anywhere;
+}
+.logline > summary {
+  cursor: pointer;
+}
+.logline .t {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  margin-right: 4px;
+}
+.logline.lv-warn {
+  color: var(--gold);
+}
+.logline.lv-error {
   color: var(--crimson);
+}
+.logline pre {
+  margin: 4px 0 6px;
+  padding: 6px 8px;
+  max-height: 200px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--quartz);
+  background: var(--panel);
+}
+/* A playoff game whose series video is game 1's: where to go instead of a form to fill. */
+.seriesnote {
+  font-size: 13px;
+  padding: 10px 0;
+  display: grid;
+  gap: 6px;
+}
+.seriesnote a {
+  color: var(--warped);
 }
 .step {
   border-bottom: 1px solid var(--panel-edge);
