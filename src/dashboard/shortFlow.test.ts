@@ -420,12 +420,15 @@ try {
   );
   const G = 13_000_007;
   const H = 13_000_008;
+  // Newer than every model pick above, which carry the wall clock (pickOf). A fixed date here
+  // went stale at 03:00 UTC on 24 Sept 2026 and the picker read healthy from then on.
+  const failedAt = new Date(Date.now() + 60_000).toISOString();
   for (const id of [G, H]) {
     exported(id);
     writePick(id, "heuristic");
     writeFileSync(
       path.join(dir(id), `short-${id}.pick-error.json`),
-      JSON.stringify({ at: "2026-09-24T03:00:00Z", message: "Antigravity is not signed in — run: agy" }),
+      JSON.stringify({ at: failedAt, message: "Antigravity is not signed in — run: agy" }),
     );
   }
   // The picker's health reads the newest failure: not signed in, and nothing since.

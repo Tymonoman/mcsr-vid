@@ -1,25 +1,35 @@
-node_modules/
+# No trailing slash: a worktree's node_modules is a symlink to /app/node_modules, which
+# `node_modules/` does not match — `git status` listed it as a new file in every worktree.
+node_modules
 dist/
-.env
-.env.*
-/mcsr-vid.config.json
-/media/
 /out/
+/remotion/overlay.css
+
+# Media: the default mediaDir is ./media; the renders never belong in git wherever they land.
+/media/
 *.mp4
 *.webm
 *.mov
-/remotion/overlay.css
+*.mkv
+
+# Secrets and local config.
+.env
+.env.*
+/mcsr-vid.config.json
+# OAuth tokens: `npm run youtube-auth` writes youtube-token.json (YOUTUBE_TOKEN_FILE may name another).
+*token*.json
+# Google's OAuth client download (client_secret_<id>.json) and the skill's youtube_client_secrets.json.
+*client_secret*.json
+# Written by scripts/preflight-youtube.mjs once a live token proves the OAuth app is published.
+/.youtube-production-confirmed
+
+# Tools and scratch: agy, its HOME and /watch live in .tools/ on the lab.
+.tools/
+/scratch/
+/tmp/
 /.claude/*
 !/.claude/settings.json
 /.claude-flow/
-
-# Long-lived YouTube refresh token written by `npm run youtube-auth`.
-/youtube-token.json
-
-# Written by scripts/preflight-youtube.mjs once a live token proves the OAuth app is published.
-/.youtube-production-confirmed
-__pycache__/
-
 # Playwright MCP screenshots/snapshots taken during a session
 .playwright-mcp/
-.tools/
+__pycache__/
