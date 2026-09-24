@@ -3,6 +3,7 @@ import { Overlay, OverlayTop, OverlayBottom, OverlaySplits, OverlayTimer, Overla
 import { Thumbnail } from "./Thumbnail.js";
 import { Short, ShortCaption, ShortEndCard, ShortHook, ShortResult, type ShortStillProps } from "./Short.js";
 import { ChatPanel } from "./ChatPanel.js";
+import { SeedIconsReview } from "./SeedIconsReview.js";
 import {
   BOTTOM_BAND_HEIGHT,
   introFrameCount,
@@ -274,6 +275,24 @@ export const RemotionRoot: React.FC = () => {
         width={1280}
         height={720}
         defaultProps={thumbnailDefaultProps}
+      />
+      <Composition
+        id="SeedIcons"
+        component={SeedIconsReview}
+        durationInFrames={1}
+        fps={1}
+        width={1000}
+        height={300}
+        defaultProps={{}}
+      />
+      <Composition
+        id="SeedIconsPhone"
+        component={SeedIconsReview}
+        durationInFrames={1}
+        fps={1}
+        width={600}
+        height={200}
+        defaultProps={{ small: true }}
       />
     </>
   );
