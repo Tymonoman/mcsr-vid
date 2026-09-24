@@ -1,4 +1,7 @@
-# TASKS — resume point (updated 24 Sept 2026 07:45 UTC)
+# TASKS — resume point (updated 24 Sept 2026 08:15 UTC)
+
+**08:15 UTC: merged to main and pushed — teaser (2af9850), status + per-match log + edge-case errors + agy title-hook proposals (12ebf7d), cleanup (cf53520), GitHub CI + README (76105ef), docs (9c25d06).** Remaining: the NOW-tab UI (workflow running; worktree wf_f688ba52-ca7-1 when it lands — merge last, then `bash scripts/browser-checks/run-all.sh http://mcsr-dashboard:8080`), the rewind eval (research/rewind-eval/), and one `docker restart mcsr-dashboard` (loads everything above; the UI then needs only a page reload). Cleanup's leftovers for the UI agent/next session: `remotion/types.ts` hookText?, `.thumb-header.has-hook` CSS, `scripts/browser-checks/rerender-check.cjs` + its run-all.sh line; wire or delete `playoffThumbnailStyle`.
+
 
 **24 Sept 07:40 UTC: the audit is delivered** — https://claude.ai/artifact/Cv1yCG5WRm2b6zLrA7wGuT (text: `~/.claude/projects/-app/research/audit-2026-09-24.md`). **Teaser merged to main (`2af9850`).** GitHub CI + README done on branch `worktree-wf_447e7ec6-6f3-1` — merge AFTER status (main's shortFlow.test.ts has a date that went stale at 03:00 UTC; status fixes it). Audience research done (`research/audience-2026-09-24.md`). Still running: status (+ agy title hooks), cleanup, UI, rewind-eval.
 
