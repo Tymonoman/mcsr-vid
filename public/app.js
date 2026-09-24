@@ -741,7 +741,10 @@ async function loadPreview(id) {
   }
   // The operator may have opened another match while this was in flight; a late reply must not
   // paint its bar into that match's panel, nor close its live export stream via watchExport.
-  if (selected !== id) return;
+  // Nor into a #preview a repaint has replaced meanwhile: the repaint's own loadPreview owns the
+  // new one, and $("#encode") below would find nothing in a detached element (a TypeError the
+  // live dashboard threw on 24 Sept, now-flow-check).
+  if (selected !== id || !el.isConnected) return;
   // The one-pass encode the nightly runs, on demand. ~10 minutes on the lab, so the button
   // hands over to a bar fed by the same progress stream the nightly's encode writes to. Offered
   // on an exported match too: a sync fixed by hand needs exactly this re-run, and "Save and

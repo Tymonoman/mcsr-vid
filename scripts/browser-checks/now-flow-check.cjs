@@ -411,6 +411,9 @@ const plan = (id, extra = {}) => ({
     );
     check("the title fold has its own Save text", (await page.$("#savetext")) !== null);
     check("no page errors (desktop)", errors.length === 0, errors.join(" | "));
+    // A /api/matches poll can be mid-fetch in its route handler; closing under it threw
+    // "Request context disposed" and killed the run before the phone half.
+    await page.unrouteAll({ behavior: "ignoreErrors" });
     await page.close();
 
     // --- phone ---------------------------------------------------------------------------------
@@ -455,6 +458,7 @@ const plan = (id, extra = {}) => ({
     );
     check("step rows are thumb-sized", toggles >= 44, `${toggles}px`);
     check("no page errors (phone)", errors.length === 0, errors.join(" | "));
+    await phone.unrouteAll({ behavior: "ignoreErrors" });
     await ctx.close();
   } finally {
     await browser.close();
