@@ -19,14 +19,18 @@ import { formatShortTime } from "../../remotion/format.js";
 import { describeError } from "../errorText.js";
 import type { MatchMetrics } from "./matchScore.js";
 import { eloAtMatchStart } from "./overlayProps.js";
-import { seedOrdinal, type PlayoffContext } from "../playoffs/playoffs.js";
+import type { PlayoffContext } from "../playoffs/playoffs.js";
 import type { MatchInfo, UserDetails, VersusStats } from "../api/types.js";
 
 /**
- * A rank high enough that a viewer places it without looking it up. Past this, "#843 vs #1291"
- * is two numbers rather than a rivalry.
+ * Shapes a hook suggestion may not carry:
+ * - a bracket seed ("#7 seed", "7th seed", "the LCQ" as a seed pairing)
+ * - a ladder rank ("#31 vs #14", "#1 WORLD")
+ * - an elo pairing ("2427 vs 2293", "Can the 1789 take down the 2080?")
  */
-const RECOGNISABLE_RANK = 100;
+// A bracket seed only ("7th seed", "#7 seed", "the LCQ"): the world's seed type ("village seed",
+// "same seed") is fair game for a hook.
+export const HOOK_SEED_RANK_ELO = /#\d+|\b\d+(?:st|nd|rd|th) seed\b|\blcq\b|\b\d{3,4}\b[^\d]+\b\d{3,4}\b/i;
 
 /** A hook nobody would read as a hook. Below this a suggestion is noise, not a shorter option. */
 const MIN_USEFUL_CHARS = 8;
@@ -80,10 +84,6 @@ function candidates(input: HookInput): Candidate[] {
   const { finishMarginMs, leadChanges, maxSwingMs, deaths, resultMs, winner } = metrics;
 
   // --- Rivalry framing (100-130) ----------------------------------------------------------
-  // Match-time elo, not live elo: the live rating is the one now, not the one carried in.
-  const leftElo = eloAtMatchStart(match, userLeft.uuid, userLeft.eloRate);
-  const rightElo = eloAtMatchStart(match, userRight.uuid, userRight.eloRate);
-
   if (versus) {
     const leftWins = versus.results.ranked[userLeft.uuid] ?? 0;
     const rightWins = versus.results.ranked[userRight.uuid] ?? 0;
@@ -101,63 +101,6 @@ function candidates(input: HookInput): Candidate[] {
     } else if (leftWins === 0 && rightWins === 0) {
       out.push({ text: "Their first 1v1", weight: 92 });
     }
-  }
-
-  // A playoff game: the bracket's own order is the story, and it is what a viewer of the
-  // official broadcast already has in mind. The seeds in words, never "#7" — a hash in a hook
-  // reads as a hashtag on the Short's title (src/shorts/shortHook.ts). The question form is the upset
-  // framing, asked whenever the seeds differ; the plain pairing is the ranking chip's playoff
-  // twin and sits where the ladder rank would.
-  if (input.playoff) {
-    const seedOf = (uuid: string) => input.playoff!.seeds.find((s) => s.uuid === uuid);
-    const l = seedOf(userLeft.uuid);
-    const r = seedOf(userRight.uuid);
-    if (l && r) {
-      const word = (label: string): string => (label === "LCQ" ? "the LCQ" : `the ${seedOrdinal(label)}`);
-      // The pairing without articles — "LCQ vs 7th seed", 15 characters — so it fits the hook
-      // budget a long pair of nicknames leaves (21–32) and the Short's; the question keeps
-      // its form and is for the Short and the short-named pairs.
-      const bare = (label: string): string => seedOrdinal(label);
-      const [lower, higher] = seedRank(l.label) >= seedRank(r.label) ? [l, r] : [r, l];
-      if (l.label !== r.label)
-        out.push({ text: `Can ${word(lower.label)} take down ${word(higher.label)}?`, weight: 125 });
-      out.push({ text: `${bare(l.label)} vs ${bare(r.label)}`, weight: 115 });
-    }
-  }
-
-  // The favourite and the underdog, never the winner: the ending is the reason to watch, and
-  // "The 1789 takes down the 2080" gave it away on the thumbnail. A question, and asked whenever
-  // the gap is wide enough to be one — if it only appeared for upsets, it would answer itself.
-  if (leftElo > 0 && rightElo > 0 && Math.abs(leftElo - rightElo) >= 100) {
-    const low = Math.min(leftElo, rightElo);
-    const high = Math.max(leftElo, rightElo);
-    const upset = winner !== null && (winner === userLeft.nickname ? leftElo : rightElo) === low;
-    out.push({ text: `Can the ${low} take down the ${high}?`, weight: upset ? 125 : 60 });
-  }
-
-  // Current rank, not rank at match time: the API carries no historical rank the way `changes`
-  // carries historical elo, so there is nothing to reconstruct. Acceptable where a stale elo was
-  // not, because "#4" is the standing a viewer recognises today, whereas a stale rating silently
-  // contradicted the one the overlay shows.
-  const leftRank = userLeft.eloRank;
-  const rightRank = userRight.eloRank;
-  if (
-    !input.playoff &&
-    typeof leftRank === "number" &&
-    typeof rightRank === "number" &&
-    leftRank <= RECOGNISABLE_RANK &&
-    rightRank <= RECOGNISABLE_RANK
-  ) {
-    out.push({ text: `#${leftRank} vs #${rightRank}`, weight: 115 });
-  }
-
-  // The same gap without claiming a result — just the matchup. Numbers rather than "the
-  // favourite vs the underdog" because a number is checkable against the overlay.
-  if (leftElo > 0 && rightElo > 0 && Math.abs(leftElo - rightElo) >= 100) {
-    out.push({
-      text: `${Math.max(leftElo, rightElo)} vs ${Math.min(leftElo, rightElo)}`,
-      weight: 105,
-    });
   }
 
   // --- Descriptive fallbacks (below 100) --------------------------------------------------
@@ -319,7 +262,8 @@ export async function suggestHooksExternally(input: HookInput): Promise<string[]
       // Tolerate a numbered or bulleted list, which is what a model returns unless told twice.
       .map((line) => line.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, ""))
       .filter((line) => line.length >= MIN_USEFUL_CHARS && line.length <= input.maxChars)
-      .filter((line) => !spoilsTheResult(line));
+      .filter((line) => !spoilsTheResult(line))
+      .filter((line) => !HOOK_SEED_RANK_ELO.test(line));
     return lines.length > 0 ? lines.slice(0, 5) : null;
   } catch (err) {
     console.error(`HOOK_SUGGEST_CMD failed, using built-in hooks: ${describeError(err)}`);
@@ -366,6 +310,3 @@ function runCommand(command: string, stdin: string): Promise<string> {
 export async function hookSuggestions(input: HookInput): Promise<string[]> {
   return (await suggestHooksExternally(input)) ?? buildHookSuggestions(input);
 }
-
-/** The seed as a rank for "who is the underdog": an LCQ entrant sits below every seed. */
-const seedRank = (label: string): number => (label === "LCQ" ? 99 : Number(/\d+/.exec(label)?.[0] ?? 99));

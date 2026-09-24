@@ -41,7 +41,7 @@ import type { MatchInfo } from "../api/types.js";
 import { config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { atomicOutput } from "../pipeline/atomicOutput.js";
-import { hookSuggestions, spoilsTheResult } from "../pipeline/hooks.js";
+import { hookSuggestions, HOOK_SEED_RANK_ELO, spoilsTheResult } from "../pipeline/hooks.js";
 import { ANCHOR_SEC } from "../pipeline/kdenliveProject.js";
 import { SEPARATOR } from "../pipeline/title.js";
 import { computeMetrics } from "../pipeline/matchScore.js";
@@ -94,6 +94,7 @@ export function hookProblem(hook: unknown, maxChars = HOOK_MAX_CHARS): string | 
   if (typeof hook !== "string" || hook.trim() === "") return "no hook";
   if (hook.trim().length > maxChars) return `over ${maxChars} characters`;
   if (HOOK_SPOILER.test(hook) || spoilsTheResult(hook)) return "it gives the result away";
+  if (HOOK_SEED_RANK_ELO.test(hook)) return "it uses a seed, rank or elo";
   return null;
 }
 
@@ -449,7 +450,7 @@ function extrasSection(spans: readonly GameSpan[], past: readonly PastHook[]): s
 ${past.map((p) => `  ${JSON.stringify(p.hook)}${p.pair ? ` (${p.pair})` : ""}`).join("\n")}`
       : "";
   return `
-THE LONG-FORM'S TITLE (titleHooks, optional): up to ${TITLE_HOOKS} proposals for the hook that opens the full match video's title — "<hook> | ${l?.nickname} vs ${r?.nickname} | …", so it need not repeat their names. The same rules as hookSuggestion: at most ${HOOK_MAX_CHARS} characters, nothing about who wins or how it ends.${examples}
+THE LONG-FORM'S TITLE (titleHooks, optional): up to ${TITLE_HOOKS} proposals for the hook that opens the full match video's title — "<hook> | ${l?.nickname} vs ${r?.nickname} | …", so it need not repeat their names. The same rules as hookSuggestion: at most ${HOOK_MAX_CHARS} characters, nothing about who wins or how it ends. Never use seeds, ladder ranks or elo numbers — they mean nothing to a viewer and change daily.${examples}
 
 PLAYER MOMENTS (playerMoments, optional): for each player, the one moment of theirs in this video worth sending to them — "left" for ${l?.nickname}, "right" for ${r?.nickname}. atSec: seconds of the video file where it starts. line: one sentence to them, at most ${MOMENT_MAX_CHARS} characters, saying what they did — never who wins.
 `;
@@ -505,7 +506,7 @@ THE WINDOW
       : ""
   }
 
-THE HOOK (hookSuggestion): the line on screen for the Short's first 4 seconds. At most ${HOOK_MAX_CHARS} characters, punchy, in a viewer's words; it may name the player making the play. Write it from what you saw — nothing in these instructions hints at what happens in this match. It must never name or hint at who wins the match or how it ends — none of: win, won, winner, beat, lost, lose, defeat, champion, victory, takes it, clutch, comeback, chokes, throws.
+THE HOOK (hookSuggestion): the line on screen for the Short's first 4 seconds. At most ${HOOK_MAX_CHARS} characters, punchy, in a viewer's words; it may name the player making the play. Write it from what you saw — nothing in these instructions hints at what happens in this match. It must never name or hint at who wins the match or how it ends — none of: win, won, winner, beat, lost, lose, defeat, champion, victory, takes it, clutch, comeback, chokes, throws. Never use seeds, ladder ranks or elo numbers — they mean nothing to a viewer and change daily.
 
 why: one line for the operator on why this moment.
 ${extrasSection(spans, past)}

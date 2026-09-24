@@ -514,7 +514,7 @@ async function suggestionsFor(
   return {
     // The model's proposals (in the operator's own style, videoPick.ts) ahead of the chips.
     title: dedupe([committed, ...(f.pick?.titleHooks ?? []), ...title]).filter(
-      (h) => h.length <= budget.hookMax,
+      (h) => h.length <= budget.hookMax && hookProblem(h, budget.hookMax) === null,
     ),
     // Held to the rule the model's own suggestion is: no result, and short enough to read at a
     // glance. No `#` (a rank chip's "#7" is a hashtag in the Short's title) and no line naming

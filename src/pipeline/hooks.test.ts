@@ -94,19 +94,18 @@ for (const text of buildHookSuggestions(input({ leadChanges: 5, deaths: 7, maxSw
 // A tiny budget yields nothing rather than a hook chopped mid-word.
 assert.deepEqual(buildHookSuggestions({ ...input({ finishMarginMs: 2_400 }), maxChars: 10 }), []);
 
-// Underdog: elo comes from the match-time rating, not the live one. changes[] carries
-// eloRate *after* the match plus the delta, so edcr started at 1850 and doogile at 2050.
+// Underdog: suggestions never use seeds, ranks or elo numbers.
 const upset = buildHookSuggestions(input({ winner: "edcr" }, ELO_GAP));
 assert.ok(
-  upset.some((t) => t === "Can the 1850 take down the 2050?"),
-  `expected an underdog hook, got ${JSON.stringify(upset)}`,
+  !upset.some((t) => /#\d+/.test(t) || /seed/i.test(t) || /\b\d{3,4}\b[^\d]+\b\d{3,4}\b/.test(t)),
+  `expected no seed, rank or elo chip, got ${JSON.stringify(upset)}`,
 );
 // The same question when the favourite wins, so the question never answers itself; only its
 // weight differs, which a viewer cannot see.
 const favourite = buildHookSuggestions(input({ winner: "doogile" }, ELO_GAP));
 assert.ok(
-  favourite.some((t) => t === "Can the 1850 take down the 2050?"),
-  `the question must not depend on who won, got ${JSON.stringify(favourite)}`,
+  !favourite.some((t) => /#\d+/.test(t) || /seed/i.test(t) || /\b\d{3,4}\b[^\d]+\b\d{3,4}\b/.test(t)),
+  `expected no seed, rank or elo chip, got ${JSON.stringify(favourite)}`,
 );
 assert.ok(!upset.concat(favourite).some((t) => /takes down/.test(t)), "no chip names the winner");
 
@@ -124,14 +123,15 @@ const rivalry = buildHookSuggestions(
 );
 assert.deepEqual(rivalry, [
   "Rematch: doogile leads 2-1",
-  "Can the 1850 take down the 2050?",
-  "#4 vs #11",
-  "2050 vs 1850",
+  "Decided by 2.4 seconds",
+  "The lead changed 4 times",
 ]);
+assert.ok(
+  !rivalry.some((t) => /#\d+/.test(t) || /seed/i.test(t) || /\b\d{3,4}\b[^\d]+\b\d{3,4}\b/.test(t)),
+  "no seed, rank or elo in rivalry chips",
+);
 
-// A playoff game: the seeds frame it, in words (a "#7" in a hook becomes a hashtag on the
-// Short's title), the underdog asking the question, and the ladder rank chip stays out —
-// a bracket has its own order.
+// A playoff game: suggestions never use seeds, ranks or elo (the operator's call, 24 Sept 2026).
 {
   const playoff = {
     season: 11,
@@ -153,8 +153,10 @@ assert.deepEqual(rivalry, [
     }),
     4,
   );
-  assert.ok(po.includes("Can the LCQ take down the 1st seed?"), po.join(" | "));
-  assert.ok(po.includes("1st seed vs LCQ"), po.join(" | "));
+  assert.ok(
+    !po.some((h) => /#\d+/.test(h) || /seed/i.test(h) || /\b\d{3,4}\b[^\d]+\b\d{3,4}\b/.test(h)),
+    po.join(" | "),
+  );
   assert.ok(!po.some((h) => h.includes("#")), `no hash in a playoff hook: ${po.join(" | ")}`);
   const seeded = buildHookSuggestions(
     input({}, ELO_GAP, {
@@ -168,8 +170,10 @@ assert.deepEqual(rivalry, [
     }),
     6,
   );
-  assert.ok(seeded.includes("Can the 12th seed take down the 3rd seed?"), seeded.join(" | "));
-  assert.ok(seeded.includes("3rd seed vs 12th seed"), seeded.join(" | "));
+  assert.ok(
+    !seeded.some((h) => /#\d+/.test(h) || /seed/i.test(h) || /\b\d{3,4}\b[^\d]+\b\d{3,4}\b/.test(h)),
+    seeded.join(" | "),
+  );
   assert.ok(!seeded.some((h) => h.includes("#")), `no hash in playoff hooks: ${seeded.join(" | ")}`);
   const seed9 = buildHookSuggestions(
     input({}, ELO_GAP, {
@@ -183,8 +187,10 @@ assert.deepEqual(rivalry, [
     }),
     6,
   );
-  assert.ok(seed9.includes("Can the 11th seed take down the 9th seed?"), seed9.join(" | "));
-  assert.ok(seed9.includes("9th seed vs 11th seed"), seed9.join(" | "));
+  assert.ok(
+    !seed9.some((h) => /#\d+/.test(h) || /seed/i.test(h) || /\b\d{3,4}\b[^\d]+\b\d{3,4}\b/.test(h)),
+    seed9.join(" | "),
+  );
   assert.ok(!seed9.some((h) => h.includes("#")), `no hash in 9th/11th seed hooks: ${seed9.join(" | ")}`);
 }
 
@@ -246,9 +252,11 @@ assert.ok(!longName.some((t) => t.startsWith("Rematch")));
 // Length still only breaks ties: the in-band chip wins between equal weights, never against a
 // heavier one.
 for (const text of rivalry) assert.ok(text.length <= MAX, `"${text}" is over the ${MAX} budget`);
-assert.deepEqual(buildHookSuggestions({ ...input({}, ELO_GAP, { versus: versus(1, 2) }), maxChars: 12 }), [
-  "2050 vs 1850",
-]);
+const shortBudget = buildHookSuggestions({ ...input({}, ELO_GAP, { versus: versus(1, 2) }), maxChars: 12 });
+assert.deepEqual(shortBudget, []);
+assert.ok(
+  !shortBudget.some((t) => /#\d+/.test(t) || /seed/i.test(t) || /\b\d{3,4}\b[^\d]+\b\d{3,4}\b/.test(t)),
+);
 
 // hookFacts carries the same rivalry facts, so an external generator sees what the built-ins do.
 const rivalryFacts = hookFacts(
@@ -282,6 +290,10 @@ assert.equal(facts.maxChars, MAX);
 // bulleted lists are tolerated because that is what a model returns unless told twice.
 process.env.HOOK_SUGGEST_CMD = `printf '1. Decided at the dragon\\n- A brutal fortress split\\n'`;
 assert.deepEqual(await suggestHooksExternally(input()), ["Decided at the dragon", "A brutal fortress split"]);
+
+// External suggestions with seeds, ladder ranks or elo numbers are filtered out.
+process.env.HOOK_SUGGEST_CMD = `printf 'Decided at the dragon\\n#4 vs #11\\n2050 vs 1850\\n7th seed vs LCQ\\nCan the 1850 take down the 2050?\\n'`;
+assert.deepEqual(await suggestHooksExternally(input()), ["Decided at the dragon"]);
 
 // Over-budget lines from the command are dropped, same as the built-ins.
 process.env.HOOK_SUGGEST_CMD = `printf 'ok short one\\n%s\\n' "$(head -c 200 /dev/zero | tr '\\0' 'x')"`;

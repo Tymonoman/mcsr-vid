@@ -14,7 +14,7 @@ what an agent cannot derive from the code; the rest is in the files it names.
   centred mix everything before 18 Sept 2026 shipped with) in `export:fast` only — the Kdenlive
   project's MLT mix stays centred, and the Short (stacked top/bottom) lowers the POV the moment is not about by 12 dB instead (`focus`, 23 Sept 2026).
 - Nothing names the winner: no result line in the description, no winner in a hook or on a
-  thumbnail. The upset hook is a question (`Can the 1789 take down the 2080?`).
+  thumbnail. The upset hook is a question.
 - **The YouTube API compliance audit cleared on 15 Sept 2026** ("completed your review and don't
   require any further actions"; submitted 7 Sept, round-2 recording 14 Sept — the reply texts are
   `handbook/api-review/`). `videos.insert` is allowed; `youtubeUploadEnabled` is true on
@@ -260,11 +260,9 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   video is the run plus a few seconds; a post of the wrong length is another match of the same
   pair). A posted match sorts after the fresh ones, in the nightly's order too.
 - **Hook chips** (`src/pipeline/hooks.ts`) put rivalry framing first: the audit measured rivalry hooks at
-  9.36% CTR against 2.25% for descriptive ones. A playoff game's chips are its seeds, in words
-  ("Can the LCQ take down the 7th seed?", "The 7th seed vs the LCQ") in place of the ladder-rank
-  chip — a bracket has its own order, and a `#` in a hook is a hashtag on the Short's title.
-  "SWEPT"/"sweep" is a result word in `spoilsTheResult` (a best of 5 titled "PLAYOFFS | SWEPT vs
-  TAS" told how it went), and saving the hooks refuses a typed hook it catches, as the chips are;
+  9.36% CTR against 2.25% for descriptive ones. Suggestions never use seeds, ranks or elo (the operator's
+  call, 24 Sept 2026). "SWEPT"/"sweep" is a result word in `spoilsTheResult` (a best of 5 titled "PLAYOFFS |
+  SWEPT vs TAS" told how it went), and saving the hooks refuses a typed hook it catches, as the chips are;
   so does the Title & description fold's save for a segment the generated title does not carry
   (`typedSpoiler` — "3rd Place" is a round name there, not a result).
 - **A subscribe line during the race** (`midRollCtaAtSec`, Settings → Publishing; default 90,

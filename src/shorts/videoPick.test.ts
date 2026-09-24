@@ -443,19 +443,39 @@ async function fallsBack(message: RegExp, timeoutMs?: number, fallback?: string)
   console.log("OK: the pick's log carries each stage, the raw answer and the rejection as detail");
 }
 
-{
-  // A spoiler or an overlong hook costs the hook, not the pick: a chip takes its place.
-  for (const hookSuggestion of ["EDCR WINS THE RACE HERE", "WHO WON THIS?", "A".repeat(41)]) {
-    answer({ ...good, hookSuggestion });
-    const pick = await pickShortMoment(single, { force: true });
-    assert.equal(pick.source, "agy");
-    assert.notEqual(pick.hookSuggestion, hookSuggestion);
-    assert.equal(hookProblem(pick.hookSuggestion), null, `replaced by a usable chip: ${pick.hookSuggestion}`);
-  }
-  assert.equal(hookProblem("CRAZY ZERO BY SILVERRRUNS"), null);
-  assert.equal(hookProblem("Can the 1789 take down the 2080?"), null, "the channel's upset question stands");
-  console.log("OK: a spoiler or overlong hook is swapped for a chip; the window stands");
+// A spoiler, overlong hook, seed, rank, or elo costs the hook, not the pick: a chip takes its place.
+for (const hookSuggestion of [
+  "EDCR WINS THE RACE HERE",
+  "WHO WON THIS?",
+  "A".repeat(41),
+  "7th seed",
+  "#7 seed",
+  "#31 vs #14",
+  "#1 WORLD",
+  "2427 vs 2293",
+  "Can the 1789 take down the 2080?",
+]) {
+  answer({ ...good, hookSuggestion });
+  const pick = await pickShortMoment(single, { force: true });
+  assert.equal(pick.source, "agy");
+  assert.notEqual(pick.hookSuggestion, hookSuggestion);
+  assert.equal(hookProblem(pick.hookSuggestion), null, `replaced by a usable chip: ${pick.hookSuggestion}`);
+  assert.ok(
+    !/#\d+/.test(pick.hookSuggestion) &&
+      !/seed/i.test(pick.hookSuggestion) &&
+      !/\b\d{3,4}\b[^\d]+\b\d{3,4}\b/.test(pick.hookSuggestion),
+    `replacement chip has no seed, rank, or elo: ${pick.hookSuggestion}`,
+  );
 }
+assert.equal(hookProblem("CRAZY ZERO BY SILVERRRUNS"), null);
+// Rejects bracket seeds, ladder ranks, and elo pairings
+assert.equal(hookProblem("7th seed"), "it uses a seed, rank or elo");
+assert.equal(hookProblem("#7 seed"), "it uses a seed, rank or elo");
+assert.equal(hookProblem("#31 vs #14"), "it uses a seed, rank or elo");
+assert.equal(hookProblem("#1 WORLD"), "it uses a seed, rank or elo");
+assert.equal(hookProblem("2427 vs 2293"), "it uses a seed, rank or elo");
+assert.equal(hookProblem("Can the 1789 take down the 2080?"), "it uses a seed, rank or elo");
+console.log("OK: a spoiler, overlong hook, or seed/rank/elo is swapped for a chip; the window stands");
 
 {
   // Title hooks in the operator's style: their past hooks on uploaded matches are the examples.
@@ -471,9 +491,20 @@ async function fallsBack(message: RegExp, timeoutMs?: number, fallback?: string)
   uploaded(4, "NEVER UPLOADED | a vs b | MCSR Ranked 1v1", false);
   uploaded(5, "<HOOK> | a vs b | MCSR Ranked 1v1");
   uploaded(6, "TAS vs SWEPT | doogile vs Aquacorde | MCSR Ranked 1v1");
+  uploaded(7, "2427 vs 2293 | a vs b | MCSR Ranked 1v1");
   answer({
     ...good,
-    titleHooks: ["TAS vs YN", "WINNER vs 3rd PLACE", "TAS vs YN", "B".repeat(41), "ICE COLD", "ONE TOO MANY"],
+    titleHooks: [
+      "TAS vs YN",
+      "WINNER vs 3rd PLACE",
+      "2427 vs 2293",
+      "#4 vs #11",
+      "7th seed",
+      "TAS vs YN",
+      "B".repeat(41),
+      "ICE COLD",
+      "ONE TOO MANY",
+    ],
     playerMoments: {
       left: { atSec: 575, line: "your blind into the portal room" },
       right: { atSec: 9999, line: "a moment after the match" },
@@ -486,6 +517,9 @@ async function fallsBack(message: RegExp, timeoutMs?: number, fallback?: string)
   assert.deepEqual(pick.playerMoments, { left: { atMs: 575_000, line: "your blind into the portal room" } });
   for (const why of [
     `title hook "WINNER vs 3rd PLACE" was dropped (it gives the result away)`,
+    `title hook "2427 vs 2293" was dropped (it uses a seed, rank or elo)`,
+    `title hook "#4 vs #11" was dropped (it uses a seed, rank or elo)`,
+    `title hook "7th seed" was dropped (it uses a seed, rank or elo)`,
     `title hook "TAS vs YN" was dropped (a repeat)`,
     `title hook "${"B".repeat(41)}" was dropped (over 40 characters)`,
     `right player's moment {"atSec":9999,"line":"a moment after the match"} was dropped (166:39.0 is outside the match)`,
@@ -498,6 +532,10 @@ async function fallsBack(message: RegExp, timeoutMs?: number, fallback?: string)
   const prompt = sentArgv()[sentArgv().indexOf("-p") + 1]!;
   assert.match(prompt, /They are from OTHER matches and name OTHER players/);
   assert.match(prompt, / {2}"CARNIVORE vs VEGAN" \(BeefSalad vs silverrruns\)/);
+  assert.match(
+    prompt,
+    /Never use seeds, ladder ranks or elo numbers — they mean nothing to a viewer and change daily\./,
+  );
   for (const left of [
     "PLAYOFFS",
     "SWEPT vs TAS",
@@ -505,6 +543,7 @@ async function fallsBack(message: RegExp, timeoutMs?: number, fallback?: string)
     "WINNER vs 3rd PLACE",
     "NEVER UPLOADED",
     "<HOOK>",
+    "2427 vs 2293",
   ])
     assert.ok(!prompt.includes(`"${left}`), `not an example: ${left}`);
   assert.equal(
@@ -517,7 +556,7 @@ async function fallsBack(message: RegExp, timeoutMs?: number, fallback?: string)
   const plain = await pickShortMoment(single, { force: true });
   assert.equal(plain.source, "agy");
   assert.ok(!("titleHooks" in plain) && !("playerMoments" in plain));
-  for (const id of [1, 2, 3, 4, 5, 6]) rmSync(path.join(config.mediaDir, String(id)), { recursive: true });
+  for (const id of [1, 2, 3, 4, 5, 6, 7]) rmSync(path.join(config.mediaDir, String(id)), { recursive: true });
   console.log(
     "OK: title hooks in the operator's style, spoilers and repeats dropped by name; none is still a pick",
   );
