@@ -50,7 +50,7 @@ import { snapshot, startScan } from "./suggestScan.js";
 import { getMatch } from "../api/mcsrApi.js";
 import type { MatchInfo } from "../api/types.js";
 import { withDiscoveredVods } from "../pipeline/vodDiscovery.js";
-import { retryFailedPlaylists } from "../youtube/youtubeUpload.js";
+import { retryFailedPlaylists, retryPendingComments } from "../youtube/youtubeUpload.js";
 import { pickFile, type ShortPick } from "../shorts/shortPlan.js";
 import { pickErrorFile } from "../shorts/videoPick.js";
 
@@ -638,6 +638,8 @@ export function scheduleNightly(options: NightlyOptions): void {
     // The daily tick is also the press that clears a playlist step YouTube's creation cap refused
     // (src/youtube/youtubeUpload.ts); it is not part of the run so a skipped night still makes it.
     retryFailedPlaylists().catch((err: unknown) => console.error(`playlists: ${describeError(err)}`));
+    // And posts the first comment on a scheduled video once it goes public.
+    retryPendingComments().catch((err: unknown) => console.error(`comments: ${describeError(err)}`));
     // And the tick that asks the model again for a pick the heuristic stood in for.
     shortTick().catch((err: unknown) => console.error(`shorts: ${describeError(err)}`));
     runNightlyOnce(options.notifyUrl, { scheduled: true })

@@ -330,8 +330,8 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
 - **A record's `privacyStatus` is from upload time and is never updated**, so the comment step
   re-reads the live status before it skips: a draft adopted while private and published an hour
   later would otherwise carry "private" for ever and never get its first comment. The comment
-  still cannot go up while the video really is private, so a scheduled video needs one more press
-  of **Finish on YouTube** after it goes public.
+  still cannot go up while the video really is private, so a scheduled video gets it on the
+  nightly's tick once it goes public (`retryPendingComments`).
 - **`videos.update` replaces the part it is given.** `addTags` (`src/youtube/youtube.ts`) reads the snippet
   and sends it back whole — a `part=snippet` write that omits the description blanks it on a
   published video. It only ever adds tags, so a tag typed in Studio survives, and it refuses to
