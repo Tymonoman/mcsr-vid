@@ -1,0 +1,40 @@
+name: CI
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      # What test:unit shells out to: git (repoHead), python3 (hooks' fake HOOK_SUGGEST_CMD;
+      # watchPov and videoPick run a fake watch.py) and rsync (publishSet's pull round-trip, which
+      # skips itself without it). The runner image has git and python3; installing them is a no-op
+      # there and keeps the job honest on another image. Nothing in test:unit runs ffmpeg, melt,
+      # yt-dlp or Chromium — the two tests that do are `npm test`'s extra pair, not run here.
+      - name: Install what the tests shell out to
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends python3 rsync
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      # No secrets: with no mcsr-vid.config.json the defaults apply (mediaDir ./media,
+      # reasonerCommand null, uploads off), and every test stubs MCSR, Twitch, YouTube and agy.
+      - name: Unit tests
+        run: npm run test:unit
