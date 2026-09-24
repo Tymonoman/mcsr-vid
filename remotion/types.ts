@@ -67,6 +67,12 @@ export type OverlayProps = {
    * (src/pipeline/teaser.ts). Absent when nothing qualifies or it is switched off.
    */
   teaser?: { atSec: number; forSec: number; momentMs: number; text: string };
+  /**
+   * "Explain the moves": a card in the meta column for `forSec` (config.explainMovesSec) from each
+   * move's `atMs`, the first arrival of either player at a split (src/pipeline/explainMoves.ts).
+   * Absent when switched off.
+   */
+  explainMoves?: { forSec: number; moves: { atMs: number; head: string; line: string }[] };
   /** Overworld structure near spawn, e.g. "DESERT_TEMPLE". null if unknown. */
   seedType: string | null;
   /** Bastion remnant type, e.g. "STABLES". null if unknown. */

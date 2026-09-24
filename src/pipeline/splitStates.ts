@@ -31,6 +31,7 @@ type StateProps = Pick<
   | "postRollCta"
   | "midRollCta"
   | "teaser"
+  | "explainMoves"
 >;
 
 /** Seconds after the finish before the meta column becomes the subscribe card. */
@@ -77,6 +78,33 @@ export function teaserFramesOf(props: StateProps): [number, number] | null {
   return mid && w[0] < mid[1] && mid[0] < w[1] ? null : w;
 }
 
+/**
+ * The "explain the moves" cards (src/pipeline/explainMoves.ts) as frames [start, end) with the
+ * move each shows. A card that would share a frame with the mid-race line, the teaser or an
+ * earlier card waits until that one is gone, so it still gets its whole `forSec`; one that
+ * would then run past the finish is dropped, which keeps every card off the post-roll.
+ */
+export function explainFramesOf(
+  props: StateProps,
+): Array<{ frames: [number, number]; move: NonNullable<StateProps["explainMoves"]>["moves"][number] }> {
+  const e = props.explainMoves;
+  const len = e ? Math.ceil(e.forSec * props.fps) : 0;
+  if (!e || len <= 0) return [];
+  // Disjoint from one another, and every card is added only once it is clear of all of them, so
+  // one pass in start order is enough.
+  const taken = [midRollFramesOf(props), teaserFramesOf(props)].filter((w) => w !== null);
+  const out: ReturnType<typeof explainFramesOf> = [];
+  for (const move of [...e.moves].sort((a, b) => a.atMs - b.atMs)) {
+    let start = Math.ceil(props.timerStartFrame + (move.atMs / 1000) * props.fps);
+    for (const [a, b] of taken.sort((x, y) => x[0] - y[0])) if (start < b && a < start + len) start = b;
+    const frames: [number, number] = [start, start + len];
+    if (frames[1] > runEndFrameOf(props)) continue;
+    out.push({ frames, move });
+    taken.push(frames);
+  }
+  return out;
+}
+
 /** Mirrors Overlay.tsx's useTimer: a run with no recorded result never resolves to DNF. */
 export function runEndFrameOf(props: StateProps): number {
   return props.runResultMs !== null
@@ -102,7 +130,8 @@ function fingerprint(props: StateProps, frame: number): string {
   // The meta column is part of the same still, so the card's appearance is a state change too —
   // and so are the mid-race line's and the teaser's, both edges.
   const on = (w: [number, number] | null) => w !== null && frame >= w[0] && frame < w[1];
-  return `${rows};cta:${ctaFrame !== null && frame >= ctaFrame};mid:${on(midRollFramesOf(props))};teaser:${on(teaserFramesOf(props))}`;
+  const move = explainFramesOf(props).findIndex((c) => on(c.frames));
+  return `${rows};cta:${ctaFrame !== null && frame >= ctaFrame};mid:${on(midRollFramesOf(props))};teaser:${on(teaserFramesOf(props))};move:${move}`;
 }
 
 /**
@@ -128,7 +157,11 @@ function candidateFrames(props: StateProps): number[] {
   if (hasMissingSide) frames.add(Math.ceil(runEndFrame));
   const ctaFrame = ctaFrameOf(props);
   if (ctaFrame !== null) frames.add(ctaFrame);
-  for (const w of [midRollFramesOf(props), teaserFramesOf(props)]) {
+  for (const w of [
+    midRollFramesOf(props),
+    teaserFramesOf(props),
+    ...explainFramesOf(props).map((c) => c.frames),
+  ]) {
     if (w) w.forEach((f) => frames.add(f));
   }
   return [...frames].filter((f) => f >= 0 && f < props.durationInFrames).sort((a, b) => a - b);

@@ -311,7 +311,13 @@
   color: var(--quartz);
   font-variant-numeric: tabular-nums;
 }
-.col-meta .teaser .teaser-what {
+/* "Explain the moves" (src/pipeline/explainMoves.ts) shares the teaser's line: the split in the
+   gold head, then why the runner is there, up to three rows broken where the text says. */
+.col-meta .move .move-line {
+  white-space: pre-line;
+}
+.col-meta .teaser .teaser-what,
+.col-meta .move .move-line {
   font-family: var(--pixel-font);
   font-size: 16px;
   line-height: 1.3;

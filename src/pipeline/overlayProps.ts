@@ -2,6 +2,7 @@ import { config } from "../config.js";
 import { resolveAvatarUrl } from "../api/avatarUrl.js";
 import { playoffContextFor, playoffEloFor, playoffIntroLabel } from "../playoffs/playoffs.js";
 import { chooseTeaser } from "./teaser.js";
+import { chooseMoves } from "./explainMoves.js";
 import type { MatchInfo, StatisticCategoryMap, UserDetails, VersusStats } from "../api/types.js";
 // PlayerIdentity/SplitRow/OverlayProps are defined once in remotion/types.ts (the component's
 // prop contract) and reused here, since computeOverlayProps's output crosses into Remotion via
@@ -139,6 +140,13 @@ export function teaserProp(match: MatchInfo): Pick<OverlayProps, "teaser"> {
   return t ? { teaser: { atSec: config.teaserAtSec, forSec: config.teaserSec, ...t } } : {};
 }
 
+/** The "explain the moves" cards, to spread into the props: empty while `explainMovesSec` is null. */
+export function explainMovesProp(match: MatchInfo): Pick<OverlayProps, "explainMoves"> {
+  return config.explainMovesSec === null
+    ? {}
+    : { explainMoves: { forSec: config.explainMovesSec, moves: chooseMoves(match) } };
+}
+
 /** Builds the Remotion overlay props from real API data for one match. */
 export async function computeOverlayProps(
   match: MatchInfo,
@@ -214,6 +222,7 @@ export async function computeOverlayProps(
       ? { midRollCta: { atSec: config.midRollCtaAtSec, forSec: config.midRollCtaSec } }
       : {}),
     ...teaserProp(match),
+    ...explainMovesProp(match),
     seedType: match.seedType,
     bastionType: match.bastionType,
   };

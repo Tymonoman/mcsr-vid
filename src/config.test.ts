@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { validateOverrides } from "./config.js";
+import { DEFAULTS, validateOverrides } from "./config.js";
 
 // A hand-edited mcsr-vid.config.json with the wrong type must fail at load, naming the key,
 // rather than flowing into slot arithmetic or the Remotion renderer as a string.
@@ -62,5 +62,11 @@ assert.throws(() => validateOverrides({ teaserSec: null }), /teaserSec/);
 assert.throws(() => validateOverrides({ teaserSec: -1 }), /teaserSec/);
 assert.throws(() => validateOverrides({ teaserAtSec: 3601 }), /teaserAtSec/);
 assert.doesNotThrow(() => validateOverrides({ teaserSec: 0 }), "0 s is a valid way to show none");
+// Explain the moves ships off (null) and takes seconds when switched on.
+assert.equal(DEFAULTS.explainMovesSec, null);
+assert.doesNotThrow(() => validateOverrides({ explainMovesSec: null }));
+assert.doesNotThrow(() => validateOverrides({ explainMovesSec: 6 }));
+assert.throws(() => validateOverrides({ explainMovesSec: -1 }), /explainMovesSec/);
+assert.throws(() => validateOverrides({ explainMovesSec: "6" }), /explainMovesSec/);
 
 console.log("config: all checks passed");

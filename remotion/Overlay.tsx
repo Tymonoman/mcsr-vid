@@ -9,7 +9,7 @@ import { PixelBadge } from "./PixelBadge.js";
 import { BastionIcon } from "./BastionIcon.js";
 import { STAGE_WIDTH, STAGE_HEIGHT, BOTTOM_BAND_Y, RTA_COL_X } from "./layout.js";
 import { resolveAchievementIcon } from "./achievementBadges.js";
-import { ctaFrameOf, midRollFramesOf, teaserFramesOf } from "../src/pipeline/splitStates.js";
+import { ctaFrameOf, explainFramesOf, midRollFramesOf, teaserFramesOf } from "../src/pipeline/splitStates.js";
 
 /** Up to 3 highlighted-achievement badges for one player, shown in the splits panel.
  * Unmapped ids/levels are skipped entirely, per resolveAchievementIcon's contract. */
@@ -180,6 +180,7 @@ function SplitsPanel({
   const ctaFrame = ctaFrameOf(props);
   const mid = midRollFramesOf(props);
   const teaser = teaserFramesOf(props);
+  const move = explainFramesOf(props).find((c) => frame >= c.frames[0] && frame < c.frames[1])?.move;
   return (
     <div className="splits">
       <div className="splits-col col-meta">
@@ -244,6 +245,13 @@ function SplitsPanel({
             <span className="cta-value">COMING UP</span>
             <span className="teaser-at">AT {formatShortTime(props.teaser!.momentMs)}</span>
             <span className="teaser-what">{props.teaser!.text}</span>
+          </div>
+        ) : move !== undefined ? (
+          // "Explain the moves" (config.explainMovesSec): what this split is for, in words for
+          // someone who has never watched a speedrun. Never who got there (src/pipeline/explainMoves.ts).
+          <div className="cta move">
+            <span className="cta-value">{move.head}</span>
+            <span className="move-line">{move.line}</span>
           </div>
         ) : (
           <>

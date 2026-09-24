@@ -201,3 +201,55 @@ console.log("splitStates: all checks passed");
   assert.ok(shown > 400, `most start seconds are allowed (${shown})`);
   console.log("OK: the teaser is two more stills, and steps aside for the mid-race line");
 }
+
+// --- "Explain the moves": a card per split at its first arrival, `forSec` long. One that would
+// share a frame with the mid-race line, the teaser or the card before it waits until that one is
+// gone; one that would then reach the finish is dropped, so none is ever on the post-roll.
+{
+  const { explainFramesOf, midRollFramesOf, teaserFramesOf, ctaFrameOf } = await import("./splitStates.js");
+  const move = (atMs: number, head: string) => ({ atMs, head, line: "WHY" });
+  const props = {
+    ...base,
+    postRollCta: true,
+    splits: [{ label: "Nether Enter", leftMs: 123693, rightMs: 151021 }],
+    midRollCta: { atSec: 90, forSec: 4 }, // frames [3000, 3120)
+    teaser: { atSec: 10, forSec: 5, momentMs: 314000, text: "THE LEAD CHANGES ON BLIND TRAVEL" }, // [600, 750)
+    explainMoves: {
+      forSec: 6,
+      moves: [
+        move(123693, "NETHER"),
+        move(126000, "BASTION"),
+        move(88000, "UNDER THE SUBSCRIBE LINE"),
+        move(11000, "UNDER THE TEASER"),
+        move(base.runResultMs - 3000, "INTO THE FINISH"),
+      ],
+    },
+  };
+  const cards = explainFramesOf(props).map((c) => [c.move.head, ...c.frames]);
+  assert.deepEqual(cards, [
+    ["UNDER THE TEASER", 750, 930],
+    ["UNDER THE SUBSCRIBE LINE", 3120, 3300],
+    ["NETHER", 4011, 4191],
+    ["BASTION", 4191, 4371],
+  ]);
+  const starts = splitSegments(props).map((s) => s.startFrame);
+  for (const f of [750, 930, 3120, 3300, 4011, 4191, 4371])
+    assert.ok(starts.includes(f), `a still starts on ${f}`);
+  assert.deepEqual(explainFramesOf({ ...props, explainMoves: undefined }), [], "off: none");
+  assert.deepEqual(explainFramesOf({ ...props, explainMoves: { ...props.explainMoves, forSec: 0 } }), []);
+  // Swept over every second of the run: never on a frame of the subscribe line or the teaser,
+  // never on another card, and gone before the finish.
+  const mid = midRollFramesOf(props)!;
+  const teaser = teaserFramesOf(props)!;
+  const everySecond = Array.from({ length: base.runResultMs / 1000 }, (_, s) => move(s * 1000, `${s}`));
+  const swept = explainFramesOf({ ...props, explainMoves: { forSec: 6, moves: everySecond } });
+  assert.ok(swept.length > 60, `${swept.length} cards`);
+  swept.forEach(({ frames: [a, b] }, i) => {
+    for (const [c, d] of [mid, teaser]) assert.ok(b <= c || a >= d, `${a}-${b} overlaps ${c}-${d}`);
+    if (i > 0) assert.ok(a >= swept[i - 1]!.frames[1], `${a} starts inside the card before`);
+    assert.ok(b <= runEndFrameOf(props) && b < ctaFrameOf(props)!, `${a}-${b} reaches the post-roll`);
+  });
+  console.log(
+    "OK: explain-the-moves cards wait for the subscribe line and the teaser, never reach the finish",
+  );
+}
