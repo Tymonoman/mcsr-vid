@@ -275,10 +275,20 @@ export async function watchPovs(
 ): Promise<PovWatch[]> {
   const log = opts.log ?? (() => {});
   const script = config.watchScript;
-  if (!script) return [];
+  // Both are said in the match's log: a pick that ran without /watch must say so the morning
+  // after (13617328's nightly pick, 24 Sept 2026, had no stills and no line saying why).
+  if (!script) {
+    log(
+      "/watch is off (watchScript is null in mcsr-vid.config.json) — the model picks from the video alone",
+      {
+        level: "warn",
+      },
+    );
+    return [];
+  }
   if (!existsSync(script)) {
     log(
-      `/watch is not installed (${script} not found) — the model picks from the video alone; reinstall the claude-watch plugin or set watchScript`,
+      `/watch is not installed (${script} not found) — the model picks from the video alone; set watchScript in mcsr-vid.config.json to a path this server can see (the lab's: /app/.tools/watch/scripts/watch.py) and restart the dashboard, which reads the config at boot`,
       { level: "warn" },
     );
     return [];

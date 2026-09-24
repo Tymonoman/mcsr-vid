@@ -292,11 +292,12 @@ const fps = 100 / endSec;
   assert.deepEqual(await watchPovs(match, { log }), []);
   assert.ok(
     lines.includes(
-      `/watch is not installed (${config.watchScript} not found) — the model picks from the video alone; reinstall the claude-watch plugin or set watchScript`,
+      `/watch is not installed (${config.watchScript} not found) — the model picks from the video alone; set watchScript in mcsr-vid.config.json to a path this server can see (the lab's: /app/.tools/watch/scripts/watch.py) and restart the dashboard, which reads the config at boot`,
     ),
   );
   config.watchScript = null;
   assert.deepEqual(await watchPovs(match, { log }), []);
+  assert.ok(lines.at(-1)?.startsWith("/watch is off (watchScript is null"), "switched off is said too");
   assert.equal(callCount(), before);
 
   const controller = new AbortController();
