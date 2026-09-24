@@ -26,6 +26,8 @@ import {
   SHORT_BRAND_BAR_HEIGHT,
   SHORT_TOP_POV_Y,
   SHORT_BOTTOM_NAMEPLATE_Y,
+  INTRO_SECONDS,
+  introFrameCount,
 } from "./layout.js";
 
 // The stage is 16:9, and so is each half-width POV slot.
@@ -104,5 +106,16 @@ assert.ok(
   `the clock at y=${SHORT_CLOCK_Y} leaves the top nameplate`,
 );
 assert.ok(SHORT_CLOCK_RESERVE_PX >= 8 * SHORT_CLOCK_FONT_PX * (720 / 1080) + SHORT_CLOCK_MARGIN_PX);
+
+// The intro card: introSec 7 (the default) is today's 210 frames at 30 fps, 3 is 90; an absent
+// introSec (props from before the setting) is the 7 s card.
+assert.equal(INTRO_SECONDS, 7);
+assert.equal(introFrameCount(30), 210);
+assert.equal(introFrameCount(30, 7), 210);
+assert.equal(introFrameCount(30, 3), 90);
+assert.equal(introFrameCount(60, 2), 120);
+// Intro.tsx's entrance ends at 1.05 s and its wipe starts 0.6 s from the end: the shortest card
+// must still hold the finished card before the wipe, or interpolate's ranges stop increasing.
+assert.ok(introFrameCount(30, 2) - Math.round(30 * 0.6) > 30 * 1.05);
 
 console.log("layout invariants ok");

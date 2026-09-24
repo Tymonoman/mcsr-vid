@@ -48,7 +48,11 @@ export const RTA_COL_X = META_COL_WIDTH + SPLITS_COL_WIDTH;
 /** Width of the static (meta + splits) region rendered as stills. */
 export const STATIC_COL_WIDTH = RTA_COL_X;
 
+/** The intro card's default length; `config.introSec` (2-7) shortens it. */
 export const INTRO_SECONDS = 7;
+/** The intro composition's length in frames. The card's entrance is done by 1.05 s and its wipe
+ *  takes the last 0.6 s, so any length from 2 s up plays the whole card, just held for less. */
+export const introFrameCount = (fps: number, introSec: number = INTRO_SECONDS) => Math.round(fps * introSec);
 
 /**
  * Shorts board: 1080x1920, two stacked POV panes.

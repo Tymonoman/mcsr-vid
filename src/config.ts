@@ -211,6 +211,13 @@ export interface Config {
   teaserAtSec: number | null;
   teaserSec: number;
   /**
+   * Seconds the intro card covers the frozen countdown, 2-7. It overlays timeline 0 onward and
+   * never moves the anchor: match start stays at 10 s, a shorter card just shows more of the
+   * countdown. The 24 Sept 2026 audit measured 22.5 points (median) lost in the first 3% of the
+   * video and proposed at most 3 s; the default keeps the 7 s card until the operator decides.
+   */
+  introSec: number;
+  /**
    * "Explain the moves": the first time either player reaches a split, the meta column says what
    * the split is for ("BASTION / TRADING GOLD TO PIGLINS FOR ENDER PEARLS") for this many seconds;
    * null shows none (src/pipeline/explainMoves.ts). Written for the Minecraft player who has never
@@ -357,6 +364,7 @@ export const DEFAULTS: Config = {
   midRollCtaSec: 4,
   teaserAtSec: 10,
   teaserSec: 5,
+  introSec: 7,
   explainMovesSec: null,
   nightlyRenderExport: true,
   nightlyMaxRenders: 1,
@@ -438,6 +446,12 @@ export function validateOverrides(raw: Record<string, unknown>): void {
         throw new Error(
           `${CONFIG_PATH}: "${key}" must be seconds from 0 to 3600${nullable ? ", or null" : ""}.`,
         );
+      }
+      continue;
+    }
+    if (key === "introSec") {
+      if (typeof value !== "number" || !(value >= 2 && value <= 7)) {
+        throw new Error(`${CONFIG_PATH}: "introSec" must be seconds from 2 to 7.`);
       }
       continue;
     }

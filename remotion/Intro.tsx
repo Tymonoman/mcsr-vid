@@ -3,7 +3,7 @@ import { AbsoluteFill, Img, interpolate, useCurrentFrame, useVideoConfig, Easing
 import { formatConstantLabel, formatTime } from "./format.js";
 import type { OverlayProps, PlayerIdentity } from "./types.js";
 
-import { INTRO_SECONDS } from "./layout.js";
+import { introFrameCount } from "./layout.js";
 
 function PlayerCard({
   player,
@@ -68,7 +68,7 @@ function PlayerCard({
  *
  * Both long-form competitors open on a head-to-head table, and both then fill the ten-second
  * ready-countdown with a "Seed Type: Village" card. This channel's intro *is* that window — it
- * runs 0-7s of the countdown — so the seed rides along on the versus card instead of costing a
+ * runs over the first `introSec` (7 by default) of the countdown — so the seed rides along on the versus card instead of costing a
  * second element. `formatConstantLabel` is the same humaniser the bottom band's seed chip uses,
  * so the two can't disagree about what a bastion is called; CSS uppercases it for the label.
  */
@@ -112,12 +112,12 @@ function VersusRecord({ props, opacity }: { props: OverlayProps; opacity: number
   );
 }
 
-/** Full-screen versus card for the video's first INTRO_SECONDS, opaque so it covers the
+/** Full-screen versus card for the video's first `introSec` seconds (INTRO_SECONDS by default), opaque so it covers the
  *  gameplay track underneath, then wipes to transparent to reveal it. */
 export const Intro: FC<{ props: OverlayProps }> = ({ props }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const introFrames = Math.round(fps * INTRO_SECONDS);
+  const introFrames = introFrameCount(fps, props.introSec);
   const exitStart = introFrames - Math.round(fps * 0.6);
 
   if (frame >= introFrames) return null;

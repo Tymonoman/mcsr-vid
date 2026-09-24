@@ -2,7 +2,6 @@ import { makeCancelSignal, renderMedia, renderStill, selectComposition } from "@
 import { readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { INTRO_SECONDS } from "../../remotion/layout.js";
 import { atomicOutput } from "./atomicOutput.js";
 import { config } from "../config.js";
 import { computeOverlayProps } from "./overlayProps.js";
@@ -117,7 +116,7 @@ export async function renderOverlay(args: RenderOverlayArgs): Promise<RenderOver
   const runSec = estimatedRunSec(args.match);
   const durationInFrames = Math.round((LEAD_IN_SEC + runSec + POST_ROLL_SEC) * FPS);
   const timerStartFrame = Math.round(LEAD_IN_SEC * FPS);
-  const renderProps = { ...props, timerStartFrame, durationInFrames, fps: FPS };
+  const renderProps = { ...props, timerStartFrame, durationInFrames, fps: FPS, introSec: config.introSec };
   const out = overlayPaths(args.outDir);
 
   const { cancelSignal, cancel } = makeCancelSignal();
@@ -269,7 +268,7 @@ export async function renderOverlay(args: RenderOverlayArgs): Promise<RenderOver
     splits: stills,
     matchOffsetIntoClipSec: LEAD_IN_SEC,
     durationInFrames,
-    introDurationSec: INTRO_SECONDS,
+    introDurationSec: config.introSec,
     fps: FPS,
   };
 }

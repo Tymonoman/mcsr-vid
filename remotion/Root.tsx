@@ -5,7 +5,7 @@ import { Short, ShortCaption, ShortEndCard, ShortHook, ShortResult, type ShortSt
 import { ChatPanel } from "./ChatPanel.js";
 import {
   BOTTOM_BAND_HEIGHT,
-  INTRO_SECONDS,
+  introFrameCount,
   RTA_COL_WIDTH,
   SHORT_HEIGHT,
   SHORT_WIDTH,
@@ -197,7 +197,7 @@ export const RemotionRoot: React.FC = () => {
         height={1080}
         defaultProps={defaultProps}
         calculateMetadata={({ props }) => ({
-          durationInFrames: Math.round(props.fps * INTRO_SECONDS),
+          durationInFrames: introFrameCount(props.fps, props.introSec),
           fps: props.fps,
         })}
       />
