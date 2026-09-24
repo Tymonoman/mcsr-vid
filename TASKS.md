@@ -1,4 +1,7 @@
-# TASKS — resume point (updated 24 Sept 2026 06:02 UTC)
+# TASKS — resume point (updated 24 Sept 2026 07:45 UTC)
+
+**24 Sept 07:40 UTC: the audit is delivered** — https://claude.ai/artifact/Cv1yCG5WRm2b6zLrA7wGuT (text: `~/.claude/projects/-app/research/audit-2026-09-24.md`). **Teaser merged to main (`2af9850`).** GitHub CI + README done on branch `worktree-wf_447e7ec6-6f3-1` — merge AFTER status (main's shortFlow.test.ts has a date that went stale at 03:00 UTC; status fixes it). Audience research done (`research/audience-2026-09-24.md`). Still running: status (+ agy title hooks), cleanup, UI, rewind-eval.
+
 
 **Second stop, 24 Sept 06:00 UTC (usage limit).** The operator: "resume at 9am polish time
 (07:00 UTC). have an audit ready by 11:55am polish time (09:55 UTC)." Eight resume workflows had
