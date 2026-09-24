@@ -125,4 +125,63 @@ assert.throws(
   assert.ok(!filter.includes("[T1]"), "a ranked match's band is the one still it always was");
 }
 
+// --- The head trim and the countdown teaser (24 Sept 2026) --------------------------------------
+{
+  const { headTrimSec, exportMatchStartSec, writeExportRecord } = await import("./exportFast.js");
+  const { ANCHOR_SEC } = await import("./kdenliveProject.js");
+  // Match start in the finished video is introSec + 3: the card, then "3, 2, 1".
+  assert.equal(ANCHOR_SEC - headTrimSec(7), 10, "a 7 s card keeps match start at 0:10");
+  assert.equal(ANCHOR_SEC - headTrimSec(3), 6);
+  assert.equal(ANCHOR_SEC - headTrimSec(2), 5);
+  assert.equal(headTrimSec(3.017), 4, "a probed card length is rounded to tenths");
+  assert.equal(headTrimSec(7.017), 0, "never negative");
+  assert.equal(headTrimSec(NaN), 0, "an unreadable card length cuts nothing");
+
+  // Off (no trim, no teaser, or a teaser with no window) is today's command, byte for byte.
+  const today = buildFastExportCommand(base).args;
+  for (const off of [
+    { headTrimSec: 0 },
+    { countdownTeaserPath: "/m/ct.png" },
+    { countdownTeaserPath: "/m/ct.png", countdownTeaserStartSec: 7, countdownTeaserEndSec: 7 },
+  ])
+    assert.deepEqual(buildFastExportCommand({ ...base, ...off }).args, today, JSON.stringify(off));
+
+  // A 3 s card: the stage and the audio both lose the first 4 s, the card lies over the output's
+  // own 0, and the output is 4 s shorter than the timeline.
+  const trimmed = buildFastExportCommand({ ...base, headTrimSec: 4 }).args;
+  const tf = trimmed[trimmed.indexOf("-filter_complex") + 1]!;
+  assert.ok(tf.includes("[STAGE]trim=start_frame=240,setpts=PTS-STARTPTS[STAGET]"), tf);
+  assert.ok(tf.includes("[STAGET][INTRO]overlay="), "the card over the trimmed stage");
+  assert.ok(tf.includes(",atrim=start=4.000000,asetpts=PTS-STARTPTS[A]"), "the audio trimmed with it");
+  assert.equal(trimmed[trimmed.indexOf("-t") + 1], "66.000");
+  assert.equal(seekBefore("/m/left.mp4"), left.inSec.toFixed(3), "the clips are placed as before");
+
+  // The teaser: one more input after the stills, over timeline 7..10, before the trim.
+  const teased = buildFastExportCommand({
+    ...base,
+    headTrimSec: 4,
+    countdownTeaserPath: "/m/ct.png",
+    countdownTeaserStartSec: 7,
+    countdownTeaserEndSec: 10,
+  }).args;
+  const cf = teased[teased.indexOf("-filter_complex") + 1]!;
+  const ctIndex = teased.filter((a) => a === "-i").length - 1;
+  assert.equal(teased[teased.lastIndexOf("-i") + 1], "/m/ct.png");
+  assert.ok(cf.includes(`[${ctIndex}:v]scale=1920:1080`), cf);
+  assert.ok(cf.includes("loop=loop=179:size=1:start=0,settb=1/60,setpts=N/60/TB+420[CT]"), cf);
+  assert.ok(cf.includes("[STAGE][CT]overlay=0:0:format=yuv420:eof_action=pass:repeatlast=0[STAGEC]"));
+  assert.ok(cf.includes("[STAGEC]trim=start_frame=240"), "teaser first, on timeline seconds");
+
+  // The record: absent is 0:10 (every export before this), present is what export:fast wrote.
+  const { mkdtempSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const path = await import("node:path");
+  const dir = mkdtempSync(path.join(tmpdir(), "export-record-"));
+  assert.equal(exportMatchStartSec(dir, 1), 10);
+  writeExportRecord(dir, 1, { matchStartSec: 6 });
+  assert.equal(exportMatchStartSec(dir, 1), 6);
+  writeFileSync(path.join(dir, "final-2.json"), "{ broken");
+  assert.equal(exportMatchStartSec(dir, 2), 10, "an unreadable record is the default");
+}
+
 console.log("exportFast: all checks passed");

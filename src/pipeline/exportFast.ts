@@ -1,12 +1,14 @@
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { placeOnTimeline, type KdenliveClipInput } from "./kdenliveProject.js";
+import { ANCHOR_SEC, placeOnTimeline, type KdenliveClipInput } from "./kdenliveProject.js";
 import {
   BOTTOM_BAND_HEIGHT,
+  INTRO_SECONDS,
   POV_HEIGHT,
   POV_WIDTH,
   RTA_COL_WIDTH,
+  STAGE_HEIGHT,
   STAGE_WIDTH,
   STATIC_COL_WIDTH,
   TOP_BAND_HEIGHT,
@@ -40,6 +42,19 @@ export interface FastExportInput {
    */
   topEndPath?: string;
   topEndAtSec?: number;
+  /**
+   * The COMING UP line large over the countdown (config.countdownTeaser): a full-frame PNG with
+   * alpha, shown over [start, end) of the timeline. Absent means the graph is today's.
+   */
+  countdownTeaserPath?: string;
+  countdownTeaserStartSec?: number;
+  countdownTeaserEndSec?: number;
+  /**
+   * Timeline seconds cut off the front, out of the countdown (`headTrimSec`): the output starts
+   * this far into the timeline and runs `totalDurationSec - headTrimSec`. The intro card is laid
+   * over the output's own 0. Absent or 0 means today's graph.
+   */
+  headTrimSec?: number;
   /** Splits stills in timeline order, each held for its own span. */
   splits: Array<{ path: string; startSec: number; durationSec: number }>;
   /** The RTA column video. */
@@ -101,6 +116,15 @@ export function buildFastExportCommand(input: FastExportInput): BuiltCommand {
   const topEnd = input.topEndPath !== undefined && input.topEndAtSec !== undefined;
   const TOP_END_INDEX = 5 + input.splits.length;
   if (topEnd) args.push("-i", input.topEndPath!);
+  const teaser =
+    input.countdownTeaserPath !== undefined &&
+    input.countdownTeaserStartSec !== undefined &&
+    input.countdownTeaserEndSec !== undefined &&
+    input.countdownTeaserEndSec > input.countdownTeaserStartSec;
+  const TEASER_INDEX = TOP_END_INDEX + (topEnd ? 1 : 0);
+  if (teaser) args.push("-i", input.countdownTeaserPath!);
+  const trimFrames = Math.max(0, Math.round((input.headTrimSec ?? 0) * fps));
+  const outSec = input.totalDurationSec - trimFrames / fps;
 
   const SPLIT_BASE = 5;
   const chains: string[] = [];
@@ -146,13 +170,32 @@ export function buildFastExportCommand(input: FastExportInput): BuiltCommand {
   chains.push(`[SPL][RTA]hstack=inputs=2[BAND]`);
   chains.push(`[TOP][POV][BAND]vstack=inputs=3[STAGE]`);
 
+  // Both optional steps below leave the graph exactly as it was when they are off.
+  let stage = "[STAGE]";
+  if (teaser) {
+    // Timeline seconds, before the head trim: the still starts at its own pts and passes
+    // through (eof_action=pass) once its frames run out.
+    const from = Math.round(input.countdownTeaserStartSec! * fps);
+    const frames = Math.max(1, Math.round(input.countdownTeaserEndSec! * fps) - from);
+    chains.push(
+      `[${TEASER_INDEX}:v]scale=${STAGE_WIDTH}:${STAGE_HEIGHT}:flags=bilinear,format=yuva420p,setsar=1,` +
+        `loop=loop=${frames - 1}:size=1:start=0,settb=1/${fps},setpts=N/${fps}/TB+${from}[CT]`,
+    );
+    chains.push(`${stage}[CT]overlay=0:0:format=yuv420:eof_action=pass:repeatlast=0[STAGEC]`);
+    stage = "[STAGEC]";
+  }
+  if (trimFrames > 0) {
+    chains.push(`${stage}trim=start_frame=${trimFrames},setpts=PTS-STARTPTS[STAGET]`);
+    stage = "[STAGET]";
+  }
+
   // The only genuine alpha composite in the whole graph. eof_action=pass so the stage continues
   // once the card is over (introSec, 7 s by default); repeatlast=0 so its last frame is not held over the match.
   chains.push(
     `[4:v]format=yuva420p,setsar=1,fps=${fps},settb=1/${fps},setpts=N/${fps}/TB+${input.introOffsetSec}/TB[INTRO]`,
   );
   const videoOut = input.useVaapi ? "[STAGEI]" : "[V]";
-  chains.push(`[STAGE][INTRO]overlay=0:0:format=yuv420:eof_action=pass:repeatlast=0${videoOut}`);
+  chains.push(`${stage}[INTRO]overlay=0:0:format=yuv420:eof_action=pass:repeatlast=0${videoOut}`);
   if (input.useVaapi) chains.push(`[STAGEI]format=nv12,hwupload[V]`);
 
   // Each POV folded to mono and placed toward its own side: the left ear gets `p` of the left
@@ -167,11 +210,13 @@ export function buildFastExportCommand(input: FastExportInput): BuiltCommand {
   chains.push(`[1:a]aformat=channel_layouts=stereo,${pan(q, p)}[A1]`);
   // normalize=0 because MLT's `mix` transition sums its inputs (sum=1); ffmpeg's amix halves
   // each by default, which would quietly drop both POVs 6dB relative to the Kdenlive export.
-  chains.push(`[A0][A1]amix=inputs=2:duration=longest:normalize=0,aresample=48000:async=1:first_pts=0[A]`);
+  chains.push(
+    `[A0][A1]amix=inputs=2:duration=longest:normalize=0,aresample=48000:async=1:first_pts=0${trimFrames > 0 ? `,atrim=start=${(trimFrames / fps).toFixed(6)},asetpts=PTS-STARTPTS` : ""}[A]`,
+  );
 
   args.push("-filter_complex", chains.join(";"));
   args.push("-map", "[V]", "-map", "[A]");
-  args.push("-t", input.totalDurationSec.toFixed(3), "-r", String(fps), "-fps_mode", "cfr");
+  args.push("-t", outSec.toFixed(3), "-r", String(fps), "-fps_mode", "cfr");
   args.push("-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv");
   if (input.useVaapi) {
     // Measured 9.5ms CPU/frame against libx264 veryfast's 43.8ms. Encode only: this GPU exposes
@@ -187,7 +232,7 @@ export function buildFastExportCommand(input: FastExportInput): BuiltCommand {
   return {
     args,
     description:
-      `${input.splits.length} split stills, ${input.totalDurationSec.toFixed(1)}s at ${fps}fps, ` +
+      `${input.splits.length} split stills, ${outSec.toFixed(1)}s at ${fps}fps, ` +
       `${input.useVaapi ? "h264_vaapi" : "libx264"}`,
   };
 }
@@ -228,3 +273,40 @@ export async function runFastExport(
 
 export const exportOutputPath = (outDir: string, matchId: number): string =>
   path.join(outDir, `final-${matchId}.mp4`);
+
+/**
+ * Timeline seconds `export:fast` cuts off the countdown's head for an intro card of `introSec`:
+ * the card still opens the video and the countdown's last three seconds follow it, so match
+ * start lands at introSec + 3 s (7 → 0:10, unchanged; 3 → 0:06). Tenths, so a probed 3.017 s
+ * card is a 3 s one.
+ */
+export const headTrimSec = (introSec: number): number =>
+  Math.max(0, Math.round((INTRO_SECONDS - introSec) * 10) / 10) || 0; // NaN (an unreadable probe) is no trim
+
+/**
+ * `final-<id>.json` beside the MP4: where match start sits in *that* video. The one source of
+ * truth for every consumer of the finished video (the Short's proxy and preview, a series'
+ * games); an export without one — every export before 24 Sept 2026, a Kdenlive export — is at
+ * ANCHOR_SEC.
+ */
+export const exportRecordPath = (outDir: string, matchId: number): string =>
+  path.join(outDir, `final-${matchId}.json`);
+
+export interface ExportRecord {
+  matchStartSec: number;
+}
+
+export function writeExportRecord(outDir: string, matchId: number, record: ExportRecord): void {
+  writeFileSync(exportRecordPath(outDir, matchId), `${JSON.stringify(record, null, 2)}\n`, "utf8");
+}
+
+/** The second match start sits at in this match's finished video; ANCHOR_SEC without a record. */
+export function exportMatchStartSec(outDir: string, matchId: number): number {
+  try {
+    const v = (JSON.parse(readFileSync(exportRecordPath(outDir, matchId), "utf8")) as ExportRecord)
+      .matchStartSec;
+    return typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : ANCHOR_SEC;
+  } catch {
+    return ANCHOR_SEC;
+  }
+}

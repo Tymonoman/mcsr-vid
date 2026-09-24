@@ -83,14 +83,31 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   throw new Error(`unexpected fetch: ${url}`);
 }) as typeof fetch;
 
-const { assembleSeries, chapterStarts, concatList, readSeriesRecord, renderSeries, seriesShortGame } =
-  await import("./series.js");
+const {
+  assembleSeries,
+  chapterStarts,
+  concatList,
+  gameMatchStarts,
+  readSeriesRecord,
+  renderSeries,
+  seriesShortGame,
+} = await import("./series.js");
 const { buildSeriesDescription } = await import("../pipeline/description.js");
 const { formatChapterTime } = await import("../pipeline/chapters.js");
 
 /* --- Pure parts --------------------------------------------------------------------------- */
 
 assert.deepEqual(chapterStarts([600, 500.5, 700]), [0, 600, 1100.5]);
+// Each game's match start in the joined video: its chapter plus its own export's (a 7 s card's
+// 10 s, a record from before 24 Sept 2026 the same; a 3 s card's 6 s).
+const joined = (durationSec: number, matchStartSec?: number) => ({
+  matchId: 1,
+  gameNo: 1,
+  winnerUuid: null,
+  durationSec,
+  ...(matchStartSec === undefined ? {} : { matchStartSec }),
+});
+assert.deepEqual(gameMatchStarts([joined(600), joined(500.5, 10), joined(700, 6)]), [10, 610, 1106.5]);
 assert.equal(concatList(["/m/a.mp4", "/m/it's.mp4"]), "file '/m/a.mp4'\nfile '/m/it'\\''s.mp4'\n");
 assert.equal(formatChapterTime(59 * 60 + 59), "59:59");
 assert.equal(formatChapterTime(3600), "1:00:00");

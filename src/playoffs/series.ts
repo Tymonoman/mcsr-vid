@@ -26,7 +26,8 @@ import {
   type SeriesDescriptionGame,
 } from "../pipeline/description.js";
 import { describeError } from "../errorText.js";
-import { exportOutputPath } from "../pipeline/exportFast.js";
+import { exportMatchStartSec, exportOutputPath } from "../pipeline/exportFast.js";
+import { ANCHOR_SEC } from "../pipeline/kdenliveProject.js";
 import { setHidden } from "../dashboard/matchShelf.js";
 import { getMatch, getUser, matchPageUrl, playoffsBracketUrl } from "../api/mcsrApi.js";
 import { readSplitStills } from "../pipeline/overlayRender.js";
@@ -55,6 +56,11 @@ export interface SeriesGame {
   winnerUuid: string | null;
   /** The game's export, in seconds — its chapter is the sum of the ones before it. */
   durationSec: number;
+  /**
+   * Where match start sits in the game's own export (`final-<id>.json`, export:fast's head trim);
+   * absent in records joined before 24 Sept 2026, which is ANCHOR_SEC.
+   */
+  matchStartSec?: number;
 }
 
 /** `series.json`: what was joined, so a reader can find the games without the bracket. */
@@ -150,6 +156,12 @@ export function chapterStarts(durations: readonly number[]): number[] {
     at += d;
   }
   return starts;
+}
+
+/** Where each game's match start sits in the joined video: its chapter plus its own export's. */
+export function gameMatchStarts(games: readonly SeriesGame[]): number[] {
+  const starts = chapterStarts(games.map((g) => g.durationSec));
+  return games.map((g, i) => starts[i]! + (g.matchStartSec ?? ANCHOR_SEC));
 }
 
 /**
@@ -319,6 +331,7 @@ export async function assembleSeries(
       gameNo: g.gameNo,
       winnerUuid: g.winnerUuid,
       durationSec: durations[i]!,
+      matchStartSec: exportMatchStartSec(matchDir(g.matchId), g.matchId),
     })),
     assembledAt: current && previous ? previous.assembledAt : new Date().toISOString(),
   };

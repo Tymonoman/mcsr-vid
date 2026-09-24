@@ -46,6 +46,7 @@
   "teaserAtSec": 10,
   "teaserSec": 5,
   "introSec": 7,
+  "countdownTeaser": false,
   "explainMovesSec": null,
   "nightlyRenderExport": true,
   "nightlyMaxRenders": 1,

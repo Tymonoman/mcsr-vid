@@ -24,6 +24,7 @@ import {
 } from "../../remotion/layout.js";
 import { computeSplits } from "./overlayProps.js";
 import { buildChapters, formatChapters } from "./chapters.js";
+import { headTrimSec } from "./exportFast.js";
 import { buildSplitMarkers } from "./markers.js";
 import { buildDescription, buildTags } from "./description.js";
 import { hookSuggestions } from "./hooks.js";
@@ -498,7 +499,10 @@ async function runStages(
   const projectPath = path.join(outDir, `match-${matchId}.kdenlive`);
   await writeFile(projectPath, projectXml, "utf8");
 
-  const chapters = buildChapters(splits, match, config.overlayLeadInSec);
+  // Where match start will sit in export:fast's MP4: the card on disk decides the head it cuts
+  // (headTrimSec), exactly as exportFastCli reads it — not config.introSec, which a run that kept
+  // an older card would disagree with.
+  const chapters = buildChapters(splits, match, config.overlayLeadInSec - headTrimSec(introDurationSec));
   const chaptersPath = path.join(outDir, `match-${matchId}.chapters.txt`);
   await writeFile(chaptersPath, formatChapters(chapters), "utf8");
 

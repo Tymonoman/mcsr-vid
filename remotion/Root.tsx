@@ -1,6 +1,7 @@
 import { Composition } from "remotion";
 import { Overlay, OverlayTop, OverlayBottom, OverlaySplits, OverlayTimer, OverlayIntro } from "./Overlay.js";
 import { Thumbnail } from "./Thumbnail.js";
+import { CountdownTeaser } from "./CountdownTeaser.js";
 import { Short, ShortCaption, ShortEndCard, ShortHook, ShortResult, type ShortStillProps } from "./Short.js";
 import { ChatPanel } from "./ChatPanel.js";
 import {
@@ -274,6 +275,15 @@ export const RemotionRoot: React.FC = () => {
         width={1280}
         height={720}
         defaultProps={thumbnailDefaultProps}
+      />
+      <Composition
+        id="CountdownTeaser"
+        component={CountdownTeaser}
+        durationInFrames={1}
+        fps={30}
+        width={1920}
+        height={1080}
+        defaultProps={{ momentMs: 314_000, text: "THE LEAD CHANGES ON BLIND TRAVEL" }}
       />
     </>
   );
