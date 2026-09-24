@@ -282,8 +282,9 @@ export function spoilsTheResult(text: string): boolean {
   if (line.endsWith("?")) return false;
   // Placements are results too: a playoff placing in a ranked video's title ("WINNER vs 3rd
   // PLACE", 23 Sept 2026) told the Season 11 bracket's outcome while its series were still
-  // going out from the Round of 16.
-  return /\b(wins?|won|winner|beats?|beaten|destroys?|crushes|takes? (?:it|down|the win)|took (?:it|the win)|loses?|lost|loser|chokes?|choked|throws?|threw|clutch(?:es|ed)?|comeback complete|survives?|eliminat(?:es|ed)|(?:1st|2nd|3rd|4th|first|second|third|fourth) place|runners?[- ]up|(?:semi-?)?finalists?|champions?|podium)\b/i.test(
+  // going out from the Round of 16. A sweep is a series result: "PLAYOFFS | SWEPT vs TAS" on a
+  // best of 5 told how it went (24 Sept 2026 audit), whoever the nickname meant.
+  return /\b(swept|sweeps?|wins?|won|winner|beats?|beaten|destroys?|crushes|takes? (?:it|down|the win)|took (?:it|the win)|loses?|lost|loser|chokes?|choked|throws?|threw|clutch(?:es|ed)?|comeback complete|survives?|eliminat(?:es|ed)|(?:1st|2nd|3rd|4th|first|second|third|fourth) place|runners?[- ]up|(?:semi-?)?finalists?|champions?|podium)\b/i.test(
     line,
   );
 }

@@ -38,7 +38,7 @@ import { STAGE_LABELS, STAGE_ORDER, STAGE_SHORT_LABELS } from "../pipeline/pipel
 import { presentSuggestions } from "./suggestPresent.js";
 import { dismiss, restore, snapshot, startScan } from "./suggestScan.js";
 import { cronLine, rsyncPullAllCommand, rsyncPullCommand } from "./publishSet.js";
-import { claimedPublishTimes, nextPublishSlot, publishHourFor } from "../youtube/publishSlot.js";
+import { publishHourFor, publishSlotFor } from "../youtube/publishSlot.js";
 import { playoffBoard } from "../playoffs/playoffs.js";
 import { renderSeries, seriesState, type SeriesRunners } from "../playoffs/series.js";
 import { refreshRivalPostsIfStale, rivalPostsSnapshot, rivalRecentPostFor } from "./rivalPosts.js";
@@ -536,6 +536,7 @@ const server = createServer(async (req, res) => {
       const short = async (kind: string) =>
         ((await readIfPresent(path.join(matchDir(matchId), `short-${matchId}.${kind}.txt`))) ?? "").trim() ||
         null;
+      const slot = await publishSlotFor(matchId, Date.now());
       json(res, 200, {
         shortTitle: await short("title"),
         shortDescription: await short("description"),
@@ -546,11 +547,8 @@ const server = createServer(async (req, res) => {
         pinnedComment: pinnedComment(),
         // The slot to schedule for, so the morning's paste into Studio carries a time too —
         // and the first free one, not the same time every match ready this morning would show.
-        publishAt: nextPublishSlot(
-          Date.now(),
-          publishHourFor(matchDir(matchId)),
-          await claimedPublishTimes(matchId),
-        ).toISOString(),
+        publishAt: slot.at.toISOString(),
+        publishWhy: slot.why,
         publishHourUtc: publishHourFor(matchDir(matchId)),
         // Commands for the operator's own shell, not this one: the publishing PC pulls.
         pull: config.pullSource

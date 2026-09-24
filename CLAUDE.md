@@ -249,6 +249,8 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   9.36% CTR against 2.25% for descriptive ones. A playoff game's chips are its seeds, in words
   ("Can the LCQ take down the 7th seed?", "The 7th seed vs the LCQ") in place of the ladder-rank
   chip — a bracket has its own order, and a `#` in a hook is a hashtag on the Short's title.
+  "SWEPT"/"sweep" is a result word in `spoilsTheResult` (a best of 5 titled "PLAYOFFS | SWEPT vs
+  TAS" told how it went), and saving the hooks refuses a typed hook it catches, as the chips are.
 - **A subscribe line during the race** (`midRollCtaAtSec`, Settings → Publishing; default 90,
   null = none): the post-roll card in the meta column reaches 25–45% of viewers, the first split
   (~90 s) 50–60% (`npm run retention`, 22 Sept 2026). The meta column shows SUBSCRIBE for
@@ -340,7 +342,10 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
 - **Publish kit** (`GET /api/publishkit/:id`): copy buttons for the title, the publish slot
   (`publishHourUtc`, default 19:00 UTC, the competitor's measured hour; a series video takes
   `seriesPublishHourUtc`, 23:00, its own slot — the test is the day *and* the hour, so the two
-  kinds never push each other a day out — `src/youtube/publishSlot.ts`), description, tags, the
+  kinds never push each other a day out — `src/youtube/publishSlot.ts`; `publishSlotFor` also keeps
+  a ranked video and a series of the same two players `seriesPairGapDays` (3) UTC days apart,
+  scheduled or public, and says so beside the slot and in the chain's log, because the
+  doogile–Aquacorde series drew 84 views beside their same-day ranked video's 2,095), description, tags, the
   Short's title/description, a pinned comment, a community post, and a DM per player. When
   `pullSource` is set it opens with an rsync *pull* the operator's PC runs (`src/dashboard/publishSet.ts`;
   the lab host's path, not the container's `/media`) — pull, not push, because the image has no
@@ -393,7 +398,9 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   card — and the exports are joined with `ffmpeg -f concat -c copy` (all exports are the same
   h264 1080p60/aac) into `series-<g1>.mp4`, which `findExportedVideo` prefers, so the upload,
   the kit and the pairing (game 1's `/matches/<id>` link first) work on game 1 as on any match.
-  `series.json` beside it names the games and their lengths. **The join deletes the games'
+  `series.json` beside it names the games and their lengths. Its chapters name each game's world
+  ("0:00 game 1 · village seed", `seedPhrase`, as the tags do), never the bracket seed or a score.
+  **The join deletes the games'
   own exports** — a series is fifty minutes of 1080p60 and the disk holds one copy — and takes a
   game back out of the series (`-c copy` at its recorded offset, exact because every game
   starts on its own keyframe) whenever a re-join needs it. `exportStale` reads the record, so a

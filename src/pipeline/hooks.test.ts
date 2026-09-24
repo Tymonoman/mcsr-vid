@@ -323,6 +323,10 @@ console.log("hooks: all checks passed");
     "the runner-up returns",
     "two finalists on one seed",
     "SEASON 11 CHAMPION vs #14",
+    // A sweep is a best-of's result, nickname or not (24 Sept 2026 audit).
+    "PLAYOFFS | SWEPT vs TAS",
+    "TAS vs SWEPT",
+    "doogile sweeps the round of 16",
   ]) {
     assert.ok(spoilsTheResult(spoiler), `should be rejected: ${spoiler}`);
   }
@@ -334,7 +338,6 @@ console.log("hooks: all checks passed");
     "The lead changed 3 times",
     "Who wins this one?",
     "Can the 3rd place take down the champion?",
-    "PLAYOFFS | SWEPT vs TAS",
   ]) {
     assert.ok(!spoilsTheResult(safe), `should be allowed: ${safe}`);
   }

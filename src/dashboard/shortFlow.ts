@@ -25,7 +25,7 @@ import { getMatch, getUser } from "../api/mcsrApi.js";
 import type { MatchInfo } from "../api/types.js";
 import { config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
-import { hookSuggestions } from "../pipeline/hooks.js";
+import { hookSuggestions, spoilsTheResult } from "../pipeline/hooks.js";
 import { ANCHOR_SEC } from "../pipeline/kdenliveProject.js";
 import { computeMetrics } from "../pipeline/matchScore.js";
 import { exportStale, readSyncOffsets } from "../pipeline/syncFile.js";
@@ -69,7 +69,7 @@ import {
   channelVideoFor,
   refreshChannelUploadsNow,
 } from "../youtube/channelUploads.js";
-import { claimedPublishTimes, nextPublishSlot, publishHourFor } from "../youtube/publishSlot.js";
+import { publishSlotFor } from "../youtube/publishSlot.js";
 import { beginUpload, SHORT_DELAY_MS, uploadRunning, type UploadRequest } from "../youtube/youtubeUpload.js";
 import { readUpload, type UploadKind } from "../youtube/youtubeStore.js";
 import { hiddenMatchIds, isExported, isShortUploaded, isUploaded } from "./matchShelf.js";
@@ -705,6 +705,16 @@ async function writeHooks(
     return { status: 409, error: LOCKED("long-form", f.video.videoId) };
   if (f.short && (noShort || (f.shortHook !== null && shortHook !== f.shortHook)))
     return { status: 409, error: LOCKED("Short", f.short.videoId) };
+  // Nothing names the winner (CLAUDE.md): a typed hook is held to the chips' rule. Only a hook
+  // this save writes — an uploaded one is locked and stays as it went out.
+  const spoiler = [f.video ? "" : titleHook, f.short ? "" : (shortHook ?? "")].find(
+    (h) => h !== "" && spoilsTheResult(h),
+  );
+  if (spoiler)
+    return {
+      status: 400,
+      error: `"${spoiler}" gives the result away — a hook never names the winner or how the series went; reword it`,
+    };
 
   let match: MatchInfo;
   try {
@@ -810,10 +820,11 @@ export function shortPublishAt(video: OnChannel | null, nowMs: number): Date | n
 async function uploadOne(matchId: number, kind: UploadKind, deps: ChainDeps): Promise<string | null> {
   let publishAt: Date | null = null;
   if (config.nightlyUpload === "scheduled") {
-    publishAt =
-      kind === "video"
-        ? nextPublishSlot(deps.now(), publishHourFor(matchDir(matchId)), await claimedPublishTimes(matchId))
-        : shortPublishAt(await onChannel(matchId, "video"), deps.now());
+    if (kind === "video") {
+      const slot = await publishSlotFor(matchId, deps.now());
+      if (slot.why) shortLog(matchId, "chain", `publish slot ${slot.at.toISOString()}: ${slot.why}`);
+      publishAt = slot.at;
+    } else publishAt = shortPublishAt(await onChannel(matchId, "video"), deps.now());
   }
   if (kind === "video" && !isExported(matchId)) return NOT_EXPORTED;
   const begun = await deps.upload(matchId, {

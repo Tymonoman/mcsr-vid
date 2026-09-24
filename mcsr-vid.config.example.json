@@ -39,6 +39,7 @@
   "nightlyRenderHourUtc": 3,
   "publishHourUtc": 19,
   "seriesPublishHourUtc": 23,
+  "seriesPairGapDays": 3,
   "postRollCta": true,
   "midRollCtaAtSec": 90,
   "midRollCtaSec": 4,

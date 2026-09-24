@@ -470,6 +470,7 @@ async function fallsBack(message: RegExp, timeoutMs?: number, fallback?: string)
   uploaded(3, "WINNER vs 3rd PLACE | Infume vs Feinberg | MCSR Ranked 1v1");
   uploaded(4, "NEVER UPLOADED | a vs b | MCSR Ranked 1v1", false);
   uploaded(5, "<HOOK> | a vs b | MCSR Ranked 1v1");
+  uploaded(6, "TAS vs SWEPT | doogile vs Aquacorde | MCSR Ranked 1v1");
   answer({
     ...good,
     titleHooks: ["TAS vs YN", "WINNER vs 3rd PLACE", "TAS vs YN", "B".repeat(41), "ICE COLD", "ONE TOO MANY"],
@@ -497,7 +498,14 @@ async function fallsBack(message: RegExp, timeoutMs?: number, fallback?: string)
   const prompt = sentArgv()[sentArgv().indexOf("-p") + 1]!;
   assert.match(prompt, /They are from OTHER matches and name OTHER players/);
   assert.match(prompt, / {2}"CARNIVORE vs VEGAN" \(BeefSalad vs silverrruns\)/);
-  for (const left of ["PLAYOFFS", "SWEPT vs TAS", "WINNER vs 3rd PLACE", "NEVER UPLOADED", "<HOOK>"])
+  for (const left of [
+    "PLAYOFFS",
+    "SWEPT vs TAS",
+    "TAS vs SWEPT",
+    "WINNER vs 3rd PLACE",
+    "NEVER UPLOADED",
+    "<HOOK>",
+  ])
     assert.ok(!prompt.includes(`"${left}`), `not an example: ${left}`);
   assert.equal(
     JSON.parse(sentArgv()[sentArgv().indexOf("--json-schema") + 1]!).required.includes("titleHooks"),
@@ -509,7 +517,7 @@ async function fallsBack(message: RegExp, timeoutMs?: number, fallback?: string)
   const plain = await pickShortMoment(single, { force: true });
   assert.equal(plain.source, "agy");
   assert.ok(!("titleHooks" in plain) && !("playerMoments" in plain));
-  for (const id of [1, 2, 3, 4, 5]) rmSync(path.join(config.mediaDir, String(id)), { recursive: true });
+  for (const id of [1, 2, 3, 4, 5, 6]) rmSync(path.join(config.mediaDir, String(id)), { recursive: true });
   console.log(
     "OK: title hooks in the operator's style, spoilers and repeats dropped by name; none is still a pick",
   );

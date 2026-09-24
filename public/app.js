@@ -933,7 +933,15 @@ async function loadPublishKit(id, meta) {
           title.length > 100 || title.includes("<HOOK>"),
         ),
       ),
-      slot ? block("Publish at", slotText, 1) : "",
+      // Why the slot is later than the first free one (the pair gap, src/youtube/publishSlot.ts).
+      slot
+        ? block(
+            "Publish at",
+            slotText,
+            1,
+            kit.publishWhy ? ` <span class="muted small">${esc(kit.publishWhy)}</span>` : "",
+          )
+        : "",
       // Pasted once each, into Studio, after the title: folded so the morning's three blocks stay
       // above the fold on a phone.
       `<details class="kitmore more"${el.querySelector("details.more")?.open ? " open" : ""}>

@@ -122,6 +122,15 @@ export const SETTINGS: readonly SettingField[] = [
     group: "Publishing",
   },
   {
+    key: "seriesPairGapDays",
+    label: "Days between a pair's ranked video and series",
+    help: "The publish slot keeps a ranked video and a series of the same two players this many days apart; 0 is off. The doogile–Aquacorde series drew 84 views beside their ranked video's 2,095 the same day.",
+    kind: "int",
+    group: "Publishing",
+    min: 0,
+    max: 30,
+  },
+  {
     key: "youtubeAutoFinish",
     label: "Finish a Studio upload automatically",
     help: "When the channel scan pairs a new Studio upload, give it its thumbnail, playlists, first comment and tags without waiting to be asked. Not gated by the audit — none of those is videos.insert.",

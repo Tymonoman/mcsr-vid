@@ -19,7 +19,12 @@ import { existsSync, statSync } from "node:fs";
 import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { config, matchDir } from "../config.js";
-import { buildSeriesDescription, buildTags, type SeriesDescriptionGame } from "../pipeline/description.js";
+import {
+  buildSeriesDescription,
+  buildTags,
+  seedPhrase,
+  type SeriesDescriptionGame,
+} from "../pipeline/description.js";
 import { describeError } from "../errorText.js";
 import { exportOutputPath } from "../pipeline/exportFast.js";
 import { setHidden } from "../dashboard/matchShelf.js";
@@ -377,6 +382,7 @@ async function writeSeriesText(
       matchId: g.matchId,
       gameNo: g.gameNo,
       startSec: starts[i]!,
+      seed: seedPhrase(m),
       pageUrl: matchPageUrl(g.matchId, left.nickname, m.season),
       streams: await streamLinks(m, [left.uuid, right.uuid]),
     });

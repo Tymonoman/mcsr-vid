@@ -180,6 +180,12 @@ export interface Config {
    */
   seriesPublishHourUtc: number;
   /**
+   * UTC calendar days a ranked video and a series of the same two players are kept apart when
+   * the publish slot is chosen (src/youtube/publishSlot.ts `pairGapTimes`). 0 turns it off. The
+   * doogile–Aquacorde series drew 84 views in 32 h beside their ranked video's 2,095 the same day.
+   */
+  seriesPairGapDays: number;
+  /**
    * Whether the bottom band's meta column turns into a subscribe card a few seconds after the
    * finish, for the post-roll. Subscribers are the binding Partner Programme gate (500; the
    * hours gate levels off under 4,000 at any cadence this channel can run), and the post-roll
@@ -337,6 +343,7 @@ export const DEFAULTS: Config = {
   nightlyRenderHourUtc: 3,
   publishHourUtc: 19,
   seriesPublishHourUtc: 23,
+  seriesPairGapDays: 3,
   postRollCta: true,
   midRollCtaAtSec: 90,
   midRollCtaSec: 4,
@@ -410,7 +417,12 @@ export function validateOverrides(raw: Record<string, unknown>): void {
       }
       continue;
     }
-    if (key === "midRollCtaAtSec" || key === "midRollCtaSec" || key === "teaserAtSec" || key === "teaserSec") {
+    if (
+      key === "midRollCtaAtSec" ||
+      key === "midRollCtaSec" ||
+      key === "teaserAtSec" ||
+      key === "teaserSec"
+    ) {
       const nullable = key === "midRollCtaAtSec" || key === "teaserAtSec";
       if (!((nullable && value === null) || (typeof value === "number" && value >= 0 && value <= 3600))) {
         throw new Error(
@@ -490,6 +502,13 @@ export function validateOverrides(raw: Record<string, unknown>): void {
     // Whole renders, at least one. 0 would turn the nightly off through a key that does not say
     // so — `"nightlyRenderHourUtc": null` is how you do that — and a fraction would read as a
     // limit while behaving like its floor.
+    // A fraction or a negative would silently read as its floor or as "off".
+    if (key === "seriesPairGapDays") {
+      if (!Number.isInteger(value) || (value as number) < 0 || (value as number) > 30) {
+        throw new Error(`${CONFIG_PATH}: "seriesPairGapDays" must be whole days 0-30 (0 is off).`);
+      }
+      continue;
+    }
     if (key === "nightlyMaxRenders") {
       if (!Number.isInteger(value) || (value as number) < 1) {
         throw new Error(`${CONFIG_PATH}: "nightlyMaxRenders" must be a whole number of renders, 1 or more.`);
