@@ -37,7 +37,6 @@ import {
   renderThumbnailVariants,
   variantFellBack,
   variantFile,
-  variantSlots,
 } from "../thumbnails/thumbnailVariants.js";
 import { describeError } from "../errorText.js";
 import {
@@ -342,17 +341,14 @@ async function runStages(
   });
 
   // On a cold start nobody has picked a hook yet — the operator does that in the dashboard's
-  // title editor, long after this runs — so the thumbnail and the title file open on the same
-  // opener that editor will offer first. `POST /api/thumbnails/:id/rerender` replaces it once a
-  // human has chosen, and a later re-run (a pose added to the config, a lost PNG) carries that
-  // choice forward rather than re-rendering it away under the chip. An unreadable match yields
-  // no suggestions, and then this renders the plain header strip and leaves the title's
-  // placeholder standing. With `versus`, so the thumbnail's hook is the dashboard's first chip —
-  // the rematch line outranks everything else, and without the record here it never appeared on
-  // a thumbnail.
+  // title editor, long after this runs — so the title file opens on the same opener that editor
+  // will offer first, and a later re-run carries a headline an older thumbnail manifest committed
+  // (`carriedHookText`). An unreadable match yields no suggestions, and then the title's
+  // placeholder stands. With `versus`, so the rematch line, which outranks everything else, is
+  // the one chosen.
   //
-  // Hoisted above the thumbnail stage because the title file needs the same line, and a match
-  // whose variants are all on disk skips that stage entirely.
+  // Hoisted above the thumbnail stage because a match whose variants are all on disk skips that
+  // stage entirely.
   const hookText = carriedHookText(
     await readManifest(outDir),
     (
@@ -374,12 +370,10 @@ async function runStages(
   // Plain only: the hook stays on the title and the Short, not the thumbnail (the operator took
   // the text off on 18 Sept 2026). A match rendered with hooked twins keeps those files; the
   // panel does not show them.
-  const slots = variantSlots(variants, undefined);
   const allRendered =
-    existsSync(thumbnailPath) &&
-    slots.every((s) => existsSync(path.join(outDir, variantFile(s.poses, s.hook))));
+    existsSync(thumbnailPath) && variants.every((p) => existsSync(path.join(outDir, variantFile(p))));
   if (allRendered) {
-    emit(done("thumbnail", { message: `reused ${slots.length} variants` }));
+    emit(done("thumbnail", { message: `reused ${variants.length} variants` }));
   } else {
     emit(active("thumbnail", { percent: 0 }));
     const manifest = await renderThumbnailVariants({
@@ -388,7 +382,6 @@ async function runStages(
       userRight,
       outDir,
       poses: variants,
-      hookText: undefined,
       signal,
       onProgress: (p) =>
         emit(
