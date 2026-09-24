@@ -113,6 +113,18 @@ write(103, { "match-103.title.edited.txt": `${stored}\n` });
   );
 }
 
+// A Short with no saved hook cannot upload, so the kit's read of it keeps the stored title and
+// logs nothing (it runs on every match the dashboard opens).
+write(104, {
+  "match-104.title.edited.txt": "Hook | ab vs cd | MCSR Ranked 1v1 | Minecraft Speedrun\n",
+  "short-104.title.txt": "An old Short title #minecraft #mcsr\n",
+});
+{
+  const before = warnings.length;
+  assert.equal((await uploadTextFor(104, "short")).title, "An old Short title #minecraft #mcsr");
+  assert.equal(warnings.length, before, warnings.slice(before).join("\n"));
+}
+
 // A joined series takes the round without a game number; an unknown format half is kept.
 assert.equal(
   refreshTitle("Game one | ab vs cd | MCSR Ranked Season 11 Playoffs | Round of 16 | Game 1", true),

@@ -121,12 +121,15 @@ export async function uploadTextFor(
     const hook = (await readManifest(dir))?.hookText?.trim();
     if (hook) title = title.replace(HOOK_PLACEHOLDER, hook);
   }
-  if (title !== "") {
+  // A Short with no saved hook cannot go up (`hookRefusal`): its stored title stands, unlogged —
+  // the publish kit asks for this text every time a match opens.
+  const shortHook = kind === "short" ? await readShortHook(dir, matchId) : null;
+  if (title !== "" && (kind === "video" || shortHook)) {
     const stored = title;
     title = await refreshed(`${kind === "short" ? "Short " : ""}title`, stored, async () =>
       kind === "video"
         ? refreshTitle(stored, existsSync(path.join(dir, "series.json")))
-        : refreshShortTitle(await readShortHook(dir, matchId), await longFormTitle(matchId)),
+        : refreshShortTitle(shortHook, await longFormTitle(matchId)),
     );
   }
   const editedDescription = await edited("description");
