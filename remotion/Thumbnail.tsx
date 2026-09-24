@@ -12,6 +12,8 @@ const HEADER_HEIGHT = 68;
 
 /** The seed types the centre slot has art for; any other value leaves the slot out. */
 const SEED_TYPES = new Set(["VILLAGE", "SHIPWRECK", "DESERT_TEMPLE", "RUINED_PORTAL", "BURIED_TREASURE"]);
+/** Off until the operator approves an icon set: the first one "doesnt look like minecraft at all" (24 Sept 2026). */
+const SHOW_SEED_SLOT = false;
 
 /** The name's size: 56 px, shrunk so a 16-character name fits the plate (Monocraft's advance is 0.66 em). */
 const nickFontPx = (nickname: string) => Math.min(56, Math.floor(520 / (0.66 * nickname.length)));
@@ -45,7 +47,7 @@ export const Thumbnail: FC<ThumbnailProps> = (props) => {
     ? { bandHeight: TROPHY_BAND_HEIGHT, bodyTop: TROPHY_BAND_HEIGHT - HEADER_HEIGHT }
     : null;
   const label = playoff ? `Season ${playoff.season} Playoffs · ${playoff.round}` : props.headerLabel;
-  const seedType = props.seedType && SEED_TYPES.has(props.seedType) ? props.seedType : null;
+  const seedType = SHOW_SEED_SLOT && props.seedType && SEED_TYPES.has(props.seedType) ? props.seedType : null;
 
   return (
     <AbsoluteFill className={`thumb${playoff ? ` playoff ${playoff.style}` : ""}`}>
