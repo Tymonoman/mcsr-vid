@@ -43,7 +43,8 @@ export const MOVE_LINES: Record<string, { head: string; line: string }> = {
   "projectelo.timeline.blind_travel": {
     head: "BLIND TRAVEL",
     // The blind portal is built for the ring strongholds generate in, not at one: the eyes find it.
-    line: "A NEW PORTAL OUT, AS FAR\nFROM SPAWN AS STRONGHOLDS\nARE. NO EYE THROWN YET",
+    // The operator's pick of four rewrites (24 Sept 2026).
+    line: "OUT OF THE NETHER,\nROUGHLY WHERE THE\nSTRONGHOLD SHOULD BE",
   },
   "story.follow_ender_eye": {
     head: "STRONGHOLD",
