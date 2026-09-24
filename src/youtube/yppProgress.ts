@@ -127,7 +127,11 @@ const ymd = (d: Date) => d.toISOString().slice(0, 10);
 
 async function analytics(token: string, params: Record<string, string>): Promise<number[][]> {
   const url = `https://youtubeanalytics.googleapis.com/v2/reports?${new URLSearchParams({ ids: "channel==MINE", ...params })}`;
-  const res = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
+  // A hung Analytics call would otherwise hold the YouTube panel (Upload, Adopt) for minutes.
+  const res = await fetch(url, {
+    headers: { authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(15_000),
+  });
   const json = (await res.json()) as { rows?: number[][]; error?: { message: string } };
   if (!res.ok || json.error) throw new Error(`Analytics: ${json.error?.message ?? res.status}`);
   return json.rows ?? [];
@@ -242,6 +246,7 @@ let engagement: { atMs: number; byVideo: Map<string, VideoEngagement> | null; er
   byVideo: null,
   error: null,
 };
+let engagementInflight: Promise<void> | null = null;
 
 /**
  * The per-video engagement, cached an hour (five minutes after a failure). Never throws: a
@@ -253,16 +258,22 @@ export async function videoEngagement(
   if (!isConfigured()) return { byVideo: null, error: "no YouTube token" };
   const age = nowMs - engagement.atMs;
   if (age < (engagement.error ? ENGAGEMENT_RETRY_MS : ENGAGEMENT_TTL_MS)) return engagement;
-  try {
-    engagement = {
-      atMs: nowMs,
-      byVideo: await fetchVideoEngagement(await getAccessToken(), nowMs),
-      error: null,
-    };
-  } catch (err) {
-    // Keep the last good numbers: an hour-old engaged count beats "n/a" after a blip.
-    engagement = { atMs: nowMs, byVideo: engagement.byVideo, error: describeError(err) };
-  }
+  // Screens opened while the request is out share it rather than each firing their own.
+  engagementInflight ??= (async () => {
+    try {
+      engagement = {
+        atMs: nowMs,
+        byVideo: await fetchVideoEngagement(await getAccessToken(), nowMs),
+        error: null,
+      };
+    } catch (err) {
+      // Keep the last good numbers: an hour-old engaged count beats "n/a" after a blip.
+      engagement = { atMs: nowMs, byVideo: engagement.byVideo, error: describeError(err) };
+    } finally {
+      engagementInflight = null;
+    }
+  })();
+  await engagementInflight;
   return engagement;
 }
 

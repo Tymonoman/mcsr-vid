@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { fetchVideoEngagement, projectYpp, yppThresholds } from "./yppProgress.js";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { fetchVideoEngagement, projectYpp, videoEngagement, yppThresholds } from "./yppProgress.js";
 
 const now = Date.UTC(2026, 8, 8);
 const base = {
@@ -94,6 +97,57 @@ assert.equal(p.shortsViews.have, 0);
     await assert.rejects(fetchVideoEngagement("tok", now), /Analytics: Quota exceeded/);
   } finally {
     globalThis.fetch = realFetch;
+  }
+}
+// The cached getter the uploads route calls on every screen: one request an hour however many
+// screens open at once, and a spent quota keeps the last good numbers rather than throwing.
+{
+  const realFetch = globalThis.fetch;
+  const realToken = process.env.YOUTUBE_TOKEN_FILE;
+  const dir = await mkdtemp(path.join(tmpdir(), "mcsr-ypp-"));
+  process.env.YOUTUBE_TOKEN_FILE = path.join(dir, "token.json");
+  let analyticsCalls = 0;
+  let quotaSpent = false;
+  // Every fetch lands here, the token refresh included: nothing reaches Google from a test.
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    if (!String(input).includes("youtubeanalytics")) {
+      return new Response(JSON.stringify({ access_token: "tok", expires_in: 3600 }));
+    }
+    analyticsCalls++;
+    await new Promise((r) => setTimeout(r, 10));
+    return quotaSpent
+      ? new Response(JSON.stringify({ error: { message: "Quota exceeded" } }), { status: 403 })
+      : new Response(JSON.stringify({ rows: [["FtJ-VEv6pgk", 6385, 2709, 12040]] }));
+  }) as typeof fetch;
+  try {
+    assert.deepEqual(await videoEngagement(now), { byVideo: null, error: "no YouTube token" });
+    await writeFile(
+      process.env.YOUTUBE_TOKEN_FILE,
+      JSON.stringify({ client_id: "c", client_secret: "s", refresh_token: "r" }),
+    );
+
+    const [a, b] = await Promise.all([videoEngagement(now), videoEngagement(now)]);
+    assert.equal(analyticsCalls, 1, "two screens opened together share one request");
+    assert.equal(a.byVideo?.get("FtJ-VEv6pgk")?.engagedViews, 2709);
+    assert.equal(b.byVideo?.get("FtJ-VEv6pgk")?.engagedViews, 2709);
+    await videoEngagement(now + 59 * 60_000);
+    assert.equal(analyticsCalls, 1, "cached for the hour");
+
+    quotaSpent = true;
+    const failed = await videoEngagement(now + 61 * 60_000);
+    assert.equal(analyticsCalls, 2);
+    assert.match(failed.error ?? "", /Quota exceeded/);
+    assert.equal(failed.byVideo?.get("FtJ-VEv6pgk")?.engagedViews, 2709, "the last good numbers stay");
+    await videoEngagement(now + 64 * 60_000);
+    assert.equal(analyticsCalls, 2, "no retry inside five minutes of a failure");
+    quotaSpent = false;
+    assert.equal((await videoEngagement(now + 67 * 60_000)).error, null);
+    assert.equal(analyticsCalls, 3);
+  } finally {
+    globalThis.fetch = realFetch;
+    if (realToken === undefined) delete process.env.YOUTUBE_TOKEN_FILE;
+    else process.env.YOUTUBE_TOKEN_FILE = realToken;
+    await rm(dir, { recursive: true, force: true });
   }
 }
 console.log("yppProgress: all checks passed");
