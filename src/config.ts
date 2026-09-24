@@ -218,6 +218,11 @@ export interface Config {
    */
   introSec: number;
   /**
+   * Whether to show the COMING UP line large across the video while the countdown is frozen.
+   * False by default.
+   */
+  countdownTeaser: boolean;
+  /**
    * "Explain the moves": the first time either player reaches a split, the meta column says what
    * the split is for ("BASTION / TRADING GOLD TO PIGLINS FOR ENDER PEARLS") for this many seconds;
    * null shows none (src/pipeline/explainMoves.ts). Written for the Minecraft player who has never
@@ -365,6 +370,7 @@ export const DEFAULTS: Config = {
   teaserAtSec: 10,
   teaserSec: 5,
   introSec: 7,
+  countdownTeaser: false,
   explainMovesSec: null,
   nightlyRenderExport: true,
   nightlyMaxRenders: 1,

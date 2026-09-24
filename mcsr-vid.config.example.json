@@ -46,6 +46,7 @@
   "teaserAtSec": 10,
   "teaserSec": 5,
   "introSec": 7,
+  "countdownTeaser": false,
   "explainMovesSec": null,
   "nightlyRenderExport": true,
   "nightlyMaxRenders": 1,
@@ -96,5 +97,5 @@
     "--print-timeout",
     "1400s"
   ],
-  "watchScript": "/home/node/.claude/plugins/cache/claude-watch/watch/0.2.0/scripts/watch.py"
+  "watchScript": "/app/.tools/agy-dev/.claude/plugins/cache/claude-watch/watch/0.2.0/scripts/watch.py"
 }

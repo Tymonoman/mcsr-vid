@@ -40,6 +40,10 @@ export interface FastExportInput {
    */
   topEndPath?: string;
   topEndAtSec?: number;
+  /** The COMING UP teaser PNG. */
+  countdownTeaserPath?: string;
+  countdownTeaserStartSec?: number;
+  countdownTeaserEndSec?: number;
   /** Splits stills in timeline order, each held for its own span. */
   splits: Array<{ path: string; startSec: number; durationSec: number }>;
   /** The RTA column video. */

@@ -124,6 +124,13 @@ export const SETTINGS: readonly SettingField[] = [
     max: 7,
   },
   {
+    key: "countdownTeaser",
+    label: "Large coming-up teaser",
+    help: "the COMING UP line, large, over the frozen countdown",
+    kind: "boolean",
+    group: "Publishing",
+  },
+  {
     key: "explainMovesSec",
     label: "Explain the moves (seconds on screen)",
     help: "The first time either player reaches a split, the meta column says what it is for, in words for someone who has never watched a speedrun: BASTION, TRADING GOLD TO PIGLINS FOR ENDER PEARLS. Never who got there. The subscribe line and the teaser go first; a card waits for them. Empty shows none. Applies to the next render.",
