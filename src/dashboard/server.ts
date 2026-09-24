@@ -65,7 +65,7 @@ import { saveSettings, settingsPayload } from "./settings.js";
 import { handleYoutubeRoute, uploadRunning } from "./youtubeRoutes.js";
 import { handleSyncRoute } from "./syncRoutes.js";
 import { readMeta } from "./matchMeta.js";
-import { pinnedComment, readIfPresent, readUpload } from "../youtube/youtubeStore.js";
+import { pinnedComment, readIfPresent, readUpload, uploadTextFor } from "../youtube/youtubeStore.js";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const ROOT = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
@@ -533,12 +533,16 @@ const server = createServer(async (req, res) => {
         (await readUpload(matchId))?.videoId ??
         channelVideoFor(matchId, channelUploadsSnapshot())?.videoId ??
         null;
-      const short = async (kind: string) =>
-        ((await readIfPresent(path.join(matchDir(matchId), `short-${matchId}.${kind}.txt`))) ?? "").trim() ||
-        null;
+      // What the upload sends (`uploadTextFor`: today's templates over the render's files), so a
+      // Studio paste and a dashboard upload cannot say two different things.
+      const video = await uploadTextFor(matchId, "video");
+      const short = await uploadTextFor(matchId, "short");
       json(res, 200, {
-        shortTitle: await short("title"),
-        shortDescription: await short("description"),
+        title: video.title || null,
+        description: video.description || null,
+        tags: video.tags,
+        shortTitle: short.title || null,
+        shortDescription: short.description.trim() || null,
         videoUrl: videoId ? `https://youtu.be/${videoId}` : null,
         players: [entry.leftNickname ?? null, entry.rightNickname ?? null],
         // The same line "Finish on YouTube" posts (src/youtube/youtubeUpload.ts), so the paste and the
