@@ -9,7 +9,7 @@ import { PixelBadge } from "./PixelBadge.js";
 import { BastionIcon } from "./BastionIcon.js";
 import { STAGE_WIDTH, STAGE_HEIGHT, BOTTOM_BAND_Y, RTA_COL_X } from "./layout.js";
 import { resolveAchievementIcon } from "./achievementBadges.js";
-import { ctaFrameOf, midRollFramesOf } from "../src/pipeline/splitStates.js";
+import { ctaFrameOf, midRollFramesOf, teaserFramesOf } from "../src/pipeline/splitStates.js";
 
 /** Up to 3 highlighted-achievement badges for one player, shown in the splits panel.
  * Unmapped ids/levels are skipped entirely, per resolveAchievementIcon's contract. */
@@ -179,6 +179,7 @@ function SplitsPanel({
 }) {
   const ctaFrame = ctaFrameOf(props);
   const mid = midRollFramesOf(props);
+  const teaser = teaserFramesOf(props);
   return (
     <div className="splits">
       <div className="splits-col col-meta">
@@ -235,6 +236,14 @@ function SplitsPanel({
           <div className="cta midroll">
             <span className="cta-value">SUBSCRIBE</span>
             <span className="cta-sub">for the next one</span>
+          </div>
+        ) : teaser !== null && frame >= teaser[0] && frame < teaser[1] ? (
+          // The first-minute promise (config.teaserAtSec): a moment later in the race, at the
+          // time the RTA column beside it will read. Names nobody (src/pipeline/teaser.ts).
+          <div className="cta teaser">
+            <span className="cta-value">COMING UP</span>
+            <span className="teaser-at">AT {formatShortTime(props.teaser!.momentMs)}</span>
+            <span className="teaser-what">{props.teaser!.text}</span>
           </div>
         ) : (
           <>

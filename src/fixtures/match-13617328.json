@@ -1,0 +1,286 @@
+{
+ "id": 13617328,
+ "type": 2,
+ "season": 12,
+ "date": 1790213191,
+ "forfeited": false,
+ "decayed": false,
+ "result": {
+  "uuid": "ddbcd34dc24a4287b396c849d9b9871f",
+  "time": 608280
+ },
+ "timelines": [
+  {
+   "uuid": "939ddf85303441de901d60bfa4109318",
+   "time": 606025,
+   "type": "projectelo.timeline.dragon_death"
+  },
+  {
+   "uuid": "939ddf85303441de901d60bfa4109318",
+   "time": 605993,
+   "type": "end.kill_dragon"
+  },
+  {
+   "uuid": "ddbcd34dc24a4287b396c849d9b9871f",
+   "time": 598289,
+   "type": "projectelo.timeline.dragon_death"
+  },
+  {
+   "uuid": "939ddf85303441de901d60bfa4109318",
+   "time": 494975,
+   "type": "adventure.shoot_arrow"
+  },
+  {
+   "uuid": "ddbcd34dc24a4287b396c849d9b9871f",
+   "time": 483963,
+   "type": "story.enter_the_end"
+  },
+  {
+   "uuid": "ddbcd34dc24a4287b396c849d9b9871f",
+   "time": 483940,
+   "type": "end.root"
+  },
+  {
+   "uuid": "ddbcd34dc24a4287b396c849d9b9871f",
+   "time": 474198,
+   "type": "projectelo.timeline.death_spawnpoint"
+  },
+  {
+   "uuid": "939ddf85303441de901d60bfa4109318",
+   "time": 469117,
+   "type": "story.enter_the_end"
+  },
+  {
+   "uuid": "939ddf85303441de901d60bfa4109318",
+   "time": 469112,
+   "type": "end.root"
+  },
+  {
+   "uuid": "939ddf85303441de901d60bfa4109318",
+   "time": 462774,
+   "type": "projectelo.timeline.death_spawnpoint"
+  },
+  {
+   "uuid": "ddbcd34dc24a4287b396c849d9b9871f",
+   "time": 449352,
+   "type": "story.follow_ender_eye"
+  },
+  {
+   "uuid": "939ddf85303441de901d60bfa4109318",
+   "time": 443025,
+   "type": "story.follow_ender_eye"
+  },
+  {
+   "uuid": "939ddf85303441de901d60bfa4109318",
+   "time": 329173,
+   "type": "projectelo.timeline.death_spawnpoint"
+  },
+  {
+   "uuid": "ddbcd34dc24a4287b396c849d9b9871f",
+   "time": 288097,
+   "type": "projectelo.timeline.blind_travel"
+  },
+  {
+   "uuid": "939ddf85303441de901d60bfa4109318",
+   "time": 268416,
+   "type": "projectelo.timeline.blind_travel"
+  },
+  {
+   "uuid": "ddbcd34dc24a4287b396c849d9b9871f",
+   "time": 258140,
+   "type": "nether.obtain_blaze_rod"
+  },
+  {
+   "uuid": "ddbcd34dc24a4287b396c849d9b9871f",
+   "time": 256573,
+   "type": "adventure.kill_a_mob"
+  },
+  {
+   "uuid": "ddbcd34dc24a4287b396c849d9b9871f",
+   "time": 256547,
+   "type": "adventure.root"
+  },
+  {
+   "uuid": "939ddf85303441de901d60bfa4109318",
+   "time": 231324,
+   "type": "nether.obtain_blaze_rod"
+  },
+  {
+   "uuid": "ddbcd34dc24a4287b396c849d9b9871f",
+   "time": 230986,
+   "type": "nether.find_fortress"
+  },
+  {
+   "uuid": "939ddf85303441de901d60bfa4109318",
+   "time": 223465,
+   "type": "adventure.root"
+  },
+  {
+   "uuid": "939ddf85303441de901d60bfa4109318",
+   "time": 223459,
+   "type": "adventure.kill_a_mob"
+  },
+  {
+   "uuid": "939ddf85303441de901d60bfa4109318",
+   "time": 210074,
+   "type": "nether.find_fortress"
+  },
+  {
+   "uuid": "ddbcd34dc24a4287b396c849d9b9871f",
+   "time": 198135,
+   "type": "story.mine_stone"
+  },
+  {
+   "uuid": "ddbcd34dc24a4287b396c849d9b9871f",
+   "time": 173607,
+   "type": "nether.obtain_crying_obsidian"
+  },
+  {
+   "uuid": "939ddf85303441de901d60bfa4109318",
+   "time": 163874,
+   "type": "story.obtain_armor"
+  },
+  {
+   "uuid": "ddbcd34dc24a4287b396c849d9b9871f",
+   "time": 141885,
+   "type": "husbandry.root"
+  },
+  {
+   "uuid": "939ddf85303441de901d60bfa4109318",
+   "time": 136479,
+   "type": "nether.obtain_crying_obsidian"
+  },
+  {
+   "uuid": "939ddf85303441de901d60bfa4109318",
+   "time": 131227,
+   "type": "story.mine_stone"
+  },
+  {
+   "uuid": "939ddf85303441de901d60bfa4109318",
+   "time": 122372,
+   "type": "husbandry.root"
+  },
+  {
+   "uuid": "ddbcd34dc24a4287b396c849d9b9871f",
+   "time": 70343,
+   "type": "story.smelt_iron"
+  },
+  {
+   "uuid": "ddbcd34dc24a4287b396c849d9b9871f",
+   "time": 68385,
+   "type": "nether.loot_bastion"
+  },
+  {
+   "uuid": "939ddf85303441de901d60bfa4109318",
+   "time": 67114,
+   "type": "nether.loot_bastion"
+  },
+  {
+   "uuid": "ddbcd34dc24a4287b396c849d9b9871f",
+   "time": 64307,
+   "type": "nether.find_bastion"
+  },
+  {
+   "uuid": "ddbcd34dc24a4287b396c849d9b9871f",
+   "time": 64224,
+   "type": "story.enter_the_nether"
+  },
+  {
+   "uuid": "ddbcd34dc24a4287b396c849d9b9871f",
+   "time": 64204,
+   "type": "nether.root"
+  },
+  {
+   "uuid": "939ddf85303441de901d60bfa4109318",
+   "time": 57928,
+   "type": "nether.find_bastion"
+  },
+  {
+   "uuid": "939ddf85303441de901d60bfa4109318",
+   "time": 57867,
+   "type": "story.enter_the_nether"
+  },
+  {
+   "uuid": "939ddf85303441de901d60bfa4109318",
+   "time": 57862,
+   "type": "nether.root"
+  },
+  {
+   "uuid": "ddbcd34dc24a4287b396c849d9b9871f",
+   "time": 25023,
+   "type": "story.iron_tools"
+  },
+  {
+   "uuid": "939ddf85303441de901d60bfa4109318",
+   "time": 22472,
+   "type": "story.iron_tools"
+  },
+  {
+   "uuid": "939ddf85303441de901d60bfa4109318",
+   "time": 21322,
+   "type": "story.smelt_iron"
+  },
+  {
+   "uuid": "ddbcd34dc24a4287b396c849d9b9871f",
+   "time": 20400,
+   "type": "story.root"
+  },
+  {
+   "uuid": "939ddf85303441de901d60bfa4109318",
+   "time": 19659,
+   "type": "story.root"
+  },
+  {
+   "uuid": "939ddf85303441de901d60bfa4109318",
+   "time": 7421,
+   "type": "story.form_obsidian"
+  },
+  {
+   "uuid": "ddbcd34dc24a4287b396c849d9b9871f",
+   "time": 6686,
+   "type": "story.form_obsidian"
+  }
+ ],
+ "completions": [
+  {
+   "uuid": "ddbcd34dc24a4287b396c849d9b9871f",
+   "time": 608280
+  }
+ ],
+ "vod": [
+  {
+   "uuid": "ddbcd34dc24a4287b396c849d9b9871f",
+   "url": "https://www.twitch.tv/videos/2882366546",
+   "startsAt": 1790209892
+  },
+  {
+   "uuid": "939ddf85303441de901d60bfa4109318",
+   "url": "https://www.twitch.tv/videos/2882400559",
+   "startsAt": 1790212338
+  }
+ ],
+ "rank": {
+  "season": null,
+  "allTime": null
+ },
+ "seedType": "RUINED_PORTAL",
+ "bastionType": "BRIDGE",
+ "players": [
+  {
+   "uuid": "ddbcd34dc24a4287b396c849d9b9871f",
+   "nickname": "nolqndo",
+   "roleType": 1,
+   "eloRate": 1666,
+   "eloRank": 212,
+   "country": "ca"
+  },
+  {
+   "uuid": "939ddf85303441de901d60bfa4109318",
+   "nickname": "thecamo6",
+   "roleType": 3,
+   "eloRate": 1855,
+   "eloRank": 63,
+   "country": "us"
+  }
+ ]
+}
