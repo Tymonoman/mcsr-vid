@@ -72,3 +72,66 @@ Replace Short `9O_R3A0Gbek` ("#31 vs #14" burned in, 24 Sept 13:00 UTC); retitle
 `HZMx38dwSSE` ("WINNER vs 3rd PLACE", 24 Sept 19:00 UTC); unlist `zSon9yOTYpM` (shows the series
 decider); teaser fallback when nobody's lead changed (13446429); disk cleanup (hold the 8 published
 finals until the rewind eval's proxies exist); playoff thumbnail framing.
+
+## PLAN for 24 Sept (written 06:15 UTC by the coordinator, Fable; Opus agents do the building)
+
+### Timeline (UTC / Polish)
+- **07:00 / 09:00** wake. Launch the audit workflow FIRST, then seven workflows (one per TASKS.md)
+  in parallel: status, teaser, cleanup, ui, github, audience, rewind-eval. Prompts are the
+  `resume-*.js` scripts (quote the operator verbatim; refusal check 10 min after launch).
+- **07:15** check the journals for "I did not…" refusals; relaunch any refuser with the OPERATOR block.
+- **09:30 / 11:30** audit check-in: if the agent is not done, take its partial + `data-api.json`
+  and finish the report by hand. **09:55 / 11:55: audit delivered** (file + a short summary to
+  the operator: scores, what changed since 22 Sept, top 5 fixes split code vs Studio).
+- **As branches finish:** merge in order (below), `npm run test:unit` after each, push.
+- **Restart window:** only after the operator has saved the day's hooks (two matches waiting) and
+  never during the 03:00 UTC nightly. Ask them for `docker restart mcsr-dashboard` once the
+  status + ui branches are on main; a second restart is not needed for client-only changes.
+- **Evening:** post-merge builds (below), then a report of the day.
+
+### Audit inputs already collected (06:12 UTC)
+`~/.claude/projects/-app/research/audit-2026-09-24/data-api.json` — channel (74 subs, 33,776
+views, 27 videos incl. scheduled), every video's snippet/statistics/status, 29 playlists, 1
+channel section, 90-day totals (31,323 views, 46,267 min, AVD 230 s, +77/−12 subs, 338 likes,
+37 comments, 12 shares) and traffic (SUBSCRIBER 23,082 · RELATED 3,637 · SHORTS 2,706 · SEARCH
+777 · CHANNEL 292). Baseline: `memory/project_channel_audit_2026_09_22.md`. Also read
+`research/night1/report-features.md` (top-10 features) and `report-ypp.md` (YPP math, 2027 change).
+Audit format: the claude-youtube skill's audit template (4 dimensions, scores, Next Steps).
+
+### Branches and their state (all pushed except the 24 Sept resume worktrees)
+| Job | Original WIP branch (pushed) | Resume worktree (24 Sept, local) | Head | Notes |
+|---|---|---|---|---|
+| status | `worktree-wf_d5f53274-045-2` @ c6413e5 | `.claude/worktrees/wf_12aa84f2-cd7-1` (`worktree-wf_12aa84f2-cd7-1`) | merged + wip | continue here |
+| teaser | `worktree-agent-ad306227e8a5ce950` @ dd66022 | `wf_e9201910-2c6-1` | `58a7083` feat + wip | had already committed a "feat" — nearly done |
+| cleanup | `worktree-wf_f1d590fa-8eb-2` @ 9091b5a | `wf_acb0618a-b77-1` | merged + wip | |
+| ui | `worktree-wf_f1d590fa-8eb-1` @ d7c210e | `wf_16dc7315-38a-1` | merged + wip | |
+| github | — | `wf_2dfe5127-54d-1` | `fbf7047` wip | ci.yml draft, .gitignore; it also edited `src/dashboard/shortFlow.test.ts` (not its file — review or drop that hunk) |
+Resume agents should `git merge` the *resume* worktree's branch (it already contains the original).
+
+### Merge order and the overlap map
+1. **status** → main. Files: src/shorts/{shortLog,videoPick,watchPov,generateShort,shortRender}, src/dashboard/{shortFlow,shortsRoutes,nightly}, src/youtube/youtubeUpload (+tests).
+2. **teaser** → main. Overlaps with cleanup on `src/config.ts`, `remotion/types.ts`, `remotion/overlay.source.css` (teaser adds; cleanup deletes elsewhere in the same files — resolve by keeping both edits).
+3. **cleanup** → main. Re-run `npm run config:example` after the merge (both branches touch DEFAULTS).
+4. **ui** → main last (it consumes status's fields). Then `bash scripts/browser-checks/run-all.sh http://mcsr-dashboard:8080` after the restart.
+5. **github** → main any time (isolated files) — drop its shortFlow.test.ts hunk unless it is a real fix.
+Acceptance for every merge: `npx tsc --noEmit`, `npm run test:unit`, and for teaser/ui the rendered stills / screenshots read by a human-equivalent (the agent's report lists paths).
+
+### After the merges (the judge's TONIGHT list, still open)
+- WP1 agy **title-hook proposals** on the pick call (`titleHooks[3]` in the schema, filtered by `hookProblem`, first in `suggestions.title`).
+- WP2 **DM moment per player** in the publish kit (`playerMoments`, `?t=` link) + **spoiler guard on typed hooks** (`saveHooks` refuses via `hookProblem` unless `spoilerOk`).
+- Adopt the features report's top items that are code: chapters as Key Moments check, Shorts related-link pill in the checklist, end-screen reminder pill; the rest are Studio steps for the operator.
+- Ideas: only after the above; the judge marked most NO/NEXT WEEK.
+
+### Operator checklist (with times)
+- **Now:** save hooks for 13549300 and 13617328 (old Package panel until the NOW tab lands).
+- **Before 15:00 Polish:** replace Short `9O_R3A0Gbek` (delete + upload `short-13473906.mp4`).
+- **Before 21:00 Polish:** retitle `r0F15RPC0nE` ("WINNER vs 3rd PLACE") and delete/re-cut `HZMx38dwSSE`.
+- `docker logs mcsr-dashboard 2>&1 | grep -i watch | tail -5` → paste (the /watch-in-container mystery).
+- Studio: Ko-fi link under the banner; end screens on live long-forms; related-video link on each Short; watermark.
+- Decide: teaser fallback when nobody's lead changed; disk cleanup (hold 8 finals until rewind-eval proxies exist — 2 of 8 made).
+
+### Risks
+- Agents refusing (last night: 4 of 9) → OPERATOR block verbatim in every prompt; check at +10 min.
+- Two agents on one file → ownership lists in prompts; github's stray test edit shows it can still happen — review diffs at merge.
+- /watch not running in the dashboard container → the status branch logs the reason to `short-<id>.log.jsonl`; tonight's nightly will show it.
+- Quota: 8 Opus agents ≈ 1–1.5M tokens per hour; if the limit nears, stop and commit WIP again (the salvage loop is in this file's history).
