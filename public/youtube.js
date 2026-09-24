@@ -9,6 +9,8 @@
 /* --- YouTube -------------------------------------------------------------------------------- */
 
 let uploadPoll = null;
+/** The last /api/youtube/status answer: Now's Save button says so when uploads are off. */
+let ytStatus = null;
 
 const mib = (bytes) => `${(bytes / 1024 / 1024).toFixed(0)} MiB`;
 
@@ -31,6 +33,8 @@ async function loadYoutube(id, meta) {
     el.innerHTML = `<div class="scanline bad">${esc(e.message)}</div>`;
     return;
   }
+  ytStatus = status;
+  paintSave();
   if (!status.connected) {
     el.innerHTML =
       '<div class="scanline">Not connected. Run <code>npm run youtube-auth</code> on a machine with a browser, then copy <code>youtube-token.json</code> into the repo root.</div>';
@@ -38,6 +42,9 @@ async function loadYoutube(id, meta) {
   }
 
   const all = await api("/api/youtube/uploads").catch(() => ({ uploads: [], statsError: null }));
+  // The operator moved on while this was in flight ("Next waiting ›" is one tap): the #youtube
+  // above is detached, and the controls below would be looked up in the next match's panel.
+  if (selected !== id || !el.isConnected) return;
   const mine = all.uploads.find((u) => u.matchId === id);
 
   if (mine) {
@@ -80,9 +87,11 @@ async function loadYoutube(id, meta) {
       </div>
     </div>
     ${
+      // Folded: the video uploads itself once the hooks are saved in Now, and a failed upload's
+      // Retry is in Now's Video up step. This is for the day the operator wants it by hand.
       status.uploadsEnabled
-        ? `<div class="upload">
-      <div class="scanline muted">Sends the title, description and tags from the match's files &mdash; edit them in the title editor above.</div>
+        ? `<details class="fold upload" id="byhand"><summary>Upload by hand</summary>
+      <div class="scanline muted">Sends the title, description and tags from the match's files &mdash; edit them in Package's Title &amp; description.</div>
       <div class="row">
         <label>Visibility
           <select id="ytPrivacy">
@@ -98,7 +107,7 @@ async function loadYoutube(id, meta) {
         <span class="msg" id="ytMsg"></span>
       </div>
       <div class="bar" id="ytBarWrap" hidden><i id="ytBar"></i></div>
-    </div>`
+    </details>`
         : ""
     }`;
   $('#youtube [data-act="checkchannel"]')?.addEventListener("click", (ev) => {
@@ -171,7 +180,15 @@ async function loadYoutube(id, meta) {
 
 async function pollUpload(id, meta) {
   clearTimeout(uploadPoll);
-  const p = await api(`/api/youtube/upload/${id}`);
+  let p;
+  try {
+    p = await api(`/api/youtube/upload/${id}`);
+  } catch (e) {
+    // A lost poll is not a lost upload: say so under the button and keep asking.
+    if ($("#ytMsg")) $("#ytMsg").textContent = `${e.message} — asking again in 5 s`;
+    uploadPoll = setTimeout(() => pollUpload(id, meta), 5000);
+    return;
+  }
   const bar = $("#ytBar");
   if (bar && p.total) bar.style.width = `${Math.round((p.uploaded / p.total) * 100)}%`;
   const msg = $("#ytMsg");
@@ -185,20 +202,16 @@ async function pollUpload(id, meta) {
   // The video is up when there is an id; a rejected thumbnail or playlist after that is a
   // problem to fix in Studio, not a failed upload to retry.
   await loadYoutube(id, meta);
-  // The Short followed the long-form by itself (src/youtube/youtubeUpload.ts `shortAfterUpload`) and
-  // says so in one line of the warnings: scheduled when, or why it was skipped. Its own line,
-  // because "short uploaded" is not a problem and must not be reported as one.
-  const shortLine = (p.warnings ?? []).find((w) => w.startsWith("short "));
-  const problems = (p.warnings ?? []).filter((w) => w !== shortLine);
-  if (shortLine)
-    $("#youtube .published")?.insertAdjacentHTML(
-      "afterbegin",
-      `<div class="scanline${/skipped|failed/.test(shortLine) ? " bad" : ""}">${esc(shortLine)}</div>`,
-    );
+  const problems = p.warnings ?? [];
+  // Now's Video up step reads the same record.
+  void loadPlan(id);
   // After the repaint: the panel has just become the published view, and #ytFinish is the row
   // these problems are about -- a thumbnail or a playlist that did not take.
-  if (p.error) failAt("#ytFinish", "Upload failed", p.error);
-  else if (problems.length) failAt("#ytFinish", "Uploaded, with a problem", problems.join("\n"));
+  if (p.error) {
+    // Nothing went up, so the panel is the form again, folded: open it where the press was.
+    $("#byhand")?.setAttribute("open", "");
+    failAt("#ytUpload", "Upload failed", p.error);
+  } else if (problems.length) failAt("#ytFinish", "Uploaded, with a problem", problems.join("\n"));
 }
 
 /**

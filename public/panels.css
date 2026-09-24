@@ -151,6 +151,36 @@
   border-bottom-width: 3px;
   white-space: nowrap;
 }
+.nightly .bad a {
+  color: inherit;
+}
+.nightly .hooks {
+  margin-top: 2px;
+}
+.nightly .hooks a {
+  color: var(--gold);
+}
+/* The picker down for the whole box: a warning for the list screen, not for every match
+   screen (not .bad), since each Pick step already says it where it is fixed. */
+.nightly > .pickerline {
+  flex-basis: 100%;
+  color: var(--gold);
+  overflow-wrap: anywhere;
+}
+.nightly .signinhow {
+  margin-top: 4px;
+  color: var(--quartz);
+}
+.nightly .warn {
+  color: var(--gold);
+}
+/* What the box is doing now, each running step a link to its match. */
+.nightly .activity {
+  margin-bottom: 2px;
+}
+.nightly .activity a {
+  color: var(--gold);
+}
 
 /* --- Suggestions -------------------------------------------------------------------------- */
 /* The three Partner Programme gates, above the A/B tables: what the operator is actually
@@ -630,6 +660,13 @@
   input[type="datetime-local"] {
     min-height: 44px;
   }
+  input[type="checkbox"] {
+    width: 24px;
+    height: 24px;
+  }
+  .noshort {
+    min-height: 44px;
+  }
 
   input[type="number"] {
     min-height: 44px;
@@ -643,6 +680,7 @@
      line reads: the negative margin keeps the line box where it was. */
   .scanline a,
   .previewmeta a,
+  .stephead > a,
   .nightly a,
   .outputs a,
   .sugg .game a,
@@ -657,10 +695,6 @@
   .queue a {
     min-width: 44px;
     justify-content: center;
-  }
-  .moment .seek {
-    padding: 0 10px;
-    min-height: 44px;
   }
   .kitmore > summary,
   .fold > summary,
@@ -686,82 +720,262 @@
   }
 }
 
-/* ===== shorts: the candidate moments, best first ===== */
-.moments {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+/* ===== Now: one column of steps, the export to the channel (paintNow, app.js) ===============
+   A finished step is one line: a mark, the name, what happened. The step that needs the operator,
+   runs or failed is open: a running one has its clock and bar, a failed one the server's error
+   under its head with the fix under that, and each has its Details fold of log lines.
+   The marks carry the state as a glyph and a colour both, since a phone is read at a glance. */
+.nowconn {
+  padding: 6px 0;
+  border: 0;
 }
-.moment {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  grid-template-areas:
-    "when why cut"
-    "when hook cut";
-  align-items: center;
-  gap: 4px 12px;
-  padding: 8px 10px;
-  background: var(--panel-2, #1a1820);
-  border: 1px solid var(--panel-edge-light);
-}
-/* The best pick reads as the default without being the only option. */
-.moment:first-child {
-  border-color: var(--gold, #f0c93d);
-}
-.moment .when {
-  grid-area: when;
+.clock {
   font-variant-numeric: tabular-nums;
-  color: var(--gold, #f0c93d);
 }
-.moment .cut {
-  grid-area: cut;
+/* A running step's percentage, under its head whether or not the step is open. */
+.stepbar {
+  height: 6px;
+  margin: 0 0 8px calc(1.2em + 10px);
 }
-/* The same window as a place in the final video: a control, dressed like the clock beside it. */
-.moment .seek {
-  font: inherit;
-  color: inherit;
-  background: none;
-  border: 1px solid var(--edge, #2c2833);
-  margin-left: 6px;
-  padding: 1px 6px;
+.stepbar > i {
+  background: var(--gold);
+}
+/* What to do about the failure above it: the fix the server's message implies. */
+.inlinefail .fix {
+  padding: 8px 10px;
+  border-top: 1px solid var(--panel-edge-light);
+  font-size: 12px;
+  color: var(--quartz);
+  overflow-wrap: anywhere;
+}
+/* An earlier attempt the chain has since got past, or a problem an upload lived with: the same
+   box, in the warning colour. */
+.inlinefail.warn {
+  border-color: var(--gold);
+}
+.inlinefail.warn .head {
+  color: var(--gold);
+}
+.longnote {
+  color: var(--gold);
+}
+/* The Details fold: the step's log lines, newest last, a line's detail one tap away. */
+.steplog {
+  margin-top: 10px;
+  font-size: 12px;
+}
+.steplog > summary {
+  cursor: pointer;
+  color: var(--muted);
+  padding: 4px 0;
+}
+.loglines {
+  max-height: 260px;
+  overflow: auto;
+  background: var(--panel-2);
+  border: 1px solid var(--panel-edge-light);
+  padding: 4px 8px;
+}
+.logline {
+  padding: 2px 0;
+  overflow-wrap: anywhere;
+}
+.logline > summary {
   cursor: pointer;
 }
-.moment .why {
-  grid-area: why;
-  color: var(--muted, #8d8695);
-  font-size: 0.9em;
+.logline .t {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  margin-right: 4px;
 }
-/* Under the reason rather than beside it: in a half-width column the four-across row squeezed
-   the reason into a strip one word wide. */
-.moment .hook {
-  grid-area: hook;
-  color: var(--quartz, #f3ede2);
-  font-style: italic;
-  font-size: 0.9em;
+.logline.lv-warn {
+  color: var(--gold);
 }
-#shortlog {
-  margin-top: 10px;
-  max-height: 220px;
+.logline.lv-error {
+  color: var(--crimson);
+}
+.logline pre {
+  margin: 4px 0 6px;
+  padding: 6px 8px;
+  max-height: 200px;
   overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--quartz);
+  background: var(--panel);
 }
+/* A playoff game whose series video is game 1's: where to go instead of a form to fill. */
+.seriesnote {
+  font-size: 13px;
+  padding: 10px 0;
+  display: grid;
+  gap: 6px;
+}
+.seriesnote a {
+  color: var(--warped);
+}
+.step {
+  border-bottom: 1px solid var(--panel-edge);
+}
+.stephead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.stephead > a {
+  color: var(--warped);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.steptoggle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 9px 0;
+  text-align: left;
+  background: transparent;
+  color: var(--quartz);
+  border: 0;
+}
+.steptoggle:active {
+  transform: none;
+}
+/* A step with nothing to unfold is a line, not a control; it keeps its colours. */
+.steptoggle:disabled {
+  opacity: 1;
+  cursor: default;
+  background: transparent;
+  color: var(--quartz);
+}
+.step .mark {
+  flex: 0 0 1.2em;
+  text-align: center;
+}
+.step .name {
+  flex: 0 0 6.2em;
+  font-size: 12px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.step .sum {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.s-done .mark {
+  color: var(--warped);
+}
+.s-need .mark,
+.s-run .mark,
+.s-warn .mark,
+.s-need .name {
+  color: var(--gold);
+}
+.s-fail .mark,
+.s-fail .name,
+.s-fail .sum {
+  color: var(--crimson);
+}
+.s-todo .mark,
+.s-skip .mark,
+.s-skip .name {
+  color: var(--muted);
+}
+.stepbody {
+  display: none;
+  padding: 0 0 12px calc(1.2em + 10px);
+}
+.step.open > .stepbody {
+  display: block;
+}
+.step:not(.open) > .inlinefail {
+  display: none;
+}
+.stepbody .row {
+  margin: 8px 0 0;
+}
+.stepbody .scanline {
+  padding: 6px 0;
+  border: 0;
+}
+.pickvideo {
+  display: block;
+  width: 100%;
+  max-height: 40vh;
+  background: #000;
+  border: 1px solid var(--panel-edge-light);
+}
+.pickwhat {
+  font-size: 12px;
+  margin-top: 6px;
+}
+#now .why {
+  font-size: 12px;
+  font-style: italic;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.hooklabel {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+  margin: 10px 0 4px;
+}
+.noshort {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  margin-top: 12px;
+}
+#now .small {
+  font-size: 11px;
+}
+input[type="text"]:disabled {
+  color: var(--muted);
+  background: var(--panel-2);
+}
+/* The one primary button: at the end of the Hooks step on a desktop, in the bottom-bar slot
+   above the section bar on a phone (below), where the thumb is. */
+.saverow {
+  margin: 10px 0 4px;
+}
+.saverow[hidden] {
+  display: none;
+}
+@media (max-width: 860px) {
+  .saverow {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: calc(56px + env(safe-area-inset-bottom));
+    z-index: 3;
+    margin: 0;
+    padding: 6px 12px;
+    background: var(--panel);
+    border-top: 1px solid var(--panel-edge);
+  }
+  .saverow #save {
+    width: 100%;
+  }
+  /* The pinned button covers the last 60px of the group; nothing may end up under it. */
+  .panel[data-panel="now"] {
+    padding-bottom: 64px;
+  }
+}
+
+/* ===== the encode's bar ===== */
 .exportbar {
   margin-top: 8px;
 }
 .exportbar.hidden {
   display: none;
-}
-#shortlog.hidden {
-  display: none;
-}
-/* A phone gets one column; the grid above puts the hook off-screen otherwise. 860px, not a
-   narrower breakpoint of its own: that is where the page becomes two screens (app.css), and
-   between 640 and 860 the four-column row was squeezing the hook to nothing. */
-@media (max-width: 860px) {
-  .moment {
-    grid-template-columns: 1fr;
-    grid-template-areas: "when" "why" "hook" "cut";
-    gap: 4px;
-  }
 }
 
 /* ===== final video preview ===== */

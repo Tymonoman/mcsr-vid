@@ -2,9 +2,9 @@
 # Drive the dashboard in a real browser the way the operator does. Usage:
 #   bash scripts/browser-checks/run-all.sh http://127.0.0.1:8093
 # Needs `npx playwright install chromium` once, and a server on that URL with real match data.
-# Two checks change state and restore it (hook-flow writes and removes an edited title;
-# round1-fixes dismisses and restores a suggestion); rerender-check re-renders thumbnails for
-# real and is NOT run here.
+# One check changes state and restores it (round1-fixes dismisses and restores a suggestion).
+# hook-flow and now-flow press Save, which schedules real uploads now: both answer the Short
+# routes in the browser, so nothing reaches the server.
 set -u
 BASE="${1:?usage: run-all.sh <dashboard url>}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -50,8 +50,7 @@ run inline-errors-check "$BASE"
 run sync-edit-check "$BASE" "$READY"
 run phone-rows-check "$BASE"
 run hook-flow-check "$BASE" "$READY2"
-run short-mismatch-check "$BASE" "$READY"
-run seek-moment-check "$BASE" "$READY"
+run now-flow-check "$BASE" "$READY" "$READY2"
 run checkchannel-check "$BASE" "$READY"
 [ -n "$PUBLISHED" ] && run studio-upload-check "$BASE" "$PUBLISHED"
 [ -n "$UNEXPORTED" ] && run stale-preview "$BASE" "$READY2" "$UNEXPORTED"

@@ -41,10 +41,21 @@ const { launchFor } = require("./launch.cjs");
     await page.evaluate((id) => select(Number(id), { open: true }), ready);
     check("the adopt control renders with uploads enabled", await appears("#ytAdopt"));
 
-    // A match not on the channel: the upload form itself, which nothing has ever rendered.
+    // A match not on the channel: the upload form itself, folded as "Upload by hand" -- the video
+    // uploads itself once the hooks are saved in Now, so the form is the fallback, closed.
     await page.evaluate((id) => select(Number(id), { open: true }), ready);
-    await page.waitForSelector("#youtube #ytUpload", { timeout: 30000 });
+    await page.waitForSelector("#youtube #ytUpload", { state: "attached", timeout: 30000 });
     check("the upload form renders with uploads enabled", true);
+    check(
+      "folded as Upload by hand, closed",
+      await page.$eval("#ytUpload", (b) => {
+        const fold = b.closest("details#byhand");
+        return !!fold && !fold.open && /Upload by hand/.test(fold.querySelector("summary").textContent);
+      }),
+    );
+    // On a desktop Publish is on screen beside Now; the fold opens in place.
+    await page.click("#byhand > summary");
+    check("and opens to a visible Upload button", await page.locator("#ytUpload").isVisible());
     check("it offers the three visibility choices", (await page.locator("#ytPrivacy option").count()) === 3);
     check("and a publish slot", (await page.locator("#ytWhen").count()) === 1);
     check("no page errors rendering it", errors.length === 0, errors.join(" | "));
