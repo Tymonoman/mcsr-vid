@@ -252,14 +252,20 @@ async function detectActiveRegion(
   return region.w > 0.92 && region.h > 0.92 ? null : region;
 }
 
-function run(command: string, args: string[], signal?: AbortSignal): Promise<void> {
+function run(
+  command: string,
+  args: string[],
+  signal?: AbortSignal,
+  onStdout?: (text: string) => void,
+): Promise<void> {
   return new Promise((resolve, reject) => {
-    const proc = spawn(command, args, { stdio: ["ignore", "ignore", "pipe"], signal });
+    const proc = spawn(command, args, { stdio: ["ignore", onStdout ? "pipe" : "ignore", "pipe"], signal });
+    proc.stdout?.on("data", (d: Buffer) => onStdout?.(d.toString()));
     let stderr = "";
-    proc.stderr.on("data", (d: Buffer) => (stderr = (stderr + d.toString()).slice(-4000)));
+    proc.stderr?.on("data", (d: Buffer) => (stderr = (stderr + d.toString()).slice(-4000)));
     proc.on("error", reject);
-    proc.on("close", (code) =>
-      code === 0 ? resolve() : reject(new Error(`${command} exited with ${code}: ${stderr}`)),
+    proc.on("close", (code, sig) =>
+      code === 0 ? resolve() : reject(new Error(`${command} exited with ${code ?? sig}: ${stderr}`)),
     );
   });
 }
@@ -559,9 +565,20 @@ async function compositeShort(args: ShortRenderArgs, panes: Pane[], stills: Shor
         // Shorts are watched on phones that start playing before the file is buffered.
         "-movflags",
         "+faststart",
+        // Where the encode is, for the dashboard's percent: `out_time_us=` lines on stdout.
+        "-progress",
+        "pipe:1",
+        "-nostats",
         output,
       ],
       args.signal,
+      (text) => {
+        for (const m of text.matchAll(/out_time_us=(\d+)/g))
+          args.onProgress?.({
+            phase: "compositing",
+            percent: Math.min(99, Math.round(Number(m[1]) / 1e4 / dur)),
+          });
+      },
     ),
   );
   args.onProgress?.({ phase: "compositing", percent: 100 });

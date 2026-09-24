@@ -1,4 +1,5 @@
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { appendFile, readFile, writeFile } from "node:fs/promises";
 import { requireArg } from "../cliArgs.js";
@@ -83,7 +84,22 @@ const startMs = Math.max(0, atFlag !== undefined ? Math.round(Number(atFlag)) : 
 if (!Number.isFinite(startMs) || !Number.isFinite(lengthMs)) refuse("--at and --seconds must be numbers");
 const window: ShortPick = { ...pick, startMs, endMs: startMs + lengthMs };
 
-const game = await getMatch(window.gameMatchId);
+// Placed by the sync the pipeline decided (sync.json, in the picked game's own directory).
+// Without it the clips would sit at the coarse estimate and the Short would open seconds off its
+// moment: refused, not guessed — and before the API is asked for anything.
+const sync = readSyncOffsets(matchDir(window.gameMatchId));
+if (!sync)
+  refuse(
+    `no sync.json for match ${window.gameMatchId} — the Short would be cut seconds off its moment; npm run sync-status -- ${window.gameMatchId} writes it (or fix the sync by hand on the dashboard), then save the hooks again`,
+  );
+
+// The API down is the one failure here that is nobody's fault and passes by itself: say so in a
+// line the dashboard can show, not a stack.
+const unreachable = (err: unknown): never =>
+  refuse(
+    `the match record could not be read (${describeError(err)}) — the Short was not cut; save the hooks again once the MCSR API answers`,
+  );
+const game = await getMatch(window.gameMatchId).catch(unreachable);
 // Before any elo is read: a playoff game carries no `changes[]`, and `eloAtMatchStart` answers
 // from the frozen season-end rating this resolves (the same number the overlay shows).
 const playoff = await playoffContextFor(game);
@@ -96,7 +112,9 @@ const shown =
   window.pov === "both" ? [playerLeft, playerRight] : [window.pov === "left" ? playerLeft : playerRight];
 for (const p of shown) {
   if (!existsSync(clipFor(p.nickname)))
-    refuse(`Missing ${clipFor(p.nickname)} — a Short is cut from the downloaded VODs.`);
+    refuse(
+      `no clip of ${p.nickname} on disk (${clipFor(p.nickname)}) — a Short is cut from the downloaded VODs: npm run download-vods -- ${game.id} fetches it while the Twitch VOD lasts (14 days, 60 for partners), then save the hooks again`,
+    );
 }
 
 const series = await readSeriesRecord(outDir);
@@ -106,11 +124,33 @@ if (title.length > TITLE_MAX_CHARS)
     `the Short's title would be ${title.length} characters (YouTube's cap is ${TITLE_MAX_CHARS}): shorten the hook`,
   );
 
-// Placed by the sync the pipeline decided (sync.json), or the coarse estimate before it existed.
-const sync = readSyncOffsets(gameDir);
-const leftStartSec = sync?.left ?? config.preRollSec;
-const rightStartSec = sync?.right ?? config.preRollSec;
-const [userLeft, userRight] = await Promise.all([getUser(playerLeft.uuid), getUser(playerRight.uuid)]);
+const leftStartSec = sync!.left;
+const rightStartSec = sync!.right;
+
+// The window inside each clip it shows: a pick past a clip's end would encode black. Unreadable
+// (ffprobe missing, a stand-in file) is not a reason to refuse.
+const clipEndSec = (file: string): number =>
+  Number(
+    spawnSync(
+      "ffprobe",
+      ["-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", file],
+      { encoding: "utf8" },
+    ).stdout?.trim(),
+  ) || Infinity;
+const mmssOf = (ms: number) =>
+  `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, "0")}`;
+for (const p of shown) {
+  const offset = p === playerLeft ? leftStartSec : rightStartSec;
+  const lastMs = (clipEndSec(clipFor(p.nickname)) - offset) * 1000;
+  if (window.endMs > lastMs)
+    refuse(
+      `the window ${mmssOf(window.startMs)}–${mmssOf(window.endMs)} runs past the end of ${p.nickname}'s clip (it ends at ${mmssOf(Math.max(0, lastMs))} on the match clock) — Pick again, or cut it by hand earlier`,
+    );
+}
+
+const [userLeft, userRight] = await Promise.all([getUser(playerLeft.uuid), getUser(playerRight.uuid)]).catch(
+  unreachable,
+);
 // The rank as it stood when the headline was chosen, not as it stands now (the manifest's ranks).
 const committedRanks = (await readManifest(outDir))?.ranks;
 const frozenRank = (uuid: string, live: number | null): number | null =>
@@ -128,6 +168,7 @@ console.error(
 );
 
 const outPath = path.join(outDir, `short-${matchId}.mp4`);
+let printed = 0;
 const plate = (p: typeof playerLeft, user: typeof userLeft) => ({
   nickname: p.nickname,
   // The rating at the time of the match, never user.eloRate (the rating now).
@@ -168,12 +209,17 @@ await renderShort({
     timerStartMs: window.startMs,
   },
   outPath,
-  onProgress: (p) => console.error(`  ${p.phase}: ${p.percent}%`),
+  // The dashboard reads these lines for its percent (shortsRoutes.ts): one per 5%, not per frame.
+  onProgress: (p) => {
+    if (p.phase === "compositing" && p.percent < 100 && p.percent - printed < 5) return;
+    printed = p.percent;
+    console.error(`  ${p.phase}: ${p.percent}%`);
+  },
 });
 
 const titlePath = path.join(outDir, `short-${matchId}.title.txt`);
 await writeFile(titlePath, `${title}\n`, "utf8");
-const first = series ? await getMatch(matchId) : game;
+const first = series ? await getMatch(matchId).catch(unreachable) : game;
 await writeFile(
   path.join(outDir, `short-${matchId}.description.txt`),
   buildShortDescription(

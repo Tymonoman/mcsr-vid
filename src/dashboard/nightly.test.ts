@@ -318,6 +318,16 @@ try {
     assert.ok(waited, "the clause waits for the pick queue first");
     pick("heuristic");
     assert.equal(await pickClause(id, async () => {}), " + heuristic pick (the model failed)");
+    // With the reason on disk, the push carries it: the one line the morning acts on.
+    writeFileSync(
+      path.join(dir, `short-${id}.pick-error.json`),
+      JSON.stringify({ at: "t", message: "Antigravity is not signed in — run: agy" }),
+    );
+    assert.equal(
+      await pickClause(id, async () => {}),
+      " + heuristic pick (the model failed: Antigravity is not signed in — run: agy)",
+    );
+    rmSync(path.join(dir, `short-${id}.pick-error.json`));
 
     // The push: a skipped night still reminds, one line under the reason. Exported, picked, no
     // hook saved: that is one match waiting.

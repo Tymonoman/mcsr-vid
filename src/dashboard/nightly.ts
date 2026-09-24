@@ -45,6 +45,7 @@ import type { MatchInfo } from "../api/types.js";
 import { withDiscoveredVods } from "../pipeline/vodDiscovery.js";
 import { retryFailedPlaylists } from "../youtube/youtubeUpload.js";
 import { pickFile, type ShortPick } from "../shorts/shortPlan.js";
+import { pickErrorFile } from "../shorts/videoPick.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -365,7 +366,17 @@ export async function pickClause(matchId: number, idle: () => Promise<void> = pi
   if (!existsSync(file)) return "";
   try {
     const pick = JSON.parse(readFileSync(file, "utf8")) as ShortPick;
-    return pick.source === "agy" ? " + picked by the model" : " + heuristic pick (the model failed)";
+    if (pick.source === "agy") return " + picked by the model";
+    // Why, in the push itself: "not signed in — run: …" is the one line the morning acts on.
+    let why = "";
+    try {
+      why =
+        (JSON.parse(readFileSync(pickErrorFile(matchDir(matchId), matchId), "utf8")) as { message?: string })
+          .message ?? "";
+    } catch {
+      // No reason on disk: the clause without one.
+    }
+    return ` + heuristic pick (the model failed${why ? `: ${why.length > 160 ? `${why.slice(0, 159)}…` : why}` : ""})`;
   } catch {
     return "";
   }

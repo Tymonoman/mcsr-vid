@@ -6,10 +6,20 @@ import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { config } from "../config.js";
-import { beginUpload, playlistTitlesFor, retryFailedPlaylists, SHORT_DELAY_MS } from "./youtubeUpload.js";
+import {
+  beginUpload,
+  explainUploadError,
+  playlistTitlesFor,
+  retryFailedPlaylists,
+  SHORT_DELAY_MS,
+} from "./youtubeUpload.js";
+import { readShortLog, stepActivity } from "../shorts/shortLog.js";
 import { staleExportMessage, writeSyncOffsets } from "../pipeline/syncFile.js";
 
 const media = await mkdtemp(path.join(tmpdir(), "mcsr-upload-test-"));
+/** A publish time always ahead of the clock: 2 January next year, 13:00 UTC. */
+const LATER = new Date(Date.UTC(new Date().getUTCFullYear() + 1, 0, 2, 13)).toISOString();
+const LATER_UTC = `${LATER.slice(0, 16).replace("T", " ")} UTC`;
 const mediaDir = config.mediaDir;
 const playlistTitle = config.youtubePlaylistTitle;
 const uploadEnabled = config.youtubeUploadEnabled;
@@ -276,7 +286,7 @@ try {
     const sent: Array<{ title: string; publishAt?: string }> = [];
     const begun = await beginUpload(
       matchId,
-      { kind: "short", privacyStatus: "private", publishAt: "2030-01-02T13:00:00.000Z" },
+      { kind: "short", privacyStatus: "private", publishAt: LATER },
       async (args) => {
         sent.push({ title: args.title, publishAt: args.publishAt });
         return { videoId: "vidNew", publishAt: args.publishAt ?? null, privacyStatus: "private" };
@@ -285,9 +295,9 @@ try {
     assert.ok(!("error" in begun), `the saved hook's cut goes up: ${JSON.stringify(begun)}`);
     const done = await begun.finished;
     assert.equal(done.error, null);
-    assert.deepEqual(sent, [{ title: "A hook #minecraft #mcsr", publishAt: "2030-01-02T13:00:00.000Z" }]);
+    assert.deepEqual(sent, [{ title: "A hook #minecraft #mcsr", publishAt: LATER }]);
     const { readUpload } = await import("./youtubeStore.js");
-    assert.equal((await readUpload(matchId, "short"))?.publishAt, "2030-01-02T13:00:00.000Z");
+    assert.equal((await readUpload(matchId, "short"))?.publishAt, LATER);
     const again = await beginUpload(matchId, { kind: "short", privacyStatus: "private" }, async () => {
       throw new Error("sent twice");
     });
@@ -295,6 +305,104 @@ try {
     await rm(file);
     await rm(path.join(dir, "youtube-short.json"));
     console.log("OK: the send seam gets the Short's title and time, once");
+  }
+
+  // The Short log: each upload's start, its progress as the activity's percent, its end — and a
+  // refusal. YouTube's failures in words, with Google's own text as the detail.
+  {
+    const log = () => readShortLog(matchId, 500).filter((l) => l.step === "upload-short");
+    const file = path.join(dir, `short-${matchId}.mp4`);
+    await writeFile(file, "x");
+    let midway: number | undefined;
+    const begun = await beginUpload(
+      matchId,
+      { kind: "short", privacyStatus: "private", publishAt: LATER },
+      async (args) => {
+        args.onProgress?.(50, 100);
+        midway = stepActivity(matchId, "upload-short")?.percent;
+        return { videoId: "vidLog", publishAt: args.publishAt ?? null, privacyStatus: "private" };
+      },
+    );
+    assert.ok(!("error" in begun));
+    await begun.finished;
+    assert.equal(midway, 50, "the live percent while the bytes go up");
+    assert.equal(stepActivity(matchId, "upload-short"), undefined, "and no activity once it is done");
+    assert.deepEqual(
+      log()
+        .slice(-3)
+        .map((l) => l.text),
+      [
+        `uploading the Short (0 MB, private, public at ${LATER_UTC})`,
+        `uploading the Short (0 MB, private, public at ${LATER_UTC}) · 50%`,
+        `the Short is up: https://youtu.be/vidLog — public at ${LATER_UTC}`,
+      ],
+    );
+    const twice = await beginUpload(matchId, { kind: "short", privacyStatus: "private" });
+    assert.ok("error" in twice);
+    assert.deepEqual(
+      [log().at(-1)!.level, log().at(-1)!.text],
+      ["error", `upload refused: the Short of match ${matchId} is already on the channel`],
+    );
+    await rm(path.join(dir, "youtube-short.json"));
+
+    // A publish time already gone: refused before a byte is sent.
+    const late = await beginUpload(matchId, {
+      kind: "short",
+      privacyStatus: "private",
+      publishAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    assert.ok("error" in late && late.status === 400 && /has already passed/.test(late.error));
+
+    // YouTube's quota: the words and the wait, Google's text as the detail.
+    const quota = await beginUpload(matchId, { kind: "short", privacyStatus: "private" }, async () => {
+      throw new Error(
+        "YouTube API videos.insert (start) -> 403 Forbidden: The request cannot be completed because you have exceeded your quota. (quotaExceeded)",
+      );
+    });
+    assert.ok(!("error" in quota));
+    const failed = await quota.finished;
+    assert.match(String(failed.error), /^YouTube's daily API quota is used up .* resets at midnight Pacific/);
+    assert.equal(log().at(-1)!.level, "error");
+    assert.match(log().at(-1)!.detail ?? "", /quotaExceeded/);
+    await rm(file);
+    console.log("OK: an upload logs its start, its quarters, its end or its refusal; a past time is refused");
+  }
+
+  {
+    const cases: Array<[string, RegExp]> = [
+      [
+        'YouTube token refresh failed: 400 Bad Request. { "error": "invalid_grant", "error_description": "Token has been expired or revoked." }',
+        /^the YouTube sign-in expired or was revoked \(invalid_grant\) — run npm run youtube-auth/,
+      ],
+      [
+        "No YouTube credentials at /app/youtube-token.json. Run `npm run youtube-auth`",
+        /^no YouTube sign-in on the lab/,
+      ],
+      ["YouTube API videos.insert (start) -> 403 Forbidden: x (quotaExceeded)", /daily API quota is used up/],
+      ["YouTube API videos.insert (start) -> 400 Bad Request: x (uploadLimitExceeded)", /daily upload limit/],
+      [
+        "YouTube API videos.insert (chunk) -> 400 Bad Request: The request metadata specifies an invalid scheduled publishing time. (invalidPublishAt)",
+        /^YouTube refused the publish time/,
+      ],
+      [
+        "YouTube API videos.insert (start) -> 401 Unauthorized: Invalid Credentials",
+        /refused the access token/,
+      ],
+      [
+        "YouTube API videos.insert (chunk) -> 503 Service Unavailable: backend error",
+        /could not be reached or failed mid-upload/,
+      ],
+      ["fetch failed", /could not be reached/],
+      [
+        "YouTube API videos.insert (start) -> 400 Bad Request: x (invalidTitle)",
+        /^YouTube refused the upload \(.*\(invalidTitle\)\) — fix what it names/,
+      ],
+      ["/media/1/short-1.mp4 is empty", /^\/media\/1\/short-1\.mp4 is empty$/],
+    ];
+    for (const [raw, message] of cases) assert.match(explainUploadError(raw), message, raw);
+    console.log(
+      "OK: YouTube's failures — the sign-in, the quota, the limit, the time, the network — in words",
+    );
   }
   const { writeUpload } = await import("./youtubeStore.js");
   const record = {

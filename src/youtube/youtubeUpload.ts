@@ -6,7 +6,7 @@
  * refused, what gets sent, or what happens after the insert. Nothing here calls `videos.insert`
  * while `youtubeUploadEnabled` is off — see src/config.ts and CLAUDE.md.
  */
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { archiveMatch } from "../dashboard/archive.js";
@@ -19,6 +19,7 @@ import { exportStale, staleExportMessage } from "../pipeline/syncFile.js";
 import { readManifest } from "../thumbnails/thumbnailVariants.js";
 import { HOOK_PLACEHOLDER, metaPaths } from "../pipeline/title.js";
 import { readShortCut, readShortHook, WAITING_FOR_HOOK } from "../shorts/shortHook.js";
+import { activityProgress, boxFailure, endActivity, shortLog, startActivity } from "../shorts/shortLog.js";
 import {
   addTags,
   addToPlaylist,
@@ -123,7 +124,10 @@ export async function hookRefusal(
   if (hook === null) return { status: 409, error: `${WAITING_FOR_HOOK} — save the hooks first` };
   const cut = await readShortCut(dir, matchId);
   if (cut?.hook !== hook)
-    return { status: 409, error: "the Short on disk was cut behind another hook — it re-renders before it uploads" };
+    return {
+      status: 409,
+      error: "the Short on disk was cut behind another hook — it re-renders before it uploads",
+    };
   return null;
 }
 
@@ -142,6 +146,45 @@ export async function beginUpload(
   /** `videos.insert` itself — the one seam the tests and the end-to-end run replace. */
   send: typeof uploadVideo = uploadVideo,
 ): Promise<Begun> {
+  const begun = await startUpload(matchId, req, send);
+  // Every upload of the match is a line of its Short log, whoever pressed: a refusal too.
+  if ("error" in begun)
+    shortLog(matchId, logStep(req.kind), `upload refused: ${begun.error}`, { level: "error" });
+  return begun;
+}
+
+const logStep = (kind: UploadKind) => (kind === "video" ? "upload-video" : "upload-short");
+const kindName = (kind: UploadKind) => (kind === "video" ? "the long-form" : "the Short");
+const utc = (iso: string) => `${iso.slice(0, 16).replace("T", " ")} UTC`;
+
+/**
+ * What an upload's failure means for the operator: "what happened — what to do", from the text
+ * youtube.ts builds out of Google's answer (`error.errors[].reason` among it). What is none of the
+ * known cases is returned as it came. Every retry is a press of Save on the hooks (the chain) or of
+ * Upload (the panel); the chain lists the channel first, so a retry never puts a video up twice.
+ */
+export function explainUploadError(raw: string): string {
+  const first = raw.split("\n")[0]!;
+  if (/No YouTube credentials|has no refresh_token/.test(raw))
+    return `no YouTube sign-in on the lab (${first}) — run npm run youtube-auth on a machine with a browser, copy youtube-token.json to the lab, then try again`;
+  if (/invalid_grant|token refresh failed|expired or revoked/i.test(raw))
+    return "the YouTube sign-in expired or was revoked (invalid_grant) — run npm run youtube-auth on a machine with a browser, copy youtube-token.json to the lab, then try again";
+  if (/uploadLimitExceeded/.test(raw))
+    return "the channel reached YouTube's daily upload limit (uploadLimitExceeded) — try again tomorrow";
+  if (/quotaExceeded|dailyLimitExceeded|exceeded your quota/i.test(raw))
+    return "YouTube's daily API quota is used up (an upload costs 1,600 of 10,000 units) — it resets at midnight Pacific (09:00 in Warsaw); try again after that";
+  if (/invalidPublishAt|scheduled publishing time/i.test(raw))
+    return `YouTube refused the publish time — it had passed, or is too far out (${first}); try again to take the next free slot`;
+  if (/-> 401\b/.test(raw))
+    return `YouTube refused the access token (${first}) — the stored scopes may not cover uploads; re-run npm run youtube-auth`;
+  if (/-> 5\d\d\b|fetch failed|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket hang up/.test(raw))
+    return `YouTube could not be reached or failed mid-upload (${first}) — try again; nothing is on the channel twice`;
+  if (/-> (400|403)\b/.test(raw))
+    return `YouTube refused the upload (${first}) — fix what it names, then try again`;
+  return raw;
+}
+
+async function startUpload(matchId: number, req: UploadRequest, send: typeof uploadVideo): Promise<Begun> {
   if (!config.youtubeUploadEnabled) return { status: 403, error: UPLOADS_OFF };
   const key = progressKey(matchId, req.kind);
   const running = uploads.get(key);
@@ -188,11 +231,25 @@ export async function beginUpload(
     if (staleness.stale) return bad(staleExportMessage(matchId, staleness.staleMatchId));
   }
 
+  // YouTube checks a scheduled time only once the whole file is up, and refuses one in the past:
+  // a gigabyte sent to be told so. The chain's slots are an hour out at least; a stale form's is not.
+  if (req.publishAt !== undefined && !(Date.parse(req.publishAt) > Date.now()))
+    return bad(
+      `the publish time ${req.publishAt} has already passed — pick a later one (the chain takes the next free slot)`,
+    );
+
   const manifest = await readManifest(dir);
   const progress = idle(matchId, req.kind);
   uploads.set(key, progress);
+  const step = logStep(req.kind);
+  startActivity(
+    matchId,
+    step,
+    `uploading ${kindName(req.kind)} (${Math.round(statSync(filePath).size / 1e6)} MB, ${req.privacyStatus}${req.publishAt ? `, public at ${utc(req.publishAt)}` : ""})`,
+  );
 
   const finished = (async () => {
+    let recorded = false;
     try {
       const result = await send({
         filePath,
@@ -206,9 +263,15 @@ export async function beginUpload(
         onProgress: (uploaded, total) => {
           progress.uploaded = uploaded;
           progress.total = total;
+          if (total > 0) activityProgress(matchId, step, (uploaded / total) * 100);
         },
       });
       progress.videoId = result.videoId;
+      shortLog(
+        matchId,
+        step,
+        `${kindName(req.kind)} is up: https://youtu.be/${result.videoId} — ${result.publishAt ? `public at ${utc(result.publishAt)}` : result.privacyStatus}`,
+      );
       const record: UploadRecord = {
         videoId: result.videoId,
         uploadedAt: new Date().toISOString(),
@@ -219,21 +282,36 @@ export async function beginUpload(
         source: "dashboard",
       };
       await writeUpload(matchId, record, req.kind);
+      recorded = true;
       // The video is up; what follows is worth reporting but must not read as a failed upload.
       const steps = await finishOnYouTube(matchId, result.videoId, req.kind);
       // Only the steps that actually failed: `null` is done and an absent step was never
       // attempted (a Short's thumbnail, a private video's comment), neither of which is a problem.
       progress.warnings = Object.entries(steps)
         .filter((e): e is [string, string] => typeof e[1] === "string")
-        .map(([step, error]) => `Uploaded, but the ${step} step failed: ${error}`);
+        .map(([finishStep, error]) => `Uploaded, but the ${finishStep} step failed: ${error}`);
+      for (const w of progress.warnings) shortLog(matchId, step, w, { level: "warn" });
       // Published is the point the match is finished with, so it is the point worth backing up.
       // Fire-and-forget (see archiveMatch's note); failures land in the server log and in
       // GET /api/capacity, not here — a NAS blip must not read as a failed upload.
       if (req.kind === "video") archiveMatch(matchId);
     } catch (err) {
-      progress.error = describeError(err);
+      const raw = describeError(err);
+      if (recorded) {
+        // Up and recorded; only the finishing threw. A problem on the way, not a failed upload.
+        progress.warnings.push(`Uploaded, but finishing it failed: ${raw} — Finish on YouTube retries it`);
+        shortLog(matchId, step, progress.warnings.at(-1)!, { level: "warn" });
+      } else {
+        // Up, and the record not written (the disk, most likely): the one failure where trying
+        // again would put a second copy on the channel.
+        progress.error = progress.videoId
+          ? `${kindName(req.kind)} IS on the channel as ${progress.videoId}, but recording it failed (${boxFailure("writing the upload record", raw) ?? raw}) — do not upload it again; fix that, then "check the channel" pairs it`
+          : explainUploadError(raw);
+        shortLog(matchId, step, progress.error, { level: "error", detail: raw });
+      }
     } finally {
       progress.done = true;
+      endActivity(matchId, step);
     }
     return progress;
   })();

@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { MatchInfo } from "../api/types.js";
 import { config, matchDir, validateOverrides } from "../config.js";
-import { parseWatchOutput, watchDir, watchPovs } from "./watchPov.js";
+import { parseWatchOutput, transcriptProblem, watchDir, watchFailure, watchPovs } from "./watchPov.js";
 
 const tmp = mkdtempSync(path.join(tmpdir(), "watchpov-"));
 config.mediaDir = path.join(tmp, "media");
@@ -87,6 +87,10 @@ out, start, fps = opt("--out-dir"), float(opt("--start")), float(opt("--fps"))
 os.makedirs(out + "/frames", exist_ok=True)
 mmss = lambda s: f"{int(round(s)) // 60:02d}:{int(round(s)) % 60:02d}"
 whisper = "--no-whisper" not in args
+fail = os.environ.get("FAKE_WHISPER_FAIL")
+if whisper and fail:
+    print(f"[watch] whisper fallback failed: {fail}", file=sys.stderr)
+    whisper = False
 print("# watch: video report\\n")
 print(f"- **Frames:** 4 @ {fps:.3f} fps, focused mode (budget 100, max 100)")
 print("- **Transcript:** " + ("3 segments in range (via whisper (groq))" if whisper else "none available"))
@@ -130,7 +134,11 @@ const sync = (left: number, right: number) =>
   );
 sync(140.5, 150.25);
 const lines: string[] = [];
-const log = (l: string) => lines.push(l);
+const levels: Array<string | undefined> = [];
+const log = (l: string, extra?: { level?: string }) => {
+  lines.push(l);
+  levels.push(extra?.level);
+};
 const endSec = match.result.time / 1000 + 3;
 const fps = 100 / endSec;
 
@@ -177,9 +185,7 @@ const fps = 100 / endSec;
   // Newer than the clip, same arguments: kept.
   assert.deepEqual(await watchPovs(match, { log }), povs);
   assert.equal(callCount(), 2, "cached, watch.py not run again");
-  assert.ok(
-    lines.some((l) => /^watch left: short-watch-left\/watch\.json is newer than edcr\.mp4 — kept$/.test(l)),
-  );
+  assert.ok(lines.includes("/watch on edcr's stream is up to date — kept (4 stills)"));
   // A sync fix moves the window: that clip is watched again, the other is kept.
   sync(141, 150.25);
   await watchPovs(match, { log });
@@ -200,8 +206,62 @@ const fps = 100 / endSec;
     { matchSec: 9, text: "no way he blind travelled" },
     { matchSec: 579, text: "GG go next" },
   ]);
+  assert.ok(lines.at(-1)!.startsWith("/watch on doogile: 4 stills, transcript: 2 lines ("));
+
+  // Groq refuses the key: watch.py goes on with the stills (exit 0), the reason is in its stderr.
+  // Not cached — the next pick runs /watch again, once the key is fixed.
+  process.env.FAKE_WHISPER_FAIL = "Whisper request failed: HTTP Error 401: Unauthorized — invalid_api_key";
+  sync(142, 150.25);
+  const refused = await watchPovs(match, { log });
+  assert.equal(refused[0]!.transcript, null);
+  assert.ok(
+    refused[0]!.notes.some((n) => /Groq refused the key \(401\).*GROQ_API_KEY in \/app\/\.env/.test(n)),
+  );
+  const refusedLine = lines.findIndex((l) =>
+    /^\/watch on edcr: 4 stills, no transcript — Groq refused the key \(401\)/.test(l),
+  );
+  assert.ok(refusedLine >= 0 && levels[refusedLine] === "warn", "a warning, with the fix");
+  const calledOnce = callCount();
+  await watchPovs(match, { log });
+  assert.equal(callCount(), calledOnce + 2, "a transcript that failed is not kept: both run again");
+
+  // Rate-limited: the same, with its own words.
+  process.env.FAKE_WHISPER_FAIL = "Whisper request failed: HTTP Error 429: Too Many Requests";
+  await watchPovs(match, { log });
+  assert.ok(lines.some((l) => /no transcript — Groq rate-limited the transcription \(429\)/.test(l)));
+
+  delete process.env.FAKE_WHISPER_FAIL;
   delete process.env.GROQ_API_KEY;
   console.log("OK: with a key the transcript is kept, on the match clock, past the run dropped");
+  console.log("OK: Groq's 401 and 429 are named with their fix, and not cached");
+}
+
+{
+  // The failures that are the box's, and the transcript's reasons, as the operator reads them.
+  assert.equal(
+    watchFailure(127, "nice: 'python3': No such file or directory"),
+    "/watch failed: python3 is not installed in this container — install it (or fix the path), then try again",
+  );
+  assert.equal(watchFailure(127, ""), "/watch failed: python3 is not installed in this container");
+  assert.match(watchFailure(1, "OSError: [Errno 28] No space left on device"), /the disk is full/);
+  assert.match(watchFailure(null, "", false, "SIGKILL"), /out of memory \(the container's 4 GB cap/);
+  assert.equal(watchFailure(null, "", true), "watch.py ran over 15 min and was stopped");
+  assert.match(
+    watchFailure(1, "[watch] x\nSystemExit: ffmpeg is not installed. Install with: brew install ffmpeg"),
+    /ffmpeg is not installed/,
+  );
+  assert.equal(transcriptProblem("", true, 3), null, "a transcript is no problem");
+  assert.match(transcriptProblem("", true, 0)!.text, /heard no speech/);
+  assert.match(transcriptProblem("", false, 0)!.text, /no GROQ_API_KEY/);
+  assert.deepEqual(
+    transcriptProblem(
+      "[watch] whisper fallback failed: ffmpeg produced no audio — video may have no audio track",
+      true,
+      0,
+    ),
+    { text: "no transcript — the clip has no audio track", transient: false },
+  );
+  console.log("OK: python3 missing, the disk full, the memory cap, a timeout — each named");
 }
 
 {
@@ -216,17 +276,25 @@ const fps = 100 / endSec;
   );
   assert.ok(
     lines.includes(
-      "watch right: watch.py exited 1: [watch] ffmpeg frame extraction failed: boom — the pick goes on without it",
+      "/watch failed on doogile's stream: watch.py exited 1: [watch] ffmpeg frame extraction failed: boom — the pick goes on without it",
     ),
   );
   rmSync(path.join(dir, "doogile.mp4"));
   assert.equal((await watchPovs(match, { log })).length, 1);
-  assert.ok(lines.includes(`watch right: no clip (${path.join(dir, "doogile.mp4")}) — skipped`));
+  assert.ok(
+    lines.includes(
+      `/watch skipped on the right POV: no clip on disk (${path.join(dir, "doogile.mp4")}) — npm run download-vods -- ${match.id} fetches it while the VOD lasts`,
+    ),
+  );
 
   const before = callCount();
   config.watchScript = path.join(tmp, "nowhere/watch.py");
   assert.deepEqual(await watchPovs(match, { log }), []);
-  assert.ok(lines.includes(`watch: ${config.watchScript} not found — the pick goes on without /watch`));
+  assert.ok(
+    lines.includes(
+      `/watch is not installed (${config.watchScript} not found) — the model picks from the video alone; reinstall the claude-watch plugin or set watchScript`,
+    ),
+  );
   config.watchScript = null;
   assert.deepEqual(await watchPovs(match, { log }), []);
   assert.equal(callCount(), before);
