@@ -135,6 +135,7 @@ assert.throws(
   assert.equal(ANCHOR_SEC - headTrimSec(2), 5);
   assert.equal(headTrimSec(3.017), 4, "a probed card length is rounded to tenths");
   assert.equal(headTrimSec(7.017), 0, "never negative");
+  assert.equal(headTrimSec(NaN), 0, "an unreadable card length cuts nothing");
 
   // Off (no trim, no teaser, or a teaser with no window) is today's command, byte for byte.
   const today = buildFastExportCommand(base).args;

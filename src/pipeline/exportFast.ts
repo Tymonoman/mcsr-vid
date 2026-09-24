@@ -281,7 +281,7 @@ export const exportOutputPath = (outDir: string, matchId: number): string =>
  * card is a 3 s one.
  */
 export const headTrimSec = (introSec: number): number =>
-  Math.max(0, Math.round((INTRO_SECONDS - introSec) * 10) / 10);
+  Math.max(0, Math.round((INTRO_SECONDS - introSec) * 10) / 10) || 0; // NaN (an unreadable probe) is no trim
 
 /**
  * `final-<id>.json` beside the MP4: where match start sits in *that* video. The one source of

@@ -499,10 +499,10 @@ async function runStages(
   const projectPath = path.join(outDir, `match-${matchId}.kdenlive`);
   await writeFile(projectPath, projectXml, "utf8");
 
-  // Where match start will sit in export:fast's MP4: the card rendered in this run decides the
-  // head it cuts (headTrimSec). ponytail: config.introSec, not the card on disk — a run that
-  // skipped the overlay stage after the setting moved writes chapters off by the difference.
-  const chapters = buildChapters(splits, match, config.overlayLeadInSec - headTrimSec(config.introSec));
+  // Where match start will sit in export:fast's MP4: the card on disk decides the head it cuts
+  // (headTrimSec), exactly as exportFastCli reads it — not config.introSec, which a run that kept
+  // an older card would disagree with.
+  const chapters = buildChapters(splits, match, config.overlayLeadInSec - headTrimSec(introDurationSec));
   const chaptersPath = path.join(outDir, `match-${matchId}.chapters.txt`);
   await writeFile(chaptersPath, formatChapters(chapters), "utf8");
 
