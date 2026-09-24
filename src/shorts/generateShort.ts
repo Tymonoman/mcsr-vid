@@ -210,9 +210,12 @@ await renderShort({
   },
   outPath,
   // The dashboard reads these lines for its percent (shortsRoutes.ts): one per 5%, not per frame.
+  // `printed` is the encode's alone: the stills' 100% before it must not hold its lines back.
   onProgress: (p) => {
-    if (p.phase === "compositing" && p.percent < 100 && p.percent - printed < 5) return;
-    printed = p.percent;
+    if (p.phase === "compositing") {
+      if (p.percent < 100 && p.percent - printed < 5) return;
+      printed = p.percent;
+    }
     console.error(`  ${p.phase}: ${p.percent}%`);
   },
 });

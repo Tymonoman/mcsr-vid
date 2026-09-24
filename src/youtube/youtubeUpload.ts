@@ -119,14 +119,18 @@ export async function hookRefusal(
     return null;
   }
   if (existsSync(path.join(dir, "youtube-short.json")))
-    return { status: 409, error: `the Short of match ${matchId} is already on the channel` };
+    return {
+      status: 409,
+      error: `the Short of match ${matchId} is already on the channel (youtube-short.json) — it goes up once; a second copy is a duplicate only Studio removes`,
+    };
   const hook = await readShortHook(dir, matchId);
   if (hook === null) return { status: 409, error: `${WAITING_FOR_HOOK} — save the hooks first` };
   const cut = await readShortCut(dir, matchId);
   if (cut?.hook !== hook)
     return {
       status: 409,
-      error: "the Short on disk was cut behind another hook — it re-renders before it uploads",
+      error:
+        "the Short on disk was cut behind another hook — save the hooks and the chain re-cuts it before it uploads",
     };
   return null;
 }
@@ -221,7 +225,12 @@ async function startUpload(matchId: number, req: UploadRequest, send: typeof upl
     if ("error" in located) return bad(located.error);
     filePath = located.path;
   }
-  if (!existsSync(filePath)) return bad(`No such video file: ${filePath}`);
+  if (!existsSync(filePath))
+    return bad(
+      req.kind === "short" && !req.videoPath
+        ? `the Short is not cut yet (no short-${matchId}.mp4) — save the hooks and the chain cuts it`
+        : `No such video file: ${filePath}`,
+    );
   // A sync.json newer than the export means the clips were re-placed after this file was
   // encoded, so it carries the misalignment the correction was for. The Short is cut from the
   // VODs with sync.json directly, so only the long-form can be stale. `videoPath` too: a

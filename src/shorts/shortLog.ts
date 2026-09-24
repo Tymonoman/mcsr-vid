@@ -214,11 +214,16 @@ export function boxFailure(
     return `${what} was killed — out of memory (the container's 4 GB cap, exit 137); try again when no encode or render is running`;
   const missing =
     /spawn (\S+) ENOENT/.exec(text) ??
-    /nice: '([^']+)': No such file or directory/.exec(text) ??
+    /(?:nice|env): '([^']+)': No such file or directory/.exec(text) ??
     /(?:^|\n)(?:\S+: )?(?:\d+: )?(\S+): (?:command )?not found/.exec(text);
   if (missing) {
     const tool = path.basename(missing[1]!);
     return `${what} failed: ${tool} is not installed in this container — install it (or fix the path), then try again`;
   }
+  // A command copied in without its execute bit — spawned directly, or through `env` as the lab's
+  // reasonerCommand is.
+  const denied = /spawn (\S+) EACCES/.exec(text) ?? /(?:nice|env): '([^']+)': Permission denied/.exec(text);
+  if (denied)
+    return `${what} failed: ${denied[1]} cannot be run (permission denied) — chmod +x it (or fix the path), then try again`;
   return null;
 }

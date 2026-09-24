@@ -282,6 +282,8 @@ function clips(matchId: number, nicks: string[]): void {
 
 /** Forces a pick in `mode` and checks the heuristic stood in with `why` on disk. */
 async function fallsBack(message: RegExp, timeoutMs?: number, fallback?: string): Promise<ShortPick> {
+  // No earlier model pick: that one would be kept (the check after the quota's).
+  rmSync(pickFile(dir, single), { force: true });
   const pick = await pickShortMoment(single, {
     force: true,
     timeoutMs,
@@ -354,9 +356,20 @@ async function fallsBack(message: RegExp, timeoutMs?: number, fallback?: string)
   calls();
   agy("quota");
   await fallsBack(
-    /the Gemini subscription's quota or rate limit is used up \(.*RESOURCE_EXHAUSTED.*\) — the nightly's tick asks again tomorrow/,
+    /the Gemini subscription's quota or rate limit is used up \(.*RESOURCE_EXHAUSTED.*\) — Pick again once it has reset/,
   );
   assert.equal(calls(), 1, "a quota is not asked twice");
+  // Pick again with the quota gone keeps the model's earlier window, not the heuristic's.
+  const earlier: ShortPick = { ...(readJson(pickFile(dir, single)) as ShortPick), source: "agy" };
+  writeFileSync(pickFile(dir, single), JSON.stringify(earlier));
+  assert.deepEqual(await pickShortMoment(single, { force: true, log }), earlier);
+  assert.deepEqual(readJson(pickFile(dir, single)), earlier, "the earlier pick stays on disk");
+  assert.match(
+    readJson(pickErrorFile(dir, single)).message,
+    /quota or rate limit is used up .* — the model's earlier pick stands: \d+:\d\d–\d+:\d\d \(22 s\), both POVs$/,
+  );
+  console.log("OK: Pick again that fails keeps the model's earlier pick and says so");
+  calls();
   agy("expired");
   await fallsBack(
     /Antigravity's sign-in has expired \(.*token has expired\) — sign in again: HOME=\/app\/\.tools\/agy-home/,
@@ -426,8 +439,11 @@ async function fallsBack(message: RegExp, timeoutMs?: number, fallback?: string)
   assert.ok(log.some((l) => l.text.startsWith("asking node — it watches the whole match")));
   assert.match(log.at(-1)!.text, /^picked by node: 9:20–10:00 \(40 s\), both POVs — both die/);
   answer({ ...good, pov: "top" });
+  rmSync(pickFile(dir, single));
   await pickShortMoment(single, { force: true });
-  const rejected = [...readShortLog(single)].reverse().find((l) => l.text.startsWith("the model's window was rejected"));
+  const rejected = [...readShortLog(single)]
+    .reverse()
+    .find((l) => l.text.startsWith("the model's window was rejected"));
   assert.equal(rejected?.level, "warn");
   assert.match(
     rejected?.detail ?? "",
@@ -510,6 +526,7 @@ async function fallsBack(message: RegExp, timeoutMs?: number, fallback?: string)
 
   const failed = async (a: Record<string, unknown>, message: RegExp) => {
     answer(a);
+    rmSync(pickFile(sdir, g1), { force: true });
     const p = await pickShortMoment(g1, { force: true });
     assert.equal(p.source, "heuristic");
     assert.match(readJson(pickErrorFile(sdir, g1)).message, message);
