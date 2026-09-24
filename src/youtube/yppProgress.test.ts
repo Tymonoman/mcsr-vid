@@ -2,7 +2,14 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fetchVideoEngagement, projectYpp, videoEngagement, yppThresholds } from "./yppProgress.js";
+import {
+  fetchVideoEngagement,
+  fetchYppSnapshot,
+  projectYpp,
+  publicUploads90d,
+  videoEngagement,
+  yppThresholds,
+} from "./yppProgress.js";
 
 const now = Date.UTC(2026, 8, 8);
 const base = {
@@ -56,6 +63,36 @@ assert.deepEqual(yppThresholds(Date.UTC(2027, 0, 31)).full.watchHours, 4000);
 // Raw Shorts views ride along for the label; the gate itself counts engaged views only.
 assert.equal(p.shortsRawViews90d, 3197);
 assert.equal(p.shortsViews.have, 0);
+
+// Lagging window: Analytics lags ~2–3 days so a 7-day query window returned only 4 days
+// (3 missing trailing days). Daily rate must divide by the 4 days actually returned,
+// not the 7 calendar days of the window.
+{
+  const lagging = projectYpp({ ...base, subscribersPer7d: 10, subscribersDays: 4 }, now);
+  assert.equal(lagging.subscribers.ratePerDay, 2.5, "rate divides by 4 returned days, not 7 calendar days");
+  assert.equal(
+    lagging.subscribers.eta!.slice(0, 10),
+    new Date(now + Math.round((425 / 2.5) * 86_400_000)).toISOString().slice(0, 10),
+  );
+
+  // The audit item b5 scenario on 24 Sept 2026:
+  // Dividing by 7 calendar days gave 19 Jul 2027 (1.43/day), while the real rate over returned days (2.14/day) gives 11 Apr 2027.
+  const auditNow = Date.UTC(2026, 8, 24, 12, 0, 0);
+  const auditDivBy7 = projectYpp({ ...base, subscribersPer7d: 10, subscribersDays: 7 }, auditNow);
+  assert.equal(auditDivBy7.subscribers.eta!.slice(0, 10), "2027-07-19");
+  const auditReal = projectYpp({ ...base, subscribersPer7d: 10, subscribersDays: 10 / 2.14 }, auditNow);
+  assert.ok(Math.abs(auditReal.subscribers.ratePerDay - 2.14) < 0.001);
+  assert.equal(auditReal.subscribers.eta!.slice(0, 10), "2027-04-11");
+
+  // Watch hours with 3 missing trailing days (25 days returned out of 28):
+  const hoursLag = projectYpp({ ...base, watchHoursPer28d: 50, watchHoursDays: 25 }, now);
+  assert.equal(hoursLag.watchHours.ratePerDay, 2.0);
+  assert.equal(hoursLag.watchHours.ceiling, 730);
+
+  // Shorts views with 3 missing trailing days (25 days returned out of 28):
+  const shortsLag = projectYpp({ ...base, shortsViewsPer28d: 25_000, shortsViewsDays: 25 }, now);
+  assert.equal(shortsLag.shortsViews.ratePerDay, 1000);
+}
 
 // Per-video engagement: one top-videos request, rows keyed by video id. The fake answers the
 // way the Analytics API does — the dimension first, then the metrics in the order asked for.
@@ -150,4 +187,190 @@ assert.equal(p.shortsViews.have, 0);
     await rm(dir, { recursive: true, force: true });
   }
 }
+
+// Uploads gate: counts only public videos in the last 90 days (status.privacyStatus === "public").
+// Private, scheduled, and unlisted videos in the playlist must not count toward YPP.
+{
+  const realFetch = globalThis.fetch;
+  const realToken = process.env.YOUTUBE_TOKEN_FILE;
+  const dir = await mkdtemp(path.join(tmpdir(), "mcsr-ypp-uploads-"));
+  process.env.YOUTUBE_TOKEN_FILE = path.join(dir, "token.json");
+  await writeFile(
+    process.env.YOUTUBE_TOKEN_FILE,
+    JSON.stringify({ client_id: "c", client_secret: "s", refresh_token: "r" }),
+  );
+  const askedUrls: string[] = [];
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = String(input);
+    askedUrls.push(url);
+    if (url.includes("oauth2.googleapis.com/token")) {
+      return new Response(JSON.stringify({ access_token: "tok", expires_in: 3600 }));
+    }
+    if (url.includes("/channels?part=contentDetails")) {
+      return new Response(
+        JSON.stringify({
+          items: [{ contentDetails: { relatedPlaylists: { uploads: "UU_TEST_PLAYLIST" } } }],
+        }),
+      );
+    }
+    if (url.includes("/playlistItems")) {
+      return new Response(
+        JSON.stringify({
+          items: [
+            // Public video within 90 days -> counts
+            {
+              contentDetails: { videoPublishedAt: new Date(now - 10 * 86_400_000).toISOString() },
+              status: { privacyStatus: "public" },
+            },
+            // Private video in the list within 90 days -> does NOT count
+            {
+              contentDetails: { videoPublishedAt: new Date(now - 15 * 86_400_000).toISOString() },
+              status: { privacyStatus: "private" },
+            },
+            // Scheduled video (private status) within 90 days -> does NOT count
+            {
+              contentDetails: { videoPublishedAt: new Date(now - 20 * 86_400_000).toISOString() },
+              status: { privacyStatus: "private" },
+            },
+            // Unlisted video within 90 days -> does NOT count
+            {
+              contentDetails: { videoPublishedAt: new Date(now - 25 * 86_400_000).toISOString() },
+              status: { privacyStatus: "unlisted" },
+            },
+            // Public video older than 90 days -> does NOT count
+            {
+              contentDetails: { videoPublishedAt: new Date(now - 100 * 86_400_000).toISOString() },
+              status: { privacyStatus: "public" },
+            },
+          ],
+        }),
+      );
+    }
+    return new Response(JSON.stringify({}), { status: 404 });
+  }) as typeof fetch;
+
+  try {
+    const publicCount = await publicUploads90d(now);
+    assert.equal(publicCount, 1, "only public videos in the 90-day window count; private/unlisted/scheduled do not");
+    const playlistReq = askedUrls.find((u) => u.includes("/playlistItems"));
+    assert.ok(playlistReq, "made a playlistItems request");
+    assert.ok(
+      playlistReq.includes("part=contentDetails%2Cstatus") || playlistReq.includes("part=contentDetails,status"),
+      "playlistItems requested part=contentDetails,status",
+    );
+  } finally {
+    globalThis.fetch = realFetch;
+    if (realToken === undefined) delete process.env.YOUTUBE_TOKEN_FILE;
+    else process.env.YOUTUBE_TOKEN_FILE = realToken;
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+// fetchYppSnapshot computes rates over the days Analytics actually returned (the rows' dates).
+{
+  const realFetch = globalThis.fetch;
+  const realToken = process.env.YOUTUBE_TOKEN_FILE;
+  const dir = await mkdtemp(path.join(tmpdir(), "mcsr-ypp-snapshot-"));
+  process.env.YOUTUBE_TOKEN_FILE = path.join(dir, "token.json");
+  await writeFile(
+    process.env.YOUTUBE_TOKEN_FILE,
+    JSON.stringify({ client_id: "c", client_secret: "s", refresh_token: "r" }),
+  );
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = String(input);
+    if (url.includes("oauth2.googleapis.com/token")) {
+      return new Response(JSON.stringify({ access_token: "tok", expires_in: 3600 }));
+    }
+    if (url.includes("/channels?part=statistics")) {
+      return new Response(JSON.stringify({ items: [{ statistics: { subscriberCount: "75" } }] }));
+    }
+    if (url.includes("/channels?part=contentDetails")) {
+      return new Response(
+        JSON.stringify({ items: [{ contentDetails: { relatedPlaylists: { uploads: "UU_TEST" } } }] }),
+      );
+    }
+    if (url.includes("/playlistItems")) {
+      return new Response(
+        JSON.stringify({
+          items: [
+            {
+              contentDetails: { videoPublishedAt: new Date(now - 10 * 86_400_000).toISOString() },
+              status: { privacyStatus: "public" },
+            },
+            {
+              contentDetails: { videoPublishedAt: new Date(now - 20 * 86_400_000).toISOString() },
+              status: { privacyStatus: "private" },
+            },
+          ],
+        }),
+      );
+    }
+    if (url.includes("youtubeanalytics")) {
+      const u = new URL(url);
+      const metrics = u.searchParams.get("metrics") ?? "";
+      const dimensions = u.searchParams.get("dimensions") ?? "";
+      // Subscribers query: 4 days returned out of 7 calendar days (3 missing trailing days due to lag)
+      if (metrics.includes("subscribersGained")) {
+        assert.equal(dimensions, "day", "subscribers query asks for dimensions=day");
+        return new Response(
+          JSON.stringify({
+            rows: [
+              ["2026-09-02", 3, 0],
+              ["2026-09-03", 2, 1],
+              ["2026-09-04", 4, 0],
+              ["2026-09-05", 2, 0],
+            ],
+          }),
+        );
+      }
+      if (metrics.includes("estimatedMinutesWatched") && dimensions.includes("day")) {
+        return new Response(
+          JSON.stringify({
+            rows: [
+              ["2026-09-02", "videoOnDemand", 120],
+              ["2026-09-03", "videoOnDemand", 180],
+            ],
+          }),
+        );
+      }
+      if (metrics.includes("estimatedMinutesWatched") && !dimensions.includes("day")) {
+        return new Response(JSON.stringify({ rows: [["videoOnDemand", 60000]] }));
+      }
+      if (metrics.includes("engagedViews") && dimensions.includes("day")) {
+        return new Response(
+          JSON.stringify({
+            rows: [
+              ["2026-09-02", "shorts", 50],
+              ["2026-09-03", "shorts", 50],
+            ],
+          }),
+        );
+      }
+      if (metrics.includes("engagedViews,views")) {
+        return new Response(JSON.stringify({ rows: [["shorts", 1000, 3000]] }));
+      }
+    }
+    return new Response(JSON.stringify({}), { status: 404 });
+  }) as typeof fetch;
+
+  try {
+    const snap = await fetchYppSnapshot(now);
+    assert.equal(snap.subscribers, 75);
+    // Net gained: (3+2+4+2) - (0+1+0+0) = 10 net subscribers over 4 days returned
+    assert.equal(snap.subscribersPer7d, 10);
+    assert.equal(snap.subscribersDays, 4, "subscribersDays reflects the 4 dates actually returned by Analytics");
+    assert.equal(snap.watchHoursDays, 2, "watchHoursDays reflects the 2 dates actually returned");
+    assert.equal(snap.shortsViewsDays, 2, "shortsViewsDays reflects the 2 dates actually returned");
+    assert.equal(snap.uploads90d, 1, "only the public upload is counted");
+
+    const projected = projectYpp(snap, now);
+    assert.equal(projected.subscribers.ratePerDay, 2.5, "daily rate is 10 / 4 = 2.5 / day");
+  } finally {
+    globalThis.fetch = realFetch;
+    if (realToken === undefined) delete process.env.YOUTUBE_TOKEN_FILE;
+    else process.env.YOUTUBE_TOKEN_FILE = realToken;
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
 console.log("yppProgress: all checks passed");
