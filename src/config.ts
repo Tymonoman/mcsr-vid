@@ -20,7 +20,10 @@ export interface Config {
    * variable that never varied.
    */
   thumbnailVariants: Array<{ left: string; right: string }>;
-  /** Minimum cross-correlation confidence (sync.ts) to trust the refined audio sync offset. */
+  /**
+   * Minimum confidence of the countdown reading (src/pipeline/sync.ts) for its offsets to replace the
+   * download's coarse estimate; below it the match screen warns and the sync editor settles it.
+   */
   syncConfidenceThreshold: number;
   /** VOD trim window: seconds of buffer before the estimated match start. */
   preRollSec: number;
@@ -100,8 +103,8 @@ export interface Config {
    * away from 10 makes the overlay clips get head-trimmed to keep match start in place, which
    * is correct but wastes render, and an intro shorter than the difference is rejected outright.
    *
-   * The VOD clips keep a much larger `preRollSec` because the audio-sync search needs room to
-   * hunt for the countdown; that headroom is trimmed off the timeline rather than shown.
+   * The VOD clips keep a much larger `preRollSec` because the sync search needs room to hunt
+   * for the countdown; that headroom is trimmed off the timeline rather than shown.
    */
   overlayLeadInSec: number;
   /**
@@ -123,14 +126,6 @@ export interface Config {
    * rather than "render this?" with a chart. See src/dashboard/nightly.ts for what it will and won't do.
    */
   nightlyRenderHourUtc: number | null;
-  /**
-   * Whether a clean nightly render is followed by a Short of the same match, cut with the top
-   * moment (`--pick=0`). On by default: the VODs are already on disk, the cut costs a couple of
-   * minutes next to the render itself, and Shorts are the only surface on the channel that
-   * reaches people who have never heard of it. Only `done` chains one — a failed or aborted
-   * pipeline has nothing to cut from, and an abort is the operator saying stop.
-   */
-  nightlyRenderShort: boolean;
   /**
    * Whether a clean nightly render is also encoded to a finished MP4 (`npm run export:fast`,
    * ~10 minutes for a 10-minute match on the lab's VAAPI). On by default, because the render
@@ -265,10 +260,9 @@ export interface Config {
    * argument is, it goes on stdin — `{schema}` a JSON Schema the answer is held to and `{dir}` the
    * directories the CLI may read (the flag before it is repeated per directory); a caller with no
    * schema or directory drops that argument and the flag before it, so one argv serves every
-   * caller. Null (the default) turns every question into its heuristic fallback. The callers: the
+   * caller. Null (the default) turns every question into its heuristic fallback. The caller: the
    * Short's moment picker, which has the model watch the finished video (src/shorts/videoPick.ts,
-   * `npm run pick`), and the older re-ranking of the scored windows (src/shorts/shortReason.ts).
-   * The lab's (LAB_REASONER_COMMAND, the example file's value): Antigravity's CLI, signed in on the
+   * `npm run pick`). The lab's (LAB_REASONER_COMMAND, the example file's value): Antigravity's CLI, signed in on the
    * operator's subscription under its own HOME, Gemini 3.8 Flash at high effort (the operator's
    * choice, 23 Sept 2026: a whole 8:52 match in 93–136 s), and never with
    * --dangerously-skip-permissions — the prompt carries Twitch chat, and `--sandbox` keeps the
@@ -334,7 +328,6 @@ export const DEFAULTS: Config = {
   overlayFps: 30,
   renderConcurrency: null,
   nightlyRenderHourUtc: 3,
-  nightlyRenderShort: true,
   publishHourUtc: 19,
   seriesPublishHourUtc: 23,
   postRollCta: true,

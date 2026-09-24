@@ -27,7 +27,7 @@ export interface SyncRouteContext {
  * server would give; `exported` is what puts the sync check on the page at all. One shape for
  * the GET and the PUT — saving offsets is exactly what makes an export stale.
  */
-export async function syncPayload(matchId: number) {
+async function syncPayload(matchId: number) {
   const status = await matchStatusFor(matchId);
   const dir = matchDir(matchId);
   const located = findExportedVideo(matchId, [status.leftNickname, status.rightNickname]);

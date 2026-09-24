@@ -1,7 +1,8 @@
 import type { MatchInfo, TimelineEntry } from "../api/types.js";
 
 /**
- * Picks the ~22 seconds of a match worth cutting into a Short.
+ * Scores the ~22-second windows of a match for a Short: the heuristic that stands in when the
+ * model's pick fails (src/shorts/videoPick.ts), and the lead changes the model is told about.
  *
  * Everything here comes from `match.timelines` — the same event list the splits and the chaos
  * score are built from — so choosing a moment costs no video decoding at all. That matters: a
@@ -14,11 +15,11 @@ import type { MatchInfo, TimelineEntry } from "../api/types.js";
  */
 
 /**
- * Seconds of match footage a Short covers.
+ * Seconds of match footage the heuristic's window covers (the model picks its own length).
  *
  * Completion rate is a Shorts ranking input, and the reference Short is 21.3s with its payoff
  * at t=9s. The window is one event and the run-up to it, so a shorter clip with the same payoff
- * finishes more often. `--seconds` overrides.
+ * finishes more often.
  */
 export const SHORT_WINDOW_SEC = 22;
 /** How far apart candidate windows are tried. */
@@ -276,9 +277,4 @@ export function distinctShortMoments(match: MatchInfo, opts: ShortMomentOptions,
     if (chosen.length >= limit) break;
   }
   return chosen;
-}
-
-/** The single best window, or null when the match has no scoreable events at all. */
-export function pickShortMoment(match: MatchInfo, opts: ShortMomentOptions): ShortMoment | null {
-  return rankShortMoments(match, opts)[0] ?? null;
 }
