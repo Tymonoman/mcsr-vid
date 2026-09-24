@@ -148,6 +148,8 @@ export interface ShortPlanResponse {
   log: ShortLogLine[];
   /** The picked window inside the long-form's own video, for a preview player. */
   preview?: { videoUrl: string; startSec: number; endSec: number };
+  /** Warnings generated when saving hooks that were accepted anyway (spoilers, length budgets, sanitization). */
+  saveWarnings?: string[];
   uploads: {
     video?: { videoId: string; publishAt?: string };
     short?: { videoId: string; publishAt?: string };

@@ -197,9 +197,16 @@ export async function handleShortsRoute(
       ctx.json(res, 400, { error: "expected a JSON body { titleHook, shortHook, noShort? }" });
       return true;
     }
-    const refused = await saveHooks(matchId, body, opts.chain);
-    if (refused) ctx.json(res, refused.status, { error: refused.error });
-    else ctx.json(res, 202, await shortPlan(matchId));
+    const result = await saveHooks(matchId, body, opts.chain);
+    if (result && "status" in result) {
+      ctx.json(res, result.status, { error: result.error });
+    } else {
+      const plan = await shortPlan(matchId);
+      if (result && "saveWarnings" in result && result.saveWarnings?.length) {
+        plan.saveWarnings = result.saveWarnings;
+      }
+      ctx.json(res, 202, plan);
+    }
     return true;
   }
 
