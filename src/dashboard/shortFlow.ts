@@ -26,12 +26,17 @@ import type { MatchInfo } from "../api/types.js";
 import { config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { hookSuggestions, spoilsTheResult } from "../pipeline/hooks.js";
-import { ANCHOR_SEC } from "../pipeline/kdenliveProject.js";
+import { exportMatchStartSec } from "../pipeline/exportFast.js";
 import { computeMetrics } from "../pipeline/matchScore.js";
 import { exportStale, readSyncOffsets } from "../pipeline/syncFile.js";
 import { buildTitle, HOOK_PLACEHOLDER, metaPaths, SEPARATOR, withHook } from "../pipeline/title.js";
 import { playoffContextFor, playoffSeriesTail, playoffTitleTail } from "../playoffs/playoffs.js";
-import { chapterStarts, readSeriesRecord, seriesOutputPath, type SeriesRecord } from "../playoffs/series.js";
+import {
+  gameMatchStarts,
+  readSeriesRecord,
+  seriesOutputPath,
+  type SeriesRecord,
+} from "../playoffs/series.js";
 import { reasonerConfigured } from "../shorts/reasoner.js";
 import {
   buildShortHook,
@@ -562,14 +567,14 @@ function syncWeak(matchId: number, f: Facts): boolean {
   return weak || (video !== null && exportStale(f.dir, video).stale);
 }
 
-/** The picked window inside the long-form's own video: match start sits ANCHOR_SEC into each game's export. */
+/** The picked window inside the long-form's own video, from where its export put match start. */
 function previewOf(matchId: number, f: Facts): ShortPlanResponse["preview"] {
   if (!f.pick || exportPath(f.dir, matchId) === null) return undefined;
-  let offset = ANCHOR_SEC;
+  let offset = exportMatchStartSec(f.dir, matchId);
   if (f.series) {
     const i = f.series.games.findIndex((g) => g.matchId === f.pick!.gameMatchId);
     if (i < 0) return undefined;
-    offset += chapterStarts(f.series.games.map((g) => g.durationSec))[i]!;
+    offset = gameMatchStarts(f.series.games)[i]!;
   }
   return {
     videoUrl: `/api/export/preview/${matchId}`,

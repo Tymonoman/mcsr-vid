@@ -1,5 +1,5 @@
 import { makeCancelSignal, renderMedia, renderStill, selectComposition } from "@remotion/renderer";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { atomicOutput } from "./atomicOutput.js";
@@ -7,6 +7,7 @@ import { config } from "../config.js";
 import { computeOverlayProps } from "./overlayProps.js";
 import { bundleOnce } from "./remotionBundle.js";
 import { splitSegments } from "./splitStates.js";
+import { chooseTeaser } from "./teaser.js";
 import { POST_ROLL_SEC, estimatedRunSec } from "./vodAcquisition.js";
 import type { MatchInfo, UserDetails, VersusStats } from "../api/types.js";
 
@@ -75,6 +76,8 @@ export interface RenderOverlayResult {
 export const overlayPaths = (outDir: string) => ({
   top: path.join(outDir, "overlay-top.png"),
   topEnd: path.join(outDir, "overlay-top-end.png"),
+  /** The COMING UP line large over the countdown (config.countdownTeaser); absent when off. */
+  countdownTeaser: path.join(outDir, "overlay-countdown-teaser.png"),
   timer: path.join(outDir, "overlay-timer.mp4"),
   intro: path.join(outDir, "overlay-intro.webm"),
   manifest: path.join(outDir, SPLITS_MANIFEST),
@@ -150,6 +153,24 @@ export async function renderOverlay(args: RenderOverlayArgs): Promise<RenderOver
       // in at the run's end by the export — the only thing in the top band that ever changes.
       const wonBy = seriesWinner(renderProps, args.match);
       if (wonBy) await atomicOutput(out.topEnd, (output) => renderTop(output, wonBy));
+      // The countdown teaser: only when on and the match has a moment, removed otherwise so an
+      // earlier render's line never reaches the export.
+      const teaser = config.countdownTeaser ? chooseTeaser(args.match) : null;
+      if (teaser) {
+        const inputProps = { momentMs: teaser.momentMs, text: teaser.text };
+        await atomicOutput(out.countdownTeaser, async (output) => {
+          await renderStill({
+            composition: await selectComposition({ serveUrl, id: "CountdownTeaser", inputProps }),
+            serveUrl,
+            output,
+            imageFormat: "png",
+            inputProps,
+            cancelSignal,
+          });
+        });
+      } else {
+        await rm(out.countdownTeaser, { force: true });
+      }
       args.onProgress?.({ phase: "top", percent: 100 });
     }
 

@@ -5,7 +5,13 @@ import { config, matchDir } from "../config.js";
 import { getMatch, parseMatchId } from "../api/mcsrApi.js";
 import { overlayPaths, readSplitStills } from "./overlayRender.js";
 import { readSyncOffsets } from "./syncFile.js";
-import { exportOutputPath, runFastExport, vaapiAvailable } from "./exportFast.js";
+import {
+  exportOutputPath,
+  headTrimSec,
+  runFastExport,
+  vaapiAvailable,
+  writeExportRecord,
+} from "./exportFast.js";
 import { ANCHOR_SEC } from "./kdenliveProject.js";
 import { measureTail, suggestTailSec } from "./postRoll.js";
 
@@ -108,6 +114,14 @@ if (!fullTail && match.result.time > 0 && timerDur > runEndOnTimelineSec + MIN_T
   );
 }
 
+// A card shorter than 7 s cuts the countdown's head so the card still opens the video and the
+// countdown's last three seconds follow it: match start at introSec + 3 s. The card on disk decides.
+const trimSec = headTrimSec(introDur);
+const matchStartSec = ANCHOR_SEC - trimSec;
+// The large COMING UP line over the countdown, from the card's end to match start (timeline
+// seconds, before the trim). Only when the setting is on *and* the render drew one.
+const teaserOn = config.countdownTeaser && existsSync(overlay.countdownTeaser);
+
 const useVaapi = !forceCpu && vaapiAvailable();
 // A `--seconds` run is a smoke test and must not land on the finished MP4: it did once, and a
 // published match's final-<id>.mp4 became a 20-second stub.
@@ -139,14 +153,22 @@ await runFastExport(
     ...(existsSync(overlay.topEnd) && match.result.time > 0
       ? { topEndPath: overlay.topEnd, topEndAtSec: runEndOnTimelineSec }
       : {}),
+    ...(teaserOn
+      ? {
+          countdownTeaserPath: overlay.countdownTeaser,
+          countdownTeaserStartSec: trimSec + introDur,
+          countdownTeaserEndSec: ANCHOR_SEC,
+        }
+      : {}),
+    ...(trimSec > 0 ? { headTrimSec: trimSec } : {}),
     splits,
     timerPath: overlay.timer,
     introPath: overlay.intro,
     introOffsetSec: 0,
     fps: 60,
     // The overlay spans lead-in + run + post-roll and starts at timeline 0, so it is the
-    // timeline's length.
-    totalDurationSec: Number.isFinite(limitSec) ? limitSec : totalDurationSec,
+    // timeline's length; a smoke run's N seconds are N seconds of output.
+    totalDurationSec: Number.isFinite(limitSec) ? limitSec + trimSec : totalDurationSec,
     outPath,
     useVaapi,
     povAudioPan: config.povAudioPan,
@@ -154,5 +176,10 @@ await runFastExport(
   (line) => process.stderr.write(`  ${line}\n`),
 );
 
+// Beside the MP4, never for a smoke run: where match start sits in the finished video.
+if (!Number.isFinite(limitSec)) writeExportRecord(outDir, matchId, { matchStartSec });
+
 console.error(`\nDone in ${((Date.now() - started) / 1000).toFixed(0)}s: ${outPath}`);
-console.log(JSON.stringify({ matchId, outPath, anchorSec: ANCHOR_SEC, introSec: introDur }, null, 2));
+console.log(
+  JSON.stringify({ matchId, outPath, anchorSec: ANCHOR_SEC, introSec: introDur, matchStartSec }, null, 2),
+);

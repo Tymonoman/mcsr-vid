@@ -19,10 +19,10 @@
  *
  * Files, all in the match's directory (game 1's for a series):
  * - `short-proxy.mp4`: 640x360 at 2 fps (1 fps for a series, to stay under agy's 100 MB
- *   `view_file` limit), cut from ANCHOR_SEC, so a single match's proxy time *is* its match clock.
- *   A series proxy is every game back to back: game k's RTA 0:00 sits at the sum of the export
- *   lengths before it (series.json's `durationSec`, `chapterStarts`), because each export has its
- *   own countdown at ANCHOR_SEC and the cut removes exactly one of those. Rebuilt only when older
+ *   `view_file` limit), cut from where the export put match start (`final-<id>.json`, ANCHOR_SEC
+ *   without one), so a single match's proxy time *is* its match clock. A series proxy is every
+ *   game back to back, cut at game 1's match start: game k's RTA 0:00 sits at its own match start
+ *   in the joined video less game 1's (series.json, `gameMatchStarts`). Rebuilt only when older
  *   than the video.
  * - `short-<id>.pick.json`: the ShortPick (shortPlan.ts), model's or heuristic's. Newer than the
  *   video, it is the answer and the model is not asked again unless forced: a render made after
@@ -42,12 +42,12 @@ import { config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { atomicOutput } from "../pipeline/atomicOutput.js";
 import { hookSuggestions, spoilsTheResult } from "../pipeline/hooks.js";
-import { ANCHOR_SEC } from "../pipeline/kdenliveProject.js";
 import { SEPARATOR } from "../pipeline/title.js";
 import { computeMetrics } from "../pipeline/matchScore.js";
 import { eloAtMatchStart } from "../pipeline/overlayProps.js";
 import { playoffContextFor } from "../playoffs/playoffs.js";
-import { chapterStarts, readSeriesRecord, seriesOutputPath, type SeriesGame } from "../playoffs/series.js";
+import { gameMatchStarts, readSeriesRecord, seriesOutputPath, type SeriesGame } from "../playoffs/series.js";
+import { exportMatchStartSec } from "../pipeline/exportFast.js";
 import { DEATH_TYPES, decidedAtMs, MILESTONES, raceCaptions } from "./raceGap.js";
 import { NOT_SIGNED_IN, reasonerConfigured, runReasoner } from "./reasoner.js";
 import { boxFailure, shortLog, type LogExtra } from "./shortLog.js";
@@ -154,17 +154,24 @@ const parseClock = (v: unknown): number | null =>
         .reduce((acc, part) => acc * 60 + Number(part), 0)
     : null;
 
-async function findVideo(
-  dir: string,
-  matchId: number,
-): Promise<{ video: string; games: SeriesGame[] | null } | null> {
+/** The finished video the model watches, and the second its (first) match starts at. */
+interface VideoSource {
+  video: string;
+  games: SeriesGame[] | null;
+  matchStartSec: number;
+}
+
+async function findVideo(dir: string, matchId: number): Promise<VideoSource | null> {
   const series = seriesOutputPath(dir, matchId);
   if (existsSync(series)) {
     const record = await readSeriesRecord(dir);
-    if (record && record.games.length > 0) return { video: series, games: record.games };
+    if (record && record.games.length > 0)
+      return { video: series, games: record.games, matchStartSec: gameMatchStarts(record.games)[0]! };
   }
   const final = path.join(dir, `final-${matchId}.mp4`);
-  return existsSync(final) ? { video: final, games: null } : null;
+  return existsSync(final)
+    ? { video: final, games: null, matchStartSec: exportMatchStartSec(dir, matchId) }
+    : null;
 }
 
 async function spansOf(matchId: number, games: SeriesGame[] | null): Promise<GameSpan[]> {
@@ -172,7 +179,7 @@ async function spansOf(matchId: number, games: SeriesGame[] | null): Promise<Gam
     const match = await getMatch(matchId);
     return [{ match, gameNo: 1, offsetSec: 0, runSec: runMsOf(match) / 1000, endBySec: null }];
   }
-  const starts = chapterStarts(games.map((g) => g.durationSec));
+  const starts = gameMatchStarts(games);
   const spans: GameSpan[] = [];
   for (const [i, g] of games.entries()) {
     const match = await getMatch(g.matchId);
@@ -180,7 +187,7 @@ async function spansOf(matchId: number, games: SeriesGame[] | null): Promise<Gam
     spans.push({
       match,
       gameNo: g.gameNo,
-      offsetSec: starts[i]!,
+      offsetSec: starts[i]! - starts[0]!,
       runSec: runMsOf(match) / 1000,
       endBySec: decided === null ? null : (decided - HORIZON_MARGIN_MS) / 1000,
     });
@@ -207,6 +214,7 @@ function run(cmd: string, args: string[], signal?: AbortSignal): Promise<void> {
 async function ensureProxy(
   dir: string,
   video: string,
+  cutSec: number,
   fps: number,
   signal: AbortSignal | undefined,
   note: Note,
@@ -223,7 +231,7 @@ async function ensureProxy(
     await atomicOutput(out, (tmp) =>
       run("nice", [
         "-n", "19", "ffmpeg", "-v", "error", "-y",
-        "-threads", "2", "-ss", String(ANCHOR_SEC), "-i", video,
+        "-threads", "2", "-ss", String(cutSec), "-i", video,
         "-vf", `fps=${fps},scale=640:-2`,
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "28", "-threads", "2",
         "-c:a", "aac", "-ac", "1", "-b:a", "48k", "-movflags", "+faststart", tmp,
@@ -707,7 +715,7 @@ async function heuristicPick(spans: readonly GameSpan[], failure: string): Promi
 /** The proxy, the prompt, the model, the checks: a pick, or why there is none. Rethrows an abort only. */
 async function askModel(
   dir: string,
-  source: { video: string; games: SeriesGame[] | null },
+  source: VideoSource,
   spans: readonly GameSpan[],
   opts: PickOptions,
   note: Note,
@@ -715,7 +723,9 @@ async function askModel(
   try {
     const series = source.games !== null;
     const fps = series ? 1 : 2;
-    const proxy = path.resolve(await ensureProxy(dir, source.video, fps, opts.signal, note));
+    const proxy = path.resolve(
+      await ensureProxy(dir, source.video, source.matchStartSec, fps, opts.signal, note),
+    );
     const watched: GameWatch[] = [];
     for (const span of spans)
       watched.push({ span, povs: await watchPovs(span.match, { signal: opts.signal, log: note }) });

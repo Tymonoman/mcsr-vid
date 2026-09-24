@@ -283,7 +283,7 @@ export const RemotionRoot: React.FC = () => {
         fps={30}
         width={1920}
         height={1080}
-        defaultProps={{ teaserText: "COMING UP · AT 5:14 · THE LEAD CHANGES ON BLIND TRAVEL" }}
+        defaultProps={{ momentMs: 314_000, text: "THE LEAD CHANGES ON BLIND TRAVEL" }}
       />
     </>
   );

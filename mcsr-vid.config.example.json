@@ -97,5 +97,5 @@
     "--print-timeout",
     "1400s"
   ],
-  "watchScript": "/app/.tools/agy-dev/.claude/plugins/cache/claude-watch/watch/0.2.0/scripts/watch.py"
+  "watchScript": "/home/node/.claude/plugins/cache/claude-watch/watch/0.2.0/scripts/watch.py"
 }

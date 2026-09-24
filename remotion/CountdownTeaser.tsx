@@ -1,44 +1,53 @@
 import React from "react";
 import { AbsoluteFill } from "remotion";
-import { BOTTOM_BAND_Y, TOP_BAND_HEIGHT } from "./layout.js";
+import { BOTTOM_BAND_Y, POV_HEIGHT, TOP_BAND_HEIGHT } from "./layout.js";
+import { formatShortTime } from "./format.js";
 import "./overlay.css";
 
-export const CountdownTeaser: React.FC<{ teaserText?: string }> = ({ 
-  teaserText = "COMING UP · AT 5:14 · THE LEAD CHANGES ON BLIND TRAVEL" 
-}) => {
-  // Place between top band (Y=194) and bottom band (Y=734).
-  // Height is 120. We can place it at BOTTOM_BAND_Y - 120 so it sits on top of the bottom band.
-  // The center of each POV is at Y = 194 + (734-194)/2 = 464.
-  // BOTTOM_BAND_Y - 120 = 734 - 120 = 614. (614 to 734).
-  // This stays well below the 464 center.
+export type CountdownTeaserProps = {
+  /** src/pipeline/teaser.ts: when the moment happens, ms from match start. */
+  momentMs: number;
+  /** "THE LEAD CHANGES ON BLIND TRAVEL", at most TEASER_MAX_CHARS. */
+  text: string;
+};
+
+/** Tall enough for two lines; its top stays this far below the POVs' centre line. */
+const HEIGHT = 150;
+/** The countdown digit sits at the POVs' vertical centre (a 96x72 crop, countdownDetect.ts). */
+const POV_CENTRE_Y = TOP_BAND_HEIGHT + POV_HEIGHT / 2;
+
+/**
+ * The COMING UP line large over the countdown (config.countdownTeaser): a transparent full-frame
+ * still `export:fast` lays over the stage from the intro card's end to match start. It sits on the
+ * bottom of both POVs, over the hotbars, so the countdown digit at the centre of each stays clear.
+ */
+export const CountdownTeaser: React.FC<CountdownTeaserProps> = ({ momentMs, text }) => {
+  const top = BOTTOM_BAND_Y - HEIGHT;
+  if (top < POV_CENTRE_Y + 80) throw new Error("CountdownTeaser would cover the countdown digit");
   return (
     <AbsoluteFill>
       <div
         style={{
           position: "absolute",
-          top: BOTTOM_BAND_Y - 120,
+          top,
           left: 0,
           right: 0,
-          height: 120,
-          backgroundColor: "rgba(26, 24, 32, 0.8)", // --panel-2
-          borderTop: "4px solid #3c3844", // --panel-edge-light
-          borderBottom: "4px solid #3c3844", // --panel-edge-light
+          height: HEIGHT,
+          background: "rgba(26, 24, 32, 0.88)",
+          borderTop: "4px solid #3c3844",
           display: "flex",
+          flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
+          gap: 10,
+          fontFamily: "var(--pixel-font)",
+          textShadow: "4px 4px 0 #0d0c10",
         }}
       >
-        <span
-          style={{
-            fontFamily: '"Monocraft", ui-monospace, monospace',
-            fontSize: "64px",
-            color: "#f0c93d", // --gold
-            textShadow: "4px 4px 0 #0d0c10", // --panel-edge
-            letterSpacing: "0.06em",
-          }}
-        >
-          {teaserText}
+        <span style={{ fontSize: 40, color: "#f0c93d", letterSpacing: "0.08em" }}>
+          COMING UP · AT {formatShortTime(momentMs)}
         </span>
+        <span style={{ fontSize: 60, color: "#ffffff", letterSpacing: "0.04em" }}>{text}</span>
       </div>
     </AbsoluteFill>
   );

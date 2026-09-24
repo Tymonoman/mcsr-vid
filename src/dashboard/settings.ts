@@ -117,7 +117,7 @@ export const SETTINGS: readonly SettingField[] = [
   {
     key: "introSec",
     label: "Intro card (seconds)",
-    help: "How long the versus card covers the start of the countdown, 2 to 7. A shorter card shows the countdown sooner; match start stays at 0:10 either way. The 24 Sept audit measured the first 3% of every video losing a median 22.5 points and proposed 3. Applies to the next render.",
+    help: "How long the versus card covers the start of the countdown, 2 to 7. The finished MP4 keeps the last 3 s of the countdown after the card and cuts the seconds before it, so match start comes at the card's length + 3 s (7 → 0:10, 3 → 0:06). The 24 Sept audit measured the first 3% of every video losing a median 22.5 points and proposed 3. Applies to the next render.",
     kind: "int",
     group: "Publishing",
     min: 2,
@@ -126,7 +126,7 @@ export const SETTINGS: readonly SettingField[] = [
   {
     key: "countdownTeaser",
     label: "Large coming-up teaser",
-    help: "the COMING UP line, large, over the frozen countdown",
+    help: "The COMING UP line (a moment later in the race, naming nobody) large across the bottom of both POVs from the intro card's end to match start, clear of the countdown digit. Only when the match has such a moment. Applies to the next render and export.",
     kind: "boolean",
     group: "Publishing",
   },

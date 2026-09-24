@@ -108,9 +108,18 @@ Almost nothing in the overlay moves, so the render is stills plus one strip (`sr
 - `overlay-timer.mp4` — the RTA column (480x346), the only thing rendered per frame.
 - `overlay-intro.webm` — the intro card, `introSec` long (Settings → Publishing, 2–7, default 7;
   the 24 Sept 2026 audit proposed at most 3 — the operator's call). It lies *over* the frozen
-  countdown from timeline 0 and never moves the anchor: a shorter card shows the countdown
-  sooner, match start stays at 10 s. `export:fast` and the Kdenlive project both take its length
-  from the file, so a match keeps the card it was rendered with until `only: ["intro"]` redoes it.
+  countdown and never moves the timeline's anchor. `export:fast` cuts `7 - introSec` seconds off
+  the countdown's head (`headTrimSec`) and lays the card over the MP4's own 0, so the card still
+  opens the video, "3, 2, 1" follow it and match start is at introSec + 3 s (7 → 0:10, byte for
+  byte today's; 3 → 0:06). The Kdenlive project does not cut: it stays at 0:10. Both take the
+  card's length from the file, so a match keeps the card it was rendered with until
+  `only: ["intro"]` redoes it.
+- `overlay-countdown-teaser.png` — the COMING UP line large across the bottom of both POVs
+  (`remotion/CountdownTeaser.tsx`, clear of the countdown digit at their centre), rendered with
+  the top band only when `countdownTeaser` is on (default off) and the match has a teaser
+  moment; removed otherwise. `export:fast` shows it from the card's end to match start when the
+  setting is on and the file exists; absent, the filter graph is today's. The Kdenlive project
+  does not know it.
 
 ## Shorts
 
@@ -496,8 +505,19 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
   emits that MLT composites; when spot-checking, decode with `-c:v libvpx-vp9` or the alpha
   looks missing when it is not. ProRes is also ~1.9x slower in Remotion (no parallel encoding).
 - **Timeline zero is the countdown's first second** (`ANCHOR_SEC`, `src/pipeline/kdenliveProject.ts`): match
-  start lands at exactly 10 s. A clip whose match start is later than the anchor must be pushed
+  start lands at exactly 10 s *on the timeline*. A clip whose match start is later than the anchor must be pushed
   into its own head, not un-blanked — the wrong fix renders perfectly and slides the overlay late.
+  **The finished MP4 is not the timeline** since 24 Sept 2026: `export:fast` cuts `headTrimSec`
+  off the front for a card under 7 s and records where match start landed in
+  `final-<id>.json` (`{ matchStartSec }`, never for a `--seconds` smoke run). Anything that
+  seeks in the finished video reads `exportMatchStartSec(dir, id)` — 10 without a record, which
+  is every export before then and any Kdenlive export — and a series reads each game's from
+  `series.json` (`matchStartSec`, copied at the join; `gameMatchStarts`): the Short's proxy cut
+  and its spans (`videoPick.ts`), the dashboard's pick preview (`shortFlow.ts` `previewOf`). The
+  description's chapters are written at render time, before any export, so they take
+  `headTrimSec(config.introSec)` instead. Anything on timeline seconds is unchanged: the sync
+  editor and the 9.6 s sync check read the POV clips (`clipTimeFor`), and the teaser, mid-roll
+  and top-end stills are timed on the timeline before the cut.
 - **When the detector is not sure, a human settles it.** `GET/PUT /api/sync/:id` plus
   `GET /api/sync/frame?match=&side=&t=&offset=` back the match screen's "Fix the sync by hand"
   fold (`src/pipeline/syncEdit.ts`): one frame out of each POV clip at the same second of the *finished*

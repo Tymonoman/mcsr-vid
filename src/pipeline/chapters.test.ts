@@ -43,4 +43,13 @@ assert.equal(
   "B is within the 10s minimum gap of A and must be dropped",
 );
 
+// The description's chapters follow export:fast's head trim: match start at introSec + 3 s.
+{
+  const { headTrimSec } = await import("./exportFast.js");
+  const at = (introSec: number) =>
+    buildChapters(splits, match(518512), 10 - headTrimSec(introSec))[1]!.timeSec;
+  assert.equal(at(7) - at(3), 4, "a 3 s card puts every chapter 4 s earlier");
+  assert.equal(at(7), buildChapters(splits, match(518512), 10)[1]!.timeSec, "a 7 s card is today's");
+}
+
 console.log("chapters: all checks passed");
