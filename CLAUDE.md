@@ -33,11 +33,11 @@ what an agent cannot derive from the code; the rest is in the files it names.
 | `src/api/` | The outside services read: MCSR Ranked (`mcsrApi.ts`, `types.ts`), Twitch (`twitch.ts`, `twitchChat.ts`), avatar renders. |
 | `src/pipeline/` | A match to a finished video: fetch, VOD download/discovery, sync (`countdownDetect.ts`, `sync.ts`, `syncFile.ts`, `syncEdit.ts`), the overlay (`overlayProps.ts`, `overlayRender.ts`, `splitStates.ts`), the Kdenlive project and `export:fast`, and the text it writes (`title.ts`, `description.ts`, `hooks.ts`, `chapters.ts`). `pipeline.ts` is the stage runner. |
 | `src/thumbnails/` | The variant strip and its manifest. |
-| `src/shorts/` | The moment scorer, the reasoner, the vertical render, `generateShort.ts`. |
+| `src/shorts/` | The model's pick (`videoPick.ts`, `watchPov.ts`, `pickCli.ts`), the heuristic scorer it falls back to, the reasoner, the vertical render, `generateShort.ts`. |
 | `src/playoffs/` | The bracket and its games (`playoffs.ts`), a series as one video (`series.ts`, `seriesCli.ts`). |
 | `src/youtube/` | The Data API client and auth, upload records, the upload itself, the channel pairing, the publish slot. |
 | `src/dashboard/` | The web server (`server.ts`, one dispatch chain), its route groups (`youtubeRoutes`, `exportRoutes`, `shortsRoutes`, `syncRoutes`), the match screen's payload (`matchMeta.ts`), jobs, the nightly, suggestions, the shelf (hidden/queue/checklist), the publish set. |
-| `src/cli/` | Entry points nothing else imports: batch, status, score, chat, bench, the TUI. |
+| `src/cli/` | Entry points nothing else imports: batch, status, score, chat, bench, retention, the TUI. |
 | `src/` root | `config.ts`, `cliArgs.ts`, `errorText.ts`, and the tests that cut across folders. |
 
 Tests sit beside what they test (`foo.test.ts` next to `foo.ts`); fixtures are `src/fixtures/`.
@@ -70,7 +70,7 @@ Use the script, don't reconstruct the shell line. Extra arguments go after `--`.
 | `bash scripts/browser-checks/run-all.sh <url>` | Drives the dashboard in a real browser the way the operator does (24 Playwright checks, self-configuring from `/api/matches` and `/api/playoffs`). Point it at the real dashboard (`http://mcsr-dashboard:8080` from the Claude container), not just a local test server — four checks only ever exercised a secure origin and hid a broken Copy button for it. Needs `npx playwright install chromium` once and a server with real data. |
 
 Lab timings for a 10-minute match: overlay render ~9 min, `export:fast` ~10 min, a Short in
-seconds; a nightly render + Short takes ~12 min, ~21 min with the MP4.
+seconds; a nightly render takes ~12 min, ~21 min with the MP4 (the Short waits for the hooks).
 
 ## What the render produces
 
@@ -222,18 +222,21 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   Settings tab; `remotion/Thumbnail.tsx` `playoff`): "bracket" puts the round in the band, the
   seed where the rating was and "Best of 5" under the VS; "trophy" grows the band for a gold
   PLAYOFFS wordmark and frames the body. Default "plain" — the operator picks from the renders
-  in the 22 Sept report. A ranked match is never framed.
+  in the 22 Sept report. A ranked match is never framed. **Not wired yet**: nothing in
+  `computeThumbnailProps` sets `playoff`, so the setting changes no render today; wire it when
+  the operator picks a style.
 - **Thumbnails are plain poses, no text** (`src/thumbnails/thumbnailVariants.ts`): four pairs from
   `thumbnailVariants`, the first (`walking`/`crossed`) is the auto default, `default`/`default`
-  is both players straight on. The hooked-twin machinery (`hookText`, `-hook` keys,
-  `POST /api/thumbnails/:id/rerender`) is still in the code but the pipeline no longer asks for
-  it and the panel hides hooked stills — the operator took the text off on 18 Sept 2026. The
-  hook stays on the title and the Short. The checklist's thumbnail pill ticks on
+  is both players straight on. The operator took the text off on 18 Sept 2026, and the hooked
+  twins, their render path and `POST /api/thumbnails/:id/rerender` were deleted on 24 Sept; a
+  manifest from before then still carries `hookText` and `-hook` records, which `readManifest`
+  reads, the panel hides, and `carriedHookText` hands to the title. The hook stays on the title
+  and the Short. The checklist's thumbnail pill ticks on
   `chosenBy: "operator"` in the manifest — a rendered variant is not a chosen one.
-- **The audit blocks `videos.insert`, not the rest.** `playlistItems.insert`, `thumbnails.set`,
-  `commentThreads.insert` and `videos.update` are all inside the token's `force-ssl` scope and are
-  unaffected, so **Finish on YouTube** repairs a Studio upload today: playlists, the pinned comment
-  and the tags. It leaves the thumbnail alone on a video uploaded elsewhere whose variant nobody
+- **`videos.insert` is the only call the audit gated** (`youtubeUploadEnabled`). `playlistItems.insert`,
+  `thumbnails.set`, `commentThreads.insert` and `videos.update` are all inside the token's
+  `force-ssl` scope, so **Finish on YouTube** repairs a Studio upload too: playlists, the pinned
+  comment and the tags. It leaves the thumbnail alone on a video uploaded elsewhere whose variant nobody
   confirmed here, so it cannot replace an image picked in Studio.
 - **Adopt a Studio draft** (`POST /api/youtube/adopt/:id`, the panel's "Adopt this draft"): the
   operator drops the file into Studio leaving every box empty, pastes the 11-character id, and the
@@ -392,7 +395,7 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
 
 - **Season vs career stats.** `pickStats` (`src/pipeline/overlayProps.ts`) falls back to career totals
   only when the season bucket has no ranked games, and the overlay then labels itself CAREER.
-  Both paths are pinned by `src/overlayProps.test.ts`; don't "fix" the fallback away.
+  Both paths are pinned by `src/pipeline/overlayProps.test.ts`; don't "fix" the fallback away.
 - **A private room's two seats are ordered by uuid** (`withoutGhostPlayers`, `src/api/mcsrApi.ts`):
   a room seats its players in join order, and game 3 of the S11 Pinne–7rowl pilot came out with
   the sides swapped after two games the other way. Everything left/right hangs off
@@ -513,7 +516,7 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
 - **Country flags render as tofu** without a colour-emoji font (cosmetic, intro card).
 - **Verify visual changes by rendering** (`npm run still`, then read the PNG).
 - **`npm run test:unit` after any edit; `npm test` after touching rendering or asset
-  generation** — the full run adds the three tests that drive Chromium and ffmpeg. The
+  generation** — the full run adds the two tests that drive Chromium and ffmpeg. The
   PostToolUse hook's `prettier` + `tsc --noEmit` covers per-edit mistakes.
 - **Generated projects carry `<mlt root>`** with every resource relative to it, which is what
   lets a project rendered on the lab open on the desktop.

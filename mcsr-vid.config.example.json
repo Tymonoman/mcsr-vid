@@ -37,7 +37,6 @@
   "overlayFps": 30,
   "renderConcurrency": null,
   "nightlyRenderHourUtc": 3,
-  "nightlyRenderShort": true,
   "publishHourUtc": 19,
   "seriesPublishHourUtc": 23,
   "postRollCta": true,

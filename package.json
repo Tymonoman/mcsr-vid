@@ -32,7 +32,7 @@
     "format": "prettier --write .",
     "//archive": "Copy a finished match to the NAS. Copies, never moves - nothing is deleted.",
     "archive": "sh -c 'rsync -a --info=progress2 \"/media/$0/\" \"/archive/$0/\"'",
-    "//test": "test:unit is every *.test.ts except the three that drive Chromium or ffmpeg; test runs those after it.",
+    "//test": "test:unit is every *.test.ts except the two that drive Chromium or ffmpeg; test runs those after it.",
     "test:unit": "for f in $(find src remotion -name '*.test.ts' | sort); do case \"$f\" in */overlayRender.test.ts|*/exportFrames.test.ts) continue;; esac; echo \"-- $f --\"; tsx \"$f\" || exit 1; done",
     "test": "npm run test:unit && for f in src/pipeline/overlayRender.test.ts src/exportFrames.test.ts; do echo \"-- $f --\"; tsx \"$f\" || exit 1; done",
     "youtube-auth": "tsx src/youtube/youtubeAuth.ts",

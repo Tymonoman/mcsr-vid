@@ -124,14 +124,6 @@ export interface Config {
    */
   nightlyRenderHourUtc: number | null;
   /**
-   * Whether a clean nightly render is followed by a Short of the same match, cut with the top
-   * moment (`--pick=0`). On by default: the VODs are already on disk, the cut costs a couple of
-   * minutes next to the render itself, and Shorts are the only surface on the channel that
-   * reaches people who have never heard of it. Only `done` chains one — a failed or aborted
-   * pipeline has nothing to cut from, and an abort is the operator saying stop.
-   */
-  nightlyRenderShort: boolean;
-  /**
    * Whether a clean nightly render is also encoded to a finished MP4 (`npm run export:fast`,
    * ~10 minutes for a 10-minute match on the lab's VAAPI). On by default, because the render
    * alone leaves a project and overlays: nothing to watch in the preview and nothing to upload,
@@ -343,7 +335,6 @@ export const DEFAULTS: Config = {
   overlayFps: 30,
   renderConcurrency: null,
   nightlyRenderHourUtc: 3,
-  nightlyRenderShort: true,
   publishHourUtc: 19,
   seriesPublishHourUtc: 23,
   postRollCta: true,

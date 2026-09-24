@@ -31,19 +31,19 @@ faster than hunting through tabs.
       description and edit nothing. It already carries the opening, chapters,
       the VOD deep links, the match-data link, the disclaimer and the three
       hashtags (`#MCSRRanked #MCSR #MinecraftSpeedrunning`, from
-      `HASHTAGS` in `src/description.ts`). Do not hand-write an opening above
+      `HASHTAGS` in `src/pipeline/description.ts`). Do not hand-write an opening above
       it, and **never use Studio's hashtag chip field** — it lowercases what
       you type and double-spaces it into the description; plain-text hashtags
       in the body are auto-linked with no clicking.
 - [ ] **Tags:** the lines of `match-<matchId>.tags.txt`, comma-joined
-      (`buildTags` in `src/description.ts` keeps them inside a 450-character
+      (`buildTags` in `src/pipeline/description.ts` keeps them inside a 450-character
       budget against YouTube's 500).
 - [ ] **Thumbnail:** upload the chosen variant's PNG.
 - [ ] **Playlists** — three, all of which the API path would add automatically:
       - `MCSR Ranked matches` (the season playlist, `youtubePlaylistTitle` in
         `src/config.ts`; it exists as `PLHG-jSA-dWDo`)
       - `<A> vs <B> · MCSR Ranked` — the matchup, names sorted
-        case-insensitively (`matchupPlaylistTitle` in `src/youtube.ts`)
+        case-insensitively (`matchupPlaylistTitle` in `src/youtube/youtube.ts`)
       - `<nickname> · MCSR Ranked matches` — one per player, the link a runner
         shares (`playerPlaylistTitle`)
 - [ ] **Made for kids:** **No.** Competitive ranked speedrun content aimed at a
@@ -53,7 +53,7 @@ faster than hunting through tabs.
       runs on.
 - [ ] **Visibility:** **Schedule** (not Publish now) for **19:00 UTC** —
       `publishHourUtc` in `src/config.ts`, measured on the active competitor
-      (`src/publishSlot.ts`). The publish kit prints the next slot; it skips one
+      (`src/youtube/publishSlot.ts`). The publish kit prints the next slot; it skips one
       less than an hour out, because a scheduled time YouTube has already passed
       rejects the upload and an 800 MB file is not on the platform in five
       minutes.

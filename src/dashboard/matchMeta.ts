@@ -4,7 +4,6 @@
  * disk. `GET /api/meta/:id` and the PUT that saves an edit both answer with it (server.ts).
  */
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
@@ -21,14 +20,8 @@ import {
 } from "../playoffs/playoffs.js";
 import { readSeriesRecord, seriesShortGame } from "../playoffs/series.js";
 import { readManifest } from "../thumbnails/thumbnailVariants.js";
+import { readIfPresent } from "../youtube/youtubeStore.js";
 import { matchStatusFor } from "./matchStatus.js";
-
-/** The file's text, or null when it is absent — or empty: a 0-byte edit is no edit. */
-export async function readIfPresent(filePath: string): Promise<string | null> {
-  if (!existsSync(filePath)) return null;
-  const text = await readFile(filePath, "utf8");
-  return text.trim() === "" ? null : text;
-}
 
 export async function readMeta(matchId: number) {
   // One API request; the list variant costs one per match directory.
