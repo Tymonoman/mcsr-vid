@@ -8,7 +8,6 @@ import { readSyncOffsets } from "./syncFile.js";
 import { exportOutputPath, runFastExport, vaapiAvailable } from "./exportFast.js";
 import { ANCHOR_SEC } from "./kdenliveProject.js";
 import { measureTail, suggestTailSec } from "./postRoll.js";
-import { INTRO_SECONDS } from "../../remotion/layout.js";
 
 /**
  * npm run export:fast -- <matchId> [--cpu] [--seconds=N] [--full-tail]
@@ -69,10 +68,12 @@ const probe = async (file: string): Promise<number> => {
   });
 };
 
-const [leftDur, rightDur, timerDur] = await Promise.all([
+const [leftDur, rightDur, timerDur, introDur] = await Promise.all([
   probe(clipFor(playerLeft.nickname)),
   probe(clipFor(playerRight.nickname)),
   probe(overlay.timer),
+  // The card on disk, not config.introSec: a match rendered before the setting moved keeps its own.
+  probe(overlay.intro),
 ]);
 
 // The offsets the sync stage decided on, not the download estimate: without them the overlay
@@ -154,4 +155,4 @@ await runFastExport(
 );
 
 console.error(`\nDone in ${((Date.now() - started) / 1000).toFixed(0)}s: ${outPath}`);
-console.log(JSON.stringify({ matchId, outPath, anchorSec: ANCHOR_SEC, introSec: INTRO_SECONDS }, null, 2));
+console.log(JSON.stringify({ matchId, outPath, anchorSec: ANCHOR_SEC, introSec: introDur }, null, 2));

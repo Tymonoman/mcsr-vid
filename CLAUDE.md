@@ -106,7 +106,11 @@ Almost nothing in the overlay moves, so the render is stills plus one strip (`sr
   frame with the SUBSCRIBE line, the teaser or the card before waits for it; one that would then
   reach the finish is dropped.
 - `overlay-timer.mp4` — the RTA column (480x346), the only thing rendered per frame.
-- `overlay-intro.webm` — the 7 s intro card.
+- `overlay-intro.webm` — the intro card, `introSec` long (Settings → Publishing, 2–7, default 7;
+  the 24 Sept 2026 audit proposed at most 3 — the operator's call). It lies *over* the frozen
+  countdown from timeline 0 and never moves the anchor: a shorter card shows the countdown
+  sooner, match start stays at 10 s. `export:fast` and the Kdenlive project both take its length
+  from the file, so a match keeps the card it was rendered with until `only: ["intro"]` redoes it.
 
 ## Shorts
 

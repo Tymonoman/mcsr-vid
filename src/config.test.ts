@@ -68,5 +68,13 @@ assert.doesNotThrow(() => validateOverrides({ explainMovesSec: null }));
 assert.doesNotThrow(() => validateOverrides({ explainMovesSec: 6 }));
 assert.throws(() => validateOverrides({ explainMovesSec: -1 }), /explainMovesSec/);
 assert.throws(() => validateOverrides({ explainMovesSec: "6" }), /explainMovesSec/);
+// The intro card: 7 s by default (today's card), 2-7 allowed (24 Sept 2026 audit, fix #1).
+assert.equal(DEFAULTS.introSec, 7);
+assert.doesNotThrow(() => validateOverrides({ introSec: 3 }));
+assert.doesNotThrow(() => validateOverrides({ introSec: 2 }));
+assert.throws(() => validateOverrides({ introSec: 1 }), /introSec/);
+assert.throws(() => validateOverrides({ introSec: 8 }), /introSec/);
+assert.throws(() => validateOverrides({ introSec: "3" }), /introSec/);
+assert.throws(() => validateOverrides({ introSec: null }), /introSec/);
 
 console.log("config: all checks passed");

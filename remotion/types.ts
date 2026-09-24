@@ -81,6 +81,8 @@ export type OverlayProps = {
   durationInFrames: number;
   /** Overlay render frame rate; independent of the 60fps footage it's composited over. */
   fps: number;
+  /** Length of the intro card in seconds (config.introSec); absent means INTRO_SECONDS. */
+  introSec?: number;
 };
 
 export interface ThumbnailPlayer {

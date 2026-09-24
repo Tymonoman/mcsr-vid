@@ -115,6 +115,15 @@ export const SETTINGS: readonly SettingField[] = [
     nullable: true,
   },
   {
+    key: "introSec",
+    label: "Intro card (seconds)",
+    help: "How long the versus card covers the start of the countdown, 2 to 7. A shorter card shows the countdown sooner; match start stays at 0:10 either way. The 24 Sept audit measured the first 3% of every video losing a median 22.5 points and proposed 3. Applies to the next render.",
+    kind: "int",
+    group: "Publishing",
+    min: 2,
+    max: 7,
+  },
+  {
     key: "explainMovesSec",
     label: "Explain the moves (seconds on screen)",
     help: "The first time either player reaches a split, the meta column says what it is for, in words for someone who has never watched a speedrun: BASTION, TRADING GOLD TO PIGLINS FOR ENDER PEARLS. Never who got there. The subscribe line and the teaser go first; a card waits for them. Empty shows none. Applies to the next render.",

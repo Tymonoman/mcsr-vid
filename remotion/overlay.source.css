@@ -466,7 +466,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* ===== intro: first 7s versus card, opaque over gameplay then wipes to transparent ===== */
+/* ===== intro: versus card for the first introSec (7 s default), opaque over gameplay then wipes to transparent ===== */
 .intro {
   background:
     linear-gradient(105deg, rgba(226, 72, 63, 0.28), transparent 42%),

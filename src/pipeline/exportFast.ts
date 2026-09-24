@@ -147,7 +147,7 @@ export function buildFastExportCommand(input: FastExportInput): BuiltCommand {
   chains.push(`[TOP][POV][BAND]vstack=inputs=3[STAGE]`);
 
   // The only genuine alpha composite in the whole graph. eof_action=pass so the stage continues
-  // once the 7-second card is over; repeatlast=0 so its last frame is not held over the match.
+  // once the card is over (introSec, 7 s by default); repeatlast=0 so its last frame is not held over the match.
   chains.push(
     `[4:v]format=yuva420p,setsar=1,fps=${fps},settb=1/${fps},setpts=N/${fps}/TB+${input.introOffsetSec}/TB[INTRO]`,
   );
