@@ -2,7 +2,7 @@ import type { VodWindow } from "./vodAcquisition.js";
 import { matchPageUrl } from "../api/mcsrApi.js";
 import { type ChapterMarker, formatChapters } from "./chapters.js";
 import { eloAtMatchStart } from "./overlayProps.js";
-import { playoffParagraph, playoffPhrase, type PlayoffContext } from "../playoffs/playoffs.js";
+import { playoffParagraph, playoffPhrase, seedOrdinal, type PlayoffContext } from "../playoffs/playoffs.js";
 import type { MatchInfo, UserDetails } from "../api/types.js";
 
 // Three: over 15 YouTube voids all of them, and only the first three render above the title, so
@@ -152,9 +152,9 @@ export interface SeriesDescriptionInput {
   supportUrl?: string;
 }
 
-/** "as the #1 seed" / "from the lcq" — the label in a sentence. */
+/** "as the 1st seed" / "from the lcq" — the label in a sentence. */
 const seedClause = (label: string): string =>
-  label.toUpperCase() === "LCQ" ? "from the lcq" : `as the ${label.toLowerCase()}`;
+  label.toUpperCase() === "LCQ" ? "from the lcq" : `as the ${seedOrdinal(label).toLowerCase()}`;
 
 /**
  * The description of a whole series (src/playoffs/series.ts): every game of it in one video. The same

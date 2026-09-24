@@ -86,6 +86,22 @@ const LCQ_FROM_SEED = 12;
 export const seedLabel = (seedNumber: number): string =>
   seedNumber >= LCQ_FROM_SEED ? "LCQ" : `#${seedNumber + 1} seed`;
 
+/** 1 -> "1st", 2 -> "2nd", 3 -> "3rd", 11 -> "11th", 12 -> "12th", 13 -> "13th". */
+function ordinal(n: number): string {
+  const suffix = n % 100 >= 11 && n % 100 <= 13 ? "th" : (["th", "st", "nd", "rd"][n % 10] ?? "th");
+  return `${n}${suffix}`;
+}
+
+/**
+ * A `seedLabel` in words, "#9 seed" -> "9th seed" ("LCQ" unchanged): the form for YouTube text,
+ * where a "#" is a hashtag (on a Short's title) and reads as a number sign everywhere else. The
+ * overlay band, the nameplates and the thumbnail keep "#9", beside the ladder rank's "#31".
+ */
+export function seedOrdinal(label: string): string {
+  const n = Number(/\d+/.exec(label)?.[0] ?? 0);
+  return n > 0 ? `${ordinal(n)} seed` : label;
+}
+
 export const bestOfSlot = (slot: PlayoffSlot): number => slot.maxRoundScore * 2 - 1;
 
 /** "Round of 16 · Game 2 of 5". */
@@ -116,7 +132,7 @@ export const playoffIntroLabel = (ctx: PlayoffContext): string =>
 export function playoffParagraph(ctx: PlayoffContext): string {
   const [a, b] = ctx.seeds;
   return [
-    `Season ${ctx.season} Playoffs, ${playoffLabel(ctx)}: ${a.nickname} (${a.label}, ${a.seasonEloRate} elo) vs ${b.nickname} (${b.label}, ${b.seasonEloRate} elo).`,
+    `Season ${ctx.season} Playoffs, ${playoffLabel(ctx)}: ${a.nickname} (${seedOrdinal(a.label)}, ${a.seasonEloRate} elo) vs ${b.nickname} (${seedOrdinal(b.label)}, ${b.seasonEloRate} elo).`,
     `Bracket: ${playoffsBracketUrl(ctx.season)}`,
     "Official broadcast: https://twitch.tv/mcsrranked · https://youtube.com/@MCSR_Ranked",
   ].join("\n");

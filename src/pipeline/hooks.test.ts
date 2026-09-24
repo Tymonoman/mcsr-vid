@@ -169,6 +169,22 @@ assert.deepEqual(rivalry, [
   );
   assert.ok(seeded.includes("Can the 12th seed take down the 3rd seed?"), seeded.join(" | "));
   assert.ok(seeded.includes("3rd seed vs 12th seed"), seeded.join(" | "));
+  assert.ok(!seeded.some((h) => h.includes("#")), `no hash in playoff hooks: ${seeded.join(" | ")}`);
+  const seed9 = buildHookSuggestions(
+    input({}, ELO_GAP, {
+      playoff: {
+        ...playoff,
+        seeds: [
+          { uuid: "uuid-l", nickname: "edcr", label: "#9 seed", seasonEloRate: 2600 },
+          { uuid: "uuid-r", nickname: "doogile", label: "#11 seed", seasonEloRate: 2300 },
+        ],
+      } as unknown as HookInput["playoff"],
+    }),
+    6,
+  );
+  assert.ok(seed9.includes("Can the 11th seed take down the 9th seed?"), seed9.join(" | "));
+  assert.ok(seed9.includes("9th seed vs 11th seed"), seed9.join(" | "));
+  assert.ok(!seed9.some((h) => h.includes("#")), `no hash in 9th/11th seed hooks: ${seed9.join(" | ")}`);
 }
 
 // A tie is still a rivalry, but nobody "leads" it.

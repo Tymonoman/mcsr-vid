@@ -170,7 +170,8 @@ assert.match(draw.split("\n")[0], /^edcr vs doogile, mcsr ranked 1v1/);
     poOpening,
     "edcr vs doogile, mcsr ranked season 11 playoffs, round of 16, game 2. a minecraft speedrun race, both streams side by side with the split timer in the middle. edcr came in at 2546 elo, doogile at 2440.",
   );
-  assert.match(poParagraph!, /^Season 11 Playoffs, Round of 16 · Game 2 of 5: edcr \(#1 seed, 2546 elo\)/);
+  assert.match(poParagraph!, /^Season 11 Playoffs, Round of 16 · Game 2 of 5: edcr \(1st seed, 2546 elo\)/);
+  assert.ok(!poParagraph!.includes("#"), `no hash in playoff paragraph:\n${poParagraph}`);
   assert.ok(!/\b[0-9][–-][0-9]\b/.test(po), "no series score anywhere");
 }
 
