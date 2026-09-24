@@ -499,9 +499,6 @@ export function validateOverrides(raw: Record<string, unknown>): void {
       }
       continue;
     }
-    // Whole renders, at least one. 0 would turn the nightly off through a key that does not say
-    // so — `"nightlyRenderHourUtc": null` is how you do that — and a fraction would read as a
-    // limit while behaving like its floor.
     // A fraction or a negative would silently read as its floor or as "off".
     if (key === "seriesPairGapDays") {
       if (!Number.isInteger(value) || (value as number) < 0 || (value as number) > 30) {
@@ -509,6 +506,9 @@ export function validateOverrides(raw: Record<string, unknown>): void {
       }
       continue;
     }
+    // Whole renders, at least one. 0 would turn the nightly off through a key that does not say
+    // so — `"nightlyRenderHourUtc": null` is how you do that — and a fraction would read as a
+    // limit while behaving like its floor.
     if (key === "nightlyMaxRenders") {
       if (!Number.isInteger(value) || (value as number) < 1) {
         throw new Error(`${CONFIG_PATH}: "nightlyMaxRenders" must be a whole number of renders, 1 or more.`);

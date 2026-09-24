@@ -4,6 +4,7 @@ import {
   hookFacts,
   spoilsTheResult,
   suggestHooksExternally,
+  typedSpoiler,
   type HookInput,
 } from "./hooks.js";
 import type { MatchMetrics } from "./matchScore.js";
@@ -341,4 +342,18 @@ console.log("hooks: all checks passed");
   ]) {
     assert.ok(!spoilsTheResult(safe), `should be allowed: ${safe}`);
   }
+  // The Title & description fold: only what the operator typed is judged, never the round name.
+  const generated = "<HOOK> | Aquacorde vs doogile | MCSR Ranked Season 11 Playoffs | 3rd Place\n\nnote";
+  assert.equal(
+    typedSpoiler(
+      "PLAYOFFS | SWEPT vs TAS | Aquacorde vs doogile | MCSR Ranked Season 11 Playoffs | 3rd Place",
+      generated,
+    ),
+    "SWEPT vs TAS",
+  );
+  assert.equal(
+    typedSpoiler("Can the 1789 take down the 2080? | Aquacorde vs doogile | 3rd Place", generated),
+    null,
+  );
+  assert.equal(typedSpoiler("TAS vs SWEPT | a vs b", "", "TAS vs SWEPT | a vs b"), null, "already on disk");
 }

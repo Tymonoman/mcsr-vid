@@ -120,9 +120,10 @@ assert.equal(iso(nextPublishSlot(at("2026-09-08T18:30:00Z"), 19, [slot("09")])),
   // A ranked video of a+b scheduled for the 8th; the series of b+a (a room seats by uuid) waits.
   dir(100, ["a", "b"], record("2026-09-08T19:00:00Z"));
   dir(200, ["b", "a"], series);
+  dir(150, ["a", "b"], record("2026-09-30T19:00:00Z")); // too far out to push anything
   const pushed = await publishSlotFor(200, morning);
   assert.equal(iso(pushed.at), "2026-09-11T23:00:00.000Z");
-  assert.match(pushed.why ?? "", /3 days from this pair's ranked video \(2026-09-08\)/);
+  assert.match(pushed.why ?? "", /3 days from this pair's ranked video \(2026-09-08\)$/);
 
   // One shared player is not the same pair, and a private video with no time has no day.
   dir(300, ["a", "c"], series);

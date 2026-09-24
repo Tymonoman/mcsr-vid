@@ -44,6 +44,7 @@ import { renderSeries, seriesState, type SeriesRunners } from "../playoffs/serie
 import { refreshRivalPostsIfStale, rivalPostsSnapshot, rivalRecentPostFor } from "./rivalPosts.js";
 import { chooseVariant, readManifest } from "../thumbnails/thumbnailVariants.js";
 import { metaPaths } from "../pipeline/title.js";
+import { typedSpoiler } from "../pipeline/hooks.js";
 import { allArchiveStates, capacity, isArchived } from "./archive.js";
 import { exportRunning, handleExportRoute, startFastExport } from "./exportRoutes.js";
 import {
@@ -648,6 +649,22 @@ const server = createServer(async (req, res) => {
         if (text.trim() === "") await rm(file, { force: true });
         else await writeFile(file, text, "utf8");
       };
+      // Nothing names the winner (CLAUDE.md): the fold is the other way a hook reaches a title.
+      const titles = metaPaths(matchId, "title");
+      const spoiler =
+        typeof body.title === "string"
+          ? typedSpoiler(
+              body.title,
+              (await readIfPresent(titles.generated)) ?? "",
+              (await readIfPresent(titles.edited)) ?? "",
+            )
+          : null;
+      if (spoiler) {
+        json(res, 400, {
+          error: `"${spoiler}" gives the result away — a title never names the winner or how the series went; reword it`,
+        });
+        return;
+      }
       if (typeof body.title === "string") await save("title", body.title);
       if (typeof body.description === "string") await save("description", body.description);
       json(res, 200, await readMeta(matchId));

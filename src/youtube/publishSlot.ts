@@ -70,7 +70,9 @@ export async function publishSlotFor(matchId: number, nowMs: number): Promise<Pu
   const apart = gap > 0 ? await pairGapTimes(matchId, nowMs - (gap + 1) * DAY_MS) : [];
   const at = nextPublishSlot(nowMs, hour, claimed, undefined, apart, gap);
   if (at.getTime() === free.getTime()) return { at, why: null };
-  const days = [...apart]
+  // Only the videos that pushed it: one of the pair's scheduled a month out did not.
+  const days = apart
+    .filter((ms) => dayOf(ms) > dayOf(free.getTime()) - gap && dayOf(ms) < dayOf(at.getTime()))
     .sort((a, b) => a - b)
     .map((ms) => new Date(ms).toISOString().slice(0, 10))
     .join(", ");

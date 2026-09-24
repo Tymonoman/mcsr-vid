@@ -289,6 +289,22 @@ export function spoilsTheResult(text: string): boolean {
   );
 }
 
+/**
+ * The segment of a title the operator typed in the Title & description fold that gives the result
+ * away, or null. Only segments neither `known` title carries (the generated one, the one on disk)
+ * are checked: those hold the nicknames and a round name like "3rd Place", which is the bracket,
+ * not a result — and a title already saved is not re-judged on a description-only save.
+ */
+export function typedSpoiler(title: string, ...known: string[]): string | null {
+  const segments = (t: string) =>
+    t
+      .split("\n")[0]!
+      .split("|")
+      .map((s) => s.trim());
+  const ours = new Set(known.flatMap(segments));
+  return segments(title).find((s) => s !== "" && !ours.has(s) && spoilsTheResult(s)) ?? null;
+}
+
 export async function suggestHooksExternally(input: HookInput): Promise<string[] | null> {
   const command = process.env.HOOK_SUGGEST_CMD;
   if (!command || command.trim() === "") return null;
