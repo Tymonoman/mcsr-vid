@@ -395,7 +395,7 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   `nightlyNotifyUrl` gets one line on done / failed / aborted, plus "N waiting for a hook". With
   `nightlyMaxRenders` above 1 a clean run starts the next card, within four hours of the hour
   and through the same guards. The
-  strip's `Run now` is the same path, as is a card's "Render + Short + MP4".
+  strip's `Run now` is the same path, as is a card's "Render + Short + MP4". Cards marked "not at night" (`nightlySkip`) are bypassed when picking candidates, and the strip's "Skip tonight" records `skipNightOf` in `.dashboard.json` to skip that night's scheduled run once and clear while `Run now` ignores it.
 - **Playoffs** (`src/playoffs/playoffs.ts`): the bracket (`/playoffs`) knows the series, not the games;
   the games are private-room matches (type 3) found in each seed's history, and the API stamps
   them with the season *after* the bracket's (a Season 11 bracket's games are season 12). **No
@@ -454,7 +454,7 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
 - **Tonight's queue** (`queue` in `<mediaDir>/.dashboard.json`, `src/dashboard/matchShelf.ts`;
   `PUT /api/nightly/queue` takes the whole list): a card's "Queue for tonight" puts it ahead of the
   ranked pick, in the strip's order (↑ / ×); the nightly drops an entry the moment its render
-  starts, and skips one that is processed, hidden or gone from the list.
+  starts, and skips one that is processed, hidden or gone from the list. Queueing a match removes it from `nightlySkip` so an explicit queue always wins over a card's "not at night" toggle.
 - `docs/` is the GitHub Pages site (`mcsr.sezamki.site`: the OAuth homepage, privacy and terms
   pages Google checks). `deploy/mcsr-claude.service` is the lab's systemd user unit for the
   Claude container. Only `~/.claude` is a persisted volume in that container: save loose ends

@@ -33,7 +33,14 @@ import { config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { exportRunning, startFastExport } from "./exportRoutes.js";
 import { getJob, startJob, type Job } from "./jobs.js";
-import { hiddenMatchIds, nightlyQueue, setNightlyQueue } from "./matchShelf.js";
+import {
+  hiddenMatchIds,
+  nightlyQueue,
+  nightlySkipIds,
+  setNightlyQueue,
+  setSkipNightOf,
+  skipNightOf,
+} from "./matchShelf.js";
 import { orderForDisplay } from "./suggestPresent.js";
 import { playoffBoard, type PlayoffBoard } from "../playoffs/playoffs.js";
 import { listProcessedMatchIds } from "./matchStatus.js";
@@ -160,6 +167,8 @@ interface NightlyPickContext {
   processedIds: readonly number[];
   /** Ids the operator has hidden — `hiddenMatchIds()`. */
   hiddenIds: ReadonlySet<number>;
+  /** Ids the operator opted out of nightly rendering — `nightlySkipIds()`. */
+  skipIds?: ReadonlySet<number>;
   /** Ids the operator queued, in order — `nightlyQueue()`. Rendered before the ranked pick. */
   queue?: readonly number[];
   /** `capacity().working.matchesLeft`; treat "unknown" as zero. */
@@ -212,18 +221,22 @@ export async function playoffPicks(
 
 export async function pickNightlyCandidate<T extends { metrics: { matchId: number } }>(
   suggestions: readonly T[],
-  { processedIds, hiddenIds, freeMatches, queue = [] }: NightlyPickContext,
+  { processedIds, hiddenIds, skipIds = new Set(), freeMatches, queue = [] }: NightlyPickContext,
   eligible: (candidate: T) => Promise<boolean> = async () => true,
 ): Promise<T | null> {
   if (freeMatches < MIN_FREE_MATCHES) return null;
   const processed = new Set(processedIds);
   // The queue is the operator's order and outranks the ranking; an id no longer on the list (the
   // VODs expired, the card was dismissed) has nothing to render and drops through.
+  const queuedMatchIds = new Set(queue);
   const queued = queue
     .map((id) => suggestions.find((s) => s.metrics.matchId === id))
     .filter((s): s is T => s !== undefined);
   for (const s of [...queued, ...suggestions]) {
-    if (processed.has(s.metrics.matchId) || hiddenIds.has(s.metrics.matchId)) continue;
+    const id = s.metrics.matchId;
+    if (processed.has(id) || hiddenIds.has(id)) continue;
+    // An explicit queue wins over nightlySkip; otherwise, skip ids opted out by the operator.
+    if (skipIds.has(id) && !queuedMatchIds.has(id)) continue;
     // One at a time and in order: `eligible` costs API calls, and the first candidate that passes
     // is the pick, so a whole bracket is never probed to choose its first game.
     if (await eligible(s)) return s;
@@ -425,6 +438,10 @@ export interface NightlyDeps {
   renderInFlight: () => boolean;
   /** The ranked list to pick from, or null when there is none. */
   ranked: () => Promise<readonly NightlyPick[] | null>;
+  /** Whether this execution is the scheduled nightly run (as opposed to Run now). Default false. */
+  scheduled: boolean;
+  /** Mock clock for testing. Default Date.now. */
+  now: () => number;
 }
 
 const liveRanked = async (): Promise<readonly NightlyPick[] | null> => {
@@ -436,10 +453,21 @@ const liveRanked = async (): Promise<readonly NightlyPick[] | null> => {
   return result ? [...(await playoffPicks()), ...orderForDisplay(result.suggestions)] : null;
 };
 
+/** YYYY-MM-DD in UTC of the next scheduled nightly run, or null when nightly is disabled. */
+export function nextScheduledRunDateUtc(
+  nowMs: number = Date.now(),
+  hourUtc: number | null = config.nightlyRenderHourUtc,
+): string | null {
+  if (hourUtc === null) return null;
+  const nextMs = nowMs + msUntilNextRun(nowMs, hourUtc);
+  return new Date(nextMs).toISOString().slice(0, 10);
+}
+
 /** The disk-and-shelf half of the pick, shared by the run and the dashboard's preview of it. */
 const pickContext = async (): Promise<NightlyPickContext> => ({
   processedIds: listProcessedMatchIds(),
   hiddenIds: hiddenMatchIds(),
+  skipIds: nightlySkipIds(),
   queue: nightlyQueue(),
   // A missing capacity reading (statfs failed, mediaDir gone) is not a licence to fill a disk.
   freeMatches: (await capacity()).working?.matchesLeft ?? 0,
@@ -476,8 +504,34 @@ export async function runNightlyOnce(
   /** Which render of the night this is; `nightlyMaxRenders` is the last one. */
   started = 1,
 ): Promise<NightlyRunResult> {
-  const { renderInFlight: busy = renderInFlight, ranked = liveRanked } = deps;
-  const startedAt = new Date().toISOString();
+  const {
+    renderInFlight: busy = renderInFlight,
+    ranked = liveRanked,
+    scheduled = false,
+    now = () => Date.now(),
+  } = deps;
+  const startedAt = new Date(now()).toISOString();
+
+  // The scheduled run whose date matches does nothing but log/notify one line, then clears.
+  // "Run now" ignores skipNightOf.
+  if (scheduled && started === 1) {
+    const skipDate = skipNightOf();
+    const todayUtc = new Date(now()).toISOString().slice(0, 10);
+    if (skipDate === todayUtc) {
+      setSkipNightOf(null);
+      console.error("nightly: skipped by the operator");
+      writeNightlyState({
+        startedAt,
+        matchId: null,
+        players: [],
+        outcome: "skipped",
+        reason: "skipped by the operator",
+      });
+      if (notifyUrl) await notify(notifyUrl, "skipped by the operator");
+      return { skipped: "skipped by the operator" };
+    }
+  }
+
   const skip = async (reason: string, conflict = false): Promise<NightlyRunResult> => {
     console.error(`nightly: skipped — ${reason}`);
     // A conflict is the one skip that is not an outcome: the route answers it 409 and the run
@@ -586,7 +640,7 @@ export function scheduleNightly(options: NightlyOptions): void {
     retryFailedPlaylists().catch((err: unknown) => console.error(`playlists: ${describeError(err)}`));
     // And the tick that asks the model again for a pick the heuristic stood in for.
     shortTick().catch((err: unknown) => console.error(`shorts: ${describeError(err)}`));
-    runNightlyOnce(options.notifyUrl)
+    runNightlyOnce(options.notifyUrl, { scheduled: true })
       .catch((err: unknown) => console.error(`nightly: ${describeError(err)}`))
       .finally(() => scheduleNightly(options));
   }, delay);

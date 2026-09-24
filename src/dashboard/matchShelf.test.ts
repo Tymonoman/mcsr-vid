@@ -18,8 +18,22 @@ assert.ok(media.startsWith(tmpdir()) && archive.startsWith(tmpdir()), "refusing 
 config.mediaDir = media;
 process.env.MCSR_ARCHIVE_DIR = archive;
 
-const { deleteMatch, hiddenMatchIds, isExported, isUploaded, publishChecklist, setHidden, setPublishFlag } =
-  await import("./matchShelf.js");
+const {
+  deleteMatch,
+  hiddenMatchIds,
+  isExported,
+  isUploaded,
+  nightlyQueue,
+  nightlySkip,
+  nightlySkipIds,
+  publishChecklist,
+  setHidden,
+  setNightlyQueue,
+  setNightlySkip,
+  setPublishFlag,
+  setSkipNightOf,
+  skipNightOf,
+} = await import("./matchShelf.js");
 // archive.ts owns ARCHIVE_ROOT, so it also owns the "is there a copy" test; imported after
 // MCSR_ARCHIVE_DIR is set, as matchShelf is.
 const { isArchived } = await import("./archive.js");
@@ -201,6 +215,30 @@ try {
   assert.equal(await isUploaded(557), false, "a Short alone is not the match video");
   assert.equal((await publishChecklist(557, null)).shortUploaded, true, "the Short by its length");
   _setChannelUploadsForTest([]);
+
+  // --- 10. nightlySkip and skipNightOf round-trip, and queueing an id removes it from nightlySkip ---
+  assert.deepEqual(nightlySkip(), [], "nothing in nightlySkip initially");
+  setNightlySkip(101, true);
+  setNightlySkip(102, true);
+  assert.deepEqual(nightlySkip(), [101, 102], "both ids should be in nightlySkip");
+  assert.equal(nightlySkipIds().has(101), true);
+  assert.equal(nightlySkipIds().has(102), true);
+  setNightlySkip(101, false);
+  assert.deepEqual(nightlySkip(), [102], "unskipping must remove");
+
+  // Queueing a match takes it off nightlySkip — an explicit queue wins
+  setNightlySkip(103, true);
+  assert.ok(nightlySkip().includes(103));
+  setNightlyQueue([103, 104]);
+  assert.ok(!nightlySkip().includes(103), "a queued id must be removed from nightlySkip");
+  assert.deepEqual(nightlyQueue(), [103, 104]);
+
+  // skipNightOf round-trips and clears
+  assert.equal(skipNightOf(), null, "skipNightOf null by default");
+  setSkipNightOf("2026-09-25");
+  assert.equal(skipNightOf(), "2026-09-25");
+  setSkipNightOf(null);
+  assert.equal(skipNightOf(), null);
 
   console.log("matchShelf: all checks passed");
 } finally {

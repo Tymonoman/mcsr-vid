@@ -26,6 +26,7 @@ import { getMatch, matchPageUrl, parseMatchId } from "../api/mcsrApi.js";
 import {
   afterSettled,
   msUntilNextRun,
+  nextScheduledRunDateUtc,
   nightlyCandidate,
   readNightlyState,
   requestExport,
@@ -53,7 +54,11 @@ import {
   hiddenMatchIds,
   isExported,
   nightlyQueue,
+  nightlySkip,
   setNightlyQueue,
+  setNightlySkip,
+  skipNightOf,
+  setSkipNightOf,
   isManualPublishKey,
   isUploaded,
   publishChecklist,
@@ -148,6 +153,7 @@ function suggestionsPayload() {
 
   return {
     suggestions,
+    nightlySkip: nightlySkip(),
     rivalHandle: config.rivalChannelHandle || null,
     // For the rescan link's tooltip: how often new matches arrive on their own.
     ttlMin: config.suggestCacheTtlMin,
@@ -406,13 +412,17 @@ const server = createServer(async (req, res) => {
     if (resource === "nightly" && idRaw === undefined && req.method === "GET") {
       const hourUtc = config.nightlyRenderHourUtc;
       const pick = await nightlyCandidate();
+      const nextRunMs = hourUtc === null ? null : Date.now() + msUntilNextRun(Date.now(), hourUtc);
+      const nextRunDate = nextRunMs === null ? null : new Date(nextRunMs).toISOString().slice(0, 10);
+      const storedSkipNight = skipNightOf();
+      const skipTonight = hourUtc !== null && storedSkipNight !== null && storedSkipNight === nextRunDate;
       json(res, 200, {
         // Boot commit vs checked-out commit: the strip says "restart" when they differ.
         code: codeVersions(),
         enabled: hourUtc !== null,
         hourUtc,
         nextRunAt:
-          hourUtc === null ? null : new Date(Date.now() + msUntilNextRun(Date.now(), hourUtc)).toISOString(),
+          nextRunMs === null ? null : new Date(nextRunMs).toISOString(),
         candidate: pick && {
           matchId: pick.metrics.matchId,
           players: pick.metrics.players,
@@ -423,6 +433,9 @@ const server = createServer(async (req, res) => {
           matchId,
           players: suggestionsPayload().suggestions.find((c) => c.matchId === matchId)?.players ?? null,
         })),
+        nightlySkip: nightlySkip(),
+        skipNightOf: storedSkipNight,
+        skipTonight,
         lastRun: readNightlyState(),
         // "3 waiting for a hook ›", "1 failed ›", and whether the model can be reached at all.
         ...(await nightlyShortSummary()),
@@ -444,7 +457,64 @@ const server = createServer(async (req, res) => {
         return;
       }
       setNightlyQueue(queue as number[]);
-      json(res, 200, { queue: nightlyQueue() });
+      json(res, 200, { queue: nightlyQueue(), nightlySkip: nightlySkip() });
+      return;
+    }
+
+    // Toggle a match out of nightly picks without hiding or dismissing it.
+    if (resource === "nightly" && idRaw === "skip-match" && req.method === "PUT") {
+      const targetId = parseId(segments[3]);
+      if (targetId === null) {
+        json(res, 400, { error: "match id must be digits" });
+        return;
+      }
+      let skip: unknown;
+      try {
+        const body = JSON.parse(await readBody(req)) as { skip?: unknown };
+        skip = body.skip;
+      } catch (err) {
+        json(res, 400, { error: describeError(err) });
+        return;
+      }
+      if (typeof skip !== "boolean") {
+        json(res, 400, { error: "expected { skip: true|false }" });
+        return;
+      }
+      setNightlySkip(targetId, skip);
+      json(res, 200, { matchId: targetId, skip, nightlySkip: nightlySkip() });
+      return;
+    }
+
+    // Skip tonight's scheduled nightly run once, or undo.
+    if (resource === "nightly" && idRaw === "skip-night" && req.method === "PUT") {
+      let skip: unknown;
+      try {
+        const body = JSON.parse(await readBody(req)) as { skip?: unknown };
+        skip = body.skip;
+      } catch (err) {
+        json(res, 400, { error: describeError(err) });
+        return;
+      }
+      if (typeof skip !== "boolean") {
+        json(res, 400, { error: "expected { skip: true|false }" });
+        return;
+      }
+      if (skip) {
+        const nextDate = nextScheduledRunDateUtc();
+        if (nextDate === null) {
+          json(res, 400, { error: "nightly is disabled" });
+          return;
+        }
+        setSkipNightOf(nextDate);
+      } else {
+        setSkipNightOf(null);
+      }
+      const hourUtc = config.nightlyRenderHourUtc;
+      const nextRunMs = hourUtc === null ? null : Date.now() + msUntilNextRun(Date.now(), hourUtc);
+      const nextRunDate = nextRunMs === null ? null : new Date(nextRunMs).toISOString().slice(0, 10);
+      const storedSkipNight = skipNightOf();
+      const skipTonight = hourUtc !== null && storedSkipNight !== null && storedSkipNight === nextRunDate;
+      json(res, 200, { skipNightOf: storedSkipNight, skipTonight });
       return;
     }
 

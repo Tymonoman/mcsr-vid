@@ -2474,6 +2474,8 @@ function ago(t) {
 
 /** 1-based position of a match in tonight's queue, or 0. */
 const queued = (id) => (nightly?.queue ?? []).findIndex((q) => q.matchId === id) + 1;
+/** Whether a match is opted out of nightly picks ("not at night"). */
+const isNightlySkipped = (id) => (nightly?.nightlySkip ?? suggestData?.nightlySkip ?? []).includes(id);
 
 /** The whole list, then the strip and the cards repaint from the server's answer. */
 async function putQueue(ids) {
@@ -2484,10 +2486,13 @@ async function putQueue(ids) {
   });
   // Names come with the next /api/nightly; until then keep the ones already known.
   const known = new Map((nightly?.queue ?? []).map((q) => [q.matchId, q.players]));
+  const nextSkip = out.nightlySkip ?? (nightly?.nightlySkip ?? []).filter((id) => !out.queue.includes(id));
   nightly = {
     ...nightly,
     queue: out.queue.map((matchId) => ({ matchId, players: known.get(matchId) ?? null })),
+    nightlySkip: nextSkip,
   };
+  if (suggestData) suggestData.nightlySkip = nextSkip;
   paintNightly();
   void loadNightly();
 }
@@ -2528,7 +2533,7 @@ function nightlyBody() {
       ? `<div class="bad">The server is running <code>${esc(boot)}</code>; the repo is at <code>${esc(now)}</code> &middot; <code>docker restart mcsr-dashboard</code> picks it up.</div>`
       : "";
 
-  const { enabled, hourUtc, nextRunAt, candidate, lastRun } = nightly;
+  const { enabled, hourUtc, nextRunAt, candidate, lastRun, skipTonight } = nightly;
   // The browser knows the operator's zone; the config only knows UTC. Both, so "03:00" is not
   // mistaken for a small-hours render when it is 05:00 where the operator sleeps.
   const local =
@@ -2538,9 +2543,11 @@ function nightlyBody() {
   const at = `Next ${local ? `${local} local (` : ""}${String(hourUtc).padStart(2, "0")}:00 UTC${local ? ")" : ""}`;
   const plan = !enabled
     ? '<span class="muted">nightly off</span>'
-    : candidate
-      ? `${esc(at)} &middot; will render <b>${esc(candidate.players[0])} vs ${esc(candidate.players[1])}</b>${queued(candidate.matchId) ? " (queued)" : ""}`
-      : `${esc(at)} &middot; <span class="muted">nothing eligible</span>`;
+    : skipTonight
+      ? `${esc(at)} &middot; <span class="muted">tonight skipped</span>`
+      : candidate
+        ? `${esc(at)} &middot; will render <b>${esc(candidate.players[0])} vs ${esc(candidate.players[1])}</b>${queued(candidate.matchId) ? " (queued)" : ""}`
+        : `${esc(at)} &middot; <span class="muted">nothing eligible</span>`;
 
   // "Last run", not "last night": the Run now button records here too, and a label that lied
   // about when it happened would be worse than a slightly duller one.
@@ -2619,6 +2626,11 @@ function nightlyBody() {
   const activity = [...running, ...queuedPicks]
     .map((l) => `<div class="activity"><span class="muted">Now</span> ${l}</div>`)
     .join("");
+  const skipBtn = !enabled
+    ? ""
+    : skipTonight
+      ? '<span class="nightly-skip-state">tonight skipped &middot; <a href="#" data-act="nightly-skip-night" data-skip="0">undo</a></span>'
+      : '<button data-act="nightly-skip-night" data-skip="1" class="ghost">Skip tonight</button>';
   return `${behind}${failed}${shortsFailed}${picker}<div class="lines">
       ${activity}
       <div class="plan" title="${esc(nextRunAt ?? "no schedule")}">${plan}</div>
@@ -2626,6 +2638,7 @@ function nightlyBody() {
       ${hooks}
       ${queueHtml()}
     </div>
+    ${skipBtn}
     <button data-act="nightly-run">Run now</button>`;
 }
 
@@ -2635,6 +2648,29 @@ function paintNightly() {
   el.innerHTML = nightlyInner();
   const btn = el.querySelector('[data-act="nightly-run"]');
   if (btn) btn.addEventListener("click", () => runNightlyNow(btn));
+  el.querySelectorAll('[data-act="nightly-skip-night"]').forEach((btn) =>
+    btn.addEventListener("click", async (ev) => {
+      ev.preventDefault();
+      const target = ev.currentTarget;
+      clearFailAt(target);
+      const skip = target.dataset.skip === "1";
+      try {
+        const res = await api("/api/nightly/skip-night", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ skip }),
+        });
+        if (nightly) {
+          nightly.skipNightOf = res.skipNightOf;
+          nightly.skipTonight = res.skipTonight;
+        }
+        paintNightly();
+        void loadNightly();
+      } catch (e) {
+        failAt(target, "Skip tonight failed", e.message);
+      }
+    }),
+  );
   el.querySelectorAll('[data-act="nightly-open"], [data-act="open-match"]').forEach((a) =>
     a.addEventListener("click", (ev) => {
       ev.preventDefault();
@@ -2685,6 +2721,7 @@ function paintNightly() {
 async function loadNightly() {
   clearTimeout(nightlyPoll);
   const before = JSON.stringify((nightly?.queue ?? []).map((q) => q.matchId));
+  const beforeSkip = JSON.stringify(nightly?.nightlySkip ?? []);
   const sigBefore = nightly && !nightly.error ? nightlySig() : null;
   let back = false;
   try {
@@ -2707,7 +2744,11 @@ async function loadNightly() {
     if (selected) void loadPlan(selected);
   } else if (sigBefore !== null && !nightly?.error && nightlySig() !== sigBefore) void refresh();
   // The cards' Queue buttons carry the position, so they repaint when the queue is news to them.
-  if (suggestData && JSON.stringify((nightly?.queue ?? []).map((q) => q.matchId)) !== before)
+  if (
+    suggestData &&
+    (JSON.stringify((nightly?.queue ?? []).map((q) => q.matchId)) !== before ||
+      JSON.stringify(nightly?.nightlySkip ?? []) !== beforeSkip)
+  )
     renderSuggestions(suggestData);
 }
 
@@ -2792,6 +2833,13 @@ function renderSuggestions(data) {
           <a href="${esc(s.matchUrl)}" target="_blank" rel="noopener">match page #${s.matchId}</a>
           ${s.vodUrls.map((u, i) => `<a href="${esc(u)}" target="_blank" rel="noopener">VOD ${i + 1}</a>`).join("")}
           ${onShelf ? "" : '<a href="#" data-act="render" title="The plain pipeline, for a match headed to Kdenlive: no Short, no MP4">Render only</a>'}
+          ${
+            onShelf
+              ? ""
+              : isNightlySkipped(s.matchId)
+                ? '<span class="muted">not at night &middot; <a href="#" data-act="skip-match" data-skip="0">undo</a></span>'
+                : '<a href="#" data-act="skip-match" data-skip="1">not at night</a>'
+          }
         </div>
         <div class="acts">
           ${onShelf ? `<button data-act="open">Rendered &middot; open</button>` : `<button data-act="render-short" title="Render, encode the MP4 and let the model pick the Short's moment; the Short renders once you save its hook">Render + MP4 + pick</button>`}
@@ -2855,6 +2903,30 @@ function renderSuggestions(data) {
   // left every card after it without handlers.
   el.querySelectorAll(":scope > .sugg").forEach((row) => {
     const id = Number(row.dataset.id);
+    row.querySelectorAll('[data-act="skip-match"]').forEach((a) =>
+      a.addEventListener("click", async (ev) => {
+        ev.preventDefault();
+        const target = ev.currentTarget;
+        clearFailAt(target);
+        const skip = target.dataset.skip === "1";
+        try {
+          const res = await api(`/api/nightly/skip-match/${id}`, {
+            method: "PUT",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ skip }),
+          });
+          const nextSkip = res.nightlySkip ?? (skip
+            ? [...(nightly?.nightlySkip ?? []).filter((x) => x !== id), id]
+            : (nightly?.nightlySkip ?? []).filter((x) => x !== id));
+          if (nightly) nightly.nightlySkip = nextSkip;
+          if (suggestData) suggestData.nightlySkip = nextSkip;
+          renderSuggestions(suggestData);
+          void loadNightly();
+        } catch (e) {
+          failAt(target, "Not updated", e.message);
+        }
+      }),
+    );
     row.querySelector('[data-act="render"]')?.addEventListener("click", (ev) => {
       ev.preventDefault();
       startRender(String(id), false, ev.currentTarget);
