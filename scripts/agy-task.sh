@@ -24,7 +24,8 @@ agy() { HOME=/app/.tools/agy-dev /app/.tools/bin/agy "$@" --model "$model" --mod
 field() { python3 -c 'import json,sys; j=json.load(open(sys.argv[1])); print(j.get(sys.argv[2]) or "")' "$out" "$1" 2>/dev/null; }
 agy -p "You are working in the git worktree $wt (branch agy/$name) of the mcsr-vid repo.
 Rules: read CLAUDE.md there first; edit files only inside $wt; do not commit, push or delete branches;
-match the surrounding code's style; when done run npm run typecheck and npm run test:unit and report both.
+match the surrounding code's style; never delete or weaken an existing test assertion (add yours beside it);
+when done run npm run typecheck and npm run test:unit and report both.
 Shell: only these single commands are allowed — git status/diff/log/show/grep, grep, ls, cat, head, tail,
 wc, npx tsx <file>, npx prettier, npx tsc --noEmit, npm run typecheck, npm run test:unit. No globs (*), loops,
 pipes, &&, ; or redirects: anything else is refused and ends your turn with nothing done. Prefer your own
