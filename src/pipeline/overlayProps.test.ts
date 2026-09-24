@@ -141,4 +141,25 @@ const splitTimeline = [
   assert.deepEqual(props.series, { firstTo: 3, leftWins: 1, rightWins: 1 }, "the input is not mutated");
 }
 
+// The teaser prop: the config's timing around teaser.ts's moment, and nothing at all when the
+// setting is empty or the match has no moment to promise.
+{
+  const { teaserProp } = await import("./overlayProps.js");
+  const { config } = await import("../config.js");
+  const { readFileSync } = await import("node:fs");
+  const load = (id: number) =>
+    JSON.parse(readFileSync(new URL(`../fixtures/match-${id}.json`, import.meta.url), "utf8")) as MatchInfo;
+  const saved = { atSec: config.teaserAtSec, forSec: config.teaserSec };
+  config.teaserAtSec = 12;
+  config.teaserSec = 3;
+  assert.deepEqual(teaserProp(load(12929221)), {
+    teaser: { atSec: 12, forSec: 3, momentMs: 196454, text: "A DEATH AT THE BASTION" },
+  });
+  assert.deepEqual(teaserProp(load(12898432)), {}, "nothing qualifies");
+  config.teaserAtSec = null;
+  assert.deepEqual(teaserProp(load(12929221)), {}, "switched off");
+  config.teaserAtSec = saved.atSec;
+  config.teaserSec = saved.forSec;
+}
+
 console.log("overlayProps: all checks passed");

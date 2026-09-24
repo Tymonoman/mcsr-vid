@@ -85,6 +85,15 @@ Almost nothing in the overlay moves, so the render is stills plus one strip (`sr
   per distinct state (`src/pipeline/splitStates.ts`). The manifest is written last and means "the render
   finished". The last state is the subscribe card (`postRollCta`, `ctaFrameOf`).
   `renderOverlay({ only: ["splits"] })` redoes just the stills in seconds.
+- The first minute's **COMING UP card** is two more of those stills (`teaserFramesOf`): "COMING
+  UP · AT 5:14 · THE LEAD CHANGES ON BLIND TRAVEL" in the meta column from `teaserAtSec` (10,
+  Settings → Publishing, empty = none) after match start for `teaserSec` (5) — aimed at the
+  16–22 points lost between 3% and 10% of the video. The moment is `src/pipeline/teaser.ts`,
+  from `match.timelines` only: an unplanned death, else the lead change that overturned the
+  biggest deficit, else a split under 2 s; never in the first minute or the last minute before
+  the game is decided, and it names nobody. `death_spawnpoint` is the routine bed warp, not a
+  death. A match led wire to wire with no death gets no card (4 of 9 checked, 24 Sept 2026); the
+  mid-roll SUBSCRIBE wins an overlap.
 - `overlay-timer.mp4` — the RTA column (480x346), the only thing rendered per frame.
 - `overlay-intro.webm` — the 7 s intro card.
 
