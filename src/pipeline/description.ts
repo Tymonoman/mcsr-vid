@@ -19,7 +19,7 @@ function humanise(value: string, noun: string): string {
   return `${value.toLowerCase().replace(/_/g, " ")} ${noun}`;
 }
 
-function seedPhrase(match: MatchInfo): string | null {
+export function seedPhrase(match: MatchInfo): string | null {
   return match.seedType ? humanise(match.seedType, "seed") : null;
 }
 
@@ -134,6 +134,8 @@ export interface SeriesDescriptionGame {
   gameNo: number;
   /** Where the game starts in the joined video — its chapter. */
   startSec: number;
+  /** `seedPhrase` of the game's world ("desert temple seed"), never the bracket seed; null when unknown. */
+  seed?: string | null;
   pageUrl: string;
   /** Each player's stream, deep-linked to the game's start; absent when a VOD was never found. */
   streams: Array<{ nickname: string; url: string }>;
@@ -170,7 +172,14 @@ export function buildSeriesDescription(input: SeriesDescriptionInput): string {
   return [
     `${left.nickname} vs ${right.nickname}, ${format}. every game of the series, a minecraft speedrun race with both streams side by side and the split timer in the middle. ${left.nickname} came in ${seedClause(left.label)} at ${left.seasonEloRate} elo, ${right.nickname} ${seedClause(right.label)} at ${right.seasonEloRate}.`,
     "",
-    formatChapters(input.games.map((g) => ({ label: `game ${g.gameNo}`, timeSec: g.startSec }))),
+    // "game 2 · desert temple seed": a chapter list that says what each game is, not only its
+    // number. The world's seed type, which the tags carry too, never the bracket seed or a score.
+    formatChapters(
+      input.games.map((g) => ({
+        label: `game ${g.gameNo}${g.seed ? ` · ${g.seed}` : ""}`,
+        timeSec: g.startSec,
+      })),
+    ),
     "",
     ...input.games.map(
       (g) =>

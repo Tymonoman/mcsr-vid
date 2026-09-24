@@ -294,6 +294,15 @@ try {
   assert.match(tooLong.payload.error!, /this title has room for \d+/);
   const longShort = await call("PUT", "hooks", A, { titleHook: "Hook", shortHook: "y".repeat(90) });
   assert.equal(longShort.status, 400, "a Short title over 100");
+  // A typed hook is held to the chips' rule: nothing names the winner, and a sweep is a result.
+  for (const body of [
+    { titleHook: "PLAYOFFS | SWEPT vs TAS", shortHook: "Down to the last heart" },
+    { titleHook: "One heart left", shortHook: "WINNER vs 3rd PLACE" },
+  ]) {
+    const spoiled = await call("PUT", "hooks", A, body);
+    assert.equal(spoiled.status, 400, JSON.stringify(body));
+    assert.match(String(spoiled.payload.error), /gives the result away/);
+  }
   assert.equal(renders.length, 0, "a refused save starts nothing");
 
   /* --- 4. Saved: render, then the long-form, then the Short, at their times ---------------------- */

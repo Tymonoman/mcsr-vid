@@ -4,6 +4,7 @@ import {
   hookFacts,
   spoilsTheResult,
   suggestHooksExternally,
+  typedSpoiler,
   type HookInput,
 } from "./hooks.js";
 import type { MatchMetrics } from "./matchScore.js";
@@ -323,19 +324,38 @@ console.log("hooks: all checks passed");
     "the runner-up returns",
     "two finalists on one seed",
     "SEASON 11 CHAMPION vs #14",
+    // A sweep is a best-of's result, nickname or not (24 Sept 2026 audit).
+    "PLAYOFFS | SWEPT vs TAS",
+    "TAS vs SWEPT",
+    "doogile sweeps the round of 16",
   ]) {
     assert.ok(spoilsTheResult(spoiler), `should be rejected: ${spoiler}`);
   }
   for (const safe of [
     "Can the 1789 take down the 2080?",
+    // A stake, not a result: what winning takes (a hook the model proposed, 24 Sept 2026).
+    "A SUB-8 TO WIN IT",
     "LOVERBOY VS ROBLOX KID",
     "Rematch: doogile leads 2-1",
     "Decided by 2.8 seconds",
     "The lead changed 3 times",
     "Who wins this one?",
     "Can the 3rd place take down the champion?",
-    "PLAYOFFS | SWEPT vs TAS",
   ]) {
     assert.ok(!spoilsTheResult(safe), `should be allowed: ${safe}`);
   }
+  // The Title & description fold: only what the operator typed is judged, never the round name.
+  const generated = "<HOOK> | Aquacorde vs doogile | MCSR Ranked Season 11 Playoffs | 3rd Place\n\nnote";
+  assert.equal(
+    typedSpoiler(
+      "PLAYOFFS | SWEPT vs TAS | Aquacorde vs doogile | MCSR Ranked Season 11 Playoffs | 3rd Place",
+      generated,
+    ),
+    "SWEPT vs TAS",
+  );
+  assert.equal(
+    typedSpoiler("Can the 1789 take down the 2080? | Aquacorde vs doogile | 3rd Place", generated),
+    null,
+  );
+  assert.equal(typedSpoiler("TAS vs SWEPT | a vs b", "", "TAS vs SWEPT | a vs b"), null, "already on disk");
 }

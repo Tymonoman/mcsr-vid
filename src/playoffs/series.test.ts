@@ -47,6 +47,9 @@ const game = (id: number, date: number, winner: string, seated = [edcr, lauveer]
 const g1 = game(101, start + 300, edcr.uuid);
 const g2 = game(102, start + 900, lauveer.uuid, [lauveer, edcr]);
 const g3 = game(103, start + 1500, edcr.uuid);
+// The worlds' seed types name the chapters; game 3's is unknown and its chapter stays bare.
+g1.seedType = "VILLAGE";
+g2.seedType = "DESERT_TEMPLE";
 const games: Record<number, MatchInfo> = { 101: g1, 102: g2, 103: g3 };
 const feed = (m: MatchInfo): FeedMatch => {
   const { timelines: _t, completions: _c, ...rest } = m;
@@ -107,7 +110,14 @@ const desc = buildSeriesDescription({
       pageUrl: "https://x/matches/101",
       streams: [{ nickname: "edcr", url: "https://t/1?t=5s" }],
     },
-    { matchId: 102, gameNo: 2, startSec: 612.4, pageUrl: "https://x/matches/102", streams: [] },
+    {
+      matchId: 102,
+      gameNo: 2,
+      startSec: 612.4,
+      seed: "desert temple seed",
+      pageUrl: "https://x/matches/102",
+      streams: [],
+    },
     { matchId: 103, gameNo: 3, startSec: 3700, pageUrl: "https://x/matches/103", streams: [] },
   ],
   bracketUrl: "https://magmamcsr.com/events/playoffs/s11/bracket",
@@ -130,9 +140,12 @@ const desc9 = buildSeriesDescription({
   bracketUrl: "https://magmamcsr.com/events/playoffs/s11/bracket",
 });
 assert.ok(desc9.includes("edcr came in as the 9th seed at 2688 elo, lauveer from the lcq at 2137."));
-assert.ok(!desc9.split("\n\n")[0]!.includes("#"), `no hash in 9th-seed series description opening:\n${desc9}`);
 assert.ok(
-  desc.includes("0:00 game 1\n10:12 game 2\n1:01:40 game 3"),
+  !desc9.split("\n\n")[0]!.includes("#"),
+  `no hash in 9th-seed series description opening:\n${desc9}`,
+);
+assert.ok(
+  desc.includes("0:00 game 1\n10:12 game 2 · desert temple seed\n1:01:40 game 3"),
   "a chapter per game, hours past sixty minutes",
 );
 assert.ok(
@@ -228,7 +241,10 @@ assert.equal(
   "no game number on a series",
 );
 const description = readFileSync(path.join(dir(101), "match-101.description.txt"), "utf8");
-assert.ok(description.includes("0:00 game 1\n10:00 game 2\n18:20 game 3"));
+assert.ok(
+  description.includes("0:00 game 1 · village seed\n10:00 game 2 · desert temple seed\n18:20 game 3\n"),
+  "a chapter per game, named by the world's seed type (never the bracket's seed or a score)",
+);
 assert.ok(
   description.includes(
     // Game 2's room seated them the other way round; the line keeps game 1's order.
@@ -237,10 +253,13 @@ assert.ok(
   description,
 );
 assert.ok(description.includes("as the 1st seed"));
-assert.ok(!description.split("\n\n")[0]!.includes("#"), `no hash in assembled series description opening:\n${description}`);
+assert.ok(
+  !description.split("\n\n")[0]!.includes("#"),
+  `no hash in assembled series description opening:\n${description}`,
+);
 assert.equal(
   readFileSync(path.join(dir(101), "match-101.chapters.txt"), "utf8"),
-  "0:00 game 1\n10:00 game 2\n18:20 game 3",
+  "0:00 game 1 · village seed\n10:00 game 2 · desert temple seed\n18:20 game 3",
 );
 const tags = readFileSync(path.join(dir(101), "match-101.tags.txt"), "utf8").split("\n");
 assert.deepEqual(tags.slice(0, 6), [
@@ -316,17 +335,26 @@ assert.equal(exportStale(dir(101), path.join(dir(101), "series-101.mp4")).stale,
 /* --- No game's Short is copied in; the series' Short game is its cut's, else its pick's ------- */
 
 writeFileSync(path.join(dir(103), "short-103.mp4"), "s");
-writeFileSync(path.join(dir(103), "short-103.title.txt"), "Can the LCQ take down the #1 seed? #minecraft #mcsr\n");
+writeFileSync(
+  path.join(dir(103), "short-103.title.txt"),
+  "Can the LCQ take down the #1 seed? #minecraft #mcsr\n",
+);
 const kept = await assembleSeries(101, seams);
 assert.equal(kept.kind, "current");
-assert.ok(!existsSync(path.join(dir(101), "short-101.mp4")), "a game's own Short is never adopted by the series");
+assert.ok(
+  !existsSync(path.join(dir(101), "short-101.mp4")),
+  "a game's own Short is never adopted by the series",
+);
 assert.equal(await seriesShortGame(101), null, "nothing picked, nothing cut");
 writeFileSync(path.join(dir(101), "short-101.pick.json"), JSON.stringify({ gameMatchId: 102 }));
 assert.equal(await seriesShortGame(101), 102, "the pick names the game");
 writeFileSync(path.join(dir(101), "short-101.cut.json"), JSON.stringify({ gameMatchId: 103 }));
 assert.equal(await seriesShortGame(101), 103, "and the cut, once there is one, is what went out");
 // A Short copied in before 23 Sept 2026 recorded where it came from as `fromMatchId`.
-writeFileSync(path.join(dir(101), "short-101.cut.json"), JSON.stringify({ pick: 0, startMs: 1, fromMatchId: 102 }));
+writeFileSync(
+  path.join(dir(101), "short-101.cut.json"),
+  JSON.stringify({ pick: 0, startMs: 1, fromMatchId: 102 }),
+);
 assert.equal(await seriesShortGame(101), 102);
 
 console.log("series: all checks passed");

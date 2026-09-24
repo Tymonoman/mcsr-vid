@@ -38,12 +38,13 @@ import { STAGE_LABELS, STAGE_ORDER, STAGE_SHORT_LABELS } from "../pipeline/pipel
 import { presentSuggestions } from "./suggestPresent.js";
 import { dismiss, restore, snapshot, startScan } from "./suggestScan.js";
 import { cronLine, rsyncPullAllCommand, rsyncPullCommand } from "./publishSet.js";
-import { claimedPublishTimes, nextPublishSlot, publishHourFor } from "../youtube/publishSlot.js";
+import { publishHourFor, publishSlotFor } from "../youtube/publishSlot.js";
 import { playoffBoard } from "../playoffs/playoffs.js";
 import { renderSeries, seriesState, type SeriesRunners } from "../playoffs/series.js";
 import { refreshRivalPostsIfStale, rivalPostsSnapshot, rivalRecentPostFor } from "./rivalPosts.js";
 import { chooseVariant, readManifest } from "../thumbnails/thumbnailVariants.js";
 import { metaPaths } from "../pipeline/title.js";
+import { typedSpoiler } from "../pipeline/hooks.js";
 import { allArchiveStates, capacity, isArchived } from "./archive.js";
 import { exportRunning, handleExportRoute, startFastExport } from "./exportRoutes.js";
 import {
@@ -537,6 +538,7 @@ const server = createServer(async (req, res) => {
       // Studio paste and a dashboard upload cannot say two different things.
       const video = await uploadTextFor(matchId, "video");
       const short = await uploadTextFor(matchId, "short");
+      const slot = await publishSlotFor(matchId, Date.now());
       json(res, 200, {
         title: video.title || null,
         description: video.description || null,
@@ -550,11 +552,8 @@ const server = createServer(async (req, res) => {
         pinnedComment: pinnedComment(),
         // The slot to schedule for, so the morning's paste into Studio carries a time too —
         // and the first free one, not the same time every match ready this morning would show.
-        publishAt: nextPublishSlot(
-          Date.now(),
-          publishHourFor(matchDir(matchId)),
-          await claimedPublishTimes(matchId),
-        ).toISOString(),
+        publishAt: slot.at.toISOString(),
+        publishWhy: slot.why,
         publishHourUtc: publishHourFor(matchDir(matchId)),
         // Commands for the operator's own shell, not this one: the publishing PC pulls.
         pull: config.pullSource
@@ -654,6 +653,22 @@ const server = createServer(async (req, res) => {
         if (text.trim() === "") await rm(file, { force: true });
         else await writeFile(file, text, "utf8");
       };
+      // Nothing names the winner (CLAUDE.md): the fold is the other way a hook reaches a title.
+      const titles = metaPaths(matchId, "title");
+      const spoiler =
+        typeof body.title === "string"
+          ? typedSpoiler(
+              body.title,
+              (await readIfPresent(titles.generated)) ?? "",
+              (await readIfPresent(titles.edited)) ?? "",
+            )
+          : null;
+      if (spoiler) {
+        json(res, 400, {
+          error: `"${spoiler}" gives the result away — a title never names the winner or how the series went; reword it`,
+        });
+        return;
+      }
       if (typeof body.title === "string") await save("title", body.title);
       if (typeof body.description === "string") await save("description", body.description);
       json(res, 200, await readMeta(matchId));

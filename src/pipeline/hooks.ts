@@ -276,16 +276,35 @@ export function hookFacts(input: HookInput) {
  * A question never does — "Can the 1789 take down the 2080?" is the channel's whole framing — so
  * anything ending in "?" passes. Otherwise a verb of winning or losing next to anything is out.
  * Deliberately blunt: a false positive costs one suggestion, a false negative costs the video.
+ * Since 24 Sept it also refuses the operator's typed hooks on save, so a stake is let through:
+ * "A SUB-8 TO WIN IT" says what winning takes, not who did ("to win" is stripped before the test).
  */
 export function spoilsTheResult(text: string): boolean {
-  const line = text.trim();
+  const line = text.trim().replace(/\bto win\b/gi, "");
   if (line.endsWith("?")) return false;
   // Placements are results too: a playoff placing in a ranked video's title ("WINNER vs 3rd
   // PLACE", 23 Sept 2026) told the Season 11 bracket's outcome while its series were still
-  // going out from the Round of 16.
-  return /\b(wins?|won|winner|beats?|beaten|destroys?|crushes|takes? (?:it|down|the win)|took (?:it|the win)|loses?|lost|loser|chokes?|choked|throws?|threw|clutch(?:es|ed)?|comeback complete|survives?|eliminat(?:es|ed)|(?:1st|2nd|3rd|4th|first|second|third|fourth) place|runners?[- ]up|(?:semi-?)?finalists?|champions?|podium)\b/i.test(
+  // going out from the Round of 16. A sweep is a series result: "PLAYOFFS | SWEPT vs TAS" on a
+  // best of 5 told how it went (24 Sept 2026 audit), whoever the nickname meant.
+  return /\b(swept|sweeps?|wins?|won|winner|beats?|beaten|destroys?|crushes|takes? (?:it|down|the win)|took (?:it|the win)|loses?|lost|loser|chokes?|choked|throws?|threw|clutch(?:es|ed)?|comeback complete|survives?|eliminat(?:es|ed)|(?:1st|2nd|3rd|4th|first|second|third|fourth) place|runners?[- ]up|(?:semi-?)?finalists?|champions?|podium)\b/i.test(
     line,
   );
+}
+
+/**
+ * The segment of a title the operator typed in the Title & description fold that gives the result
+ * away, or null. Only segments neither `known` title carries (the generated one, the one on disk)
+ * are checked: those hold the nicknames and a round name like "3rd Place", which is the bracket,
+ * not a result — and a title already saved is not re-judged on a description-only save.
+ */
+export function typedSpoiler(title: string, ...known: string[]): string | null {
+  const segments = (t: string) =>
+    t
+      .split("\n")[0]!
+      .split("|")
+      .map((s) => s.trim());
+  const ours = new Set(known.flatMap(segments));
+  return segments(title).find((s) => s !== "" && !ours.has(s) && spoilsTheResult(s)) ?? null;
 }
 
 export async function suggestHooksExternally(input: HookInput): Promise<string[] | null> {
