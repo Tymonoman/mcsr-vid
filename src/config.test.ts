@@ -59,5 +59,8 @@ assert.doesNotThrow(() => validateOverrides({ teaserAtSec: 10 }));
 assert.throws(() => validateOverrides({ teaserAtSec: -1 }), /teaserAtSec/);
 assert.throws(() => validateOverrides({ teaserAtSec: "10" }), /teaserAtSec/);
 assert.throws(() => validateOverrides({ teaserSec: null }), /teaserSec/);
+assert.throws(() => validateOverrides({ teaserSec: -1 }), /teaserSec/);
+assert.throws(() => validateOverrides({ teaserAtSec: 3601 }), /teaserAtSec/);
+assert.doesNotThrow(() => validateOverrides({ teaserSec: 0 }), "0 s is a valid way to show none");
 
 console.log("config: all checks passed");

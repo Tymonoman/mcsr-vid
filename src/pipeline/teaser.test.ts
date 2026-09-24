@@ -20,6 +20,37 @@ assert.deepEqual(chooseTeaser(load(12929221)), { momentMs: 196454, text: "A DEAT
 assert.equal(chooseTeaser(load(12730175))?.text, "0.7 S APART ON BLIND TRAVEL");
 assert.equal(chooseTeaser(load(12898432)), null);
 assert.equal(chooseTeaser(load(12902901)), null);
+// 13549300 changes lead three times; the last, into the End at 6:39, is inside the last minute
+// (decided 7:20), so the promise is blind travel, which also overturned the biggest deficit.
+assert.deepEqual(chooseTeaser(load(13549300)), {
+  momentMs: 314090,
+  text: "THE LEAD CHANGES ON BLIND TRAVEL",
+});
+// 13448958 has a real death at 9:18.9, a second and a half before the dragon: the finish.
+assert.deepEqual(chooseTeaser(load(13448958)), {
+  momentMs: 322756,
+  text: "THE LEAD CHANGES AT THE FORTRESS",
+});
+// Led wire to wire with bed warps only: nothing (a fallback line is the operator's call).
+assert.equal(chooseTeaser(load(13446429)), null);
+assert.equal(chooseTeaser(load(13617328)), null);
+
+// Every real match: blind to who won — the same line with the result handed to the other side —
+// inside the window, and naming nobody.
+for (const id of [12730175, 12898432, 12902901, 12929221, 13446429, 13448958, 13549300, 13617328]) {
+  const m = load(id);
+  const t = chooseTeaser(m);
+  const loser = m.players.find((p) => p.uuid !== m.result.uuid)!.uuid;
+  assert.deepEqual(
+    chooseTeaser({ ...m, result: { ...m.result, uuid: loser } }),
+    t,
+    `${id}: reads the result`,
+  );
+  if (!t) continue;
+  assert.ok(t.momentMs >= 60_000 && t.momentMs <= decidedAtMs(m)! - 60_000, `${id}: ${t.momentMs} outside`);
+  for (const p of m.players)
+    assert.ok(!t.text.includes(p.nickname.toUpperCase()), `${id} names ${p.nickname}`);
+}
 
 // The window: a minute into the race at the earliest, a minute before the game is decided at
 // the latest. 12902901 has no death; add one for players[0] where it sits on blind travel.
@@ -99,6 +130,19 @@ assert.equal(
   )?.text,
   "THE LEAD CHANGES AT THE FORTRESS",
 );
+// The first dragon decides the game whoever kills it, so an earlier one pulls the window in: the
+// Fortress flip at 215 s needs the dragon at 275 s or later.
+{
+  const flipAtFortress = (dragonAt: number) =>
+    chooseTeaser(
+      race(
+        (i, t) => (i < 2 ? t + 10_000 : t - 5_000),
+        [{ uuid: R.uuid, time: dragonAt, type: "projectelo.timeline.dragon_death" }],
+      ),
+    );
+  assert.equal(flipAtFortress(274_999), null, "the flip is inside the last minute");
+  assert.deepEqual(flipAtFortress(275_000), { momentMs: 215_000, text: "THE LEAD CHANGES AT THE FORTRESS" });
+}
 // A close split at every rung.
 for (let k = 0; k < MILESTONES.length; k++)
   expectText(
