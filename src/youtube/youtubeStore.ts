@@ -9,10 +9,12 @@ import { config, matchDir } from "../config.js";
 import { listProcessedMatchIds } from "../dashboard/matchStatus.js";
 import { readManifest } from "../thumbnails/thumbnailVariants.js";
 import { buildTitle, HOOK_PLACEHOLDER, metaPaths, MOBILE_CUTOFF, SEPARATOR } from "../pipeline/title.js";
-import { CLOSER } from "../pipeline/description.js";
+import { CLOSER, seedPhrase } from "../pipeline/description.js";
 import { playoffSeriesTail, playoffTitleTail, seedOrdinal } from "../playoffs/playoffs.js";
 import { buildShortTitle, readShortHook, TITLE_MAX_CHARS } from "../shorts/shortHook.js";
 import { describeError } from "../errorText.js";
+import { getMatch } from "../api/mcsrApi.js";
+import { readSeriesRecord, type SeriesRecord } from "../playoffs/series.js";
 
 /** The long-form and the Short are two videos with two records. */
 export type UploadKind = "video" | "short";
@@ -126,11 +128,21 @@ export async function uploadTextFor(
   const shortHook = kind === "short" ? await readShortHook(dir, matchId) : null;
   if (title !== "" && (kind === "video" || shortHook)) {
     const stored = title;
-    title = await refreshed(`${kind === "short" ? "Short " : ""}title`, stored, async () =>
-      kind === "video"
-        ? refreshTitle(stored, existsSync(path.join(dir, "series.json")))
-        : refreshShortTitle(shortHook, await longFormTitle(matchId)),
-    );
+    const isSeries = existsSync(path.join(dir, "series.json"));
+    title = await refreshed(`${kind === "short" ? "Short " : ""}title`, stored, async () => {
+      if (kind === "short") {
+        return refreshShortTitle(shortHook, await longFormTitle(matchId));
+      }
+      let refreshedTitle = refreshTitle(stored, isSeries);
+      if (
+        isSeries &&
+        !refreshedTitle.includes("Minecraft") &&
+        refreshedTitle.length + " | Minecraft Speedrun".length <= TITLE_MAX_CHARS
+      ) {
+        refreshedTitle += " | Minecraft Speedrun";
+      }
+      return refreshedTitle;
+    });
   }
   const editedDescription = await edited("description");
   let description =
@@ -138,7 +150,9 @@ export async function uploadTextFor(
   // The operator's own words stay theirs: only a description nobody edited is patched.
   if (editedDescription === null) {
     const stored = description;
-    description = await refreshed("description", stored, () => refreshDescription(stored, kind));
+    description = await refreshed("description", stored, () =>
+      refreshDescription(stored, kind, config.supportUrl, dir),
+    );
   }
   // A Short's description is written when it is cut, before the long-form has an id; by the
   // time it uploads (18 h after the video) the id is in youtube.json, and a Short whose job is
@@ -247,10 +261,18 @@ export function refreshShortTitle(hook: string | null, longTitle: string): strin
  * ratings, the chapters) are the API's and Twitch's, and a Twitch archive is gone after 14 days
  * — the stored links are the ones the render checked. The drifts: "#9 seed" is "9th seed"
  * (`seedOrdinal`, 24 Sept 2026), the closer is today's `CLOSER`, and the tip-jar line
- * (`supportUrl`) goes where the template puts it, before the closer. A Short's description gets
- * the seed wording only; its layout has no closer.
+ * (`supportUrl`) goes where the template puts it, before the closer. For a series (`series.json`
+ * beside game 1), old chapter lines of the form "M:SS game N" (or H:MM:SS) that have no " · " yet
+ * are relabelled into "M:SS game N · <seed phrase>" using game N's world seed type from the match;
+ * reading failure leaves that line unchanged. A Short's description gets the seed wording only;
+ * its layout has no closer.
  */
-export function refreshDescription(text: string, kind: UploadKind, supportUrl = config.supportUrl): string {
+export async function refreshDescription(
+  text: string,
+  kind: UploadKind,
+  supportUrl = config.supportUrl,
+  series?: SeriesRecord | string | null,
+): Promise<string> {
   let out = text.replace(/#(\d+) seed\b/g, (label) => seedOrdinal(label));
   if (kind === "short" || out === "") return out;
   out = out.replace(/^fan channel, .*$/m, CLOSER);
@@ -258,6 +280,35 @@ export function refreshDescription(text: string, kind: UploadKind, supportUrl = 
     const at = out.search(/\n\n(?:fan channel, |#MCSR)/);
     const line = `tip jar: ${supportUrl}`;
     out = at < 0 ? `${out}\n${line}` : `${out.slice(0, at)}\n${line}${out.slice(at)}`;
+  }
+  const record = typeof series === "string" ? await readSeriesRecord(series) : series;
+  if (record) {
+    const lines = out.split("\n");
+    const newLines: string[] = [];
+    for (const line of lines) {
+      const cr = line.endsWith("\r") ? "\r" : "";
+      const stripped = cr ? line.slice(0, -1) : line;
+      const match = /^(\d+:\d{2}(?::\d{2})?)\s+game\s+(\d+)$/i.exec(stripped);
+      if (match && !stripped.includes(" · ")) {
+        const timestamp = match[1]!;
+        const gameNo = Number(match[2]!);
+        const seriesGame = record.games.find((g) => g.gameNo === gameNo);
+        if (seriesGame) {
+          try {
+            const m = await getMatch(seriesGame.matchId);
+            const phrase = seedPhrase(m);
+            if (phrase) {
+              newLines.push(`${timestamp} game ${gameNo} · ${phrase}${cr}`);
+              continue;
+            }
+          } catch {
+            // reading it would need a network call that can fail; a failure leaves that line unchanged
+          }
+        }
+      }
+      newLines.push(line);
+    }
+    out = newLines.join("\n");
   }
   return out;
 }
