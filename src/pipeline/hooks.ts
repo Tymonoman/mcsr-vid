@@ -19,7 +19,7 @@ import { formatShortTime } from "../../remotion/format.js";
 import { describeError } from "../errorText.js";
 import type { MatchMetrics } from "./matchScore.js";
 import { eloAtMatchStart } from "./overlayProps.js";
-import type { PlayoffContext } from "../playoffs/playoffs.js";
+import { seedOrdinal, type PlayoffContext } from "../playoffs/playoffs.js";
 import type { MatchInfo, UserDetails, VersusStats } from "../api/types.js";
 
 /**
@@ -113,11 +113,11 @@ function candidates(input: HookInput): Candidate[] {
     const l = seedOf(userLeft.uuid);
     const r = seedOf(userRight.uuid);
     if (l && r) {
-      const word = (label: string): string => (label === "LCQ" ? "the LCQ" : `the ${ordinal(label)} seed`);
+      const word = (label: string): string => (label === "LCQ" ? "the LCQ" : `the ${seedOrdinal(label)}`);
       // The pairing without articles — "LCQ vs 7th seed", 15 characters — so it fits the hook
       // budget a long pair of nicknames leaves (21–32) and the Short's; the question keeps
       // its form and is for the Short and the short-named pairs.
-      const bare = (label: string): string => (label === "LCQ" ? "LCQ" : `${ordinal(label)} seed`);
+      const bare = (label: string): string => seedOrdinal(label);
       const [lower, higher] = seedRank(l.label) >= seedRank(r.label) ? [l, r] : [r, l];
       if (l.label !== r.label)
         out.push({ text: `Can ${word(lower.label)} take down ${word(higher.label)}?`, weight: 125 });
@@ -346,13 +346,6 @@ function runCommand(command: string, stdin: string): Promise<string> {
  */
 export async function hookSuggestions(input: HookInput): Promise<string[]> {
   return (await suggestHooksExternally(input)) ?? buildHookSuggestions(input);
-}
-
-/** "#7 seed" -> "7th"; the bracket's labels are src/playoffs/playoffs.ts `seedLabel`. */
-function ordinal(label: string): string {
-  const n = Number(/\d+/.exec(label)?.[0] ?? 0);
-  const suffix = n % 100 >= 11 && n % 100 <= 13 ? "th" : (["th", "st", "nd", "rd"][n % 10] ?? "th");
-  return `${n}${suffix}`;
 }
 
 /** The seed as a rank for "who is the underdog": an LCQ entrant sits below every seed. */

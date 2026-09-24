@@ -71,6 +71,7 @@ const {
   playoffParagraph,
   playoffTitleTail,
   seedLabel,
+  seedOrdinal,
   slotFor,
   slotGames,
   slotSeeds,
@@ -84,6 +85,11 @@ const {
 assert.equal(seedLabel(0), "#1 seed");
 assert.equal(seedLabel(11), "#12 seed");
 assert.equal(seedLabel(12), "LCQ", "the last four came through the last-chance qualifier");
+
+assert.deepEqual(
+  [0, 1, 2, 8, 10, 11, 12].map((n) => seedOrdinal(seedLabel(n))),
+  ["1st seed", "2nd seed", "3rd seed", "9th seed", "11th seed", "12th seed", "LCQ"],
+);
 
 assert.ok(gameBelongs(bracket, slot, g1));
 assert.ok(gameBelongs(bracket, slot, g2), "seat order is the room's, not the bracket's");
@@ -196,7 +202,17 @@ assert.equal(
   "MCSR Ranked Season 11 Playoffs | Round of 16 | Game 2",
 );
 const para = playoffParagraph({ ...ctx, seeds: [...ctx.seeds] });
-assert.ok(para.includes("edcr (#1 seed, 2688 elo) vs lauveer (LCQ, 2137 elo)"));
+assert.ok(para.includes("edcr (1st seed, 2688 elo) vs lauveer (LCQ, 2137 elo)"));
+assert.ok(!para.includes("#"), `no hash in playoff paragraph: ${para}`);
+const para9 = playoffParagraph({
+  ...ctx,
+  seeds: [
+    { uuid: edcr.uuid, nickname: "edcr", label: "#9 seed", seasonEloRate: 2688 },
+    { uuid: lauveer.uuid, nickname: "lauveer", label: "LCQ", seasonEloRate: 2137 },
+  ],
+});
+assert.ok(para9.includes("edcr (9th seed, 2688 elo) vs lauveer (LCQ, 2137 elo)"));
+assert.ok(!para9.includes("#"), `no hash in 9th-seed playoff paragraph: ${para9}`);
 // The house rule, pinned: no surface prints a series score. "Game 2 of 5" is the only pair of
 // numbers allowed near each other, and 2688/2137 are the seeds' ratings.
 assert.ok(

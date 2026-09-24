@@ -117,7 +117,20 @@ assert.match(
   desc,
   /^edcr vs lauveer, mcsr ranked season 11 playoffs, round of 16, best of 5\. every game of the series/,
 );
-assert.ok(desc.includes("edcr came in as the #1 seed at 2688 elo, lauveer from the lcq at 2137."));
+assert.ok(desc.includes("edcr came in as the 1st seed at 2688 elo, lauveer from the lcq at 2137."));
+assert.ok(!desc.split("\n\n")[0]!.includes("#"), `no hash in series description opening:\n${desc}`);
+
+const desc9 = buildSeriesDescription({
+  season: 11,
+  round: "Round of 16",
+  bestOf: 5,
+  left: { nickname: "edcr", label: "#9 seed", seasonEloRate: 2688 },
+  right: { nickname: "lauveer", label: "LCQ", seasonEloRate: 2137 },
+  games: [],
+  bracketUrl: "https://magmamcsr.com/events/playoffs/s11/bracket",
+});
+assert.ok(desc9.includes("edcr came in as the 9th seed at 2688 elo, lauveer from the lcq at 2137."));
+assert.ok(!desc9.split("\n\n")[0]!.includes("#"), `no hash in 9th-seed series description opening:\n${desc9}`);
 assert.ok(
   desc.includes("0:00 game 1\n10:12 game 2\n1:01:40 game 3"),
   "a chapter per game, hours past sixty minutes",
@@ -223,6 +236,8 @@ assert.ok(
   ),
   description,
 );
+assert.ok(description.includes("as the 1st seed"));
+assert.ok(!description.split("\n\n")[0]!.includes("#"), `no hash in assembled series description opening:\n${description}`);
 assert.equal(
   readFileSync(path.join(dir(101), "match-101.chapters.txt"), "utf8"),
   "0:00 game 1\n10:00 game 2\n18:20 game 3",
