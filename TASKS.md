@@ -1,4 +1,17 @@
-# TASKS — resume point, 23 Sept 2026 21:40 UTC
+# TASKS — resume point (updated 24 Sept 2026 06:02 UTC)
+
+**Second stop, 24 Sept 06:00 UTC (usage limit).** The operator: "resume at 9am polish time
+(07:00 UTC). have an audit ready by 11:55am polish time (09:55 UTC)." Eight resume workflows had
+run ~7 minutes each; they were stopped, so their fresh worktrees (`.claude/worktrees/wf_12aa84f2-cd7-1`,
+`wf_e9201910-2c6-1`, `wf_acb0618a-b77-1`, `wf_16dc7315-38a-1`, `wf_2dfe5127-54d-1`) may hold a
+few minutes of uncommitted edits on top of the merged WIP branches. **At resume:** (1) for each
+of those worktrees, if `git status --short` (minus node_modules) is non-empty, commit it as WIP on
+its branch; (2) launch the audit FIRST (`~/.claude/projects/-app/research/audit-2026-09-24.md`,
+due 09:55 UTC), then one workflow per TASKS.md as before (status, teaser, cleanup, ui, github,
+audience, rewind-eval) — prompts are in `~/.claude/projects/-app/8d7d95a1-…/workflows/scripts/resume-*.js`.
+Overnight facts: the nightly rendered 13617328 and agy picked; 13549300 + 13617328 wait for hooks;
+/watch still does not run in the dashboard container (cause unknown — `docker logs mcsr-dashboard | grep -i watch`).
+
 
 Work stopped at the operator's usage limit mid-way through the overnight goal. Every branch below
 carries its own `TASKS.md` at its root with DONE / TODO. **All four WIP branches are pushed to origin.** Main is `07d3931` + this file; the lab
