@@ -295,7 +295,8 @@ try {
     assert.ok(!("error" in begun), `the saved hook's cut goes up: ${JSON.stringify(begun)}`);
     const done = await begun.finished;
     assert.equal(done.error, null);
-    assert.deepEqual(sent, [{ title: "A hook #minecraft #mcsr", publishAt: LATER }]);
+    // The title file predates today's Short rule: what goes up is the saved hook and both names (uploadTextFor).
+    assert.deepEqual(sent, [{ title: "Down to the last heart | a vs b #mcsr #minecraft", publishAt: LATER }]);
     const { readUpload } = await import("./youtubeStore.js");
     assert.equal((await readUpload(matchId, "short"))?.publishAt, LATER);
     const again = await beginUpload(matchId, { kind: "short", privacyStatus: "private" }, async () => {

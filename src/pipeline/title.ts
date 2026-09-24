@@ -17,7 +17,7 @@ export const HOOK_PLACEHOLDER = "<HOOK>";
 // cut. The hook budget below is just the overlap between those two.
 const TARGET_MIN = 70;
 const HARD_MAX = 100;
-const MOBILE_CUTOFF = 50;
+export const MOBILE_CUTOFF = 50;
 
 export interface TitleInput {
   leftNickname: string;

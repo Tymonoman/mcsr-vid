@@ -882,7 +882,8 @@ async function loadPublishKit(id, meta) {
   const titleText = () => {
     const field = $("#ytTitle");
     if (field) return field.value;
-    const firstLine = (meta.title ?? "").split("\n")[0] ?? "";
+    // The server's upload title (today's template around the saved hook) when it sent one.
+    const firstLine = kit.title ?? (meta.title ?? "").split("\n")[0] ?? "";
     return titleWithHook(firstLine, $("#hook")?.value.trim(), meta.hook?.generated);
   };
 
@@ -924,7 +925,9 @@ async function loadPublishKit(id, meta) {
 
   const paint = () => {
     const title = titleText();
-    const tags = (meta.tags ?? []).join(", ");
+    // What the upload sends: today's templates over the render's files (uploadTextFor).
+    const tagList = kit.tags ?? meta.tags ?? [];
+    const tags = tagList.join(", ");
     el.innerHTML = [
       pull,
       block(
@@ -943,14 +946,14 @@ async function loadPublishKit(id, meta) {
          <summary>description &middot; tags</summary>`,
       // A server one restart behind still writes "Result: X 9:47." into the file (removed in
       // 10f584a); what gets pasted into Studio must never say who won, whichever build wrote it.
-      block("Description", (meta.description ?? "").replace(/ Result: [^.\n]*\./, ""), 10),
+      block("Description", (kit.description ?? meta.description ?? "").replace(/ Result: [^.\n]*\./, ""), 10),
       // Both numbers, because YouTube caps the list twice over: 500 characters across the whole
       // field, and the count is what tells you the pipeline wrote a tags file at all.
       block(
         "Tags",
         tags,
         3,
-        counter(`${meta.tags?.length ?? 0} tags · ${tags.length} / 500 chars`, tags.length > 500),
+        counter(`${tagList.length} tags · ${tags.length} / 500 chars`, tags.length > 500),
       ),
       `</details>`,
       // Everything below is pasted after the video is up, so it folds away: at 390px the kit was

@@ -8,7 +8,11 @@ import path from "node:path";
 import { config, matchDir } from "../config.js";
 import { listProcessedMatchIds } from "../dashboard/matchStatus.js";
 import { readManifest } from "../thumbnails/thumbnailVariants.js";
-import { HOOK_PLACEHOLDER, metaPaths } from "../pipeline/title.js";
+import { buildTitle, HOOK_PLACEHOLDER, metaPaths, MOBILE_CUTOFF, SEPARATOR } from "../pipeline/title.js";
+import { CLOSER } from "../pipeline/description.js";
+import { playoffSeriesTail, playoffTitleTail, seedOrdinal } from "../playoffs/playoffs.js";
+import { buildShortTitle, readShortHook, TITLE_MAX_CHARS } from "../shorts/shortHook.js";
+import { describeError } from "../errorText.js";
 
 /** The long-form and the Short are two videos with two records. */
 export type UploadKind = "video" | "short";
@@ -80,6 +84,13 @@ export const readIfPresent = async (file: string): Promise<string | null> => {
  * — with the thumbnail manifest's headline standing in for `<HOOK>` when nobody edited one in;
  * a title that still carries the placeholder is the caller's to refuse.
  *
+ * The generated half is refreshed on today's templates, because the files are the render's and a
+ * match can wait days for its upload (the 24 Sept 2026 audit, fix 4): the title keeps the
+ * operator's hook and rebuilds the rest (`refreshTitle`), a description nobody edited gets the
+ * known drifts patched (`refreshDescription`), the tags gain the broadcast spellings
+ * (`refreshTags`), and the Short's title follows `buildShortTitle` with the saved Short hook.
+ * Each one that cannot be refreshed goes up as stored, with one log line — never a refusal.
+ *
  * The Short's text is the render's own (`short-<id>.title.txt`, first line); its tags are the
  * long-form's, so both halves of a match are one channel to YouTube.
  */
@@ -93,6 +104,16 @@ export async function uploadTextFor(
   // long-form's convention is `metaPaths`, shared with the title editor and the publish kit.
   const edited = (what: "title" | "description") =>
     kind === "video" ? readIfPresent(metaPaths(matchId, what).edited) : Promise.resolve(null);
+  const refreshed = async <T>(what: string, stored: T, rebuild: () => T | Promise<T>): Promise<T> => {
+    try {
+      return await rebuild();
+    } catch (err) {
+      console.warn(
+        `upload text, match ${matchId}: the stored ${what} goes up as it is — ${describeError(err)}`,
+      );
+      return stored;
+    }
+  };
   const titleText =
     (await edited("title")) ?? (await readIfPresent(path.join(dir, `${base}.title.txt`))) ?? "";
   let title = titleText.split("\n")[0]!.trim();
@@ -100,8 +121,25 @@ export async function uploadTextFor(
     const hook = (await readManifest(dir))?.hookText?.trim();
     if (hook) title = title.replace(HOOK_PLACEHOLDER, hook);
   }
+  // A Short with no saved hook cannot go up (`hookRefusal`): its stored title stands, unlogged —
+  // the publish kit asks for this text every time a match opens.
+  const shortHook = kind === "short" ? await readShortHook(dir, matchId) : null;
+  if (title !== "" && (kind === "video" || shortHook)) {
+    const stored = title;
+    title = await refreshed(`${kind === "short" ? "Short " : ""}title`, stored, async () =>
+      kind === "video"
+        ? refreshTitle(stored, existsSync(path.join(dir, "series.json")))
+        : refreshShortTitle(shortHook, await longFormTitle(matchId)),
+    );
+  }
+  const editedDescription = await edited("description");
   let description =
-    (await edited("description")) ?? (await readIfPresent(path.join(dir, `${base}.description.txt`))) ?? "";
+    editedDescription ?? (await readIfPresent(path.join(dir, `${base}.description.txt`))) ?? "";
+  // The operator's own words stay theirs: only a description nobody edited is patched.
+  if (editedDescription === null) {
+    const stored = description;
+    description = await refreshed("description", stored, () => refreshDescription(stored, kind));
+  }
   // A Short's description is written when it is cut, before the long-form has an id; by the
   // time it uploads (18 h after the video) the id is in youtube.json, and a Short whose job is
   // to send viewers to the match had better say where the match is (the 22 Sept 2026 audit:
@@ -113,11 +151,131 @@ export async function uploadTextFor(
       description = description.replace(/^(.*?)\n/, `$1\n${what}: https://youtu.be/${videoId}\n`);
     }
   }
-  const tags = ((await readIfPresent(path.join(dir, `match-${matchId}.tags.txt`))) ?? "")
+  const storedTags = ((await readIfPresent(path.join(dir, `match-${matchId}.tags.txt`))) ?? "")
     .split("\n")
     .map((t) => t.trim())
     .filter(Boolean);
+  const tags = await refreshed("tags", storedTags, () => refreshTags(storedTags));
   return { title, description, tags };
+}
+
+/** The long-form's title line as stored (the edit wins), for the names a Short's title carries. */
+async function longFormTitle(matchId: number): Promise<string> {
+  const { edited, generated } = metaPaths(matchId, "title");
+  return ((await readIfPresent(edited)) ?? (await readIfPresent(generated)) ?? "").split("\n")[0]!.trim();
+}
+
+/**
+ * A stored title in its three parts: the hook (whatever stands before " | <left> vs <right>",
+ * itself possibly carrying a " | "), the two names, and the format half after them. The names
+ * segment is the LAST "<a> vs <b>" without spaces, since a hook can read "2699 vs 2376" too.
+ */
+function splitTitle(line: string): { hook: string; left: string; right: string; tail: string } | null {
+  const segments = line.split(SEPARATOR);
+  for (let at = segments.length - 1; at >= 0; at--) {
+    const names = /^(\S+) vs (\S+)$/.exec(segments[at]!);
+    if (names)
+      return {
+        hook: segments.slice(0, at).join(SEPARATOR),
+        left: names[1]!,
+        right: names[2]!,
+        tail: segments.slice(at + 1).join(SEPARATOR),
+      };
+  }
+  return null;
+}
+
+/**
+ * A stored long-form title with its generated half built again by `buildTitle`: the names get
+ * `titleName`'s spellings (Pinne is Skycrab), "MCSR Ranked 1v1" gains "| Minecraft Speedrun"
+ * (22 Sept 2026) and a playoff tail its current form ("S11 Playoffs · Round of 16 · Game 2" was
+ * the old one); a joined series (`series`) takes the round without a game number. From the line
+ * alone, not the API: the names stay in the order the video shows them, and a bracket read that
+ * failed cannot turn a playoff title into a ranked one. Throws — the stored title then goes up —
+ * on a line it does not recognise, a hook over today's budget, or a result over 100 characters.
+ */
+export function refreshTitle(stored: string, series: boolean): string {
+  const parts = splitTitle(stored);
+  if (!parts) throw new Error(`no "<left> vs <right>" in "${stored}"`);
+  const playoff =
+    /^MCSR Ranked (?:Season |S)(\d+) Playoffs(?: \| | · )(.+?)(?:(?: \| | · )Game (\d+))?$/.exec(parts.tail);
+  if (!playoff && !/^MCSR Ranked 1v1( \| Minecraft Speedrun)?$/.test(parts.tail))
+    throw new Error(`the format half "${parts.tail}" is neither a ranked nor a playoff one`);
+  const [, season, round, gameNo] = playoff ?? [];
+  const suffix = !playoff
+    ? undefined
+    : series || !gameNo
+      ? playoffSeriesTail(Number(season), round!)
+      : playoffTitleTail({ season: Number(season), round: round!, gameNo: Number(gameNo) });
+  const built = buildTitle({
+    leftNickname: parts.left,
+    rightNickname: parts.right,
+    ...(suffix ? { suffix } : {}),
+  });
+  // The hook's budget has two sides (`buildTitle`): the 100-character one, checked on the result
+  // below, and the mobile cut the second name must end before. Only a new spelling can move the
+  // latter (Pinne -> Skycrab), and a hook that fit it must keep fitting; one that never did is
+  // the operator's accepted title and changes nothing here.
+  const names = built.generated.slice(0, built.generated.indexOf(SEPARATOR));
+  const namesEnd = (n: string) => parts.hook.length + SEPARATOR.length + n.length;
+  if (
+    parts.hook &&
+    namesEnd(names) > MOBILE_CUTOFF &&
+    namesEnd(`${parts.left} vs ${parts.right}`) <= MOBILE_CUTOFF
+  )
+    throw new Error(`"${names}" would end past character ${MOBILE_CUTOFF}, the mobile cut, after this hook`);
+  const title = parts.hook ? `${parts.hook}${SEPARATOR}${built.generated}` : built.generated;
+  if (title.length > TITLE_MAX_CHARS)
+    throw new Error(`the rebuilt title would be ${title.length} characters`);
+  return title;
+}
+
+/** The Short's title by today's rule (`buildShortTitle`): the saved Short hook, then the long-form's two names. */
+export function refreshShortTitle(hook: string | null, longTitle: string): string {
+  if (!hook) throw new Error("no saved Short hook");
+  const parts = splitTitle(longTitle);
+  if (!parts) throw new Error(`no names in the long-form's title "${longTitle}"`);
+  const title = buildShortTitle(hook, parts.left, parts.right);
+  if (title.length > TITLE_MAX_CHARS)
+    throw new Error(`the rebuilt title would be ${title.length} characters`);
+  return title;
+}
+
+/**
+ * A generated description with the drifts since its render patched in place, rather than built
+ * again: its inputs (the VOD links with their synced offsets, the match-time and frozen seed
+ * ratings, the chapters) are the API's and Twitch's, and a Twitch archive is gone after 14 days
+ * — the stored links are the ones the render checked. The drifts: "#9 seed" is "9th seed"
+ * (`seedOrdinal`, 24 Sept 2026), the closer is today's `CLOSER`, and the tip-jar line
+ * (`supportUrl`) goes where the template puts it, before the closer. A Short's description gets
+ * the seed wording only; its layout has no closer.
+ */
+export function refreshDescription(text: string, kind: UploadKind, supportUrl = config.supportUrl): string {
+  let out = text.replace(/#(\d+) seed\b/g, (label) => seedOrdinal(label));
+  if (kind === "short" || out === "") return out;
+  out = out.replace(/^fan channel, .*$/m, CLOSER);
+  if (supportUrl && !out.includes("tip jar: ")) {
+    const at = out.search(/\n\n(?:fan channel, |#MCSR)/);
+    const line = `tip jar: ${supportUrl}`;
+    out = at < 0 ? `${out}\n${line}` : `${out.slice(0, at)}\n${line}${out.slice(at)}`;
+  }
+  return out;
+}
+
+/**
+ * The stored tags with the broadcast's spelling of a name (`config.titleNames`: Skycrab for
+ * Pinne) right after the nicknames, where `buildTags` has put a player's Twitch name since
+ * 21 Sept 2026 — a match rendered before then carries only the API's spelling. Other players'
+ * Twitch names need the API and are not recovered here.
+ */
+export function refreshTags(tags: string[]): string[] {
+  const have = new Set(tags.map((t) => t.toLowerCase()));
+  const extra = tags
+    .slice(0, 2)
+    .map((t) => config.titleNames[t])
+    .filter((n): n is string => !!n && !have.has(n.toLowerCase()));
+  const out = [...tags.slice(0, 2), ...extra, ...tags.slice(2)];
+  return out.join(",").length <= 450 ? out : tags;
 }
 
 /**

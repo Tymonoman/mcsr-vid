@@ -321,7 +321,13 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   published video. It only ever adds tags, so a tag typed in Studio survives, and it refuses to
   write at all if the read returns no video. This is the project's only `videos.*` write, it is
   operator-pressed, and it is not the call the audit gates.
-- **Upload** sends `match-<id>.tags.txt` and refuses a title still containing `<HOOK>`; it adds
+- **Upload** sends `match-<id>.tags.txt` and refuses a title still containing `<HOOK>`. The text
+  is the render's, refreshed at upload (`uploadTextFor`, `src/youtube/youtubeStore.ts`; the kit
+  shows the same): the title keeps the operator's hook and rebuilds the rest from the stored line,
+  a description nobody edited gets the known drifts patched ("9th seed", the closer, the tip jar —
+  not rebuilt, since its VOD links and ratings are the render's), the tags gain `titleNames`
+  spellings, the Short's title follows `buildShortTitle`; anything that will not refresh cleanly
+  (a title over 100, an unknown tail) goes up as stored with one log line. It adds
   the video to the season playlist (`PLHG-jSA-dWDo`), a per-matchup and a per-player playlist
   (`src/youtube/youtube.ts`; ids remembered per process because YouTube's list is eventually consistent).
   A Short joins none (the 24 Sept audit found 8 in the season playlist, between the replays).

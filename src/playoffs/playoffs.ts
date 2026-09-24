@@ -109,7 +109,7 @@ export const playoffLabel = (ctx: PlayoffContext): string =>
   `${ctx.round} · Game ${ctx.gameNo} of ${ctx.bestOf}`;
 
 /** The title's format half, replacing "MCSR Ranked 1v1" (src/pipeline/title.ts). */
-export const playoffTitleTail = (ctx: PlayoffContext): string =>
+export const playoffTitleTail = (ctx: Pick<PlayoffContext, "season" | "round" | "gameNo">): string =>
   `MCSR Ranked Season ${ctx.season} Playoffs | ${ctx.round} | Game ${ctx.gameNo}`;
 
 /** The series video's format half: the round without a game number (src/playoffs/series.ts). */
