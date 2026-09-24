@@ -303,8 +303,9 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   `~/.claude/projects/-app/research/thumbs-2026-09-24/spec.md`): the renders cut at the knee on a mid-value crimson/warped
   split, name-only plates at y 516–600 (`nickFontPx`: 56 px, 49 for 16 characters) so YouTube's
   duration stamp never covers one, and the seed type framed above the VS (`seedType` from
-  `match.seedType`; null or unknown leaves the slot out; the art is `SeedIcon`, remotion/seedIconArt.ts,
-  our own 16x16 set) — no rating, seed, placement or other text. The four pose pairs
+  `match.seedType`; null or unknown leaves the slot out; the art is `SeedIconMC`, the item or block as Minecraft's
+  inventory draws it in a GUI slot, from the 1.16.1 client's own textures in `remotion/assets/minecraft/` —
+  a hand-drawn set was rejected on 24 Sept: "doesnt look like minecraft at all") — no rating, seed, placement or other text. The four pose pairs
   of `thumbnailVariants` still render, the first (`walking`/`crossed`) the auto default, and
   `RIGHT_RENDER_SIDE` follows the CSS mirror of the right image. The hook text came off on 18 Sept
   and its twins were deleted on 24 Sept: an older manifest's `hookText`/`-hook` records are read

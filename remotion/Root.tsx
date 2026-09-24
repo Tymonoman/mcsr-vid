@@ -4,7 +4,6 @@ import { Thumbnail } from "./Thumbnail.js";
 import { CountdownTeaser } from "./CountdownTeaser.js";
 import { Short, ShortCaption, ShortEndCard, ShortHook, ShortResult, type ShortStillProps } from "./Short.js";
 import { ChatPanel } from "./ChatPanel.js";
-import { SeedIconsReview } from "./SeedIconsReview.js";
 import {
   BOTTOM_BAND_HEIGHT,
   introFrameCount,
@@ -286,24 +285,6 @@ export const RemotionRoot: React.FC = () => {
         width={1920}
         height={1080}
         defaultProps={{ momentMs: 314_000, text: "THE LEAD CHANGES ON BLIND TRAVEL" }}
-      />
-      <Composition
-        id="SeedIcons"
-        component={SeedIconsReview}
-        durationInFrames={1}
-        fps={1}
-        width={1000}
-        height={300}
-        defaultProps={{}}
-      />
-      <Composition
-        id="SeedIconsPhone"
-        component={SeedIconsReview}
-        durationInFrames={1}
-        fps={1}
-        width={600}
-        height={200}
-        defaultProps={{ small: true }}
       />
     </>
   );
