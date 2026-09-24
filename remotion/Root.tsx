@@ -5,6 +5,7 @@ import { CountdownTeaser } from "./CountdownTeaser.js";
 import { Short, ShortCaption, ShortEndCard, ShortHook, ShortResult, type ShortStillProps } from "./Short.js";
 import { ChatPanel } from "./ChatPanel.js";
 import { SeedIconsReview } from "./SeedIconsReview.js";
+import { SeedIconOptions } from "./SeedIconMC.js";
 import {
   BOTTOM_BAND_HEIGHT,
   introFrameCount,
@@ -304,6 +305,24 @@ export const RemotionRoot: React.FC = () => {
         width={600}
         height={200}
         defaultProps={{ small: true }}
+      />
+      <Composition
+        id="SeedIconOptions"
+        component={SeedIconOptions}
+        durationInFrames={1}
+        fps={1}
+        width={1320}
+        height={600}
+        defaultProps={{ size: 160 }}
+      />
+      <Composition
+        id="SeedIconOptionsPhone"
+        component={SeedIconOptions}
+        durationInFrames={1}
+        fps={1}
+        width={720}
+        height={270}
+        defaultProps={{ size: 64 }}
       />
     </>
   );

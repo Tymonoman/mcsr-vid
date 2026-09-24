@@ -1,0 +1,1 @@
+Textures from the official Minecraft 1.16.1 client jar (Mojang; assets/minecraft/textures/{item,block}/, chest_normal.png = entity/chest/normal.png), used under the Minecraft Usage Guidelines for SeedIconMC.tsx.
