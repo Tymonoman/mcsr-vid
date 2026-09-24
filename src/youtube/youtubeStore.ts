@@ -67,7 +67,7 @@ export async function writeUpload(
 }
 
 /** The file's text, or null when absent — or empty: a 0-byte `.edited.txt` is no edit. */
-const readIfPresent = async (file: string): Promise<string | null> => {
+export const readIfPresent = async (file: string): Promise<string | null> => {
   if (!existsSync(file)) return null;
   const text = await readFile(file, "utf8");
   return text.trim() === "" ? null : text;

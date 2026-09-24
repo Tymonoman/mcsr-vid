@@ -64,8 +64,8 @@ import { ensurePick, matchRowShort, nightlyShortSummary, pickActivity, shortTick
 import { saveSettings, settingsPayload } from "./settings.js";
 import { handleYoutubeRoute, uploadRunning } from "./youtubeRoutes.js";
 import { handleSyncRoute } from "./syncRoutes.js";
-import { readIfPresent, readMeta } from "./matchMeta.js";
-import { PINNED_COMMENT, readUpload } from "../youtube/youtubeStore.js";
+import { readMeta } from "./matchMeta.js";
+import { PINNED_COMMENT, readIfPresent, readUpload } from "../youtube/youtubeStore.js";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const ROOT = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
