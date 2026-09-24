@@ -205,6 +205,14 @@ export interface Config {
   teaserAtSec: number | null;
   teaserSec: number;
   /**
+   * "Explain the moves": the first time either player reaches a split, the meta column says what
+   * the split is for ("BASTION / TRADING GOLD TO PIGLINS FOR ENDER PEARLS") for this many seconds;
+   * null shows none (src/pipeline/explainMoves.ts). Written for the Minecraft player who has never
+   * followed speedrunning, and the YPP reused-content answer ("where you explain the moves"). Off
+   * by default: it changes what the nightly renders, so switching it on is the operator's call.
+   */
+  explainMovesSec: number | null;
+  /**
    * Suggestion slots per bucket. Close races and entertaining messes are ranked
    * separately so a run of very tight matches can't crowd the funny ones off the list.
    */
@@ -342,6 +350,7 @@ export const DEFAULTS: Config = {
   midRollCtaSec: 4,
   teaserAtSec: 10,
   teaserSec: 5,
+  explainMovesSec: null,
   nightlyRenderExport: true,
   nightlyMaxRenders: 1,
   nightlyNotifyUrl: "",
@@ -410,8 +419,14 @@ export function validateOverrides(raw: Record<string, unknown>): void {
       }
       continue;
     }
-    if (key === "midRollCtaAtSec" || key === "midRollCtaSec" || key === "teaserAtSec" || key === "teaserSec") {
-      const nullable = key === "midRollCtaAtSec" || key === "teaserAtSec";
+    if (
+      key === "midRollCtaAtSec" ||
+      key === "midRollCtaSec" ||
+      key === "teaserAtSec" ||
+      key === "teaserSec" ||
+      key === "explainMovesSec"
+    ) {
+      const nullable = key === "midRollCtaAtSec" || key === "teaserAtSec" || key === "explainMovesSec";
       if (!((nullable && value === null) || (typeof value === "number" && value >= 0 && value <= 3600))) {
         throw new Error(
           `${CONFIG_PATH}: "${key}" must be seconds from 0 to 3600${nullable ? ", or null" : ""}.`,

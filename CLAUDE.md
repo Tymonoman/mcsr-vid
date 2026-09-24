@@ -95,6 +95,16 @@ Almost nothing in the overlay moves, so the render is stills plus one strip (`sr
   the game is decided, and it names nobody. `death_spawnpoint` is the routine bed warp, not a
   death. A match led wire to wire, no death, no close split, gets no card (4 of 10 checked,
   24 Sept 2026); the mid-roll SUBSCRIBE wins an overlap.
+- **Explain the moves** (audit fix #3, 24 Sept 2026; `explainMovesSec`, Settings → Publishing,
+  default null = **off** — on changes what the nightly renders, the operator's call): the first
+  time either player reaches each of the six `MILESTONES` splits, the meta column shows the split
+  and why the runner is there ("BASTION · TRADING GOLD TO PIGLINS FOR ENDER PEARLS") for that many
+  seconds — two stills per card (`explainFramesOf`). The lines are `MOVE_LINES` in
+  `src/pipeline/explainMoves.ts`, written for the Minecraft player who has never watched a
+  speedrun and for YPP's reused-content review ("where you explain the moves"); they name nobody
+  and rows break at their `\n` (26 characters, three rows at most). A card that would share a
+  frame with the SUBSCRIBE line, the teaser or the card before waits for it; one that would then
+  reach the finish is dropped.
 - `overlay-timer.mp4` — the RTA column (480x346), the only thing rendered per frame.
 - `overlay-intro.webm` — the 7 s intro card.
 

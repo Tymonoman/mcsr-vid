@@ -115,6 +115,16 @@ export const SETTINGS: readonly SettingField[] = [
     nullable: true,
   },
   {
+    key: "explainMovesSec",
+    label: "Explain the moves (seconds on screen)",
+    help: "The first time either player reaches a split, the meta column says what it is for, in words for someone who has never watched a speedrun: BASTION, TRADING GOLD TO PIGLINS FOR ENDER PEARLS. Never who got there. The subscribe line and the teaser go first; a card waits for them. Empty shows none. Applies to the next render.",
+    kind: "int",
+    group: "Publishing",
+    min: 1,
+    max: 15,
+    nullable: true,
+  },
+  {
     key: "seriesPublishHourUtc",
     label: "Series publish hour (UTC)",
     help: "The slot a playoff series video takes, its own so it and the day's ranked match do not compete. 23:00 UTC is 19:00 on the US east coast.",
