@@ -34,15 +34,21 @@ export function yppThresholds(nowMs: number = Date.now()) {
   } as const;
 }
 
-interface YppSnapshot {
+export interface YppSnapshot {
   fetchedAt: string;
   subscribers: number;
   subscribersPer7d: number;
+  /** Number of days Analytics actually returned for the subscriber window. */
+  subscribersDays?: number;
   watchHours365d: number;
   watchHoursPer28d: number;
+  /** Number of days Analytics actually returned for the watch hours 28-day window. */
+  watchHoursDays?: number;
   /** Engaged Shorts views — what the gate counts. */
   shortsViews90d: number;
   shortsViewsPer28d: number;
+  /** Number of days Analytics actually returned for the Shorts 28-day window. */
+  shortsViewsDays?: number;
   /** Every Shorts play over the same 90 days, for the label only. */
   shortsRawViews90d: number;
   /** Public uploads in the last 90 days, or null when the count could not be read. */
@@ -90,7 +96,11 @@ export function projectYpp(s: YppSnapshot, nowMs: number = Date.now()): YppProgr
     windowDays: number,
     rollingDays?: number,
   ): YppGate => {
-    const ratePerDay = perWindow / windowDays;
+    // Analytics lags ~2–3 days, so the trailing days of the window are missing from the
+    // report. Dividing by the window's full calendar length treats those missing days as
+    // zero and dilutes the rate; dividing by the days Analytics actually returned gives
+    // the real daily rate.
+    const ratePerDay = windowDays > 0 ? perWindow / windowDays : 0;
     const left = Math.max(0, need - have);
     const out: YppGate = { have, need, ratePerDay, eta: null };
     if (rollingDays !== undefined) {
@@ -110,9 +120,9 @@ export function projectYpp(s: YppSnapshot, nowMs: number = Date.now()): YppProgr
   };
   const t = yppThresholds(nowMs);
   const tier = (need: { subscribers: number; watchHours: number; shortsViews: number }): YppTier => ({
-    subscribers: gate(s.subscribers, need.subscribers, s.subscribersPer7d, 7),
-    watchHours: gate(s.watchHours365d, need.watchHours, s.watchHoursPer28d, 28, 365),
-    shortsViews: gate(s.shortsViews90d, need.shortsViews, s.shortsViewsPer28d, 28, 90),
+    subscribers: gate(s.subscribers, need.subscribers, s.subscribersPer7d, s.subscribersDays ?? 7),
+    watchHours: gate(s.watchHours365d, need.watchHours, s.watchHoursPer28d, s.watchHoursDays ?? 28, 365),
+    shortsViews: gate(s.shortsViews90d, need.shortsViews, s.shortsViewsPer28d, s.shortsViewsDays ?? 28, 90),
   });
   const expanded = { ...tier(t.expanded), uploads90d: { have: s.uploads90d, need: t.expanded.uploads90d } };
   return {
@@ -125,22 +135,22 @@ export function projectYpp(s: YppSnapshot, nowMs: number = Date.now()): YppProgr
 
 const ymd = (d: Date) => d.toISOString().slice(0, 10);
 
-async function analytics(token: string, params: Record<string, string>): Promise<number[][]> {
+async function analytics(token: string, params: Record<string, string>): Promise<(string | number)[][]> {
   const url = `https://youtubeanalytics.googleapis.com/v2/reports?${new URLSearchParams({ ids: "channel==MINE", ...params })}`;
   // A hung Analytics call would otherwise hold the YouTube panel (Upload, Adopt) for minutes.
   const res = await fetch(url, {
     headers: { authorization: `Bearer ${token}` },
     signal: AbortSignal.timeout(15_000),
   });
-  const json = (await res.json()) as { rows?: number[][]; error?: { message: string } };
+  const json = (await res.json()) as { rows?: (string | number)[][]; error?: { message: string } };
   if (!res.ok || json.error) throw new Error(`Analytics: ${json.error?.message ?? res.status}`);
   return json.rows ?? [];
 }
 
-const sum = (rows: number[][], col = 0) => rows.reduce((a, r) => a + (r[col] ?? 0), 0);
+const sum = (rows: (string | number)[][], col = 0) => rows.reduce((a, r) => a + Number(r[col] ?? 0), 0);
 
 /** Five requests: channel subscribers, hours over 365 and 28 days, Shorts views over 90 and 28 days. */
-async function fetchYppSnapshot(nowMs: number = Date.now()): Promise<YppSnapshot> {
+export async function fetchYppSnapshot(nowMs: number = Date.now()): Promise<YppSnapshot> {
   const token = await getAccessToken();
   const now = new Date(nowMs);
   const daysAgo = (n: number) => ymd(new Date(nowMs - n * 86_400_000));
@@ -148,36 +158,55 @@ async function fetchYppSnapshot(nowMs: number = Date.now()): Promise<YppSnapshot
     "/channels?part=statistics&mine=true",
   );
   const stats = channel.items?.[0]?.statistics;
+
+  // Analytics lags ~2–3 days, so the trailing days of the 7-day query window are missing.
+  // We query dimensions: "day" to measure the net rate over the days Analytics actually returned
+  // (the rows' dates) rather than dividing by 7 calendar days, which treats missing days as zero.
   const subs = await analytics(token, {
     startDate: daysAgo(7),
     endDate: ymd(now),
+    dimensions: "day",
     metrics: "subscribersGained,subscribersLost",
   });
+  const subsDays = new Set(subs.map((r) => String(r[0]))).size;
+
   // Both split by creatorContentType, whose values the API spells "videoOnDemand", "liveStream",
   // "shorts" and "creatorContentTypeUnspecified" — the panel compared against "SHORTS" and read
   // 0 Shorts views for weeks (3,146 on 23 Sept 2026), and counted Shorts minutes as watch hours.
-  const byType = (days: number, metric: string) =>
+  const byType = (days: number, metric: string, dimensions = "creatorContentType") =>
     analytics(token, {
       startDate: daysAgo(days),
       endDate: ymd(now),
       metrics: metric,
-      dimensions: "creatorContentType",
+      dimensions,
     });
-  const typed = (rows: number[][], keep: (type: string) => boolean, col = 1) =>
-    rows.filter((r) => keep(String(r[0]).toLowerCase())).reduce((a, r) => a + Number(r[col] ?? 0), 0);
+  const typed = (rows: (string | number)[][], keep: (type: string) => boolean, col = 1, typeCol = 0) =>
+    rows.filter((r) => keep(String(r[typeCol]).toLowerCase())).reduce((a, r) => a + Number(r[col] ?? 0), 0);
   const longForm = (type: string) => type === "videoondemand" || type === "livestream";
-  const h365 = typed(await byType(365, "estimatedMinutesWatched"), longForm);
-  const h28 = typed(await byType(28, "estimatedMinutesWatched"), longForm);
   const isShort = (type: string) => type === "shorts";
+
+  const h365 = typed(await byType(365, "estimatedMinutesWatched"), longForm);
+  // Rate queries include dimensions: "day,creatorContentType" to count actual dates returned.
+  const h28Rows = await byType(28, "estimatedMinutesWatched", "day,creatorContentType");
+  const h28Days = new Set(h28Rows.map((r) => String(r[0]))).size;
+  const h28 = typed(h28Rows, longForm, 2, 1);
+
   const shorts90 = await byType(90, "engagedViews,views");
+  const shorts28Rows = await byType(28, "engagedViews", "day,creatorContentType");
+  const shorts28Days = new Set(shorts28Rows.map((r) => String(r[0]))).size;
+  const shorts28 = typed(shorts28Rows, isShort, 2, 1);
+
   return {
     fetchedAt: now.toISOString(),
     subscribers: Number(stats?.subscriberCount ?? 0),
-    subscribersPer7d: sum(subs, 0) - sum(subs, 1),
+    subscribersPer7d: sum(subs, 1) - sum(subs, 2),
+    subscribersDays: subsDays,
     watchHours365d: h365 / 60,
     watchHoursPer28d: h28 / 60,
+    watchHoursDays: h28Days,
     shortsViews90d: typed(shorts90, isShort),
-    shortsViewsPer28d: typed(await byType(28, "engagedViews"), isShort),
+    shortsViewsPer28d: shorts28,
+    shortsViewsDays: shorts28Days,
     shortsRawViews90d: typed(shorts90, isShort, 2),
     uploads90d: await publicUploads90d(nowMs),
   };
@@ -185,22 +214,27 @@ async function fetchYppSnapshot(nowMs: number = Date.now()): Promise<YppSnapshot
 
 /**
  * Public uploads in the last 90 days, from the channel's uploads playlist (the expanded tier's
- * third gate). A scheduled video sits in the playlist before it is public, so publish times in
- * the future are left out. Null when it cannot be read — the gate then shows as unknown.
+ * third gate). The uploads gate counts only public videos (status.privacyStatus === "public");
+ * scheduled or private ones do not count toward YPP. Null when it cannot be read — the gate
+ * then shows as unknown.
  */
-async function publicUploads90d(nowMs: number): Promise<number | null> {
+export async function publicUploads90d(nowMs: number): Promise<number | null> {
   try {
     const ch = await dataApiGet<{
       items?: Array<{ contentDetails: { relatedPlaylists: { uploads: string } } }>;
     }>("/channels?part=contentDetails&mine=true");
     const uploads = ch.items?.[0]?.contentDetails.relatedPlaylists.uploads;
     if (!uploads) return null;
-    const list = await dataApiGet<{ items?: Array<{ contentDetails: { videoPublishedAt?: string } }> }>(
-      `/playlistItems?part=contentDetails&maxResults=50&playlistId=${uploads}`,
-    );
+    const list = await dataApiGet<{
+      items?: Array<{
+        contentDetails: { videoPublishedAt?: string };
+        status?: { privacyStatus?: string };
+      }>;
+    }>(`/playlistItems?part=contentDetails,status&maxResults=50&playlistId=${uploads}`);
     const from = nowMs - 90 * 86_400_000;
     return (list.items ?? []).filter((i) => {
-      const at = Date.parse(i.contentDetails.videoPublishedAt ?? "");
+      if (i.status?.privacyStatus !== "public") return false;
+      const at = Date.parse(i.contentDetails?.videoPublishedAt ?? "");
       return Number.isFinite(at) && at >= from && at <= nowMs;
     }).length;
   } catch {
