@@ -275,6 +275,7 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
 - **Upload** sends `match-<id>.tags.txt` and refuses a title still containing `<HOOK>`; it adds
   the video to the season playlist (`PLHG-jSA-dWDo`), a per-matchup and a per-player playlist
   (`src/youtube/youtube.ts`; ids remembered per process because YouTube's list is eventually consistent).
+  A Short joins none (the 24 Sept audit found 8 in the season playlist, between the replays).
   A matchup playlist is created on a pair's *second* video, with the first added alongside
   (22 of 28 playlists held one video on 22 Sept 2026). The Season 11 playoffs playlist exists
   (`PLBtNy46ii7uU`). A Short's description gains "the whole match: https://youtu.be/<id>" at

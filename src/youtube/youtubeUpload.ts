@@ -322,7 +322,8 @@ async function startUpload(matchId: number, req: UploadRequest, send: typeof upl
  * Every playlist a match video joins, as [title, description]. The one place that decides, for
  * the dashboard upload, the nightly's and "Finish on YouTube".
  *
- * A Short joins the season playlist only. The matchup playlist is for the long-form: a rematch is
+ * A Short joins no playlists: a viewer binge-watching the season hits a 30-second vertical clip
+ * between 10-minute replays otherwise. The matchup playlist is for the long-form: a rematch is
  * the strongest series signal this channel has — it is already what the best hook chips say
  * ("Rematch: doogile leads 2-1") — and a playlist is how a viewer who liked one finds the rest;
  * the per-player one is the link a runner shares. Both are skipped when the nicknames are the
@@ -339,11 +340,12 @@ export const playlistTitlesFor = (
   kind: UploadKind,
   playoff: { season: number } | null = null,
 ): Array<[title: string, description: string]> => {
+  if (kind === "short") return [];
   const { leftNickname: l, rightNickname: r } = match;
   const season: Array<[string, string]> = config.youtubePlaylistTitle
     ? [[config.youtubePlaylistTitle, SEASON_PLAYLIST_DESCRIPTION]]
     : [];
-  if (kind === "short" || l === "?" || r === "?") return season;
+  if (l === "?" || r === "?") return season;
   return [
     ...season,
     playoff
@@ -376,8 +378,8 @@ async function earlierVideoOfPair(
  * What a video needs after it exists on the channel: the chosen thumbnail, its playlists, the
  * first comment and its tags. The same four steps for a dashboard upload and a Studio one, each reported
  * rather than thrown — the video is up, and a rejected thumbnail must not read as a failed
- * upload. Written into the record so the panel can say what is still missing. A Short gets the
- * season playlist only: no custom thumbnail (Shorts show a frame) and no comment.
+ * upload. Written into the record so the panel can say what is still missing. A Short gets no
+ * playlist, no custom thumbnail (Shorts show a frame) and no comment.
  *
  * Idempotent through that record, which is why it is read first: a step that already answered
  * `null` is done and is skipped. Three of the four are writes to the live channel that only a
