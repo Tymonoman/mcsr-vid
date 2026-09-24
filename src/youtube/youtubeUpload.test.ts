@@ -51,10 +51,10 @@ try {
     ],
   );
 
-  // A Short is a pointer at the long-form, not a second entry in the series.
+  // A Short joins no playlists: a pointer at the long-form, not an entry in a binge playlist.
   assert.deepEqual(
     playlistTitlesFor(match, "short").map(([t]) => t),
-    ["MCSR Replayoffs · Season 11"],
+    [],
   );
 
   // "?" is what matchStatusFor degrades to with the MCSR API down. A public playlist called
@@ -79,15 +79,15 @@ try {
   );
   assert.ok(!playoffTitles.includes("doogile vs Feinberg · MCSR Ranked"), "not both");
   assert.equal(playoffTitles.length, 4);
-  // A Short of a playoff game is still season-only.
+  // A Short of a playoff game joins none either.
   assert.deepEqual(
     playlistTitlesFor(match, "short", { season: 11 }).map(([t]) => t),
-    ["MCSR Replayoffs · Season 11"],
+    [],
   );
 
   // No season playlist configured turns the step off rather than creating one called "".
   config.youtubePlaylistTitle = "";
-  assert.deepEqual(playlistTitlesFor(match, "short"), []);
+  assert.deepEqual(playlistTitlesFor({ leftNickname: "?", rightNickname: "?" }, "video"), []);
   config.youtubePlaylistTitle = "MCSR Replayoffs · Season 11";
 
   /* --- The videoPath escape hatch ------------------------------------------------------------ */
