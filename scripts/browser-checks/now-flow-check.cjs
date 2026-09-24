@@ -311,13 +311,16 @@ const plan = (id, extra = {}) => ({
         },
       )
       .catch(() => {});
+    // Read the label before the clipboard: pasting it back takes a moment on a busy box, and the
+    // button returns to "Copy" after 2 s (a flake on 24 Sept, with the copy itself correct).
+    const copyLabel = await page.textContent(`${fold} [data-act="copy-log"]`);
     const copied = await readClipboard(page);
     check(
       "Copy puts every line, with its detail, on the clipboard",
       /INFO \[upload-video\] uploading final\.mp4/.test(copied) && /"reason": "quotaExceeded"/.test(copied),
       copied.slice(0, 160),
     );
-    check("and says so", /Copied/.test(await page.textContent(`${fold} [data-act="copy-log"]`)));
+    check("and says so", /Copied/.test(copyLabel), copyLabel);
     await page.click('#now .step[data-step="videoup"] [data-act="retry"]');
     await page.waitForTimeout(500);
     check(
