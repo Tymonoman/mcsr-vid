@@ -65,7 +65,7 @@ import { saveSettings, settingsPayload } from "./settings.js";
 import { handleYoutubeRoute, uploadRunning } from "./youtubeRoutes.js";
 import { handleSyncRoute } from "./syncRoutes.js";
 import { readMeta } from "./matchMeta.js";
-import { PINNED_COMMENT, readIfPresent, readUpload } from "../youtube/youtubeStore.js";
+import { pinnedComment, readIfPresent, readUpload } from "../youtube/youtubeStore.js";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const ROOT = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
@@ -543,7 +543,7 @@ const server = createServer(async (req, res) => {
         players: [entry.leftNickname ?? null, entry.rightNickname ?? null],
         // The same line "Finish on YouTube" posts (src/youtube/youtubeUpload.ts), so the paste and the
         // API call cannot say two different things.
-        pinnedComment: PINNED_COMMENT,
+        pinnedComment: pinnedComment(),
         // The slot to schedule for, so the morning's paste into Studio carries a time too —
         // and the first free one, not the same time every match ready this morning would show.
         publishAt: nextPublishSlot(

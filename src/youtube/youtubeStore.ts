@@ -5,7 +5,7 @@
 import { existsSync, readdirSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { matchDir } from "../config.js";
+import { config, matchDir } from "../config.js";
 import { listProcessedMatchIds } from "../dashboard/matchStatus.js";
 import { readManifest } from "../thumbnails/thumbnailVariants.js";
 import { HOOK_PLACEHOLDER, metaPaths } from "../pipeline/title.js";
@@ -123,10 +123,14 @@ export async function uploadTextFor(
 /**
  * The first comment on a match video, which the operator pins in Studio (pinning has no API).
  * The publish kit shows the same line. What the video is and where to report a sync slip, in
- * the operator's own voice; no question, no subscribe ask, and never the winner.
+ * the operator's own voice; no question, no subscribe ask, and never the winner; the tip-jar line
+ * follows supportUrl like the descriptions.
  */
-export const PINNED_COMMENT =
-  "both povs are the players own streams, synced on the countdown. if the timer looks off anywhere drop the timestamp here and ill fix it";
+export function pinnedComment(supportUrl = config.supportUrl): string {
+  const sentence =
+    "both povs are the players own streams, synced on the countdown. if the timer looks off anywhere drop the timestamp here and ill fix it";
+  return supportUrl ? `${sentence}\ntip jar: ${supportUrl}` : sentence;
+}
 
 /**
  * The match whose record already names this video id, across BOTH kinds, or null.
