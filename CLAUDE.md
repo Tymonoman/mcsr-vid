@@ -292,20 +292,25 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   and the Short 18 h later (`"private"`: no publish time; `"off"`: the chain stops after the
   render). The nightly itself never uploads any more. Still not writable from the Settings tab.
 - **A playoff game's thumbnails can carry the tournament** (`playoffThumbnailStyle`, in the
-  Settings tab; `remotion/Thumbnail.tsx` `playoff`): "bracket" puts the round in the band, the
-  seed where the rating was and "Best of 5" under the VS; "trophy" grows the band for a gold
-  PLAYOFFS wordmark and frames the body. Default "plain" — the operator picks from the renders
-  in the 22 Sept report. A ranked match is never framed. **Not wired yet**: nothing in
+  Settings tab; `remotion/Thumbnail.tsx` `playoff`): "bracket" puts the round in the band and
+  "Best of 5" under the VS; "trophy" grows the band for a gold PLAYOFFS wordmark over the round
+  and the series length, and frames the body. The plates keep the name, never the seed. Default
+  "plain" — the operator picks from the renders in the 22 Sept report. A ranked match is never framed. **Not wired yet**: nothing in
   `computeThumbnailProps` sets `playoff`, so the setting changes no render today; wire it when
   the operator picks a style.
-- **Thumbnails are plain poses, no text** (`src/thumbnails/thumbnailVariants.ts`): four pairs from
-  `thumbnailVariants`, the first (`walking`/`crossed`) is the auto default, `default`/`default`
-  is both players straight on. The operator took the text off on 18 Sept 2026, and the hooked
-  twins, their render path and `POST /api/thumbnails/:id/rerender` were deleted on 24 Sept; a
-  manifest from before then still carries `hookText` and `-hook` records, which `readManifest`
-  reads, the panel hides, and `carriedHookText` hands to the title. The hook stays on the title
-  and the Short. The checklist's thumbnail pill ticks on
-  `chosenBy: "operator"` in the manifest — a rendered variant is not a chosen one.
+- **Thumbnails are two big figures and two names** (`remotion/Thumbnail.tsx`, the thumbnail section of
+  `remotion/overlay.source.css`; built from the 24 Sept 2026 study of @mcsrmatches,
+  `~/.claude/projects/-app/research/thumbs-2026-09-24/spec.md`): the renders cut at the knee on a mid-value crimson/warped
+  split, name-only plates at y 516–600 (`nickFontPx`: 56 px, 49 for 16 characters) so YouTube's
+  duration stamp never covers one, and the seed type framed above the VS (`seedType` from
+  `match.seedType`; null or unknown leaves the slot out; the art is agy/seed-icons' `SeedIcon`,
+  an empty frame until it merges) — no rating, seed, placement or other text. The four pose pairs
+  of `thumbnailVariants` still render, the first (`walking`/`crossed`) the auto default, and
+  `RIGHT_RENDER_SIDE` follows the CSS mirror of the right image. The hook text came off on 18 Sept
+  and its twins were deleted on 24 Sept: an older manifest's `hookText`/`-hook` records are read
+  by `readManifest`, hidden by the panel and handed to the title by `carriedHookText`. The
+  checklist's thumbnail pill ticks on `chosenBy: "operator"`, and `variantStillReusable` keeps a
+  PNG already on disk, so the layout reaches only matches rendered after it.
 - **`videos.insert` is the only call the audit gated** (`youtubeUploadEnabled`). `playlistItems.insert`,
   `thumbnails.set`, `commentThreads.insert` and `videos.update` are all inside the token's
   `force-ssl` scope, so **Finish on YouTube** repairs a Studio upload too: playlists, the pinned

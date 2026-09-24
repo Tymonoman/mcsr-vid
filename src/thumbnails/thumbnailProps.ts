@@ -73,6 +73,7 @@ export async function computeThumbnailProps(
         avatarUrl: rightAvatar.url,
       },
       headerLabel: match.tag ?? "Minecraft · Speedrunning · Ranked",
+      seedType: match.seedType,
     },
     leftAvatar,
     rightAvatar,

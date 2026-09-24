@@ -85,6 +85,7 @@ const thumbnailDefaultProps: ThumbnailProps = {
     avatarUrl: "https://nmsr.nickac.dev/fullbody/5ee577fdc1af45d3a6fb3e086cc293fb",
   },
   headerLabel: "Minecraft · Speedrunning · Ranked",
+  seedType: "VILLAGE",
 };
 
 /* The board as the render passes it before 23 Sept 2026's fields; `npm run still --props` sets
