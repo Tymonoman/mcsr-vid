@@ -1345,11 +1345,13 @@ function nowSteps(plan, meta) {
       attach(
         {
           key: "pick",
-          status: "fail",
+          // attach() turns it red when a pick actually failed; a video already on the channel is
+          // simply not picked yet (the server does not spend a model watch on opening it).
+          status: "todo",
           name: "Pick",
-          sum: "no pick",
+          sum: "no pick yet",
           open: true,
-          body: `${againBtn}<div class="muted small">Or tick &ldquo;No Short for this one&rdquo; under Hooks: the video then goes out alone.</div>`,
+          body: `${shortLocked ? againBtn : button("pick-again", "Ask the model", "it watches the match, 1.5&ndash;5 min")}<div class="muted small">Or tick &ldquo;No Short for this one&rdquo; under Hooks: the video then goes out alone.</div>`,
         },
         "The picker failed",
         "An earlier pick failed",

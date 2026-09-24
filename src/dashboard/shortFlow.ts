@@ -580,8 +580,10 @@ function previewOf(matchId: number, f: Facts): ShortPlanResponse["preview"] {
 
 /**
  * `GET /api/shorts/plan/:id`. Opening an exported match with no pick queues one, so the backlog
- * fills in as it is looked at. The suggestions cost the match and both users (cached reads); a
- * failure there costs the suggestions, not the plan.
+ * fills in as it is looked at — unless its long-form is already on the channel: a Studio upload
+ * from before the Short flow would spend a whole model watch (80–140k tokens) on a Short nobody
+ * asked for, so there it waits for Pick. The suggestions cost the match and both users (cached
+ * reads); a failure there costs the suggestions, not the plan.
  */
 export async function shortPlan(matchId: number, opts: { queue?: boolean } = {}): Promise<ShortPlanResponse> {
   let f = await factsOf(matchId);
@@ -593,6 +595,7 @@ export async function shortPlan(matchId: number, opts: { queue?: boolean } = {})
     !f.pick &&
     !f.noShort &&
     !f.short &&
+    !f.video &&
     !pickActivity(matchId) &&
     match &&
     !seriesGame
