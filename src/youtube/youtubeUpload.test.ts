@@ -11,6 +11,7 @@ import {
   explainUploadError,
   playlistTitlesFor,
   retryFailedPlaylists,
+  retryPendingComments,
   SHORT_DELAY_MS,
 } from "./youtubeUpload.js";
 import { readShortLog, stepActivity } from "../shorts/shortLog.js";
@@ -405,7 +406,7 @@ try {
       "OK: YouTube's failures — the sign-in, the quota, the limit, the time, the network — in words",
     );
   }
-  const { writeUpload } = await import("./youtubeStore.js");
+  const { readUpload, writeUpload } = await import("./youtubeStore.js");
   const record = {
     videoId: "vidX",
     uploadedAt: "2026-09-08T19:00:00Z",
@@ -545,6 +546,132 @@ try {
     return { playlists: null };
   });
   assert.deepEqual(pressed, [`${matchId}/video/vidX`], "only the failed step is pressed again");
+
+  // --- Comment retry on the nightly tick ---------------------------------------------------
+  // A scheduled record past its publishAt gets one comment; a second tick posts nothing;
+  // a still-private video is skipped; a Short is never touched.
+  const pastPublishAt = "2026-09-08T19:00:00Z";
+
+  // 1. A scheduled record past its publishAt gets one comment.
+  livePrivacy = "public";
+  await writeUpload(matchId, {
+    ...record,
+    publishAt: pastPublishAt,
+    privacyStatus: "private",
+    finished: { playlists: null, thumbnail: null, tags: null },
+  });
+  hits.length = 0;
+  await retryPendingComments();
+  assert.equal(
+    hits.filter((h) => h.includes("/commentThreads?")).length,
+    1,
+    "a scheduled record past its publishAt gets one comment",
+  );
+  const scheduledDone = await readUpload(matchId, "video");
+  assert.equal(scheduledDone?.finished?.comment, null, "comment recorded in ledger as done");
+
+  // 2. A second tick posts nothing.
+  hits.length = 0;
+  await retryPendingComments();
+  assert.equal(hits.filter((h) => h.includes("/commentThreads?")).length, 0, "a second tick posts nothing");
+
+  // 3. A still-private video is skipped.
+  livePrivacy = "private";
+  await writeUpload(matchId, {
+    ...record,
+    publishAt: pastPublishAt,
+    privacyStatus: "private",
+    finished: { playlists: null, thumbnail: null, tags: null },
+  });
+  hits.length = 0;
+  await retryPendingComments();
+  assert.equal(
+    hits.filter((h) => h.includes("/commentThreads?")).length,
+    0,
+    "a still-private video is skipped",
+  );
+  const stillPrivateRecord = await readUpload(matchId, "video");
+  assert.equal(
+    stillPrivateRecord?.finished?.comment,
+    undefined,
+    "still-private video has no comment recorded",
+  );
+
+  // 4. A Short is never touched.
+  await rm(path.join(dir, "youtube.json"));
+  await writeUpload(
+    matchId,
+    {
+      ...record,
+      publishAt: pastPublishAt,
+      privacyStatus: "private",
+      finished: {},
+    },
+    "short",
+  );
+  hits.length = 0;
+  await retryPendingComments();
+  assert.equal(hits.filter((h) => h.includes("/commentThreads?")).length, 0, "a Short is never commented on");
+  const shortRecord = await readUpload(matchId, "short");
+  assert.equal(shortRecord?.finished?.comment, undefined, "Short finish ledger is untouched");
+
+  // 5. A failed comment is retried and succeeds once public.
+  livePrivacy = "public";
+  await writeUpload(matchId, {
+    ...record,
+    publishAt: pastPublishAt,
+    privacyStatus: "private",
+    finished: { playlists: null, comment: "quota exceeded", tags: null },
+  });
+  hits.length = 0;
+  await retryPendingComments();
+  assert.equal(
+    hits.filter((h) => h.includes("/commentThreads?")).length,
+    1,
+    "a failed comment is retried and succeeds once public",
+  );
+  const retriedRecord = await readUpload(matchId, "video");
+  assert.equal(retriedRecord?.finished?.comment, null, "retried comment recorded as done");
+
+  // A series' record sits in every game's folder with one videoId: one comment for the video,
+  // and none once any folder's ledger has it (24 Sept: the six live long-forms, two of them series).
+  const game2 = path.join(media, String(matchId + 1));
+  await mkdir(game2, { recursive: true });
+  await writeUpload(matchId, {
+    ...record,
+    publishAt: pastPublishAt,
+    privacyStatus: "private",
+    finished: { comment: null },
+  });
+  await writeUpload(matchId + 1, {
+    ...record,
+    publishAt: pastPublishAt,
+    privacyStatus: "private",
+    finished: {},
+  });
+  hits.length = 0;
+  await retryPendingComments();
+  assert.equal(
+    hits.filter((h) => h.includes("/commentThreads?")).length,
+    0,
+    "a series game's copy is not commented again",
+  );
+  await writeUpload(matchId, { ...record, publishAt: pastPublishAt, privacyStatus: "private", finished: {} });
+  hits.length = 0;
+  await retryPendingComments();
+  assert.equal(
+    hits.filter((h) => h.includes("/commentThreads?")).length,
+    1,
+    "one comment for the video, not one per game",
+  );
+  // A public upload with no publishAt is not this loop's: it got its comment at upload, or predates it.
+  await rm(game2, { recursive: true });
+  await writeUpload(matchId, { ...record, publishAt: null, privacyStatus: "public", finished: {} });
+  hits.length = 0;
+  await retryPendingComments();
+  assert.equal(hits.filter((h) => h.includes("/commentThreads?")).length, 0, "no publishAt, no retry");
+
+  console.log("OK: comment retry posts for public scheduled videos, skips private ones and Shorts");
 
   globalThis.fetch = realFetch;
   console.log("OK: the tags step adds what is missing without blanking the snippet");

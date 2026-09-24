@@ -555,3 +555,42 @@ export async function retryFailedPlaylists(finish: typeof finishOnYouTube = fini
     }
   }
 }
+
+/**
+ * The press that posts the first comment (with the tip jar) on a video uploaded
+ * private-and-scheduled once it goes public. The comment step cannot post while a video is
+ * private, so a scheduled video gets no comment at upload time. The nightly's tick runs this
+ * for every long-form video whose finish ledger has no comment yet and whose publish time is in
+ * the past (or which is public now). Shorts never get comments and are skipped. At most a handful
+ * per tick; failures are recorded and retried next tick like playlists. `finish` is the test's seam.
+ */
+export async function retryPendingComments(
+  finish: typeof finishOnYouTube = finishOnYouTube,
+  maxPerTick = 5,
+  nowMs = Date.now(),
+): Promise<void> {
+  // One video, one comment: a series' record is copied into every game's folder (the same
+  // videoId), so the ledgers are read per VIDEO and any folder that already has the comment
+  // settles it — finishing each game's folder posted the comment once per game.
+  const byVideo = new Map<string, { matchId: number; publishAt: string | null; done: boolean }>();
+  for (const matchId of listProcessedMatchIds()) {
+    const record = await readUpload(matchId, "video");
+    if (!record) continue;
+    const seen = byVideo.get(record.videoId);
+    const done = record.finished?.comment === null;
+    if (seen) seen.done ||= done;
+    else byVideo.set(record.videoId, { matchId, publishAt: record.publishAt ?? null, done });
+  }
+  let attempted = 0;
+  for (const [videoId, v] of byVideo) {
+    if (attempted >= maxPerTick) break;
+    // Only a scheduled upload whose time has come: its comment could not go up while it was
+    // private. A video uploaded public got its comment at upload; older ones are not this loop's.
+    const due =
+      v.publishAt !== null && !Number.isNaN(Date.parse(v.publishAt)) && Date.parse(v.publishAt) <= nowMs;
+    if (v.done || !due) continue;
+    attempted++;
+    const { comment } = await finish(v.matchId, videoId, "video");
+    console.error(`comment: #${v.matchId} ${comment === null ? "done" : (comment ?? "private")}`);
+  }
+}
