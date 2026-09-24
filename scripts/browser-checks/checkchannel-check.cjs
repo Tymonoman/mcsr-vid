@@ -61,7 +61,14 @@ const { launchFor } = require("./launch.cjs");
     });
     await page.route("**/api/matches", async (r) => {
       const d = await (await r.fetch()).json();
-      for (const m of d.matches) if (m.matchId === Number(id)) m.uploaded = true;
+      // The row's line reads the server's shortState (MatchRowShort) where it sends one.
+      for (const m of d.matches)
+        if (m.matchId === Number(id))
+          Object.assign(
+            m,
+            { uploaded: true },
+            m.shortState ? { shortState: "published", shortDetail: undefined } : {},
+          );
       return r.fulfill({ json: d });
     });
     const reqs = [];

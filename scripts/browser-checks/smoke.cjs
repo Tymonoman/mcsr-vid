@@ -45,10 +45,12 @@ const OUT = process.argv[3] || require("path").join(require("os").tmpdir(), "smo
         note("mob: back bar not visible on the match screen");
       if (await p.locator("#left").isVisible()) note("mob: sidebar still visible on the match screen");
     } else if (await p.locator("#backtolist").isVisible()) note("desk: back bar visible on desktop");
-    // Hook -> YouTube title sync. On a phone the groups are one at a time: the hook is in
-    // Package (the section bar switches to it).
-    if (await p.locator("#hook").count()) {
-      if (tag === "mob") await p.click("#detail .jump a[data-panel=package]");
+    // Every match opens on Now, the group the hook field is in; it is locked (disabled) once
+    // the video is on the channel. Nothing is saved: typing only repaints the kit.
+    if ((await p.getAttribute("#detail .jump a[aria-current]", "data-panel")) !== "now")
+      note(`${tag}: the match did not open on Now`);
+    // Visible too: a match whose hooks are saved has its Hooks step folded to one line.
+    if (await p.locator("#hook:enabled:visible").count()) {
       await p.fill("#hook", "WANNABE vs REAL GOAT");
       await p.waitForTimeout(500);
       const yt = await p.inputValue("#ytTitle").catch(() => null);

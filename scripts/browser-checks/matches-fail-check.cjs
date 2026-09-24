@@ -19,7 +19,7 @@ const { launchFor } = require("./launch.cjs");
   console.log("errors:", errors.length ? errors : "none");
   await browser.close();
   process.exit(
-    /Could not load matches: media dir unreadable/.test(list) && !/loading…/.test(sugg) && sugg.length > 40
+    /Could not load the list: media dir unreadable/.test(list) && !/loading…/.test(sugg) && sugg.length > 40
       ? 0
       : 1,
   );

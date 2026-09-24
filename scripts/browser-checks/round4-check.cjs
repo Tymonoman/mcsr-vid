@@ -1,6 +1,7 @@
 // The match screen after the strip-down: no third copy of the title, a title box without the
 // terminal's guidance, the after-the-upload pastes folded, no Chapters panel, no disabled Stop,
-// the Kdenlive project as a download, and a refused checklist toggle that stays on the page.
+// the Kdenlive project as a download, a refused checklist toggle that stays on the page, and no
+// candidate-moments list left over from before the model picked the Short.
 // Changes nothing: the only write it provokes (a publish toggle) is intercepted and refused.
 const { launchFor, readClipboard } = require("./launch.cjs");
 (async () => {
@@ -43,9 +44,14 @@ const { launchFor, readClipboard } = require("./launch.cjs");
     const folded = await page.$$eval("#publishkit details.after .kitlabel", (n) =>
       n.map((e) => e.textContent.trim()),
     );
+    // The Short's title exists once the Short is cut, which waits for the hooks now.
+    const kit = await page.evaluate(async (id) => (await fetch(`/api/publishkit/${id}`)).json(), id);
     check(
       "after-the-upload blocks are inside the fold",
-      ["Short title", "Pinned comment", "Community post"].every((l) => folded.includes(l)),
+      [...(kit.shortTitle ? ["Short title"] : []), "Pinned comment", "Community post"].every((l) =>
+        folded.includes(l),
+      ) &&
+        (!!kit.shortTitle || !folded.includes("Short title")),
       folded.join(" | "),
     );
     const open = await page.$eval("#publishkit details.after", (d) => d.open);
@@ -81,15 +87,9 @@ const { launchFor, readClipboard } = require("./launch.cjs");
     check("the refusal is inline", /read-only/.test(failText), failText);
     check("nothing blocked the page", dialogs.length === 0, dialogs.join(" | "));
 
-    // 8. the border token that used to fall through to a literal
-    const border = await page
-      .$eval(".moment:not(:first-child)", (e) => getComputedStyle(e).borderTopColor)
-      .catch(() => "no moments");
-    check(
-      "moment border uses --panel-edge-light",
-      border === "rgb(60, 56, 68)" || border === "no moments",
-      border,
-    );
+    // 8. the Short panel's candidate list went with the model's pick (Now): no moments, no Cut
+    const retired = await page.$$("#short, .moment, #cuthere, #shorttitlecopy");
+    check("no moments list, no Cut buttons", retired.length === 0, `${retired.length} left`);
 
     check("no page errors", errors.length === 0, errors.join(" | "));
   } finally {
