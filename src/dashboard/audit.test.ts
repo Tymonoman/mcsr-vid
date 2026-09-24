@@ -24,6 +24,11 @@ assert.match(prompt, /doogile/);
 // The numbers matter: a reviewer that knows CTR was 1.09% can tie a weak hook to a weak click.
 assert.match(prompt, /views 1200, likes 88, comments 14/);
 assert.match(prompt, /click-through 1\.09%/);
+// With Analytics' numbers the reviewer reads engaged views first: most "views" are muted previews.
+assert.match(
+  buildAuditPrompt({ ...base, stats: { ...base.stats!, engagedViews: 455, minutesWatched: 1702.6 } }),
+  /engaged views 455 \(views counts muted feed previews too\), views 1200, minutes watched 1703, likes 88/,
+);
 // Every section the report is supposed to have.
 for (const section of ["Mistakes", "First 10 seconds", "Pacing", "Thumbnail and title", "Next upload"]) {
   assert.ok(prompt.includes(section), `prompt is missing the "${section}" section`);

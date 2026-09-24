@@ -29,7 +29,14 @@ export interface AuditInput {
   /** Left/right nicknames, so the reviewer knows who it is watching. */
   players: [string, string];
   /** Live numbers, when the API was reachable — an audit is more useful knowing how it did. */
-  stats?: { views: number; likes: number; comments: number } | null;
+  stats?: {
+    views: number;
+    likes: number;
+    comments: number;
+    /** From Analytics, when it answered: views counts the muted Browse/Search previews too. */
+    engagedViews?: number;
+    minutesWatched?: number;
+  } | null;
   /** Thumbnail impressions and click-through, when the Reporting job has a row for this video. */
   reach?: { impressions: number; ctr: number } | null;
 }
@@ -77,7 +84,7 @@ export function buildAuditPrompt(input: AuditInput): string {
   const url = `https://www.youtube.com/watch?v=${input.videoId}`;
   const numbers = [
     input.stats
-      ? `views ${input.stats.views}, likes ${input.stats.likes}, comments ${input.stats.comments}`
+      ? `${input.stats.engagedViews !== undefined ? `engaged views ${input.stats.engagedViews} (views counts muted feed previews too), ` : ""}views ${input.stats.views}, ${input.stats.minutesWatched !== undefined ? `minutes watched ${Math.round(input.stats.minutesWatched)}, ` : ""}likes ${input.stats.likes}, comments ${input.stats.comments}`
       : null,
     input.reach
       ? `thumbnail impressions ${input.reach.impressions}, click-through ${(input.reach.ctr * 100).toFixed(2)}%`

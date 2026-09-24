@@ -513,12 +513,17 @@
 }
 .stats {
   display: flex;
-  gap: 18px;
+  flex-wrap: wrap;
+  gap: 4px 18px;
   margin-bottom: 12px;
   font-size: 13px;
 }
 .stats b {
   color: var(--gold);
+}
+/* Five numbers since engaged views and hours joined: a phone wraps between them, not inside one. */
+.stats > span {
+  white-space: nowrap;
 }
 
 .comment {

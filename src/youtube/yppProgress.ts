@@ -12,6 +12,9 @@
  * count"), so hours are read per `creatorContentType` and the Shorts rows left out.
  * Rates are measured over the last 28 days for hours and Shorts, and the last 7 for subscribers
  * — subscribers move on each upload, hours accumulate.
+ * The Shorts gate counts engaged views: since the March 2025 change a Shorts "view" is every
+ * start or replay, and YouTube kept the old, watched-for-a-while count (the Analytics API's
+ * `engagedViews`) for eligibility. Raw views ride along for the label, 3–5x the engaged number.
  */
 import { describeError } from "../errorText.js";
 import { dataApiGet, getAccessToken, isConfigured } from "./youtube.js";
@@ -37,8 +40,11 @@ interface YppSnapshot {
   subscribersPer7d: number;
   watchHours365d: number;
   watchHoursPer28d: number;
+  /** Engaged Shorts views — what the gate counts. */
   shortsViews90d: number;
   shortsViewsPer28d: number;
+  /** Every Shorts play over the same 90 days, for the label only. */
+  shortsRawViews90d: number;
   /** Public uploads in the last 90 days, or null when the count could not be read. */
   uploads90d: number | null;
 }
@@ -67,6 +73,7 @@ interface YppTier {
 
 export interface YppProgress extends YppTier {
   fetchedAt: string;
+  shortsRawViews90d: number;
   /** The top-level gates are the expanded tier's, the channel's next target; both tiers here. */
   tiers: {
     expanded: YppTier & { uploads90d: { have: number | null; need: number } };
@@ -108,14 +115,23 @@ export function projectYpp(s: YppSnapshot, nowMs: number = Date.now()): YppProgr
     shortsViews: gate(s.shortsViews90d, need.shortsViews, s.shortsViewsPer28d, 28, 90),
   });
   const expanded = { ...tier(t.expanded), uploads90d: { have: s.uploads90d, need: t.expanded.uploads90d } };
-  return { fetchedAt: s.fetchedAt, ...tier(t.expanded), tiers: { expanded, full: tier(t.full) } };
+  return {
+    fetchedAt: s.fetchedAt,
+    shortsRawViews90d: s.shortsRawViews90d,
+    ...tier(t.expanded),
+    tiers: { expanded, full: tier(t.full) },
+  };
 }
 
 const ymd = (d: Date) => d.toISOString().slice(0, 10);
 
 async function analytics(token: string, params: Record<string, string>): Promise<number[][]> {
   const url = `https://youtubeanalytics.googleapis.com/v2/reports?${new URLSearchParams({ ids: "channel==MINE", ...params })}`;
-  const res = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
+  // A hung Analytics call would otherwise hold the YouTube panel (Upload, Adopt) for minutes.
+  const res = await fetch(url, {
+    headers: { authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(15_000),
+  });
   const json = (await res.json()) as { rows?: number[][]; error?: { message: string } };
   if (!res.ok || json.error) throw new Error(`Analytics: ${json.error?.message ?? res.status}`);
   return json.rows ?? [];
@@ -147,20 +163,22 @@ async function fetchYppSnapshot(nowMs: number = Date.now()): Promise<YppSnapshot
       metrics: metric,
       dimensions: "creatorContentType",
     });
-  const typed = (rows: number[][], keep: (type: string) => boolean) =>
-    rows.filter((r) => keep(String(r[0]).toLowerCase())).reduce((a, r) => a + Number(r[1] ?? 0), 0);
+  const typed = (rows: number[][], keep: (type: string) => boolean, col = 1) =>
+    rows.filter((r) => keep(String(r[0]).toLowerCase())).reduce((a, r) => a + Number(r[col] ?? 0), 0);
   const longForm = (type: string) => type === "videoondemand" || type === "livestream";
   const h365 = typed(await byType(365, "estimatedMinutesWatched"), longForm);
   const h28 = typed(await byType(28, "estimatedMinutesWatched"), longForm);
-  const shorts = async (days: number) => typed(await byType(days, "views"), (type) => type === "shorts");
+  const isShort = (type: string) => type === "shorts";
+  const shorts90 = await byType(90, "engagedViews,views");
   return {
     fetchedAt: now.toISOString(),
     subscribers: Number(stats?.subscriberCount ?? 0),
     subscribersPer7d: sum(subs, 0) - sum(subs, 1),
     watchHours365d: h365 / 60,
     watchHoursPer28d: h28 / 60,
-    shortsViews90d: await shorts(90),
-    shortsViewsPer28d: await shorts(28),
+    shortsViews90d: typed(shorts90, isShort),
+    shortsViewsPer28d: typed(await byType(28, "engagedViews"), isShort),
+    shortsRawViews90d: typed(shorts90, isShort, 2),
     uploads90d: await publicUploads90d(nowMs),
   };
 }
@@ -188,6 +206,75 @@ async function publicUploads90d(nowMs: number): Promise<number | null> {
   } catch {
     return null;
   }
+}
+
+/** Lifetime engaged views and minutes watched for one video, from the Analytics API. */
+export interface VideoEngagement {
+  engagedViews: number;
+  minutesWatched: number;
+}
+
+/**
+ * Every video's engaged views and minutes watched in one request (the top-videos report).
+ *
+ * The Data API's viewCount counts the muted autoplay previews Browse and Search start: engaged
+ * views were 38% of long-form views over 28 days (audit, 24 Sept 2026), and minutes watched
+ * track engaged views, not views. Analytics is about two days behind, so a new video has no row.
+ */
+export async function fetchVideoEngagement(
+  token: string,
+  nowMs: number = Date.now(),
+): Promise<Map<string, VideoEngagement>> {
+  // ponytail: top 200 by views is the report's cap; a channel past 200 videos needs paging here.
+  const rows = await analytics(token, {
+    startDate: "2025-01-01",
+    endDate: ymd(new Date(nowMs)),
+    dimensions: "video",
+    metrics: "views,engagedViews,estimatedMinutesWatched",
+    sort: "-views",
+    maxResults: "200",
+  });
+  return new Map(
+    rows.map((r) => [String(r[0]), { engagedViews: Number(r[2] ?? 0), minutesWatched: Number(r[3] ?? 0) }]),
+  );
+}
+
+const ENGAGEMENT_TTL_MS = 60 * 60 * 1000;
+const ENGAGEMENT_RETRY_MS = 5 * 60 * 1000;
+let engagement: { atMs: number; byVideo: Map<string, VideoEngagement> | null; error: string | null } = {
+  atMs: -Infinity,
+  byVideo: null,
+  error: null,
+};
+let engagementInflight: Promise<void> | null = null;
+
+/**
+ * The per-video engagement, cached an hour (five minutes after a failure). Never throws: a
+ * missing token or a spent quota is `error`, and the panel shows the old number with "n/a".
+ */
+export async function videoEngagement(
+  nowMs: number = Date.now(),
+): Promise<{ byVideo: Map<string, VideoEngagement> | null; error: string | null }> {
+  if (!isConfigured()) return { byVideo: null, error: "no YouTube token" };
+  const age = nowMs - engagement.atMs;
+  if (age < (engagement.error ? ENGAGEMENT_RETRY_MS : ENGAGEMENT_TTL_MS)) return engagement;
+  // Screens opened while the request is out share it rather than each firing their own.
+  engagementInflight ??= (async () => {
+    try {
+      engagement = {
+        atMs: nowMs,
+        byVideo: await fetchVideoEngagement(await getAccessToken(), nowMs),
+        error: null,
+      };
+    } catch (err) {
+      // Keep the last good numbers: an hour-old engaged count beats "n/a" after a blip.
+      engagement = { atMs: nowMs, byVideo: engagement.byVideo, error: describeError(err) };
+    } finally {
+      engagementInflight = null;
+    }
+  })();
+  await engagementInflight;
+  return engagement;
 }
 
 const REFRESH_MS = 6 * 60 * 60 * 1000;

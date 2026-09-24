@@ -48,7 +48,7 @@ async function loadYoutube(id, meta) {
   const mine = all.uploads.find((u) => u.matchId === id);
 
   if (mine) {
-    el.innerHTML = uploadedHtml(mine, all.statsError);
+    el.innerHTML = uploadedHtml(mine, all.statsError, all.engagementError);
     $("#loadcomments")?.addEventListener("click", () => loadComments(id));
     $("#runaudit")?.addEventListener("click", () => requestAudit(id));
     $("#ytFinish")?.addEventListener("click", (ev) => finishOnYouTube(id, meta, ev.currentTarget));
@@ -238,7 +238,26 @@ async function finishOnYouTube(id, meta, btn) {
   }
 }
 
-function uploadedHtml(u, statsError) {
+/**
+ * Engaged views first: the Data API's views count every muted Browse/Search preview (engaged
+ * was 38% of long-form views over 28 days, audit 24 Sept 2026). Analytics runs two days
+ * behind and can be unreachable, so the old number stays and "engaged n/a" says why on hover.
+ */
+function reachLine(s, e, engagementError) {
+  const hours = (m) => (m < 600 ? (m / 60).toFixed(1) : Math.round(m / 60).toLocaleString());
+  const views = s ? `<span><b>${s.views.toLocaleString()}</b> views</span>` : "";
+  if (!e) {
+    const why = engagementError ?? "no Analytics row yet — they land about two days after the day they cover";
+    return `${views}<span class="muted" title="${esc(why)}">engaged n/a</span>`;
+  }
+  return (
+    `<span title="views that were actually watched, not muted feed previews"><b>${e.engagedViews.toLocaleString()}</b> engaged</span>` +
+    views +
+    `<span><b>${hours(e.minutesWatched)}</b> h watched</span>`
+  );
+}
+
+function uploadedHtml(u, statsError, engagementError) {
   const s = u.stats;
   const scheduled = u.publishAt ? `scheduled for ${new Date(u.publishAt).toLocaleString()}` : u.privacyStatus;
   // What "Finish on YouTube" has done, per step; nothing yet reads as all four still to do.
@@ -285,11 +304,11 @@ function uploadedHtml(u, statsError) {
       ${
         s
           ? `<div class="stats">
-               <span><b>${s.views.toLocaleString()}</b> views</span>
+               ${reachLine(s, u.engagement, engagementError)}
                <span><b>${s.likes.toLocaleString()}</b> likes</span>
                <span><b>${s.comments.toLocaleString()}</b> comments</span>
              </div>`
-          : `<div class="scanline bad">${esc(statsError ?? "no stats")}</div>`
+          : `${u.engagement ? `<div class="stats">${reachLine(null, u.engagement, null)}</div>` : ""}<div class="scanline bad">${esc(statsError ?? "no stats")}</div>`
       }
       <div class="row">
         <button id="loadcomments" class="ghost">Unanswered comments</button>
@@ -449,7 +468,18 @@ function yppInner(ypp) {
     <div class="ypphead">Partner programme &middot; 500 subscribers and either 4,000 watch hours or 10M Shorts views</div>
     ${gate("Subscribers", p.subscribers, "", (r) => `+${(r * 7).toFixed(0)} / week`)}
     ${gate("Watch hours, last 365 days", p.watchHours, " h", (r) => `+${(r * 28).toFixed(0)} h / 28 days`)}
-    ${gate("Shorts views, last 90 days", p.shortsViews, "", (r) => (r > 0 ? `+${fmt(r * 28)} / 28 days` : "no Shorts published yet"))}
+    ${gate(
+      // YPP counts engaged Shorts views; a raw Shorts "view" is every start or replay.
+      `Shorts engaged views, last 90 days${p.shortsRawViews90d ? ` · ${fmt(p.shortsRawViews90d)} views` : ""}`,
+      p.shortsViews,
+      "",
+      (r) =>
+        r > 0
+          ? `+${fmt(r * 28)} / 28 days`
+          : p.shortsRawViews90d
+            ? "no engaged Shorts views in 28 days"
+            : "no Shorts published yet",
+    )}
     <div class="muted small">numbers as of ${esc(new Date(p.fetchedAt).toLocaleString())}; refreshed every six hours</div>
   </div>`;
 }

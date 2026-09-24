@@ -336,6 +336,12 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   videos are paired to matches by the `/matches/<id>` segment in the pasted description; the
   YouTube panel's "check the channel" link lists the channel at once. The manual `uploaded`
   tick is the fallback for a video with no match link.
+  **The panel's numbers lead with engaged views** ("412 engaged · 1,090 views · 31 h watched"):
+  62% of long-form views are muted Browse/Search previews (audit, 24 Sept 2026), so
+  `videoEngagement` (`src/youtube/yppProgress.ts`, one top-videos Analytics request cached an hour)
+  sits beside the Data API's views, "engaged n/a" when Analytics has no row or no answer, and the
+  YPP Shorts gate counts engaged views, which is what YouTube counts; the A/B tab shows
+  impressions and CTR, no views.
 - **Settings tab** (`src/dashboard/settings.ts`, `GET`/`PUT /api/settings`): the handful of config keys worth
   changing without an ssh session. It writes `mcsr-vid.config.json` atomically and applies to the
   live `config` object, so nothing needs a restart — `scheduleNightly` reads the hour from `config`
