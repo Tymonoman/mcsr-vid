@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { projectYpp, yppThresholds } from "./yppProgress.js";
+import { fetchVideoEngagement, projectYpp, yppThresholds } from "./yppProgress.js";
 
 const now = Date.UTC(2026, 8, 8);
 const base = {
@@ -10,6 +10,7 @@ const base = {
   watchHoursPer28d: 52,
   shortsViews90d: 0,
   shortsViewsPer28d: 0,
+  shortsRawViews90d: 3197,
   uploads90d: 20,
 };
 const p = projectYpp(base, now);
@@ -49,4 +50,50 @@ assert.equal(in2027.tiers.full.watchHours.need, 8000);
 assert.equal(in2027.tiers.full.shortsViews.need, 20_000_000);
 assert.equal(in2027.tiers.expanded.watchHours.need, 3000);
 assert.deepEqual(yppThresholds(Date.UTC(2027, 0, 31)).full.watchHours, 4000);
+// Raw Shorts views ride along for the label; the gate itself counts engaged views only.
+assert.equal(p.shortsRawViews90d, 3197);
+assert.equal(p.shortsViews.have, 0);
+
+// Per-video engagement: one top-videos request, rows keyed by video id. The fake answers the
+// way the Analytics API does — the dimension first, then the metrics in the order asked for.
+{
+  const realFetch = globalThis.fetch;
+  const asked: URL[] = [];
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    asked.push(new URL(String(input)));
+    return new Response(
+      JSON.stringify({
+        rows: [
+          ["FtJ-VEv6pgk", 6385, 2709, 12040],
+          ["opWF0000000", 1492, 1492, 3001.5],
+        ],
+      }),
+    );
+  }) as typeof fetch;
+  try {
+    const byVideo = await fetchVideoEngagement("tok", now);
+    assert.equal(asked.length, 1, "one request for every video, not one per video");
+    const q = asked[0].searchParams;
+    assert.equal(q.get("dimensions"), "video");
+    assert.equal(q.get("metrics"), "views,engagedViews,estimatedMinutesWatched");
+    assert.equal(q.get("ids"), "channel==MINE");
+    assert.equal(q.get("endDate"), "2026-09-08");
+    assert.deepEqual(byVideo.get("FtJ-VEv6pgk"), { engagedViews: 2709, minutesWatched: 12040 });
+    assert.deepEqual(byVideo.get("opWF0000000"), { engagedViews: 1492, minutesWatched: 3001.5 });
+    assert.equal(
+      byVideo.get("unknown"),
+      undefined,
+      "a video Analytics has no row for yet is absent, not zero",
+    );
+
+    // A spent quota is an error the caller turns into "engaged n/a", not a crash.
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ error: { message: "Quota exceeded" } }), {
+        status: 403,
+      })) as typeof fetch;
+    await assert.rejects(fetchVideoEngagement("tok", now), /Analytics: Quota exceeded/);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}
 console.log("yppProgress: all checks passed");

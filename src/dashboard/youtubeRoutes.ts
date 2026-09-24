@@ -42,7 +42,7 @@ import {
 } from "../youtube/youtubeStore.js";
 import { beginUpload, finishOnYouTube, uploadProgress } from "../youtube/youtubeUpload.js";
 import { HOOK_PLACEHOLDER } from "../pipeline/title.js";
-import { yppProgress } from "../youtube/yppProgress.js";
+import { videoEngagement, yppProgress } from "../youtube/yppProgress.js";
 
 export { uploadRunning } from "../youtube/youtubeUpload.js";
 
@@ -288,6 +288,7 @@ export async function handleYoutubeRoute(
     const status = await matchStatusFor(matchId);
     const [stats] = await videoStats([record.videoId]).catch(() => []);
     const reach = await reachFor(record.videoId);
+    const engaged = (await videoEngagement()).byVideo?.get(record.videoId) ?? null;
     ctx.json(
       res,
       202,
@@ -297,7 +298,15 @@ export async function handleYoutubeRoute(
         title: record.title,
         description: "",
         players: [status.leftNickname, status.rightNickname],
-        stats: stats ? { views: stats.views, likes: stats.likes, comments: stats.comments } : null,
+        stats: stats
+          ? {
+              views: stats.views,
+              likes: stats.likes,
+              comments: stats.comments,
+              engagedViews: engaged?.engagedViews,
+              minutesWatched: engaged?.minutesWatched,
+            }
+          : null,
         reach,
       }),
     );
@@ -477,21 +486,31 @@ function missingTagsFor(matchId: number, video: ChannelVideo | null): string[] |
 
 async function uploadsPayload() {
   const uploads = await knownUploads();
-  if (uploads.length === 0) return { uploads: [], statsError: null };
+  if (uploads.length === 0) return { uploads: [], statsError: null, engagementError: null };
 
+  // Engaged views and minutes watched sit beside the Data API's views: most of those views are
+  // muted Browse/Search previews. Cached, one Analytics request an hour; never throws.
+  const { byVideo, error: engagementError } = await videoEngagement();
+  const engagement = (videoId: string) => byVideo?.get(videoId) ?? null;
   try {
     const stats = await videoStats(uploads.map((u) => u.videoId));
     const byId = new Map(stats.map((s) => [s.videoId, s]));
     return {
-      uploads: uploads.map((u) => ({ ...u, stats: byId.get(u.videoId) ?? null })),
+      uploads: uploads.map((u) => ({
+        ...u,
+        stats: byId.get(u.videoId) ?? null,
+        engagement: engagement(u.videoId),
+      })),
       statsError: null,
+      engagementError,
     };
   } catch (err) {
     // The local record is still worth showing when the API is down — it is what tells you a
     // match was already published, which is the question you actually need answered.
     return {
-      uploads: uploads.map((u) => ({ ...u, stats: null })),
+      uploads: uploads.map((u) => ({ ...u, stats: null, engagement: engagement(u.videoId) })),
       statsError: describeError(err),
+      engagementError,
     };
   }
 }
