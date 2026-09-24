@@ -140,7 +140,9 @@ views brought 0 subscribers.
   the hooks based on previous ones"). The prompt shows the operator's own past saved hooks as style
   examples (the first ` | ` segment of every `match-<id>.title.edited.txt` beside a `youtube.json`,
   spoilers and "PLAYOFFS" left out, labelled as being about other players); each proposal passes
-  `hookProblem` or is dropped with the reason logged; `suggestions.title` lists them first.
+  `hookProblem` or is dropped with the reason logged; `suggestions.title` lists them first. The
+  operator's calls (24 Sept): the examples keep naming the players each hook was for, and when the
+  model's window is rejected its title hooks go with it — the heuristic fallback carries none.
 - **The Short's title** is `<hook> | <left> vs <right>` with `titleName` (Skycrab, lowkey), plus
   `#mcsr #minecraft` when it fits in 100 characters — the only Short with a player name in its
   title drew the search traffic.
