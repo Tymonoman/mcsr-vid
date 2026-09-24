@@ -1,6 +1,7 @@
 /**
- * Renders two thumbnails per pose pair — plain, and with the headline — so there is something
- * to A/B test later.
+ * Renders one thumbnail per pose pair, so there is something to A/B test. Plain poses only: the
+ * operator took the text off the thumbnails on 18 Sept 2026, and the hooked twins earlier
+ * matches carry on disk are still read (`hook` on a record) but never rendered again.
  *
  * The webpack bundle (src/pipeline/remotionBundle.ts) and the composition are resolved once; only
  * `renderStill` repeats per variant, so six variants cost well under six separate renders.
@@ -11,7 +12,7 @@
  */
 import { makeCancelSignal, renderStill, selectComposition } from "@remotion/renderer";
 import { existsSync } from "node:fs";
-import { copyFile, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { atomicOutput } from "../pipeline/atomicOutput.js";
 import { bundleOnce } from "../pipeline/remotionBundle.js";
@@ -24,7 +25,7 @@ import type { MatchInfo, UserDetails } from "../api/types.js";
 const VARIANTS_FILE = "thumbnail.json";
 
 interface VariantRecord {
-  /** `<leftPose>-<rightPose>`, plus `-hook` on the hooked twin; also the filename infix and the A/B grouping key. */
+  /** `<leftPose>-<rightPose>` (`-hook` on a legacy hooked twin); also the filename infix and the A/B grouping key. */
   key: string;
   leftPose: string;
   rightPose: string;
@@ -36,10 +37,9 @@ interface VariantRecord {
   leftProvider: AvatarProvider;
   rightProvider: AvatarProvider;
   /**
-   * Whether this variant was rendered with the headline. Every pair renders plain and, when
-   * there is a headline, as a hooked twin — the plain ones are the text-free control, the only
-   * way to answer "does text on the thumbnail lift CTR?", which pose alone never could.
-   * Backfilled by `readManifest` for sidecars written before the flag existed.
+   * Whether this variant was rendered with the headline: only ever true on a sidecar written
+   * before 18 Sept 2026, when every pair also rendered a hooked twin. Backfilled by
+   * `readManifest` for sidecars written before the flag existed.
    */
   hook: boolean;
   /** Basename, not an absolute path: mediaDir differs between the container and the host. */
@@ -85,39 +85,12 @@ export interface RenderVariantsArgs {
   userRight: UserDetails;
   outDir: string;
   poses: PosePair[];
-  /** Headline for every variant in this render; omitted or empty renders the plain header strip. */
-  hookText?: string;
   onProgress?: (p: ThumbnailProgress) => void;
   signal?: AbortSignal;
 }
 
-/** One render in the set: a pose pair, plain or carrying the headline. */
-export interface VariantSlot {
-  poses: PosePair;
-  hook: boolean;
-}
-
-/**
- * The renders one headline asks for: each pair plain, then its hooked twin. Pair by pair, plain
- * first, so the auto-chosen default is the first pair's plain render. No headline, no twins — a
- * hooked variant with nothing to say would be the plain one under a second name.
- */
-export function variantSlots(poses: PosePair[], hookText: string | undefined): VariantSlot[] {
-  const hooked = Boolean(hookText?.trim());
-  return poses.flatMap((p) =>
-    hooked
-      ? [
-          { poses: p, hook: false },
-          { poses: p, hook: true },
-        ]
-      : [{ poses: p, hook: false }],
-  );
-}
-
-export const variantKey = (poses: PosePair, hook = false): string =>
-  `${poses.left}-${poses.right}${hook ? "-hook" : ""}`;
-export const variantFile = (poses: PosePair, hook = false): string =>
-  `thumbnail.${variantKey(poses, hook)}.png`;
+export const variantKey = (poses: PosePair): string => `${poses.left}-${poses.right}`;
+export const variantFile = (poses: PosePair): string => `thumbnail.${variantKey(poses)}.png`;
 
 export function manifestPath(outDir: string): string {
   return path.join(outDir, VARIANTS_FILE);
@@ -164,29 +137,18 @@ export async function chooseVariant(outDir: string, key: string): Promise<Varian
 }
 
 /**
- * Whether a variant's PNG already on disk can stand for this render. The previous manifest says
- * what its stills carry: a hooked still under a different headline there, kept now, would be
- * recorded with text it never had. A plain still carries no text, so it is good whatever the
- * headline — unless the manifest recorded its key as hooked, which is the layout from before
- * the twins, where the un-suffixed file *was* the headline render. No manifest at all is an
- * aborted batch — resume it.
+ * Whether a variant's PNG already on disk can stand for this render. A plain still is good —
+ * unless the previous manifest recorded its key as hooked, which is the layout from before the
+ * twins, where the un-suffixed file *was* the headline render. No manifest at all is an aborted
+ * batch — resume it.
  */
-export function variantStillReusable(
-  previous: VariantsManifest | null,
-  poses: PosePair,
-  hook: boolean,
-  hookText: string | undefined,
-): boolean {
-  if (previous === null) return true;
-  if (!hook) return previous.variants.find((v) => v.key === variantKey(poses))?.hook !== true;
-  return (previous.hookText ?? "").trim() === (hookText ?? "").trim();
+export function variantStillReusable(previous: VariantsManifest | null, poses: PosePair): boolean {
+  return previous === null || previous.variants.find((v) => v.key === variantKey(poses))?.hook !== true;
 }
 
 /**
- * The headline a pipeline run renders with. A manifest is the committed choice — the operator's
- * "Re-render with hook", or the last run's — and a re-run (a pose added to the config, one PNG
- * lost) must keep it, or `variantStillReusable` would redo every hooked still under the auto
- * chip and the chosen headline would silently vanish. A manifest with no text is a deliberate
+ * The title hook a pipeline run writes. A manifest's headline is the committed choice from when
+ * thumbnails carried one, and a re-run keeps it; a manifest with no text is a deliberate
  * text-free render, kept too. Only a match with no manifest takes the chip.
  */
 export function carriedHookText(
@@ -235,40 +197,28 @@ export async function renderThumbnailVariants(args: RenderVariantsArgs): Promise
     const serveUrl = () =>
       (bundled ??= bundleOnce((percent) => args.onProgress?.({ phase: "bundling", percent })));
 
-    const slots = variantSlots(args.poses, args.hookText);
-    for (const [index, { poses, hook }] of slots.entries()) {
-      args.onProgress?.({ phase: "rendering", percent: Math.round((index / slots.length) * 100) });
+    for (const [index, poses] of args.poses.entries()) {
+      args.onProgress?.({ phase: "rendering", percent: Math.round((index / args.poses.length) * 100) });
 
-      // The plain render is the text-free control and its twin carries the headline, so the A/B
-      // set varies text as well as pose. `rerenderThumbnailVariants` routes back through here,
-      // which is why a re-render with a new hook leaves the plain ones as they are.
-      const hookText = hook ? args.hookText : undefined;
-      const computed = await computeThumbnailProps(
-        args.match,
-        args.userLeft,
-        args.userRight,
-        poses,
-        hookText,
-      );
+      const computed = await computeThumbnailProps(args.match, args.userLeft, args.userRight, poses);
       const renderProps = { ...computed.props };
-      const file = variantFile(poses, hook);
+      const file = variantFile(poses);
       const outPath = path.join(args.outDir, file);
 
       records.push({
-        key: variantKey(poses, hook),
+        key: variantKey(poses),
         leftPose: poses.left,
         rightPose: poses.right,
         leftProvider: computed.leftAvatar.provider,
         rightProvider: computed.rightAvatar.provider,
-        hook,
+        hook: false,
         file,
       });
 
       // Skip per variant, not per match: adding a fourth pose to the config should render only
       // the fourth, and a re-run after an aborted batch should not redo the ones that landed.
       // The manifest must still list it, which is why the record is pushed above this check.
-      // Only a PNG rendered with *this* text is reusable — see variantStillReusable.
-      if (existsSync(outPath) && variantStillReusable(previous, poses, hook, hookText)) continue;
+      if (existsSync(outPath) && variantStillReusable(previous, poses)) continue;
 
       const bundleUrl = await serveUrl();
       const composition = await selectComposition({
@@ -300,9 +250,9 @@ export async function renderThumbnailVariants(args: RenderVariantsArgs): Promise
     chosen,
     ...(chosenBy ? { chosenBy } : {}),
     variants: records,
-    hookText: args.hookText?.trim() ? args.hookText : null,
-    // Frozen alongside the headline, because a headline may quote it. Carried over with a kept
-    // choice so a re-render behind the same line does not re-read a rank that has since moved.
+    hookText: null,
+    // Frozen for the hooks that may quote it. Carried over with a kept choice so a re-render does
+    // not re-read a rank that has since moved.
     ranks:
       kept && previous?.ranks
         ? previous.ranks
@@ -317,21 +267,4 @@ export async function renderThumbnailVariants(args: RenderVariantsArgs): Promise
     path.join(args.outDir, "thumbnail.png"),
   );
   return manifest;
-}
-
-/**
- * Re-renders the hooked twins, typically because a human finally picked the headline. The plain
- * renders carry no text and are reused as they are.
- *
- * Deleting the old hooked files first is what makes it a re-render: `renderThumbnailVariants`
- * skips a still already on disk, and with an empty headline it lists no twins at all, which
- * would otherwise leave the old ones lying beside the manifest. Which variant is in use survives
- * by itself — the renderer keeps the previous manifest's `chosen` key whenever it is still in
- * the set, and re-copies it over `thumbnail.png`.
- */
-export async function rerenderThumbnailVariants(args: RenderVariantsArgs): Promise<VariantsManifest> {
-  await Promise.all(
-    args.poses.map((poses) => rm(path.join(args.outDir, variantFile(poses, true)), { force: true })),
-  );
-  return renderThumbnailVariants(args);
 }

@@ -1,12 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import {
-  distinctShortMoments,
-  leadChangeTimes,
-  pickShortMoment,
-  rankShortMoments,
-  SHORT_WINDOW_SEC,
-} from "./shortMoment.js";
+import { distinctShortMoments, leadChangeTimes, rankShortMoments, SHORT_WINDOW_SEC } from "./shortMoment.js";
 import type { MatchInfo } from "../api/types.js";
 
 const load = (id: number): MatchInfo => {
@@ -25,12 +19,12 @@ const optsFor = (m: MatchInfo) => ({
 // stamp its result card and stop on it (all three 30k+ reference Shorts do).
 //
 // The mid-run story is still found, not lost: the 9:08 stretch, where the lead flips and they die
-// 0.4s apart, is the best window that stops short of the end, and `--pick=1` is how the operator
-// takes it. Asserted on the shape of the window, not the clock.
+// 0.4s apart, is the best window that stops short of the end. Asserted on the shape of the
+// window, not the clock.
 {
   const match = load(12730175);
   const opts = optsFor(match);
-  const best = pickShortMoment(match, opts)!;
+  const best = rankShortMoments(match, opts)[0]!;
   assert.ok(best, "a match with events must yield a moment");
   assert.ok(
     best.endMs >= opts.runMs,
@@ -58,7 +52,7 @@ const optsFor = (m: MatchInfo) => ({
     timelines: [{ uuid: match.players[0]!.uuid, time: 120_000, type: "projectelo.timeline.blind_travel" }],
   };
   const opts = optsFor(drawn);
-  const best = pickShortMoment(drawn, opts)!;
+  const best = rankShortMoments(drawn, opts)[0]!;
   assert.ok(best, "a match that ends without a dragon must still yield a moment");
   assert.equal(best.endMs, opts.runMs, "the window must run to the end of the match");
   assert.match(best.reason, /ends on the finish/);
@@ -76,7 +70,7 @@ const optsFor = (m: MatchInfo) => ({
     ...match,
     timelines: [{ uuid: match.players[0]!.uuid, time: 200_000, type: "projectelo.timeline.dragon_death" }],
   };
-  const best = pickShortMoment(solo, optsFor(match))!;
+  const best = rankShortMoments(solo, optsFor(match))[0]!;
   const position = (200_000 - best.startMs) / (best.endMs - best.startMs);
   assert.ok(
     position >= 0.55 && position <= 0.6,
@@ -140,7 +134,7 @@ const optsFor = (m: MatchInfo) => ({
 {
   const match = load(12902901);
   const empty: MatchInfo = { ...match, timelines: [] };
-  assert.equal(pickShortMoment(empty, optsFor(match)), null);
+  assert.deepEqual(rankShortMoments(empty, optsFor(match)), []);
   const noise: MatchInfo = {
     ...match,
     timelines: [
@@ -148,7 +142,7 @@ const optsFor = (m: MatchInfo) => ({
       { uuid: match.players[0]!.uuid, time: 20_000, type: "story.smelt_iron" },
     ],
   };
-  assert.equal(pickShortMoment(noise, optsFor(match)), null, "unwatchable events must score nothing");
+  assert.deepEqual(rankShortMoments(noise, optsFor(match)), [], "unwatchable events must score nothing");
 }
 
 console.log("shortMoment: all checks passed");
@@ -169,8 +163,8 @@ console.log("shortMoment: all checks passed");
     ],
   };
   const opts = { ...optsFor(match), runMs: 500_000 };
-  const quiet = pickShortMoment(twin, opts)!;
-  const withoutChat = pickShortMoment(twin, { ...opts, chatAtSec: [] })!;
+  const quiet = rankShortMoments(twin, opts)[0]!;
+  const withoutChat = rankShortMoments(twin, { ...opts, chatAtSec: [] })[0]!;
   assert.equal(withoutChat.score, quiet.score, "an empty chat changes nothing");
 
   // Twelve messages in the ten seconds after the second event, one a minute otherwise.
@@ -178,7 +172,7 @@ console.log("shortMoment: all checks passed");
     ...Array.from({ length: 8 }, (_, i) => i * 60 + 30),
     ...Array.from({ length: 12 }, (_, i) => 302 + i),
   ];
-  const loud = pickShortMoment(twin, { ...opts, chatAtSec: chat })!;
+  const loud = rankShortMoments(twin, { ...opts, chatAtSec: chat })[0]!;
   assert.ok(
     loud.startMs < 300_000 && loud.endMs > 300_000,
     `the window should hold the event chat reacted to, got ${loud.startMs}-${loud.endMs}`,

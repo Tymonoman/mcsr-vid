@@ -84,12 +84,6 @@ export type ThumbnailProps = {
   /** Top category bar text, e.g. "MINECRAFT · SPEEDRUNNING · RANKED". */
   headerLabel: string;
   /**
-   * The headline the thumbnail is actually sold on — the same rivalry hook the title carries.
-   * When set it replaces `headerLabel` in the top band; when absent the thumbnail renders
-   * exactly as it always did, so already-published matches do not change under a re-render.
-   */
-  hookText?: string;
-  /**
    * A playoff series' framing, absent on a ranked match: the round in the band, the seed in the
    * nameplate where the rating is, the series length under the VS. `bracket` keeps the band its
    * usual height; `trophy` grows it for a gold PLAYOFFS wordmark and frames the body.

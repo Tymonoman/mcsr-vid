@@ -12,7 +12,7 @@ import {
   STATIC_COL_WIDTH,
   TOP_BAND_HEIGHT,
 } from "./layout.js";
-import type { ChatPanelProps, OverlayProps, ShortProps, ThumbnailProps } from "./types.js";
+import type { ChatPanelProps, OverlayProps, ThumbnailProps } from "./types.js";
 import { infumeChat, INFUME_CHAT_NICKNAME } from "./fixtures/chatInfume.js";
 
 const defaultProps: OverlayProps = {

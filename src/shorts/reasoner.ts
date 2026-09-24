@@ -9,9 +9,9 @@ import { config } from "../config.js";
  * --output-format json`) is a black box that takes a prompt and prints text. Everything about
  * what it prints is handled defensively: the CLI's own envelope is unwrapped when there is one,
  * the first balanced `{...}` is taken from whatever remains, and every failure — not configured,
- * not installed, not signed in, non-zero exit, timeout, no JSON — is a reason (`runReasoner`) or
- * a `null` and one stderr line (`askReasoner`). The caller always has a heuristic answer of its
- * own, so nothing here may throw or stall a render; only an abort the caller asked for rejects.
+ * not installed, not signed in, non-zero exit, timeout, no JSON — is a reason (`runReasoner`).
+ * The caller always has a heuristic answer of its own, so nothing here may throw or stall a
+ * render; only an abort the caller asked for rejects.
  */
 
 // The command inherits this process's environment, and an API key is how `agy` authenticates
@@ -26,14 +26,6 @@ if (existsSync(".env")) {
     // A malformed .env means "no key": the command will fail its own way and the caller falls
     // back to the heuristic, which is what happens when it is not configured at all.
   }
-}
-
-const PREAMBLE =
-  "Answer with a single JSON object and nothing else: no prose before or after it, no code fence.";
-
-/** Exactly what the command is sent, so the CLI can print it for the operator to try by hand. */
-export function reasonerPrompt(task: string, input: unknown): string {
-  return `${PREAMBLE}\n\n${task.trim()}\n\nInput:\n${JSON.stringify(input, null, 2)}\n`;
 }
 
 export const reasonerConfigured = (): boolean => (config.reasonerCommand?.length ?? 0) > 0;
@@ -256,16 +248,4 @@ export async function runReasoner(prompt: string, opts: ReasonerOptions = {}): P
     if (!rest.includes("{prompt}")) proc.stdin.write(prompt);
     proc.stdin.end();
   });
-}
-
-/** `runReasoner` on the task and its input: the answer, or null and one stderr line saying why. */
-export async function askReasoner(
-  task: string,
-  input: unknown,
-  opts: ReasonerOptions = {},
-): Promise<unknown> {
-  const reply = await runReasoner(reasonerPrompt(task, input), opts);
-  if (reply.ok) return reply.answer;
-  console.error(`reasoner: ${reply.error}`);
-  return null;
 }

@@ -19,9 +19,6 @@ const dir = await mkdtemp(path.join(tmpdir(), "mcsr-variants-"));
 // pick a variant — so all three have to agree.
 assert.equal(variantKey({ left: "walking", right: "crossed" }), "walking-crossed");
 assert.equal(variantFile({ left: "walking", right: "crossed" }), "thumbnail.walking-crossed.png");
-// The hooked twin is the same pair under a suffix, so the pose is still readable off the key.
-assert.equal(variantKey({ left: "walking", right: "crossed" }, true), "walking-crossed-hook");
-assert.equal(variantFile({ left: "walking", right: "crossed" }, true), "thumbnail.walking-crossed-hook.png");
 
 // atomicOutput derives its temp name with path.extname, which takes only the LAST extension,
 // so a multi-dot variant name still renders to a .png that Remotion recognises.
@@ -143,10 +140,9 @@ assert.equal(
   "a legacy posed manifest",
 );
 
-// Every pair renders plain and with the headline: the plain ones are the text-free control --
-// the only variable in the A/B set that pose cannot supply, since pose barely moves clicks. All
-// six PNGs already exist, so the renderer skips the stills and what is under test is the set it
-// decides on and what it records.
+// One plain render per pair (the text came off the thumbnails on 18 Sept 2026). All three PNGs
+// already exist, so the renderer skips the stills and what is under test is the set it decides
+// on and what it records.
 const pairs = [
   { left: "walking", right: "crossed" },
   { left: "cheering", right: "relaxing" },
@@ -154,7 +150,6 @@ const pairs = [
 ];
 for (const p of pairs) {
   await writeFile(path.join(dir, variantFile(p)), `${p.left} plain`, "utf8");
-  await writeFile(path.join(dir, variantFile(p, true)), `${p.left} hooked`, "utf8");
 }
 const renderArgs = {
   match: { tag: null, changes: [] } as unknown as MatchInfo,
@@ -163,52 +158,36 @@ const renderArgs = {
   outDir: dir,
   poses: pairs,
 };
-const rendered = await renderThumbnailVariants({ ...renderArgs, hookText: "WANNABE vs REAL GOAT" });
-// Pair by pair, plain before hooked, so the first record -- the auto default -- is the first
-// pair's plain render, which is the look every match published so far has.
+// The manifest last written to `dir` is the truncated one above, which reads as none: every
+// still on disk is reusable.
+const rendered = await renderThumbnailVariants(renderArgs);
+// The first record -- the auto default -- is the first pair's, the look every match published so
+// far has.
 assert.deepEqual(
   rendered.variants.map((v) => [v.key, v.file, v.hook]),
   [
     ["walking-crossed", "thumbnail.walking-crossed.png", false],
-    ["walking-crossed-hook", "thumbnail.walking-crossed-hook.png", true],
     ["cheering-relaxing", "thumbnail.cheering-relaxing.png", false],
-    ["cheering-relaxing-hook", "thumbnail.cheering-relaxing-hook.png", true],
     ["marching-crouching", "thumbnail.marching-crouching.png", false],
-    ["marching-crouching-hook", "thumbnail.marching-crouching-hook.png", true],
   ],
 );
 assert.equal(rendered.chosen, "walking-crossed");
 assert.equal(rendered.chosenBy, "auto");
 assert.equal(await readFile(path.join(dir, "thumbnail.png"), "utf8"), "walking plain");
-// The headline is recorded at manifest level: the plain ones opt out of it, it is not absent
-// from the render, and the dashboard's "Re-render with hook" box is prefilled from this.
-assert.equal(rendered.hookText, "WANNABE vs REAL GOAT");
-// The rank travels with the headline. A hook can name it ("#9 vs #3"), the headline is frozen
-// here, and the API has no match-time rank to read back — so a Short re-rendered weeks later put
-// the frozen line over live plates that disagreed with it.
+assert.equal(rendered.hookText, null);
+// The rank is frozen at render time. A hook can name it ("#9 vs #3") and the API has no
+// match-time rank to read back — so a Short re-rendered weeks later put a frozen line over live
+// plates that disagreed with it.
 assert.deepEqual(
   rendered.ranks,
   { "u-left": null, "u-right": null },
   "one entry per player by uuid, null where the user record has no rank",
 );
-// It survives a reload the same way, rather than being backfilled to the manifest's headline.
+// It survives a reload the same way, rather than being backfilled from a headline.
 assert.deepEqual(
   (await readManifest(dir))?.variants.map((v) => v.hook),
-  [false, true, false, true, false, true],
+  [false, false, false],
 );
-
-// No headline, no twins: a hooked variant with nothing to say would be the plain one under a
-// second name, and the strip would show six tiles of three images.
-const plainOnly = await renderThumbnailVariants(renderArgs);
-assert.deepEqual(
-  plainOnly.variants.map((v) => [v.key, v.hook]),
-  [
-    ["walking-crossed", false],
-    ["cheering-relaxing", false],
-    ["marching-crouching", false],
-  ],
-);
-assert.equal(plainOnly.hookText, null);
 
 // A choice made before the twins existed, when the un-suffixed key carried the headline, means
 // the hooked twin now. Checked on the pure function: the render that follows such a manifest
@@ -226,46 +205,36 @@ assert.equal(plainOnly.hookText, null);
 await rm(dir, { recursive: true, force: true });
 console.log("thumbnailVariants: all checks passed");
 
-// --- A still is reused only when it was rendered with this headline -----------------------------
+// --- A still on disk is reused unless the old manifest filed it as hooked -----------------------
 {
-  const { variantStillReusable } = await import("./thumbnailVariants.js");
+  const { variantStillReusable, carriedHookText } = await import("./thumbnailVariants.js");
   const wc = { left: "walking", right: "crossed" };
   const prev = { chosen: null, hookText: "OLD", variants: [] } as unknown as VariantsManifest;
-  assert.equal(variantStillReusable(prev, wc, true, "OLD"), true, "same text: keep");
-  assert.equal(variantStillReusable(prev, wc, true, "NEW"), false, "new text: render again");
-  assert.equal(variantStillReusable(prev, wc, true, "  OLD "), true, "whitespace is not a change");
-  assert.equal(variantStillReusable(null, wc, true, "NEW"), true, "no manifest: an aborted batch, resume it");
-  assert.equal(variantStillReusable(prev, wc, false, "NEW"), true, "a plain still carries no text");
+  assert.equal(variantStillReusable(prev, wc), true, "a plain still carries no text");
+  assert.equal(variantStillReusable(null, wc), true, "no manifest: an aborted batch, resume it");
   // Before the twins, the un-suffixed file was the headline render; a manifest that says so is
   // the one case a plain still cannot be kept, or the migration would file text under "plain".
   const preTwins = { ...prev, variants: [{ key: "walking-crossed", hook: true }] } as VariantsManifest;
   assert.equal(
-    variantStillReusable(preTwins, wc, false, "OLD"),
+    variantStillReusable(preTwins, wc),
     false,
     "a plain-named still the old manifest recorded as hooked is not plain",
   );
   assert.equal(
-    variantStillReusable(preTwins, { left: "marching", right: "crouching" }, false, "OLD"),
+    variantStillReusable(preTwins, { left: "marching", right: "crouching" }),
     true,
     "a pair the old manifest never recorded as hooked keeps its still",
   );
-  console.log("OK: variant stills are reused only under the same headline");
+  console.log("OK: variant stills are reused unless the old manifest filed them as hooked");
 
-  // A re-run keeps the committed headline: the pipeline renders with the manifest's text when
-  // there is one, and the chip only when there is none — else adding a pose to the config would
-  // re-render the operator's "Rematch: doogile leads 2-1" away as "#3 vs #21".
-  const { carriedHookText } = await import("./thumbnailVariants.js");
+  // A re-run keeps the committed headline for the title: the manifest's text when there is one,
+  // and the chip only when there is none.
   assert.equal(carriedHookText(prev, "#3 vs #21"), "OLD", "manifest text wins over the chip");
   assert.equal(carriedHookText(null, "#3 vs #21"), "#3 vs #21", "no manifest: the chip");
   assert.equal(
     carriedHookText({ ...prev, hookText: null }, "#3 vs #21"),
     undefined,
     "a deliberate text-free render stays text-free",
-  );
-  assert.equal(
-    variantStillReusable(prev, wc, true, carriedHookText(prev, "#3 vs #21")),
-    true,
-    "so the existing stills survive a re-run with an extra pose",
   );
   console.log("OK: a re-run carries the manifest's headline forward");
 }
