@@ -1,6 +1,7 @@
 import { config } from "../config.js";
 import { resolveAvatarUrl } from "../api/avatarUrl.js";
 import { playoffContextFor, playoffEloFor, playoffIntroLabel } from "../playoffs/playoffs.js";
+import { chooseTeaser } from "./teaser.js";
 import type { MatchInfo, StatisticCategoryMap, UserDetails, VersusStats } from "../api/types.js";
 // PlayerIdentity/SplitRow/OverlayProps are defined once in remotion/types.ts (the component's
 // prop contract) and reused here, since computeOverlayProps's output crosses into Remotion via
@@ -127,6 +128,17 @@ export function computeSplits(match: MatchInfo, leftUuid: string, rightUuid: str
   }));
 }
 
+/**
+ * The first-minute "COMING UP" line, as an object to spread into the props: empty when it is
+ * switched off (`teaserAtSec: null`) or nothing in this match qualifies. A series game is its own
+ * match here, so its teaser never points past its own decision.
+ */
+export function teaserProp(match: MatchInfo): Pick<OverlayProps, "teaser"> {
+  if (config.teaserAtSec === null) return {};
+  const t = chooseTeaser(match);
+  return t ? { teaser: { atSec: config.teaserAtSec, forSec: config.teaserSec, ...t } } : {};
+}
+
 /** Builds the Remotion overlay props from real API data for one match. */
 export async function computeOverlayProps(
   match: MatchInfo,
@@ -201,6 +213,7 @@ export async function computeOverlayProps(
     ...(config.midRollCtaAtSec !== null
       ? { midRollCta: { atSec: config.midRollCtaAtSec, forSec: config.midRollCtaSec } }
       : {}),
+    ...teaserProp(match),
     seedType: match.seedType,
     bastionType: match.bastionType,
   };
