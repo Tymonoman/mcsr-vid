@@ -135,6 +135,12 @@ views brought 0 subscribers.
   12 dB, and a closing card: "WHO TOOK IT? FULL MATCH ON THE CHANNEL" when the window ends before
   the match is decided, else "FULL MATCH ON THE CHANNEL" ("SERIES" for a series). The single-POV
   layout is a centre crop that keeps the crosshair and the hotbar.
+- **The pick also proposes the long-form's title hook** (`titleHooks`, up to 3, and `playerMoments`
+  for the runner DMs, both optional on `ShortPick`; operator's ask, 24 Sept 2026: "use agy to propose
+  the hooks based on previous ones"). The prompt shows the operator's own past saved hooks as style
+  examples (the first ` | ` segment of every `match-<id>.title.edited.txt` beside a `youtube.json`,
+  spoilers and "PLAYOFFS" left out, labelled as being about other players); each proposal passes
+  `hookProblem` or is dropped with the reason logged; `suggestions.title` lists them first.
 - **The Short's title** is `<hook> | <left> vs <right>` with `titleName` (Skycrab, lowkey), plus
   `#mcsr #minecraft` when it fits in 100 characters — the only Short with a player name in its
   title drew the search traffic.
