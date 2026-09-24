@@ -1,61 +1,123 @@
 import type { FC } from "react";
-import { AbsoluteFill, Img, interpolate, useCurrentFrame, useVideoConfig, Easing } from "remotion";
+import { AbsoluteFill, Easing, Img, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
 import { formatConstantLabel, formatTime } from "./format.js";
+import { introFrameCount } from "./layout.js";
 import type { OverlayProps, PlayerIdentity } from "./types.js";
 
-import { introFrameCount } from "./layout.js";
+/*
+ * The intro card: a fighting-game versus screen. The frame splits on a gold diagonal into the two
+ * players' colours, each half a giant figure cut at the waist, the name, the elo/rank line and a
+ * 2x2 stat block; the halves slide in from their edges and part like doors on the way out, so the
+ * countdown shows through the gap. The operator's pick of three layouts, 24 Sept 2026 ("change it
+ * up think of another layout"). Every animated element takes its transform inline and its
+ * position from left/top in the CSS (`.iv-vs-*`, remotion/overlay.source.css), never a CSS
+ * transform — an inline transform replaces the whole CSS one.
+ */
 
-function PlayerCard({
-  player,
+const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
+const easeOut = Easing.out(Easing.cubic);
+
+function useClock(props: OverlayProps) {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const total = introFrameCount(fps, props.introSec);
+  const exitStart = total - Math.round(fps * 0.6);
+  /** 0 → 1 between seconds a and b. */
+  const t = (a: number, b: number, easing: (n: number) => number = easeOut) =>
+    interpolate(frame, [fps * a, fps * b], [0, 1], { easing, ...clamp });
+  const exit = interpolate(frame, [exitStart, total], [0, 1], { easing: Easing.in(Easing.cubic), ...clamp });
+  return { frame, total, t, exit };
+}
+
+const seedLine = (p: OverlayProps) =>
+  [
+    p.seedType && `${formatConstantLabel(p.seedType)} Seed`,
+    p.bastionType && `${formatConstantLabel(p.bastionType)} Bastion`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+/** The seed label in a playoff game, else the world rank; null when neither is known. */
+const rankText = (pl: PlayerIdentity) => pl.seed ?? (pl.eloRank != null ? `#${pl.eloRank} WORLD` : null);
+
+/** Monocraft's advance is ~0.67 em (measured off a render): the largest size up to `max` that keeps `name` inside `width`. */
+const fitPx = (name: string, max: number, width: number) =>
+  Math.min(max, Math.floor(width / (Math.max(name.length, 1) * 0.68)));
+
+/** The lifetime head-to-head; 0–0 says "first meeting". A playoff game shows none (it would read as the series score). */
+function H2H({ p }: { p: OverlayProps }) {
+  const { h2hLeftWins: l, h2hRightWins: r } = p;
+  return (
+    <div className="iv-vs-h2h">
+      <span className="lbl">Head to head</span>
+      {l === 0 && r === 0 ? (
+        <span className="first">First meeting</span>
+      ) : (
+        <span className="rec">
+          <b className={l > r ? "l" : ""}>{l}</b>
+          <span className="dash">–</span>
+          <b className={r > l ? "r" : ""}>{r}</b>
+        </span>
+      )}
+    </div>
+  );
+}
+
+function VersusSide({
+  pl,
   side,
-  frame,
-  fps,
+  t,
+  exit,
 }: {
-  player: PlayerIdentity;
+  pl: PlayerIdentity;
   side: "left" | "right";
-  frame: number;
-  fps: number;
+  t: ReturnType<typeof useClock>["t"];
+  exit: number;
 }) {
   const sign = side === "left" ? -1 : 1;
-  const entranceX = interpolate(frame, [fps * 0.15, fps * 0.55], [sign * -1400, 0], {
-    easing: Easing.out(Easing.cubic),
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-  });
-  const statsOpacity = interpolate(frame, [fps * 0.7, fps * 1.05], [0, 1], {
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-  });
-  const statsY = interpolate(frame, [fps * 0.7, fps * 1.05], [24, 0], {
-    easing: Easing.out(Easing.cubic),
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-  });
-
+  // The half slides in from its own edge, then parts like a door on the way out.
+  const x = sign * (1200 * (1 - t(0, 0.4)) + 1250 * exit);
+  const figX = sign * 260 * (1 - t(0.15, 0.7));
+  const name = t(0.45, 0.7, Easing.out(Easing.back(1.4)));
+  const rank = rankText(pl);
   return (
-    <div className={`intro-player ${side}`} style={{ transform: `translateX(${entranceX}px)` }}>
-      <div className="intro-avatar">
-        <Img src={player.avatarUrl} />
+    <div className={`iv-vs-half ${side}`} style={{ transform: `translateX(${x}px)` }}>
+      <div className="iv-vs-bg" />
+      <div className="iv-vs-fig" style={{ transform: `translateX(${figX}px)` }}>
+        <Img src={pl.avatarUrl} />
       </div>
-      <div className="intro-info">
-        <span className="intro-name">{player.nickname}</span>
-        <span className="intro-id-line">
-          <span className="flag">{player.countryFlag}</span>
-          <span className="elo">{player.eloRate} ELO</span>
-          <span className="rank">#{player.eloRank} WORLD</span>
+      <div className="iv-vs-shade" />
+      <div className="iv-vs-info">
+        <span
+          className="iv-vs-name"
+          style={{
+            fontSize: fitPx(pl.nickname, 150, 760),
+            opacity: t(0.45, 0.55),
+            transform: `scale(${1.5 - 0.5 * name})`,
+          }}
+        >
+          {pl.nickname}
         </span>
-        <div className="intro-stats" style={{ opacity: statsOpacity, transform: `translateY(${statsY}px)` }}>
+        <span className="iv-vs-elo" style={{ opacity: t(0.65, 0.9) }}>
+          <b>{pl.eloRate} ELO</b>
+          {rank && <span> · {rank}</span>}
+        </span>
+        <div className="iv-vs-stats" style={{ opacity: t(0.75, 1.05) }}>
           <span>
-            PB <b>{formatTime(player.pbMs)}</b>
+            <i>PB</i>
+            <b>{formatTime(pl.pbMs)}</b>
           </span>
           <span>
-            AVG <b>{formatTime(player.avgMs)}</b>
+            <i>AVG</i>
+            <b>{formatTime(pl.avgMs)}</b>
           </span>
           <span>
-            <b>{player.gamesPlayed.toLocaleString()}</b> GAMES
+            <i>GAMES</i>
+            <b>{pl.gamesPlayed.toLocaleString()}</b>
           </span>
           <span>
-            <b>{player.winRatePct.toFixed(1)}%</b> WR
+            <i>WIN RATE</i>
+            <b>{pl.winRatePct.toFixed(1)}%</b>
           </span>
         </div>
       </div>
@@ -63,90 +125,27 @@ function PlayerCard({
   );
 }
 
-/**
- * The centre column under the VS badge: the head-to-head record, and what the seed is.
- *
- * Both long-form competitors open on a head-to-head table, and both then fill the ten-second
- * ready-countdown with a "Seed Type: Village" card. This channel's intro *is* that window — it
- * runs over the first `introSec` (7 by default) of the countdown — so the seed rides along on the versus card instead of costing a
- * second element. `formatConstantLabel` is the same humaniser the bottom band's seed chip uses,
- * so the two can't disagree about what a bastion is called; CSS uppercases it for the label.
- */
-function VersusRecord({ props, opacity }: { props: OverlayProps; opacity: number }) {
-  const left = props.h2hLeftWins;
-  const right = props.h2hRightWins;
-  const seed = [
-    props.seedType && `${formatConstantLabel(props.seedType)} Seed`,
-    props.bastionType && `${formatConstantLabel(props.bastionType)} Bastion`,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-
+export const Intro: FC<{ props: OverlayProps }> = ({ props: p }) => {
+  const { frame, total, t, exit } = useClock(p);
+  if (frame >= total) return null;
+  const seed = seedLine(p);
+  const centre = t(0.9, 1.2) * (1 - exit);
+  const vs = t(0.5, 0.85, Easing.out(Easing.back(2)));
+  const gone = 1 - Math.min(1, exit * 2);
+  // No whole-card fade: the halves part like doors and the gameplay shows through the gap.
   return (
-    <div className="intro-h2h" style={{ opacity }}>
-      {/* The tournament line rides on the centre block, not the date line at the bottom: at this
-          size a line that long wraps into the stat columns on both sides. */}
-      {props.playoffLabel ? (
-        // The head-to-head is dropped for a playoff game, not just pushed down. It is the
-        // *lifetime ranked* record, which type-3 games never enter, so it can never become the
-        // series score — but sitting one line under "GAME 2 OF 5" a bare "6 – 1" reads as
-        // exactly that, and a series score is the one number this channel never shows.
-        <span className="intro-h2h-playoff">{props.playoffLabel}</span>
-      ) : (
-        <>
-          <span className="intro-h2h-label">Head to Head</span>
-          {left === 0 && right === 0 ? (
-            // "0 – 0" reads as a scoreline someone forgot to fill in; say what it means instead.
-            <span className="intro-h2h-first">First Meeting</span>
-          ) : (
-            <span className="intro-h2h-record">
-              <b className={left > right ? "l" : ""}>{left}</b>
-              <span className="dash">–</span>
-              <b className={right > left ? "r" : ""}>{right}</b>
-            </span>
-          )}
-        </>
-      )}
-      {seed && <span className="intro-h2h-seed">{seed}</span>}
-    </div>
-  );
-}
-
-/** Full-screen versus card for the video's first `introSec` seconds (INTRO_SECONDS by default), opaque so it covers the
- *  gameplay track underneath, then wipes to transparent to reveal it. */
-export const Intro: FC<{ props: OverlayProps }> = ({ props }) => {
-  const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
-  const introFrames = introFrameCount(fps, props.introSec);
-  const exitStart = introFrames - Math.round(fps * 0.6);
-
-  if (frame >= introFrames) return null;
-
-  const opacity = interpolate(frame, [0, fps * 0.25, exitStart, introFrames], [0, 1, 1, 0], {
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-  });
-  const badgeScale = interpolate(frame, [fps * 0.3, fps * 0.7, exitStart, introFrames], [0.4, 1, 1, 1.25], {
-    easing: Easing.out(Easing.back(1.6)),
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-  });
-  // The same window PlayerCard fades its stats in on: everything that isn't the headline
-  // (names, VS badge) arrives together, one beat after the cards land.
-  const detailOpacity = interpolate(frame, [fps * 0.7, fps * 1.05], [0, 1], {
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-  });
-
-  return (
-    <AbsoluteFill className="intro" style={{ opacity }}>
-      <PlayerCard player={props.left} side="left" frame={frame} fps={fps} />
-      <PlayerCard player={props.right} side="right" frame={frame} fps={fps} />
-      <div className="intro-vs" style={{ transform: `scale(${badgeScale})` }}>
-        <span className="intro-vs-text">VS</span>
+    <AbsoluteFill className="iv iv-vs" style={{ opacity: t(0, 0.1, (n) => n) }}>
+      <VersusSide pl={p.left} side="left" t={t} exit={exit} />
+      <VersusSide pl={p.right} side="right" t={t} exit={exit} />
+      <div className="iv-vs-seam" style={{ opacity: gone, transform: `scaleY(${t(0.3, 0.55)})` }} />
+      <div className="iv-vs-top" style={{ opacity: centre }}>
+        {p.playoffLabel && <span className="playoff">{p.playoffLabel} ·</span>}
+        <span>{[seed, p.matchPlayedLabel].filter(Boolean).join(" · ")}</span>
       </div>
-      <VersusRecord props={props} opacity={detailOpacity} />
-      <div className="intro-meta">{props.matchPlayedLabel}</div>
+      <div className="iv-vs-vs" style={{ opacity: gone, transform: `scale(${vs * (1 + exit)})` }}>
+        VS
+      </div>
+      <div style={{ opacity: centre }}>{!p.playoffLabel && <H2H p={p} />}</div>
     </AbsoluteFill>
   );
 };

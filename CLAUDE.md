@@ -106,7 +106,7 @@ Almost nothing in the overlay moves, so the render is stills plus one strip (`sr
   frame with the SUBSCRIBE line, the teaser or the card before waits for it; one that would then
   reach the finish is dropped.
 - `overlay-timer.mp4` — the RTA column (480x346), the only thing rendered per frame.
-- `overlay-intro.webm` — the intro card, `introSec` long (Settings → Publishing, 2–7, default 7;
+- `overlay-intro.webm` — the intro card (the versus screen, `remotion/Intro.tsx`), `introSec` long (Settings → Publishing, 2–7, default 7;
   the 24 Sept 2026 audit proposed at most 3 — the operator's call). It lies *over* the frozen
   countdown and never moves the timeline's anchor. `export:fast` cuts `7 - introSec` seconds off
   the countdown's head (`headTrimSec`) and lays the card over the MP4's own 0, so the card still
@@ -578,7 +578,12 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
   matches sat 0.9–1.0 s off the frame the "1" vanishes (both directions), so the overlay's
   timer led or trailed the players' own by that much. Prefer the detector's reading when it
   is confident; the editor is for a clip it cannot read.
-- **The intro card `.intro-player` layout**: `PlayerCard`'s inline `transform` (the entrance animation) replaces the CSS transform. The CSS now uses `top: 0; bottom: 0;` (absolute) to vertically position the columns, so the inline `translateX` only moves them horizontally without breaking the Y layout. The center elements (`.intro-vs`, `.intro-h2h`) are absolutely positioned in the center, and the names are elevated on info plates.
+- **The intro card is a versus screen** (`remotion/Intro.tsx`, `.iv-vs-*` in `remotion/overlay.source.css`;
+  the operator's pick of three layouts, 24 Sept 2026): each half slides in with its own inline
+  `translateX` and parts like a door on the way out, so every animated element takes its position
+  from left/top in the CSS, never a CSS `transform` — an inline transform replaces the whole CSS one.
+  A playoff game shows no head-to-head (it would read as the series score); flags are left out
+  (they render as tofu without a colour-emoji font).
 - **tini is PID 1 since 830321f**; if `ps -eo stat | grep -c ^Z` ever climbs, wrap the command
   in `python3 scripts/reap.py`.
 - **The upload form rendered for the first time on 14 Sept 2026.** Everything inside

@@ -466,208 +466,230 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* ===== intro: versus card for the first introSec (7 s default), opaque over gameplay then wipes to transparent ===== */
-.intro {
-  background:
-    linear-gradient(105deg, rgba(226, 72, 63, 0.28), transparent 42%),
-    linear-gradient(-105deg, rgba(53, 214, 196, 0.28), transparent 42%),
-    linear-gradient(120deg, var(--panel-2) 0%, var(--panel) 55%, var(--panel-2) 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.intro-player {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 50%;
-}
-.intro-player.left {
-  left: 0;
-}
-.intro-player.right {
-  right: 0;
-}
-.intro-avatar {
-  position: absolute;
-  bottom: 0;
-  height: 820px;
-  width: 100%;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
+/* ===== intro: the versus screen (remotion/Intro.tsx), the first introSec seconds over the frozen countdown ===== */
+/* Positions come from left/top, never a CSS transform: the components animate with inline
+   transforms, which would replace one (the PlayerCard pitfall). Text carries Minecraft's own
+   font shadow — the glyph again, offset down-right, in a dark ink. */
+.iv {
+  font-family: var(--pixel-font);
+  color: var(--quartz);
   overflow: hidden;
 }
-.intro-player.left .intro-avatar {
-  transform: translateX(40px);
-}
-.intro-player.right .intro-avatar {
-  transform: translateX(-40px);
-}
-.intro-avatar img {
-  height: 100%;
-  width: auto;
-  object-fit: contain;
-  filter: drop-shadow(0 22px 26px rgba(0, 0, 0, 0.55));
-}
-.intro-info {
-  position: absolute;
-  bottom: 40px;
-  width: 620px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  background: rgba(26, 24, 32, 0.75);
-  border: 4px solid var(--panel-edge-light);
-  padding: 16px 24px;
-  z-index: 2;
-}
-.intro-player.left .intro-info {
-  left: 60px;
-  border-left: 8px solid var(--crimson);
-}
-.intro-player.right .intro-info {
-  right: 60px;
-  border-right: 8px solid var(--warped);
-  align-items: flex-end;
-  text-align: right;
-}
-.intro-name {
-  font-family: var(--pixel-font);
+.iv b {
   font-weight: 700;
-  font-size: 86px;
-  color: var(--quartz);
-  line-height: 1;
 }
-.intro-player.left .intro-name {
+.iv .l,
+.iv-vs-h2h .l {
   color: var(--crimson);
   filter: brightness(1.25);
 }
-.intro-player.right .intro-name {
+.iv .r {
   color: var(--warped);
 }
-.intro-id-line {
+
+/* The frame is cut on a diagonal from (1100, 0) to (820, 1080). */
+.iv-vs-half {
+  position: absolute;
+  inset: 0;
+}
+.iv-vs-half.left {
+  clip-path: polygon(0 0, 1100px 0, 820px 1080px, 0 1080px);
+}
+.iv-vs-half.right {
+  clip-path: polygon(1100px 0, 1920px 0, 1920px 1080px, 820px 1080px);
+}
+/* Our two colours at full strength under a pixel checker, the select screen's loud halves. */
+.iv-vs-bg {
+  position: absolute;
+  inset: 0;
+}
+.iv-vs-half.left .iv-vs-bg {
+  background:
+    repeating-conic-gradient(rgba(13, 12, 16, 0.14) 0 25%, transparent 0 50%) 0 0 / 80px 80px,
+    linear-gradient(200deg, var(--crimson) 0%, var(--panel-2) 95%);
+}
+.iv-vs-half.right .iv-vs-bg {
+  background:
+    repeating-conic-gradient(rgba(13, 12, 16, 0.14) 0 25%, transparent 0 50%) 0 0 / 80px 80px,
+    linear-gradient(160deg, var(--warped) 0%, var(--panel-2) 95%);
+}
+/* The full-body render at 1500 px tall shows head and torso above the frame's bottom edge:
+   the waist sits ~64% down the image. */
+.iv-vs-fig {
+  position: absolute;
+  top: 90px;
+  height: 1250px;
+  width: 740px;
   display: flex;
-  align-items: center;
-  gap: 16px;
-  font-family: var(--pixel-font);
-  font-size: 40px;
-  white-space: nowrap;
-  margin-bottom: 4px;
+  justify-content: center;
 }
-.intro-id-line .flag {
-  font-size: 36px;
+.iv-vs-half.left .iv-vs-fig {
+  left: 110px;
 }
-.intro-id-line .elo {
-  color: var(--gold);
+.iv-vs-half.right .iv-vs-fig {
+  left: 1070px;
 }
-.intro-id-line .rank {
-  color: var(--muted);
+.iv-vs-fig img {
+  height: 100%;
+  width: auto;
+  image-rendering: pixelated;
+  filter: drop-shadow(8px 0 0 var(--panel-edge)) drop-shadow(-8px 0 0 var(--panel-edge))
+    drop-shadow(0 -8px 0 var(--panel-edge));
 }
-.intro-stats {
+.iv-vs-half.right .iv-vs-fig img {
+  transform: scaleX(-1);
+}
+.iv-vs-shade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(13, 12, 16, 0.95) 0, rgba(13, 12, 16, 0.85) 30%, transparent 52%);
+}
+.iv-vs-info {
+  position: absolute;
+  bottom: 36px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  font-family: var(--pixel-font);
-  font-size: 46px;
+  gap: 10px;
+}
+.iv-vs-half.left .iv-vs-info {
+  left: 60px;
+  align-items: flex-start;
+}
+.iv-vs-half.right .iv-vs-info {
+  right: 60px;
+  align-items: flex-end;
+}
+.iv-vs-name {
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
   color: var(--quartz);
-  opacity: 0.85;
+  text-shadow: 8px 8px 0 var(--panel-edge);
 }
-.intro-stats b {
-  opacity: 1;
+.iv-vs-half.left .iv-vs-name {
+  transform-origin: left bottom;
 }
-.intro-vs {
-  width: 320px;
-  height: 320px;
-  border-radius: 50%;
-  background: var(--panel-2);
-  border: 6px solid var(--panel-edge-light);
+.iv-vs-half.right .iv-vs-name {
+  transform-origin: right bottom;
+}
+.iv-vs-elo {
+  font-size: 46px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--muted);
+  text-shadow: 4px 4px 0 var(--panel-edge);
+}
+.iv-vs-elo b {
+  color: var(--gold);
+}
+.iv-vs-stats {
+  display: grid;
+  grid-template-columns: auto auto;
+  column-gap: 56px;
+  row-gap: 8px;
+  margin-top: 8px;
+}
+.iv-vs-stats span {
+  display: flex;
+  flex-direction: column;
+}
+.iv-vs-half.right .iv-vs-stats span {
+  align-items: flex-end;
+}
+.iv-vs-stats i {
+  font-style: normal;
+  font-size: 34px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.iv-vs-stats b {
+  font-size: 62px;
+  line-height: 1.05;
+  text-shadow: 5px 5px 0 var(--panel-edge);
+}
+.iv-vs-seam {
+  position: absolute;
+  inset: 0;
+  background: var(--gold);
+  clip-path: polygon(1090px 0, 1112px 0, 832px 1080px, 810px 1080px);
+}
+.iv-vs-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 64px;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 3;
+  gap: 0.6em;
+  background: var(--panel-edge);
+  font-size: 32px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--quartz);
+  white-space: nowrap;
 }
-.intro-vs-text {
-  font-family: var(--pixel-font);
-  font-weight: 700;
-  font-size: 100px;
+.iv-vs-top .playoff {
   color: var(--gold);
 }
-/* Head-to-head + seed, stacked ABOVE the VS badge. Absolutely positioned like .intro-meta
-   rather than made an in-flow sibling of .intro-vs, so the badge keeps its dead-centre
-   position; 200px clears the badge's 160px radius at rest and its 1.25x exit scale.
-
-   Above, not below, because .intro-player sets `transform: translateY(-50%)` but PlayerCard
-   overwrites the whole transform with its entrance translateX — so the player columns hang
-   from the vertical centre downwards, and the names sit exactly where a block under the badge
-   would land. The top third of the card is the empty region. */
-.intro-h2h {
+.iv-vs-vs {
   position: absolute;
-  bottom: 50%;
-  margin-bottom: 300px;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 810px;
+  top: 300px;
+  width: 300px;
+  text-align: center;
+  font-weight: 700;
+  font-size: 200px;
+  line-height: 1;
+  color: var(--gold);
+  text-shadow: 10px 10px 0 var(--panel-edge);
+}
+.iv-vs-h2h {
+  position: absolute;
+  left: 960px;
+  top: 540px;
+  width: 440px;
+  margin-left: -220px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
-  font-family: var(--pixel-font);
+  gap: 2px;
+  padding: 14px 0 18px;
+  background: var(--panel-edge);
+  border: 6px solid var(--panel-edge-light);
   white-space: nowrap;
 }
-.intro-h2h-label,
-.intro-h2h-seed {
-  font-size: 38px;
+.iv-vs-h2h .lbl {
+  font-size: 30px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--muted);
 }
-/* "Season 11 Playoffs · Round of 16 · Game 2": the one line that says this is not a ranked
-   match, so it takes the badge's gold and a little more room than the label under it. */
-.intro-h2h-playoff {
-  font-size: 46px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--gold);
-  margin-bottom: 16px;
-}
-.intro-h2h-record {
+.iv-vs-h2h .rec {
   display: flex;
   align-items: baseline;
-  gap: 26px;
-  font-size: 110px;
+  gap: 22px;
+  font-size: 96px;
   font-weight: 700;
-  /* Neutral is the default; only the leader's own number takes their side colour, so a draw
-     comes out symmetrical without a second rule. */
-  color: var(--quartz);
 }
-.intro-h2h-record .l {
-  color: var(--crimson);
-  filter: brightness(1.25);
-}
-.intro-h2h-record .r {
-  color: var(--warped);
-}
-.intro-h2h-record .dash {
-  font-size: 76px;
+.iv-vs-h2h .dash {
   color: var(--muted);
+  font-size: 64px;
 }
-.intro-h2h-first {
-  font-size: 76px;
+.iv-vs-h2h .first,
+.iv-vs-h2h.playoff {
+  font-size: 44px;
   font-weight: 700;
-  letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--gold);
+  text-align: center;
+  white-space: normal;
 }
-.intro-meta {
-  position: absolute;
-  bottom: 60px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-family: var(--pixel-font);
-  font-size: 42px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--muted);
+.iv-vs-h2h.playoff {
+  width: 560px;
+  margin-left: -280px;
+  padding: 18px 20px;
 }
 
 /* ===== thumbnail (1280x720 YouTube thumbnail still) ===== */
