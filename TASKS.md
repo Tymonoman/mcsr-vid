@@ -117,7 +117,7 @@ Resume agents should `git merge` the *resume* worktree's branch (it already cont
 Acceptance for every merge: `npx tsc --noEmit`, `npm run test:unit`, and for teaser/ui the rendered stills / screenshots read by a human-equivalent (the agent's report lists paths).
 
 ### After the merges (the judge's TONIGHT list, still open)
-- WP1 agy **title-hook proposals** on the pick call (`titleHooks[3]` in the schema, filtered by `hookProblem`, first in `suggestions.title`).
+- WP1 agy **title-hook proposals** — **APPROVED by the operator 24 Sept 06:25 UTC ("use agy to propose the hooks based on previous ones")**; folded into the status agent's job (resume-status script): `titleHooks[3]` + `playerMoments` on the pick call, style examples = the operator's past saved hooks from uploaded matches (16 on disk; exclude spoilers), filtered by `hookProblem`, first in `suggestions.title`.
 - WP2 **DM moment per player** in the publish kit (`playerMoments`, `?t=` link) + **spoiler guard on typed hooks** (`saveHooks` refuses via `hookProblem` unless `spoilerOk`).
 - Adopt the features report's top items that are code: chapters as Key Moments check, Shorts related-link pill in the checklist, end-screen reminder pill; the rest are Studio steps for the operator.
 - Ideas: only after the above; the judge marked most NO/NEXT WEEK.
