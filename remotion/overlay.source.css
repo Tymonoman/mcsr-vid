@@ -317,6 +317,8 @@
   line-height: 1.3;
   letter-spacing: 0.04em;
   color: var(--quartz);
+  /* "THE LEAD CHANGES / ON BLIND TRAVEL", not a lone "TRAVEL" on the second line. */
+  text-wrap: balance;
 }
 .col-meta .seed-chip {
   display: flex;

@@ -43,6 +43,8 @@
   "postRollCta": true,
   "midRollCtaAtSec": 90,
   "midRollCtaSec": 4,
+  "teaserAtSec": 10,
+  "teaserSec": 5,
   "nightlyRenderExport": true,
   "nightlyMaxRenders": 1,
   "nightlyNotifyUrl": "",

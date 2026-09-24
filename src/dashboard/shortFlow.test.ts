@@ -425,7 +425,12 @@ try {
     writePick(id, "heuristic");
     writeFileSync(
       path.join(dir(id), `short-${id}.pick-error.json`),
-      JSON.stringify({ at: "2026-09-24T03:00:00Z", message: "Antigravity is not signed in — run: agy" }),
+      // After every pick written so far, which carry the real clock (a fixed "2026-09-24T03:00Z"
+      // stopped being "since" once the calendar passed it).
+      JSON.stringify({
+        at: new Date(Date.now() + 60_000).toISOString(),
+        message: "Antigravity is not signed in — run: agy",
+      }),
     );
   }
   // The picker's health reads the newest failure: not signed in, and nothing since.
