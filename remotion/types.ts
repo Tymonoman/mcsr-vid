@@ -95,8 +95,10 @@ export interface ThumbnailPlayer {
 export type ThumbnailProps = {
   left: ThumbnailPlayer;
   right: ThumbnailPlayer;
-  /** Top category bar text, e.g. "MINECRAFT · SPEEDRUNNING · RANKED". */
+  /** Top category bar text, e.g. "MINECRAFT · SPEEDRUNNING · RANKED"; each `·` part is its own word. */
   headerLabel: string;
+  /** The API's seed type ("VILLAGE", "SHIPWRECK", ...), drawn in the centre slot; null or an unknown type leaves the slot out. */
+  seedType: string | null;
   /**
    * The headline the thumbnail is actually sold on — the same rivalry hook the title carries.
    * When set it replaces `headerLabel` in the top band; when absent the thumbnail renders
@@ -104,9 +106,10 @@ export type ThumbnailProps = {
    */
   hookText?: string;
   /**
-   * A playoff series' framing, absent on a ranked match: the round in the band, the seed in the
-   * nameplate where the rating is, the series length under the VS. `bracket` keeps the band its
-   * usual height; `trophy` grows it for a gold PLAYOFFS wordmark and frames the body.
+   * A playoff series' framing, absent on a ranked match: the round in the band, the series length
+   * under the VS. The nameplate keeps the name, never the seed (the operator's call, 24 Sept 2026).
+   * `bracket` keeps the band its usual height; `trophy` grows it for a gold PLAYOFFS wordmark,
+   * carries the series length in it, and frames the body.
    */
   playoff?: {
     season: number;
