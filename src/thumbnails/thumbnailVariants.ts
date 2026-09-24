@@ -178,6 +178,18 @@ export function variantFellBack(v: { leftProvider: AvatarProvider; rightProvider
   return v.leftProvider === "nmsr" || v.rightProvider === "nmsr";
 }
 
+/**
+ * The A/B table's row for a variant key. From 24 Sept 2026 the players turn toward each other
+ * (`nmsr-facing`); before, the same pose key drew them both facing left. Two images, two rows,
+ * or the table credits the new look with the old one's clicks.
+ */
+export function abTestKey(
+  key: string,
+  v: { leftProvider: AvatarProvider; rightProvider: AvatarProvider } | undefined,
+): string {
+  return v?.leftProvider === "nmsr-facing" || v?.rightProvider === "nmsr-facing" ? `${key} (facing)` : key;
+}
+
 export async function renderThumbnailVariants(args: RenderVariantsArgs): Promise<VariantsManifest> {
   if (args.poses.length === 0) throw new Error("renderThumbnailVariants needs at least one pose pair");
 
@@ -205,20 +217,22 @@ export async function renderThumbnailVariants(args: RenderVariantsArgs): Promise
       const file = variantFile(poses);
       const outPath = path.join(args.outDir, file);
 
+      // Skip per variant, not per match: adding a fourth pose to the config should render only
+      // the fourth, and a re-run after an aborted batch should not redo the ones that landed.
+      // The manifest must still list it, which is why the record is pushed before the skip. A
+      // reused still is the render the old manifest recorded, not what today's cameras draw.
+      const reuse = existsSync(outPath) && variantStillReusable(previous, poses);
+      const was = reuse ? previous?.variants.find((v) => v.key === variantKey(poses)) : undefined;
       records.push({
         key: variantKey(poses),
         leftPose: poses.left,
         rightPose: poses.right,
-        leftProvider: computed.leftAvatar.provider,
-        rightProvider: computed.rightAvatar.provider,
+        leftProvider: was?.leftProvider ?? computed.leftAvatar.provider,
+        rightProvider: was?.rightProvider ?? computed.rightAvatar.provider,
         hook: false,
         file,
       });
-
-      // Skip per variant, not per match: adding a fourth pose to the config should render only
-      // the fourth, and a re-run after an aborted batch should not redo the ones that landed.
-      // The manifest must still list it, which is why the record is pushed above this check.
-      if (existsSync(outPath) && variantStillReusable(previous, poses)) continue;
+      if (reuse) continue;
 
       const bundleUrl = await serveUrl();
       const composition = await selectComposition({

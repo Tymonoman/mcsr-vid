@@ -22,7 +22,7 @@ import { config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { listProcessedMatchIds, matchStatusFor } from "./matchStatus.js";
 import { exportStale, staleExportMessage } from "../pipeline/syncFile.js";
-import { readManifest, variantFellBack } from "../thumbnails/thumbnailVariants.js";
+import { abTestKey, readManifest, variantFellBack } from "../thumbnails/thumbnailVariants.js";
 import {
   applyMetadata,
   commentThreads,
@@ -593,8 +593,8 @@ async function abTestPayload() {
     // A dashboard upload recorded which variant it sent; a Studio upload did not, and the
     // manifest's `chosen` is the one the dashboard handed over to be uploaded.
     const variantKey = u.source === "channel" ? (manifest?.chosen ?? undefined) : u.thumbnailVariant;
-    const key = variantKey ?? "(unknown)";
     const variant = manifest?.variants.find((v) => v.key === variantKey);
+    const key = variantKey ? abTestKey(variantKey, variant) : "(unknown)";
     const fellBack = variant ? variantFellBack(variant) : false;
 
     hookEntries.push({ hook: variant?.hook ?? null, reach: byVideo.get(u.videoId) ?? null });

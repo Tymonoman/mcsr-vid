@@ -37,10 +37,13 @@ const POSE_CAMERAS: Record<string, number> = {
  * Which render a caller got. `nmsr` means the pose was NOT honoured — the name had no camera —
  * so the A/B table must not treat it as a distinct pose. This is load-bearing for thumbnail A/B
  * testing, not bookkeeping: it is what stops a CTR comparison grouping by a variable that never
- * varied. `starlight` no longer occurs but still appears in manifests written before the switch;
- * its render route answered 404 on 24 Sept 2026, so it is not a fallback either.
+ * varied. `nmsr-facing` is a pose turned toward the other player (24 Sept 2026 on); `nmsr-posed`
+ * is the same pose name from before, when the pose set the yaw and both players faced the same
+ * way — a different image under the same key, which is why the A/B table keeps them apart
+ * (`abTestKey`). `starlight` no longer occurs but still appears in manifests written before the
+ * switch; its render route answered 404 on 24 Sept 2026, so it is not a fallback either.
  */
-export type AvatarProvider = "nmsr-posed" | "nmsr" | "starlight";
+export type AvatarProvider = "nmsr-facing" | "nmsr-posed" | "nmsr" | "starlight";
 
 export interface ResolvedAvatar {
   url: string;
@@ -74,5 +77,5 @@ export async function resolveAvatarUrl(
     return { url: `${NMSR}/${uuid}`, provider: "nmsr", pose };
   }
   const yaw = side === "left" ? FACING_YAW : -FACING_YAW;
-  return { url: `${NMSR}/${uuid}?yaw=${yaw}&arms=${arms}`, provider: "nmsr-posed", pose };
+  return { url: `${NMSR}/${uuid}?yaw=${yaw}&arms=${arms}`, provider: "nmsr-facing", pose };
 }

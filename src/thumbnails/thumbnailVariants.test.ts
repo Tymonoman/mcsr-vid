@@ -202,6 +202,40 @@ assert.deepEqual(
   assert.equal(carriedChoice(null), undefined);
 }
 
+// The players turned toward each other on 24 Sept 2026 under the same pose keys. A still kept
+// from before is the old image, so it keeps the provider its manifest recorded, and the A/B table
+// files the two looks under different rows.
+{
+  const { abTestKey } = await import("./thumbnailVariants.js");
+  assert.deepEqual(
+    rendered.variants.map((v) => [v.leftProvider, v.rightProvider]),
+    [
+      ["nmsr-facing", "nmsr-facing"],
+      ["nmsr-facing", "nmsr-facing"],
+      ["nmsr-facing", "nmsr-facing"],
+    ],
+    "a fresh manifest records today's camera",
+  );
+  const before = {
+    ...rendered,
+    variants: [{ ...rendered.variants[0]!, leftProvider: "nmsr-posed", rightProvider: "nmsr-posed" }],
+  } as VariantsManifest;
+  await writeFile(manifestPath(dir), JSON.stringify(before), "utf8");
+  const rerun = await renderThumbnailVariants(renderArgs);
+  assert.deepEqual(
+    rerun.variants.map((v) => [v.key, v.leftProvider]),
+    [
+      ["walking-crossed", "nmsr-posed"],
+      ["cheering-relaxing", "nmsr-facing"],
+      ["marching-crouching", "nmsr-facing"],
+    ],
+    "a reused still keeps the provider it was rendered with",
+  );
+  assert.equal(abTestKey("walking-crossed", rerun.variants[0]), "walking-crossed");
+  assert.equal(abTestKey("cheering-relaxing", rerun.variants[1]), "cheering-relaxing (facing)");
+  assert.equal(abTestKey("walking-crossed", undefined), "walking-crossed", "no manifest: the key as sent");
+}
+
 await rm(dir, { recursive: true, force: true });
 console.log("thumbnailVariants: all checks passed");
 

@@ -12,7 +12,7 @@ const params = (url: string) => new URL(url).searchParams;
 {
   const walking = await resolveAvatarUrl("uuid-1", "walking", "left");
   const crossed = await resolveAvatarUrl("uuid-1", "crossed", "left");
-  assert.equal(walking.provider, "nmsr-posed");
+  assert.equal(walking.provider, "nmsr-facing", "not nmsr-posed: that key drew both players facing left");
   assert.equal(walking.pose, "walking");
   assert.ok(walking.url.startsWith("https://nmsr.nickac.dev/fullbody/uuid-1?"), walking.url);
   assert.notEqual(walking.url, crossed.url, "two poses must not resolve to the same render");
