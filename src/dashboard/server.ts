@@ -87,7 +87,6 @@ const STATIC_ASSETS: Record<string, { file: string; type: string }> = {
   "/favicon.png": { file: "favicon.png", type: "image/png" },
 };
 
-
 /** Match ids come from the URL, so they gate a path join and must be digits only. */
 function parseId(raw: string | undefined): number | null {
   if (!raw || !/^\d+$/.test(raw)) return null;
@@ -614,7 +613,11 @@ const server = createServer(async (req, res) => {
     }
 
     if (resource === "thumbnails" && req.method === "GET") {
-      json(res, 200, (await readManifest(matchDir(matchId))) ?? { chosen: null, hookText: null, variants: [] });
+      json(
+        res,
+        200,
+        (await readManifest(matchDir(matchId))) ?? { chosen: null, hookText: null, variants: [] },
+      );
       return;
     }
 
