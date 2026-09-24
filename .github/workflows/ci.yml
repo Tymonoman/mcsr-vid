@@ -21,12 +21,13 @@ jobs:
           node-version: 24
           cache: npm
 
-      # What test:unit shells out to: git (repoHead), python3 (hooks, watchPov: a fake
-      # HOOK_SUGGEST_CMD and watch.py) — both on the runner image — and rsync (publishSet's pull
-      # round-trip, which skips itself without it). No unit test runs ffmpeg or Chromium; the
-      # two that do are `npm test`'s extra pair, not run here.
-      - name: Install rsync
-        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends rsync
+      # What test:unit shells out to: git (repoHead), python3 (hooks' fake HOOK_SUGGEST_CMD;
+      # watchPov and videoPick run a fake watch.py) and rsync (publishSet's pull round-trip, which
+      # skips itself without it). The runner image has git and python3; installing them is a no-op
+      # there and keeps the job honest on another image. Nothing in test:unit runs ffmpeg, melt,
+      # yt-dlp or Chromium — the two tests that do are `npm test`'s extra pair, not run here.
+      - name: Install what the tests shell out to
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends python3 rsync
 
       - run: npm ci
 
@@ -34,6 +35,6 @@ jobs:
         run: npx tsc --noEmit
 
       # No secrets: with no mcsr-vid.config.json the defaults apply (mediaDir ./media,
-      # reasonerCommand null), and every test stubs the MCSR, Twitch and YouTube calls.
+      # reasonerCommand null, uploads off), and every test stubs MCSR, Twitch, YouTube and agy.
       - name: Unit tests
         run: npm run test:unit
