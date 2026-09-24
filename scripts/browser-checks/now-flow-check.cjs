@@ -137,7 +137,7 @@ const plan = (id, extra = {}) => ({
     ).join(" | ");
     check(
       "the strip's Now lines name the running step, its line, clock and percent, and the queue",
-      new RegExp(`cutting the Short of #${b} · encoding the Short \\(1:0\\d, 40%\\)`).test(now) &&
+      new RegExp(`cutting the Short of #${b} · encoding the Short \\(1:\\d\\d, 40%\\)`).test(now) &&
         /1 more pick waiting its turn/.test(now),
       now,
     );

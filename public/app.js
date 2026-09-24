@@ -2544,10 +2544,15 @@ function nightlyBody() {
   const plan = !enabled
     ? '<span class="muted">nightly off</span>'
     : skipTonight
-      ? `${esc(at)} &middot; <span class="muted">tonight skipped</span>`
-      : candidate
-        ? `${esc(at)} &middot; will render <b>${esc(candidate.players[0])} vs ${esc(candidate.players[1])}</b>${queued(candidate.matchId) ? " (queued)" : ""}`
-        : `${esc(at)} &middot; <span class="muted">nothing eligible</span>`;
+      ? `${esc(at)} &middot; <span class="muted">tonight skipped</span> &middot; <a href="#" data-act="nightly-skip-night" data-skip="0">undo</a>`
+      : // "skip tonight" is a link on this line, not a second button beside Run now: on a phone
+        // two buttons squeezed the strip's text into a 433 px column and pushed the list under
+        // the tab bar (phone-rows-check, 24 Sept 2026).
+        `${
+          candidate
+            ? `${esc(at)} &middot; will render <b>${esc(candidate.players[0])} vs ${esc(candidate.players[1])}</b>${queued(candidate.matchId) ? " (queued)" : ""}`
+            : `${esc(at)} &middot; <span class="muted">nothing eligible</span>`
+        } &middot; <a href="#" data-act="nightly-skip-night" data-skip="1">skip tonight</a>`;
 
   // "Last run", not "last night": the Run now button records here too, and a label that lied
   // about when it happened would be worse than a slightly duller one.
@@ -2626,11 +2631,6 @@ function nightlyBody() {
   const activity = [...running, ...queuedPicks]
     .map((l) => `<div class="activity"><span class="muted">Now</span> ${l}</div>`)
     .join("");
-  const skipBtn = !enabled
-    ? ""
-    : skipTonight
-      ? '<span class="nightly-skip-state">tonight skipped &middot; <a href="#" data-act="nightly-skip-night" data-skip="0">undo</a></span>'
-      : '<button data-act="nightly-skip-night" data-skip="1" class="ghost">Skip tonight</button>';
   return `${behind}${failed}${shortsFailed}${picker}<div class="lines">
       ${activity}
       <div class="plan" title="${esc(nextRunAt ?? "no schedule")}">${plan}</div>
@@ -2638,7 +2638,6 @@ function nightlyBody() {
       ${hooks}
       ${queueHtml()}
     </div>
-    ${skipBtn}
     <button data-act="nightly-run">Run now</button>`;
 }
 
@@ -2915,9 +2914,11 @@ function renderSuggestions(data) {
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ skip }),
           });
-          const nextSkip = res.nightlySkip ?? (skip
-            ? [...(nightly?.nightlySkip ?? []).filter((x) => x !== id), id]
-            : (nightly?.nightlySkip ?? []).filter((x) => x !== id));
+          const nextSkip =
+            res.nightlySkip ??
+            (skip
+              ? [...(nightly?.nightlySkip ?? []).filter((x) => x !== id), id]
+              : (nightly?.nightlySkip ?? []).filter((x) => x !== id));
           if (nightly) nightly.nightlySkip = nextSkip;
           if (suggestData) suggestData.nightlySkip = nextSkip;
           renderSuggestions(suggestData);
