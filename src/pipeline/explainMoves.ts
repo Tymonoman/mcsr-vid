@@ -35,7 +35,8 @@ export const MOVE_LINES: Record<string, { head: string; line: string }> = {
   "nether.find_fortress": { head: "FORTRESS", line: "BLAZES SPAWN ONLY HERE.\nONE ROD MAKES TWO EYES" },
   "projectelo.timeline.blind_travel": {
     head: "BLIND TRAVEL",
-    line: "A NEW PORTAL OUT LANDS\nNEAR A STRONGHOLD, BEFORE\nANY EYE IS THROWN",
+    // The blind portal is built for the ring strongholds generate in, not at one: the eyes find it.
+    line: "A NEW PORTAL OUT, AS FAR\nFROM SPAWN AS STRONGHOLDS\nARE. NO EYE THROWN YET",
   },
   "story.follow_ender_eye": {
     head: "STRONGHOLD",
