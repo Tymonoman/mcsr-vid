@@ -168,33 +168,71 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   are direct children with `.bad`, which is what lets the phone match screen keep exactly those
   and hide the plan, the queue and the button (`body.view-match #nightly > :not(.bad)`, no `:has()`).
 - **The match screen is a head and four groups** in the order the morning happens, and the
-  order is the point: **Check** (`#h-preview` final video · `#synccheck` · `#syncedit` fold) ·
-  **Package** (`#h-hook` hook + `#save` + chips · thumbnails · Splits fold · Title & description
-  fold) · **Publish** (`#h-youtube` YouTube panel, then `#h-publishkit`) · **After** (`#h-short`
-  Short · Manage fold). On a desktop they are two columns (Check + After left, Package + Publish
-  right); under 860 px one group is shown at a time (`.panel.on`), switched by the `.jump` bar in
-  the bottom-bar slot — a tap `preventDefault`s the hash link and scrolls to the top: the group is
-  the whole screen and the head above it is 70 px, and the hash scroll put the head, `#headwarn`
-  with it, under the back bar on the very panels that hold Upload and Adopt. Re-selecting the
-  match on screen (the strip's last-run link, a card's "Rendered · open") keeps the group that
-  was open; a different match opens on Check. Any phone check that fills a Package or Publish
-  control taps `.jump [data-panel=…]` first. The head is short on purpose — the match id,
-  `#failure`, and `#headwarn` (the detector's confidence line plus a mirror of `#syncstale`, so
-  leaving Check never hides the sync warning) — because the sync frames must start on the phone's
-  first screen; `#checklist` (six fact pills hidden by CSS, all ten still in the DOM —
-  hook-flow-check reads its text) sits at the bottom of Publish, since every pill left on view is
-  a post-upload tick. `#preview .previewmeta` is one row for the same reason (the file name gets
-  the ellipsis; the Short's `.previewmeta` lines still wrap). `#run`/`#stop` are the head's primary button for an unrendered match and live in
-  the Manage fold (with `#mhide`, `#mdel`, the outputs table) once it is rendered; `armStop`
-  opens that fold. `#save` sits beside the hook field and typing into `#hook` writes "not saved"
-  into `#savedmsg`. The kit's description + tags are one more fold; its "after the upload" fold
-  opens itself once `kit.videoUrl` exists.
-- **Rendered rows are two lines**: names + id, then one state line naming the next action
-  (`ready — check · pick · upload`, `@mcsrmatches posted 1d ago`, `in progress · overlay`,
-  `published`). Deleted, not folded: the stage pips and their legend, the list's order line, the
-  suggestions' bucket legend, the head's jump-link row, the old Re-run at the top of a rendered
-  match, `#hostmeta` on phones. "Render only" is a text link in a suggestion card's links row
-  (`a[data-act="render"]`, same handler); the button row is Render + Short + MP4 · Queue · Dismiss.
+  order is the point: **Now** (`#now` steps · `#nowsync` weak-sync frames · `#save`), **Check**
+  (`#h-preview` final video · `#synccheck` · `#syncedit` fold), **Package** (`#h-thumbs` thumbnail ·
+  Splits fold · Title & description fold with `#savetext`), **Publish** (`#h-youtube` YouTube panel,
+  then `#h-publishkit`, `#checklist`, Manage fold). The After group and `#h-short` were deleted: no
+  Short renders and nothing uploads before the hooks are saved; once saved the chain runs itself, so
+  the Short's status and preview sit in Now, its title/description in the kit's after-upload fold,
+  and the Manage fold (`#mhide`, `#mdel`, outputs table) moved to the bottom of Publish. Package
+  begins with `#h-thumbs` Thumbnail (`#variants`); the hook fields moved to Now. On a desktop they
+  are two columns (Now + Check left, Package + Publish right); under 860 px one group is shown at a
+  time (`.panel.on`), switched by the `.jump` bar in the bottom-bar slot (`now`, `check`, `package`,
+  `publish`) — a tap `preventDefault`s the hash link and scrolls to the top: the group is the whole
+  screen and the head above it is short, and the hash scroll put the head, `#headwarn` with it,
+  under the back bar on the very panels that hold Upload and Adopt. Re-selecting the match on screen
+  (the strip's last-run link, a card's "Rendered · open") keeps the group that was open; every match
+  opens on Now (`showPanel(keepPanel ?? "now")`). Any phone check that fills a Package or Publish
+  control taps `.jump [data-panel=…]` first. Now (`#now`, `public/app.js`, `paintNow`) is one column
+  of steps in pipeline order from `GET /api/shorts/plan/:id` (`ShortPlanResponse`): **Video**
+  (exported, and whether sync is weak/stale; `#nowsync` shows the two 9.6 s countdown frames
+  side-by-side on weak sync, the same look as Check's sync check, because a weak sync is the one
+  thing worth seeing before saving hooks), **Pick** (the model's window with `src#t=start,end`
+  preview, why line, POV/kind; or the heuristic standing in with `!` and its reason, not a stopped
+  step), **Hooks** (prefilled `#hook` title hook with title chips, `#shorthook` for 4 s with Short
+  chips, and `#noshort` checkbox; locked once uploaded; typing writes "not saved" to `#savedmsg`;
+  saving before a pick explains why the Short hook is empty), **Short** (renders automatically once
+  hooks are saved, ~2 min; watch preview and download link once rendered; skipped if `noShort`),
+  **Video up** (scheduled publish slot time, next free slot, or open link once up; warns if uploads
+  are off on the box), and **Short up** (18 h after the video; omitted if `noShort`). A finished
+  step is one line; the step that needs the operator, is running, or failed is open. A running step
+  carries the server's activity line (`activitySum`) with a live elapsed clock counting up from
+  `activity.since` (`tickClocks`) and a progress bar when percent is known. A failed step says
+  "failed" in words with the server's error, timestamp, static fix hint (`fixFor`), and an action
+  button (`Retry` saves the saved hooks again to restart the chain; `Re-encode in Check ›` if sync
+  is stale). Each step has a Details fold (`.steplog`) with the server's log lines from `plan.log`,
+  error count, unfoldable line details (`.logline pre`), and a `Copy` button (`copyText` to plain
+  text). A failed poll shows an inline scanline ("dashboard unreachable — retrying in 5 s",
+  `.nowconn`) without blanking or freezing the panel. "Pick again" sits inside Pick (or "Ask the
+  model" if unpicked and not on the channel; opening an unpicked match does not spend a model watch).
+  `#save` sits in `.saverow` at the end of the Hooks step while hooks are editable (text: "Save
+  hooks and schedule", "Sync looks right — save hooks and schedule" on weak sync, "Save hooks" if
+  already saved, or notes uploads are off on the box), then moves after the last step on desktop
+  (pinned to the phone's bottom slot) as "Next waiting ›" when other matches await hooks. "Waiting
+  for a hook" counts matches with a pick ready to glance at (`shortState === "waiting-for-hook"` and
+  `shortDetail !== "not picked yet"`), as the strip and `#tab-matches small` count it; backlog rows
+  not picked yet (`shortDetail === "not picked yet"`, sorted after in-progress) are neither counted
+  nor offered as next (opening one asks the model). On a phone, `#nextwaiting` in `#backbar` shows the
+  count beside `#backtolist`, which omits its own count when "N more waiting" already says it.
+  The head is short on purpose — the match id, `#failure`, and `#headwarn` (the detector's
+  confidence line plus a mirror of `#syncstale`, so leaving Check never hides the sync warning) —
+  because the sync frames must start on the phone's first screen; `#checklist` (six fact pills hidden
+  by CSS, all ten still in the DOM — hook-flow-check reads its text) sits at the bottom of Publish,
+  since every pill left on view is a post-upload tick. `#preview .previewmeta` is one row for the
+  same reason (the file name gets the ellipsis; the Short's `.previewmeta` lines still wrap).
+  `#run`/`#stop` are the head's primary button for an unrendered match and live in the Manage fold
+  (with `#mhide`, `#mdel`, the outputs table) once it is rendered; `armStop` opens that fold.
+  The kit's description + tags are one more fold; its "after the upload" fold opens itself once
+  `kit.videoUrl` exists and brings back the Short's title and description once the Short is cut.
+- **Rendered rows are two lines**: names + id, then one state line naming where the match stands
+  (`waiting for hook`, `scheduled`, `published`, `published · no Short`, `@mcsrmatches posted 1d ago`,
+  `in progress · overlay`, `failed`). Running rows show the server's own detail once, not twice
+  (`SHORT_LINE` + `shortDetail`); unpicked rows are backlog sorted after in-progress (`exported · no Short
+  picked yet — opening it asks the model`). Deleted, not folded: the stage pips and their legend, the
+  list's order line, the suggestions' bucket legend, the head's jump-link row, the old Re-run at the
+  top of a rendered match, `#hostmeta` on phones. "Render only" is a text link in a suggestion card's
+  links row (`a[data-act="render"]`, same handler); the button row is Render + Short + MP4 · Queue ·
+  Dismiss.
 - **The touch-target block fires on `pointer: coarse` OR `max-width: 860px`.** Playwright's
   Chromium drops the coarse-pointer emulation after a full-page screenshot on a mobile context,
   so a width-only measurement of a phone page found 28 px inputs the real phone never shows; the
@@ -309,8 +347,9 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   ssh client and the PC already reaches the lab. `GET /api/export/bundle/:id` is the same
   publish set as one `.tar`.
 - **Publish checklist**: facts from disk plus manual toggles in `<mediaDir>/<id>/publish.json`
-  (`src/dashboard/matchShelf.ts`). The Rendered tab counts exported-and-not-uploaded and is ordered by what
-  to publish next.
+  (`src/dashboard/matchShelf.ts`). The Rendered tab counts matches waiting for a hook (`#tab-matches small`,
+  falling back to `ready` on a server one restart behind) and is ordered by what needs the operator
+  first (failed, then waiting for a hook, then running, scheduled, published).
 - **Dismiss** hides a suggestion (`DELETE /api/suggestions/:id`) with an undo line
   (`POST …/restore`). **Delete** refuses while any job writes into the match directory.
 - **A test server arms its own nightly.** Any `PORT=… npm run dashboard` schedules a render at
