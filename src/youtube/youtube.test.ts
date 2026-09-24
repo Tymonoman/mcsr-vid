@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { config } from "../config.js";
 import { parseImpressionsCsv, REQUIRED_SCOPES, uploadVideo } from "./youtube.js";
-import { findExportedVideo } from "./youtubeStore.js";
+import { findExportedVideo, pinnedComment } from "./youtubeStore.js";
 
 // --- Reporting CSV: the only source of per-video CTR, so a misread here silently corrupts
 // every A/B conclusion drawn from it.
@@ -51,6 +51,10 @@ assert.throws(() => parseImpressionsCsv("date,video_id\n20260901,vid_aaa"), /mis
 assert.ok(REQUIRED_SCOPES.includes("https://www.googleapis.com/auth/youtube.force-ssl"));
 assert.ok(REQUIRED_SCOPES.includes("https://www.googleapis.com/auth/youtube.upload"));
 assert.ok(REQUIRED_SCOPES.includes("https://www.googleapis.com/auth/yt-analytics.readonly"));
+
+// --- Pinned comment on match videos: includes tip jar when supportUrl is set.
+assert.ok(!pinnedComment("").includes("tip jar"));
+assert.ok(pinnedComment("https://ko-fi.com/x").endsWith("tip jar: https://ko-fi.com/x"));
 
 // --- Finding the exported video. The pipeline produces a Kdenlive project, not a finished
 // file, so this picks which file to upload — and picking wrong means a multi-GB POV clip on a
