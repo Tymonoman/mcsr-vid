@@ -51,6 +51,16 @@ import {
   type ShortPlanResponse,
   type ShortState,
 } from "../shorts/shortPlan.js";
+import {
+  activityOf,
+  endActivity,
+  boxFailure,
+  readShortLog,
+  runningActivities,
+  shortLog,
+  startActivity,
+  stepActivity,
+} from "../shorts/shortLog.js";
 import { hookProblem, HOOK_MAX_CHARS, pickErrorFile, pickShortMoment } from "../shorts/videoPick.js";
 import { readManifest } from "../thumbnails/thumbnailVariants.js";
 import {
@@ -86,6 +96,8 @@ export interface ShortStatus {
   errors: ShortPlanResponse["errors"];
   /** The UTC day the nightly's tick last re-asked the model after a heuristic pick. */
   pickRetriedOn?: string;
+  /** A save cleared a failed upload: list the channel before sending it again. */
+  recheckChannel?: boolean;
 }
 
 const statusFile = (dir: string, matchId: number): string => path.join(dir, `short-${matchId}.status.json`);
@@ -115,10 +127,16 @@ function updateStatus(matchId: number, change: (s: ShortStatus) => void): void {
 
 /* --- The pick queue ---------------------------------------------------------------------------- */
 
-/** How a pick is made; the tests hand in a stand-in for the model. */
-export type Picker = (matchId: number, opts: { force: boolean }) => Promise<unknown>;
-let picker: Picker = (matchId, { force }) =>
-  pickShortMoment(matchId, { force, log: (line) => console.error(`pick #${matchId}: ${line}`) });
+/**
+ * How a pick is made; the tests hand in a stand-in for the model. `signal` stops it (the
+ * watchdog); `fallback` skips the model and has the heuristic stand in for that reason.
+ */
+export type Picker = (
+  matchId: number,
+  opts: { force: boolean; signal?: AbortSignal; fallback?: string },
+) => Promise<unknown>;
+let picker: Picker = (matchId, opts) =>
+  pickShortMoment(matchId, { ...opts, log: (line) => console.error(`pick #${matchId}: ${line}`) });
 export const setPicker = (p: Picker): void => {
   picker = p;
 };
@@ -129,9 +147,21 @@ let pickingNow: number | null = null;
 let tail: Promise<void> = Promise.resolve();
 
 /**
+ * A pick is stuck when nothing in it has moved for `stuckMs`. Every stage under it has its own
+ * limit (/watch 15 min, the model 25 min an ask), so that long a silence is something with none —
+ * an ffmpeg that hangs, a request that never answers — and the queue behind it would wait for
+ * ever. Measured from the pick's last log line, not its start: a series' pick can rightly run past
+ * 40 minutes. The tests shorten both.
+ */
+export const pickWatchdog = { stuckMs: 40 * 60_000, everyMs: 60_000 };
+
+const mins = (ms: number): string => `${Math.round(ms / 60_000)} min`;
+
+/**
  * Queue a pick; settles when it has run. One at a time across the box: agy watches the whole
  * match per pick, and two at once would share the lab's four cores with the nightly's encode.
  * A match already queued is not queued twice; `force` (the operator's "pick again") upgrades it.
+ * A pick the watchdog stops is replaced by the heuristic's, with why.
  *
  * ponytail: in-process queue — a restart forgets it, and the next GET plan or tick queues again.
  */
@@ -140,13 +170,41 @@ export function queuePick(matchId: number, force = false): Promise<void> {
   if (force && pickingNow !== matchId) forced.add(matchId);
   const existing = queued.get(matchId);
   if (existing) return existing;
+  const ahead = queued.size;
+  shortLog(
+    matchId,
+    "pick",
+    `${force ? "Pick again: " : ""}queued for the model${ahead ? ` — ${ahead} ahead of it` : ""}`,
+  );
   const job = tail.then(async () => {
     pickingNow = matchId;
+    startActivity(matchId, "pick", "starting the pick");
+    const controller = new AbortController();
+    const watchdog = setInterval(() => {
+      const live = stepActivity(matchId, "pick");
+      if (live && Date.now() - Date.parse(live.since) > pickWatchdog.stuckMs)
+        controller.abort(
+          new Error(
+            `the pick was stuck — nothing moved for ${mins(pickWatchdog.stuckMs)} after "${live.line}" — and was stopped; Pick again asks the model afresh`,
+          ),
+        );
+    }, pickWatchdog.everyMs);
     try {
-      await picker(matchId, { force: forced.delete(matchId) });
+      await picker(matchId, { force: forced.delete(matchId), signal: controller.signal });
     } catch (err) {
-      console.error(`pick #${matchId}: ${describeError(err)}`);
+      if (controller.signal.aborted) {
+        const why = describeError(controller.signal.reason);
+        shortLog(matchId, "pick", why, { level: "error" });
+        await picker(matchId, { force: true, fallback: why }).catch((e: unknown) =>
+          console.error(`pick #${matchId}: ${describeError(e)}`),
+        );
+      } else {
+        shortLog(matchId, "pick", `the pick failed: ${describeError(err)} — Pick again`, { level: "error" });
+        console.error(`pick #${matchId}: ${describeError(err)}`);
+      }
     } finally {
+      clearInterval(watchdog);
+      endActivity(matchId, "pick");
       pickingNow = null;
       queued.delete(matchId);
     }
@@ -158,6 +216,9 @@ export function queuePick(matchId: number, force = false): Promise<void> {
 
 export const pickActivity = (matchId: number): ShortPlanResponse["pickActivity"] =>
   pickingNow === matchId ? "running" : queued.has(matchId) ? "queued" : undefined;
+
+/** The picks waiting their turn, in order — the strip's "queued". */
+const queuedPicks = (): number[] => [...queued.keys()].filter((id) => id !== pickingNow);
 
 /** Settles once every pick queued so far has run — what the nightly waits on before it reports. */
 export const picksIdle = (): Promise<void> => tail;
@@ -264,6 +325,9 @@ const uploadsOn = (): boolean => config.youtubeUploadEnabled && config.nightlyUp
 const UPLOADS_OFF =
   "uploads are off (youtubeUploadEnabled / nightlyUpload) — the Short is rendered; Publish is the way";
 
+const NOT_EXPORTED =
+  "the long-form is not exported — press Re-encode MP4 on the Final video panel, then save the hooks again";
+
 /* --- The state the list and the panel show ----------------------------------------------------- */
 
 const mmss = (ms: number): string =>
@@ -284,18 +348,25 @@ const when = (iso: string | null): string => (iso ? iso.slice(0, 16).replace("T"
 const chainStep = new Map<number, Step>();
 
 function stateOf(matchId: number, f: Facts): { state: ShortState; detail?: string } {
+  // The running step's own words ("running /watch on edcr's stream") before the generic line.
   const activity = pickActivity(matchId);
   if (activity)
     return {
       state: "picking",
-      detail: activity === "running" ? "the model is watching the match" : "waiting its turn to be picked",
+      detail:
+        activity === "running"
+          ? (stepActivity(matchId, "pick")?.line ?? "the model is watching the match")
+          : "waiting its turn to be picked",
     };
   const step = chainStep.get(matchId);
-  if (step === "render" || shortRunning(matchId)) return { state: "rendering", detail: "cutting the Short" };
+  if (step === "render" || shortRunning(matchId))
+    return { state: "rendering", detail: stepActivity(matchId, "render")?.line ?? "cutting the Short" };
   if (step === "upload-video" || step === "upload-short" || uploadRunning(matchId))
     return {
       state: "uploading",
-      detail: step === "upload-short" ? "uploading the Short" : "uploading the long-form",
+      detail:
+        (stepActivity(matchId, "upload-video") ?? stepActivity(matchId, "upload-short"))?.line ??
+        (step === "upload-short" ? "uploading the Short" : "uploading the long-form"),
     };
   if (f.video && (f.short || f.noShort)) {
     const times = [f.video.publishAt, f.short?.publishAt ?? null].filter((t): t is string => t !== null);
@@ -331,8 +402,12 @@ export async function matchRowShort(matchId: number): Promise<MatchRowShort> {
   return { shortState: state, ...(detail ? { shortDetail: detail } : {}) };
 }
 
-/** How agy says it cannot be reached at all, as opposed to answering badly. */
-const UNREACHABLE = /not signed in|not configured|is not set|ENOENT|spawn failed|timed out/i;
+/**
+ * How a pick's failure says the model cannot be reached at all, as opposed to answering badly —
+ * the words of `modelFailure` (videoPick.ts) and the reasoner's own.
+ */
+const UNREACHABLE =
+  /not signed in|sign-in has expired|quota or rate limit|is not installed|not configured|is not set|ENOENT|spawn failed|timed out|did not answer in time/i;
 
 /** The picker's health across the box: the newest thing that happened to any pick decides. */
 async function pickerHealth(ids: readonly number[]): Promise<NightlyShortSummary["picker"]> {
@@ -365,8 +440,12 @@ export async function nightlyShortSummary(): Promise<NightlyShortSummary> {
     if (state === "waiting-for-hook" && f.pick) waitingForHook.push(id);
     if (state === "failed") failed.push(id);
   }
-  // ponytail: activity is filled by the status-lines work (stage 3); empty until then.
-  return { waitingForHook, failed, picker: await pickerHealth(ids), activity: { running: [], queued: [] } };
+  return {
+    waitingForHook,
+    failed,
+    picker: await pickerHealth(ids),
+    activity: { running: runningActivities(), queued: queuedPicks() },
+  };
 }
 
 /* --- The plan ---------------------------------------------------------------------------------- */
@@ -433,7 +512,10 @@ async function suggestionsFor(
     moment = buildShortHook({ ...f.pick, score: 0, reason: "", events }, left.nickname, right.nickname);
   }
   return {
-    title: dedupe([committed, ...title]).filter((h) => h.length <= budget.hookMax),
+    // The model's proposals (in the operator's own style, videoPick.ts) ahead of the chips.
+    title: dedupe([committed, ...(f.pick?.titleHooks ?? []), ...title]).filter(
+      (h) => h.length <= budget.hookMax,
+    ),
     // Held to the rule the model's own suggestion is: no result, and short enough to read at a
     // glance. No `#` (a rank chip's "#7" is a hashtag in the Short's title) and no line naming
     // both players, which the title already does after the hook.
@@ -521,7 +603,7 @@ export async function shortPlan(matchId: number, opts: { queue?: boolean } = {})
         console.error(`plan #${matchId}: suggestions — ${describeError(err)}`);
         return { short: [], title: [] };
       })
-    : { short: f.pick?.hookSuggestion ? [f.pick.hookSuggestion] : [], title: [] };
+    : { short: f.pick?.hookSuggestion ? [f.pick.hookSuggestion] : [], title: f.pick?.titleHooks ?? [] };
   f = await factsOf(matchId);
   const { state, detail } =
     seriesGame && !f.video ? { state: "no-export" as const, detail: SERIES_GAME } : stateOf(matchId, f);
@@ -533,10 +615,12 @@ export async function shortPlan(matchId: number, opts: { queue?: boolean } = {})
     c?.videoId ? { videoId: c.videoId, ...(c.publishAt ? { publishAt: c.publishAt } : {}) } : undefined;
   const preview = previewOf(matchId, f);
   const activity = pickActivity(matchId);
+  const live = activityOf(matchId);
   return {
     matchId,
     pick: f.pick,
-    log: [],
+    log: readShortLog(matchId, 60),
+    ...(live ? { activity: live } : {}),
     ...(activity ? { pickActivity: activity } : {}),
     shortHook: f.shortHook,
     titleHook: f.titleHook,
@@ -572,6 +656,33 @@ export async function saveHooks(
   body: unknown,
   deps?: Partial<ChainDeps>,
 ): Promise<Refusal | null> {
+  // Two saves of one match at once would interleave their files — one's title, the other's
+  // Short hook. The second is refused rather than queued: the panel shows it and the operator
+  // presses again with what is on screen.
+  if (saving.has(matchId)) return refuse(matchId, { status: 409, error: SAVE_RACING });
+  saving.add(matchId);
+  try {
+    const refused = await writeHooks(matchId, body, deps);
+    // A 409 or 503 is the state of the match, not a typo in a field: worth the log.
+    return refused && refused.status !== 400 ? refuse(matchId, refused) : refused;
+  } finally {
+    saving.delete(matchId);
+  }
+}
+
+const saving = new Set<number>();
+const SAVE_RACING = "another save of this match is still being written — press Save again in a moment";
+
+function refuse(matchId: number, refusal: Refusal): Refusal {
+  shortLog(matchId, "chain", `save refused: ${refusal.error}`, { level: "warn" });
+  return refusal;
+}
+
+async function writeHooks(
+  matchId: number,
+  body: unknown,
+  deps?: Partial<ChainDeps>,
+): Promise<Refusal | null> {
   const req = (typeof body === "object" && body !== null ? body : {}) as Partial<SaveHooksRequest>;
   const titleHook = typeof req.titleHook === "string" ? req.titleHook.trim() : "";
   const noShort = req.noShort === true;
@@ -592,7 +703,15 @@ export async function saveHooks(
   if (f.short && (noShort || (f.shortHook !== null && shortHook !== f.shortHook)))
     return { status: 409, error: LOCKED("Short", f.short.videoId) };
 
-  const match = await getMatch(matchId);
+  let match: MatchInfo;
+  try {
+    match = await getMatch(matchId);
+  } catch (err) {
+    return {
+      status: 503,
+      error: `the match record could not be read (${describeError(err)}) — nothing was saved; save again once the MCSR API answers`,
+    };
+  }
   const [left, right] = match.players;
   if (!left || !right) return { status: 404, error: `match ${matchId} does not have two players` };
   if (!f.video && (await seriesGameUnjoined(match, f.series))) return { status: 409, error: SERIES_GAME };
@@ -613,19 +732,41 @@ export async function saveHooks(
       };
   }
 
-  if (!f.video)
-    await writeFile(metaPaths(matchId, "title").edited, `${withHook(built, titleHook).title}\n`, "utf8");
-  if (shortHook && !f.short) await writeFile(shortHookFile(dir, matchId), `${shortHook}\n`, "utf8");
-  // No Short: no hook file either, so nothing can cut or upload one behind the operator's back.
-  if (noShort) await rm(shortHookFile(dir, matchId), { force: true });
-  updateStatus(matchId, (s) => {
-    s.hooksSavedAt = new Date().toISOString();
-    s.noShort = noShort || undefined;
-    // A save is the retry: what failed last time is tried again, and its errors go with it.
-    for (const [step, rec] of Object.entries(s.steps))
-      if (rec?.state !== "done") delete s.steps[step as Step];
-    s.errors = [];
-  });
+  try {
+    if (!f.video)
+      await writeFile(metaPaths(matchId, "title").edited, `${withHook(built, titleHook).title}\n`, "utf8");
+    if (shortHook && !f.short) await writeFile(shortHookFile(dir, matchId), `${shortHook}\n`, "utf8");
+    // No Short: no hook file either, so nothing can cut or upload one behind the operator's back.
+    if (noShort) await rm(shortHookFile(dir, matchId), { force: true });
+    updateStatus(matchId, (s) => {
+      s.hooksSavedAt = new Date().toISOString();
+      s.noShort = noShort || undefined;
+      // A save is the retry: what failed last time is tried again, and its errors go with it. An
+      // upload that failed may still have reached YouTube (the connection lost after the last
+      // chunk): the channel is listed before it is sent again.
+      for (const [step, rec] of Object.entries(s.steps))
+        if (rec?.state !== "done") {
+          if (step.startsWith("upload") && rec?.state !== "off") s.recheckChannel = true;
+          delete s.steps[step as Step];
+        }
+      s.errors = [];
+    });
+  } catch (err) {
+    const text = describeError(err);
+    return { status: 507, error: boxFailure("saving the hooks", text) ?? `saving the hooks failed: ${text}` };
+  }
+  shortLog(
+    matchId,
+    "chain",
+    `hooks saved — title: ${JSON.stringify(titleHook)}, ${noShort ? "no Short" : `Short: ${JSON.stringify(shortHook)}`}`,
+  );
+  const step = chainStep.get(matchId);
+  if (chains.has(matchId))
+    shortLog(
+      matchId,
+      "chain",
+      `saved while ${step ? `the ${step} step runs` : "the chain runs"} — it looks again when that ends (a changed hook re-cuts the Short)`,
+    );
   void startChain(matchId, deps);
   return null;
 }
@@ -642,27 +783,9 @@ export interface ChainDeps {
   now: () => number;
 }
 
-/** The Short render through shortsRoutes' job table, so the delete guard and the progress stream see it. */
-const renderViaJob = (matchId: number): Promise<string | null> =>
-  new Promise((resolve) => {
-    const proc = spawnShortJob(matchId);
-    let last = "";
-    const keep = (chunk: Buffer) => {
-      const lines = chunk
-        .toString()
-        .split("\n")
-        .map((l) => l.trim())
-        .filter(Boolean);
-      if (lines.length) last = lines[lines.length - 1]!;
-    };
-    proc.stdout?.on("data", keep);
-    proc.stderr?.on("data", keep);
-    proc.on("error", (err) => resolve(describeError(err)));
-    proc.on("close", (code) => resolve(code === 0 ? null : last.slice(0, 300) || `exit code ${code}`));
-  });
-
 const liveDeps = (): ChainDeps => ({
-  render: renderViaJob,
+  // Through shortsRoutes' job table, so the delete guard, the progress stream and the log see it.
+  render: (matchId) => spawnShortJob(matchId),
   upload: beginUpload,
   pick: (matchId) => queuePick(matchId),
   refreshChannel: () => refreshChannelUploadsNow(),
@@ -689,6 +812,7 @@ async function uploadOne(matchId: number, kind: UploadKind, deps: ChainDeps): Pr
         ? nextPublishSlot(deps.now(), publishHourFor(matchDir(matchId)), await claimedPublishTimes(matchId))
         : shortPublishAt(await onChannel(matchId, "video"), deps.now());
   }
+  if (kind === "video" && !isExported(matchId)) return NOT_EXPORTED;
   const begun = await deps.upload(matchId, {
     kind,
     privacyStatus: "private",
@@ -718,7 +842,10 @@ async function runStep(matchId: number, step: Step, fn: () => Promise<string | n
   try {
     error = await fn();
   } catch (err) {
-    error = describeError(err);
+    // The step's own module logs what it returns; a throw is nobody's line but this one.
+    const text = describeError(err);
+    error = boxFailure(`the ${step} step`, text) ?? text;
+    shortLog(matchId, "chain", `the ${step} step failed: ${error}`, { level: "error", detail: text });
   } finally {
     chainStep.delete(matchId);
   }
@@ -735,45 +862,89 @@ async function runStep(matchId: number, step: Step, fn: () => Promise<string | n
 }
 
 async function advance(matchId: number, deps: ChainDeps): Promise<void> {
-  const before = readStatus(matchId).steps;
-  // An upload a restart cut short may have reached YouTube before the record was written: ask the
-  // channel first, or the resume would put a second copy on it.
-  if (before["upload-video"]?.state === "running" || before["upload-short"]?.state === "running")
-    await deps.refreshChannel().catch(() => {});
+  const status = readStatus(matchId);
+  const before = status.steps;
+  // An upload a restart cut short, or one that failed, may have reached YouTube before the record
+  // was written: ask the channel first, or the retry would put a second copy on it.
+  if (
+    before["upload-video"]?.state === "running" ||
+    before["upload-short"]?.state === "running" ||
+    status.recheckChannel
+  ) {
+    updateStatus(matchId, (s) => delete s.recheckChannel);
+    shortLog(
+      matchId,
+      "chain",
+      "checking the channel before sending the upload again, so nothing goes up twice",
+    );
+    await deps.refreshChannel().catch((err: unknown) =>
+      shortLog(matchId, "chain", `the channel could not be listed: ${describeError(err)}`, {
+        level: "warn",
+      }),
+    );
+  }
   // Every pass does the first thing still missing. Bounded: a step that "succeeds" without
   // changing the disk must not spin.
+  let did = false;
   for (let pass = 0; pass < 8; pass++) {
     const f = await factsOf(matchId);
     if (!hooksSaved(f)) return;
     const wantsShort = !f.noShort && f.short === null;
     if (wantsShort && !f.pick) {
-      if (
-        !(await runStep(matchId, "pick", async () => {
-          await deps.pick(matchId);
-          return existsSync(pickFile(f.dir, matchId)) ? null : "no pick came back — press pick again";
-        }))
-      )
-        return;
+      did = true;
+      const ok = await runStep(matchId, "pick", async () => {
+        // The model watches the finished video: picking without one would pin the heuristic's
+        // window under the saved hook, where the daily retry never replaces it.
+        if (!f.exported) return NOT_EXPORTED;
+        await deps.pick(matchId);
+        if (existsSync(pickFile(f.dir, matchId))) return null;
+        const error =
+          (await readJson<{ message: string }>(pickErrorFile(f.dir, matchId)))?.message ??
+          "no pick came back — press Pick again";
+        shortLog(matchId, "chain", `no pick to cut: ${error}`, { level: "error" });
+        return error;
+      });
+      if (!ok) return;
       continue;
     }
     if (wantsShort && !shortCurrent(f)) {
+      did = true;
+      if (f.shortFile && f.cut && f.cut.hook !== f.shortHook)
+        shortLog(
+          matchId,
+          "chain",
+          `the Short hook changed since the cut — cutting it again behind ${JSON.stringify(f.shortHook)}`,
+        );
+      else if (f.shortFile && f.cut && f.pick && f.cut.pickCreatedAt !== f.pick.createdAt)
+        shortLog(matchId, "chain", "a new pick came in since the cut — cutting the Short again");
       if (!(await runStep(matchId, "render", () => deps.render(matchId)))) return;
       continue;
     }
     if (!uploadsOn()) {
+      shortLog(matchId, "chain", UPLOADS_OFF, { level: "warn" });
       updateStatus(matchId, (s) => {
         s.steps["upload-video"] = { state: "off", at: new Date().toISOString(), detail: UPLOADS_OFF };
       });
       return;
     }
     if (!f.video) {
+      did = true;
       if (!(await runStep(matchId, "upload-video", () => uploadOne(matchId, "video", deps)))) return;
       continue;
     }
     if (wantsShort) {
+      did = true;
       if (!(await runStep(matchId, "upload-short", () => uploadOne(matchId, "short", deps)))) return;
       continue;
     }
+    if (did)
+      shortLog(
+        matchId,
+        "chain",
+        f.noShort
+          ? "done — the long-form is on the channel (no Short)"
+          : "done — both videos are on the channel",
+      );
     return;
   }
 }
@@ -826,8 +997,12 @@ export async function shortTick(deps: Partial<ChainDeps> = {}, nowMs = Date.now(
     const retry: number[] = [];
     for (const id of listProcessedMatchIds()) {
       const s = readStatus(id);
-      if (s.hooksSavedAt && !chains.has(id) && Object.values(s.steps).some((st) => st?.state === "running"))
+      // A step recorded as running with no chain in this process: the process that ran it is gone.
+      const cut = Object.entries(s.steps).find(([, st]) => st?.state === "running")?.[0];
+      if (s.hooksSavedAt && !chains.has(id) && cut) {
+        shortLog(id, "chain", `resumed after a restart — the ${cut} step was cut short`, { level: "warn" });
         void startChain(id, deps);
+      }
       const dir = matchDir(id);
       if (hidden.has(id) || s.pickRetriedOn === utcDay(nowMs) || !existsSync(pickErrorFile(dir, id)))
         continue;
@@ -839,6 +1014,11 @@ export async function shortTick(deps: Partial<ChainDeps> = {}, nowMs = Date.now(
       updateStatus(id, (s) => {
         s.pickRetriedOn = utcDay(nowMs);
       });
+      shortLog(
+        id,
+        "chain",
+        "the daily retry: asking the model again, since the heuristic stood in last time",
+      );
       await queuePick(id, true);
       if (existsSync(pickErrorFile(matchDir(id), id))) break;
     }

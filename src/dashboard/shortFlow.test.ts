@@ -28,8 +28,11 @@ const fixture = JSON.parse(
   readFileSync(new URL("../fixtures/match-12730175.json", import.meta.url), "utf8"),
 ) as MatchInfo;
 const matchOf = (id: number): MatchInfo => ({ ...fixture, changes: [], id });
+/** The MCSR API's answer while it is down. */
+let mcsrDown = false;
 globalThis.fetch = (async (input: string | URL | Request) => {
   const url = new URL(String(input));
+  if (mcsrDown) return new Response("upstream down", { status: 503, statusText: "Service Unavailable" });
   const ok = (data: unknown) =>
     new Response(JSON.stringify({ status: "success", data }), {
       status: 200,
@@ -93,7 +96,7 @@ const picks: Array<{ id: number; force: boolean }> = [];
 let modelUp = true;
 /** Holds the model until released, so a plan can be seen while its pick is still queued. */
 let watching: Promise<void> = Promise.resolve();
-flow.setPicker(async (id, { force }) => {
+const standIn: import("./shortFlow.js").Picker = async (id, { force }) => {
   await watching;
   picks.push({ id, force });
   writePick(id, modelUp ? "agy" : "heuristic");
@@ -104,13 +107,17 @@ flow.setPicker(async (id, { force }) => {
       errorFile,
       JSON.stringify({ at: new Date().toISOString(), message: "Antigravity is not signed in — run: agy" }),
     );
-});
+};
+flow.setPicker(standIn);
 
 // The render: what generateShort writes — the Short, and the cut with the hook it burned in.
 const renders: Array<{ id: number; hook: string }> = [];
+/** Holds a render after it has read its hook, so a save can land mid-render. */
+let renderGate: Promise<void> = Promise.resolve();
 const render = async (id: number): Promise<string | null> => {
   const hook = await readShortHook(dir(id), id);
   if (hook === null) return "waiting for the Short's hook";
+  await renderGate;
   const pick = JSON.parse(readFileSync(path.join(dir(id), `short-${id}.pick.json`), "utf8")) as ShortPick;
   writeFileSync(path.join(dir(id), `short-${id}.mp4`), "short");
   writeFileSync(path.join(dir(id), `short-${id}.title.txt`), `${hook} | edcr vs doogile #mcsr #minecraft\n`);
@@ -155,7 +162,15 @@ const upload: import("./shortFlow.js").ChainDeps["upload"] = async (id, req) => 
   return { progress, finished: Promise.resolve(progress) };
 };
 const NOW = Date.parse("2026-09-24T08:00:00Z");
-const chain = { render, upload, refreshChannel: async () => {}, now: () => NOW };
+let listed = 0;
+const chain = {
+  render,
+  upload,
+  refreshChannel: async () => {
+    listed++;
+  },
+  now: () => NOW,
+};
 
 /* --- Transport stand-ins ----------------------------------------------------------------------- */
 function context(body = "") {
@@ -223,6 +238,23 @@ try {
   await plan(A);
   await flow.picksIdle();
   assert.equal(picks.length, 1);
+  // The model's title hooks lead the title chips (a new pick is a new cache key).
+  {
+    const file = path.join(dir(A), `short-${A}.pick.json`);
+    const kept = readFileSync(file, "utf8");
+    writeFileSync(
+      file,
+      JSON.stringify({
+        ...pickOf(A),
+        titleHooks: ["UNC vs OG", "ICE COLD"],
+        createdAt: "2026-09-24T08:00:00Z",
+      }),
+    );
+    const titled = (await plan(A)).suggestions.title;
+    assert.deepEqual(titled.slice(0, 2), ["UNC vs OG", "ICE COLD"], "the model's proposals first");
+    assert.ok(titled.length > 2, "the chips after them");
+    writeFileSync(file, kept);
+  }
 
   /* --- 2. The gate: nothing renders or uploads before the hooks are saved ---------------------- */
   await flow.startChain(A, chain);
@@ -498,6 +530,222 @@ try {
   assert.deepEqual(series.preview, { videoUrl: `/api/export/preview/${S}`, startSec: 910, endSec: 940 });
   assert.equal(series.detail, "Short game 2 5:00–5:30, 30 s, both");
   console.log("OK: plan, hooks, pick and the chain");
+
+  /* --- 13. The log the plan carries: the chain's own lines, newest last ------------------------- */
+  {
+    const logs = new Map<number, string[]>();
+    for (const id of [A, B, F])
+      logs.set(
+        id,
+        (await plan(id)).log.map((l) => `${l.step}/${l.level}: ${l.text}`),
+      );
+    const texts = (id: number) => logs.get(id)!;
+    assert.ok(
+      texts(A).includes('chain/info: hooks saved — title: "One heart left", Short: "Down to the last heart"'),
+    );
+    assert.ok(texts(A).includes("chain/info: done — both videos are on the channel"));
+    assert.ok(
+      texts(A).some((t) => t.startsWith("chain/warn: save refused: the long-form is already on the channel")),
+      "a lock refusal is logged",
+    );
+    assert.ok(texts(B).some((t) => t.startsWith("chain/warn: uploads are off")));
+    assert.ok(
+      texts(B).includes(
+        'chain/info: the Short hook changed since the cut — cutting it again behind "Second line"',
+      ),
+    );
+    assert.ok(texts(F).includes("chain/warn: resumed after a restart — the render step was cut short"));
+    assert.ok(texts(A).length <= 60 && (await plan(A)).activity === undefined, "nothing runs for A now");
+    // E's upload failed, and the save that retried it listed the channel first: a failed upload
+    // may have reached YouTube before the connection went.
+    assert.ok(listed >= 1, "the retry of a failed upload lists the channel before sending again");
+    console.log("OK: the plan carries the log — saves, refusals, re-cuts, uploads off, a resume");
+  }
+
+  /* --- 14. Activity: the pick running and the ones queued, on the plan and the strip ------------ */
+  {
+    const P = 13_000_020;
+    const Q = 13_000_021;
+    exported(P);
+    exported(Q);
+    let release = () => {};
+    watching = new Promise((r) => (release = r));
+    void flow.queuePick(P);
+    void flow.queuePick(Q);
+    await new Promise((r) => setImmediate(r));
+    const planP = await plan(P);
+    assert.deepEqual(
+      { ...planP.activity, since: "" },
+      { step: "pick", line: "starting the pick", since: "" },
+    );
+    assert.equal(planP.detail, "starting the pick", "the list's line is the step's own");
+    const strip = (await flow.nightlyShortSummary()).activity;
+    assert.deepEqual(
+      strip.running.map((r) => [r.matchId, r.step]),
+      [[P, "pick"]],
+    );
+    assert.deepEqual(strip.queued, [Q], "Q waits its turn");
+    assert.ok((await plan(Q)).log.some((l) => l.text === "queued for the model — 1 ahead of it"));
+    release();
+    await flow.picksIdle();
+    assert.deepEqual((await flow.nightlyShortSummary()).activity, { running: [], queued: [] });
+    console.log("OK: the running pick is the plan's activity and the strip's; the queue is listed");
+  }
+
+  /* --- 15. Two saves at once: the second is refused, not interleaved ----------------------------- */
+  {
+    const R = 13_000_022;
+    exported(R);
+    writePick(R);
+    config.nightlyUpload = "off";
+    const [one, two] = await Promise.all([
+      flow.saveHooks(R, { titleHook: "One heart left", shortHook: "First" }, chain),
+      flow.saveHooks(R, { titleHook: "One heart left", shortHook: "Second" }, chain),
+    ]);
+    assert.equal(one, null);
+    assert.deepEqual(two, {
+      status: 409,
+      error: "another save of this match is still being written — press Save again in a moment",
+    });
+    await flow.chainIdle(R);
+    assert.equal(await readShortHook(dir(R), R), "First");
+    console.log("OK: two saves racing — the second is refused and logged");
+
+    /* --- 16. A hook changed during the render: the chain cuts again behind the new one --------- */
+    let open = () => {};
+    renderGate = new Promise((r) => (open = r));
+    const before = renders.filter((r) => r.id === R).length;
+    await call("PUT", "hooks", R, { titleHook: "One heart left", shortHook: "During" });
+    await new Promise((r) => setTimeout(r, 20));
+    await call("PUT", "hooks", R, { titleHook: "One heart left", shortHook: "After" });
+    open();
+    renderGate = Promise.resolve();
+    await flow.chainIdle(R);
+    assert.deepEqual(
+      renders
+        .filter((r) => r.id === R)
+        .map((r) => r.hook)
+        .slice(before),
+      ["During", "After"],
+      "the render in flight finishes, then the Short is cut again behind the hook saved meanwhile",
+    );
+    const rlog = (await plan(R)).log.map((l) => l.text);
+    assert.ok(
+      rlog.includes(
+        "saved while the render step runs — it looks again when that ends (a changed hook re-cuts the Short)",
+      ),
+    );
+    assert.ok(rlog.includes('the Short hook changed since the cut — cutting it again behind "After"'));
+    config.nightlyUpload = "scheduled";
+    console.log("OK: a hook saved mid-render re-cuts the Short once the render ends");
+  }
+
+  /* --- 17. Not exported: the pick is not made on nothing, the step says what to do -------------- */
+  {
+    const N = 13_000_023;
+    mkdirSync(dir(N), { recursive: true });
+    writeFileSync(path.join(dir(N), `match-${N}.title.txt`), "Chip | edcr vs doogile | MCSR Ranked 1v1\n");
+    const picked = picks.length;
+    await save(N, { titleHook: "One heart left", shortHook: "Nothing yet" });
+    assert.equal(picks.length, picked, "the model is not asked to watch a video that is not there");
+    const p = await plan(N);
+    assert.equal(p.state, "failed");
+    assert.deepEqual(
+      p.errors.map((e) => [e.step, e.message]),
+      [
+        [
+          "pick",
+          "the long-form is not exported — press Re-encode MP4 on the Final video panel, then save the hooks again",
+        ],
+      ],
+    );
+    console.log(
+      "OK: hooks saved before the export — the step fails with the fix, no heuristic pick is pinned",
+    );
+  }
+
+  /* --- 18. The MCSR API down on save: nothing written, a 503 that says so -------------------------- */
+  {
+    const M = 13_000_024;
+    exported(M);
+    writePick(M);
+    mcsrDown = true;
+    const down = await call("PUT", "hooks", M, { titleHook: "One heart left", shortHook: "Down" });
+    mcsrDown = false;
+    assert.equal(down.status, 503);
+    assert.match(
+      down.payload.error!,
+      /^the match record could not be read \(MCSR Ranked API \/matches\/13000024 -> 503.*\) — nothing was saved; save again once the MCSR API answers$/,
+    );
+    assert.equal(await readShortHook(dir(M), M), null, "nothing written");
+    assert.ok(
+      (await plan(M)).log.some(
+        (l) => l.level === "warn" && l.text.startsWith("save refused: the match record"),
+      ),
+    );
+    console.log("OK: the MCSR API down on save is a 503 with the fix, and nothing is written");
+  }
+
+  /* --- 19. A stuck pick: stopped by the watchdog, the heuristic stands in with why ---------------- */
+  {
+    const K = 13_000_025;
+    exported(K);
+    const limits = { ...flow.pickWatchdog };
+    flow.pickWatchdog.stuckMs = 60;
+    flow.pickWatchdog.everyMs = 15;
+    const fallbacks: string[] = [];
+    flow.setPicker(async (id, { signal, fallback }) => {
+      if (fallback) {
+        fallbacks.push(fallback);
+        writePick(id, "heuristic");
+        writeFileSync(
+          path.join(dir(id), `short-${id}.pick-error.json`),
+          JSON.stringify({ at: new Date().toISOString(), message: fallback }),
+        );
+        return;
+      }
+      // Hangs until stopped, as an ffmpeg with no time limit would.
+      await new Promise((_, reject) => signal?.addEventListener("abort", () => reject(signal.reason)));
+    });
+    await flow.queuePick(K);
+    flow.setPicker(standIn);
+    Object.assign(flow.pickWatchdog, limits);
+    assert.equal(fallbacks.length, 1);
+    assert.match(
+      fallbacks[0]!,
+      /^the pick was stuck — nothing moved for \d+ min after "starting the pick" — and was stopped; Pick again asks the model afresh$/,
+    );
+    const k = await plan(K);
+    assert.equal(k.state, "waiting-for-hook");
+    assert.equal(k.pick?.source, "heuristic");
+    assert.match(k.errors[0]!.message, /the pick was stuck/);
+    assert.ok(k.log.some((l) => l.level === "error" && l.text.startsWith("the pick was stuck")));
+    assert.equal(k.activity, undefined, "and nothing runs any more");
+    console.log("OK: a pick that stops moving is stopped, and the heuristic stands in saying why");
+  }
+
+  /* --- 20. No sync.json: the CLI refuses before the API, with the command that writes it -------- */
+  {
+    const Y = 13_000_026;
+    mkdirSync(dir(Y), { recursive: true });
+    writePick(Y);
+    writeFileSync(path.join(dir(Y), `short-${Y}.hook.txt`), "Down to the last heart\n");
+    const root = fileURLToPath(new URL("../..", import.meta.url));
+    const cwd = mkdtempSync(path.join(tmpdir(), "mcsr-shortcli-"));
+    writeFileSync(path.join(cwd, "mcsr-vid.config.json"), JSON.stringify({ mediaDir: media }));
+    const cli = spawnSync(
+      path.join(root, "node_modules", ".bin", "tsx"),
+      [path.join(root, "src", "shorts", "generateShort.ts"), String(Y)],
+      { cwd, encoding: "utf8", timeout: 60_000 },
+    );
+    rmSync(cwd, { recursive: true, force: true });
+    assert.equal(cli.status, 1, cli.stderr);
+    assert.match(
+      cli.stderr,
+      new RegExp(`no sync\\.json for match ${Y} — .*npm run sync-status -- ${Y} writes it`),
+    );
+    console.log("OK: no sync.json — the Short is refused, not cut seconds off, and the fix named");
+  }
 } finally {
   rmSync(media, { recursive: true, force: true });
 }

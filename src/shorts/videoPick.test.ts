@@ -15,7 +15,8 @@ import { config } from "../config.js";
 import { NOT_SIGNED_IN } from "./reasoner.js";
 import { decidedAtMs } from "./raceGap.js";
 import { pickFile, type ShortPick } from "./shortPlan.js";
-import { hookProblem, pickErrorFile, pickShortMoment, PROXY_FILE } from "./videoPick.js";
+import { hookProblem, modelFailure, pickErrorFile, pickShortMoment, PROXY_FILE } from "./videoPick.js";
+import { readShortLog } from "./shortLog.js";
 import { watchDir } from "./watchPov.js";
 
 const tmp = mkdtempSync(path.join(tmpdir(), "videopick-"));
@@ -64,6 +65,13 @@ if (mode === "denied" || (mode === "denied-once" && first)) {
 } else if (mode === "signin") {
   console.error("Authentication required. Please visit the URL to log in:");
   setTimeout(() => {}, 60000);
+} else if (mode === "quota") {
+  // The subscription's limit, in agy's ERROR envelope.
+  console.log(JSON.stringify({ status: "ERROR", response: "", error: "429 RESOURCE_EXHAUSTED: quota exceeded for gemini-3.8-flash" }));
+  process.exitCode = 1;
+} else if (mode === "expired") {
+  console.error("UNAUTHENTICATED: the session token has expired");
+  process.exitCode = 1;
 } else if (mode === "hang") {
   setTimeout(() => {}, 60000);
 } else {
@@ -188,7 +196,8 @@ writeFileSync(pickErrorFile(dir, single), '{"at":"then","message":"an old failur
   assert.equal(argv[argv.indexOf("--add-dir") + 1], path.resolve(dir));
   assert.equal(JSON.parse(argv[argv.indexOf("--json-schema") + 1]!).required.includes("rtaAtStart"), true);
   assert.ok(
-    lines.some((l) => /^prompt: \d+ characters$/.test(l)) && lines.some((l) => /^answer in \d+ s: /.test(l)),
+    lines.some((l) => /^prompt: \d+ characters, 0 past title hooks as style examples$/.test(l)) &&
+      lines.some((l) => /^answer in \d+ s$/.test(l)),
   );
   console.log("OK: a model pick is taken, written, and the prompt carries the video, the facts and the chat");
 
@@ -252,7 +261,7 @@ function clips(matchId: number, nicks: string[]): void {
     [path.resolve(dir)],
     "the stills sit inside the match directory: one --add-dir covers them",
   );
-  assert.ok(lines.some((l) => /^watch left: 2 stills, 1 transcript lines in \d+ s$/.test(l)));
+  assert.ok(lines.some((l) => /^\/watch on edcr: 2 stills, transcript: 1 lines \(\d+ s\)$/.test(l)));
 
   // /watch failing costs the stills, not the pick.
   writeFileSync(fakeWatch, "import sys\nsys.exit(3)\n");
@@ -261,7 +270,11 @@ function clips(matchId: number, nicks: string[]): void {
   const without = await pickShortMoment(single, { force: true, log });
   assert.equal(without.source, "agy");
   assert.doesNotMatch(sentArgv()[sentArgv().indexOf("-p") + 1]!, /STILLS/);
-  assert.ok(lines.some((l) => /^watch right: watch\.py exited 3: .* — the pick goes on without it$/.test(l)));
+  assert.ok(
+    lines.some((l) =>
+      /^\/watch failed on doogile's stream: watch\.py exited 3: .* — the pick goes on without it$/.test(l),
+    ),
+  );
   config.watchScript = null;
   console.log(
     "OK: /watch's stills and transcript reach the prompt on the match clock; its failure drops only them",
@@ -269,8 +282,13 @@ function clips(matchId: number, nicks: string[]): void {
 }
 
 /** Forces a pick in `mode` and checks the heuristic stood in with `why` on disk. */
-async function fallsBack(message: RegExp, timeoutMs?: number): Promise<ShortPick> {
-  const pick = await pickShortMoment(single, { force: true, timeoutMs, log });
+async function fallsBack(message: RegExp, timeoutMs?: number, fallback?: string): Promise<ShortPick> {
+  const pick = await pickShortMoment(single, {
+    force: true,
+    timeoutMs,
+    log,
+    ...(fallback ? { fallback } : {}),
+  });
   assert.equal(pick.source, "heuristic");
   assert.deepEqual([pick.pov, pick.kind, pick.gameMatchId], ["both", "race", single]);
   assert.equal(pick.endMs - pick.startMs, 22_000, "the scorer's window");
@@ -290,9 +308,7 @@ async function fallsBack(message: RegExp, timeoutMs?: number): Promise<ShortPick
   const retried = await pickShortMoment(single, { force: true, log });
   assert.deepEqual([retried.source, calls()], ["agy", 2]);
   assert.ok(
-    lines.includes(
-      'no answer (node answered nothing: headless mode denied the "command" tool): asking once more',
-    ),
+    lines.includes('asking once more (node answered nothing: headless mode denied the "command" tool)'),
   );
   agy("denied");
   await fallsBack(/headless mode denied the "command" tool/);
@@ -310,7 +326,8 @@ async function fallsBack(message: RegExp, timeoutMs?: number): Promise<ShortPick
 
   assert.equal(calls(), 1, "not signed in is not asked again");
   agy("hang");
-  await fallsBack(/timed out after 300 ms/, 300);
+  // Long enough for the fake to start and count itself on a loaded box (300 ms was not, 24 Sept).
+  await fallsBack(/timed out after 3 s/, 3000);
   assert.equal(calls(), 1, "nor is a timeout");
   agy("garbage");
   await fallsBack(/no JSON object/);
@@ -333,6 +350,97 @@ async function fallsBack(message: RegExp, timeoutMs?: number): Promise<ShortPick
 
   config.reasonerCommand = null;
   await fallsBack(/reasonerCommand is not set/);
+
+  // The subscription's quota, an expired session, a missing binary: each named with its fix and
+  // asked once — a second ask straight away only doubles the wait.
+  calls();
+  agy("quota");
+  await fallsBack(
+    /the Gemini subscription's quota or rate limit is used up \(.*RESOURCE_EXHAUSTED.*\) — the nightly's tick asks again tomorrow/,
+  );
+  assert.equal(calls(), 1, "a quota is not asked twice");
+  agy("expired");
+  await fallsBack(
+    /Antigravity's sign-in has expired \(.*token has expired\) — sign in again: HOME=\/app\/\.tools\/agy-home/,
+  );
+  assert.equal(calls(), 1, "nor an expired sign-in");
+  config.reasonerCommand = [path.join(tmp, "nowhere", "agy"), "-p", "{prompt}"];
+  await fallsBack(/the model's command failed: agy is not installed in this container/);
+  console.log("OK: a quota, an expired sign-in, a missing agy — each named with its fix, none asked twice");
+
+  // The proxy failing: ffmpeg's own words, its stderr in the log's detail, the heuristic's window.
+  answer(good);
+  utimesSync(path.join(dir, `final-${single}.mp4`), new Date(), new Date(Date.now() + 60_000));
+  await fallsBack(
+    /ffmpeg could not make the model's copy of final-12730175\.mp4 \(.+\) — if the export is damaged, Re-encode MP4, then Pick again/,
+  );
+  const proxyLine = readShortLog(single).find((l) => l.text.startsWith("ffmpeg could not make"));
+  assert.equal(proxyLine?.level, "error");
+  assert.match(proxyLine?.detail ?? "", /exited/, "ffmpeg's stderr is the detail");
+  writeFileSync(path.join(dir, PROXY_FILE), "not really a proxy");
+  utimesSync(path.join(dir, PROXY_FILE), new Date(), new Date(Date.now() + 120_000));
+  console.log("OK: a proxy ffmpeg cannot make is named, its stderr kept");
+
+  // The queue's stuck pick: the heuristic stands in for the reason given, the model not asked.
+  calls();
+  await fallsBack(/^the pick was stuck$/, undefined, "the pick was stuck");
+  assert.equal(calls(), 0, "a fallback does not ask the model");
+}
+
+{
+  // What the model's failures read as, one by one — and which are worth a second ask.
+  const cases: Array<[string, string, RegExp, boolean]> = [
+    [
+      "agy timed out after 1500 s",
+      "",
+      /did not answer in time \(agy timed out after 1500 s\) and was stopped/,
+      false,
+    ],
+    [
+      'agy answered nothing: headless mode denied the "command" tool',
+      "",
+      /^the model answered nothing: headless/,
+      true,
+    ],
+    ["agy printed no JSON object", "", /^the model printed no JSON object — Pick again/, true],
+    ["agy exited 1: answered ERROR: rate limit", "", /quota or rate limit is used up/, false],
+    ["agy exited 1: boom", "[stderr] invalid_grant", /sign-in has expired/, false],
+    ["agy exited 1: boom", '{"startSec": 401, "endSec": 429}', /^agy exited 1: boom — Pick again/, true],
+    ["agy exited 137: ", "", /out of memory/, false],
+  ];
+  for (const [error, raw, message, again] of cases) {
+    const got = modelFailure(error, raw);
+    assert.match(got.message, message, error);
+    assert.equal(got.again, again, `${error}: again`);
+  }
+  assert.equal(modelFailure(NOT_SIGNED_IN).message, NOT_SIGNED_IN);
+  console.log("OK: every model failure is worded with its fix; a bare 401 in an answer is not a sign-in");
+}
+
+{
+  // The log: every stage of the pick is a line of short-<id>.log.jsonl, the long material in detail.
+  answer(good);
+  await pickShortMoment(single, { force: true });
+  const log = readShortLog(single, 500);
+  assert.ok(log.every((l) => l.step === "pick" && !Number.isNaN(Date.parse(l.at))));
+  const answered = [...log].reverse().find((l) => /^answer in \d+ s$/.test(l.text));
+  assert.match(answered?.detail ?? "", /structured_output/, "the raw answer is the detail");
+  assert.ok(log.some((l) => l.text.startsWith("asking node — it watches the whole match")));
+  assert.match(log.at(-1)!.text, /^picked by node: 9:20–10:00 \(40 s\), both POVs — both die/);
+  answer({ ...good, pov: "top" });
+  await pickShortMoment(single, { force: true });
+  const rejected = [...readShortLog(single)]
+    .reverse()
+    .find((l) => l.text.startsWith("the model's window was rejected"));
+  assert.equal(rejected?.level, "warn");
+  assert.match(
+    rejected?.detail ?? "",
+    /the answer: \{[\s\S]*"pov": "top"/,
+    "the answer rejected is the detail",
+  );
+  assert.equal(readShortLog(single).at(-2)!.level, "warn", "the heuristic standing in is a warning");
+  assert.match(readShortLog(single).at(-1)!.text, /^picked by the heuristic: /);
+  console.log("OK: the pick's log carries each stage, the raw answer and the rejection as detail");
 }
 
 {
@@ -347,6 +455,64 @@ async function fallsBack(message: RegExp, timeoutMs?: number): Promise<ShortPick
   assert.equal(hookProblem("CRAZY ZERO BY SILVERRRUNS"), null);
   assert.equal(hookProblem("Can the 1789 take down the 2080?"), null, "the channel's upset question stands");
   console.log("OK: a spoiler or overlong hook is swapped for a chip; the window stands");
+}
+
+{
+  // Title hooks in the operator's style: their past hooks on uploaded matches are the examples.
+  const uploaded = (id: number, title: string, onYouTube = true) => {
+    const d = path.join(config.mediaDir, String(id));
+    mkdirSync(d, { recursive: true });
+    writeFileSync(path.join(d, `match-${id}.title.edited.txt`), `${title}\n`);
+    if (onYouTube) writeFileSync(path.join(d, "youtube.json"), "{}");
+  };
+  uploaded(1, "CARNIVORE vs VEGAN | BeefSalad vs silverrruns | MCSR Ranked 1v1 | Minecraft Speedrun");
+  uploaded(2, "PLAYOFFS | SWEPT vs TAS | Aquacorde vs doogile | MCSR Ranked Season 11 Playoffs");
+  uploaded(3, "WINNER vs 3rd PLACE | Infume vs Feinberg | MCSR Ranked 1v1");
+  uploaded(4, "NEVER UPLOADED | a vs b | MCSR Ranked 1v1", false);
+  uploaded(5, "<HOOK> | a vs b | MCSR Ranked 1v1");
+  answer({
+    ...good,
+    titleHooks: ["TAS vs YN", "WINNER vs 3rd PLACE", "TAS vs YN", "B".repeat(41), "ICE COLD", "ONE TOO MANY"],
+    playerMoments: {
+      left: { atSec: 575, line: "your blind into the portal room" },
+      right: { atSec: 9999, line: "a moment after the match" },
+    },
+  });
+  lines.length = 0;
+  const pick = await pickShortMoment(single, { force: true, log });
+  assert.equal(pick.source, "agy");
+  assert.deepEqual(pick.titleHooks, ["TAS vs YN", "ICE COLD", "ONE TOO MANY"]);
+  assert.deepEqual(pick.playerMoments, { left: { atMs: 575_000, line: "your blind into the portal room" } });
+  for (const why of [
+    `title hook "WINNER vs 3rd PLACE" was dropped (it gives the result away)`,
+    `title hook "TAS vs YN" was dropped (a repeat)`,
+    `title hook "${"B".repeat(41)}" was dropped (over 40 characters)`,
+    `right player's moment {"atSec":9999,"line":"a moment after the match"} was dropped (166:39.0 is outside the match)`,
+  ])
+    assert.ok(
+      lines.includes(`the model's ${why}`),
+      `logged: ${why}\n${lines.filter((l) => l.includes("dropped")).join("\n")}`,
+    );
+  assert.deepEqual(readJson(pickFile(dir, single)).titleHooks, pick.titleHooks, "written with the pick");
+  const prompt = sentArgv()[sentArgv().indexOf("-p") + 1]!;
+  assert.match(prompt, /They are from OTHER matches and name OTHER players/);
+  assert.match(prompt, / {2}"CARNIVORE vs VEGAN" \(BeefSalad vs silverrruns\)/);
+  for (const left of ["PLAYOFFS", "SWEPT vs TAS", "WINNER vs 3rd PLACE", "NEVER UPLOADED", "<HOOK>"])
+    assert.ok(!prompt.includes(`"${left}`), `not an example: ${left}`);
+  assert.equal(
+    JSON.parse(sentArgv()[sentArgv().indexOf("--json-schema") + 1]!).required.includes("titleHooks"),
+    false,
+  );
+
+  // Without the extras it is still the model's pick, and a pick with none carries neither key.
+  answer(good);
+  const plain = await pickShortMoment(single, { force: true });
+  assert.equal(plain.source, "agy");
+  assert.ok(!("titleHooks" in plain) && !("playerMoments" in plain));
+  for (const id of [1, 2, 3, 4, 5]) rmSync(path.join(config.mediaDir, String(id)), { recursive: true });
+  console.log(
+    "OK: title hooks in the operator's style, spoilers and repeats dropped by name; none is still a pick",
+  );
 }
 
 // ====== A series: game 1 12898432 (bbiddd vs BadGamer), game 2 12902901 (BlazeMind vs Aquacorde) ======
@@ -442,6 +608,18 @@ async function fallsBack(message: RegExp, timeoutMs?: number): Promise<ShortPick
   assert.equal(pick.source, "heuristic");
   assert.match(readJson(pickErrorFile(loneDir, lone)).message, /no finished video/);
   assert.ok(pick.endMs <= 460_206, "inside the run");
+
+  // The match record unreachable: no pick written, the reason and its fix recorded and logged.
+  const gone = 99_000_001;
+  const goneDir = stage(gone, `final-${gone}.mp4`);
+  const none = await pickShortMoment(gone, { force: true });
+  assert.match(
+    none.why,
+    /^no pick: the match record could not be read \(MCSR Ranked API \/matches\/99000001 -> 404/,
+  );
+  assert.ok(!existsSync(pickFile(goneDir, gone)), "no made-up window waits for a hook");
+  assert.match(readJson(pickErrorFile(goneDir, gone)).message, /Pick again once the MCSR API answers$/);
+  assert.equal(readShortLog(gone).at(-1)?.level, "error");
 
   const controller = new AbortController();
   controller.abort();

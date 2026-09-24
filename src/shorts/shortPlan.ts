@@ -34,6 +34,20 @@ export interface ShortPick {
   model?: string;
   /** ISO 8601, UTC. */
   createdAt: string;
+  /**
+   * The model's proposals for the long-form's title hook, in the style of the operator's past
+   * ones (24 Sept 2026). Each passed `hookProblem`; suggestions only. Absent on a heuristic pick.
+   */
+  titleHooks?: string[];
+  /** One moment per player the model would send that player (the publish kit's DM). */
+  playerMoments?: { left?: PlayerMoment; right?: PlayerMoment };
+}
+
+/** A player's moment: `atMs` on the match clock of its game — `gameMatchId` for a series, else the match. */
+export interface PlayerMoment {
+  atMs: number;
+  line: string;
+  gameMatchId?: number;
 }
 
 /** A caption built from the race data, on screen from `atMs` (ms into the Short) until the next one. */
