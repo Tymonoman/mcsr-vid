@@ -111,6 +111,11 @@ export async function hookRefusal(
 ): Promise<{ status: number; error: string } | null> {
   const dir = matchDir(matchId);
   if (kind === "video") {
+    // Once, like the Short: on 24 Sept a press of Upload 3 minutes after the chain's own upload
+    // put the same long-form on the channel twice (spIyAaQmZr8 / hMA09SfxwxE), both scheduled.
+    // A Studio upload the channel scan paired has this record too.
+    if (existsSync(path.join(dir, "youtube.json")))
+      return { status: 409, error: `the long-form of match ${matchId} is already on the channel` };
     const edited = await readFile(metaPaths(matchId, "title").edited, "utf8").catch(() => "");
     const line = edited.split("\n")[0]!.trim();
     if (line === "") return { status: 409, error: "no saved title hook — save the hooks first" };

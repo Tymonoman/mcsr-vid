@@ -367,6 +367,11 @@ try {
   const same = await save(A, { titleHook: "One heart left", shortHook: "Down to the last heart" });
   assert.equal(same.status, 202, "the same hooks again are fine");
   assert.equal(sent.length, 2, "and upload nothing twice");
+  // The panel's Upload pressed after the chain uploaded (24 Sept: one long-form went up twice).
+  assert.deepEqual(await hookRefusal(A, "video"), {
+    status: 409,
+    error: `the long-form of match ${A} is already on the channel`,
+  });
   assert.equal((await call("POST", "pick", A)).status, 409, "no new pick under a Short on the channel");
 
   /* --- 6. Uploads off: the render, then a state that says Publish is the way --------------------- */
