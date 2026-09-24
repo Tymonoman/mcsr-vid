@@ -105,6 +105,16 @@ export const SETTINGS: readonly SettingField[] = [
     nullable: true,
   },
   {
+    key: "teaserAtSec",
+    label: "Coming-up teaser (seconds in)",
+    help: "A COMING UP card in the meta column this many seconds after match start, for five seconds: the time and a line for a death, a lead change or a split under two seconds later in the race — never in its last minute, never naming anyone. Aimed at the 16–22 points every video loses in its first minute. Empty shows none. Applies to the next render.",
+    kind: "int",
+    group: "Publishing",
+    min: 0,
+    max: 50,
+    nullable: true,
+  },
+  {
     key: "seriesPublishHourUtc",
     label: "Series publish hour (UTC)",
     help: "The slot a playoff series video takes, its own so it and the day's ranked match do not compete. 23:00 UTC is 19:00 on the US east coast.",

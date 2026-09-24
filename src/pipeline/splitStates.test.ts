@@ -150,3 +150,54 @@ console.log("splitStates: all checks passed");
   );
   console.log("OK: the mid-race line is two more stills, and none by default");
 }
+
+// --- The first-minute "COMING UP" line is two more stills too, on the same arithmetic as the
+// mid-race line; none when absent, when it would still be up as the moment it promises arrives,
+// when it would run past the finish, or when it would share a frame with the mid-race line.
+{
+  const { teaserFramesOf } = await import("./splitStates.js");
+  const props = {
+    ...base,
+    splits: [{ label: "Nether Enter", leftMs: 123693, rightMs: 151021 }],
+    midRollCta: { atSec: 90, forSec: 4 },
+    teaser: { atSec: 10, forSec: 5, momentMs: 314000, text: "THE LEAD CHANGES ON BLIND TRAVEL" },
+  };
+  const on = base.timerStartFrame + 10 * base.fps;
+  const off = on + 5 * base.fps;
+  assert.deepEqual(teaserFramesOf(props), [on, off]);
+  const segs = splitSegments(props);
+  const starts = segs.map((s) => s.startFrame);
+  assert.ok(starts.includes(on) && starts.includes(off), `stills start on both edges: ${starts}`);
+  assert.equal(segs.length, splitSegments({ ...props, teaser: undefined }).length + 2);
+  assert.equal(teaserFramesOf({ ...props, teaser: undefined }), null, "absent: none");
+  const at = (atSec: number, forSec: number, momentMs = 314000) =>
+    teaserFramesOf({ ...props, teaser: { ...props.teaser, atSec, forSec, momentMs } });
+  assert.equal(at(10, 5, 14000), null, "still up when the moment comes");
+  assert.deepEqual(at(10, 5, 15000), [on, off], "gone on the moment's frame is fine");
+  assert.equal(at(88, 5, 400000), null, "overlaps the mid-race line, which wins");
+  assert.deepEqual(at(94, 5, 400000), [
+    base.timerStartFrame + 94 * base.fps,
+    base.timerStartFrame + 99 * base.fps,
+  ]);
+  assert.equal(at(base.runResultMs / 1000 - 1, 5, 999999), null, "outlasts the run");
+  assert.equal(at(10, 0), null, "zero seconds: none");
+  // Swept over every start second of the run: never on a frame of the mid-race line, and gone
+  // before the finish, so a whole run and three seconds lie between it and the post-roll card.
+  const { ctaFrameOf, midRollFramesOf } = await import("./splitStates.js");
+  const withCta = { ...props, postRollCta: true };
+  const mid = midRollFramesOf(withCta)!;
+  const cta = ctaFrameOf(withCta)!;
+  let shown = 0;
+  for (let s = 0; s * base.fps < base.durationInFrames; s++) {
+    const w = teaserFramesOf({ ...withCta, teaser: { ...props.teaser, atSec: s, momentMs: 1e9 } });
+    if (!w) continue;
+    shown++;
+    assert.ok(
+      w[1] <= mid[0] || w[0] >= mid[1],
+      `starting at ${s} s it shares a frame with the mid-race line`,
+    );
+    assert.ok(w[1] <= runEndFrameOf(withCta) && w[1] < cta, `starting at ${s} s it reaches the post-roll`);
+  }
+  assert.ok(shown > 400, `most start seconds are allowed (${shown})`);
+  console.log("OK: the teaser is two more stills, and steps aside for the mid-race line");
+}

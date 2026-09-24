@@ -61,6 +61,12 @@ export type OverlayProps = {
    * visible change to every video and the operator's to switch on.
    */
   midRollCta?: { atSec: number; forSec: number };
+  /**
+   * The first-minute "COMING UP" line in the meta column, from `atSec` after match start for
+   * `forSec` (config.teaserAtSec / teaserSec): a moment `momentMs` into the race, as `text`
+   * (src/pipeline/teaser.ts). Absent when nothing qualifies or it is switched off.
+   */
+  teaser?: { atSec: number; forSec: number; momentMs: number; text: string };
   /** Overworld structure near spawn, e.g. "DESERT_TEMPLE". null if unknown. */
   seedType: string | null;
   /** Bastion remnant type, e.g. "STABLES". null if unknown. */

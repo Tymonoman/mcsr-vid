@@ -53,5 +53,14 @@ assert.throws(() => validateOverrides({ thumbnailVariants: [] }), /thumbnailVari
 assert.throws(() => validateOverrides({ thumbnailVariants: [{ left: "walking" }] }), /thumbnailVariants/);
 assert.throws(() => validateOverrides({ thumbnailVariants: "walking-crossed" }), /thumbnailVariants/);
 assert.doesNotThrow(() => validateOverrides({}));
+// The teaser's start is nullable (off), its length is not — same rule as the mid-race line's.
+assert.doesNotThrow(() => validateOverrides({ teaserAtSec: null, teaserSec: 5 }));
+assert.doesNotThrow(() => validateOverrides({ teaserAtSec: 10 }));
+assert.throws(() => validateOverrides({ teaserAtSec: -1 }), /teaserAtSec/);
+assert.throws(() => validateOverrides({ teaserAtSec: "10" }), /teaserAtSec/);
+assert.throws(() => validateOverrides({ teaserSec: null }), /teaserSec/);
+assert.throws(() => validateOverrides({ teaserSec: -1 }), /teaserSec/);
+assert.throws(() => validateOverrides({ teaserAtSec: 3601 }), /teaserAtSec/);
+assert.doesNotThrow(() => validateOverrides({ teaserSec: 0 }), "0 s is a valid way to show none");
 
 console.log("config: all checks passed");
