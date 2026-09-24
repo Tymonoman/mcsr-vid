@@ -28,11 +28,18 @@ export interface Move {
 export const MOVE_ROW_MAX_CHARS = 26;
 export const MOVE_MAX_ROWS = 3;
 
-/** Keyed by the timeline event `MILESTONES` climbs on. Run past no-ai-slop, 24 Sept 2026. */
+/**
+ * Keyed by the timeline event `MILESTONES` climbs on. Run past no-ai-slop, then corrected by the
+ * operator (24 Sept 2026): the Nether is for rods, pearls and explosives; a blaze's rod is a coin
+ * flip; the stronghold is preemptive navigation; the End is the dragon and the explosives.
+ */
 export const MOVE_LINES: Record<string, { head: string; line: string }> = {
-  "story.enter_the_nether": { head: "NETHER", line: "PEARLS AND BLAZE RODS,\nTO MAKE EYES OF ENDER" },
+  "story.enter_the_nether": { head: "NETHER", line: "FOR BLAZE RODS, ENDER\nPEARLS AND EXPLOSIVES" },
   "nether.find_bastion": { head: "BASTION", line: "TRADING GOLD TO PIGLINS\nFOR ENDER PEARLS" },
-  "nether.find_fortress": { head: "FORTRESS", line: "BLAZES SPAWN ONLY HERE.\nONE ROD MAKES TWO EYES" },
+  "nether.find_fortress": {
+    head: "FORTRESS",
+    line: "BLAZES SPAWN ONLY HERE.\nEACH DROPS A ROD 50%\nOF THE TIME",
+  },
   "projectelo.timeline.blind_travel": {
     head: "BLIND TRAVEL",
     // The blind portal is built for the ring strongholds generate in, not at one: the eyes find it.
@@ -40,9 +47,9 @@ export const MOVE_LINES: Record<string, { head: string; line: string }> = {
   },
   "story.follow_ender_eye": {
     head: "STRONGHOLD",
-    line: "THROWN EYES POINT HERE.\nNEXT, THE END PORTAL ROOM",
+    line: "PREEMPTIVE NAVIGATION\nTO FIND THE PORTAL ROOM",
   },
-  "story.enter_the_end": { head: "THE END", line: "BEDS EXPLODE HERE.\nTHEY BLOW UP THE DRAGON" },
+  "story.enter_the_end": { head: "THE END", line: "KILLING THE DRAGON\nWITH EXPLOSIVES" },
 };
 
 /** Each split either player of the match reached, at its first arrival, in race order. */
