@@ -303,6 +303,21 @@
   color: var(--muted);
   text-transform: uppercase;
 }
+/* The first-minute "COMING UP" card (src/pipeline/teaser.ts): the card's gold head, then the RTA
+   the timer beside it will read, then what happens — up to two lines of 34 characters. */
+.col-meta .teaser .teaser-at {
+  font-family: var(--pixel-font);
+  font-size: 24px;
+  color: var(--quartz);
+  font-variant-numeric: tabular-nums;
+}
+.col-meta .teaser .teaser-what {
+  font-family: var(--pixel-font);
+  font-size: 16px;
+  line-height: 1.3;
+  letter-spacing: 0.04em;
+  color: var(--quartz);
+}
 .col-meta .seed-chip {
   display: flex;
   align-items: center;
