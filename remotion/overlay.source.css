@@ -478,29 +478,31 @@
 }
 .intro-player {
   position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  display: flex;
-  align-items: center;
-  gap: 36px;
+  top: 0;
+  bottom: 0;
+  width: 50%;
 }
 .intro-player.left {
   left: 0;
-  padding-left: 30px;
 }
 .intro-player.right {
   right: 0;
-  padding-right: 30px;
-  flex-direction: row-reverse;
-  text-align: right;
 }
 .intro-avatar {
-  width: 360px;
-  height: 680px;
+  position: absolute;
+  bottom: 0;
+  height: 820px;
+  width: 100%;
   display: flex;
   align-items: flex-end;
   justify-content: center;
   overflow: hidden;
+}
+.intro-player.left .intro-avatar {
+  transform: translateX(40px);
+}
+.intro-player.right .intro-avatar {
+  transform: translateX(-40px);
 }
 .intro-avatar img {
   height: 100%;
@@ -509,18 +511,33 @@
   filter: drop-shadow(0 22px 26px rgba(0, 0, 0, 0.55));
 }
 .intro-info {
+  position: absolute;
+  bottom: 40px;
+  width: 620px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 8px;
+  background: rgba(26, 24, 32, 0.75);
+  border: 4px solid var(--panel-edge-light);
+  padding: 16px 24px;
+  z-index: 2;
+}
+.intro-player.left .intro-info {
+  left: 60px;
+  border-left: 8px solid var(--crimson);
 }
 .intro-player.right .intro-info {
+  right: 60px;
+  border-right: 8px solid var(--warped);
   align-items: flex-end;
+  text-align: right;
 }
 .intro-name {
   font-family: var(--pixel-font);
   font-weight: 700;
-  font-size: 64px;
+  font-size: 86px;
   color: var(--quartz);
+  line-height: 1;
 }
 .intro-player.left .intro-name {
   color: var(--crimson);
@@ -532,10 +549,11 @@
 .intro-id-line {
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 16px;
   font-family: var(--pixel-font);
-  font-size: 28px;
+  font-size: 40px;
   white-space: nowrap;
+  margin-bottom: 4px;
 }
 .intro-id-line .flag {
   font-size: 36px;
@@ -549,9 +567,9 @@
 .intro-stats {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   font-family: var(--pixel-font);
-  font-size: 24px;
+  font-size: 46px;
   color: var(--quartz);
   opacity: 0.85;
 }
@@ -559,24 +577,25 @@
   opacity: 1;
 }
 .intro-vs {
-  width: 220px;
-  height: 220px;
+  width: 320px;
+  height: 320px;
   border-radius: 50%;
   background: var(--panel-2);
   border: 6px solid var(--panel-edge-light);
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 3;
 }
 .intro-vs-text {
   font-family: var(--pixel-font);
   font-weight: 700;
-  font-size: 64px;
+  font-size: 100px;
   color: var(--gold);
 }
 /* Head-to-head + seed, stacked ABOVE the VS badge. Absolutely positioned like .intro-meta
    rather than made an in-flow sibling of .intro-vs, so the badge keeps its dead-centre
-   position; 150px clears the badge's 110px radius at rest and its 1.25x exit scale.
+   position; 200px clears the badge's 160px radius at rest and its 1.25x exit scale.
 
    Above, not below, because .intro-player sets `transform: translateY(-50%)` but PlayerCard
    overwrites the whole transform with its entrance translateX — so the player columns hang
@@ -585,19 +604,19 @@
 .intro-h2h {
   position: absolute;
   bottom: 50%;
-  margin-bottom: 150px;
+  margin-bottom: 300px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   font-family: var(--pixel-font);
   white-space: nowrap;
 }
 .intro-h2h-label,
 .intro-h2h-seed {
-  font-size: 24px;
+  font-size: 38px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--muted);
@@ -605,17 +624,17 @@
 /* "Season 11 Playoffs · Round of 16 · Game 2": the one line that says this is not a ranked
    match, so it takes the badge's gold and a little more room than the label under it. */
 .intro-h2h-playoff {
-  font-size: 30px;
+  font-size: 46px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--gold);
-  margin-bottom: 14px;
+  margin-bottom: 16px;
 }
 .intro-h2h-record {
   display: flex;
   align-items: baseline;
-  gap: 22px;
-  font-size: 76px;
+  gap: 26px;
+  font-size: 110px;
   font-weight: 700;
   /* Neutral is the default; only the leader's own number takes their side colour, so a draw
      comes out symmetrical without a second rule. */
@@ -629,11 +648,11 @@
   color: var(--warped);
 }
 .intro-h2h-record .dash {
-  font-size: 52px;
+  font-size: 76px;
   color: var(--muted);
 }
 .intro-h2h-first {
-  font-size: 52px;
+  font-size: 76px;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -641,11 +660,11 @@
 }
 .intro-meta {
   position: absolute;
-  bottom: 40px;
+  bottom: 60px;
   left: 50%;
   transform: translateX(-50%);
   font-family: var(--pixel-font);
-  font-size: 26px;
+  font-size: 42px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--muted);

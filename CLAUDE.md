@@ -572,9 +572,7 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
   matches sat 0.9–1.0 s off the frame the "1" vanishes (both directions), so the overlay's
   timer led or trailed the players' own by that much. Prefer the detector's reading when it
   is confident; the editor is for a clip it cannot read.
-- **The intro card's centre block must sit above the VS badge**: `.intro-player` positions the
-  columns with a `transform` that `PlayerCard`'s inline transform replaces, so the names sit at
-  y≈790 and anything under the badge collides with them.
+- **The intro card `.intro-player` layout**: `PlayerCard`'s inline `transform` (the entrance animation) replaces the CSS transform. The CSS now uses `top: 0; bottom: 0;` (absolute) to vertically position the columns, so the inline `translateX` only moves them horizontally without breaking the Y layout. The center elements (`.intro-vs`, `.intro-h2h`) are absolutely positioned in the center, and the names are elevated on info plates.
 - **tini is PID 1 since 830321f**; if `ps -eo stat | grep -c ^Z` ever climbs, wrap the command
   in `python3 scripts/reap.py`.
 - **The upload form rendered for the first time on 14 Sept 2026.** Everything inside
