@@ -20,12 +20,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux \
       -o /usr/local/bin/yt-dlp && chmod a+rx /usr/local/bin/yt-dlp
 
-# Only the claude-youtube skill needs these, and only for `npm run analytics`. ~140 MB, which is
-# most of what python adds here — drop this layer if you never run analytics on the lab.
-# --break-system-packages because bookworm marks the system python externally-managed (PEP 668);
-# a venv would be the answer on a real host, but this is a single-purpose container.
-RUN pip3 install --no-cache-dir --break-system-packages \
-      google-api-python-client google-auth-oauthlib
 
 RUN npm install -g @anthropic-ai/claude-code
 
@@ -90,6 +84,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && echo 'node ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/node \
     && chmod 0440 /etc/sudoers.d/node \
     && rm -rf /var/lib/apt/lists/*
+
+# After the apt layer that installs python3 and python3-pip: node:24-bookworm-slim ships neither,
+# and this layer used to sit above it. On 24 Sept 2026 the dashboard container had no python3
+# (the picker's log: "nice: 'python3': No such file or directory"), so every Short pick ran
+# without /watch's stills; a rebuild plus `docker compose up -d dashboard` puts it there.
+# Only the claude-youtube skill needs these, and only for `npm run analytics`. ~140 MB, which is
+# most of what python adds here — drop this layer if you never run analytics on the lab.
+# --break-system-packages because bookworm marks the system python externally-managed (PEP 668);
+# a venv would be the answer on a real host, but this is a single-purpose container.
+RUN pip3 install --no-cache-dir --break-system-packages \
+      google-api-python-client google-auth-oauthlib
 
 # Claude Code refuses --dangerously-skip-permissions when running as root, so the
 # autonomy decision depends on this line. node:24 ships a `node` user at uid 1000,
