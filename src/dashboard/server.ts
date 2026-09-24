@@ -663,15 +663,14 @@ const server = createServer(async (req, res) => {
               (await readIfPresent(titles.edited)) ?? "",
             )
           : null;
+      const warnings: string[] = [];
       if (spoiler) {
-        json(res, 400, {
-          error: `"${spoiler}" gives the result away — a title never names the winner or how the series went; reword it`,
-        });
-        return;
+        warnings.push(`"${spoiler}" may give the result away — saved anyway`);
       }
       if (typeof body.title === "string") await save("title", body.title);
       if (typeof body.description === "string") await save("description", body.description);
-      json(res, 200, await readMeta(matchId));
+      const meta = await readMeta(matchId);
+      json(res, 200, { ...meta, warnings });
       return;
     }
 

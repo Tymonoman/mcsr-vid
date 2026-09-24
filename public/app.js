@@ -527,6 +527,9 @@ async function select(id, { open = false } = {}) {
       return;
     }
     msg.textContent = "saved";
+    if (saved.warnings && saved.warnings.length) {
+      warnAt("#savetext", "Warning", saved.warnings.join("\n"));
+    }
     // The PUT answers with the merged meta, so the panels that quote the text repaint from it.
     Object.assign(meta, saved);
     loadChecklist(id);
@@ -1223,6 +1226,9 @@ async function loadPlan(id) {
   if (selected !== id) return;
   nowProblem = null;
   const before = nowPlan?.matchId === id ? nowPlan.state : null;
+  if (nowPlan?.matchId === id && nowPlan.saveWarnings && !plan.saveWarnings) {
+    plan.saveWarnings = nowPlan.saveWarnings;
+  }
   paintNow(plan);
   // The checklist's hook and Short pills read the plan (loadChecklist).
   if (before === null) loadChecklist(id);
@@ -1432,14 +1438,20 @@ function nowSteps(plan, meta) {
     const lockNote = titleLocked
       ? `<div class="scanline">The video is on the channel, so its title hook is locked: a new one would mean a re-upload, which is your call.${shortLocked ? " The Short is up too." : ""}</div>`
       : "";
+    const hasWarnings = !!plan.saveWarnings?.length;
     steps.push({
       key: "hooks",
-      status: saved ? "done" : "need",
+      status: saved ? (hasWarnings ? "warn" : "done") : "need",
       name: "Hooks",
       sum: saved
         ? `saved &middot; &ldquo;${esc(plan.titleHook)}&rdquo;${plan.noShort ? " &middot; no Short" : plan.shortHook ? ` &middot; &ldquo;${esc(plan.shortHook)}&rdquo;` : ""}${titleLocked ? " &middot; locked" : ""}`
         : "save both and the rest runs itself",
-      open: !saved,
+      open: !saved || hasWarnings,
+      boxes: (plan.saveWarnings ?? []).map((w) => ({
+        title: "Warning",
+        text: w,
+        warn: true,
+      })),
       body: `${lockNote}
         <label class="hooklabel" for="hook"><span>Title hook</span><span class="counter" id="hookcount"></span></label>
         <input type="text" id="hook" value="${esc(titleVal)}"${titleLocked ? " disabled" : ""} spellcheck="false">
@@ -1794,6 +1806,7 @@ async function saveHooks(id, btn) {
 /** PUT /api/shorts/hooks answers 202 with the plan; everything after it runs server-side. The
     same call is Retry: saving the saved hooks again is what restarts a chain that failed. */
 async function putHooks(id, body, anchor, failTitle) {
+  if (nowPlan) delete nowPlan.saveWarnings;
   let plan;
   try {
     plan = await api(`/api/shorts/hooks/${id}`, {
@@ -2281,6 +2294,20 @@ function failAt(anchor, title, text) {
   box.className = "inlinefail";
   box.innerHTML = `<div class="head"><span></span><button type="button" class="ghost dismiss">dismiss</button></div><pre></pre>`;
   // textContent, not innerHTML: this is server text and an API error can carry anything.
+  box.querySelector(".head span").textContent = title;
+  box.querySelector("pre").textContent = text;
+  box.querySelector(".dismiss").addEventListener("click", () => box.remove());
+  host.after(box);
+}
+
+/** Reports warning under the control named by `anchor`, styled as warning (gold/!). */
+function warnAt(anchor, title, text) {
+  const host = failHost(anchor);
+  if (!host) return;
+  clearFailAt(anchor);
+  const box = document.createElement("div");
+  box.className = "inlinefail warn";
+  box.innerHTML = `<div class="head"><span></span><button type="button" class="ghost dismiss">dismiss</button></div><pre></pre>`;
   box.querySelector(".head span").textContent = title;
   box.querySelector("pre").textContent = text;
   box.querySelector(".dismiss").addEventListener("click", () => box.remove());

@@ -594,6 +594,12 @@ pre {
   letter-spacing: 1px;
   text-transform: uppercase;
 }
+.inlinefail.warn {
+  border-color: var(--gold);
+}
+.inlinefail.warn .head {
+  color: var(--gold);
+}
 .inlinefail pre {
   border: 0;
   margin: 0;

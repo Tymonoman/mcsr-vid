@@ -654,20 +654,25 @@ const LOCKED = (what: string, id: string | null) =>
  * starts the chain. A hook of a video already on the channel is locked: the same text is fine
  * (the Short's half can still be saved), a different one is refused.
  */
+export type SaveHooksResult = Refusal | { saveWarnings?: string[] } | null;
+
 export async function saveHooks(
   matchId: number,
   body: unknown,
   deps?: Partial<ChainDeps>,
-): Promise<Refusal | null> {
+): Promise<SaveHooksResult> {
   // Two saves of one match at once would interleave their files — one's title, the other's
   // Short hook. The second is refused rather than queued: the panel shows it and the operator
   // presses again with what is on screen.
   if (saving.has(matchId)) return refuse(matchId, { status: 409, error: SAVE_RACING });
   saving.add(matchId);
   try {
-    const refused = await writeHooks(matchId, body, deps);
-    // A 409 or 503 is the state of the match, not a typo in a field: worth the log.
-    return refused && refused.status !== 400 ? refuse(matchId, refused) : refused;
+    const result = await writeHooks(matchId, body, deps);
+    if (result && "status" in result) {
+      // A 409 or 503 is the state of the match, not a typo in a field: worth the log.
+      return result.status !== 400 ? refuse(matchId, result) : result;
+    }
+    return result;
   } finally {
     saving.delete(matchId);
   }
@@ -685,16 +690,33 @@ async function writeHooks(
   matchId: number,
   body: unknown,
   deps?: Partial<ChainDeps>,
-): Promise<Refusal | null> {
+): Promise<SaveHooksResult> {
   const req = (typeof body === "object" && body !== null ? body : {}) as Partial<SaveHooksRequest>;
-  const titleHook = typeof req.titleHook === "string" ? req.titleHook.trim() : "";
+  let titleHook = typeof req.titleHook === "string" ? req.titleHook.trim() : "";
   const noShort = req.noShort === true;
-  const shortHook = noShort ? null : typeof req.shortHook === "string" ? req.shortHook.trim() : "";
+  let shortHook = noShort ? null : typeof req.shortHook === "string" ? req.shortHook.trim() : "";
   if (titleHook === "")
     return { status: 400, error: "expected { titleHook, shortHook | null, noShort? } with a title hook" };
   if (!noShort && !shortHook) return { status: 400, error: "a Short hook, or noShort: true for no Short" };
-  if ([titleHook, shortHook ?? ""].some((h) => /[<>\n\r]/.test(h)))
-    return { status: 400, error: "a hook is one line with no < or >" };
+
+  const saveWarnings: string[] = [];
+
+  // A hook with a newline or < > is not refused: newlines become spaces and < > are removed.
+  if (/[<>\r\n]/.test(titleHook)) {
+    titleHook = titleHook.replace(/[\r\n]+/g, " ").replace(/[<>]/g, "").trim();
+    saveWarnings.push(
+      "newlines in the title hook became spaces and < > were removed (they would break the <HOOK> placeholder and the one-line title files)",
+    );
+  }
+  if (shortHook && /[<>\r\n]/.test(shortHook)) {
+    shortHook = shortHook.replace(/[\r\n]+/g, " ").replace(/[<>]/g, "").trim();
+    saveWarnings.push(
+      "newlines in the Short hook became spaces and < > were removed (they would break the one-line title files)",
+    );
+  }
+  if (titleHook === "")
+    return { status: 400, error: "expected { titleHook, shortHook | null, noShort? } with a title hook" };
+  if (!noShort && !shortHook) return { status: 400, error: "a Short hook, or noShort: true for no Short" };
 
   const dir = matchDir(matchId);
   if (!existsSync(dir)) return { status: 404, error: `no working directory for match ${matchId}` };
@@ -705,16 +727,14 @@ async function writeHooks(
     return { status: 409, error: LOCKED("long-form", f.video.videoId) };
   if (f.short && (noShort || (f.shortHook !== null && shortHook !== f.shortHook)))
     return { status: 409, error: LOCKED("Short", f.short.videoId) };
-  // Nothing names the winner (CLAUDE.md): a typed hook is held to the chips' rule. Only a hook
-  // this save writes — an uploaded one is locked and stays as it went out.
-  const spoiler = [f.video ? "" : titleHook, f.short ? "" : (shortHook ?? "")].find(
+
+  // Spoilers: becomes a warning, save proceeds.
+  const spoilers = [f.video ? "" : titleHook, f.short ? "" : (shortHook ?? "")].filter(
     (h) => h !== "" && spoilsTheResult(h),
   );
-  if (spoiler)
-    return {
-      status: 400,
-      error: `"${spoiler}" gives the result away — a hook never names the winner or how the series went; reword it`,
-    };
+  for (const s of new Set(spoilers)) {
+    saveWarnings.push(`"${s}" may give the result away — saved anyway`);
+  }
 
   let match: MatchInfo;
   try {
@@ -729,25 +749,36 @@ async function writeHooks(
   if (!left || !right) return { status: 404, error: `match ${matchId} does not have two players` };
   if (!f.video && (await seriesGameUnjoined(match, f.series))) return { status: 409, error: SERIES_GAME };
   const built = titleFor(match, f.series, f.series ? null : await playoffContextFor(match));
+
   if (!f.video) {
-    if (titleHook.length > built.hookMax)
-      return {
-        status: 400,
-        error: `the title hook is ${titleHook.length} characters; this title has room for ${built.hookMax}`,
-      };
+    if (titleHook.length > built.hookMax) {
+      const fullTitle = `${titleHook}${SEPARATOR}${built.generated}`;
+      if (fullTitle.length > 100) {
+        saveWarnings.push(
+          `the title is ${fullTitle.length} characters — YouTube refuses over 100, so the upload will stop until it is shorter (this title has room for ${built.hookMax})`,
+        );
+      } else {
+        saveWarnings.push(
+          `the title hook is ${titleHook.length} characters (this title has room for ${built.hookMax}) — player names may be cut off on mobile`,
+        );
+      }
+    }
   }
+
   if (shortHook && !f.short) {
     const title = buildShortTitle(shortHook, left.nickname, right.nickname);
-    if (title.length > TITLE_MAX_CHARS)
-      return {
-        status: 400,
-        error: `the Short's title would be ${title.length} characters (YouTube's cap is ${TITLE_MAX_CHARS})`,
-      };
+    if (title.length > TITLE_MAX_CHARS) {
+      saveWarnings.push(
+        `the Short's title is ${title.length} characters — YouTube refuses over ${TITLE_MAX_CHARS}, so the upload will stop until it is shorter`,
+      );
+    }
   }
 
   try {
-    if (!f.video)
-      await writeFile(metaPaths(matchId, "title").edited, `${withHook(built, titleHook).title}\n`, "utf8");
+    if (!f.video) {
+      const titleLine = `${titleHook}${SEPARATOR}${built.generated}`;
+      await writeFile(metaPaths(matchId, "title").edited, `${titleLine}\n`, "utf8");
+    }
     if (shortHook && !f.short) await writeFile(shortHookFile(dir, matchId), `${shortHook}\n`, "utf8");
     // No Short: no hook file either, so nothing can cut or upload one behind the operator's back.
     if (noShort) await rm(shortHookFile(dir, matchId), { force: true });
@@ -773,6 +804,9 @@ async function writeHooks(
     "chain",
     `hooks saved — title: ${JSON.stringify(titleHook)}, ${noShort ? "no Short" : `Short: ${JSON.stringify(shortHook)}`}`,
   );
+  if (saveWarnings.length) {
+    shortLog(matchId, "chain", `hooks saved with warnings: ${saveWarnings.join("; ")}`, { level: "warn" });
+  }
   const step = chainStep.get(matchId);
   if (chains.has(matchId))
     shortLog(
@@ -781,7 +815,7 @@ async function writeHooks(
       `saved while ${step ? `the ${step} step runs` : "the chain runs"} — it looks again when that ends (a changed hook re-cuts the Short)`,
     );
   void startChain(matchId, deps);
-  return null;
+  return saveWarnings.length > 0 ? { saveWarnings } : null;
 }
 
 /* --- The chain --------------------------------------------------------------------------------- */

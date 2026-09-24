@@ -264,8 +264,8 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   ("Can the LCQ take down the 7th seed?", "The 7th seed vs the LCQ") in place of the ladder-rank
   chip — a bracket has its own order, and a `#` in a hook is a hashtag on the Short's title.
   "SWEPT"/"sweep" is a result word in `spoilsTheResult` (a best of 5 titled "PLAYOFFS | SWEPT vs
-  TAS" told how it went), and saving the hooks refuses a typed hook it catches, as the chips are;
-  so does the Title & description fold's save for a segment the generated title does not carry
+  TAS" told how it went), and saving the hooks warns on a typed hook it catches (the chips leave
+  them out); so does the Title & description fold's save warn for a segment the generated title does not carry
   (`typedSpoiler` — "3rd Place" is a round name there, not a result).
 - **A subscribe line during the race** (`midRollCtaAtSec`, Settings → Publishing; default 90,
   null = none): the post-roll card in the meta column reaches 25–45% of viewers, the first split

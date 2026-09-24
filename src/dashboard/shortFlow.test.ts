@@ -288,22 +288,43 @@ try {
     400,
     "no Short hook",
   );
-  assert.equal((await call("PUT", "hooks", A, { titleHook: "a <b>", shortHook: "x" })).status, 400, "< >");
-  const tooLong = await call("PUT", "hooks", A, { titleHook: "x".repeat(60), shortHook: "x" });
-  assert.equal(tooLong.status, 400);
-  assert.match(tooLong.payload.error!, /this title has room for \d+/);
-  const longShort = await call("PUT", "hooks", A, { titleHook: "Hook", shortHook: "y".repeat(90) });
-  assert.equal(longShort.status, 400, "a Short title over 100");
+  assert.equal(renders.length, 0, "a refused save starts nothing");
+
+  // What becomes a warning rather than refusal:
+  const W = 13_000_030;
+  mkdirSync(dir(W), { recursive: true });
+
+  const withAngle = await call("PUT", "hooks", W, { titleHook: "a <b>", shortHook: "x" });
+  assert.equal(withAngle.status, 202);
+  assert.ok(withAngle.payload.saveWarnings?.some((w) => /< > were removed/.test(w)));
+
+  const newlineSave = await call("PUT", "hooks", W, { titleHook: "Line 1\nLine 2", shortHook: "Short\nhook" });
+  assert.equal(newlineSave.status, 202);
+  assert.ok(newlineSave.payload.saveWarnings?.some((w) => /newlines/i.test(w)));
+  assert.equal(
+    readFileSync(path.join(dir(W), `match-${W}.title.edited.txt`), "utf8").split("\n")[0],
+    "Line 1 Line 2 | edcr vs doogile | MCSR Ranked 1v1 | Minecraft Speedrun",
+  );
+  assert.equal(readFileSync(path.join(dir(W), `short-${W}.hook.txt`), "utf8"), "Short hook\n");
+
+  const tooLong = await call("PUT", "hooks", W, { titleHook: "x".repeat(60), shortHook: "x" });
+  assert.equal(tooLong.status, 202);
+  assert.ok(tooLong.payload.saveWarnings?.some((w) => /this title has room for \d+/.test(w)));
+
+  const longShort = await call("PUT", "hooks", W, { titleHook: "Hook", shortHook: "y".repeat(90) });
+  assert.equal(longShort.status, 202, "a Short title over 100");
+  assert.ok(longShort.payload.saveWarnings?.some((w) => /YouTube refuses over 100/.test(w)));
+
   // A typed hook is held to the chips' rule: nothing names the winner, and a sweep is a result.
   for (const body of [
     { titleHook: "PLAYOFFS | SWEPT vs TAS", shortHook: "Down to the last heart" },
     { titleHook: "One heart left", shortHook: "WINNER vs 3rd PLACE" },
   ]) {
-    const spoiled = await call("PUT", "hooks", A, body);
-    assert.equal(spoiled.status, 400, JSON.stringify(body));
-    assert.match(String(spoiled.payload.error), /gives the result away/);
+    const spoiled = await call("PUT", "hooks", W, body);
+    assert.equal(spoiled.status, 202, JSON.stringify(body));
+    assert.ok(spoiled.payload.saveWarnings?.some((w) => /give the result away/i.test(w)));
   }
-  assert.equal(renders.length, 0, "a refused save starts nothing");
+  await flow.chainIdle(W);
 
   /* --- 4. Saved: render, then the long-form, then the Short, at their times ---------------------- */
   const saved = await save(A, { titleHook: "One heart left", shortHook: "Down to the last heart" });
