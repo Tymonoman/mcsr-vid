@@ -151,6 +151,16 @@
   border-bottom-width: 3px;
   white-space: nowrap;
 }
+.nightly .nightly-skip-state {
+  align-self: center;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.nightly .inlinefail {
+  flex-basis: 100%;
+  width: 100%;
+}
 .nightly .bad a {
   color: inherit;
 }

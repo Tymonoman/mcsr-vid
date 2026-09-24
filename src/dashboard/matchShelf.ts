@@ -34,20 +34,26 @@ interface ShelfState {
   hidden: number[];
   /** Match ids the nightly renders before its ranked pick, in this order (src/dashboard/nightly.ts). */
   queue: number[];
+  /** Match ids the operator has opted out of nightly rendering without hiding (src/dashboard/nightly.ts). */
+  nightlySkip: number[];
+  /** YYYY-MM-DD in UTC of the scheduled run to skip, or null. */
+  skipNightOf?: string | null;
 }
 
 function read(): ShelfState {
   const file = statePath();
-  if (!existsSync(file)) return { hidden: [], queue: [] };
+  if (!existsSync(file)) return { hidden: [], queue: [], nightlySkip: [], skipNightOf: null };
   try {
     const parsed = JSON.parse(readFileSync(file, "utf8")) as Partial<ShelfState>;
     return {
       hidden: (parsed.hidden ?? []).filter((n) => Number.isSafeInteger(n)),
       queue: (parsed.queue ?? []).filter((n) => Number.isSafeInteger(n)),
+      nightlySkip: (parsed.nightlySkip ?? []).filter((n) => Number.isSafeInteger(n)),
+      skipNightOf: typeof parsed.skipNightOf === "string" ? parsed.skipNightOf : null,
     };
   } catch {
     // A corrupt preferences file must not take the dashboard down over a cosmetic setting.
-    return { hidden: [], queue: [] };
+    return { hidden: [], queue: [], nightlySkip: [], skipNightOf: null };
   }
 }
 
@@ -58,7 +64,39 @@ export function nightlyQueue(): number[] {
 
 /** The whole list at once: reorder, add and remove are all one write from the panel. */
 export function setNightlyQueue(queue: readonly number[]): void {
-  writeFileSync(statePath(), JSON.stringify({ ...read(), queue: [...new Set(queue)] }, null, 2));
+  const state = read();
+  const nextQueue = [...new Set(queue)];
+  const queuedSet = new Set(nextQueue);
+  // Queueing a match for tonight takes it off nightlySkip — an explicit queue wins.
+  const nextSkip = state.nightlySkip.filter((id) => !queuedSet.has(id));
+  writeFileSync(
+    statePath(),
+    JSON.stringify({ ...state, queue: nextQueue, nightlySkip: nextSkip }, null, 2),
+  );
+}
+
+export function nightlySkip(): number[] {
+  return read().nightlySkip;
+}
+
+export function nightlySkipIds(): Set<number> {
+  return new Set(read().nightlySkip);
+}
+
+export function setNightlySkip(matchId: number, skip: boolean): void {
+  const state = read();
+  const next = state.nightlySkip.filter((id) => id !== matchId);
+  if (skip) next.push(matchId);
+  writeFileSync(statePath(), JSON.stringify({ ...state, nightlySkip: next.sort((a, b) => a - b) }, null, 2));
+}
+
+export function skipNightOf(): string | null {
+  return read().skipNightOf ?? null;
+}
+
+export function setSkipNightOf(dateStr: string | null): void {
+  const state = read();
+  writeFileSync(statePath(), JSON.stringify({ ...state, skipNightOf: dateStr }, null, 2));
 }
 
 export function hiddenMatchIds(): Set<number> {
@@ -102,8 +140,9 @@ export async function deleteMatch(matchId: number): Promise<DeleteResult> {
   const bytesFreed = await dirBytes(dir);
   const archived = isArchived(matchId);
   await rm(dir, { recursive: true, force: true });
-  // A hidden flag for a directory that no longer exists is just litter.
+  // A hidden or skipped flag for a directory that no longer exists is just litter.
   setHidden(matchId, false);
+  setNightlySkip(matchId, false);
   return { matchId, bytesFreed, archived };
 }
 

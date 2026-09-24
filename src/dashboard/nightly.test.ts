@@ -95,6 +95,11 @@ assert.equal(await picked(ranked, { ...roomy, queue: [3, 2], processedIds: [3] }
 assert.equal(await picked(ranked, { ...roomy, queue: [99, 4] }), 4);
 assert.equal(await picked(ranked, { ...roomy, queue: [99] }), 1);
 
+// The pick skips a nightlySkip id and takes the next one; an explicit queue wins.
+assert.equal(await picked(ranked, { ...roomy, skipIds: new Set([1]) }), 2);
+assert.equal(await picked(ranked, { ...roomy, skipIds: new Set([1, 2]) }), 3);
+assert.equal(await picked(ranked, { ...roomy, skipIds: new Set([1]), queue: [1] }), 1);
+
 // An ineligible candidate falls through to the next, and is not the end of the night. Without
 // this a playoff game whose players never streamed fails the pipeline before a match directory
 // exists, nothing remembers it, and every night of the tournament picks it again.
@@ -348,6 +353,79 @@ try {
     assert.equal(bodies.length, 1, "one push");
     assert.match(bodies[0]!, /^Nightly skipped — .*\n1 waiting for a hook$/s, bodies[0]);
     console.log("OK: the night ends on the pick, and the push counts the hooks waiting");
+  }
+
+  // --- skipNightOf skips exactly that night's scheduled run once and clears; Run now ignores it ---
+  {
+    const { setSkipNightOf, skipNightOf } = await import("./matchShelf.js");
+    const testDate = "2026-09-08";
+    const testTime = at("2026-09-08T03:00:00Z");
+
+    // 1. Run now ignores skipNightOf and does not clear it
+    setSkipNightOf(testDate);
+    assert.equal(skipNightOf(), testDate);
+    const runNowResult = await runNightlyOnce("", {
+      renderInFlight: () => false,
+      ranked: async () => [],
+      now: () => testTime,
+      scheduled: false,
+    });
+    assert.notEqual(runNowResult.skipped, "skipped by the operator", "Run now ignores skipNightOf");
+    assert.equal(skipNightOf(), testDate, "Run now must not clear skipNightOf");
+
+    // 2. The scheduled run whose date matches skips, notifies one line, and clears the key
+    const bodies: string[] = [];
+    const server = createServer((req, res) => {
+      let body = "";
+      req.on("data", (c: Buffer) => (body += c.toString()));
+      req.on("end", () => {
+        bodies.push(body);
+        res.end("ok");
+      });
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
+
+    const scheduledResult = await runNightlyOnce(url, {
+      renderInFlight: () => false,
+      ranked: async () => [],
+      now: () => testTime,
+      scheduled: true,
+    });
+    server.close();
+
+    assert.equal(scheduledResult.skipped, "skipped by the operator", "scheduled run skips");
+    assert.equal(readNightlyState()?.outcome, "skipped");
+    assert.equal(readNightlyState()?.reason, "skipped by the operator");
+    assert.equal(bodies.length, 1, "notified one line");
+    assert.equal(bodies[0], "skipped by the operator");
+    assert.equal(skipNightOf(), null, "skipNightOf must be cleared after matching run");
+
+    // 3. The next scheduled run is not skipped (it only skips once)
+    const nextScheduled = await runNightlyOnce("", {
+      renderInFlight: () => false,
+      ranked: async () => [],
+      now: () => testTime,
+      scheduled: true,
+    });
+    assert.notEqual(
+      nextScheduled.skipped,
+      "skipped by the operator",
+      "skips exactly once — subsequent run is not skipped for operator",
+    );
+
+    // 4. A scheduled run on a different date does not skip
+    setSkipNightOf("2026-09-09");
+    const diffDateResult = await runNightlyOnce("", {
+      renderInFlight: () => false,
+      ranked: async () => [],
+      now: () => testTime, // 2026-09-08 != 2026-09-09
+      scheduled: true,
+    });
+    assert.notEqual(diffDateResult.skipped, "skipped by the operator");
+    assert.equal(skipNightOf(), "2026-09-09", "non-matching date is not cleared");
+    setSkipNightOf(null);
+    console.log("OK: skipNightOf skips scheduled run once and clears; Run now ignores it");
   }
 } finally {
   await rm(media, { recursive: true, force: true });
