@@ -238,6 +238,23 @@ try {
   await plan(A);
   await flow.picksIdle();
   assert.equal(picks.length, 1);
+  // The model's title hooks lead the title chips (a new pick is a new cache key).
+  {
+    const file = path.join(dir(A), `short-${A}.pick.json`);
+    const kept = readFileSync(file, "utf8");
+    writeFileSync(
+      file,
+      JSON.stringify({
+        ...pickOf(A),
+        titleHooks: ["UNC vs OG", "ICE COLD"],
+        createdAt: "2026-09-24T08:00:00Z",
+      }),
+    );
+    const titled = (await plan(A)).suggestions.title;
+    assert.deepEqual(titled.slice(0, 2), ["UNC vs OG", "ICE COLD"], "the model's proposals first");
+    assert.ok(titled.length > 2, "the chips after them");
+    writeFileSync(file, kept);
+  }
 
   /* --- 2. The gate: nothing renders or uploads before the hooks are saved ---------------------- */
   await flow.startChain(A, chain);

@@ -196,7 +196,8 @@ writeFileSync(pickErrorFile(dir, single), '{"at":"then","message":"an old failur
   assert.equal(argv[argv.indexOf("--add-dir") + 1], path.resolve(dir));
   assert.equal(JSON.parse(argv[argv.indexOf("--json-schema") + 1]!).required.includes("rtaAtStart"), true);
   assert.ok(
-    lines.some((l) => /^prompt: \d+ characters$/.test(l)) && lines.some((l) => /^answer in \d+ s$/.test(l)),
+    lines.some((l) => /^prompt: \d+ characters, 0 past title hooks as style examples$/.test(l)) &&
+      lines.some((l) => /^answer in \d+ s$/.test(l)),
   );
   console.log("OK: a model pick is taken, written, and the prompt carries the video, the facts and the chat");
 
@@ -325,7 +326,8 @@ async function fallsBack(message: RegExp, timeoutMs?: number, fallback?: string)
 
   assert.equal(calls(), 1, "not signed in is not asked again");
   agy("hang");
-  await fallsBack(/timed out after 300 ms/, 300);
+  // Long enough for the fake to start and count itself on a loaded box (300 ms was not, 24 Sept).
+  await fallsBack(/timed out after 3 s/, 3000);
   assert.equal(calls(), 1, "nor is a timeout");
   agy("garbage");
   await fallsBack(/no JSON object/);
@@ -427,7 +429,9 @@ async function fallsBack(message: RegExp, timeoutMs?: number, fallback?: string)
   assert.match(log.at(-1)!.text, /^picked by node: 9:20–10:00 \(40 s\), both POVs — both die/);
   answer({ ...good, pov: "top" });
   await pickShortMoment(single, { force: true });
-  const rejected = [...readShortLog(single)].reverse().find((l) => l.text.startsWith("the model's window was rejected"));
+  const rejected = [...readShortLog(single)]
+    .reverse()
+    .find((l) => l.text.startsWith("the model's window was rejected"));
   assert.equal(rejected?.level, "warn");
   assert.match(
     rejected?.detail ?? "",
@@ -451,6 +455,64 @@ async function fallsBack(message: RegExp, timeoutMs?: number, fallback?: string)
   assert.equal(hookProblem("CRAZY ZERO BY SILVERRRUNS"), null);
   assert.equal(hookProblem("Can the 1789 take down the 2080?"), null, "the channel's upset question stands");
   console.log("OK: a spoiler or overlong hook is swapped for a chip; the window stands");
+}
+
+{
+  // Title hooks in the operator's style: their past hooks on uploaded matches are the examples.
+  const uploaded = (id: number, title: string, onYouTube = true) => {
+    const d = path.join(config.mediaDir, String(id));
+    mkdirSync(d, { recursive: true });
+    writeFileSync(path.join(d, `match-${id}.title.edited.txt`), `${title}\n`);
+    if (onYouTube) writeFileSync(path.join(d, "youtube.json"), "{}");
+  };
+  uploaded(1, "CARNIVORE vs VEGAN | BeefSalad vs silverrruns | MCSR Ranked 1v1 | Minecraft Speedrun");
+  uploaded(2, "PLAYOFFS | SWEPT vs TAS | Aquacorde vs doogile | MCSR Ranked Season 11 Playoffs");
+  uploaded(3, "WINNER vs 3rd PLACE | Infume vs Feinberg | MCSR Ranked 1v1");
+  uploaded(4, "NEVER UPLOADED | a vs b | MCSR Ranked 1v1", false);
+  uploaded(5, "<HOOK> | a vs b | MCSR Ranked 1v1");
+  answer({
+    ...good,
+    titleHooks: ["TAS vs YN", "WINNER vs 3rd PLACE", "TAS vs YN", "B".repeat(41), "ICE COLD", "ONE TOO MANY"],
+    playerMoments: {
+      left: { atSec: 575, line: "your blind into the portal room" },
+      right: { atSec: 9999, line: "a moment after the match" },
+    },
+  });
+  lines.length = 0;
+  const pick = await pickShortMoment(single, { force: true, log });
+  assert.equal(pick.source, "agy");
+  assert.deepEqual(pick.titleHooks, ["TAS vs YN", "ICE COLD", "ONE TOO MANY"]);
+  assert.deepEqual(pick.playerMoments, { left: { atMs: 575_000, line: "your blind into the portal room" } });
+  for (const why of [
+    `title hook "WINNER vs 3rd PLACE" was dropped (it gives the result away)`,
+    `title hook "TAS vs YN" was dropped (a repeat)`,
+    `title hook "${"B".repeat(41)}" was dropped (over 40 characters)`,
+    `right player's moment {"atSec":9999,"line":"a moment after the match"} was dropped (166:39.0 is outside the match)`,
+  ])
+    assert.ok(
+      lines.includes(`the model's ${why}`),
+      `logged: ${why}\n${lines.filter((l) => l.includes("dropped")).join("\n")}`,
+    );
+  assert.deepEqual(readJson(pickFile(dir, single)).titleHooks, pick.titleHooks, "written with the pick");
+  const prompt = sentArgv()[sentArgv().indexOf("-p") + 1]!;
+  assert.match(prompt, /They are from OTHER matches and name OTHER players/);
+  assert.match(prompt, / {2}"CARNIVORE vs VEGAN" \(BeefSalad vs silverrruns\)/);
+  for (const left of ["PLAYOFFS", "SWEPT vs TAS", "WINNER vs 3rd PLACE", "NEVER UPLOADED", "<HOOK>"])
+    assert.ok(!prompt.includes(`"${left}`), `not an example: ${left}`);
+  assert.equal(
+    JSON.parse(sentArgv()[sentArgv().indexOf("--json-schema") + 1]!).required.includes("titleHooks"),
+    false,
+  );
+
+  // Without the extras it is still the model's pick, and a pick with none carries neither key.
+  answer(good);
+  const plain = await pickShortMoment(single, { force: true });
+  assert.equal(plain.source, "agy");
+  assert.ok(!("titleHooks" in plain) && !("playerMoments" in plain));
+  for (const id of [1, 2, 3, 4, 5]) rmSync(path.join(config.mediaDir, String(id)), { recursive: true });
+  console.log(
+    "OK: title hooks in the operator's style, spoilers and repeats dropped by name; none is still a pick",
+  );
 }
 
 // ====== A series: game 1 12898432 (bbiddd vs BadGamer), game 2 12902901 (BlazeMind vs Aquacorde) ======

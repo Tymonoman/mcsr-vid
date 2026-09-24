@@ -512,7 +512,10 @@ async function suggestionsFor(
     moment = buildShortHook({ ...f.pick, score: 0, reason: "", events }, left.nickname, right.nickname);
   }
   return {
-    title: dedupe([committed, ...title]).filter((h) => h.length <= budget.hookMax),
+    // The model's proposals (in the operator's own style, videoPick.ts) ahead of the chips.
+    title: dedupe([committed, ...(f.pick?.titleHooks ?? []), ...title]).filter(
+      (h) => h.length <= budget.hookMax,
+    ),
     // Held to the rule the model's own suggestion is: no result, and short enough to read at a
     // glance. No `#` (a rank chip's "#7" is a hashtag in the Short's title) and no line naming
     // both players, which the title already does after the hook.
@@ -600,7 +603,7 @@ export async function shortPlan(matchId: number, opts: { queue?: boolean } = {})
         console.error(`plan #${matchId}: suggestions — ${describeError(err)}`);
         return { short: [], title: [] };
       })
-    : { short: f.pick?.hookSuggestion ? [f.pick.hookSuggestion] : [], title: [] };
+    : { short: f.pick?.hookSuggestion ? [f.pick.hookSuggestion] : [], title: f.pick?.titleHooks ?? [] };
   f = await factsOf(matchId);
   const { state, detail } =
     seriesGame && !f.video ? { state: "no-export" as const, detail: SERIES_GAME } : stateOf(matchId, f);

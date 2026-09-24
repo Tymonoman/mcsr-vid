@@ -32,7 +32,7 @@
  *   directory (watchPov.ts); kept while newer than the clip and made for the same window.
  */
 import { spawn } from "node:child_process";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { getMatch, getUser, McsrApiError } from "../api/mcsrApi.js";
@@ -43,6 +43,7 @@ import { describeError } from "../errorText.js";
 import { atomicOutput } from "../pipeline/atomicOutput.js";
 import { hookSuggestions, spoilsTheResult } from "../pipeline/hooks.js";
 import { ANCHOR_SEC } from "../pipeline/kdenliveProject.js";
+import { SEPARATOR } from "../pipeline/title.js";
 import { computeMetrics } from "../pipeline/matchScore.js";
 import { eloAtMatchStart } from "../pipeline/overlayProps.js";
 import { playoffContextFor } from "../playoffs/playoffs.js";
@@ -51,7 +52,7 @@ import { DEATH_TYPES, decidedAtMs, MILESTONES, raceCaptions } from "./raceGap.js
 import { NOT_SIGNED_IN, reasonerConfigured, runReasoner } from "./reasoner.js";
 import { boxFailure, shortLog, type LogExtra } from "./shortLog.js";
 import { distinctShortMoments, leadChangeTimes, runMsOf, SHORT_WINDOW_SEC } from "./shortMoment.js";
-import { pickFile, SHORT_MAX_MS, SHORT_MIN_MS, type ShortPick } from "./shortPlan.js";
+import { pickFile, SHORT_MAX_MS, SHORT_MIN_MS, type PlayerMoment, type ShortPick } from "./shortPlan.js";
 import { watchPovs, type PovWatch } from "./watchPov.js";
 
 export { raceCaptions };
@@ -88,15 +89,27 @@ const HORIZON_MARGIN_MS = 1000;
 const HOOK_SPOILER =
   /\b(win|wins|winning|won|winner|beat|beats|beaten|beating|lost|lose|loses|losing|loser|defeat\w*|champion\w*|victor\w*|takes it|took it|comebacks?)\b/i;
 
-/** Why a hook suggestion cannot stand, or null when it can. */
-export function hookProblem(hook: unknown): string | null {
+/** Why a hook suggestion cannot stand, or null when it can. `maxChars`: a player moment's line is longer. */
+export function hookProblem(hook: unknown, maxChars = HOOK_MAX_CHARS): string | null {
   if (typeof hook !== "string" || hook.trim() === "") return "no hook";
-  if (hook.trim().length > HOOK_MAX_CHARS) return `over ${HOOK_MAX_CHARS} characters`;
+  if (hook.trim().length > maxChars) return `over ${maxChars} characters`;
   if (HOOK_SPOILER.test(hook) || spoilsTheResult(hook)) return "it gives the result away";
   return null;
 }
 
-/** What the model must answer, held to by agy's `--json-schema`. */
+/** How many title hooks the model may propose, and how many past ones the prompt quotes. */
+const TITLE_HOOKS = 3;
+const PAST_HOOKS = 20;
+/** A player moment's line: one sentence to that player. */
+const MOMENT_MAX_CHARS = 120;
+
+const MOMENT_SCHEMA = {
+  type: "object",
+  properties: { atSec: { type: "number" }, line: { type: "string" } },
+  required: ["atSec", "line"],
+};
+
+/** What the model must answer, held to by agy's `--json-schema`. The last two are optional extras. */
 const PICK_SCHEMA = {
   type: "object",
   properties: {
@@ -109,6 +122,8 @@ const PICK_SCHEMA = {
     kind: { type: "string", enum: ["play", "race"] },
     hookSuggestion: { type: "string" },
     why: { type: "string" },
+    titleHooks: { type: "array", items: { type: "string" }, maxItems: TITLE_HOOKS },
+    playerMoments: { type: "object", properties: { left: MOMENT_SCHEMA, right: MOMENT_SCHEMA } },
   },
   required: ["startSec", "endSec", "rtaAtStart", "pov", "kind", "hookSuggestion", "why"],
 };
@@ -385,6 +400,61 @@ ${spoken.join("\n")}
 }`;
 }
 
+/** A past title hook and the pair it was written for ("Infume vs BeefSalad", or ""). */
+export interface PastHook {
+  hook: string;
+  pair: string;
+}
+
+/**
+ * The operator's own title hooks on uploaded matches, newest first: the first segment of each
+ * saved title (`match-<id>.title.edited.txt`) whose directory has a `youtube.json`. Left out:
+ * "PLAYOFFS" (a label, not a hook), a placeholder, and anything `hookProblem` refuses — "WINNER vs
+ * 3rd PLACE" is a result, and an example is what the model copies.
+ */
+export function pastTitleHooks(): PastHook[] {
+  let names: string[];
+  try {
+    names = readdirSync(config.mediaDir).filter((n) => /^\d+$/.test(n));
+  } catch {
+    return [];
+  }
+  const found: Array<PastHook & { at: number }> = [];
+  for (const id of names) {
+    const dir = path.join(config.mediaDir, id);
+    const file = path.join(dir, `match-${id}.title.edited.txt`);
+    if (!existsSync(path.join(dir, "youtube.json")) || !existsSync(file)) continue;
+    try {
+      const [hook = "", pair = ""] = readFileSync(file, "utf8").split("\n")[0]!.split(SEPARATOR);
+      const h = hook.trim();
+      if (/^playoffs$/i.test(h) || h.includes("<") || hookProblem(h) !== null) continue;
+      if (found.some((f) => f.hook === h)) continue;
+      found.push({ hook: h, pair: / vs /.test(pair) ? pair.trim() : "", at: statSync(file).mtimeMs });
+    } catch {
+      // Unreadable: one example fewer.
+    }
+  }
+  return found
+    .sort((a, b) => b.at - a.at)
+    .slice(0, PAST_HOOKS)
+    .map(({ hook, pair }) => ({ hook, pair }));
+}
+
+/** The title-hook and player-moment asks, with the operator's past hooks as the style to match. */
+function extrasSection(spans: readonly GameSpan[], past: readonly PastHook[]): string {
+  const [l, r] = spans[0]!.match.players;
+  const examples =
+    past.length > 0
+      ? ` The channel's own past title hooks, for their style only. They are from OTHER matches and name OTHER players (the pair each was written for is in brackets): an epithet belongs to its player, so reuse one only when that same player is in this match.
+${past.map((p) => `  ${JSON.stringify(p.hook)}${p.pair ? ` (${p.pair})` : ""}`).join("\n")}`
+      : "";
+  return `
+THE LONG-FORM'S TITLE (titleHooks, optional): up to ${TITLE_HOOKS} proposals for the hook that opens the full match video's title — "<hook> | ${l?.nickname} vs ${r?.nickname} | …", so it need not repeat their names. The same rules as hookSuggestion: at most ${HOOK_MAX_CHARS} characters, nothing about who wins or how it ends.${examples}
+
+PLAYER MOMENTS (playerMoments, optional): for each player, the one moment of theirs in this video worth sending to them — "left" for ${l?.nickname}, "right" for ${r?.nickname}. atSec: seconds of the video file where it starts. line: one sentence to them, at most ${MOMENT_MAX_CHARS} characters, saying what they did — never who wins.
+`;
+}
+
 /** Everything the model is told. Pure apart from reading the saved chats. */
 function pickPrompt(
   proxy: string,
@@ -392,6 +462,7 @@ function pickPrompt(
   series: boolean,
   fps: number,
   watched: readonly GameWatch[] = [],
+  past: readonly PastHook[] = [],
 ): string {
   const [l, r] = spans[0]!.match.players;
   const video = series
@@ -437,9 +508,9 @@ THE WINDOW
 THE HOOK (hookSuggestion): the line on screen for the Short's first 4 seconds. At most ${HOOK_MAX_CHARS} characters, punchy, in a viewer's words; it may name the player making the play. Write it from what you saw — nothing in these instructions hints at what happens in this match. It must never name or hint at who wins the match or how it ends — none of: win, won, winner, beat, lost, lose, defeat, champion, victory, takes it, clutch, comeback, chokes, throws.
 
 why: one line for the operator on why this moment.
-
+${extrasSection(spans, past)}
 Reply with one JSON object and nothing else:
-{${series ? `"gameMatchId": <id>, ` : ""}"startSec": <number>, "endSec": <number>, "rtaAtStart": "m:ss", "pov": "both" | "left" | "right", "focus": "left" | "right" (optional, with pov "both"), "kind": "play" | "race", "hookSuggestion": "<text>", "why": "<text>"}
+{${series ? `"gameMatchId": <id>, ` : ""}"startSec": <number>, "endSec": <number>, "rtaAtStart": "m:ss", "pov": "both" | "left" | "right", "focus": "left" | "right" (optional, with pov "both"), "kind": "play" | "race", "hookSuggestion": "<text>", "why": "<text>", "titleHooks": ["<text>", …] (optional, up to ${TITLE_HOOKS}), "playerMoments": {"left": {"atSec": <number>, "line": "<text>"}, "right": {"atSec": <number>, "line": "<text>"}} (optional)}
 
 MATCH FACTS (MCSR Ranked API; times are RTA on ${series ? "each game's" : "the"} match clock):
 ${JSON.stringify(series ? spans.map((s) => gameFacts(s, true)) : gameFacts(spans[0]!, false))}
@@ -505,6 +576,67 @@ function checkAnswer(answer: unknown, spans: readonly GameSpan[], series: boolea
     kind: a.kind,
     why: typeof a.why === "string" ? a.why.trim().slice(0, 300) : "",
     hook: a.hookSuggestion,
+  };
+}
+
+/**
+ * The answer's optional extras, each held to the hook rules. What fails is dropped with its reason
+ * in the log — never the pick: an answer without them, or with none that pass, is still a pick.
+ */
+function extrasOf(
+  answer: unknown,
+  spans: readonly GameSpan[],
+  series: boolean,
+  note: Note,
+): Pick<ShortPick, "titleHooks" | "playerMoments"> {
+  const a = (typeof answer === "object" && answer !== null ? answer : {}) as Record<string, unknown>;
+  const drop = (what: string, value: unknown, why: string) =>
+    note(`the model's ${what} ${JSON.stringify(value)} was dropped (${why})`, { level: "warn" });
+  const hooks: string[] = [];
+  // A lone string is one hook: dropped or kept by the same rules, never silently.
+  const proposed: unknown[] =
+    a.titleHooks === undefined ? [] : Array.isArray(a.titleHooks) ? a.titleHooks : [a.titleHooks];
+  for (const h of proposed) {
+    const text = typeof h === "string" ? h.trim() : h;
+    const why =
+      hookProblem(text) ??
+      (hooks.includes(text as string)
+        ? "a repeat"
+        : hooks.length >= TITLE_HOOKS
+          ? `only ${TITLE_HOOKS} are kept`
+          : null);
+    if (why) drop("title hook", h, why);
+    else hooks.push(text as string);
+  }
+  const moments: NonNullable<ShortPick["playerMoments"]> = {};
+  const given = (
+    typeof a.playerMoments === "object" && a.playerMoments !== null ? a.playerMoments : {}
+  ) as Record<string, unknown>;
+  for (const side of ["left", "right"] as const) {
+    const m = given[side];
+    if (m === undefined || m === null) continue;
+    const { atSec, line } = (typeof m === "object" ? m : {}) as Record<string, unknown>;
+    const at = typeof atSec === "number" && Number.isFinite(atSec) ? atSec : null;
+    const span = at === null ? undefined : [...spans].reverse().find((s) => at >= s.offsetSec);
+    const why =
+      at === null
+        ? "atSec is not a number"
+        : !span || at - span.offsetSec > span.runSec + RUN_SLACK_SEC
+          ? `${clock(at)} is outside the match`
+          : hookProblem(line, MOMENT_MAX_CHARS);
+    if (why) drop(`${side} player's moment`, m, why);
+    else {
+      const moment: PlayerMoment = {
+        atMs: Math.round((at! - span!.offsetSec) * 1000),
+        line: (line as string).trim(),
+      };
+      moments[side] = series ? { ...moment, gameMatchId: span!.match.id } : moment;
+    }
+  }
+  if (hooks.length > 0) note(`title hooks proposed: ${hooks.map((h) => JSON.stringify(h)).join(", ")}`);
+  return {
+    ...(hooks.length > 0 ? { titleHooks: hooks } : {}),
+    ...(moments.left || moments.right ? { playerMoments: moments } : {}),
   };
 }
 
@@ -587,8 +719,11 @@ async function askModel(
     const watched: GameWatch[] = [];
     for (const span of spans)
       watched.push({ span, povs: await watchPovs(span.match, { signal: opts.signal, log: note }) });
-    const prompt = pickPrompt(proxy, spans, series, fps, watched);
-    note(`prompt: ${prompt.length} characters`);
+    if (watched.every((g) => g.povs.length === 0) && config.watchScript)
+      note("the model picks without /watch's stills — the lines above say why", { level: "warn" });
+    const past = pastTitleHooks();
+    const prompt = pickPrompt(proxy, spans, series, fps, watched, past);
+    note(`prompt: ${prompt.length} characters, ${past.length} past title hooks as style examples`);
     // The proxy's directory, and every stills directory outside it (a series' other games).
     const proxyDir = path.dirname(proxy);
     const stillDirs = watched.flatMap((g) =>
@@ -651,6 +786,7 @@ async function askModel(
         source: "agy",
         ...(argv.includes("--model") && model ? { model } : {}),
         createdAt: new Date().toISOString(),
+        ...extrasOf(reply.answer, spans, series, note),
       },
     };
   } catch (err) {
