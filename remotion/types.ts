@@ -83,6 +83,11 @@ export type OverlayProps = {
   fps: number;
   /** Length of the intro card in seconds (config.introSec); absent means INTRO_SECONDS. */
   introSec?: number;
+  /**
+   * An alternative intro layout for the operator to choose from (remotion/IntroLayouts.tsx);
+   * absent means the current card. Nothing in the pipeline sets it yet.
+   */
+  introLayout?: "tape" | "versus" | "cards";
 };
 
 export interface ThumbnailPlayer {

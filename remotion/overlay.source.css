@@ -670,6 +670,531 @@
   color: var(--muted);
 }
 
+/* ===== intro variants (remotion/IntroLayouts.tsx, `introLayout`): options for the operator, not wired ===== */
+/* Positions come from left/top, never a CSS transform: the components animate with inline
+   transforms, which would replace one (the PlayerCard pitfall). Text carries Minecraft's own
+   font shadow — the glyph again, offset down-right, in a dark ink. */
+.iv {
+  font-family: var(--pixel-font);
+  color: var(--quartz);
+  overflow: hidden;
+}
+.iv b {
+  font-weight: 700;
+}
+.iv .l,
+.iv-vs-h2h .l {
+  color: var(--crimson);
+  filter: brightness(1.25);
+}
+.iv .r {
+  color: var(--warped);
+}
+
+/* --- 1. tale of the tape --- */
+.iv-tape {
+  background:
+    linear-gradient(90deg, rgba(226, 72, 63, 0.45), transparent 32%),
+    linear-gradient(-90deg, rgba(53, 214, 196, 0.4), transparent 32%),
+    var(--panel-2);
+}
+.iv-tape-fig {
+  position: absolute;
+  bottom: -30px;
+  height: 1000px;
+  width: 600px;
+  display: flex;
+  justify-content: center;
+}
+.iv-tape-fig.left {
+  left: -90px;
+}
+.iv-tape-fig.right {
+  right: -90px;
+}
+.iv-tape-fig img {
+  height: 100%;
+  width: auto;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 20px 24px rgba(0, 0, 0, 0.6));
+}
+.iv-tape-fig.right img {
+  transform: scaleX(-1);
+}
+.iv-tape-top {
+  position: absolute;
+  top: 28px;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  font-size: 38px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--quartz);
+  text-shadow: 4px 4px 0 var(--panel-edge);
+}
+.iv-tape-top .playoff {
+  color: var(--gold);
+  font-size: 44px;
+}
+.iv-tape-table {
+  position: absolute;
+  top: 96px;
+  left: 420px;
+  width: 1080px;
+  background: var(--panel-edge);
+}
+.iv-tape-head,
+.iv-tape-row {
+  display: grid;
+  grid-template-columns: 1fr 240px 1fr;
+  align-items: center;
+  text-align: center;
+}
+.iv-tape-head {
+  grid-template-columns: 1fr 160px 1fr;
+  height: 150px;
+  background: var(--panel-2);
+  border-top: 6px solid var(--panel-edge-light);
+}
+.iv-tape-head .name {
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  text-shadow: 6px 6px 0 var(--panel-edge);
+}
+.iv-tape-head .vs {
+  font-weight: 700;
+  font-size: 96px;
+  color: var(--gold);
+  text-shadow: 6px 6px 0 var(--panel-edge);
+}
+.iv-tape-row {
+  height: 104px;
+  background: var(--panel);
+  border-top: 4px solid var(--panel-edge-light);
+  border-bottom: 4px solid var(--panel-edge);
+}
+.iv-tape-row:nth-child(odd) {
+  background: var(--panel-2);
+}
+.iv-tape-row b {
+  font-size: 62px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  text-shadow: 5px 5px 0 var(--panel-edge);
+}
+.iv-tape-row .lbl {
+  font-size: 38px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.iv-tape-row.h2h {
+  border-top-color: var(--gold);
+}
+.iv-tape-row.h2h .lbl {
+  color: var(--gold);
+}
+.iv-tape-row .first {
+  grid-column: 1 / -1;
+  font-size: 56px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+.iv-tape-date {
+  position: absolute;
+  bottom: 22px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 34px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* --- 2. versus screen: the frame cut on a diagonal from (1100, 0) to (820, 1080) --- */
+.iv-vs-half {
+  position: absolute;
+  inset: 0;
+}
+.iv-vs-half.left {
+  clip-path: polygon(0 0, 1100px 0, 820px 1080px, 0 1080px);
+}
+.iv-vs-half.right {
+  clip-path: polygon(1100px 0, 1920px 0, 1920px 1080px, 820px 1080px);
+}
+/* Our two colours at full strength under a pixel checker, the select screen's loud halves. */
+.iv-vs-bg {
+  position: absolute;
+  inset: 0;
+}
+.iv-vs-half.left .iv-vs-bg {
+  background:
+    repeating-conic-gradient(rgba(13, 12, 16, 0.14) 0 25%, transparent 0 50%) 0 0 / 80px 80px,
+    linear-gradient(200deg, var(--crimson) 0%, var(--panel-2) 95%);
+}
+.iv-vs-half.right .iv-vs-bg {
+  background:
+    repeating-conic-gradient(rgba(13, 12, 16, 0.14) 0 25%, transparent 0 50%) 0 0 / 80px 80px,
+    linear-gradient(160deg, var(--warped) 0%, var(--panel-2) 95%);
+}
+/* The full-body render at 1500 px tall shows head and torso above the frame's bottom edge:
+   the waist sits ~64% down the image. */
+.iv-vs-fig {
+  position: absolute;
+  top: 90px;
+  height: 1250px;
+  width: 740px;
+  display: flex;
+  justify-content: center;
+}
+.iv-vs-half.left .iv-vs-fig {
+  left: 110px;
+}
+.iv-vs-half.right .iv-vs-fig {
+  left: 1070px;
+}
+.iv-vs-fig img {
+  height: 100%;
+  width: auto;
+  image-rendering: pixelated;
+  filter: drop-shadow(8px 0 0 var(--panel-edge)) drop-shadow(-8px 0 0 var(--panel-edge))
+    drop-shadow(0 -8px 0 var(--panel-edge));
+}
+.iv-vs-half.right .iv-vs-fig img {
+  transform: scaleX(-1);
+}
+.iv-vs-shade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(13, 12, 16, 0.95) 0, rgba(13, 12, 16, 0.85) 30%, transparent 52%);
+}
+.iv-vs-info {
+  position: absolute;
+  bottom: 36px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.iv-vs-half.left .iv-vs-info {
+  left: 60px;
+  align-items: flex-start;
+}
+.iv-vs-half.right .iv-vs-info {
+  right: 60px;
+  align-items: flex-end;
+}
+.iv-vs-name {
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--quartz);
+  text-shadow: 8px 8px 0 var(--panel-edge);
+}
+.iv-vs-half.left .iv-vs-name {
+  transform-origin: left bottom;
+}
+.iv-vs-half.right .iv-vs-name {
+  transform-origin: right bottom;
+}
+.iv-vs-elo {
+  font-size: 46px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--muted);
+  text-shadow: 4px 4px 0 var(--panel-edge);
+}
+.iv-vs-elo b {
+  color: var(--gold);
+}
+.iv-vs-stats {
+  display: grid;
+  grid-template-columns: auto auto;
+  column-gap: 56px;
+  row-gap: 8px;
+  margin-top: 8px;
+}
+.iv-vs-stats span {
+  display: flex;
+  flex-direction: column;
+}
+.iv-vs-half.right .iv-vs-stats span {
+  align-items: flex-end;
+}
+.iv-vs-stats i {
+  font-style: normal;
+  font-size: 34px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.iv-vs-stats b {
+  font-size: 62px;
+  line-height: 1.05;
+  text-shadow: 5px 5px 0 var(--panel-edge);
+}
+.iv-vs-seam {
+  position: absolute;
+  inset: 0;
+  background: var(--gold);
+  clip-path: polygon(1090px 0, 1112px 0, 832px 1080px, 810px 1080px);
+}
+.iv-vs-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6em;
+  background: var(--panel-edge);
+  font-size: 32px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--quartz);
+  white-space: nowrap;
+}
+.iv-vs-top .playoff {
+  color: var(--gold);
+}
+.iv-vs-vs {
+  position: absolute;
+  left: 810px;
+  top: 300px;
+  width: 300px;
+  text-align: center;
+  font-weight: 700;
+  font-size: 200px;
+  line-height: 1;
+  color: var(--gold);
+  text-shadow: 10px 10px 0 var(--panel-edge);
+}
+.iv-vs-h2h {
+  position: absolute;
+  left: 960px;
+  top: 540px;
+  width: 440px;
+  margin-left: -220px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 14px 0 18px;
+  background: var(--panel-edge);
+  border: 6px solid var(--panel-edge-light);
+  white-space: nowrap;
+}
+.iv-vs-h2h .lbl {
+  font-size: 30px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.iv-vs-h2h .rec {
+  display: flex;
+  align-items: baseline;
+  gap: 22px;
+  font-size: 96px;
+  font-weight: 700;
+}
+.iv-vs-h2h .dash {
+  color: var(--muted);
+  font-size: 64px;
+}
+.iv-vs-h2h .first,
+.iv-vs-h2h.playoff {
+  font-size: 44px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--gold);
+  text-align: center;
+  white-space: normal;
+}
+.iv-vs-h2h.playoff {
+  width: 560px;
+  margin-left: -280px;
+  padding: 18px 20px;
+}
+
+/* --- 3. player cards: Minecraft's own inventory panel (its GUI greys and bevels) --- */
+.iv-cards {
+  --gui: #c6c6c6;
+  --gui-light: #ffffff;
+  --gui-dark: #555555;
+  --gui-slot: #8b8b8b;
+  --gui-slot-dark: #373737;
+  --gui-ink: #404040;
+  background:
+    repeating-conic-gradient(rgba(60, 56, 68, 0.35) 0 25%, transparent 0 50%) 0 0 / 64px 64px,
+    var(--panel-2);
+}
+.iv-cards-top {
+  position: absolute;
+  top: 20px;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-shadow: 4px 4px 0 var(--panel-edge);
+}
+.iv-cards-h2h {
+  display: flex;
+  align-items: baseline;
+  gap: 28px;
+  white-space: nowrap;
+}
+.iv-cards-h2h .lbl {
+  font-size: 40px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.iv-cards-h2h .rec {
+  display: flex;
+  align-items: baseline;
+  gap: 20px;
+  font-size: 92px;
+  font-weight: 700;
+  line-height: 1;
+}
+.iv-cards-h2h .dash {
+  color: var(--muted);
+  font-size: 60px;
+}
+.iv-cards-h2h .first,
+.iv-cards-h2h.playoff {
+  font-size: 60px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--gold);
+  line-height: 1.3;
+}
+.iv-cards-top .seed {
+  font-size: 34px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--quartz);
+}
+.iv-card {
+  position: absolute;
+  top: 190px;
+  width: 720px;
+  height: 870px;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--gui);
+  /* The GUI panel: a black outline, then a white top-left bevel and a dark bottom-right one. */
+  box-shadow:
+    inset 8px 8px 0 var(--gui-light),
+    inset -8px -8px 0 var(--gui-dark),
+    0 0 0 6px #000,
+    0 24px 40px rgba(0, 0, 0, 0.5);
+}
+.iv-card.left {
+  left: 116px;
+}
+.iv-card.right {
+  left: 1084px;
+}
+.iv-card-title {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 22px 14px;
+  box-shadow:
+    inset 6px 6px 0 rgba(255, 255, 255, 0.35),
+    inset -6px -6px 0 rgba(0, 0, 0, 0.3);
+}
+.iv-card.left .iv-card-title {
+  background: var(--crimson);
+}
+.iv-card.right .iv-card-title {
+  background: var(--warped);
+}
+.iv-card-title .name {
+  font-weight: 700;
+  height: 84px;
+  line-height: 84px;
+  white-space: nowrap;
+  color: #16151a;
+}
+.iv-card-title .rank {
+  font-size: 32px;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: #16151a;
+}
+/* An inventory slot, big: the bevel reversed (dark top-left) so the figure sits inside it. */
+.iv-card-window {
+  height: 316px;
+  flex-shrink: 0;
+  display: flex;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--gui-slot);
+  box-shadow:
+    inset 8px 8px 0 var(--gui-slot-dark),
+    inset -8px -8px 0 var(--gui-light);
+}
+.iv-card-window img {
+  height: 600px;
+  width: auto;
+  margin-top: 22px;
+  image-rendering: pixelated;
+}
+.iv-card.right .iv-card-window img {
+  transform: scaleX(-1);
+}
+.iv-card-rows {
+  display: flex;
+  flex-direction: column;
+}
+.iv-card-rows div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  height: 62px;
+  padding: 0 12px;
+  border-bottom: 4px solid var(--gui-slot);
+}
+.iv-card-rows div:last-child {
+  border-bottom: 0;
+}
+.iv-card-rows span {
+  font-size: 40px;
+  text-transform: uppercase;
+  color: var(--gui-ink);
+}
+.iv-card-rows b {
+  font-size: 60px;
+  color: #16151a;
+}
+.iv-cards-vs {
+  position: absolute;
+  left: 840px;
+  top: 540px;
+  width: 240px;
+  text-align: center;
+  font-weight: 700;
+  font-size: 120px;
+  line-height: 1;
+  color: var(--gold);
+  text-shadow: 8px 8px 0 var(--panel-edge);
+}
+
 /* ===== thumbnail (1280x720 YouTube thumbnail still) ===== */
 /* The layout of @mcsrmatches' thumbnails, read at phone size (24 Sept 2026 study): big figures cut
    at the knee, name-only plates clear of YouTube's duration stamp (x 1110-1270, y 625-695), a

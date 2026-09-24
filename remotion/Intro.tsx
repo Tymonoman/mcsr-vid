@@ -4,6 +4,7 @@ import { formatConstantLabel, formatTime } from "./format.js";
 import type { OverlayProps, PlayerIdentity } from "./types.js";
 
 import { introFrameCount } from "./layout.js";
+import { IntroVariant } from "./IntroLayouts.js";
 
 function PlayerCard({
   player,
@@ -121,6 +122,7 @@ export const Intro: FC<{ props: OverlayProps }> = ({ props }) => {
   const exitStart = introFrames - Math.round(fps * 0.6);
 
   if (frame >= introFrames) return null;
+  if (props.introLayout) return <IntroVariant props={props} />;
 
   const opacity = interpolate(frame, [0, fps * 0.25, exitStart, introFrames], [0, 1, 1, 0], {
     extrapolateLeft: "clamp",
