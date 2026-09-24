@@ -33,8 +33,9 @@ import { POV_WIDTH, STAGE_HEIGHT, STAGE_WIDTH, TOP_BAND_HEIGHT } from "../remoti
 const FPS = 60;
 /** Long enough to cover the intro (0-7s), the rest of the countdown, and gameplay past the anchor. */
 const RENDER_SEC = 14;
-/** Deep in the intro's 0.6s wipe-out, where the card is ~11% opaque over live gameplay. */
-const FADE_PROBE_SEC = 6.85;
+/** Deep in the intro's 0.6s wipe-out, where the card is ~11% opaque over live gameplay: this far
+ *  before the card on disk ends (config.introSec, 2-7 s), not a fixed 6.85 s past a short card. */
+const FADE_PROBE_BEFORE_END_SEC = 0.15;
 /** A point inside the left POV pane, below the top band. */
 const PROBE_X = 300;
 const PROBE_Y = 300;
@@ -165,10 +166,12 @@ try {
       ).trim(),
     );
 
-  const [leftDur, rightDur] = await Promise.all([
+  const [leftDur, rightDur, introDur] = await Promise.all([
     probeDuration(clipFor(playerLeft!.nickname)),
     probeDuration(clipFor(playerRight!.nickname)),
+    probeDuration(overlay.intro),
   ]);
+  const FADE_PROBE_SEC = introDur - FADE_PROBE_BEFORE_END_SEC;
 
   await runFastExport({
     leftClip: {

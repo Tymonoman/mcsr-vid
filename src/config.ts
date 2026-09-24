@@ -205,7 +205,7 @@ export interface Config {
    * A "COMING UP · 5:22 / THE LEAD CHANGES AT THE FORTRESS" card in the meta column this many
    * seconds after match start, for `teaserSec` seconds; null shows none. Every long-form loses
    * 16–22 points of retention between 3% and 10% of the video (22 Sept 2026); at 10 s the card
-   * lands at 3% of a ten-minute match's video, 13 s after the intro card clears. The moment is
+   * lands at 3% of a ten-minute match's video, 13 s after a 7 s intro card clears. The moment is
    * chosen from the timeline (src/pipeline/teaser.ts); a match with none shows nothing.
    */
   teaserAtSec: number | null;
