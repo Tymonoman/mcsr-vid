@@ -170,8 +170,8 @@ export async function computeOverlayProps(
   // Only the URL matters here: the overlay renders one fixed pose pair, so unlike the thumbnail
   // it has no A/B reason to care which host actually served it.
   const [leftAvatar, rightAvatar] = await Promise.all([
-    resolveAvatarUrl(userLeft.uuid, LEFT_POSE),
-    resolveAvatarUrl(userRight.uuid, RIGHT_POSE),
+    resolveAvatarUrl(userLeft.uuid, LEFT_POSE, "left"),
+    resolveAvatarUrl(userRight.uuid, RIGHT_POSE, "right"),
   ]);
   const leftAvatarUrl = leftAvatar.url;
   const rightAvatarUrl = rightAvatar.url;

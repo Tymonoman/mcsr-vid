@@ -3,7 +3,7 @@ import { config } from "../config.js";
 // (remotion/types.ts), reused here rather than hand-duplicated, since this crosses into Remotion
 // via an untyped `inputProps` JSON boundary.
 import type { ThumbnailProps } from "../../remotion/types.js";
-import { resolveAvatarUrl, type ResolvedAvatar } from "../api/avatarUrl.js";
+import { resolveAvatarUrl, type AvatarSide, type ResolvedAvatar } from "../api/avatarUrl.js";
 import { eloAtMatchStart } from "../pipeline/overlayProps.js";
 import { playoffContextFor } from "../playoffs/playoffs.js";
 import type { MatchInfo, UserDetails } from "../api/types.js";
@@ -15,6 +15,14 @@ export interface PosePair {
 }
 
 export const DEFAULT_POSES: PosePair = { left: config.leftPose, right: config.rightPose };
+
+/**
+ * The camera the right player's render is asked for. The thumbnail draws that image mirrored
+ * (`.thumb-player.right img { transform: scaleX(-1) }`, remotion/overlay.source.css), so a render
+ * turned for the left side ends up facing left, toward the other player. Make this "right" in
+ * the same commit that deletes the mirror, or both players face away from each other.
+ */
+export const RIGHT_RENDER_SIDE: AvatarSide = "left";
 
 /**
  * Props plus what the avatar hosts actually served. A/B testing needs to know whether the pose
@@ -40,8 +48,8 @@ export async function computeThumbnailProps(
   poses: PosePair = DEFAULT_POSES,
 ): Promise<ComputedThumbnail> {
   const [leftAvatar, rightAvatar] = await Promise.all([
-    resolveAvatarUrl(userLeft.uuid, poses.left),
-    resolveAvatarUrl(userRight.uuid, poses.right),
+    resolveAvatarUrl(userLeft.uuid, poses.left, "left"),
+    resolveAvatarUrl(userRight.uuid, poses.right, RIGHT_RENDER_SIDE),
     // Resolved here rather than relied on being warm: `eloAtMatchStart` reads a playoff game's
     // frozen rating out of a memo only this fills, and `npm run generate-thumbnail` reaches this
     // function without going through the pipeline. Cached per process, so it costs nothing when it is.
