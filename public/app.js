@@ -53,15 +53,26 @@ function formatDuration(ms) {
 /** Where a row's Short state puts it (MatchRowShort, src/shorts/shortPlan.ts): what needs the
     operator first, what is on its way, what is done last. */
 const SHORT_ORDER = { failed: 0, "waiting-for-hook": 1, scheduled: 3, published: 4 };
+/** [label, class, the server's detail says it better]: a running step's detail ("cutting the
+    Short", "uploading the long-form") is the line on its own. */
 const SHORT_LINE = {
   failed: ["failed", "bad"],
   "waiting-for-hook": ["waiting for hook", "ready"],
-  picking: ["exported &middot; the model is picking the Short&hellip;", ""],
-  rendering: ["rendering the Short&hellip;", ""],
-  uploading: ["uploading&hellip;", ""],
+  picking: ["exported &middot; picking the Short", "", true],
+  rendering: ["rendering the Short", "", true],
+  uploading: ["uploading", "", true],
   scheduled: ["scheduled", "ok"],
   published: ["published", ""],
 };
+
+/**
+ * Waiting for the operator's hooks with a pick to glance at: what the strip counts
+ * (NightlyShortSummary.waitingForHook). A row the server calls "not picked yet" (shortFlow.ts
+ * stateOf) is backlog nobody has opened -- opening it asks the model -- and is neither counted
+ * nor offered as "next".
+ */
+const awaitsHooks = (m) => m.shortState === "waiting-for-hook" && m.shortDetail !== "not picked yet";
+const unpicked = (m) => m.shortState === "waiting-for-hook" && !awaitsHooks(m);
 
 /**
  * The list in the order the morning asks its question -- what needs me? A failure first, then
@@ -72,7 +83,17 @@ const SHORT_LINE = {
  */
 function orderedMatches() {
   const stage = (m) =>
-    m.shortState ? (SHORT_ORDER[m.shortState] ?? 2) : m.uploaded ? 4 : m.exported ? 1 : 2;
+    unpicked(m)
+      ? m.uploaded
+        ? 4
+        : 2.5
+      : m.shortState
+        ? (SHORT_ORDER[m.shortState] ?? 2)
+        : m.uploaded
+          ? 4
+          : m.exported
+            ? 1
+            : 2;
   return (showHidden ? matches : matches.filter((m) => !m.hidden))
     .slice()
     .sort((a, b) => stage(a) - stage(b) || !!a.rivalPosted - !!b.rivalPosted || b.matchId - a.matchId);
@@ -102,7 +123,7 @@ function renderList() {
   // The morning's number: matches waiting for the operator's hooks, the only thing between them
   // and the channel now. Hidden matches are out of it, so parking an old one keeps it honest.
   const shown = matches.filter((m) => !m.hidden);
-  const hooks = shown.filter((m) => m.shortState === "waiting-for-hook").length;
+  const hooks = shown.filter(awaitsHooks).length;
   const ready = shown.filter((m) => !m.shortState && m.exported && !m.uploaded).length;
   $("#tab-matches small").textContent = hooks ? `${hooks} hooks` : ready ? `${ready} ready` : "";
   updateBackLabel();
@@ -118,7 +139,14 @@ function renderList() {
     }
     if (m.shortState === "no-export" && /^a playoff game/.test(m.shortDetail ?? ""))
       return '<div class="state">playoff game &middot; part of its series&rsquo; video</div>';
+    // A video put up in Studio before the Short flow existed has no pick either; it is published.
+    if (unpicked(m))
+      return m.uploaded
+        ? '<div class="state">published &middot; no Short</div>'
+        : `<div class="state">exported &middot; no Short picked yet &mdash; opening it asks the model${rival(m)}</div>`;
     const line = SHORT_LINE[m.shortState];
+    if (line && line[2] && m.shortDetail)
+      return `<div class="state">${line[0].startsWith("exported") ? "exported &middot; " : ""}${esc(m.shortDetail)}&hellip;${rival(m)}</div>`;
     if (line)
       return `<div class="state ${line[1]}">${line[0]}${m.shortDetail ? ` &middot; ${esc(m.shortDetail)}` : ""}${rival(m)}</div>`;
     if (!m.shortState && m.uploaded) return '<div class="state">published</div>';
@@ -927,7 +955,11 @@ async function loadPublishKit(id, meta) {
       // the fold that mattered. The Copy handler is delegated from the panel, so it reaches in.
       // Once the video is on the channel this half is the morning, so the fold opens itself.
       `<details class="kitmore after"${(el.querySelector("details.after")?.open ?? !!kit.videoUrl) ? " open" : ""}>
-         <summary>after the upload &mdash; pinned comment, community post, DMs</summary>`,
+         <summary>after the upload &mdash; ${kit.shortTitle ? "Short, " : ""}pinned comment, community post, DMs</summary>`,
+      // The Short uploads itself once the hooks are saved; these are for a Studio upload by hand
+      // (uploads off on the box), and exist only once the Short is cut.
+      kit.shortTitle ? block("Short title", kit.shortTitle, 2) : "",
+      kit.shortDescription ? block("Short description", kit.shortDescription, 4) : "",
       // A first comment to pin: what the video is and where to report a sync slip, in the
       // operator's voice. The server's line wins; the fallback is the same text for a server one
       // restart behind (src/youtube/youtubeStore.ts).
@@ -1215,7 +1247,8 @@ function nowSteps(plan, meta) {
   const attach = (s, current, earlier) => {
     const { current: now, earlier: before } = problemsOf(plan, STEP_OF[s.key]);
     if (now) {
-      s.status = "fail";
+      // A heuristic pick standing in is a warning with its reason, not a stopped step.
+      if (s.status !== "warn") s.status = "fail";
       s.boxes = [{ title: current, text: now.message, at: now.at, fix: fixFor(STEP_OF[s.key], now.message) }];
     }
     s.earlier = before.map((e) => ({
@@ -1428,7 +1461,7 @@ function nowSteps(plan, meta) {
             : "renders once the hooks are saved, about 2 min",
       };
     s = attach({ key: "short", name: "Short", ...s }, "Short render failed", "An earlier render failed");
-    if (s.status === "fail") s.body = `${retry}${s.body ?? ""}`;
+    if (s.status === "fail") Object.assign(s, { sum: "failed", body: `${retry}${s.body ?? ""}` });
     steps.push(s);
   }
 
@@ -1466,7 +1499,10 @@ function nowSteps(plan, meta) {
       rec ? "Up, with a problem" : "An earlier attempt failed",
     );
     if (s.status === "fail")
-      s.body = `${retry}${key === "videoup" && sync?.syncStale ? toCheck : ""}${s.body ?? ""}`;
+      Object.assign(s, {
+        sum: "failed",
+        body: `${retry}${key === "videoup" && sync?.syncStale ? toCheck : ""}${s.body ?? ""}`,
+      });
     return s;
   };
   const videoAt = plan.uploads.video?.publishAt ?? publishSlotAt?.toISOString();
@@ -1672,7 +1708,7 @@ function paintNowSync() {
 
 /** Matches waiting for a hook, in the list's order, other than the one on screen. */
 const waitingOthers = () =>
-  orderedMatches().filter((m) => m.shortState === "waiting-for-hook" && m.matchId !== selected && !m.hidden);
+  orderedMatches().filter((m) => awaitsHooks(m) && m.matchId !== selected && !m.hidden);
 
 /** One primary button: save while the hooks are open to edit, then the next match waiting. */
 function paintSave() {
@@ -1702,7 +1738,13 @@ function paintSave() {
   } else {
     btn.hidden = true;
   }
-  btn.closest(".saverow").hidden = btn.hidden;
+  const row = btn.closest(".saverow");
+  row.hidden = btn.hidden;
+  // Save at the end of the Hooks step; "Next waiting" after the last step, where a desktop reader
+  // finishes (a phone pins the row to the bottom slot either way).
+  const hooks = $('#now .step[data-step="hooks"]');
+  if (btn.dataset.mode === "save" && hooks) hooks.after(row, $("#savedmsg"));
+  else $("#now").append(row, $("#savedmsg"));
 }
 
 /** A refused save under the save row -- which a phone pins to the bottom of the screen, so the
@@ -1724,7 +1766,9 @@ async function saveHooks(id, btn) {
   if (!noShort && !body.shortHook)
     return failSave(
       "Hooks not saved",
-      "The Short hook is empty: write one, or tick “No Short for this one”.",
+      nowPlan?.pick
+        ? "The Short hook is empty: write one, or tick “No Short for this one”."
+        : "The Short hook is empty and the model has not picked yet: wait for its line, write one, or tick “No Short for this one”.",
     );
   btn.disabled = true;
   setSavedMsg("saving&hellip;", "muted");
@@ -2330,7 +2374,7 @@ async function refresh() {
     el.querySelector(".listfail")?.remove();
     el.insertAdjacentHTML(
       "afterbegin",
-      `<div class="scanline bad listfail">Could not refresh the list: ${esc(e.message)} &mdash; ${e.offline ? "it refreshes once the dashboard answers" : "trying again in 30 s"}</div>`,
+      `<div class="scanline bad listfail">Could not ${matches.length ? "refresh" : "load"} the list: ${esc(e.message)} &mdash; ${e.offline ? "it refreshes once the dashboard answers" : "trying again in 30 s"}</div>`,
     );
     if (!e.offline) listRetry = setTimeout(refresh, 30000);
     return false;
@@ -2525,11 +2569,13 @@ function nightlyBody() {
     (r) =>
       `<a href="#" data-act="open-match" data-id="${r.matchId}">${VERB[r.step] ?? esc(r.step)} #${r.matchId}</a> &middot; ${esc(r.line)} (${clock(r.since)}${Number.isFinite(r.percent) ? `, ${Math.round(r.percent)}%` : ""})`,
   );
-  const queuedPicks = ns.activity?.queued?.length ? [`${ns.activity.queued.length} queued`] : [];
-  const activity =
-    running.length || queuedPicks.length
-      ? `<div class="activity">Now: ${[...running, ...queuedPicks].join(" &middot; ")}</div>`
-      : "";
+  const n = ns.activity?.queued?.length ?? 0;
+  const queuedPicks = n
+    ? [`${n} more pick${n === 1 ? "" : "s"} waiting ${n === 1 ? "its" : "their"} turn`]
+    : [];
+  const activity = [...running, ...queuedPicks]
+    .map((l) => `<div class="activity"><span class="muted">Now</span> ${l}</div>`)
+    .join("");
   return `${behind}${failed}${shortsFailed}${picker}<div class="lines">
       ${activity}
       <div class="plan" title="${esc(nextRunAt ?? "no schedule")}">${plan}</div>
@@ -3124,9 +3170,9 @@ function showTab(which) {
 function updateBackLabel() {
   const tab = $('.tabs [aria-selected="true"]');
   const count = tab?.querySelector("small")?.textContent;
-  $("#backtolist").textContent =
-    `\u2190 ${tab ? tab.querySelector("span").textContent : "List"}${count ? ` \u00b7 ${count}` : ""}`;
   const waiting = waitingOthers();
+  $("#backtolist").textContent =
+    `\u2190 ${tab ? tab.querySelector("span").textContent : "List"}${count && !waiting.length ? ` \u00b7 ${count}` : ""}`;
   const next = $("#nextwaiting");
   next.hidden = !waiting.length;
   next.textContent = `${waiting.length} more waiting \u203a`;

@@ -21,12 +21,22 @@ const { launchFor } = require("./launch.cjs");
   let put = null;
   await page.route("**/api/shorts/plan/*", async (r) => {
     const plan = await (await r.fetch()).json();
-    served = { ...plan, titleHook: null, shortHook: null, noShort: false, uploads: {}, state: "waiting-for-hook" };
+    served = {
+      ...plan,
+      titleHook: null,
+      shortHook: null,
+      noShort: false,
+      uploads: {},
+      state: "waiting-for-hook",
+    };
     return r.fulfill({ json: put ? { ...served, ...put, state: "rendering" } : served });
   });
   await page.route("**/api/shorts/hooks/*", (r) => {
     put = JSON.parse(r.request().postData() ?? "{}");
-    return r.fulfill({ status: 202, json: { ...served, ...put, noShort: !!put.noShort, state: "rendering" } });
+    return r.fulfill({
+      status: 202,
+      json: { ...served, ...put, noShort: !!put.noShort, state: "rendering" },
+    });
   });
   try {
     await page.goto(base + "/", { waitUntil: "networkidle" });
@@ -60,9 +70,13 @@ const { launchFor } = require("./launch.cjs");
     if (!(await page.inputValue("#shorthook"))) await page.fill("#shorthook", "A SHORT HOOK");
     const shortHook = await page.inputValue("#shorthook");
     await page.click("#save");
-    await page.waitForFunction(() => document.querySelector("#savedmsg")?.textContent === "saved", null, {
-      timeout: 10000,
-    });
+    await page.waitForFunction(
+      () => /^saved\b/.test(document.querySelector("#savedmsg")?.textContent ?? ""),
+      null,
+      {
+        timeout: 10000,
+      },
+    );
     check(
       "Save sends both hooks",
       put?.titleHook === chipText && put?.shortHook === shortHook && !put?.noShort,

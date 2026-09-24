@@ -177,6 +177,7 @@
 /* What the box is doing now, each running step a link to its match. */
 .nightly .activity {
   margin-bottom: 2px;
+  overflow-wrap: anywhere;
 }
 .nightly .activity a {
   color: var(--gold);
@@ -901,6 +902,12 @@
 .stepbody .scanline {
   padding: 6px 0;
   border: 0;
+}
+/* The Video step's two 9.6 s frames side by side at every width: the digit is legible at half a
+   phone, and stacked they pushed the Hooks step two screens down on the one match that needs a look. */
+#nowsync .syncsides {
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }
 .pickvideo {
   display: block;

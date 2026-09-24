@@ -44,9 +44,14 @@ const { launchFor, readClipboard } = require("./launch.cjs");
     const folded = await page.$$eval("#publishkit details.after .kitlabel", (n) =>
       n.map((e) => e.textContent.trim()),
     );
+    // The Short's title exists once the Short is cut, which waits for the hooks now.
+    const kit = await page.evaluate(async (id) => (await fetch(`/api/publishkit/${id}`)).json(), id);
     check(
       "after-the-upload blocks are inside the fold",
-      ["Short title", "Pinned comment", "Community post"].every((l) => folded.includes(l)),
+      [...(kit.shortTitle ? ["Short title"] : []), "Pinned comment", "Community post"].every((l) =>
+        folded.includes(l),
+      ) &&
+        (!!kit.shortTitle || !folded.includes("Short title")),
       folded.join(" | "),
     );
     const open = await page.$eval("#publishkit details.after", (d) => d.open);

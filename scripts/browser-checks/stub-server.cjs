@@ -16,7 +16,16 @@ const path = require("node:path");
 const ROOT = path.resolve(__dirname, "..", "..");
 const FX = process.env.STUB_FIXTURES || "/tmp/nowfx";
 const PER_MATCH = ["meta", "publishkit", "thumbnails", "export/preview-meta", "sync", "publish", "splits"];
-const GLOBAL = ["stages", "matches", "nightly", "suggestions", "playoffs", "settings", "youtube/status", "youtube/uploads"];
+const GLOBAL = [
+  "stages",
+  "matches",
+  "nightly",
+  "suggestions",
+  "playoffs",
+  "settings",
+  "youtube/status",
+  "youtube/uploads",
+];
 const file = (p) => path.join(FX, `${p.replace(/\//g, "_")}.json`);
 
 /* --- the states, one match each ---------------------------------------------------------------- */
@@ -45,7 +54,13 @@ const pickOf = (id, extra = {}) => ({
   createdAt: ago(40 * MIN),
   ...extra,
 });
-const line = (msAgo, step, level, text, detail) => ({ at: ago(msAgo), step, level, text, ...(detail ? { detail } : {}) });
+const line = (msAgo, step, level, text, detail) => ({
+  at: ago(msAgo),
+  step,
+  level,
+  text,
+  ...(detail ? { detail } : {}),
+});
 const pickLog = (who) => [
   line(50 * MIN, "pick", "info", "queued after the export"),
   line(49 * MIN, "pick", "info", "cutting a 2 fps proxy of the export (short-proxy.mp4)"),
@@ -56,25 +71,50 @@ const pickLog = (who) => [
 /** Each captured match, put in one state. The ids are the ones the capture fetched. */
 const SCENARIOS = {
   // waiting, with the model's pick
-  13549300: { preview: true, log: [...pickLog("BeefSalad"), line(41 * MIN, "pick", "info", "picked 6:21–7:02, 41 s, both, BeefSalad's audio up")] },
+  13549300: {
+    preview: true,
+    log: [
+      ...pickLog("BeefSalad"),
+      line(41 * MIN, "pick", "info", "picked 6:21–7:02, 41 s, both, BeefSalad's audio up"),
+    ],
+  },
   // the heuristic stands in: the model is not signed in
   13617328: {
     preview: true,
-    pick: pickOf(13617328, { source: "heuristic", model: undefined, startMs: 376000, endMs: 398000, hookSuggestion: "DECIDED AT THE PORTAL", why: "the gap closes at the eye throws", kind: "play", focus: undefined }),
+    pick: pickOf(13617328, {
+      source: "heuristic",
+      model: undefined,
+      startMs: 376000,
+      endMs: 398000,
+      hookSuggestion: "DECIDED AT THE PORTAL",
+      why: "the gap closes at the eye throws",
+      kind: "play",
+      focus: undefined,
+    }),
     errors: [{ step: "pick", at: ago(43 * MIN), message: NOT_SIGNED_IN }],
     log: [
       ...pickLog("nolqndo"),
-      line(43 * MIN, "pick", "error", "Antigravity is not signed in", "$ agy -p … --output-format json --sandbox\nexit 1\nError: not signed in. Run `agy` in a terminal to sign in with your Google account.\n    at auth (/usr/local/lib/agy/cli.js:1123:11)"),
+      line(
+        43 * MIN,
+        "pick",
+        "error",
+        "Antigravity is not signed in",
+        "$ agy -p … --output-format json --sandbox\nexit 1\nError: not signed in. Run `agy` in a terminal to sign in with your Google account.\n    at auth (/usr/local/lib/agy/cli.js:1123:11)",
+      ),
       line(43 * MIN, "pick", "warn", "the heuristic stands in: 6:16–6:38, 22 s, both"),
     ],
   },
   // the model is watching it now
   13448958: {
     state: "picking",
+    detail: "the model is watching the match",
     pick: null,
     pickActivity: "running",
     activity: { step: "pick", line: "running /watch on bbiddd's stream", since: ago(2 * MIN + 10e3) },
-    log: [line(3 * MIN, "pick", "info", "cutting a 2 fps proxy of the export (short-proxy.mp4)"), line(2 * MIN + 10e3, "pick", "info", "running /watch on Infume's stream")],
+    log: [
+      line(3 * MIN, "pick", "info", "cutting a 2 fps proxy of the export (short-proxy.mp4)"),
+      line(2 * MIN + 10e3, "pick", "info", "running /watch on Infume's stream"),
+    ],
   },
   // hooks saved, the Short is being cut
   13446429: {
@@ -83,36 +123,70 @@ const SCENARIOS = {
     titleHook: "Can the 1999 take down the 2305?",
     shortHook: "3.8 SECONDS APART AT THE EYES",
     activity: { step: "render", line: "encoding the Short", since: ago(50e3), percent: 40 },
-    log: [line(60e3, "chain", "info", "hooks saved — rendering the Short"), line(55e3, "render", "info", "board and hook stills rendered"), line(50e3, "render", "info", "encoding the Short")],
+    log: [
+      line(60e3, "chain", "info", "hooks saved — rendering the Short"),
+      line(55e3, "render", "info", "board and hook stills rendered"),
+      line(50e3, "render", "info", "encoding the Short"),
+    ],
   },
   // both on the channel, private, with times
   13473906: {
     state: "scheduled",
     titleHook: "The 7th seed vs the LCQ",
     shortHook: "A SUB-8 TO WIN IT",
-    uploads: { video: { videoId: "aBcDeFgHiJk", publishAt: slot(1, 19) }, short: { videoId: "kLmNoPqRsTu", publishAt: slot(2, 13) } },
+    uploads: {
+      video: { videoId: "aBcDeFgHiJk", publishAt: slot(1, 19) },
+      short: { videoId: "kLmNoPqRsTu", publishAt: slot(2, 13) },
+    },
   },
   // the long-form upload failed: quota
   13559245: {
     state: "failed",
     titleHook: "A sub-8 to win it",
     shortHook: "A SUB-8 TO WIN IT",
-    errors: [{ step: "upload-video", at: ago(12 * MIN), message: "YouTube refused the upload: quotaExceeded — the request cannot be completed because you have exceeded your quota" }],
+    errors: [
+      {
+        step: "upload-video",
+        at: ago(12 * MIN),
+        message:
+          "YouTube refused the upload: quotaExceeded — the request cannot be completed because you have exceeded your quota",
+      },
+    ],
     log: [
       line(30 * MIN, "chain", "info", "hooks saved — rendering the Short"),
       line(28 * MIN, "render", "info", "short-13559245.mp4 rendered, 41 s"),
-      line(13 * MIN, "upload-video", "info", "uploading final-13559245.mp4 (745 MiB), private, publish at 19:00 UTC"),
-      line(12 * MIN, "upload-video", "error", "YouTube refused the upload: quotaExceeded", '{\n  "error": {\n    "code": 403,\n    "message": "The request cannot be completed because you have exceeded your <a href=\\"/youtube/v3/getting-started#quota\\">quota</a>.",\n    "errors": [{ "domain": "youtube.quota", "reason": "quotaExceeded" }]\n  }\n}'),
+      line(
+        13 * MIN,
+        "upload-video",
+        "info",
+        "uploading final-13559245.mp4 (745 MiB), private, publish at 19:00 UTC",
+      ),
+      line(
+        12 * MIN,
+        "upload-video",
+        "error",
+        "YouTube refused the upload: quotaExceeded",
+        '{\n  "error": {\n    "code": 403,\n    "message": "The request cannot be completed because you have exceeded your <a href=\\"/youtube/v3/getting-started#quota\\">quota</a>.",\n    "errors": [{ "domain": "youtube.quota", "reason": "quotaExceeded" }]\n  }\n}',
+      ),
     ],
   },
   // a series: game 1's directory, the pick in game 3
   13301662: {
-    pick: pickOf(13302171, { startMs: 370000, endMs: 412000, hookSuggestion: "GAME 3 COMES DOWN TO THE PEARLS" }),
+    pick: pickOf(13302171, {
+      startMs: 370000,
+      endMs: 412000,
+      hookSuggestion: "GAME 3 COMES DOWN TO THE PEARLS",
+    }),
     preview: { startSec: 1520, endSec: 1562 },
     detail: "Short game 3 6:10–6:52, 42 s, both",
   },
   // a series game other than game 1
-  13301896: { state: "no-export", pick: null, detail: "a playoff game — the series is picked, cut and uploaded as one video from game 1 once every game is joined" },
+  13301896: {
+    state: "no-export",
+    pick: null,
+    detail:
+      "a playoff game — the series is picked, cut and uploaded as one video from game 1 once every game is joined",
+  },
   // the detector was not sure
   13223455: { preview: true, syncWeak: true, weakSync: true },
   // no Short for this one: the long-form alone
@@ -125,9 +199,13 @@ const SCENARIOS = {
   },
   13395245: {
     state: "published",
+    detail: "long-form 2026-09-16 19:00 UTC, Short 2026-09-17 13:00 UTC",
     titleHook: "WANNABE vs REAL GOAT",
     shortHook: "THE PEARLS DECIDE IT",
-    uploads: { video: { videoId: "aAX_ML4rHdo", publishAt: ago(8 * 86400e3) }, short: { videoId: "bBX_ML4rHdo", publishAt: ago(7 * 86400e3) } },
+    uploads: {
+      video: { videoId: "aAX_ML4rHdo", publishAt: ago(8 * 86400e3) },
+      short: { videoId: "bBX_ML4rHdo", publishAt: ago(7 * 86400e3) },
+    },
   },
 };
 
@@ -154,7 +232,9 @@ function planOf(id) {
     detail:
       s.detail ??
       (s.errors?.[0]?.step !== "pick" ? s.errors?.[0]?.message : undefined) ??
-      (pick ? `Short ${mmss(pick.startMs)}–${mmss(pick.endMs)}, ${Math.round((pick.endMs - pick.startMs) / 1000)} s, ${pick.pov}${pick.source === "heuristic" ? " · model failed, heuristic pick" : ""}` : undefined),
+      (pick
+        ? `Short ${mmss(pick.startMs)}–${mmss(pick.endMs)}, ${Math.round((pick.endMs - pick.startMs) / 1000)} s, ${pick.pov}${pick.source === "heuristic" ? " · model failed, heuristic pick" : ""}`
+        : undefined),
     errors: s.errors ?? [],
     ...(s.activity ? { activity: s.activity } : {}),
     log: s.log ?? [],
@@ -169,6 +249,10 @@ function planOf(id) {
       : {}),
     uploads: s.uploads ?? {},
   };
+  if (p.state === "scheduled" && !s.detail) {
+    const when = (u) => (u?.publishAt ? u.publishAt.slice(0, 16).replace("T", " ") + " UTC" : "up");
+    p.detail = `long-form ${when(p.uploads.video)}${p.noShort ? ", no Short" : `, Short ${when(p.uploads.short)}`}`;
+  }
   return (plans[id] = p);
 }
 
@@ -185,7 +269,8 @@ const DEFAULT_ID = 13549300;
 function perMatch(kind, id) {
   const got = read(path.join(FX, String(id), `${kind.replace(/\//g, "_")}.json`));
   if (got) {
-    if (kind === "meta" && SCENARIOS[id]?.weakSync && got.sync) got.sync = { ...got.sync, confidence: 0.04, source: "countdown" };
+    if (kind === "meta" && SCENARIOS[id]?.weakSync && got.sync)
+      got.sync = { ...got.sync, confidence: 0.04, source: "countdown" };
     if (kind === "sync" && SCENARIOS[id]?.weakSync && got.sync) got.sync = { ...got.sync, confidence: 0.04 };
     return got;
   }
@@ -227,7 +312,14 @@ function nightlyPayload() {
 
 /* --- the server ------------------------------------------------------------------------------- */
 
-const TYPES = { ".css": "text/css", ".js": "text/javascript", ".html": "text/html", ".png": "image/png", ".ttf": "font/ttf", ".mp4": "video/mp4" };
+const TYPES = {
+  ".css": "text/css",
+  ".js": "text/javascript",
+  ".html": "text/html",
+  ".png": "image/png",
+  ".ttf": "font/ttf",
+  ".mp4": "video/mp4",
+};
 function sendFile(req, res, p) {
   let size;
   try {
@@ -243,25 +335,32 @@ function sendFile(req, res, p) {
   }
   const start = m[1] ? Number(m[1]) : 0;
   const end = m[2] ? Math.min(Number(m[2]), size - 1) : size - 1;
-  res.writeHead(206, { "content-type": type, "content-length": end - start + 1, "content-range": `bytes ${start}-${end}/${size}`, "accept-ranges": "bytes" });
+  res.writeHead(206, {
+    "content-type": type,
+    "content-length": end - start + 1,
+    "content-range": `bytes ${start}-${end}/${size}`,
+    "accept-ranges": "bytes",
+  });
   fs.createReadStream(p, { start, end }).pipe(res);
 }
 function json(res, status, body) {
   res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
   res.end(JSON.stringify(body));
 }
-const body = (req) => new Promise((ok) => {
-  let s = "";
-  req.on("data", (c) => (s += c));
-  req.on("end", () => ok(s));
-});
+const body = (req) =>
+  new Promise((ok) => {
+    let s = "";
+    req.on("data", (c) => (s += c));
+    req.on("end", () => ok(s));
+  });
 
 async function handle(req, res) {
   const url = new URL(req.url, "http://stub");
   const seg = url.pathname.split("/").filter(Boolean);
   if (seg[0] !== "api") {
     const name = url.pathname === "/" ? "index.html" : url.pathname.slice(1);
-    if (name === "Monocraft.ttf") return sendFile(req, res, path.join(ROOT, "remotion/assets/fonts/Monocraft.ttf"));
+    if (name === "Monocraft.ttf")
+      return sendFile(req, res, path.join(ROOT, "remotion/assets/fonts/Monocraft.ttf"));
     if (!/^[\w.-]+$/.test(name)) return json(res, 404, { error: "not found" });
     return sendFile(req, res, path.join(ROOT, "public", name));
   }
@@ -277,10 +376,16 @@ async function handle(req, res) {
     const r = JSON.parse((await body(req)) || "{}");
     const p = planOf(Number(b));
     if (!p) return json(res, 404, { error: `stub: match ${b} has no scenario` });
-    if (!r.titleHook?.trim()) return json(res, 400, { error: "expected { titleHook, shortHook | null, noShort? } with a title hook" });
-    if (!r.noShort && !r.shortHook?.trim()) return json(res, 400, { error: "a Short hook, or noShort: true for no Short" });
+    if (!r.titleHook?.trim())
+      return json(res, 400, {
+        error: "expected { titleHook, shortHook | null, noShort? } with a title hook",
+      });
+    if (!r.noShort && !r.shortHook?.trim())
+      return json(res, 400, { error: "a Short hook, or noShort: true for no Short" });
     if (p.uploads.video && p.titleHook !== null && r.titleHook !== p.titleHook)
-      return json(res, 409, { error: `the long-form is already on the channel (${p.uploads.video.videoId}) — changing its hook would need a re-upload, which is the operator's call` });
+      return json(res, 409, {
+        error: `the long-form is already on the channel (${p.uploads.video.videoId}) — changing its hook would need a re-upload, which is the operator's call`,
+      });
     Object.assign(p, {
       titleHook: r.titleHook.trim(),
       shortHook: r.noShort ? null : r.shortHook.trim(),
@@ -290,7 +395,12 @@ async function handle(req, res) {
       detail: r.noShort ? "uploading the long-form" : "cutting the Short",
       activity: r.noShort
         ? { step: "upload-video", line: "uploading final.mp4", since: new Date().toISOString(), percent: 0 }
-        : { step: "render", line: "rendering the board and hook stills", since: new Date().toISOString(), percent: 0 },
+        : {
+            step: "render",
+            line: "rendering the board and hook stills",
+            since: new Date().toISOString(),
+            percent: 0,
+          },
     });
     return json(res, 202, p);
   }
@@ -308,16 +418,24 @@ async function handle(req, res) {
     res.writeHead(204);
     return res.end();
   }
+  if (resource === "export" && a === "project" && get) {
+    res.writeHead(200, { "content-type": "application/xml" });
+    return res.end('<?xml version="1.0"?><mlt root="."/>');
+  }
+  // No /watch audit on record: the panel shows nothing and starts nothing.
+  if (get && resource === "youtube" && a === "audit") return json(res, 200, { running: false });
   if (get && resource === "matches") return json(res, 200, matchesPayload());
   if (get && resource === "nightly" && !a) return json(res, 200, nightlyPayload());
   if (get && !a && GLOBAL.includes(resource)) return json(res, 200, read(file(resource)) ?? {});
-  if (get && resource === "youtube" && GLOBAL.includes(`youtube/${a}`)) return json(res, 200, read(file(`youtube/${a}`)) ?? {});
+  if (get && resource === "youtube" && GLOBAL.includes(`youtube/${a}`))
+    return json(res, 200, read(file(`youtube/${a}`)) ?? {});
   const kind = resource === "export" && a === "preview-meta" ? "export/preview-meta" : resource;
   if (get && PER_MATCH.includes(kind) && id) {
     const d = perMatch(kind, id);
     return d ? json(res, 200, d) : json(res, 404, { error: `stub: no ${kind} for ${id}` });
   }
-  if (resource === "meta" && req.method === "PUT") return json(res, 200, { ...perMatch("meta", id), ...JSON.parse((await body(req)) || "{}") });
+  if (resource === "meta" && req.method === "PUT")
+    return json(res, 200, { ...perMatch("meta", id), ...JSON.parse((await body(req)) || "{}") });
   console.error(`stub: not faked ${req.method} ${url.pathname}`);
   return json(res, 404, { error: `stub: ${req.method} ${url.pathname} is not faked` });
 }
@@ -351,5 +469,7 @@ if (process.argv[2] === "capture") {
         if (!res.headersSent) json(res, 500, { error: String(e) });
       }),
     )
-    .listen(port, "127.0.0.1", () => console.log(`stub dashboard on http://127.0.0.1:${port} (fixtures ${FX})`));
+    .listen(port, "127.0.0.1", () =>
+      console.log(`stub dashboard on http://127.0.0.1:${port} (fixtures ${FX})`),
+    );
 }
