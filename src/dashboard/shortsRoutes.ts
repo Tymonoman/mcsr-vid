@@ -184,7 +184,7 @@ export async function handleShortsRoute(
   // Where the match stands on its way to the channel. Opening an exported match with no pick
   // queues one, so the backlog fills in as it is looked at.
   if (action === "plan" && req.method === "GET") {
-    ctx.json(res, 200, await shortPlan(matchId, { queue: true }));
+    ctx.json(res, 200, await shortPlan(matchId, { queue: true, now: opts.chain?.now?.() }));
     return true;
   }
 
@@ -201,7 +201,7 @@ export async function handleShortsRoute(
     if (result && "status" in result) {
       ctx.json(res, result.status, { error: result.error });
     } else {
-      const plan = await shortPlan(matchId);
+      const plan = await shortPlan(matchId, { now: opts.chain?.now?.() });
       if (result && "saveWarnings" in result && result.saveWarnings?.length) {
         plan.saveWarnings = result.saveWarnings;
       }
@@ -226,7 +226,7 @@ export async function handleShortsRoute(
     void queuePick(matchId, true).then(() => {
       if (readStatus(matchId).hooksSavedAt) void startChain(matchId, opts.chain);
     });
-    ctx.json(res, 202, await shortPlan(matchId));
+    ctx.json(res, 202, await shortPlan(matchId, { now: opts.chain?.now?.() }));
     return true;
   }
 
