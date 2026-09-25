@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { BLOCKS, SCENES, SEED_ICON_TYPES } from "./SeedIconMC.js";
+import { SEED_ICON_TYPES, seedIconFile } from "./SeedIconMC.js";
 
-// The five overworld seed types the API reports all have a scene.
+const root = fileURLToPath(new URL("..", import.meta.url));
+
+// The five overworld seed types the API reports all have an icon, and all but the buried treasure
+// an -alt render (the other projection) beside it.
 assert.deepEqual([...SEED_ICON_TYPES].sort(), [
   "BURIED_TREASURE",
   "DESERT_TEMPLE",
@@ -11,26 +15,25 @@ assert.deepEqual([...SEED_ICON_TYPES].sort(), [
   "SHIPWRECK",
   "VILLAGE",
 ]);
-
-// A hand-edited plan stays a plan: every character is a block or air, and every row of a scene is
-// as long as its first (a short row would silently shift the blocks after it).
-for (const [type, { layers }] of Object.entries(SCENES)) {
-  const width = layers[0][0].length;
-  layers.forEach((rows, y) => {
-    assert.equal(rows.length, layers[0].length, `${type} layer ${y}: ${rows.length} rows`);
-    rows.forEach((row, z) => {
-      assert.equal([...row].length, width, `${type} layer ${y} row ${z} is ${[...row].length} wide`);
-      for (const ch of row)
-        assert.ok(ch === "." || BLOCKS[ch], `${type} layer ${y} row ${z}: no block "${ch}"`);
-    });
-  });
+for (const type of SEED_ICON_TYPES) {
+  assert.ok(existsSync(join(root, "remotion/assets", seedIconFile(type))), `${type}: no icon PNG`);
+  if (type !== "BURIED_TREASURE")
+    assert.ok(existsSync(join(root, "remotion/assets", seedIconFile(type, true))), `${type}: no -alt PNG`);
 }
 
-// Every texture a block draws is on disk.
-const dir = fileURLToPath(new URL("./assets/minecraft/", import.meta.url));
-for (const [ch, block] of Object.entries(BLOCKS))
-  for (const box of block.boxes)
-    for (const { src } of [box.top, box.left, box.right])
-      assert.ok(!src || existsSync(dir + src), `block "${ch}": ${src} missing`);
+// Every scene spec parses, and a template given as a file exists (a spec that cannot bake cannot
+// regenerate its icon). Baking needs the jar, so it is left to scripts/seed-icons/icons.sh.
+const scenes = join(root, "scripts/seed-icons/scenes");
+for (const file of readdirSync(scenes).filter((f) => f.endsWith(".json"))) {
+  const spec = JSON.parse(readFileSync(join(scenes, file), "utf8"));
+  assert.ok("template" in spec && Array.isArray(spec.edits ?? []), `${file}: not a scene spec`);
+  if (typeof spec.template === "string" && /\.(json|nbt)$/.test(spec.template))
+    assert.ok(existsSync(join(scenes, spec.template)), `${file}: ${spec.template} missing`);
+}
+
+// icons.sh names only specs that exist.
+const icons = readFileSync(join(root, "scripts/seed-icons/icons.sh"), "utf8");
+for (const [, spec] of icons.matchAll(/\]=(\S+)/g))
+  assert.ok(existsSync(join(scenes, `${spec}.json`)), `icons.sh: scenes/${spec}.json missing`);
 
 console.log("SeedIconMC: ok");

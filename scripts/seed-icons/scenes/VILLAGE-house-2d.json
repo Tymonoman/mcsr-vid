@@ -1,0 +1,17 @@
+{
+  "template": "village/plains/houses/plains_small_house_1",
+  "edits": [
+    {
+      "op": "ground",
+      "block": "grass_block",
+      "margin": 0
+    }
+  ],
+  "view": {
+    "projection": "2d",
+    "facing": "west",
+    "depthShade": 0.1,
+    "padding": 0.04
+  },
+  "background": "sky"
+}
