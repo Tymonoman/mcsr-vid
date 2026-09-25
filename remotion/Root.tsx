@@ -1,6 +1,7 @@
 import { Composition } from "remotion";
 import { Overlay, OverlayTop, OverlayBottom, OverlaySplits, OverlayTimer, OverlayIntro } from "./Overlay.js";
 import { Thumbnail } from "./Thumbnail.js";
+import { SeedIconSheet } from "./SeedIconMC.js";
 import { CountdownTeaser } from "./CountdownTeaser.js";
 import { Short, ShortCaption, ShortEndCard, ShortHook, ShortResult, type ShortStillProps } from "./Short.js";
 import { ChatPanel } from "./ChatPanel.js";
@@ -276,6 +277,14 @@ export const RemotionRoot: React.FC = () => {
         width={1280}
         height={720}
         defaultProps={thumbnailDefaultProps}
+      />
+      <Composition
+        id="SeedIconSheet"
+        component={SeedIconSheet}
+        durationInFrames={1}
+        fps={1}
+        width={828}
+        height={268}
       />
       <Composition
         id="CountdownTeaser"
