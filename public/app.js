@@ -3326,7 +3326,7 @@ function paintSettings() {
         <button type="button" class="ghost" id="thumbsall">Re-render every uploaded video&rsquo;s thumbnails</button>
         <span class="msg" id="thumbsallmsg"></span>
       </div>
-      <div class="sethelp">One match at a time, never beside a render: it waits for one, and the nightly waits for it; a match with anything else running is skipped. Render only: nothing changes on YouTube &mdash; each video&rsquo;s swap is its own press in its Thumbnail panel.</div>
+      <div class="sethelp">One match at a time: it waits out a pipeline run (the nightly&rsquo;s included), and the nightly waits for it; a match with anything else running is skipped. Render only: nothing changes on YouTube &mdash; each video&rsquo;s swap is its own press in its Thumbnail panel.</div>
     </div>`;
   $("#setsave").addEventListener("click", saveSettingsPanel);
   $("#thumbsall").addEventListener("click", async (ev) => {

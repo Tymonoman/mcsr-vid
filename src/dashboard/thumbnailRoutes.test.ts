@@ -10,6 +10,7 @@ import { config, matchDir } from "../config.js";
 import {
   handleThumbnailRoute,
   runBulk,
+  startRerender,
   uploadedLongForms,
   type ThumbnailRouteContext,
 } from "./thumbnailRoutes.js";
@@ -100,6 +101,24 @@ try {
     total: number;
   };
   assert.deepEqual([state.done, state.total], [3, 3]);
+
+  // A re-render that hangs (a Chromium that never answers) is stopped, and the job says so —
+  // otherwise it holds the bulk and every scheduled nightly behind it for ever.
+  const hung = startRerender(
+    40,
+    (async (_id: number, deps: { signal?: AbortSignal }) => {
+      const signal = deps.signal;
+      if (!signal) throw new Error("no signal: nothing can stop this render");
+      await new Promise((_, reject) =>
+        signal.addEventListener("abort", () => reject(new Error("cancelled"))),
+      );
+    }) as never,
+    50,
+  );
+  // AbortSignal.timeout's timer is unref'd (the server keeps the loop alive); this test must.
+  const alive = setTimeout(() => {}, 5_000);
+  assert.match(String(await hung.finished), /^stopped after \d+ min — the previous set is back$/);
+  clearTimeout(alive);
 
   console.log("thumbnailRoutes: all checks passed");
 } finally {

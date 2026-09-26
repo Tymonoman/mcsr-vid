@@ -454,6 +454,8 @@ export interface NightlyDeps {
   scheduled: boolean;
   /** Mock clock for testing. Default Date.now. */
   now: () => number;
+  /** How long a scheduled run waits out a thumbnail re-render. Default 20 min. */
+  thumbnailWaitMs: number;
 }
 
 const liveRanked = async (): Promise<readonly NightlyPick[] | null> => {
@@ -519,9 +521,9 @@ export async function runNightlyOnce(
   if (!deps.scheduled) return runOnce(notifyUrl, deps, started);
   starting = true;
   try {
-    // Bounded: a re-render hung past this reads as "a render is already in flight" below, and the
+    // Bounded: a re-render still running past this is a recorded, notified skip below, and the
     // timer re-arms for tomorrow rather than waiting on it for ever.
-    const until = Date.now() + THUMBNAIL_WAIT_MS;
+    const until = Date.now() + (deps.thumbnailWaitMs ?? THUMBNAIL_WAIT_MS);
     while (anyThumbnailRunning() && Date.now() < until) await new Promise((r) => setTimeout(r, 1_000));
     return await runOnce(notifyUrl, deps, started);
   } finally {
@@ -578,6 +580,10 @@ async function runOnce(
     return { skipped: reason, ...(conflict ? { busy: true } : {}) };
   };
 
+  // The scheduled run has already waited this out (runNightlyOnce). Still running, it is hung, and
+  // the night it costs is an outcome to record and push — not the conflict below, which says
+  // nothing to anyone because a render in flight is the night's work.
+  if (scheduled && anyThumbnailRunning()) return skip("a thumbnail re-render is still running");
   if (busy()) return skip("a render is already in flight", true);
 
   const suggestions = await ranked();

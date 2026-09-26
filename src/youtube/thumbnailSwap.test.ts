@@ -133,9 +133,13 @@ try {
   owner = "UCother";
   await assert.rejects(swapThumbnail(100, false), /belongs to channel UCother/);
   owner = "UCmine";
-  // YouTube does not serve the image (a private video): no copy to undo to, so nothing is set.
+  // YouTube does not serve the image (expected of a private or scheduled video): no copy to undo
+  // to, so nothing is set — and the refusal says what was checked and when to press again.
   imageStatus = 404;
-  await refused(swapThumbnail(100, false), /nothing changed/);
+  await refused(
+    swapThumbnail(100, false),
+    /no image 1280 wide and 5 KB or more came back.*nothing changed; press again once the video is public$/,
+  );
   assert.equal(sets.length, 0);
   assert.ok(!existsSync(path.join(dir, YOUTUBE_PREV_FILE)));
   imageStatus = 200;

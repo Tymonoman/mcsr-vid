@@ -24,7 +24,7 @@ import type { MatchInfo, UserDetails } from "../api/types.js";
 /** Sidecar naming the variants on disk and which one `thumbnail.png` currently is. */
 const VARIANTS_FILE = "thumbnail.json";
 
-interface VariantRecord {
+export interface VariantRecord {
   /** `<leftPose>-<rightPose>` (`-hook` on a legacy hooked twin); also the filename infix and the A/B grouping key. */
   key: string;
   leftPose: string;
@@ -202,6 +202,14 @@ export function abTestKey(
 ): string {
   return v?.leftProvider === "nmsr-facing" || v?.rightProvider === "nmsr-facing" ? `${key} (facing)` : key;
 }
+
+/**
+ * Whether the set on disk was drawn again after the video went up, so it is not what the video
+ * wears. Fails closed: an upload time that does not parse (Adopt and the channel's `publishedAt`
+ * can leave it "") counts as before the re-render.
+ */
+export const rerenderedAfter = (m: VariantsManifest | null, uploadedAt: string | undefined): boolean =>
+  m?.rerenderedAt !== undefined && !(Date.parse(m.rerenderedAt) <= Date.parse(uploadedAt ?? ""));
 
 export async function renderThumbnailVariants(args: RenderVariantsArgs): Promise<VariantsManifest> {
   if (args.poses.length === 0) throw new Error("renderThumbnailVariants needs at least one pose pair");

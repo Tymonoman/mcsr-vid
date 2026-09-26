@@ -26,6 +26,8 @@ const { launchFor } = require("./launch.cjs");
     // The swap, answered here. `put` records what the page sent; the GET says what YouTube wears.
     const sent = [];
     let set = null;
+    // The tile in use when Put is pressed: YouTube's stubbed answer names it, as the real one would.
+    let putKey = null;
     await page.route(new RegExp(`/api/thumbnails/${id}$`), async (route) => {
       if (route.request().method() !== "GET") return route.continue();
       const real = await (await route.fetch()).json();
@@ -35,7 +37,7 @@ const { launchFor } = require("./launch.cjs");
     await page.route(new RegExp(`/api/thumbnails/${id}/youtube$`), async (route) => {
       const body = JSON.parse(route.request().postData() || "{}");
       sent.push(body);
-      set = { variant: body.undo ? null : "walking-crossed", at: new Date().toISOString() };
+      set = { variant: body.undo ? null : putKey, at: new Date().toISOString() };
       await route.fulfill({ json: { videoId: "stubbed0000", title: "Stubbed title", set } });
     });
 
@@ -73,7 +75,10 @@ const { launchFor } = require("./launch.cjs");
     check("the re-render finished", /re-rendered/.test(msg), msg);
 
     const newVariant = await bytes(page, `/api/thumbnail/${id}?v=${encodeURIComponent(key)}`);
-    check("the variant is a new image (on a match last drawn in an older design)", !newVariant.equals(oldVariant));
+    check(
+      "the variant is a new image (on a match last drawn in an older design)",
+      !newVariant.equals(oldVariant),
+    );
     check(
       "thumbnail.png (what the video wears) is untouched",
       (await bytes(page, `/api/thumbnail/${id}`)).equals(oldLive),
@@ -108,10 +113,13 @@ const { launchFor } = require("./launch.cjs");
     await page.waitForSelector("#variants .ytput", { timeout: 10000 });
     const says = await page.locator("#thumbytmsg").innerText();
     check("Put on YouTube says what it replaces", /replaces the thumbnail on “.+”/.test(says), says);
+    putKey = await page.locator("#variants .variant.chosen").getAttribute("data-key");
     await page.click("#variants .ytput");
     await page.waitForFunction(() =>
       /YouTube accepted it/.test(document.querySelector("#thumbytmsg")?.textContent ?? ""),
     );
+    const accepted = await page.locator("#thumbytmsg").innerText();
+    check("the line names the tile in use", putKey && accepted.includes(`now wears ${putKey}`), accepted);
     check(
       "it sent one put",
       JSON.stringify(sent) === JSON.stringify([{ undo: false }]),

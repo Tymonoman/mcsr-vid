@@ -448,6 +448,26 @@ try {
     assert.equal(nightlyStarting(), false);
     console.log("OK: the scheduled nightly waits out a thumbnail re-render");
   }
+
+  // ...but not for ever: one still running once the wait is up is hung, and the night it costs is
+  // recorded and pushed like any skip — not answered as "a render is already in flight", the
+  // conflict that records nothing and tells nobody.
+  {
+    let finish!: () => void;
+    mkdirSync(path.join(media, "777002"));
+    startRerender(777002, () => new Promise((r) => (finish = () => r({} as never))));
+    const out = await runNightlyOnce("", {
+      renderInFlight: () => false,
+      ranked: async () => [],
+      scheduled: true,
+      thumbnailWaitMs: 100,
+    });
+    assert.equal(out.skipped, "a thumbnail re-render is still running", JSON.stringify(out));
+    assert.ok(!out.busy, "not the silent conflict");
+    assert.equal(readNightlyState()?.reason, "a thumbnail re-render is still running", "recorded");
+    finish();
+    console.log("OK: a hung re-render is a recorded skip, not a silent conflict");
+  }
 } finally {
   await rm(media, { recursive: true, force: true });
 }

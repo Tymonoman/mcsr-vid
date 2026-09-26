@@ -540,6 +540,45 @@ try {
       finished: {},
     });
     assert.equal((await finishOnYouTube(matchId, "vidX")).thumbnail, null);
+    // An upload time that does not parse (Adopt and the channel's publishedAt can leave "") fails
+    // closed: the set counts as re-rendered after it.
+    await writeUpload(matchId, { ...record, uploadedAt: "", finished: {} });
+    hits.length = 0;
+    assert.match(String((await finishOnYouTube(matchId, "vidX")).thumbnail), /re-rendered after the upload/);
+    assert.ok(!hits.some((h) => h.includes("/thumbnails/set")), "unknown upload time: no thumbnails.set");
+
+    // A re-render in flight (its working copy on disk) is not a set to send, whenever it started.
+    await writeUpload(matchId, { ...record, uploadedAt: "2026-09-26T11:00:00Z", finished: {} });
+    await mkdir(path.join(dir, "thumbnail-rerendering"));
+    hits.length = 0;
+    assert.match(String((await finishOnYouTube(matchId, "vidX")).thumbnail), /being re-rendered/);
+    assert.ok(!hits.some((h) => h.includes("/thumbnails/set")), "mid-re-render: no thumbnails.set");
+    await rm(path.join(dir, "thumbnail-rerendering"), { recursive: true });
+
+    // The folder that owns the video sets its image, and no other: a series' game 2 with no
+    // record (the channel scan records none since d19a130, the panel still pairs it and offers
+    // Finish) or with game 1's record copied in never puts its own pick on the series video —
+    // over a Put on YouTube from game 1, with no undo copy, on every press.
+    const game2 = matchId + 1;
+    const dir2 = path.join(media, String(game2));
+    await mkdir(dir2, { recursive: true });
+    await writeFile(path.join(dir2, variant.file), "game 2's pick");
+    await writeFile(
+      path.join(dir2, "thumbnail.json"),
+      JSON.stringify({ chosen: variant.key, chosenBy: "operator", hookText: null, variants: [variant] }),
+    );
+    await writeUpload(matchId, { ...record, finished: { thumbnail: null } });
+    hits.length = 0;
+    assert.match(
+      String((await finishOnYouTube(game2, "vidX")).thumbnail),
+      /left alone — this folder holds no upload record/,
+    );
+    assert.ok(!hits.some((h) => h.includes("/thumbnails/set")), "no record: no thumbnails.set");
+    await writeUpload(game2, { ...record, finished: {} });
+    hits.length = 0;
+    assert.match(String((await finishOnYouTube(game2, "vidX")).thumbnail), /game 1's folder sets/);
+    assert.ok(!hits.some((h) => h.includes("/thumbnails/set")), "game 2's copied record: no thumbnails.set");
+    await rm(dir2, { recursive: true });
     await rm(path.join(dir, "thumbnail.json"));
     await rm(path.join(dir, variant.file));
     console.log("OK: Finish leaves a thumbnail re-rendered after the upload to Put on YouTube");

@@ -48,7 +48,18 @@ export const anyThumbnailRunning = (): boolean => [...jobs.values()].some((j) =>
 
 type Rerender = typeof rerenderThumbnails;
 
-export function startRerender(matchId: number, rerender: Rerender = rerenderThumbnails): ThumbJob {
+/**
+ * Four stills take a minute or two; one still drawing after this is hung (a Chromium that never
+ * answers), and it would hold the bulk and the nightly behind it for ever. Aborted, the render
+ * puts back the set it started from like any failure.
+ */
+export const RERENDER_TIMEOUT_MS = 15 * 60_000;
+
+export function startRerender(
+  matchId: number,
+  rerender: Rerender = rerenderThumbnails,
+  timeoutMs = RERENDER_TIMEOUT_MS,
+): ThumbJob {
   const existing = jobs.get(matchId);
   if (existing && !existing.done) return existing;
   let settle!: (error: string | null) => void;
@@ -61,14 +72,22 @@ export function startRerender(matchId: number, rerender: Rerender = rerenderThum
     finished: new Promise((resolve) => (settle = resolve)),
   };
   jobs.set(matchId, job);
+  const signal = AbortSignal.timeout(timeoutMs);
   rerender(matchId, {
     onProgress: (p) => {
       job.line = p.phase === "bundling" ? "bundling the compositions" : "rendering the variants";
       job.percent = p.percent;
     },
+    signal,
   })
     .then(() => settle(null))
-    .catch((err: unknown) => settle(describeError(err)));
+    .catch((err: unknown) =>
+      settle(
+        signal.aborted
+          ? `stopped after ${Math.round(timeoutMs / 60_000)} min — the previous set is back`
+          : describeError(err),
+      ),
+    );
   void job.finished.then((error) => {
     job.done = true;
     job.error = error;
@@ -120,8 +139,9 @@ export async function runBulk(
   try {
     for (; run.index < ids.length; run.index++) {
       const matchId = ids[run.index]!;
-      // Never beside a render: stills and an overlay render share the lab's four cores and the one
-      // Remotion bundle. The nightly renders through the same job table, so this waits for it too.
+      // Never beside a pipeline run: stills and an overlay render share the lab's four cores and the
+      // one Remotion bundle. The nightly renders through the same job table, so this waits for it
+      // too. An export or a Short render on another match does not hold it.
       while (ctx.pipelineRunning()) await sleep(waitMs);
       const busy = ctx.busy(matchId);
       if (busy) {

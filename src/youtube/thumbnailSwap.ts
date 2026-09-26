@@ -75,12 +75,13 @@ export async function swapThumbnail(
   if (!undo && !existsSync(prev)) {
     // Kept once and never replaced, so it has to be the real picture: a 16:9 one at full size
     // (below 1280 wide is a 4:3 letterboxed sddefault/hqdefault) and a body that is an image
-    // rather than an empty or placeholder answer. Anything less refuses, as a private video does.
+    // rather than an empty or placeholder answer. Anything less refuses — expected of a private or
+    // scheduled video, though YouTube's answer for one was never captured.
     const res = live.url && live.width >= 1280 ? await fetchImpl(live.url).catch(() => null) : null;
     const bytes = res?.ok ? new Uint8Array(await res.arrayBuffer()) : null;
     if (!bytes || bytes.length < MIN_COPY_BYTES) {
       throw new SwapRefused(
-        "Could not keep a full-size copy of the thumbnail YouTube shows now (a private video's image is not served), so there would be nothing to undo to — nothing changed",
+        "Could not keep a full-size copy of the thumbnail YouTube shows now (no image 1280 wide and 5 KB or more came back), so there would be nothing to undo to — nothing changed; press again once the video is public",
       );
     }
     await writeFile(prev, bytes);

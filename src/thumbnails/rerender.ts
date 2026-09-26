@@ -9,20 +9,33 @@
  * the bulk after a single one, must not replace the old design with the first new one — it is the
  * "old" of Studio's Test & Compare, and for a private or scheduled video, where "Put on YouTube"
  * refuses, the only copy off YouTube. A failed render puts back the set it started from.
- * `thumbnail.png` itself is not touched by a re-render: changing what YouTube shows is a
- * separate, explicit press (src/youtube/thumbnailSwap.ts).
+ * On an uploaded match `thumbnail.png` is not touched by a re-render: changing what YouTube shows
+ * is a separate, explicit press (src/youtube/thumbnailSwap.ts).
  */
 import { existsSync } from "node:fs";
-import { copyFile, mkdir, readdir, rm } from "node:fs/promises";
+import { copyFile, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { config, matchDir } from "../config.js";
 import { getMatch, getUser } from "../api/mcsrApi.js";
-import { manifestPath, renderThumbnailVariants, type VariantsManifest } from "./thumbnailVariants.js";
+import { readUpload } from "../youtube/youtubeStore.js";
+import {
+  abTestKey,
+  manifestPath,
+  readManifest,
+  renderThumbnailVariants,
+  rerenderedAfter,
+  type VariantRecord,
+  type VariantsManifest,
+} from "./thumbnailVariants.js";
 import type { ThumbnailProgress } from "./thumbnailRender.js";
 
 export const PREV_DIR = "thumbnail-prev";
-/** The set a re-render started from, while it runs; removed once it has settled. */
-const RUNNING_DIR = "thumbnail-rerendering";
+/**
+ * The set a re-render started from, while it runs; removed once it has settled. Still there at the
+ * start of the next one means a restart cut a render short, and it is put back first. Finish
+ * leaves the thumbnail alone while it exists (src/youtube/youtubeUpload.ts).
+ */
+export const RUNNING_DIR = "thumbnail-rerendering";
 
 /** `thumbnail.json`, `thumbnail.png` and every `thumbnail.<pose-pair>.png`. */
 const isThumbnailFile = (name: string): boolean =>
@@ -64,10 +77,18 @@ export async function rerenderThumbnails(
   const [left, right] = match.players;
   if (!left || !right) throw new Error(`Match ${matchId} does not have two players`);
   const [userLeft, userRight] = await Promise.all([getUser(left.uuid), getUser(right.uuid)]);
+  await restoreThumbnails(outDir, RUNNING_DIR);
   if (!existsSync(path.join(outDir, PREV_DIR))) await copyThumbnails(outDir, PREV_DIR);
   const started = await copyThumbnails(outDir, RUNNING_DIR);
+  // The stills are overwritten one by one from here, so the manifest stops vouching for them
+  // first: no Finish, playlist retry or upload may send a half-drawn set as the confirmed pick.
+  const before = await readManifest(outDir);
+  if (before) {
+    const drawing = { ...before, chosenBy: "auto", rerenderedAt: new Date().toISOString() };
+    await writeFile(manifestPath(outDir), JSON.stringify(drawing, null, 2), "utf8");
+  }
   try {
-    return await (deps.render ?? renderThumbnailVariants)({
+    const manifest = await (deps.render ?? renderThumbnailVariants)({
       match,
       userLeft,
       userRight,
@@ -77,6 +98,13 @@ export async function rerenderThumbnails(
       onProgress: deps.onProgress,
       signal: deps.signal,
     });
+    // Nothing on the channel yet: the new pick is what an upload sends, so thumbnail.png (what the
+    // publish set, the bundle and Studio are handed) follows it.
+    const chosen = manifest.variants.find((v) => v.key === manifest.chosen);
+    if (chosen && !(await readUpload(matchId))) {
+      await copyFile(path.join(outDir, chosen.file), path.join(outDir, "thumbnail.png"));
+    }
+    return manifest;
   } catch (err) {
     await restoreThumbnails(outDir, RUNNING_DIR);
     // A render that failed before writing its manifest must not leave one naming files it never drew.
@@ -85,4 +113,33 @@ export async function rerenderThumbnails(
   } finally {
     await rm(path.join(outDir, RUNNING_DIR), { recursive: true, force: true });
   }
+}
+
+/**
+ * The A/B tab's row for an uploaded video (src/dashboard/youtubeRoutes.ts): the variant it went up
+ * with, as it was drawn then. A re-render after the upload redrew the live set — the providers of
+ * the new look would add "(facing)" and credit it with the old image's clicks — so that set is
+ * read from `thumbnail-prev/`. A video whose thumbnail was swapped on YouTube wore two images and
+ * gets a row of its own.
+ */
+export async function abRowFor(
+  dir: string,
+  u: {
+    source: string;
+    uploadedAt?: string;
+    publishedAt?: string;
+    thumbnailVariant?: string | null;
+    thumbnailSet?: unknown;
+  },
+): Promise<{ key: string; variant: VariantRecord | undefined }> {
+  const live = await readManifest(dir);
+  const worn = rerenderedAfter(live, u.uploadedAt ?? u.publishedAt)
+    ? await readManifest(path.join(dir, PREV_DIR))
+    : live;
+  // A dashboard upload recorded which variant it sent; a Studio upload did not, and the
+  // manifest's `chosen` is the one the dashboard handed over to be uploaded.
+  const variantKey = u.source === "channel" ? (worn?.chosen ?? undefined) : u.thumbnailVariant;
+  const variant = worn?.variants.find((v) => v.key === variantKey);
+  const key = u.thumbnailSet ? "(swapped)" : variantKey ? abTestKey(variantKey, variant) : "(unknown)";
+  return { key, variant };
 }
