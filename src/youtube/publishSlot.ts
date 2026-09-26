@@ -80,6 +80,37 @@ export async function publishSlotFor(matchId: number, nowMs: number): Promise<Pu
   return { at, why: `pushed out to keep ${gap} days from this pair's ${other} (${days})` };
 }
 
+/**
+ * What `publishSlotFor` would have steered away from, said about a time the operator picked: the
+ * same two rules, as warnings — the operator's time wins (it is a suggestion, like the hooks).
+ */
+export async function slotWarnings(matchId: number, atMs: number, nowMs: number): Promise<string[]> {
+  const utc = (ms: number) => `${new Date(ms).toISOString().slice(0, 16).replace("T", " ")} UTC`;
+  const out: string[] = [];
+  const clash = (await claimedPublishTimes(matchId))
+    .map((t) => Date.parse(t))
+    .filter((ms) => ms > nowMs && slotOf(ms) === slotOf(atMs));
+  if (clash.length)
+    out.push(
+      `another video is scheduled for that hour (${clash.map(utc).join(", ")}) — they would split the browse impressions`,
+    );
+  const gap = config.seriesPairGapDays;
+  const near =
+    gap > 0
+      ? (await pairGapTimes(matchId, nowMs - (gap + 1) * DAY_MS)).filter(
+          (ms) => Math.abs(dayOf(atMs) - dayOf(ms)) < gap,
+        )
+      : [];
+  if (near.length)
+    out.push(
+      `under ${gap} days from this pair's ${isSeries(matchId) ? "ranked video" : "series"} (${near
+        .sort((a, b) => a - b)
+        .map((ms) => new Date(ms).toISOString().slice(0, 10))
+        .join(", ")})`,
+    );
+  return out;
+}
+
 const isSeries = (matchId: number): boolean => existsSync(path.join(matchDir(matchId), "series.json"));
 
 /** "uuidA+uuidB", order-free; null when the match cannot be read — no constraint, not an error. */

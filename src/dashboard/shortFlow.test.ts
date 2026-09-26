@@ -30,8 +30,30 @@ const fixture = JSON.parse(
 const matchOf = (id: number): MatchInfo => ({ ...fixture, changes: [], id });
 /** The MCSR API's answer while it is down. */
 let mcsrDown = false;
-globalThis.fetch = (async (input: string | URL | Request) => {
+/** YouTube, stubbed: the token and videos.list / videos.update, every call recorded. Nothing reaches Google. */
+const ytVideos = new Map<string, { channelId: string; status: Record<string, unknown> }>();
+const ytCalls: Array<{ method: string; url: string; body?: unknown }> = [];
+globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
   const url = new URL(String(input));
+  if (url.hostname === "oauth2.googleapis.com")
+    return new Response(JSON.stringify({ access_token: "tok", expires_in: 3600 }));
+  if (url.hostname === "www.googleapis.com" && url.pathname === "/youtube/v3/videos") {
+    const method = init?.method ?? "GET";
+    const body = init?.body
+      ? (JSON.parse(String(init.body)) as { id: string; status: Record<string, unknown> })
+      : undefined;
+    ytCalls.push({ method, url: String(url), ...(body ? { body } : {}) });
+    if (body) {
+      const v = ytVideos.get(body.id)!;
+      v.status = { ...v.status, ...body.status };
+      return new Response(JSON.stringify({ id: body.id, status: v.status }));
+    }
+    const id = url.searchParams.get("id")!;
+    const v = ytVideos.get(id);
+    return new Response(
+      JSON.stringify({ items: v ? [{ id, snippet: { channelId: v.channelId }, status: v.status }] : [] }),
+    );
+  }
   if (mcsrDown) return new Response("upstream down", { status: 503, statusText: "Service Unavailable" });
   const ok = (data: unknown) =>
     new Response(JSON.stringify({ status: "success", data }), {
@@ -780,6 +802,201 @@ try {
       new RegExp(`no sync\\.json for match ${Y} — .*npm run sync-status -- ${Y} writes it`),
     );
     console.log("OK: no sync.json — the Short is refused, not cut seconds off, and the fix named");
+  }
+
+  /* --- 21. The publish time: the operator's, kept for the upload — or moved on YouTube ---------- */
+  {
+    const put = (id: number, body: unknown) =>
+      call("PUT", "publishat", id, body) as Promise<{
+        status: number;
+        payload: { error?: string; publishAt?: string | null; warnings?: string[]; message?: string };
+      }>;
+    const T = 13_000_027;
+    exported(T);
+    writePick(T);
+    // Refused: a time already gone (NOW is 08:00 on the 24th), junk, a Short on its own, a move of nothing.
+    assert.deepEqual(await put(T, { publishAt: "2026-09-24T07:59:00Z" }), {
+      status: 400,
+      payload: { error: "that time has passed — pick one in the future" },
+    });
+    assert.equal((await put(T, { publishAt: "next tuesday" })).status, 400);
+    assert.equal((await put(T, { kind: "short", publishAt: "2026-09-30T19:00:00Z" })).status, 400);
+    assert.equal((await put(T, { publishAt: "2026-09-30T19:00:00Z", move: true })).status, 409);
+    // Kept, with the slot rule it breaks as a warning, not a refusal: A holds the 24th's 19:00.
+    const kept = await put(T, { publishAt: "2026-09-24T21:10:00+02:00" });
+    const clash =
+      "another video is scheduled for that hour (2026-09-24 19:00 UTC) — they would split the browse impressions";
+    assert.deepEqual(kept, {
+      status: 200,
+      payload: { publishAt: "2026-09-24T19:10:00.000Z", warnings: [clash] },
+    });
+    assert.deepEqual(await flow.publishTimeView(T, NOW), {
+      state: "open",
+      at: "2026-09-24T19:10:00.000Z",
+      chosen: true,
+      why: null,
+      warnings: [clash],
+    });
+    // Cleared: back to the next free slot.
+    assert.deepEqual(await put(T, { publishAt: null }), { status: 200, payload: { publishAt: null } });
+    const free = await flow.publishTimeView(T, NOW);
+    assert.equal(free.chosen, false);
+    assert.match(free.at!, /T19:00:00\.000Z$/, "the ranked slot");
+    // Chosen, then the hooks: the chain uploads at the operator's time, the Short 18 h after it.
+    await put(T, { publishAt: "2026-09-27T17:45:00Z" });
+    await save(T, { titleHook: "One heart left", shortHook: "Chosen line" });
+    assert.deepEqual(
+      sent.filter((x) => x.id === T).map((x) => [x.kind, x.publishAt]),
+      [
+        ["video", "2026-09-27T17:45:00.000Z"],
+        ["short", "2026-09-28T11:45:00.000Z"],
+      ],
+    );
+    assert.equal((await flow.publishTimeView(T, NOW)).state, "scheduled");
+
+    // A time that has passed by the upload: the next free slot, said in the log and on the step.
+    const U = 13_000_028;
+    exported(U);
+    writePick(U);
+    writeFileSync(
+      path.join(dir(U), `short-${U}.status.json`),
+      JSON.stringify({ steps: {}, errors: [], publishAt: "2026-09-24T07:30:00.000Z" }),
+    );
+    assert.match(
+      (await flow.publishTimeView(U, NOW)).why!,
+      /^your time 2026-09-24 07:30 UTC had passed — the next free slot instead, 2026-\d\d-\d\d 19:00 UTC$/,
+    );
+    await save(U, { titleHook: "One heart left", shortHook: "Late line" });
+    const late = sent.find((x) => x.id === U && x.kind === "video")!;
+    assert.match(late.publishAt!, /T19:00:00\.000Z$/, "the slot, not the passed time");
+    const uPlan = await plan(U);
+    assert.equal(uPlan.state, "scheduled");
+    assert.ok(
+      uPlan.errors.some(
+        (e) => e.step === "upload-video" && e.message.startsWith("your time 2026-09-24 07:30 UTC had passed"),
+      ),
+    );
+    assert.ok(
+      uPlan.log.some(
+        (l) => l.level === "warn" && l.text.startsWith("your time 2026-09-24 07:30 UTC had passed"),
+      ),
+    );
+
+    // On YouTube and scheduled: moved there on the press that says so, the Short with it.
+    const tokenDir = mkdtempSync(path.join(tmpdir(), "mcsr-yt-token-"));
+    process.env.YOUTUBE_TOKEN_FILE = path.join(tokenDir, "token.json");
+    writeFileSync(
+      process.env.YOUTUBE_TOKEN_FILE,
+      JSON.stringify({ client_id: "c", client_secret: "s", refresh_token: "r" }),
+    );
+    const statusPart = (publishAt: string) => ({
+      uploadStatus: "processed",
+      privacyStatus: "private",
+      publishAt,
+      license: "youtube",
+      embeddable: true,
+      publicStatsViewable: true,
+      madeForKids: false,
+      selfDeclaredMadeForKids: false,
+    });
+    const writable = (publishAt: string) => ({
+      privacyStatus: "private",
+      publishAt,
+      embeddable: true,
+      license: "youtube",
+      publicStatsViewable: true,
+      selfDeclaredMadeForKids: false,
+    });
+    ytVideos.set(`video-${T}`, {
+      channelId: config.youtubeChannelId,
+      status: statusPart("2026-09-27T17:45:00.000Z"),
+    });
+    ytVideos.set(`short-${T}`, {
+      channelId: config.youtubeChannelId,
+      status: statusPart("2026-09-28T11:45:00.000Z"),
+    });
+    const stale = await put(T, { publishAt: "2026-09-29T19:00:00Z" });
+    assert.equal(stale.status, 409, "a plain Save never moves the live channel");
+    assert.equal(ytCalls.length, 0);
+    const moved = await put(T, { publishAt: "2026-09-29T21:00:00+02:00", move: true });
+    assert.deepEqual(moved, {
+      status: 200,
+      payload: {
+        publishAt: "2026-09-29T19:00:00.000Z",
+        message:
+          "YouTube has it for 2026-09-29 19:00 UTC (was 2026-09-27 17:45 UTC); the Short moved with it to 2026-09-30 13:00 UTC, 18 h after",
+      },
+    });
+    assert.deepEqual(
+      ytCalls.filter((c) => c.method === "PUT").map((c) => c.body),
+      [
+        { id: `video-${T}`, status: writable("2026-09-29T19:00:00.000Z") },
+        { id: `short-${T}`, status: writable("2026-09-30T13:00:00.000Z") },
+      ],
+      "the whole status part back, with the new time",
+    );
+    assert.equal((await readUpload(T, "video"))!.publishAt, "2026-09-29T19:00:00.000Z");
+    assert.equal((await readUpload(T, "short"))!.publishAt, "2026-09-30T13:00:00.000Z");
+    assert.deepEqual((await plan(T)).uploads.video, {
+      videoId: `video-${T}`,
+      publishAt: "2026-09-29T19:00:00.000Z",
+    });
+
+    // Refused, nothing written: another channel's, and a video already out.
+    ytVideos.get(`video-${T}`)!.channelId = "UCsomeoneelse";
+    const theirs = await put(T, { publishAt: "2026-10-01T19:00:00Z", move: true });
+    assert.equal(theirs.status, 409);
+    assert.match(theirs.payload.error!, /belongs to channel UCsomeoneelse, not yours — nothing moved/);
+    ytVideos.get(`video-${T}`)!.channelId = config.youtubeChannelId;
+    const P = 13_000_029;
+    mkdirSync(dir(P), { recursive: true });
+    await writeUpload(P, {
+      videoId: `video-${P}`,
+      uploadedAt: "2026-09-20T19:00:00Z",
+      publishAt: "2026-09-21T19:00:00Z",
+      privacyStatus: "private",
+      thumbnailVariant: null,
+      title: "t",
+    });
+    assert.deepEqual(await put(P, { publishAt: "2026-10-01T19:00:00Z", move: true }), {
+      status: 409,
+      payload: { error: "already public — nothing moved" },
+    });
+    assert.equal((await flow.publishTimeView(P, NOW)).state, "published");
+    assert.equal(ytCalls.filter((c) => c.method === "PUT").length, 2, "no refusal wrote anything");
+
+    // Up with its Short still to come: the move carries the chain's Short time with it.
+    const Z = 13_000_031;
+    exported(Z);
+    writePick(Z);
+    writeFileSync(path.join(dir(Z), `match-${Z}.title.edited.txt`), "One heart left | edcr vs doogile\n");
+    await writeUpload(Z, {
+      videoId: `video-${Z}`,
+      uploadedAt: "2026-09-24T07:00:00Z",
+      publishAt: "2026-09-26T19:00:00.000Z",
+      privacyStatus: "private",
+      thumbnailVariant: null,
+      title: "One heart left | edcr vs doogile",
+    });
+    ytVideos.set(`video-${Z}`, {
+      channelId: config.youtubeChannelId,
+      status: statusPart("2026-09-26T19:00:00.000Z"),
+    });
+    const alone = await put(Z, { publishAt: "2026-10-01T19:00:00Z", move: true });
+    assert.equal(
+      alone.payload.message,
+      "YouTube has it for 2026-10-01 19:00 UTC (was 2026-09-26 19:00 UTC); the Short is not up yet — it goes up for 2026-10-02 13:00 UTC, 18 h after",
+    );
+    await save(Z, { titleHook: "One heart left", shortHook: "Follows line" });
+    assert.deepEqual(
+      sent.filter((x) => x.id === Z).map((x) => [x.kind, x.publishAt]),
+      [["short", "2026-10-02T13:00:00.000Z"]],
+    );
+    delete process.env.YOUTUBE_TOKEN_FILE;
+    rmSync(tokenDir, { recursive: true, force: true });
+    console.log(
+      "OK: the publish time — kept for the upload, warned not refused, moved on YouTube with its Short",
+    );
   }
 } finally {
   rmSync(media, { recursive: true, force: true });

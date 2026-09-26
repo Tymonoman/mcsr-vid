@@ -39,7 +39,7 @@ import { STAGE_LABELS, STAGE_ORDER, STAGE_SHORT_LABELS } from "../pipeline/pipel
 import { presentSuggestions } from "./suggestPresent.js";
 import { dismiss, restore, snapshot, startScan } from "./suggestScan.js";
 import { cronLine, rsyncPullAllCommand, rsyncPullCommand } from "./publishSet.js";
-import { publishHourFor, publishSlotFor } from "../youtube/publishSlot.js";
+import { publishHourFor } from "../youtube/publishSlot.js";
 import { playoffBoard } from "../playoffs/playoffs.js";
 import { renderSeries, seriesState, type SeriesRunners } from "../playoffs/series.js";
 import { refreshRivalPostsIfStale, rivalPostsSnapshot, rivalRecentPostFor } from "./rivalPosts.js";
@@ -66,7 +66,14 @@ import {
   setPublishFlag,
 } from "./matchShelf.js";
 import { handleShortsRoute, shortRunning } from "./shortsRoutes.js";
-import { ensurePick, matchRowShort, nightlyShortSummary, pickActivity, shortTick } from "./shortFlow.js";
+import {
+  ensurePick,
+  matchRowShort,
+  nightlyShortSummary,
+  pickActivity,
+  publishTimeView,
+  shortTick,
+} from "./shortFlow.js";
 import { saveSettings, settingsPayload } from "./settings.js";
 import { handleYoutubeRoute, uploadRunning } from "./youtubeRoutes.js";
 import { handleSyncRoute } from "./syncRoutes.js";
@@ -608,7 +615,7 @@ const server = createServer(async (req, res) => {
       // Studio paste and a dashboard upload cannot say two different things.
       const video = await uploadTextFor(matchId, "video");
       const short = await uploadTextFor(matchId, "short");
-      const slot = await publishSlotFor(matchId, Date.now());
+      const publish = await publishTimeView(matchId, Date.now());
       json(res, 200, {
         title: video.title || null,
         description: video.description || null,
@@ -622,9 +629,11 @@ const server = createServer(async (req, res) => {
         pinnedComment: pinnedComment(),
         // The slot to schedule for, so the morning's paste into Studio carries a time too —
         // and the first free one, not the same time every match ready this morning would show.
-        publishAt: slot.at.toISOString(),
-        publishWhy: slot.why,
+        // The operator's time while it is ahead, else the slot; `publish` says which, and the state.
+        publishAt: publish.at,
+        publishWhy: publish.why,
         publishHourUtc: publishHourFor(matchDir(matchId)),
+        publish,
         // Commands for the operator's own shell, not this one: the publishing PC pulls.
         pull: config.pullSource
           ? {

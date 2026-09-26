@@ -16,7 +16,15 @@ import { readShortHook, WAITING_FOR_HOOK } from "../shorts/shortHook.js";
 import { activityProgress, boxFailure, endActivity, shortLog, startActivity } from "../shorts/shortLog.js";
 import { sendVideo } from "./rangeStream.js";
 import { isExported } from "./matchShelf.js";
-import { queuePick, readStatus, saveHooks, shortPlan, startChain, type ChainDeps } from "./shortFlow.js";
+import {
+  queuePick,
+  readStatus,
+  saveHooks,
+  setPublishTime,
+  shortPlan,
+  startChain,
+  type ChainDeps,
+} from "./shortFlow.js";
 
 /** One Short render in flight. Lines are retained so a browser joining late replays the run. */
 interface ShortJob {
@@ -207,6 +215,20 @@ export async function handleShortsRoute(
       }
       ctx.json(res, 202, plan);
     }
+    return true;
+  }
+
+  // The Publish kit's time: kept for the upload, or — `move: true` — moved on YouTube.
+  if (action === "publishat" && req.method === "PUT") {
+    let body: unknown;
+    try {
+      body = JSON.parse((await ctx.readBody(req)) || "{}");
+    } catch {
+      ctx.json(res, 400, { error: "expected a JSON body { publishAt, move? }" });
+      return true;
+    }
+    const answer = await setPublishTime(matchId, body, opts.chain?.now?.());
+    ctx.json(res, answer.status, answer.body);
     return true;
   }
 

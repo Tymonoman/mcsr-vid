@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { config } from "../config.js";
 import { _setChannelUploadsForTest } from "./channelUploads.js";
-import { nextPublishSlot, publishSlotFor } from "./publishSlot.js";
+import { nextPublishSlot, publishSlotFor, slotWarnings } from "./publishSlot.js";
 
 const at = (iso: string) => Date.parse(iso);
 const iso = (d: Date) => d.toISOString();
@@ -155,6 +155,21 @@ assert.equal(iso(nextPublishSlot(at("2026-09-08T18:30:00Z"), 19, [slot("09")])),
   assert.equal(iso(ranked.at), "2026-09-10T19:00:00.000Z");
   assert.match(ranked.why ?? "", /this pair's series \(2026-09-07\)/);
   assert.equal((await publishSlotFor(800, morning)).why, null, "a Short does not count");
+
+  // A time the operator picks: the same two rules, said as warnings rather than applied.
+  assert.deepEqual(await slotWarnings(600, at("2026-09-08T19:30:00Z"), morning), [
+    "another video is scheduled for that hour (2026-09-08 19:00 UTC) — they would split the browse impressions",
+    "under 3 days from this pair's series (2026-09-07)",
+  ]);
+  assert.deepEqual(await slotWarnings(200, at("2026-09-09T23:00:00Z"), morning), [
+    "under 3 days from this pair's ranked video (2026-09-08)",
+  ]);
+  assert.deepEqual(await slotWarnings(200, at("2026-09-12T23:00:00Z"), morning), [], "four days on is clear");
+  assert.deepEqual(
+    await slotWarnings(100, at("2026-09-08T19:00:00Z"), morning),
+    [],
+    "its own booking is not a clash",
+  );
   config.seriesPairGapDays = 0;
   assert.equal(iso((await publishSlotFor(200, morning)).at), "2026-09-08T23:00:00.000Z", "0 is off");
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Drive the dashboard in a real browser the way the operator does. Usage:
 #   bash scripts/browser-checks/run-all.sh http://127.0.0.1:8093
-# Needs `npx playwright install chromium` once, and a server on that URL with real match data.
+# Needs `npx playwright install chromium firefox` once, and a server on that URL with real match data.
 # One check changes state and restores it (round1-fixes dismisses and restores a suggestion).
 # hook-flow and now-flow press Save, which schedules real uploads now: both answer the Short
 # routes in the browser, so nothing reaches the server.
@@ -26,9 +26,11 @@ for m in ms:
     if want=='ready2b' and m['exported'] and not m['uploaded'] and not m['hidden']: print(m['matchId']); break
     if want=='published' and m['uploaded'] and not m['hidden'] and (not studio or m['matchId'] in studio): print(m['matchId']); break
     if want=='unexported' and not m['exported'] and not m['hidden']: print(m['matchId']); break
+    if want=='scheduled' and m.get('shortState')=='scheduled' and not m['hidden']: print(m['matchId']); break
 " "$1" "$BASE"; }
 READY="$(pick ready)"; READY2="$(pick ready2)"; PUBLISHED="$(pick published)"; UNEXPORTED="$(pick unexported)"
-echo "ready=$READY ready2=$READY2 published=$PUBLISHED unexported=$UNEXPORTED"
+SCHEDULED="$(pick scheduled)"
+echo "ready=$READY ready2=$READY2 published=$PUBLISHED unexported=$UNEXPORTED scheduled=$SCHEDULED"
 fail=0
 run() { local name="$1"; shift; if node "$HERE/$name.cjs" "$@" >/tmp/bc-$name.log 2>&1; then echo "PASS $name"; else echo "FAIL $name (see /tmp/bc-$name.log)"; fail=1; fi; }
 run smoke "$BASE"
@@ -52,6 +54,9 @@ run phone-rows-check "$BASE"
 run hook-flow-check "$BASE" "$READY2"
 run now-flow-check "$BASE" "$READY" "$READY2"
 run checkchannel-check "$BASE" "$READY"
+# Firefox too (npx playwright install firefox): saves a time on READY and puts it back; the
+# scheduled video's Move is answered in the browser, so nothing reaches YouTube.
+run publish-at-check "$BASE" "$READY" "$SCHEDULED" "$PUBLISHED"
 [ -n "$PUBLISHED" ] && run studio-upload-check "$BASE" "$PUBLISHED"
 [ -n "$UNEXPORTED" ] && run stale-preview "$BASE" "$READY2" "$UNEXPORTED"
 exit $fail

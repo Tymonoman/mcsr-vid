@@ -753,6 +753,62 @@ export async function applyMetadata(
   return { replacedTitle: snippet.title, addedTags: merged.added, skippedTags: merged.skipped };
 }
 
+/** The `status` fields `videos.update` writes; the rest (uploadStatus, madeForKids…) are YouTube's. */
+const WRITABLE_STATUS = [
+  "privacyStatus",
+  "publishAt",
+  "embeddable",
+  "license",
+  "publicStatsViewable",
+  "selfDeclaredMadeForKids",
+  "containsSyntheticMedia",
+] as const;
+
+/**
+ * Moves a scheduled video to a new publish time: one explicit press, never a scan or the nightly.
+ * `videos.update` REPLACES the part it is given, so every writable status field the read
+ * returned goes back with the new `publishAt` — leave `embeddable` out and it resets. Refuses,
+ * writing nothing, a video on another channel and one that is not scheduled (public already, or
+ * private with no time — that one is Studio's). 1 + 50 units. Not `videos.insert`.
+ */
+export async function reschedule(
+  videoId: string,
+  publishAt: string,
+  channelId: string,
+  nowMs = Date.now(),
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ refused: string } | { publishAt: string }> {
+  const read = await apiCall<{
+    items?: Array<{ snippet?: { channelId?: string }; status?: Record<string, unknown> }>;
+  }>(DATA_API, `/videos?part=snippet,status&id=${encodeURIComponent(videoId)}`, {}, fetchImpl);
+  const video = read.items?.[0];
+  if (!video?.status) return { refused: `no video ${videoId} is readable with this account — nothing moved` };
+  const owner = video.snippet?.channelId;
+  if (channelId && owner && owner !== channelId)
+    return { refused: `${videoId} belongs to channel ${owner}, not yours — nothing moved` };
+  const { privacyStatus, publishAt: was } = video.status;
+  if (privacyStatus !== "private")
+    return { refused: `${videoId} is already ${String(privacyStatus)} — nothing moved` };
+  if (typeof was !== "string" || !(Date.parse(was) > nowMs))
+    return {
+      refused: `${videoId} is private with ${typeof was === "string" ? `a publish time already passed (${was})` : "no publish time"} — set one in Studio`,
+    };
+  const status = Object.fromEntries(
+    WRITABLE_STATUS.filter((k) => video.status![k] !== undefined).map((k) => [k, video.status![k]]),
+  );
+  const answer = await apiCall<{ status?: { publishAt?: string } }>(
+    DATA_API,
+    "/videos?part=status",
+    {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: videoId, status: { ...status, publishAt } }),
+    },
+    fetchImpl,
+  );
+  return { publishAt: answer.status?.publishAt ?? publishAt };
+}
+
 /** Needs `youtube.force-ssl`; the read scopes alone cannot post. */
 export async function replyToComment(parentThreadId: string, text: string): Promise<void> {
   await apiCall(DATA_API, "/comments?part=snippet", {

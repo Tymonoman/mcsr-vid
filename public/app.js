@@ -12,8 +12,10 @@ const rivalHandleOrDefault = () => rivalHandle ?? "mcsrmatches";
 let stream = null;
 /** The encode progress stream for the selected match; closed when another match is opened. */
 let exportStream = null;
-/** The next publish slot the kit last fetched; prefilled into the upload form whenever it renders. */
+/** The publish time the kit last fetched (the operator's, else the next free slot); prefilled into the upload form whenever it renders. */
 let publishSlotAt = null;
+/** Whether that time is the operator's own (the kit's field), for Now's Video up. */
+let publishChosen = false;
 
 /** Per-stage timing for the run being watched, keyed by stage id. Rebuilt on every select. */
 let stageState = {};
@@ -845,9 +847,13 @@ function watchExport(id) {
 function prefillPublishAt() {
   const when = $("#ytWhen");
   if (!publishSlotAt || !when || when.value) return;
+  when.value = localInputValue(publishSlotAt);
+}
+
+/** A Date as a datetime-local value: the browser's own zone, to the minute. */
+function localInputValue(d) {
   const pad = (n) => String(n).padStart(2, "0");
-  const s = publishSlotAt;
-  when.value = `${s.getFullYear()}-${pad(s.getMonth() + 1)}-${pad(s.getDate())}T${pad(s.getHours())}:${pad(s.getMinutes())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 /** m:ss, for moment boundaries measured from the start of the run. */
@@ -891,26 +897,118 @@ async function loadPublishKit(id, meta) {
   };
 
   const counter = (text, over) => `<span class="counter${over ? " over" : ""}">${esc(text)}</span>`;
-  const block = (label, text, rows, note = "") => `
+  const block = (label, text, rows, note = "", extra = "") => `
     <div class="kit">
       <div class="kithead">
         <span class="kitlabel">${esc(label)}</span>${note}
         <button type="button" class="ghost copy">Copy</button>
       </div>
-      <textarea readonly rows="${rows}">${esc(text)}</textarea>
+      <textarea readonly rows="${rows}">${esc(text)}</textarea>${extra}
     </div>`;
 
-  // The slot, in the operator's own zone with the UTC hour beside it. Studio's scheduler takes
-  // local time; the upload form below gets the same value as its default, so a scheduled upload
-  // through the dashboard and a paste into Studio land on the same minute.
-  const slot = kit.publishAt ? new Date(kit.publishAt) : null;
-  const slotText = slot
-    ? `${slot.toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })} (${String(kit.publishHourUtc).padStart(2, "0")}:00 UTC)`
-    : "";
-  publishSlotAt = slot;
-  prefillPublishAt();
-  // Now's "Video up" names this slot until the video has one of its own.
-  if (nowPlan?.matchId === id && !nowPlan.uploads.video) paintNow(nowPlan, true);
+  // The publish time, in the operator's own zone with UTC beside it: the operator's own (the
+  // field below, src/dashboard/shortFlow.ts setPublishTime) while it is ahead, else the next free
+  // slot. Studio's scheduler takes local time; the upload form gets the same value as its default,
+  // so the chain, a by-hand upload and a paste into Studio land on the same minute.
+  let pub;
+  let slot;
+  const takeTime = () => {
+    // A server one restart behind sends only the slot.
+    pub = kit.publish ?? {
+      state: "open",
+      at: kit.publishAt,
+      chosen: false,
+      why: kit.publishWhy,
+      warnings: [],
+    };
+    slot = pub.at ? new Date(pub.at) : null;
+    publishSlotAt = pub.state === "open" ? slot : null;
+    publishChosen = pub.state === "open" && pub.chosen;
+    prefillPublishAt();
+    // Now's "Video up" names this time until the video has one of its own.
+    if (nowPlan?.matchId === id && !nowPlan.uploads.video) paintNow(nowPlan, true);
+  };
+  takeTime();
+  /** What the field holds, unsaved: the repaint a typed hook causes (below) keeps it. */
+  let typedWhen = null;
+  const local = (d) =>
+    d.toLocaleString([], {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  const saveLabel = (value) =>
+    pub.state === "scheduled" ? `Move on YouTube to ${value ? local(new Date(value)) : "…"}` : "Save";
+  const publishBlock = () => {
+    const both = (d) => `${local(d)} (${d.toISOString().slice(11, 16)} UTC)`;
+    if (pub.state === "published")
+      return block("Publish at", slot ? `published ${both(slot)}` : "published", 1);
+    if (pub.state === "unscheduled")
+      return block("Publish at", "private on YouTube with no publish time — set one in Studio", 1);
+    // A playoff game after game 1: the series goes out from game 1 (the server's line says so).
+    if (pub.state === "series-game") return block("Publish at", pub.why, 2);
+    if (!slot) return "";
+    const value = typedWhen ?? localInputValue(slot);
+    const note =
+      pub.state === "scheduled"
+        ? ` <span class="muted small">scheduled on YouTube</span>`
+        : ` <span class="muted small">${pub.chosen ? "your time" : "the next free slot"}</span>`;
+    // Editable before the upload (the chain takes it) and while YouTube holds it scheduled (moved
+    // there on the press). The textarea above stays the Copy's line.
+    const edit = `
+      <div class="row kitwhen">
+        <input type="datetime-local" id="kitWhen" aria-label="publish at, in your time zone" value="${esc(value)}">
+        <button type="button" id="kitWhenSave">${esc(saveLabel(value))}</button>
+        ${pub.state === "open" && pub.chosen ? `<button type="button" class="ghost" id="kitWhenFree">use the next free slot</button>` : ""}
+        <span class="msg" id="kitWhenMsg"></span>
+      </div>
+      ${pub.why ? `<div class="muted small">${esc(pub.why)}</div>` : ""}
+      ${(pub.warnings ?? []).map((w) => `<div class="small kitwarn">! ${esc(w)}</div>`).join("")}`;
+    return block("Publish at", both(slot), 1, note, edit);
+  };
+  const sendWhen = async (publishAt) => {
+    const move = pub.state === "scheduled";
+    clearFailAt("#kitWhenSave");
+    $("#kitWhenMsg").textContent = move ? "moving it on YouTube…" : "saving…";
+    let r;
+    try {
+      r = await api(`/api/shorts/publishat/${id}`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(move ? { publishAt, move: true } : { publishAt }),
+      });
+    } catch (e) {
+      $("#kitWhenMsg").textContent = "";
+      failAt("#kitWhenSave", move ? "Not moved" : "Not saved", e.message);
+      return;
+    }
+    kit = await api(`/api/publishkit/${id}`).catch(() => kit);
+    typedWhen = null;
+    takeTime();
+    paint();
+    $("#kitWhenMsg").textContent =
+      r.message ?? (publishAt ? "saved — the upload takes this time" : "back to the next free slot");
+    void loadPlan(id);
+    // Its "scheduled for" line.
+    if (move) void loadYoutube(id, meta);
+  };
+  const wireWhen = () => {
+    const input = $("#kitWhen");
+    if (!input) return;
+    const btn = $("#kitWhenSave");
+    input.addEventListener("input", () => {
+      typedWhen = input.value;
+      btn.textContent = saveLabel(input.value);
+    });
+    btn.addEventListener("click", () => {
+      // datetime-local has no zone: the browser's own offset is what the operator meant.
+      if (input.value) void sendWhen(new Date(input.value).toISOString());
+      else failAt("#kitWhenSave", "Not saved", "pick a date and a time first");
+    });
+    $("#kitWhenFree")?.addEventListener("click", () => void sendWhen(null));
+  };
 
   // Getting the files onto the PC that publishes, which is step zero of the Studio phase and the
   // only part of this panel that is a command rather than a paste. Pull, not push
@@ -942,15 +1040,9 @@ async function loadPublishKit(id, meta) {
           title.length > 100 || title.includes("<HOOK>"),
         ),
       ),
-      // Why the slot is later than the first free one (the pair gap, src/youtube/publishSlot.ts).
-      slot
-        ? block(
-            "Publish at",
-            slotText,
-            1,
-            kit.publishWhy ? ` <span class="muted small">${esc(kit.publishWhy)}</span>` : "",
-          )
-        : "",
+      // Editable, with why the slot is later than the first free one (the pair gap,
+      // src/youtube/publishSlot.ts) and the slot rules a chosen time breaks, as warnings.
+      publishBlock(),
       // Pasted once each, into Studio, after the title: folded so the morning's three blocks stay
       // above the fold on a phone.
       `<details class="kitmore more"${el.querySelector("details.more")?.open ? " open" : ""}>
@@ -999,6 +1091,7 @@ async function loadPublishKit(id, meta) {
       block(`Message to ${right ?? "right player"}`, dm(right ?? "there", left ?? "your opponent"), 3),
       `</details>`,
     ].join("");
+    wireWhen();
   };
   paint();
 
@@ -1543,7 +1636,7 @@ function nowSteps(plan, meta) {
     "videoup",
     "Video up",
     plan.uploads.video,
-    `${videoAt ? nowWhen(videoAt) : "the next free slot"}${waitSuffix}`,
+    `${videoAt ? `${nowWhen(videoAt)}${!plan.uploads.video?.publishAt && publishChosen ? " &middot; your time" : ""}` : "the next free slot"}${waitSuffix}`,
     (v) => `https://youtu.be/${encodeURIComponent(v)}`,
   );
   // Uploading with no activity line: a server between steps, or one a restart cut short.

@@ -638,3 +638,108 @@ console.log("youtube: all checks passed");
   console.log("OK: adopt refuses a bad id, an unpicked hook and a description that would not pair");
   await rm(dir, { recursive: true, force: true });
 }
+
+// --- reschedule: a scheduled video moved to a new publish time. videos.update REPLACES the status
+// part, so every writable field the read returned goes back with the new publishAt; YouTube's
+// own read-only fields (uploadStatus, madeForKids) do not. Fetch stubbed, token included.
+{
+  const { reschedule } = await import("./youtube.js");
+  const realFetch = globalThis.fetch;
+  const realToken = process.env.YOUTUBE_TOKEN_FILE;
+  const dir = await mkdtemp(path.join(tmpdir(), "mcsr-resched-"));
+  process.env.YOUTUBE_TOKEN_FILE = path.join(dir, "token.json");
+  await writeFile(
+    process.env.YOUTUBE_TOKEN_FILE,
+    JSON.stringify({ client_id: "c", client_secret: "s", refresh_token: "r" }),
+  );
+  const NOW = Date.parse("2026-09-26T12:00:00Z");
+  const status = {
+    uploadStatus: "processed",
+    privacyStatus: "private",
+    publishAt: "2026-09-28T19:00:00Z",
+    license: "youtube",
+    embeddable: true,
+    publicStatsViewable: false,
+    madeForKids: false,
+    selfDeclaredMadeForKids: false,
+    containsSyntheticMedia: false,
+  };
+  let live: { channelId: string; status: Record<string, unknown> } = { channelId: "UCmine", status };
+  const puts: Array<{ url: string; body: unknown }> = [];
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    if (url.startsWith("https://oauth2.googleapis.com/"))
+      return new Response(JSON.stringify({ access_token: "tok", expires_in: 3600 }));
+    if (!url.startsWith("https://www.googleapis.com/youtube/v3/videos?"))
+      throw new Error(`unexpected fetch: ${url}`);
+    if (init?.method === "PUT") {
+      const body = JSON.parse(String(init.body)) as { status: { publishAt: string } };
+      puts.push({ url, body });
+      return new Response(
+        JSON.stringify({
+          id: "vid",
+          status: { ...live.status, publishAt: body.status.publishAt.replace(".000Z", "Z") },
+        }),
+      );
+    }
+    assert.match(url, /part=snippet,status&id=vid$/);
+    return new Response(
+      JSON.stringify({ items: [{ id: "vid", snippet: { channelId: live.channelId }, status: live.status }] }),
+    );
+  }) as typeof fetch;
+  try {
+    const moved = await reschedule("vid", "2026-09-30T18:30:00.000Z", "UCmine", NOW);
+    assert.deepEqual(moved, { publishAt: "2026-09-30T18:30:00Z" }, "what YouTube answered");
+    assert.equal(puts.length, 1);
+    assert.match(puts[0]!.url, /\/videos\?part=status$/);
+    assert.deepEqual(puts[0]!.body, {
+      id: "vid",
+      status: {
+        privacyStatus: "private",
+        publishAt: "2026-09-30T18:30:00.000Z",
+        embeddable: true,
+        license: "youtube",
+        publicStatsViewable: false,
+        selfDeclaredMadeForKids: false,
+        containsSyntheticMedia: false,
+      },
+    });
+
+    // Refused, and nothing written: another channel's, a public one, a private one with no time.
+    live = { channelId: "UCsomeoneelse", status };
+    assert.match(
+      String(
+        ((await reschedule("vid", "2026-09-30T18:30:00Z", "UCmine", NOW)) as { refused: string }).refused,
+      ),
+      /belongs to channel UCsomeoneelse/,
+    );
+    live = { channelId: "UCmine", status: { ...status, privacyStatus: "public", publishAt: undefined } };
+    assert.match(
+      String(
+        ((await reschedule("vid", "2026-09-30T18:30:00Z", "UCmine", NOW)) as { refused: string }).refused,
+      ),
+      /already public/,
+    );
+    live = { channelId: "UCmine", status: { ...status, publishAt: undefined } };
+    assert.match(
+      String(
+        ((await reschedule("vid", "2026-09-30T18:30:00Z", "UCmine", NOW)) as { refused: string }).refused,
+      ),
+      /no publish time/,
+    );
+    live = { channelId: "UCmine", status: { ...status, publishAt: "2026-09-25T19:00:00Z" } };
+    assert.match(
+      String(
+        ((await reschedule("vid", "2026-09-30T18:30:00Z", "UCmine", NOW)) as { refused: string }).refused,
+      ),
+      /already passed/,
+    );
+    assert.equal(puts.length, 1, "no refusal wrote anything");
+    console.log("OK: reschedule sends the whole status part back and refuses what it must not move");
+  } finally {
+    globalThis.fetch = realFetch;
+    if (realToken === undefined) delete process.env.YOUTUBE_TOKEN_FILE;
+    else process.env.YOUTUBE_TOKEN_FILE = realToken;
+    await rm(dir, { recursive: true, force: true });
+  }
+}
