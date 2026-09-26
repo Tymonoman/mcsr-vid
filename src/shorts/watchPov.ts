@@ -258,7 +258,13 @@ async function watchOne(
   log(`running /watch on ${nick}'s stream (${side}, ${Math.round(endSec)} s of match, nice 19)`);
   const framesOnDisk = () => {
     try {
-      return readdirSync(path.join(out, "frames")).filter((f) => /^frame_\d+\.jpg$/.test(f)).length;
+      // Only this run's stills: the folder keeps the last run's until frames.py clears it, which
+      // happens after watch.py announces the count, so counting them jumps the bar to ~93%. A
+      // second of slack for the filesystem's coarse clock; the last run's are minutes older.
+      const frames = path.join(out, "frames");
+      return readdirSync(frames).filter(
+        (f) => /^frame_\d+\.jpg$/.test(f) && statSync(path.join(frames, f)).mtimeMs >= started - 1000,
+      ).length;
     } catch {
       return 0;
     }

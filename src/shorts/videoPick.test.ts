@@ -16,8 +16,8 @@ import { NOT_SIGNED_IN } from "./reasoner.js";
 import { decidedAtMs } from "./raceGap.js";
 import { pickFile, type ShortPick } from "./shortPlan.js";
 import { hookProblem, modelFailure, pickErrorFile, pickShortMoment, PROXY_FILE } from "./videoPick.js";
-import { readShortLog } from "./shortLog.js";
-import { watchDir } from "./watchPov.js";
+import { endActivity, readShortLog, startActivity, stepActivity } from "./shortLog.js";
+import { watchDir, watchPovs } from "./watchPov.js";
 
 const tmp = mkdtempSync(path.join(tmpdir(), "videopick-"));
 config.mediaDir = path.join(tmp, "media");
@@ -120,6 +120,45 @@ function stage(matchId: number, video: string): string {
 const readJson = (file: string) => JSON.parse(readFileSync(file, "utf8"));
 const lines: string[] = [];
 const log = (l: string) => lines.push(l);
+
+/**
+ * The Pick step's bar as the dashboard reads it, sampled on every log line (before the line
+ * itself lands, so each sample is what the bar said while that line's work ran).
+ */
+function barSamples(matchId: number) {
+  const samples: Array<{ text: string; percent: number; line: string }> = [];
+  startActivity(matchId, "pick", "starting");
+  return {
+    samples,
+    log: (text: string) => {
+      lines.push(text);
+      const live = stepActivity(matchId, "pick");
+      samples.push({ text, percent: live?.percent ?? 0, line: live?.line ?? "" });
+    },
+    /** Never back, never 100, the proxy's share done after its line, the /watch shares done before the model is asked, the model's line while it runs. */
+    check(label: string) {
+      endActivity(matchId, "pick");
+      const pct = samples.map((x) => x.percent);
+      assert.ok(
+        pct.every((p, i) => i === 0 || p >= pct[i - 1]!),
+        `${label}: never back ${pct}`,
+      );
+      assert.ok(
+        pct.every((p) => p < 100),
+        `${label}: never 100 ${pct}`,
+      );
+      const proxy = samples.findIndex((x) => /^the model's \d fps copy/.test(x.text));
+      assert.ok(proxy >= 0 && pct.slice(proxy + 1).every((p) => p >= 34), `${label}: the proxy's 34% ${pct}`);
+      const asking = samples.find((x) => x.text.startsWith("asking "));
+      assert.ok(
+        asking && asking.percent >= 74,
+        `${label}: /watch's shares done by the ask ${asking?.percent}`,
+      );
+      const answered = samples.find((x) => x.text.startsWith("answer in "));
+      assert.match(answered?.line ?? "", / is watching the match$/, `${label}: the model's phase line`);
+    },
+  };
+}
 
 // ============ A single match: 12730175, edcr (left) vs doogile (right), run 10:22.4 ============
 const single = 12730175;
@@ -240,8 +279,10 @@ function clips(matchId: number, nicks: string[]): void {
   config.watchScript = fakeWatch;
   clips(single, ["edcr", "doogile"]);
   answer(good);
-  const pick = await pickShortMoment(single, { force: true, log });
+  const bar = barSamples(single);
+  const pick = await pickShortMoment(single, { force: true, log: bar.log });
   assert.equal(pick.source, "agy");
+  bar.check("one match");
   const argv = sentArgv();
   const prompt = argv[argv.indexOf("-p") + 1]!;
   assert.match(prompt, /use only your view_file tool on the video and on the stills listed below\./);
@@ -279,6 +320,39 @@ function clips(matchId: number, nicks: string[]): void {
   console.log(
     "OK: /watch's stills and transcript reach the prompt on the match clock; its failure drops only them",
   );
+}
+
+{
+  // A re-run: the last run's 100 stills are still in frames/ when watch.py announces its count,
+  // and frames.py clears them only after. They are not this run's progress.
+  const stale = path.join(tmp, "watch-stale.py");
+  writeFileSync(
+    stale,
+    `import glob, os, sys, time
+sys.stderr.write("[watch] extracting ~100 frames\\n"); sys.stderr.flush()
+time.sleep(1.5)
+${fakeWatchSource.replace('os.makedirs(out + "/frames", exist_ok=True)', 'os.makedirs(out + "/frames", exist_ok=True)\n[os.remove(f) for f in glob.glob(out + "/frames/frame_*.jpg")]')}`,
+  );
+  config.watchScript = stale;
+  const frames = path.join(watchDir(dir, "left"), "frames");
+  mkdirSync(frames, { recursive: true });
+  const past = new Date(Date.now() - 600_000);
+  for (let i = 1; i <= 100; i++) {
+    const f = path.join(frames, `frame_${String(i).padStart(4, "0")}.jpg`);
+    writeFileSync(f, "old");
+    utimesSync(f, past, past);
+  }
+  const seen: number[] = [];
+  const povs = await watchPovs(load(single), {
+    onProgress: (side, f) => {
+      if (side === "left") seen.push(f);
+    },
+  });
+  config.watchScript = null;
+  assert.equal(povs.length, 2);
+  const during = seen.slice(1, -1);
+  assert.ok(during.length > 0 && during.every((f) => f < 0.5), `the old stills are not counted: ${seen}`);
+  console.log("OK: /watch's bar counts this run's stills, not the last run's");
 }
 
 /** Forces a pick in `mode` and checks the heuristic stood in with `why` on disk. */
@@ -591,8 +665,10 @@ console.log("OK: a spoiler, overlong hook, or seed/rank/elo is swapped for a chi
   config.watchScript = fakeWatch;
   clips(g2, ["BlazeMind", "Aquacorde"]);
   const g2dir = path.join(config.mediaDir, String(g2));
-  const pick = await pickShortMoment(g1, { force: true });
+  const bar = barSamples(g1);
+  const pick = await pickShortMoment(g1, { force: true, log: bar.log });
   config.watchScript = null;
+  bar.check("a series");
   const seriesArgv = sentArgv();
   assert.deepEqual(
     seriesArgv.filter((a, i) => seriesArgv[i - 1] === "--add-dir"),
