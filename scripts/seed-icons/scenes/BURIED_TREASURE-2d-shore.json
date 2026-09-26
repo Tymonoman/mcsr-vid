@@ -1,0 +1,12 @@
+{
+  "name": "BURIED_TREASURE-2d-shore",
+  "template": null,
+  "edits": [
+    {"op": "fill", "from": [0, 0, 0], "to": [7, 2, 2], "block": "sand"},
+    {"op": "fill", "from": [0, 2, 0], "to": [3, 2, 2], "block": "water"},
+    {"op": "set", "at": [4, 3, 1], "block": "chest[facing=south]"},
+    {"op": "nudge", "at": [4, 3, 1], "by": [0, -0.4375, 0]}
+  ],
+  "view": {"projection": "2d", "facing": "south", "padding": 0, "zoom": 3.5, "center": [4.3, 3.05, 1.5]},
+  "background": "sky"
+}

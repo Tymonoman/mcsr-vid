@@ -36,7 +36,10 @@ export const SeedIconSheet: FC = () => (
   <div style={{ width: "100%", height: "100%", background: "#221f27", padding: 24 }}>
     {[false, true].flatMap((alt) =>
       [132, 64].map((size) => (
-        <div key={`${alt}${size}`} style={{ display: "flex", gap: 24, alignItems: "center", marginBottom: 24 }}>
+        <div
+          key={`${alt}${size}`}
+          style={{ display: "flex", gap: 24, alignItems: "center", marginBottom: 24 }}
+        >
           {SEED_ICON_TYPES.map((type) => (
             <div key={type} style={{ width: 132, display: "flex", justifyContent: "center" }}>
               {(!alt || type !== "BURIED_TREASURE") && <Tile src={seedIconFile(type, alt)} size={size} />}

@@ -617,6 +617,7 @@ def bake(spec, jar, spec_dir):
     apply_edits(blocks, spec.get("edits", []), nudges)
     update_shapes(jar, blocks)
     textures, index, faces = [], {}, []
+    bare = set((spec.get("outline") or {}).get("exclude", []))  # left out of the outline (the ground)
     for x, y, z, fc in bake_blocks(jar, blocks):
         nx, ny, nz = nudges.get((x, y, z), (0, 0, 0))  # drawn moved; culled and ordered by its cell
         if fc.tex not in index:
@@ -636,6 +637,8 @@ def bake(spec, jar, spec_dir):
             d["flat"] = 1
         if fc.glow:
             d["g"] = 1
+        if blocks[(x, y, z)][0] in bare:
+            d["bare"] = 1
         faces.append(d)
     for tex in index:  # the textures, raw bytes out of the jar
         dst = os.path.join(ASSETS, "minecraft", "textures", tex + ".png")
@@ -650,6 +653,7 @@ def bake(spec, jar, spec_dir):
         "size": size,
         "view": spec.get("view", {}),
         "background": spec.get("background", "none"),
+        **({"outline": spec["outline"]} if spec.get("outline") else {}),
         "textures": textures,
         "faces": faces,
     }

@@ -52,6 +52,7 @@ default) and let the thumbnail downscale the PNG.
 | `edits` | Applied in order; coordinates are the template's block coordinates (x east, y up, z south), inclusive boxes. |
 | `view` | Camera and framing, below. |
 | `background` | `"none"` (transparent PNG, default), a preset `"sky"`, `"sea"`, `"nether"`, or any CSS background. |
+| `outline` | A dark contour round the structure's silhouette, below. Off when left out. |
 
 A block is `"name"` or `"name[prop=value,...]"` (with or without `minecraft:`); `"props": {...}`
 beside it adds or overrides properties. Missing properties take the default state (axis y, half
@@ -87,6 +88,30 @@ bottom, facing north, ...).
 | `depthShadeMin` | 0.35 | The floor `depthShade` stops at. Raise it (≈0.7) to keep a far backdrop sunlit while a one-block recess still darkens. |
 | `overhangShade` | off | Multiplies a side face that has a block above the cell in front of it (a doorway, a recess under a lintel, a tunnel). 0.5–0.6 makes a 2d entrance read as an opening. |
 | `seam` | 0.5 | Screen px each opaque face is grown by, so neighbours overlap instead of leaving hairline gaps. |
+
+### Outline
+
+```json
+"outline": { "color": "#0d0c10", "px": 24, "exclude": ["sand"], "base": true }
+```
+
+The faces of every block not in `exclude` are drawn once more as one silhouette in `color`, grown
+by a square of `px` (at a 1024 px render; scaled with `size`) and laid under the scene, so the
+line shows only where the structure meets the sky or the ground. Square, not round: it keeps the
+pixel steps of a block skyline.
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `color` | `#0d0c10` (`--panel-edge`) | The line's colour. |
+| `px` | — | Width in px at 1024: 16 is 2 px on the thumbnail's 132 px tile, 24 is 3. |
+| `exclude` | `[]` | Block names drawn but never outlined (the ground). `bake.py` marks their faces `bare: 1`. |
+| `base` | false | Draw the excluded blocks first, under the contour, so it also runs along the structure's foot. Right for a 2d elevation, whose ground never covers the structure; wrong where it does. |
+| `inner` | off | Also line where the front overlaps what is behind it: the faces within this many blocks of the nearest outlined face get a contour of their own over the rest (the temple's towers against its recessed body). |
+| `innerPx` | `px` | That inner line's width. |
+
+`DESERT_TEMPLE-2d.json` uses `px` 24 with `base` (the operator, 26 Sept 2026: "add an outline to
+the desert temple so its easier to recognize"); the `DESERT_TEMPLE-2d-outline-*.json` specs are
+the other widths, colours and the inner-edge variant it was picked from.
 
 ## What is and is not drawn
 

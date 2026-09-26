@@ -52,7 +52,7 @@
   "background": "linear-gradient(#3c7ee6, #86b8f2)",
   "outline": {
     "color": "#0d0c10",
-    "px": 24,
+    "px": 20,
     "exclude": [
       "sand"
     ],

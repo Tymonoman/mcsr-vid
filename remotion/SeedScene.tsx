@@ -28,6 +28,24 @@ export interface BakedFace {
   tint?: string;
   /** Emissive: never shaded. */
   g?: 1;
+  /** One of the spec's `outline.exclude` blocks (the ground): drawn, but not outlined. */
+  bare?: 1;
+}
+
+/** A dark contour around the scene's silhouette, drawn under it (px at a 1024 px render). */
+export interface SceneOutline {
+  color?: string;
+  px: number;
+  /** Block names left out (bake.py marks their faces `bare`). */
+  exclude?: string[];
+  /** Also line where the front overlaps what is behind it: the faces within this many blocks of the
+   *  nearest outlined face get their own contour, drawn over the faces behind them. */
+  inner?: number;
+  /** The inner contour's width, px at 1024 (default `px`). */
+  innerPx?: number;
+  /** Draw the excluded blocks first, under the contour, so it also runs along the building's foot
+   *  (right for a 2d elevation, whose ground never covers the building; wrong where it does). */
+  base?: boolean;
 }
 
 export interface SceneView {
@@ -63,6 +81,7 @@ export type BakedScene = {
   view?: SceneView;
   /** "none", a preset (sky, sea, nether) or any CSS background. */
   background?: string;
+  outline?: SceneOutline;
   textures: { src: string; uv: number }[];
   faces: BakedFace[];
 };
@@ -110,7 +129,8 @@ export interface Plan {
   k: number;
   ox: number;
   oy: number;
-  faces: { f: BakedFace; pts: [number, number][]; shade: number }[];
+  /** `depth`: the cell's distance towards the camera, in blocks (larger is nearer). */
+  faces: { f: BakedFace; pts: [number, number][]; shade: number; depth: number }[];
 }
 
 /** Where every visible face lands on a square of `size` px, back to front. Pure, for the test. */
@@ -156,17 +176,24 @@ export function planScene(scene: BakedScene, size: number): Plan {
   // ponytail: looks 32 blocks up the front column; enough for any structure template here.
   const covered = ({ c, n }: BakedFace) =>
     n[1] === 0 &&
-    Array.from({ length: 32 }, (_, k) => `${c[0] + n[0]},${c[1] + 1 + k},${c[2] + n[2]}`).some((key) => filled.has(key));
+    Array.from({ length: 32 }, (_, k) => `${c[0] + n[0]},${c[1] + 1 + k},${c[2] + n[2]}`).some((key) =>
+      filled.has(key),
+    );
   return {
     k,
     ox,
     oy,
-    faces: visible.map(({ f, pts }) => {
+    faces: visible.map(({ f, pts, cell }) => {
       let shade = f.g || f.flat || !faceShade ? 1 : shadeOf(R(f.n));
       if (view.depthShade && !f.g)
         shade *= Math.max(view.depthShadeMin ?? 0.35, 1 - view.depthShade * (front - dot(R(f.o), cam.w)));
       if (view.overhangShade && !f.g && covered(f)) shade *= view.overhangShade;
-      return { f, pts: pts.map(([x, y]) => [ox + k * x, oy + k * y] as [number, number]), shade };
+      return {
+        f,
+        pts: pts.map(([x, y]) => [ox + k * x, oy + k * y] as [number, number]),
+        shade,
+        depth: cell,
+      };
     }),
   };
 }
@@ -211,9 +238,9 @@ async function draw(canvas: HTMLCanvasElement, scene: BakedScene, size: number) 
   ctx.imageSmoothingEnabled = false;
   const cache = new Map<string, ReturnType<typeof prepared>>();
   const seam = scene.view?.seam ?? 0.5;
-  for (const { f, pts, shade } of plan.faces) {
+  const drawFace = (ctx: CanvasRenderingContext2D, { f, pts, shade }: Plan["faces"][number]) => {
     const [u0, v0, u1, v1] = f.uv;
-    if (u0 === u1 || v0 === v1) continue;
+    if (u0 === u1 || v0 === v1) return;
     const key = `${f.t}|${f.tint ?? ""}|${Math.round(shade * 256)}`;
     let src = cache.get(key);
     if (!src) cache.set(key, (src = prepared(imgs[f.t], f.tint, Math.round(shade * 256) / 256)));
@@ -233,8 +260,49 @@ async function draw(canvas: HTMLCanvasElement, scene: BakedScene, size: number) 
     const eb = grow / (Math.hypot(B[0], B[1]) || 1);
     ctx.setTransform(A[0], A[1], B[0], B[1], tx, ty);
     ctx.drawImage(src.cv, um * scale, vm * scale, W * scale, H * scale, -ea, -eb, W + 2 * ea, H + 2 * eb);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+  };
+  const ol = scene.outline;
+  if (!ol) {
+    for (const face of plan.faces) drawFace(ctx, face);
+    return;
   }
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  // The outline: each group's silhouette in one colour, grown by a square of r px (a separable
+  // max: the shape drawn at every dx, then that at every dy), laid under the group's faces.
+  const layer = () => {
+    const cv = document.createElement("canvas");
+    cv.width = cv.height = size;
+    const c = cv.getContext("2d")!;
+    c.imageSmoothingEnabled = false;
+    return { cv, c };
+  };
+  const contour = (faces: Plan["faces"], px: number) => {
+    const r = Math.round((px * size) / 1024);
+    const a = layer();
+    for (const face of faces) if (!face.f.bare) drawFace(a.c, face);
+    a.c.globalCompositeOperation = "source-in";
+    a.c.fillStyle = ol.color ?? "#0d0c10";
+    a.c.fillRect(0, 0, size, size);
+    const b = layer();
+    for (let d = -r; d <= r; d++) b.c.drawImage(a.cv, d, 0);
+    a.c.globalCompositeOperation = "source-over";
+    a.c.clearRect(0, 0, size, size);
+    for (let d = -r; d <= r; d++) a.c.drawImage(b.cv, 0, d);
+    ctx.drawImage(a.cv, 0, 0);
+  };
+  let faces = plan.faces;
+  if (ol.base) {
+    for (const face of faces) if (face.f.bare) drawFace(ctx, face);
+    faces = faces.filter((x) => !x.f.bare);
+  }
+  contour(faces, ol.px);
+  // The front layer: faces within `inner` blocks of the nearest outlined face (the faces are sorted
+  // back to front, so it is a tail), contoured again over the rest.
+  const near = Math.max(...faces.filter((x) => !x.f.bare).map((x) => x.depth));
+  const cut = ol.inner === undefined ? faces.length : faces.findIndex((x) => x.depth >= near - ol.inner!);
+  for (const face of faces.slice(0, cut)) drawFace(ctx, face);
+  if (cut < faces.length) contour(faces.slice(cut), ol.innerPx ?? ol.px);
+  for (const face of faces.slice(cut)) drawFace(ctx, face);
 }
 
 /** A baked scene on a square canvas of `size` px, over its background. */
