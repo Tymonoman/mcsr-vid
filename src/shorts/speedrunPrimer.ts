@@ -37,4 +37,4 @@ REMARKABLE — what a viewer clips
 - A stream's transcript can be Whisper inventing words over silence ("Thank you for watching!", "Undertexter av…"): trust the picture.
 
 TITLE HOOKS AND PLAYER MOMENTS
-- They reach pro runners and their fans. Never praise or dramatise a routine action ("you set a bed spawn", "they both died in the stronghold"): to a runner it reads as not knowing the game. Name what they did better than usual — a fast split, a quick End, a gap made up, a save — and claim only what the footage or the facts show: never an eye count, a barter haul or a number you did not read.`;
+- They reach pro runners and their fans. Never praise or dramatise a routine action ("you set a bed spawn", "they both died in the stronghold", or calling a zero cycle or a 25–40 s End an achievement): to a runner it reads as not knowing the game. Name what they did better than usual — a fast split, an End well under 25 s, a gap made up, a save — and claim only what the footage or the facts show: never an eye count, a barter haul or a number you did not read.`;
