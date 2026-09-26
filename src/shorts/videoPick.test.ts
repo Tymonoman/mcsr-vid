@@ -7,6 +7,7 @@
 // decision), the hook rules, and what the prompt carries.
 // Run: npx tsx src/shorts/videoPick.test.ts
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -154,6 +155,14 @@ function barSamples(matchId: number) {
         asking && asking.percent >= 74,
         `${label}: /watch's shares done by the ask ${asking?.percent}`,
       );
+      // The step names the stream /watch is on (a left/right swap passed every other check).
+      for (const x of samples.filter((s) => /^running \/watch on .+'s stream \(/.test(s.text))) {
+        const nick = /^running \/watch on (.+)'s stream/.exec(x.text)![1];
+        assert.ok(
+          x.line.startsWith(`running /watch on ${nick}'s stream · `),
+          `${label}: ${x.line} while ${x.text}`,
+        );
+      }
       const answered = samples.find((x) => x.text.startsWith("answer in "));
       assert.match(answered?.line ?? "", / is watching the match$/, `${label}: the model's phase line`);
     },
@@ -750,6 +759,26 @@ console.log("OK: a spoiler, overlong hook, or seed/rank/elo is swapped for a chi
     name: "AbortError",
   });
   console.log("OK: no video is a recorded failure; an abort is the one throw");
+}
+
+{
+  // The proxy's share (a third of a match's bar) comes from ffmpeg's own time= on a real cut:
+  // every other case above reuses a cached proxy, so without this nothing reads -stats at all.
+  execFileSync("ffmpeg", [
+    "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=320x180:rate=10", "-t", "16",
+    "-pix_fmt", "yuv420p", path.join(dir, `final-${single}.mp4`),
+  ]); // prettier-ignore
+  rmSync(path.join(dir, PROXY_FILE), { force: true });
+  answer(good);
+  const bar = barSamples(single);
+  await pickShortMoment(single, { force: true, log: bar.log });
+  endActivity(single, "pick");
+  const ready = bar.samples.find((x) => x.text.startsWith("the model's copy is ready"));
+  assert.ok(
+    ready && ready.percent >= 20 && ready.percent <= 34,
+    `the proxy's own progress: ${ready?.percent}`,
+  );
+  console.log("OK: the proxy's share of the bar comes from ffmpeg's time=");
 }
 
 rmSync(tmp, { recursive: true, force: true });
