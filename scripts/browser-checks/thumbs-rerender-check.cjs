@@ -20,7 +20,7 @@ const { launchFor } = require("./launch.cjs");
   const bytes = (page, path) => page.request.get(base + path).then((r) => r.body());
 
   try {
-    const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } });
+    const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
     page.on("pageerror", (e) => errors.push(e.message));
 
     // The swap, answered here. `put` records what the page sent; the GET says what YouTube wears.

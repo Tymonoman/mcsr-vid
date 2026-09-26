@@ -55,7 +55,11 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
         },
       ],
     });
-  if (url === "https://i.ytimg.com/vi/x/maxresdefault.jpg") {
+  // hqdefault answers with a real-sized body too: the width, not the answer, has to refuse it.
+  if (
+    url === "https://i.ytimg.com/vi/x/maxresdefault.jpg" ||
+    url === "https://i.ytimg.com/vi/x/hqdefault.jpg"
+  ) {
     downloads++;
     return new Response(imageStatus === 200 ? imageBody : "", { status: imageStatus });
   }
@@ -136,7 +140,8 @@ try {
   assert.ok(!existsSync(path.join(dir, YOUTUBE_PREV_FILE)));
   imageStatus = 200;
   // The copy is kept for good, so it has to be the picture: a 200 with an empty body is refused,
-  // and so is a video whose largest image is the 4:3 letterboxed hqdefault (not even fetched).
+  // and so is a video whose largest image is the 4:3 letterboxed hqdefault (not even fetched:
+  // `downloads` below counts one refused 404, one refused empty body and the kept one).
   imageBody = "";
   await refused(swapThumbnail(100, false), /nothing changed/);
   imageBody = JPEG;

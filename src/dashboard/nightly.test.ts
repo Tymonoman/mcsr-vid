@@ -434,7 +434,11 @@ try {
   // night, and says so (`nightlyStarting`) so the bulk re-render holds its next match meanwhile.
   {
     let finish!: () => void;
+    mkdirSync(path.join(media, "777001"));
     startRerender(777001, () => new Promise((r) => (finish = () => r({} as never))));
+    // "Run now" is a press, not a schedule: it answers busy rather than waiting.
+    const now = await runNightlyOnce("", { ranked: async () => [] });
+    assert.equal(now.busy, true, `Run now refuses beside a re-render: ${JSON.stringify(now)}`);
     const run = runNightlyOnce("", { renderInFlight: () => false, ranked: async () => [], scheduled: true });
     await new Promise((r) => setTimeout(r, 1_200));
     assert.equal(nightlyStarting(), true, "the run is holding for the re-render");

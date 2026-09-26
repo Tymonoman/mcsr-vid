@@ -326,8 +326,8 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   run) refuses while it runs. Settings → Thumbnails re-renders every uploaded long-form (one per
   video id, so a series is game 1) one at a time, waiting out any pipeline run and holding its next
   match while a scheduled nightly is starting (`nightlyStarting`; that run waits out the
-  re-render in flight rather than skip the night; Run now answers busy), skipping a busy match;
-  render only.
+  re-render in flight, 20 min at most, rather than skip the night; Run now answers busy), skipping
+  a busy match; render only.
 - **Put on YouTube / Undo on YouTube** (`POST /api/thumbnails/:id/youtube`, `{ undo }`,
   `src/youtube/thumbnailSwap.ts`): one press each, on the confirmed tile of a match whose own
   `youtube.json` is the long-form (a series' games 2..n carry game 1's id and get no button; a Short
@@ -348,8 +348,8 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   comment and the tags. It leaves the thumbnail alone on a video uploaded elsewhere whose variant nobody
   confirmed here, so it cannot replace an image picked in Studio — nor, on any video, a set
   re-rendered after its upload (`rerenderedAt` later than `uploadedAt`: that is Put on YouTube's,
-  which keeps an undo copy; Adopt's own finish is exempt, a draft wears the auto frame), and a
-  swap marks its step done. Changing a live video's thumbnail is that panel's press.
+  which keeps an undo copy; a first Adopt's finish is exempt, a draft wears the auto frame), and a
+  swap marks its step done. Putting a re-rendered thumbnail on a live video is that panel's press.
 - **Adopt a Studio draft** (`POST /api/youtube/adopt/:id`, the panel's "Adopt this draft"): the
   operator drops the file into Studio leaving every box empty, pastes the 11-character id, and the
   title, description and tags go on through `videos.update`, then the finish steps run. It exists

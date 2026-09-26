@@ -236,7 +236,11 @@ export async function handleYoutubeRoute(
         source: "studio",
         finished: carried,
       });
-      const finished = await finishOnYouTube(matchId, videoId, "video", { adopting: true });
+      // A first adopt's draft wears YouTube's auto frame, so the confirmed variant goes on whenever
+      // it was drawn; re-adopting a video already adopted is Finish's rule (youtubeUpload.ts).
+      const finished = await finishOnYouTube(matchId, videoId, "video", {
+        adopting: previous?.videoId !== videoId,
+      });
       // The A/B tab reads `thumbnailVariant` for a local record and falls back to the manifest
       // only for a channel-derived one, so leaving this null drops an adopted video out of the
       // hook-vs-control comparison. Recorded only once the image has actually gone up.

@@ -310,6 +310,8 @@ const busyWith = (id: number): boolean =>
  */
 let starting = false;
 export const nightlyStarting = (): boolean => starting;
+/** One match's four stills take a minute or two; the scheduled run waits this long at most. */
+const THUMBNAIL_WAIT_MS = 20 * 60_000;
 
 const renderInFlight = (): boolean =>
   (lastStartedId !== null && busyWith(lastStartedId)) || listProcessedMatchIds().some(busyWith);
@@ -517,7 +519,10 @@ export async function runNightlyOnce(
   if (!deps.scheduled) return runOnce(notifyUrl, deps, started);
   starting = true;
   try {
-    while (anyThumbnailRunning()) await new Promise((r) => setTimeout(r, 1_000));
+    // Bounded: a re-render hung past this reads as "a render is already in flight" below, and the
+    // timer re-arms for tomorrow rather than waiting on it for ever.
+    const until = Date.now() + THUMBNAIL_WAIT_MS;
+    while (anyThumbnailRunning() && Date.now() < until) await new Promise((r) => setTimeout(r, 1_000));
     return await runOnce(notifyUrl, deps, started);
   } finally {
     starting = false;

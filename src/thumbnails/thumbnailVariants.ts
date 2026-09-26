@@ -278,13 +278,13 @@ export async function renderThumbnailVariants(args: RenderVariantsArgs): Promise
     ...(chosenBy ? { chosenBy } : {}),
     variants: records,
     hookText: null,
-    // Frozen for the hooks that may quote it. Carried over with a kept choice so a re-render does
-    // not re-read a rank that has since moved.
     ...(args.fresh
       ? { rerenderedAt: new Date().toISOString() }
       : previous?.rerenderedAt
         ? { rerenderedAt: previous.rerenderedAt }
         : {}),
+    // Frozen for the hooks that may quote it. Carried over with a kept choice so a re-render does
+    // not re-read a rank that has since moved.
     ranks:
       kept && previous?.ranks
         ? previous.ranks
