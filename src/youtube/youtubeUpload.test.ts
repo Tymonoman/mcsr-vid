@@ -499,6 +499,52 @@ try {
   assert.ok(!hits.some((h) => h.includes("/thumbnails/set")), "and no thumbnails.set request was made");
   assert.equal(studio.playlists, null, "while the playlists it came for still happen");
 
+  // Thumbnails re-rendered after the upload and confirmed ("Use this", which "Put on YouTube"
+  // needs) are still not Finish's to put on: that press keeps the image it replaces for Undo, and
+  // this one would not — on a Studio upload, or on a dashboard upload whose thumbnail step once
+  // failed (the nightly's retries press Finish too). Adopt's draft wears YouTube's auto frame, so
+  // its first finish still sets it.
+  {
+    const variant = { key: "walking-crossed", file: "thumbnail.walking-crossed.png" };
+    await writeFile(path.join(dir, variant.file), "new design");
+    await writeFile(
+      path.join(dir, "thumbnail.json"),
+      JSON.stringify({
+        chosen: variant.key,
+        chosenBy: "operator",
+        hookText: null,
+        variants: [variant],
+        rerenderedAt: "2026-09-26T10:00:00Z",
+      }),
+    );
+    for (const [source, finished] of [
+      ["studio", {}],
+      ["dashboard", { thumbnail: "YouTube API thumbnails.set -> 500" }],
+    ] as const) {
+      await writeUpload(matchId, { ...record, source, finished });
+      hits.length = 0;
+      const steps = await finishOnYouTube(matchId, "vidX");
+      assert.match(String(steps.thumbnail), /re-rendered after the upload/, `${source}: left alone`);
+      assert.ok(!hits.some((h) => h.includes("/thumbnails/set")), `${source}: no thumbnails.set request`);
+    }
+    await writeUpload(matchId, { ...record, source: "studio", finished: {} });
+    hits.length = 0;
+    const adopted = await finishOnYouTube(matchId, "vidX", "video", { adopting: true });
+    assert.equal(adopted.thumbnail, null, "Adopt's finish sets the confirmed variant");
+    assert.ok(hits.some((h) => h.includes("/thumbnails/set")));
+    // A set re-rendered before the upload is the one the upload's own finish puts on.
+    await writeUpload(matchId, {
+      ...record,
+      uploadedAt: "2026-09-26T11:00:00Z",
+      source: "dashboard",
+      finished: {},
+    });
+    assert.equal((await finishOnYouTube(matchId, "vidX")).thumbnail, null);
+    await rm(path.join(dir, "thumbnail.json"));
+    await rm(path.join(dir, variant.file));
+    console.log("OK: Finish leaves a thumbnail re-rendered after the upload to Put on YouTube");
+  }
+
   // --- Tags: the manual paste that silently never happens ------------------------------------
   // Every video on the channel is missing tags, both nicknames included, because pasting them is
   // a separate step in Studio. `videos.update` is not `videos.insert`, so this is not gated by the

@@ -77,6 +77,12 @@ export interface VariantsManifest {
    * line that may quote it. Absent on manifests written before this, which then fall back to live.
    */
   ranks?: Record<string, number | null>;
+  /**
+   * When the dashboard last drew the set again (`fresh`, src/thumbnails/rerender.ts). A set newer
+   * than the video's upload is not what the video wears, and only "Put on YouTube" — which keeps
+   * the image it replaces — may put it there (`finishOnYouTube` reads this).
+   */
+  rerenderedAt?: string;
 }
 
 export interface RenderVariantsArgs {
@@ -274,6 +280,11 @@ export async function renderThumbnailVariants(args: RenderVariantsArgs): Promise
     hookText: null,
     // Frozen for the hooks that may quote it. Carried over with a kept choice so a re-render does
     // not re-read a rank that has since moved.
+    ...(args.fresh
+      ? { rerenderedAt: new Date().toISOString() }
+      : previous?.rerenderedAt
+        ? { rerenderedAt: previous.rerenderedAt }
+        : {}),
     ranks:
       kept && previous?.ranks
         ? previous.ranks

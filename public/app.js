@@ -653,7 +653,7 @@ async function loadVariants(id) {
   const job = data.job;
   const running = !!job?.running;
   // Re-render: every variant again with today's design. thumbnail.png -- what the video went up
-  // with -- stays; the old set is kept in thumbnail-prev/ (src/thumbnails/rerender.ts).
+  // with -- stays; the set from before the first re-render is kept in thumbnail-prev/ (src/thumbnails/rerender.ts).
   const rerender = data.canRerender
     ? `<div class="row thumbbar">
         <button type="button" id="thumbrerender" class="ghost"${running ? " disabled" : ""}>${running ? "Re-rendering…" : "Re-render thumbnails"}</button>
@@ -3326,7 +3326,7 @@ function paintSettings() {
         <button type="button" class="ghost" id="thumbsall">Re-render every uploaded video&rsquo;s thumbnails</button>
         <span class="msg" id="thumbsallmsg"></span>
       </div>
-      <div class="sethelp">One match at a time, never beside a render (the nightly&rsquo;s included); a match with anything else running is skipped. Render only: nothing changes on YouTube &mdash; each video&rsquo;s swap is its own press in its Thumbnail panel.</div>
+      <div class="sethelp">One match at a time, never beside a render: it waits for one, and the nightly waits for it; a match with anything else running is skipped. Render only: nothing changes on YouTube &mdash; each video&rsquo;s swap is its own press in its Thumbnail panel.</div>
     </div>`;
   $("#setsave").addEventListener("click", saveSettingsPanel);
   $("#thumbsall").addEventListener("click", async (ev) => {

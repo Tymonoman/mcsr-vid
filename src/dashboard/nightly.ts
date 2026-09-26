@@ -45,6 +45,7 @@ import { orderForDisplay } from "./suggestPresent.js";
 import { playoffBoard, type PlayoffBoard } from "../playoffs/playoffs.js";
 import { listProcessedMatchIds } from "./matchStatus.js";
 import { shortRunning } from "./shortsRoutes.js";
+import { anyThumbnailRunning, thumbnailRunning } from "./thumbnailRoutes.js";
 import { nightlyShortSummary, picksIdle, shortTick } from "./shortFlow.js";
 import { snapshot, startScan } from "./suggestScan.js";
 import { getMatch } from "../api/mcsrApi.js";
@@ -298,8 +299,17 @@ export interface NightlyOptions {
  */
 let lastStartedId: number | null = null;
 
-/** A pipeline, an encode or a Short on this match: the same three the delete guard refuses for. */
-const busyWith = (id: number): boolean => getJob(id)?.done === false || exportRunning(id) || shortRunning(id);
+/** A pipeline, an encode, a Short or a thumbnail re-render on this match. */
+const busyWith = (id: number): boolean =>
+  getJob(id)?.done === false || exportRunning(id) || shortRunning(id) || thumbnailRunning(id);
+
+/**
+ * True while a scheduled run is on its way to `startJob`. The thumbnails' bulk re-render
+ * (thumbnailRoutes.ts) holds its next match while this is set, and the run waits out the
+ * re-render in flight rather than skipping the night for a job of a minute or two.
+ */
+let starting = false;
+export const nightlyStarting = (): boolean => starting;
 
 const renderInFlight = (): boolean =>
   (lastStartedId !== null && busyWith(lastStartedId)) || listProcessedMatchIds().some(busyWith);
@@ -503,6 +513,21 @@ export async function runNightlyOnce(
   deps: Partial<NightlyDeps> = {},
   /** Which render of the night this is; `nightlyMaxRenders` is the last one. */
   started = 1,
+): Promise<NightlyRunResult> {
+  if (!deps.scheduled) return runOnce(notifyUrl, deps, started);
+  starting = true;
+  try {
+    while (anyThumbnailRunning()) await new Promise((r) => setTimeout(r, 1_000));
+    return await runOnce(notifyUrl, deps, started);
+  } finally {
+    starting = false;
+  }
+}
+
+async function runOnce(
+  notifyUrl: string,
+  deps: Partial<NightlyDeps>,
+  started: number,
 ): Promise<NightlyRunResult> {
   const {
     renderInFlight: busy = renderInFlight,

@@ -24,6 +24,9 @@ process.env.YOUTUBE_TOKEN_FILE = tokenFile;
 
 let owner = "UCmine";
 let imageStatus = 200;
+const JPEG = "J".repeat(8000);
+let imageBody = JPEG;
+let hasMaxres = true;
 const sets: Array<{ videoId: string; type: string; body: string }> = [];
 let downloads = 0;
 globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
@@ -43,7 +46,10 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
             categoryId: "20",
             thumbnails: {
               default: { url: "https://i.ytimg.com/vi/x/default.jpg", width: 120 },
-              maxres: { url: "https://i.ytimg.com/vi/x/maxresdefault.jpg", width: 1280 },
+              high: { url: "https://i.ytimg.com/vi/x/hqdefault.jpg", width: 480 },
+              ...(hasMaxres
+                ? { maxres: { url: "https://i.ytimg.com/vi/x/maxresdefault.jpg", width: 1280 } }
+                : {}),
             },
           },
         },
@@ -51,7 +57,7 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
     });
   if (url === "https://i.ytimg.com/vi/x/maxresdefault.jpg") {
     downloads++;
-    return new Response(imageStatus === 200 ? "jpeg-bytes" : "", { status: imageStatus });
+    return new Response(imageStatus === 200 ? imageBody : "", { status: imageStatus });
   }
   if (url.includes("/thumbnails/set?")) {
     const headers = init?.headers as Record<string, string>;
@@ -129,12 +135,22 @@ try {
   assert.equal(sets.length, 0);
   assert.ok(!existsSync(path.join(dir, YOUTUBE_PREV_FILE)));
   imageStatus = 200;
+  // The copy is kept for good, so it has to be the picture: a 200 with an empty body is refused,
+  // and so is a video whose largest image is the 4:3 letterboxed hqdefault (not even fetched).
+  imageBody = "";
+  await refused(swapThumbnail(100, false), /nothing changed/);
+  imageBody = JPEG;
+  hasMaxres = false;
+  await refused(swapThumbnail(100, false), /nothing changed/);
+  hasMaxres = true;
+  assert.equal(sets.length, 0);
+  assert.ok(!existsSync(path.join(dir, YOUTUBE_PREV_FILE)));
 
   // The put: the live image kept first, then the chosen variant sent as PNG, recorded in the ledger.
   const put = await swapThumbnail(100, false);
   assert.equal(put.title, "Live title");
   assert.equal(put.set.variant, "walking-crossed");
-  assert.equal(await readFile(path.join(dir, YOUTUBE_PREV_FILE), "utf8"), "jpeg-bytes");
+  assert.equal(await readFile(path.join(dir, YOUTUBE_PREV_FILE), "utf8"), JPEG);
   assert.deepEqual(sets[0], { videoId: "vidAAAAAAAA", type: "image/png", body: "new-png" });
   let after = await readUpload(100);
   assert.deepEqual(after?.thumbnailSet, put.set);
@@ -142,12 +158,12 @@ try {
 
   // A second put never replaces the kept copy: Undo goes back to the image before the dashboard.
   await swapThumbnail(100, false);
-  assert.equal(downloads, 2, "one refused download, one kept — none on the second put");
+  assert.equal(downloads, 3, "two refused downloads, one kept — none on the second put");
 
   // Undo: the kept JPEG goes back.
   const undone = await swapThumbnail(100, true);
   assert.equal(undone.set.variant, null);
-  assert.deepEqual(sets.at(-1), { videoId: "vidAAAAAAAA", type: "image/jpeg", body: "jpeg-bytes" });
+  assert.deepEqual(sets.at(-1), { videoId: "vidAAAAAAAA", type: "image/jpeg", body: JPEG });
   after = await readUpload(100);
   assert.equal(after?.thumbnailSet?.variant, null);
 

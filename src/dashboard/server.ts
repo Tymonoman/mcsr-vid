@@ -32,6 +32,7 @@ import {
   requestExport,
   runNightlyOnce,
   nightlyArmedAtMs,
+  nightlyStarting,
   scheduleNightly,
 } from "./nightly.js";
 import { abortJob, anyJobRunning, getJob, startJob, streamProgress, type Job } from "./jobs.js";
@@ -111,10 +112,15 @@ function json(res: ServerResponse, status: number, body: unknown): void {
   res.end(payload);
 }
 
+/** A pipeline run writes the thumbnails too, and a failed re-render restores its backup over them. */
+const THUMBS_BUSY =
+  "The thumbnails are re-rendering in this match's folder — start the render once they are done";
+
 /** How a series run drives the three steps inside the server (src/playoffs/series.ts `renderSeries`). */
 const serverSeriesRunners: SeriesRunners = {
   renderGame: (matchId) =>
     new Promise((resolve) => {
+      if (thumbnailRunning(matchId)) return resolve(THUMBS_BUSY);
       const job = startJob(matchId);
       const poll = () => (job.done ? resolve(job.aborted ? "stopped" : job.error) : setTimeout(poll, 5000));
       poll();
@@ -256,7 +262,7 @@ const server = createServer(async (req, res) => {
         matchDir,
         parseId,
         busy: busyIn,
-        pipelineRunning: anyJobRunning,
+        pipelineRunning: () => anyJobRunning() || nightlyStarting(),
       })
     )
       return;
@@ -364,6 +370,10 @@ const server = createServer(async (req, res) => {
         json(res, 400, { error: describeError(err) });
         return;
       }
+      if (thumbnailRunning(parsed)) {
+        json(res, 409, { error: THUMBS_BUSY });
+        return;
+      }
       const job = startJob(parsed);
       armFollowUps(job, url);
       json(res, 202, { matchId: parsed, running: !job.done });
@@ -458,8 +468,7 @@ const server = createServer(async (req, res) => {
         code: codeVersions(),
         enabled: hourUtc !== null,
         hourUtc,
-        nextRunAt:
-          nextRunMs === null ? null : new Date(nextRunMs).toISOString(),
+        nextRunAt: nextRunMs === null ? null : new Date(nextRunMs).toISOString(),
         candidate: pick && {
           matchId: pick.metrics.matchId,
           players: pick.metrics.players,
@@ -747,6 +756,10 @@ const server = createServer(async (req, res) => {
     }
 
     if (resource === "render" && req.method === "POST") {
+      if (thumbnailRunning(matchId)) {
+        json(res, 409, { error: THUMBS_BUSY });
+        return;
+      }
       const job = startJob(matchId);
       armFollowUps(job, url);
       json(res, 202, { matchId, running: !job.done });

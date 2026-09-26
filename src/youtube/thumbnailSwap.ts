@@ -17,6 +17,8 @@ import { liveThumbnail, setThumbnail } from "./youtube.js";
 import { allUploads, readUpload, writeUpload, type UploadRecord } from "./youtubeStore.js";
 
 export const YOUTUBE_PREV_FILE = "thumbnail-youtube-prev.jpg";
+/** A 1280x720 JPEG is tens of kilobytes; anything this small is not the picture. */
+const MIN_COPY_BYTES = 5_000;
 
 /** A refusal the route answers as 409: nothing was sent to YouTube. */
 export class SwapRefused extends Error {}
@@ -71,13 +73,17 @@ export async function swapThumbnail(
   // Reads the video first: refuses another channel's, and names what it wears now.
   const live = await liveThumbnail(record.videoId, config.youtubeChannelId, fetchImpl);
   if (!undo && !existsSync(prev)) {
-    const res = live.url ? await fetchImpl(live.url).catch(() => null) : null;
-    if (!res?.ok) {
+    // Kept once and never replaced, so it has to be the real picture: a 16:9 one at full size
+    // (below 1280 wide is a 4:3 letterboxed sddefault/hqdefault) and a body that is an image
+    // rather than an empty or placeholder answer. Anything less refuses, as a private video does.
+    const res = live.url && live.width >= 1280 ? await fetchImpl(live.url).catch(() => null) : null;
+    const bytes = res?.ok ? new Uint8Array(await res.arrayBuffer()) : null;
+    if (!bytes || bytes.length < MIN_COPY_BYTES) {
       throw new SwapRefused(
-        "Could not keep a copy of the thumbnail YouTube shows now (a private video's image is not served), so there would be nothing to undo to — nothing changed",
+        "Could not keep a full-size copy of the thumbnail YouTube shows now (a private video's image is not served), so there would be nothing to undo to — nothing changed",
       );
     }
-    await writeFile(prev, new Uint8Array(await res.arrayBuffer()));
+    await writeFile(prev, bytes);
   }
 
   await setThumbnail(record.videoId, file, fetchImpl);

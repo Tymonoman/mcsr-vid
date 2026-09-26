@@ -20,11 +20,13 @@ import {
   playoffsWithoutVods,
   playoffVodsReady,
   readNightlyState,
+  nightlyStarting,
   runNightlyOnce,
   shouldChainNextRender,
   writeNightlyState,
 } from "./nightly.js";
 import type { PlayoffBoard } from "../playoffs/playoffs.js";
+import { startRerender } from "./thumbnailRoutes.js";
 import type { MatchInfo } from "../api/types.js";
 
 const HOUR = 3_600_000;
@@ -426,6 +428,21 @@ try {
     assert.equal(skipNightOf(), "2026-09-09", "non-matching date is not cleared");
     setSkipNightOf(null);
     console.log("OK: skipNightOf skips scheduled run once and clears; Run now ignores it");
+  }
+
+  // A thumbnail re-render in flight: the scheduled run waits it out instead of skipping the
+  // night, and says so (`nightlyStarting`) so the bulk re-render holds its next match meanwhile.
+  {
+    let finish!: () => void;
+    startRerender(777001, () => new Promise((r) => (finish = () => r({} as never))));
+    const run = runNightlyOnce("", { renderInFlight: () => false, ranked: async () => [], scheduled: true });
+    await new Promise((r) => setTimeout(r, 1_200));
+    assert.equal(nightlyStarting(), true, "the run is holding for the re-render");
+    finish();
+    const out = await run;
+    assert.ok(!out.busy, `the run went ahead once the re-render was done: ${JSON.stringify(out)}`);
+    assert.equal(nightlyStarting(), false);
+    console.log("OK: the scheduled nightly waits out a thumbnail re-render");
   }
 } finally {
   await rm(media, { recursive: true, force: true });

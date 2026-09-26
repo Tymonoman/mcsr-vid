@@ -316,20 +316,26 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   `src/thumbnails/rerender.ts`, jobs in `src/dashboard/thumbnailRoutes.ts`; 26 Sept 2026, the
   operator: "i want an option to re render the thumbnails"): every variant drawn again with today's
   design (`fresh`), on any match with an export, a manifest or an upload record — a bare Studio
-  upload included. The old set is copied to `thumbnail-prev/` first (one generation) and put back
-  if the render fails; `thumbnail.png` is not touched, the chosen key carries over as
-  `chosenBy: "auto"` (nobody has looked at the new image), and nothing on YouTube changes. It
-  refuses while anything else writes into the directory (the Delete guard, `busyIn` in server.ts)
-  and shows on the strip's activity line. Settings → Thumbnails re-renders every uploaded long-form
-  (one per video id, so a series is game 1) one at a time, waiting out any pipeline run — the
-  nightly's included — and skipping a busy match; render only.
+  upload included. The set from before the *first* re-render (the stills, the manifest and the
+  `thumbnail.png` the video went up with) is kept in `thumbnail-prev/` for good — a second
+  re-render never replaces it, since it is the "old" of Test & Compare — and a failed render puts
+  back the set it started from; `thumbnail.png` is not touched, the chosen key carries over as
+  `chosenBy: "auto"` (nobody has looked at the new image), the manifest gains `rerenderedAt`, and
+  nothing on YouTube changes. It refuses while anything else writes into the directory (the Delete
+  guard, `busyIn` in server.ts), and a pipeline run on that match (both render routes, a series
+  run) refuses while it runs. Settings → Thumbnails re-renders every uploaded long-form (one per
+  video id, so a series is game 1) one at a time, waiting out any pipeline run and holding its next
+  match while a scheduled nightly is starting (`nightlyStarting`; that run waits out the
+  re-render in flight rather than skip the night; Run now answers busy), skipping a busy match;
+  render only.
 - **Put on YouTube / Undo on YouTube** (`POST /api/thumbnails/:id/youtube`, `{ undo }`,
   `src/youtube/thumbnailSwap.ts`): one press each, on the confirmed tile of a match whose own
   `youtube.json` is the long-form (a series' games 2..n carry game 1's id and get no button; a Short
   never). Before the first swap the image the video wears is downloaded from YouTube into
   `thumbnail-youtube-prev.jpg` — kept once, never overwritten, so Undo goes back to what it wore
   before the dashboard touched it; a private video's image is not served, so the swap refuses
-  there. `liveThumbnail` refuses another channel's video, as Adopt does. The record gains
+  there, and so does one whose largest image is under 1280 wide (the 4:3 letterboxed hqdefault) or
+  whose answer is under 5 KB. `liveThumbnail` refuses another channel's video, as Adopt does. The record gains
   `thumbnailSet: { variant, at }` (null = the old image back) and `finished.thumbnail: null`, so a
   later Finish never puts another image over it. The operator's plan (26 Sept): swap the
   low-traffic videos directly, and A/B the five with the most impressions in Studio's Test &
@@ -340,8 +346,10 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   `thumbnails.set`, `commentThreads.insert` and `videos.update` are all inside the token's
   `force-ssl` scope, so **Finish on YouTube** repairs a Studio upload too: playlists, the pinned
   comment and the tags. It leaves the thumbnail alone on a video uploaded elsewhere whose variant nobody
-  confirmed here, so it cannot replace an image picked in Studio — and on one swapped with Put on
-  YouTube, whose step the swap marks done. Changing a live video's thumbnail is that panel's press.
+  confirmed here, so it cannot replace an image picked in Studio — nor, on any video, a set
+  re-rendered after its upload (`rerenderedAt` later than `uploadedAt`: that is Put on YouTube's,
+  which keeps an undo copy; Adopt's own finish is exempt, a draft wears the auto frame), and a
+  swap marks its step done. Changing a live video's thumbnail is that panel's press.
 - **Adopt a Studio draft** (`POST /api/youtube/adopt/:id`, the panel's "Adopt this draft"): the
   operator drops the file into Studio leaving every box empty, pastes the 11-character id, and the
   title, description and tags go on through `videos.update`, then the finish steps run. It exists

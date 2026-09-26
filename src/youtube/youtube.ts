@@ -768,13 +768,13 @@ export async function liveThumbnail(
   videoId: string,
   channelId: string,
   fetchImpl: typeof fetch = fetch,
-): Promise<{ title: string; url: string | null }> {
+): Promise<{ title: string; url: string | null; width: number }> {
   const snippet = await readSnippet(videoId, fetchImpl);
   if (channelId && snippet.channelId && snippet.channelId !== channelId) {
     throw new Error(`Video ${videoId} belongs to channel ${snippet.channelId}, not yours — nothing written.`);
   }
   const largest = Object.values(snippet.thumbnails ?? {}).sort((a, b) => (b.width ?? 0) - (a.width ?? 0))[0];
-  return { title: snippet.title, url: largest?.url ?? null };
+  return { title: snippet.title, url: largest?.url ?? null, width: largest?.width ?? 0 };
 }
 
 /** Needs `youtube.force-ssl`; the read scopes alone cannot post. */

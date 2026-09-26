@@ -398,6 +398,8 @@ export async function finishOnYouTube(
   matchId: number,
   videoId: string,
   kind: UploadKind = "video",
+  /** Adopt's press: the draft wears YouTube's auto frame, so any confirmed variant may replace it. */
+  opts: { adopting?: boolean } = {},
 ): Promise<FinishedSteps> {
   const attempt = async (step: () => Promise<void>): Promise<string | null> => {
     try {
@@ -452,14 +454,25 @@ export async function finishOnYouTube(
     // rather than a fallback — the same test the publish checklist uses.
     const wasUploadedElsewhere = (record?.source ?? "dashboard") !== "dashboard";
     const variantConfirmed = manifest?.chosenBy === "operator";
+    // Thumbnails re-rendered after the video went up are a new picture for a video already
+    // wearing one — a Studio pick, or the set it was uploaded with. Putting that on is "Put on
+    // YouTube"'s press (src/youtube/thumbnailSwap.ts), which keeps the image it replaces for Undo;
+    // this step would replace it with no copy, on a retry nobody pressed for the thumbnail.
+    const rerenderedAfterUpload =
+      !opts.adopting &&
+      record !== null &&
+      manifest?.rerenderedAt !== undefined &&
+      Date.parse(manifest.rerenderedAt) > Date.parse(record.uploadedAt);
     finished.thumbnail =
       kind === "short"
         ? null
-        : wasUploadedElsewhere && !variantConfirmed
-          ? "left alone — this video was uploaded elsewhere and no variant was confirmed here"
-          : existsSync(thumb)
-            ? await attempt(() => setThumbnail(videoId, thumb))
-            : `no thumbnail at ${thumb}`;
+        : rerenderedAfterUpload
+          ? 'left alone — the thumbnails were re-rendered after the upload; "Put on YouTube" in the Thumbnail panel sets one'
+          : wasUploadedElsewhere && !variantConfirmed
+            ? "left alone — this video was uploaded elsewhere and no variant was confirmed here"
+            : existsSync(thumb)
+              ? await attempt(() => setThumbnail(videoId, thumb))
+              : `no thumbnail at ${thumb}`;
   }
   if (todo("comment")) {
     // A Short gets no comment. On the long-form, YouTube refuses comments while the video is

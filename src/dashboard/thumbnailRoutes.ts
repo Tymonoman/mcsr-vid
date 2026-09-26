@@ -43,6 +43,9 @@ const jobs = new Map<number, ThumbJob>();
 /** A re-render writing this match's thumbnails right now. */
 export const thumbnailRunning = (matchId: number): boolean => jobs.get(matchId)?.done === false;
 
+/** Any re-render in flight: the scheduled nightly waits it out before it starts (nightly.ts). */
+export const anyThumbnailRunning = (): boolean => [...jobs.values()].some((j) => !j.done);
+
 type Rerender = typeof rerenderThumbnails;
 
 export function startRerender(matchId: number, rerender: Rerender = rerenderThumbnails): ThumbJob {
