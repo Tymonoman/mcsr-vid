@@ -30,6 +30,9 @@ const jobs = new Map<number, Job>();
 
 export const getJob = (matchId: number): Job | undefined => jobs.get(matchId);
 
+/** Any pipeline run in flight — the nightly's included, which starts its renders through here. */
+export const anyJobRunning = (): boolean => [...jobs.values()].some((j) => !j.done);
+
 export function abortJob(matchId: number): void {
   jobs.get(matchId)?.controller.abort();
 }

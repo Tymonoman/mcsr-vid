@@ -34,7 +34,7 @@ import {
   nightlyArmedAtMs,
   scheduleNightly,
 } from "./nightly.js";
-import { abortJob, getJob, startJob, streamProgress, type Job } from "./jobs.js";
+import { abortJob, anyJobRunning, getJob, startJob, streamProgress, type Job } from "./jobs.js";
 import { STAGE_LABELS, STAGE_ORDER, STAGE_SHORT_LABELS } from "../pipeline/pipeline.js";
 import { presentSuggestions } from "./suggestPresent.js";
 import { dismiss, restore, snapshot, startScan } from "./suggestScan.js";
@@ -43,7 +43,8 @@ import { publishHourFor, publishSlotFor } from "../youtube/publishSlot.js";
 import { playoffBoard } from "../playoffs/playoffs.js";
 import { renderSeries, seriesState, type SeriesRunners } from "../playoffs/series.js";
 import { refreshRivalPostsIfStale, rivalPostsSnapshot, rivalRecentPostFor } from "./rivalPosts.js";
-import { chooseVariant, readManifest } from "../thumbnails/thumbnailVariants.js";
+import { readManifest } from "../thumbnails/thumbnailVariants.js";
+import { handleThumbnailRoute, thumbnailActivities, thumbnailRunning } from "./thumbnailRoutes.js";
 import { metaPaths } from "../pipeline/title.js";
 import { typedSpoiler } from "../pipeline/hooks.js";
 import { allArchiveStates, capacity, isArchived } from "./archive.js";
@@ -132,6 +133,28 @@ function armFollowUps(job: Job, url: URL): void {
   if (url.searchParams.get("export") !== "1") return;
   requestExport(job.matchId);
   afterSettled(job);
+}
+
+/**
+ * What is writing into a match's directory right now, in words, or null. Delete refuses on it, and
+ * so do the thumbnail re-render and the swap on YouTube.
+ */
+function busyIn(matchId: number): string | null {
+  return getJob(matchId)?.done === false
+    ? "a pipeline run"
+    : exportRunning(matchId)
+      ? "an export"
+      : shortRunning(matchId)
+        ? "a Short render"
+        : pickActivity(matchId) === "running"
+          ? "the model's pick (it writes the proxy there)"
+          : uploadRunning(matchId)
+            ? "an upload"
+            : thumbnailRunning(matchId)
+              ? "a thumbnail re-render"
+              : allArchiveStates().some((a) => a.matchId === matchId && a.running)
+                ? "an archive copy"
+                : null;
 }
 
 /**
@@ -224,6 +247,19 @@ const server = createServer(async (req, res) => {
     if (await handleExportRoute(req, res, segments, { json, readBody, matchDir, parseId })) return;
 
     if (await handleShortsRoute(req, res, segments, { json, readBody, matchDir, parseId })) return;
+
+    // The Thumbnail panel: variants, the choice, the re-render and the swap on YouTube.
+    if (
+      await handleThumbnailRoute(req, res, segments, {
+        json,
+        readBody,
+        matchDir,
+        parseId,
+        busy: busyIn,
+        pipelineRunning: anyJobRunning,
+      })
+    )
+      return;
 
     const [, resource, idRaw] = segments;
 
@@ -416,6 +452,7 @@ const server = createServer(async (req, res) => {
       const nextRunDate = nextRunMs === null ? null : new Date(nextRunMs).toISOString().slice(0, 10);
       const storedSkipNight = skipNightOf();
       const skipTonight = hourUtc !== null && storedSkipNight !== null && storedSkipNight === nextRunDate;
+      const summary = await nightlyShortSummary();
       json(res, 200, {
         // Boot commit vs checked-out commit: the strip says "restart" when they differ.
         code: codeVersions(),
@@ -438,7 +475,9 @@ const server = createServer(async (req, res) => {
         skipTonight,
         lastRun: readNightlyState(),
         // "3 waiting for a hook ›", "1 failed ›", and whether the model can be reached at all.
-        ...(await nightlyShortSummary()),
+        ...summary,
+        // The strip's activity line carries the thumbnail re-renders beside the Short chain's steps.
+        activity: { ...summary.activity, running: [...summary.activity.running, ...thumbnailActivities()] },
       });
       return;
     }
@@ -641,20 +680,7 @@ const server = createServer(async (req, res) => {
     // so it refuses while anything is still writing into that directory, and reports whether an
     // archived copy survived it. See src/dashboard/matchShelf.ts for why this exists at all.
     if (resource === "match" && req.method === "DELETE") {
-      const busy =
-        getJob(matchId)?.done === false
-          ? "a pipeline run"
-          : exportRunning(matchId)
-            ? "an export"
-            : shortRunning(matchId)
-              ? "a Short render"
-              : pickActivity(matchId) === "running"
-                ? "the model's pick (it writes the proxy there)"
-                : uploadRunning(matchId)
-                  ? "an upload"
-                  : allArchiveStates().some((a) => a.matchId === matchId && a.running)
-                    ? "an archive copy"
-                    : null;
+      const busy = busyIn(matchId);
       if (busy) {
         json(res, 409, { error: `Match ${matchId} has ${busy} in flight — stop it first` });
         return;
@@ -682,30 +708,6 @@ const server = createServer(async (req, res) => {
         return;
       }
       sendFile(res, path.join(matchDir(matchId), variant.file), "image/png");
-      return;
-    }
-
-    if (resource === "thumbnails" && req.method === "GET") {
-      json(
-        res,
-        200,
-        (await readManifest(matchDir(matchId))) ?? { chosen: null, hookText: null, variants: [] },
-      );
-      return;
-    }
-
-    // Promote a variant to thumbnail.png, which is the file that actually gets uploaded.
-    if (resource === "thumbnails" && req.method === "PUT") {
-      const body = JSON.parse(await readBody(req)) as { chosen?: unknown };
-      if (typeof body.chosen !== "string") {
-        json(res, 400, { error: 'expected { chosen: "<variant key>" }' });
-        return;
-      }
-      try {
-        json(res, 200, await chooseVariant(matchDir(matchId), body.chosen));
-      } catch (err) {
-        json(res, 400, { error: describeError(err) });
-      }
       return;
     }
 

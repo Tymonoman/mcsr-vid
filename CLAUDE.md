@@ -32,11 +32,11 @@ what an agent cannot derive from the code; the rest is in the files it names.
 | --- | --- |
 | `src/api/` | The outside services read: MCSR Ranked (`mcsrApi.ts`, `types.ts`), Twitch (`twitch.ts`, `twitchChat.ts`), avatar renders. |
 | `src/pipeline/` | A match to a finished video: fetch, VOD download/discovery, sync (`countdownDetect.ts`, `sync.ts`, `syncFile.ts`, `syncEdit.ts`), the overlay (`overlayProps.ts`, `overlayRender.ts`, `splitStates.ts`), the Kdenlive project and `export:fast`, and the text it writes (`title.ts`, `description.ts`, `hooks.ts`, `chapters.ts`). `pipeline.ts` is the stage runner. |
-| `src/thumbnails/` | The variant strip and its manifest. |
+| `src/thumbnails/` | The variant strip and its manifest, and the re-render (`rerender.ts`). |
 | `src/shorts/` | The model's pick (`videoPick.ts`, `watchPov.ts`, `pickCli.ts`), the heuristic scorer it falls back to, the reasoner, the vertical render, `generateShort.ts`. |
 | `src/playoffs/` | The bracket and its games (`playoffs.ts`), a series as one video (`series.ts`, `seriesCli.ts`). |
 | `src/youtube/` | The Data API client and auth, upload records, the upload itself, the channel pairing, the publish slot. |
-| `src/dashboard/` | The web server (`server.ts`, one dispatch chain), its route groups (`youtubeRoutes`, `exportRoutes`, `shortsRoutes`, `syncRoutes`), the match screen's payload (`matchMeta.ts`), jobs, the nightly, suggestions, the shelf (hidden/queue/checklist), the publish set. |
+| `src/dashboard/` | The web server (`server.ts`, one dispatch chain), its route groups (`youtubeRoutes`, `exportRoutes`, `shortsRoutes`, `syncRoutes`, `thumbnailRoutes`), the match screen's payload (`matchMeta.ts`), jobs, the nightly, suggestions, the shelf (hidden/queue/checklist), the publish set. |
 | `src/cli/` | Entry points nothing else imports: batch, status, score, chat, bench, retention, the TUI. |
 | `src/` root | `config.ts`, `cliArgs.ts`, `errorText.ts`, and the tests that cut across folders. |
 
@@ -311,12 +311,37 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   and its twins were deleted on 24 Sept: an older manifest's `hookText`/`-hook` records are read
   by `readManifest`, hidden by the panel and handed to the title by `carriedHookText`. The
   checklist's thumbnail pill ticks on `chosenBy: "operator"`, and `variantStillReusable` keeps a
-  PNG already on disk, so the layout reaches only matches rendered after it.
+  PNG already on disk, so a pipeline run reaches only matches rendered after the layout.
+- **Re-render thumbnails** (the Thumbnail panel's button, `POST /api/thumbnails/:id/rerender`,
+  `src/thumbnails/rerender.ts`, jobs in `src/dashboard/thumbnailRoutes.ts`; 26 Sept 2026, the
+  operator: "i want an option to re render the thumbnails"): every variant drawn again with today's
+  design (`fresh`), on any match with an export, a manifest or an upload record — a bare Studio
+  upload included. The old set is copied to `thumbnail-prev/` first (one generation) and put back
+  if the render fails; `thumbnail.png` is not touched, the chosen key carries over as
+  `chosenBy: "auto"` (nobody has looked at the new image), and nothing on YouTube changes. It
+  refuses while anything else writes into the directory (the Delete guard, `busyIn` in server.ts)
+  and shows on the strip's activity line. Settings → Thumbnails re-renders every uploaded long-form
+  (one per video id, so a series is game 1) one at a time, waiting out any pipeline run — the
+  nightly's included — and skipping a busy match; render only.
+- **Put on YouTube / Undo on YouTube** (`POST /api/thumbnails/:id/youtube`, `{ undo }`,
+  `src/youtube/thumbnailSwap.ts`): one press each, on the confirmed tile of a match whose own
+  `youtube.json` is the long-form (a series' games 2..n carry game 1's id and get no button; a Short
+  never). Before the first swap the image the video wears is downloaded from YouTube into
+  `thumbnail-youtube-prev.jpg` — kept once, never overwritten, so Undo goes back to what it wore
+  before the dashboard touched it; a private video's image is not served, so the swap refuses
+  there. `liveThumbnail` refuses another channel's video, as Adopt does. The record gains
+  `thumbnailSet: { variant, at }` (null = the old image back) and `finished.thumbnail: null`, so a
+  later Finish never puts another image over it. The operator's plan (26 Sept): swap the
+  low-traffic videos directly, and A/B the five with the most impressions in Studio's Test &
+  Compare, old vs new. `thumbs-rerender-check` drives both — the re-render for real, the swap
+  answered in the browser — so point it at a test server on a scratch copy of the media, never
+  the lab.
 - **`videos.insert` is the only call the audit gated** (`youtubeUploadEnabled`). `playlistItems.insert`,
   `thumbnails.set`, `commentThreads.insert` and `videos.update` are all inside the token's
   `force-ssl` scope, so **Finish on YouTube** repairs a Studio upload too: playlists, the pinned
   comment and the tags. It leaves the thumbnail alone on a video uploaded elsewhere whose variant nobody
-  confirmed here, so it cannot replace an image picked in Studio.
+  confirmed here, so it cannot replace an image picked in Studio — and on one swapped with Put on
+  YouTube, whose step the swap marks done. Changing a live video's thumbnail is that panel's press.
 - **Adopt a Studio draft** (`POST /api/youtube/adopt/:id`, the panel's "Adopt this draft"): the
   operator drops the file into Studio leaving every box empty, pastes the 11-character id, and the
   title, description and tags go on through `videos.update`, then the finish steps run. It exists

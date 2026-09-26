@@ -87,6 +87,13 @@ export interface RenderVariantsArgs {
   poses: PosePair[];
   onProgress?: (p: ThumbnailProgress) => void;
   signal?: AbortSignal;
+  /**
+   * The dashboard's "Re-render thumbnails" (src/thumbnails/rerender.ts): every still is drawn
+   * again with today's design, even one already on disk, and `thumbnail.png` — the image a
+   * published video went up with — is left as it is (created only when absent). The choice's key
+   * carries over, but as "auto": nobody has looked at the new image yet.
+   */
+  fresh?: boolean;
 }
 
 export const variantKey = (poses: PosePair): string => `${poses.left}-${poses.right}`;
@@ -221,7 +228,7 @@ export async function renderThumbnailVariants(args: RenderVariantsArgs): Promise
       // the fourth, and a re-run after an aborted batch should not redo the ones that landed.
       // The manifest must still list it, which is why the record is pushed before the skip. A
       // reused still is the render the old manifest recorded, not what today's cameras draw.
-      const reuse = existsSync(outPath) && variantStillReusable(previous, poses);
+      const reuse = !args.fresh && existsSync(outPath) && variantStillReusable(previous, poses);
       const was = reuse ? previous?.variants.find((v) => v.key === variantKey(poses)) : undefined;
       records.push({
         key: variantKey(poses),
@@ -258,7 +265,7 @@ export async function renderThumbnailVariants(args: RenderVariantsArgs): Promise
   // A choice carried over keeps whatever it said about itself — including nothing, for a sidecar
   // written before the field, whose pill must not change meaning because a pose was added to the
   // config. A fresh default says so: nobody has picked this one yet.
-  const chosenBy = kept ? previous.chosenBy : "auto";
+  const chosenBy = kept && !args.fresh ? previous.chosenBy : "auto";
 
   const manifest: VariantsManifest = {
     chosen,
@@ -276,9 +283,9 @@ export async function renderThumbnailVariants(args: RenderVariantsArgs): Promise
           },
   };
   await writeFile(manifestPath(args.outDir), JSON.stringify(manifest, null, 2), "utf8");
-  await copyFile(
-    path.join(args.outDir, records.find((r) => r.key === chosen)!.file),
-    path.join(args.outDir, "thumbnail.png"),
-  );
+  const canonical = path.join(args.outDir, "thumbnail.png");
+  if (!args.fresh || !existsSync(canonical)) {
+    await copyFile(path.join(args.outDir, records.find((r) => r.key === chosen)!.file), canonical);
+  }
   return manifest;
 }

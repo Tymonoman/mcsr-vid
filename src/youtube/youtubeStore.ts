@@ -47,6 +47,11 @@ export interface UploadRecord {
   source?: "dashboard" | "studio";
   /** What `finishOnYouTube` did to it, once it has run. */
   finished?: FinishedSteps;
+  /**
+   * The last thumbnail swap pressed on the dashboard (src/youtube/thumbnailSwap.ts): the variant
+   * put on, or null for the image it wore before the first swap, put back; and when.
+   */
+  thumbnailSet?: { variant: string | null; at: string };
 }
 
 const recordPath = (matchId: number, kind: UploadKind): string =>

@@ -636,7 +636,10 @@ async function loadChecklist(id) {
  * distinct pose: it is the default NMSR view, so every such variant is the same image, and
  * calling them three poses would make the eventual CTR comparison a lie.
  */
+let variantsPoll = null;
+
 async function loadVariants(id) {
+  clearTimeout(variantsPoll);
   const el = $("#variants");
   if (!el) return;
   let data;
@@ -646,10 +649,37 @@ async function loadVariants(id) {
     el.innerHTML = `<div class="scanline bad">${esc(e.message)}</div>`;
     return;
   }
+  if (selected !== id) return;
+  const job = data.job;
+  const running = !!job?.running;
+  // Re-render: every variant again with today's design. thumbnail.png -- what the video went up
+  // with -- stays; the old set is kept in thumbnail-prev/ (src/thumbnails/rerender.ts).
+  const rerender = data.canRerender
+    ? `<div class="row thumbbar">
+        <button type="button" id="thumbrerender" class="ghost"${running ? " disabled" : ""}>${running ? "Re-rendering…" : "Re-render thumbnails"}</button>
+        <span class="msg" id="thumbmsg">${
+          running
+            ? activitySum(job)
+            : job?.error
+              ? '<span class="bad">re-render failed &mdash; the previous set is back</span>'
+              : job
+                ? "re-rendered with today&rsquo;s design &mdash; pick one; YouTube is unchanged"
+                : "draws every pose again with today&rsquo;s design; nothing on YouTube changes"
+        }</span>
+      </div>`
+    : "";
+  if (running) variantsPoll = setTimeout(() => loadVariants(id), 3000);
+  // The images keep their URLs across a re-render, and the browser's memory cache keeps an image
+  // it has shown whatever no-store says: a new query once the run is done fetches the new stills.
+  const bust = job ? `&r=${encodeURIComponent(running ? "running" : job.since)}` : "";
+
   if (!data.variants.length) {
-    el.innerHTML = '<div class="empty">no thumbnails yet &mdash; the render makes them, four poses</div>';
+    el.innerHTML = `${rerender}<div class="empty">no thumbnails yet &mdash; ${data.canRerender ? "re-render to draw them" : "the render makes them, four poses"}</div>`;
+    wireVariantActions(id);
     return;
   }
+  // The long-form on the channel, when this match's thumbnail is the one it wears.
+  const yt = data.youtube && data.youtube.connected ? data.youtube : null;
 
   const tile = (v) => {
     const fellBack = v.leftProvider === "nmsr" || v.rightProvider === "nmsr";
@@ -662,11 +692,12 @@ async function loadVariants(id) {
     const confirmed = chosen && data.chosenBy !== "auto";
     return `
       <figure class="variant ${chosen ? "chosen" : ""}" data-key="${esc(v.key)}">
-        <img src="/api/thumbnail/${id}?v=${encodeURIComponent(v.key)}" alt="${esc(v.key)}" loading="lazy">
+        <img src="/api/thumbnail/${id}?v=${encodeURIComponent(v.key)}${bust}" alt="${esc(v.key)}" loading="lazy">
         <figcaption>
           <span class="key">${esc(v.leftPose)} / ${esc(v.rightPose)}</span>
           ${fellBack ? '<span class="fallback" title="This pose name has no camera, so it is the default NMSR view -- not the pose it is named after">static fallback</span>' : ""}
-          ${confirmed ? '<span class="is-chosen">in use</span>' : `<button type="button" class="use">${chosen ? "Keep this" : "Use this"}</button>`}
+          ${confirmed ? '<span class="is-chosen">in use</span>' : `<button type="button" class="use"${running ? " disabled" : ""}>${chosen ? "Keep this" : "Use this"}</button>`}
+          ${confirmed && yt && !running ? '<button type="button" class="ytput">Put on YouTube</button>' : ""}
         </figcaption>
       </figure>`;
   };
@@ -679,9 +710,23 @@ async function loadVariants(id) {
     columns.set(pair, [...(columns.get(pair) ?? []), v]);
   }
 
-  el.innerHTML = `<div class="strip">${[...columns.values()]
+  // What a press on YouTube does, said before it is pressed; what YouTube answered, after.
+  const set = yt?.set;
+  const ytLine = yt
+    ? `<div class="row thumbyt">
+        <span class="msg" id="thumbytmsg">Put on YouTube replaces the thumbnail on &ldquo;${esc(yt.title)}&rdquo; with the one in use${
+          set
+            ? ` &middot; on YouTube since ${esc(new Date(set.at).toLocaleString())}: ${set.variant ? esc(set.variant) : "the image it had before"}`
+            : ""
+        }</span>
+        ${yt.canUndo && set?.variant ? '<button type="button" class="ghost" id="thumbundo">Undo on YouTube</button>' : ""}
+      </div>`
+    : "";
+
+  el.innerHTML = `${rerender}<div class="strip">${[...columns.values()]
     .map((column) => `<div class="poses">${column.map(tile).join("")}</div>`)
-    .join("")}</div>`;
+    .join("")}</div>${ytLine}`;
+  wireVariantActions(id);
 
   el.querySelectorAll(".variant .use").forEach((btn) =>
     btn.addEventListener("click", async () => {
@@ -701,6 +746,50 @@ async function loadVariants(id) {
       loadChecklist(id);
     }),
   );
+}
+
+/** Re-render, and the two presses that change the live video's thumbnail. */
+function wireVariantActions(id) {
+  $("#thumbrerender")?.addEventListener("click", async (ev) => {
+    const btn = ev.currentTarget;
+    btn.disabled = true;
+    clearFailAt(btn);
+    try {
+      await api(`/api/thumbnails/${id}/rerender`, { method: "POST" });
+    } catch (e) {
+      btn.disabled = false;
+      failAt(btn, "Not re-rendered", e.message);
+      return;
+    }
+    void loadVariants(id);
+    void loadNightly();
+  });
+  const swap = async (btn, undo) => {
+    btn.disabled = true;
+    const msg = $("#thumbytmsg");
+    clearFailAt(msg);
+    if (msg) msg.textContent = undo ? "putting the old image back…" : "sending to YouTube…";
+    let r;
+    try {
+      r = await api(`/api/thumbnails/${id}/youtube`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ undo }),
+      });
+    } catch (e) {
+      await loadVariants(id);
+      failAt("#thumbytmsg", undo ? "Not undone on YouTube" : "Not put on YouTube", e.message);
+      return;
+    }
+    await loadVariants(id);
+    const after = $("#thumbytmsg");
+    if (after)
+      after.innerHTML = `<span class="ok">YouTube accepted it</span> &mdash; &ldquo;${esc(r.title)}&rdquo; now wears ${r.set.variant ? esc(r.set.variant) : "the image it had before"} (${esc(new Date(r.set.at).toLocaleTimeString())}); YouTube can take a few minutes to show it`;
+  };
+  document
+    .querySelector("#variants .ytput")
+    ?.addEventListener("click", (ev) => swap(ev.currentTarget, false));
+  $("#thumbundo")?.addEventListener("click", (ev) => swap(ev.currentTarget, true));
 }
 
 /**
@@ -2619,6 +2708,7 @@ function nightlyBody() {
     render: "cutting the Short of",
     "upload-video": "uploading",
     "upload-short": "uploading the Short of",
+    thumbnails: "re-rendering the thumbnails of",
   };
   const running = (ns.activity?.running ?? []).map(
     (r) =>
@@ -3229,8 +3319,62 @@ function paintSettings() {
     <div class="row">
       <button id="setsave">Save</button>
       <span class="msg" id="setmsg"></span>
+    </div>
+    <div class="setgroup">
+      <h3>Thumbnails</h3>
+      <div class="row">
+        <button type="button" class="ghost" id="thumbsall">Re-render every uploaded video&rsquo;s thumbnails</button>
+        <span class="msg" id="thumbsallmsg"></span>
+      </div>
+      <div class="sethelp">One match at a time, never beside a render (the nightly&rsquo;s included); a match with anything else running is skipped. Render only: nothing changes on YouTube &mdash; each video&rsquo;s swap is its own press in its Thumbnail panel.</div>
     </div>`;
   $("#setsave").addEventListener("click", saveSettingsPanel);
+  $("#thumbsall").addEventListener("click", async (ev) => {
+    const btn = ev.currentTarget;
+    btn.disabled = true;
+    clearFailAt(btn);
+    try {
+      paintThumbsAll(await api("/api/thumbnails/all/rerender", { method: "POST" }));
+    } catch (e) {
+      btn.disabled = false;
+      failAt(btn, "Not started", e.message);
+      return;
+    }
+    void loadNightly();
+  });
+  void api("/api/thumbnails/all/rerender")
+    .then(paintThumbsAll)
+    .catch(() => {});
+}
+
+/** The bulk re-render's line: its count while it runs (the strip shows the match), then what it did. */
+let thumbsAllPoll = null;
+function paintThumbsAll(r) {
+  clearTimeout(thumbsAllPoll);
+  const msg = $("#thumbsallmsg");
+  if (!msg) return;
+  const b = r.bulk;
+  $("#thumbsall").disabled = !!b?.running;
+  if (!b) msg.textContent = r.uploaded !== undefined ? `${r.uploaded} videos on the channel` : "";
+  else {
+    const extra = [
+      b.failed.length
+        ? `${b.failed.length} failed (${b.failed.map((f) => `#${f.matchId}: ${f.error}`).join("; ")})`
+        : "",
+      b.skipped.length
+        ? `${b.skipped.length} skipped (${b.skipped.map((s) => `#${s.matchId}: ${s.why}`).join("; ")})`
+        : "",
+    ].filter(Boolean);
+    msg.textContent = `${b.running ? "running" : "done"} · ${b.done} of ${b.total}${extra.length ? ` · ${extra.join(" · ")}` : ""}`;
+  }
+  if (b?.running)
+    thumbsAllPoll = setTimeout(
+      () =>
+        void api("/api/thumbnails/all/rerender")
+          .then(paintThumbsAll)
+          .catch(() => {}),
+      5000,
+    );
 }
 
 async function saveSettingsPanel() {

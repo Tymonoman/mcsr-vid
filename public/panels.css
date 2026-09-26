@@ -479,6 +479,19 @@
   border-bottom-width: 3px;
 }
 
+.variant .ytput {
+  padding: 3px 9px;
+  font-size: 12px;
+  border-bottom-width: 3px;
+}
+/* Re-render above the strip, the swap's line under it (loadVariants). */
+.thumbbar {
+  margin: 0 0 10px;
+}
+.thumbyt {
+  margin: 10px 0 0;
+}
+
 /* --- YouTube ------------------------------------------------------------------------------- */
 .upload label {
   display: block;
