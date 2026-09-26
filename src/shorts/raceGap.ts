@@ -1,4 +1,5 @@
 import type { MatchInfo } from "../api/types.js";
+import { deathKind } from "../pipeline/matchScore.js";
 import type { ShortCaption, ShortPick } from "./shortPlan.js";
 
 /**
@@ -79,7 +80,6 @@ export const MILESTONES: readonly Milestone[] = [
   },
 ];
 
-export const DEATH_TYPES = new Set(["projectelo.timeline.death", "projectelo.timeline.death_spawnpoint"]);
 const DRAGON_DEATH = "projectelo.timeline.dragon_death";
 
 /** Closer than this at the last rung both reached is a dead heat as far as a caption is concerned. */
@@ -161,8 +161,8 @@ const fit = (...lines: string[]): string =>
  * The Short's data captions, `atMs` into the Short. The first, at 4 s when the hook gives way,
  * states the race as it stands then (anything in the hook's four seconds folded in): the gap at
  * the last rung both reached, "NECK AND NECK", or — a single POV — what that player is doing.
- * Then one per milestone or death inside the window, of the players on screen, up to the moment
- * the game is decided and never past it.
+ * Then one per milestone, death or hunger reset (`deathKind`) inside the window, of the players
+ * on screen, up to the moment the game is decided and never past it.
  */
 export function raceCaptions(match: MatchInfo, pick: ShortPick): ShortCaption[] {
   const [l, r] = match.players;
@@ -214,8 +214,14 @@ export function raceCaptions(match: MatchInfo, pick: ShortPick): ShortCaption[] 
     const side = sideOf(match, e.uuid);
     if (!side || !onScreen(side) || e.time <= firstAt || e.time >= pick.endMs || e.time >= decided) continue;
     const at = e.time - pick.startMs;
-    if (DEATH_TYPES.has(e.type)) {
-      events.push({ atMs: at, text: fit(`${nick[side]} DIES`), side });
+    const death = deathKind(match, e);
+    if (death) {
+      // A hunger reset is a death on screen; the caption says it was on purpose.
+      const text =
+        death === "hungerReset"
+          ? fit(`${nick[side]} · HUNGER RESET`, "HUNGER RESET")
+          : fit(`${nick[side]} DIES`);
+      events.push({ atMs: at, text, side });
       continue;
     }
     const i = MILESTONES.findIndex((m) => m.type === e.type);

@@ -44,7 +44,7 @@ import { atomicOutput } from "../pipeline/atomicOutput.js";
 import { hookSuggestions, HOOK_SEED_RANK_ELO, spoilsTheResult } from "../pipeline/hooks.js";
 import { ANCHOR_SEC } from "../pipeline/kdenliveProject.js";
 import { SEPARATOR } from "../pipeline/title.js";
-import { computeMetrics } from "../pipeline/matchScore.js";
+import { computeMetrics, deathKind, phaseAt } from "../pipeline/matchScore.js";
 import { eloAtMatchStart } from "../pipeline/overlayProps.js";
 import { playoffContextFor } from "../playoffs/playoffs.js";
 import {
@@ -55,13 +55,14 @@ import {
   type SeriesGame,
 } from "../playoffs/series.js";
 import { exportMatchStartSec, percentOf } from "../pipeline/exportFast.js";
-import { DEATH_TYPES, decidedAtMs, MILESTONES, raceCaptions } from "./raceGap.js";
+import { decidedAtMs, MILESTONES, raceCaptions } from "./raceGap.js";
 import { NOT_SIGNED_IN, reasonerConfigured, runReasoner } from "./reasoner.js";
 import { modelFraction, pickPhases, pickProgress } from "./pickProgress.js";
 import { activityProgress, boxFailure, shortLog, type LogExtra } from "./shortLog.js";
 import { distinctShortMoments, leadChangeTimes, runMsOf, SHORT_WINDOW_SEC } from "./shortMoment.js";
 import { pickFile, SHORT_MAX_MS, SHORT_MIN_MS, type PlayerMoment, type ShortPick } from "./shortPlan.js";
-import { watchPovs, type PovWatch } from "./watchPov.js";
+import { SPEEDRUN_PRIMER } from "./speedrunPrimer.js";
+import { DryRunRefusal, watchPovs, type PovWatch } from "./watchPov.js";
 
 export { raceCaptions };
 
@@ -248,12 +249,17 @@ async function ensureProxy(
   signal: AbortSignal | undefined,
   note: Note,
   progress: (fraction: number) => void = () => {},
+  dryRun = false,
 ): Promise<string> {
   const out = path.join(dir, PROXY_FILE);
   if (existsSync(out) && statSync(out).mtimeMs >= statSync(video).mtimeMs) {
     note(`the model's ${fps} fps copy of ${path.basename(video)} is up to date — kept`);
     return out;
   }
+  if (dryRun)
+    throw new DryRunRefusal(
+      `a dry run writes nothing, and the model's copy (${out}) ${existsSync(out) ? "is older than the video (re-exported since)" : "is missing — run npm run pick without --dry-run once to make it"}`,
+    );
   const started = Date.now();
   note(`making the model's ${fps} fps copy of ${path.basename(video)} (640x360, nice 19)`);
   // What ffmpeg writes, from the cut to the end: its time= against it is the proxy's progress.
@@ -359,6 +365,16 @@ function gameFacts(span: GameSpan, series: boolean) {
     { split: "Dragon dies", type: "projectelo.timeline.dragon_death" },
   ];
   const nick = (uuid: string) => (uuid === l.uuid ? l.nickname : uuid === r.uuid ? r.nickname : null);
+  const theirs = m.timelines.filter((e) => nick(e.uuid)).sort((a, b) => a.time - b.time);
+  const died = theirs.flatMap((e) => {
+    const kind = deathKind(m, e);
+    return kind ? [{ e, kind }] : [];
+  });
+  const row = (e: (typeof theirs)[number]) => ({
+    player: nick(e.uuid),
+    at: clock(e.time / 1000),
+    phase: phaseAt(m, e.uuid, e.time),
+  });
   return {
     ...(series ? { game: span.gameNo, gameMatchId: m.id } : {}),
     left: { nickname: l.nickname, elo: eloAtMatchStart(m, l.uuid, null) || null },
@@ -369,10 +385,14 @@ function gameFacts(span: GameSpan, series: boolean) {
       left: first(row.type, l.uuid),
       right: first(row.type, r.uuid),
     })),
-    deaths: m.timelines
-      .filter((e) => DEATH_TYPES.has(e.type) && nick(e.uuid))
-      .sort((a, b) => a.time - b.time)
-      .map((e) => ({ player: nick(e.uuid), at: clock(e.time / 1000) })),
+    deaths: died
+      .filter((d) => d.kind !== "hungerReset")
+      .map((d) => ({
+        ...row(d.e),
+        respawn: d.kind === "death" ? "world spawn, empty inventory" : "the spawn point set before the End",
+      })),
+    hungerResets: died.filter((d) => d.kind === "hungerReset").map((d) => row(d.e)),
+    restarts: theirs.filter((e) => e.type === "projectelo.timeline.reset").map(row),
     leadChangesAt: leadChangeTimes(m, l.uuid, r.uuid).map((ms) => clock(ms / 1000)),
   };
 }
@@ -499,6 +519,18 @@ PLAYER MOMENTS (playerMoments, optional): for each player, the one moment of the
 `;
 }
 
+/**
+ * What each field of `gameFacts` means, from the API's own semantics (research 26 Sept 2026,
+ * `~/.claude/projects/-app/research/resume-2026-09-26/pick-mechanics-api.md`).
+ */
+const FACTS_KEY = `What they mean:
+- splits: when each player first got there. Bastion, Fortress: entered the structure. Blind: left the Nether by a portal toward the stronghold. Stronghold: entered the stronghold — not "found the portal room"; nothing here says how many eyes the portal needed. Dragon dies: the dragon's death animation ended, about 10 s after the killing blow; the first one decides the match, a later one does not count.
+- phase: the last split the player had reached — nether, after blind, stronghold, end (overworld: none yet, or a restart).
+- deaths: real deaths. respawn "world spawn, empty inventory": no spawn point set, a big setback. respawn "the spawn point set before the End": a death in the End, where no bed sets a spawn. A death in the End usually costs the race.
+- hungerResets: a respawn at a bed or anchor the player set, outside the End. Almost always the routine hunger reset, not a death; the death message tells an accident apart (see the hunger reset above).
+- restarts: the player restarted the seed in a new world.
+- leadChangesAt: when the order at a milestone swapped (first rod and the dragon included).`;
+
 /** Everything the model is told. Pure apart from reading the saved chats. */
 function pickPrompt(
   proxy: string,
@@ -537,10 +569,12 @@ THE VIDEO: ${proxy}
 Open it with view_file and watch all of it (${fps} fps, 640x360, with the streamers' own audio). Do not run any shell commands or scripts: use only your view_file tool on the video${watched.some((g) => g.povs.length > 0) ? " and on the stills listed below" : ""}. It is the finished long-form video: two players race the same seed side by side — LEFT half ${l?.nickname}'s POV, RIGHT half ${r?.nickname}'s — over a split-timer overlay whose RTA timer is the match clock.
 ${video}
 
+${SPEEDRUN_PRIMER}
+
 THE WINDOW
 - One continuous stretch of the video, 12 to 60 seconds; its length follows the moment. startSec and endSec are seconds of the video file.
 - Something must happen in the very first second: never open on a loading screen, a menu, an inventory, a black frame or quiet walking.
-- pov "left" or "right" (that player's POV alone) when the moment is one player's: a death, a zero cycle, a clutch, a blunder. pov "both" when the moment is the race between them; then "focus" may name whose audio leads.
+- pov "left" or "right" (that player's POV alone) when the moment is one player's: a real death (never a hunger reset), a clutch, a blunder. pov "both" when the moment is the race between them; then "focus" may name whose audio leads.
 - kind "play" for one player's play, "race" for the two of them racing.
 - rtaAtStart: the overlay's RTA timer at startSec, read off the frame, as m:ss. It is checked against the footage.${
     series
@@ -556,7 +590,7 @@ ${extrasSection(spans, past)}
 Reply with one JSON object and nothing else:
 {${series ? `"gameMatchId": <id>, ` : ""}"startSec": <number>, "endSec": <number>, "rtaAtStart": "m:ss", "pov": "both" | "left" | "right", "focus": "left" | "right" (optional, with pov "both"), "kind": "play" | "race", "hookSuggestion": "<text>", "why": "<text>", "titleHooks": ["<text>", …] (optional, up to ${TITLE_HOOKS}), "playerMoments": {"left": {"atSec": <number>, "line": "<text>"}, "right": {"atSec": <number>, "line": "<text>"}} (optional)}
 
-MATCH FACTS (MCSR Ranked API; times are RTA on ${series ? "each game's" : "the"} match clock):
+MATCH FACTS (MCSR Ranked API; times are RTA on ${series ? "each game's" : "the"} match clock). ${FACTS_KEY}
 ${JSON.stringify(series ? spans.map((s) => gameFacts(s, true)) : gameFacts(spans[0]!, false))}
 ${
   chats.length > 0
@@ -764,7 +798,16 @@ async function askModel(
     const fps = series ? 1 : 2;
     bar.at(0, 0);
     const proxy = path.resolve(
-      await ensureProxy(dir, source.video, source.matchStartSec, fps, opts.signal, note, (f) => bar.at(0, f)),
+      await ensureProxy(
+        dir,
+        source.video,
+        source.matchStartSec,
+        fps,
+        opts.signal,
+        note,
+        (f) => bar.at(0, f),
+        opts.dryRun,
+      ),
     );
     const watched: GameWatch[] = [];
     for (const [i, span] of spans.entries()) {
@@ -772,7 +815,12 @@ async function askModel(
         bar.at(1 + 2 * i + (side === "left" ? 0 : 1), f);
       watched.push({
         span,
-        povs: await watchPovs(span.match, { signal: opts.signal, log: note, onProgress }),
+        povs: await watchPovs(span.match, {
+          signal: opts.signal,
+          log: note,
+          onProgress,
+          cachedOnly: opts.dryRun,
+        }),
       });
     }
     if (watched.every((g) => g.povs.length === 0) && config.watchScript)
@@ -850,7 +898,7 @@ async function askModel(
       },
     };
   } catch (err) {
-    if (opts.signal?.aborted) throw err;
+    if (opts.signal?.aborted || err instanceof DryRunRefusal) throw err;
     const text = describeError(err);
     return { failure: boxFailure("the pick", text) ?? text };
   }
@@ -872,6 +920,12 @@ export interface PickOptions {
   timeoutMs?: number;
   /** Skip the model: the heuristic stands in, for this reason (the queue's stuck pick). */
   fallback?: string;
+  /**
+   * The whole pick, returned and nothing written into the match directory: no pick, no error file,
+   * no log line, no proxy, no /watch run. A kept pick is not returned — the model is always asked.
+   * A missing or stale proxy or /watch cache throws a `DryRunRefusal` instead of being made.
+   */
+  dryRun?: boolean;
 }
 
 const mmss = (ms: number): string =>
@@ -889,27 +943,30 @@ const apiDown = (err: unknown): boolean =>
 
 /**
  * The Short's window for a match — for a series, called with game 1's id. Never throws except
- * on abort: every failure is a heuristic pick plus `short-<id>.pick-error.json` saying why, and
- * every step is a line of `short-<id>.log.jsonl`.
+ * on abort and a dry run's refusal: every failure is a heuristic pick plus
+ * `short-<id>.pick-error.json` saying why, and every step is a line of `short-<id>.log.jsonl`.
  */
 export async function pickShortMoment(matchId: number, opts: PickOptions = {}): Promise<ShortPick> {
   // The live percent rides on every line, or an info line would clear the bar (shortLog).
   let bar: PickBar | undefined;
   const note: Note = (text, extra) => {
     opts.log?.(text, extra);
-    shortLog(matchId, "pick", text, { ...(bar ? { percent: bar.percent } : {}), ...extra });
+    if (!opts.dryRun) shortLog(matchId, "pick", text, { ...(bar ? { percent: bar.percent } : {}), ...extra });
   };
+  const write = !opts.dryRun;
   const dir = matchDir(matchId);
   const file = pickFile(dir, matchId);
   const errorFile = pickErrorFile(dir, matchId);
-  const fail = (message: string) =>
-    writeJsonAtomic(errorFile, { at: new Date().toISOString(), message }).catch(() => {});
+  const fail = async (message: string) => {
+    if (write) await writeJsonAtomic(errorFile, { at: new Date().toISOString(), message }).catch(() => {});
+  };
   try {
     opts.signal?.throwIfAborted();
     const source = await findVideo(dir, matchId);
     if (
       source &&
       !opts.force &&
+      write &&
       existsSync(file) &&
       statSync(file).mtimeMs > statSync(source.video).mtimeMs
     ) {
@@ -937,12 +994,17 @@ export async function pickShortMoment(matchId: number, opts: PickOptions = {}): 
           ),
           modelName(),
         ),
-        (percent, line) => activityProgress(matchId, "pick", percent, line),
+        // A dry run writes nothing: activityProgress appends quarter lines to the match's log.
+        (percent, line) => {
+          if (write) activityProgress(matchId, "pick", percent, line);
+        },
       );
       const asked = await askModel(dir, source, spans, opts, note, bar);
       if ("pick" in asked) {
-        await writeJsonAtomic(file, asked.pick);
-        await rm(errorFile, { force: true });
+        if (write) {
+          await writeJsonAtomic(file, asked.pick);
+          await rm(errorFile, { force: true });
+        }
         note(`picked by ${modelName()}: ${windowText(asked.pick, matchId)} — ${asked.pick.why}`);
         return asked.pick;
       }
@@ -952,14 +1014,14 @@ export async function pickShortMoment(matchId: number, opts: PickOptions = {}): 
     const pick = await heuristicPick(spans, failure);
     // No directory is a match never started, and a directory is what says one was: nothing is
     // created for it.
-    if (existsSync(dir)) {
+    if (existsSync(dir) && write) {
       await fail(failure);
       await writeJsonAtomic(file, pick);
     }
     note(`picked by the heuristic: ${windowText(pick, matchId)}`);
     return pick;
   } catch (err) {
-    if (opts.signal?.aborted) throw err;
+    if (opts.signal?.aborted || err instanceof DryRunRefusal) throw err;
     // Nothing to stand on — the match itself could not be read. Say so, and write no pick: a
     // made-up window must not wait for a hook as if it were one.
     const text = describeError(err);

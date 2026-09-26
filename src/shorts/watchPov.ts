@@ -65,6 +65,12 @@ function whisperKey(): boolean {
   }
 }
 
+/**
+ * A dry run (`npm run pick -- <id> --dry-run`) found an input it would have to make — the proxy or
+ * a /watch cache — and refuses rather than write into the match directory.
+ */
+export class DryRunRefusal extends Error {}
+
 /** A failed run: `message` in the operator's words, `detail` what watch.py last said. */
 class WatchFailure extends Error {
   constructor(
@@ -209,6 +215,7 @@ async function watchOne(
   signal: AbortSignal | undefined,
   log: Log,
   progress: (fraction: number) => void,
+  cachedOnly: boolean,
 ): Promise<PovWatch | null> {
   const dir = matchDir(match.id);
   const nick = match.players[side === "left" ? 0 : 1]?.nickname;
@@ -242,7 +249,14 @@ async function watchOne(
   ];
 
   const cacheFile = path.join(out, "watch.json");
-  if (existsSync(cacheFile) && statSync(cacheFile).mtimeMs > statSync(clip).mtimeMs) {
+  // Why the cache does not count, for a dry run's refusal: only a missing one is made by a real run.
+  let unusable: string;
+  if (!existsSync(cacheFile))
+    unusable = existsSync(out)
+      ? `the last run kept none (a failed run, or a Whisper failure that may pass, is not cached) — a run without --dry-run watches it again`
+      : `there is none yet — run npm run pick -- ${match.id} once without --dry-run to make it`;
+  else if (statSync(cacheFile).mtimeMs <= statSync(clip).mtimeMs) unusable = "the clip is newer than it";
+  else
     try {
       const cached = JSON.parse(readFileSync(cacheFile, "utf8")) as PovWatch & { args: string[] };
       if (JSON.stringify(cached.args) === JSON.stringify(args)) {
@@ -250,10 +264,19 @@ async function watchOne(
         log(`/watch on ${nick}'s stream is up to date — kept (${watched.frames.length} stills)`);
         return watched;
       }
+      // "--start 140.000", "--no-whisper": each flag with its value, so the difference reads.
+      const parts = (a: string[]) => a.join(" ").split(/ (?=--)/);
+      const [then, now] = [parts(cached.args), parts(args)];
+      const only = (a: string[], b: string[]) => a.filter((x) => !b.includes(x)).join(", ") || "nothing";
+      unusable = `it was made with other arguments (now ${only(now, then)}; then ${only(then, now)})${whisper ? "" : " — no Whisper key here: GROQ_API_KEY, as in /app/.env"}`;
     } catch {
       // Unreadable: watch again.
+      unusable = "it is unreadable";
     }
-  }
+  if (cachedOnly)
+    throw new DryRunRefusal(
+      `a dry run writes nothing, and /watch on ${nick}'s stream has no usable cache (${cacheFile}): ${unusable}`,
+    );
   const started = Date.now();
   log(`running /watch on ${nick}'s stream (${side}, ${Math.round(endSec)} s of match, nice 19)`);
   const framesOnDisk = () => {
@@ -302,6 +325,8 @@ export async function watchPovs(
     log?: Log;
     /** How far each POV's run is, 0–1 (pickProgress.ts `watchFraction`); 1 once it is over, however it ended. */
     onProgress?: (side: PovWatch["side"], fraction: number) => void;
+    /** A dry run — a missing or stale cache is a `DryRunRefusal`, never a run. */
+    cachedOnly?: boolean;
   } = {},
 ): Promise<PovWatch[]> {
   const log = opts.log ?? (() => {});
@@ -329,12 +354,18 @@ export async function watchPovs(
     opts.signal?.throwIfAborted();
     try {
       opts.onProgress?.(side, 0);
-      const watched = await watchOne(match, side, script, opts.signal, log, (f) =>
-        opts.onProgress?.(side, f),
+      const watched = await watchOne(
+        match,
+        side,
+        script,
+        opts.signal,
+        log,
+        (f) => opts.onProgress?.(side, f),
+        opts.cachedOnly ?? false,
       );
       if (watched) out.push(watched);
     } catch (err) {
-      if (opts.signal?.aborted) throw err;
+      if (opts.signal?.aborted || err instanceof DryRunRefusal) throw err;
       const nick = match.players[side === "left" ? 0 : 1]?.nickname ?? side;
       log(`/watch failed on ${nick}'s stream: ${describeError(err)} — the pick goes on without it`, {
         level: "warn",

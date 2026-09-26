@@ -517,7 +517,12 @@ async function suggestionsFor(
     const game =
       f.pick.gameMatchId === matchId ? match : await getMatch(f.pick.gameMatchId).catch(() => null);
     const events = (game?.timelines ?? []).filter((e) => e.time >= f.pick!.startMs && e.time < f.pick!.endMs);
-    moment = buildShortHook({ ...f.pick, score: 0, reason: "", events }, left.nickname, right.nickname);
+    moment = buildShortHook(
+      { ...f.pick, score: 0, reason: "", events },
+      left.nickname,
+      right.nickname,
+      game ?? match,
+    );
   }
   return {
     // The model's proposals (in the operator's own style, videoPick.ts) ahead of the chips.

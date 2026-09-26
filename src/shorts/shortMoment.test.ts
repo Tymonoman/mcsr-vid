@@ -18,9 +18,11 @@ const optsFor = (m: MatchInfo) => ({
 // there seconds apart — so the window that runs to the finish wins, which is what lets the Short
 // stamp its result card and stop on it (all three 30k+ reference Shorts do).
 //
-// The mid-run story is still found, not lost: the 9:08 stretch, where the lead flips and they die
-// 0.4s apart, is the best window that stops short of the end. Asserted on the shape of the
-// window, not the clock.
+// Their five bed-spawn deaths (two at blind, one on the way, both in the stronghold 0.4 s apart)
+// are hunger resets — routine, not a moment (matchScore.ts `deathKind`): no window is built on one,
+// and edcr led at every split, so there is no lead change to find either. Until 26 Sept 2026 the
+// resets were scored as deaths and paired as a "split", and the 9:08 stretch came out as a
+// double death with a lead change.
 {
   const match = load(12730175);
   const opts = optsFor(match);
@@ -31,14 +33,41 @@ const optsFor = (m: MatchInfo) => ({
     `expected the window that reaches the finish, got ${best.startMs / 1000}-${best.endMs / 1000}s`,
   );
   assert.match(best.reason, /ends on the finish/);
+  assert.deepEqual(leadChangeTimes(match, opts.leftUuid, opts.rightUuid), []);
+  for (const m of rankShortMoments(match, opts)) {
+    assert.ok(
+      !m.events.some((e) => e.type.includes("timeline.death")),
+      `a reset scored at ${m.startMs / 1000}s`,
+    );
+    assert.doesNotMatch(m.reason, /death_spawnpoint|lead change/);
+  }
+}
 
-  const midRun = rankShortMoments(match, opts).find((m) => m.endMs < opts.runMs)!;
-  assert.ok(
-    midRun.startMs >= 540_000 && midRun.endMs <= 575_000,
-    `expected the double-death window around 9:08, got ${midRun.startMs / 1000}-${midRun.endMs / 1000}s`,
+// --- A real death still is a moment, and so is a bed-spawn death in the End (no bed sets a spawn
+// there); a bed-spawn death anywhere else is a hunger reset — a respawn anchor in the Nether too —
+// and is not.
+{
+  const match = load(12902901);
+  const [a, b] = [match.players[0]!.uuid, match.players[1]!.uuid];
+  const at = (uuid: string, time: number, type: string) => ({ uuid, time, type });
+  const base = [
+    at(a, 100_000, "story.enter_the_nether"),
+    at(b, 101_000, "story.enter_the_nether"),
+    at(a, 300_000, "projectelo.timeline.blind_travel"),
+    at(b, 400_000, "story.enter_the_end"),
+  ];
+  const payoffAt = (extra: ReturnType<typeof at>) =>
+    rankShortMoments({ ...match, timelines: [...base, extra] }, optsFor(match)).some((m) =>
+      m.events.some((e) => e.time === extra.time),
+    );
+  assert.equal(
+    payoffAt(at(b, 200_000, "projectelo.timeline.death_spawnpoint")),
+    false,
+    "a Nether anchor reset",
   );
-  assert.match(midRun.reason, /lead change/);
-  assert.match(midRun.reason, /death/);
+  assert.equal(payoffAt(at(a, 200_000, "projectelo.timeline.death")), true, "a real death");
+  assert.equal(payoffAt(at(a, 330_000, "projectelo.timeline.death_spawnpoint")), false, "a hunger reset");
+  assert.equal(payoffAt(at(b, 420_000, "projectelo.timeline.death_spawnpoint")), true, "a death in the End");
 }
 
 // --- A forfeit or a draw ends with nothing in `timelines` at all, so before the synthetic

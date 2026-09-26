@@ -1,4 +1,4 @@
-import type { MatchInfo } from "../api/types.js";
+import type { MatchInfo, TimelineEntry } from "../api/types.js";
 // remotion/format.ts is a CSS-free leaf module (like layout.ts), so Node code can import it.
 import { formatTime } from "../../remotion/format.js";
 
@@ -36,7 +36,52 @@ const KILL_DRAGON = "end.kill_dragon";
  * it — silently zeroing the heaviest term of the chaos score (`chaosDeaths`, weight 3) for
  * however many matches use that spelling. Neither type is a dragon death; that is DRAGON_DEATH.
  */
-const DEATH_TYPES = new Set(["projectelo.timeline.death_spawnpoint", "projectelo.timeline.death"]);
+const DEATH = "projectelo.timeline.death";
+const DEATH_SPAWNPOINT = "projectelo.timeline.death_spawnpoint";
+const DEATH_TYPES = new Set([DEATH_SPAWNPOINT, DEATH]);
+
+/**
+ * Where in the run a player is: the last split they had reached before that moment. A `reset`
+ * (the seed restarted in a new world) puts them back in the Overworld.
+ */
+export type RunPhase = "overworld" | "nether" | "after blind" | "stronghold" | "end";
+const PHASE_OF: Record<string, RunPhase> = {
+  "projectelo.timeline.reset": "overworld",
+  "story.enter_the_nether": "nether",
+  "projectelo.timeline.blind_travel": "after blind",
+  "story.follow_ender_eye": "stronghold",
+  "story.enter_the_end": "end",
+};
+
+export function phaseAt(match: MatchInfo, uuid: string, atMs: number): RunPhase {
+  let phase: RunPhase = "overworld";
+  let last = -Infinity;
+  for (const e of match.timelines) {
+    const p = PHASE_OF[e.type];
+    if (p && e.uuid === uuid && e.time < atMs && e.time >= last) [phase, last] = [p, e.time];
+  }
+  return phase;
+}
+
+/**
+ * What a death on the timeline was — the one reading the pick's prompt, the Short's captions and
+ * hook, the heuristic and the title chips share (26 Sept 2026: the model read two hunger resets
+ * as "THEY BOTH DIED"). The API has two death types:
+ * - `death`: no spawn point set, so back to world spawn with an empty inventory. Always news.
+ * - `death_spawnpoint` (mcsrranked.com: "death reset"): a respawn at a bed or anchor the player
+ *   set. Outside the End it is the hunger reset — set a spawn, die on purpose, respawn with full
+ *   health and hunger — at a Nether respawn anchor, the blind portal or the portal room: five of
+ *   the six before blind travel on disk were Nether anchor resets, checked frame by frame (the
+ *   sixth, a piglin kill, only the death message on screen tells apart). No bed sets a spawn in
+ *   the End, so a death there is real ("bedDeath": back to the spawn set before it).
+ * Null for anything that is not a death.
+ */
+export type DeathKind = "death" | "bedDeath" | "hungerReset";
+export function deathKind(match: MatchInfo, e: TimelineEntry): DeathKind | null {
+  if (e.type === DEATH) return "death";
+  if (e.type !== DEATH_SPAWNPOINT) return null;
+  return phaseAt(match, e.uuid, e.time) === "end" ? "bedDeath" : "hungerReset";
+}
 
 /**
  * `end.kill_dragon` fires on the killing blow; `dragon_death` fires when the ~10s death
@@ -83,8 +128,11 @@ export interface MatchMetrics {
   leadChanges: number;
   /** Largest swing in the lead between consecutive splits - catches big collapses. */
   maxSwingMs: number;
+  /** Every death, hunger resets included: the chaos score's term (the operator's call). */
   deaths: number;
   deathsByPlayer: Record<string, number>;
+  /** Deaths that were deaths (`deathKind`), no hunger reset: what a hook may call a death. */
+  realDeaths: number;
 }
 
 export interface ScoreWeights {
@@ -200,8 +248,11 @@ export function computeMetrics(match: MatchInfo): MatchMetrics {
   }
 
   const deathsByPlayer: Record<string, number> = { [playerA.nickname]: 0, [playerB.nickname]: 0 };
+  let realDeaths = 0;
   for (const entry of match.timelines) {
     if (!DEATH_TYPES.has(entry.type)) continue;
+    if (entry.uuid === playerA.uuid || entry.uuid === playerB.uuid)
+      realDeaths += deathKind(match, entry) === "hungerReset" ? 0 : 1;
     if (entry.uuid === playerA.uuid) deathsByPlayer[playerA.nickname] += 1;
     else if (entry.uuid === playerB.uuid) deathsByPlayer[playerB.nickname] += 1;
   }
@@ -223,6 +274,7 @@ export function computeMetrics(match: MatchInfo): MatchMetrics {
     maxSwingMs,
     deaths: deathsByPlayer[playerA.nickname]! + deathsByPlayer[playerB.nickname]!,
     deathsByPlayer,
+    realDeaths,
   };
 }
 

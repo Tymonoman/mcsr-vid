@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { buildShortDescription, buildShortTitle, endCardText } from "./shortHook.js";
+import { readFileSync } from "node:fs";
+import type { MatchInfo } from "../api/types.js";
+import { buildShortDescription, buildShortHook, buildShortTitle, endCardText } from "./shortHook.js";
 import { HASHTAGS } from "../pipeline/description.js";
 import { layoutShortHook } from "../../remotion/shortHookLayout.js";
 
@@ -72,6 +74,28 @@ import { layoutShortHook } from "../../remotion/shortHookLayout.js";
   for (const slop of ["synced", "dual-POV", "Full ", " — "]) {
     assert.ok(!tip.join("\n").includes(slop), `"${slop}" must be gone from the Short description`);
   }
+}
+
+// --- The moment's own chip never calls a hunger reset a death: 13673240's pick, 7:14–7:43, holds
+// both players' stronghold resets and nothing else of note; the same window with a real death does.
+{
+  const m = JSON.parse(
+    readFileSync(new URL("../fixtures/match-13673240.json", import.meta.url), "utf8"),
+  ) as MatchInfo;
+  const window = (events: MatchInfo["timelines"]) => ({
+    startMs: 434_000,
+    endMs: 463_000,
+    score: 0,
+    reason: "",
+    events,
+  });
+  const inside = m.timelines.filter((e) => e.time >= 434_000 && e.time < 463_000);
+  assert.equal(buildShortHook(window(inside), "Infume", "Feinberg", m), "Infume vs Feinberg");
+  const died = inside.map((e) =>
+    e.type === "projectelo.timeline.death_spawnpoint" ? { ...e, type: "projectelo.timeline.death" } : e,
+  );
+  const real = { ...m, timelines: [...m.timelines.filter((e) => !inside.includes(e)), ...died] };
+  assert.equal(buildShortHook(window(died), "Infume", "Feinberg", real), "this is where it falls apart");
 }
 
 // --- The closing card (decision 13): a question only when the window stops before the result.

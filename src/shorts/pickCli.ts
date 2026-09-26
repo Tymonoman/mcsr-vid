@@ -1,5 +1,5 @@
 /**
- * npm run pick -- <matchId | all> [--force]
+ * npm run pick -- <matchId | all> [--force] [--dry-run]
  *
  * The Short's moment picker in the open (src/shorts/videoPick.ts): it makes the proxy, runs /watch
  * on each POV clip (src/shorts/watchPov.ts, `watchScript`), asks the configured `reasonerCommand`
@@ -7,17 +7,22 @@
  * retry when it answered nothing), why it was rejected when it was, and the pick it wrote. A pick
  * newer than its video is kept unless --force. `all` walks every match directory with a finished
  * video — a series counts once, under game 1, since the join deletes the other games' exports.
+ *
+ * --dry-run asks the model afresh and prints the pick while writing nothing into the match
+ * directory (no pick, no error file, no log line); it refuses, exit 1, when the proxy or a /watch
+ * cache would have to be made first — run once without it to make them.
  */
 import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { parseMatchId } from "../api/mcsrApi.js";
 import { config, matchDir } from "../config.js";
 import { pickShortMoment } from "./videoPick.js";
+import { DryRunRefusal } from "./watchPov.js";
 
 const args = process.argv.slice(2);
 const target = args.find((a) => !a.startsWith("--"));
 if (!target) {
-  console.error("usage: npm run pick -- <matchId | all> [--force]");
+  console.error("usage: npm run pick -- <matchId | all> [--force] [--dry-run]");
   process.exit(2);
 }
 const hasVideo = (id: number) =>
@@ -31,14 +36,22 @@ const ids =
         .sort((a, b) => a - b)
     : [parseMatchId(target)];
 
+const dryRun = args.includes("--dry-run");
 const controller = new AbortController();
 process.once("SIGINT", () => controller.abort());
 for (const id of ids) {
-  console.error(`--- ${id}`);
-  const pick = await pickShortMoment(id, {
-    force: args.includes("--force"),
-    signal: controller.signal,
-    log: (line) => console.error(`  ${line}`),
-  });
-  console.log(JSON.stringify(pick, null, 2));
+  console.error(`--- ${id}${dryRun ? " (dry run: nothing is written)" : ""}`);
+  try {
+    const pick = await pickShortMoment(id, {
+      force: args.includes("--force"),
+      dryRun,
+      signal: controller.signal,
+      log: (line) => console.error(`  ${line}`),
+    });
+    console.log(JSON.stringify(pick, null, 2));
+  } catch (err) {
+    if (!(err instanceof DryRunRefusal)) throw err;
+    console.error(`  refused: ${err.message}`);
+    process.exitCode = 1;
+  }
 }
