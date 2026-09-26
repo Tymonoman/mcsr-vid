@@ -246,6 +246,7 @@ console.log("thumbnailVariants: all checks passed");
   const prev = { chosen: null, hookText: "OLD", variants: [] } as unknown as VariantsManifest;
   assert.equal(variantStillReusable(prev, wc), true, "a plain still carries no text");
   assert.equal(variantStillReusable(null, wc), true, "no manifest: an aborted batch, resume it");
+  assert.equal(variantStillReusable(prev, wc, true), false, "a re-render draws every still again");
   // Before the twins, the un-suffixed file was the headline render; a manifest that says so is
   // the one case a plain still cannot be kept, or the migration would file text under "plain".
   const preTwins = { ...prev, variants: [{ key: "walking-crossed", hook: true }] } as VariantsManifest;

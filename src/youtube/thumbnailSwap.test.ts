@@ -6,8 +6,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { config } from "../config.js";
-import { swapThumbnail, SwapRefused, YOUTUBE_PREV_FILE } from "./thumbnailSwap.js";
-import { readUpload, writeUpload } from "./youtubeStore.js";
+import { swapThumbnail, SwapRefused, undoFile } from "./thumbnailSwap.js";
+import { onVideo, readUpload, videoWriting, writeUpload } from "./youtubeStore.js";
 
 const media = await mkdtemp(path.join(tmpdir(), "mcsr-swap-test-"));
 const saved = {
@@ -18,58 +18,48 @@ const saved = {
 const realFetch = globalThis.fetch;
 config.mediaDir = media;
 config.youtubeChannelId = "UCmine";
-const tokenFile = path.join(media, "token.json");
-await writeFile(tokenFile, JSON.stringify({ client_id: "c", client_secret: "s", refresh_token: "r" }));
-process.env.YOUTUBE_TOKEN_FILE = tokenFile;
+process.env.YOUTUBE_TOKEN_FILE = path.join(media, "token.json");
+await writeFile(
+  process.env.YOUTUBE_TOKEN_FILE,
+  JSON.stringify({ client_id: "c", client_secret: "s", refresh_token: "r" }),
+);
 
 let owner = "UCmine";
 let imageStatus = 200;
-const JPEG = "J".repeat(8000);
-let imageBody = JPEG;
+let imageBody: string | null = null;
 let hasMaxres = true;
+/** What YouTube serves as each video's thumbnail now. */
+const wears: Record<string, string> = { vidAAAAAAAA: "A".repeat(8000), vidBBBBBBBB: "B".repeat(8000) };
 const sets: Array<{ videoId: string; type: string; body: string }> = [];
 let downloads = 0;
+/** Runs inside thumbnails.set: another writer touching the record while the put is on the wire. */
+let duringSet: (() => Promise<void>) | null = null;
 globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
   const url = String(input);
   const json = (p: unknown) =>
     new Response(JSON.stringify(p), { headers: { "content-type": "application/json" } });
   if (url.startsWith("https://oauth2.googleapis.com/")) return json({ access_token: "t", expires_in: 3600 });
-  if (url.includes("/videos?part=snippet&"))
-    return json({
-      items: [
-        {
-          id: "vidAAAAAAAA",
-          snippet: {
-            channelId: owner,
-            title: "Live title",
-            description: "d",
-            categoryId: "20",
-            thumbnails: {
-              default: { url: "https://i.ytimg.com/vi/x/default.jpg", width: 120 },
-              high: { url: "https://i.ytimg.com/vi/x/hqdefault.jpg", width: 480 },
-              ...(hasMaxres
-                ? { maxres: { url: "https://i.ytimg.com/vi/x/maxresdefault.jpg", width: 1280 } }
-                : {}),
-            },
-          },
-        },
-      ],
-    });
+  if (url.includes("/videos?part=snippet&")) {
+    const id = new URL(url).searchParams.get("id")!;
+    const img = (name: string, width: number) => ({ url: `https://i.ytimg.com/vi/${id}/${name}.jpg`, width });
+    const thumbnails = {
+      high: img("hqdefault", 480),
+      ...(hasMaxres ? { maxres: img("maxresdefault", 1280) } : {}),
+    };
+    return json({ items: [{ id, snippet: { channelId: owner, title: `Live title ${id}`, thumbnails } }] });
+  }
   // hqdefault answers with a real-sized body too: the width, not the answer, has to refuse it.
-  if (
-    url === "https://i.ytimg.com/vi/x/maxresdefault.jpg" ||
-    url === "https://i.ytimg.com/vi/x/hqdefault.jpg"
-  ) {
+  const image = /^https:\/\/i\.ytimg\.com\/vi\/(\w+)\/(maxres|hq)default\.jpg$/.exec(url);
+  if (image) {
     downloads++;
-    return new Response(imageStatus === 200 ? imageBody : "", { status: imageStatus });
+    return new Response(imageStatus === 200 ? (imageBody ?? wears[image[1]!]!) : "", { status: imageStatus });
   }
   if (url.includes("/thumbnails/set?")) {
-    const headers = init?.headers as Record<string, string>;
-    sets.push({
-      videoId: new URL(url).searchParams.get("videoId")!,
-      type: headers["content-type"]!,
-      body: Buffer.from(init?.body as Uint8Array).toString(),
-    });
+    const videoId = new URL(url).searchParams.get("videoId")!;
+    const body = Buffer.from(init?.body as Uint8Array).toString();
+    sets.push({ videoId, type: (init?.headers as Record<string, string>)["content-type"]!, body });
+    wears[videoId] = body;
+    await duringSet?.();
     return json({ kind: "youtube#thumbnailSetResponse" });
   }
   throw new Error(`unexpected fetch: ${url}`);
@@ -79,30 +69,19 @@ const refused = (p: Promise<unknown>, re: RegExp) =>
   assert.rejects(p, (err: unknown) => err instanceof SwapRefused && re.test((err as Error).message));
 
 try {
+  // The live set the video went up with, and the re-rendered one beside it.
   const dir = path.join(media, "100");
-  await mkdir(dir);
-  const manifest = {
-    chosen: "walking-crossed",
-    chosenBy: "auto",
-    hookText: null,
-    variants: [
-      {
-        key: "walking-crossed",
-        leftPose: "walking",
-        rightPose: "crossed",
-        leftProvider: "starlight",
-        rightProvider: "starlight",
-        hook: false,
-        file: "thumbnail.walking-crossed.png",
-      },
-    ],
-  };
-  await writeFile(path.join(dir, "thumbnail.json"), JSON.stringify(manifest));
-  await writeFile(path.join(dir, "thumbnail.walking-crossed.png"), "new-png");
+  const fresh = path.join(dir, "thumbnail-new");
+  await mkdir(fresh, { recursive: true });
+  const live = { chosen: "walking-crossed", chosenBy: "operator", hookText: null, variants: [] };
+  await writeFile(path.join(dir, "thumbnail.json"), JSON.stringify(live));
+  await writeFile(path.join(dir, "thumbnail.png"), "live-png");
+  const tile = { key: "cheering-relaxing", leftPose: "cheering", rightPose: "relaxing", file: "t.cr.png" };
+  await writeFile(path.join(fresh, "thumbnail.json"), JSON.stringify({ chosen: tile.key, variants: [tile] }));
+  await writeFile(path.join(fresh, tile.file), "new-png");
+  const put = { variant: tile.key };
 
-  // Not on the channel: nothing to swap.
-  await refused(swapThumbnail(100, false), /no long-form/);
-
+  await refused(swapThumbnail(100, put), /no long-form/);
   const record = {
     videoId: "vidAAAAAAAA",
     uploadedAt: "2026-09-20T19:00:00Z",
@@ -111,70 +90,100 @@ try {
     thumbnailVariant: "walking-crossed",
     title: "Old title",
     source: "studio" as const,
-    finished: {
-      thumbnail: "left alone — this video was uploaded elsewhere and no variant was confirmed here",
-    },
+    finished: { thumbnail: "left alone — uploaded elsewhere", playlists: '"Season 11": quota' },
   };
   await writeUpload(100, record);
-
   // A series' game 2 carries game 1's video id; its thumbnail is not the series'.
   await mkdir(path.join(media, "101"));
   await writeUpload(101, record);
-  await refused(swapThumbnail(101, false), /no long-form/);
-
-  // The renderer's default is not a decision.
-  await refused(swapThumbnail(100, false), /No variant is confirmed/);
-  await writeFile(path.join(dir, "thumbnail.json"), JSON.stringify({ ...manifest, chosenBy: "operator" }));
-
-  // Nothing to undo before a first swap.
-  await refused(swapThumbnail(100, true), /Nothing to undo/);
+  await refused(swapThumbnail(101, put), /no long-form/);
+  // Only a tile of the new set, and nothing to undo before a first put.
+  await refused(swapThumbnail(100, { variant: "walking-crossed" }), /re-render the thumbnails first/);
+  await refused(swapThumbnail(100, { undo: true }), /Nothing to undo/);
 
   // Another channel's video: refused by the read, nothing downloaded, nothing set.
   owner = "UCother";
-  await assert.rejects(swapThumbnail(100, false), /belongs to channel UCother/);
+  await assert.rejects(swapThumbnail(100, put), /belongs to channel UCother/);
   owner = "UCmine";
-  // YouTube does not serve the image (expected of a private or scheduled video): no copy to undo
-  // to, so nothing is set — and the refusal says what was checked and when to press again.
+  // No full-size image came back (expected of a private or scheduled video): no copy to undo to,
+  // so nothing is set, and the line says when to press again. Nor for an empty 200, nor for a
+  // video whose largest image is the 4:3 hqdefault (not even fetched).
   imageStatus = 404;
   await refused(
-    swapThumbnail(100, false),
+    swapThumbnail(100, put),
     /no image 1280 wide and 5 KB or more came back.*nothing changed; press again once the video is public$/,
   );
-  assert.equal(sets.length, 0);
-  assert.ok(!existsSync(path.join(dir, YOUTUBE_PREV_FILE)));
   imageStatus = 200;
-  // The copy is kept for good, so it has to be the picture: a 200 with an empty body is refused,
-  // and so is a video whose largest image is the 4:3 letterboxed hqdefault (not even fetched:
-  // `downloads` below counts one refused 404, one refused empty body and the kept one).
   imageBody = "";
-  await refused(swapThumbnail(100, false), /nothing changed/);
-  imageBody = JPEG;
+  await refused(swapThumbnail(100, put), /nothing changed/);
+  imageBody = null;
   hasMaxres = false;
-  await refused(swapThumbnail(100, false), /nothing changed/);
+  await refused(swapThumbnail(100, put), /nothing changed/);
   hasMaxres = true;
   assert.equal(sets.length, 0);
-  assert.ok(!existsSync(path.join(dir, YOUTUBE_PREV_FILE)));
+  assert.ok(!existsSync(path.join(dir, undoFile("vidAAAAAAAA"))));
 
-  // The put: the live image kept first, then the chosen variant sent as PNG, recorded in the ledger.
-  const put = await swapThumbnail(100, false);
-  assert.equal(put.title, "Live title");
-  assert.equal(put.set.variant, "walking-crossed");
-  assert.equal(await readFile(path.join(dir, YOUTUBE_PREV_FILE), "utf8"), JPEG);
+  // The put: what the video wears kept first, then the new tile sent as PNG — while another writer
+  // (the nightly's playlist retry, say) records its step. Both land: the record is read again
+  // before it is written, and the ledger's thumbnail step counts as done.
+  duringSet = async () => {
+    const now = (await readUpload(100))!;
+    await writeUpload(100, { ...now, finished: { ...now.finished, playlists: null } });
+  };
+  const first = await swapThumbnail(100, put);
+  duringSet = null;
+  assert.equal(first.title, "Live title vidAAAAAAAA");
+  assert.deepEqual(first.set, { variant: tile.key, at: first.set.at, from: "thumbnail-new" });
+  assert.equal(await readFile(path.join(dir, undoFile("vidAAAAAAAA")), "utf8"), "A".repeat(8000));
   assert.deepEqual(sets[0], { videoId: "vidAAAAAAAA", type: "image/png", body: "new-png" });
   let after = await readUpload(100);
-  assert.deepEqual(after?.thumbnailSet, put.set);
-  assert.equal(after?.finished?.thumbnail, null, "a later Finish does not set another image over it");
+  assert.deepEqual(after?.thumbnailSet, first.set);
+  assert.equal(after?.finished?.playlists, null, "the other writer's step survives");
+  assert.equal(after?.finished?.thumbnail, null, "a later Finish does not set the live pick over it");
+  assert.equal(
+    await readFile(path.join(dir, "thumbnail.png"), "utf8"),
+    "live-png",
+    "the live set is untouched",
+  );
+  assert.deepEqual(JSON.parse(await readFile(path.join(dir, "thumbnail.json"), "utf8")), live);
 
-  // A second put never replaces the kept copy: Undo goes back to the image before the dashboard.
-  await swapThumbnail(100, false);
+  // A second put never replaces the kept copy; Undo puts it back.
+  await swapThumbnail(100, put);
   assert.equal(downloads, 3, "two refused downloads, one kept — none on the second put");
+  assert.equal((await swapThumbnail(100, { undo: true })).set.variant, null);
+  assert.deepEqual(sets.at(-1), { videoId: "vidAAAAAAAA", type: "image/jpeg", body: "A".repeat(8000) });
+  assert.equal((await readUpload(100))?.thumbnailSet?.variant, null);
 
-  // Undo: the kept JPEG goes back.
-  const undone = await swapThumbnail(100, true);
-  assert.equal(undone.set.variant, null);
-  assert.deepEqual(sets.at(-1), { videoId: "vidAAAAAAAA", type: "image/jpeg", body: JPEG });
+  // Another video for the match (a re-upload, an Adopt of another id) keeps its own copy: Undo on
+  // it puts its own image back, never the first video's.
+  await writeUpload(100, { ...record, videoId: "vidBBBBBBBB", finished: {} });
+  await refused(swapThumbnail(100, { undo: true }), /Nothing to undo/);
+  await swapThumbnail(100, put);
+  await swapThumbnail(100, { undo: true });
+  assert.deepEqual(sets.at(-1), { videoId: "vidBBBBBBBB", type: "image/jpeg", body: "B".repeat(8000) });
+
+  // An Adopt of yet another id while a put is on the wire: the put's ledger is not written onto it.
+  duringSet = () => writeUpload(100, { ...record, videoId: "vidCCCCCCCC", finished: {} });
+  await swapThumbnail(100, put);
+  duringSet = null;
   after = await readUpload(100);
-  assert.equal(after?.thumbnailSet?.variant, null);
+  assert.equal(after?.videoId, "vidCCCCCCCC");
+  assert.equal(after?.thumbnailSet, undefined, "not carried onto another video");
+
+  // One at a time per match: a put waits out a Finish in flight (the same record, maybe the same image).
+  await writeUpload(100, { ...record, videoId: "vidBBBBBBBB", finished: {} });
+  let releaseFinish!: () => void;
+  const finish = onVideo(100, () => new Promise<void>((r) => (releaseFinish = r)));
+  const before = sets.length;
+  const waiting = swapThumbnail(100, put);
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(videoWriting(100), true);
+  assert.equal(sets.length, before, "nothing sent while the Finish runs");
+  releaseFinish();
+  await finish;
+  await waiting;
+  assert.equal(sets.length, before + 1, "and it goes once the Finish is done");
+  assert.equal(videoWriting(100), false);
 
   console.log("thumbnailSwap: all checks passed");
 } finally {

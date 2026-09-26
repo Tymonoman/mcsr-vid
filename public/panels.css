@@ -480,13 +480,21 @@
 }
 
 .variant .ytput {
+  margin-left: auto;
   padding: 3px 9px;
   font-size: 12px;
   border-bottom-width: 3px;
 }
-/* Re-render above the strip, the swap's line under it (loadVariants). */
+/* Re-render above the live strip, the new set under it, the swap's line last (loadVariants). */
 .thumbbar {
   margin: 0 0 10px;
+}
+.thumbnew {
+  margin: 14px 0 8px;
+}
+/* The old and new images as files, for Studio's Test & Compare: a download, like the Final video's. */
+#variants a[download] {
+  color: var(--gold);
 }
 .thumbyt {
   margin: 10px 0 0;

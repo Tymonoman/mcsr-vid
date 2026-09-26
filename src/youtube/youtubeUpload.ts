@@ -16,9 +16,7 @@ import { describeError } from "../errorText.js";
 import { listProcessedMatchIds, matchStatusFor } from "../dashboard/matchStatus.js";
 import { playoffContextForId } from "../playoffs/playoffs.js";
 import { exportStale, staleExportMessage } from "../pipeline/syncFile.js";
-import { readManifest, rerenderedAfter } from "../thumbnails/thumbnailVariants.js";
-import { RUNNING_DIR } from "../thumbnails/rerender.js";
-import { longFormRecord } from "./thumbnailSwap.js";
+import { readManifest } from "../thumbnails/thumbnailVariants.js";
 import { HOOK_PLACEHOLDER, metaPaths } from "../pipeline/title.js";
 import { readShortCut, readShortHook, WAITING_FOR_HOOK } from "../shorts/shortHook.js";
 import { activityProgress, boxFailure, endActivity, shortLog, startActivity } from "../shorts/shortLog.js";
@@ -42,6 +40,8 @@ import {
   findExportedVideo,
   pinnedComment,
   allUploads,
+  longFormRecord,
+  onVideo,
   readUpload,
   uploadTextFor,
   writeUpload,
@@ -396,13 +396,16 @@ async function earlierVideoOfPair(
  * `videos.insert` had returned seconds earlier. The button is on every published match and the
  * scan can auto-finish, so pressing it twice must be free.
  */
-export async function finishOnYouTube(
+export function finishOnYouTube(
   matchId: number,
   videoId: string,
   kind: UploadKind = "video",
-  /** Adopt's press: the draft wears YouTube's auto frame, so any confirmed variant may replace it. */
-  opts: { adopting?: boolean } = {},
 ): Promise<FinishedSteps> {
+  // Waits out a "Put on YouTube" on this match, whose image and ledger it would otherwise undo.
+  return onVideo(matchId, () => finishSteps(matchId, videoId, kind));
+}
+
+async function finishSteps(matchId: number, videoId: string, kind: UploadKind): Promise<FinishedSteps> {
   const attempt = async (step: () => Promise<void>): Promise<string | null> => {
     try {
       await step();
@@ -456,31 +459,20 @@ export async function finishOnYouTube(
     // rather than a fallback — the same test the publish checklist uses.
     const wasUploadedElsewhere = (record?.source ?? "dashboard") !== "dashboard";
     const variantConfirmed = manifest?.chosenBy === "operator";
-    // Thumbnails re-rendered after the video went up are a new picture for a video already
-    // wearing one — a Studio pick, or the set it was uploaded with. Putting that on is "Put on
-    // YouTube"'s press (src/youtube/thumbnailSwap.ts), which keeps the image it replaces for Undo;
-    // this step would replace it with no copy, on a retry nobody pressed for the thumbnail.
-    //
     // And only the folder that owns the video sets its image: a series' games 2..n carry game 1's
-    // video id (a copied record, or none since the channel scan stopped recording them, while the
-    // panel still pairs them from the description), and with no record here there is no ledger to
-    // make a second press free either.
+    // video id (a copied record, or none — the channel scan records none for them, while the panel
+    // still pairs them from the description and offers Finish), and would put their own pick over
+    // the series' — over a "Put on YouTube" from game 1 too — with no ledger to stop the next press.
     finished.thumbnail =
       kind === "short"
         ? null
-        : record === null
-          ? "left alone — this folder holds no upload record of the video (a series' games 2..n never do: game 1's folder sets its image; a Studio upload gets one when the channel is checked)"
-          : !(await longFormRecord(matchId))
-            ? "left alone — game 1's folder sets this video's thumbnail"
-            : existsSync(path.join(dir, RUNNING_DIR))
-              ? "left alone — the thumbnails are being re-rendered; press Finish again once they are done"
-              : !opts.adopting && rerenderedAfter(manifest, record.uploadedAt)
-                ? 'left alone — the thumbnails were re-rendered after the upload; "Put on YouTube" in the Thumbnail panel sets one'
-                : wasUploadedElsewhere && !variantConfirmed
-                  ? "left alone — this video was uploaded elsewhere and no variant was confirmed here"
-                  : existsSync(thumb)
-                    ? await attempt(() => setThumbnail(videoId, thumb))
-                    : `no thumbnail at ${thumb}`;
+        : !(await longFormRecord(matchId))
+          ? "left alone — this folder holds no upload record of its own for the video (a series' games 2..n: game 1's folder sets its image)"
+          : wasUploadedElsewhere && !variantConfirmed
+            ? "left alone — this video was uploaded elsewhere and no variant was confirmed here"
+            : existsSync(thumb)
+              ? await attempt(() => setThumbnail(videoId, thumb))
+              : `no thumbnail at ${thumb}`;
   }
   if (todo("comment")) {
     // A Short gets no comment. On the long-form, YouTube refuses comments while the video is

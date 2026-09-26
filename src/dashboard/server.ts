@@ -44,8 +44,9 @@ import { publishHourFor, publishSlotFor } from "../youtube/publishSlot.js";
 import { playoffBoard } from "../playoffs/playoffs.js";
 import { renderSeries, seriesState, type SeriesRunners } from "../playoffs/series.js";
 import { refreshRivalPostsIfStale, rivalPostsSnapshot, rivalRecentPostFor } from "./rivalPosts.js";
-import { readManifest } from "../thumbnails/thumbnailVariants.js";
+import { chooseVariant, readManifest } from "../thumbnails/thumbnailVariants.js";
 import { handleThumbnailRoute, thumbnailActivities, thumbnailRunning } from "./thumbnailRoutes.js";
+import { NEW_DIR } from "../thumbnails/rerender.js";
 import { metaPaths } from "../pipeline/title.js";
 import { typedSpoiler } from "../pipeline/hooks.js";
 import { allArchiveStates, capacity, isArchived } from "./archive.js";
@@ -112,9 +113,8 @@ function json(res: ServerResponse, status: number, body: unknown): void {
   res.end(payload);
 }
 
-/** A pipeline run writes the thumbnails too, and a failed re-render restores its backup over them. */
-const THUMBS_BUSY =
-  "The thumbnails are re-rendering in this match's folder — start the render once they are done";
+/** A pipeline run, "Use this" and a re-render of a match not on the channel all write its live set. */
+const THUMBS_BUSY = "The thumbnails are re-rendering in this match's folder — try again once they are done";
 
 /** How a series run drives the three steps inside the server (src/playoffs/series.ts `renderSeries`). */
 const serverSeriesRunners: SeriesRunners = {
@@ -468,7 +468,8 @@ const server = createServer(async (req, res) => {
         code: codeVersions(),
         enabled: hourUtc !== null,
         hourUtc,
-        nextRunAt: nextRunMs === null ? null : new Date(nextRunMs).toISOString(),
+        nextRunAt:
+          nextRunMs === null ? null : new Date(nextRunMs).toISOString(),
         candidate: pick && {
           matchId: pick.metrics.matchId,
           players: pick.metrics.players,
@@ -703,20 +704,40 @@ const server = createServer(async (req, res) => {
     }
 
     if (resource === "thumbnail" && req.method === "GET") {
-      // `?v=<key>` serves one variant. The key indexes the manifest rather than being joined
-      // into a path, so it cannot walk out of the match directory.
+      // `?v=<key>` serves one variant, `&new=1` one of the re-rendered set (src/thumbnails/rerender.ts).
+      // The key indexes the manifest rather than being joined into a path, so it cannot walk out
+      // of the match directory.
       const key = url.searchParams.get("v");
       if (key === null) {
         sendFile(res, path.join(matchDir(matchId), "thumbnail.png"), "image/png");
         return;
       }
-      const manifest = await readManifest(matchDir(matchId));
-      const variant = manifest?.variants.find((v) => v.key === key);
+      const dir = path.join(matchDir(matchId), url.searchParams.has("new") ? NEW_DIR : "");
+      const variant = (await readManifest(dir))?.variants.find((v) => v.key === key);
       if (!variant) {
         json(res, 404, { error: `no thumbnail variant "${key}" for match ${matchId}` });
         return;
       }
-      sendFile(res, path.join(matchDir(matchId), variant.file), "image/png");
+      sendFile(res, path.join(dir, variant.file), "image/png");
+      return;
+    }
+
+    // Promote a variant to thumbnail.png, which is the file that actually gets uploaded.
+    if (resource === "thumbnails" && req.method === "PUT") {
+      const body = JSON.parse(await readBody(req)) as { chosen?: unknown };
+      if (typeof body.chosen !== "string") {
+        json(res, 400, { error: 'expected { chosen: "<variant key>" }' });
+        return;
+      }
+      if (thumbnailRunning(matchId)) {
+        json(res, 409, { error: THUMBS_BUSY });
+        return;
+      }
+      try {
+        json(res, 200, await chooseVariant(matchDir(matchId), body.chosen));
+      } catch (err) {
+        json(res, 400, { error: describeError(err) });
+      }
       return;
     }
 

@@ -652,8 +652,8 @@ async function loadVariants(id) {
   if (selected !== id) return;
   const job = data.job;
   const running = !!job?.running;
-  // Re-render: every variant again with today's design. thumbnail.png -- what the video went up
-  // with -- stays; the set from before the first re-render is kept in thumbnail-prev/ (src/thumbnails/rerender.ts).
+  // Re-render: every variant again with today's design. On a match already on the channel the new
+  // set lands in a folder of its own and the live one is not touched (src/thumbnails/rerender.ts).
   const rerender = data.canRerender
     ? `<div class="row thumbbar">
         <button type="button" id="thumbrerender" class="ghost"${running ? " disabled" : ""}>${running ? "Re-rendering…" : "Re-render thumbnails"}</button>
@@ -661,10 +661,8 @@ async function loadVariants(id) {
           running
             ? activitySum(job)
             : job?.error
-              ? '<span class="bad">re-render failed &mdash; the previous set is back</span>'
-              : job
-                ? "re-rendered with today&rsquo;s design &mdash; pick one; YouTube is unchanged"
-                : "draws every pose again with today&rsquo;s design; nothing on YouTube changes"
+              ? `<span class="bad">re-render failed: ${esc(job.error)}</span>`
+              : `${job ? "re-rendered with" : "draws every pose again in"} today&rsquo;s design${data.onChannel ? " beside the live set; the live thumbnail and YouTube are unchanged" : "; nothing on YouTube changes"}`
         }</span>
       </div>`
     : "";
@@ -672,14 +670,9 @@ async function loadVariants(id) {
   // The images keep their URLs across a re-render, and the browser's memory cache keeps an image
   // it has shown whatever no-store says: a new query once the run is done fetches the new stills.
   const bust = job ? `&r=${encodeURIComponent(running ? "running" : job.since)}` : "";
-
-  if (!data.variants.length) {
-    el.innerHTML = `${rerender}<div class="empty">no thumbnails yet &mdash; ${data.canRerender ? "re-render to draw them" : "the render makes them, four poses"}</div>`;
-    wireVariantActions(id);
-    return;
-  }
   // The long-form on the channel, when this match's thumbnail is the one it wears.
   const yt = data.youtube && data.youtube.connected ? data.youtube : null;
+  const fresh = data.newVariants ?? [];
 
   const tile = (v) => {
     const fellBack = v.leftProvider === "nmsr" || v.rightProvider === "nmsr";
@@ -697,7 +690,19 @@ async function loadVariants(id) {
           <span class="key">${esc(v.leftPose)} / ${esc(v.rightPose)}</span>
           ${fellBack ? '<span class="fallback" title="This pose name has no camera, so it is the default NMSR view -- not the pose it is named after">static fallback</span>' : ""}
           ${confirmed ? '<span class="is-chosen">in use</span>' : `<button type="button" class="use"${running ? " disabled" : ""}>${chosen ? "Keep this" : "Use this"}</button>`}
-          ${confirmed && yt && !running ? '<button type="button" class="ytput">Put on YouTube</button>' : ""}
+        </figcaption>
+      </figure>`;
+  };
+  // A tile of the new set: put it on the video, or download it for Studio's Test & Compare.
+  const newTile = (v) => {
+    const src = `/api/thumbnail/${id}?v=${encodeURIComponent(v.key)}&new=1`;
+    return `
+      <figure class="variant" data-key="${esc(v.key)}">
+        <img src="${src}${bust}" alt="${esc(v.key)}, new design" loading="lazy">
+        <figcaption>
+          <span class="key">${esc(v.leftPose)} / ${esc(v.rightPose)}</span>
+          ${yt && !running ? '<button type="button" class="ytput">Put on YouTube</button>' : ""}
+          <a href="${src}" download="${id}-new-${esc(v.key)}.png">download</a>
         </figcaption>
       </figure>`;
   };
@@ -709,23 +714,31 @@ async function loadVariants(id) {
     const pair = `${v.leftPose}-${v.rightPose}`;
     columns.set(pair, [...(columns.get(pair) ?? []), v]);
   }
+  const live = data.variants.length
+    ? `<div class="strip">${[...columns.values()]
+        .map((column) => `<div class="poses">${column.map(tile).join("")}</div>`)
+        .join("")}</div>`
+    : `<div class="empty">no thumbnails yet &mdash; ${data.canRerender ? "re-render to draw them" : "the render makes them, four poses"}</div>`;
+  const newSet = fresh.length
+    ? `<div class="row thumbnew"><b>New design</b><span class="msg">for Studio&rsquo;s Test &amp; Compare: <a href="/api/thumbnail/${id}" download="${id}-current.png">download the current thumbnail</a> and a new tile</span></div>
+      <div class="strip">${fresh.map((v) => `<div class="poses">${newTile(v)}</div>`).join("")}</div>`
+    : "";
 
   // What a press on YouTube does, said before it is pressed; what YouTube answered, after.
   const set = yt?.set;
-  const ytLine = yt
-    ? `<div class="row thumbyt">
-        <span class="msg" id="thumbytmsg">Put on YouTube replaces the thumbnail on &ldquo;${esc(yt.title)}&rdquo; with the one in use${
+  const ytLine =
+    yt && fresh.length
+      ? `<div class="row thumbyt">
+        <span class="msg" id="thumbytmsg">${
           set
-            ? ` &middot; on YouTube since ${esc(new Date(set.at).toLocaleString())}: ${set.variant ? esc(set.variant) : "the image it had before"}`
-            : ""
+            ? `on YouTube since ${esc(new Date(set.at).toLocaleString())}: ${set.variant ? `${esc(set.variant)}, new design${yt.redrawnSince ? " &mdash; the tile has been drawn again since; YouTube has the earlier drawing" : ""}` : "the image it had before"}`
+            : `Put on YouTube replaces the thumbnail on &ldquo;${esc(yt.title)}&rdquo; with that tile; Undo puts back the one it wears now`
         }</span>
         ${yt.canUndo && set?.variant ? '<button type="button" class="ghost" id="thumbundo">Undo on YouTube</button>' : ""}
       </div>`
-    : "";
+      : "";
 
-  el.innerHTML = `${rerender}<div class="strip">${[...columns.values()]
-    .map((column) => `<div class="poses">${column.map(tile).join("")}</div>`)
-    .join("")}</div>${ytLine}`;
+  el.innerHTML = `${rerender}${live}${newSet}${ytLine}`;
   wireVariantActions(id);
 
   el.querySelectorAll(".variant .use").forEach((btn) =>
@@ -764,32 +777,34 @@ function wireVariantActions(id) {
     void loadVariants(id);
     void loadNightly();
   });
-  const swap = async (btn, undo) => {
+  const swap = async (btn, body) => {
     btn.disabled = true;
     const msg = $("#thumbytmsg");
     clearFailAt(msg);
-    if (msg) msg.textContent = undo ? "putting the old image back…" : "sending to YouTube…";
+    if (msg) msg.textContent = body.undo ? "putting the old image back…" : "sending to YouTube…";
     let r;
     try {
       r = await api(`/api/thumbnails/${id}/youtube`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ undo }),
+        body: JSON.stringify(body),
       });
     } catch (e) {
       await loadVariants(id);
-      failAt("#thumbytmsg", undo ? "Not undone on YouTube" : "Not put on YouTube", e.message);
+      failAt("#thumbytmsg", body.undo ? "Not undone on YouTube" : "Not put on YouTube", e.message);
       return;
     }
     await loadVariants(id);
     const after = $("#thumbytmsg");
     if (after)
-      after.innerHTML = `<span class="ok">YouTube accepted it</span> &mdash; &ldquo;${esc(r.title)}&rdquo; now wears ${r.set.variant ? esc(r.set.variant) : "the image it had before"} (${esc(new Date(r.set.at).toLocaleTimeString())}); YouTube can take a few minutes to show it`;
+      after.innerHTML = `<span class="ok">YouTube accepted it</span> &mdash; &ldquo;${esc(r.title)}&rdquo; now wears ${r.set.variant ? `${esc(r.set.variant)}, new design` : "the image it had before"} (${esc(new Date(r.set.at).toLocaleTimeString())}); YouTube can take a few minutes to show it`;
   };
   document
-    .querySelector("#variants .ytput")
-    ?.addEventListener("click", (ev) => swap(ev.currentTarget, false));
-  $("#thumbundo")?.addEventListener("click", (ev) => swap(ev.currentTarget, true));
+    .querySelectorAll("#variants .ytput")
+    .forEach((btn) =>
+      btn.addEventListener("click", () => swap(btn, { variant: btn.closest(".variant").dataset.key })),
+    );
+  $("#thumbundo")?.addEventListener("click", (ev) => swap(ev.currentTarget, { undo: true }));
 }
 
 /**
@@ -3342,39 +3357,33 @@ function paintSettings() {
     }
     void loadNightly();
   });
-  void api("/api/thumbnails/all/rerender")
-    .then(paintThumbsAll)
-    .catch(() => {});
+  void pollThumbsAll();
 }
 
 /** The bulk re-render's line: its count while it runs (the strip shows the match), then what it did. */
 let thumbsAllPoll = null;
-function paintThumbsAll(r) {
+const pollThumbsAll = () =>
+  api("/api/thumbnails/all/rerender")
+    .then(paintThumbsAll)
+    .catch(() => {});
+function paintThumbsAll({ bulk: b, uploaded }) {
   clearTimeout(thumbsAllPoll);
   const msg = $("#thumbsallmsg");
   if (!msg) return;
-  const b = r.bulk;
   $("#thumbsall").disabled = !!b?.running;
-  if (!b) msg.textContent = r.uploaded !== undefined ? `${r.uploaded} videos on the channel` : "";
-  else {
-    const extra = [
-      b.failed.length
-        ? `${b.failed.length} failed (${b.failed.map((f) => `#${f.matchId}: ${f.error}`).join("; ")})`
-        : "",
-      b.skipped.length
-        ? `${b.skipped.length} skipped (${b.skipped.map((s) => `#${s.matchId}: ${s.why}`).join("; ")})`
-        : "",
-    ].filter(Boolean);
-    msg.textContent = `${b.running ? "running" : "done"} · ${b.done} of ${b.total}${extra.length ? ` · ${extra.join(" · ")}` : ""}`;
-  }
-  if (b?.running)
-    thumbsAllPoll = setTimeout(
-      () =>
-        void api("/api/thumbnails/all/rerender")
-          .then(paintThumbsAll)
-          .catch(() => {}),
-      5000,
-    );
+  const list = (xs, why) => xs.map((x) => `#${x.matchId}: ${why(x)}`).join("; ");
+  msg.textContent = !b
+    ? uploaded === undefined
+      ? ""
+      : `${uploaded} videos on the channel`
+    : [
+        `${b.running ? "running" : "done"} · ${b.done} of ${b.total}`,
+        b.failed.length && `${b.failed.length} failed (${list(b.failed, (f) => f.error)})`,
+        b.skipped.length && `${b.skipped.length} skipped (${list(b.skipped, (x) => x.why)})`,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+  if (b?.running) thumbsAllPoll = setTimeout(pollThumbsAll, 5000);
 }
 
 async function saveSettingsPanel() {

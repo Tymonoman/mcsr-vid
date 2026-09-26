@@ -2,7 +2,7 @@
 // that the bulk skips a busy match and waits out a pipeline run. No render, no network, no
 // /media. Run: npx tsx src/dashboard/thumbnailRoutes.test.ts
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -14,7 +14,7 @@ import {
   uploadedLongForms,
   type ThumbnailRouteContext,
 } from "./thumbnailRoutes.js";
-import { writeUpload } from "../youtube/youtubeStore.js";
+import { onVideo, writeUpload } from "../youtube/youtubeStore.js";
 
 const media = await mkdtemp(path.join(tmpdir(), "mcsr-thumbroutes-test-"));
 const saved = { mediaDir: config.mediaDir, token: process.env.YOUTUBE_TOKEN_FILE };
@@ -76,6 +76,48 @@ try {
     503,
     "not connected: nothing is sent",
   );
+  await writeFile(process.env.YOUTUBE_TOKEN_FILE!, "{}");
+  // A Finish, an upload or a re-render on the match refuses the press; so does a body naming no tile.
+  assert.equal((await call("POST", "/api/thumbnails/20/youtube")).status, 409);
+  busy = {};
+  let finished!: () => void;
+  const finish = onVideo(20, () => new Promise<void>((r) => (finished = r)));
+  const duringFinish = await call("POST", "/api/thumbnails/20/youtube");
+  assert.equal(duringFinish.status, 409);
+  assert.match(String(duringFinish.body.error), /a Finish on YouTube in flight/);
+  finished();
+  await finish;
+  assert.equal((await call("POST", "/api/thumbnails/20/youtube")).status, 400);
+
+  // The new set beside the live one, and what the line may say about the video.
+  const newManifest = path.join(media, "20", "thumbnail-new", "thumbnail.json");
+  await mkdir(path.dirname(newManifest));
+  await writeFile(newManifest, JSON.stringify({ chosen: "w-c", variants: [{ key: "w-c", file: "t.png" }] }));
+  const at = "2026-09-26T10:00:00Z";
+  await writeUpload(20, {
+    ...record("rankedVid01"),
+    thumbnailSet: { variant: "w-c", at, from: "thumbnail-new" },
+  });
+  const panel = async (drawnAt: string, undoCopyOf: string) => {
+    await utimes(newManifest, new Date(), new Date(drawnAt));
+    await writeFile(path.join(media, "20", `thumbnail-youtube-${undoCopyOf}.jpg`), "x");
+    const body = (await call("GET", "/api/thumbnails/20")).body;
+    return body as {
+      newVariants: Array<{ key: string }>;
+      youtube: { canUndo: boolean; redrawnSince: boolean };
+    };
+  };
+  let p = await panel("2026-09-26T09:00:00Z", "otherVid001");
+  assert.deepEqual(
+    p.newVariants.map((v) => v.key),
+    ["w-c"],
+  );
+  assert.equal(p.youtube.redrawnSince, false, "the tile is the drawing that was sent");
+  assert.equal(p.youtube.canUndo, false, "another video's undo copy is not this one's");
+  p = await panel("2026-09-26T11:00:00Z", "rankedVid01");
+  assert.equal(p.youtube.redrawnSince, true, "drawn again after the put: YouTube has the earlier drawing");
+  assert.equal(p.youtube.canUndo, true);
+  assert.equal((await call("GET", "/api/thumbnails/30")).body.newVariants, null);
 
   // The bulk: one at a time, a busy match skipped, a failure recorded, the rest carried on —
   // and nothing starts while a pipeline run (the nightly's) is in flight.
@@ -117,7 +159,7 @@ try {
   );
   // AbortSignal.timeout's timer is unref'd (the server keeps the loop alive); this test must.
   const alive = setTimeout(() => {}, 5_000);
-  assert.match(String(await hung.finished), /^stopped after \d+ min — the previous set is back$/);
+  assert.match(String(await hung.finished), /^stopped after \d+ min$/);
   clearTimeout(alive);
 
   console.log("thumbnailRoutes: all checks passed");

@@ -499,66 +499,12 @@ try {
   assert.ok(!hits.some((h) => h.includes("/thumbnails/set")), "and no thumbnails.set request was made");
   assert.equal(studio.playlists, null, "while the playlists it came for still happen");
 
-  // Thumbnails re-rendered after the upload and confirmed ("Use this", which "Put on YouTube"
-  // needs) are still not Finish's to put on: that press keeps the image it replaces for Undo, and
-  // this one would not — on a Studio upload, or on a dashboard upload whose thumbnail step once
-  // failed (the nightly's retries press Finish too). Adopt's draft wears YouTube's auto frame, so
-  // its first finish still sets it.
+  // The folder that owns the video sets its image, and no other: a series' game 2 with no record
+  // (the channel scan records none for it, the panel still pairs it and offers Finish) or with
+  // game 1's record copied in never puts its own pick on the series video — over a "Put on
+  // YouTube" from game 1, with no undo copy, on every press.
   {
     const variant = { key: "walking-crossed", file: "thumbnail.walking-crossed.png" };
-    await writeFile(path.join(dir, variant.file), "new design");
-    await writeFile(
-      path.join(dir, "thumbnail.json"),
-      JSON.stringify({
-        chosen: variant.key,
-        chosenBy: "operator",
-        hookText: null,
-        variants: [variant],
-        rerenderedAt: "2026-09-26T10:00:00Z",
-      }),
-    );
-    for (const [source, finished] of [
-      ["studio", {}],
-      ["dashboard", { thumbnail: "YouTube API thumbnails.set -> 500" }],
-    ] as const) {
-      await writeUpload(matchId, { ...record, source, finished });
-      hits.length = 0;
-      const steps = await finishOnYouTube(matchId, "vidX");
-      assert.match(String(steps.thumbnail), /re-rendered after the upload/, `${source}: left alone`);
-      assert.ok(!hits.some((h) => h.includes("/thumbnails/set")), `${source}: no thumbnails.set request`);
-    }
-    await writeUpload(matchId, { ...record, source: "studio", finished: {} });
-    hits.length = 0;
-    const adopted = await finishOnYouTube(matchId, "vidX", "video", { adopting: true });
-    assert.equal(adopted.thumbnail, null, "Adopt's finish sets the confirmed variant");
-    assert.ok(hits.some((h) => h.includes("/thumbnails/set")));
-    // A set re-rendered before the upload is the one the upload's own finish puts on.
-    await writeUpload(matchId, {
-      ...record,
-      uploadedAt: "2026-09-26T11:00:00Z",
-      source: "dashboard",
-      finished: {},
-    });
-    assert.equal((await finishOnYouTube(matchId, "vidX")).thumbnail, null);
-    // An upload time that does not parse (Adopt and the channel's publishedAt can leave "") fails
-    // closed: the set counts as re-rendered after it.
-    await writeUpload(matchId, { ...record, uploadedAt: "", finished: {} });
-    hits.length = 0;
-    assert.match(String((await finishOnYouTube(matchId, "vidX")).thumbnail), /re-rendered after the upload/);
-    assert.ok(!hits.some((h) => h.includes("/thumbnails/set")), "unknown upload time: no thumbnails.set");
-
-    // A re-render in flight (its working copy on disk) is not a set to send, whenever it started.
-    await writeUpload(matchId, { ...record, uploadedAt: "2026-09-26T11:00:00Z", finished: {} });
-    await mkdir(path.join(dir, "thumbnail-rerendering"));
-    hits.length = 0;
-    assert.match(String((await finishOnYouTube(matchId, "vidX")).thumbnail), /being re-rendered/);
-    assert.ok(!hits.some((h) => h.includes("/thumbnails/set")), "mid-re-render: no thumbnails.set");
-    await rm(path.join(dir, "thumbnail-rerendering"), { recursive: true });
-
-    // The folder that owns the video sets its image, and no other: a series' game 2 with no
-    // record (the channel scan records none since d19a130, the panel still pairs it and offers
-    // Finish) or with game 1's record copied in never puts its own pick on the series video —
-    // over a Put on YouTube from game 1, with no undo copy, on every press.
     const game2 = matchId + 1;
     const dir2 = path.join(media, String(game2));
     await mkdir(dir2, { recursive: true });
@@ -568,20 +514,66 @@ try {
       JSON.stringify({ chosen: variant.key, chosenBy: "operator", hookText: null, variants: [variant] }),
     );
     await writeUpload(matchId, { ...record, finished: { thumbnail: null } });
-    hits.length = 0;
-    assert.match(
-      String((await finishOnYouTube(game2, "vidX")).thumbnail),
-      /left alone — this folder holds no upload record/,
-    );
-    assert.ok(!hits.some((h) => h.includes("/thumbnails/set")), "no record: no thumbnails.set");
-    await writeUpload(game2, { ...record, finished: {} });
-    hits.length = 0;
-    assert.match(String((await finishOnYouTube(game2, "vidX")).thumbnail), /game 1's folder sets/);
-    assert.ok(!hits.some((h) => h.includes("/thumbnails/set")), "game 2's copied record: no thumbnails.set");
+    for (const copied of [false, true]) {
+      if (copied) await writeUpload(game2, { ...record, finished: {} });
+      hits.length = 0;
+      const steps = await finishOnYouTube(game2, "vidX");
+      assert.match(String(steps.thumbnail), /left alone — this folder holds no upload record of its own/);
+      assert.ok(
+        !hits.some((h) => h.includes("/thumbnails/set")),
+        `copied record ${copied}: no thumbnails.set`,
+      );
+    }
     await rm(dir2, { recursive: true });
+    console.log("OK: only the folder that owns the video sets its thumbnail");
+  }
+
+  // Finish holds the match's turn at the video (a "Put on YouTube" waits for it) while it runs.
+  {
+    const { videoWriting } = await import("./youtubeStore.js");
+    const running = finishOnYouTube(matchId, "vidX");
+    assert.equal(videoWriting(matchId), true);
+    await running;
+    assert.equal(videoWriting(matchId), false);
+  }
+
+  // A thumbnail put on from the Thumbnail panel: the A/B tab files the video under a row of its
+  // own (it wore two images), and Adopt of the same video keeps it — the "on YouTube since" line,
+  // Undo and that row with it. Another video starts afresh.
+  {
+    const { handleYoutubeRoute } = await import("../dashboard/youtubeRoutes.js");
+    const route = async (method: string, parts: string[], reqBody = "") => {
+      const answers: Array<{ status: number; body: { rows?: Array<{ variant: string }> } }> = [];
+      await handleYoutubeRoute({ method, headers: {} } as never, {} as never, ["", "youtube", ...parts], {
+        json: (_r, status, body) => void answers.push({ status, body: body as never }),
+        readBody: async () => reqBody,
+        matchDir: (id) => path.join(media, String(id)),
+        parseId: (raw) => (raw && /^\d+$/.test(raw) ? Number(raw) : null),
+      });
+      return answers[0]!;
+    };
+    await writeFile(path.join(dir, `match-${matchId}.description.txt`), `x /matches/${matchId} y\n`);
+    await writeFile(
+      path.join(dir, "thumbnail.json"),
+      JSON.stringify({ chosen: "walking-crossed", chosenBy: "operator", hookText: null, variants: [] }),
+    );
+    const swapped = { variant: "cheering-relaxing", at: "2026-09-26T10:00:00Z", from: "thumbnail-new" };
+    const done = { thumbnail: null, playlists: null, comment: null, tags: null };
+    await writeUpload(matchId, { ...record, videoId: "vidXXXXXXXX", thumbnailSet: swapped, finished: done });
+    const rows = (await route("GET", ["abtest"])).body.rows ?? [];
+    assert.ok(
+      rows.some((r) => r.variant === "(swapped)"),
+      JSON.stringify(rows),
+    );
+    const readopt = { videoId: "vidXXXXXXXX" };
+    const same = await route("POST", ["adopt", String(matchId)], JSON.stringify(readopt));
+    assert.equal(same.status, 200, JSON.stringify(same.body));
+    assert.deepEqual((await readUpload(matchId))?.thumbnailSet, swapped, "re-adopting keeps it");
+    const other = await route("POST", ["adopt", String(matchId)], JSON.stringify({ videoId: "vidYYYYYYYY" }));
+    assert.equal(other.status, 200, JSON.stringify(other.body));
+    assert.equal((await readUpload(matchId))?.thumbnailSet, undefined, "another video starts afresh");
     await rm(path.join(dir, "thumbnail.json"));
-    await rm(path.join(dir, variant.file));
-    console.log("OK: Finish leaves a thumbnail re-rendered after the upload to Put on YouTube");
+    console.log("OK: a swapped thumbnail is its own A/B row, and survives re-adopting the same video");
   }
 
   // --- Tags: the manual paste that silently never happens ------------------------------------

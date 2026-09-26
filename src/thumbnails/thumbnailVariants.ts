@@ -24,7 +24,7 @@ import type { MatchInfo, UserDetails } from "../api/types.js";
 /** Sidecar naming the variants on disk and which one `thumbnail.png` currently is. */
 const VARIANTS_FILE = "thumbnail.json";
 
-export interface VariantRecord {
+interface VariantRecord {
   /** `<leftPose>-<rightPose>` (`-hook` on a legacy hooked twin); also the filename infix and the A/B grouping key. */
   key: string;
   leftPose: string;
@@ -77,12 +77,6 @@ export interface VariantsManifest {
    * line that may quote it. Absent on manifests written before this, which then fall back to live.
    */
   ranks?: Record<string, number | null>;
-  /**
-   * When the dashboard last drew the set again (`fresh`, src/thumbnails/rerender.ts). A set newer
-   * than the video's upload is not what the video wears, and only "Put on YouTube" — which keeps
-   * the image it replaces — may put it there (`finishOnYouTube` reads this).
-   */
-  rerenderedAt?: string;
 }
 
 export interface RenderVariantsArgs {
@@ -93,12 +87,7 @@ export interface RenderVariantsArgs {
   poses: PosePair[];
   onProgress?: (p: ThumbnailProgress) => void;
   signal?: AbortSignal;
-  /**
-   * The dashboard's "Re-render thumbnails" (src/thumbnails/rerender.ts): every still is drawn
-   * again with today's design, even one already on disk, and `thumbnail.png` — the image a
-   * published video went up with — is left as it is (created only when absent). The choice's key
-   * carries over, but as "auto": nobody has looked at the new image yet.
-   */
+  /** "Re-render thumbnails" (src/thumbnails/rerender.ts): every still drawn again, even one on disk. */
   fresh?: boolean;
 }
 
@@ -153,10 +142,16 @@ export async function chooseVariant(outDir: string, key: string): Promise<Varian
  * Whether a variant's PNG already on disk can stand for this render. A plain still is good —
  * unless the previous manifest recorded its key as hooked, which is the layout from before the
  * twins, where the un-suffixed file *was* the headline render. No manifest at all is an aborted
- * batch — resume it.
+ * batch — resume it. A re-render (`fresh`) keeps none.
  */
-export function variantStillReusable(previous: VariantsManifest | null, poses: PosePair): boolean {
-  return previous === null || previous.variants.find((v) => v.key === variantKey(poses))?.hook !== true;
+export function variantStillReusable(
+  previous: VariantsManifest | null,
+  poses: PosePair,
+  fresh = false,
+): boolean {
+  return (
+    !fresh && (previous === null || previous.variants.find((v) => v.key === variantKey(poses))?.hook !== true)
+  );
 }
 
 /**
@@ -203,14 +198,6 @@ export function abTestKey(
   return v?.leftProvider === "nmsr-facing" || v?.rightProvider === "nmsr-facing" ? `${key} (facing)` : key;
 }
 
-/**
- * Whether the set on disk was drawn again after the video went up, so it is not what the video
- * wears. Fails closed: an upload time that does not parse (Adopt and the channel's `publishedAt`
- * can leave it "") counts as before the re-render.
- */
-export const rerenderedAfter = (m: VariantsManifest | null, uploadedAt: string | undefined): boolean =>
-  m?.rerenderedAt !== undefined && !(Date.parse(m.rerenderedAt) <= Date.parse(uploadedAt ?? ""));
-
 export async function renderThumbnailVariants(args: RenderVariantsArgs): Promise<VariantsManifest> {
   if (args.poses.length === 0) throw new Error("renderThumbnailVariants needs at least one pose pair");
 
@@ -242,7 +229,7 @@ export async function renderThumbnailVariants(args: RenderVariantsArgs): Promise
       // the fourth, and a re-run after an aborted batch should not redo the ones that landed.
       // The manifest must still list it, which is why the record is pushed before the skip. A
       // reused still is the render the old manifest recorded, not what today's cameras draw.
-      const reuse = !args.fresh && existsSync(outPath) && variantStillReusable(previous, poses);
+      const reuse = existsSync(outPath) && variantStillReusable(previous, poses, args.fresh);
       const was = reuse ? previous?.variants.find((v) => v.key === variantKey(poses)) : undefined;
       records.push({
         key: variantKey(poses),
@@ -279,18 +266,13 @@ export async function renderThumbnailVariants(args: RenderVariantsArgs): Promise
   // A choice carried over keeps whatever it said about itself — including nothing, for a sidecar
   // written before the field, whose pill must not change meaning because a pose was added to the
   // config. A fresh default says so: nobody has picked this one yet.
-  const chosenBy = kept && !args.fresh ? previous.chosenBy : "auto";
+  const chosenBy = kept ? previous.chosenBy : "auto";
 
   const manifest: VariantsManifest = {
     chosen,
     ...(chosenBy ? { chosenBy } : {}),
     variants: records,
     hookText: null,
-    ...(args.fresh
-      ? { rerenderedAt: new Date().toISOString() }
-      : previous?.rerenderedAt
-        ? { rerenderedAt: previous.rerenderedAt }
-        : {}),
     // Frozen for the hooks that may quote it. Carried over with a kept choice so a re-render does
     // not re-read a rank that has since moved.
     ranks:
@@ -302,9 +284,9 @@ export async function renderThumbnailVariants(args: RenderVariantsArgs): Promise
           },
   };
   await writeFile(manifestPath(args.outDir), JSON.stringify(manifest, null, 2), "utf8");
-  const canonical = path.join(args.outDir, "thumbnail.png");
-  if (!args.fresh || !existsSync(canonical)) {
-    await copyFile(path.join(args.outDir, records.find((r) => r.key === chosen)!.file), canonical);
-  }
+  await copyFile(
+    path.join(args.outDir, records.find((r) => r.key === chosen)!.file),
+    path.join(args.outDir, "thumbnail.png"),
+  );
   return manifest;
 }

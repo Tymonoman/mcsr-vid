@@ -1,21 +1,22 @@
 /**
- * The Thumbnail panel's endpoints: the variants and the choice, "Re-render thumbnails" (one match
- * or every uploaded long-form, render only), and the per-video swap on YouTube. Transport and a
- * job table; the work is src/thumbnails/rerender.ts and src/youtube/thumbnailSwap.ts.
+ * The Thumbnail panel's endpoints: the variants, "Re-render thumbnails" (one match
+ * or every uploaded long-form, render only), and "Put on YouTube" / "Undo on YouTube" for a tile of
+ * the new set. Transport and a job table; the work is src/thumbnails/rerender.ts and
+ * src/youtube/thumbnailSwap.ts.
  *
  * Its own job map, like shortsRoutes.ts: a re-render and a pipeline run on the same match must not
  * share jobs.ts's one-per-match slot.
  */
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import { describeError } from "../errorText.js";
-import { chooseVariant, readManifest } from "../thumbnails/thumbnailVariants.js";
-import { rerenderThumbnails } from "../thumbnails/rerender.js";
+import { readManifest } from "../thumbnails/thumbnailVariants.js";
+import { NEW_DIR, rerenderThumbnails } from "../thumbnails/rerender.js";
 import { isConfigured } from "../youtube/youtube.js";
-import { longFormRecord, swapThumbnail, SwapRefused, YOUTUBE_PREV_FILE } from "../youtube/thumbnailSwap.js";
-import { allUploads } from "../youtube/youtubeStore.js";
-import { isExported } from "./matchShelf.js";
+import { swapThumbnail, SwapRefused, undoFile } from "../youtube/thumbnailSwap.js";
+import { allUploads, longFormRecord, videoWriting } from "../youtube/youtubeStore.js";
+import { isExported, isUploaded } from "./matchShelf.js";
 
 export interface ThumbnailRouteContext {
   json: (res: ServerResponse, status: number, body: unknown) => void;
@@ -50,8 +51,8 @@ type Rerender = typeof rerenderThumbnails;
 
 /**
  * Four stills take a minute or two; one still drawing after this is hung (a Chromium that never
- * answers), and it would hold the bulk and the nightly behind it for ever. Aborted, the render
- * puts back the set it started from like any failure.
+ * answers), and it would hold the bulk and the nightly behind it for ever. The signal cancels the
+ * still render (`renderStill`); the API reads, avatar fetches and bundling before it are not cut short.
  */
 export const RERENDER_TIMEOUT_MS = 15 * 60_000;
 
@@ -82,11 +83,7 @@ export function startRerender(
   })
     .then(() => settle(null))
     .catch((err: unknown) =>
-      settle(
-        signal.aborted
-          ? `stopped after ${Math.round(timeoutMs / 60_000)} min — the previous set is back`
-          : describeError(err),
-      ),
+      settle(signal.aborted ? `stopped after ${Math.round(timeoutMs / 60_000)} min` : describeError(err)),
     );
   void job.finished.then((error) => {
     job.done = true;
@@ -105,18 +102,15 @@ interface Bulk {
   failed: Array<{ matchId: number; error: string }>;
   skipped: Array<{ matchId: number; why: string }>;
   running: boolean;
-  startedAt: string;
 }
 let bulk: Bulk | null = null;
 
-/** Each long-form once: a series' games 2..n carry game 1's video id, and game 1 (the lowest id) owns it. */
+/** Each long-form once: a series' games 2..n carry game 1's video id, and game 1 (the lowest id, listed first) owns it. */
 export async function uploadedLongForms(): Promise<number[]> {
-  const owners = new Map<string, number>();
-  for (const { matchId, record } of await allUploads()) {
-    const was = owners.get(record.videoId);
-    if (was === undefined || matchId < was) owners.set(record.videoId, matchId);
-  }
-  return [...owners.values()].sort((a, b) => a - b);
+  const all = await allUploads();
+  return all
+    .filter((u, i) => all.findIndex((o) => o.record.videoId === u.record.videoId) === i)
+    .map((u) => u.matchId);
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -133,7 +127,6 @@ export async function runBulk(
     failed: [],
     skipped: [],
     running: true,
-    startedAt: new Date().toISOString(),
   };
   bulk = run;
   try {
@@ -157,25 +150,11 @@ export async function runBulk(
   return run;
 }
 
-const bulkState = () =>
-  bulk && {
-    total: bulk.ids.length,
-    done: bulk.index,
-    running: bulk.running,
-    failed: bulk.failed,
-    skipped: bulk.skipped,
-    startedAt: bulk.startedAt,
-  };
+const bulkState = () => bulk && { ...bulk, total: bulk.ids.length, done: bulk.index };
 
 /** The strip's activity line: each running re-render, the bulk's count on it. */
-export function thumbnailActivities(): Array<{
-  matchId: number;
-  step: "thumbnails";
-  line: string;
-  since: string;
-  percent?: number;
-}> {
-  return [...jobs.values()]
+export const thumbnailActivities = () =>
+  [...jobs.values()]
     .filter((j) => !j.done)
     .map((j) => ({
       matchId: j.matchId,
@@ -185,9 +164,8 @@ export function thumbnailActivities(): Array<{
           ? `${j.line} · ${bulk.index + 1} of ${bulk.ids.length}`
           : j.line,
       since: j.since,
-      ...(j.percent !== undefined ? { percent: j.percent } : {}),
+      percent: j.percent,
     }));
-}
 
 /* --- Routes ------------------------------------------------------------------------------------ */
 
@@ -232,48 +210,33 @@ export async function handleThumbnailRoute(
     const manifest = await readManifest(dir);
     const job = jobs.get(matchId);
     const record = await longFormRecord(matchId);
+    const newManifest = path.join(dir, NEW_DIR, "thumbnail.json");
+    const set = record?.thumbnailSet ?? null;
+    const onChannel = await isUploaded(matchId);
     ctx.json(res, 200, {
       ...(manifest ?? { chosen: null, hookText: null, variants: [] }),
-      // A match with an export or a manifest can be drawn again; a bare directory has nothing to show it on.
-      canRerender: existsSync(dir) && (manifest !== null || isExported(matchId) || record !== null),
-      job: job
-        ? {
-            running: !job.done,
-            line: job.line,
-            since: job.since,
-            percent: job.percent ?? null,
-            error: job.error,
-          }
-        : null,
+      // The re-rendered set of a match on the channel (src/thumbnails/rerender.ts); null until one lands.
+      newVariants: (await readManifest(path.join(dir, NEW_DIR)))?.variants ?? null,
+      // Where a re-render lands: beside the live set (on the channel) or over it (src/thumbnails/rerender.ts).
+      onChannel,
+      // A match with an export, a manifest or a video can be drawn again; a bare directory has nothing to show it on.
+      canRerender: existsSync(dir) && (manifest !== null || isExported(matchId) || onChannel),
+      job: job ? { ...job, running: !job.done } : null,
       youtube: record
         ? {
             videoId: record.videoId,
             title: record.title,
-            set: record.thumbnailSet ?? null,
-            canUndo: existsSync(path.join(dir, YOUTUBE_PREV_FILE)),
+            set,
+            // The tile it names was drawn again after the put: YouTube has the earlier drawing.
+            redrawnSince:
+              set?.from === NEW_DIR &&
+              existsSync(newManifest) &&
+              statSync(newManifest).mtimeMs > Date.parse(set.at),
+            canUndo: existsSync(path.join(dir, undoFile(record.videoId))),
             connected: isConfigured(),
           }
         : null,
     });
-    return true;
-  }
-
-  // Promote a variant to thumbnail.png, which is the file that actually gets uploaded.
-  if (action === undefined && req.method === "PUT") {
-    const body = JSON.parse(await ctx.readBody(req)) as { chosen?: unknown };
-    if (typeof body.chosen !== "string") {
-      ctx.json(res, 400, { error: 'expected { chosen: "<variant key>" }' });
-      return true;
-    }
-    if (thumbnailRunning(matchId)) {
-      ctx.json(res, 409, { error: "The thumbnails are being re-rendered — pick once they are done" });
-      return true;
-    }
-    try {
-      ctx.json(res, 200, await chooseVariant(dir, body.chosen));
-    } catch (err) {
-      ctx.json(res, 400, { error: describeError(err) });
-    }
     return true;
   }
 
@@ -292,20 +255,30 @@ export async function handleThumbnailRoute(
     return true;
   }
 
-  // One press, one live-channel change: `{ undo: true }` puts back the image kept before the first swap.
+  // One press, one live-channel change: `{ variant }` puts that new tile on, `{ undo: true }` puts
+  // back the image kept before the first put.
   if (action === "youtube" && req.method === "POST") {
     if (!isConfigured()) {
       ctx.json(res, 503, { error: "YouTube is not connected on this box" });
       return true;
     }
-    const busy = ctx.busy(matchId);
+    // An upload or a re-render (ctx.busy), or a Finish on YouTube, which sets the thumbnail too.
+    const busy = ctx.busy(matchId) ?? (videoWriting(matchId) ? "a Finish on YouTube" : null);
     if (busy) {
       ctx.json(res, 409, { error: `Match ${matchId} has ${busy} in flight — try again when it is done` });
       return true;
     }
-    const body = JSON.parse((await ctx.readBody(req)) || "{}") as { undo?: unknown };
+    const body = JSON.parse((await ctx.readBody(req)) || "{}") as { undo?: unknown; variant?: unknown };
+    if (body.undo !== true && typeof body.variant !== "string") {
+      ctx.json(res, 400, { error: 'expected { variant: "<key>" } or { undo: true }' });
+      return true;
+    }
     try {
-      ctx.json(res, 200, await swapThumbnail(matchId, body.undo === true));
+      ctx.json(
+        res,
+        200,
+        await swapThumbnail(matchId, body.undo === true ? { undo: true } : { variant: String(body.variant) }),
+      );
     } catch (err) {
       ctx.json(res, err instanceof SwapRefused ? 409 : 502, { error: describeError(err) });
     }

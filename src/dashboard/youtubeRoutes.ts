@@ -22,8 +22,7 @@ import { config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { listProcessedMatchIds, matchStatusFor } from "./matchStatus.js";
 import { exportStale, staleExportMessage } from "../pipeline/syncFile.js";
-import { readManifest, variantFellBack } from "../thumbnails/thumbnailVariants.js";
-import { abRowFor } from "../thumbnails/rerender.js";
+import { abTestKey, readManifest, variantFellBack } from "../thumbnails/thumbnailVariants.js";
 import {
   applyMetadata,
   commentThreads,
@@ -223,10 +222,11 @@ export async function handleYoutubeRoute(
       }
       const applied = await applyMetadata(videoId, { title, description, tags }, config.youtubeChannelId);
       // Re-adopting the SAME video keeps the finish ledger: it is the only thing between a second
-      // press and a second pinned comment, which `postComment` de-duplicates not at all. A
-      // different video for this match is a different video, and starts a fresh ledger.
+      // press and a second pinned comment, which `postComment` de-duplicates not at all. And the
+      // thumbnail put on from the Thumbnail panel, with its Undo. A different video for this match
+      // is a different video, and starts afresh.
       const previous = await readUpload(matchId);
-      const carried = previous?.videoId === videoId ? (previous.finished ?? {}) : {};
+      const same = previous?.videoId === videoId ? previous : null;
       await writeUpload(matchId, {
         videoId,
         uploadedAt: live.publishedAt,
@@ -235,13 +235,10 @@ export async function handleYoutubeRoute(
         thumbnailVariant: null,
         title,
         source: "studio",
-        finished: carried,
+        finished: same?.finished ?? {},
+        thumbnailSet: same?.thumbnailSet,
       });
-      // A first adopt's draft wears YouTube's auto frame, so the confirmed variant goes on whenever
-      // it was drawn; re-adopting a video already adopted is Finish's rule (youtubeUpload.ts).
-      const finished = await finishOnYouTube(matchId, videoId, "video", {
-        adopting: previous?.videoId !== videoId,
-      });
+      const finished = await finishOnYouTube(matchId, videoId);
       // The A/B tab reads `thumbnailVariant` for a local record and falls back to the manifest
       // only for a channel-derived one, so leaving this null drops an adopted video out of the
       // hook-vs-control comparison. Recorded only once the image has actually gone up.
@@ -594,7 +591,18 @@ async function abTestPayload() {
   const hookEntries: { hook: boolean | null; reach: { impressions: number; weightedCtr: number } | null }[] =
     [];
   for (const u of uploads) {
-    const { key, variant } = await abRowFor(matchDir(u.matchId), u);
+    const manifest = await readManifest(matchDir(u.matchId));
+    // A dashboard upload recorded which variant it sent; a Studio upload did not, and the
+    // manifest's `chosen` is the one the dashboard handed over to be uploaded.
+    const variantKey = u.source === "channel" ? (manifest?.chosen ?? undefined) : u.thumbnailVariant;
+    const variant = manifest?.variants.find((v) => v.key === variantKey);
+    // A video whose thumbnail was changed from the Thumbnail panel wore two images: a row of its own.
+    const key =
+      "thumbnailSet" in u && u.thumbnailSet
+        ? "(swapped)"
+        : variantKey
+          ? abTestKey(variantKey, variant)
+          : "(unknown)";
     const fellBack = variant ? variantFellBack(variant) : false;
 
     hookEntries.push({ hook: variant?.hook ?? null, reach: byVideo.get(u.videoId) ?? null });
