@@ -204,7 +204,14 @@ writeFileSync(pickErrorFile(dir, single), '{"at":"then","message":"an old failur
     ),
     "the resets apart from the deaths, and no lead change minted from them",
   );
-  assert.match(prompt, /- hungerResets: ROUTINE, not deaths/);
+  assert.match(prompt, /- hungerResets: a respawn at a bed or anchor the player set, outside the End/);
+  assert.match(prompt, /- phase: the last split the player had reached/);
+  // The fact-check's corrections (26 Sept 2026): the Nether anchor reset, respawn without
+  // saturation, a zero cycle as the usual kill, the death message telling a reset from an accident.
+  assert.match(SPEEDRUN_PRIMER, /at a respawn anchor in the Nether, at the blind portal/);
+  assert.doesNotMatch(SPEEDRUN_PRIMER, /saturation|112 of 118|6 s a barter|clean (zero )?cycle/);
+  assert.match(SPEEDRUN_PRIMER, /A zero cycle is the usual kill/);
+  assert.match(SPEEDRUN_PRIMER, /The death message tells them apart/);
   assert.match(prompt, /Stronghold: entered the stronghold — not "found the portal room"/);
   assert.match(
     prompt,
@@ -722,7 +729,10 @@ console.log("OK: a spoiler, overlong hook, or seed/rank/elo is swapped for a chi
   let before = snapshot(ddir);
   await assert.rejects(pickShortMoment(id, { dryRun: true, log }), (err: unknown) => {
     assert.ok(err instanceof DryRunRefusal);
-    assert.match(err.message, /\/watch on Infume's stream has no up-to-date cache/);
+    assert.match(
+      err.message,
+      /\/watch on Infume's stream has no usable cache .*: there is none yet — run npm run pick -- 13448958 once without --dry-run/,
+    );
     return true;
   });
   assert.deepEqual(snapshot(ddir), before, "a refused dry run writes nothing");
@@ -747,11 +757,34 @@ console.log("OK: a spoiler, overlong hook, or seed/rank/elo is swapped for a chi
   assert.equal((await pickShortMoment(id, { dryRun: true })).source, "heuristic");
   assert.deepEqual(snapshot(ddir), before, "nor the heuristic's, nor an error file");
 
+  // A cache that does not count says why; only a missing one sends the operator to a real run
+  // (which writes into /media, and would overwrite a good cache made with a Whisper key).
+  const preRoll = config.preRollSec;
+  config.preRollSec = preRoll + 1; // no sync.json here: the clip's offset moves, and --start with it
+  await assert.rejects(pickShortMoment(id, { dryRun: true }), (err: unknown) => {
+    assert.ok(err instanceof DryRunRefusal);
+    assert.match(err.message, /made with other arguments \(now --start [\d.]+, --end [\d.]+; then --start /);
+    assert.doesNotMatch(err.message, /without --dry-run/);
+    return true;
+  });
+  config.preRollSec = preRoll;
+  rmSync(path.join(watchDir(ddir, "left"), "watch.json"));
+  before = snapshot(ddir);
+  await assert.rejects(
+    pickShortMoment(id, { dryRun: true }),
+    /\/watch on Infume's stream .*: the last run kept none/,
+  );
+  assert.deepEqual(snapshot(ddir), before);
+
   // The proxy older than the video: refused, not rebuilt.
   const future = new Date(Date.now() + 60_000);
   utimesSync(path.join(ddir, `final-${id}.mp4`), future, future);
   before = snapshot(ddir);
-  await assert.rejects(pickShortMoment(id, { dryRun: true }), /the model's copy .* is older than the video/);
+  await assert.rejects(pickShortMoment(id, { dryRun: true }), (err: unknown) => {
+    assert.match(String(err), /the model's copy .* is older than the video/);
+    assert.doesNotMatch(String(err), /without --dry-run/);
+    return true;
+  });
   assert.deepEqual(snapshot(ddir), before, "no ffmpeg ran");
   config.watchScript = null;
   console.log("OK: a dry run asks afresh and writes nothing; a missing proxy or /watch cache is a refusal");

@@ -19,7 +19,7 @@ const optsFor = (m: MatchInfo) => ({
 // stamp its result card and stop on it (all three 30k+ reference Shorts do).
 //
 // Their five bed-spawn deaths (two at blind, one on the way, both in the stronghold 0.4 s apart)
-// are hunger resets — routine, not a moment (raceGap.ts `deathKind`): no window is built on one,
+// are hunger resets — routine, not a moment (matchScore.ts `deathKind`): no window is built on one,
 // and edcr led at every split, so there is no lead change to find either. Until 26 Sept 2026 the
 // resets were scored as deaths and paired as a "split", and the 9:08 stretch came out as a
 // double death with a lead change.
@@ -43,8 +43,9 @@ const optsFor = (m: MatchInfo) => ({
   }
 }
 
-// --- A real death still is a moment, and a bed-spawn death before blind travel (an accident with a
-// spawn point behind it) counts as one; the same bed-spawn death after blind travel does not.
+// --- A real death still is a moment, and so is a bed-spawn death in the End (no bed sets a spawn
+// there); a bed-spawn death anywhere else is a hunger reset — a respawn anchor in the Nether too —
+// and is not.
 {
   const match = load(12902901);
   const [a, b] = [match.players[0]!.uuid, match.players[1]!.uuid];
@@ -53,14 +54,20 @@ const optsFor = (m: MatchInfo) => ({
     at(a, 100_000, "story.enter_the_nether"),
     at(b, 101_000, "story.enter_the_nether"),
     at(a, 300_000, "projectelo.timeline.blind_travel"),
+    at(b, 400_000, "story.enter_the_end"),
   ];
   const payoffAt = (extra: ReturnType<typeof at>) =>
     rankShortMoments({ ...match, timelines: [...base, extra] }, optsFor(match)).some((m) =>
       m.events.some((e) => e.time === extra.time),
     );
-  assert.equal(payoffAt(at(b, 200_000, "projectelo.timeline.death_spawnpoint")), true, "Nether: an accident");
+  assert.equal(
+    payoffAt(at(b, 200_000, "projectelo.timeline.death_spawnpoint")),
+    false,
+    "a Nether anchor reset",
+  );
   assert.equal(payoffAt(at(a, 200_000, "projectelo.timeline.death")), true, "a real death");
   assert.equal(payoffAt(at(a, 330_000, "projectelo.timeline.death_spawnpoint")), false, "a hunger reset");
+  assert.equal(payoffAt(at(b, 420_000, "projectelo.timeline.death_spawnpoint")), true, "a death in the End");
 }
 
 // --- A forfeit or a draw ends with nothing in `timelines` at all, so before the synthetic

@@ -4,15 +4,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import type { MatchInfo } from "../api/types.js";
-import {
-  CAPTION_MAX_CHARS,
-  deathKind,
-  decidedAtMs,
-  formatGap,
-  phaseAt,
-  raceCaptions,
-  raceStateAt,
-} from "./raceGap.js";
+import { deathKind } from "../pipeline/matchScore.js";
+import { CAPTION_MAX_CHARS, decidedAtMs, formatGap, raceCaptions, raceStateAt } from "./raceGap.js";
 import type { ShortPick } from "./shortPlan.js";
 
 const load = (id: number): MatchInfo =>
@@ -50,56 +43,15 @@ assert.deepEqual(texts(edcr, pick(12730175, 600, 622)), [[4000, "DOOGILE 2.1 S B
 // …and a window whose hook runs into it gets no caption at all.
 assert.deepEqual(raceCaptions(edcr, pick(12730175, 610, 622)), []);
 console.log("OK: 12730175 — the gap, the hunger resets, the End 2.1 s apart, nothing past the decision");
-
-// --- deathKind, the one classification: `death` is a death; `death_spawnpoint` from blind travel
-// on is the planned hunger reset, before it an accident with a spawn point behind it.
+// No bed sets a spawn in the End: a bed-spawn death there is a real one, and its caption says so.
 {
-  const kinds = (m: MatchInfo) =>
-    m.timelines
-      .filter((e) => e.type.startsWith("projectelo.timeline.death"))
-      .sort((a, b) => a.time - b.time)
-      .map((e) => [e.time, deathKind(m, e), phaseAt(m, e.uuid, e.time)]);
-  // edcr: at blind (427.6), on the way (528.5), in the stronghold (564.7); doogile twice.
-  assert.deepEqual(kinds(edcr), [
-    [424464, "hungerReset", "after blind"],
-    [427623, "hungerReset", "after blind"],
-    [528471, "hungerReset", "after blind"],
-    [564680, "hungerReset", "stronghold"],
-    [565066, "hungerReset", "stronghold"],
-  ]);
-  const [a, b] = edcr.players.map((p) => p.uuid) as [string, string];
-  const at = (uuid: string, time: number, type: string) => ({ uuid, time, type });
-  const synthetic: MatchInfo = {
-    ...edcr,
-    timelines: [
-      at(a, 100_000, "story.enter_the_nether"),
-      at(a, 150_000, "projectelo.timeline.death_spawnpoint"), // the Nether: an accident
-      at(a, 160_000, "projectelo.timeline.death"),
-      at(a, 163_000, "projectelo.timeline.reset"), // a new world: back in the Overworld
-      at(a, 170_000, "projectelo.timeline.death_spawnpoint"),
-      at(b, 500_000, "story.enter_the_end"),
-      at(b, 520_000, "projectelo.timeline.death"),
-      at(b, 530_000, "story.enter_the_nether"),
-      at(a, 540_000, "nether.find_bastion"), // the other player's End is not this one's phase
-    ],
+  const endDeath = {
+    uuid: edcr.players[0]!.uuid,
+    time: 580_000,
+    type: "projectelo.timeline.death_spawnpoint",
   };
-  assert.deepEqual(
-    synthetic.timelines.map((e) => [deathKind(synthetic, e), phaseAt(synthetic, e.uuid, e.time)]),
-    [
-      [null, "overworld"],
-      ["bedDeath", "nether"],
-      ["death", "nether"],
-      [null, "nether"],
-      ["bedDeath", "overworld"],
-      [null, "overworld"],
-      ["death", "end"],
-      [null, "end"],
-      [null, "overworld"],
-    ],
-  );
-  console.log(
-    "OK: deathKind — resets from blind on are routine; a death, and a bed death before blind, are not",
-  );
+  const m = { ...edcr, timelines: [...edcr.timelines, endDeath] };
+  assert.ok(texts(m, pick(12730175, 570, 600)).some(([, t]) => t === "EDCR DIES"));
 }
 
 // --- 13673240, Infume (left) vs Feinberg (right): the pick that read two stronghold hunger resets

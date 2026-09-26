@@ -61,7 +61,7 @@ Use the script, don't reconstruct the shell line. Extra arguments go after `--`.
 | `npm run series -- <matchId \| all> [--join-only]` | A playoff series as one video (`src/playoffs/series.ts`): renders every game of the slot that has no export, joins them into game 1's `series-<g1>.mp4`, rewrites game 1's title/description/chapters/tags for the series; the series' Short is picked and cut like any match's, from game 1's directory, once the hooks are saved. `all` walks the board in date order; `--join-only` joins what is exported. The dashboard's nightly cannot see a run here: start one in the daytime. |
 | `npm run sync-status -- [matchId]` | Where a match's POV clips are placed. With an id and no `sync.json`, derives it from the `.kdenlive` and writes it, so a re-export picks the corrected offsets up without a re-render. No id lists every match and writes nothing. |
 | `npm run chat -- <matchId>` | Fetch both players' Twitch chat to `chat-<nick>.json` for a match the pipeline saved none for (it does this itself after `download-vods`). Existing files are kept; delete one to refetch. |
-| `npm run pick -- <matchId \| all> [--force] [--dry-run]` | Ask the model for the Short's moment (see Shorts): prints the prompt size, the model's raw answer, any validation failure and the pick. Without `--force` a pick newer than the export is kept. `--dry-run` asks afresh and writes nothing into the match directory; it refuses (exit 1) rather than make a missing proxy or /watch cache. |
+| `npm run pick -- <matchId \| all> [--force] [--dry-run]` | Ask the model for the Short's moment (see Shorts): prints the prompt size, the model's raw answer, any validation failure and the pick. Without `--force` a pick newer than the export is kept. `--dry-run` asks afresh and writes nothing into the match directory; it refuses (exit 1) rather than make the proxy or a /watch cache, saying why the one on disk does not count (none, older than its source, other arguments — a checkout without `/app/.env` adds `--no-whisper` — or a run that kept none); only a missing one is a reason for a real run. |
 | `npm run bench -- <Composition> [--frames=N] [--codec=] [--pixelFormat=] [--concurrency=N]` | Render throughput for one composition. Measure before claiming a render change is faster. |
 | `npm run retention -- <videoId>… [--days=90]` | The audience retention curve per video (Analytics API `audienceWatchRatio` by `elapsedVideoTimeRatio`), printed at every tenth. Measured 22 Sept 2026: 16–22 points go between 3% and 10% of the video — the first minute after the intro, the least eventful stretch of a run — then a slow drift; the finish lifts the curve again. |
 | `npm run config:example` | Rewrites `mcsr-vid.config.example.json` from `DEFAULTS` in `src/config.ts`, so the example cannot drift (it had, by seven keys). Run it after adding a key. |
@@ -92,9 +92,10 @@ Almost nothing in the overlay moves, so the render is stills plus one strip (`sr
   16–22 points lost between 3% and 10% of the video. The moment is `src/pipeline/teaser.ts`,
   from `match.timelines` only: an unplanned death, else the lead change that overturned the
   biggest deficit, else a split under 2 s; never in the first minute or the last minute before
-  the game is decided, and it names nobody. `death_spawnpoint` is the routine bed warp, not a
-  death. A match led wire to wire, no death, no close split, gets no card (4 of 10 checked,
-  24 Sept 2026); the mid-roll SUBSCRIBE wins an overlap.
+  the game is decided, and it names nobody. It reads `death` only, so it never promises a hunger
+  reset — nor sees a bed-spawn death in the End, a real one to `deathKind`. A match led wire to
+  wire, no death, no close split, gets no card (4 of 10 checked, 24 Sept 2026); the mid-roll
+  SUBSCRIBE wins an overlap.
 - **Explain the moves** (audit fix #3, 24 Sept 2026; `explainMovesSec`, Settings → Publishing,
   default null = **off** — on changes what the nightly renders, the operator's call): the first
   time either player reaches each of the six `MILESTONES` splits, the meta column shows the split
@@ -160,9 +161,12 @@ views brought 0 subscribers.
   the match is decided, else "FULL MATCH ON THE CHANNEL" ("SERIES" for a series). The single-POV
   layout is a centre crop that keeps the crosshair and the hotbar.
 - **The model is told the game** (`src/shorts/speedrunPrimer.ts`, sourced lines only; 26 Sept 2026, after it built
-  "THEY BOTH DIED IN THE STRONGHOLD?!" on two hunger resets). `deathKind` (`raceGap.ts`) is the one reading of
-  `death_spawnpoint` — from blind travel on, the planned hunger reset — for the facts, captions, chips and heuristic;
-  `matchScore.ts` still counts resets as deaths (the chaos score; the operator's call).
+  "THEY BOTH DIED IN THE STRONGHOLD?!" on two hunger resets; corrected by the fact-check of 26 Sept). `deathKind`
+  (`src/pipeline/matchScore.ts`) is the one reading of `death_spawnpoint`: the hunger reset in every phase but the
+  End — at a respawn anchor in the Nether too, five of the six before blind on disk — and in the End, where no bed
+  sets a spawn, a real death. The prompt's facts, the Short's captions and hook, the heuristic and the title chips
+  (`realDeaths`) follow it; the chaos score (`deaths`, the operator's call) and the suggestion card's "N deaths" still
+  count resets.
 - **The pick also proposes the long-form's title hook** (`titleHooks`, up to 3, and `playerMoments`
   for the runner DMs, both optional on `ShortPick`; operator's ask, 24 Sept 2026: "use agy to propose
   the hooks based on previous ones"). The prompt shows the operator's own past saved hooks as style

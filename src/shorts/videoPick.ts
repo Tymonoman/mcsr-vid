@@ -44,12 +44,12 @@ import { atomicOutput } from "../pipeline/atomicOutput.js";
 import { hookSuggestions, HOOK_SEED_RANK_ELO, spoilsTheResult } from "../pipeline/hooks.js";
 import { ANCHOR_SEC } from "../pipeline/kdenliveProject.js";
 import { SEPARATOR } from "../pipeline/title.js";
-import { computeMetrics } from "../pipeline/matchScore.js";
+import { computeMetrics, deathKind, phaseAt } from "../pipeline/matchScore.js";
 import { eloAtMatchStart } from "../pipeline/overlayProps.js";
 import { playoffContextFor } from "../playoffs/playoffs.js";
 import { gameMatchStarts, readSeriesRecord, seriesOutputPath, type SeriesGame } from "../playoffs/series.js";
 import { exportMatchStartSec } from "../pipeline/exportFast.js";
-import { deathKind, decidedAtMs, MILESTONES, phaseAt, raceCaptions } from "./raceGap.js";
+import { decidedAtMs, MILESTONES, raceCaptions } from "./raceGap.js";
 import { NOT_SIGNED_IN, reasonerConfigured, runReasoner } from "./reasoner.js";
 import { boxFailure, shortLog, type LogExtra } from "./shortLog.js";
 import { distinctShortMoments, leadChangeTimes, runMsOf, SHORT_WINDOW_SEC } from "./shortMoment.js";
@@ -230,7 +230,7 @@ async function ensureProxy(
   }
   if (dryRun)
     throw new DryRunRefusal(
-      `a dry run writes nothing, and the model's copy (${out}) is ${existsSync(out) ? "older than the video" : "missing"} — run npm run pick without --dry-run once to make it`,
+      `a dry run writes nothing, and the model's copy (${out}) ${existsSync(out) ? "is older than the video (re-exported since)" : "is missing — run npm run pick without --dry-run once to make it"}`,
     );
   const started = Date.now();
   note(`making the model's ${fps} fps copy of ${path.basename(video)} (640x360, nice 19)`);
@@ -355,7 +355,7 @@ function gameFacts(span: GameSpan, series: boolean) {
       .filter((d) => d.kind !== "hungerReset")
       .map((d) => ({
         ...row(d.e),
-        respawn: d.kind === "death" ? "world spawn, empty inventory" : "bed or anchor set earlier",
+        respawn: d.kind === "death" ? "world spawn, empty inventory" : "the spawn point set before the End",
       })),
     hungerResets: died.filter((d) => d.kind === "hungerReset").map((d) => row(d.e)),
     restarts: theirs.filter((e) => e.type === "projectelo.timeline.reset").map(row),
@@ -491,11 +491,11 @@ PLAYER MOMENTS (playerMoments, optional): for each player, the one moment of the
  */
 const FACTS_KEY = `What they mean:
 - splits: when each player first got there. Bastion, Fortress: entered the structure. Blind: left the Nether by a portal toward the stronghold. Stronghold: entered the stronghold — not "found the portal room"; nothing here says how many eyes the portal needed. Dragon dies: the dragon's death animation ended, about 10 s after the killing blow; the first one decides the match, a later one does not count.
-- phase: where the player was — overworld, nether, after blind (Overworld, heading for the stronghold), stronghold, end.
-- deaths: real deaths. respawn "world spawn, empty inventory": no spawn point, a big setback; in the End it costs the race. respawn "bed or anchor set earlier": an accident before blind travel.
-- hungerResets: ROUTINE, not deaths — a spawn point set at a bed or anchor, then a death on purpose (a fall, pearls, lava) to respawn with full health and hunger. Never the moment, never "they died".
+- phase: the last split the player had reached — nether, after blind, stronghold, end (overworld: none yet, or a restart).
+- deaths: real deaths. respawn "world spawn, empty inventory": no spawn point set, a big setback. respawn "the spawn point set before the End": a death in the End, where no bed sets a spawn. A death in the End usually costs the race.
+- hungerResets: a respawn at a bed or anchor the player set, outside the End. Almost always the routine hunger reset, not a death; the death message tells an accident apart (see the hunger reset above).
 - restarts: the player restarted the seed in a new world.
-- leadChangesAt: when the order at a split swapped.`;
+- leadChangesAt: when the order at a milestone swapped (first rod and the dragon included).`;
 
 /** Everything the model is told. Pure apart from reading the saved chats. */
 function pickPrompt(
@@ -540,7 +540,7 @@ ${SPEEDRUN_PRIMER}
 THE WINDOW
 - One continuous stretch of the video, 12 to 60 seconds; its length follows the moment. startSec and endSec are seconds of the video file.
 - Something must happen in the very first second: never open on a loading screen, a menu, an inventory, a black frame or quiet walking.
-- pov "left" or "right" (that player's POV alone) when the moment is one player's: a real death (never a hunger reset), a zero cycle, a clutch, a blunder. pov "both" when the moment is the race between them; then "focus" may name whose audio leads.
+- pov "left" or "right" (that player's POV alone) when the moment is one player's: a real death (never a hunger reset), a clutch, a blunder. pov "both" when the moment is the race between them; then "focus" may name whose audio leads.
 - kind "play" for one player's play, "race" for the two of them racing.
 - rtaAtStart: the overlay's RTA timer at startSec, read off the frame, as m:ss. It is checked against the footage.${
     series

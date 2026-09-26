@@ -1,5 +1,5 @@
 import type { MatchInfo, TimelineEntry } from "../api/types.js";
-import { deathKind } from "./raceGap.js";
+import { deathKind } from "../pipeline/matchScore.js";
 
 /**
  * Scores the ~22-second windows of a match for a Short: the heuristic that stands in when the
@@ -55,8 +55,8 @@ const TERMINAL_TYPE = "mcsr.timeline.finish";
 const EVENT_WEIGHTS: Record<string, number> = {
   "projectelo.timeline.dragon_death": 1.0,
   "end.kill_dragon": 0.95,
-  // A bed-spawn death before blind travel only: from blind on it is the routine hunger reset,
-  // which weighs nothing (`weightIn`, raceGap.ts `deathKind`).
+  // A bed-spawn death in the End only: anywhere else it is the routine hunger reset, which
+  // weighs nothing (`weightIn`, matchScore.ts `deathKind`).
   "projectelo.timeline.death_spawnpoint": 0.8,
   "projectelo.timeline.death": 0.8,
   "story.enter_the_end": 0.7,

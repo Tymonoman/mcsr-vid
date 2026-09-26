@@ -81,7 +81,9 @@ const seconds = (ms: number): string => (ms / 1000).toFixed(1).replace(/\.0$/, "
 function candidates(input: HookInput): Candidate[] {
   const { metrics, match, userLeft, userRight, versus } = input;
   const out: Candidate[] = [];
-  const { finishMarginMs, leadChanges, maxSwingMs, deaths, resultMs, winner } = metrics;
+  // Real deaths only: a hunger reset is routine (matchScore.ts `deathKind`), and "5 deaths and
+  // still this close" on five resets reads to a runner as not knowing the game.
+  const { finishMarginMs, leadChanges, maxSwingMs, realDeaths: deaths, resultMs, winner } = metrics;
 
   // --- Rivalry framing (100-130) ----------------------------------------------------------
   if (versus) {
@@ -183,8 +185,8 @@ export function hookFacts(input: HookInput) {
     leadChanges: metrics.leadChanges,
     maxLeadMs: metrics.maxLeadMs,
     maxSwingMs: metrics.maxSwingMs,
-    deaths: metrics.deaths,
-    deathsByPlayer: metrics.deathsByPlayer,
+    /** Real deaths: `metrics.deaths` counts hunger resets too, which a generator would call deaths. */
+    deaths: metrics.realDeaths,
     splits: metrics.splits,
     forfeited: match.forfeited,
     elo: {

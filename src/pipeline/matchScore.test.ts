@@ -5,8 +5,10 @@ import {
   chaosScore,
   closenessScore,
   computeMetrics,
+  deathKind,
   DEFAULT_WEIGHTS,
   formatMetrics,
+  phaseAt,
   speedBonus,
   TOTAL_SPLITS,
 } from "./matchScore.js";
@@ -31,6 +33,8 @@ assert.equal(benchmark.finishMarginMs, 1033, "gap between the two dragon_death e
 assert.equal(benchmark.finishEstimated, false, "both players have a real dragon_death event");
 assert.equal(benchmark.deaths, 5);
 assert.deepEqual(benchmark.deathsByPlayer, { edcr: 3, doogile: 2 });
+// …all five hunger resets (deathKind below): not one real death, which is what a hook may count.
+assert.equal(benchmark.realDeaths, 0);
 // The bastion is scored twice, because arrival and loot say different things: these two arrived
 // 8.185s apart and finished looting 1.705s apart, so the convergence inside the bastion is real
 // and only the loot half is close. The overlay displays arrival alone.
@@ -77,6 +81,62 @@ assert.equal(dnf.leadChanges, 2);
 // for every match that uses the short spelling.
 assert.equal(dnf.deaths, 1, "a bare projectelo.timeline.death must count as a death");
 assert.deepEqual(dnf.deathsByPlayer, { Feinberg: 1, silverrruns: 0 });
+assert.equal(dnf.realDeaths, 1);
+
+// --- deathKind, the one reading of a death: `death` is a death; `death_spawnpoint` is the hunger
+// reset in every phase but the End — five of the six before blind travel on disk were Nether
+// anchor resets (fact-check, 26 Sept 2026) — and a real death in the End, where no bed sets a spawn.
+{
+  const edcr = load(12730175);
+  const kinds = (m: MatchInfo) =>
+    m.timelines
+      .filter((e) => e.type.startsWith("projectelo.timeline.death"))
+      .sort((a, b) => a.time - b.time)
+      .map((e) => [e.time, deathKind(m, e), phaseAt(m, e.uuid, e.time)]);
+  // edcr: at blind, on the way, in the stronghold; doogile at blind and in the stronghold.
+  assert.deepEqual(kinds(edcr), [
+    [424464, "hungerReset", "after blind"],
+    [427623, "hungerReset", "after blind"],
+    [528471, "hungerReset", "after blind"],
+    [564680, "hungerReset", "stronghold"],
+    [565066, "hungerReset", "stronghold"],
+  ]);
+  const [a, b] = edcr.players.map((p) => p.uuid) as [string, string];
+  const at = (uuid: string, time: number, type: string) => ({ uuid, time, type });
+  const synthetic: MatchInfo = {
+    ...edcr,
+    timelines: [
+      at(a, 100_000, "story.enter_the_nether"),
+      at(a, 150_000, "projectelo.timeline.death_spawnpoint"), // a respawn-anchor reset in the Nether
+      at(a, 160_000, "projectelo.timeline.death"),
+      at(a, 163_000, "projectelo.timeline.reset"), // a new world: back in the Overworld
+      at(a, 170_000, "projectelo.timeline.death_spawnpoint"),
+      at(b, 500_000, "story.enter_the_end"),
+      at(b, 510_000, "projectelo.timeline.death_spawnpoint"), // in the End: a real death
+      at(b, 520_000, "projectelo.timeline.death"),
+      at(b, 530_000, "story.enter_the_nether"),
+      at(a, 540_000, "nether.find_bastion"), // the other player's End is not this one's phase
+    ],
+  };
+  assert.deepEqual(
+    synthetic.timelines.map((e) => [deathKind(synthetic, e), phaseAt(synthetic, e.uuid, e.time)]),
+    [
+      [null, "overworld"],
+      ["hungerReset", "nether"],
+      ["death", "nether"],
+      [null, "nether"],
+      ["hungerReset", "overworld"],
+      [null, "overworld"],
+      ["bedDeath", "end"],
+      ["death", "end"],
+      [null, "end"],
+      [null, "overworld"],
+    ],
+  );
+  // Two of the five are resets: the chaos score counts all five, a hook three.
+  const synth = computeMetrics(synthetic);
+  assert.deepEqual([synth.deaths, synth.realDeaths], [5, 3]);
+}
 
 // --- Scoring behaviour.
 const score = (m: Parameters<typeof closenessScore>[0]) =>

@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { matchPageUrl } from "../api/mcsrApi.js";
 import type { MatchInfo } from "../api/types.js";
 import { HASHTAGS } from "../pipeline/description.js";
-import { deathKind } from "./raceGap.js";
+import { deathKind } from "../pipeline/matchScore.js";
 import type { ShortMoment } from "./shortMoment.js";
 import { shortHookFile, type ShortPick } from "./shortPlan.js";
 import { SEPARATOR, titleName } from "../pipeline/title.js";
@@ -68,7 +68,7 @@ const SHORT_TAGS = " #mcsr #minecraft";
  * these players are, so "doogile takes the lead here" means nothing to them while "both blind
  * at the same time" is legible to anyone. The reference channels' best-performing Shorts do the
  * same — @MCSR-Vault's 42k-view Short is titled "when you mess up at the SAME TIME".
- * `match` is the game the events are from: a hunger reset is not a death (raceGap.ts `deathKind`).
+ * `match` is the game the events are from: a hunger reset is not a death (matchScore.ts `deathKind`).
  */
 export function buildShortHook(
   moment: ShortMoment,
