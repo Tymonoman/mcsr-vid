@@ -232,6 +232,8 @@ try {
 
   /** What YouTube says the video's privacy is *now*, which the record may disagree with. */
   let livePrivacy = "public";
+  /** The video's comment threads as YouTube lists them (the comment step's guard reads them). */
+  let threads: unknown[] = [];
   const hits: string[] = [];
   /** What was actually PUT/POSTed, so a replace-the-whole-snippet call can be inspected. */
   const sent: Array<{ url: string; body: unknown }> = [];
@@ -256,6 +258,9 @@ try {
         data: { players: [{ nickname: "doogile" }, { nickname: "Feinberg" }] },
       });
     if (url.includes("/playlists?")) return body({ items: [{ id: "PL1", snippet: { title: "x" } }] });
+    // The comment step reads the video's threads first: one comment per video, whoever posted it.
+    if (url.includes("/commentThreads?") && (init?.method ?? "GET") === "GET")
+      return body({ items: threads });
     // The finish flow re-reads the live privacy before it skips the comment step.
     if (url.includes("/videos?part=snippet,status,statistics"))
       return body({
@@ -449,7 +454,7 @@ try {
     "and asked whether the video was already in the playlist",
   );
   assert.ok(
-    !hits.some((h) => h.includes("/commentThreads?")),
+    !hits.some((h) => h.startsWith("POST") && h.includes("/commentThreads?")),
     "while the step that had succeeded stayed untouched",
   );
 
@@ -464,7 +469,7 @@ try {
   hits.length = 0;
   const priv = await finishOnYouTube(matchId, "vidX");
   assert.equal("comment" in priv && priv.comment !== undefined, false, "no comment on a private video");
-  assert.ok(!hits.some((h) => h.includes("/commentThreads?")));
+  assert.ok(!hits.some((h) => h.startsWith("POST") && h.includes("/commentThreads?")));
 
   // ...but the record's privacy is whatever it was at upload and is never updated, so a draft
   // adopted while private and published an hour later would carry "private" for ever and never
@@ -563,7 +568,7 @@ try {
   hits.length = 0;
   await retryPendingComments();
   assert.equal(
-    hits.filter((h) => h.includes("/commentThreads?")).length,
+    hits.filter((h) => h.startsWith("POST") && h.includes("/commentThreads?")).length,
     1,
     "a scheduled record past its publishAt gets one comment",
   );
@@ -573,7 +578,11 @@ try {
   // 2. A second tick posts nothing.
   hits.length = 0;
   await retryPendingComments();
-  assert.equal(hits.filter((h) => h.includes("/commentThreads?")).length, 0, "a second tick posts nothing");
+  assert.equal(
+    hits.filter((h) => h.startsWith("POST") && h.includes("/commentThreads?")).length,
+    0,
+    "a second tick posts nothing",
+  );
 
   // 3. A still-private video is skipped.
   livePrivacy = "private";
@@ -586,7 +595,7 @@ try {
   hits.length = 0;
   await retryPendingComments();
   assert.equal(
-    hits.filter((h) => h.includes("/commentThreads?")).length,
+    hits.filter((h) => h.startsWith("POST") && h.includes("/commentThreads?")).length,
     0,
     "a still-private video is skipped",
   );
@@ -611,7 +620,11 @@ try {
   );
   hits.length = 0;
   await retryPendingComments();
-  assert.equal(hits.filter((h) => h.includes("/commentThreads?")).length, 0, "a Short is never commented on");
+  assert.equal(
+    hits.filter((h) => h.startsWith("POST") && h.includes("/commentThreads?")).length,
+    0,
+    "a Short is never commented on",
+  );
   const shortRecord = await readUpload(matchId, "short");
   assert.equal(shortRecord?.finished?.comment, undefined, "Short finish ledger is untouched");
 
@@ -626,12 +639,50 @@ try {
   hits.length = 0;
   await retryPendingComments();
   assert.equal(
-    hits.filter((h) => h.includes("/commentThreads?")).length,
+    hits.filter((h) => h.startsWith("POST") && h.includes("/commentThreads?")).length,
     1,
     "a failed comment is retried and succeeds once public",
   );
   const retriedRecord = await readUpload(matchId, "video");
   assert.equal(retriedRecord?.finished?.comment, null, "retried comment recorded as done");
+
+  // 6. The channel's comment is already on the video (another folder's ledger, Studio, a second
+  // press): nothing is posted and the step is done. ZqI4Cf1g3_w got four on 26 Sept 2026.
+  threads = [
+    {
+      id: "t1",
+      snippet: {
+        topLevelComment: {
+          snippet: {
+            authorDisplayName: "MCSR Replayoffs",
+            textDisplay: "both povs…",
+            publishedAt: "2026-09-26T03:00:02Z",
+            likeCount: 0,
+            authorChannelId: { value: config.youtubeChannelId },
+          },
+        },
+      },
+    },
+  ];
+  await writeUpload(matchId, {
+    ...record,
+    publishAt: pastPublishAt,
+    privacyStatus: "private",
+    finished: { playlists: null, tags: null },
+  });
+  hits.length = 0;
+  await retryPendingComments();
+  assert.equal(
+    hits.filter((h) => h.startsWith("POST") && h.includes("/commentThreads?")).length,
+    0,
+    "a video that already carries the channel's comment gets no second one",
+  );
+  assert.equal(
+    (await readUpload(matchId, "video"))?.finished?.comment,
+    null,
+    "and the step is recorded as done",
+  );
+  threads = [];
 
   // A series' record sits in every game's folder with one videoId: one comment for the video,
   // and none once any folder's ledger has it (24 Sept: the six live long-forms, two of them series).
@@ -652,7 +703,7 @@ try {
   hits.length = 0;
   await retryPendingComments();
   assert.equal(
-    hits.filter((h) => h.includes("/commentThreads?")).length,
+    hits.filter((h) => h.startsWith("POST") && h.includes("/commentThreads?")).length,
     0,
     "a series game's copy is not commented again",
   );
@@ -660,7 +711,7 @@ try {
   hits.length = 0;
   await retryPendingComments();
   assert.equal(
-    hits.filter((h) => h.includes("/commentThreads?")).length,
+    hits.filter((h) => h.startsWith("POST") && h.includes("/commentThreads?")).length,
     1,
     "one comment for the video, not one per game",
   );
@@ -669,7 +720,11 @@ try {
   await writeUpload(matchId, { ...record, publishAt: null, privacyStatus: "public", finished: {} });
   hits.length = 0;
   await retryPendingComments();
-  assert.equal(hits.filter((h) => h.includes("/commentThreads?")).length, 0, "no publishAt, no retry");
+  assert.equal(
+    hits.filter((h) => h.startsWith("POST") && h.includes("/commentThreads?")).length,
+    0,
+    "no publishAt, no retry",
+  );
 
   console.log("OK: comment retry posts for public scheduled videos, skips private ones and Shorts");
 

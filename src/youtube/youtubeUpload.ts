@@ -29,6 +29,7 @@ import {
   playerPlaylistTitle,
   playoffPlaylistDescription,
   playoffPlaylistTitle,
+  commentThreads,
   postComment,
   SEASON_PLAYLIST_DESCRIPTION,
   setThumbnail,
@@ -476,7 +477,14 @@ export async function finishOnYouTube(
           ? ((await videoStats([videoId]))[0]?.privacyStatus ?? "private")
           : record?.privacyStatus;
       if (live !== "private") {
-        finished.comment = await attempt(() => postComment(videoId, pinnedComment()));
+        finished.comment = await attempt(async () => {
+          // One comment per video, whoever posted it: a series' games, a Studio upload paired by
+          // the scan and a second press all come through here, and YouTube is the only record
+          // they share (ZqI4Cf1g3_w got four, 26 Sept 2026). A failed read posts nothing.
+          // ponytail: reads the newest 50 threads; page through them once a video has more.
+          if ((await commentThreads(videoId, config.youtubeChannelId)).some((t) => t.byChannel)) return;
+          await postComment(videoId, pinnedComment());
+        });
       }
     }
   }

@@ -352,7 +352,7 @@ const when = (iso: string | null): string => (iso ? iso.slice(0, 16).replace("T"
 /** The step this process is running for a match's chain right now. */
 const chainStep = new Map<number, Step>();
 
-function stateOf(matchId: number, f: Facts): { state: ShortState; detail?: string } {
+function stateOf(matchId: number, f: Facts, nowMs = Date.now()): { state: ShortState; detail?: string } {
   // The running step's own words ("running /watch on edcr's stream") before the generic line.
   const activity = pickActivity(matchId);
   if (activity)
@@ -375,7 +375,7 @@ function stateOf(matchId: number, f: Facts): { state: ShortState; detail?: strin
     };
   if (f.video && (f.short || f.noShort)) {
     const times = [f.video.publishAt, f.short?.publishAt ?? null].filter((t): t is string => t !== null);
-    const future = times.filter((t) => Date.parse(t) > Date.now());
+    const future = times.filter((t) => Date.parse(t) > nowMs);
     const lines = `long-form ${when(f.video.publishAt) || "up"}${f.noShort ? ", no Short" : `, Short ${when(f.short?.publishAt ?? null) || "up"}`}`;
     if (future.length > 0) return { state: "scheduled", detail: lines };
     if (f.video.privacyStatus === "private" && !f.video.publishAt)
@@ -590,7 +590,10 @@ function previewOf(matchId: number, f: Facts): ShortPlanResponse["preview"] {
  * asked for, so there it waits for Pick. The suggestions cost the match and both users (cached
  * reads); a failure there costs the suggestions, not the plan.
  */
-export async function shortPlan(matchId: number, opts: { queue?: boolean } = {}): Promise<ShortPlanResponse> {
+export async function shortPlan(
+  matchId: number,
+  opts: { queue?: boolean; now?: number } = {},
+): Promise<ShortPlanResponse> {
   let f = await factsOf(matchId);
   const match = await getMatch(matchId).catch(() => null);
   const seriesGame = match !== null && (await seriesGameUnjoined(match, f.series));
@@ -614,7 +617,7 @@ export async function shortPlan(matchId: number, opts: { queue?: boolean } = {})
     : { short: f.pick?.hookSuggestion ? [f.pick.hookSuggestion] : [], title: f.pick?.titleHooks ?? [] };
   f = await factsOf(matchId);
   const { state, detail } =
-    seriesGame && !f.video ? { state: "no-export" as const, detail: SERIES_GAME } : stateOf(matchId, f);
+    seriesGame && !f.video ? { state: "no-export" as const, detail: SERIES_GAME } : stateOf(matchId, f, opts.now);
   const errors = [
     ...f.status.errors,
     ...(f.pickError ? [{ step: "pick" as const, at: f.pickError.at, message: f.pickError.message }] : []),
