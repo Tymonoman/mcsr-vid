@@ -45,7 +45,6 @@ function input(
     maxSwingMs: 0,
     deaths: 1,
     deathsByPlayer: { edcr: 1 },
-    realDeaths: 1,
     ...over,
   };
   const match = {
@@ -78,20 +77,18 @@ assert.equal(photo[0], "Decided by 2.4 seconds");
 assert.equal(buildHookSuggestions(input({ finishMarginMs: 2_000 }))[0], "Decided by 2 seconds");
 
 // Ranking: a 4-lead-change race outranks the deathless note that also applies to it.
-const chaotic = buildHookSuggestions(input({ leadChanges: 4, realDeaths: 0, finishMarginMs: 30_000 }));
+const chaotic = buildHookSuggestions(input({ leadChanges: 4, deaths: 0, finishMarginMs: 30_000 }));
 assert.equal(chaotic[0], "The lead changed 4 times");
 assert.ok(chaotic.includes("Not a single death between them"));
 
 // The death chips count real deaths only (26 Sept 2026): five hunger resets are routine, so a match
 // of five resets and no death is "not a single death", never "5 deaths and still this close" —
 // and a generator is handed the same count.
-const resets = input({ deaths: 5, deathsByPlayer: { edcr: 3, doogile: 2 }, realDeaths: 0 });
+const resets = input({ deaths: 0, deathsByPlayer: { edcr: 0, doogile: 0 } });
 assert.ok(buildHookSuggestions(resets).includes("Not a single death between them"));
 assert.ok(!buildHookSuggestions(resets).some((t) => /\d deaths/.test(t)));
 assert.equal(hookFacts(resets).deaths, 0);
-assert.ok(
-  buildHookSuggestions(input({ deaths: 6, realDeaths: 4 })).includes("4 deaths and still this close"),
-);
+assert.ok(buildHookSuggestions(input({ deaths: 4 })).includes("4 deaths and still this close"));
 
 // A DNF is normal (the loser stops once the winner is done), so it must not outrank real drama.
 const dnf = buildHookSuggestions(input({ finishMarginMs: null, leadChanges: 3 }));
@@ -99,7 +96,7 @@ assert.equal(dnf[0], "The lead changed 3 times");
 assert.ok(dnf.includes("One of them never reached the dragon"));
 
 // Every suggestion has to fit the title budget, or it cannot be used at all.
-for (const text of buildHookSuggestions(input({ leadChanges: 5, realDeaths: 7, maxSwingMs: 90_000 }))) {
+for (const text of buildHookSuggestions(input({ leadChanges: 5, deaths: 7, maxSwingMs: 90_000 }))) {
   assert.ok(text.length <= MAX, `"${text}" is ${text.length} chars, over the ${MAX} budget`);
 }
 
@@ -242,7 +239,7 @@ assert.ok(
 
 // Descriptive chips are still there underneath, and still lead when there is no rivalry to
 // state — a match between two unranked players of equal elo is exactly that case.
-const plain = buildHookSuggestions(input({ finishMarginMs: 2_400, leadChanges: 4, realDeaths: 0 }));
+const plain = buildHookSuggestions(input({ finishMarginMs: 2_400, leadChanges: 4, deaths: 0 }));
 assert.equal(plain[0], "Decided by 2.4 seconds");
 assert.ok(plain.includes("The lead changed 4 times"));
 assert.ok(plain.includes("Not a single death between them"));
@@ -290,7 +287,7 @@ assert.ok(
 );
 
 // Never more than the caller asked for.
-assert.ok(buildHookSuggestions(input({ leadChanges: 6, realDeaths: 6, maxSwingMs: 90_000 }), 2).length <= 2);
+assert.ok(buildHookSuggestions(input({ leadChanges: 6, deaths: 6, maxSwingMs: 90_000 }), 2).length <= 2);
 
 // --- HOOK_SUGGEST_CMD: the escape hatch for the antigravity CLI ---------------------------
 

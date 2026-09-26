@@ -129,10 +129,9 @@ export interface MatchMetrics {
   /** Largest swing in the lead between consecutive splits - catches big collapses. */
   maxSwingMs: number;
   /** Every death, hunger resets included: the chaos score's term (the operator's call). */
+  /** Real deaths only (`deathKind`): a hunger reset is routine, not a death (the operator, 26 Sept 2026). */
   deaths: number;
   deathsByPlayer: Record<string, number>;
-  /** Deaths that were deaths (`deathKind`), no hunger reset: what a hook may call a death. */
-  realDeaths: number;
 }
 
 export interface ScoreWeights {
@@ -248,11 +247,8 @@ export function computeMetrics(match: MatchInfo): MatchMetrics {
   }
 
   const deathsByPlayer: Record<string, number> = { [playerA.nickname]: 0, [playerB.nickname]: 0 };
-  let realDeaths = 0;
   for (const entry of match.timelines) {
-    if (!DEATH_TYPES.has(entry.type)) continue;
-    if (entry.uuid === playerA.uuid || entry.uuid === playerB.uuid)
-      realDeaths += deathKind(match, entry) === "hungerReset" ? 0 : 1;
+    if (!DEATH_TYPES.has(entry.type) || deathKind(match, entry) === "hungerReset") continue;
     if (entry.uuid === playerA.uuid) deathsByPlayer[playerA.nickname] += 1;
     else if (entry.uuid === playerB.uuid) deathsByPlayer[playerB.nickname] += 1;
   }
@@ -274,7 +270,6 @@ export function computeMetrics(match: MatchInfo): MatchMetrics {
     maxSwingMs,
     deaths: deathsByPlayer[playerA.nickname]! + deathsByPlayer[playerB.nickname]!,
     deathsByPlayer,
-    realDeaths,
   };
 }
 

@@ -169,9 +169,10 @@ views brought 0 subscribers.
   "THEY BOTH DIED IN THE STRONGHOLD?!" on two hunger resets; corrected by the fact-check of 26 Sept). `deathKind`
   (`src/pipeline/matchScore.ts`) is the one reading of `death_spawnpoint`: the hunger reset in every phase but the
   End — at a respawn anchor in the Nether too, five of the six before blind on disk — and in the End, where no bed
-  sets a spawn, a real death. The prompt's facts, the Short's captions and hook, the heuristic and the title chips
-  (`realDeaths`) follow it; the chaos score (`deaths`, the operator's call) and the suggestion card's "N deaths" still
-  count resets.
+  sets a spawn, a real death. The prompt's facts, the Short's captions and hook, the heuristic, the title chips,
+  the suggestions' chaos score and the card's "N deaths" all follow it: `metrics.deaths` counts real deaths only
+  (the operator, 26 Sept: "yes" to leaving resets out of the score — it changes what the nightly picks;
+  `CACHE_VERSION` 4 re-reads every suggestion). `teaser.ts` keeps its own stricter reading.
 - **The pick also proposes the long-form's title hook** (`titleHooks`, up to 3, and `playerMoments`
   for the runner DMs, both optional on `ShortPick`; operator's ask, 24 Sept 2026: "use agy to propose
   the hooks based on previous ones"). The prompt shows the operator's own past saved hooks as style

@@ -15,7 +15,8 @@ const PAGE_SIZE = 100;
 /** Parallel `getMatch` calls. Low enough to stay polite inside the shared rate limit. */
 const DETAIL_CONCURRENCY = 4;
 /** Bumped whenever `PooledMatch` grows a field: a stale pool regenerates, it never migrates. */
-const CACHE_VERSION = 3;
+// 4: metrics.deaths counts real deaths only (hunger resets left out, 26 Sept 2026).
+const CACHE_VERSION = 4;
 /**
  * Twitch handles are resolved one MCSR request per player and then cached forever, so
  * only a cold cache pays. Capped per scan so a first run can't blow the request budget;

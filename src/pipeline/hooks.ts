@@ -83,7 +83,7 @@ function candidates(input: HookInput): Candidate[] {
   const out: Candidate[] = [];
   // Real deaths only: a hunger reset is routine (matchScore.ts `deathKind`), and "5 deaths and
   // still this close" on five resets reads to a runner as not knowing the game.
-  const { finishMarginMs, leadChanges, maxSwingMs, realDeaths: deaths, resultMs, winner } = metrics;
+  const { finishMarginMs, leadChanges, maxSwingMs, deaths, resultMs, winner } = metrics;
 
   // --- Rivalry framing (100-130) ----------------------------------------------------------
   if (versus) {
@@ -185,8 +185,7 @@ export function hookFacts(input: HookInput) {
     leadChanges: metrics.leadChanges,
     maxLeadMs: metrics.maxLeadMs,
     maxSwingMs: metrics.maxSwingMs,
-    /** Real deaths: `metrics.deaths` counts hunger resets too, which a generator would call deaths. */
-    deaths: metrics.realDeaths,
+    deaths: metrics.deaths,
     splits: metrics.splits,
     forfeited: match.forfeited,
     elo: {

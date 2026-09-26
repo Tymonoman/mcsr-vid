@@ -31,10 +31,10 @@ assert.deepEqual(benchmark.players, ["edcr", "doogile"]);
 assert.equal(benchmark.winner, "edcr");
 assert.equal(benchmark.finishMarginMs, 1033, "gap between the two dragon_death events");
 assert.equal(benchmark.finishEstimated, false, "both players have a real dragon_death event");
-assert.equal(benchmark.deaths, 5);
-assert.deepEqual(benchmark.deathsByPlayer, { edcr: 3, doogile: 2 });
-// …all five hunger resets (deathKind below): not one real death, which is what a hook may count.
-assert.equal(benchmark.realDeaths, 0);
+// Five death_spawnpoint events, all hunger resets (deathKind below): not one real death, and
+// deaths counts real deaths only — the chaos score and the hooks read the same number.
+assert.equal(benchmark.deaths, 0);
+assert.deepEqual(benchmark.deathsByPlayer, { edcr: 0, doogile: 0 });
 // The bastion is scored twice, because arrival and loot say different things: these two arrived
 // 8.185s apart and finished looting 1.705s apart, so the convergence inside the bastion is real
 // and only the loot half is close. The overlay displays arrival alone.
@@ -54,7 +54,7 @@ assert.notEqual(missingKillEvent.finishMarginMs, 10357, "10.357s is the End-ente
 assert.equal(missingKillEvent.finishEstimated, false);
 assert.equal(missingKillEvent.splitsWithin3s, 0, "BadGamer led by 10s+ at every split but the dragon");
 assert.equal(missingKillEvent.maxLeadMs, 45344);
-assert.equal(missingKillEvent.deaths, 1);
+assert.equal(missingKillEvent.deaths, 0, "its one death_spawnpoint is a hunger reset, not a death");
 
 // --- 12902901: BlazeMind vs Aquacorde. The mirror-image gap: BlazeMind has
 // `end.kill_dragon` but no `dragon_death`, so his finish is estimated at kill + 10.3s
@@ -81,7 +81,6 @@ assert.equal(dnf.leadChanges, 2);
 // for every match that uses the short spelling.
 assert.equal(dnf.deaths, 1, "a bare projectelo.timeline.death must count as a death");
 assert.deepEqual(dnf.deathsByPlayer, { Feinberg: 1, silverrruns: 0 });
-assert.equal(dnf.realDeaths, 1);
 
 // --- deathKind, the one reading of a death: `death` is a death; `death_spawnpoint` is the hunger
 // reset in every phase but the End — five of the six before blind travel on disk were Nether
@@ -133,9 +132,9 @@ assert.equal(dnf.realDeaths, 1);
       [null, "overworld"],
     ],
   );
-  // Two of the five are resets: the chaos score counts all five, a hook three.
+  // Two of the five are resets: deaths counts the three real ones.
   const synth = computeMetrics(synthetic);
-  assert.deepEqual([synth.deaths, synth.realDeaths], [5, 3]);
+  assert.equal(synth.deaths, 3);
 }
 
 // --- Scoring behaviour.
@@ -193,7 +192,7 @@ assert.match(text, /Bastion enter {7}2:03\.676/);
 assert.match(text, /Bastion loot {8}2:17\.182/);
 assert.match(text, /Finish margin : 1\.033s/);
 assert.match(text, /Splits <3s {4}: 4\/9/);
-assert.match(text, /Deaths {8}: 5 \(edcr 3, doogile 2\)/);
+assert.match(text, /Deaths {8}: 0 \(edcr 0, doogile 0\)/, "five hunger resets, no real death");
 assert.match(formatMetrics(dnf), /Finish margin : DNF/);
 assert.match(formatMetrics(estimatedFinish), /Finish margin : 14\.394s \(estimated\)/);
 
