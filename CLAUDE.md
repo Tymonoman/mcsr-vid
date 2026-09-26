@@ -313,9 +313,9 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   `<TYPE>-alt.png` is the iso render, renamed over `<TYPE>.png` to swap; which spec makes which file
   is the map in `icons.sh`. A spec's `outline` draws a dark contour round the structure's silhouette
   (the desert temple's, 26 Sept: "add an outline to the desert temple so its easier to recognize").
-  The shipwreck's main stays `SHIPWRECK-2d-dark` until the operator picks one of that day's eight 2d
-  options (A is that one; B–H are `SHIPWRECK-2d-{full,full-outline,full-oak-outline,bow-on,beached,
-  surface,broken-masts}.json`), then `icons.sh SHIPWRECK` after the map changes. A hand-drawn set was rejected on 24 Sept ("doesnt
+  The shipwreck's main is `SHIPWRECK-2d-front-beached` (option L of the bow-on set: the real
+  with_mast ship tilted onto a sandbank — the `roll` edit; the operator's pick of 16 on 26 Sept, "i
+  pick L"); the other candidates stay in `scenes/`, and `icons.sh SHIPWRECK` redoes it. A hand-drawn set was rejected on 24 Sept ("doesnt
   look like minecraft at all"), the one-item GUI slot and then hand-built dioramas on 25 Sept ("the
   temple doesn't look like the temple try to copy the real structure. you can also try and make it
   2d. the portal is not complete so it looks off. […] the buried treasure actually looks the best and

@@ -13,8 +13,8 @@ spec and writes `remotion/assets/seed-icons/<TYPE>.png` (what `remotion/SeedIcon
 (rename an alt over `<TYPE>.png` to swap): the operator, "i will go with 2d options for every seed
 type for the temple i want the outlined one". The `ICON` map at the top of `icons.sh` says which
 spec makes which file; the other specs in `scenes/` are the candidates those were picked from.
-The shipwreck's main is still `SHIPWRECK-2d-dark` (option A) while the operator picks from the 2d
-options of the same day: B `-full` (the whole ship side-on, dark oak, bow and stern both in frame),
+The shipwreck's main is `SHIPWRECK-2d-front-beached` (option L, the operator's pick on 26 Sept). The
+earlier 2d options, kept for reference: B `-full` (the whole ship side-on, dark oak, bow and stern both in frame),
 C `-full-outline` (spruce, outlined), D `-full-oak-outline` (oak, outlined), E `-bow-on` (the masts
 lined up with their yards), F `-beached` (sunk in a beach to the gunwale), G `-surface` (the hull
 under shallow water, the masts out of it), H `-broken-masts` (`with_mast_degraded`). Asked for the ship from the front instead (the same evening), I–P are
