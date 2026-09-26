@@ -19,7 +19,7 @@
  * rejects.
  */
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { rename, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -28,6 +28,7 @@ import { config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { povClipPath } from "../pipeline/syncEdit.js";
 import { readSyncOffsets } from "../pipeline/syncFile.js";
+import { watchFraction } from "./pickProgress.js";
 import { boxFailure, type LogExtra } from "./shortLog.js";
 import { runMsOf } from "./shortMoment.js";
 
@@ -125,10 +126,14 @@ export function transcriptProblem(
   return { text: `no transcript — Whisper failed: ${failed}`, transient: true };
 }
 
-/** watch.py to completion: its stdout and stderr, or a `WatchFailure`. */
+/**
+ * watch.py to completion: its stdout and stderr, or a `WatchFailure`. `poll` is handed its stderr
+ * so far on every line and once a second (the stills land in silence).
+ */
 function runWatch(
   args: string[],
   signal: AbortSignal | undefined,
+  poll: (stderr: string) => void = () => {},
 ): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     // Its own process group, so a stop takes the ffmpeg it runs with it.
@@ -147,13 +152,18 @@ function runWatch(
       timedOut = true;
       kill();
     }, WATCH_TIMEOUT_MS);
+    const ticker = setInterval(() => poll(tail), 1000);
     const onAbort = () => kill();
     signal?.addEventListener("abort", onAbort, { once: true });
     proc.stdout.on("data", (d: Buffer) => (stdout += d.toString()));
-    proc.stderr.on("data", (d: Buffer) => (tail = (tail + d.toString()).slice(-4000)));
+    proc.stderr.on("data", (d: Buffer) => {
+      tail = (tail + d.toString()).slice(-4000);
+      poll(tail);
+    });
     proc.on("error", (err) => (tail += `\n${err.message}`));
     proc.on("close", (code, sig) => {
       clearTimeout(timer);
+      clearInterval(ticker);
       signal?.removeEventListener("abort", onAbort);
       if (signal?.aborted) reject(signal.reason);
       else if (code === 0 && !timedOut) resolve({ stdout, stderr: tail });
@@ -198,6 +208,7 @@ async function watchOne(
   script: string,
   signal: AbortSignal | undefined,
   log: Log,
+  progress: (fraction: number) => void,
 ): Promise<PovWatch | null> {
   const dir = matchDir(match.id);
   const nick = match.players[side === "left" ? 0 : 1]?.nickname;
@@ -245,7 +256,22 @@ async function watchOne(
   }
   const started = Date.now();
   log(`running /watch on ${nick}'s stream (${side}, ${Math.round(endSec)} s of match, nice 19)`);
-  const run = await runWatch(args, signal);
+  const framesOnDisk = () => {
+    try {
+      // Only this run's stills: the folder keeps the last run's until frames.py clears it, which
+      // happens after watch.py announces the count, so counting them jumps the bar to ~93%. A
+      // second of slack for the filesystem's coarse clock; the last run's are minutes older.
+      const frames = path.join(out, "frames");
+      return readdirSync(frames).filter(
+        (f) => /^frame_\d+\.jpg$/.test(f) && statSync(path.join(frames, f)).mtimeMs >= started - 1000,
+      ).length;
+    } catch {
+      return 0;
+    }
+  };
+  const run = await runWatch(args, signal, (stderr) =>
+    progress(watchFraction(stderr, framesOnDisk(), MAX_FRAMES)),
+  );
   const parsed = parseWatchOutput(run.stdout, { side, offsetSec, fps, endSec });
   if (parsed.frames.length === 0) throw new WatchFailure("watch.py listed no frames", run.stderr.trim());
   const missing = transcriptProblem(run.stderr, whisper, parsed.transcript?.length ?? 0);
@@ -271,7 +297,12 @@ async function watchOne(
  */
 export async function watchPovs(
   match: MatchInfo,
-  opts: { signal?: AbortSignal; log?: Log } = {},
+  opts: {
+    signal?: AbortSignal;
+    log?: Log;
+    /** How far each POV's run is, 0–1 (pickProgress.ts `watchFraction`); 1 once it is over, however it ended. */
+    onProgress?: (side: PovWatch["side"], fraction: number) => void;
+  } = {},
 ): Promise<PovWatch[]> {
   const log = opts.log ?? (() => {});
   const script = config.watchScript;
@@ -297,7 +328,10 @@ export async function watchPovs(
   for (const side of ["left", "right"] as const) {
     opts.signal?.throwIfAborted();
     try {
-      const watched = await watchOne(match, side, script, opts.signal, log);
+      opts.onProgress?.(side, 0);
+      const watched = await watchOne(match, side, script, opts.signal, log, (f) =>
+        opts.onProgress?.(side, f),
+      );
       if (watched) out.push(watched);
     } catch (err) {
       if (opts.signal?.aborted) throw err;
@@ -307,6 +341,7 @@ export async function watchPovs(
         ...(err instanceof WatchFailure && err.detail ? { detail: err.detail } : {}),
       });
     }
+    opts.onProgress?.(side, 1);
   }
   return out;
 }

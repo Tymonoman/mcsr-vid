@@ -110,10 +110,21 @@ const SCENARIOS = {
     detail: "the model is watching the match",
     pick: null,
     pickActivity: "running",
-    activity: { step: "pick", line: "running /watch on bbiddd's stream", since: ago(2 * MIN + 10e3) },
+    activity: {
+      step: "pick",
+      line: "running /watch on Infume's stream · 2 of 2",
+      since: ago(40e3),
+      percent: 58,
+    },
     log: [
-      line(3 * MIN, "pick", "info", "cutting a 2 fps proxy of the export (short-proxy.mp4)"),
-      line(2 * MIN + 10e3, "pick", "info", "running /watch on Infume's stream"),
+      line(3 * MIN, "pick", "info", "making the model's 2 fps copy of final-13448958.mp4 (640x360, nice 19)"),
+      line(
+        2 * MIN + 10e3,
+        "pick",
+        "info",
+        "running /watch on bbiddd's stream (left, 540 s of match, nice 19)",
+      ),
+      line(40e3, "pick", "info", "running /watch on Infume's stream (right, 540 s of match, nice 19)"),
     ],
   },
   // hooks saved, the Short is being cut
