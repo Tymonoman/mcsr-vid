@@ -1,0 +1,12 @@
+{
+  "name": "SHIPWRECK-2d-front-stern",
+  "template": "shipwreck/with_mast",
+  "palette": 4,
+  "edits": [
+    {"op": "roll", "deg": -20, "about": [4.5, 0.5]},
+    {"op": "fill", "from": [-14, -12, 29], "to": [22, 2, 29], "block": "sand"}
+  ],
+  "view": {"projection": "2d", "facing": "south", "depthShade": 0.08, "padding": 0, "zoom": 2.3125, "center": [1.81, 9.5, 14]},
+  "background": "linear-gradient(#5aa6ee, #2362bd)",
+  "outline": {"color": "#0d0c10", "px": 24, "exclude": ["sand", "water"]}
+}

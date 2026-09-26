@@ -124,13 +124,19 @@ def block_of(e):
     return name, {**props, **{k: str(v).lower() if isinstance(v, bool) else str(v) for k, v in e.get("props", {}).items()}}
 
 
-def apply_edits(blocks, edits, nudges=None):
-    """`nudges` collects the `nudge` edits: cell -> [dx, dy, dz] in blocks, fractions allowed."""
+def apply_edits(blocks, edits, nudges=None, rolls=None):
+    """`nudges` collects the `nudge` edits: cell -> [dx, dy, dz] in blocks, fractions allowed;
+    `rolls` the `roll` edits: cell -> (degrees, pivot x, pivot y)."""
     nudges = {} if nudges is None else nudges
+    rolls = {} if rolls is None else rolls
     for e in edits:
         op = e["op"]
         if op == "nudge":
             nudges[tuple(e["at"])] = e["by"]
+        elif op == "roll":
+            px, py = e["about"]
+            for c in blocks:
+                rolls[c] = (e["deg"], px, py)
         elif op == "set":
             blocks[tuple(e["at"])] = block_of(e)
         elif op == "fill":
@@ -175,6 +181,9 @@ def apply_edits(blocks, edits, nudges=None):
                 moved = {(x + d[0], y + d[1], z + d[2]): v for (x, y, z), v in m.items()}
                 m.clear()
                 m.update(moved)
+            moved = {(x + d[0], y + d[1], z + d[2]): (a, px + d[0], py + d[1]) for (x, y, z), (a, px, py) in rolls.items()}
+            rolls.clear()
+            rolls.update(moved)
         else:
             sys.exit(f"unknown edit op {op!r}")
     return blocks
@@ -613,8 +622,8 @@ def bake(spec, jar, spec_dir):
         blocks, size = load_template(jar, tpl, spec.get("palette", 0))
     else:
         blocks, size = {}, [0, 0, 0]
-    nudges = {}
-    apply_edits(blocks, spec.get("edits", []), nudges)
+    nudges, rolls = {}, {}
+    apply_edits(blocks, spec.get("edits", []), nudges, rolls)
     update_shapes(jar, blocks)
     textures, index, faces = [], {}, []
     bare = set((spec.get("outline") or {}).get("exclude", []))  # left out of the outline (the ground)
@@ -623,13 +632,17 @@ def bake(spec, jar, spec_dir):
         if fc.tex not in index:
             index[fc.tex] = len(textures)
             textures.append({"src": f"minecraft/textures/{fc.tex}.png", "uv": jar.used[fc.tex]})
+        a, px, py = rolls.get((x, y, z), (0, 0, 0))  # turned about the z line through (px, py)
+        cs, sn = math.cos(math.radians(a)), math.sin(math.radians(a))
+        turn = lambda q, px=px, py=py: [px + (q[0] - px) * cs + (q[1] - py) * sn, py - (q[0] - px) * sn + (q[1] - py) * cs, q[2]]
+        at = lambda c: [clean(v) for v in turn([x + nx + c[0] / 16, y + ny + c[1] / 16, z + nz + c[2] / 16])]
         d = {
             "t": index[fc.tex],
-            "p": [[clean(x + nx + c[0] / 16), clean(y + ny + c[1] / 16), clean(z + nz + c[2] / 16)] for c in fc.corners],
+            "p": [at(c) for c in fc.corners],
             "uv": [clean(v) for v in fc.uv],
-            "n": [clean(v) for v in fc.normal],
+            "n": [clean(v) for v in turn(fc.normal, 0, 0)],
             "c": [x, y, z],
-            "o": [clean(x + nx + fc.centre[0] / 16), clean(y + ny + fc.centre[1] / 16), clean(z + nz + fc.centre[2] / 16)],
+            "o": at(fc.centre),
         }
         if fc.tint:
             d["tint"] = fc.tint
@@ -709,6 +722,11 @@ def selftest(jar):
                             (5, 0, 1): ("oak_planks", {})})
     assert s[(0, 0, 0)][1]["shape"] == "outer_left" and s[(0, 0, -1)][1]["shape"] == "straight", s
     assert (s[(5, 0, 0)][1]["east"], s[(5, 0, 0)][1]["south"], s[(5, 0, 0)][1]["west"]) == ("true", "true", "false")
+    # Roll: a quarter turn tips a block's top over to +x, about the z line through `about`.
+    up = [f for f in bake({"edits": [{"op": "set", "at": [0, 0, 0], "block": "oak_planks"},
+                                     {"op": "roll", "deg": 90, "about": [0, 0]}]}, jar, ".")["faces"]
+          if f["n"] == [1.0, 0.0, 0.0]]
+    assert len(up) == 1 and all(p[0] == 1 and -1 <= p[1] <= 0 for p in up[0]["p"]), up
     print("bake.py selftest: ok")
 
 

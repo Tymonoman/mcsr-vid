@@ -1,0 +1,11 @@
+{
+  "name": "SHIPWRECK-2d-front-broken",
+  "template": "shipwreck/with_mast_degraded",
+  "palette": 3,
+  "edits": [
+    {"op": "roll", "deg": -25, "about": [4.5, 0.5]},
+    {"op": "fill", "from": [-14, -12, -3], "to": [22, 3, -3], "block": "water[level=0]"}
+  ],
+  "view": {"projection": "2d", "facing": "north", "depthShade": 0.08, "padding": 0, "zoom": 3.0833, "center": [1.96, 7.5, 14]},
+  "background": "sky"
+}

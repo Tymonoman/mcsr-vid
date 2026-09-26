@@ -17,7 +17,11 @@ The shipwreck's main is still `SHIPWRECK-2d-dark` (option A) while the operator 
 options of the same day: B `-full` (the whole ship side-on, dark oak, bow and stern both in frame),
 C `-full-outline` (spruce, outlined), D `-full-oak-outline` (oak, outlined), E `-bow-on` (the masts
 lined up with their yards), F `-beached` (sunk in a beach to the gunwale), G `-surface` (the hull
-under shallow water, the masts out of it), H `-broken-masts` (`with_mast_degraded`).
+under shallow water, the masts out of it), H `-broken-masts` (`with_mast_degraded`). Asked for the ship from the front instead (the same evening), I–P are
+bow-on, rolled the way a wreck lists so the three masts stop reading as a cross: I `-front-sinking`
+(dark oak, the sea surface across the hull), J `-front-sinking-close`, K `-front-outlined` (oak, the
+temple's outline), L `-front-beached`, M `-front-sticker` (a cream outline like the skins'), N
+`-front-listing` (on the seabed), O `-front-stern`, P `-front-broken` (`with_mast_degraded`).
 Change a spec in `scenes/`, run `icons.sh <TYPE>`, look at the PNG (the `SeedIconSheet`
 composition shows every main and alt), commit it.
 
@@ -80,6 +84,7 @@ bottom, facing north, ...).
 | `water` | `top`, `from?` (lowest y), `margin?` (1) | Fills air in the footprint + margin, `from`..`top`, with water source blocks. |
 | `shift` | `by: [dx, dy, dz]` | Moves everything. |
 | `nudge` | `at`, `by: [dx, dy, dz]` (blocks, fractions allowed) | Draws that one block moved off its cell; it is still culled and ordered as its cell. The buried treasure's chest sits `-0.4375` (7 texels) into the sand this way. |
+| `roll` | `deg`, `about: [x, y]` (blocks) | Turns every block placed so far about the z line through `about` (a shipwreck's keel), the top towards +x for a positive `deg`: a wreck that lists. Blocks added after it (the seabed, the sea) stay square. Culled and ordered as their cells, so keep later ground off the rolled blocks' faces: the `SHIPWRECK-2d-front-*` specs put the sand or the sea in one wall in front of the ship, all a 2d view shows of it. |
 
 ### View
 
