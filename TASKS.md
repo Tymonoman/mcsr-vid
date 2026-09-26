@@ -1,5 +1,7 @@
 # TASKS — resume point (updated 24 Sept 2026 08:15 UTC)
 
+**26 Sept 18:45 UTC — RESUMED.** main 289ae33 is pushed and the dashboard booted it (the comment guard is live). Five background agents restarted the plan below (plain Agent tool, not workflows): A integrate icons (seed-icons-vanilla), B independent review r2 + screenshots (watch-progress), C finish the 4 review fixes (thumbs-rerender), D research + primer + reset/death split + --dry-run (pick-mechanics; the fact-check, review and ONE dry-run eval on 13673240 follow as separate agents), E build publish-at. As each returns: check it, run the next step (review/fix), send the operator the images/screenshots, merge only on his OK in the order of step 3.
+
 ## ▶ RESUME HERE — stopped 26 Sept 2026 ~14:58 UTC (16:58 Polish) for the operator's shutdown
 
 When the operator says **"resume"**, do this in order. Every workflow was stopped cleanly; nothing is running (the thumbs-rerender test server was killed). Main is `3c60c99`+this commit; `d19a130` (the comment guard) and the TASKS commits are NOT pushed.
