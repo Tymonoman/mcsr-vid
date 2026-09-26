@@ -9,12 +9,17 @@ draws the faces, back to front, one affine-mapped texture per face.
 
 The thumbnail's seed-type icons are renders of these scenes: `icons.sh` maps each type to its
 spec and writes `remotion/assets/seed-icons/<TYPE>.png` (what `remotion/SeedIconMC.tsx` draws) and
-`<TYPE>-alt.png` (the other projection, iso vs 2d; rename it over `<TYPE>.png` to swap). Every type
-has both; the `ICON` map at the top of `icons.sh` says which spec makes which file, and the other
-specs in `scenes/` are the candidates those were picked from (26 Sept 2026: village and shipwreck
-mains 2d, a 2d buried-treasure alt, the temple's outline). Change a spec in `scenes/`, run
-`icons.sh <TYPE>`, look at the PNG (the `SeedIconSheet` composition shows every main and alt),
-commit it.
+`<TYPE>-alt.png`. Since 26 Sept 2026 every main is a 2d elevation and every alt the iso render
+(rename an alt over `<TYPE>.png` to swap): the operator, "i will go with 2d options for every seed
+type for the temple i want the outlined one". The `ICON` map at the top of `icons.sh` says which
+spec makes which file; the other specs in `scenes/` are the candidates those were picked from.
+The shipwreck's main is still `SHIPWRECK-2d-dark` (option A) while the operator picks from the 2d
+options of the same day: B `-full` (the whole ship side-on, dark oak, bow and stern both in frame),
+C `-full-outline` (spruce, outlined), D `-full-oak-outline` (oak, outlined), E `-bow-on` (the masts
+lined up with their yards), F `-beached` (sunk in a beach to the gunwale), G `-surface` (the hull
+under shallow water, the masts out of it), H `-broken-masts` (`with_mast_degraded`).
+Change a spec in `scenes/`, run `icons.sh <TYPE>`, look at the PNG (the `SeedIconSheet`
+composition shows every main and alt), commit it.
 
 ```sh
 scripts/seed-icons/icons.sh [TYPE...]                           # re-render the thumbnail icons
@@ -52,7 +57,7 @@ default) and let the thumbnail downscale the PNG.
 | --- | --- |
 | `name` | Output stem: `remotion/seedIcons/<name>.json`. Default: the spec file's name. |
 | `template` | A structure under the jar's `data/minecraft/structures/` without `.nbt` (`shipwreck/with_mast`, `ruined_portal/portal_1`, `village/plains/town_centers/plains_meeting_point_1`), or a path (relative to the spec) to an `.nbt` or to a structures JSON (`{size, blocks: [[x,y,z,"name",{props}]]}`). `null` = start empty. Jigsaw blocks become their `final_state`; air, structure voids and structure blocks (data markers) are dropped, as the game does. Entities in templates are ignored. |
-| `palette` | Which palette of a multi-palette template (shipwrecks carry 8 wood sets; 0 is oak hull, spruce deck, oak logs — the wiki's "Oak" render). |
+| `palette` | Which palette of a multi-palette template (shipwrecks carry 8 wood sets, hull / deck: 0 oak / spruce — the wiki's "Oak" render — 1 jungle / spruce, 2 dark oak / jungle, 3 dark oak / spruce, 4 spruce / oak, 5 spruce / jungle, 6 spruce / dark oak, 7 oak / birch; the masts are the hull's log). |
 | `edits` | Applied in order; coordinates are the template's block coordinates (x east, y up, z south), inclusive boxes. |
 | `view` | Camera and framing, below. |
 | `background` | `"none"` (transparent PNG, default), a preset `"sky"`, `"sea"`, `"nether"`, or any CSS background. |
@@ -113,7 +118,7 @@ pixel steps of a block skyline.
 | `inner` | off | Also line where the front overlaps what is behind it: the faces within this many blocks of the nearest outlined face get a contour of their own over the rest (the temple's towers against its recessed body). |
 | `innerPx` | `px` | That inner line's width. |
 
-`DESERT_TEMPLE-2d.json` uses `px` 24 with `base` (the operator, 26 Sept 2026: "add an outline to
+`DESERT_TEMPLE-2d.json` (the main) uses `px` 24 with `base` (the operator, 26 Sept 2026: "add an outline to
 the desert temple so its easier to recognize"); the `DESERT_TEMPLE-2d-outline-*.json` specs are
 the other widths, colours and the inner-edge variant it was picked from.
 
