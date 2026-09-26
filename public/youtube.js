@@ -165,8 +165,11 @@ async function loadYoutube(id, meta) {
         body: JSON.stringify({
           kind: "video",
           privacyStatus: $("#ytPrivacy").value,
-          // datetime-local has no zone; the browser's own offset is what the operator meant.
-          publishAt: when ? new Date(when).toISOString() : "",
+          // datetime-local has no zone; the browser's own offset is what the operator meant. Still
+          // the kit's value, it is the kit's instant: re-parsed, a repeated hour reads as its first.
+          publishAt: when
+            ? (when === prefilledWhen && publishSlotAt ? publishSlotAt : new Date(when)).toISOString()
+            : "",
         }),
       });
       $("#ytBarWrap").hidden = false;

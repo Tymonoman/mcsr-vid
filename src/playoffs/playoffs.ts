@@ -328,7 +328,11 @@ async function gamesOf(
  * the *other* games, and only on a first resolve: the memo above is consulted first, so a number
  * the board already derived from its half-hour-cached histories is what the packaging gets.
  */
-export async function playoffContextFor(match: MatchInfo | FeedMatch): Promise<PlayoffContext | null> {
+export async function playoffContextFor(
+  match: MatchInfo | FeedMatch,
+  /** Throw when the bracket cannot be read, rather than read as an ordinary match. */
+  strict = false,
+): Promise<PlayoffContext | null> {
   const known = contexts.get(match.id);
   if (known) return known;
   try {
@@ -338,6 +342,7 @@ export async function playoffContextFor(match: MatchInfo | FeedMatch): Promise<P
     if (ctx) contexts.set(match.id, ctx);
     return ctx;
   } catch (err) {
+    if (strict) throw err;
     console.error(`playoffs: ${describeError(err)} (packaging as an ordinary match)`);
     return null;
   }
@@ -457,6 +462,11 @@ export async function playoffBoard(nowSec: number = Date.now() / 1000): Promise<
     bracketUrl: playoffsBracketUrl(bracket.season),
     slots: slots.sort((x, y) => (x.startTime ?? Infinity) - (y.startTime ?? Infinity) || x.id - y.id),
   };
+}
+
+/** Test seam: a match's playoff context, as if the board had numbered it. */
+export function _setPlayoffContextForTest(matchId: number, ctx: PlayoffContext): void {
+  contexts.set(matchId, ctx);
 }
 
 /** Test seam: forget everything fetched. */

@@ -41,6 +41,7 @@ import {
   writeUpload,
 } from "../youtube/youtubeStore.js";
 import { beginUpload, finishOnYouTube, uploadProgress } from "../youtube/youtubeUpload.js";
+import { MIN_LEAD_MS } from "../youtube/publishSlot.js";
 import { HOOK_PLACEHOLDER } from "../pipeline/title.js";
 import { videoEngagement, yppProgress } from "../youtube/yppProgress.js";
 
@@ -351,8 +352,8 @@ async function startUpload(
   const privacyStatus =
     body.privacyStatus === "public" || body.privacyStatus === "unlisted" ? body.privacyStatus : "private";
 
-  // publishAt must be RFC 3339 and in the future, or YouTube rejects the whole upload with a
-  // bare invalidPublishAt *after* the bytes have already gone up.
+  // publishAt must be RFC 3339 and an hour ahead (MIN_LEAD_MS), or YouTube rejects the whole
+  // upload with a bare invalidPublishAt *after* the bytes have already gone up.
   let publishAt: string | undefined;
   if (typeof body.publishAt === "string" && body.publishAt.trim() !== "") {
     const when = new Date(body.publishAt);
@@ -360,8 +361,10 @@ async function startUpload(
       ctx.json(res, 400, { error: `publishAt is not a valid date: ${body.publishAt}` });
       return;
     }
-    if (when.getTime() <= Date.now()) {
-      ctx.json(res, 400, { error: "publishAt must be in the future" });
+    if (when.getTime() <= Date.now() + MIN_LEAD_MS) {
+      ctx.json(res, 400, {
+        error: "publishAt must be at least an hour ahead — YouTube checks it once the whole file is up",
+      });
       return;
     }
     publishAt = when.toISOString();

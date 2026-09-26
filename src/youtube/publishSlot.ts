@@ -12,15 +12,20 @@
  * `minLeadMs` skips a slot that is too close to upload for: a scheduled time YouTube has already
  * passed rejects the whole upload, and an 800 MB file is not on the platform in five minutes.
  */
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { config, matchDir } from "../config.js";
 import { getMatch } from "../api/mcsrApi.js";
 import { channelUploadsSnapshot, describesMatch, SHORT_MAX_SEC } from "./channelUploads.js";
 import { msUntilNextRun } from "../dashboard/nightly.js";
+import { listProcessedMatchIds } from "../dashboard/matchStatus.js";
+import { hiddenMatchIds } from "../dashboard/matchShelf.js";
+import { playoffContextForId } from "../playoffs/playoffs.js";
 import { allUploads, readUpload } from "./youtubeStore.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+/** The least a scheduled time may be ahead of the upload's start: YouTube checks it once the file is up. */
+export const MIN_LEAD_MS = 60 * 60 * 1000;
 
 /**
  * Which UTC day and hour a moment falls on. A ranked match and a playoff series have their own
@@ -35,7 +40,7 @@ export function nextPublishSlot(
   hourUtc: number,
   /** RFC 3339 times other videos are already scheduled for — see `claimedPublishTimes`. */
   claimedAt: readonly string[] = [],
-  minLeadMs = 60 * 60 * 1000,
+  minLeadMs = MIN_LEAD_MS,
   /** Times (ms) this video keeps `gapDays` UTC calendar days away from — see `pairGapTimes`. */
   keepApart: readonly number[] = [],
   gapDays = 0,
@@ -63,7 +68,11 @@ export interface PublishSlot {
 
 /** The slot the kit shows and the chain schedules: the first free one, kept off this pair's other kind. */
 export async function publishSlotFor(matchId: number, nowMs: number): Promise<PublishSlot> {
-  const hour = publishHourFor(matchDir(matchId));
+  // A playoff game 1 not joined yet goes out as its series, at the series' hour.
+  const hour =
+    !isSeries(matchId) && (await playoffContextForId(matchId))?.gameNo === 1
+      ? config.seriesPublishHourUtc
+      : publishHourFor(matchDir(matchId));
   const claimed = await claimedPublishTimes(matchId);
   const free = nextPublishSlot(nowMs, hour, claimed);
   const gap = config.seriesPairGapDays;
@@ -78,6 +87,37 @@ export async function publishSlotFor(matchId: number, nowMs: number): Promise<Pu
     .join(", ");
   const other = isSeries(matchId) ? "ranked video" : "series";
   return { at, why: `pushed out to keep ${gap} days from this pair's ${other} (${days})` };
+}
+
+/**
+ * What `publishSlotFor` would have steered away from, said about a time the operator picked: the
+ * same two rules, as warnings — the operator's time wins (it is a suggestion, like the hooks).
+ */
+export async function slotWarnings(matchId: number, atMs: number, nowMs: number): Promise<string[]> {
+  const utc = (ms: number) => `${new Date(ms).toISOString().slice(0, 16).replace("T", " ")} UTC`;
+  const out: string[] = [];
+  const clash = (await claimedPublishTimes(matchId))
+    .map((t) => Date.parse(t))
+    .filter((ms) => ms > nowMs && slotOf(ms) === slotOf(atMs));
+  if (clash.length)
+    out.push(
+      `another video is scheduled for that hour (${clash.map(utc).join(", ")}) — they would split the browse impressions`,
+    );
+  const gap = config.seriesPairGapDays;
+  const near =
+    gap > 0
+      ? (await pairGapTimes(matchId, nowMs - (gap + 1) * DAY_MS)).filter(
+          (ms) => Math.abs(dayOf(atMs) - dayOf(ms)) < gap,
+        )
+      : [];
+  if (near.length)
+    out.push(
+      `under ${gap} days from this pair's ${isSeries(matchId) ? "ranked video" : "series"} (${near
+        .sort((a, b) => a - b)
+        .map((ms) => new Date(ms).toISOString().slice(0, 10))
+        .join(", ")})`,
+    );
+  return out;
 }
 
 const isSeries = (matchId: number): boolean => existsSync(path.join(matchDir(matchId), "series.json"));
@@ -97,19 +137,21 @@ async function pairOf(matchId: number): Promise<string | null> {
  * series) goes or went out, from `sinceMs` on. The doogile–Aquacorde series drew 84 views in 32 h
  * against 2,095 for their ranked video published the same day (24 Sept 2026 audit): two titles
  * naming one pair read as a repeat. A scheduled video counts at its `publishAt`, a public one at
- * its upload; a private one with no time has no day to keep away from. A Short rides on its
- * long-form's day, so it is not counted.
+ * its upload, one not uploaded yet at the time chosen for it in the kit; a private one with no
+ * time has no day to keep away from. A Short rides on its long-form's day, so it is not counted.
  *
  * The same two players, not one shared one: the top seeds are in most ranked videos, so a
  * one-player rule would hold every series a week out through the playoffs, and the audit's
  * evidence is a repeated pair, not a repeated name.
  */
 export async function pairGapTimes(matchId: number, sinceMs: number): Promise<number[]> {
+  const uploads = await allUploads();
   const timed = [
-    ...(await allUploads()).map((u) => ({
+    ...uploads.map((u) => ({
       id: u.matchId,
       at: u.record.publishAt ?? (u.record.privacyStatus !== "private" ? u.record.uploadedAt : null),
     })),
+    ...storedTimes(uploads),
     ...channelUploadsSnapshot()
       .filter((v) => !(v.durationSec > 0 && v.durationSec <= SHORT_MAX_SEC))
       .map((v) => ({
@@ -136,9 +178,10 @@ export const publishHourFor = (dir: string): number =>
 /**
  * The publish times already spoken for, for everything but this match.
  *
- * Two sources, because uploading is half manual: what the channel says is scheduled (a Studio
- * upload with a future `publishAt`, src/youtube/channelUploads.ts) and what this dashboard recorded when
- * it uploaded (`youtube.json`). This match's own scheduling is excluded — a match already booked
+ * Three sources, because uploading is half manual: what the channel says is scheduled (a Studio
+ * upload with a future `publishAt`, src/youtube/channelUploads.ts), what this dashboard recorded when
+ * it uploaded (`youtube.json`), and a time the operator chose in the kit for a match not uploaded
+ * yet (`short-<id>.status.json`). This match's own scheduling is excluded — a match already booked
  * into tomorrow's slot must not push its own kit into the day after.
  */
 export async function claimedPublishTimes(exceptMatchId: number): Promise<string[]> {
@@ -153,5 +196,30 @@ export async function claimedPublishTimes(exceptMatchId: number): Promise<string
       .filter((v) => !describesMatch(exceptMatchId, v) && v.videoId !== ownVideoId)
       .map((v) => v.publishAt),
     ...uploads.filter((u) => u.matchId !== exceptMatchId).map((u) => u.record.publishAt),
+    ...storedTimes(uploads)
+      .filter((s) => s.id !== exceptMatchId)
+      .map((s) => s.at),
   ].filter((at): at is string => typeof at === "string" && at.trim() !== "");
+}
+
+/**
+ * The times the operator chose in the kit (`publishAt` in `short-<id>.status.json`,
+ * src/dashboard/shortFlow.ts `setPublishTime`) for matches not uploaded yet: the chain will take
+ * them. A hidden match's is left out — it is not going anywhere.
+ */
+function storedTimes(uploads: ReadonlyArray<{ matchId: number }>): Array<{ id: number; at: string }> {
+  const hidden = hiddenMatchIds();
+  const out: Array<{ id: number; at: string }> = [];
+  for (const id of listProcessedMatchIds()) {
+    if (hidden.has(id) || uploads.some((u) => u.matchId === id)) continue;
+    try {
+      const s = JSON.parse(readFileSync(path.join(matchDir(id), `short-${id}.status.json`), "utf8")) as {
+        publishAt?: unknown;
+      };
+      if (typeof s.publishAt === "string") out.push({ id, at: s.publishAt });
+    } catch {
+      // No status file: nothing chosen.
+    }
+  }
+  return out;
 }

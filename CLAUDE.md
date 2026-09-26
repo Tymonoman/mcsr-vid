@@ -69,7 +69,7 @@ Use the script, don't reconstruct the shell line. Extra arguments go after `--`.
 | `npm run analytics -- <videoId> [--traffic-sources] [--days N]` | YouTube Analytics via `~/.claude/skills/claude-youtube/` (outside the repo; token at `~/.claude/.tmp/youtube_oauth_token.json`). |
 | `bash scripts/agy-task.sh <name> <prompt-file> [model]` | Hand an easy, fully specified task to agy (Gemini, the operator's subscription) in worktree `.claude/worktrees/agy-<name>` on branch `agy/<name>`; its answer lands in `.tools/agy-dev/runs/<name>.json`. Its home `.tools/agy-dev` has ECC (pruned to this stack), ponytail, /watch and the Claude skills; it may write only under `.claude/worktrees` and run the read/test commands in its `settings.json`. Review the diff and commit yourself. The picker's home (`.tools/agy-home`) stays plugin-free on purpose. |
 | `python3 scripts/reap.py <command…>` | Subreaper wrapper, only needed if zombies ever climb again (see Pitfalls). |
-| `bash scripts/browser-checks/run-all.sh <url>` | Drives the dashboard in a real browser the way the operator does (24 Playwright checks, two of them only when a Studio upload or an unexported match exists; self-configuring from `/api/matches` and `/api/playoffs`). Point it at the real dashboard (`http://mcsr-dashboard:8080` from the Claude container), not just a local test server — four checks only ever exercised a secure origin and hid a broken Copy button for it. Needs `npx playwright install chromium` once and a server with real data. |
+| `bash scripts/browser-checks/run-all.sh <url>` | Drives the dashboard in a real browser the way the operator does (25 Playwright checks, two of them only when a Studio upload or an unexported match exists; self-configuring from `/api/matches` and `/api/playoffs`). Point it at the real dashboard (`http://mcsr-dashboard:8080` from the Claude container), not just a local test server — four checks only ever exercised a secure origin and hid a broken Copy button for it. Needs `npx playwright install chromium firefox` once and a server with real data. |
 
 Lab timings for a 10-minute match: overlay render ~9 min, `export:fast` ~10 min, a Short in
 seconds; a nightly render takes ~12 min, ~21 min with the MP4 (the Short waits for the hooks).
@@ -154,7 +154,7 @@ views brought 0 subscribers.
   is its own field, `short-<id>.hook.txt`, prefilled on the dashboard with the model's
   suggestion; the long-form's title hook is the edited title. Saving both
   (`PUT /api/shorts/hooks/:id`) starts the chain in `src/dashboard/shortFlow.ts`: render the
-  Short, upload the long-form at its slot, upload the Short 18 h later. A hook changed before the
+  Short, upload the long-form at its slot (or the kit's Publish at, see Publish kit), upload the Short 18 h later. A hook changed before the
   upload re-renders; after the upload the hooks lock. "No Short for this one" lets the long-form
   go alone. `short-<id>.status.json` holds each step's state and errors.
 - **On screen** (`src/shorts/shortRender.ts`, `remotion/Short.tsx`): the hook for 4 s
@@ -232,7 +232,12 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   error count, unfoldable line details (`.logline pre`), and a `Copy` button (`copyText` to plain
   text). A failed poll shows an inline scanline ("dashboard unreachable — retrying in 5 s",
   `.nowconn`) without blanking or freezing the panel. "Pick again" sits inside Pick (or "Ask the
-  model" if unpicked and not on the channel; opening an unpicked match does not spend a model watch).
+  model" if unpicked and not on the channel). Opening a match queues a model pick (`GET
+  /api/shorts/plan/:id` → `shortPlan(id, { queue: true })`) when it is exported, has no readable
+  `short-<id>.pick.json` (a heuristic fallback pick counts as one), is not `noShort`, has neither
+  its Short nor its long-form on the channel (record, scan pairing or manual tick), has no pick
+  running or queued, reads from the MCSR API, and is not a playoff game before its join; the pick
+  spends a model watch only when `reasonerCommand` is set.
   `#save` sits in `.saverow` at the end of the Hooks step while hooks are editable (text: "Save
   hooks and schedule", "Sync looks right — save hooks and schedule" on weak sync, "Save hooks" if
   already saved, or notes uploads are off on the box), then moves after the last step on desktop
@@ -294,7 +299,7 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
 - **`nightlyUpload` is `"scheduled"` on the lab since 22 Sept 2026** (the operator's call:
   "whatever gets the most views"), and since 23 Sept it decides how the chain uploads once the
   hooks are saved: private, scheduled for the next free 19:00 UTC slot — a series for 23:00 —
-  and the Short 18 h later (`"private"`: no publish time; `"off"`: the chain stops after the
+  or the operator's own time from the kit's Publish at, and the Short 18 h later (`"private"`: no publish time; `"off"`: the chain stops after the
   render). The nightly itself never uploads any more. Still not writable from the Settings tab.
 - **A playoff game's thumbnails can carry the tournament** (`playoffThumbnailStyle`, in the
   Settings tab; `remotion/Thumbnail.tsx` `playoff`): "bracket" puts the round in the band and
@@ -362,8 +367,8 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
 - **`videos.update` replaces the part it is given.** `addTags` (`src/youtube/youtube.ts`) reads the snippet
   and sends it back whole — a `part=snippet` write that omits the description blanks it on a
   published video. It only ever adds tags, so a tag typed in Studio survives, and it refuses to
-  write at all if the read returns no video. This is the project's only `videos.*` write, it is
-  operator-pressed, and it is not the call the audit gates.
+  write at all if the read returns no video. `reschedule` (the kit's Move on YouTube, one press)
+  sends the `status` part back whole the same way. `videos.update` is not the call the audit gates.
 - **Upload** sends `match-<id>.tags.txt` and refuses a title still containing `<HOOK>`. The text
   is the render's, refreshed at upload (`uploadTextFor`, `src/youtube/youtubeStore.ts`; the kit
   shows the same): the title keeps the operator's hook and rebuilds the rest from the stored line,
@@ -414,6 +419,31 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   the lab host's path, not the container's `/media`) — pull, not push, because the image has no
   ssh client and the PC already reaches the lab. `GET /api/export/bundle/:id` is the same
   publish set as one `.tar`.
+  **Publish at is editable** (26 Sept 2026, the operator: "on firefox i cant change the upload
+  date"; `PUT /api/shorts/publishat/:id`, `setPublishTime` in `src/dashboard/shortFlow.ts`): a
+  `datetime-local` in the browser's zone, stored in UTC as `publishAt` in `short-<id>.status.json`;
+  while typing, the line beside Save names the instant in UTC (an hour a clock change repeats takes
+  its first; an untouched Save sends the kit's own instant, and so does the by-hand upload while
+  its field holds the kit's value). The chain's upload takes it while it
+  is an hour ahead (`MIN_LEAD_MS`: YouTube checks the time once the file is up; Save and the
+  by-hand form refuse less), else the next free slot, and the Short 18 h after. A stored time is a
+  claim (`claimedPublishTimes`) and counts for the pair gap, unless its match is hidden; a playoff
+  game 1 not joined yet takes `seriesPublishHourUtc`. The slot rules come back as warnings, never
+  refusals (`slotWarnings`), and hide while another time is typed (they are the saved one's).
+  Scheduled on YouTube with an upload record here (a dashboard upload, an adopted draft, or a
+  Studio upload the channel scan recorded — `recordStudioUpload` keeps its `publishAt`), the button
+  reads "Move on YouTube to …" and stays off until the time is changed (untouched, it would put
+  the painted time back over a move made in Studio since): one press, refused while the match's
+  chain runs (the Short's upload takes the long-form's time as it starts); `reschedule` reads the
+  video live, sends the status part back whole (nothing for the time it already has), the record
+  follows and the Short keeps its 18 h. The kit's state is the record's (`onChannel`; a public
+  video's scan entry has lost its time), except where the record says less than the scan's entry
+  for the same video: private with no time (a Studio upload recorded before 26 Sept kept none), or
+  no time ahead while the scan still has it scheduled (moved in Studio). Now and the list read the
+  record alone. A Studio upload the scan has not recorded yet says "move it there". A playoff game
+  after game 1 has no time of its own, and a private room whose bracket cannot be read stores
+  none (it may be one). `publish-at-check` lets only GETs reach the server (Save, Move and the
+  by-hand upload's POST are answered in the browser; a plan GET that could queue a pick is aborted).
 - **Publish checklist**: facts from disk plus manual toggles in `<mediaDir>/<id>/publish.json`
   (`src/dashboard/matchShelf.ts`). The Rendered tab counts matches waiting for a hook (`#tab-matches small`,
   falling back to `ready` on a server one restart behind) and is ordered by what needs the operator

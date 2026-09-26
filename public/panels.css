@@ -492,7 +492,8 @@
   color: var(--quartz);
 }
 .upload select,
-.upload input[type="datetime-local"] {
+.upload input[type="datetime-local"],
+.kitwhen input[type="datetime-local"] {
   font-family: inherit;
   font-size: 13px;
   padding: 6px 8px;
@@ -1125,6 +1126,18 @@ input[type="text"]:disabled {
      fall back to the rows attribute, which is why every block still carries one. */
   field-sizing: content;
   max-height: 40vh;
+}
+
+/* The one kit line that takes typing: the publish time (app.js publishBlock). */
+.kitwhen {
+  margin: 6px 0 4px;
+}
+/* The picker's calendar icon is drawn for the page's scheme: dark, or it is black on the panel. */
+.kitwhen input[type="datetime-local"] {
+  color-scheme: dark;
+}
+.kitwarn {
+  color: var(--gold);
 }
 
 /* Days before the first game every slot reads "no games found yet", which is eight rows of
