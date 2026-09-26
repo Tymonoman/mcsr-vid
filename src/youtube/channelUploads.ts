@@ -21,7 +21,7 @@ import { describeError } from "../errorText.js";
 import { listProcessedMatchIds } from "../dashboard/matchStatus.js";
 import { recordStudioUpload } from "./youtubeUpload.js";
 import { dataApiGet, isConfigured } from "./youtube.js";
-import { readUpload } from "./youtubeStore.js";
+import { readUpload, videoIdOwner } from "./youtubeStore.js";
 
 export interface ChannelVideo {
   videoId: string;
@@ -249,6 +249,9 @@ async function recordNewPairings(videos: readonly ChannelVideo[]): Promise<void>
   for (const matchId of listProcessedMatchIds()) {
     const video = channelVideoFor(matchId, videos);
     if (!video || (await readUpload(matchId))) continue;
+    // A series video names every game's match page, but it is game 1's upload: games 2..n are
+    // not Studio uploads of their own, and recording them finished the video once per game.
+    if (await videoIdOwner(video.videoId)) continue;
     await recordStudioUpload(matchId, video).catch((err: unknown) =>
       console.error(`channel: recording the Studio upload of #${matchId}: ${describeError(err)}`),
     );
