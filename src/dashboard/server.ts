@@ -39,7 +39,6 @@ import { STAGE_LABELS, STAGE_ORDER, STAGE_SHORT_LABELS } from "../pipeline/pipel
 import { presentSuggestions } from "./suggestPresent.js";
 import { dismiss, restore, snapshot, startScan } from "./suggestScan.js";
 import { cronLine, rsyncPullAllCommand, rsyncPullCommand } from "./publishSet.js";
-import { publishHourFor } from "../youtube/publishSlot.js";
 import { playoffBoard } from "../playoffs/playoffs.js";
 import { renderSeries, seriesState, type SeriesRunners } from "../playoffs/series.js";
 import { refreshRivalPostsIfStale, rivalPostsSnapshot, rivalRecentPostFor } from "./rivalPosts.js";
@@ -632,7 +631,6 @@ const server = createServer(async (req, res) => {
         // The operator's time while it is ahead, else the slot; `publish` says which, and the state.
         publishAt: publish.at,
         publishWhy: publish.why,
-        publishHourUtc: publishHourFor(matchDir(matchId)),
         publish,
         // Commands for the operator's own shell, not this one: the publishing PC pulls.
         pull: config.pullSource

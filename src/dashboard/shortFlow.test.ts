@@ -320,10 +320,7 @@ try {
   assert.equal(withAngle.status, 202);
   assert.ok(withAngle.payload.saveWarnings?.some((w) => /< > were removed/.test(w)));
 
-  const newlineSave = await call("PUT", "hooks", W, {
-    titleHook: "Line 1\nLine 2",
-    shortHook: "Short\nhook",
-  });
+  const newlineSave = await call("PUT", "hooks", W, { titleHook: "Line 1\nLine 2", shortHook: "Short\nhook" });
   assert.equal(newlineSave.status, 202);
   assert.ok(newlineSave.payload.saveWarnings?.some((w) => /newlines/i.test(w)));
   assert.equal(
@@ -837,6 +834,7 @@ try {
       state: "open",
       at: "2026-09-24T19:10:00.000Z",
       chosen: true,
+      stored: true,
       why: null,
       warnings: [clash],
     });
@@ -844,6 +842,7 @@ try {
     assert.deepEqual(await put(T, { publishAt: null }), { status: 200, payload: { publishAt: null } });
     const free = await flow.publishTimeView(T, NOW);
     assert.equal(free.chosen, false);
+    assert.equal(free.stored, false);
     assert.match(free.at!, /T19:00:00\.000Z$/, "the ranked slot");
     // Chosen, then the hooks: the chain uploads at the operator's time, the Short 18 h after it.
     await put(T, { publishAt: "2026-09-27T17:45:00Z" });
@@ -865,10 +864,13 @@ try {
       path.join(dir(U), `short-${U}.status.json`),
       JSON.stringify({ steps: {}, errors: [], publishAt: "2026-09-24T07:30:00.000Z" }),
     );
+    const uView = await flow.publishTimeView(U, NOW);
     assert.match(
-      (await flow.publishTimeView(U, NOW)).why!,
+      uView.why!,
       /^your time 2026-09-24 07:30 UTC had passed — the next free slot instead, 2026-\d\d-\d\d 19:00 UTC$/,
     );
+    // Still stored, so the kit offers "use the next free slot" to clear it (r2 #9).
+    assert.equal(uView.stored, true);
     await save(U, { titleHook: "One heart left", shortHook: "Late line" });
     const late = sent.find((x) => x.id === U && x.kind === "video")!;
     assert.match(late.publishAt!, /T19:00:00\.000Z$/, "the slot, not the passed time");
@@ -1071,8 +1073,14 @@ try {
     assert.deepEqual((await flow.publishTimeView(X, NOW)).warnings, [unused]);
     config.nightlyUpload = "scheduled";
     assert.deepEqual((await flow.publishTimeView(X, NOW)).warnings, []);
+    // …and with uploads off altogether the chain stops before it (r2 #11).
+    config.youtubeUploadEnabled = false;
+    assert.deepEqual((await flow.publishTimeView(X, NOW)).warnings, [
+      "youtubeUploadEnabled is false on this box: the chain does not upload — this time is for a paste into Studio",
+    ]);
+    config.youtubeUploadEnabled = true;
 
-    // #3: a scheduled Studio upload the scan paired, with no youtube.json yet: Move reaches it.
+    // A scheduled Studio upload the scan paired, with no youtube.json: moved in Studio, not here.
     const S = 13_000_043;
     exported(S);
     ytVideos.set("studio-S", {
@@ -1080,18 +1088,17 @@ try {
       status: statusPart("2026-09-30T19:00:00Z"),
     });
     _setChannelUploadsForTest([scanned(S, "studio-S", "private", "2026-09-30T19:00:00Z")]);
-    assert.equal((await flow.publishTimeView(S, NOW)).state, "scheduled");
-    const studioMove = await put(S, { publishAt: "2026-10-03T19:00:00Z", move: true });
-    assert.equal(studioMove.status, 200, JSON.stringify(studioMove.payload));
-    assert.equal(ytCalls.at(-1)!.body && (ytCalls.at(-1)!.body as { id: string }).id, "studio-S");
-    assert.equal(await readUpload(S, "video"), null, "no record invented for it");
-    assert.equal(
-      (await flow.publishTimeView(S, NOW)).at,
-      "2026-10-03T19:00:00.000Z",
-      "the scan follows the move",
-    );
+    assert.equal((await flow.publishTimeView(S, NOW)).state, "studio");
+    const calls = ytCalls.length;
+    assert.deepEqual(await put(S, { publishAt: "2026-10-03T19:00:00Z", move: true }), {
+      status: 409,
+      payload: { error: "uploaded in Studio, with no upload record here — move it in Studio" },
+    });
+    assert.equal(ytCalls.length, calls, "no API call");
 
-    // #4: the record's time passed, but the video was moved later in Studio: the scan's word wins.
+    // The record is the kit's word, as before: its time passed, it reads published whatever the
+    // scan says. Move does no record pre-check, though: reschedule's live read decides, so a video
+    // moved later in Studio still moves.
     const M = 13_000_044;
     exported(M);
     await writeUpload(M, {
@@ -1107,13 +1114,7 @@ try {
       status: statusPart("2026-10-05T19:00:00Z"),
     });
     _setChannelUploadsForTest([scanned(M, "video-M", "private", "2026-10-05T19:00:00Z")]);
-    assert.deepEqual(await flow.publishTimeView(M, NOW), {
-      state: "scheduled",
-      at: "2026-10-05T19:00:00Z",
-      chosen: false,
-      why: null,
-      warnings: [],
-    });
+    assert.equal((await flow.publishTimeView(M, NOW)).state, "published");
     // #8 too: the move says which slot rules the new hour breaks (X's stored time holds the 11th's 19:00).
     const mMove = await put(M, { publishAt: "2026-10-11T19:10:00Z", move: true });
     assert.equal(mMove.status, 200, JSON.stringify(mMove.payload));
@@ -1126,6 +1127,13 @@ try {
     ]);
     assert.deepEqual((await flow.publishTimeView(M, NOW)).warnings, mMove.payload.warnings, "and the view");
     assert.equal((await readUpload(M, "video"))!.publishAt, "2026-10-11T19:10:00.000Z");
+    // Pressed again untouched: YouTube already has that time, and nothing is written (r2 #8).
+    const puts = ytCalls.filter((c) => c.method === "PUT").length;
+    assert.match(
+      (await put(M, { publishAt: "2026-10-11T19:10:00Z", move: true })).payload.message!,
+      /^YouTube already has it for 2026-10-11 19:10 UTC;/,
+    );
+    assert.equal(ytCalls.filter((c) => c.method === "PUT").length, puts);
 
     // #10: a Short private with no time is not "already out"; one left scheduled before its video says so.
     const N = 13_000_045;
@@ -1183,7 +1191,10 @@ try {
       },
     });
     assert.equal((await flow.publishTimeView(G2, NOW)).state, "series-game");
-    assert.equal((await flow.publishTimeView(G1, NOW)).state, "open");
+    const g1 = await flow.publishTimeView(G1, NOW);
+    assert.equal(g1.state, "open");
+    // Its series goes out at the series' hour, joined or not yet (r2 #12).
+    assert.match(g1.at!, /T23:00:00\.000Z$/);
     assert.equal((await put(G1, { publishAt: "2026-10-12T23:00:00Z" })).status, 200);
 
     delete process.env.YOUTUBE_TOKEN_FILE;

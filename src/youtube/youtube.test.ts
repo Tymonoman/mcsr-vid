@@ -178,11 +178,12 @@ console.log("youtube: all checks passed");
   // Appended to rather than reassigned: a variable written inside a callback narrows to `never`
   // by the time the assert below reads it.
   const answers: Array<{ status: number; body: unknown }> = [];
+  let form: Record<string, string> = { kind: "video", privacyStatus: "private" };
   const ctx = {
     json: (_res: unknown, status: number, body: unknown) => {
       answers.push({ status, body });
     },
-    readBody: async () => JSON.stringify({ kind: "video", privacyStatus: "private" }),
+    readBody: async () => JSON.stringify(form),
     matchDir: (id: number) => path.join(config.mediaDir, String(id)),
     parseId: (raw: string | undefined) => (raw && /^\d+$/.test(raw) ? Number(raw) : null),
   };
@@ -214,6 +215,11 @@ console.log("youtube: all checks passed");
   const placeholder = await post();
   assert.equal(placeholder.status, 400, "a placeholder title must be refused, not uploaded");
   assert.match(placeholder.error, /HOOK/);
+  // A time under an hour away is refused before a byte goes: YouTube checks it once the file is up.
+  form = { ...form, publishAt: new Date(Date.now() + 10 * 60_000).toISOString() };
+  const soon = await post();
+  assert.equal(soon.status, 400);
+  assert.match(soon.error, /at least an hour ahead/);
   config.youtubeUploadEnabled = false;
 
   console.log("OK: upload is gated off, and refuses a title that still contains the hook placeholder");
@@ -739,6 +745,13 @@ console.log("youtube: all checks passed");
       /already passed/,
     );
     assert.equal(puts.length, 1, "no refusal wrote anything");
+    // A move to the time it already has (an untouched press) reads, and writes nothing.
+    live = { channelId: "UCmine", status };
+    assert.deepEqual(await reschedule("vid", "2026-09-28T19:00:00.000Z", "UCmine", NOW), {
+      publishAt: "2026-09-28T19:00:00Z",
+      was: "2026-09-28T19:00:00Z",
+    });
+    assert.equal(puts.length, 1, "no write for the same time");
     console.log("OK: reschedule sends the whole status part back and refuses what it must not move");
   } finally {
     globalThis.fetch = realFetch;

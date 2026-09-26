@@ -277,12 +277,6 @@ function refresh(nowMs: number, fetchImpl: typeof fetch = fetch): Promise<void> 
     });
 }
 
-/** A move this process just made (`reschedule`): the cache says so until the next scan reads it back. */
-export function noteRescheduled(videoId: string, publishAt: string): void {
-  const v = cached.videos.find((x) => x.videoId === videoId);
-  if (v) v.publishAt = publishAt;
-}
-
 /** Test seam. */
 export function _setChannelUploadsForTest(videos: ChannelVideo[]): void {
   cached = { atMs: Date.now(), videos };

@@ -5,6 +5,7 @@ import path from "node:path";
 import { config } from "../config.js";
 import { _setChannelUploadsForTest } from "./channelUploads.js";
 import { nextPublishSlot, publishSlotFor, slotWarnings } from "./publishSlot.js";
+import { _setPlayoffContextForTest, type PlayoffContext } from "../playoffs/playoffs.js";
 
 const at = (iso: string) => Date.parse(iso);
 const iso = (d: Date) => d.toISOString();
@@ -170,6 +171,31 @@ assert.equal(iso(nextPublishSlot(at("2026-09-08T18:30:00Z"), 19, [slot("09")])),
     [],
     "its own booking is not a clash",
   );
+
+  // A time chosen in the kit for a match not uploaded yet keeps the pair apart too, and claims its
+  // hour — unless the match is hidden: it is not going anywhere.
+  const stored = (publishAt: string) => ({ "short-1000.status.json": { steps: {}, errors: [], publishAt } });
+  dir(1000, ["j", "k"], stored("2026-09-09T19:00:00Z"));
+  dir(1100, ["k", "j"], series);
+  assert.equal(
+    iso((await publishSlotFor(1100, morning)).at),
+    "2026-09-12T23:00:00.000Z",
+    "kept from the 9th",
+  );
+  assert.deepEqual(await slotWarnings(600, at("2026-09-09T19:30:00Z"), morning), [
+    "another video is scheduled for that hour (2026-09-09 19:00 UTC) — they would split the browse impressions",
+    "under 3 days from this pair's series (2026-09-07)",
+  ]);
+  writeFileSync(path.join(config.mediaDir, ".dashboard.json"), JSON.stringify({ hidden: [1000] }));
+  assert.equal(iso((await publishSlotFor(1100, morning)).at), "2026-09-08T23:00:00.000Z", "hidden: free");
+  assert.deepEqual(await slotWarnings(600, at("2026-09-09T19:30:00Z"), morning), [
+    "under 3 days from this pair's series (2026-09-07)",
+  ]);
+
+  // A playoff game 1 not joined yet goes out as its series: the series' hour.
+  dir(1200, ["l", "m"]);
+  _setPlayoffContextForTest(1200, { gameNo: 1 } as PlayoffContext);
+  assert.equal(iso((await publishSlotFor(1200, morning)).at), "2026-09-08T23:00:00.000Z");
   config.seriesPairGapDays = 0;
   assert.equal(iso((await publishSlotFor(200, morning)).at), "2026-09-08T23:00:00.000Z", "0 is off");
 }

@@ -19,6 +19,8 @@ import { getMatch } from "../api/mcsrApi.js";
 import { channelUploadsSnapshot, describesMatch, SHORT_MAX_SEC } from "./channelUploads.js";
 import { msUntilNextRun } from "../dashboard/nightly.js";
 import { listProcessedMatchIds } from "../dashboard/matchStatus.js";
+import { hiddenMatchIds } from "../dashboard/matchShelf.js";
+import { playoffContextForId } from "../playoffs/playoffs.js";
 import { allUploads, readUpload } from "./youtubeStore.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -66,7 +68,11 @@ export interface PublishSlot {
 
 /** The slot the kit shows and the chain schedules: the first free one, kept off this pair's other kind. */
 export async function publishSlotFor(matchId: number, nowMs: number): Promise<PublishSlot> {
-  const hour = publishHourFor(matchDir(matchId));
+  // A playoff game 1 not joined yet goes out as its series, at the series' hour.
+  const hour =
+    !isSeries(matchId) && (await playoffContextForId(matchId))?.gameNo === 1
+      ? config.seriesPublishHourUtc
+      : publishHourFor(matchDir(matchId));
   const claimed = await claimedPublishTimes(matchId);
   const free = nextPublishSlot(nowMs, hour, claimed);
   const gap = config.seriesPairGapDays;
@@ -131,19 +137,21 @@ async function pairOf(matchId: number): Promise<string | null> {
  * series) goes or went out, from `sinceMs` on. The doogile–Aquacorde series drew 84 views in 32 h
  * against 2,095 for their ranked video published the same day (24 Sept 2026 audit): two titles
  * naming one pair read as a repeat. A scheduled video counts at its `publishAt`, a public one at
- * its upload; a private one with no time has no day to keep away from. A Short rides on its
- * long-form's day, so it is not counted.
+ * its upload, one not uploaded yet at the time chosen for it in the kit; a private one with no
+ * time has no day to keep away from. A Short rides on its long-form's day, so it is not counted.
  *
  * The same two players, not one shared one: the top seeds are in most ranked videos, so a
  * one-player rule would hold every series a week out through the playoffs, and the audit's
  * evidence is a repeated pair, not a repeated name.
  */
 export async function pairGapTimes(matchId: number, sinceMs: number): Promise<number[]> {
+  const uploads = await allUploads();
   const timed = [
-    ...(await allUploads()).map((u) => ({
+    ...uploads.map((u) => ({
       id: u.matchId,
       at: u.record.publishAt ?? (u.record.privacyStatus !== "private" ? u.record.uploadedAt : null),
     })),
+    ...storedTimes(uploads),
     ...channelUploadsSnapshot()
       .filter((v) => !(v.durationSec > 0 && v.durationSec <= SHORT_MAX_SEC))
       .map((v) => ({
@@ -188,21 +196,30 @@ export async function claimedPublishTimes(exceptMatchId: number): Promise<string
       .filter((v) => !describesMatch(exceptMatchId, v) && v.videoId !== ownVideoId)
       .map((v) => v.publishAt),
     ...uploads.filter((u) => u.matchId !== exceptMatchId).map((u) => u.record.publishAt),
-    // A time the operator chose in the kit for a match not uploaded yet: the chain will take it.
-    ...listProcessedMatchIds()
-      .filter((id) => id !== exceptMatchId && !uploads.some((u) => u.matchId === id))
-      .map(storedPublishAt),
+    ...storedTimes(uploads)
+      .filter((s) => s.id !== exceptMatchId)
+      .map((s) => s.at),
   ].filter((at): at is string => typeof at === "string" && at.trim() !== "");
 }
 
-/** `publishAt` in `short-<id>.status.json` (src/dashboard/shortFlow.ts `setPublishTime`), else null. */
-function storedPublishAt(matchId: number): string | null {
-  try {
-    const s = JSON.parse(
-      readFileSync(path.join(matchDir(matchId), `short-${matchId}.status.json`), "utf8"),
-    ) as { publishAt?: unknown };
-    return typeof s.publishAt === "string" ? s.publishAt : null;
-  } catch {
-    return null;
+/**
+ * The times the operator chose in the kit (`publishAt` in `short-<id>.status.json`,
+ * src/dashboard/shortFlow.ts `setPublishTime`) for matches not uploaded yet: the chain will take
+ * them. A hidden match's is left out — it is not going anywhere.
+ */
+function storedTimes(uploads: ReadonlyArray<{ matchId: number }>): Array<{ id: number; at: string }> {
+  const hidden = hiddenMatchIds();
+  const out: Array<{ id: number; at: string }> = [];
+  for (const id of listProcessedMatchIds()) {
+    if (hidden.has(id) || uploads.some((u) => u.matchId === id)) continue;
+    try {
+      const s = JSON.parse(readFileSync(path.join(matchDir(id), `short-${id}.status.json`), "utf8")) as {
+        publishAt?: unknown;
+      };
+      if (typeof s.publishAt === "string") out.push({ id, at: s.publishAt });
+    } catch {
+      // No status file: nothing chosen.
+    }
   }
+  return out;
 }

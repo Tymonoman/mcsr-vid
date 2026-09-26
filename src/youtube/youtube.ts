@@ -769,7 +769,8 @@ const WRITABLE_STATUS = [
  * `videos.update` REPLACES the part it is given, so every writable status field the read
  * returned goes back with the new `publishAt` — leave `embeddable` out and it resets. Refuses,
  * writing nothing, a video on another channel and one that is not scheduled (public already, or
- * private with no time — that one is Studio's). 1 + 50 units. Not `videos.insert`.
+ * private with no time — that one is Studio's), and writes nothing for a move to the time it
+ * already has. 1 + 50 units. Not `videos.insert`.
  */
 export async function reschedule(
   videoId: string,
@@ -793,6 +794,8 @@ export async function reschedule(
     return {
       refused: `${videoId} is private with ${typeof was === "string" ? `a publish time already passed (${was})` : "no publish time"} — set one in Studio`,
     };
+  // Already there (an untouched Move, a Short already 18 h after): nothing to write.
+  if (Date.parse(was) === Date.parse(publishAt)) return { publishAt: was, was };
   const status = Object.fromEntries(
     WRITABLE_STATUS.filter((k) => video.status![k] !== undefined).map((k) => [k, video.status![k]]),
   );

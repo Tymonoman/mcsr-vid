@@ -72,7 +72,6 @@ import {
   channelShortFor,
   channelUploadsSnapshot,
   channelVideoFor,
-  noteRescheduled,
   refreshChannelUploadsNow,
 } from "../youtube/channelUploads.js";
 import { MIN_LEAD_MS, publishSlotFor, slotWarnings } from "../youtube/publishSlot.js";
@@ -252,16 +251,12 @@ interface OnChannel {
   privacyStatus: string | null;
 }
 
-/**
- * The upload record, else the channel's pairing, else the manual tick (no id), else null. A
- * record's status is from upload time and never updated, so where the scan has the same video its
- * status and time win: a video moved or published in Studio reads as YouTube holds it.
- */
+/** The upload record, else the channel's pairing, else the manual tick (no id), else null. */
 async function onChannel(matchId: number, kind: UploadKind): Promise<OnChannel | null> {
   const record = await readUpload(matchId, kind);
-  const video = (kind === "video" ? channelVideoFor : channelShortFor)(matchId, channelUploadsSnapshot());
-  if (record && video?.videoId !== record.videoId)
+  if (record)
     return { videoId: record.videoId, publishAt: record.publishAt, privacyStatus: record.privacyStatus };
+  const video = (kind === "video" ? channelVideoFor : channelShortFor)(matchId, channelUploadsSnapshot());
   if (video)
     return { videoId: video.videoId, publishAt: video.publishAt ?? null, privacyStatus: video.privacyStatus };
   const ticked = kind === "video" ? await isUploaded(matchId) : await isShortUploaded(matchId);
@@ -625,9 +620,7 @@ export async function shortPlan(
     : { short: f.pick?.hookSuggestion ? [f.pick.hookSuggestion] : [], title: f.pick?.titleHooks ?? [] };
   f = await factsOf(matchId);
   const { state, detail } =
-    seriesGame && !f.video
-      ? { state: "no-export" as const, detail: SERIES_GAME }
-      : stateOf(matchId, f, opts.now);
+    seriesGame && !f.video ? { state: "no-export" as const, detail: SERIES_GAME } : stateOf(matchId, f, opts.now);
   const errors = [
     ...f.status.errors,
     ...(f.pickError ? [{ step: "pick" as const, at: f.pickError.at, message: f.pickError.message }] : []),
@@ -721,19 +714,13 @@ async function writeHooks(
 
   // A hook with a newline or < > is not refused: newlines become spaces and < > are removed.
   if (/[<>\r\n]/.test(titleHook)) {
-    titleHook = titleHook
-      .replace(/[\r\n]+/g, " ")
-      .replace(/[<>]/g, "")
-      .trim();
+    titleHook = titleHook.replace(/[\r\n]+/g, " ").replace(/[<>]/g, "").trim();
     saveWarnings.push(
       "newlines in the title hook became spaces and < > were removed (they would break the <HOOK> placeholder and the one-line title files)",
     );
   }
   if (shortHook && /[<>\r\n]/.test(shortHook)) {
-    shortHook = shortHook
-      .replace(/[\r\n]+/g, " ")
-      .replace(/[<>]/g, "")
-      .trim();
+    shortHook = shortHook.replace(/[\r\n]+/g, " ").replace(/[<>]/g, "").trim();
     saveWarnings.push(
       "newlines in the Short hook became spaces and < > were removed (they would break the one-line title files)",
     );
@@ -907,21 +894,26 @@ export async function videoPublishTime(matchId: number, nowMs: number): Promise<
   };
 }
 
-/** The chain uploads without a time unless `nightlyUpload` is "scheduled": then a chosen time is only the kit's copy line. */
+/** The chain takes a chosen time only with uploads on and `nightlyUpload` "scheduled"; otherwise it is the kit's copy line. */
 const unusedTime = (): string | null =>
-  config.nightlyUpload === "scheduled"
-    ? null
-    : `nightlyUpload is "${config.nightlyUpload}" on this box: the chain ${config.nightlyUpload === "off" ? "does not upload" : "uploads private with no publish time"} — this time is for a paste into Studio`;
+  !config.youtubeUploadEnabled
+    ? "youtubeUploadEnabled is false on this box: the chain does not upload — this time is for a paste into Studio"
+    : config.nightlyUpload === "scheduled"
+      ? null
+      : `nightlyUpload is "${config.nightlyUpload}" on this box: the chain ${config.nightlyUpload === "off" ? "does not upload" : "uploads private with no publish time"} — this time is for a paste into Studio`;
 
 /** The kit's Publish at: what the field edits, or what the video already did. From the records and the channel scan, no API call. */
 export interface PublishTimeView {
   /**
-   * open: not on YouTube, the time is editable · scheduled: on YouTube, movable · published ·
+   * open: not on YouTube, the time is editable · scheduled: on YouTube with a record, movable ·
+   * studio: scheduled, a Studio upload with no record (moved in Studio) · published ·
    * unscheduled: private, no time · series-game: a playoff game 2..n, out inside game 1's video.
    */
-  state: "open" | "scheduled" | "published" | "unscheduled" | "series-game";
+  state: "open" | "scheduled" | "studio" | "published" | "unscheduled" | "series-game";
   at: string | null;
   chosen: boolean;
+  /** A time of the operator's is stored (chosen, or passed and standing aside): "use the next free slot" clears it. */
+  stored: boolean;
   why: string | null;
   warnings: string[];
 }
@@ -938,7 +930,7 @@ async function laterSeriesGame(matchId: number): Promise<boolean> {
 export async function publishTimeView(matchId: number, nowMs: number): Promise<PublishTimeView> {
   // Before the record: a game folder the channel scan paired to the series video holds one too.
   if (await laterSeriesGame(matchId))
-    return { state: "series-game", at: null, chosen: false, why: SERIES_LATER, warnings: [] };
+    return { state: "series-game", at: null, chosen: false, stored: false, why: SERIES_LATER, warnings: [] };
   const video = await onChannel(matchId, "video");
   if (!video) {
     const t = await videoPublishTime(matchId, nowMs);
@@ -947,20 +939,24 @@ export async function publishTimeView(matchId: number, nowMs: number): Promise<P
       state: "open",
       at: t.at.toISOString(),
       chosen: t.chosen,
+      stored: t.chosen || t.passed !== null,
       why: t.passed ?? t.why,
       warnings: t.chosen
         ? [...(unused ? [unused] : []), ...(await slotWarnings(matchId, t.at.getTime(), nowMs))]
         : [],
     };
   }
-  const view = { chosen: false, why: null, warnings: [] };
+  const view = { chosen: false, stored: false, why: null, warnings: [] };
   if (video.privacyStatus === "private" && video.publishAt && Date.parse(video.publishAt) > nowMs)
-    return {
-      ...view,
-      state: "scheduled",
-      at: video.publishAt,
-      warnings: await slotWarnings(matchId, Date.parse(video.publishAt), nowMs),
-    };
+    // Moved on the press only with a record here (a dashboard upload, an adopted draft).
+    return (await readUpload(matchId, "video"))
+      ? {
+          ...view,
+          state: "scheduled",
+          at: video.publishAt,
+          warnings: await slotWarnings(matchId, Date.parse(video.publishAt), nowMs),
+        }
+      : { ...view, state: "studio", at: video.publishAt };
   if (video.privacyStatus === "private" && !video.publishAt)
     return { ...view, state: "unscheduled", at: null };
   return {
@@ -976,9 +972,10 @@ export async function publishTimeView(matchId: number, nowMs: number): Promise<P
  * Not on YouTube yet: stores the operator's time (null clears it, back to the next free slot);
  * the chain's upload takes it, and the Short follows 18 h later. The slot rules come back as
  * warnings, never refusals. On YouTube and scheduled: `move: true` — one explicit press, the
- * button says so — moves it there with `videos.update`, and the Short with it. A time in the
- * past (for a stored one, under `MIN_LEAD_MS` away), a public video, another channel's and a
- * Short on its own are refused.
+ * button says so — moves it there with `videos.update`, and the Short with it; it needs this
+ * match's upload record (a Studio upload is moved in Studio). A time in the past (for a stored
+ * one, under `MIN_LEAD_MS` away), a public video, another channel's and a Short on its own are
+ * refused.
  */
 export async function setPublishTime(
   matchId: number,
@@ -1036,10 +1033,12 @@ async function moveOnYouTube(
   nowMs: number,
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   const no = (status: number, error: string) => ({ status, body: { error } });
-  // A Studio upload the scan paired may have no record yet; whether it is still scheduled is
-  // reschedule's live read, not the upload-time record.
-  const videoId = (await onChannel(matchId, "video"))?.videoId;
-  if (!videoId) return no(409, "no video id for this match (ticked by hand) — move it in Studio");
+  // The record is what the kit, the list and the Short's time read, so a video without one (a
+  // Studio upload) is moved in Studio. Whether it is still scheduled is reschedule's live read,
+  // not the record's upload-time status: a video moved in Studio since still moves.
+  const record = await readUpload(matchId, "video");
+  if (!record) return no(409, "uploaded in Studio, with no upload record here — move it in Studio");
+  const videoId = record.videoId;
   let moved;
   try {
     moved = await reschedule(videoId, iso, config.youtubeChannelId, nowMs);
@@ -1047,9 +1046,7 @@ async function moveOnYouTube(
     return no(502, describeError(err));
   }
   if ("refused" in moved) return no(409, moved.refused);
-  noteRescheduled(videoId, moved.publishAt);
-  const record = await readUpload(matchId, "video");
-  if (record) await writeUpload(matchId, { ...record, publishAt: moved.publishAt }, "video");
+  await writeUpload(matchId, { ...record, publishAt: moved.publishAt }, "video");
   // The Short keeps its 18 h behind the long-form: moved with it when it is scheduled too, and
   // when it is not up yet the chain reads the time just written (shortPublishAt).
   const shortAt = shortPublishAt({ videoId, publishAt: moved.publishAt, privacyStatus: "private" }, nowMs)!;
@@ -1066,7 +1063,6 @@ async function moveOnYouTube(
       if ("refused" in s) failed = s.refused;
       else {
         failed = "";
-        noteRescheduled(short.videoId!, s.publishAt);
         const rec = await readUpload(matchId, "short");
         if (rec) await writeUpload(matchId, { ...rec, publishAt: s.publishAt }, "short");
         shortLine = `the Short moved with it to ${when(s.publishAt)}, 18 h after`;
@@ -1085,7 +1081,7 @@ async function moveOnYouTube(
     }
   }
   const warnings = await slotWarnings(matchId, Date.parse(moved.publishAt), nowMs);
-  const message = `YouTube has it for ${when(moved.publishAt)} (was ${when(moved.was)}); ${shortLine}`;
+  const message = `YouTube ${moved.was === moved.publishAt ? "already has it" : "has it"} for ${when(moved.publishAt)}${moved.was === moved.publishAt ? "" : ` (was ${when(moved.was)})`}; ${shortLine}`;
   shortLog(matchId, "upload-video", `moved on YouTube: ${message}`);
   return { status: 200, body: { publishAt: moved.publishAt, message, warnings } };
 }

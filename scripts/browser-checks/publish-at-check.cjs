@@ -11,9 +11,10 @@ const path = require("node:path");
    Nothing but GETs reaches the server. Every other request the page makes is caught by a
    context-wide route: the publish-time PUT is answered here from a model of the server's answers
    (its refusal texts, the kit it would then serve), anything else is aborted and fails the check.
-   The server's side of the round-trip is shortFlow.test.ts's. The plan GET of a match not picked
-   yet is aborted too: on a real server it queues a model watch. The log of every non-GET request
-   is printed at the end.
+   The server's side of the round-trip is shortFlow.test.ts's. The plan GET of an exported match
+   not on the channel is aborted too unless its row names the pick's window: on a real server it
+   can queue a model watch. The log of every non-GET request is printed at the end. The dates are
+   worked out from today, so the check does not expire.
    PUBLIC_DIR=<checkout>/public serves the page's scripts and styles from that checkout (still
    GETs, answered in the browser; the HTML stays the server's): a branch's client against a server
    that is still on main. */
@@ -25,18 +26,44 @@ const path = require("node:path");
     if (!c) ok = false;
   };
   const rows = (await (await fetch(`${base}/api/matches`)).json()).matches;
-  const unpicked = new Set(
-    rows.filter((m) => m.shortDetail === "not picked yet").map((m) => String(m.matchId)),
+  // Opening an exported match with no pick that is not on the channel queues a model watch
+  // (shortPlan); a row whose detail names the pick's window ("Short 6:21–7:02, …") has one.
+  const noPlan = new Set(
+    rows
+      .filter((m) => m.exported && !m.uploaded && !/^Short (game \d+ )?\d+:\d\d–/.test(m.shortDetail ?? ""))
+      .map((m) => String(m.matchId)),
   );
-  // 2 October 2026, 21:30 in Warsaw (CEST, +02:00) is 19:30 UTC.
-  const TYPED = "2026-10-02T21:30";
-  const TYPED_UTC = "2026-10-02T19:30:00.000Z";
-  const CLASH = "2026-10-03T21:30";
-  const CLASH_UTC = "2026-10-03T19:30:00.000Z";
-  const CLASH_LINE =
-    "another video is scheduled for that hour (2026-10-03 19:00 UTC) — they would split the browse impressions";
-  // 01:30 UTC on 25 Oct is 02:30 CET: the second time Warsaw's clocks read 02:30 that night.
-  const DST_UTC = "2026-10-25T01:30:00.000Z";
+  const DAY = 864e5;
+  const utcLine = (iso) => `${iso.slice(0, 16).replace("T", " ")} UTC`;
+  /** An instant on Warsaw's clock, as a datetime-local value. */
+  const warsaw = (iso) =>
+    new Date(iso).toLocaleString("sv-SE", { timeZone: "Europe/Warsaw" }).slice(0, 16).replace(" ", "T");
+  // A week from today at 19:30 UTC, and the day after: what the page shows for them, worked out
+  // here in Warsaw's zone the way the page does it in the browser's.
+  const TYPED_UTC = new Date((Math.floor(Date.now() / DAY) + 7) * DAY + 19.5 * 3600e3).toISOString();
+  const TYPED = warsaw(TYPED_UTC);
+  const CLASH_UTC = new Date(Date.parse(TYPED_UTC) + DAY).toISOString();
+  const CLASH = warsaw(CLASH_UTC);
+  const CLASH_LINE = `another video is scheduled for that hour (${CLASH_UTC.slice(0, 10)} 19:00 UTC) — they would split the browse impressions`;
+  /** A stand-in slot or scheduled time, some days out. */
+  const slotIn = (days) => new Date((Math.floor(Date.now() / DAY) + days) * DAY + 19 * 3600e3).toISOString();
+  const hour = Number(TYPED.slice(11, 13));
+  const h12 = String(((hour + 11) % 12) + 1).padStart(2, "0");
+  const month = new Date(TYPED_UTC).toLocaleString("en-US", { timeZone: "Europe/Warsaw", month: "short" });
+  /** "Oct 3 … 09:30 PM", however the browser spaces the AM/PM. */
+  const SHOWN = `${month} ${Number(TYPED.slice(8, 10))}\\b.*${h12}:${TYPED.slice(14)}\\s${hour < 12 ? "AM" : "PM"}`;
+  // Warsaw's clocks go back at 01:00 UTC on the last Sunday of October, so 02:00–02:59 happens
+  // twice: 01:30 UTC is the second 02:30, and a typed 02:30 is the first (00:30 UTC). The next
+  // such night still ahead.
+  const lastSundayOfOct = (y) => {
+    const d = new Date(Date.UTC(y, 9, 31));
+    return new Date(d.getTime() - d.getUTCDay() * DAY).toISOString().slice(0, 10);
+  };
+  let dstYear = new Date().getUTCFullYear();
+  if (Date.parse(`${lastSundayOfOct(dstYear)}T01:30:00Z`) < Date.now() + 2 * 3600e3) dstYear++;
+  const DST_DAY = lastSundayOfOct(dstYear);
+  const DST_UTC = `${DST_DAY}T01:30:00.000Z`;
+  const DST_FIRST_UTC = `${DST_DAY}T00:30:00.000Z`;
   /** Every non-GET request any page made: [tag, method, path, what became of it]. */
   const writes = [];
   /** Month, day, year, then the time: Firefox moves on to the hour by itself after a 4-digit year, Chromium needs the Tab. */
@@ -45,9 +72,9 @@ const path = require("node:path");
     await page.locator(sel).evaluate((e) => e.scrollIntoView({ block: "center" }));
     const box = await page.locator(sel).boundingBox();
     await page.mouse.click(box.x + 10, box.y + box.height / 2);
-    await page.keyboard.type("10022026");
+    await page.keyboard.type(`${TYPED.slice(5, 7)}${TYPED.slice(8, 10)}${TYPED.slice(0, 4)}`);
     if (name === "chromium") await page.keyboard.press("Tab");
-    await page.keyboard.type("0930P");
+    await page.keyboard.type(`${h12}${TYPED.slice(14)}${hour < 12 ? "A" : "P"}`);
   };
   const tall = async (page, sel) => ((await page.locator(sel).boundingBox())?.height ?? 0) >= 44;
   const idOf = (url) => new URL(url).pathname.split("/").pop();
@@ -103,10 +130,15 @@ const path = require("node:path");
           const kitGets = [];
           const sent = [];
           let hold = null;
+          /** { id, gate }: that match's kit GETs wait for the gate. */
+          let holdKit = null;
           await page.route("**/api/publishkit/*", async (route) => {
             const id = idOf(route.request().url());
             kitGets.push(id);
-            const res = await route.fetch();
+            if (holdKit?.id === id) await holdKit.gate;
+            // Held, it may outlive its page: a closed context is not a failure of the check.
+            const res = await route.fetch().catch(() => null);
+            if (!res) return;
             let kit = await res.json();
             served.set(id, kit.publish);
             kit = shape.get(id)?.(kit) ?? kit;
@@ -120,9 +152,16 @@ const path = require("node:path");
             sent.push({ id, body });
             if (hold) await hold;
             const answer = (status, json) => route.fulfill({ status, json });
-            const view = (over) => ({ state: "open", chosen: true, why: null, warnings: [], ...over });
+            const view = (over) => ({
+              state: "open",
+              chosen: true,
+              stored: true,
+              why: null,
+              warnings: [],
+              ...over,
+            });
             if (body.move) {
-              held.set(id, view({ state: "scheduled", at: body.publishAt, chosen: false }));
+              held.set(id, view({ state: "scheduled", at: body.publishAt, chosen: false, stored: false }));
               return answer(200, {
                 publishAt: body.publishAt,
                 message: "YouTube has it (stubbed in the browser)",
@@ -131,7 +170,7 @@ const path = require("node:path");
             }
             if (body.publishAt === null) {
               const s = served.get(id);
-              held.set(id, view({ chosen: false, at: s && !s.chosen ? s.at : "2026-10-01T19:00:00.000Z" }));
+              held.set(id, view({ chosen: false, stored: false, at: s && !s.chosen ? s.at : slotIn(5) }));
               return answer(200, { publishAt: null });
             }
             const ms = Date.parse(body.publishAt);
@@ -151,7 +190,7 @@ const path = require("node:path");
             });
           });
           await page.route("**/api/shorts/plan/*", (route) =>
-            unpicked.has(idOf(route.request().url())) ? route.abort() : route.fallback(),
+            noPlan.has(idOf(route.request().url())) ? route.abort() : route.fallback(),
           );
 
           const toPublish = async () => {
@@ -167,6 +206,13 @@ const path = require("node:path");
             await toPublish();
           };
           const msg = () => page.locator("#kitWhenMsg").innerText();
+          /** Until the line beside Save matches. */
+          const waitMsg = (re) =>
+            page.waitForFunction(
+              (src) => new RegExp(src).test(document.querySelector("#kitWhenMsg")?.textContent ?? ""),
+              re.source,
+              { timeout: 15000 },
+            );
           const kitBlock = "#publishkit .kit:has(#kitWhen)";
           const shot = async (what) => {
             if (shots)
@@ -195,18 +241,30 @@ const path = require("node:path");
           );
           check(
             `${tag}: it says the instant in UTC, not saved`,
-            (await msg()) === "not saved — 2026-10-02 19:30 UTC",
+            (await msg()) === `not saved — ${utcLine(TYPED_UTC)}`,
             await msg(),
           );
           await shot("typed");
+          // Held in flight: the button is off until the answer, so a second press sends nothing.
+          let answer;
+          hold = new Promise((r) => (answer = r));
           await page.click("#kitWhenSave");
-          await page.waitForFunction(
-            () => /saved —/.test(document.querySelector("#kitWhenMsg")?.textContent ?? ""),
-            null,
-            {
-              timeout: 15000,
-            },
+          await waitMsg(/saving/);
+          const inFlight = sent.length;
+          check(`${tag}: Save is off while it is sent`, await page.locator("#kitWhenSave").isDisabled());
+          await page
+            .locator("#kitWhenSave")
+            .click({ force: true, timeout: 2000 })
+            .catch(() => {});
+          await page.waitForTimeout(300);
+          check(
+            `${tag}: a second press mid-flight sends nothing`,
+            sent.length === inFlight,
+            `${sent.length - inFlight} more`,
           );
+          answer();
+          hold = null;
+          await waitMsg(/saved —/);
           check(
             `${tag}: Save sends it in UTC`,
             JSON.stringify(sent.at(-1)?.body) === JSON.stringify({ publishAt: TYPED_UTC }),
@@ -216,7 +274,7 @@ const path = require("node:path");
           const line = await page.locator(`${kitBlock} textarea`).inputValue();
           check(
             `${tag}: the copy line names it with UTC beside`,
-            /Oct 2.*09:30 PM \(19:30 UTC\)/.test(line),
+            new RegExp(`${SHOWN} \\(${TYPED_UTC.slice(11, 16)} UTC\\)`).test(line),
             line,
           );
           const ytWhen = page.locator("#ytWhen");
@@ -244,7 +302,8 @@ const path = require("node:path");
           await shot("saved");
           if (vp === "desktop") {
             // Now's Video up names the chosen time (a playoff game before its join has no steps).
-            if (unpicked.has(String(openId))) console.log(`SKIP ${tag}: Now -- ${openId} is not picked yet`);
+            if (noPlan.has(String(openId)))
+              console.log(`SKIP ${tag}: Now -- ${openId}'s plan is not fetched`);
             else {
               await page.waitForSelector("#now .step, #now .seriesnote", { timeout: 30000 });
               const now = await page.locator("#now").innerText();
@@ -253,7 +312,7 @@ const path = require("node:path");
               else
                 check(
                   `${tag}: Now's Video up names it`,
-                  /Oct 2.*09:30 PM.*your time/i.test(now),
+                  new RegExp(`${SHOWN}.*your time`, "i").test(now),
                   now.match(/Video up[^\n]*\n?[^\n]*/)?.[0],
                 );
             }
@@ -278,13 +337,7 @@ const path = require("node:path");
           );
           await shot("warned");
           await page.click("#kitWhenFree");
-          await page.waitForFunction(
-            () => /next free slot/.test(document.querySelector("#kitWhenMsg")?.textContent ?? ""),
-            null,
-            {
-              timeout: 15000,
-            },
-          );
+          await waitMsg(/next free slot/);
           check(
             `${tag}: "use the next free slot" sends null`,
             JSON.stringify(sent.at(-1)?.body) === JSON.stringify({ publishAt: null }),
@@ -295,32 +348,78 @@ const path = require("node:path");
           );
 
           /* --- The hour Warsaw lives twice: the kit's own instant is sent back, not re-parsed ------ */
-          held.set(String(openId), { state: "open", at: DST_UTC, chosen: true, why: null, warnings: [] });
+          held.set(String(openId), {
+            state: "open",
+            at: DST_UTC,
+            chosen: true,
+            stored: true,
+            why: null,
+            warnings: [],
+          });
           await open(openId);
           check(
             `${tag}: 01:30 UTC shows as 02:30`,
-            (await field.inputValue()) === "2026-10-25T02:30",
+            (await field.inputValue()) === `${DST_DAY}T02:30`,
             await field.inputValue(),
           );
           await page.click("#kitWhenSave");
-          await page.waitForFunction(
-            () => /saved —/.test(document.querySelector("#kitWhenMsg")?.textContent ?? ""),
-            null,
-            {
-              timeout: 15000,
-            },
-          );
+          await waitMsg(/saved —/);
           check(
             `${tag}: Save untouched keeps that instant`,
             sent.at(-1)?.body.publishAt === DST_UTC,
             JSON.stringify(sent.at(-1)?.body),
           );
-          await field.fill("2026-10-25T02:30");
+          // Typed back to what it showed: the hint says the first 02:30, and Save sends what it says.
+          await field.fill(`${DST_DAY}T03:30`);
+          await field.fill(`${DST_DAY}T02:30`);
           check(
             `${tag}: typed, it says which 02:30 it takes`,
-            (await msg()) === "not saved — 2026-10-25 00:30 UTC",
+            (await msg()) === `not saved — ${utcLine(DST_FIRST_UTC)}`,
             await msg(),
           );
+          await page.click("#kitWhenSave");
+          await waitMsg(/saved —/);
+          check(
+            `${tag}: and Save sends that one`,
+            sent.at(-1)?.body.publishAt === DST_FIRST_UTC,
+            JSON.stringify(sent.at(-1)?.body),
+          );
+
+          /* --- A stored time that has passed can still be cleared ------------------------------ */
+          held.set(String(openId), {
+            state: "open",
+            at: slotIn(2),
+            chosen: false,
+            stored: true,
+            why: "your time had passed — the next free slot instead (stubbed)",
+            warnings: [],
+          });
+          await open(openId);
+          check(
+            `${tag}: a passed time offers "use the next free slot"`,
+            (await page.locator("#kitWhenFree").count()) === 1,
+          );
+
+          /* --- Scheduled from Studio, no record here: a line, nothing to press ---------------- */
+          held.set(String(openId), {
+            state: "studio",
+            at: slotIn(3),
+            chosen: false,
+            stored: false,
+            why: null,
+            warnings: [],
+          });
+          await open(openId);
+          const studioLine = await page
+            .locator('#publishkit .kit:has(.kitlabel:text-is("Publish at")) textarea')
+            .inputValue();
+          check(
+            `${tag}: a Studio upload says move it there, with no field`,
+            (await page.locator("#kitWhen").count()) === 0 &&
+              /uploaded in Studio: move it there$/.test(studioLine),
+            studioLine,
+          );
+          held.delete(String(openId));
 
           /* --- Scheduled on YouTube: the button says it moves it there ---------------------------- */
           const schedId = String(scheduledId || otherId || "");
@@ -332,8 +431,9 @@ const path = require("node:path");
                     ...kit,
                     publish: {
                       state: "scheduled",
-                      at: "2026-10-01T19:00:00.000Z",
+                      at: slotIn(5),
                       chosen: false,
+                      stored: false,
                       why: null,
                       warnings: [],
                     },
@@ -349,18 +449,12 @@ const path = require("node:path");
             await typeWhen(page, name, "#kitWhen");
             check(
               `${tag}: typing renames the button`,
-              /Oct 2.*09:30 PM/.test(await btn.innerText()),
+              new RegExp(SHOWN).test(await btn.innerText()),
               await btn.innerText(),
             );
             await shot("scheduled");
             await btn.click();
-            await page.waitForFunction(
-              () => /stubbed/.test(document.querySelector("#kitWhenMsg")?.textContent ?? ""),
-              null,
-              {
-                timeout: 15000,
-              },
-            );
+            await waitMsg(/stubbed/);
             check(
               `${tag}: the press asks for the move, in UTC`,
               JSON.stringify(sent.at(-1)) ===
@@ -390,9 +484,7 @@ const path = require("node:path");
             hold = new Promise((r) => (release = r));
             await page.locator("#kitWhen").fill(TYPED);
             await page.click("#kitWhenSave");
-            await page.waitForFunction(() =>
-              /saving/.test(document.querySelector("#kitWhenMsg")?.textContent ?? ""),
-            );
+            await waitMsg(/saving/);
             await page.evaluate((id) => select(Number(id), { open: true }), otherId);
             await toPublish();
             const before = kitGets.filter((id) => id === String(openId)).length;
@@ -408,6 +500,50 @@ const path = require("node:path");
               !/saved/.test(await msg()),
               await msg(),
             );
+          }
+
+          /* --- A kit still on its way when another match opens wires nothing into that one ------ */
+          // Held until the other match's kit is painted: before r2 #2 its handlers landed on the
+          // other match's field, and a Save there PUT for both — a Move of a live video included.
+          if (otherId && String(otherId) !== String(openId)) {
+            await page.goto(base + "/", { waitUntil: "networkidle" });
+            let releaseKit;
+            holdKit = { id: String(openId), gate: new Promise((r) => (releaseKit = r)) };
+            await Promise.all([
+              page.waitForRequest((r) => r.url().endsWith(`/api/publishkit/${openId}`)),
+              page.evaluate((id) => select(Number(id), { open: true }), openId),
+            ]);
+            await page.evaluate((id) => select(Number(id), { open: true }), otherId);
+            await toPublish();
+            releaseKit();
+            holdKit = null;
+            await page.waitForTimeout(1500);
+            const before = sent.length;
+            await page.locator("#kitWhen").fill(TYPED);
+            await page.click("#kitWhenSave");
+            await waitMsg(/saved —|stubbed/);
+            await page.waitForTimeout(500);
+            const after = sent.slice(before);
+            check(
+              `${tag}: a kit that landed late sends nothing for its match`,
+              after.length === 1 && after[0].id === String(otherId),
+              JSON.stringify(after),
+            );
+
+            // The other way round: this match's kit is late, and its upload form waits for it
+            // rather than taking the last match's time.
+            await open(openId);
+            holdKit = { id: String(otherId), gate: new Promise((r) => (releaseKit = r)) };
+            await page.evaluate((id) => select(Number(id), { open: true }), otherId);
+            await page.waitForSelector("#ytWhen", { state: "attached", timeout: 30000 });
+            check(
+              `${tag}: the next match's upload form does not take this one's time`,
+              (await page.locator("#ytWhen").inputValue()) === "",
+              await page.locator("#ytWhen").inputValue(),
+            );
+            releaseKit();
+            holdKit = null;
+            await page.waitForSelector("#publishkit .kit", { state: "attached", timeout: 30000 });
           }
 
           check(`${tag}: no page errors`, errors.length === 0, errors.join(" | "));

@@ -337,6 +337,9 @@ async function select(id, { open = false } = {}) {
   // Now mid-Package.
   const keepPanel = selected === id ? $("#detail .panel.on")?.dataset.panel : undefined;
   selected = id;
+  // The last match's kit time, until this one's kit says its own (Now's Video up, #ytWhen).
+  publishSlotAt = null;
+  publishChosen = false;
   clearTimeout(nowPoll);
   if (exportStream) {
     exportStream.close();
@@ -873,13 +876,18 @@ async function loadPublishKit(id, meta) {
   const el = $("#publishkit");
   if (!el) return;
 
+  // The kit can take seconds (it may read the MCSR API): by then another match may be open, or
+  // this one repainted, and nothing here may touch that screen -- its Save would PUT for this id.
+  const live = () => selected === id && el.isConnected;
+  const q = (sel) => el.querySelector(sel);
   let kit;
   try {
     kit = await api(`/api/publishkit/${id}`);
   } catch (e) {
-    el.innerHTML = `<div class="scanline bad">${esc(e.message)}</div>`;
+    if (live()) el.innerHTML = `<div class="scanline bad">${esc(e.message)}</div>`;
     return;
   }
+  if (!live()) return;
 
   const [left, right] = kit.players;
   const url = kit.videoUrl ?? "<link once uploaded>";
@@ -950,6 +958,9 @@ async function loadPublishKit(id, meta) {
       return block("Publish at", slot ? `published ${both(slot)}` : "published", 1);
     if (pub.state === "unscheduled")
       return block("Publish at", "private on YouTube with no publish time — set one in Studio", 1);
+    // Moved on the press only with an upload record here (the server's `setPublishTime`).
+    if (pub.state === "studio")
+      return block("Publish at", `scheduled ${both(slot)} — uploaded in Studio: move it there`, 1);
     // A playoff game after game 1: the series goes out from game 1 (the server's line says so).
     if (pub.state === "series-game") return block("Publish at", pub.why, 2);
     if (!slot) return "";
@@ -964,7 +975,7 @@ async function loadPublishKit(id, meta) {
       <div class="row kitwhen">
         <input type="datetime-local" id="kitWhen" aria-label="publish at, in your time zone" value="${esc(value)}">
         <button type="button" id="kitWhenSave">${esc(saveLabel(value))}</button>
-        ${pub.state === "open" && pub.chosen ? `<button type="button" class="ghost" id="kitWhenFree">use the next free slot</button>` : ""}
+        ${pub.state === "open" && (pub.stored ?? pub.chosen) ? `<button type="button" class="ghost" id="kitWhenFree">use the next free slot</button>` : ""}
         <span class="msg" id="kitWhenMsg"></span>
       </div>
       ${pub.why ? `<div class="muted small">${esc(pub.why)}</div>` : ""}
@@ -973,8 +984,11 @@ async function loadPublishKit(id, meta) {
   };
   const sendWhen = async (publishAt) => {
     const move = pub.state === "scheduled";
+    const buttons = el.querySelectorAll(".kitwhen button");
     clearFailAt("#kitWhenSave");
-    $("#kitWhenMsg").textContent = move ? "moving it on YouTube…" : "saving…";
+    // One press at a time: a second one mid-move would move it twice.
+    for (const b of buttons) b.disabled = true;
+    q("#kitWhenMsg").textContent = move ? "moving it on YouTube…" : "saving…";
     let r;
     try {
       r = await api(`/api/shorts/publishat/${id}`, {
@@ -983,45 +997,47 @@ async function loadPublishKit(id, meta) {
         body: JSON.stringify(move ? { publishAt, move: true } : { publishAt }),
       });
     } catch (e) {
-      if (selected !== id) return;
-      $("#kitWhenMsg").textContent = "";
+      if (!live()) return;
+      for (const b of buttons) b.disabled = false;
+      q("#kitWhenMsg").textContent = "";
       failAt("#kitWhenSave", move ? "Not moved" : "Not saved", e.message);
       return;
     }
     // A move takes seconds: the operator may be on another match by now, whose kit this is not.
-    if (selected !== id) return;
+    if (!live()) return;
     kit = await api(`/api/publishkit/${id}`).catch(() => kit);
-    if (selected !== id) return;
+    if (!live()) return;
     typedWhen = null;
     takeTime();
     paint();
-    $("#kitWhenMsg").textContent =
+    q("#kitWhenMsg").textContent =
       r.message ?? (publishAt ? "saved — the upload takes this time" : "back to the next free slot");
     void loadPlan(id);
     // Its "scheduled for" line.
     if (move) void loadYoutube(id, meta);
   };
   const wireWhen = () => {
-    const input = $("#kitWhen");
+    const input = q("#kitWhen");
     if (!input) return;
-    const btn = $("#kitWhenSave");
+    const btn = q("#kitWhenSave");
     input.addEventListener("input", () => {
       typedWhen = input.value;
       btn.textContent = saveLabel(input.value);
       // The instant it will be, in UTC: an hour a clock change passes twice reads as its first.
       const d = new Date(input.value);
-      $("#kitWhenMsg").textContent = Number.isNaN(d.getTime())
+      q("#kitWhenMsg").textContent = Number.isNaN(d.getTime())
         ? "not saved"
         : `not saved — ${d.toISOString().slice(0, 16).replace("T", " ")} UTC`;
     });
     btn.addEventListener("click", () => {
-      // datetime-local has no zone: the browser's own offset is what the operator meant. Untouched,
-      // it is the kit's own instant — re-parsing it would move a time in the repeated hour.
-      if (input.value === localInputValue(slot)) void sendWhen(slot.toISOString());
+      // datetime-local has no zone: the browser's own offset is what the operator meant, and the
+      // line beside says which instant that is. Untouched, it is the kit's own instant —
+      // re-parsing it would move a time in the repeated hour.
+      if (typedWhen === null) void sendWhen(slot.toISOString());
       else if (input.value) void sendWhen(new Date(input.value).toISOString());
       else failAt("#kitWhenSave", "Not saved", "pick a date and a time first");
     });
-    $("#kitWhenFree")?.addEventListener("click", () => void sendWhen(null));
+    q("#kitWhenFree")?.addEventListener("click", () => void sendWhen(null));
   };
 
   // Getting the files onto the PC that publishes, which is step zero of the Studio phase and the
@@ -1039,6 +1055,7 @@ async function loadPublishKit(id, meta) {
     : "";
 
   const paint = () => {
+    if (!el.isConnected) return;
     const title = titleText();
     // What the upload sends: today's templates over the render's files (uploadTextFor).
     const tagList = kit.tags ?? meta.tags ?? [];
