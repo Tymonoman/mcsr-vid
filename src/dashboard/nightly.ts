@@ -45,7 +45,7 @@ import { orderForDisplay } from "./suggestPresent.js";
 import { playoffBoard, type PlayoffBoard } from "../playoffs/playoffs.js";
 import { listProcessedMatchIds } from "./matchStatus.js";
 import { shortRunning } from "./shortsRoutes.js";
-import { anyThumbnailRunning, thumbnailRunning } from "./thumbnailRoutes.js";
+import { anyThumbnailRunning, thumbnailRunning } from "../thumbnails/rerender.js";
 import { nightlyShortSummary, picksIdle, shortTick } from "./shortFlow.js";
 import { snapshot, startScan } from "./suggestScan.js";
 import { getMatch } from "../api/mcsrApi.js";
@@ -584,7 +584,9 @@ async function runOnce(
   // the night it costs is an outcome to record and push — not the conflict below, which says
   // nothing to anyone because a render in flight is the night's work.
   if (scheduled && anyThumbnailRunning()) return skip("a thumbnail re-render is still running");
-  if (busy()) return skip("a render is already in flight", true);
+  const inFlight = () =>
+    anyThumbnailRunning() ? "a thumbnail re-render is running" : "a render is already in flight";
+  if (busy()) return skip(inFlight(), true);
 
   const suggestions = await ranked();
   if (!suggestions) return skip("no suggestions available");
@@ -601,7 +603,7 @@ async function runOnce(
   }
   // Checked again after the awaits above: a render clicked while the list was being ranked
   // must not get a second one started on top of it.
-  if (busy()) return skip("a render is already in flight", true);
+  if (busy()) return skip(inFlight(), true);
 
   const { matchId, players } = pick.metrics;
   const label = `${players[0]} vs ${players[1]}`;

@@ -1,97 +1,37 @@
 /**
- * The Thumbnail panel's endpoints: the variants, "Re-render thumbnails" (one match
- * or every uploaded long-form, render only), and "Put on YouTube" / "Undo on YouTube" for a tile of
- * the new set. Transport and a job table; the work is src/thumbnails/rerender.ts and
- * src/youtube/thumbnailSwap.ts.
- *
- * Its own job map, like shortsRoutes.ts: a re-render and a pipeline run on the same match must not
- * share jobs.ts's one-per-match slot.
+ * The Thumbnail panel's endpoints: the variants, "Re-render thumbnails" (one match or every
+ * uploaded long-form, render only), and for a tile of the new set "Use this" (a match not on the
+ * channel) or "Put on YouTube" / "Undo on YouTube" (one on it). Transport and the bulk; the work
+ * and the job table are src/thumbnails/rerender.ts and src/youtube/thumbnailSwap.ts.
  */
 import { existsSync, statSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import { describeError } from "../errorText.js";
-import { readManifest } from "../thumbnails/thumbnailVariants.js";
-import { NEW_DIR, rerenderThumbnails } from "../thumbnails/rerender.js";
+import { manifestPath, readManifest } from "../thumbnails/thumbnailVariants.js";
+import {
+  NEW_DIR,
+  promoteNewSet,
+  rerenderThumbnails,
+  runningThumbJobs,
+  startRerender,
+  thumbJob,
+  thumbnailRunning,
+} from "../thumbnails/rerender.js";
 import { isConfigured } from "../youtube/youtube.js";
 import { swapThumbnail, SwapRefused, undoFile } from "../youtube/thumbnailSwap.js";
-import { allUploads, longFormRecord, videoWriting } from "../youtube/youtubeStore.js";
-import { isExported, isUploaded } from "./matchShelf.js";
+import { allUploads, longFormRecord } from "../youtube/youtubeStore.js";
+import { isExported, isUploaded, onChannelNow } from "./matchShelf.js";
 
 export interface ThumbnailRouteContext {
   json: (res: ServerResponse, status: number, body: unknown) => void;
   readBody: (req: IncomingMessage) => Promise<string>;
   matchDir: (matchId: number) => string;
   parseId: (raw: string | undefined) => number | null;
-  /** What else is writing into the match directory, in words, or null (server.ts, Delete's guard). */
+  /** What else is writing into the match directory, in words, or null (`busyIn`, busy.ts). */
   busy: (matchId: number) => string | null;
   /** A pipeline run anywhere on the box — the nightly's included. The bulk waits it out. */
   pipelineRunning: () => boolean;
-}
-
-interface ThumbJob {
-  matchId: number;
-  line: string;
-  since: string;
-  percent?: number;
-  done: boolean;
-  error: string | null;
-  finished: Promise<string | null>;
-}
-
-const jobs = new Map<number, ThumbJob>();
-
-/** A re-render writing this match's thumbnails right now. */
-export const thumbnailRunning = (matchId: number): boolean => jobs.get(matchId)?.done === false;
-
-/** Any re-render in flight: the scheduled nightly waits it out before it starts (nightly.ts). */
-export const anyThumbnailRunning = (): boolean => [...jobs.values()].some((j) => !j.done);
-
-type Rerender = typeof rerenderThumbnails;
-
-/**
- * Four stills take a minute or two; one still drawing after this is hung (a Chromium that never
- * answers), and it would hold the bulk and the nightly behind it for ever. The signal cancels the
- * still render (`renderStill`); the API reads, avatar fetches and bundling before it are not cut short.
- */
-export const RERENDER_TIMEOUT_MS = 15 * 60_000;
-
-export function startRerender(
-  matchId: number,
-  rerender: Rerender = rerenderThumbnails,
-  timeoutMs = RERENDER_TIMEOUT_MS,
-): ThumbJob {
-  const existing = jobs.get(matchId);
-  if (existing && !existing.done) return existing;
-  let settle!: (error: string | null) => void;
-  const job: ThumbJob = {
-    matchId,
-    line: "reading the match",
-    since: new Date().toISOString(),
-    done: false,
-    error: null,
-    finished: new Promise((resolve) => (settle = resolve)),
-  };
-  jobs.set(matchId, job);
-  const signal = AbortSignal.timeout(timeoutMs);
-  rerender(matchId, {
-    onProgress: (p) => {
-      job.line = p.phase === "bundling" ? "bundling the compositions" : "rendering the variants";
-      job.percent = p.percent;
-    },
-    signal,
-  })
-    .then(() => settle(null))
-    .catch((err: unknown) =>
-      settle(signal.aborted ? `stopped after ${Math.round(timeoutMs / 60_000)} min` : describeError(err)),
-    );
-  void job.finished.then((error) => {
-    job.done = true;
-    job.error = error;
-    job.line = error ? "failed" : "done";
-    if (error) console.error(`thumbnails ${matchId}: ${error}`);
-  });
-  return job;
 }
 
 /* --- Every uploaded long-form, one at a time --------------------------------------------------- */
@@ -118,7 +58,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export async function runBulk(
   ids: number[],
   ctx: Pick<ThumbnailRouteContext, "busy" | "pipelineRunning">,
-  rerender: Rerender = rerenderThumbnails,
+  rerender: typeof rerenderThumbnails = rerenderThumbnails,
   waitMs = 30_000,
 ): Promise<Bulk> {
   const run: Bulk = {
@@ -154,18 +94,16 @@ const bulkState = () => bulk && { ...bulk, total: bulk.ids.length, done: bulk.in
 
 /** The strip's activity line: each running re-render, the bulk's count on it. */
 export const thumbnailActivities = () =>
-  [...jobs.values()]
-    .filter((j) => !j.done)
-    .map((j) => ({
-      matchId: j.matchId,
-      step: "thumbnails" as const,
-      line:
-        bulk?.running && bulk.ids[bulk.index] === j.matchId
-          ? `${j.line} · ${bulk.index + 1} of ${bulk.ids.length}`
-          : j.line,
-      since: j.since,
-      percent: j.percent,
-    }));
+  runningThumbJobs().map((j) => ({
+    matchId: j.matchId,
+    step: "thumbnails" as const,
+    line:
+      bulk?.running && bulk.ids[bulk.index] === j.matchId
+        ? `${j.line} · ${bulk.index + 1} of ${bulk.ids.length}`
+        : j.line,
+    since: j.since,
+    percent: j.percent,
+  }));
 
 /* --- Routes ------------------------------------------------------------------------------------ */
 
@@ -208,19 +146,24 @@ export async function handleThumbnailRoute(
 
   if (action === undefined && req.method === "GET") {
     const manifest = await readManifest(dir);
-    const job = jobs.get(matchId);
+    const job = thumbJob(matchId);
     const record = await longFormRecord(matchId);
     const newManifest = path.join(dir, NEW_DIR, "thumbnail.json");
     const set = record?.thumbnailSet ?? null;
-    const onChannel = await isUploaded(matchId);
+    // The re-rendered set (src/thumbnails/rerender.ts); null until one lands.
+    const newVariants = (await readManifest(path.join(dir, NEW_DIR)))?.variants ?? null;
+    // Which press a new tile gets — Put on YouTube (true) or Use this (false) — is never read off a
+    // channel list that has not loaded yet: null, and the panel offers neither.
+    const onChannel = newVariants ? await onChannelNow(matchId) : await isUploaded(matchId);
     ctx.json(res, 200, {
       ...(manifest ?? { chosen: null, hookText: null, variants: [] }),
-      // The re-rendered set of a match on the channel (src/thumbnails/rerender.ts); null until one lands.
-      newVariants: (await readManifest(path.join(dir, NEW_DIR)))?.variants ?? null,
-      // Where a re-render lands: beside the live set (on the channel) or over it (src/thumbnails/rerender.ts).
+      // When the live set was last written: the tiles' URLs change with it, or the browser shows a cached still.
+      liveAt: manifest ? statSync(manifestPath(dir)).mtimeMs : null,
+      hasLive: existsSync(path.join(dir, "thumbnail.png")),
+      newVariants,
       onChannel,
       // A match with an export, a manifest or a video can be drawn again; a bare directory has nothing to show it on.
-      canRerender: existsSync(dir) && (manifest !== null || isExported(matchId) || onChannel),
+      canRerender: existsSync(dir) && (manifest !== null || isExported(matchId) || onChannel === true),
       job: job ? { ...job, running: !job.done } : null,
       youtube: record
         ? {
@@ -255,6 +198,34 @@ export async function handleThumbnailRoute(
     return true;
   }
 
+  // "Use this" on a new tile of a match not on the channel: the new set becomes the live one.
+  if (action === "use" && req.method === "POST") {
+    const body = JSON.parse((await ctx.readBody(req)) || "{}") as { chosen?: unknown };
+    if (typeof body.chosen !== "string") {
+      ctx.json(res, 400, { error: 'expected { chosen: "<variant key>" }' });
+      return true;
+    }
+    const onChannel = await onChannelNow(matchId);
+    // Checked after the await, and marked by promoteNewSet before its first: nothing starts between.
+    const busy = ctx.busy(matchId);
+    const refused =
+      onChannel === null
+        ? "checking the channel — reload in a moment"
+        : onChannel
+          ? `Match ${matchId} is on the channel: its live set is what went up, and Put on YouTube changes the video's thumbnail`
+          : busy && `Match ${matchId} has ${busy} in flight — try again when it is done`;
+    if (refused) {
+      ctx.json(res, 409, { error: refused });
+      return true;
+    }
+    try {
+      ctx.json(res, 200, await promoteNewSet(matchId, body.chosen));
+    } catch (err) {
+      ctx.json(res, 409, { error: describeError(err) });
+    }
+    return true;
+  }
+
   // One press, one live-channel change: `{ variant }` puts that new tile on, `{ undo: true }` puts
   // back the image kept before the first put.
   if (action === "youtube" && req.method === "POST") {
@@ -262,8 +233,8 @@ export async function handleThumbnailRoute(
       ctx.json(res, 503, { error: "YouTube is not connected on this box" });
       return true;
     }
-    // An upload or a re-render (ctx.busy), or a Finish on YouTube, which sets the thumbnail too.
-    const busy = ctx.busy(matchId) ?? (videoWriting(matchId) ? "a Finish on YouTube" : null);
+    // An upload, a re-render, or a Finish on YouTube, which sets the thumbnail too (ctx.busy).
+    const busy = ctx.busy(matchId);
     if (busy) {
       ctx.json(res, 409, { error: `Match ${matchId} has ${busy} in flight — try again when it is done` });
       return true;

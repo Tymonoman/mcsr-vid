@@ -652,8 +652,9 @@ async function loadVariants(id) {
   if (selected !== id) return;
   const job = data.job;
   const running = !!job?.running;
-  // Re-render: every variant again with today's design. On a match already on the channel the new
-  // set lands in a folder of its own and the live one is not touched (src/thumbnails/rerender.ts).
+  const fresh = data.newVariants ?? [];
+  // Re-render: every variant again with today's design, into a folder of its own beside the live
+  // set (src/thumbnails/rerender.ts). Nothing live changes until a new tile is pressed.
   const rerender = data.canRerender
     ? `<div class="row thumbbar">
         <button type="button" id="thumbrerender" class="ghost"${running ? " disabled" : ""}>${running ? "Re-rendering…" : "Re-render thumbnails"}</button>
@@ -662,47 +663,46 @@ async function loadVariants(id) {
             ? activitySum(job)
             : job?.error
               ? `<span class="bad">re-render failed: ${esc(job.error)}</span>`
-              : `${job ? "re-rendered with" : "draws every pose again in"} today&rsquo;s design${data.onChannel ? " beside the live set; the live thumbnail and YouTube are unchanged" : "; nothing on YouTube changes"}`
+              : `${job && fresh.length ? "re-rendered with" : "draws every pose again in"} today&rsquo;s design beside the live set; the live thumbnail${data.onChannel ? " and YouTube are" : " is"} unchanged until you press a new tile`
         }</span>
       </div>`
     : "";
   if (running) variantsPoll = setTimeout(() => loadVariants(id), 3000);
-  // The images keep their URLs across a re-render, and the browser's memory cache keeps an image
-  // it has shown whatever no-store says: a new query once the run is done fetches the new stills.
+  // The images keep their URLs across a re-render or a Use this, and the browser's memory cache
+  // keeps an image it has shown whatever no-store says: a new query fetches the new stills.
   const bust = job ? `&r=${encodeURIComponent(running ? "running" : job.since)}` : "";
   // The long-form on the channel, when this match's thumbnail is the one it wears.
   const yt = data.youtube && data.youtube.connected ? data.youtube : null;
-  const fresh = data.newVariants ?? [];
 
-  const tile = (v) => {
+  const tile = (v, isNew) => {
     const fellBack = v.leftProvider === "nmsr" || v.rightProvider === "nmsr";
-    const chosen = v.key === data.chosen;
+    const chosen = !isNew && v.key === data.chosen;
     // The variant the render picked needs a button too, or the operator who looks at all
     // six and likes the default has no way to say so: the checklist pill means "chosen",
     // not "rendered" (chosenBy in src/dashboard/matchShelf.ts), and PUT on the key already in use is
     // what stamps it. `chosenBy !== "auto"` mirrors the checklist exactly, so a manifest
     // from before the field still reads as chosen and asks for no second click.
     const confirmed = chosen && data.chosenBy !== "auto";
+    const src = `/api/thumbnail/${id}?v=${encodeURIComponent(v.key)}${isNew ? "&new=1" : ""}`;
+    // A new tile: Put on YouTube for a match on the channel, Use this (the new set becomes the live
+    // one) for a match that is not, neither while the channel is still being read (onChannel null).
+    const press = running
+      ? ""
+      : !isNew
+        ? `<button type="button" class="use">${chosen ? "Keep this" : "Use this"}</button>`
+        : data.onChannel === false
+          ? '<button type="button" class="use promote">Use this</button>'
+          : data.onChannel && yt
+            ? '<button type="button" class="ytput">Put on YouTube</button>'
+            : "";
     return `
       <figure class="variant ${chosen ? "chosen" : ""}" data-key="${esc(v.key)}">
-        <img src="/api/thumbnail/${id}?v=${encodeURIComponent(v.key)}${bust}" alt="${esc(v.key)}" loading="lazy">
+        <img src="${src}${isNew ? bust : `&r=${data.liveAt}`}" alt="${esc(v.key)}${isNew ? ", new design" : ""}" loading="lazy">
         <figcaption>
           <span class="key">${esc(v.leftPose)} / ${esc(v.rightPose)}</span>
           ${fellBack ? '<span class="fallback" title="This pose name has no camera, so it is the default NMSR view -- not the pose it is named after">static fallback</span>' : ""}
-          ${confirmed ? '<span class="is-chosen">in use</span>' : `<button type="button" class="use"${running ? " disabled" : ""}>${chosen ? "Keep this" : "Use this"}</button>`}
-        </figcaption>
-      </figure>`;
-  };
-  // A tile of the new set: put it on the video, or download it for Studio's Test & Compare.
-  const newTile = (v) => {
-    const src = `/api/thumbnail/${id}?v=${encodeURIComponent(v.key)}&new=1`;
-    return `
-      <figure class="variant" data-key="${esc(v.key)}">
-        <img src="${src}${bust}" alt="${esc(v.key)}, new design" loading="lazy">
-        <figcaption>
-          <span class="key">${esc(v.leftPose)} / ${esc(v.rightPose)}</span>
-          ${yt && !running ? '<button type="button" class="ytput">Put on YouTube</button>' : ""}
-          <a href="${src}" download="${id}-new-${esc(v.key)}.png">download</a>
+          ${confirmed ? '<span class="is-chosen">in use</span>' : press}
+          ${isNew ? `<a href="${src}" download="${id}-new-${esc(v.key)}.png">download</a>` : ""}
         </figcaption>
       </figure>`;
   };
@@ -716,18 +716,32 @@ async function loadVariants(id) {
   }
   const live = data.variants.length
     ? `<div class="strip">${[...columns.values()]
-        .map((column) => `<div class="poses">${column.map(tile).join("")}</div>`)
+        .map((column) => `<div class="poses">${column.map((v) => tile(v, false)).join("")}</div>`)
         .join("")}</div>`
-    : `<div class="empty">no thumbnails yet &mdash; ${data.canRerender ? "re-render to draw them" : "the render makes them, four poses"}</div>`;
+    : `<div class="empty">no thumbnails yet &mdash; ${!data.canRerender ? "the render makes them, four poses" : fresh.length ? "the re-rendered set is below" : "Re-render draws a set below"}</div>`;
+  // The old image for Studio's Test & Compare: the one YouTube wore before the first put when it
+  // was kept, else the dashboard's own file, which a Studio upload may never have worn.
+  const old = data.youtube?.canUndo
+    ? `<a href="/api/thumbnail/${id}?kept=1" download="${id}-youtube-before.jpg">download the image YouTube had before the first put</a>`
+    : data.hasLive
+      ? `<a href="/api/thumbnail/${id}" download="${id}-current.png">download the dashboard&rsquo;s thumbnail.png</a>`
+      : "";
   const newSet = fresh.length
-    ? `<div class="row thumbnew"><b>New design</b><span class="msg">for Studio&rsquo;s Test &amp; Compare: <a href="/api/thumbnail/${id}" download="${id}-current.png">download the current thumbnail</a> and a new tile</span></div>
-      <div class="strip">${fresh.map((v) => `<div class="poses">${newTile(v)}</div>`).join("")}</div>`
+    ? `<div class="row thumbnew"><b>New design</b><span class="msg">${
+        data.onChannel === null
+          ? "checking the channel &mdash; reload in a moment"
+          : data.onChannel
+            ? `for Studio&rsquo;s Test &amp; Compare: ${old ? `${old} and ` : ""}a new tile`
+            : "Use this makes the new set the live one, with that tile as the thumbnail"
+      }</span></div>
+      <div class="strip">${fresh.map((v) => `<div class="poses">${tile(v, true)}</div>`).join("")}</div>`
     : "";
 
-  // What a press on YouTube does, said before it is pressed; what YouTube answered, after.
+  // What a press on YouTube does, said before it is pressed; what YouTube answered, after. Kept
+  // while a re-render empties the new set, and after one fails: the put and its Undo still stand.
   const set = yt?.set;
   const ytLine =
-    yt && fresh.length
+    yt && (set || fresh.length)
       ? `<div class="row thumbyt">
         <span class="msg" id="thumbytmsg">${
           set
@@ -744,9 +758,11 @@ async function loadVariants(id) {
   el.querySelectorAll(".variant .use").forEach((btn) =>
     btn.addEventListener("click", async () => {
       btn.disabled = true;
+      // A live tile is chosen in place; a new one moves the whole new set over the live one.
+      const promote = btn.classList.contains("promote");
       try {
-        await api(`/api/thumbnails/${id}`, {
-          method: "PUT",
+        await api(`/api/thumbnails/${id}${promote ? "/use" : ""}`, {
+          method: promote ? "POST" : "PUT",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ chosen: btn.closest(".variant").dataset.key }),
         });

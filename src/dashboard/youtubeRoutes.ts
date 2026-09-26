@@ -42,6 +42,7 @@ import {
 } from "../youtube/youtubeStore.js";
 import { beginUpload, finishOnYouTube, uploadProgress } from "../youtube/youtubeUpload.js";
 import { HOOK_PLACEHOLDER } from "../pipeline/title.js";
+import { thumbnailRunning } from "../thumbnails/rerender.js";
 import { videoEngagement, yppProgress } from "../youtube/yppProgress.js";
 
 export { uploadRunning } from "../youtube/youtubeUpload.js";
@@ -160,6 +161,13 @@ export async function handleYoutubeRoute(
     if (!/^[A-Za-z0-9_-]{11}$/.test(videoId)) {
       ctx.json(res, 400, {
         error: `"${videoId}" is not a YouTube video id (11 characters from the Studio URL)`,
+      });
+      return true;
+    }
+    // The finish below sets the live thumbnail.png: not while a re-render or its Use this runs.
+    if (thumbnailRunning(matchId)) {
+      ctx.json(res, 409, {
+        error: `The thumbnails of match ${matchId} are being re-rendered or put in place — try again once they are done`,
       });
       return true;
     }

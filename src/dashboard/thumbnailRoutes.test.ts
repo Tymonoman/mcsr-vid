@@ -10,28 +10,39 @@ import { config, matchDir } from "../config.js";
 import {
   handleThumbnailRoute,
   runBulk,
-  startRerender,
   uploadedLongForms,
   type ThumbnailRouteContext,
 } from "./thumbnailRoutes.js";
+import { busyIn } from "./busy.js";
+import { onChannelNow } from "./matchShelf.js";
+import { startRerender } from "../thumbnails/rerender.js";
+import { _setChannelUploadsForTest } from "../youtube/channelUploads.js";
 import { onVideo, writeUpload } from "../youtube/youtubeStore.js";
 
 const media = await mkdtemp(path.join(tmpdir(), "mcsr-thumbroutes-test-"));
 const saved = { mediaDir: config.mediaDir, token: process.env.YOUTUBE_TOKEN_FILE };
 config.mediaDir = media;
 process.env.YOUTUBE_TOKEN_FILE = path.join(media, "no-token.json");
+// The channel list, when a test reaches for it, fails to load: never the network.
+const realFetch = globalThis.fetch;
+globalThis.fetch = (async () => {
+  throw new Error("no network in this test");
+}) as typeof fetch;
 
 let busy: Record<number, string> = {};
+let sent = "{}";
 const answers: Array<{ status: number; body: Record<string, unknown> }> = [];
 const ctx: ThumbnailRouteContext = {
   json: (_res, status, body) => void answers.push({ status, body: body as Record<string, unknown> }),
-  readBody: async () => "{}",
+  readBody: async () => sent,
   matchDir,
   parseId: (raw) => (raw && /^\d+$/.test(raw) ? Number(raw) : null),
-  busy: (id) => busy[id] ?? null,
+  // The server's own guard under anything a check names.
+  busy: (id) => busy[id] ?? busyIn(id),
   pipelineRunning: () => false,
 };
-const call = async (method: string, url: string) => {
+const call = async (method: string, url: string, body = "{}") => {
+  sent = body;
   const handled = await handleThumbnailRoute(
     { method } as IncomingMessage,
     {} as ServerResponse,
@@ -82,9 +93,13 @@ try {
   busy = {};
   let finished!: () => void;
   const finish = onVideo(20, () => new Promise<void>((r) => (finished = r)));
+  // The server's guard (busyIn) knows a Finish or a Put, for the swap, a re-render, the bulk and Delete.
   const duringFinish = await call("POST", "/api/thumbnails/20/youtube");
   assert.equal(duringFinish.status, 409);
-  assert.match(String(duringFinish.body.error), /a Finish on YouTube in flight/);
+  assert.match(String(duringFinish.body.error), /a Finish or Put on YouTube in flight/);
+  const rerenderDuringFinish = await call("POST", "/api/thumbnails/20/rerender");
+  assert.equal(rerenderDuringFinish.status, 409);
+  assert.match(String(rerenderDuringFinish.body.error), /a Finish or Put on YouTube in flight/);
   finished();
   await finish;
   assert.equal((await call("POST", "/api/thumbnails/20/youtube")).status, 400);
@@ -119,6 +134,69 @@ try {
   assert.equal(p.youtube.canUndo, true);
   assert.equal((await call("GET", "/api/thumbnails/30")).body.newVariants, null);
 
+  // "Use this" on a new tile: only for a match known not to be on the channel. Until the channel
+  // list has loaded once, a Studio upload the scan has not recorded looks like one that is not up —
+  // so neither press is offered (onChannel null) and Use this refuses.
+  const newDir30 = path.join(media, "30", "thumbnail-new");
+  await mkdir(newDir30);
+  await writeFile(path.join(newDir30, "thumbnail.w-c.png"), "new still");
+  await writeFile(
+    path.join(newDir30, "thumbnail.json"),
+    JSON.stringify({
+      chosen: "w-c",
+      chosenBy: "auto",
+      variants: [{ key: "w-c", file: "thumbnail.w-c.png" }],
+    }),
+  );
+  const use = (id: number) => call("POST", `/api/thumbnails/${id}/use`, JSON.stringify({ chosen: "w-c" }));
+  assert.equal((await call("GET", "/api/thumbnails/30")).body.onChannel, null, "not known yet");
+  const unknown = await use(30);
+  assert.equal(unknown.status, 409);
+  assert.match(String(unknown.body.error), /checking the channel/);
+  // The list read once (awaited, not fire-and-forget): a Studio upload it names is on the channel.
+  await writeFile(
+    process.env.YOUTUBE_TOKEN_FILE!,
+    JSON.stringify({ client_id: "c", client_secret: "s", refresh_token: "r" }),
+  );
+  const answer = (url: string) =>
+    url.includes("oauth2")
+      ? { access_token: "t", expires_in: 3600 }
+      : url.includes("/channels?")
+        ? { items: [{ contentDetails: { relatedPlaylists: { uploads: "UU1" } } }] }
+        : url.includes("/playlistItems?")
+          ? { items: [{ contentDetails: { videoId: "studio00031" } }] }
+          : {
+              items: [
+                {
+                  id: "studio00031",
+                  snippet: {
+                    title: "t",
+                    publishedAt: "2026-09-20T19:00:00Z",
+                    description: "https://mcsrranked.com/matches/31",
+                  },
+                  status: { privacyStatus: "public" },
+                  contentDetails: { duration: "PT10M" },
+                },
+              ],
+            };
+  globalThis.fetch = (async (input: string | URL | Request) =>
+    Response.json(answer(String(input)))) as typeof fetch;
+  // (No folder for 31: the pairing a first read records, and the NAS copy it starts, stay out of this test.)
+  assert.equal(await onChannelNow(31), true, "a Studio upload, known on first sight");
+  _setChannelUploadsForTest([]);
+  assert.equal((await call("GET", "/api/thumbnails/30")).body.onChannel, false);
+  const onChannel = await use(20);
+  assert.equal(onChannel.status, 409, "a match on the channel takes Put on YouTube, never Use this");
+  assert.match(String(onChannel.body.error), /on the channel/);
+  busy = { 30: "an upload" };
+  assert.equal((await use(30)).status, 409, "not while anything else writes into the folder");
+  busy = {};
+  const promoted = await use(30);
+  assert.equal(promoted.status, 200, JSON.stringify(promoted.body));
+  assert.deepEqual([promoted.body.chosen, promoted.body.chosenBy], ["w-c", "operator"]);
+  const after30 = (await call("GET", "/api/thumbnails/30")).body;
+  assert.deepEqual([after30.newVariants, after30.chosen, after30.hasLive], [null, "w-c", true]);
+
   // The bulk: one at a time, a busy match skipped, a failure recorded, the rest carried on —
   // and nothing starts while a pipeline run (the nightly's) is in flight.
   let pipeline = 2;
@@ -144,19 +222,10 @@ try {
   };
   assert.deepEqual([state.done, state.total], [3, 3]);
 
-  // A re-render that hangs (a Chromium that never answers) is stopped, and the job says so —
-  // otherwise it holds the bulk and every scheduled nightly behind it for ever.
-  const hung = startRerender(
-    40,
-    (async (_id: number, deps: { signal?: AbortSignal }) => {
-      const signal = deps.signal;
-      if (!signal) throw new Error("no signal: nothing can stop this render");
-      await new Promise((_, reject) =>
-        signal.addEventListener("abort", () => reject(new Error("cancelled"))),
-      );
-    }) as never,
-    50,
-  );
+  // A re-render that hangs (a Chromium that never answers, or a bundle that never finishes and so
+  // never reaches the still the signal cancels) is ended, and the job says so — otherwise it holds
+  // the bulk and every scheduled nightly behind it for ever.
+  const hung = startRerender(40, (() => new Promise(() => {})) as never, 50);
   // AbortSignal.timeout's timer is unref'd (the server keeps the loop alive); this test must.
   const alive = setTimeout(() => {}, 5_000);
   assert.match(String(await hung.finished), /^stopped after \d+ min$/);
@@ -164,6 +233,7 @@ try {
 
   console.log("thumbnailRoutes: all checks passed");
 } finally {
+  globalThis.fetch = realFetch;
   config.mediaDir = saved.mediaDir;
   if (saved.token === undefined) delete process.env.YOUTUBE_TOKEN_FILE;
   else process.env.YOUTUBE_TOKEN_FILE = saved.token;

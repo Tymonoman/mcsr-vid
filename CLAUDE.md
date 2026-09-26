@@ -313,22 +313,29 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   checklist's thumbnail pill ticks on `chosenBy: "operator"`, and `variantStillReusable` keeps a
   PNG already on disk, so a pipeline run reaches only matches rendered after the layout.
 - **Re-render thumbnails** (the Thumbnail panel's button, `POST /api/thumbnails/:id/rerender`,
-  `src/thumbnails/rerender.ts`, jobs in `src/dashboard/thumbnailRoutes.ts`; 26 Sept 2026, the
-  operator: "i want an option to re render the thumbnails"): every variant drawn again (`fresh`).
-  A match on the channel (`isUploaded`: record, channel pairing or the manual tick) gets the new
-  set in `thumbnail-new/` — emptied first, each still renamed in whole, its manifest last — and
-  its live set (`thumbnail.png`, the variant PNGs, `thumbnail.json`) is never touched, so uploads,
-  Finish, the channel scan, the A/B tab and the publish set see what they saw before. The panel
-  shows those tiles under "New design", with downloads of each and of the current `thumbnail.png`
-  for Studio's Test & Compare. A match not on the channel is redrawn in place, as a pipeline run
-  would. A re-render refuses while anything else writes into the directory (`busyIn`, server.ts);
-  "Use this", both render routes and a series run refuse while one runs. After 15 min
-  (`RERENDER_TIMEOUT_MS`) the job's signal cancels the still render (`renderStill`) — not the MCSR
-  reads, avatar fetches or bundle before it. Settings → Thumbnails re-renders every uploaded
+  `src/thumbnails/rerender.ts` with its jobs, routes in `src/dashboard/thumbnailRoutes.ts`; 26 Sept
+  2026, the operator: "i want an option to re render the thumbnails"): every variant drawn again
+  (`fresh`) into `thumbnail-new/` — emptied first, each still renamed in whole, its manifest last.
+  The live set (`thumbnail.png`, the variant PNGs, `thumbnail.json`) is never touched by it, so
+  uploads, Finish, the channel scan, the A/B tab and the publish set see what they saw before; only
+  a press on a new tile changes anything. On a match on the channel that is Put on YouTube (below);
+  on one that is not, "Use this" (`POST …/use`, `promoteNewSet`) renames the new stills over the
+  live ones, copies the pick to `thumbnail.png` and writes the live manifest last (chosen by the
+  operator, the live manifest's ranks and headline carried). Which of the two a tile gets is never
+  read off a channel list that has not loaded since boot (`onChannelNow`, `matchShelf.ts`): the
+  panel waits for one read and, if it fails, offers neither ("checking the channel"). The panel's
+  "New design" downloads each tile, and the old image for Studio's Test & Compare — the one
+  YouTube wore before the first put when it was kept, else labelled as the dashboard's
+  `thumbnail.png`. A re-render and Use this refuse while anything else writes into the directory
+  (`busyIn`, `src/dashboard/busy.ts`: a pipeline run, an export, a Short, the pick, an upload, a
+  Finish or Put, an archive copy); a long-form upload (`thumbnailRefusal`, the chain's step fails
+  with it and Retry), Adopt, the live "Use this" and Delete refuse while one runs. After 15 min
+  (`RERENDER_TIMEOUT_MS`) the job ends and its signal cancels the still render — a hung bundle
+  can only write into `thumbnail-new/`. Settings → Thumbnails re-renders every uploaded
   long-form (one per video id, a series by game 1) one at a time, render only: it waits out any
   pipeline run, skips a busy match, and holds its next match while a scheduled nightly starts
   (`nightlyStarting`; that run waits out the re-render in flight 20 min at most, then records and
-  notifies a skip; Run now answers busy).
+  notifies a skip; Run now answers "a thumbnail re-render is running").
 - **Put on YouTube / Undo on YouTube** (`POST /api/thumbnails/:id/youtube`, `{ variant }` or `{
   undo: true }`, `src/youtube/thumbnailSwap.ts`): one press each, for a `thumbnail-new/` tile, on
   a match whose own `youtube.json` is the long-form (not a series' games 2..n, never a Short).
@@ -340,8 +347,8 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   before the write, gains `thumbnailSet: { variant, at, from }` (variant null = the old image
   back) and `finished.thumbnail: null`; the panel says when that tile was drawn again since. Put
   and Finish take turns per match (`onVideo`, `src/youtube/youtubeStore.ts`), and the route
-  refuses a put during a Finish or while anything writes into the directory (an upload, a
-  re-render). The A/B tab files a video with a `thumbnailSet` under "(swapped)"; re-adopting the
+  refuses a put while anything writes into the directory (`busyIn`). The line and Undo stay while
+  a re-render runs or after one fails. The A/B tab files a video with a `thumbnailSet` under "(swapped)"; re-adopting the
   same video keeps it. The operator's plan (26 Sept): swap the low-traffic videos directly, A/B
   the five with the most impressions in Test & Compare. `thumbs-rerender-check` re-renders for
   real and answers the put in the browser: point it at a test server on a scratch copy of the

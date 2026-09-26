@@ -472,13 +472,7 @@
   color: var(--warped);
   margin-left: auto;
 }
-.variant .use {
-  margin-left: auto;
-  padding: 3px 9px;
-  font-size: 12px;
-  border-bottom-width: 3px;
-}
-
+.variant .use,
 .variant .ytput {
   margin-left: auto;
   padding: 3px 9px;
@@ -715,7 +709,8 @@
   .nightly a,
   .outputs a,
   .sugg .game a,
-  .sugg .links a {
+  .sugg .links a,
+  #variants a[download] {
     display: inline-flex;
     align-items: center;
     padding: 0 6px;

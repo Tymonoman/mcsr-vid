@@ -16,6 +16,7 @@ import {
 } from "./youtubeUpload.js";
 import { readShortLog, stepActivity } from "../shorts/shortLog.js";
 import { staleExportMessage, writeSyncOffsets } from "../pipeline/syncFile.js";
+import { startRerender, thumbJob } from "../thumbnails/rerender.js";
 
 const media = await mkdtemp(path.join(tmpdir(), "mcsr-upload-test-"));
 /** A publish time always ahead of the clock: 2 January next year, 13:00 UTC. */
@@ -198,6 +199,22 @@ try {
 
   // Re-exported: the file is newer than the correction, and the guard steps aside.
   await stamp(exportFile, "2026-09-10T14:00:00Z");
+  // ...but not while the thumbnails are re-rendering or a new tile's Use this is moving them: the
+  // long-form would send a thumbnail and a manifest that change under it. The Short carries none.
+  {
+    let drawn!: () => void;
+    startRerender(matchId, (() => new Promise((r) => (drawn = () => r({} as never)))) as never);
+    const held = await beginUpload(matchId, {
+      kind: "video",
+      privacyStatus: "private",
+      videoPath: exportFile,
+    });
+    assert.ok("error" in held && held.status === 409, JSON.stringify(held));
+    assert.match(held.error, /thumbnails of match \d+ are being re-rendered or put in place/);
+    assert.ok(!("error" in (await beginUpload(matchId, { kind: "short", privacyStatus: "private" }))));
+    drawn();
+    await thumbJob(matchId)!.finished;
+  }
   const freshVideo = await beginUpload(matchId, {
     kind: "video",
     privacyStatus: "private",
@@ -566,6 +583,14 @@ try {
       JSON.stringify(rows),
     );
     const readopt = { videoId: "vidXXXXXXXX" };
+    // Adopt's finish sets the live thumbnail.png: refused while a re-render or its Use this runs.
+    let drawn!: () => void;
+    startRerender(matchId, (() => new Promise((r) => (drawn = () => r({} as never)))) as never);
+    const held = await route("POST", ["adopt", String(matchId)], JSON.stringify(readopt));
+    assert.equal(held.status, 409);
+    assert.match(String((held.body as { error?: string }).error), /re-rendered or put in place/);
+    drawn();
+    await thumbJob(matchId)!.finished;
     const same = await route("POST", ["adopt", String(matchId)], JSON.stringify(readopt));
     assert.equal(same.status, 200, JSON.stringify(same.body));
     assert.deepEqual((await readUpload(matchId))?.thumbnailSet, swapped, "re-adopting keeps it");

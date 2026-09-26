@@ -207,13 +207,16 @@ export async function fetchChannelUploads(fetchImpl: typeof fetch = fetch): Prom
 }
 
 const REFRESH_MS = 6 * 60 * 60 * 1000;
-let cached: { atMs: number; videos: ChannelVideo[] } = { atMs: 0, videos: [] };
+let cached: { atMs: number; videos: ChannelVideo[]; loaded?: true } = { atMs: 0, videos: [] };
 let inflight: Promise<void> | null = null;
 
 /** What is known right now — possibly nothing yet. Synchronous, for the callers on hot paths. */
 export function channelUploadsSnapshot(): ChannelVideo[] {
   return cached.videos;
 }
+
+/** Whether the list has been read once since boot: before, an empty snapshot means "not known yet". */
+export const channelUploadsLoaded = (): boolean => cached.loaded === true;
 
 /**
  * Refreshes the cache when it is older than six hours, in the background, once at a time.
@@ -261,7 +264,7 @@ async function recordNewPairings(videos: readonly ChannelVideo[]): Promise<void>
 function refresh(nowMs: number, fetchImpl: typeof fetch = fetch): Promise<void> {
   return fetchChannelUploads(fetchImpl)
     .then(async (videos) => {
-      cached = { atMs: nowMs, videos };
+      cached = { atMs: nowMs, videos, loaded: true };
       console.error(`channel: ${videos.length} videos on the channel`);
       await recordNewPairings(videos);
     })
@@ -279,5 +282,5 @@ function refresh(nowMs: number, fetchImpl: typeof fetch = fetch): Promise<void> 
 
 /** Test seam. */
 export function _setChannelUploadsForTest(videos: ChannelVideo[]): void {
-  cached = { atMs: Date.now(), videos };
+  cached = { atMs: Date.now(), videos, loaded: true };
 }

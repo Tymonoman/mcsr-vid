@@ -57,7 +57,8 @@ globalThis.fetch = (async (input: string | URL | Request) => {
 
 const flow = await import("./shortFlow.js");
 const { handleShortsRoute } = await import("./shortsRoutes.js");
-const { hookRefusal } = await import("../youtube/youtubeUpload.js");
+const { hookRefusal, thumbnailRefusal } = await import("../youtube/youtubeUpload.js");
+const { startRerender, thumbJob } = await import("../thumbnails/rerender.js");
 const { readUpload, writeUpload } = await import("../youtube/youtubeStore.js");
 const { readShortHook } = await import("../shorts/shortHook.js");
 const { nextPublishSlot } = await import("../youtube/publishSlot.js");
@@ -133,7 +134,7 @@ const render = async (id: number): Promise<string | null> => {
 const sent: Array<{ id: number; kind: string; publishAt?: string; privacyStatus: string }> = [];
 let failVideo: string | null = null;
 const upload: import("./shortFlow.js").ChainDeps["upload"] = async (id, req) => {
-  const refused = await hookRefusal(id, req.kind);
+  const refused = (await hookRefusal(id, req.kind)) ?? thumbnailRefusal(id, req.kind);
   if (refused) return refused;
   sent.push({ id, kind: req.kind, publishAt: req.publishAt, privacyStatus: req.privacyStatus });
   const progress = {
@@ -453,6 +454,25 @@ try {
   await save(E, { titleHook: "One heart left", shortHook: "Retry line" });
   assert.equal((await plan(E)).state, "scheduled");
   assert.deepEqual((await plan(E)).errors, [], "the retry's run carries no old error");
+
+  // A re-render of the thumbnails in flight: the long-form's upload is refused, which the step shows
+  // as failed with the refusal (Retry beside it on the Now panel), and the save is the retry.
+  {
+    const T = 13_000_040;
+    exported(T);
+    writePick(T);
+    let drawn!: () => void;
+    startRerender(T, (() => new Promise((r) => (drawn = () => r({} as never)))) as never);
+    await save(T, { titleHook: "One heart left", shortHook: "Retry line" });
+    const held = await plan(T);
+    assert.equal(held.state, "failed");
+    assert.equal(held.errors[0]?.step, "upload-video");
+    assert.match(held.errors[0]!.message, /thumbnails of match \d+ are being re-rendered or put in place/);
+    drawn();
+    await thumbJob(T)!.finished;
+    await save(T, { titleHook: "One heart left", shortHook: "Retry line" });
+    assert.equal((await plan(T)).state, "scheduled");
+  }
 
   /* --- 10. Short times ------------------------------------------------------------------------------ */
   const at = (iso: string) => ({ videoId: "v", publishAt: iso, privacyStatus: "private" });

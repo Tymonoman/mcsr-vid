@@ -17,6 +17,7 @@ import { listProcessedMatchIds, matchStatusFor } from "../dashboard/matchStatus.
 import { playoffContextForId } from "../playoffs/playoffs.js";
 import { exportStale, staleExportMessage } from "../pipeline/syncFile.js";
 import { readManifest } from "../thumbnails/thumbnailVariants.js";
+import { thumbnailRunning } from "../thumbnails/rerender.js";
 import { HOOK_PLACEHOLDER, metaPaths } from "../pipeline/title.js";
 import { readShortCut, readShortHook, WAITING_FOR_HOOK } from "../shorts/shortHook.js";
 import { activityProgress, boxFailure, endActivity, shortLog, startActivity } from "../shorts/shortLog.js";
@@ -148,6 +149,21 @@ export async function hookRefusal(
  * the dashboard's title editor already writes the `.edited.txt` the publish kit pastes from, and
  * a second copy of the text in a form was how a title picked up a stray newline.
  */
+/**
+ * A re-render or a new tile's Use this in flight (src/thumbnails/rerender.ts): the long-form's
+ * thumbnail and manifest could move under it. Use this refuses an upload in flight in turn.
+ */
+export const thumbnailRefusal = (
+  matchId: number,
+  kind: UploadKind,
+): { status: number; error: string } | null =>
+  kind === "video" && thumbnailRunning(matchId)
+    ? {
+        status: 409,
+        error: `the thumbnails of match ${matchId} are being re-rendered or put in place — try again once they are done`,
+      }
+    : null;
+
 export async function beginUpload(
   matchId: number,
   req: UploadRequest,
@@ -246,7 +262,9 @@ async function startUpload(matchId: number, req: UploadRequest, send: typeof upl
       `the publish time ${req.publishAt} has already passed — pick a later one (the chain takes the next free slot)`,
     );
 
-  const manifest = await readManifest(dir);
+  // In the tick that marks the upload running, so nothing starts between the two.
+  const held = thumbnailRefusal(matchId, req.kind);
+  if (held) return held;
   const progress = idle(matchId, req.kind);
   uploads.set(key, progress);
   const step = logStep(req.kind);
@@ -259,6 +277,7 @@ async function startUpload(matchId: number, req: UploadRequest, send: typeof upl
   const finished = (async () => {
     let recorded = false;
     try {
+      const manifest = await readManifest(dir);
       const result = await send({
         filePath,
         title: text.title,

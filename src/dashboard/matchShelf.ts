@@ -17,7 +17,14 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { isArchived } from "./archive.js";
-import { channelShortFor, channelUploadsSnapshot, channelVideoFor } from "../youtube/channelUploads.js";
+import {
+  channelShortFor,
+  channelUploadsLoaded,
+  channelUploadsSnapshot,
+  channelVideoFor,
+  refreshChannelUploadsNow,
+} from "../youtube/channelUploads.js";
+import { isConfigured } from "../youtube/youtube.js";
 import { config, matchDir } from "../config.js";
 import { readManifest } from "../thumbnails/thumbnailVariants.js";
 import { HOOK_PLACEHOLDER, metaPaths } from "../pipeline/title.js";
@@ -227,6 +234,17 @@ export async function isUploaded(matchId: number): Promise<boolean> {
     readManual(matchId).uploaded ||
     channelVideoFor(matchId, channelUploadsSnapshot()) !== null
   );
+}
+
+/**
+ * `isUploaded` for a press that must not guess (a new thumbnail tile's Put on YouTube or Use this):
+ * a Studio upload the scan has not recorded is known only from the channel list, empty after a
+ * restart until its first read — so that read is awaited, and null means it still failed.
+ */
+export async function onChannelNow(matchId: number): Promise<boolean | null> {
+  const unknown = () => isConfigured() && !channelUploadsLoaded();
+  if (unknown()) await refreshChannelUploadsNow();
+  return (await isUploaded(matchId)) || (unknown() ? null : false);
 }
 
 /** The Short, by the same three routes: its own record, the tick, or the channel (by length). */

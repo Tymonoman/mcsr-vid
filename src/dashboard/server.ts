@@ -45,12 +45,13 @@ import { playoffBoard } from "../playoffs/playoffs.js";
 import { renderSeries, seriesState, type SeriesRunners } from "../playoffs/series.js";
 import { refreshRivalPostsIfStale, rivalPostsSnapshot, rivalRecentPostFor } from "./rivalPosts.js";
 import { chooseVariant, readManifest } from "../thumbnails/thumbnailVariants.js";
-import { handleThumbnailRoute, thumbnailActivities, thumbnailRunning } from "./thumbnailRoutes.js";
-import { NEW_DIR } from "../thumbnails/rerender.js";
+import { handleThumbnailRoute, thumbnailActivities } from "./thumbnailRoutes.js";
+import { NEW_DIR, thumbnailRunning } from "../thumbnails/rerender.js";
+import { undoFile } from "../youtube/thumbnailSwap.js";
 import { metaPaths } from "../pipeline/title.js";
 import { typedSpoiler } from "../pipeline/hooks.js";
 import { allArchiveStates, capacity, isArchived } from "./archive.js";
-import { exportRunning, handleExportRoute, startFastExport } from "./exportRoutes.js";
+import { handleExportRoute, startFastExport } from "./exportRoutes.js";
 import {
   MANUAL_PUBLISH_KEYS,
   deleteMatch,
@@ -68,13 +69,20 @@ import {
   setHidden,
   setPublishFlag,
 } from "./matchShelf.js";
-import { handleShortsRoute, shortRunning } from "./shortsRoutes.js";
-import { ensurePick, matchRowShort, nightlyShortSummary, pickActivity, shortTick } from "./shortFlow.js";
+import { handleShortsRoute } from "./shortsRoutes.js";
+import { ensurePick, matchRowShort, nightlyShortSummary, shortTick } from "./shortFlow.js";
 import { saveSettings, settingsPayload } from "./settings.js";
-import { handleYoutubeRoute, uploadRunning } from "./youtubeRoutes.js";
+import { handleYoutubeRoute } from "./youtubeRoutes.js";
+import { busyIn } from "./busy.js";
 import { handleSyncRoute } from "./syncRoutes.js";
 import { readMeta } from "./matchMeta.js";
-import { pinnedComment, readIfPresent, readUpload, uploadTextFor } from "../youtube/youtubeStore.js";
+import {
+  longFormRecord,
+  pinnedComment,
+  readIfPresent,
+  readUpload,
+  uploadTextFor,
+} from "../youtube/youtubeStore.js";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const ROOT = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
@@ -113,14 +121,10 @@ function json(res: ServerResponse, status: number, body: unknown): void {
   res.end(payload);
 }
 
-/** A pipeline run, "Use this" and a re-render of a match not on the channel all write its live set. */
-const THUMBS_BUSY = "The thumbnails are re-rendering in this match's folder — try again once they are done";
-
 /** How a series run drives the three steps inside the server (src/playoffs/series.ts `renderSeries`). */
 const serverSeriesRunners: SeriesRunners = {
   renderGame: (matchId) =>
     new Promise((resolve) => {
-      if (thumbnailRunning(matchId)) return resolve(THUMBS_BUSY);
       const job = startJob(matchId);
       const poll = () => (job.done ? resolve(job.aborted ? "stopped" : job.error) : setTimeout(poll, 5000));
       poll();
@@ -139,28 +143,6 @@ function armFollowUps(job: Job, url: URL): void {
   if (url.searchParams.get("export") !== "1") return;
   requestExport(job.matchId);
   afterSettled(job);
-}
-
-/**
- * What is writing into a match's directory right now, in words, or null. Delete refuses on it, and
- * so do the thumbnail re-render and the swap on YouTube.
- */
-function busyIn(matchId: number): string | null {
-  return getJob(matchId)?.done === false
-    ? "a pipeline run"
-    : exportRunning(matchId)
-      ? "an export"
-      : shortRunning(matchId)
-        ? "a Short render"
-        : pickActivity(matchId) === "running"
-          ? "the model's pick (it writes the proxy there)"
-          : uploadRunning(matchId)
-            ? "an upload"
-            : thumbnailRunning(matchId)
-              ? "a thumbnail re-render"
-              : allArchiveStates().some((a) => a.matchId === matchId && a.running)
-                ? "an archive copy"
-                : null;
 }
 
 /**
@@ -368,10 +350,6 @@ const server = createServer(async (req, res) => {
         parsed = parseMatchId(body.input.trim());
       } catch (err) {
         json(res, 400, { error: describeError(err) });
-        return;
-      }
-      if (thumbnailRunning(parsed)) {
-        json(res, 409, { error: THUMBS_BUSY });
         return;
       }
       const job = startJob(parsed);
@@ -708,6 +686,13 @@ const server = createServer(async (req, res) => {
       // The key indexes the manifest rather than being joined into a path, so it cannot walk out
       // of the match directory.
       const key = url.searchParams.get("v");
+      // `?kept=1`: the image the video wore before the first Put on YouTube (src/youtube/thumbnailSwap.ts).
+      if (url.searchParams.has("kept")) {
+        const record = await longFormRecord(matchId);
+        if (record) sendFile(res, path.join(matchDir(matchId), undoFile(record.videoId)), "image/jpeg");
+        else json(res, 404, { error: `match ${matchId} has no long-form of its own on the channel` });
+        return;
+      }
       if (key === null) {
         sendFile(res, path.join(matchDir(matchId), "thumbnail.png"), "image/png");
         return;
@@ -729,8 +714,11 @@ const server = createServer(async (req, res) => {
         json(res, 400, { error: 'expected { chosen: "<variant key>" }' });
         return;
       }
+      // The new set moving over the live one ("Use this" on a new tile) writes the same two files.
       if (thumbnailRunning(matchId)) {
-        json(res, 409, { error: THUMBS_BUSY });
+        json(res, 409, {
+          error: "The thumbnails are being re-rendered or put in place — try again once they are done",
+        });
         return;
       }
       try {
@@ -777,10 +765,6 @@ const server = createServer(async (req, res) => {
     }
 
     if (resource === "render" && req.method === "POST") {
-      if (thumbnailRunning(matchId)) {
-        json(res, 409, { error: THUMBS_BUSY });
-        return;
-      }
       const job = startJob(matchId);
       armFollowUps(job, url);
       json(res, 202, { matchId, running: !job.done });

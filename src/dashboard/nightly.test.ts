@@ -26,7 +26,7 @@ import {
   writeNightlyState,
 } from "./nightly.js";
 import type { PlayoffBoard } from "../playoffs/playoffs.js";
-import { startRerender } from "./thumbnailRoutes.js";
+import { startRerender } from "../thumbnails/rerender.js";
 import type { MatchInfo } from "../api/types.js";
 
 const HOUR = 3_600_000;
@@ -439,6 +439,7 @@ try {
     // "Run now" is a press, not a schedule: it answers busy rather than waiting.
     const now = await runNightlyOnce("", { ranked: async () => [] });
     assert.equal(now.busy, true, `Run now refuses beside a re-render: ${JSON.stringify(now)}`);
+    assert.equal(now.skipped, "a thumbnail re-render is running", "and says which");
     const run = runNightlyOnce("", { renderInFlight: () => false, ranked: async () => [], scheduled: true });
     await new Promise((r) => setTimeout(r, 1_200));
     assert.equal(nightlyStarting(), true, "the run is holding for the re-render");
