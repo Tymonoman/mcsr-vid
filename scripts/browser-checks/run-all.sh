@@ -55,8 +55,8 @@ run hook-flow-check "$BASE" "$READY2"
 run now-flow-check "$BASE" "$READY" "$READY2"
 run pick-progress-check "$BASE" "$READY"
 run checkchannel-check "$BASE" "$READY"
-# Firefox too (npx playwright install firefox). Its Save and Move are answered in the browser and
-# every other non-GET is aborted and failed: nothing it does is written on the server.
+# Firefox too (npx playwright install firefox). Its Save, Move and by-hand upload are answered in the
+# browser and every other non-GET is aborted and failed: nothing it does is written on the server.
 run publish-at-check "$BASE" "$READY" "$READY2" "$SCHEDULED" "$PUBLISHED"
 [ -n "$PUBLISHED" ] && run studio-upload-check "$BASE" "$PUBLISHED"
 [ -n "$UNEXPORTED" ] && run stale-preview "$BASE" "$READY2" "$UNEXPORTED"

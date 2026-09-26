@@ -423,19 +423,27 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   date"; `PUT /api/shorts/publishat/:id`, `setPublishTime` in `src/dashboard/shortFlow.ts`): a
   `datetime-local` in the browser's zone, stored in UTC as `publishAt` in `short-<id>.status.json`;
   while typing, the line beside Save names the instant in UTC (an hour a clock change repeats takes
-  its first; an untouched Save sends the kit's own instant). The chain's upload takes it while it
+  its first; an untouched Save sends the kit's own instant, and so does the by-hand upload while
+  its field holds the kit's value). The chain's upload takes it while it
   is an hour ahead (`MIN_LEAD_MS`: YouTube checks the time once the file is up; Save and the
   by-hand form refuse less), else the next free slot, and the Short 18 h after. A stored time is a
   claim (`claimedPublishTimes`) and counts for the pair gap, unless its match is hidden; a playoff
   game 1 not joined yet takes `seriesPublishHourUtc`. The slot rules come back as warnings, never
-  refusals (`slotWarnings`). Scheduled on YouTube with an upload record here (a dashboard upload or
-  an adopted draft), the button reads "Move on YouTube to …": one press, `reschedule` reads the
-  video live (no pre-check of the record, so a video moved in Studio since still moves), sends the
-  status part back whole (nothing for the time it already has), the record follows and the Short
-  keeps its 18 h. The kit's state is the record's (`onChannel`); a Studio upload with no record
-  says "move it there". A playoff game after game 1 has no time of its own. `publish-at-check`
-  lets only GETs reach the server (Save and Move are answered in the browser; a plan GET that
-  could queue a pick is aborted).
+  refusals (`slotWarnings`), and hide while another time is typed (they are the saved one's).
+  Scheduled on YouTube with an upload record here (a dashboard upload, an adopted draft, or a
+  Studio upload the channel scan recorded — `recordStudioUpload` keeps its `publishAt`), the button
+  reads "Move on YouTube to …" and stays off until the time is changed (untouched, it would put
+  the painted time back over a move made in Studio since): one press, refused while the match's
+  chain runs (the Short's upload takes the long-form's time as it starts); `reschedule` reads the
+  video live, sends the status part back whole (nothing for the time it already has), the record
+  follows and the Short keeps its 18 h. The kit's state is the record's (`onChannel`; a public
+  video's scan entry has lost its time), except where the record says less than the scan's entry
+  for the same video: private with no time (a Studio upload recorded before 26 Sept kept none), or
+  no time ahead while the scan still has it scheduled (moved in Studio). Now and the list read the
+  record alone. A Studio upload the scan has not recorded yet says "move it there". A playoff game
+  after game 1 has no time of its own, and a private room whose bracket cannot be read stores
+  none (it may be one). `publish-at-check` lets only GETs reach the server (Save, Move and the
+  by-hand upload's POST are answered in the browser; a plan GET that could queue a pick is aborted).
 - **Publish checklist**: facts from disk plus manual toggles in `<mediaDir>/<id>/publish.json`
   (`src/dashboard/matchShelf.ts`). The Rendered tab counts matches waiting for a hook (`#tab-matches small`,
   falling back to `ready` on a server one restart behind) and is ordered by what needs the operator

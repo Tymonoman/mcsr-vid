@@ -10,7 +10,8 @@ const path = require("node:path");
 
    Nothing but GETs reaches the server. Every other request the page makes is caught by a
    context-wide route: the publish-time PUT is answered here from a model of the server's answers
-   (its refusal texts, the kit it would then serve), anything else is aborted and fails the check.
+   (its refusal texts, the kit it would then serve), the by-hand upload's POST is recorded and
+   refused here, anything else is aborted and fails the check.
    The server's side of the round-trip is shortFlow.test.ts's. The plan GET of an exported match
    not on the channel is aborted too unless its row names the pick's window: on a real server it
    can queue a model watch. The log of every non-GET request is printed at the end. The dates are
@@ -189,6 +190,17 @@ const path = require("node:path");
               json: { ...(await res.json()), connected: true, uploadsEnabled: true },
             });
           });
+          // The by-hand upload's press: what it would send, and a refusal so nothing polls.
+          const uploadPosts = [];
+          await page.route("**/api/youtube/upload/*", (route) => {
+            if (route.request().method() !== "POST") return route.fallback();
+            writes.push([tag, "POST", new URL(route.request().url()).pathname, "answered in the browser"]);
+            uploadPosts.push(JSON.parse(route.request().postData() ?? "{}"));
+            return route.fulfill({
+              status: 400,
+              json: { error: "stubbed in the browser — nothing uploaded" },
+            });
+          });
           await page.route("**/api/shorts/plan/*", (route) =>
             noPlan.has(idOf(route.request().url())) ? route.abort() : route.fallback(),
           );
@@ -336,6 +348,12 @@ const path = require("node:path");
             await page.locator("#publishkit .kitwarn").first().innerText(),
           );
           await shot("warned");
+          // The warnings are the saved time's: typing another hides them, typing it back shows them.
+          const warn = page.locator("#publishkit .kitwarn").first();
+          await page.locator("#kitWhen").fill(TYPED);
+          check(`${tag}: typing another time hides the saved time's warning`, !(await warn.isVisible()));
+          await page.locator("#kitWhen").fill(CLASH);
+          check(`${tag}: typed back, it shows again`, await warn.isVisible());
           await page.click("#kitWhenFree");
           await waitMsg(/next free slot/);
           check(
@@ -362,6 +380,22 @@ const path = require("node:path");
             (await field.inputValue()) === `${DST_DAY}T02:30`,
             await field.inputValue(),
           );
+          // The by-hand upload with the kit's 02:30 still in its field sends the kit's instant too.
+          if ((await ytWhen.count()) === 0 || (await page.locator("#ytUpload").isDisabled()))
+            console.log(`SKIP ${tag}: the by-hand upload's instant -- ${openId} has no upload button`);
+          else {
+            // Folded under "Upload by hand".
+            await page.locator("#byhand").evaluate((d) => (d.open = true));
+            await Promise.all([
+              page.waitForRequest((r) => r.method() === "POST" && r.url().includes("/api/youtube/upload/")),
+              page.click("#ytUpload"),
+            ]);
+            check(
+              `${tag}: the by-hand upload sends the kit's 02:30, not the first`,
+              uploadPosts.at(-1)?.publishAt === DST_UTC,
+              JSON.stringify(uploadPosts.at(-1)),
+            );
+          }
           await page.click("#kitWhenSave");
           await waitMsg(/saved —/);
           check(
@@ -446,12 +480,15 @@ const path = require("node:path");
               /^Move on YouTube to /.test(await btn.innerText()),
               await btn.innerText(),
             );
+            // Pressed untouched it would put back the painted time, undoing a move made in Studio since.
+            check(`${tag}: and is off until the time is changed`, await btn.isDisabled());
             await typeWhen(page, name, "#kitWhen");
             check(
               `${tag}: typing renames the button`,
               new RegExp(SHOWN).test(await btn.innerText()),
               await btn.innerText(),
             );
+            check(`${tag}: and turns it on`, !(await btn.isDisabled()));
             await shot("scheduled");
             await btn.click();
             await waitMsg(/stubbed/);

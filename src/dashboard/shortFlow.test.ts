@@ -19,6 +19,9 @@ import type { ShortPick, ShortPlanResponse } from "../shorts/shortPlan.js";
 
 const media = mkdtempSync(path.join(tmpdir(), "mcsr-shortflow-"));
 config.mediaDir = media;
+// A Studio upload's record step backs the match up (archiveMatch): here, never the NAS's /archive.
+const archive = path.join(media, "archive");
+process.env.MCSR_ARCHIVE_DIR = archive;
 config.youtubeUploadEnabled = true;
 config.nightlyUpload = "scheduled";
 config.reasonerCommand = ["agy"];
@@ -27,7 +30,14 @@ config.youtubePlaylistTitle = "";
 const fixture = JSON.parse(
   readFileSync(new URL("../fixtures/match-12730175.json", import.meta.url), "utf8"),
 ) as MatchInfo;
-const matchOf = (id: number): MatchInfo => ({ ...fixture, changes: [], id });
+/** Ids the API serves as private-room matches (type 3), as every playoff game is. */
+const privateRooms = new Set<number>();
+const matchOf = (id: number): MatchInfo => ({
+  ...fixture,
+  changes: [],
+  id,
+  ...(privateRooms.has(id) ? { type: 3 } : {}),
+});
 /** The MCSR API's answer while it is down. */
 let mcsrDown = false;
 /** YouTube, stubbed: the token and videos.list / videos.update, every call recorded. Nothing reaches Google. */
@@ -79,7 +89,7 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
 
 const flow = await import("./shortFlow.js");
 const { handleShortsRoute } = await import("./shortsRoutes.js");
-const { hookRefusal } = await import("../youtube/youtubeUpload.js");
+const { hookRefusal, recordStudioUpload } = await import("../youtube/youtubeUpload.js");
 const { readUpload, writeUpload } = await import("../youtube/youtubeStore.js");
 const { readShortHook } = await import("../shorts/shortHook.js");
 const { nextPublishSlot } = await import("../youtube/publishSlot.js");
@@ -154,7 +164,10 @@ const render = async (id: number): Promise<string | null> => {
 // The uploader: the real guard, then a record as beginUpload writes one.
 const sent: Array<{ id: number; kind: string; publishAt?: string; privacyStatus: string }> = [];
 let failVideo: string | null = null;
+/** Holds an upload once it has begun, so a press can land while it is being sent. */
+let uploadGate: Promise<void> = Promise.resolve();
 const upload: import("./shortFlow.js").ChainDeps["upload"] = async (id, req) => {
+  await uploadGate;
   const refused = await hookRefusal(id, req.kind);
   if (refused) return refused;
   sent.push({ id, kind: req.kind, publishAt: req.publishAt, privacyStatus: req.privacyStatus });
@@ -1087,7 +1100,8 @@ try {
       channelId: config.youtubeChannelId,
       status: statusPart("2026-09-30T19:00:00Z"),
     });
-    _setChannelUploadsForTest([scanned(S, "studio-S", "private", "2026-09-30T19:00:00Z")]);
+    const sVideo = scanned(S, "studio-S", "private", "2026-09-30T19:00:00Z");
+    _setChannelUploadsForTest([sVideo]);
     assert.equal((await flow.publishTimeView(S, NOW)).state, "studio");
     const calls = ytCalls.length;
     assert.deepEqual(await put(S, { publishAt: "2026-10-03T19:00:00Z", move: true }), {
@@ -1095,10 +1109,25 @@ try {
       payload: { error: "uploaded in Studio, with no upload record here — move it in Studio" },
     });
     assert.equal(ytCalls.length, calls, "no API call");
+    // Then the scan's record step (r3 #1): the record keeps the time, so the kit moves it and the
+    // chain's Short is timed from it. Already backed up, so no rsync.
+    mkdirSync(path.join(archive, String(S)), { recursive: true });
+    await recordStudioUpload(S, sVideo);
+    assert.equal((await readUpload(S))!.publishAt, "2026-09-30T19:00:00Z");
+    const at = async (id: number) => {
+      const v = await flow.publishTimeView(id, NOW);
+      return [v.state, v.at];
+    };
+    assert.deepEqual(await at(S), ["scheduled", "2026-09-30T19:00:00Z"]);
+    // A record written before it kept one (13172029, 13223455): the scan's entry for that video says it.
+    await writeUpload(S, { ...(await readUpload(S))!, publishAt: null });
+    assert.deepEqual(await at(S), ["scheduled", "2026-09-30T19:00:00Z"]);
+    // Only for the record's own video: another video paired to the match says nothing about it.
+    _setChannelUploadsForTest([{ ...sVideo, videoId: "studio-S2" }]);
+    assert.deepEqual(await at(S), ["unscheduled", null]);
 
-    // The record is the kit's word, as before: its time passed, it reads published whatever the
-    // scan says. Move does no record pre-check, though: reschedule's live read decides, so a video
-    // moved later in Studio still moves.
+    // The record is the kit's word: its time passed, a public entry (YouTube drops the time once it
+    // is out) leaves it published at the record's time (r2 #1)…
     const M = 13_000_044;
     exported(M);
     await writeUpload(M, {
@@ -1113,8 +1142,11 @@ try {
       channelId: config.youtubeChannelId,
       status: statusPart("2026-10-05T19:00:00Z"),
     });
+    _setChannelUploadsForTest([scanned(M, "video-M", "public", null)]);
+    assert.deepEqual(await at(M), ["published", "2026-09-21T19:00:00.000Z"]);
+    // …but the scan's entry still scheduled means it was moved in Studio: that time, and Move (r3 #6).
     _setChannelUploadsForTest([scanned(M, "video-M", "private", "2026-10-05T19:00:00Z")]);
-    assert.equal((await flow.publishTimeView(M, NOW)).state, "published");
+    assert.deepEqual(await at(M), ["scheduled", "2026-10-05T19:00:00Z"]);
     // #8 too: the move says which slot rules the new hour breaks (X's stored time holds the 11th's 19:00).
     const mMove = await put(M, { publishAt: "2026-10-11T19:10:00Z", move: true });
     assert.equal(mMove.status, 200, JSON.stringify(mMove.payload));
@@ -1127,6 +1159,8 @@ try {
     ]);
     assert.deepEqual((await flow.publishTimeView(M, NOW)).warnings, mMove.payload.warnings, "and the view");
     assert.equal((await readUpload(M, "video"))!.publishAt, "2026-10-11T19:10:00.000Z");
+    // The scan is hours old now and still says 10-05: the record's time ahead is the newer word.
+    assert.deepEqual(await at(M), ["scheduled", "2026-10-11T19:10:00.000Z"]);
     // Pressed again untouched: YouTube already has that time, and nothing is written (r2 #8).
     const puts = ytCalls.filter((c) => c.method === "PUT").length;
     assert.match(
@@ -1196,6 +1230,71 @@ try {
     // Its series goes out at the series' hour, joined or not yet (r2 #12).
     assert.match(g1.at!, /T23:00:00\.000Z$/);
     assert.equal((await put(G1, { publishAt: "2026-10-12T23:00:00Z" })).status, 200);
+
+    /* --- Review round 3 (publish-at-review-r3.md) ------------------------------------------------ */
+    // #3: no Move while the chain makes the Short: its upload takes the long-form's time as it starts.
+    const Q = 13_000_048;
+    exported(Q);
+    writePick(Q);
+    writeFileSync(path.join(dir(Q), `match-${Q}.title.edited.txt`), "One heart left | edcr vs doogile\n");
+    await writeUpload(Q, rec(`video-${Q}`, "2026-10-13T19:00:00.000Z"));
+    ytVideos.set(`video-${Q}`, {
+      channelId: config.youtubeChannelId,
+      status: statusPart("2026-10-13T19:00:00.000Z"),
+    });
+    let openRender = () => {};
+    renderGate = new Promise((r) => (openRender = r));
+    await call("PUT", "hooks", Q, { titleHook: "One heart left", shortHook: "Mid-render line" });
+    const qPuts = ytCalls.filter((c) => c.method === "PUT").length;
+    assert.deepEqual(await put(Q, { publishAt: "2026-10-14T19:00:00Z", move: true }), {
+      status: 409,
+      payload: { error: "the Short is being made or sent right now — move it once the chain has finished" },
+    });
+    assert.equal(ytCalls.filter((c) => c.method === "PUT").length, qPuts, "nothing moved");
+    openRender();
+    renderGate = Promise.resolve();
+    await flow.chainIdle(Q);
+    assert.deepEqual(
+      sent.filter((x) => x.id === Q).map((x) => [x.kind, x.publishAt]),
+      [["short", "2026-10-14T13:00:00.000Z"]],
+      "the Short 18 h after the time the video still has",
+    );
+
+    // #2: an upload on its way refuses a Save and a clear (checked after the last await before the write).
+    const B = 13_000_049;
+    exported(B);
+    writePick(B);
+    let openUpload = () => {};
+    uploadGate = new Promise((r) => (openUpload = r));
+    await call("PUT", "hooks", B, { titleHook: "One heart left", shortHook: "Upload line" });
+    for (let i = 0; i < 500 && (await flow.matchRowShort(B)).shortDetail !== "uploading the long-form"; i++)
+      await new Promise((r) => setTimeout(r, 10));
+    const busy = {
+      status: 409,
+      payload: {
+        error: "an upload of this match is being sent right now — once it is up, move it on YouTube",
+      },
+    };
+    assert.deepEqual(await put(B, { publishAt: "2026-10-15T19:00:00Z" }), busy);
+    assert.deepEqual(await put(B, { publishAt: null }), busy);
+    openUpload();
+    uploadGate = Promise.resolve();
+    await flow.chainIdle(B);
+
+    // #8: a private room whose bracket cannot be read (this stub serves none) may be a game after
+    // game 1, whose time is game 1's: nothing is stored. The field still shows.
+    const PR = 13_000_050;
+    exported(PR);
+    privateRooms.add(PR);
+    assert.deepEqual(await put(PR, { publishAt: "2026-10-16T19:00:00Z" }), {
+      status: 503,
+      payload: {
+        error:
+          "the playoff bracket could not be read, so whether this private-room match is a game after game 1 is unknown — try again in a minute",
+      },
+    });
+    assert.equal(flow.readStatus(PR).publishAt, undefined);
+    assert.equal((await flow.publishTimeView(PR, NOW)).state, "open");
 
     delete process.env.YOUTUBE_TOKEN_FILE;
     rmSync(tokenDir, { recursive: true, force: true });

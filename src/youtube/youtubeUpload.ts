@@ -519,7 +519,8 @@ export async function recordStudioUpload(matchId: number, video: ChannelVideo): 
   await writeUpload(matchId, {
     videoId: video.videoId,
     uploadedAt: video.publishedAt,
-    publishAt: null,
+    // Scheduled in Studio: the Short's time and the kit's Move are worked out from it (r3 #1).
+    publishAt: video.publishAt ?? null,
     privacyStatus: video.privacyStatus,
     thumbnailVariant: manifest?.chosen ?? null,
     title: video.title,

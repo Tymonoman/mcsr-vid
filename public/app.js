@@ -965,6 +965,7 @@ async function loadPublishKit(id, meta) {
     if (pub.state === "series-game") return block("Publish at", pub.why, 2);
     if (!slot) return "";
     const value = typedWhen ?? localInputValue(slot);
+    const changed = value !== localInputValue(slot);
     const note =
       pub.state === "scheduled"
         ? ` <span class="muted small">scheduled on YouTube</span>`
@@ -974,12 +975,12 @@ async function loadPublishKit(id, meta) {
     const edit = `
       <div class="row kitwhen">
         <input type="datetime-local" id="kitWhen" aria-label="publish at, in your time zone" value="${esc(value)}">
-        <button type="button" id="kitWhenSave">${esc(saveLabel(value))}</button>
+        <button type="button" id="kitWhenSave"${pub.state === "scheduled" && !changed ? " disabled" : ""}>${esc(saveLabel(value))}</button>
         ${pub.state === "open" && (pub.stored ?? pub.chosen) ? `<button type="button" class="ghost" id="kitWhenFree">use the next free slot</button>` : ""}
         <span class="msg" id="kitWhenMsg"></span>
       </div>
       ${pub.why ? `<div class="muted small">${esc(pub.why)}</div>` : ""}
-      ${(pub.warnings ?? []).map((w) => `<div class="small kitwarn">! ${esc(w)}</div>`).join("")}`;
+      ${(pub.warnings ?? []).map((w) => `<div class="small kitwarn"${changed ? " hidden" : ""}>! ${esc(w)}</div>`).join("")}`;
     return block("Publish at", both(slot), 1, note, edit);
   };
   const sendWhen = async (publishAt) => {
@@ -1023,6 +1024,11 @@ async function loadPublishKit(id, meta) {
     input.addEventListener("input", () => {
       typedWhen = input.value;
       btn.textContent = saveLabel(input.value);
+      const changed = input.value !== localInputValue(slot);
+      // Untouched, a Move would put back the time this page was painted with: a move made in
+      // Studio since would be undone (r3 #4). And the warnings are the saved time's (r3 #7).
+      if (pub.state === "scheduled") btn.disabled = !changed;
+      for (const w of el.querySelectorAll(".kitwarn")) w.hidden = changed;
       // The instant it will be, in UTC: an hour a clock change passes twice reads as its first.
       const d = new Date(input.value);
       q("#kitWhenMsg").textContent = Number.isNaN(d.getTime())

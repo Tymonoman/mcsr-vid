@@ -921,10 +921,16 @@ export interface PublishTimeView {
 /** A playoff game after game 1: its series goes out as one video from game 1's directory. */
 const SERIES_LATER =
   "a playoff game after game 1 — the series goes out as one video, so set the time on game 1";
-async function laterSeriesGame(matchId: number): Promise<boolean> {
+/** Or null: a private room whose bracket could not be read, which may be one (r3 #8). */
+async function laterSeriesGame(matchId: number): Promise<boolean | null> {
   if (existsSync(path.join(matchDir(matchId), "series.json"))) return false;
   const match = await getMatch(matchId).catch(() => null);
-  return ((match && (await playoffContextFor(match))?.gameNo) ?? 1) > 1;
+  if (!match) return false;
+  try {
+    return ((await playoffContextFor(match, true))?.gameNo ?? 1) > 1;
+  } catch {
+    return null;
+  }
 }
 
 export async function publishTimeView(matchId: number, nowMs: number): Promise<PublishTimeView> {
@@ -946,23 +952,34 @@ export async function publishTimeView(matchId: number, nowMs: number): Promise<P
         : [],
     };
   }
+  // The record is the kit's word — a public video's scan entry has lost its time — except where it
+  // says less than the scan's entry for the same video: private with no time (a Studio upload
+  // recorded before it kept one), or no time ahead while the scan has it scheduled (moved in Studio).
+  const ahead = (t: string | null | undefined): boolean => !!t && Date.parse(t) > nowMs;
+  const scan = channelUploadsSnapshot().find((v) => v.videoId === video.videoId);
+  const live =
+    scan &&
+    !ahead(video.publishAt) &&
+    ((scan.privacyStatus === "private" && ahead(scan.publishAt)) ||
+      (video.privacyStatus === "private" && !video.publishAt))
+      ? { ...video, publishAt: scan.publishAt ?? null, privacyStatus: scan.privacyStatus }
+      : video;
   const view = { chosen: false, stored: false, why: null, warnings: [] };
-  if (video.privacyStatus === "private" && video.publishAt && Date.parse(video.publishAt) > nowMs)
+  if (live.privacyStatus === "private" && live.publishAt && Date.parse(live.publishAt) > nowMs)
     // Moved on the press only with a record here (a dashboard upload, an adopted draft).
     return (await readUpload(matchId, "video"))
       ? {
           ...view,
           state: "scheduled",
-          at: video.publishAt,
-          warnings: await slotWarnings(matchId, Date.parse(video.publishAt), nowMs),
+          at: live.publishAt,
+          warnings: await slotWarnings(matchId, Date.parse(live.publishAt), nowMs),
         }
-      : { ...view, state: "studio", at: video.publishAt };
-  if (video.privacyStatus === "private" && !video.publishAt)
-    return { ...view, state: "unscheduled", at: null };
+      : { ...view, state: "studio", at: live.publishAt };
+  if (live.privacyStatus === "private" && !live.publishAt) return { ...view, state: "unscheduled", at: null };
   return {
     ...view,
     state: "published",
-    at: video.publishAt ?? (await readUpload(matchId, "video"))?.uploadedAt ?? null,
+    at: live.publishAt ?? (await readUpload(matchId, "video"))?.uploadedAt ?? null,
   };
 }
 
@@ -986,11 +1003,13 @@ export async function setPublishTime(
   const req = (typeof body === "object" && body !== null ? body : {}) as Record<string, unknown>;
   if (req.kind === "short") return no(400, "a Short moves with its long-form — move the long-form");
   if (!existsSync(matchDir(matchId))) return no(404, `no working directory for match ${matchId}`);
-  if (await laterSeriesGame(matchId)) return no(409, SERIES_LATER);
-  // Mid-upload the time is already on its way (and the Short's is worked out from it next).
+  const later = await laterSeriesGame(matchId);
+  if (later) return no(409, SERIES_LATER);
+  const video = await onChannel(matchId, "video");
+  // Mid-upload the time is already on its way (and the Short's is worked out from it next). After
+  // the last await, so no upload can begin between this and the writes below (r3 #2).
   if (uploadRunning(matchId) || chainStep.get(matchId)?.startsWith("upload"))
     return no(409, "an upload of this match is being sent right now — once it is up, move it on YouTube");
-  const video = await onChannel(matchId, "video");
   if (req.publishAt === null) {
     if (video) return no(409, "the video is already on YouTube — move it to a time instead");
     updateStatus(matchId, (s) => delete s.publishAt);
@@ -1004,6 +1023,9 @@ export async function setPublishTime(
   const iso = new Date(at).toISOString();
   if (req.move === true) {
     if (!video) return no(409, "not on YouTube yet — Save keeps the time for the upload");
+    // The Short's upload works out its time from the long-form's when it starts (r3 #3).
+    if (chains.has(matchId))
+      return no(409, "the Short is being made or sent right now — move it once the chain has finished");
     return moveOnYouTube(matchId, iso, nowMs);
   }
   // Pressed on a page painted before the chain uploaded: the live channel only moves on the button that says so.
@@ -1013,6 +1035,12 @@ export async function setPublishTime(
     return no(
       400,
       "that is under an hour away — YouTube checks the time only once the file is up; pick a later one",
+    );
+  // A game after game 1 has no time of its own, and a stored one would block that hour.
+  if (later === null)
+    return no(
+      503,
+      "the playoff bracket could not be read, so whether this private-room match is a game after game 1 is unknown — try again in a minute",
     );
   updateStatus(matchId, (s) => {
     s.publishAt = iso;
