@@ -6,8 +6,8 @@ import { SEED_ICON_TYPES, seedIconFile } from "./SeedIconMC.js";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 
-// The five overworld seed types the API reports all have an icon, and all but the buried treasure
-// an -alt render (the other projection) beside it.
+// The five overworld seed types the API reports all have an icon and an -alt render (the other
+// projection) beside it.
 assert.deepEqual([...SEED_ICON_TYPES].sort(), [
   "BURIED_TREASURE",
   "DESERT_TEMPLE",
@@ -17,8 +17,7 @@ assert.deepEqual([...SEED_ICON_TYPES].sort(), [
 ]);
 for (const type of SEED_ICON_TYPES) {
   assert.ok(existsSync(join(root, "remotion/assets", seedIconFile(type))), `${type}: no icon PNG`);
-  if (type !== "BURIED_TREASURE")
-    assert.ok(existsSync(join(root, "remotion/assets", seedIconFile(type, true))), `${type}: no -alt PNG`);
+  assert.ok(existsSync(join(root, "remotion/assets", seedIconFile(type, true))), `${type}: no -alt PNG`);
 }
 
 // Every scene spec parses, and a template given as a file exists (a spec that cannot bake cannot

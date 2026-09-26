@@ -9,8 +9,12 @@ draws the faces, back to front, one affine-mapped texture per face.
 
 The thumbnail's seed-type icons are renders of these scenes: `icons.sh` maps each type to its
 spec and writes `remotion/assets/seed-icons/<TYPE>.png` (what `remotion/SeedIconMC.tsx` draws) and
-`<TYPE>-alt.png` (the other projection, iso vs 2d; rename it over `<TYPE>.png` to swap). Change a
-spec in `scenes/`, run `icons.sh <TYPE>`, look at the PNG, commit it.
+`<TYPE>-alt.png` (the other projection, iso vs 2d; rename it over `<TYPE>.png` to swap). Every type
+has both; the `ICON` map at the top of `icons.sh` says which spec makes which file, and the other
+specs in `scenes/` are the candidates those were picked from (26 Sept 2026: village and shipwreck
+mains 2d, a 2d buried-treasure alt, the temple's outline). Change a spec in `scenes/`, run
+`icons.sh <TYPE>`, look at the PNG (the `SeedIconSheet` composition shows every main and alt),
+commit it.
 
 ```sh
 scripts/seed-icons/icons.sh [TYPE...]                           # re-render the thumbnail icons

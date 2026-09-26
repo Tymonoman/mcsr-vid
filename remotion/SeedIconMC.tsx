@@ -42,7 +42,7 @@ export const SeedIconSheet: FC = () => (
         >
           {SEED_ICON_TYPES.map((type) => (
             <div key={type} style={{ width: 132, display: "flex", justifyContent: "center" }}>
-              {(!alt || type !== "BURIED_TREASURE") && <Tile src={seedIconFile(type, alt)} size={size} />}
+              <Tile src={seedIconFile(type, alt)} size={size} />
             </div>
           ))}
         </div>
