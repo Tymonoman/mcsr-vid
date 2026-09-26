@@ -16,6 +16,8 @@ let exportStream = null;
 let publishSlotAt = null;
 /** Whether that time is the operator's own (the kit's field), for Now's Video up. */
 let publishChosen = false;
+/** What prefillPublishAt last put into the upload form's #ytWhen. */
+let prefilledWhen = null;
 
 /** Per-stage timing for the run being watched, keyed by stage id. Rebuilt on every select. */
 let stageState = {};
@@ -846,8 +848,9 @@ function watchExport(id) {
  */
 function prefillPublishAt() {
   const when = $("#ytWhen");
-  if (!publishSlotAt || !when || when.value) return;
-  when.value = localInputValue(publishSlotAt);
+  // A value this function wrote is still the kit's, so a new kit time replaces it; a typed one stays.
+  if (!publishSlotAt || !when || (when.value && when.value !== prefilledWhen)) return;
+  when.value = prefilledWhen = localInputValue(publishSlotAt);
 }
 
 /** A Date as a datetime-local value: the browser's own zone, to the minute. */
@@ -980,11 +983,15 @@ async function loadPublishKit(id, meta) {
         body: JSON.stringify(move ? { publishAt, move: true } : { publishAt }),
       });
     } catch (e) {
+      if (selected !== id) return;
       $("#kitWhenMsg").textContent = "";
       failAt("#kitWhenSave", move ? "Not moved" : "Not saved", e.message);
       return;
     }
+    // A move takes seconds: the operator may be on another match by now, whose kit this is not.
+    if (selected !== id) return;
     kit = await api(`/api/publishkit/${id}`).catch(() => kit);
+    if (selected !== id) return;
     typedWhen = null;
     takeTime();
     paint();
@@ -1001,10 +1008,17 @@ async function loadPublishKit(id, meta) {
     input.addEventListener("input", () => {
       typedWhen = input.value;
       btn.textContent = saveLabel(input.value);
+      // The instant it will be, in UTC: an hour a clock change passes twice reads as its first.
+      const d = new Date(input.value);
+      $("#kitWhenMsg").textContent = Number.isNaN(d.getTime())
+        ? "not saved"
+        : `not saved — ${d.toISOString().slice(0, 16).replace("T", " ")} UTC`;
     });
     btn.addEventListener("click", () => {
-      // datetime-local has no zone: the browser's own offset is what the operator meant.
-      if (input.value) void sendWhen(new Date(input.value).toISOString());
+      // datetime-local has no zone: the browser's own offset is what the operator meant. Untouched,
+      // it is the kit's own instant — re-parsing it would move a time in the repeated hour.
+      if (input.value === localInputValue(slot)) void sendWhen(slot.toISOString());
+      else if (input.value) void sendWhen(new Date(input.value).toISOString());
       else failAt("#kitWhenSave", "Not saved", "pick a date and a time first");
     });
     $("#kitWhenFree")?.addEventListener("click", () => void sendWhen(null));

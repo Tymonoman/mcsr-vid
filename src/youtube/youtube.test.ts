@@ -689,7 +689,11 @@ console.log("youtube: all checks passed");
   }) as typeof fetch;
   try {
     const moved = await reschedule("vid", "2026-09-30T18:30:00.000Z", "UCmine", NOW);
-    assert.deepEqual(moved, { publishAt: "2026-09-30T18:30:00Z" }, "what YouTube answered");
+    assert.deepEqual(
+      moved,
+      { publishAt: "2026-09-30T18:30:00Z", was: "2026-09-28T19:00:00Z" },
+      "what YouTube answered, and the time it had",
+    );
     assert.equal(puts.length, 1);
     assert.match(puts[0]!.url, /\/videos\?part=status$/);
     assert.deepEqual(puts[0]!.body, {

@@ -72,9 +72,10 @@ import {
   channelShortFor,
   channelUploadsSnapshot,
   channelVideoFor,
+  noteRescheduled,
   refreshChannelUploadsNow,
 } from "../youtube/channelUploads.js";
-import { publishSlotFor, slotWarnings } from "../youtube/publishSlot.js";
+import { MIN_LEAD_MS, publishSlotFor, slotWarnings } from "../youtube/publishSlot.js";
 import { reschedule } from "../youtube/youtube.js";
 import { beginUpload, SHORT_DELAY_MS, uploadRunning, type UploadRequest } from "../youtube/youtubeUpload.js";
 import { readUpload, writeUpload, type UploadKind } from "../youtube/youtubeStore.js";
@@ -251,12 +252,16 @@ interface OnChannel {
   privacyStatus: string | null;
 }
 
-/** The upload record, else the channel's pairing, else the manual tick (no id), else null. */
+/**
+ * The upload record, else the channel's pairing, else the manual tick (no id), else null. A
+ * record's status is from upload time and never updated, so where the scan has the same video its
+ * status and time win: a video moved or published in Studio reads as YouTube holds it.
+ */
 async function onChannel(matchId: number, kind: UploadKind): Promise<OnChannel | null> {
   const record = await readUpload(matchId, kind);
-  if (record)
-    return { videoId: record.videoId, publishAt: record.publishAt, privacyStatus: record.privacyStatus };
   const video = (kind === "video" ? channelVideoFor : channelShortFor)(matchId, channelUploadsSnapshot());
+  if (record && video?.videoId !== record.videoId)
+    return { videoId: record.videoId, publishAt: record.publishAt, privacyStatus: record.privacyStatus };
   if (video)
     return { videoId: video.videoId, publishAt: video.publishAt ?? null, privacyStatus: video.privacyStatus };
   const ticked = kind === "video" ? await isUploaded(matchId) : await isShortUploaded(matchId);
@@ -878,26 +883,37 @@ export interface VideoPublishTime {
   chosen: boolean;
   /** Why the slot is not the first free one (the pair gap), else null. */
   why: string | null;
-  /** The operator's time had passed, so the next free slot stands in: one line, else null. */
+  /** The operator's time had passed (or is under the hour's lead), so the next free slot stands in: one line, else null. */
   passed: string | null;
 }
 
-/** When the long-form goes out if it uploads now: the operator's time while it is ahead, else the next free slot. */
+/**
+ * When the long-form goes out if it uploads now: the operator's time while it is at least
+ * `MIN_LEAD_MS` ahead, else the next free slot. YouTube checks the time only once the whole file
+ * is up and rejects one that has passed by then.
+ */
 export async function videoPublishTime(matchId: number, nowMs: number): Promise<VideoPublishTime> {
   const chosen = readStatus(matchId).publishAt;
-  if (chosen && Date.parse(chosen) > nowMs)
+  if (chosen && Date.parse(chosen) > nowMs + MIN_LEAD_MS)
     return { at: new Date(chosen), chosen: true, why: null, passed: null };
   const slot = await publishSlotFor(matchId, nowMs);
+  const gone = chosen && Date.parse(chosen) <= nowMs ? "had passed" : "was under an hour away";
   return {
     ...slot,
     chosen: false,
     passed: chosen
-      ? `your time ${when(chosen)} had passed — the next free slot instead, ${when(slot.at.toISOString())}`
+      ? `your time ${when(chosen)} ${gone} — the next free slot instead, ${when(slot.at.toISOString())}`
       : null,
   };
 }
 
-/** The kit's Publish at: what the field edits, or what the video already did. From the records, no API call. */
+/** The chain uploads without a time unless `nightlyUpload` is "scheduled": then a chosen time is only the kit's copy line. */
+const unusedTime = (): string | null =>
+  config.nightlyUpload === "scheduled"
+    ? null
+    : `nightlyUpload is "${config.nightlyUpload}" on this box: the chain ${config.nightlyUpload === "off" ? "does not upload" : "uploads private with no publish time"} — this time is for a paste into Studio`;
+
+/** The kit's Publish at: what the field edits, or what the video already did. From the records and the channel scan, no API call. */
 export interface PublishTimeView {
   /**
    * open: not on YouTube, the time is editable · scheduled: on YouTube, movable · published ·
@@ -926,17 +942,25 @@ export async function publishTimeView(matchId: number, nowMs: number): Promise<P
   const video = await onChannel(matchId, "video");
   if (!video) {
     const t = await videoPublishTime(matchId, nowMs);
+    const unused = t.chosen ? unusedTime() : null;
     return {
       state: "open",
       at: t.at.toISOString(),
       chosen: t.chosen,
       why: t.passed ?? t.why,
-      warnings: t.chosen ? await slotWarnings(matchId, t.at.getTime(), nowMs) : [],
+      warnings: t.chosen
+        ? [...(unused ? [unused] : []), ...(await slotWarnings(matchId, t.at.getTime(), nowMs))]
+        : [],
     };
   }
   const view = { chosen: false, why: null, warnings: [] };
   if (video.privacyStatus === "private" && video.publishAt && Date.parse(video.publishAt) > nowMs)
-    return { ...view, state: "scheduled", at: video.publishAt };
+    return {
+      ...view,
+      state: "scheduled",
+      at: video.publishAt,
+      warnings: await slotWarnings(matchId, Date.parse(video.publishAt), nowMs),
+    };
   if (video.privacyStatus === "private" && !video.publishAt)
     return { ...view, state: "unscheduled", at: null };
   return {
@@ -953,7 +977,8 @@ export async function publishTimeView(matchId: number, nowMs: number): Promise<P
  * the chain's upload takes it, and the Short follows 18 h later. The slot rules come back as
  * warnings, never refusals. On YouTube and scheduled: `move: true` — one explicit press, the
  * button says so — moves it there with `videos.update`, and the Short with it. A time in the
- * past, a public video, another channel's and a Short on its own are refused.
+ * past (for a stored one, under `MIN_LEAD_MS` away), a public video, another channel's and a
+ * Short on its own are refused.
  */
 export async function setPublishTime(
   matchId: number,
@@ -986,10 +1011,17 @@ export async function setPublishTime(
   }
   // Pressed on a page painted before the chain uploaded: the live channel only moves on the button that says so.
   if (video) return no(409, "the video is on YouTube now — reload the page and use Move on YouTube");
+  // YouTube checks the time once the whole file is up: a time minutes away can cost the upload.
+  if (at <= nowMs + MIN_LEAD_MS)
+    return no(
+      400,
+      "that is under an hour away — YouTube checks the time only once the file is up; pick a later one",
+    );
   updateStatus(matchId, (s) => {
     s.publishAt = iso;
   });
-  const warnings = await slotWarnings(matchId, at, nowMs);
+  const unused = unusedTime();
+  const warnings = [...(unused ? [unused] : []), ...(await slotWarnings(matchId, at, nowMs))];
   shortLog(
     matchId,
     "chain",
@@ -1004,50 +1036,58 @@ async function moveOnYouTube(
   nowMs: number,
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   const no = (status: number, error: string) => ({ status, body: { error } });
-  const video = await readUpload(matchId, "video");
-  if (!video) return no(409, "no upload record for this video — move it in Studio");
-  if (!video.publishAt || Date.parse(video.publishAt) <= nowMs)
-    return no(
-      409,
-      video.publishAt || video.privacyStatus !== "private"
-        ? "already public — nothing moved"
-        : "private with no publish time — set one in Studio",
-    );
+  // A Studio upload the scan paired may have no record yet; whether it is still scheduled is
+  // reschedule's live read, not the upload-time record.
+  const videoId = (await onChannel(matchId, "video"))?.videoId;
+  if (!videoId) return no(409, "no video id for this match (ticked by hand) — move it in Studio");
   let moved;
   try {
-    moved = await reschedule(video.videoId, iso, config.youtubeChannelId, nowMs);
+    moved = await reschedule(videoId, iso, config.youtubeChannelId, nowMs);
   } catch (err) {
     return no(502, describeError(err));
   }
   if ("refused" in moved) return no(409, moved.refused);
-  await writeUpload(matchId, { ...video, publishAt: moved.publishAt }, "video");
+  noteRescheduled(videoId, moved.publishAt);
+  const record = await readUpload(matchId, "video");
+  if (record) await writeUpload(matchId, { ...record, publishAt: moved.publishAt }, "video");
   // The Short keeps its 18 h behind the long-form: moved with it when it is scheduled too, and
-  // when it is not up yet the chain reads the record just written (shortPublishAt).
-  const shortAt = shortPublishAt(
-    { videoId: video.videoId, publishAt: moved.publishAt, privacyStatus: "private" },
-    nowMs,
-  )!;
-  const short = await readUpload(matchId, "short");
-  let shortLine: string;
-  if (readStatus(matchId).noShort && !short) shortLine = "no Short";
-  else if (!short)
-    shortLine = `the Short is not up yet — it goes up for ${when(shortAt.toISOString())}, 18 h after`;
-  else if (!short.publishAt || Date.parse(short.publishAt) <= nowMs)
-    shortLine = "the Short is already out — it stays";
-  else
+  // when it is not up yet the chain reads the time just written (shortPublishAt).
+  const shortAt = shortPublishAt({ videoId, publishAt: moved.publishAt, privacyStatus: "private" }, nowMs)!;
+  const short = await onChannel(matchId, "short");
+  let shortLine = readStatus(matchId).noShort
+    ? "no Short"
+    : `the Short is not up yet — it goes up for ${when(shortAt.toISOString())}, 18 h after`;
+  if (short) {
+    let failed: string;
     try {
-      const s = await reschedule(short.videoId, shortAt.toISOString(), config.youtubeChannelId, nowMs);
-      if ("refused" in s) shortLine = `the Short did not move: ${s.refused}`;
+      const s = short.videoId
+        ? await reschedule(short.videoId, shortAt.toISOString(), config.youtubeChannelId, nowMs)
+        : { refused: "it was ticked by hand, with no video id" };
+      if ("refused" in s) failed = s.refused;
       else {
-        await writeUpload(matchId, { ...short, publishAt: s.publishAt }, "short");
+        failed = "";
+        noteRescheduled(short.videoId!, s.publishAt);
+        const rec = await readUpload(matchId, "short");
+        if (rec) await writeUpload(matchId, { ...rec, publishAt: s.publishAt }, "short");
         shortLine = `the Short moved with it to ${when(s.publishAt)}, 18 h after`;
       }
     } catch (err) {
-      shortLine = `the Short did not move: ${describeError(err)}`;
+      failed = describeError(err);
     }
-  const message = `YouTube has it for ${when(moved.publishAt)} (was ${when(video.publishAt)}); ${shortLine}`;
+    if (failed) {
+      // Scheduled before the long-form's new time, the Short would go public first and link a private video.
+      const early =
+        short.privacyStatus === "private" &&
+        !!short.publishAt &&
+        Date.parse(short.publishAt) > nowMs &&
+        Date.parse(short.publishAt) < Date.parse(moved.publishAt);
+      shortLine = `the Short did not move: ${failed}${early ? ` — it now goes out before the video (${when(short.publishAt)}); move it in Studio to ${when(shortAt.toISOString())}` : ""}`;
+    }
+  }
+  const warnings = await slotWarnings(matchId, Date.parse(moved.publishAt), nowMs);
+  const message = `YouTube has it for ${when(moved.publishAt)} (was ${when(moved.was)}); ${shortLine}`;
   shortLog(matchId, "upload-video", `moved on YouTube: ${message}`);
-  return { status: 200, body: { publishAt: moved.publishAt, message } };
+  return { status: 200, body: { publishAt: moved.publishAt, message, warnings } };
 }
 
 async function uploadOne(matchId: number, kind: UploadKind, deps: ChainDeps): Promise<string | null> {
@@ -1061,6 +1101,13 @@ async function uploadOne(matchId: number, kind: UploadKind, deps: ChainDeps): Pr
         notes.push(t.passed);
       }
       if (t.why) shortLog(matchId, "chain", `publish slot ${t.at.toISOString()}: ${t.why}`);
+      // A chosen time is the operator's even when it clashes: said again at the upload, since
+      // another match may have been booked into its hour since it was saved.
+      if (t.chosen)
+        for (const w of await slotWarnings(matchId, t.at.getTime(), deps.now())) {
+          shortLog(matchId, "chain", `your time ${when(t.at.toISOString())}: ${w}`, { level: "warn" });
+          notes.push(`your time ${when(t.at.toISOString())}: ${w}`);
+        }
       publishAt = t.at;
     } else publishAt = shortPublishAt(await onChannel(matchId, "video"), deps.now());
   }

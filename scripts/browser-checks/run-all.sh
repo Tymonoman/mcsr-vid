@@ -4,7 +4,7 @@
 # Needs `npx playwright install chromium firefox` once, and a server on that URL with real match data.
 # One check changes state and restores it (round1-fixes dismisses and restores a suggestion).
 # hook-flow and now-flow press Save, which schedules real uploads now: both answer the Short
-# routes in the browser, so nothing reaches the server.
+# routes in the browser, so nothing reaches the server. publish-at lets only GETs through at all.
 set -u
 BASE="${1:?usage: run-all.sh <dashboard url>}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -54,9 +54,9 @@ run phone-rows-check "$BASE"
 run hook-flow-check "$BASE" "$READY2"
 run now-flow-check "$BASE" "$READY" "$READY2"
 run checkchannel-check "$BASE" "$READY"
-# Firefox too (npx playwright install firefox): saves a time on READY and puts it back; the
-# scheduled video's Move is answered in the browser, so nothing reaches YouTube.
-run publish-at-check "$BASE" "$READY" "$SCHEDULED" "$PUBLISHED"
+# Firefox too (npx playwright install firefox). Its Save and Move are answered in the browser and
+# every other non-GET is aborted and failed: nothing it does is written on the server.
+run publish-at-check "$BASE" "$READY" "$READY2" "$SCHEDULED" "$PUBLISHED"
 [ -n "$PUBLISHED" ] && run studio-upload-check "$BASE" "$PUBLISHED"
 [ -n "$UNEXPORTED" ] && run stale-preview "$BASE" "$READY2" "$UNEXPORTED"
 exit $fail

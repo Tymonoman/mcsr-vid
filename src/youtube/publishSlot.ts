@@ -12,15 +12,18 @@
  * `minLeadMs` skips a slot that is too close to upload for: a scheduled time YouTube has already
  * passed rejects the whole upload, and an 800 MB file is not on the platform in five minutes.
  */
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { config, matchDir } from "../config.js";
 import { getMatch } from "../api/mcsrApi.js";
 import { channelUploadsSnapshot, describesMatch, SHORT_MAX_SEC } from "./channelUploads.js";
 import { msUntilNextRun } from "../dashboard/nightly.js";
+import { listProcessedMatchIds } from "../dashboard/matchStatus.js";
 import { allUploads, readUpload } from "./youtubeStore.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+/** The least a scheduled time may be ahead of the upload's start: YouTube checks it once the file is up. */
+export const MIN_LEAD_MS = 60 * 60 * 1000;
 
 /**
  * Which UTC day and hour a moment falls on. A ranked match and a playoff series have their own
@@ -35,7 +38,7 @@ export function nextPublishSlot(
   hourUtc: number,
   /** RFC 3339 times other videos are already scheduled for — see `claimedPublishTimes`. */
   claimedAt: readonly string[] = [],
-  minLeadMs = 60 * 60 * 1000,
+  minLeadMs = MIN_LEAD_MS,
   /** Times (ms) this video keeps `gapDays` UTC calendar days away from — see `pairGapTimes`. */
   keepApart: readonly number[] = [],
   gapDays = 0,
@@ -167,9 +170,10 @@ export const publishHourFor = (dir: string): number =>
 /**
  * The publish times already spoken for, for everything but this match.
  *
- * Two sources, because uploading is half manual: what the channel says is scheduled (a Studio
- * upload with a future `publishAt`, src/youtube/channelUploads.ts) and what this dashboard recorded when
- * it uploaded (`youtube.json`). This match's own scheduling is excluded — a match already booked
+ * Three sources, because uploading is half manual: what the channel says is scheduled (a Studio
+ * upload with a future `publishAt`, src/youtube/channelUploads.ts), what this dashboard recorded when
+ * it uploaded (`youtube.json`), and a time the operator chose in the kit for a match not uploaded
+ * yet (`short-<id>.status.json`). This match's own scheduling is excluded — a match already booked
  * into tomorrow's slot must not push its own kit into the day after.
  */
 export async function claimedPublishTimes(exceptMatchId: number): Promise<string[]> {
@@ -184,5 +188,21 @@ export async function claimedPublishTimes(exceptMatchId: number): Promise<string
       .filter((v) => !describesMatch(exceptMatchId, v) && v.videoId !== ownVideoId)
       .map((v) => v.publishAt),
     ...uploads.filter((u) => u.matchId !== exceptMatchId).map((u) => u.record.publishAt),
+    // A time the operator chose in the kit for a match not uploaded yet: the chain will take it.
+    ...listProcessedMatchIds()
+      .filter((id) => id !== exceptMatchId && !uploads.some((u) => u.matchId === id))
+      .map(storedPublishAt),
   ].filter((at): at is string => typeof at === "string" && at.trim() !== "");
+}
+
+/** `publishAt` in `short-<id>.status.json` (src/dashboard/shortFlow.ts `setPublishTime`), else null. */
+function storedPublishAt(matchId: number): string | null {
+  try {
+    const s = JSON.parse(
+      readFileSync(path.join(matchDir(matchId), `short-${matchId}.status.json`), "utf8"),
+    ) as { publishAt?: unknown };
+    return typeof s.publishAt === "string" ? s.publishAt : null;
+  } catch {
+    return null;
+  }
 }

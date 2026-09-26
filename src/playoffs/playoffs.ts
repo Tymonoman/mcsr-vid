@@ -459,6 +459,11 @@ export async function playoffBoard(nowSec: number = Date.now() / 1000): Promise<
   };
 }
 
+/** Test seam: a match's playoff context, as if the board had numbered it. */
+export function _setPlayoffContextForTest(matchId: number, ctx: PlayoffContext): void {
+  contexts.set(matchId, ctx);
+}
+
 /** Test seam: forget everything fetched. */
 export function _resetPlayoffsForTest(): void {
   brackets.clear();

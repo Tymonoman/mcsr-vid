@@ -343,9 +343,8 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
 - **`videos.update` replaces the part it is given.** `addTags` (`src/youtube/youtube.ts`) reads the snippet
   and sends it back whole — a `part=snippet` write that omits the description blanks it on a
   published video. It only ever adds tags, so a tag typed in Studio survives, and it refuses to
-  write at all if the read returns no video. `reschedule` (the kit's Move on YouTube) sends the
-  `status` part back whole the same way. Every `videos.*` write is operator-pressed, and none is
-  the call the audit gates.
+  write at all if the read returns no video. `reschedule` (the kit's Move on YouTube, one press)
+  sends the `status` part back whole the same way. `videos.update` is not the call the audit gates.
 - **Upload** sends `match-<id>.tags.txt` and refuses a title still containing `<HOOK>`. The text
   is the render's, refreshed at upload (`uploadTextFor`, `src/youtube/youtubeStore.ts`; the kit
   shows the same): the title keeps the operator's hook and rebuilds the rest from the stored line,
@@ -399,16 +398,28 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   **Publish at is editable** (26 Sept 2026, the operator: "on firefox i cant change the upload
   date"; `PUT /api/shorts/publishat/:id`, `setPublishTime` in `src/dashboard/shortFlow.ts`): a
   `datetime-local` in the browser's zone under the copy line, stored in UTC as `publishAt` in
-  `short-<id>.status.json`. The chain's upload takes it while it is still ahead, else the next
-  free slot, said in the log and on Video up; the Short goes 18 h after it. The slot rules
-  (`slotWarnings`) come back as warnings, a past time is refused, "use the next free slot" clears
-  it. Once YouTube holds the video scheduled the button reads "Move on YouTube to …": one press,
-  `reschedule` (`src/youtube/youtube.ts`) sends the status part back whole with the new time, the
-  records follow, a scheduled Short moves with it (still 18 h after) and one not up yet follows
-  through the record. It refuses a video already public, another channel's, one private with no
-  time (Studio's) and a Short alone; a plain Save on a page painted before the upload never moves
-  anything. A playoff game after game 1 has no time of its own — the series goes out from game 1.
-  Published, the block is a copy line. `publish-at-check` types into it in Firefox and Chromium.
+  `short-<id>.status.json`; while typing, the line beside Save reads "not saved — <the instant in
+  UTC>" (an hour a clock change repeats takes its first; an untouched Save sends the kit's own
+  instant back). The chain's upload takes it while it is at least an hour ahead (`MIN_LEAD_MS`,
+  `src/youtube/publishSlot.ts`: YouTube checks the time only once the file is up), else the next
+  free slot, said in the log and on Video up; the Short goes 18 h after it. A stored time is a
+  claim: other matches' next free slots skip its hour (`claimedPublishTimes`). The slot rules
+  (`slotWarnings`) come back as warnings — on Save, in the kit, again at the upload and on a
+  Move. Save refuses a time under an hour away (a Move takes any future one), "use the next free
+  slot" clears it, and with `nightlyUpload` not `"scheduled"` the kit warns that the chain will
+  not use it. Once YouTube
+  holds the video scheduled the button reads "Move on YouTube to …": one press, `reschedule`
+  (`src/youtube/youtube.ts`) reads the video live and sends the status part back whole with the
+  new time, the record and the channel scan's cache follow, a scheduled Short moves with it (still
+  18 h after) and one not up yet follows through the record; a Short that cannot move says why,
+  and says so when it would now go out before its video. The kit's state and the Move take the
+  channel scan's status and time over a record's upload-time ones where the scan has the video
+  (`onChannel`), and a scanned Studio upload with no record moves by its id. It refuses a video
+  already public, another channel's, one private with no time (Studio's) and a Short alone; a
+  plain Save on a page painted before the upload never moves anything. A playoff game after game
+  1 has no time of its own — the series goes out from game 1. Published, the block is a copy
+  line. `publish-at-check` types into it in Firefox and Chromium with only GETs reaching the
+  server: its Save and Move are answered in the browser, any other write is aborted and fails it.
 - **Publish checklist**: facts from disk plus manual toggles in `<mediaDir>/<id>/publish.json`
   (`src/dashboard/matchShelf.ts`). The Rendered tab counts matches waiting for a hook (`#tab-matches small`,
   falling back to `ready` on a server one restart behind) and is ordered by what needs the operator

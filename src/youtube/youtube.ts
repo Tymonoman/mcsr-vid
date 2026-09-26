@@ -777,7 +777,7 @@ export async function reschedule(
   channelId: string,
   nowMs = Date.now(),
   fetchImpl: typeof fetch = fetch,
-): Promise<{ refused: string } | { publishAt: string }> {
+): Promise<{ refused: string } | { publishAt: string; was: string }> {
   const read = await apiCall<{
     items?: Array<{ snippet?: { channelId?: string }; status?: Record<string, unknown> }>;
   }>(DATA_API, `/videos?part=snippet,status&id=${encodeURIComponent(videoId)}`, {}, fetchImpl);
@@ -806,7 +806,7 @@ export async function reschedule(
     },
     fetchImpl,
   );
-  return { publishAt: answer.status?.publishAt ?? publishAt };
+  return { publishAt: answer.status?.publishAt ?? publishAt, was };
 }
 
 /** Needs `youtube.force-ssl`; the read scopes alone cannot post. */
