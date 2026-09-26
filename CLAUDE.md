@@ -68,7 +68,7 @@ Use the script, don't reconstruct the shell line. Extra arguments go after `--`.
 | `npm run analytics -- <videoId> [--traffic-sources] [--days N]` | YouTube Analytics via `~/.claude/skills/claude-youtube/` (outside the repo; token at `~/.claude/.tmp/youtube_oauth_token.json`). |
 | `bash scripts/agy-task.sh <name> <prompt-file> [model]` | Hand an easy, fully specified task to agy (Gemini, the operator's subscription) in worktree `.claude/worktrees/agy-<name>` on branch `agy/<name>`; its answer lands in `.tools/agy-dev/runs/<name>.json`. Its home `.tools/agy-dev` has ECC (pruned to this stack), ponytail, /watch and the Claude skills; it may write only under `.claude/worktrees` and run the read/test commands in its `settings.json`. Review the diff and commit yourself. The picker's home (`.tools/agy-home`) stays plugin-free on purpose. |
 | `python3 scripts/reap.py <command…>` | Subreaper wrapper, only needed if zombies ever climb again (see Pitfalls). |
-| `bash scripts/browser-checks/run-all.sh <url>` | Drives the dashboard in a real browser the way the operator does (23 Playwright checks, two of them only when a Studio upload or an unexported match exists; self-configuring from `/api/matches` and `/api/playoffs`). Point it at the real dashboard (`http://mcsr-dashboard:8080` from the Claude container), not just a local test server — four checks only ever exercised a secure origin and hid a broken Copy button for it. Needs `npx playwright install chromium` once and a server with real data. |
+| `bash scripts/browser-checks/run-all.sh <url>` | Drives the dashboard in a real browser the way the operator does (24 Playwright checks, two of them only when a Studio upload or an unexported match exists; self-configuring from `/api/matches` and `/api/playoffs`). Point it at the real dashboard (`http://mcsr-dashboard:8080` from the Claude container), not just a local test server — four checks only ever exercised a secure origin and hid a broken Copy button for it. Needs `npx playwright install chromium` once and a server with real data. |
 
 Lab timings for a 10-minute match: overlay render ~9 min, `export:fast` ~10 min, a Short in
 seconds; a nightly render takes ~12 min, ~21 min with the MP4 (the Short waits for the hooks).
@@ -143,7 +143,11 @@ views brought 0 subscribers.
   (Flash sometimes reaches for a shell command, which headless mode denies), then the old
   timeline heuristic (`src/shorts/shortMoment.ts`) stands in and `short-<id>.pick-error.json`
   says why. The pick is `short-<id>.pick.json`; `npm run pick -- <id|all> [--force]` asks again.
-  A whole match costs ~1.5–5 min and ~80–140k tokens on the operator's subscription.
+  A whole match costs ~1.5–5 min and ~80–140k tokens on the operator's subscription. While it runs,
+  the Pick step's bar is one percent over its phases (`src/shorts/pickProgress.ts`, weighted by lab
+  timings): the proxy by ffmpeg's `time=`, each /watch by its stills on disk and stderr markers
+  ("running /watch on edcr's stream · 2 of 2"), the model by an elapsed-time estimate that never
+  arrives; it never goes back and stops at 99 until the pick is written.
 - **No Short renders and nothing uploads before the operator saves the hooks** (the gate is in
   `generateShort.ts`, `youtubeUpload.ts` `hookRefusal`, and every render path): the Short's hook
   is its own field, `short-<id>.hook.txt`, prefilled on the dashboard with the model's
