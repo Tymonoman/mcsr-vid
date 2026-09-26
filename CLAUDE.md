@@ -334,9 +334,11 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   description that would not pair, a strip with no `chosenBy: "operator"` variant (the thumbnail
   step would otherwise decline and leave YouTube's auto frame on), and a video on someone else's
   channel. It is **not** behind `youtubeUploadEnabled`: `videos.update` is not the call the audit
-  gates. Re-adopting the *same* video carries the finish ledger forward — that ledger is the only
-  thing between a second press and a second pinned comment, which `postComment` does not
-  de-duplicate.
+  gates. Re-adopting the *same* video carries the finish ledger forward, so a second press redoes no step.
+  The comment step also reads the video's threads and posts nothing when the channel's comment is
+  already there (`postComment` itself de-duplicates nothing): four went up on the series video
+  ZqI4Cf1g3_w on 26 Sept 2026, one per game folder the channel scan had paired it to — the scan no
+  longer records a video another match already owns.
 - **A record's `privacyStatus` is from upload time and is never updated**, so the comment step
   re-reads the live status before it skips: a draft adopted while private and published an hour
   later would otherwise carry "private" for ever and never get its first comment. The comment

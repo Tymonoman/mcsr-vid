@@ -3,7 +3,8 @@
 // pinned because paging and batching are the two places a silent truncation would hide.
 // Run: npx tsx src/channelUploads.test.ts
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -187,8 +188,29 @@ try {
     refreshChannelUploadsNow,
   } = await import("./channelUploads.js");
   _setChannelUploadsForTest([]);
+  // A series video names every game's match page but is game 1's upload: the scan must not record
+  // it again as a Studio upload of game 2 (each such record finished the video once more — four
+  // pinned comments on ZqI4Cf1g3_w, 26 Sept 2026). Game 1 (another folder) already owns vid7.
+  const game1 = path.join(config.mediaDir, "12000001");
+  const game2 = path.join(config.mediaDir, String(matchOf("vid7")));
+  await mkdir(game1, { recursive: true });
+  await mkdir(game2, { recursive: true });
+  await writeFile(
+    path.join(game1, "youtube.json"),
+    JSON.stringify({
+      videoId: "vid7",
+      uploadedAt: "2026-09-01T19:00:00Z",
+      publishAt: null,
+      privacyStatus: "public",
+    }),
+  );
   const before = calls.length;
   await refreshChannelUploadsNow(stub);
+  assert.equal(
+    existsSync(path.join(game2, "youtube.json")),
+    false,
+    "a video another match owns is not recorded twice",
+  );
   assert.equal(channelUploadsSnapshot().length, 60, "a forced refresh lists the channel now");
   assert.ok(calls.length > before, "and actually called the API");
   const after = calls.length;
