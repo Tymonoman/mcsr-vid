@@ -4,7 +4,15 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import type { MatchInfo } from "../api/types.js";
-import { CAPTION_MAX_CHARS, decidedAtMs, formatGap, raceCaptions, raceStateAt } from "./raceGap.js";
+import {
+  CAPTION_MAX_CHARS,
+  deathKind,
+  decidedAtMs,
+  formatGap,
+  phaseAt,
+  raceCaptions,
+  raceStateAt,
+} from "./raceGap.js";
 import type { ShortPick } from "./shortPlan.js";
 
 const load = (id: number): MatchInfo =>
@@ -22,14 +30,14 @@ const pick = (id: number, startSec: number, endSec: number, pov: ShortPick["pov"
 });
 const texts = (m: MatchInfo, p: ShortPick) => raceCaptions(m, p).map((c) => [c.atMs, c.text, c.side]);
 
-// --- 12730175, edcr (left) vs doogile (right): edcr ahead all run, both die 0.4 s apart, then
-// into the End 2.1 s apart. The first caption is the stronghold gap (10.1 s), the place dropped
+// --- 12730175, edcr (left) vs doogile (right): edcr ahead all run, both hunger-reset in the
+// stronghold 0.4 s apart (routine, not deaths), then into the End 2.1 s apart. The first caption is the stronghold gap (10.1 s), the place dropped
 // because the line would run past 32 characters.
 const edcr = load(12730175);
 assert.deepEqual(texts(edcr, pick(12730175, 560, 600)), [
   [4000, "DOOGILE 10 S BEHIND", "right"],
-  [4680, "EDCR DIES", "left"],
-  [5066, "DOOGILE DIES", "right"],
+  [4680, "EDCR · HUNGER RESET", "left"],
+  [5066, "DOOGILE · HUNGER RESET", "right"],
   [9945, "EDCR FIRST INTO THE END", "left"],
   [12048, "DOOGILE IN THE END · 2.1 S APART", "right"],
 ]);
@@ -41,7 +49,72 @@ assert.equal(decidedAtMs(edcr), 612_431);
 assert.deepEqual(texts(edcr, pick(12730175, 600, 622)), [[4000, "DOOGILE 2.1 S BEHIND", "right"]]);
 // …and a window whose hook runs into it gets no caption at all.
 assert.deepEqual(raceCaptions(edcr, pick(12730175, 610, 622)), []);
-console.log("OK: 12730175 — the gap, the deaths, the End 2.1 s apart, nothing past the decision");
+console.log("OK: 12730175 — the gap, the hunger resets, the End 2.1 s apart, nothing past the decision");
+
+// --- deathKind, the one classification: `death` is a death; `death_spawnpoint` from blind travel
+// on is the planned hunger reset, before it an accident with a spawn point behind it.
+{
+  const kinds = (m: MatchInfo) =>
+    m.timelines
+      .filter((e) => e.type.startsWith("projectelo.timeline.death"))
+      .sort((a, b) => a.time - b.time)
+      .map((e) => [e.time, deathKind(m, e), phaseAt(m, e.uuid, e.time)]);
+  // edcr: at blind (427.6), on the way (528.5), in the stronghold (564.7); doogile twice.
+  assert.deepEqual(kinds(edcr), [
+    [424464, "hungerReset", "after blind"],
+    [427623, "hungerReset", "after blind"],
+    [528471, "hungerReset", "after blind"],
+    [564680, "hungerReset", "stronghold"],
+    [565066, "hungerReset", "stronghold"],
+  ]);
+  const [a, b] = edcr.players.map((p) => p.uuid) as [string, string];
+  const at = (uuid: string, time: number, type: string) => ({ uuid, time, type });
+  const synthetic: MatchInfo = {
+    ...edcr,
+    timelines: [
+      at(a, 100_000, "story.enter_the_nether"),
+      at(a, 150_000, "projectelo.timeline.death_spawnpoint"), // the Nether: an accident
+      at(a, 160_000, "projectelo.timeline.death"),
+      at(a, 163_000, "projectelo.timeline.reset"), // a new world: back in the Overworld
+      at(a, 170_000, "projectelo.timeline.death_spawnpoint"),
+      at(b, 500_000, "story.enter_the_end"),
+      at(b, 520_000, "projectelo.timeline.death"),
+      at(b, 530_000, "story.enter_the_nether"),
+      at(a, 540_000, "nether.find_bastion"), // the other player's End is not this one's phase
+    ],
+  };
+  assert.deepEqual(
+    synthetic.timelines.map((e) => [deathKind(synthetic, e), phaseAt(synthetic, e.uuid, e.time)]),
+    [
+      [null, "overworld"],
+      ["bedDeath", "nether"],
+      ["death", "nether"],
+      [null, "nether"],
+      ["bedDeath", "overworld"],
+      [null, "overworld"],
+      ["death", "end"],
+      [null, "end"],
+      [null, "overworld"],
+    ],
+  );
+  console.log(
+    "OK: deathKind — resets from blind on are routine; a death, and a bed death before blind, are not",
+  );
+}
+
+// --- 13673240, Infume (left) vs Feinberg (right): the pick that read two stronghold hunger resets
+// as "THEY BOTH DIED IN THE STRONGHOLD?!" (26 Sept 2026). Its window, 7:14–7:43, captioned.
+{
+  const m = load(13673240);
+  assert.deepEqual(texts(m, pick(13673240, 434, 463)), [
+    // Feinberg's reset (7:16.5) falls in the hook's four seconds.
+    [4000, "INFUME 9.2 S BEHIND", "left"],
+    [9343, "FEINBERG FIRST INTO THE END", "right"],
+    [18328, "INFUME · HUNGER RESET", "left"],
+    [24712, "INFUME IN THE END · 15 S APART", "left"],
+  ]);
+  console.log("OK: 13673240 — the two stronghold resets are captioned as resets, not deaths");
+}
 
 // --- 12929221, Feinberg (left) vs silverrruns (right): silverrruns blind 2:11 earlier, Feinberg
 // into the stronghold first all the same, silverrruns first into the End — two lead changes.
@@ -71,7 +144,7 @@ assert.deepEqual(
 
 // --- Every window of every fixture, every POV: upper case, within budget, never at or after the
 // decision, never a word of the result.
-for (const id of [12730175, 12898432, 12902901, 12929221]) {
+for (const id of [12730175, 12898432, 12902901, 12929221, 13448958, 13673240]) {
   const m = load(id);
   const decided = decidedAtMs(m)!;
   for (let s = 0; s < m.result.time / 1000; s += 7) {
@@ -83,6 +156,11 @@ for (const id of [12730175, 12898432, 12902901, 12929221]) {
         assert.ok(p.startMs + c.atMs < decided, `${id}@${s}: "${c.text}" at or past the decision`);
         assert.ok(c.atMs >= 4000 && c.atMs < 30_000, `${id}@${s}: "${c.text}" outside the window`);
         assert.doesNotMatch(c.text, /\b(WIN|WON|WINNER|BEAT|LOST|DEFEAT|CHAMPION|VICTORY|TAKES IT)\b/);
+        // Never "dies" for a hunger reset: every DIES caption sits on a real death.
+        if (/ DIES$/.test(c.text)) {
+          const e = m.timelines.find((x) => x.time === p.startMs + c.atMs);
+          assert.ok(e && deathKind(m, e) !== "hungerReset", `${id}@${s}: "${c.text}" on a hunger reset`);
+        }
       }
     }
   }

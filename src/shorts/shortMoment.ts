@@ -1,4 +1,5 @@
 import type { MatchInfo, TimelineEntry } from "../api/types.js";
+import { deathKind } from "./raceGap.js";
 
 /**
  * Scores the ~22-second windows of a match for a Short: the heuristic that stands in when the
@@ -54,6 +55,8 @@ const TERMINAL_TYPE = "mcsr.timeline.finish";
 const EVENT_WEIGHTS: Record<string, number> = {
   "projectelo.timeline.dragon_death": 1.0,
   "end.kill_dragon": 0.95,
+  // A bed-spawn death before blind travel only: from blind on it is the routine hunger reset,
+  // which weighs nothing (`weightIn`, raceGap.ts `deathKind`).
   "projectelo.timeline.death_spawnpoint": 0.8,
   "projectelo.timeline.death": 0.8,
   "story.enter_the_end": 0.7,
@@ -84,6 +87,11 @@ export interface ShortMoment {
 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 const weightOf = (type: string) => EVENT_WEIGHTS[type] ?? 0;
+/** An event's weight in its match: a hunger reset is routine, not a moment. */
+const weightIn =
+  (match: MatchInfo) =>
+  (e: TimelineEntry): number =>
+    deathKind(match, e) === "hungerReset" ? 0 : weightOf(e.type);
 
 /**
  * The moments where the lead changed hands, in ms.
@@ -95,7 +103,8 @@ const weightOf = (type: string) => EVENT_WEIGHTS[type] ?? 0;
 export function leadChangeTimes(match: MatchInfo, leftUuid: string, rightUuid: string): number[] {
   const byType = new Map<string, { left?: number; right?: number }>();
   for (const entry of match.timelines) {
-    if (weightOf(entry.type) === 0) continue;
+    // A death is not a split: pairing one player's with the other's is no race.
+    if (weightOf(entry.type) === 0 || deathKind(match, entry)) continue;
     const side = entry.uuid === leftUuid ? "left" : entry.uuid === rightUuid ? "right" : null;
     if (!side) continue;
     const row = byType.get(entry.type) ?? {};
@@ -172,7 +181,8 @@ export function chatBurst(
 export function rankShortMoments(match: MatchInfo, opts: ShortMomentOptions): ShortMoment[] {
   const windowSec = opts.windowSec ?? SHORT_WINDOW_SEC;
   const windowMs = windowSec * 1000;
-  const real = match.timelines.filter((e) => weightOf(e.type) > 0);
+  const weight = weightIn(match);
+  const real = match.timelines.filter((e) => weight(e) > 0);
   // A match whose timeline holds nothing watchable still gets no Short: the finish is an extra
   // payoff to reach, not a reason to cut 22 seconds of footage nothing is known about.
   if (real.length === 0) return [];

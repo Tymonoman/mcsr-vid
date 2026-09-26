@@ -1,4 +1,4 @@
-import type { MatchInfo } from "../api/types.js";
+import type { MatchInfo, TimelineEntry } from "../api/types.js";
 import type { ShortCaption, ShortPick } from "./shortPlan.js";
 
 /**
@@ -79,8 +79,51 @@ export const MILESTONES: readonly Milestone[] = [
   },
 ];
 
-export const DEATH_TYPES = new Set(["projectelo.timeline.death", "projectelo.timeline.death_spawnpoint"]);
+const DEATH = "projectelo.timeline.death";
+const DEATH_SPAWNPOINT = "projectelo.timeline.death_spawnpoint";
 const DRAGON_DEATH = "projectelo.timeline.dragon_death";
+
+/**
+ * Where in the run a player is: their last phase marker before that moment. A `reset` (the seed
+ * restarted in a new world) puts them back in the Overworld.
+ */
+export type RunPhase = "overworld" | "nether" | "after blind" | "stronghold" | "end";
+const PHASE_OF: Record<string, RunPhase> = {
+  "projectelo.timeline.reset": "overworld",
+  "story.enter_the_nether": "nether",
+  "projectelo.timeline.blind_travel": "after blind",
+  "story.follow_ender_eye": "stronghold",
+  "story.enter_the_end": "end",
+};
+
+export function phaseAt(match: MatchInfo, uuid: string, atMs: number): RunPhase {
+  let phase: RunPhase = "overworld";
+  let last = -Infinity;
+  for (const e of match.timelines) {
+    const p = PHASE_OF[e.type];
+    if (p && e.uuid === uuid && e.time < atMs && e.time >= last) [phase, last] = [p, e.time];
+  }
+  return phase;
+}
+
+/**
+ * What a death on the timeline was — the one classification the prompt, the captions, the hook
+ * chips and the heuristic share (26 Sept 2026: the model read two hunger resets as "THEY BOTH
+ * DIED"). The API has two death types:
+ * - `death`: no spawn point set, so back to world spawn with an empty inventory. Always news.
+ * - `death_spawnpoint` (mcsrranked.com calls it "death reset"): a respawn at a bed or anchor the
+ *   player set. From blind travel on it is the planned hunger reset — set a spawn, die on purpose,
+ *   respawn with full health and hunger for the dragon: 112 of 118 on disk. Before blind travel
+ *   (6 of 118, all in the Nether) it is an accident that happened to have a spawn point behind it.
+ * Null for anything that is not a death.
+ */
+export type DeathKind = "death" | "bedDeath" | "hungerReset";
+export function deathKind(match: MatchInfo, e: TimelineEntry): DeathKind | null {
+  if (e.type === DEATH) return "death";
+  if (e.type !== DEATH_SPAWNPOINT) return null;
+  const phase = phaseAt(match, e.uuid, e.time);
+  return phase === "overworld" || phase === "nether" ? "bedDeath" : "hungerReset";
+}
 
 /** Closer than this at the last rung both reached is a dead heat as far as a caption is concerned. */
 const NECK_AND_NECK_MS = 1500;
@@ -161,8 +204,8 @@ const fit = (...lines: string[]): string =>
  * The Short's data captions, `atMs` into the Short. The first, at 4 s when the hook gives way,
  * states the race as it stands then (anything in the hook's four seconds folded in): the gap at
  * the last rung both reached, "NECK AND NECK", or — a single POV — what that player is doing.
- * Then one per milestone or death inside the window, of the players on screen, up to the moment
- * the game is decided and never past it.
+ * Then one per milestone, death or hunger reset (`deathKind`) inside the window, of the players
+ * on screen, up to the moment the game is decided and never past it.
  */
 export function raceCaptions(match: MatchInfo, pick: ShortPick): ShortCaption[] {
   const [l, r] = match.players;
@@ -214,8 +257,14 @@ export function raceCaptions(match: MatchInfo, pick: ShortPick): ShortCaption[] 
     const side = sideOf(match, e.uuid);
     if (!side || !onScreen(side) || e.time <= firstAt || e.time >= pick.endMs || e.time >= decided) continue;
     const at = e.time - pick.startMs;
-    if (DEATH_TYPES.has(e.type)) {
-      events.push({ atMs: at, text: fit(`${nick[side]} DIES`), side });
+    const death = deathKind(match, e);
+    if (death) {
+      // A hunger reset is a death on screen; the caption says it was on purpose.
+      const text =
+        death === "hungerReset"
+          ? fit(`${nick[side]} · HUNGER RESET`, "HUNGER RESET")
+          : fit(`${nick[side]} DIES`);
+      events.push({ atMs: at, text, side });
       continue;
     }
     const i = MILESTONES.findIndex((m) => m.type === e.type);

@@ -64,6 +64,12 @@ function whisperKey(): boolean {
   }
 }
 
+/**
+ * A dry run (`npm run pick -- <id> --dry-run`) found an input it would have to make — the proxy or
+ * a /watch cache — and refuses rather than write into the match directory.
+ */
+export class DryRunRefusal extends Error {}
+
 /** A failed run: `message` in the operator's words, `detail` what watch.py last said. */
 class WatchFailure extends Error {
   constructor(
@@ -198,6 +204,7 @@ async function watchOne(
   script: string,
   signal: AbortSignal | undefined,
   log: Log,
+  cachedOnly: boolean,
 ): Promise<PovWatch | null> {
   const dir = matchDir(match.id);
   const nick = match.players[side === "left" ? 0 : 1]?.nickname;
@@ -243,6 +250,10 @@ async function watchOne(
       // Unreadable: watch again.
     }
   }
+  if (cachedOnly)
+    throw new DryRunRefusal(
+      `a dry run writes nothing, and /watch on ${nick}'s stream has no up-to-date cache (${cacheFile}) — run npm run pick -- ${match.id} once without --dry-run to make it`,
+    );
   const started = Date.now();
   log(`running /watch on ${nick}'s stream (${side}, ${Math.round(endSec)} s of match, nice 19)`);
   const run = await runWatch(args, signal);
@@ -271,7 +282,8 @@ async function watchOne(
  */
 export async function watchPovs(
   match: MatchInfo,
-  opts: { signal?: AbortSignal; log?: Log } = {},
+  /** `cachedOnly`: a dry run — a missing or stale cache is a `DryRunRefusal`, never a run. */
+  opts: { signal?: AbortSignal; log?: Log; cachedOnly?: boolean } = {},
 ): Promise<PovWatch[]> {
   const log = opts.log ?? (() => {});
   const script = config.watchScript;
@@ -297,10 +309,10 @@ export async function watchPovs(
   for (const side of ["left", "right"] as const) {
     opts.signal?.throwIfAborted();
     try {
-      const watched = await watchOne(match, side, script, opts.signal, log);
+      const watched = await watchOne(match, side, script, opts.signal, log, opts.cachedOnly ?? false);
       if (watched) out.push(watched);
     } catch (err) {
-      if (opts.signal?.aborted) throw err;
+      if (opts.signal?.aborted || err instanceof DryRunRefusal) throw err;
       const nick = match.players[side === "left" ? 0 : 1]?.nickname ?? side;
       log(`/watch failed on ${nick}'s stream: ${describeError(err)} — the pick goes on without it`, {
         level: "warn",
