@@ -16,6 +16,7 @@ import { sendVideo } from "./rangeStream.js";
 import { matchStatusFor } from "./matchStatus.js";
 import { inPublishSet } from "./publishSet.js";
 import { findExportedVideo } from "../youtube/youtubeStore.js";
+import { percentOf } from "../pipeline/exportFast.js";
 import { ensurePick } from "./shortFlow.js";
 
 type Json = (res: ServerResponse, status: number, body: unknown) => void;
@@ -48,18 +49,8 @@ export function announcedTotalSec(line: string): number | null {
   return m ? Number(m[1]) : null;
 }
 
-/**
- * The percentage one log line reports, or null for a line that is not progress. ffmpeg's
- * `-stats` line carries `time=HH:MM:SS.ss` of output written, which is a percentage only against
- * the total the fast export announced. Capped at 99 — the promote-on-success rename is what
- * makes it 100.
- */
-export function percentOf(line: string, totalSec: number): number | null {
-  const at = /\btime=(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(line);
-  if (!at || totalSec <= 0) return null;
-  const secs = Number(at[1]) * 3600 + Number(at[2]) * 60 + Number(at[3]);
-  return Math.min(99, Math.floor((secs / totalSec) * 100));
-}
+/** ffmpeg's progress as a percent; it lives with the export, where the pick's proxy reuses it. */
+export { percentOf };
 
 const jobs = new Map<number, ExportJob>();
 

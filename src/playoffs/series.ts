@@ -90,7 +90,8 @@ export async function readSeriesRecord(outDir: string): Promise<SeriesRecord | n
   }
 }
 
-const probeDuration = (file: string): Promise<number> =>
+/** The file's length in seconds; 0 when ffprobe cannot read it. */
+export const probeDuration = (file: string): Promise<number> =>
   new Promise((resolve, reject) => {
     const proc = spawn(
       "ffprobe",

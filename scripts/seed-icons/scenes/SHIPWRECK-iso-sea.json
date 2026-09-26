@@ -1,0 +1,14 @@
+{
+  "template": "shipwreck/with_mast",
+  "view": {
+    "facing": "northwest",
+    "padding": 0.03,
+    "zoom": 1.03,
+    "center": [
+      4,
+      8.5,
+      14
+    ]
+  },
+  "background": "sea"
+}

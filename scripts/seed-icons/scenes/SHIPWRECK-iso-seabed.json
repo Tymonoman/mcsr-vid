@@ -1,0 +1,32 @@
+{
+  "template": "shipwreck/with_mast",
+  "palette": 3,
+  "edits": [
+    {
+      "op": "fill",
+      "from": [
+        -24,
+        0,
+        -24
+      ],
+      "to": [
+        10,
+        1,
+        30
+      ],
+      "block": "sand",
+      "onlyAir": true
+    }
+  ],
+  "view": {
+    "facing": "northwest",
+    "padding": 0,
+    "zoom": 2.6,
+    "center": [
+      4,
+      7.5,
+      14
+    ]
+  },
+  "background": "linear-gradient(#5aa6ee, #2362bd)"
+}

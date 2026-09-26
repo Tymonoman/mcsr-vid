@@ -1,0 +1,23 @@
+{
+  "template": "../structures/desert_pyramid.json",
+  "edits": [
+    {
+      "op": "ground",
+      "block": "sand",
+      "margin": 0,
+      "depth": 1
+    }
+  ],
+  "view": {
+    "facing": "northwest",
+    "padding": 0.03,
+    "overhangShade": 0.6,
+    "center": [
+      10,
+      5,
+      2
+    ],
+    "zoom": 1.5
+  },
+  "background": "linear-gradient(#3c7ee6, #86b8f2)"
+}

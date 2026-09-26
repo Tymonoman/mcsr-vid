@@ -53,6 +53,7 @@ run sync-edit-check "$BASE" "$READY"
 run phone-rows-check "$BASE"
 run hook-flow-check "$BASE" "$READY2"
 run now-flow-check "$BASE" "$READY" "$READY2"
+run pick-progress-check "$BASE" "$READY"
 run checkchannel-check "$BASE" "$READY"
 # Firefox too (npx playwright install firefox). Its Save and Move are answered in the browser and
 # every other non-GET is aborted and failed: nothing it does is written on the server.

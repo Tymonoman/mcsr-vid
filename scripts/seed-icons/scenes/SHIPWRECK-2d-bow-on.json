@@ -1,0 +1,10 @@
+{
+  "name": "SHIPWRECK-2d-bow-on",
+  "template": "shipwreck/with_mast",
+  "palette": 3,
+  "edits": [
+    {"op": "fill", "from": [-8, -6, -2], "to": [16, 0, 30], "block": "sand", "onlyAir": true}
+  ],
+  "view": {"projection": "2d", "facing": "north", "depthShade": 0.06, "padding": 0, "zoom": 1.1111, "center": [4, 9.75, 14]},
+  "background": "linear-gradient(#5aa6ee, #2362bd)"
+}

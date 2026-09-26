@@ -1,0 +1,9 @@
+{
+  "template": "village/plains/houses/plains_small_house_1",
+  "edits": [
+    { "op": "set", "at": [5, 2, 3], "block": "cobblestone" },
+    { "op": "ground", "block": "grass_block", "margin": 0 }
+  ],
+  "view": { "projection": "2d", "facing": "west", "depthShade": 0.12, "depthShadeMin": 0.3, "padding": 0, "zoom": 1.1268, "center": [3.5, 3.1, 3.5] },
+  "background": "sky"
+}

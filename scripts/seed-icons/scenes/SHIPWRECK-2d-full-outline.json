@@ -1,0 +1,11 @@
+{
+  "name": "SHIPWRECK-2d-full-outline",
+  "template": "shipwreck/with_mast",
+  "palette": 4,
+  "edits": [
+    {"op": "fill", "from": [-3, -6, -5], "to": [11, 0, 32], "block": "sand", "onlyAir": true}
+  ],
+  "view": {"projection": "2d", "facing": "east", "depthShade": 0.06, "padding": 0, "zoom": 1.2667, "center": [4, 12, 14]},
+  "background": "linear-gradient(#5aa6ee, #2362bd)",
+  "outline": {"color": "#0d0c10", "px": 24, "exclude": ["sand"], "base": true}
+}

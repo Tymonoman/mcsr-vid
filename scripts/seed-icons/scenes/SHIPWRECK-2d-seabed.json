@@ -1,0 +1,96 @@
+{
+ "template": "shipwreck/with_mast",
+ "edits": [
+  {
+   "op": "fill",
+   "from": [
+    0,
+    -6,
+    -12
+   ],
+   "to": [
+    8,
+    -1,
+    39
+   ],
+   "block": "sand",
+   "onlyAir": true
+  },
+  {
+   "op": "fill",
+   "from": [
+    5,
+    0,
+    -12
+   ],
+   "to": [
+    8,
+    0,
+    7
+   ],
+   "block": "sand",
+   "onlyAir": true
+  },
+  {
+   "op": "fill",
+   "from": [
+    5,
+    0,
+    22
+   ],
+   "to": [
+    8,
+    0,
+    24
+   ],
+   "block": "sand",
+   "onlyAir": true
+  },
+  {
+   "op": "fill",
+   "from": [
+    5,
+    0,
+    27
+   ],
+   "to": [
+    8,
+    0,
+    39
+   ],
+   "block": "sand",
+   "onlyAir": true
+  },
+  {
+   "op": "set",
+   "at": [
+    3,
+    0,
+    8
+   ],
+   "block": "spruce_planks"
+  },
+  {
+   "op": "set",
+   "at": [
+    3,
+    0,
+    21
+   ],
+   "block": "spruce_planks"
+  }
+ ],
+ "view": {
+  "projection": "2d",
+  "facing": "east",
+  "depthShade": 0.1,
+  "padding": 0,
+  "zoom": 1.72,
+  "center": [
+   4,
+   10,
+   14
+  ]
+ },
+ "background": "sea"
+}

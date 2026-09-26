@@ -47,11 +47,18 @@ import { SEPARATOR } from "../pipeline/title.js";
 import { computeMetrics } from "../pipeline/matchScore.js";
 import { eloAtMatchStart } from "../pipeline/overlayProps.js";
 import { playoffContextFor } from "../playoffs/playoffs.js";
-import { gameMatchStarts, readSeriesRecord, seriesOutputPath, type SeriesGame } from "../playoffs/series.js";
-import { exportMatchStartSec } from "../pipeline/exportFast.js";
+import {
+  gameMatchStarts,
+  probeDuration,
+  readSeriesRecord,
+  seriesOutputPath,
+  type SeriesGame,
+} from "../playoffs/series.js";
+import { exportMatchStartSec, percentOf } from "../pipeline/exportFast.js";
 import { DEATH_TYPES, decidedAtMs, MILESTONES, raceCaptions } from "./raceGap.js";
 import { NOT_SIGNED_IN, reasonerConfigured, runReasoner } from "./reasoner.js";
-import { boxFailure, shortLog, type LogExtra } from "./shortLog.js";
+import { modelFraction, pickPhases, pickProgress } from "./pickProgress.js";
+import { activityProgress, boxFailure, shortLog, type LogExtra } from "./shortLog.js";
 import { distinctShortMoments, leadChangeTimes, runMsOf, SHORT_WINDOW_SEC } from "./shortMoment.js";
 import { pickFile, SHORT_MAX_MS, SHORT_MIN_MS, type PlayerMoment, type ShortPick } from "./shortPlan.js";
 import { watchPovs, type PovWatch } from "./watchPov.js";
@@ -60,6 +67,8 @@ export { raceCaptions };
 
 /** One line of the pick's story: to the caller's log and to `short-<id>.log.jsonl`. */
 type Note = (text: string, extra?: LogExtra) => void;
+/** The running pick's progress bar (pickProgress.ts). */
+type PickBar = ReturnType<typeof pickProgress>;
 
 export const PROXY_FILE = "short-proxy.mp4";
 export const pickErrorFile = (dir: string, matchId: number): string =>
@@ -197,12 +206,30 @@ async function spansOf(matchId: number, games: SeriesGame[] | null): Promise<Gam
   return spans;
 }
 
-/** One command to completion; killed on abort. ffmpeg's last words are the error. */
-function run(cmd: string, args: string[], signal?: AbortSignal): Promise<void> {
+/**
+ * One command to completion; killed on abort. ffmpeg's last words are the error. Its `-stats`
+ * lines (time=) go to `onStats` instead of the error's tail.
+ */
+function run(
+  cmd: string,
+  args: string[],
+  signal?: AbortSignal,
+  onStats?: (line: string) => void,
+): Promise<void> {
   return new Promise((resolve, reject) => {
     const proc = spawn(cmd, args, { stdio: ["ignore", "ignore", "pipe"], signal, killSignal: "SIGKILL" });
     let tail = "";
-    proc.stderr.on("data", (d: Buffer) => (tail = (tail + d.toString()).slice(-2000)));
+    proc.stderr.on("data", (d: Buffer) => {
+      let text = d.toString();
+      if (onStats) {
+        const kept: string[] = [];
+        for (const line of text.split(/(?<=[\r\n])/))
+          if (/\btime=/.test(line)) onStats(line);
+          else kept.push(line);
+        text = kept.join("");
+      }
+      tail = (tail + text).slice(-2000);
+    });
     proc.on("error", reject);
     proc.on("close", (code, sig) =>
       code === 0
@@ -220,6 +247,7 @@ async function ensureProxy(
   fps: number,
   signal: AbortSignal | undefined,
   note: Note,
+  progress: (fraction: number) => void = () => {},
 ): Promise<string> {
   const out = path.join(dir, PROXY_FILE);
   if (existsSync(out) && statSync(out).mtimeMs >= statSync(video).mtimeMs) {
@@ -228,16 +256,22 @@ async function ensureProxy(
   }
   const started = Date.now();
   note(`making the model's ${fps} fps copy of ${path.basename(video)} (640x360, nice 19)`);
+  // What ffmpeg writes, from the cut to the end: its time= against it is the proxy's progress.
+  const totalSec = (await probeDuration(video).catch(() => 0)) - cutSec;
+  const onStats = (line: string) => {
+    const pct = percentOf(line, totalSec);
+    if (pct !== null) progress(pct / 100);
+  };
   try {
     // prettier-ignore
     await atomicOutput(out, (tmp) =>
       run("nice", [
-        "-n", "19", "ffmpeg", "-v", "error", "-y",
+        "-n", "19", "ffmpeg", "-v", "error", "-stats", "-y",
         "-threads", "2", "-ss", String(cutSec), "-i", video,
         "-vf", `fps=${fps},scale=640:-2`,
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "28", "-threads", "2",
         "-c:a", "aac", "-ac", "1", "-b:a", "48k", "-movflags", "+faststart", tmp,
-      ], signal),
+      ], signal, onStats),
     );
   } catch (err) {
     if (signal?.aborted) throw err;
@@ -721,16 +755,26 @@ async function askModel(
   spans: readonly GameSpan[],
   opts: PickOptions,
   note: Note,
+  bar: PickBar,
 ): Promise<{ pick: ShortPick } | { failure: string }> {
+  // The bar's phases (pickProgress.ts): 0 the proxy, then each game's left and right POV, the model.
+  const modelPhase = 1 + 2 * spans.length;
   try {
     const series = source.games !== null;
     const fps = series ? 1 : 2;
+    bar.at(0, 0);
     const proxy = path.resolve(
-      await ensureProxy(dir, source.video, source.matchStartSec, fps, opts.signal, note),
+      await ensureProxy(dir, source.video, source.matchStartSec, fps, opts.signal, note, (f) => bar.at(0, f)),
     );
     const watched: GameWatch[] = [];
-    for (const span of spans)
-      watched.push({ span, povs: await watchPovs(span.match, { signal: opts.signal, log: note }) });
+    for (const [i, span] of spans.entries()) {
+      const onProgress = (side: "left" | "right", f: number) =>
+        bar.at(1 + 2 * i + (side === "left" ? 0 : 1), f);
+      watched.push({
+        span,
+        povs: await watchPovs(span.match, { signal: opts.signal, log: note, onProgress }),
+      });
+    }
     if (watched.every((g) => g.povs.length === 0) && config.watchScript)
       note("the model picks without /watch's stills — the lines above say why", { level: "warn" });
     const past = pastTitleHooks();
@@ -748,12 +792,16 @@ async function askModel(
       note(
         `asking ${modelName()} — it watches the whole match (stopped after ${Math.round(timeoutMs / 60_000)} min)`,
       );
+      // No progress signal from the model: an elapsed-time estimate (modelFraction) moves the bar.
+      const tick = () => bar.at(modelPhase, modelFraction(Date.now() - started));
+      tick();
+      const ticker = setInterval(tick, 1000);
       const reply = await runReasoner(prompt, {
         schema: PICK_SCHEMA,
         dir: dirs,
         timeoutMs,
         signal: opts.signal,
-      });
+      }).finally(() => clearInterval(ticker));
       const secs = Math.round((Date.now() - started) / 1000);
       if (reply.ok) note(`answer in ${secs} s`, { detail: reply.raw });
       else note(`no answer after ${secs} s: ${reply.error}`, { level: "warn", detail: reply.raw });
@@ -845,9 +893,11 @@ const apiDown = (err: unknown): boolean =>
  * every step is a line of `short-<id>.log.jsonl`.
  */
 export async function pickShortMoment(matchId: number, opts: PickOptions = {}): Promise<ShortPick> {
+  // The live percent rides on every line, or an info line would clear the bar (shortLog).
+  let bar: PickBar | undefined;
   const note: Note = (text, extra) => {
     opts.log?.(text, extra);
-    shortLog(matchId, "pick", text, extra);
+    shortLog(matchId, "pick", text, { ...(bar ? { percent: bar.percent } : {}), ...extra });
   };
   const dir = matchDir(matchId);
   const file = pickFile(dir, matchId);
@@ -880,7 +930,16 @@ export async function pickShortMoment(matchId: number, opts: PickOptions = {}): 
       failure =
         "reasonerCommand is not set (mcsr-vid.config.json) — every pick is the heuristic's until it is";
     else {
-      const asked = await askModel(dir, source, spans, opts, note);
+      bar = pickProgress(
+        pickPhases(
+          spans.map(
+            (s) => [s.match.players[0]?.nickname ?? "left", s.match.players[1]?.nickname ?? "right"] as const,
+          ),
+          modelName(),
+        ),
+        (percent, line) => activityProgress(matchId, "pick", percent, line),
+      );
+      const asked = await askModel(dir, source, spans, opts, note, bar);
       if ("pick" in asked) {
         await writeJsonAtomic(file, asked.pick);
         await rm(errorFile, { force: true });

@@ -1,0 +1,12 @@
+{
+  "name": "SHIPWRECK-2d-front-sticker",
+  "template": "shipwreck/with_mast",
+  "palette": 3,
+  "edits": [
+    {"op": "roll", "deg": -20, "about": [4.5, 0.5]},
+    {"op": "fill", "from": [-14, -12, -2], "to": [22, 2, -2], "block": "sand"}
+  ],
+  "view": {"projection": "2d", "facing": "north", "depthShade": 0.08, "padding": 0, "zoom": 2.6429, "center": [1.81, 8.5, 14]},
+  "background": "linear-gradient(#5aa6ee, #2362bd)",
+  "outline": {"color": "#f3ede2", "px": 16, "exclude": ["sand", "water"]}
+}

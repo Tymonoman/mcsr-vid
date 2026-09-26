@@ -1,0 +1,34 @@
+{
+  "template": "shipwreck/with_mast_degraded",
+  "palette": 3,
+  "edits": [
+    {
+      "op": "fill",
+      "from": [
+        -3,
+        -9,
+        -6
+      ],
+      "to": [
+        11,
+        0,
+        33
+      ],
+      "block": "sand",
+      "onlyAir": true
+    }
+  ],
+  "view": {
+    "projection": "2d",
+    "facing": "east",
+    "depthShade": 0.06,
+    "padding": 0,
+    "zoom": 1.667,
+    "center": [
+      4,
+      6.5,
+      13.5
+    ]
+  },
+  "background": "linear-gradient(#5aa6ee, #2362bd)"
+}
