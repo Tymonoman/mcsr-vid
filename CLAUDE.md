@@ -63,6 +63,7 @@ Use the script, don't reconstruct the shell line. Extra arguments go after `--`.
 | `npm run chat -- <matchId>` | Fetch both players' Twitch chat to `chat-<nick>.json` for a match the pipeline saved none for (it does this itself after `download-vods`). Existing files are kept; delete one to refetch. |
 | `npm run pick -- <matchId \| all> [--force]` | Ask the model for the Short's moment (see Shorts): prints the prompt size, the model's raw answer, any validation failure and the pick. Without `--force` a pick newer than the export is kept. |
 | `npm run bench -- <Composition> [--frames=N] [--codec=] [--pixelFormat=] [--concurrency=N]` | Render throughput for one composition. Measure before claiming a render change is faster. |
+| `scripts/seed-icons/icons.sh [TYPE…]` | Re-render the thumbnail's seed-type icons from their specs (~6 s each; needs the 1.16.1 client jar, fetched from Mojang once). One spec: `scripts/seed-icons/render.sh <spec.json> <out.png>`. |
 | `npm run retention -- <videoId>… [--days=90]` | The audience retention curve per video (Analytics API `audienceWatchRatio` by `elapsedVideoTimeRatio`), printed at every tenth. Measured 22 Sept 2026: 16–22 points go between 3% and 10% of the video — the first minute after the intro, the least eventful stretch of a run — then a slow drift; the finish lifts the curve again. |
 | `npm run config:example` | Rewrites `mcsr-vid.config.example.json` from `DEFAULTS` in `src/config.ts`, so the example cannot drift (it had, by seven keys). Run it after adding a key. |
 | `npm run analytics -- <videoId> [--traffic-sources] [--days N]` | YouTube Analytics via `~/.claude/skills/claude-youtube/` (outside the repo; token at `~/.claude/.tmp/youtube_oauth_token.json`). |
@@ -303,9 +304,23 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   `~/.claude/projects/-app/research/thumbs-2026-09-24/spec.md`): the renders cut at the knee on a mid-value crimson/warped
   split, name-only plates at y 516–600 (`nickFontPx`: 56 px, 49 for 16 characters) so YouTube's
   duration stamp never covers one, and the seed type framed above the VS (`seedType` from
-  `match.seedType`; null or unknown leaves the slot out; the art is `SeedIconMC`, the item or block as Minecraft's
-  inventory draws it in a GUI slot, from the 1.16.1 client's own textures in `remotion/assets/minecraft/` —
-  a hand-drawn set was rejected on 24 Sept: "doesnt look like minecraft at all") — no rating, seed, placement or other text. The four pose pairs
+  `match.seedType`; null or unknown leaves the slot out; the art is `SeedIconMC` drawing
+  `remotion/assets/seed-icons/<TYPE>.png`, a 1024 px render of the real 1.16.1 structure — the
+  jar's own template, blocks and textures — by `scripts/seed-icons/` (`bake.py` resolves a scene
+  spec from `scripts/seed-icons/scenes/`, `render.sh` draws it; `icons.sh [TYPE…]` regenerates the
+  icons; preview with the `SeedIconSheet` composition). Every main is a 2d elevation (the operator, 26 Sept:
+  "i will go with 2d options for every seed type for the temple i want the outlined one") and
+  `<TYPE>-alt.png` is the iso render, renamed over `<TYPE>.png` to swap; which spec makes which file
+  is the map in `icons.sh`. A spec's `outline` draws a dark contour round the structure's silhouette
+  (the desert temple's, 26 Sept: "add an outline to the desert temple so its easier to recognize").
+  The shipwreck's main is `SHIPWRECK-2d-front-beached` (option L of the bow-on set: the real
+  with_mast ship tilted onto a sandbank — the `roll` edit; the operator's pick of 16 on 26 Sept, "i
+  pick L"); the other candidates stay in `scenes/`, and `icons.sh SHIPWRECK` redoes it. A hand-drawn set was rejected on 24 Sept ("doesnt
+  look like minecraft at all"), the one-item GUI slot and then hand-built dioramas on 25 Sept ("the
+  temple doesn't look like the temple try to copy the real structure. you can also try and make it
+  2d. the portal is not complete so it looks off. […] the buried treasure actually looks the best and
+  most correct its simple and easy to grasp"): the portal's frame is completed on purpose; the buried
+  treasure's old scene is its iso alt) — no rating, seed, placement or other text. The four pose pairs
   of `thumbnailVariants` still render, the first (`walking`/`crossed`) the auto default, and
   `RIGHT_RENDER_SIDE` follows the CSS mirror of the right image. The hook text came off on 18 Sept
   and its twins were deleted on 24 Sept: an older manifest's `hookText`/`-hook` records are read

@@ -1,0 +1,40 @@
+{
+  "template": "ruined_portal/portal_6",
+  "edits": [
+    {
+      "op": "set",
+      "at": [
+        2,
+        5,
+        2
+      ],
+      "block": "obsidian"
+    },
+    {
+      "op": "fill",
+      "from": [
+        2,
+        2,
+        1
+      ],
+      "to": [
+        2,
+        4,
+        3
+      ],
+      "block": "nether_portal[axis=z]"
+    }
+  ],
+  "view": {
+    "projection": "2d",
+    "facing": "west",
+    "depthShade": 0.1,
+    "zoom": 1.2,
+    "center": [
+      2.5,
+      4.15,
+      2.5
+    ]
+  },
+  "background": "linear-gradient(#8e4b43, #4a1f1f)"
+}

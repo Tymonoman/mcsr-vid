@@ -1,0 +1,63 @@
+{
+  "template": "../structures/desert_pyramid.json",
+  "edits": [
+    {
+      "op": "ground",
+      "block": "sand",
+      "margin": 0,
+      "depth": 6
+    },
+    {
+      "op": "fill",
+      "from": [
+        0,
+        0,
+        0
+      ],
+      "to": [
+        20,
+        0,
+        0
+      ],
+      "block": "sand"
+    },
+    {
+      "op": "fill",
+      "from": [
+        0,
+        -5,
+        -2
+      ],
+      "to": [
+        20,
+        0,
+        -1
+      ],
+      "block": "sand"
+    }
+  ],
+  "view": {
+    "projection": "2d",
+    "facing": "north",
+    "depthShade": 0.06,
+    "depthShadeMin": 0.62,
+    "overhangShade": 0.5,
+    "padding": 0,
+    "center": [
+      10.5,
+      6,
+      10
+    ]
+  },
+  "background": "linear-gradient(#3c7ee6, #86b8f2)",
+  "outline": {
+    "color": "#0d0c10",
+    "px": 20,
+    "exclude": [
+      "sand"
+    ],
+    "base": true,
+    "inner": 1,
+    "innerPx": 12
+  }
+}

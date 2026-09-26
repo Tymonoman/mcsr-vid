@@ -1,0 +1,11 @@
+{
+  "name": "SHIPWRECK-2d-front-sinking",
+  "template": "shipwreck/with_mast",
+  "palette": 3,
+  "edits": [
+    {"op": "roll", "deg": -15, "about": [4.5, 0.5]},
+    {"op": "fill", "from": [-14, -12, -3], "to": [22, 3, -3], "block": "water[level=0]"}
+  ],
+  "view": {"projection": "2d", "facing": "north", "depthShade": 0.08, "padding": 0, "zoom": 1.8049, "center": [2.59, 11.3, 14]},
+  "background": "sky"
+}

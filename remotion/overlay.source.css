@@ -796,13 +796,14 @@
 .thumb-player.right img {
   transform: scaleX(-1);
 }
-/* The seed type, the one fact in the centre column: a double frame, the art at 132 px. */
+/* The seed type, the one fact in the centre column: a double frame hugging the 132 px diorama tile,
+   whose own dark line makes the third ring (dark, quartz, dark, scene). Centred on (640, 176). */
 .thumb-seed {
   position: absolute;
-  left: 556px;
-  top: 92px;
-  width: 168px;
-  height: 168px;
+  left: 564px;
+  top: 100px;
+  width: 152px;
+  height: 152px;
   border: 6px solid var(--panel-edge);
   outline: 4px solid var(--quartz);
   outline-offset: -10px;

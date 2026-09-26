@@ -1,0 +1,13 @@
+{
+  "name": "BURIED_TREASURE-2d-section",
+  "template": null,
+  "edits": [
+    {"op": "fill", "from": [0, 0, 0], "to": [7, 0, 2], "block": "sandstone"},
+    {"op": "fill", "from": [0, 1, 0], "to": [7, 3, 2], "block": "sand"},
+    {"op": "fill", "from": [0, 3, 0], "to": [3, 3, 2], "block": "water"},
+    {"op": "set", "at": [4, 2, 1], "block": "chest[facing=south]"},
+    {"op": "remove", "at": [4, 2, 2]}
+  ],
+  "view": {"projection": "2d", "facing": "south", "padding": 0, "zoom": 2.9, "center": [4.3, 2.75, 1.5], "depthShade": 0.12},
+  "background": "sky"
+}

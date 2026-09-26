@@ -1,0 +1,12 @@
+{
+  "name": "SHIPWRECK-2d-front-outlined",
+  "template": "shipwreck/with_mast",
+  "palette": 0,
+  "edits": [
+    {"op": "roll", "deg": 15, "about": [4.5, 0.5]},
+    {"op": "fill", "from": [-14, -12, -3], "to": [22, 3, -3], "block": "water[level=0]"}
+  ],
+  "view": {"projection": "2d", "facing": "north", "depthShade": 0.08, "padding": 0, "zoom": 2.6429, "center": [6.41, 8.5, 14]},
+  "background": "sky",
+  "outline": {"color": "#0d0c10", "px": 24, "exclude": ["sand", "water"]}
+}
