@@ -11,17 +11,9 @@ The thumbnail's seed-type icons are renders of these scenes: `icons.sh` maps eac
 spec and writes `remotion/assets/seed-icons/<TYPE>.png` (what `remotion/SeedIconMC.tsx` draws) and
 `<TYPE>-alt.png`. Since 26 Sept 2026 every main is a 2d elevation and every alt the iso render
 (rename an alt over `<TYPE>.png` to swap): the operator, "i will go with 2d options for every seed
-type for the temple i want the outlined one". The `ICON` map at the top of `icons.sh` says which
-spec makes which file; the other specs in `scenes/` are the candidates those were picked from.
-The shipwreck's main is `SHIPWRECK-2d-front-beached` (option L, the operator's pick on 26 Sept). The
-earlier 2d options, kept for reference: B `-full` (the whole ship side-on, dark oak, bow and stern both in frame),
-C `-full-outline` (spruce, outlined), D `-full-oak-outline` (oak, outlined), E `-bow-on` (the masts
-lined up with their yards), F `-beached` (sunk in a beach to the gunwale), G `-surface` (the hull
-under shallow water, the masts out of it), H `-broken-masts` (`with_mast_degraded`). Asked for the ship from the front instead (the same evening), I–P are
-bow-on, rolled the way a wreck lists so the three masts stop reading as a cross: I `-front-sinking`
-(dark oak, the sea surface across the hull), J `-front-sinking-close`, K `-front-outlined` (oak, the
-temple's outline), L `-front-beached`, M `-front-sticker` (a cream outline like the skins'), N
-`-front-listing` (on the seabed), O `-front-stern`, P `-front-broken` (`with_mast_degraded`).
+type for the temple i want the outlined one". The `ICON` map at the top of `icons.sh` says which spec makes which file; `scenes/` holds exactly
+those ten specs (main + alt per type) now. The shipwreck's main is `SHIPWRECK-2d-front-beached`
+(the operator's pick on 26 Sept), a `with_mast` hull rolled onto a sandbank via the `roll` edit.
 Change a spec in `scenes/`, run `icons.sh <TYPE>`, look at the PNG (the `SeedIconSheet`
 composition shows every main and alt), commit it.
 
@@ -124,8 +116,7 @@ pixel steps of a block skyline.
 | `innerPx` | `px` | That inner line's width. |
 
 `DESERT_TEMPLE-2d.json` (the main) uses `px` 24 with `base` (the operator, 26 Sept 2026: "add an outline to
-the desert temple so its easier to recognize"); the `DESERT_TEMPLE-2d-outline-*.json` specs are
-the other widths, colours and the inner-edge variant it was picked from.
+the desert temple so its easier to recognize").
 
 ## What is and is not drawn
 
