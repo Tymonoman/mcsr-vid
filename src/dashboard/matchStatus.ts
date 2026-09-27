@@ -53,6 +53,9 @@ export async function listMatchStatuses(): Promise<MatchStatusEntry[]> {
  * One API request per call; the list variant costs one per match directory, which is a linear
  * tax on an API budgeted at 500 requests per 10 minutes.
  */
+/** MP4s the pipeline writes beside the POV clips — never a player's `<nickname>.mp4`. */
+const GENERATED_MP4 = /^(overlay-|final-|series-|short-|smoke-)/;
+
 export async function matchStatusFor(matchId: number): Promise<MatchStatusEntry> {
   const outDir = matchDir(matchId);
 
@@ -61,7 +64,8 @@ export async function matchStatusFor(matchId: number): Promise<MatchStatusEntry>
   // needed to say which of the two is players[0].
   const downloadedNicknames = existsSync(outDir)
     ? readdirSync(outDir, { withFileTypes: true })
-        .filter((entry) => entry.isFile() && entry.name.endsWith(".mp4"))
+        // The pipeline's own MP4s share the folder (overlay-timer.mp4 read as a player on 27 Sept 2026).
+        .filter((entry) => entry.isFile() && entry.name.endsWith(".mp4") && !GENERATED_MP4.test(entry.name))
         .map((entry) => entry.name.slice(0, -".mp4".length))
         .sort()
     : [];
