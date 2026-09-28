@@ -88,16 +88,21 @@ const splitTimeline = [
   { uuid: "L", type: "story.enter_the_nether", time: 100_000 },
   { uuid: "R", type: "story.enter_the_nether", time: 110_000 },
   { uuid: "R", type: "nether.find_bastion", time: 150_000 },
+  { uuid: "L", type: "story.follow_ender_eye", time: 320_000 },
   { uuid: "OTHER", type: "story.enter_the_nether", time: 1 },
 ];
 
 {
   const splits = computeSplits({ timelines: splitTimeline } as unknown as MatchInfo, "L", "R");
 
-  // The label set and its order are what the overlay renders top-to-bottom.
+  // The label set and its order are what the overlay renders top-to-bottom. Stronghold Enter
+  // sits between Blind and End Enter — the run reaches the stronghold after leaving the Nether
+  // blind and before entering the End (28 Sept 2026: it was missing here and in the description's
+  // chapters, though the scorer, the Short's captions, the teaser and "explain the moves" already
+  // read `story.follow_ender_eye`).
   assert.deepEqual(
     splits.map((s) => s.label),
-    ["Nether Enter", "Bastion", "Fortress", "Blind", "End Enter"],
+    ["Nether Enter", "Bastion", "Fortress", "Blind", "Stronghold Enter", "End Enter"],
   );
 
   const by = (label: string) => splits.find((s) => s.label === label)!;
@@ -107,6 +112,7 @@ const splitTimeline = [
   assert.deepEqual(by("Fortress"), { label: "Fortress", leftMs: null, rightMs: null });
   // The repeated blind travel resolves to the FIRST time the milestone was reached.
   assert.equal(by("Blind").leftMs, 300_000);
+  assert.deepEqual(by("Stronghold Enter"), { label: "Stronghold Enter", leftMs: 320_000, rightMs: null });
 }
 
 // Same events, ascending order: the answer must not depend on how the API happens to sort.

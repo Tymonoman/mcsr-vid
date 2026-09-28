@@ -64,6 +64,7 @@ const defaultProps: OverlayProps = {
     { label: "Bastion", leftMs: 146938, rightMs: 185311 },
     { label: "Fortress", leftMs: 300785, rightMs: 339961 },
     { label: "Blind", leftMs: 368909, rightMs: 434648 },
+    { label: "Stronghold Enter", leftMs: 402511, rightMs: 447203 },
     { label: "End Enter", leftMs: 458164, rightMs: null },
   ],
   timerStartFrame: 0,
@@ -295,7 +296,10 @@ export const RemotionRoot: React.FC = () => {
         width={1024}
         height={1024}
         defaultProps={{ textures: [], faces: [] } as BakedScene}
-        calculateMetadata={({ props }) => ({ width: props.view?.size ?? 1024, height: props.view?.size ?? 1024 })}
+        calculateMetadata={({ props }) => ({
+          width: props.view?.size ?? 1024,
+          height: props.view?.size ?? 1024,
+        })}
       />
       <Composition
         id="CountdownTeaser"

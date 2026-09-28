@@ -26,6 +26,7 @@ const SPLIT_EVENTS: { label: string; type: string }[] = [
   { label: "Bastion", type: "nether.find_bastion" },
   { label: "Fortress", type: "nether.find_fortress" },
   { label: "Blind", type: "projectelo.timeline.blind_travel" },
+  { label: "Stronghold Enter", type: "story.follow_ender_eye" },
   { label: "End Enter", type: "story.enter_the_end" },
 ];
 
