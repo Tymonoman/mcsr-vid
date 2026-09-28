@@ -159,10 +159,17 @@
   height: 97px;
   display: flex;
   background: var(--panel);
+  /* The thumbnail's own top-band rule (.thumb-header's own --panel-edge-light line), so row2
+     reads as its own dark plate strip under row1 rather than a continuation of it. Kept on
+     --panel rather than --panel-edge: the hard text shadows below need a background they can
+     actually show up against, and --panel-edge is already this palette's darkest ink. */
+  border-top: 4px solid var(--panel-edge-light);
   border-bottom: 3px solid var(--panel-edge);
   /* The seam where the top band meets the gameplay: a hard inset vignette, not a soft one — the
      depth the flat overlay never had, and it stays inside the band's own 194px crop. */
   box-shadow: inset 0 -16px 18px -8px rgba(0, 0, 0, 0.85);
+  /* Every stat-row text gets a hard offset shadow too, not only the bottom band's. */
+  text-shadow: 3px 3px 0 var(--panel-edge);
 }
 .row2 .half {
   width: 50%;
@@ -234,19 +241,36 @@
   /* px, not %: must match BOTTOM_BAND_HEIGHT in layout.ts. */
   height: 346px;
   display: flex;
-  background: var(--panel-2);
+  /* The thumbnail's own ground, twinned: --panel with its 48px checker at ~7% (the identical
+     formula .row1 and .thumb use) instead of a flat fill, so the band reads as the same brand
+     as the name bars above it. The splits piece (1440 wide, x 0-1440) and the timer piece (480
+     wide, x 1440-1920) are two separate renders of this SAME 1920px-wide div, each windowed to
+     its own crop by Band's offsetX — so the checker's phase lines up across the seam by
+     construction; 48 divides both 1440 and 480 as a tidiness bonus, not a requirement. */
+  background:
+    repeating-conic-gradient(rgba(13, 12, 16, 0.07) 0 25%, transparent 0 50%) 0 0 / 48px 48px,
+    var(--panel);
   border-top: 4px solid var(--panel-edge-light);
   /* The other seam, where the bottom band meets the gameplay above it — the same hard inset
      vignette as .row2's, mirrored, both clipped inside their own band. */
   box-shadow: inset 0 16px 18px -8px rgba(0, 0, 0, 0.85);
+  /* Every text in the band gets a hard offset shadow, not only the big headline type — this is
+     the default every descendant inherits; a bigger element (the RTA digits, the splits title,
+     a split time) already declares its own larger multi-way outline above, which simply replaces
+     this one for that element. */
+  text-shadow: 2px 2px 0 var(--panel-edge);
 }
 .splits-col {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 0 38px;
-  text-align: center;
+  align-items: stretch;
+  /* The margin from each piece's own true edges (x0/x1440 on the splits render, x0/x480 on the
+     timer's): enough room for .band-plate's border, inner ring and hard drop shadow to sit
+     entirely inside the 1440x346 / 480x346 crop instead of being clipped by it. Asymmetric on
+     purpose — the shadow only falls right/down, and the splits table already runs close to
+     346px tall, so the top edge (no shadow risk there) gives back what it can. */
+  padding: 3px 12px 12px;
+  box-sizing: border-box;
 }
 /* px + flex:none, not %, and must match META_COL_WIDTH in layout.ts. As percentage-width flex
    items these three columns shrank to fit overlong content (a 16-character nickname in the
@@ -256,7 +280,39 @@
 .col-meta {
   flex: 0 0 384px;
   min-width: 0;
-  border-right: 3px solid var(--panel-edge);
+}
+/* The thumbnail-twin plate itself: dark fill, a quartz ring, a dark ring inset from it (the
+   badge/seed-frame's own double ring), and the hard offset drop the operator asked for — a
+   Minecraft GUI card set into the checkered ground rather than flat text floating on it. */
+.band-plate {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 6px 20px;
+  box-sizing: border-box;
+  background: var(--panel-2);
+  border: 5px solid var(--quartz);
+  outline: 3px solid var(--panel-edge);
+  outline-offset: -11px;
+  box-shadow: 8px 8px 0 rgba(0, 0, 0, 0.55);
+}
+/* The timer plate takes the CTA cards' gold ring instead of quartz — the one column that is
+   always "live", the way the SUBSCRIBE card is always asking. */
+.col-rta .band-plate {
+  border-color: var(--gold);
+}
+/* Top-aligned, not centred: col-meta's stack changes height by state (achievements vs the
+   SUBSCRIBE/final-time cards), and centring it would slide "Match Played" up and down the plate
+   between states. Anchoring it under the plate's own top edge keeps it put and, since the top
+   edge carries no shadow to protect, gives the tallest state (the two stacked cards) the most
+   room to grow into before it risks the plate's bottom. */
+.col-meta .band-plate {
+  justify-content: flex-start;
 }
 .col-meta .label {
   font-family: var(--pixel-font);
@@ -272,7 +328,7 @@
   margin-top: 3px;
 }
 .ach-label {
-  margin-top: 18px;
+  margin-top: 10px;
   font-family: var(--pixel-font);
   font-size: 15px;
   letter-spacing: 0.08em;
@@ -282,8 +338,8 @@
 .ach-cols {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-top: 6px;
+  gap: 4px;
+  margin-top: 4px;
 }
 .ach-row {
   display: flex;
@@ -334,7 +390,7 @@
   outline: 2px solid var(--panel-edge);
   outline-offset: -7px;
   box-shadow: 5px 5px 0 var(--panel-edge);
-  padding: 10px 16px;
+  padding: 6px 14px;
 }
 /* The SUBSCRIBE / teaser / explain card is the one asking for something: a gold ring instead of
    quartz, the same accent colour the card's own headline already uses. */
@@ -342,7 +398,7 @@
   border-color: var(--gold);
 }
 .col-meta .final-time {
-  margin-top: 16px;
+  margin-top: 8px;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -357,7 +413,7 @@
 
 /* The post-roll subscribe card, in the achievements' place (src/splitStates.ts decides the frame). */
 .col-meta .cta {
-  margin-top: 18px;
+  margin-top: 10px;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -403,7 +459,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 10px;
+  margin-top: 6px;
 }
 .col-meta .bastion-icon {
   width: 16px;
@@ -417,7 +473,7 @@
   color: var(--muted);
 }
 .col-meta .h2h-label {
-  margin-top: 18px;
+  margin-top: 10px;
   font-family: var(--pixel-font);
   font-size: 15px;
   letter-spacing: 0.08em;
@@ -453,7 +509,7 @@
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--quartz);
-  margin-bottom: 6px;
+  margin-bottom: 2px;
   /* The thumbnail's hard pixel outline, scaled to this band's type. */
   text-shadow:
     3px 0 0 var(--panel-edge),
@@ -468,20 +524,23 @@
 }
 .split-table {
   width: 100%;
-  border-top: 2px solid var(--panel-edge);
+  /* No border-top of its own any more: the plate's own top border/ring already frames it,
+     immediately above the title, and the table needs every spare pixel it can get. */
 }
 .split-row {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
   gap: 22px;
-  /* Six rows since 28 Sept 2026 (the stronghold split added between Blind and End Enter):
-     trimmed from 9px so the table still fits 346px without clipping the title or the last row. */
-  padding: 5px 0;
-  border-bottom: 2px solid var(--panel-edge);
+  /* Six rows since 28 Sept 2026 (the stronghold split added between Blind and End Enter): the
+     plate framing around the table ate further into the vertical budget, so this is trimmed
+     again (was 5px) to keep the table fitting 346px without clipping the title or the last row. */
+  padding: 3px 0;
+  /* A hard separator, not a hairline: the table has to read as rows set into the plate. */
+  border-bottom: 3px solid var(--panel-edge);
 }
 .split-row:nth-child(odd) {
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(0, 0, 0, 0.22);
 }
 .split-row .t {
   font-family: var(--pixel-font);
@@ -525,16 +584,18 @@
   font-size: 20px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--muted);
+  /* Quartz-muted: the palette's own mix, not a new hue — reads as part of the plate's ink rather
+     than the flat grey label text elsewhere in the band. */
+  color: color-mix(in srgb, var(--quartz) 55%, var(--muted));
   white-space: nowrap;
   text-align: center;
+  text-shadow: 3px 3px 0 var(--panel-edge);
 }
 
 .col-rta {
   flex: 0 0 480px;
   min-width: 0;
   gap: 12px;
-  border-left: 3px solid var(--panel-edge);
 }
 .col-rta .label {
   font-family: var(--pixel-font);

@@ -188,105 +188,113 @@ function SplitsPanel({
   return (
     <div className="splits">
       <div className="splits-col col-meta">
-        <span className="label">Match Played</span>
-        <span className="value">{props.matchPlayedLabel}</span>
-        {/* A private room (every playoff game) carries no seed or bastion type: the round takes
+        <div className="band-plate">
+          <span className="label">Match Played</span>
+          <span className="value">{props.matchPlayedLabel}</span>
+          {/* A private room (every playoff game) carries no seed or bastion type: the round takes
             the chip's place rather than "Unknown · Unknown". */}
-        {props.seedType === null && props.bastionType === null ? (
-          props.playoffLabel !== undefined && (
+          {props.seedType === null && props.bastionType === null ? (
+            props.playoffLabel !== undefined && (
+              <span className="seed-chip">
+                <span className="seed-label">
+                  {props.playoffLabel.replace(/^Season \d+ Playoffs · /, "")}
+                </span>
+              </span>
+            )
+          ) : (
             <span className="seed-chip">
-              <span className="seed-label">{props.playoffLabel.replace(/^Season \d+ Playoffs · /, "")}</span>
+              <BastionIcon bastionType={props.bastionType} />
+              <span className="seed-label">
+                {formatConstantLabel(props.seedType)} · {formatConstantLabel(props.bastionType)}
+              </span>
             </span>
-          )
-        ) : (
-          <span className="seed-chip">
-            <BastionIcon bastionType={props.bastionType} />
-            <span className="seed-label">
-              {formatConstantLabel(props.seedType)} · {formatConstantLabel(props.bastionType)}
+          )}
+          <span className="h2h-label">Head-to-Head (Season)</span>
+          <span className="h2h-value">
+            <span className="l">
+              {props.left.nickname} {props.h2hLeftWins}
+            </span>
+            <span className="sep"> — </span>
+            <span className="r">
+              {props.h2hRightWins} {props.right.nickname}
             </span>
           </span>
-        )}
-        <span className="h2h-label">Head-to-Head (Season)</span>
-        <span className="h2h-value">
-          <span className="l">
-            {props.left.nickname} {props.h2hLeftWins}
-          </span>
-          <span className="sep"> — </span>
-          <span className="r">
-            {props.h2hRightWins} {props.right.nickname}
-          </span>
-        </span>
-        {ctaFrame !== null && frame >= ctaFrame ? (
-          // The post-roll: the run is over, the achievements have been on screen for the whole
-          // match, and this is the one moment the band can ask for the next one.
-          <>
-            {/* The one fact that explains what was just watched without naming a winner: a time.
+          {ctaFrame !== null && frame >= ctaFrame ? (
+            // The post-roll: the run is over, the achievements have been on screen for the whole
+            // match, and this is the one moment the band can ask for the next one.
+            <>
+              {/* The one fact that explains what was just watched without naming a winner: a time.
                 An elo delta or a placement would sign the result, so neither goes here. A
                 forfeit has no completion time (runResultMs null) and gets no number at all —
                 ctaFrameOf already withholds the whole card in that case. */}
-            {props.runResultMs !== null && (
-              <div className="final-time">
-                <span className="label">Final Time</span>
-                <span className="final-value">{formatTime(props.runResultMs)}</span>
+              {props.runResultMs !== null && (
+                <div className="final-time">
+                  <span className="label">Final Time</span>
+                  <span className="final-value">{formatTime(props.runResultMs)}</span>
+                </div>
+              )}
+              <div className="cta">
+                <span className="cta-value">SUBSCRIBE</span>
+                <span className="cta-sub">for the next one</span>
               </div>
-            )}
-            <div className="cta">
+            </>
+          ) : mid !== null && frame >= mid[0] && frame < mid[1] ? (
+            // The mid-race line, where the viewers still are (config.midRollCtaAtSec): the same
+            // card as the post-roll's, for a few seconds, in the achievements' place.
+            <div className="cta midroll">
               <span className="cta-value">SUBSCRIBE</span>
               <span className="cta-sub">for the next one</span>
             </div>
-          </>
-        ) : mid !== null && frame >= mid[0] && frame < mid[1] ? (
-          // The mid-race line, where the viewers still are (config.midRollCtaAtSec): the same
-          // card as the post-roll's, for a few seconds, in the achievements' place.
-          <div className="cta midroll">
-            <span className="cta-value">SUBSCRIBE</span>
-            <span className="cta-sub">for the next one</span>
-          </div>
-        ) : teaser !== null && frame >= teaser[0] && frame < teaser[1] ? (
-          // The first-minute promise (config.teaserAtSec): a moment later in the race, at the
-          // time the RTA column beside it will read. Names nobody (src/pipeline/teaser.ts).
-          <div className="cta teaser">
-            <span className="cta-value">COMING UP</span>
-            <span className="teaser-at">AT {formatShortTime(props.teaser!.momentMs)}</span>
-            <span className="teaser-what">{props.teaser!.text}</span>
-          </div>
-        ) : move !== undefined ? (
-          // "Explain the moves" (config.explainMovesSec): what this split is for, in words for
-          // someone who has never watched a speedrun. Never who got there (src/pipeline/explainMoves.ts).
-          <div className="cta move">
-            <span className="cta-value">{move.head}</span>
-            <span className="move-line">{move.line}</span>
-          </div>
-        ) : (
-          <>
-            <span className="ach-label">Achievements</span>
-            <div className="ach-cols">
-              <AchievementRow player={props.left} side="left" />
-              <AchievementRow player={props.right} side="right" />
+          ) : teaser !== null && frame >= teaser[0] && frame < teaser[1] ? (
+            // The first-minute promise (config.teaserAtSec): a moment later in the race, at the
+            // time the RTA column beside it will read. Names nobody (src/pipeline/teaser.ts).
+            <div className="cta teaser">
+              <span className="cta-value">COMING UP</span>
+              <span className="teaser-at">AT {formatShortTime(props.teaser!.momentMs)}</span>
+              <span className="teaser-what">{props.teaser!.text}</span>
             </div>
-          </>
-        )}
+          ) : move !== undefined ? (
+            // "Explain the moves" (config.explainMovesSec): what this split is for, in words for
+            // someone who has never watched a speedrun. Never who got there (src/pipeline/explainMoves.ts).
+            <div className="cta move">
+              <span className="cta-value">{move.head}</span>
+              <span className="move-line">{move.line}</span>
+            </div>
+          ) : (
+            <>
+              <span className="ach-label">Achievements</span>
+              <div className="ach-cols">
+                <AchievementRow player={props.left} side="left" />
+                <AchievementRow player={props.right} side="right" />
+              </div>
+            </>
+          )}
+        </div>
       </div>
       <div className="splits-col col-splits">
-        <div className="splits-title">Match Splits</div>
-        <div className="split-table">
-          {props.splits.map((row) => (
-            <SplitRowView
-              key={row.label}
-              row={row}
-              frame={frame}
-              fps={fps}
-              timerStartFrame={props.timerStartFrame}
-              runEndFrame={runEndFrame}
-            />
-          ))}
+        <div className="band-plate">
+          <div className="splits-title">Match Splits</div>
+          <div className="split-table">
+            {props.splits.map((row) => (
+              <SplitRowView
+                key={row.label}
+                row={row}
+                frame={frame}
+                fps={fps}
+                timerStartFrame={props.timerStartFrame}
+                runEndFrame={runEndFrame}
+              />
+            ))}
+          </div>
         </div>
       </div>
       <div className="splits-col col-rta">
-        <span className="label">RTA</span>
-        <div className="live">
-          <span className="dot" />
-          <span className="value">{formatTime(elapsedMs)}</span>
+        <div className="band-plate">
+          <span className="label">RTA</span>
+          <div className="live">
+            <span className="dot" />
+            <span className="value">{formatTime(elapsedMs)}</span>
+          </div>
         </div>
       </div>
     </div>
