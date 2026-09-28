@@ -200,7 +200,9 @@ export function renderStats(
 
 /* --- 6. COMMENTS ------------------------------------------------------------------------------ */
 
-export function renderComments(comments: ReportFacts["comments"]): string {
+const SHOWN_COMMENTS = 8;
+
+export function renderComments(comments: ReportFacts["comments"], channelId: string): string {
   if (!comments.ok) return sectionError("COMMENTS", comments.error);
   const { unanswered, videoTitles } = comments.data;
   const lines = [b("COMMENTS")];
@@ -209,7 +211,7 @@ export function renderComments(comments: ReportFacts["comments"]): string {
     return lines.join("\n");
   }
   lines.push(`${unanswered.length} unanswered:`);
-  for (const c of unanswered.slice(0, 8)) {
+  for (const c of unanswered.slice(0, SHOWN_COMMENTS)) {
     const title = videoTitles[c.videoId] ?? c.videoId;
     const excerpt = c.text.replace(/\s+/g, " ").slice(0, 80);
     const studio = `https://studio.youtube.com/video/${c.videoId}/comments`;
@@ -219,39 +221,49 @@ export function renderComments(comments: ReportFacts["comments"]): string {
         `https://www.youtube.com/watch?v=${c.videoId}&lc=${c.threadId} · ${studio}`,
     );
   }
-  lines.push(`Inbox: https://studio.youtube.com/channel/${escapeHtml(CHANNEL_ID_PLACEHOLDER)}/comments/inbox`);
+  if (unanswered.length > SHOWN_COMMENTS) {
+    lines.push(`+ ${unanswered.length - SHOWN_COMMENTS} more — see the inbox link below`);
+  }
+  lines.push(`Inbox: https://studio.youtube.com/channel/${escapeHtml(channelId)}/comments/inbox`);
   return lines.join("\n");
 }
-/** Filled in by report.ts's caller (the channel id is config, not a fact worth threading through). */
-export const CHANNEL_ID_PLACEHOLDER = "__CHANNEL_ID__";
 
 /* --- 7. YPP ------------------------------------------------------------------------------------ */
 
-function gateLine(name: string, g: { have: number; need: number; eta: string | null; ceiling?: number }): string {
+const DAY_MS = 24 * 60 * 60 * 1000;
+/** Whole days from `nowMs` to an ISO instant, never negative — "in N days" for an ETA already past
+ *  reads as "in 0 days" rather than a negative count. */
+const daysUntil = (iso: string, nowMs: number): number => Math.max(0, Math.ceil((Date.parse(iso) - nowMs) / DAY_MS));
+
+function gateLine(
+  name: string,
+  g: { have: number; need: number; eta: string | null; ceiling?: number },
+  nowMs: number,
+): string {
   const pct = g.need > 0 ? Math.min(100, Math.round((g.have / g.need) * 100)) : 100;
   if (g.have >= g.need) return `${name}: ${fmtInt(g.have)}/${fmtInt(g.need)} — done`;
   if (g.ceiling !== undefined && g.ceiling < g.need) {
     return `${name}: ${fmtInt(g.have)}/${fmtInt(g.need)} (${pct}%) — unreachable at the current rate`;
   }
-  const eta = g.eta ? shortDate(g.eta) : "unknown";
+  const eta = g.eta ? `${shortDate(g.eta)} (~${daysUntil(g.eta, nowMs)} day${daysUntil(g.eta, nowMs) === 1 ? "" : "s"})` : "unknown";
   return `${name}: ${fmtInt(g.have)}/${fmtInt(g.need)} (${pct}%) — ETA ${eta}`;
 }
 
-export function renderYpp(ypp: ReportFacts["ypp"]): string {
+export function renderYpp(ypp: ReportFacts["ypp"], nowMs = Date.now()): string {
   if (!ypp.ok) return sectionError("YPP", ypp.error);
   const p = ypp.data;
   const lines = [
     b("YPP"),
     `<i>Rates: ${p.subscribers.ratePerDay.toFixed(2)} subs/d · ${p.watchHours.ratePerDay.toFixed(1)} h/d · ${fmtInt(p.shortsViews.ratePerDay)} engaged Shorts views/d</i>`,
     "<u>Expanded tier</u> (500 subs, 3 uploads/90d, 3,000 h or 3M Shorts views):",
-    gateLine("subs", p.subscribers),
-    gateLine("watch hours", p.watchHours),
-    gateLine("Shorts views", p.shortsViews),
+    gateLine("subs", p.subscribers, nowMs),
+    gateLine("watch hours", p.watchHours, nowMs),
+    gateLine("Shorts views", p.shortsViews, nowMs),
     `uploads (90d): ${p.tiers.expanded.uploads90d.have ?? "?"}/${p.tiers.expanded.uploads90d.need}`,
     "<u>Full tier</u>:",
-    gateLine("subs", p.tiers.full.subscribers),
-    gateLine("watch hours", p.tiers.full.watchHours),
-    gateLine("Shorts views", p.tiers.full.shortsViews),
+    gateLine("subs", p.tiers.full.subscribers, nowMs),
+    gateLine("watch hours", p.tiers.full.watchHours, nowMs),
+    gateLine("Shorts views", p.tiers.full.shortsViews, nowMs),
   ];
   return lines.join("\n");
 }
@@ -333,7 +345,7 @@ export function renderMorningReport(
     renderHealth(facts.health),
     renderOvernight(facts.overnight),
     renderStats(facts.stats, prevSnapshot),
-    renderComments(facts.comments).replace(CHANNEL_ID_PLACEHOLDER, channelId),
+    renderComments(facts.comments, channelId),
     renderYpp(facts.ypp),
   ];
   return assembleReport(sections);

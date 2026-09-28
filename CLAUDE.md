@@ -553,6 +553,12 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
   ignored silently. **Only one poller**: a test server (`PORT` other than 8080 — the "a test
   server arms its own nightly" pitfall applies here too) never starts it; a 409 from `getUpdates`
   means another process is polling and this one backs off rather than fight it.
+- **A narrow command gathers only its own section.** `gatherFacts(nowMs, sinceMs, only)`
+  (`facts.ts`) takes which sections to compute; `/report`, `/todo` and `/ask` want the full
+  picture (agy's prompt is richer for it) and pass none, but `/stats`, `/comments`, `/ypp`,
+  `/waiting` and `/health` each pass their one section, so they skip the other five API round
+  trips — including the live agy ping `gatherHealth` makes, which only `/health` and `/alerts`
+  (it folds a down API into its own lines) still pay for.
 - **agy is the brain, code is the facts.** `facts.ts` gathers everything deterministically —
   every number, list and link in a report — and only the TODAY section's headline and ordered
   to-do list come from agy (`agy.ts`, the same `reasonerCommand` adapter as the Short picker,

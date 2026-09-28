@@ -107,7 +107,16 @@ async function readStdin(timeoutMs) {
   });
 }
 
+/** `--dry-run` / `TG_FORWARD_DRY_RUN=1`: print what would be sent instead of calling the API — the
+ *  only way to exercise this script's real send path without either a live token or a copy edited
+ *  outside the repo (bot.ts's `sendMessage` and tgCli.ts already offer the same seam). */
+const DRY_RUN = process.argv.includes("--dry-run") || process.env.TG_FORWARD_DRY_RUN === "1";
+
 async function sendMessage(token, chatId, text) {
+  if (DRY_RUN) {
+    console.log(text);
+    return;
+  }
   const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: "POST",
     headers: { "content-type": "application/json" },

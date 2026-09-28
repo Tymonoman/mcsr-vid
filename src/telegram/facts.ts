@@ -41,6 +41,11 @@ async function section<T>(fn: () => Promise<T>): Promise<Section<T>> {
   }
 }
 
+/** A section nobody asked `gatherFacts` for — the command that dispatched doesn't read it. */
+function notRequested<T>(): Section<T> {
+  return { ok: false, error: "not requested" };
+}
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** `<left> vs <right>`, from a `matchStatusFor` entry — the one place this string is built. */
@@ -432,22 +437,41 @@ export interface ReportFacts {
   dashboardBaseUrl: string;
 }
 
+/** Which of `ReportFacts`' sections `gatherFacts` actually computes — a narrow slash command
+ *  (`/stats`, `/comments`, `/ypp`, `/waiting`, `/health`, `/alerts`) asks for only its own, so it
+ *  pays for only its own API calls and skips the live agy ping `gatherHealth` makes. */
+export type FactSection = "todo" | "alerts" | "health" | "overnight" | "stats" | "comments" | "ypp";
+const ALL_SECTIONS: readonly FactSection[] = ["todo", "alerts", "health", "overnight", "stats", "comments", "ypp"];
+
 /**
  * `sinceMs` is when the last report went out (or 24 h ago, the default) — what "overnight" and
- * "since the previous report" mean throughout.
+ * "since the previous report" mean throughout. `only` narrows which sections are actually
+ * gathered (default: all, for `/report`/`/todo`/`/ask`, which want the full picture); a section
+ * left out comes back `{ ok: false, error: "not requested" }` rather than being computed.
+ * `alerts` needs the health checks itself (a down API is one of its lines), so asking for
+ * `alerts` alone still runs `gatherHealth`.
  */
-export async function gatherFacts(nowMs = Date.now(), sinceMs = nowMs - DAY_MS): Promise<ReportFacts> {
-  const health = await gatherHealth();
+export async function gatherFacts(
+  nowMs = Date.now(),
+  sinceMs = nowMs - DAY_MS,
+  only: readonly FactSection[] = ALL_SECTIONS,
+): Promise<ReportFacts> {
+  const want = new Set(only);
+  const health = want.has("health") || want.has("alerts") ? await gatherHealth() : [];
   const [todo, alerts, overnight, stats, comments, ypp] = await Promise.all([
-    section(() => gatherTodo(nowMs)),
-    section(() => gatherAlerts(nowMs, health)),
-    section(() => gatherOvernight(sinceMs, nowMs)),
-    section(() => gatherStats()),
-    section(() => gatherComments()),
-    section(async () => {
-      const snapshot = await fetchYppSnapshot(nowMs);
-      return projectYpp(snapshot, nowMs);
-    }),
+    want.has("todo") ? section(() => gatherTodo(nowMs)) : Promise.resolve(notRequested<TodoFacts>()),
+    want.has("alerts") ? section(() => gatherAlerts(nowMs, health)) : Promise.resolve(notRequested<AlertItem[]>()),
+    want.has("overnight")
+      ? section(() => gatherOvernight(sinceMs, nowMs))
+      : Promise.resolve(notRequested<OvernightFacts>()),
+    want.has("stats") ? section(() => gatherStats()) : Promise.resolve(notRequested<StatsFacts>()),
+    want.has("comments") ? section(() => gatherComments()) : Promise.resolve(notRequested<CommentsFacts>()),
+    want.has("ypp")
+      ? section(async () => {
+          const snapshot = await fetchYppSnapshot(nowMs);
+          return projectYpp(snapshot, nowMs);
+        })
+      : Promise.resolve(notRequested<YppProgress>()),
   ]);
   return { nowMs, todo, alerts, health, overnight, stats, comments, ypp, dashboardBaseUrl: dashboardMatchUrl() };
 }

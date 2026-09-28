@@ -2,16 +2,11 @@
 // capped at 4096 characters.
 // Run: npx tsx src/telegram/report.test.ts
 import assert from "node:assert/strict";
-import {
-  assembleReport,
-  renderAlerts,
-  renderComments,
-  renderHealth,
-  renderToday,
-  CHANNEL_ID_PLACEHOLDER,
-} from "./report.js";
+import { assembleReport, renderAlerts, renderComments, renderHealth, renderToday, renderYpp } from "./report.js";
 import { MESSAGE_MAX_CHARS } from "./bot.js";
 import type { ReportFacts } from "./facts.js";
+import type { UnansweredComment } from "./comments.js";
+import type { YppProgress } from "../youtube/yppProgress.js";
 
 // --- HTML escaping: a malicious/odd string in any dynamic field must never reach the message
 // unescaped — Telegram's HTML parse_mode would otherwise choke on it or, worse, let it act as
@@ -54,12 +49,59 @@ import type { ReportFacts } from "./facts.js";
       videoTitles: { v1: "match & mayhem" },
     },
   };
-  const out = renderComments(comments).replace(CHANNEL_ID_PLACEHOLDER, "UCxyz");
+  const out = renderComments(comments, "UCxyz");
   assert.ok(!out.includes("<i>hacker</i>"), out);
   assert.ok(!out.includes("<a href=evil>"), out);
   assert.ok(out.includes("&lt;i&gt;hacker&lt;/i&gt;"), out);
   assert.ok(out.includes("match &amp; mayhem"), out);
   assert.ok(out.includes("UCxyz"), out);
+}
+
+// The channel id is a plain parameter now, not a post-hoc string replace — a comment whose text
+// happens to contain something that looks like a placeholder must never corrupt the inbox link.
+{
+  const comments: ReportFacts["comments"] = {
+    ok: true,
+    data: {
+      unanswered: [
+        {
+          threadId: "t1",
+          videoId: "v1",
+          author: "someone",
+          authorIsChannel: false,
+          text: "__CHANNEL_ID__ lol",
+          publishedAt: "2026-09-28T00:00:00Z",
+          totalReplyCount: 0,
+          replyAuthorsAreChannel: [],
+          repliesTruncated: false,
+        },
+      ],
+      videoTitles: {},
+    },
+  };
+  const out = renderComments(comments, "UCreal");
+  assert.ok(out.includes("Inbox: https://studio.youtube.com/channel/UCreal/comments/inbox"), out);
+  assert.ok(out.includes("__CHANNEL_ID__ lol"), out); // the comment text is untouched
+}
+
+// More than 8 unanswered: the shown 8 plus a "+N more" line — nothing left silently invisible.
+{
+  const unanswered: UnansweredComment[] = Array.from({ length: 14 }, (_, i) => ({
+    threadId: `t${i}`,
+    videoId: "v1",
+    author: `person${i}`,
+    authorIsChannel: false,
+    text: "hi",
+    publishedAt: "2026-09-28T00:00:00Z",
+    totalReplyCount: 0,
+    replyAuthorsAreChannel: [],
+    repliesTruncated: false,
+  }));
+  const comments: ReportFacts["comments"] = { ok: true, data: { unanswered, videoTitles: {} } };
+  const out = renderComments(comments, "UCxyz");
+  assert.ok(out.includes("14 unanswered:"), out);
+  assert.ok(out.includes("+ 6 more — see the inbox link below"), out);
+  assert.equal((out.match(/person\d+/g) ?? []).length, 8); // exactly the shown 8, not all 14
 }
 
 // A to-do item and a note from agy are escaped the same way.
@@ -76,6 +118,51 @@ import type { ReportFacts } from "./facts.js";
   assert.ok(out.includes("y &amp; z"), out);
   assert.ok(out.includes("watch &lt;this&gt;"), out);
   assert.ok(out.includes("boom"), out); // the facts error still shows
+}
+
+// --- YPP: "an estimated countdown in days", not just an absolute ETA date. ---
+{
+  const gate = (have: number, need: number, eta: string | null) => ({ have, need, ratePerDay: 1, eta });
+  const nowMs = Date.UTC(2026, 8, 28); // 28 Sept 2026
+  const ypp: YppProgress = {
+    fetchedAt: new Date(nowMs).toISOString(),
+    shortsRawViews90d: 0,
+    subscribers: gate(120, 500, "2026-11-12T00:00:00.000Z"), // 45 days out
+    watchHours: gate(1198, 3000, "2026-11-12T00:00:00.000Z"),
+    shortsViews: gate(0, 3_000_000, null),
+    tiers: {
+      expanded: {
+        subscribers: gate(120, 500, "2026-11-12T00:00:00.000Z"),
+        watchHours: gate(1198, 3000, "2026-11-12T00:00:00.000Z"),
+        shortsViews: gate(0, 3_000_000, null),
+        uploads90d: { have: 5, need: 3 },
+      },
+      full: {
+        subscribers: gate(120, 1000, null),
+        watchHours: gate(1198, 4000, null),
+        shortsViews: gate(0, 10_000_000, null),
+      },
+    },
+  };
+  const out = renderYpp({ ok: true, data: ypp }, nowMs);
+  assert.ok(out.includes("ETA 2026-11-12 (~45 days)"), out);
+}
+
+// A gate whose ETA already passed: "~0 days", never a negative count.
+{
+  const gate = (have: number, need: number, eta: string | null) => ({ have, need, ratePerDay: 1, eta });
+  const nowMs = Date.UTC(2026, 8, 28, 12);
+  const pastEta = new Date(Date.UTC(2026, 8, 27)).toISOString();
+  const tier = { subscribers: gate(200, 500, pastEta), watchHours: gate(1, 3000, null), shortsViews: gate(0, 3_000_000, null) };
+  const ypp: YppProgress = {
+    fetchedAt: new Date(nowMs).toISOString(),
+    shortsRawViews90d: 0,
+    ...tier,
+    tiers: { expanded: { ...tier, uploads90d: { have: 3, need: 3 } }, full: tier },
+  };
+  const out = renderYpp({ ok: true, data: ypp }, nowMs);
+  assert.ok(out.includes("~0 days"), out);
+  assert.ok(!out.includes("~-1"), out);
 }
 
 // --- The 4096 cap ---

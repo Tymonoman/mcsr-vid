@@ -638,7 +638,7 @@ export async function channelCommentThreads(
         topLevelComment: {
           snippet: {
             authorDisplayName: string;
-            textDisplay: string;
+            textOriginal: string;
             publishedAt: string;
             authorChannelId?: { value?: string };
           };
@@ -657,7 +657,9 @@ export async function channelCommentThreads(
       videoId: t.snippet.videoId,
       author: top.authorDisplayName,
       authorIsChannel: top.authorChannelId?.value === channelId,
-      text: top.textDisplay,
+      // textOriginal is the plain-text field, not textDisplay's already-HTML one — the Telegram
+      // report HTML-escapes this text itself (report.ts), which would double-escape textDisplay.
+      text: top.textOriginal,
       publishedAt: top.publishedAt,
       totalReplyCount: t.snippet.totalReplyCount,
       replyAuthorsAreChannel: (t.replies?.comments ?? []).map(

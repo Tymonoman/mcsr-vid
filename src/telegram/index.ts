@@ -19,7 +19,7 @@ import {
   type ParsedCommand,
 } from "./commands.js";
 import { gatherFacts, gatherNightlyInfo, gatherUpcoming, type ReportFacts } from "./facts.js";
-import { fallbackToday, renderAlerts, renderComments, renderHealth, renderMorningReport, renderNightly, renderOvernight, renderStats, renderToday, renderUpcoming, renderWaiting, renderYpp, CHANNEL_ID_PLACEHOLDER } from "./report.js";
+import { fallbackToday, renderAlerts, renderComments, renderHealth, renderMorningReport, renderNightly, renderOvernight, renderStats, renderToday, renderUpcoming, renderWaiting, renderYpp } from "./report.js";
 import { msUntilNextWarsawRun, shouldCatchUp, warsawDateStr } from "./schedule.js";
 import { readTelegramState, updateTelegramState } from "./state.js";
 
@@ -110,34 +110,34 @@ export async function dispatchCommand({ command, args }: ParsedCommand): Promise
       return { text: renderToday(facts.todo, agy, facts.dashboardBaseUrl), html: true };
     }
     case "alerts": {
-      const facts = await gatherFacts();
+      const facts = await gatherFacts(Date.now(), undefined, ["alerts"]);
       return { text: renderAlerts(facts.alerts), html: true };
     }
     case "health": {
-      const facts = await gatherFacts();
+      const facts = await gatherFacts(Date.now(), undefined, ["health"]);
       return { text: renderHealth(facts.health), html: true };
     }
     case "overnight":
     case "uploads": {
-      const facts = await gatherFacts();
+      const facts = await gatherFacts(Date.now(), undefined, ["overnight"]);
       const upcoming = await gatherUpcoming(Date.now(), 7);
       return { text: `${renderOvernight(facts.overnight)}\n\n${renderUpcoming(upcoming, 7)}`, html: true };
     }
     case "stats": {
-      const facts = await gatherFacts();
+      const facts = await gatherFacts(Date.now(), undefined, ["stats"]);
       const state = readTelegramState();
       return { text: renderStats(facts.stats, state.prevSnapshot, parseStatsWindows(args)), html: true };
     }
     case "comments": {
-      const facts = await gatherFacts();
-      return { text: renderComments(facts.comments).replace(CHANNEL_ID_PLACEHOLDER, config.youtubeChannelId), html: true };
+      const facts = await gatherFacts(Date.now(), undefined, ["comments"]);
+      return { text: renderComments(facts.comments, config.youtubeChannelId), html: true };
     }
     case "ypp": {
-      const facts = await gatherFacts();
+      const facts = await gatherFacts(Date.now(), undefined, ["ypp"]);
       return { text: renderYpp(facts.ypp), html: true };
     }
     case "waiting": {
-      const facts = await gatherFacts();
+      const facts = await gatherFacts(Date.now(), undefined, ["todo"]);
       return { text: renderWaiting(facts.todo, facts.dashboardBaseUrl), html: true };
     }
     case "nightly": {
