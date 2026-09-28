@@ -10,6 +10,7 @@ const splits: SplitRow[] = [
   { label: "Bastion", leftMs: 156000, rightMs: 138000 }, // 138s
   { label: "Fortress", leftMs: null, rightMs: 271000 }, // DNF for left, right still counts
   { label: "Blind", leftMs: null, rightMs: null }, // neither reached it — dropped entirely
+  { label: "Stronghold Enter", leftMs: 400000, rightMs: 398000 }, // 398s
   { label: "End Enter", leftMs: 441000, rightMs: 440000 }, // 440s
 ];
 
@@ -19,12 +20,13 @@ assert.equal(chapters[0].label, "Start");
 assert.equal(chapters[0].timeSec, 0, "first chapter must be at 0:00 per YouTube's requirement");
 assert.equal(
   chapters.map((c) => c.label).join(","),
-  "Start,Nether Enter,Bastion,Fortress,End Enter,Result",
-  "Blind must be dropped (both players null) and the rest kept in order",
+  "Start,Nether Enter,Bastion,Fortress,Stronghold Enter,End Enter,Result",
+  "Blind must be dropped (both players null) and the rest kept in order, Stronghold Enter included",
 );
 assert.equal(chapters[1].timeSec, 20 + 107, "uses the first (min) arrival, plus the lead-in offset");
 assert.equal(chapters[3].timeSec, 20 + 271, "a lone non-null side still produces a chapter");
-assert.equal(chapters[5].timeSec, 20 + 518.512, "Result chapter comes from match.result.time");
+assert.equal(chapters[4].timeSec, 20 + 398, "Stronghold Enter chapter uses the first arrival");
+assert.equal(chapters[6].timeSec, 20 + 518.512, "Result chapter comes from match.result.time");
 
 const text = formatChapters(chapters);
 assert.equal(text.split("\n")[0], "0:00 Start");
