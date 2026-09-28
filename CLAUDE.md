@@ -37,13 +37,14 @@ what an agent cannot derive from the code; the rest is in the files it names.
 | `src/playoffs/` | The bracket and its games (`playoffs.ts`), a series as one video (`series.ts`, `seriesCli.ts`). |
 | `src/youtube/` | The Data API client and auth, upload records, the upload itself, the channel pairing, the publish slot. |
 | `src/dashboard/` | The web server (`server.ts`, one dispatch chain), its route groups (`youtubeRoutes`, `exportRoutes`, `shortsRoutes`, `syncRoutes`), the match screen's payload (`matchMeta.ts`), jobs, the nightly, suggestions, the shelf (hidden/queue/checklist), the publish set. |
+| `src/telegram/` | The Telegram bot: the Bot API client (`bot.ts`), the morning report's facts (`facts.ts`) and its rendering (`report.ts`), agy as the report's brain (`agy.ts`), the 07:00 Warsaw schedule (`schedule.ts`), slash-command parsing (`commands.ts`), the dedupe/snapshot state file (`state.ts`), the wiring `server.ts` boots (`index.ts`) and the CLI (`tgCli.ts`). |
 | `src/cli/` | Entry points nothing else imports: batch, status, score, chat, bench, retention, the TUI. |
 | `src/` root | `config.ts`, `cliArgs.ts`, `errorText.ts`, and the tests that cut across folders. |
 
 Tests sit beside what they test (`foo.test.ts` next to `foo.ts`); fixtures are `src/fixtures/`.
 `remotion/` is the compositions; `public/` the dashboard's browser files; `scripts/` the
-browser checks and the small build/preflight helpers; `docs/` the GitHub Pages site (not repo
-docs — see the root `README.md`).
+browser checks, the small build/preflight helpers, and the Stop hook's Telegram forwarder
+(`tg-forward.mjs`); `docs/` the GitHub Pages site (not repo docs — see the root `README.md`).
 
 ## Commands
 
@@ -61,6 +62,7 @@ Use the script, don't reconstruct the shell line. Extra arguments go after `--`.
 | `npm run series -- <matchId \| all> [--join-only]` | A playoff series as one video (`src/playoffs/series.ts`): renders every game of the slot that has no export, joins them into game 1's `series-<g1>.mp4`, rewrites game 1's title/description/chapters/tags for the series; the series' Short is picked and cut like any match's, from game 1's directory, once the hooks are saved. `all` walks the board in date order; `--join-only` joins what is exported. The dashboard's nightly cannot see a run here: start one in the daytime. |
 | `npm run sync-status -- [matchId]` | Where a match's POV clips are placed. With an id and no `sync.json`, derives it from the `.kdenlive` and writes it, so a re-export picks the corrected offsets up without a re-render. No id lists every match and writes nothing. |
 | `npm run chat -- <matchId>` | Fetch both players' Twitch chat to `chat-<nick>.json` for a match the pipeline saved none for (it does this itself after `download-vods`). Existing files are kept; delete one to refetch. |
+| `npm run tg -- report --dry-run` | The morning report's exact text, printed, nothing sent — needs no Telegram key. `cmd "/stats 7d" --dry-run` answers one slash command the same way; `send <text>` / `send --file <path>` sends to the operator's chat; `whoami` prints the chat ids that recently messaged the bot (`getUpdates`), for pairing `TELEGRAM_CHAT_ID`. See Telegram bot. |
 | `npm run pick -- <matchId \| all> [--force] [--dry-run]` | Ask the model for the Short's moment (see Shorts): prints the prompt size, the model's raw answer, any validation failure and the pick. Without `--force` a pick newer than the export is kept. `--dry-run` asks afresh and writes nothing into the match directory; it refuses (exit 1) rather than make the proxy or a /watch cache, saying why the one on disk does not count (none, older than its source, other arguments — a checkout without `/app/.env` adds `--no-whisper` — or a run that kept none); only a missing one is a reason for a real run. |
 | `npm run bench -- <Composition> [--frames=N] [--codec=] [--pixelFormat=] [--concurrency=N]` | Render throughput for one composition. Measure before claiming a render change is faster. |
 | `scripts/seed-icons/icons.sh [TYPE…]` | Re-render the thumbnail's seed-type icons from their specs (~6 s each; needs the 1.16.1 client jar, fetched from Mojang once). One spec: `scripts/seed-icons/render.sh <spec.json> <out.png>`. |
@@ -534,6 +536,86 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   pages Google checks). `deploy/mcsr-claude.service` is the lab's systemd user unit for the
   Claude container. Only `~/.claude` is a persisted volume in that container: save loose ends
   inside the repo.
+
+## Telegram bot
+
+One morning report at `telegramReportHourWarsaw` (Settings has no field for it — a config-file
+edit, like `nightlyUpload`), Europe/Warsaw, DST-correct; every slash command answers fresh, on
+demand. Built 28 Sept 2026 (the operator's ask: "I want AGY to be the brain of it"). Runs inside
+the dashboard process (`server.ts` calls `startTelegramBot()`), over the Bot API's `fetch` calls
+directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, no webhook, no port.
+
+- **Secrets are `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in `/app/.env`**, loaded the way
+  `src/shorts/reasoner.ts` and `src/api/twitch.ts` do. No token: one log line, nothing runs. A
+  token with no chat id: any `/start` gets "your chat id is N — add TELEGRAM_CHAT_ID=N to
+  /app/.env and restart the dashboard" and nothing else — the pairing step (`npm run tg --
+  whoami` does the same lookup from the terminal). With both, every update from any other chat is
+  ignored silently. **Only one poller**: a test server (`PORT` other than 8080 — the "a test
+  server arms its own nightly" pitfall applies here too) never starts it; a 409 from `getUpdates`
+  means another process is polling and this one backs off rather than fight it.
+- **agy is the brain, code is the facts.** `facts.ts` gathers everything deterministically —
+  every number, list and link in a report — and only the TODAY section's headline and ordered
+  to-do list come from agy (`agy.ts`, the same `reasonerCommand` adapter as the Short picker,
+  `src/shorts/reasoner.ts`). The prompt tells agy every number must be copied from FACTS, never
+  invented, and that this is for the operator's eyes only; **no viewer comment text or author
+  name is ever put in an agy prompt** (`/ask` included) — only counts, video titles and ids.
+  Not configured, a failure, a timeout (120 s) or an unusable answer falls back to a rule-based
+  to-do list (`fallbackToday`) and the report says "agy unavailable: <reason>" in one line — never
+  a stall, and no retry (unlike the Short picker's one retry on an empty answer: this is a report,
+  not a render, and a second ask would only double the wait on the operator's own subscription).
+- **The report is one HTML message, capped at 4096 characters**, sections in the spec's order
+  (TODAY → ALERTS → HEALTH → OVERNIGHT → STATS → COMMENTS → YPP); a report too long to fit stops
+  at the first section that would not, keeping the earlier (higher-priority) ones whole, and says
+  so — the rest is a command away. Every dynamic string is HTML-escaped (`escapeHtml`); the
+  hook's forwarder and `/help` send plain text instead, needing none of that.
+- **Dashboard links are match ids, not deep links.** `public/app.js` has no hash route, no
+  `location.search` read at boot and no other way to open a specific match from a URL — the SPA's
+  only navigation is its own client-side state. Every "dashboard link" in a report is therefore
+  the dashboard's base URL (`dashboardBaseUrl`, default `http://actimel:8080`, the lab's own
+  address — CLAUDE.md's Clipboard API pitfall) with the match id named in the text beside it, not
+  a link that opens on that match. Wiring a real deep link is a `public/app.js` change, outside
+  this feature.
+- **Dedupe is `<mediaDir>/.telegram.json`**, written atomically (write-then-rename, as
+  `.dashboard.json` and `short-<id>.status.json` are): the Warsaw date the report last went out
+  on, its instant (what "overnight" and "since the previous report" mean throughout), the
+  previous live channel snapshot (subs/views/videos, for `/stats`'s "+N since last time"), and
+  Telegram's own update cursor. A restart that missed 07:00 still sends the report if it is
+  before 10:00 Warsaw and today's date is not already recorded — `shouldCatchUp` in
+  `schedule.ts`. A test server never runs the scheduler at all, so it cannot race the real one's
+  write.
+- **`/stats` reuses `src/youtube/yppProgress.ts`'s Analytics call shape**, not a second
+  implementation: one `dimensions: "day"` request over ~62 days
+  (`views,engagedViews,estimatedMinutesWatched,subscribersGained,subscribersLost,likes,comments`),
+  aggregated in code into the four windows (`windowStats.ts`) against the equal-length window
+  immediately before each — never a 30-day window compared to a mostly-empty 30 days before launch
+  without saying so (`currentDays`/`previousDays` note a short window). Says which day the data
+  ends on; Analytics lags 1–3 days.
+- **`/comments` is `commentThreads.list allThreadsRelatedToChannelId=<channel>`**
+  (`channelCommentThreads`, `src/youtube/youtube.ts`; own-channel read only, 1 unit), not the
+  per-video `commentThreads` the publish kit's pinned-comment check uses. Unanswered = not the
+  channel's own top-level comment and no *returned* reply is the channel's either;
+  `repliesTruncated` flags a thread whose `totalReplyCount` exceeds what the API returned and
+  none of those were the channel's — genuinely uncertain, not counted as answered on a guess. Up
+  to 8 shown, newest first, each with the exact-comment link (`&lc=<id>`) and the video's Studio
+  comments page; the inbox link covers the rest.
+- **`/health` pings agy for real** (a live `runReasoner` call, ~20 s timeout, not just the last
+  pick's outcome) — the same headless-mode quirks the Short picker documents (reaching for a
+  shell command Antigravity's sandbox denies) show up here too, and the report's fallback line is
+  what that looks like from the operator's phone. DNS timing flags `api.mcsrranked.com` over 1 s
+  (the Tailscale DNS incident of 27 Sept 2026).
+- **Forwarding this chat's reports** (the operator's ask: "should also be forwarded there for
+  safekeeping"): a `Stop` hook (`.claude/settings.json`, alongside the two existing hooks) runs
+  `scripts/tg-forward.mjs` — plain Node, no `tsx`, so it stays fast on every turn. Reads the
+  hook's `transcript_path` (the one documented field this relies on; every other field is read
+  defensively), takes the text of the LAST assistant message of the turn (every `type: "text"`
+  content block on the transcript's last `type: "assistant"` line, joined), and sends it — plain
+  text, no HTML escaping needed — headed "Claude · <Warsaw time>" when it is at least 300
+  characters; a short reply is not a report and is left alone. 10 s total timeout, always exits
+  0, silent whenever the keys are missing (the same silence as nothing configured at all), never
+  prints the token.
+- **What is not built**: `youtubeUploadEnabled`-gated actions, renders, queue edits — every
+  command is read-only, and `/help` says so. No command writes anything the dashboard would show
+  as changed.
 
 ## Chat replay (prototype)
 
