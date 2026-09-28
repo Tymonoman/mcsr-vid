@@ -29,7 +29,13 @@ import { pickErrorFile } from "../shorts/videoPick.js";
 import { playoffBoard } from "../playoffs/playoffs.js";
 import { reasonerConfigured, runReasoner } from "../shorts/reasoner.js";
 import { filterUnanswered, type UnansweredComment } from "./comments.js";
-import { aggregateWindows, latestDate, type DayRow, type WindowDays, type WindowTotals } from "./windowStats.js";
+import {
+  aggregateWindows,
+  latestDate,
+  type DayRow,
+  type WindowDays,
+  type WindowTotals,
+} from "./windowStats.js";
 
 type Section<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -125,7 +131,11 @@ async function gatherTodo(nowMs: number): Promise<TodoFacts> {
   const diskMatchesLeft = cap.working?.matchesLeft ?? null;
 
   const board = await playoffBoard(nowMs / 1000);
-  const soon = board.slots[0];
+  // The board stays up while a finished round's games may still be found; only a slot still to be
+  // played in the next 14 days is news for the day.
+  const soon = board.slots.find(
+    (s) => s.startTime !== null && s.startTime * 1000 >= nowMs && s.startTime * 1000 <= nowMs + 14 * DAY_MS,
+  );
   const playoffsSoon = soon ? { round: soon.round, startTime: soon.startTime, bestOf: soon.bestOf } : null;
 
   return {
@@ -152,7 +162,11 @@ async function gatherAlerts(nowMs: number, health: HealthCheck[]): Promise<Alert
   const since = nowMs - DAY_MS;
 
   const last = readNightlyState();
-  if (last && (last.outcome === "failed" || last.outcome === "aborted") && Date.parse(last.startedAt) >= since) {
+  if (
+    last &&
+    (last.outcome === "failed" || last.outcome === "aborted") &&
+    Date.parse(last.startedAt) >= since
+  ) {
     out.push({
       source: "nightly",
       message: `#${last.matchId ?? "?"} ${last.players.join(" vs ")} — ${last.outcome}${last.reason ? `: ${last.reason}` : ""}`,
@@ -203,7 +217,9 @@ export interface HealthCheck {
   detail?: string;
 }
 
-async function timed<T>(fn: () => Promise<T>): Promise<{ ok: true; ms: number; value: T } | { ok: false; ms: number; error: string }> {
+async function timed<T>(
+  fn: () => Promise<T>,
+): Promise<{ ok: true; ms: number; value: T } | { ok: false; ms: number; error: string }> {
   const start = Date.now();
   try {
     const value = await fn();
@@ -215,13 +231,17 @@ async function timed<T>(fn: () => Promise<T>): Promise<{ ok: true; ms: number; v
 
 async function pingMcsr(): Promise<HealthCheck> {
   const r = await timed(() => getRecentMatches({ count: 1 }));
-  return r.ok ? { name: "MCSR Ranked API", ok: true, ms: r.ms } : { name: "MCSR Ranked API", ok: false, ms: r.ms, detail: r.error };
+  return r.ok
+    ? { name: "MCSR Ranked API", ok: true, ms: r.ms }
+    : { name: "MCSR Ranked API", ok: false, ms: r.ms, detail: r.error };
 }
 
 async function pingTwitch(): Promise<HealthCheck> {
   if (!twitchConfigured()) return { name: "Twitch", ok: false, detail: "TWITCH_CLIENT_ID/SECRET not set" };
   const r = await timed(() => getBroadcasterIds(["twitch"]));
-  return r.ok ? { name: "Twitch", ok: true, ms: r.ms } : { name: "Twitch", ok: false, ms: r.ms, detail: r.error };
+  return r.ok
+    ? { name: "Twitch", ok: true, ms: r.ms }
+    : { name: "Twitch", ok: false, ms: r.ms, detail: r.error };
 }
 
 async function pingYoutubeData(): Promise<HealthCheck> {
@@ -260,7 +280,12 @@ async function pingGroq(): Promise<HealthCheck | null> {
 async function pingDns(): Promise<HealthCheck> {
   const r = await timed(() => lookup("api.mcsrranked.com"));
   if (!r.ok) return { name: "DNS (api.mcsrranked.com)", ok: false, ms: r.ms, detail: r.error };
-  return { name: "DNS (api.mcsrranked.com)", ok: r.ms <= 1000, ms: r.ms, detail: r.ms > 1000 ? "over 1 s" : undefined };
+  return {
+    name: "DNS (api.mcsrranked.com)",
+    ok: r.ms <= 1000,
+    ms: r.ms,
+    detail: r.ms > 1000 ? "over 1 s" : undefined,
+  };
 }
 
 async function diskHealth(): Promise<HealthCheck> {
@@ -276,7 +301,15 @@ async function diskHealth(): Promise<HealthCheck> {
 }
 
 async function gatherHealth(): Promise<HealthCheck[]> {
-  const checks = await Promise.all([pingMcsr(), pingTwitch(), pingYoutubeData(), pingAgy(), pingGroq(), pingDns(), diskHealth()]);
+  const checks = await Promise.all([
+    pingMcsr(),
+    pingTwitch(),
+    pingYoutubeData(),
+    pingAgy(),
+    pingGroq(),
+    pingDns(),
+    diskHealth(),
+  ]);
   return checks.filter((c): c is HealthCheck => c !== null);
 }
 
@@ -314,7 +347,9 @@ async function gatherOvernight(sinceMs: number, nowMs: number): Promise<Overnigh
       const record = await readUpload(matchId, kind);
       if (!record) continue;
       if (Date.parse(record.uploadedAt) >= sinceMs) {
-        players ??= await matchStatusFor(matchId).then(playersOf).catch(() => `#${matchId}`);
+        players ??= await matchStatusFor(matchId)
+          .then(playersOf)
+          .catch(() => `#${matchId}`);
         uploaded.push({
           matchId,
           kind,
@@ -329,7 +364,9 @@ async function gatherOvernight(sinceMs: number, nowMs: number): Promise<Overnigh
       if (record.publishAt) {
         const at = Date.parse(record.publishAt);
         if (at >= sinceMs && at <= nowMs) {
-          players ??= await matchStatusFor(matchId).then(playersOf).catch(() => `#${matchId}`);
+          players ??= await matchStatusFor(matchId)
+            .then(playersOf)
+            .catch(() => `#${matchId}`);
           nowPublic.push({ matchId, kind, players, videoId: record.videoId, publishAt: record.publishAt });
         }
       }
@@ -375,7 +412,10 @@ async function analyticsDayRows(token: string, days: number): Promise<DayRow[]> 
     dimensions: "day",
     metrics: ANALYTICS_METRICS.join(","),
   })}`;
-  const res = await fetch(url, { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(15_000) });
+  const res = await fetch(url, {
+    headers: { authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(15_000),
+  });
   const body = (await res.json()) as { rows?: (string | number)[][]; error?: { message: string } };
   if (!res.ok || body.error) throw new Error(`Analytics: ${body.error?.message ?? res.status}`);
   return (body.rows ?? []).map((r) => {
@@ -441,7 +481,15 @@ export interface ReportFacts {
  *  (`/stats`, `/comments`, `/ypp`, `/waiting`, `/health`, `/alerts`) asks for only its own, so it
  *  pays for only its own API calls and skips the live agy ping `gatherHealth` makes. */
 export type FactSection = "todo" | "alerts" | "health" | "overnight" | "stats" | "comments" | "ypp";
-const ALL_SECTIONS: readonly FactSection[] = ["todo", "alerts", "health", "overnight", "stats", "comments", "ypp"];
+const ALL_SECTIONS: readonly FactSection[] = [
+  "todo",
+  "alerts",
+  "health",
+  "overnight",
+  "stats",
+  "comments",
+  "ypp",
+];
 
 /**
  * `sinceMs` is when the last report went out (or 24 h ago, the default) — what "overnight" and
@@ -460,7 +508,9 @@ export async function gatherFacts(
   const health = want.has("health") || want.has("alerts") ? await gatherHealth() : [];
   const [todo, alerts, overnight, stats, comments, ypp] = await Promise.all([
     want.has("todo") ? section(() => gatherTodo(nowMs)) : Promise.resolve(notRequested<TodoFacts>()),
-    want.has("alerts") ? section(() => gatherAlerts(nowMs, health)) : Promise.resolve(notRequested<AlertItem[]>()),
+    want.has("alerts")
+      ? section(() => gatherAlerts(nowMs, health))
+      : Promise.resolve(notRequested<AlertItem[]>()),
     want.has("overnight")
       ? section(() => gatherOvernight(sinceMs, nowMs))
       : Promise.resolve(notRequested<OvernightFacts>()),
@@ -473,7 +523,17 @@ export async function gatherFacts(
         })
       : Promise.resolve(notRequested<YppProgress>()),
   ]);
-  return { nowMs, todo, alerts, health, overnight, stats, comments, ypp, dashboardBaseUrl: dashboardMatchUrl() };
+  return {
+    nowMs,
+    todo,
+    alerts,
+    health,
+    overnight,
+    stats,
+    comments,
+    ypp,
+    dashboardBaseUrl: dashboardMatchUrl(),
+  };
 }
 
 /* --- /nightly: the last run and tonight's queue -------------------------------------------------

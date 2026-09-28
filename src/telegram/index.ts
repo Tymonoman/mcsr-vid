@@ -11,24 +11,53 @@ import { config } from "../config.js";
 import { describeError } from "../errorText.js";
 import * as bot from "./bot.js";
 import { askAgyForReport, askAgyFreeform, type AgyResult } from "./agy.js";
-import {
-  BOT_COMMANDS,
-  HELP_TEXT,
-  parseCommand,
-  parseStatsWindows,
-  type ParsedCommand,
-} from "./commands.js";
+import { BOT_COMMANDS, HELP_TEXT, parseCommand, parseStatsWindows, type ParsedCommand } from "./commands.js";
 import { gatherFacts, gatherNightlyInfo, gatherUpcoming, type ReportFacts } from "./facts.js";
-import { fallbackToday, renderAlerts, renderComments, renderHealth, renderMorningReport, renderNightly, renderOvernight, renderStats, renderToday, renderUpcoming, renderWaiting, renderYpp } from "./report.js";
+import {
+  fallbackToday,
+  renderAlerts,
+  renderComments,
+  renderHealth,
+  renderMorningReport,
+  renderNightly,
+  renderOvernight,
+  renderStats,
+  renderToday,
+  renderUpcoming,
+  renderWaiting,
+  renderYpp,
+} from "./report.js";
 import { msUntilNextWarsawRun, shouldCatchUp, warsawDateStr } from "./schedule.js";
 import { readTelegramState, updateTelegramState } from "./state.js";
+import { whenWarsaw } from "./report.js";
 
 /** Only counts, ids and titles ever reach agy — never a comment's own text or author. */
 function factsForAgy(f: ReportFacts): object {
   return {
-    todo: f.todo.ok ? f.todo.data : { error: f.todo.error },
+    // Times as the operator's clock reads them, so agy never has to convert (or print) an ISO
+    // instant; the nightly's optional queue left out — it read to agy as a chore.
+    todo: f.todo.ok
+      ? {
+          waitingForHook: f.todo.data.waitingForHook,
+          scheduledToday: f.todo.data.scheduledToday.map((r) => ({
+            players: r.players,
+            kind: r.kind,
+            at: whenWarsaw(r.at),
+          })),
+          scheduledTomorrowCount: f.todo.data.scheduledTomorrowCount,
+          scheduledDayAfterCount: f.todo.data.scheduledDayAfterCount,
+          diskMatchesLeft: f.todo.data.diskMatchesLeft,
+          diskLow: f.todo.data.diskLow,
+          playoffsSoon: f.todo.data.playoffsSoon && {
+            ...f.todo.data.playoffsSoon,
+            startTime:
+              f.todo.data.playoffsSoon.startTime &&
+              whenWarsaw(new Date(f.todo.data.playoffsSoon.startTime * 1000).toISOString()),
+          },
+        }
+      : { error: f.todo.error },
     alerts: f.alerts.ok ? f.alerts.data : { error: f.alerts.error },
-    health: f.health.map((h) => ({ name: h.name, ok: h.ok, ms: h.ms, detail: h.detail })),
+    servicesDown: f.health.filter((h) => !h.ok).map((h) => ({ name: h.name, detail: h.detail })),
     overnight: f.overnight.ok
       ? {
           uploadedCount: f.overnight.data.uploaded.length,
@@ -37,18 +66,33 @@ function factsForAgy(f: ReportFacts): object {
         }
       : { error: f.overnight.error },
     unansweredCommentsCount: f.comments.ok ? f.comments.data.unanswered.length : null,
-    stats: f.stats.ok ? { live: f.stats.data.live, dataEndsOn: f.stats.data.dataEndsOn } : { error: f.stats.error },
+    stats: f.stats.ok
+      ? { live: f.stats.data.live, dataEndsOn: f.stats.data.dataEndsOn }
+      : { error: f.stats.error },
     ypp: f.ypp.ok
-      ? { subscribers: f.ypp.data.subscribers, watchHours: f.ypp.data.watchHours, shortsViews: f.ypp.data.shortsViews }
+      ? {
+          subscribers: f.ypp.data.subscribers,
+          watchHours: f.ypp.data.watchHours,
+          shortsViews: f.ypp.data.shortsViews,
+        }
       : { error: f.ypp.error },
   };
 }
 
+/** What the operator's day is, so agy's to-do list is his, not a reading of the JSON. */
+const CHANNEL_CONTEXT = [
+  "You write for the person who runs MCSR Replayoffs, a small YouTube channel of Minecraft speedrun (MCSR Ranked) match replays; he lives in Poland.",
+  "The pipeline renders one match every night by itself and uploads on its own once he saves that match's hooks (the long-form title hook and the Short's hook) on the dashboard: nothing uploads until he does.",
+  "His jobs: save hooks for matches waiting for them; fix anything that failed; keep a video scheduled for every day (a day with nothing scheduled is what to avoid — the channel stops growing when it goes quiet); reply to viewers' comments; decisions only he can make.",
+  "Videos already scheduled publish by themselves: never list them as tasks. Services that are up need nothing.",
+].join(" ");
+
 function reportPrompt(facts: object): string {
   return [
-    "You write the morning briefing for the person who runs a small YouTube channel (MCSR Replayoffs).",
+    CHANNEL_CONTEXT,
     "FACTS below is a JSON object computed by code. Every number in your answer must be copied from FACTS, never invented, estimated, or rounded differently.",
-    "Write a headline (at most 2 lines) and an ordered to-do list (at most 8 items, most important first, each one concrete and actionable) for today.",
+    "Write a headline (one line: the single most important thing today) and an ordered to-do list (at most 6 items, most important first, each starting with a verb). Leave out anything that needs no action from him; if nothing does, say so in one item.",
+    "Write for a phone: plain words, no JSON field names, no ISO timestamps (times in FACTS are already his local time), '#<id>' only when he needs it to find a match.",
     "This goes only to the operator, never published: do not include any viewer comment text or names, and use only what is in FACTS.",
     'Reply with exactly one JSON object: { "headline": string, "todo": string[], "notes"?: string[] } and nothing else.',
     "",
@@ -148,7 +192,8 @@ export async function dispatchCommand({ command, args }: ParsedCommand): Promise
       if (!args.trim()) return { text: "usage: /ask <question>", html: false };
       const facts = await gatherFacts();
       const prompt = [
-        "You answer one question from the operator of a small YouTube channel (MCSR Replayoffs), using only FACTS below.",
+        CHANNEL_CONTEXT,
+        "Answer his one question below from FACTS, briefly, in plain words for a phone.",
         "Every number in your answer must come from FACTS, never invented. This goes only to the operator: never include any viewer comment text or names.",
         `QUESTION: ${args.trim()}`,
         "",
@@ -157,7 +202,9 @@ export async function dispatchCommand({ command, args }: ParsedCommand): Promise
         'Reply with exactly one JSON object: { "answer": string } and nothing else.',
       ].join("\n");
       const reply = await askAgyFreeform(prompt);
-      return reply.ok ? { text: reply.text, html: false } : { text: `agy unavailable: ${reply.reason}`, html: false };
+      return reply.ok
+        ? { text: reply.text, html: false }
+        : { text: `agy unavailable: ${reply.reason}`, html: false };
     }
     default:
       return { text: `Unknown command /${command}. /help lists what this bot answers.`, html: false };
@@ -170,6 +217,8 @@ let pollerRunning = false;
 let stopped = false;
 let reportTimer: ReturnType<typeof setTimeout> | null = null;
 
+const AGY_COMMANDS = new Set(["report", "todo", "ask"]);
+
 async function handleUpdate(update: bot.TgUpdate): Promise<void> {
   const msg = update.message;
   if (!msg?.text) return;
@@ -180,7 +229,10 @@ async function handleUpdate(update: bot.TgUpdate): Promise<void> {
     const parsed = parseCommand(msg.text);
     if (parsed?.command === "start") {
       await bot
-        .sendMessageTo(from, `your chat id is ${from} — add TELEGRAM_CHAT_ID=${from} to /app/.env and restart the dashboard`)
+        .sendMessageTo(
+          from,
+          `your chat id is ${from} — add TELEGRAM_CHAT_ID=${from} to /app/.env and restart the dashboard`,
+        )
         .catch((err: unknown) => console.error(`telegram: reply to /start failed — ${describeError(err)}`));
     }
     return;
@@ -189,12 +241,17 @@ async function handleUpdate(update: bot.TgUpdate): Promise<void> {
   const parsed = parseCommand(msg.text);
   if (!parsed) return;
   try {
+    // agy on the whole facts sheet takes one to three minutes: say so rather than go quiet.
+    if (AGY_COMMANDS.has(parsed.command))
+      await bot.sendMessage("asking agy — this takes a minute or two").catch(() => undefined);
     const { text, html } = await dispatchCommand(parsed);
     await bot.sendMessage(text, { html });
   } catch (err) {
     await bot
       .sendMessage(`/${parsed.command} failed: ${describeError(err)}`)
-      .catch((e: unknown) => console.error(`telegram: could not report a command failure — ${describeError(e)}`));
+      .catch((e: unknown) =>
+        console.error(`telegram: could not report a command failure — ${describeError(e)}`),
+      );
   }
 }
 
@@ -211,14 +268,18 @@ async function pollLoop(): Promise<void> {
       // CLAUDE.md's "a test server arms its own nightly" pitfall, for this poller. Back off
       // rather than fight it; the other process's poll wins until it stops.
       const conflict = err instanceof bot.TelegramApiError && err.status === 409;
-      console.error(`telegram: getUpdates failed${conflict ? " (409 — another poller is running)" : ""} — ${describeError(err)}`);
+      console.error(
+        `telegram: getUpdates failed${conflict ? " (409 — another poller is running)" : ""} — ${describeError(err)}`,
+      );
       await new Promise((r) => setTimeout(r, backoffMs));
       backoffMs = Math.min(backoffMs * 2, 5 * 60_000);
       continue;
     }
     for (const u of updates) {
       offset = u.update_id + 1;
-      await handleUpdate(u).catch((err: unknown) => console.error(`telegram: update ${u.update_id} — ${describeError(err)}`));
+      await handleUpdate(u).catch((err: unknown) =>
+        console.error(`telegram: update ${u.update_id} — ${describeError(err)}`),
+      );
     }
     if (updates.length) updateTelegramState((s) => (s.updateOffset = offset!));
   }
@@ -231,7 +292,9 @@ function scheduleReport(): void {
   if (hour === null || !bot.hasChat()) return;
   const delay = msUntilNextWarsawRun(Date.now(), hour);
   reportTimer = setTimeout(() => {
-    sendMorningReport().catch((err: unknown) => console.error(`telegram: morning report failed — ${describeError(err)}`));
+    sendMorningReport().catch((err: unknown) =>
+      console.error(`telegram: morning report failed — ${describeError(err)}`),
+    );
     scheduleReport();
   }, delay);
 }
@@ -249,15 +312,21 @@ export async function startTelegramBot(): Promise<void> {
   if (!bot.hasChat()) {
     console.error("telegram: TELEGRAM_CHAT_ID is not set — waiting for /start to pair a chat");
   }
-  await bot.setMyCommands(BOT_COMMANDS).catch((err: unknown) => console.error(`telegram: setMyCommands — ${describeError(err)}`));
+  await bot
+    .setMyCommands(BOT_COMMANDS)
+    .catch((err: unknown) => console.error(`telegram: setMyCommands — ${describeError(err)}`));
   if (!pollerRunning) {
     pollerRunning = true;
     void pollLoop();
   }
   const state = readTelegramState();
   if (bot.hasChat() && shouldCatchUp(Date.now(), state.lastReportWarsawDate)) {
-    console.error("telegram: sending the morning report now — a restart missed 07:00 and it is still before 10:00 Warsaw");
-    sendMorningReport().catch((err: unknown) => console.error(`telegram: catch-up report failed — ${describeError(err)}`));
+    console.error(
+      "telegram: sending the morning report now — a restart missed 07:00 and it is still before 10:00 Warsaw",
+    );
+    sendMorningReport().catch((err: unknown) =>
+      console.error(`telegram: catch-up report failed — ${describeError(err)}`),
+    );
   }
   scheduleReport();
 }

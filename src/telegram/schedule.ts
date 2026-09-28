@@ -15,7 +15,13 @@ function warsawParts(ms: number): { y: number; mo: number; d: number; h: number;
     hourCycle: "h23",
   });
   const p = Object.fromEntries(fmt.formatToParts(new Date(ms)).map((x) => [x.type, x.value]));
-  return { y: Number(p.year), mo: Number(p.month), d: Number(p.day), h: Number(p.hour), mi: Number(p.minute) };
+  return {
+    y: Number(p.year),
+    mo: Number(p.month),
+    d: Number(p.day),
+    h: Number(p.hour),
+    mi: Number(p.minute),
+  };
 }
 
 interface WarsawDate {

@@ -565,14 +565,21 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
   `src/shorts/reasoner.ts`). The prompt tells agy every number must be copied from FACTS, never
   invented, and that this is for the operator's eyes only; **no viewer comment text or author
   name is ever put in an agy prompt** (`/ask` included) — only counts, video titles and ids.
-  Not configured, a failure, a timeout (120 s) or an unusable answer falls back to a rule-based
-  to-do list (`fallbackToday`) and the report says "agy unavailable: <reason>" in one line — never
-  a stall, and no retry (unlike the Short picker's one retry on an empty answer: this is a report,
-  not a render, and a second ask would only double the wait on the operator's own subscription).
-- **The report is one HTML message, capped at 4096 characters**, sections in the spec's order
-  (TODAY → ALERTS → HEALTH → OVERNIGHT → STATS → COMMENTS → YPP); a report too long to fit stops
-  at the first section that would not, keeping the earlier (higher-priority) ones whole, and says
-  so — the rest is a command away. Every dynamic string is HTML-escaped (`escapeHtml`); the
+  The prompt opens with what the operator's day is (`CHANNEL_CONTEXT` in `index.ts`: save hooks,
+  fix failures, keep every day scheduled, reply to comments; scheduled uploads are not chores) and
+  gets times already in Warsaw local time (`whenWarsaw`), so the list reads as a plan, not the
+  JSON. Flash reaches for a shell command now and then, which headless mode denies and the run
+  ends empty (seen on the first real run, 28 Sept) — so every prompt says "no tools", and a denied
+  or empty run is asked once more (`askOnce`, `agy.ts`). Not configured, a failure, a 300 s timeout
+  (one real run took 47 s, the next over 120 s) or an unusable answer falls back to a rule-based
+  to-do list (`fallbackToday`) and the report says "agy unavailable: <reason>" in one line.
+  `/report`, `/todo` and `/ask` first answer "asking agy — this takes a minute or two".
+- **The report is one HTML message, capped at 4096 characters of visible text** (Telegram counts
+  the text after it parses the HTML — `visibleLength`; links are short labels, "reply" · "Studio"),
+  sections in the spec's order (TODAY → ALERTS → HEALTH → OVERNIGHT → STATS → COMMENTS → YPP).
+  HEALTH is one line while everything is up; a section that would not fit is left out by name and
+  the smaller ones after it still get in. YPP leads with the countdown (`tierCountdown`: a tier
+  lands when subscribers AND watch hours-or-Shorts-views do, the later of the two, named). Every dynamic string is HTML-escaped (`escapeHtml`); the
   hook's forwarder and `/help` send plain text instead, needing none of that.
 - **Dashboard links are match ids, not deep links.** `public/app.js` has no hash route, no
   `location.search` read at boot and no other way to open a specific match from a URL — the SPA's

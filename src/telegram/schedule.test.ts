@@ -60,7 +60,11 @@ assert.equal(shouldCatchUp(jan15(8, 30), null), true, "08:30, never sent — cat
 assert.equal(shouldCatchUp(jan15(9, 59), null), true, "09:59, never sent — still catch up");
 assert.equal(shouldCatchUp(jan15(10, 0), null), false, "10:00, never sent — too late, wait for tomorrow");
 assert.equal(shouldCatchUp(jan15(11, 0), null), false, "11:00, never sent — too late");
-assert.equal(shouldCatchUp(jan15(8, 30), "2026-01-15"), false, "already sent today, however early it still is");
+assert.equal(
+  shouldCatchUp(jan15(8, 30), "2026-01-15"),
+  false,
+  "already sent today, however early it still is",
+);
 assert.equal(shouldCatchUp(jan15(8, 30), "2026-01-14"), true, "sent yesterday, not yet today — catch up");
 
 console.log("schedule: all checks passed");

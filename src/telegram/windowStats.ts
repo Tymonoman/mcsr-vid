@@ -29,7 +29,11 @@ const sumOf = (rows: readonly DayRow[], metrics: readonly string[]): Record<stri
   Object.fromEntries(metrics.map((m) => [m, rows.reduce((a, r) => a + Number(r[m] ?? 0), 0)]));
 
 /** One window's current and previous totals. `rows` need not be sorted; this sorts by date first. */
-export function aggregateWindow(rows: readonly DayRow[], days: number, metrics: readonly string[]): WindowTotals {
+export function aggregateWindow(
+  rows: readonly DayRow[],
+  days: number,
+  metrics: readonly string[],
+): WindowTotals {
   const sorted = [...rows].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
   const currentRows = sorted.slice(Math.max(0, sorted.length - days));
   const previousRows = sorted.slice(Math.max(0, sorted.length - 2 * days), Math.max(0, sorted.length - days));
@@ -55,5 +59,8 @@ export function aggregateWindows(
 
 /** The last (most recent) date in the rows, or null for an empty report — "data ends on …". */
 export function latestDate(rows: readonly DayRow[]): string | null {
-  return rows.reduce((latest: string | null, r) => (latest === null || r.date > latest ? r.date : latest), null);
+  return rows.reduce(
+    (latest: string | null, r) => (latest === null || r.date > latest ? r.date : latest),
+    null,
+  );
 }

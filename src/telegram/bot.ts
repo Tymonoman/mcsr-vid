@@ -49,9 +49,11 @@ async function call<T>(method: string, body: Record<string, unknown> = {}, timeo
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(timeoutMs),
   });
-  const json = (await res.json().catch(() => null)) as
-    | { ok: boolean; result?: T; description?: string }
-    | null;
+  const json = (await res.json().catch(() => null)) as {
+    ok: boolean;
+    result?: T;
+    description?: string;
+  } | null;
   if (!json?.ok) {
     throw new TelegramApiError(`Telegram ${method}: ${json?.description ?? res.status}`, res.status);
   }
@@ -132,7 +134,8 @@ export async function sendDocument(filePath: string, caption?: string): Promise<
     signal: AbortSignal.timeout(60_000),
   });
   const json = (await res.json().catch(() => null)) as { ok: boolean; description?: string } | null;
-  if (!json?.ok) throw new TelegramApiError(`Telegram sendDocument: ${json?.description ?? res.status}`, res.status);
+  if (!json?.ok)
+    throw new TelegramApiError(`Telegram sendDocument: ${json?.description ?? res.status}`, res.status);
 }
 
 export interface TgMessage {

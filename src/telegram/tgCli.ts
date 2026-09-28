@@ -16,8 +16,7 @@ const dryRun = args.includes("--dry-run");
 const rest = args.filter((a) => a !== "--dry-run");
 const [sub, ...subArgs] = rest;
 
-const usage =
-  'usage: npm run tg -- <report|cmd "<text>"|send <text>|send --file <path>|whoami> [--dry-run]';
+const usage = 'usage: npm run tg -- <report|cmd "<text>"|send <text>|send --file <path>|whoami> [--dry-run]';
 
 async function main(): Promise<void> {
   switch (sub) {
@@ -78,7 +77,9 @@ async function main(): Promise<void> {
       const ids = [
         ...new Set(updates.map((u) => u.message?.chat.id).filter((id): id is number => id !== undefined)),
       ];
-      console.log(ids.length ? ids.join("\n") : "no recent messages — send /start to the bot first, then try again");
+      console.log(
+        ids.length ? ids.join("\n") : "no recent messages — send /start to the bot first, then try again",
+      );
       return;
     }
     default:

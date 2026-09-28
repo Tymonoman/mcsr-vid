@@ -77,8 +77,23 @@ export interface AgyResult {
   note?: string;
 }
 
-/** How long a morning report's agy ask waits before the rule-based to-do stands in. */
-export const AGY_REPORT_TIMEOUT_MS = 120_000;
+/**
+ * Flash sometimes reaches for a shell command, which headless mode denies, and the run then ends
+ * with nothing (the Short picker sees it too, src/shorts/videoPick.ts). So every prompt says no
+ * tools, and a refused or empty run is asked once more before the fallback stands in.
+ */
+const NO_TOOLS =
+  "Do not use any tools, files or commands: everything you need is in this message. Answer directly.";
+
+async function askOnce(prompt: string, schema: object, timeoutMs: number) {
+  const run = () => runReasoner(`${NO_TOOLS}\n\n${prompt}`, { schema, timeoutMs });
+  const first = await run();
+  return first.ok || !/denied|answered nothing/i.test(first.error) ? first : run();
+}
+
+/** How long an agy ask waits before the rule-based to-do stands in: Flash at high effort on the whole
+ *  facts sheet took 47 s once and over 120 s the next time; at 07:00 nobody is waiting on it. */
+export const AGY_REPORT_TIMEOUT_MS = 300_000;
 
 /**
  * Asks agy the morning report's question. `fallback` is called only when agy is not configured,
@@ -90,11 +105,13 @@ export async function askAgyForReport(
   fallback: () => AgyAnswer,
   timeoutMs = AGY_REPORT_TIMEOUT_MS,
 ): Promise<AgyResult> {
-  if (!reasonerConfigured()) return { source: "fallback", answer: fallback(), note: "reasonerCommand is not set" };
-  const reply = await runReasoner(prompt, { schema: AGY_ANSWER_SCHEMA, timeoutMs });
+  if (!reasonerConfigured())
+    return { source: "fallback", answer: fallback(), note: "reasonerCommand is not set" };
+  const reply = await askOnce(prompt, AGY_ANSWER_SCHEMA, timeoutMs);
   if (!reply.ok) return { source: "fallback", answer: fallback(), note: reply.error };
   const answer = validateAgyAnswer(reply.answer);
-  if (!answer) return { source: "fallback", answer: fallback(), note: "answered, but not a usable to-do list" };
+  if (!answer)
+    return { source: "fallback", answer: fallback(), note: "answered, but not a usable to-do list" };
   return { source: "agy", answer };
 }
 
@@ -112,12 +129,18 @@ export type AgyFreeform = { ok: true; text: string } | { ok: false; reason: stri
  * through the same JSON-schema mechanism as the report (`{ "answer": "…" }`) rather than parsing
  * free prose out of the CLI's own envelope, which is what `runReasoner` is built to do reliably.
  */
-export async function askAgyFreeform(prompt: string, timeoutMs = AGY_REPORT_TIMEOUT_MS): Promise<AgyFreeform> {
+export async function askAgyFreeform(
+  prompt: string,
+  timeoutMs = AGY_REPORT_TIMEOUT_MS,
+): Promise<AgyFreeform> {
   if (!reasonerConfigured()) return { ok: false, reason: "reasonerCommand is not set" };
-  const reply = await runReasoner(prompt, { schema: ASK_SCHEMA, timeoutMs });
+  const reply = await askOnce(prompt, ASK_SCHEMA, timeoutMs);
   if (!reply.ok) return { ok: false, reason: reply.error };
   const raw = (reply.answer as Record<string, unknown>).answer;
   // eslint-disable-next-line no-control-regex -- deliberately stripping control bytes
-  const text = typeof raw === "string" ? raw.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "").trim() : "";
-  return text ? { ok: true, text: text.slice(0, 3500) } : { ok: false, reason: "answered, but with no usable text" };
+  const text =
+    typeof raw === "string" ? raw.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "").trim() : "";
+  return text
+    ? { ok: true, text: text.slice(0, 3500) }
+    : { ok: false, reason: "answered, but with no usable text" };
 }

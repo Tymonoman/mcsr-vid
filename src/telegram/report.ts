@@ -38,13 +38,24 @@ const fmtDelta = (n: number): string => (n > 0 ? `+${fmtInt(n)}` : n < 0 ? fmtIn
 const pctDelta = (curr: number, prev: number): string => {
   if (prev === 0) return curr === 0 ? "0%" : "new";
   const pct = ((curr - prev) / prev) * 100;
+  // A window compared with one from before the channel had an audience reads as "+18070%": a ratio says it plainly.
+  if (pct >= 1000) return `×${(curr / prev).toFixed(0)}`;
   return `${pct > 0 ? "+" : ""}${pct.toFixed(0)}%`;
 };
 const mmss = (ms: number): string =>
   `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, "0")}`;
 const hoursOf = (minutes: number): string => `${(minutes / 60).toFixed(1)} h`;
 const shortDate = (iso: string | null): string => (iso ? iso.slice(0, 10) : "?");
-const whenUtc = (iso: string): string => `${iso.slice(0, 16).replace("T", " ")} UTC`;
+/** An instant as the operator's clock reads it: "Tue 29 Sept, 01:00" (Europe/Warsaw, DST-correct). */
+export const whenWarsaw = (iso: string): string =>
+  new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Warsaw",
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(iso));
 
 function sectionError(title: string, error: string): string {
   return `${b(title)}\n${escapeHtml(error)}`;
@@ -59,7 +70,8 @@ export function renderToday(
 ): string {
   const lines = [b(agy.answer.headline)];
   for (const item of agy.answer.todo) lines.push(`• ${escapeHtml(item)}`);
-  if (agy.source === "fallback") lines.push(`<i>agy unavailable: ${escapeHtml(agy.note ?? "unknown reason")}</i>`);
+  if (agy.source === "fallback")
+    lines.push(`<i>agy unavailable: ${escapeHtml(agy.note ?? "unknown reason")}</i>`);
   if (agy.answer.notes?.length) {
     lines.push("", ...agy.answer.notes.map((n) => `⚠ ${escapeHtml(n)}`));
   }
@@ -78,9 +90,16 @@ export function renderToday(
 
 /** The rule-based to-do list agy's answer stands in for — CLAUDE.md's own priority order:
  *  failed, then waiting for a hook, then running, scheduled, published. */
-export function fallbackToday(todo: TodoFacts | null, alertCount: number, unansweredCount: number): AgyAnswer {
+export function fallbackToday(
+  todo: TodoFacts | null,
+  alertCount: number,
+  unansweredCount: number,
+): AgyAnswer {
   const items: string[] = [];
-  if (alertCount > 0) items.push(`${alertCount} alert${alertCount === 1 ? "" : "s"} ${alertCount === 1 ? "needs" : "need"} a look (see ALERTS)`);
+  if (alertCount > 0)
+    items.push(
+      `${alertCount} alert${alertCount === 1 ? "" : "s"} ${alertCount === 1 ? "needs" : "need"} a look (see ALERTS)`,
+    );
   if (todo?.waitingForHook.length) {
     items.push(
       `save hooks for ${todo.waitingForHook.length} match${todo.waitingForHook.length === 1 ? "" : "es"}: ` +
@@ -93,7 +112,8 @@ export function fallbackToday(todo: TodoFacts | null, alertCount: number, unansw
   if (todo && todo.scheduledToday.length === 0 && todo.scheduledTomorrowCount === 0) {
     items.push("nothing scheduled today or tomorrow — the channel goes quiet without a new hook saved");
   }
-  if (unansweredCount > 0) items.push(`${unansweredCount} unanswered comment${unansweredCount === 1 ? "" : "s"}`);
+  if (unansweredCount > 0)
+    items.push(`${unansweredCount} unanswered comment${unansweredCount === 1 ? "" : "s"}`);
   if (todo?.diskLow) items.push(`disk is low (${todo.diskMatchesLeft} matches left) — archive or free space`);
   if (todo?.playoffsSoon) items.push(`playoffs: ${todo.playoffsSoon.round} coming up`);
   if (items.length === 0) items.push("nothing needs you — check /stats for how the channel is doing");
@@ -105,15 +125,23 @@ export function fallbackToday(todo: TodoFacts | null, alertCount: number, unansw
 export function renderAlerts(alerts: ReportFacts["alerts"]): string {
   if (!alerts.ok) return sectionError("ALERTS", alerts.error);
   if (alerts.data.length === 0) return `${b("ALERTS")}\nNo alerts.`;
-  return [b("ALERTS"), ...alerts.data.map((a: AlertItem) => `✗ <b>${escapeHtml(a.source)}</b>: ${escapeHtml(a.message)}`)].join(
-    "\n",
-  );
+  return [
+    b("ALERTS"),
+    ...alerts.data.map((a: AlertItem) => `✗ <b>${escapeHtml(a.source)}</b>: ${escapeHtml(a.message)}`),
+  ].join("\n");
 }
 
 /* --- 3. HEALTH ------------------------------------------------------------------------------ */
 
-export function renderHealth(health: HealthCheck[]): string {
+export function renderHealth(health: HealthCheck[], compact = false): string {
   if (health.length === 0) return `${b("HEALTH")}\n(nothing to check)`;
+  if (compact && health.every((h) => h.ok)) {
+    const parts = health.map(
+      (h) =>
+        `${escapeHtml(h.name)}${h.ms !== undefined ? ` ${h.ms} ms` : ""}${h.detail ? ` (${escapeHtml(h.detail)})` : ""}`,
+    );
+    return `${b("HEALTH")} ✔ all ${health.length} up — ${parts.join(" · ")}`;
+  }
   const lines = health.map((h) => {
     const mark = h.ok ? "✔" : "✗";
     const ms = h.ms !== undefined ? ` (${h.ms} ms)` : "";
@@ -135,18 +163,25 @@ export function renderOvernight(overnight: ReportFacts["overnight"]): string {
   if (uploaded.length === 0 && nowPublic.length === 0 && !nightlyRendered) {
     lines.push("Nothing uploaded and nothing went public overnight.");
   }
-  for (const u of uploaded) {
-    lines.push(
-      `Uploaded (${u.kind}): #${u.matchId} ${escapeHtml(u.players)} — https://youtu.be/${u.videoId}`,
+  const byMatch = (
+    rows: readonly { matchId: number; players: string; kind: "video" | "short"; videoId: string }[],
+  ) => {
+    const m = new Map<number, (typeof rows)[number][]>();
+    for (const r of rows) m.set(r.matchId, [...(m.get(r.matchId) ?? []), r]);
+    return [...m.values()].map(
+      (rs) =>
+        `#${rs[0]!.matchId} ${escapeHtml(rs[0]!.players)} — ` +
+        rs
+          .map((r) => `<a href="https://youtu.be/${r.videoId}">${r.kind === "short" ? "Short" : "video"}</a>`)
+          .join(" · "),
     );
-  }
-  for (const p of nowPublic) {
-    lines.push(
-      `Now public (${p.kind}, by its publish time): #${p.matchId} ${escapeHtml(p.players)} — https://youtu.be/${p.videoId}`,
-    );
-  }
+  };
+  if (uploaded.length) lines.push("Uploaded:", ...byMatch(uploaded));
+  if (nowPublic.length) lines.push("Now public (by its publish time):", ...byMatch(nowPublic));
   if (nowPublic.length) {
-    lines.push("<i>(publish time passed — not a live re-check; a record's status is never updated after upload)</i>");
+    lines.push(
+      "<i>(publish time passed — not a live re-check; a record's status is never updated after upload)</i>",
+    );
   }
   return lines.join("\n");
 }
@@ -217,14 +252,16 @@ export function renderComments(comments: ReportFacts["comments"], channelId: str
     const studio = `https://studio.youtube.com/video/${c.videoId}/comments`;
     const uncertain = c.repliesTruncated ? " <i>(more replies than shown — may be answered)</i>" : "";
     lines.push(
-      `<b>${escapeHtml(c.author)}</b> on “${escapeHtml(title)}”: ${escapeHtml(excerpt)}${uncertain}\n` +
-        `https://www.youtube.com/watch?v=${c.videoId}&lc=${c.threadId} · ${studio}`,
+      `<b>${escapeHtml(c.author)}</b> on “${escapeHtml(title)}”: ${escapeHtml(excerpt)}${uncertain} — ` +
+        `<a href="https://www.youtube.com/watch?v=${c.videoId}&amp;lc=${c.threadId}">reply</a> · <a href="${studio}">Studio</a>`,
     );
   }
   if (unanswered.length > SHOWN_COMMENTS) {
     lines.push(`+ ${unanswered.length - SHOWN_COMMENTS} more — see the inbox link below`);
   }
-  lines.push(`Inbox: https://studio.youtube.com/channel/${escapeHtml(channelId)}/comments/inbox`);
+  lines.push(
+    `<a href="https://studio.youtube.com/channel/${escapeHtml(channelId)}/comments/inbox">All comments in Studio</a>`,
+  );
   return lines.join("\n");
 }
 
@@ -233,7 +270,8 @@ export function renderComments(comments: ReportFacts["comments"], channelId: str
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** Whole days from `nowMs` to an ISO instant, never negative — "in N days" for an ETA already past
  *  reads as "in 0 days" rather than a negative count. */
-const daysUntil = (iso: string, nowMs: number): number => Math.max(0, Math.ceil((Date.parse(iso) - nowMs) / DAY_MS));
+const daysUntil = (iso: string, nowMs: number): number =>
+  Math.max(0, Math.ceil((Date.parse(iso) - nowMs) / DAY_MS));
 
 function gateLine(
   name: string,
@@ -245,8 +283,38 @@ function gateLine(
   if (g.ceiling !== undefined && g.ceiling < g.need) {
     return `${name}: ${fmtInt(g.have)}/${fmtInt(g.need)} (${pct}%) — unreachable at the current rate`;
   }
-  const eta = g.eta ? `${shortDate(g.eta)} (~${daysUntil(g.eta, nowMs)} day${daysUntil(g.eta, nowMs) === 1 ? "" : "s"})` : "unknown";
+  const eta = g.eta
+    ? `${shortDate(g.eta)} (~${daysUntil(g.eta, nowMs)} day${daysUntil(g.eta, nowMs) === 1 ? "" : "s"})`
+    : "unknown";
   return `${name}: ${fmtInt(g.have)}/${fmtInt(g.need)} (${pct}%) — ETA ${eta}`;
+}
+
+type Gate = { have: number; need: number; eta: string | null; ceiling?: number };
+
+/**
+ * The countdown the operator asked for: a tier is reached when subscribers AND (watch hours OR
+ * Shorts views) are, so it lands at the later of the two — the gate that holds it back named.
+ */
+export function tierCountdown(
+  t: { subscribers: Gate; watchHours: Gate; shortsViews: Gate },
+  nowMs: number,
+): string {
+  const at = (g: Gate) =>
+    g.have >= g.need
+      ? nowMs
+      : g.eta && !(g.ceiling !== undefined && g.ceiling < g.need)
+        ? Date.parse(g.eta)
+        : Infinity;
+  const hours = at(t.watchHours);
+  const shorts = at(t.shortsViews);
+  const views = Math.min(hours, shorts);
+  const subs = at(t.subscribers);
+  const when = Math.max(subs, views);
+  if (!Number.isFinite(when)) return "not reachable at the current rates";
+  const days = Math.max(0, Math.ceil((when - nowMs) / DAY_MS));
+  if (days === 0) return "reached";
+  const holder = subs >= views ? "subscribers" : hours <= shorts ? "watch hours" : "Shorts views";
+  return `<b>~${days} days</b> (${shortDate(new Date(when).toISOString())}) — ${holder} hold it back`;
 }
 
 export function renderYpp(ypp: ReportFacts["ypp"], nowMs = Date.now()): string {
@@ -254,6 +322,7 @@ export function renderYpp(ypp: ReportFacts["ypp"], nowMs = Date.now()): string {
   const p = ypp.data;
   const lines = [
     b("YPP"),
+    `Expanded tier: ${tierCountdown(p, nowMs)} · full tier: ${tierCountdown(p.tiers.full, nowMs)}`,
     `<i>Rates: ${p.subscribers.ratePerDay.toFixed(2)} subs/d · ${p.watchHours.ratePerDay.toFixed(1)} h/d · ${fmtInt(p.shortsViews.ratePerDay)} engaged Shorts views/d</i>`,
     "<u>Expanded tier</u> (500 subs, 3 uploads/90d, 3,000 h or 3M Shorts views):",
     gateLine("subs", p.subscribers, nowMs),
@@ -280,13 +349,16 @@ export function renderWaiting(todo: ReportFacts["todo"], dashboardBaseUrl: strin
   ].join("\n");
 }
 
-const DAY_LABEL = (offset: number): string => (offset === 0 ? "today" : offset === 1 ? "tomorrow" : `in ${offset} days`);
+const DAY_LABEL = (offset: number): string =>
+  offset === 0 ? "today" : offset === 1 ? "tomorrow" : `in ${offset} days`;
 
 export function renderUpcoming(rows: readonly UpcomingRow[], days: number): string {
   if (rows.length === 0) return `Nothing scheduled in the next ${days} days.`;
   const lines = [`<b>Next ${days} days</b>:`];
   for (const r of rows) {
-    lines.push(`${DAY_LABEL(r.dayOffset)} — #${r.matchId} ${escapeHtml(r.players)} (${r.kind}) at ${whenUtc(r.at)}`);
+    lines.push(
+      `${DAY_LABEL(r.dayOffset)} — #${r.matchId} ${escapeHtml(r.players)} (${r.kind}) at ${whenWarsaw(r.at)}`,
+    );
   }
   return lines.join("\n");
 }
@@ -296,7 +368,7 @@ export function renderNightly(n: NightlyFacts): string {
   lines.push(`Scheduled for ${n.hourUtc === null ? "off" : `${String(n.hourUtc).padStart(2, "0")}:00 UTC`}.`);
   if (n.lastRun) {
     lines.push(
-      `Last run (${whenUtc(n.lastRun.startedAt)}): ${nightlyTarget(n.lastRun)}${escapeHtml(nightlySummary(n.lastRun))}`,
+      `Last run (${whenWarsaw(n.lastRun.startedAt)}): ${nightlyTarget(n.lastRun)}${escapeHtml(nightlySummary(n.lastRun))}`,
     );
   } else {
     lines.push("No run recorded yet.");
@@ -318,19 +390,24 @@ export function renderNightly(n: NightlyFacts): string {
  * ordering, so skipping ahead to a smaller one out of order would misrepresent the report.
  */
 export function assembleReport(sections: readonly string[], max = MESSAGE_MAX_CHARS): string {
-  const note = "\n\n(truncated — the rest is a command away: /alerts /health /overnight /stats /comments /ypp)";
+  const note = (names: string[]) =>
+    `\n\n(left out to fit one message: ${names.join(", ")} — ask with its command)`;
   let out = "";
-  let dropped = false;
+  const dropped: string[] = [];
   for (const s of sections) {
     const candidate = out ? `${out}\n\n${s}` : s;
-    if (candidate.length > max - note.length) {
-      dropped = true;
-      break;
+    if (visibleLength(candidate) > max - 120) {
+      dropped.push(/^<b>([^<]+)<\/b>/.exec(s)?.[1] ?? "a section");
+      continue;
     }
     out = candidate;
   }
-  return dropped ? `${out}${note}` : out;
+  return dropped.length ? `${out}${note(dropped)}` : out;
 }
+
+/** What Telegram counts against the 4096: the text after its HTML is parsed — tags out, entities one character. */
+export const visibleLength = (html: string): number =>
+  html.replace(/<[^>]+>/g, "").replace(/&(?:lt|gt|amp|quot|#39);/g, "x").length;
 
 /** The whole morning report, one message. */
 export function renderMorningReport(
@@ -342,7 +419,7 @@ export function renderMorningReport(
   const sections = [
     renderToday(facts.todo, agy, facts.dashboardBaseUrl),
     renderAlerts(facts.alerts),
-    renderHealth(facts.health),
+    renderHealth(facts.health, true),
     renderOvernight(facts.overnight),
     renderStats(facts.stats, prevSnapshot),
     renderComments(facts.comments, channelId),

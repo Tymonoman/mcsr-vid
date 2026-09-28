@@ -21,9 +21,7 @@ assert.deepEqual(filterUnanswered([thread({ threadId: "own", authorIsChannel: tr
 
 // Replied to by the channel, fully returned: answered.
 assert.deepEqual(
-  filterUnanswered([
-    thread({ threadId: "replied", totalReplyCount: 1, replyAuthorsAreChannel: [true] }),
-  ]),
+  filterUnanswered([thread({ threadId: "replied", totalReplyCount: 1, replyAuthorsAreChannel: [true] })]),
   [],
 );
 
@@ -70,7 +68,10 @@ assert.deepEqual(
     thread({ threadId: "b", authorIsChannel: true }),
     thread({ threadId: "c" }),
   ]);
-  assert.deepEqual(out.map((t) => t.threadId), ["a", "c"]);
+  assert.deepEqual(
+    out.map((t) => t.threadId),
+    ["a", "c"],
+  );
 }
 
 console.log("comments: all checks passed");

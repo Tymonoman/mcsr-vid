@@ -29,8 +29,14 @@ assert.equal(latestDate([]), null);
 // The last 7 days (34..40, sum 259) vs the 7 before that (27..33, sum 210).
 {
   const w = aggregateWindow(shuffled, 7, ["views"]);
-  assert.equal(w.current.views, [34, 35, 36, 37, 38, 39, 40].reduce((a, b) => a + b, 0));
-  assert.equal(w.previous.views, [27, 28, 29, 30, 31, 32, 33].reduce((a, b) => a + b, 0));
+  assert.equal(
+    w.current.views,
+    [34, 35, 36, 37, 38, 39, 40].reduce((a, b) => a + b, 0),
+  );
+  assert.equal(
+    w.previous.views,
+    [27, 28, 29, 30, 31, 32, 33].reduce((a, b) => a + b, 0),
+  );
   assert.equal(w.currentDays, 7);
   assert.equal(w.previousDays, 7);
 }
@@ -58,7 +64,12 @@ assert.equal(latestDate([]), null);
 // aggregateWindows runs all four at once, keyed by day count, matching the individual calls.
 {
   const all = aggregateWindows(shuffled, ["views"]);
-  assert.deepEqual(Object.keys(all).map(Number).sort((a, b) => a - b), [...WINDOW_DAYS]);
+  assert.deepEqual(
+    Object.keys(all)
+      .map(Number)
+      .sort((a, b) => a - b),
+    [...WINDOW_DAYS],
+  );
   for (const d of WINDOW_DAYS) assert.deepEqual(all[d], aggregateWindow(shuffled, d, ["views"]));
 }
 

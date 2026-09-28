@@ -2,7 +2,16 @@
 // capped at 4096 characters.
 // Run: npx tsx src/telegram/report.test.ts
 import assert from "node:assert/strict";
-import { assembleReport, renderAlerts, renderComments, renderHealth, renderToday, renderYpp } from "./report.js";
+import {
+  assembleReport,
+  visibleLength,
+  tierCountdown,
+  renderAlerts,
+  renderComments,
+  renderHealth,
+  renderToday,
+  renderYpp,
+} from "./report.js";
 import { MESSAGE_MAX_CHARS } from "./bot.js";
 import type { ReportFacts } from "./facts.js";
 import type { UnansweredComment } from "./comments.js";
@@ -80,7 +89,7 @@ import type { YppProgress } from "../youtube/yppProgress.js";
     },
   };
   const out = renderComments(comments, "UCreal");
-  assert.ok(out.includes("Inbox: https://studio.youtube.com/channel/UCreal/comments/inbox"), out);
+  assert.ok(out.includes(`<a href="https://studio.youtube.com/channel/UCreal/comments/inbox">`), out);
   assert.ok(out.includes("__CHANNEL_ID__ lol"), out); // the comment text is untouched
 }
 
@@ -153,7 +162,11 @@ import type { YppProgress } from "../youtube/yppProgress.js";
   const gate = (have: number, need: number, eta: string | null) => ({ have, need, ratePerDay: 1, eta });
   const nowMs = Date.UTC(2026, 8, 28, 12);
   const pastEta = new Date(Date.UTC(2026, 8, 27)).toISOString();
-  const tier = { subscribers: gate(200, 500, pastEta), watchHours: gate(1, 3000, null), shortsViews: gate(0, 3_000_000, null) };
+  const tier = {
+    subscribers: gate(200, 500, pastEta),
+    watchHours: gate(1, 3000, null),
+    shortsViews: gate(0, 3_000_000, null),
+  };
   const ypp: YppProgress = {
     fetchedAt: new Date(nowMs).toISOString(),
     shortsRawViews90d: 0,
@@ -172,25 +185,71 @@ import type { YppProgress } from "../youtube/yppProgress.js";
   const sections = ["short section one", "short section two", "short section three"];
   const out = assembleReport(sections, MESSAGE_MAX_CHARS);
   assert.ok(out.length <= MESSAGE_MAX_CHARS);
-  assert.ok(!out.includes("truncated"));
+  assert.ok(!out.includes("left out"));
   assert.equal(out, sections.join("\n\n"));
 }
 
 // Sections that together would run well past the limit: the result never exceeds it, keeps the
-// earlier (higher-priority) sections whole, and says it was truncated.
+// earlier (higher-priority) sections whole, and says what it left out.
 {
   const sections = Array.from({ length: 20 }, (_, i) => `section ${i}: ${"x".repeat(400)}`);
   const out = assembleReport(sections, MESSAGE_MAX_CHARS);
   assert.ok(out.length <= MESSAGE_MAX_CHARS, `${out.length} > ${MESSAGE_MAX_CHARS}`);
-  assert.ok(out.includes("truncated"));
+  assert.ok(out.includes("left out"));
   assert.ok(out.startsWith("section 0:"));
   assert.ok(!out.includes("section 19:")); // the tail never made it in
+}
+
+// A section too big to fit is left out by name, and a small one after it still gets in (the
+// morning report's YPP comes after COMMENTS); links' hrefs do not count, as Telegram counts text.
+{
+  const big = `<b>COMMENTS</b>\n${"y".repeat(3600)}`;
+  const out = assembleReport(
+    ["<b>TODAY</b>\nfirst", "x".repeat(500), big, "<b>YPP</b>\nsmall"],
+    MESSAGE_MAX_CHARS,
+  );
+  assert.ok(out.includes("<b>YPP</b>"), out.slice(-200));
+  assert.ok(!out.includes("yyyy"));
+  assert.ok(out.includes("left out to fit one message: COMMENTS"));
+  assert.equal(visibleLength(`<a href="https://example.com/${"z".repeat(500)}">reply</a> &amp;`), 7);
 }
 
 // A single section already over the limit on its own: still capped, still under the limit.
 {
   const out = assembleReport(["x".repeat(5000)], MESSAGE_MAX_CHARS);
   assert.ok(out.length <= MESSAGE_MAX_CHARS, `${out.length} > ${MESSAGE_MAX_CHARS}`);
+}
+
+// The YPP countdown: subscribers AND (hours OR Shorts views) — the later of the two, named.
+{
+  const now = Date.parse("2026-09-28T12:00:00Z");
+  const g = (have: number, need: number, eta: string | null, ceiling?: number) => ({
+    have,
+    need,
+    eta,
+    ceiling,
+  });
+  const t = {
+    subscribers: g(92, 500, "2027-01-23"),
+    watchHours: g(1198, 3000, "2026-11-12"),
+    shortsViews: g(2583, 3e6, null, 9000),
+  };
+  const out = tierCountdown(t, now);
+  assert.ok(out.includes("~117 days") && out.includes("subscribers hold it back"), out);
+  assert.ok(
+    tierCountdown({ ...t, subscribers: g(600, 500, null) }, now).includes("watch hours hold it back"),
+  );
+  assert.equal(
+    tierCountdown({ ...t, watchHours: g(1, 3000, null) }, now),
+    "not reachable at the current rates",
+  );
+  assert.equal(
+    tierCountdown(
+      { subscribers: g(600, 500, null), watchHours: g(3100, 3000, null), shortsViews: t.shortsViews },
+      now,
+    ),
+    "reached",
+  );
 }
 
 console.log("report: all checks passed");
