@@ -56,8 +56,12 @@ import { pickErrorFile } from "../shorts/videoPick.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** Room for this render and one more. At ~3 GB a match, the last slot is not worth taking. */
-const MIN_FREE_MATCHES = 2;
+/**
+ * Room for this render and one more. At ~3 GB a match, the last slot is not worth taking. Exported
+ * for the Telegram morning report (src/telegram/facts.ts), which names the same guard rather than
+ * carrying its own copy of the number.
+ */
+export const MIN_FREE_MATCHES = 2;
 
 /** jobs.ts offers no completion callback, and a render runs unattended for minutes, so poll coarsely. */
 const SETTLE_POLL_MS = 30_000;

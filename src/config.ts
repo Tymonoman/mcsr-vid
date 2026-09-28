@@ -311,6 +311,17 @@ export interface Config {
    * it; null turns it off.
    */
   watchScript: string | null;
+  /**
+   * Hour of day (Warsaw local, `Europe/Warsaw`, DST-correct) the Telegram bot sends its one daily
+   * morning report — see `src/telegram/`. Null turns the daily report off; slash commands still
+   * answer. Needs `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in `/app/.env` regardless.
+   */
+  telegramReportHourWarsaw: number | null;
+  /**
+   * The dashboard's own address, for the links the Telegram bot puts in its reports — the lab's,
+   * plain http (see CLAUDE.md's Clipboard API pitfall for why it is not https). No trailing slash.
+   */
+  dashboardBaseUrl: string;
 }
 
 /** The lab's `reasonerCommand`: see its comment in `Config`. */
@@ -395,6 +406,8 @@ export const DEFAULTS: Config = {
   playoffThumbnailStyle: "plain",
   reasonerCommand: null,
   watchScript: path.join(os.homedir(), ".claude/plugins/cache/claude-watch/watch/0.2.0/scripts/watch.py"),
+  telegramReportHourWarsaw: 7,
+  dashboardBaseUrl: "http://actimel:8080",
 };
 
 /** The overrides file. Exported so the settings panel writes the same one the loader reads. */
@@ -429,8 +442,8 @@ export function validateOverrides(raw: Record<string, unknown>): void {
     // Its default is an hour, but null is the documented "no nightly render", and a number
     // outside the clock would pass a type check: `setUTCHours(25)` rolls into the next day
     // without a word, so a mistyped hour would fire at 01:00 and look scheduled.
-    if (key === "nightlyRenderHourUtc" || key === "publishHourUtc") {
-      const nullable = key === "nightlyRenderHourUtc";
+    if (key === "nightlyRenderHourUtc" || key === "publishHourUtc" || key === "telegramReportHourWarsaw") {
+      const nullable = key === "nightlyRenderHourUtc" || key === "telegramReportHourWarsaw";
       if (
         (value === null && !nullable) ||
         (value !== null && (!Number.isInteger(value) || (value as number) < 0 || (value as number) > 23))

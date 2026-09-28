@@ -78,6 +78,7 @@ import { handleYoutubeRoute, uploadRunning } from "./youtubeRoutes.js";
 import { handleSyncRoute } from "./syncRoutes.js";
 import { readMeta } from "./matchMeta.js";
 import { pinnedComment, readIfPresent, readUpload, uploadTextFor } from "../youtube/youtubeStore.js";
+import { startTelegramBot } from "../telegram/index.js";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const ROOT = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
@@ -805,4 +806,10 @@ server.listen(PORT, "0.0.0.0", () => {
   const tick = () => void shortTick().catch((err: unknown) => console.error(`shorts: ${describeError(err)}`));
   tick();
   setInterval(tick, 15 * 60_000).unref();
+  // A test server (any PORT other than 8080 — CLAUDE.md's "a test server arms its own nightly")
+  // must not also run the Telegram poller and the 07:00 report: two processes would both answer
+  // getUpdates (one gets a 409 and backs off) and both could send the morning report.
+  if (PORT === 8080) {
+    void startTelegramBot().catch((err: unknown) => console.error(`telegram: ${describeError(err)}`));
+  }
 });
