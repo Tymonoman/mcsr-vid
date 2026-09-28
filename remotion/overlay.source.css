@@ -135,15 +135,20 @@
   width: 173px;
   height: 173px;
   background: var(--panel-2);
-  /* The thumbnail's seed-frame double ring (.thumb-seed): a dark outer border, a quartz ring
-     inset from it, dark again underneath at the badge's own background. */
+  border: 4px solid var(--panel-edge-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* The overlay's own badge only (IdentBar/OverlayTop, via PixelBadge variant="ov"): the
+   thumbnail's seed-frame double ring — a dark outer border, a quartz ring inset from it, dark
+   again underneath at the badge's own background. Scoped so it never reaches the Short's or the
+   Thumbnail's bare .badge. */
+.badge.badge--ov {
   border: 6px solid var(--panel-edge);
   outline: 4px solid var(--quartz);
   outline-offset: -14px;
   box-shadow: 0 8px 0 rgba(0, 0, 0, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 .badge svg {
   width: 62%;
@@ -444,6 +449,12 @@
    gold head, then why the runner is there, up to three rows broken where the text says. */
 .col-meta .move .move-line {
   white-space: pre-line;
+}
+/* The longest MOVE_LINES entries run three rows; the shared .cta padding alone leaves the last
+   row flush against the gold border. Scoped to .move so the teaser/SUBSCRIBE cards (already
+   clear) keep the shared padding untouched. */
+.col-meta .move {
+  padding-bottom: 12px;
 }
 .col-meta .teaser .teaser-what,
 .col-meta .move .move-line {
