@@ -709,7 +709,14 @@ One pixel-art Minecraft identity across overlay, thumbnails, channel art and rep
   `--muted`). Don't invent new colours for thumbnails, channel art or docs.
 - **Badge:** the replay ring + MC/SR monogram is defined once in `remotion/pixelBadge.ts` and
   drawn by `<PixelBadge />`; change it there, never by re-inlining SVG. In `Overlay.tsx` it must
-  render after its siblings or the header bar paints over it.
+  render after its siblings or the header bar paints over it. The overlay's badge wears the
+  thumbnail seed frame's double ring (`variant="ov"`, `.badge--ov`); the bare `.badge` is the Short's
+  and the thumbnail's, so a ring on it reaches both.
+- **The overlay wears the thumbnail's look** (the operator's pick of three, 28 Sept 2026): the name
+  bars in the thumbnail's mid-value crimson/warped split with its checker, each name and head on a
+  thumbnail plate (`.plate`), the bottom band on the checker with three plates (`.band-plate`:
+  meta, splits, the gold-ringed RTA), hard pixel shadows only — no blur, and none past a band's
+  edge, since each band is its own clipped image. Matches rendered before it keep the old look.
 - **Channel art:** `branding/logo.png` + `banner.png` from `branding/generate_brand_assets.py`
   (`branding/README.md`).
 - **Brand and launch plan:** https://claude.ai/code/artifact/82c863d6-1bf5-4e01-b679-a2a3c40fcc80

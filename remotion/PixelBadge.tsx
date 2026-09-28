@@ -31,9 +31,9 @@ const LETTERS: { ch: string; cx: number; cy: number }[] = [
  * each capped with an arrowhead) with an MC/SR monogram on top, in
  * Monocraft. Shared by the video overlay and the thumbnail generator so
  * both carry the same badge. */
-export function PixelBadge() {
+export function PixelBadge({ variant }: { variant?: "ov" } = {}) {
   return (
-    <div className="badge">
+    <div className={variant ? `badge badge--${variant}` : "badge"}>
       <svg viewBox={`0 0 ${BADGE_GRID_N} ${BADGE_GRID_N}`}>
         {RING_CELLS.map((cell, i) => (
           <rect key={i} x={cell.x} y={cell.y} width={1} height={1} fill={cell.color} />
