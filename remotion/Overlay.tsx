@@ -47,14 +47,18 @@ function IdentBar({ props }: { props: OverlayProps }) {
   return (
     <div className="row1">
       <div className="half crimson">
-        <Img className="player-head" src={props.left.headUrl} />
-        <span className="name">{props.left.nickname}</span>
+        <div className="plate">
+          <Img className="player-head" src={props.left.headUrl} />
+          <span className="name">{props.left.nickname}</span>
+        </div>
         {series && <SeriesDots firstTo={series.firstTo} won={series.leftWins} />}
       </div>
       <div className="half warped">
         {series && <SeriesDots firstTo={series.firstTo} won={series.rightWins} />}
-        <span className="name">{props.right.nickname}</span>
-        <Img className="player-head" src={props.right.headUrl} />
+        <div className="plate">
+          <span className="name">{props.right.nickname}</span>
+          <Img className="player-head" src={props.right.headUrl} />
+        </div>
       </div>
     </div>
   );

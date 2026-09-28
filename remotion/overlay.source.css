@@ -35,6 +35,17 @@
   /* px, not %: must match TOP_BAND_HEIGHT in layout.ts (.row1 97 + .row2 97 = 194). */
   height: 97px;
   display: flex;
+  /* The thumbnail's own split: a mid-value crimson/warped mix over --panel with its checker
+     texture (identical formula to .thumb below), instead of the flat saturated halves — so the
+     band reads as the same brand as the thumbnail rather than a plain colour bar. */
+  background:
+    repeating-conic-gradient(rgba(13, 12, 16, 0.07) 0 25%, transparent 0 50%) 0 0 / 48px 48px,
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--crimson) 42%, var(--panel)) 0 50%,
+      color-mix(in srgb, var(--warped) 34%, var(--panel)) 50% 100%
+    );
+  border-bottom: 3px solid var(--panel-edge);
 }
 .row1 .half {
   width: 50%;
@@ -46,20 +57,49 @@
   padding: 0 62px;
 }
 .row1 .half.crimson {
-  background: var(--crimson);
   justify-content: flex-start;
   padding-right: 110px;
 }
 .row1 .half.warped {
-  background: var(--warped);
   justify-content: flex-end;
   padding-left: 110px;
+}
+/* The thumbnail nameplate, twinned: dark --panel fill, a quartz border and a coloured side
+   accent (.thumb-tag .nick), so the name reads off the mid-value split the way it does on the
+   thumbnail instead of sitting bare on flat colour. */
+.row1 .plate {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 80px;
+  padding: 0 20px;
+  background: var(--panel);
+  border: 4px solid var(--quartz);
+  box-shadow: 5px 5px 0 var(--panel-edge);
+}
+.row1 .half.crimson .plate {
+  border-left: 10px solid var(--crimson);
+}
+.row1 .half.warped .plate {
+  border-right: 10px solid var(--warped);
 }
 .row1 .name {
   font-family: var(--pixel-font);
   font-weight: 700;
   font-size: 54px;
-  color: #16151a;
+  color: var(--quartz);
+  /* The thumbnail hook/VS treatment, scaled down: a hard pixel outline plus a small offset drop
+     so the name reads as the same chunky, shadowed pixel-art type at any band size. */
+  text-shadow:
+    3px 0 0 var(--panel-edge),
+    -3px 0 0 var(--panel-edge),
+    0 3px 0 var(--panel-edge),
+    0 -3px 0 var(--panel-edge),
+    3px 3px 0 var(--panel-edge),
+    -3px -3px 0 var(--panel-edge),
+    3px -3px 0 var(--panel-edge),
+    -3px 3px 0 var(--panel-edge),
+    0 5px 0 rgba(0, 0, 0, 0.45);
 }
 .player-head {
   width: 72px;
@@ -68,8 +108,8 @@
   image-rendering: pixelated;
 }
 /* The series dots, as the broadcast draws them: one hollow square per game needed, filled per
-   game won. Square, not round — the whole band is pixel art — and in the name's ink so they
-   read as part of the nameplate on either half. */
+   game won. Square, not round — the whole band is pixel art — and in quartz so they hold up
+   against the mid-value split the same way the plate's border does. */
 .series-dots {
   display: flex;
   gap: 12px;
@@ -79,11 +119,12 @@
 .series-dots .dot {
   width: 34px;
   height: 34px;
-  border: 6px solid #16151a;
+  border: 6px solid var(--quartz);
   background: transparent;
+  box-shadow: 3px 3px 0 var(--panel-edge);
 }
 .series-dots .dot.won {
-  background: #16151a;
+  background: var(--quartz);
 }
 
 .badge {
@@ -94,7 +135,12 @@
   width: 173px;
   height: 173px;
   background: var(--panel-2);
-  border: 4px solid var(--panel-edge-light);
+  /* The thumbnail's seed-frame double ring (.thumb-seed): a dark outer border, a quartz ring
+     inset from it, dark again underneath at the badge's own background. */
+  border: 6px solid var(--panel-edge);
+  outline: 4px solid var(--quartz);
+  outline-offset: -14px;
+  box-shadow: 0 8px 0 rgba(0, 0, 0, 0.45);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -114,6 +160,9 @@
   display: flex;
   background: var(--panel);
   border-bottom: 3px solid var(--panel-edge);
+  /* The seam where the top band meets the gameplay: a hard inset vignette, not a soft one — the
+     depth the flat overlay never had, and it stays inside the band's own 194px crop. */
+  box-shadow: inset 0 -16px 18px -8px rgba(0, 0, 0, 0.85);
 }
 .row2 .half {
   width: 50%;
@@ -187,6 +236,9 @@
   display: flex;
   background: var(--panel-2);
   border-top: 4px solid var(--panel-edge-light);
+  /* The other seam, where the bottom band meets the gameplay above it — the same hard inset
+     vignette as .row2's, mirrored, both clipped inside their own band. */
+  box-shadow: inset 0 16px 18px -8px rgba(0, 0, 0, 0.85);
 }
 .splits-col {
   display: flex;
@@ -268,6 +320,27 @@
 
 /* The finish time, above the post-roll card: the viewer has just watched the run end, and this
    is the one result fact that names no winner. Same still as the card, so it costs no frames. */
+/* Both callout cards (the final time, the SUBSCRIBE/teaser/explain card below) get the
+   thumbnail's own panel framing — dark --panel fill, a quartz ring, a hard offset drop — so they
+   read as a card set into the band rather than bare text floating on it. */
+.col-meta .final-time,
+.col-meta .cta {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--panel);
+  /* The badge's own double ring, twinned again: a quartz border, then a dark ring inset from it,
+     then the card's own fill — dark, quartz, dark, same as the thumbnail's seed frame. */
+  border: 3px solid var(--quartz);
+  outline: 2px solid var(--panel-edge);
+  outline-offset: -7px;
+  box-shadow: 5px 5px 0 var(--panel-edge);
+  padding: 10px 16px;
+}
+/* The SUBSCRIBE / teaser / explain card is the one asking for something: a gold ring instead of
+   quartz, the same accent colour the card's own headline already uses. */
+.col-meta .cta {
+  border-color: var(--gold);
+}
 .col-meta .final-time {
   margin-top: 16px;
   display: flex;
@@ -381,6 +454,17 @@
   text-transform: uppercase;
   color: var(--quartz);
   margin-bottom: 6px;
+  /* The thumbnail's hard pixel outline, scaled to this band's type. */
+  text-shadow:
+    3px 0 0 var(--panel-edge),
+    -3px 0 0 var(--panel-edge),
+    0 3px 0 var(--panel-edge),
+    0 -3px 0 var(--panel-edge),
+    3px 3px 0 var(--panel-edge),
+    -3px -3px 0 var(--panel-edge),
+    3px -3px 0 var(--panel-edge),
+    -3px 3px 0 var(--panel-edge),
+    0 5px 0 rgba(0, 0, 0, 0.45);
 }
 .split-table {
   width: 100%;
@@ -403,6 +487,16 @@
   font-family: var(--pixel-font);
   font-size: 30px;
   font-variant-numeric: tabular-nums;
+  text-shadow:
+    3px 0 0 var(--panel-edge),
+    -3px 0 0 var(--panel-edge),
+    0 3px 0 var(--panel-edge),
+    0 -3px 0 var(--panel-edge),
+    3px 3px 0 var(--panel-edge),
+    -3px -3px 0 var(--panel-edge),
+    3px -3px 0 var(--panel-edge),
+    -3px 3px 0 var(--panel-edge),
+    0 5px 0 rgba(0, 0, 0, 0.45);
 }
 .split-row .t.left {
   text-align: right;
@@ -466,6 +560,18 @@
   font-size: 56px;
   color: var(--gold);
   font-variant-numeric: tabular-nums;
+  /* The thumbnail VS's own treatment (8-way hard outline + an offset drop), scaled up for the
+     biggest text in the band. */
+  text-shadow:
+    4px 0 0 var(--panel-edge),
+    -4px 0 0 var(--panel-edge),
+    0 4px 0 var(--panel-edge),
+    0 -4px 0 var(--panel-edge),
+    4px 4px 0 var(--panel-edge),
+    -4px -4px 0 var(--panel-edge),
+    4px -4px 0 var(--panel-edge),
+    -4px 4px 0 var(--panel-edge),
+    0 7px 0 rgba(0, 0, 0, 0.45);
 }
 
 /* ===== intro: the versus screen (remotion/Intro.tsx), the first introSec seconds over the frozen countdown ===== */
