@@ -605,6 +605,68 @@ export async function commentThreads(videoId: string, channelId: string): Promis
   });
 }
 
+/** One comment thread across the whole channel, for `channelCommentThreads`. */
+export interface ChannelCommentThread {
+  threadId: string;
+  videoId: string;
+  author: string;
+  authorIsChannel: boolean;
+  text: string;
+  publishedAt: string;
+  totalReplyCount: number;
+  /** Whether each reply the API actually returned (`replies` is capped) was authored by the channel. */
+  replyAuthorsAreChannel: boolean[];
+}
+
+/**
+ * Recent comment threads across every video on the channel (`commentThreads.list
+ * allThreadsRelatedToChannelId=…`), newest first — for the Telegram morning report's unanswered
+ * count (src/telegram/comments.ts does the unanswered filtering; this only fetches and shapes).
+ * `replies` is capped by the API, so `totalReplyCount` can exceed `replyAuthorsAreChannel.length` —
+ * the filter treats that as "maybe answered" rather than either extreme. 1 unit.
+ */
+export async function channelCommentThreads(
+  channelId: string,
+  maxResults = 50,
+): Promise<ChannelCommentThread[]> {
+  const body = await apiCall<{
+    items: Array<{
+      id: string;
+      snippet: {
+        videoId: string;
+        totalReplyCount: number;
+        topLevelComment: {
+          snippet: {
+            authorDisplayName: string;
+            textDisplay: string;
+            publishedAt: string;
+            authorChannelId?: { value?: string };
+          };
+        };
+      };
+      replies?: { comments: Array<{ snippet: { authorChannelId?: { value?: string } } }> };
+    }>;
+  }>(
+    DATA_API,
+    `/commentThreads?part=snippet,replies&maxResults=${maxResults}&order=time&allThreadsRelatedToChannelId=${encodeURIComponent(channelId)}`,
+  );
+  return (body.items ?? []).map((t) => {
+    const top = t.snippet.topLevelComment.snippet;
+    return {
+      threadId: t.id,
+      videoId: t.snippet.videoId,
+      author: top.authorDisplayName,
+      authorIsChannel: top.authorChannelId?.value === channelId,
+      text: top.textDisplay,
+      publishedAt: top.publishedAt,
+      totalReplyCount: t.snippet.totalReplyCount,
+      replyAuthorsAreChannel: (t.replies?.comments ?? []).map(
+        (c) => c.snippet.authorChannelId?.value === channelId,
+      ),
+    };
+  });
+}
+
 /**
  * A new top-level comment on a video — the first one, which the operator then pins in Studio
  * (pinning has no API). Same scope as replying. 50 units.

@@ -33,7 +33,7 @@
     "//archive": "Copy a finished match to the NAS. Copies, never moves - nothing is deleted.",
     "archive": "sh -c 'rsync -a --info=progress2 \"/media/$0/\" \"/archive/$0/\"'",
     "//test": "test:unit is every *.test.ts except the two that drive Chromium or ffmpeg; test runs those after it.",
-    "test:unit": "for f in $(find src remotion -name '*.test.ts' | sort); do case \"$f\" in */overlayRender.test.ts|*/exportFrames.test.ts) continue;; esac; echo \"-- $f --\"; tsx \"$f\" || exit 1; done",
+    "test:unit": "for f in $(find src remotion scripts -name '*.test.ts' | sort); do case \"$f\" in */overlayRender.test.ts|*/exportFrames.test.ts) continue;; esac; echo \"-- $f --\"; tsx \"$f\" || exit 1; done",
     "test": "npm run test:unit && for f in src/pipeline/overlayRender.test.ts src/exportFrames.test.ts; do echo \"-- $f --\"; tsx \"$f\" || exit 1; done",
     "youtube-auth": "tsx src/youtube/youtubeAuth.ts",
     "bench": "npm run build-overlay-css && tsx src/cli/benchRender.ts",
@@ -47,7 +47,9 @@
     "//retention": "Audience retention curve per video from the Analytics API — where the viewers leave.",
     "retention": "tsx src/cli/retentionCli.ts",
     "//pick": "Have the model (reasonerCommand) watch the finished video and pick the Short's window; prints the prompt size, the raw answer and why it was rejected. <matchId|all> [--force]",
-    "pick": "tsx src/shorts/pickCli.ts"
+    "pick": "tsx src/shorts/pickCli.ts",
+    "//tg": "The Telegram bot's morning report and slash commands from the terminal — see src/telegram/tgCli.ts.",
+    "tg": "tsx src/telegram/tgCli.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

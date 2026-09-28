@@ -22,6 +22,17 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR:-/app}/scripts/tg-forward.mjs\"",
+            "statusMessage": "Forwarding to Telegram..."
+          }
+        ]
+      }
     ]
   }
 }

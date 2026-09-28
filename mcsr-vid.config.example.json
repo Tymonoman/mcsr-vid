@@ -97,5 +97,7 @@
     "--print-timeout",
     "1400s"
   ],
-  "watchScript": "/home/node/.claude/plugins/cache/claude-watch/watch/0.2.0/scripts/watch.py"
+  "watchScript": "/home/node/.claude/plugins/cache/claude-watch/watch/0.2.0/scripts/watch.py",
+  "telegramReportHourWarsaw": 7,
+  "dashboardBaseUrl": "http://actimel:8080"
 }
