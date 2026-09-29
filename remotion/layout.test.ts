@@ -28,6 +28,14 @@ import {
   SHORT_BOTTOM_NAMEPLATE_Y,
   INTRO_SECONDS,
   introFrameCount,
+  CLIP_WINDOW_WIDTH,
+  CLIP_WINDOW_HEIGHT,
+  CLIP_WINDOW_X,
+  CLIP_WINDOW_Y,
+  CLIP_WINDOW_BORDER,
+  CLIP_BAND_HEIGHT,
+  CLIP_TITLE_MAX_WIDTH,
+  clipTitleFit,
 } from "./layout.js";
 
 // The stage is 16:9, and so is each half-width POV slot.
@@ -117,5 +125,59 @@ assert.equal(introFrameCount(60, 2), 120);
 // Intro.tsx's entrance ends at 1.05 s and its wipe starts 0.6 s from the end: the shortest card
 // must still hold the finished card before the wipe, or interpolate's ranges stop increasing.
 assert.ok(introFrameCount(30, 2) - Math.round(30 * 0.6) > 30 * 1.05);
+
+// ClipFrame: the window rect must stay inside the 1920x1080 stage and centred, with the band
+// filling exactly the space above it — the same "no gap, no overlap" contract as the match
+// overlay's own bands.
+assert.equal(CLIP_WINDOW_X, (STAGE_WIDTH - CLIP_WINDOW_WIDTH) / 2);
+assert.ok(CLIP_WINDOW_X >= 0 && CLIP_WINDOW_X + CLIP_WINDOW_WIDTH <= STAGE_WIDTH);
+assert.ok(
+  CLIP_WINDOW_Y + CLIP_WINDOW_HEIGHT <= STAGE_HEIGHT,
+  "the window must not run off the bottom of the stage",
+);
+assert.equal(CLIP_BAND_HEIGHT, CLIP_WINDOW_Y);
+
+// The CSS carries the same rect, as literal px (not computed): .clipframe-window's border-box
+// interior is CLIP_WINDOW_X/Y/WIDTH/HEIGHT exactly, or the frame the operator sees drifts away
+// from the rect clipCli.ts scales the source video into.
+assert.equal(px(".clipframe-window", "left") + CLIP_WINDOW_BORDER, CLIP_WINDOW_X);
+assert.equal(px(".clipframe-window", "top") + CLIP_WINDOW_BORDER, CLIP_WINDOW_Y);
+assert.equal(px(".clipframe-window", "width") - 2 * CLIP_WINDOW_BORDER, CLIP_WINDOW_WIDTH);
+assert.equal(px(".clipframe-window", "height") - 2 * CLIP_WINDOW_BORDER, CLIP_WINDOW_HEIGHT);
+assert.equal(px(".clipframe-band", "height"), CLIP_BAND_HEIGHT);
+// The three ground regions must tile everything around the window with no gap and no overlap.
+assert.equal(px(".clipframe-ground.left", "width"), CLIP_WINDOW_X);
+assert.equal(px(".clipframe-ground.right", "left"), CLIP_WINDOW_X + CLIP_WINDOW_WIDTH);
+assert.equal(px(".clipframe-ground.bottom", "top"), CLIP_WINDOW_Y + CLIP_WINDOW_HEIGHT);
+assert.equal(px(".clipframe-ground.bottom", "height"), STAGE_HEIGHT - (CLIP_WINDOW_Y + CLIP_WINDOW_HEIGHT));
+
+// A short title fits one line, comfortably large.
+{
+  const { lines, fontSizePx } = clipTitleFit("FEINBERG ON THE EDCR SITUATION");
+  assert.equal(lines.length, 1);
+  assert.ok(fontSizePx >= 48, `expected a large single line, got ${fontSizePx}px`);
+}
+// A long title wraps to two lines rather than shrinking to nothing.
+{
+  const { lines, fontSizePx } = clipTitleFit("INFUME TALKS ABOUT THE EDCR SITUATION AND WHAT HAPPENS NEXT");
+  assert.equal(lines.length, 2);
+  assert.ok(fontSizePx >= 30, `two-line title should not be crushed to the floor, got ${fontSizePx}px`);
+  assert.ok(
+    lines.every((l) => l.trim().length > 0),
+    "neither wrapped line may be empty",
+  );
+}
+// A single unbreakable word never throws and never drops below the floor.
+{
+  const { lines, fontSizePx } = clipTitleFit("SUPERCALIFRAGILISTICEXPIALIDOCIOUSSUPERCALIFRAGILISTIC", 400);
+  assert.equal(lines.length, 1);
+  assert.ok(fontSizePx >= 30);
+}
+// Fitting is against the caller's own width, so a narrower box shrinks the text.
+{
+  const wide = clipTitleFit("FEINBERG ON THE EDCR SITUATION", CLIP_TITLE_MAX_WIDTH);
+  const narrow = clipTitleFit("FEINBERG ON THE EDCR SITUATION", 400);
+  assert.ok(narrow.fontSizePx < wide.fontSizePx);
+}
 
 console.log("layout invariants ok");

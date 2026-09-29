@@ -148,6 +148,20 @@ export type ShortProps = {
  * we do not. `messages` is exactly what `npm run chat -- <matchId>` writes to chat-<nick>.json,
  * so the panel is fed from disk with no reshaping in between.
  */
+/**
+ * ClipFrame (remotion/ClipFrame.tsx): the reusable frame for a standalone clip — a stream
+ * statement, a reaction — rather than a match render. `src/clips/clipCli.ts` composites the
+ * source video into the transparent window this still leaves open.
+ */
+export type ClipFrameProps = {
+  title: string;
+  speaker: string;
+  /** "on stream · 21 Sept 2026" — the small line under the speaker's name. */
+  when: string;
+  /** "twitch.tv/feinberg" — the small credit line near the frame. */
+  credit: string;
+};
+
 export type ChatPanelProps = {
   nickname: string;
   messages: ChatMessage[];

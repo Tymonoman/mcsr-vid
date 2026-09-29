@@ -159,3 +159,82 @@ export function shortCaptionFontSize(text: string): number {
     Math.floor(width / (chars * (MONOCRAFT_ADVANCE_EM + CAPTION_LETTER_SPACING_EM))),
   );
 }
+
+/**
+ * ClipFrame (remotion/ClipFrame.tsx): a title band over a framed 16:9 window, for a standalone
+ * clip (a stream statement, a reaction) rather than a match render. The window rect is the one
+ * thing `src/clips/clipCli.ts`'s ffmpeg composite must agree with pixel-for-pixel — the source
+ * video is scaled into exactly this rect, under the frame PNG, so both sides read it from here
+ * rather than each carrying their own copy.
+ */
+export const CLIP_WINDOW_WIDTH = 1600;
+export const CLIP_WINDOW_HEIGHT = 900;
+export const CLIP_WINDOW_X = (STAGE_WIDTH - CLIP_WINDOW_WIDTH) / 2;
+/** The title band fills the stage above the window exactly, so the frame's border sits flush with the band's bottom edge. */
+export const CLIP_WINDOW_Y = 140;
+export const CLIP_BAND_HEIGHT = CLIP_WINDOW_Y;
+/** The frame's quartz border, drawn outset around the window rect (never inset, or it would eat into the transparent hole the video shows through). */
+export const CLIP_WINDOW_BORDER = 10;
+
+const TITLE_MAX_PX = 88;
+const TITLE_MIN_PX = 30;
+/** Below this a single line is too cramped to read at a glance; wrap to two instead. */
+const TITLE_TWO_LINE_THRESHOLD_PX = 48;
+const TITLE_LETTER_SPACING_EM = 0.02;
+/** Mirrors `.clipframe-title`'s own line-height in overlay.source.css. */
+const TITLE_LINE_HEIGHT = 1.08;
+/** Reserved above and below the text block inside the band, so two lines never touch its edges. */
+const TITLE_BAND_VPAD_PX = 14;
+/** Clear of the band's own side padding, on the full stage width (the band runs edge to edge, wider than the window below it). */
+export const CLIP_TITLE_MAX_WIDTH = STAGE_WIDTH - 2 * 80;
+/** The largest a two-line title can be set and still fit CLIP_BAND_HEIGHT's fixed height — the
+ * band does not grow with the text, so height, not just width, has to cap the font size. */
+const CLIP_TITLE_TWO_LINE_MAX_PX = Math.floor(
+  (CLIP_BAND_HEIGHT - 2 * TITLE_BAND_VPAD_PX) / (2 * TITLE_LINE_HEIGHT),
+);
+
+const titleFontSize = (text: string, maxWidthPx: number, maxPx: number): number => {
+  const chars = Math.max(1, text.trim().length);
+  return Math.max(
+    TITLE_MIN_PX,
+    Math.min(maxPx, Math.floor(maxWidthPx / (chars * (MONOCRAFT_ADVANCE_EM + TITLE_LETTER_SPACING_EM)))),
+  );
+};
+
+/**
+ * The title band's text: one line at the largest size that fits, or — below
+ * TITLE_TWO_LINE_THRESHOLD_PX — two lines split as evenly as the words allow, sized to the
+ * smaller of the two and capped so both together still fit the band's fixed height. Monocraft is
+ * monospaced, so this is arithmetic, not DOM measurement (the same trick shortCaptionFontSize
+ * uses).
+ */
+export function clipTitleFit(
+  title: string,
+  maxWidthPx: number = CLIP_TITLE_MAX_WIDTH,
+): {
+  lines: string[];
+  fontSizePx: number;
+} {
+  const trimmed = title.trim();
+  const words = trimmed.split(/\s+/).filter(Boolean);
+  const oneLineSize = titleFontSize(trimmed, maxWidthPx, TITLE_MAX_PX);
+  if (words.length <= 1 || oneLineSize >= TITLE_TWO_LINE_THRESHOLD_PX) {
+    return { lines: [trimmed], fontSizePx: oneLineSize };
+  }
+
+  // The word split whose two halves come out closest in length, so neither line dominates.
+  let bestSplit = 1;
+  let bestDiff = Infinity;
+  for (let i = 1; i < words.length; i++) {
+    const diff = Math.abs(words.slice(0, i).join(" ").length - words.slice(i).join(" ").length);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      bestSplit = i;
+    }
+  }
+  const lines = [words.slice(0, bestSplit).join(" "), words.slice(bestSplit).join(" ")];
+  const fontSizePx = Math.min(
+    ...lines.map((line) => titleFontSize(line, maxWidthPx, CLIP_TITLE_TWO_LINE_MAX_PX)),
+  );
+  return { lines, fontSizePx };
+}
