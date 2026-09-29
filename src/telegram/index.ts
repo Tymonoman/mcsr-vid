@@ -91,10 +91,11 @@ function reportPrompt(facts: object): string {
   return [
     CHANNEL_CONTEXT,
     "FACTS below is a JSON object computed by code. Every number in your answer must be copied from FACTS, never invented, estimated, or rounded differently.",
-    "Write a headline (one line: the single most important thing today) and an ordered to-do list (at most 6 items, most important first, each starting with a verb). Leave out anything that needs no action from him; if nothing does, say so in one item.",
+    "Write a headline and an ordered to-do list. The headline is one short line on how things stand (what is covered, what is at risk) and must not repeat a to-do item. The to-do list has at most 6 items, most important first, each starting with a verb and one line long; leave out anything that needs no action from him; if nothing does, say so in one item.",
+    "The same message lists the problems, overnight uploads, stats and comments in detail below your list, so each item names the action, not the details.",
     "Write for a phone: plain words, no JSON field names, no ISO timestamps (times in FACTS are already his local time), '#<id>' only when he needs it to find a match.",
     "This goes only to the operator, never published: do not include any viewer comment text or names, and use only what is in FACTS.",
-    'Reply with exactly one JSON object: { "headline": string, "todo": string[], "notes"?: string[] } and nothing else.',
+    'Reply with exactly one JSON object: { "headline": string, "todo": string[] } and nothing else.',
     "",
     `FACTS = ${JSON.stringify(facts)}`,
   ].join("\n");
@@ -108,7 +109,7 @@ async function todayAgy(facts: ReportFacts): Promise<AgyResult> {
 }
 
 export interface BuiltReport {
-  text: string;
+  messages: string[];
   facts: ReportFacts;
   agy: AgyResult;
 }
@@ -119,14 +120,14 @@ export async function buildMorningReport(nowMs = Date.now()): Promise<BuiltRepor
   const sinceMs = state.lastReportAt ? Date.parse(state.lastReportAt) : nowMs - 24 * 60 * 60 * 1000;
   const facts = await gatherFacts(nowMs, sinceMs);
   const agy = await todayAgy(facts);
-  const text = renderMorningReport(facts, agy, state.prevSnapshot, config.youtubeChannelId);
-  return { text, facts, agy };
+  const messages = renderMorningReport(facts, agy, state.prevSnapshot, config.youtubeChannelId, nowMs);
+  return { messages, facts, agy };
 }
 
 /** Sends the morning report and records that it went out — the dedupe write. */
 export async function sendMorningReport(nowMs = Date.now()): Promise<void> {
-  const { text, facts } = await buildMorningReport(nowMs);
-  await bot.sendMessage(text, { html: true });
+  const { messages, facts } = await buildMorningReport(nowMs);
+  for (const m of messages) await bot.sendMessage(m, { html: true });
   updateTelegramState((s) => {
     s.lastReportWarsawDate = warsawDateStr(nowMs);
     s.lastReportAt = new Date(nowMs).toISOString();
@@ -135,7 +136,8 @@ export async function sendMorningReport(nowMs = Date.now()): Promise<void> {
 }
 
 export interface CommandReply {
-  text: string;
+  /** One Telegram message each; `/report` is three. */
+  messages: string[];
   html: boolean;
 }
 
@@ -143,53 +145,58 @@ export interface CommandReply {
 export async function dispatchCommand({ command, args }: ParsedCommand): Promise<CommandReply> {
   switch (command) {
     case "help":
-      return { text: HELP_TEXT, html: false };
+      return { messages: [HELP_TEXT], html: false };
     case "report": {
-      const { text } = await buildMorningReport();
-      return { text, html: true };
+      return { messages: (await buildMorningReport()).messages, html: true };
     }
     case "todo": {
       const facts = await gatherFacts();
       const agy = await todayAgy(facts);
-      return { text: renderToday(facts.todo, agy, facts.dashboardBaseUrl), html: true };
+      return { messages: [renderToday(facts.todo, agy, facts.dashboardBaseUrl)], html: true };
     }
     case "alerts": {
       const facts = await gatherFacts(Date.now(), undefined, ["alerts"]);
-      return { text: renderAlerts(facts.alerts), html: true };
+      return { messages: [renderAlerts(facts.alerts)], html: true };
     }
     case "health": {
       const facts = await gatherFacts(Date.now(), undefined, ["health"]);
-      return { text: renderHealth(facts.health), html: true };
+      return { messages: [renderHealth(facts.health)], html: true };
     }
     case "overnight":
     case "uploads": {
       const facts = await gatherFacts(Date.now(), undefined, ["overnight"]);
       const upcoming = await gatherUpcoming(Date.now(), 7);
-      return { text: `${renderOvernight(facts.overnight)}\n\n${renderUpcoming(upcoming, 7)}`, html: true };
+      return {
+        messages: [`${renderOvernight(facts.overnight)}\n\n${renderUpcoming(upcoming, 7)}`],
+        html: true,
+      };
     }
     case "stats": {
       const facts = await gatherFacts(Date.now(), undefined, ["stats"]);
       const state = readTelegramState();
-      return { text: renderStats(facts.stats, state.prevSnapshot, parseStatsWindows(args)), html: true };
+      return {
+        messages: [renderStats(facts.stats, state.prevSnapshot, parseStatsWindows(args))],
+        html: true,
+      };
     }
     case "comments": {
       const facts = await gatherFacts(Date.now(), undefined, ["comments"]);
-      return { text: renderComments(facts.comments, config.youtubeChannelId), html: true };
+      return { messages: [renderComments(facts.comments, config.youtubeChannelId)], html: true };
     }
     case "ypp": {
       const facts = await gatherFacts(Date.now(), undefined, ["ypp"]);
-      return { text: renderYpp(facts.ypp), html: true };
+      return { messages: [renderYpp(facts.ypp)], html: true };
     }
     case "waiting": {
       const facts = await gatherFacts(Date.now(), undefined, ["todo"]);
-      return { text: renderWaiting(facts.todo, facts.dashboardBaseUrl), html: true };
+      return { messages: [renderWaiting(facts.todo, facts.dashboardBaseUrl)], html: true };
     }
     case "nightly": {
       const n = await gatherNightlyInfo();
-      return { text: renderNightly(n), html: true };
+      return { messages: [renderNightly(n)], html: true };
     }
     case "ask": {
-      if (!args.trim()) return { text: "usage: /ask <question>", html: false };
+      if (!args.trim()) return { messages: ["usage: /ask <question>"], html: false };
       const facts = await gatherFacts();
       const prompt = [
         CHANNEL_CONTEXT,
@@ -203,11 +210,11 @@ export async function dispatchCommand({ command, args }: ParsedCommand): Promise
       ].join("\n");
       const reply = await askAgyFreeform(prompt);
       return reply.ok
-        ? { text: reply.text, html: false }
-        : { text: `agy unavailable: ${reply.reason}`, html: false };
+        ? { messages: [reply.text], html: false }
+        : { messages: [`agy unavailable: ${reply.reason}`], html: false };
     }
     default:
-      return { text: `Unknown command /${command}. /help lists what this bot answers.`, html: false };
+      return { messages: [`Unknown command /${command}. /help lists what this bot answers.`], html: false };
   }
 }
 
@@ -244,8 +251,8 @@ async function handleUpdate(update: bot.TgUpdate): Promise<void> {
     // agy on the whole facts sheet takes one to three minutes: say so rather than go quiet.
     if (AGY_COMMANDS.has(parsed.command))
       await bot.sendMessage("asking agy — this takes a minute or two").catch(() => undefined);
-    const { text, html } = await dispatchCommand(parsed);
-    await bot.sendMessage(text, { html });
+    const { messages, html } = await dispatchCommand(parsed);
+    for (const m of messages) await bot.sendMessage(m, { html });
   } catch (err) {
     await bot
       .sendMessage(`/${parsed.command} failed: ${describeError(err)}`)

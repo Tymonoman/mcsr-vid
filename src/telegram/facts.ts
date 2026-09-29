@@ -444,15 +444,14 @@ async function gatherStats(): Promise<StatsFacts> {
 
 export interface CommentsFacts {
   unanswered: UnansweredComment[];
-  /** Titles for the videos the shown comments are on, by videoId — a small extra videos.list call. */
+  /** Titles for the videos the comments are on, by videoId — one videos.list call (≤50 ids, 1 unit). */
   videoTitles: Record<string, string>;
 }
 
 async function gatherComments(): Promise<CommentsFacts> {
   const threads = await channelCommentThreads(config.youtubeChannelId, 50);
   const unanswered = filterUnanswered(threads).sort((a, b) => (a.publishedAt < b.publishedAt ? 1 : -1));
-  const shown = unanswered.slice(0, 8);
-  const ids = [...new Set(shown.map((c) => c.videoId))];
+  const ids = [...new Set(unanswered.map((c) => c.videoId))].slice(0, 50);
   const videoTitles: Record<string, string> = {};
   if (ids.length) {
     const body = await dataApiGet<{ items?: Array<{ id: string; snippet: { title: string } }> }>(

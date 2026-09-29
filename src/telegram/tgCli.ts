@@ -18,15 +18,18 @@ const [sub, ...subArgs] = rest;
 
 const usage = 'usage: npm run tg -- <report|cmd "<text>"|send <text>|send --file <path>|whoami> [--dry-run]';
 
+/** Where one Telegram message ends and the next begins, in a dry run. */
+const DRY_RUN_BREAK = "\n\n──────── next message ────────\n\n";
+
 async function main(): Promise<void> {
   switch (sub) {
     case "report": {
-      const { text } = await buildMorningReport();
+      const { messages } = await buildMorningReport();
       if (dryRun) {
-        console.log(text);
+        console.log(messages.join(DRY_RUN_BREAK));
         return;
       }
-      await bot.sendMessage(text, { html: true });
+      for (const m of messages) await bot.sendMessage(m, { html: true });
       console.error("sent");
       return;
     }
@@ -39,10 +42,10 @@ async function main(): Promise<void> {
       }
       const reply = await dispatchCommand(parsed);
       if (dryRun) {
-        console.log(reply.text);
+        console.log(reply.messages.join(DRY_RUN_BREAK));
         return;
       }
-      await bot.sendMessage(reply.text, { html: reply.html });
+      for (const m of reply.messages) await bot.sendMessage(m, { html: reply.html });
       console.error("sent");
       return;
     }

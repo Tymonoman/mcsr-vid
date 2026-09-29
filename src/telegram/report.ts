@@ -61,30 +61,33 @@ function sectionError(title: string, error: string): string {
   return `${b(title)}\n${escapeHtml(error)}`;
 }
 
-/* --- 1. TODAY ------------------------------------------------------------------------------ */
+/* --- Message 1: the morning (to-do, problems, overnight, health) ---------------------------- */
 
+/** "Tue 29 Sep" on the operator's clock. */
+const warsawDay = (nowMs: number): string =>
+  new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Warsaw",
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  }).format(new Date(nowMs));
+
+/** "9 Jan" — a date far enough out that the year and the weekday add nothing. */
+const dayMonth = (ms: number): string =>
+  new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", day: "numeric", month: "short" }).format(new Date(ms));
+
+/** agy's headline and numbered to-do list, one dashboard link under it. `/todo` is this alone. */
 export function renderToday(
   todo: ReportFacts["todo"],
   agy: { source: "agy" | "fallback"; answer: AgyAnswer; note?: string },
   dashboardBaseUrl: string,
 ): string {
-  const lines = [b(agy.answer.headline)];
-  for (const item of agy.answer.todo) lines.push(`• ${escapeHtml(item)}`);
+  const lines = [`<b>${escapeHtml(agy.answer.headline)}</b>`, "", "<b>To do</b>"];
+  agy.answer.todo.forEach((item, i) => lines.push(`${i + 1}. ${escapeHtml(item)}`));
+  lines.push(`<a href="${escapeHtml(dashboardBaseUrl)}/">Open the dashboard</a>`);
   if (agy.source === "fallback")
-    lines.push(`<i>agy unavailable: ${escapeHtml(agy.note ?? "unknown reason")}</i>`);
-  if (agy.answer.notes?.length) {
-    lines.push("", ...agy.answer.notes.map((n) => `⚠ ${escapeHtml(n)}`));
-  }
-  if (todo.ok && todo.data.waitingForHook.length) {
-    lines.push(
-      "",
-      `<b>Waiting for a hook</b> (${todo.data.waitingForHook.length}):`,
-      ...todo.data.waitingForHook
-        .slice(0, 10)
-        .map((w) => `#${w.matchId} ${escapeHtml(w.players)} — ${escapeHtml(dashboardBaseUrl)}/`),
-    );
-  }
-  if (!todo.ok) lines.push("", escapeHtml(`(today's facts: ${todo.error})`));
+    lines.push(`<i>agy unavailable (${escapeHtml(agy.note ?? "unknown reason")}) — a rule-based list</i>`);
+  if (!todo.ok) lines.push(escapeHtml(`(today's facts: ${todo.error})`));
   return lines.join("\n");
 }
 
@@ -96,73 +99,66 @@ export function fallbackToday(
   unansweredCount: number,
 ): AgyAnswer {
   const items: string[] = [];
-  if (alertCount > 0)
-    items.push(
-      `${alertCount} alert${alertCount === 1 ? "" : "s"} ${alertCount === 1 ? "needs" : "need"} a look (see ALERTS)`,
-    );
+  if (alertCount > 0) items.push(`Look at ${alertCount} problem${alertCount === 1 ? "" : "s"} (below)`);
   if (todo?.waitingForHook.length) {
     items.push(
-      `save hooks for ${todo.waitingForHook.length} match${todo.waitingForHook.length === 1 ? "" : "es"}: ` +
+      `Save hooks for ${todo.waitingForHook.length === 1 ? "" : `${todo.waitingForHook.length} matches: `}` +
         todo.waitingForHook
           .slice(0, 5)
-          .map((w) => `#${w.matchId}`)
+          .map((w) => `#${w.matchId} ${w.players}`)
           .join(", "),
     );
   }
   if (todo && todo.scheduledToday.length === 0 && todo.scheduledTomorrowCount === 0) {
-    items.push("nothing scheduled today or tomorrow — the channel goes quiet without a new hook saved");
+    items.push("Get something scheduled: nothing goes out today or tomorrow");
   }
   if (unansweredCount > 0)
-    items.push(`${unansweredCount} unanswered comment${unansweredCount === 1 ? "" : "s"}`);
-  if (todo?.diskLow) items.push(`disk is low (${todo.diskMatchesLeft} matches left) — archive or free space`);
-  if (todo?.playoffsSoon) items.push(`playoffs: ${todo.playoffsSoon.round} coming up`);
-  if (items.length === 0) items.push("nothing needs you — check /stats for how the channel is doing");
-  return { headline: "Morning report", todo: items.slice(0, 8) };
+    items.push(`Reply to ${unansweredCount} comment${unansweredCount === 1 ? "" : "s"}`);
+  if (todo?.diskLow) items.push(`Free some disk: ${todo.diskMatchesLeft} matches of space left`);
+  if (todo?.playoffsSoon) items.push(`Get ready for the playoffs: ${todo.playoffsSoon.round}`);
+  if (items.length === 0) items.push("Nothing needs you today");
+  return { headline: "What needs you today", todo: items.slice(0, 8) };
 }
 
-/* --- 2. ALERTS ------------------------------------------------------------------------------ */
-
-export function renderAlerts(alerts: ReportFacts["alerts"]): string {
-  if (!alerts.ok) return sectionError("ALERTS", alerts.error);
-  if (alerts.data.length === 0) return `${b("ALERTS")}\nNo alerts.`;
+/** `/alerts` in full; in the morning message only when there is one, each cut to a line. */
+export function renderAlerts(alerts: ReportFacts["alerts"], compact = false): string {
+  if (!alerts.ok) return sectionError("⚠️ Problems", alerts.error);
+  if (alerts.data.length === 0) return compact ? "" : `${b("⚠️ Problems")}\nNone.`;
+  const cut = (m: string) => (compact && m.length > 150 ? `${m.slice(0, 149)}…` : m);
   return [
-    b("ALERTS"),
-    ...alerts.data.map((a: AlertItem) => `✗ <b>${escapeHtml(a.source)}</b>: ${escapeHtml(a.message)}`),
+    b("⚠️ Problems"),
+    ...alerts.data.map((a: AlertItem) => `• <b>${escapeHtml(a.source)}</b> — ${escapeHtml(cut(a.message))}`),
   ].join("\n");
 }
 
-/* --- 3. HEALTH ------------------------------------------------------------------------------ */
-
+/** `/health` lists every check; the morning message says one line, naming only what is down. */
 export function renderHealth(health: HealthCheck[], compact = false): string {
-  if (health.length === 0) return `${b("HEALTH")}\n(nothing to check)`;
-  if (compact && health.every((h) => h.ok)) {
-    const parts = health.map(
-      (h) =>
-        `${escapeHtml(h.name)}${h.ms !== undefined ? ` ${h.ms} ms` : ""}${h.detail ? ` (${escapeHtml(h.detail)})` : ""}`,
+  if (health.length === 0) return compact ? "" : `${b("Health")}\n(nothing to check)`;
+  const down = health.filter((h) => !h.ok);
+  if (compact) {
+    if (down.length === 0) return `✅ All ${health.length} services up`;
+    return (
+      `❌ ${down.map((h) => `<b>${escapeHtml(h.name)}</b>${h.detail ? ` (${escapeHtml(h.detail)})` : ""}`).join(", ")} down` +
+      ` · ${health.length - down.length} others up`
     );
-    return `${b("HEALTH")} ✔ all ${health.length} up — ${parts.join(" · ")}`;
   }
   const lines = health.map((h) => {
-    const mark = h.ok ? "✔" : "✗";
-    const ms = h.ms !== undefined ? ` (${h.ms} ms)` : "";
+    const mark = h.ok ? "✅" : "❌";
+    const ms = h.ms !== undefined ? ` <i>${h.ms} ms</i>` : "";
     const detail = h.detail ? ` — ${escapeHtml(h.detail)}` : "";
     return `${mark} ${escapeHtml(h.name)}${ms}${detail}`;
   });
-  return [b("HEALTH"), ...lines].join("\n");
+  return [b("Health"), ...lines].join("\n");
 }
 
-/* --- 4. OVERNIGHT --------------------------------------------------------------------------- */
-
-export function renderOvernight(overnight: ReportFacts["overnight"]): string {
-  if (!overnight.ok) return sectionError("OVERNIGHT", overnight.error);
+export function renderOvernight(overnight: ReportFacts["overnight"], compact = false): string {
+  if (!overnight.ok) return sectionError("🌙 Overnight", overnight.error);
   const { uploaded, nowPublic, nightlyRendered } = overnight.data;
-  const lines = [b("OVERNIGHT")];
-  if (nightlyRendered) {
-    lines.push(`Nightly: ${nightlyTarget(nightlyRendered)}${escapeHtml(nightlySummary(nightlyRendered))}`);
-  }
-  if (uploaded.length === 0 && nowPublic.length === 0 && !nightlyRendered) {
-    lines.push("Nothing uploaded and nothing went public overnight.");
-  }
+  const nightly = nightlyRendered
+    ? `Nightly: ${nightlyTarget(nightlyRendered)}${escapeHtml(nightlySummary(nightlyRendered))}`
+    : null;
+  if (uploaded.length === 0 && nowPublic.length === 0)
+    return `🌙 Nothing uploaded or published overnight${nightly ? ` · ${nightly.replace(/^Nightly/, "nightly")}` : ""}`;
   const byMatch = (
     rows: readonly { matchId: number; players: string; kind: "video" | "short"; videoId: string }[],
   ) => {
@@ -170,102 +166,74 @@ export function renderOvernight(overnight: ReportFacts["overnight"]): string {
     for (const r of rows) m.set(r.matchId, [...(m.get(r.matchId) ?? []), r]);
     return [...m.values()].map(
       (rs) =>
-        `#${rs[0]!.matchId} ${escapeHtml(rs[0]!.players)} — ` +
+        `• ${escapeHtml(rs[0]!.players)} — ` +
         rs
           .map((r) => `<a href="https://youtu.be/${r.videoId}">${r.kind === "short" ? "Short" : "video"}</a>`)
           .join(" · "),
     );
   };
+  const lines = [b("🌙 Overnight")];
+  if (nightly) lines.push(nightly);
   if (uploaded.length) lines.push("Uploaded:", ...byMatch(uploaded));
-  if (nowPublic.length) lines.push("Now public (by its publish time):", ...byMatch(nowPublic));
-  if (nowPublic.length) {
-    lines.push(
-      "<i>(publish time passed — not a live re-check; a record's status is never updated after upload)</i>",
-    );
-  }
+  if (nowPublic.length) lines.push("Went public:", ...byMatch(nowPublic));
+  if (nowPublic.length && !compact)
+    lines.push("<i>(by its publish time — the record's status is not re-read from YouTube)</i>");
   return lines.join("\n");
 }
 
-/* --- 5. STATS -------------------------------------------------------------------------------- */
+/* --- Message 2: the channel (stats table, YPP) -------------------------------------------------- */
 
-const STATS_METRIC_LABELS: Record<string, string> = {
-  views: "views",
-  engagedViews: "engaged views",
-  estimatedMinutesWatched: "watch time",
-  subscribersGained: "subs gained",
-  subscribersLost: "subs lost",
-  likes: "likes",
-  comments: "comments",
-};
+/** 7616 → "7.6K", 55381 → "55K": a table cell on a phone, not an accountant's figure. */
+const cell = (n: number): string =>
+  Math.abs(n) >= 10_000
+    ? `${Math.round(n / 1000)}K`
+    : Math.abs(n) >= 1000
+      ? `${(n / 1000).toFixed(1)}K`
+      : `${Math.round(n)}`;
 
-function renderWindow(days: WindowDays, stats: StatsFacts): string {
-  const w = stats.windows[days];
-  const views = w.current.views ?? 0;
-  const viewsPrev = w.previous.views ?? 0;
-  const engaged = w.current.engagedViews ?? 0;
-  const watch = hoursOf(w.current.estimatedMinutesWatched ?? 0);
-  const netSubs = (w.current.subscribersGained ?? 0) - (w.current.subscribersLost ?? 0);
-  const avgViewSec = views > 0 ? Math.round(((w.current.estimatedMinutesWatched ?? 0) * 60) / views) : 0;
-  const short = w.currentDays < days ? ` (${w.currentDays}/${days} d)` : "";
-  return (
-    `<b>${days}d</b>${short}: ${fmtInt(views)} views (${pctDelta(views, viewsPrev)}) · ` +
-    `${fmtInt(engaged)} engaged · ${watch} · ${fmtDelta(netSubs)} subs · ` +
-    `avg ${mmss(avgViewSec * 1000)} · ${fmtInt(w.current.likes ?? 0)} likes · ${fmtInt(w.current.comments ?? 0)} comments`
-  );
-}
-
+/**
+ * The live counts, then one monospace table: a metric per row, a window per column (1/3/7/30 days
+ * by default), the change in views against the equal window before. `/stats 7d` is one column.
+ */
 export function renderStats(
   stats: ReportFacts["stats"],
   prevSnapshot: ChannelSnapshot | null,
   windows: readonly WindowDays[] = [1, 3, 7, 30],
 ): string {
-  if (!stats.ok) return sectionError("STATS", stats.error);
+  if (!stats.ok) return sectionError("📈 Channel", stats.error);
   const { live, dataEndsOn } = stats.data;
-  const lines = [b("STATS")];
-  const liveLine = prevSnapshot
-    ? `${fmtInt(live.subscribers)} subs (${fmtDelta(live.subscribers - prevSnapshot.subscribers)}) · ` +
-      `${fmtInt(live.views)} views (${fmtDelta(live.views - prevSnapshot.views)}) · ` +
-      `${fmtInt(live.videos)} videos (${fmtDelta(live.videos - prevSnapshot.videos)})`
-    : `${fmtInt(live.subscribers)} subs · ${fmtInt(live.views)} views · ${fmtInt(live.videos)} videos (no earlier snapshot yet)`;
-  lines.push(liveLine);
-  if (dataEndsOn) lines.push(`<i>Analytics data through ${escapeHtml(dataEndsOn)} (it lags 1–3 days)</i>`);
-  for (const d of windows) lines.push(renderWindow(d, stats.data));
-  return lines.join("\n");
+  const change = (now: number, before: number | undefined) =>
+    before !== undefined && now !== before ? ` (${fmtDelta(now - before)})` : "";
+  const liveLine =
+    `${b("📈 Channel")} · ${fmtInt(live.subscribers)} subs${change(live.subscribers, prevSnapshot?.subscribers)}` +
+    ` · ${fmtInt(live.views)} views${change(live.views, prevSnapshot?.views)}` +
+    ` · ${fmtInt(live.videos)} videos${change(live.videos, prevSnapshot?.videos)}`;
+  const w = windows.map((d) => stats.data.windows[d]);
+  const col = (vals: string[]) => vals.map((v) => v.padStart(7)).join("");
+  const row = (label: string, f: (t: (typeof w)[number]) => string) => `${label.padEnd(9)}${col(w.map(f))}`;
+  const net = (t: (typeof w)[number]) =>
+    (t.current.subscribersGained ?? 0) - (t.current.subscribersLost ?? 0);
+  const avg = (t: (typeof w)[number]) => {
+    const v = t.current.views ?? 0;
+    return v > 0 ? mmss(Math.round(((t.current.estimatedMinutesWatched ?? 0) * 60) / v) * 1000) : "-";
+  };
+  const partial = w.some((t) => t.currentDays < t.days);
+  const table = [
+    `${"".padEnd(9)}${col(w.map((t) => `${t.days}d${t.currentDays < t.days ? "*" : ""}`))}`,
+    row("views", (t) => cell(t.current.views ?? 0)),
+    row("vs prev", (t) => pctDelta(t.current.views ?? 0, t.previous.views ?? 0)),
+    row("engaged", (t) => cell(t.current.engagedViews ?? 0)),
+    row("hours", (t) => cell((t.current.estimatedMinutesWatched ?? 0) / 60)),
+    row("subs", (t) => fmtDelta(net(t))),
+    row("avg view", avg),
+    row("likes", (t) => cell(t.current.likes ?? 0)),
+    row("comments", (t) => cell(t.current.comments ?? 0)),
+  ].join("\n");
+  const foot = dataEndsOn
+    ? `<i>Analytics through ${escapeHtml(dayMonth(Date.parse(dataEndsOn)))} (it lags 1–3 days)${partial ? " · * fewer days of data than the window" : ""}</i>`
+    : "";
+  return [liveLine, `<pre>${escapeHtml(table)}</pre>`, foot].filter(Boolean).join("\n");
 }
-
-/* --- 6. COMMENTS ------------------------------------------------------------------------------ */
-
-const SHOWN_COMMENTS = 8;
-
-export function renderComments(comments: ReportFacts["comments"], channelId: string): string {
-  if (!comments.ok) return sectionError("COMMENTS", comments.error);
-  const { unanswered, videoTitles } = comments.data;
-  const lines = [b("COMMENTS")];
-  if (unanswered.length === 0) {
-    lines.push("No unanswered comments.");
-    return lines.join("\n");
-  }
-  lines.push(`${unanswered.length} unanswered:`);
-  for (const c of unanswered.slice(0, SHOWN_COMMENTS)) {
-    const title = videoTitles[c.videoId] ?? c.videoId;
-    const excerpt = c.text.replace(/\s+/g, " ").slice(0, 80);
-    const studio = `https://studio.youtube.com/video/${c.videoId}/comments`;
-    const uncertain = c.repliesTruncated ? " <i>(more replies than shown — may be answered)</i>" : "";
-    lines.push(
-      `<b>${escapeHtml(c.author)}</b> on “${escapeHtml(title)}”: ${escapeHtml(excerpt)}${uncertain} — ` +
-        `<a href="https://www.youtube.com/watch?v=${c.videoId}&amp;lc=${c.threadId}">reply</a> · <a href="${studio}">Studio</a>`,
-    );
-  }
-  if (unanswered.length > SHOWN_COMMENTS) {
-    lines.push(`+ ${unanswered.length - SHOWN_COMMENTS} more — see the inbox link below`);
-  }
-  lines.push(
-    `<a href="https://studio.youtube.com/channel/${escapeHtml(channelId)}/comments/inbox">All comments in Studio</a>`,
-  );
-  return lines.join("\n");
-}
-
-/* --- 7. YPP ------------------------------------------------------------------------------------ */
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** Whole days from `nowMs` to an ISO instant, never negative — "in N days" for an ETA already past
@@ -273,68 +241,151 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const daysUntil = (iso: string, nowMs: number): number =>
   Math.max(0, Math.ceil((Date.parse(iso) - nowMs) / DAY_MS));
 
-function gateLine(
-  name: string,
-  g: { have: number; need: number; eta: string | null; ceiling?: number },
-  nowMs: number,
-): string {
+type Gate = { have: number; need: number; eta: string | null; ceiling?: number; ratePerDay?: number };
+const unreachable = (g: Gate) => g.ceiling !== undefined && g.ceiling < g.need;
+
+function gateLine(name: string, g: Gate, nowMs: number): string {
   const pct = g.need > 0 ? Math.min(100, Math.round((g.have / g.need) * 100)) : 100;
   if (g.have >= g.need) return `${name}: ${fmtInt(g.have)}/${fmtInt(g.need)} — done`;
-  if (g.ceiling !== undefined && g.ceiling < g.need) {
-    return `${name}: ${fmtInt(g.have)}/${fmtInt(g.need)} (${pct}%) — unreachable at the current rate`;
-  }
-  const eta = g.eta
-    ? `${shortDate(g.eta)} (~${daysUntil(g.eta, nowMs)} day${daysUntil(g.eta, nowMs) === 1 ? "" : "s"})`
-    : "unknown";
-  return `${name}: ${fmtInt(g.have)}/${fmtInt(g.need)} (${pct}%) — ETA ${eta}`;
+  if (unreachable(g))
+    return `${name}: ${fmtInt(g.have)}/${fmtInt(g.need)} (${pct}%) — out of reach at this rate`;
+  const eta = g.eta ? `~${daysUntil(g.eta, nowMs)} days (${dayMonth(Date.parse(g.eta))})` : "unknown";
+  return `${name}: ${fmtInt(g.have)}/${fmtInt(g.need)} (${pct}%) — ${eta}`;
 }
 
-type Gate = { have: number; need: number; eta: string | null; ceiling?: number };
+type Tier = { subscribers: Gate; watchHours: Gate; shortsViews: Gate };
 
 /**
- * The countdown the operator asked for: a tier is reached when subscribers AND (watch hours OR
- * Shorts views) are, so it lands at the later of the two — the gate that holds it back named.
+ * When a tier is reached: subscribers AND (watch hours OR Shorts views), so the later of the two,
+ * with the gate that holds it back. "reached", or null when it is not reachable at these rates.
  */
-export function tierCountdown(
-  t: { subscribers: Gate; watchHours: Gate; shortsViews: Gate },
+export function tierEta(
+  t: Tier,
   nowMs: number,
-): string {
+): { days: number; at: number; holder: keyof Tier } | "reached" | null {
   const at = (g: Gate) =>
-    g.have >= g.need
-      ? nowMs
-      : g.eta && !(g.ceiling !== undefined && g.ceiling < g.need)
-        ? Date.parse(g.eta)
-        : Infinity;
+    g.have >= g.need ? nowMs : g.eta && !unreachable(g) ? Date.parse(g.eta) : Infinity;
   const hours = at(t.watchHours);
   const shorts = at(t.shortsViews);
   const views = Math.min(hours, shorts);
   const subs = at(t.subscribers);
   const when = Math.max(subs, views);
-  if (!Number.isFinite(when)) return "not reachable at the current rates";
+  if (!Number.isFinite(when)) return null;
   const days = Math.max(0, Math.ceil((when - nowMs) / DAY_MS));
   if (days === 0) return "reached";
-  const holder = subs >= views ? "subscribers" : hours <= shorts ? "watch hours" : "Shorts views";
-  return `<b>~${days} days</b> (${shortDate(new Date(when).toISOString())}) — ${holder} hold it back`;
+  return {
+    days,
+    at: when,
+    holder: subs >= views ? "subscribers" : hours <= shorts ? "watchHours" : "shortsViews",
+  };
 }
 
-export function renderYpp(ypp: ReportFacts["ypp"], nowMs = Date.now()): string {
-  if (!ypp.ok) return sectionError("YPP", ypp.error);
+const GATE_NAME: Record<keyof Tier, string> = {
+  subscribers: "subscribers",
+  watchHours: "watch hours",
+  shortsViews: "Shorts views",
+};
+
+/** "~102 days (9 Jan) — subscribers hold it back", the countdown the operator asked for. */
+export function tierCountdown(t: Tier, nowMs: number): string {
+  const e = tierEta(t, nowMs);
+  if (e === null) return "not reachable at the current rates";
+  if (e === "reached") return "reached";
+  return `<b>~${e.days} days</b> (${dayMonth(e.at)}) — ${GATE_NAME[e.holder]} hold it back`;
+}
+
+/** The morning message's YPP: the countdown, then the gate holding it back and the next one. */
+export function renderYppShort(ypp: ReportFacts["ypp"], nowMs = Date.now()): string {
+  if (!ypp.ok) return sectionError("🎯 YPP", ypp.error);
   const p = ypp.data;
-  const lines = [
-    b("YPP"),
-    `Expanded tier: ${tierCountdown(p, nowMs)} · full tier: ${tierCountdown(p.tiers.full, nowMs)}`,
-    `<i>Rates: ${p.subscribers.ratePerDay.toFixed(2)} subs/d · ${p.watchHours.ratePerDay.toFixed(1)} h/d · ${fmtInt(p.shortsViews.ratePerDay)} engaged Shorts views/d</i>`,
-    "<u>Expanded tier</u> (500 subs, 3 uploads/90d, 3,000 h or 3M Shorts views):",
+  const e = tierEta(p, nowMs);
+  const full = tierEta(p.tiers.full, nowMs);
+  const when = (x: typeof e) =>
+    x === null
+      ? "out of reach at this rate"
+      : x === "reached"
+        ? "reached"
+        : `<b>~${x.days} days</b> (${dayMonth(x.at)})`;
+  const g = (name: string, x: Gate) =>
+    `${name} ${fmtInt(x.have)}/${fmtInt(x.need)}` +
+    (x.have >= x.need
+      ? " ✔"
+      : unreachable(x) || !x.eta
+        ? " (out of reach)"
+        : ` (~${daysUntil(x.eta, nowMs)} d)`);
+  return [
+    `${b("🎯 YPP")} · expanded tier ${when(e)} · full tier ${when(full).replace(/<\/?b>/g, "")}`,
+    `${g("Subscribers", p.subscribers)} at ${p.subscribers.ratePerDay.toFixed(1)}/day · ${g("watch hours", p.watchHours)}`,
+  ].join("\n");
+}
+
+/** `/ypp`: both tiers, every gate. */
+export function renderYpp(ypp: ReportFacts["ypp"], nowMs = Date.now()): string {
+  if (!ypp.ok) return sectionError("🎯 YPP", ypp.error);
+  const p = ypp.data;
+  return [
+    `${b("🎯 YPP")} · expanded tier ${tierCountdown(p, nowMs)}`,
+    `<i>at ${p.subscribers.ratePerDay.toFixed(2)} subs/day · ${p.watchHours.ratePerDay.toFixed(1)} h/day · ${fmtInt(p.shortsViews.ratePerDay)} engaged Shorts views/day</i>`,
+    "",
+    "<b>Expanded tier</b> — 500 subs, 3 uploads in 90 days, and 3,000 h or 3M Shorts views",
     gateLine("subs", p.subscribers, nowMs),
     gateLine("watch hours", p.watchHours, nowMs),
     gateLine("Shorts views", p.shortsViews, nowMs),
-    `uploads (90d): ${p.tiers.expanded.uploads90d.have ?? "?"}/${p.tiers.expanded.uploads90d.need}`,
-    "<u>Full tier</u>:",
+    `uploads (90 days): ${p.tiers.expanded.uploads90d.have ?? "?"}/${p.tiers.expanded.uploads90d.need}`,
+    "",
+    `<b>Full tier</b> — ${tierCountdown(p.tiers.full, nowMs)}`,
     gateLine("subs", p.tiers.full.subscribers, nowMs),
     gateLine("watch hours", p.tiers.full.watchHours, nowMs),
     gateLine("Shorts views", p.tiers.full.shortsViews, nowMs),
-  ];
-  return lines.join("\n");
+  ].join("\n");
+}
+
+/* --- Message 3: comments ------------------------------------------------------------------------ */
+
+/** "THE DUALITY OF MAN · Infume vs Feinberg": our titles are `<hook> | <players> | <genre tail>`,
+ *  a Short's `<hook> | <players> #mcsr #minecraft`. */
+const shortTitle = (title: string): string => {
+  const [hook, players] = title.replace(/(\s#\w+)+\s*$/, "").split(" | ");
+  return players && players !== hook ? `${hook} · ${players}` : (hook ?? title);
+};
+
+/**
+ * Unanswered comments grouped by video — each title once, with its Studio page — inside an
+ * expandable quote, so the message is two lines until it is opened. Stops adding comments before
+ * the message would pass Telegram's limit, and says how many more are in the inbox.
+ */
+export function renderComments(comments: ReportFacts["comments"], channelId: string): string {
+  if (!comments.ok) return sectionError("💬 Comments", comments.error);
+  const { unanswered, videoTitles } = comments.data;
+  const inbox = `<a href="https://studio.youtube.com/channel/${escapeHtml(channelId)}/comments/inbox">Studio inbox</a>`;
+  if (unanswered.length === 0) return `💬 No unanswered comments · ${inbox}`;
+  const head = `${b(`💬 ${unanswered.length} unanswered comment${unanswered.length === 1 ? "" : "s"}`)} · ${inbox}`;
+  const byVideo = new Map<string, typeof unanswered>();
+  for (const c of unanswered) byVideo.set(c.videoId, [...(byVideo.get(c.videoId) ?? []), c]);
+  const body: string[] = [];
+  let shown = 0;
+  for (const [videoId, cs] of byVideo) {
+    const videoLine = `<b>${escapeHtml(shortTitle(videoTitles[videoId] ?? videoId))}</b> · <a href="https://studio.youtube.com/video/${videoId}/comments">Studio</a>`;
+    const lines = [videoLine];
+    for (const c of cs) {
+      const excerpt = c.text.replace(/\s+/g, " ").trim();
+      const cut = excerpt.length > 110 ? `${excerpt.slice(0, 109)}…` : excerpt;
+      const maybe = c.repliesTruncated ? " <i>(may be answered)</i>" : "";
+      const line = `• <b>${escapeHtml(c.author)}</b>: ${escapeHtml(cut)}${maybe} · <a href="https://www.youtube.com/watch?v=${c.videoId}&amp;lc=${c.threadId}">reply</a>`;
+      if (visibleLength([head, ...body, ...lines, line].join("\n")) > MESSAGE_MAX_CHARS - 200) break;
+      lines.push(line);
+      shown++;
+    }
+    if (lines.length > 1) body.push(lines.join("\n"));
+    if (shown < unanswered.length && visibleLength([head, ...body].join("\n")) > MESSAGE_MAX_CHARS - 400)
+      break;
+  }
+  const more = unanswered.length - shown;
+  return [
+    head,
+    `<blockquote expandable>${body.join("\n\n")}</blockquote>`,
+    ...(more > 0 ? [`+ ${more} more in the Studio inbox`] : []),
+  ].join("\n");
 }
 
 /* --- /waiting, /overnight's 7-day schedule, /nightly ------------------------------------------ */
@@ -382,48 +433,31 @@ export function renderNightly(n: NightlyFacts): string {
   return lines.join("\n");
 }
 
-/* --- Assembling one message ------------------------------------------------------------------- */
-
-/**
- * Fits as many sections as it can, in the given (priority) order, into `max` characters. Stops at
- * the first one that would not fit — later sections are lower priority by the spec's own
- * ordering, so skipping ahead to a smaller one out of order would misrepresent the report.
- */
-export function assembleReport(sections: readonly string[], max = MESSAGE_MAX_CHARS): string {
-  const note = (names: string[]) =>
-    `\n\n(left out to fit one message: ${names.join(", ")} — ask with its command)`;
-  let out = "";
-  const dropped: string[] = [];
-  for (const s of sections) {
-    const candidate = out ? `${out}\n\n${s}` : s;
-    if (visibleLength(candidate) > max - 120) {
-      dropped.push(/^<b>([^<]+)<\/b>/.exec(s)?.[1] ?? "a section");
-      continue;
-    }
-    out = candidate;
-  }
-  return dropped.length ? `${out}${note(dropped)}` : out;
-}
+/* --- The morning report: three messages ----------------------------------------------------- */
 
 /** What Telegram counts against the 4096: the text after its HTML is parsed — tags out, entities one character. */
 export const visibleLength = (html: string): number =>
   html.replace(/<[^>]+>/g, "").replace(/&(?:lt|gt|amp|quot|#39);/g, "x").length;
 
-/** The whole morning report, one message. */
+/**
+ * The morning report as three messages, each saying a thing once: the day (agy's to-do, problems,
+ * overnight, health), the channel (stats table and YPP), and the comments. The operator's call,
+ * 29 Sept 2026: "too much repetitive info split it up into a couple messages".
+ */
 export function renderMorningReport(
   facts: ReportFacts,
   agy: { source: "agy" | "fallback"; answer: AgyAnswer; note?: string },
   prevSnapshot: ChannelSnapshot | null,
   channelId: string,
-): string {
-  const sections = [
+  nowMs = Date.now(),
+): string[] {
+  const day = [
+    `☀️ <b>${escapeHtml(warsawDay(nowMs))}</b>`,
     renderToday(facts.todo, agy, facts.dashboardBaseUrl),
-    renderAlerts(facts.alerts),
+    renderAlerts(facts.alerts, true),
+    renderOvernight(facts.overnight, true),
     renderHealth(facts.health, true),
-    renderOvernight(facts.overnight),
-    renderStats(facts.stats, prevSnapshot),
-    renderComments(facts.comments, channelId),
-    renderYpp(facts.ypp),
   ];
-  return assembleReport(sections);
+  const channel = [renderStats(facts.stats, prevSnapshot), renderYppShort(facts.ypp, nowMs)];
+  return [day.filter(Boolean).join("\n\n"), channel.join("\n\n"), renderComments(facts.comments, channelId)];
 }

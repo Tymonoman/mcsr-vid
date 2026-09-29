@@ -1,14 +1,15 @@
-// Self-check for report.ts: every dynamic string is HTML-escaped, and the whole message is
-// capped at 4096 characters.
+// Self-check for report.ts: every dynamic string is HTML-escaped, the morning report is three
+// messages that each say a thing once, and each fits Telegram's 4096 characters.
 // Run: npx tsx src/telegram/report.test.ts
 import assert from "node:assert/strict";
 import {
-  assembleReport,
   visibleLength,
   tierCountdown,
   renderAlerts,
   renderComments,
   renderHealth,
+  renderMorningReport,
+  renderStats,
   renderToday,
   renderYpp,
 } from "./report.js";
@@ -93,27 +94,43 @@ import type { YppProgress } from "../youtube/yppProgress.js";
   assert.ok(out.includes("__CHANNEL_ID__ lol"), out); // the comment text is untouched
 }
 
-// More than 8 unanswered: the shown 8 plus a "+N more" line — nothing left silently invisible.
+// Comments are grouped by video: the title once, every comment under it, inside an expandable
+// quote; a list too long for one message stops short and says how many more are in the inbox.
 {
-  const unanswered: UnansweredComment[] = Array.from({ length: 14 }, (_, i) => ({
+  const mk = (i: number, videoId: string, text = "hi"): UnansweredComment => ({
     threadId: `t${i}`,
-    videoId: "v1",
+    videoId,
     author: `person${i}`,
     authorIsChannel: false,
-    text: "hi",
+    text,
     publishedAt: "2026-09-28T00:00:00Z",
     totalReplyCount: 0,
     replyAuthorsAreChannel: [],
     repliesTruncated: false,
-  }));
-  const comments: ReportFacts["comments"] = { ok: true, data: { unanswered, videoTitles: {} } };
-  const out = renderComments(comments, "UCxyz");
-  assert.ok(out.includes("14 unanswered:"), out);
-  assert.ok(out.includes("+ 6 more — see the inbox link below"), out);
-  assert.equal((out.match(/person\d+/g) ?? []).length, 8); // exactly the shown 8, not all 14
+  });
+  const titles = {
+    v1: "THE DUALITY OF MAN | Infume vs Feinberg | MCSR Ranked 1v1 | Minecraft Speedrun",
+    v2: "B | x vs y | tail",
+  };
+  const out = renderComments(
+    { ok: true, data: { unanswered: [mk(1, "v1"), mk(2, "v2"), mk(3, "v1")], videoTitles: titles } },
+    "UCxyz",
+  );
+  assert.ok(out.includes("3 unanswered comments"), out);
+  assert.equal(out.split("THE DUALITY OF MAN · Infume vs Feinberg").length - 1, 1, out); // the title once
+  assert.ok(!out.includes("Minecraft Speedrun"), out); // the genre tail is left off
+  assert.ok(out.includes("<blockquote expandable>"), out);
+  assert.equal((out.match(/person\d/g) ?? []).length, 3);
+
+  const many = Array.from({ length: 60 }, (_, i) => mk(i, `v${i % 3}`, "a long comment ".repeat(10)));
+  const long = renderComments({ ok: true, data: { unanswered: many, videoTitles: {} } }, "UCxyz");
+  assert.ok(visibleLength(long) <= MESSAGE_MAX_CHARS, `${visibleLength(long)}`);
+  const shown = (long.match(/person\d+/g) ?? []).length;
+  assert.ok(shown > 5 && shown < 60, `${shown}`);
+  assert.ok(long.includes(`+ ${60 - shown} more in the Studio inbox`), long.slice(-200));
 }
 
-// A to-do item and a note from agy are escaped the same way.
+// A to-do item from agy is escaped, and numbered; agy's notes are not shown (they repeated Problems).
 {
   const todo: ReportFacts["todo"] = { ok: false, error: "boom" };
   const out = renderToday(
@@ -125,7 +142,8 @@ import type { YppProgress } from "../youtube/yppProgress.js";
   assert.ok(out.includes("hi &lt;b&gt;"), out);
   assert.ok(out.includes("do &lt;x&gt;"), out);
   assert.ok(out.includes("y &amp; z"), out);
-  assert.ok(out.includes("watch &lt;this&gt;"), out);
+  assert.ok(!out.includes("watch"), out);
+  assert.ok(out.includes("1. do &lt;x&gt;") && out.includes("2. y &amp; z"), out);
   assert.ok(out.includes("boom"), out); // the facts error still shows
 }
 
@@ -154,7 +172,7 @@ import type { YppProgress } from "../youtube/yppProgress.js";
     },
   };
   const out = renderYpp({ ok: true, data: ypp }, nowMs);
-  assert.ok(out.includes("ETA 2026-11-12 (~45 days)"), out);
+  assert.ok(out.includes("~45 days (12 Nov)"), out);
 }
 
 // A gate whose ETA already passed: "~0 days", never a negative count.
@@ -178,46 +196,109 @@ import type { YppProgress } from "../youtube/yppProgress.js";
   assert.ok(!out.includes("~-1"), out);
 }
 
-// --- The 4096 cap ---
-
-// Comfortably under the limit: nothing dropped, no truncation note.
+// --- The morning report: three messages, each under the limit, each thing said once. ---
 {
-  const sections = ["short section one", "short section two", "short section three"];
-  const out = assembleReport(sections, MESSAGE_MAX_CHARS);
-  assert.ok(out.length <= MESSAGE_MAX_CHARS);
-  assert.ok(!out.includes("left out"));
-  assert.equal(out, sections.join("\n\n"));
-}
-
-// Sections that together would run well past the limit: the result never exceeds it, keeps the
-// earlier (higher-priority) sections whole, and says what it left out.
-{
-  const sections = Array.from({ length: 20 }, (_, i) => `section ${i}: ${"x".repeat(400)}`);
-  const out = assembleReport(sections, MESSAGE_MAX_CHARS);
-  assert.ok(out.length <= MESSAGE_MAX_CHARS, `${out.length} > ${MESSAGE_MAX_CHARS}`);
-  assert.ok(out.includes("left out"));
-  assert.ok(out.startsWith("section 0:"));
-  assert.ok(!out.includes("section 19:")); // the tail never made it in
-}
-
-// A section too big to fit is left out by name, and a small one after it still gets in (the
-// morning report's YPP comes after COMMENTS); links' hrefs do not count, as Telegram counts text.
-{
-  const big = `<b>COMMENTS</b>\n${"y".repeat(3600)}`;
-  const out = assembleReport(
-    ["<b>TODAY</b>\nfirst", "x".repeat(500), big, "<b>YPP</b>\nsmall"],
-    MESSAGE_MAX_CHARS,
+  const now = Date.parse("2026-09-29T05:00:00Z");
+  const windows = Object.fromEntries(
+    ([1, 3, 7, 30] as const).map((d) => [
+      d,
+      {
+        days: d,
+        current: {
+          views: 7616 * d,
+          engagedViews: 2285 * d,
+          estimatedMinutesWatched: 8178 * d,
+          subscribersGained: 7,
+          subscribersLost: 1,
+          likes: 41,
+          comments: 7,
+        },
+        previous: { views: 4700 * d },
+        currentDays: d,
+        previousDays: d,
+      },
+    ]),
+  ) as unknown as Extract<ReportFacts["stats"], { ok: true }>["data"]["windows"];
+  const facts = {
+    todo: {
+      ok: true,
+      data: {
+        waitingForHook: [{ matchId: 1, players: "a vs b" }],
+        scheduledToday: [],
+        scheduledTomorrowCount: 1,
+        scheduledDayAfterCount: 1,
+        diskMatchesLeft: 7,
+        diskLow: false,
+        playoffsSoon: null,
+        queuedTonight: 0,
+      },
+    },
+    alerts: { ok: true, data: [] },
+    health: [
+      { name: "MCSR", ok: true, ms: 200 },
+      { name: "Twitch", ok: true, ms: 600 },
+    ],
+    overnight: { ok: true, data: { uploaded: [], nowPublic: [], nightlyRendered: null } },
+    stats: {
+      ok: true,
+      data: { live: { subscribers: 92, views: 64883, videos: 36 }, dataEndsOn: "2026-09-26", windows },
+    },
+    comments: { ok: true, data: { unanswered: [], videoTitles: {} } },
+    ypp: { ok: false, error: "no token" },
+    dashboardBaseUrl: "http://actimel:8080",
+  } as unknown as ReportFacts;
+  const msgs = renderMorningReport(
+    facts,
+    { source: "agy", answer: { headline: "Covered through Thursday", todo: ["Save hooks for a vs b"] } },
+    { subscribers: 92, views: 64883, videos: 36 },
+    "UCxyz",
+    now,
   );
-  assert.ok(out.includes("<b>YPP</b>"), out.slice(-200));
-  assert.ok(!out.includes("yyyy"));
-  assert.ok(out.includes("left out to fit one message: COMMENTS"));
-  assert.equal(visibleLength(`<a href="https://example.com/${"z".repeat(500)}">reply</a> &amp;`), 7);
+  assert.equal(msgs.length, 3);
+  for (const m of msgs) assert.ok(visibleLength(m) <= MESSAGE_MAX_CHARS);
+  assert.ok(
+    msgs[0]!.startsWith("☀️ <b>Tue 29 Sept</b>") || msgs[0]!.startsWith("☀️ <b>Tue 29 Sep</b>"),
+    msgs[0],
+  );
+  assert.ok(msgs[0]!.includes("✅ All 2 services up"), msgs[0]); // one line, no latencies
+  assert.ok(!msgs[0]!.includes("200 ms"), msgs[0]);
+  assert.ok(!msgs[0]!.includes("Problems"), msgs[0]); // no problems → no section
+  assert.ok(!msgs[0]!.includes("Waiting for a hook"), msgs[0]); // the to-do says it; /waiting lists them
+  assert.ok(msgs[1]!.includes("<pre>") && msgs[1]!.includes("vs prev"), msgs[1]);
+  assert.ok(!msgs[1]!.includes("(0)"), msgs[1]); // an unchanged count carries no "(0)"
+  assert.ok(msgs[2]!.includes("No unanswered comments"), msgs[2]);
 }
 
-// A single section already over the limit on its own: still capped, still under the limit.
+// The stats table: one column per window, the header and every row the same width.
 {
-  const out = assembleReport(["x".repeat(5000)], MESSAGE_MAX_CHARS);
-  assert.ok(out.length <= MESSAGE_MAX_CHARS, `${out.length} > ${MESSAGE_MAX_CHARS}`);
+  const windows = Object.fromEntries(
+    ([1, 3, 7, 30] as const).map((d) => [
+      d,
+      {
+        days: d,
+        current: { views: 55381, estimatedMinutesWatched: 72150 },
+        previous: { views: 304 },
+        currentDays: d === 30 ? 28 : d,
+        previousDays: d,
+      },
+    ]),
+  ) as unknown as Extract<ReportFacts["stats"], { ok: true }>["data"]["windows"];
+  const out = renderStats(
+    { ok: true, data: { live: { subscribers: 92, views: 1, videos: 1 }, dataEndsOn: "2026-09-26", windows } },
+    { subscribers: 90, views: 1, videos: 1 },
+  );
+  const table = out.slice(out.indexOf("<pre>") + 5, out.indexOf("</pre>")).split("\n");
+  assert.equal(new Set(table.map((l) => l.length)).size, 1, table.join("\n"));
+  assert.ok(table[0]!.includes("30d*") && out.includes("fewer days of data"), out);
+  assert.ok(out.includes("92 subs (+2)"), out);
+  assert.ok(
+    table.some((l) => l.startsWith("views") && l.includes("55K")),
+    table.join("\n"),
+  );
+  assert.ok(
+    table.some((l) => l.startsWith("vs prev") && l.includes("×182")),
+    table.join("\n"),
+  );
 }
 
 // The YPP countdown: subscribers AND (hours OR Shorts views) — the later of the two, named.
