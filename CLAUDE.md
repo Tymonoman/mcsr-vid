@@ -43,8 +43,7 @@ what an agent cannot derive from the code; the rest is in the files it names.
 
 Tests sit beside what they test (`foo.test.ts` next to `foo.ts`); fixtures are `src/fixtures/`.
 `remotion/` is the compositions; `public/` the dashboard's browser files; `scripts/` the
-browser checks, the small build/preflight helpers, and the Stop hook's Telegram forwarder
-(`tg-forward.mjs`); `docs/` the GitHub Pages site (not repo docs — see the root `README.md`).
+browser checks and the small build/preflight helpers; `docs/` the GitHub Pages site (not repo docs — see the root `README.md`).
 
 ## Commands
 
@@ -62,7 +61,7 @@ Use the script, don't reconstruct the shell line. Extra arguments go after `--`.
 | `npm run series -- <matchId \| all> [--join-only]` | A playoff series as one video (`src/playoffs/series.ts`): renders every game of the slot that has no export, joins them into game 1's `series-<g1>.mp4`, rewrites game 1's title/description/chapters/tags for the series; the series' Short is picked and cut like any match's, from game 1's directory, once the hooks are saved. `all` walks the board in date order; `--join-only` joins what is exported. The dashboard's nightly cannot see a run here: start one in the daytime. |
 | `npm run sync-status -- [matchId]` | Where a match's POV clips are placed. With an id and no `sync.json`, derives it from the `.kdenlive` and writes it, so a re-export picks the corrected offsets up without a re-render. No id lists every match and writes nothing. |
 | `npm run chat -- <matchId>` | Fetch both players' Twitch chat to `chat-<nick>.json` for a match the pipeline saved none for (it does this itself after `download-vods`). Existing files are kept; delete one to refetch. |
-| `npm run tg -- report --dry-run` | The morning report's exact text, printed, nothing sent — needs no Telegram key. `cmd "/stats 7d" --dry-run` answers one slash command the same way; `send <text>` / `send --file <path>` sends to the operator's chat; `whoami` prints the chat ids that recently messaged the bot (`getUpdates`), for pairing `TELEGRAM_CHAT_ID`. See Telegram bot. |
+| `npm run tg -- report --dry-run` | The morning report's exact text, printed, nothing sent — needs no Telegram key. `cmd "/stats 7d" --dry-run` answers one slash command the same way; `send --md <report.md>` sends a report (Markdown turned into Telegram formatting), `send <text>` / `send --file <path>` a line or a file, to the operator's chat; `whoami` prints the chat ids that recently messaged the bot (`getUpdates`), for pairing `TELEGRAM_CHAT_ID`. See Telegram bot. |
 | `npm run pick -- <matchId \| all> [--force] [--dry-run]` | Ask the model for the Short's moment (see Shorts): prints the prompt size, the model's raw answer, any validation failure and the pick. Without `--force` a pick newer than the export is kept. `--dry-run` asks afresh and writes nothing into the match directory; it refuses (exit 1) rather than make the proxy or a /watch cache, saying why the one on disk does not count (none, older than its source, other arguments — a checkout without `/app/.env` adds `--no-whisper` — or a run that kept none); only a missing one is a reason for a real run. |
 | `npm run bench -- <Composition> [--frames=N] [--codec=] [--pixelFormat=] [--concurrency=N]` | Render throughput for one composition. Measure before claiming a render change is faster. |
 | `scripts/seed-icons/icons.sh [TYPE…]` | Re-render the thumbnail's seed-type icons from their specs (~6 s each; needs the 1.16.1 client jar, fetched from Mojang once). One spec: `scripts/seed-icons/render.sh <spec.json> <out.png>`. |
@@ -621,18 +620,15 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
   shell command Antigravity's sandbox denies) show up here too, and the report's fallback line is
   what that looks like from the operator's phone. DNS timing flags `api.mcsrranked.com` over 1 s
   (the Tailscale DNS incident of 27 Sept 2026).
-- **Forwarding this chat's reports** (the operator's ask: "should also be forwarded there for
-  safekeeping"): a `Stop` hook (`.claude/settings.json`, alongside the two existing hooks) runs
-  `scripts/tg-forward.mjs` — plain Node, no `tsx`, so it stays fast on every turn. Reads the
-  hook's `transcript_path` (the one documented field this relies on; every other field is read
-  defensively), takes the text of the LAST assistant message of the turn (every `type: "text"`
-  content block on the transcript's last `type: "assistant"` line, joined), and sends it headed
-  "Claude · <Warsaw time>" when it is at least 300 characters; a short reply is not a report and
-  is left alone. The Markdown is converted to Telegram HTML (`mdToTelegramHtml`: headings and
-  bold, code, links, bullets, a table as an aligned `<pre>`), cut between paragraphs and never
-  inside a fence (`chunkMarkdown`); a piece Telegram will not parse goes again as plain text. 10 s total timeout, always exits
-  0, silent whenever the keys are missing (the same silence as nothing configured at all), never
-  prints the token.
+- **Reports reach Telegram because they are sent, not by a hook** (the operator's ask, 28 Sept: "All
+  reports made in this chat should also be forwarded there for safekeeping"; then 29 Sept: "not
+  every message should be on telegram"). A session writes the report to a file and runs `npm run
+  tg -- send --md <file>` (`src/telegram/markdown.ts`: headings and bold, code, links, bullets, a
+  table as an aligned `<pre>`; cut between paragraphs, never inside a code fence; a piece Telegram
+  will not parse goes again as plain text). What counts as a report: the end of a finished task
+  (what was built, merged, published, uploaded), a research or analysis write-up, an artifact's
+  link. Not: an answer to a quick question, a progress note, a question to the operator. A Stop
+  hook forwarded every end-of-turn message of 300+ characters for a day; it was removed for that.
 - **What is not built**: `youtubeUploadEnabled`-gated actions, renders, queue edits — every
   command is read-only, and `/help` says so. No command writes anything the dashboard would show
   as changed.

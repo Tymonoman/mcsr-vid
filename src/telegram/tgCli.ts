@@ -9,14 +9,17 @@
 import { describeError } from "../errorText.js";
 import * as bot from "./bot.js";
 import { parseCommand } from "./commands.js";
+import { readFileSync } from "node:fs";
 import { buildMorningReport, dispatchCommand } from "./index.js";
+import { chunkMarkdown, mdToTelegramHtml } from "./markdown.js";
 
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
 const rest = args.filter((a) => a !== "--dry-run");
 const [sub, ...subArgs] = rest;
 
-const usage = 'usage: npm run tg -- <report|cmd "<text>"|send <text>|send --file <path>|whoami> [--dry-run]';
+const usage =
+  'usage: npm run tg -- <report|cmd "<text>"|send <text>|send --md <report.md>|send --file <path>|whoami> [--dry-run]';
 
 /** Where one Telegram message ends and the next begins, in a dry run. */
 const DRY_RUN_BREAK = "\n\n──────── next message ────────\n\n";
@@ -50,6 +53,24 @@ async function main(): Promise<void> {
       return;
     }
     case "send": {
+      // A report: the Markdown converted to Telegram's formatting, in pieces cut between
+      // paragraphs; a piece Telegram will not parse goes again as plain text.
+      const mdFlag = subArgs.indexOf("--md");
+      if (mdFlag >= 0) {
+        const mdPath = subArgs[mdFlag + 1];
+        if (!mdPath) {
+          console.error(usage);
+          process.exit(2);
+        }
+        const chunks = chunkMarkdown(readFileSync(mdPath, "utf8").trim());
+        for (const [i, chunk] of chunks.entries()) {
+          const html = mdToTelegramHtml(chunk);
+          if (dryRun) console.log(i ? `${DRY_RUN_BREAK}${html}` : html);
+          else await bot.sendMessage(html, { html: true }).catch(() => bot.sendMessage(chunk));
+        }
+        if (!dryRun) console.error(`sent (${chunks.length} message${chunks.length === 1 ? "" : "s"})`);
+        return;
+      }
       const fileFlag = subArgs.indexOf("--file");
       if (fileFlag >= 0) {
         const filePath = subArgs[fileFlag + 1];
