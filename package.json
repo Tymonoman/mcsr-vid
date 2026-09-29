@@ -42,6 +42,8 @@
     "series": "npm run build-overlay-css && tsx src/playoffs/seriesCli.ts",
     "export:fast": "tsx src/pipeline/exportFastCli.ts",
     "chat": "tsx src/cli/chatCli.ts",
+    "//clip": "A standalone clip (not a match) framed and composited into a video; uploads nothing.",
+    "clip": "npm run build-overlay-css && tsx src/clips/clipCli.ts",
     "//sync-status": "Where each match's clips are placed; with an id, backfills sync.json from an already-generated .kdenlive.",
     "sync-status": "tsx src/pipeline/syncStatusCli.ts",
     "//retention": "Audience retention curve per video from the Analytics API — where the viewers leave.",

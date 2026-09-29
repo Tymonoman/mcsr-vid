@@ -61,6 +61,7 @@ Use the script, don't reconstruct the shell line. Extra arguments go after `--`.
 | `npm run series -- <matchId \| all> [--join-only]` | A playoff series as one video (`src/playoffs/series.ts`): renders every game of the slot that has no export, joins them into game 1's `series-<g1>.mp4`, rewrites game 1's title/description/chapters/tags for the series; the series' Short is picked and cut like any match's, from game 1's directory, once the hooks are saved. `all` walks the board in date order; `--join-only` joins what is exported. The dashboard's nightly cannot see a run here: start one in the daytime. |
 | `npm run sync-status -- [matchId]` | Where a match's POV clips are placed. With an id and no `sync.json`, derives it from the `.kdenlive` and writes it, so a re-export picks the corrected offsets up without a re-render. No id lists every match and writes nothing. |
 | `npm run chat -- <matchId>` | Fetch both players' Twitch chat to `chat-<nick>.json` for a match the pipeline saved none for (it does this itself after `download-vods`). Existing files are kept; delete one to refetch. |
+| `npm run clip -- <twitch url \| local file> [--from=HH:MM:SS --to=HH:MM:SS] --title="…" --speaker="…" --when="…" --credit="…" [--slug=…] [--seconds=N]` | A standalone clip (a stream statement, a reaction — not a match) framed in the channel's look and composited to `<mediaDir>/clips/<slug>/clip-<slug>.mp4`. See Clips. |
 | `npm run tg -- report --dry-run` | The morning report's exact text, printed, nothing sent — needs no Telegram key. `cmd "/stats 7d" --dry-run` answers one slash command the same way; `send --md <report.md>` sends a report (Markdown turned into Telegram formatting), `send <text>` / `send --file <path>` a line or a file, to the operator's chat; `whoami` prints the chat ids that recently messaged the bot (`getUpdates`), for pairing `TELEGRAM_CHAT_ID`. See Telegram bot. |
 | `npm run pick -- <matchId \| all> [--force] [--dry-run]` | Ask the model for the Short's moment (see Shorts): prints the prompt size, the model's raw answer, any validation failure and the pick. Without `--force` a pick newer than the export is kept. `--dry-run` asks afresh and writes nothing into the match directory; it refuses (exit 1) rather than make the proxy or a /watch cache, saying why the one on disk does not count (none, older than its source, other arguments — a checkout without `/app/.env` adds `--no-whisper` — or a run that kept none); only a missing one is a reason for a real run. |
 | `npm run bench -- <Composition> [--frames=N] [--codec=] [--pixelFormat=] [--concurrency=N]` | Render throughput for one composition. Measure before claiming a render change is faster. |
@@ -632,6 +633,20 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
 - **What is not built**: `youtubeUploadEnabled`-gated actions, renders, queue edits — every
   command is read-only, and `/help` says so. No command writes anything the dashboard would show
   as changed.
+
+## Clips (prototype)
+
+For a video that is not a match — a stream statement, a reaction, something worth posting on the
+channel on its own (built 29 Sept 2026 for Feinberg's on-stream statement on the edcr situation).
+`remotion/ClipFrame.tsx` is the reusable frame: a title band, the channel's quartz-bordered plate
+around a 16:9 window (`CLIP_WINDOW_*`, `remotion/layout.ts`), a nameplate and credit line, the
+MC/SR badge — exactly the thumbnail/overlay look, never a new one. `npm run clip` is the one
+command: it gets the source (yt-dlp for a Twitch URL, `--from`/`--to` trims a VOD section; a
+already-downloaded file is used as-is), renders the frame, and composites both with ffmpeg into
+`<mediaDir>/clips/<slug>/clip-<slug>.mp4` — nothing here uploads anywhere, or posts anywhere; the
+operator picks the title and reviews the file first, same as every other export. `clips/` is a
+non-numeric directory name, which every scan of `mediaDir` already filters on (`/^\d+$/`), so it
+sits beside the match directories without the dashboard ever seeing it.
 
 ## Chat replay (prototype)
 

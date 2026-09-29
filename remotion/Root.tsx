@@ -1,6 +1,7 @@
 import { Composition } from "remotion";
 import { Overlay, OverlayTop, OverlayBottom, OverlaySplits, OverlayTimer, OverlayIntro } from "./Overlay.js";
 import { Thumbnail } from "./Thumbnail.js";
+import { ClipFrame } from "./ClipFrame.js";
 import { SeedIconSheet } from "./SeedIconMC.js";
 import { SeedIconScene, type BakedScene } from "./SeedScene.js";
 import { CountdownTeaser } from "./CountdownTeaser.js";
@@ -15,7 +16,7 @@ import {
   STATIC_COL_WIDTH,
   TOP_BAND_HEIGHT,
 } from "./layout.js";
-import type { ChatPanelProps, OverlayProps, ThumbnailProps } from "./types.js";
+import type { ChatPanelProps, ClipFrameProps, OverlayProps, ThumbnailProps } from "./types.js";
 import { infumeChat, INFUME_CHAT_NICKNAME } from "./fixtures/chatInfume.js";
 
 const defaultProps: OverlayProps = {
@@ -124,6 +125,13 @@ const chatDefaultProps: ChatPanelProps = {
   heightPx: BOTTOM_BAND_HEIGHT,
   leadInSec: 10,
   fps: 30,
+};
+
+const clipFrameDefaultProps: ClipFrameProps = {
+  title: "FEINBERG ON THE EDCR SITUATION",
+  speaker: "FEINBERG",
+  when: "on stream · 16 Sept 2026",
+  credit: "twitch.tv/feinberg",
 };
 
 export const RemotionRoot: React.FC = () => {
@@ -270,6 +278,18 @@ export const RemotionRoot: React.FC = () => {
           width: props.widthPx,
           height: props.heightPx,
         })}
+      />
+      {/* The reusable frame for a standalone clip (a stream statement, a reaction), not a match
+          render: src/clips/clipCli.ts composites the source video into the transparent window
+          this still leaves open. */}
+      <Composition
+        id="ClipFrame"
+        component={ClipFrame}
+        durationInFrames={1}
+        fps={30}
+        width={1920}
+        height={1080}
+        defaultProps={clipFrameDefaultProps}
       />
       <Composition
         id="Thumbnail"

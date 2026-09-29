@@ -1445,3 +1445,152 @@
 .chat-name {
   font-weight: 700;
 }
+
+/* ===== clip frame (1920x1080 standalone-clip still, remotion/ClipFrame.tsx) ===== */
+/* Exactly the thumbnail/overlay look, twinned: the same mid-value crimson/warped split with its
+   48px checker (.thumb, .row1), the same panel-edge title band (.thumb-header), the same
+   quartz-bordered hard-shadowed plate (.band-plate, .thumb-tag) for the nameplate. The window
+   itself is left undrawn by the four ground regions in ClipFrame.tsx tiling everything *around*
+   layout.ts's CLIP_WINDOW_* rect, the same technique the match overlay uses for the POV gap. */
+.clipframe {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  font-family: var(--pixel-font);
+}
+/* Position only per side (left/right/bottom); the checker+split fill is shared. Literal px, not
+   computed: these are layout.ts's CLIP_WINDOW_* rect and CLIP_BAND_HEIGHT, and layout.test.ts
+   pins them to it the same way it pins .row1/.row2/.splits — drift here would slide the
+   transparent hole away from where clipCli.ts scales the source video into it. */
+.clipframe-ground {
+  position: absolute;
+  background:
+    repeating-conic-gradient(rgba(13, 12, 16, 0.07) 0 25%, transparent 0 50%) 0 0 / 48px 48px,
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--crimson) 42%, var(--panel)) 0 50%,
+      color-mix(in srgb, var(--warped) 34%, var(--panel)) 50% 100%
+    );
+}
+.clipframe-ground.left {
+  top: 140px;
+  left: 0;
+  width: 160px;
+  height: 940px;
+}
+.clipframe-ground.right {
+  top: 140px;
+  left: 1760px;
+  width: 160px;
+  height: 940px;
+}
+.clipframe-ground.bottom {
+  top: 1040px;
+  left: 160px;
+  width: 1600px;
+  height: 40px;
+}
+.clipframe-band {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 140px;
+  background: var(--panel-edge);
+  border-bottom: 4px solid var(--panel-edge-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3;
+}
+.clipframe-title {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.08;
+  text-align: center;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--quartz);
+  /* The same eight-way hard outline plus offset drop shadow as the thumbnail's VS/hook text. */
+  text-shadow:
+    5px 0 0 var(--panel-edge),
+    -5px 0 0 var(--panel-edge),
+    0 5px 0 var(--panel-edge),
+    0 -5px 0 var(--panel-edge),
+    5px 5px 0 var(--panel-edge),
+    -5px -5px 0 var(--panel-edge),
+    5px -5px 0 var(--panel-edge),
+    -5px 5px 0 var(--panel-edge),
+    0 10px 0 rgba(0, 0, 0, 0.45);
+}
+/* The frame drawn around the window: box-sizing: border-box keeps the content-box interior at
+   exactly CLIP_WINDOW_X/Y/WIDTH/HEIGHT, so its border is entirely outset from that rect and
+   never paints over the transparent hole. No fill — the hole is the point. */
+.clipframe-window {
+  position: absolute;
+  z-index: 4;
+  left: 150px;
+  top: 130px;
+  width: 1620px;
+  height: 920px;
+  box-sizing: border-box;
+  border: 10px solid var(--quartz);
+  background: transparent;
+  box-shadow: 10px 10px 0 var(--panel-edge);
+}
+/* The nameplate, overlapping the window's lower-left corner: mostly over the footage, its left
+   edge bleeding past the frame into the ground (.thumb-tag's own dark-fill, quartz-border,
+   crimson-accent plate, scaled up for a single big card). Bottom-anchored 20px above the
+   window's own bottom edge, so it reads as sitting on the corner rather than hanging off it. */
+.clipframe-tag {
+  position: absolute;
+  z-index: 5;
+  left: 140px;
+  bottom: 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 26px;
+  background: var(--panel);
+  border: 5px solid var(--quartz);
+  border-left: 12px solid var(--crimson);
+  box-shadow: 6px 6px 0 var(--panel-edge);
+}
+.clipframe-tag .name {
+  font-size: 46px;
+  font-weight: 700;
+  color: var(--quartz);
+  white-space: nowrap;
+}
+.clipframe-tag .when {
+  font-size: 20px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+/* Below the window, in the strip the ground.bottom region leaves under it — clear of the
+   nameplate, which stays above the window's own bottom edge. */
+.clipframe-credit {
+  position: absolute;
+  z-index: 5;
+  left: 160px;
+  top: 1048px;
+  font-size: 20px;
+  color: var(--quartz);
+  opacity: 0.85;
+  text-shadow: 2px 2px 0 var(--panel-edge);
+}
+.clipframe-logo {
+  position: absolute;
+  right: 28px;
+  bottom: 28px;
+  z-index: 5;
+}
+.clipframe-logo .badge {
+  position: static;
+  transform: none;
+  width: 96px;
+  height: 96px;
+}
