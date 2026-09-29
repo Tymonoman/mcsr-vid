@@ -574,13 +574,18 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
   (one real run took 47 s, the next over 120 s) or an unusable answer falls back to a rule-based
   to-do list (`fallbackToday`) and the report says "agy unavailable: <reason>" in one line.
   `/report`, `/todo` and `/ask` first answer "asking agy — this takes a minute or two".
-- **The report is one HTML message, capped at 4096 characters of visible text** (Telegram counts
-  the text after it parses the HTML — `visibleLength`; links are short labels, "reply" · "Studio"),
-  sections in the spec's order (TODAY → ALERTS → HEALTH → OVERNIGHT → STATS → COMMENTS → YPP).
-  HEALTH is one line while everything is up; a section that would not fit is left out by name and
-  the smaller ones after it still get in. YPP leads with the countdown (`tierCountdown`: a tier
-  lands when subscribers AND watch hours-or-Shorts-views do, the later of the two, named). Every dynamic string is HTML-escaped (`escapeHtml`); the
-  hook's forwarder and `/help` send plain text instead, needing none of that.
+- **The report is three messages, each saying a thing once** (the operator, 29 Sept 2026: "too
+  much repetitive info split it up into a couple messages"; `renderMorningReport` returns them):
+  the day (agy's headline, which must not repeat a to-do item, and its numbered to-do list with one
+  dashboard link; Problems only when there are any; overnight in a line when quiet; health as one
+  line naming only what is down), the channel (live counts, then the 1/3/7/30-day stats as one
+  `<pre>` table, a metric per row; YPP as the countdown and the gate holding it back — `tierEta`,
+  a tier lands when subscribers AND watch hours-or-Shorts-views do), and the comments (grouped by
+  video, each title once as hook · players, in a `<blockquote expandable>`, filled until the
+  4096-character limit — `visibleLength`, the text Telegram counts after parsing the HTML). The
+  full breakdowns stay one command away (`/health`, `/ypp`, `/alerts`). HTML parse mode rather
+  than MarkdownV2: it renders the same bold/code/links/quotes and needs escaping of three
+  characters, not eighteen, in viewers' comment text. Every dynamic string goes through `escapeHtml`.
 - **Dashboard links are match ids, not deep links.** `public/app.js` has no hash route, no
   `location.search` read at boot and no other way to open a specific match from a URL — the SPA's
   only navigation is its own client-side state. Every "dashboard link" in a report is therefore
@@ -621,9 +626,11 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
   `scripts/tg-forward.mjs` — plain Node, no `tsx`, so it stays fast on every turn. Reads the
   hook's `transcript_path` (the one documented field this relies on; every other field is read
   defensively), takes the text of the LAST assistant message of the turn (every `type: "text"`
-  content block on the transcript's last `type: "assistant"` line, joined), and sends it — plain
-  text, no HTML escaping needed — headed "Claude · <Warsaw time>" when it is at least 300
-  characters; a short reply is not a report and is left alone. 10 s total timeout, always exits
+  content block on the transcript's last `type: "assistant"` line, joined), and sends it headed
+  "Claude · <Warsaw time>" when it is at least 300 characters; a short reply is not a report and
+  is left alone. The Markdown is converted to Telegram HTML (`mdToTelegramHtml`: headings and
+  bold, code, links, bullets, a table as an aligned `<pre>`), cut between paragraphs and never
+  inside a fence (`chunkMarkdown`); a piece Telegram will not parse goes again as plain text. 10 s total timeout, always exits
   0, silent whenever the keys are missing (the same silence as nothing configured at all), never
   prints the token.
 - **What is not built**: `youtubeUploadEnabled`-gated actions, renders, queue edits — every
