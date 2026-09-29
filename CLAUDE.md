@@ -37,7 +37,7 @@ what an agent cannot derive from the code; the rest is in the files it names.
 | `src/playoffs/` | The bracket and its games (`playoffs.ts`), a series as one video (`series.ts`, `seriesCli.ts`). |
 | `src/youtube/` | The Data API client and auth, upload records, the upload itself, the channel pairing, the publish slot. |
 | `src/dashboard/` | The web server (`server.ts`, one dispatch chain), its route groups (`youtubeRoutes`, `exportRoutes`, `shortsRoutes`, `syncRoutes`), the match screen's payload (`matchMeta.ts`), jobs, the nightly, suggestions, the shelf (hidden/queue/checklist), the publish set. |
-| `src/telegram/` | The Telegram bot: the Bot API client (`bot.ts`), the morning report's facts (`facts.ts`) and its rendering (`report.ts`), agy as the report's brain (`agy.ts`), the 07:00 Warsaw schedule (`schedule.ts`), slash-command parsing (`commands.ts`), the dedupe/snapshot state file (`state.ts`), the wiring `server.ts` boots (`index.ts`) and the CLI (`tgCli.ts`). |
+| `src/telegram/` | The Telegram bot: the Bot API client (`bot.ts`), the morning report's facts (`facts.ts`) and its rendering (`report.ts`), agy as the report's brain (`agy.ts`), the reports `/ask` reads (`knowledge.ts`), the 07:00 Warsaw schedule (`schedule.ts`), slash-command parsing (`commands.ts`), the dedupe/snapshot state file (`state.ts`), the wiring `server.ts` boots (`index.ts`) and the CLI (`tgCli.ts`). |
 | `src/cli/` | Entry points nothing else imports: batch, status, score, chat, bench, retention, the TUI. |
 | `src/` root | `config.ts`, `cliArgs.ts`, `errorText.ts`, and the tests that cut across folders. |
 
@@ -574,6 +574,16 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
   (one real run took 47 s, the next over 120 s) or an unusable answer falls back to a rule-based
   to-do list (`fallbackToday`) and the report says "agy unavailable: <reason>" in one line.
   `/report`, `/todo` and `/ask` first answer "asking agy — this takes a minute or two".
+- **`/ask` also gets the channel's reports** (the operator, 29 Sept 2026: "give agy some knowledge
+  about the channel competitors and such let it have access to reports you made so I can ask him
+  questions without him reporting he doesn't know"). `handbook/knowledge/*.md` is in the repo because
+  the dashboard container cannot see `~/.claude`: `channel.md` (the standing briefing, always sent
+  whole), the competitor, audit, audience, YPP, edcr and Studio reports, and `chat-analyses.md`
+  (what was answered in chat). `knowledgeFor` (`knowledge.ts`) sends the briefing, an index of
+  every doc and the `## ` sections that share the most words with the question, best first, inside
+  70 KB (the prompt is one argv argument, ~128 KiB at most). **No viewer comment text or name goes
+  into these docs** — they are paraphrased — and a figure carries the date it was read. Add a
+  report by copying it in; a new answer worth keeping goes into `chat-analyses.md` or `channel.md`.
 - **The report is three messages, each saying a thing once** (the operator, 29 Sept 2026: "too
   much repetitive info split it up into a couple messages"; `renderMorningReport` returns them):
   the day (agy's headline, which must not repeat a to-do item, and its numbered to-do list with one

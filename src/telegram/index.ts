@@ -11,6 +11,7 @@ import { config } from "../config.js";
 import { describeError } from "../errorText.js";
 import * as bot from "./bot.js";
 import { askAgyForReport, askAgyFreeform, type AgyResult } from "./agy.js";
+import { knowledgeFor } from "./knowledge.js";
 import { BOT_COMMANDS, HELP_TEXT, parseCommand, parseStatsWindows, type ParsedCommand } from "./commands.js";
 import { gatherFacts, gatherNightlyInfo, gatherUpcoming, type ReportFacts } from "./facts.js";
 import {
@@ -200,11 +201,14 @@ export async function dispatchCommand({ command, args }: ParsedCommand): Promise
       const facts = await gatherFacts();
       const prompt = [
         CHANNEL_CONTEXT,
-        "Answer his one question below from FACTS, briefly, in plain words for a phone.",
-        "Every number in your answer must come from FACTS, never invented. This goes only to the operator: never include any viewer comment text or names.",
+        "Answer his one question below briefly, in plain words for a phone. FACTS is today's live channel data; KNOWLEDGE is the channel's own reports (competitors, audience, YPP, edcr, what was decided in chat) with the date each figure was read.",
+        "Every number in your answer must come from FACTS or KNOWLEDGE, never invented; say how old a figure is when it matters. This goes only to the operator: never include any viewer comment text or names.",
+        "If neither has the answer, say what is missing and where it could be found (which report, which YouTube Studio page) instead of only saying you do not know.",
         `QUESTION: ${args.trim()}`,
         "",
         `FACTS = ${JSON.stringify(factsForAgy(facts))}`,
+        "",
+        `KNOWLEDGE (markdown):\n${knowledgeFor(args)}`,
         "",
         'Reply with exactly one JSON object: { "answer": string } and nothing else.',
       ].join("\n");
