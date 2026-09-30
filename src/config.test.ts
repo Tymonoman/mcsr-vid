@@ -94,5 +94,19 @@ assert.throws(() => validateOverrides({ favouritePlayers: "edcr, doogile" }), /f
 assert.throws(() => validateOverrides({ favouritePlayers: { edcr: true } }), /favouritePlayers/);
 assert.throws(() => validateOverrides({ favouritePlayers: ["edcr", 7] }), /favouritePlayers/);
 assert.throws(() => validateOverrides({ favouritePlayers: ["edcr", "  "] }), /favouritePlayers/);
+// The pair-repeat window: 3 days by default, whole days 0-30, 0 is off (seriesPairGapDays' own rule).
+assert.equal(DEFAULTS.pairRepeatDays, 3);
+assert.doesNotThrow(() => validateOverrides({ pairRepeatDays: 0 }));
+assert.doesNotThrow(() => validateOverrides({ pairRepeatDays: 30 }));
+assert.throws(() => validateOverrides({ pairRepeatDays: 31 }), /pairRepeatDays.*0-30/);
+assert.throws(() => validateOverrides({ pairRepeatDays: -1 }), /pairRepeatDays/);
+assert.throws(() => validateOverrides({ pairRepeatDays: 2.5 }), /pairRepeatDays/);
+assert.throws(() => validateOverrides({ pairRepeatDays: "3" }), /pairRepeatDays/);
+assert.throws(() => validateOverrides({ pairRepeatDays: null }), /pairRepeatDays/);
+assert.throws(
+  () => validateOverrides({ seriesPairGapDays: 31 }),
+  /seriesPairGapDays.*0-30/,
+  "it shares the rule",
+);
 
 console.log("config: all checks passed");

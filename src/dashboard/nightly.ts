@@ -41,6 +41,7 @@ import {
   setSkipNightOf,
   skipNightOf,
 } from "./matchShelf.js";
+import { refreshPairPosts } from "./pairPosts.js";
 import { orderForDisplay } from "./suggestPresent.js";
 import { playoffBoard, type PlayoffBoard } from "../playoffs/playoffs.js";
 import { listProcessedMatchIds } from "./matchStatus.js";
@@ -454,6 +455,8 @@ const liveRanked = async (): Promise<readonly NightlyPick[] | null> => {
   // when it is stale — so the pick is from tonight's feed, not from whenever the process booted.
   await startScan(false);
   const result = snapshot().result;
+  // The pairs the channel put out lately, fresh: the order demotes a repeat (src/dashboard/pairPosts.ts).
+  await refreshPairPosts();
   return result ? [...(await playoffPicks()), ...orderForDisplay(result.suggestions)] : null;
 };
 
@@ -485,6 +488,9 @@ const pickContext = async (): Promise<NightlyPickContext> => ({
  */
 export async function nightlyCandidate(): Promise<NightlyPick | null> {
   const result = snapshot().result;
+  // Only a kick, never awaited: a read of the records (and, for a new upload, one API request) is not
+  // something a polled GET waits for. The preview uses what the last refresh found.
+  void refreshPairPosts();
   return result
     ? // No VOD probe: a GET the browser polls must not spend a yt-dlp listing per candidate. The
       // preview may therefore name a game the run itself falls through — it is a preview.

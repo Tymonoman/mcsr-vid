@@ -85,6 +85,15 @@ export interface Config {
    */
   favouritePlayers: string[];
   /**
+   * Whole days, 0-30 (0 is off): a match whose two players this channel already put out a
+   * long-form video for — public, or scheduled — within this many days of now counts for half when
+   * the suggestion list is ordered (`presentSuggestions`, src/dashboard/pairPosts.ts). A demotion,
+   * not a skip: a marquee rematch still renders when nothing else qualifies. Feinberg vs Infume
+   * went up on 24, 27 and 29 Sept 2026, and a pair that brings a new runner's audience converts
+   * better than a repeat (30 Sept 2026 plan). The default changes which card the nightly takes first.
+   */
+  pairRepeatDays: number;
+  /**
    * A tip-jar URL (Ko-fi, PayPal.me) for the description's "Tip jar" line. The
    * audit named it the one revenue stream not gated at 41 subscribers, and the active
    * competitor runs a PayPal.me link in every description. Empty: no line.
@@ -376,6 +385,7 @@ export const DEFAULTS: Config = {
   youtubePlaylistUrl: "",
   rivalChannelHandle: "mcsrmatches",
   favouritePlayers: ["doogile", "Feinberg", "Infume", "Pinne", "lowk3y_", "silverrruns"],
+  pairRepeatDays: 3,
   supportUrl: "",
   pullSource: "",
   pullDest: "~/Replayoffs",
@@ -562,9 +572,9 @@ export function validateOverrides(raw: Record<string, unknown>): void {
       continue;
     }
     // A fraction or a negative would silently read as its floor or as "off".
-    if (key === "seriesPairGapDays") {
+    if (key === "seriesPairGapDays" || key === "pairRepeatDays") {
       if (!Number.isInteger(value) || (value as number) < 0 || (value as number) > 30) {
-        throw new Error(`${CONFIG_PATH}: "seriesPairGapDays" must be whole days 0-30 (0 is off).`);
+        throw new Error(`${CONFIG_PATH}: "${key}" must be whole days 0-30 (0 is off).`);
       }
       continue;
     }

@@ -31,6 +31,7 @@
   "youtubePlaylistUrl": "",
   "rivalChannelHandle": "mcsrmatches",
   "favouritePlayers": ["doogile", "Feinberg", "Infume", "Pinne", "lowk3y_", "silverrruns"],
+  "pairRepeatDays": 3,
   "supportUrl": "",
   "pullSource": "",
   "pullDest": "~/Replayoffs",

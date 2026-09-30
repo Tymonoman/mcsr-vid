@@ -194,6 +194,16 @@ export const SETTINGS: readonly SettingField[] = [
     unattended: true,
   },
   {
+    key: "pairRepeatDays",
+    label: "Days before a pair repeats",
+    help: "A match whose two players this channel already put out a video for, public or scheduled, within this many days either side of now counts for half in the list and in the nightly's first pick, so another pair goes first. Never skipped: a rematch still renders when nothing else qualifies. 0 is off. Applies on the next read.",
+    kind: "int",
+    group: "Suggestions",
+    min: 0,
+    max: 30,
+    unattended: true,
+  },
+  {
     key: "suggestCacheTtlMin",
     label: "Rescan every (min)",
     help: "How often the suggestion scan looks for new matches. Each full scan is ~340 MCSR API calls against a 500-per-10-minutes budget.",
