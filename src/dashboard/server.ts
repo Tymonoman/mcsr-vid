@@ -39,6 +39,7 @@ import { STAGE_LABELS, STAGE_ORDER, STAGE_SHORT_LABELS } from "../pipeline/pipel
 import { presentSuggestions } from "./suggestPresent.js";
 import { dismiss, restore, snapshot, startScan } from "./suggestScan.js";
 import { cronLine, rsyncPullAllCommand, rsyncPullCommand } from "./publishSet.js";
+import { playerDms } from "./playerDm.js";
 import { playoffBoard } from "../playoffs/playoffs.js";
 import { renderSeries, seriesState, type SeriesRunners } from "../playoffs/series.js";
 import { refreshRivalPostsIfStale, rivalPostsSnapshot, rivalRecentPostFor } from "./rivalPosts.js";
@@ -611,6 +612,7 @@ const server = createServer(async (req, res) => {
         (await readUpload(matchId))?.videoId ??
         channelVideoFor(matchId, channelUploadsSnapshot())?.videoId ??
         null;
+      const videoUrl = videoId ? `https://youtu.be/${videoId}` : null;
       // What the upload sends (`uploadTextFor`: today's templates over the render's files), so a
       // Studio paste and a dashboard upload cannot say two different things.
       const video = await uploadTextFor(matchId, "video");
@@ -622,8 +624,11 @@ const server = createServer(async (req, res) => {
         tags: video.tags,
         shortTitle: short.title || null,
         shortDescription: short.description.trim() || null,
-        videoUrl: videoId ? `https://youtu.be/${videoId}` : null,
+        videoUrl,
         players: [entry.leftNickname ?? null, entry.rightNickname ?? null],
+        // The DM per player when the pick has their moment and the video is up (left, right);
+        // null where the panel's plain line stands (src/dashboard/playerDm.ts).
+        dms: await playerDms(matchId, [entry.leftNickname, entry.rightNickname], videoUrl),
         // The same line "Finish on YouTube" posts (src/youtube/youtubeUpload.ts), so the paste and the
         // API call cannot say two different things.
         pinnedComment: pinnedComment(),
