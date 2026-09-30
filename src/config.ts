@@ -493,9 +493,14 @@ export function validateOverrides(raw: Record<string, unknown>): void {
     // A second row would push the post-roll card's last line out of its plate, so the limit is
     // the card's, not a taste: empty is the bare card.
     if (key === "ctaReason") {
-      if (typeof value !== "string" || value.trim().length > CTA_REASON_MAX_CHARS || /[\r\n]/.test(value)) {
+      // Plain ASCII only: any other character falls back to another font and can overflow the row.
+      if (
+        typeof value !== "string" ||
+        value.trim().length > CTA_REASON_MAX_CHARS ||
+        /[^\x20-\x7E]/.test(value)
+      ) {
         throw new Error(
-          `${CONFIG_PATH}: "ctaReason" must be one row of at most ${CTA_REASON_MAX_CHARS} characters, or empty for the bare SUBSCRIBE card.`,
+          `${CONFIG_PATH}: "ctaReason" must be one row of at most ${CTA_REASON_MAX_CHARS} plain ASCII characters, or empty for the bare SUBSCRIBE card.`,
         );
       }
       continue;

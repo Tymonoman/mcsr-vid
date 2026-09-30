@@ -85,6 +85,11 @@ assert.doesNotThrow(() => validateOverrides({ ctaReason: "" }), "empty is the ba
 assert.doesNotThrow(() => validateOverrides({ ctaReason: "W".repeat(CTA_REASON_MAX_CHARS) }));
 assert.throws(() => validateOverrides({ ctaReason: "W".repeat(CTA_REASON_MAX_CHARS + 1) }), /ctaReason/);
 assert.throws(() => validateOverrides({ ctaReason: "ONE ROW\nNOT TWO" }), /ctaReason/);
+assert.throws(
+  () => validateOverrides({ ctaReason: "NOWY MECZ CO DZIEŃ" }),
+  /ctaReason/,
+  "non-ASCII falls back to another font",
+);
 assert.throws(() => validateOverrides({ ctaReason: null }), /ctaReason/);
 assert.throws(() => validateOverrides({ ctaReason: 5 }), /ctaReason/);
 
