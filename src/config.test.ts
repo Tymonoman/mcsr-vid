@@ -78,6 +78,7 @@ assert.throws(() => validateOverrides({ introSec: "3" }), /introSec/);
 assert.throws(() => validateOverrides({ introSec: null }), /introSec/);
 // The favourite players: the roster by default, [] is "no bonus", and the generic typeof check (an
 // array default accepts any object) must not let null, a string or a blank name through.
+// edcr is not on it: whether he is, is the operator's call, made in the Settings tab.
 assert.deepEqual(DEFAULTS.favouritePlayers, [
   "doogile",
   "Feinberg",
@@ -85,7 +86,6 @@ assert.deepEqual(DEFAULTS.favouritePlayers, [
   "Pinne",
   "lowk3y_",
   "silverrruns",
-  "edcr",
 ]);
 assert.doesNotThrow(() => validateOverrides({ favouritePlayers: [] }));
 assert.doesNotThrow(() => validateOverrides({ favouritePlayers: ["edcr", "Feinberg"] }));

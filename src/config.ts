@@ -375,7 +375,7 @@ export const DEFAULTS: Config = {
   youtubePlaylistTitle: "MCSR Ranked matches",
   youtubePlaylistUrl: "",
   rivalChannelHandle: "mcsrmatches",
-  favouritePlayers: ["doogile", "Feinberg", "Infume", "Pinne", "lowk3y_", "silverrruns", "edcr"],
+  favouritePlayers: ["doogile", "Feinberg", "Infume", "Pinne", "lowk3y_", "silverrruns"],
   supportUrl: "",
   pullSource: "",
   pullDest: "~/Replayoffs",
