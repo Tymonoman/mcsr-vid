@@ -2556,6 +2556,8 @@ async function refresh() {
     return false;
   }
   renderList();
+  // A link's match opens once the list is there, including after a failed first load.
+  if (selected === null) openLinked();
   // A card whose match just landed on the shelf switches from render buttons to "open".
   if (suggestData) renderSuggestions(suggestData);
   return true;
@@ -3514,7 +3516,7 @@ function openLinked() {
   const first = $("#list .card");
   // A link's match (#match=<id>) is opened instead; a link to one this list does not have is the
   // list, quietly, and the address bar stops naming it (list unread: first is null, the link stays).
-  if (!openLinked() && first) {
+  if (selected === null && first) {
     syncHash();
     select(Number(first.dataset.id));
   }
