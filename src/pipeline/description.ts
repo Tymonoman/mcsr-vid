@@ -123,9 +123,10 @@ export function buildDescription(input: DescriptionInput): string {
 
 /**
  * The subscribe ask, one plain line in the operator's lowercase voice and with a reason: the 29 Sept
- * 2026 plan (item 4) found neither the description nor the pinned comment asking at all. It is its
- * own paragraph after the opening one, on every video and every series, and the last line of the
- * pinned comment (`pinnedComment`). `refreshDescription` adds it to a description rendered before.
+ * 2026 plan (item 4) found the description not asking at all. It is its own paragraph after the
+ * opening one, on every video and every series, and `refreshDescription` adds it to a description
+ * rendered before. The pinned comment does not repeat it (30 Sept 2026: that would be a third
+ * copy beside the cards and this): it asks a question instead (`pinnedQuestion`).
  */
 export const SUBSCRIBE_LINE = "a new match every day. subscribe to catch the next one.";
 

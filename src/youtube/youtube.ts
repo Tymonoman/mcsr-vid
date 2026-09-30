@@ -473,7 +473,20 @@ export async function findOrCreatePlaylist(title: string, description = ""): Pro
   return id;
 }
 
-async function lookupOrCreatePlaylist(title: string, description: string): Promise<string> {
+/**
+ * The id of one of the operator's own playlists by title, or null when there is none. It never
+ * creates one, which is what a caller that only links to a playlist needs: a matchup playlist
+ * waits for the pair's second video, and is not the comment's to make.
+ */
+export async function findPlaylistId(title: string): Promise<string | null> {
+  const known = playlistIds.get(title);
+  if (known) return known;
+  const id = await lookupPlaylist(title);
+  if (id) playlistIds.set(title, id);
+  return id;
+}
+
+async function lookupPlaylist(title: string): Promise<string | null> {
   // `mine=true` scopes the search to the operator's own playlists, so a title collision with
   // someone else's public playlist cannot hijack this.
   let pageToken = "";
@@ -484,9 +497,14 @@ async function lookupOrCreatePlaylist(title: string, description: string): Promi
     }>(DATA_API, `/playlists?part=snippet&mine=true&maxResults=50${pageToken}`);
     const hit = (page.items ?? []).find((p) => p.snippet.title === title);
     if (hit) return hit.id;
-    if (!page.nextPageToken) break;
+    if (!page.nextPageToken) return null;
     pageToken = `&pageToken=${encodeURIComponent(page.nextPageToken)}`;
   }
+}
+
+async function lookupOrCreatePlaylist(title: string, description: string): Promise<string> {
+  const found = await lookupPlaylist(title);
+  if (found) return found;
 
   const created = await apiCall<{ id: string }>(DATA_API, "/playlists?part=snippet,status", {
     method: "POST",

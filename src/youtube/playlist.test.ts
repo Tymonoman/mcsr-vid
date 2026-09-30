@@ -13,7 +13,8 @@ await writeFile(
   JSON.stringify({ client_id: "c", client_secret: "s", refresh_token: "r" }),
 );
 
-const { addToPlaylist, matchupPlaylistTitle, playerPlaylistTitle } = await import("./youtube.js");
+const { addToPlaylist, findPlaylistId, matchupPlaylistTitle, playerPlaylistTitle } =
+  await import("./youtube.js");
 
 interface Call {
   url: string;
@@ -218,6 +219,24 @@ try {
     "and must not add a video the playlist already has",
   );
   console.log("OK: a video already in the playlist is not added twice");
+
+  // --- 7. A link to a playlist never creates it -----------------------------------------------
+  // The first comment links the pair's playlist when there is one, and a matchup playlist waits
+  // for the pair's second video: looking for it must not be what makes it. A hit is the id (the
+  // page token followed, the id remembered like a created one), a miss is null and writes nothing.
+  calls = stubFetch([
+    { items: [{ id: "PL_A", snippet: { title: "Other" } }], nextPageToken: "p7" },
+    { items: [{ id: "PL_FOUND", snippet: { title: "Pair seven" } }] },
+  ]);
+  const listsOf = () => calls.filter((c) => c.url.includes("/playlists?") && c.method === "GET").length;
+  assert.equal(await findPlaylistId("Pair seven"), "PL_FOUND");
+  assert.equal(listsOf(), 2, "the second page was read");
+  assert.equal(await findPlaylistId("Pair seven"), "PL_FOUND");
+  assert.equal(listsOf(), 2, "and the id is remembered");
+  calls = stubFetch([{ items: [] }]);
+  assert.equal(await findPlaylistId("Pair eight"), null);
+  assert.ok(!calls.some((c) => c.method === "POST"), "a miss creates nothing");
+  console.log("OK: finding a playlist for a link reads, remembers and never creates");
 
   console.log("playlist: all checks passed");
 } finally {

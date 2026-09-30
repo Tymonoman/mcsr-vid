@@ -1106,14 +1106,15 @@ async function loadPublishKit(id, meta) {
       // (uploads off on the box), and exist only once the Short is cut.
       kit.shortTitle ? block("Short title", kit.shortTitle, 2) : "",
       kit.shortDescription ? block("Short description", kit.shortDescription, 4) : "",
-      // A first comment to pin: what the video is and where to report a sync slip, in the
-      // operator's voice. The server's line wins; the fallback is the same text for a server one
-      // restart behind (src/youtube/youtubeStore.ts).
+      // A first comment to pin: a question, where to report a sync slip, a playlist to watch
+      // next and the tip jar, in the operator's voice; five rows so none of it hides below the box.
+      // The server's text wins; the fallback is the sync line alone for a server one restart
+      // behind (src/youtube/youtubeStore.ts, src/youtube/youtubeUpload.ts `pinnedCommentFor`).
       block(
         "Pinned comment",
         kit.pinnedComment ??
           "both povs are the players own streams, synced on the countdown. if the timer looks off anywhere drop the timestamp here and ill fix it",
-        3,
+        5,
       ),
       // The Community tab is open to every channel now, and a post per upload is the cheapest
       // reach a 41-subscriber channel has: the title, one line on what it is, the link.

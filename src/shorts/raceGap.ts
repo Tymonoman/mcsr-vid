@@ -103,7 +103,7 @@ const sideOf = (match: MatchInfo, uuid: string): Side | null =>
   uuid === match.players[0]?.uuid ? "left" : uuid === match.players[1]?.uuid ? "right" : null;
 
 /** When each side first reached each milestone, indexed like MILESTONES. */
-function arrivals(match: MatchInfo): Array<Partial<Record<Side, number>>> {
+export function arrivals(match: MatchInfo): Array<Partial<Record<Side, number>>> {
   const out = MILESTONES.map((): Partial<Record<Side, number>> => ({}));
   for (const e of match.timelines) {
     const i = MILESTONES.findIndex((m) => m.type === e.type);

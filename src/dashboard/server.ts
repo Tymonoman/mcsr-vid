@@ -77,7 +77,8 @@ import { saveSettings, settingsPayload } from "./settings.js";
 import { handleYoutubeRoute, uploadRunning } from "./youtubeRoutes.js";
 import { handleSyncRoute } from "./syncRoutes.js";
 import { readMeta } from "./matchMeta.js";
-import { pinnedComment, readIfPresent, readUpload, uploadTextFor } from "../youtube/youtubeStore.js";
+import { pinnedCommentFor } from "../youtube/youtubeUpload.js";
+import { readIfPresent, readUpload, uploadTextFor } from "../youtube/youtubeStore.js";
 import { startTelegramBot } from "../telegram/index.js";
 
 const PORT = Number(process.env.PORT ?? 8080);
@@ -624,9 +625,9 @@ const server = createServer(async (req, res) => {
         shortDescription: short.description.trim() || null,
         videoUrl: videoId ? `https://youtu.be/${videoId}` : null,
         players: [entry.leftNickname ?? null, entry.rightNickname ?? null],
-        // The same line "Finish on YouTube" posts (src/youtube/youtubeUpload.ts), so the paste and the
+        // The same text "Finish on YouTube" posts (src/youtube/youtubeUpload.ts), so the paste and the
         // API call cannot say two different things.
-        pinnedComment: pinnedComment(),
+        pinnedComment: await pinnedCommentFor(matchId),
         // The slot to schedule for, so the morning's paste into Studio carries a time too —
         // and the first free one, not the same time every match ready this morning would show.
         // The operator's time while it is ahead, else the slot; `publish` says which, and the state.

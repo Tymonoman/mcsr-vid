@@ -334,14 +334,24 @@ export function refreshTags(tags: string[]): string[] {
 
 /**
  * The first comment on a match video, which the operator pins in Studio (pinning has no API).
- * The publish kit shows the same line. What the video is and where to report a sync slip, in
- * the operator's own voice; no question and never the winner; the tip-jar line follows supportUrl
- * like the descriptions, and the subscribe line (`SUBSCRIBE_LINE`, 30 Sept 2026) closes it.
+ * The publish kit shows the same text (`pinnedCommentFor`, src/youtube/youtubeUpload.ts, gathers
+ * what it is handed here). In the operator's own voice and never the winner: a spoiler-free
+ * question to answer (`pinnedQuestion`, 30 Sept 2026), where to report a sync slip, a playlist to
+ * watch next, and the tip-jar line, which follows supportUrl like the descriptions. The subscribe
+ * ask is the description's and the cards', not a third copy here.
  */
-export function pinnedComment(supportUrl = config.supportUrl): string {
+export function pinnedComment(
+  { question, playlistUrl }: { question?: string | null; playlistUrl?: string | null } = {},
+  supportUrl = config.supportUrl,
+): string {
   const sentence =
     "both povs are the players own streams, synced on the countdown. if the timer looks off anywhere drop the timestamp here and ill fix it";
-  return [sentence, ...(supportUrl ? [`tip jar: ${supportUrl}`] : []), SUBSCRIBE_LINE].join("\n");
+  return [
+    ...(question ? [question] : []),
+    sentence,
+    ...(playlistUrl ? [`more matches like this: ${playlistUrl}`] : []),
+    ...(supportUrl ? [`tip jar: ${supportUrl}`] : []),
+  ].join("\n");
 }
 
 /**

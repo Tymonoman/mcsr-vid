@@ -4,7 +4,6 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { config } from "../config.js";
-import { SUBSCRIBE_LINE } from "../pipeline/description.js";
 import { parseImpressionsCsv, REQUIRED_SCOPES, uploadVideo } from "./youtube.js";
 import { findExportedVideo, pinnedComment } from "./youtubeStore.js";
 
@@ -53,13 +52,25 @@ assert.ok(REQUIRED_SCOPES.includes("https://www.googleapis.com/auth/youtube.forc
 assert.ok(REQUIRED_SCOPES.includes("https://www.googleapis.com/auth/youtube.upload"));
 assert.ok(REQUIRED_SCOPES.includes("https://www.googleapis.com/auth/yt-analytics.readonly"));
 
-// --- Pinned comment on match videos: includes tip jar when supportUrl is set, and closes on the
-// subscribe line either way (29 Sept 2026 plan, item 4).
-assert.ok(!pinnedComment("").includes("tip jar"));
-assert.ok(pinnedComment("https://ko-fi.com/x").includes("\ntip jar: https://ko-fi.com/x\n"));
-assert.ok(pinnedComment("").endsWith(`\n${SUBSCRIBE_LINE}`));
-assert.ok(pinnedComment("https://ko-fi.com/x").endsWith(`\n${SUBSCRIBE_LINE}`));
-assert.ok(pinnedComment("").startsWith("both povs are the players own streams"), "the sync line still leads");
+// --- Pinned comment on match videos: a question, the sync line, a playlist to watch next and the tip
+// jar, in that order, each only when there is one (30 Sept 2026). The subscribe ask is not repeated
+// here: the description and the cards carry it. The gathering is src/youtube/pinnedComment.test.ts.
+{
+  const question = "who would you have backed at the fortress, a or b?";
+  const playlistUrl = "https://www.youtube.com/playlist?list=PL1";
+  const lines = pinnedComment({ question, playlistUrl }, "https://ko-fi.com/x").split("\n");
+  assert.equal(lines.length, 4);
+  assert.equal(lines[0], question);
+  assert.ok(
+    lines[1]!.startsWith("both povs are the players own streams") && lines[1]!.endsWith("ill fix it"),
+  );
+  assert.equal(lines[2], `more matches like this: ${playlistUrl}`);
+  assert.equal(lines[3], "tip jar: https://ko-fi.com/x");
+  const bare = pinnedComment({}, "");
+  assert.ok(bare.startsWith("both povs are the players own streams") && !bare.includes("\n"), bare);
+  assert.ok(!pinnedComment({ question, playlistUrl }, "").includes("tip jar"));
+  assert.ok(!/subscribe/i.test(pinnedComment({ question, playlistUrl }, "https://ko-fi.com/x")));
+}
 
 // --- Finding the exported video. The pipeline produces a Kdenlive project, not a finished
 // file, so this picks which file to upload — and picking wrong means a multi-GB POV clip on a

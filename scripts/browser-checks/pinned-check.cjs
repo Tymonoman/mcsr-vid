@@ -32,10 +32,11 @@ const { launchFor, readClipboard } = require("./launch.cjs");
   );
   console.log("errors:", errors.length ? errors : "none");
   await browser.close();
-  // The subscribe line closes it since 30 Sept 2026 (SUBSCRIBE_LINE): a server booted before that
-  // still serves the old text, so a failure here with the old text printed above means restart it.
+  // Since 30 Sept 2026 (pinnedCommentFor): a question first, the sync line, a playlist link, the tip
+  // jar. The question and the link are best effort, so each is optional here; the sync line is what
+  // it always was.
   const pinned =
-    /^both povs are the players.*ill fix it(\ntip jar: \S+)?\na new match every day\. subscribe to catch the next one\.$/;
+    /^(.+\?\n)?both povs are the players.*ill fix it(\nmore matches like this: \S+)?(\ntip jar: \S+)?$/;
   process.exit(clip === text && pinned.test(text) ? 0 : 1);
 })().catch((e) => {
   console.error(e);

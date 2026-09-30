@@ -13,10 +13,12 @@ import { archiveMatch } from "../dashboard/archive.js";
 import type { ChannelVideo } from "./channelUploads.js";
 import { config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
+import { getMatch } from "../api/mcsrApi.js";
 import { listProcessedMatchIds, matchStatusFor } from "../dashboard/matchStatus.js";
 import { playoffContextForId } from "../playoffs/playoffs.js";
 import { exportStale, staleExportMessage } from "../pipeline/syncFile.js";
 import { readManifest } from "../thumbnails/thumbnailVariants.js";
+import { pinnedQuestion } from "../pipeline/pinnedQuestion.js";
 import { HOOK_PLACEHOLDER, metaPaths } from "../pipeline/title.js";
 import { readShortCut, readShortHook, WAITING_FOR_HOOK } from "../shorts/shortHook.js";
 import { activityProgress, boxFailure, endActivity, shortLog, startActivity } from "../shorts/shortLog.js";
@@ -30,6 +32,8 @@ import {
   playoffPlaylistDescription,
   playoffPlaylistTitle,
   commentThreads,
+  findPlaylistId,
+  isConfigured,
   postComment,
   SEASON_PLAYLIST_DESCRIPTION,
   setThumbnail,
@@ -381,6 +385,51 @@ async function earlierVideoOfPair(
 }
 
 /**
+ * The playlist a viewer is sent to from the first comment: the pair's (or the tournament's) if
+ * the channel has one, else a player's, else the season's, as a link, or null. Looked up by title
+ * without creating anything — the matchup playlist waits for the pair's second video — so
+ * `playlistTitlesFor` (season first) is only reordered, most specific first.
+ */
+async function playlistUrlFor(matchId: number): Promise<string | null> {
+  const titles = playlistTitlesFor(
+    await matchStatusFor(matchId),
+    "video",
+    await playoffContextForId(matchId),
+  ).map(([title]) => title);
+  const season = config.youtubePlaylistTitle;
+  for (const title of [...titles.filter((t) => t !== season), ...titles.filter((t) => t === season)]) {
+    const id = await findPlaylistId(title);
+    if (id) return `https://www.youtube.com/playlist?list=${id}`;
+  }
+  return null;
+}
+
+/**
+ * The first comment on a match's video, gathered: a spoiler-free question from the match's own
+ * race (`pinnedQuestion`) and the playlist to watch next (`playlistUrlFor`), composed by
+ * `pinnedComment`. `finishOnYouTube` posts it and the publish kit shows it, so the paste and the
+ * call cannot say two different things. A joined series is asked about as a series.
+ *
+ * Each part is best effort and logged once when it cannot be had, the rule `uploadTextFor`
+ * follows: a comment without its question or its link still goes up, and there is no playlist
+ * lookup at all without a YouTube sign-in to make it with.
+ */
+export async function pinnedCommentFor(matchId: number): Promise<string> {
+  const quietly = async <T>(what: string, part: () => Promise<T>): Promise<T | null> => {
+    try {
+      return await part();
+    } catch (err) {
+      console.warn(`pinned comment, match ${matchId}: no ${what} — ${describeError(err)}`);
+      return null;
+    }
+  };
+  const series = existsSync(path.join(matchDir(matchId), "series.json"));
+  const question = await quietly("question", async () => pinnedQuestion(await getMatch(matchId), series));
+  const playlistUrl = isConfigured() ? await quietly("playlist link", () => playlistUrlFor(matchId)) : null;
+  return pinnedComment({ question, playlistUrl });
+}
+
+/**
  * What a video needs after it exists on the channel: the chosen thumbnail, its playlists, the
  * first comment and its tags. The same four steps for a dashboard upload and a Studio one, each reported
  * rather than thrown — the video is up, and a rejected thumbnail must not read as a failed
@@ -483,7 +532,7 @@ export async function finishOnYouTube(
           // they share (ZqI4Cf1g3_w got four, 26 Sept 2026). A failed read posts nothing.
           // ponytail: reads the newest 50 threads; page through them once a video has more.
           if ((await commentThreads(videoId, config.youtubeChannelId)).some((t) => t.byChannel)) return;
-          await postComment(videoId, pinnedComment());
+          await postComment(videoId, await pinnedCommentFor(matchId));
         });
       }
     }
