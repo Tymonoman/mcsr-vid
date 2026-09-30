@@ -76,14 +76,24 @@ const warsawDay = (nowMs: number): string =>
 const dayMonth = (ms: number): string =>
   new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", day: "numeric", month: "short" }).format(new Date(ms));
 
-/** agy's headline and numbered to-do list, one dashboard link under it. `/todo` is this alone. */
+/** A link to one match's page on the dashboard: `public/app.js` opens `#match=<id>` on its Now
+ *  panel. `label` is HTML, already escaped. A link about the list is the base URL and nothing more. */
+const matchLink = (dashboardBaseUrl: string, id: string | number, label: string): string =>
+  `<a href="${escapeHtml(dashboardBaseUrl)}/#match=${id}">${label}</a>`;
+
+/** agy's headline and numbered to-do list, one dashboard link under it. `/todo` is this alone.
+ *  A `#<id>` in an item (the prompt lets agy write one to name a match) opens that match. */
 export function renderToday(
   todo: ReportFacts["todo"],
   agy: { source: "agy" | "fallback"; answer: AgyAnswer; note?: string },
   dashboardBaseUrl: string,
 ): string {
   const lines = [`<b>${escapeHtml(agy.answer.headline)}</b>`, "", "<b>To do</b>"];
-  agy.answer.todo.forEach((item, i) => lines.push(`${i + 1}. ${escapeHtml(item)}`));
+  agy.answer.todo.forEach((item, i) =>
+    lines.push(
+      `${i + 1}. ${escapeHtml(item).replace(/#(\d{6,})\b/g, (tag, id: string) => matchLink(dashboardBaseUrl, id, tag))}`,
+    ),
+  );
   lines.push(`<a href="${escapeHtml(dashboardBaseUrl)}/">Open the dashboard</a>`);
   if (agy.source === "fallback")
     lines.push(`<i>agy unavailable (${escapeHtml(agy.note ?? "unknown reason")}) — a rule-based list</i>`);
@@ -396,7 +406,7 @@ export function renderWaiting(todo: ReportFacts["todo"], dashboardBaseUrl: strin
   if (rows.length === 0) return `${b("WAITING FOR A HOOK")}\nNothing waiting.`;
   return [
     b("WAITING FOR A HOOK"),
-    ...rows.map((w) => `#${w.matchId} ${escapeHtml(w.players)} — ${escapeHtml(dashboardBaseUrl)}/`),
+    ...rows.map((w) => matchLink(dashboardBaseUrl, w.matchId, `#${w.matchId} ${escapeHtml(w.players)}`)),
   ].join("\n");
 }
 
