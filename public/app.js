@@ -274,6 +274,7 @@ function wireDelete(btn, id) {
       selected = null;
       // On a phone this button is on the match screen, which has just been deleted from under it.
       document.body.classList.remove("view-match");
+      syncHash();
     }
     await refresh();
   });
@@ -329,9 +330,11 @@ function hookCounter(meta) {
  * with the two hooks -- paintNow), Check (the video, the sync frames, the sync editor), Package
  * (thumbnails; splits and the title editors folded), Publish (YouTube, the kit, Manage). Two
  * columns on a desktop, one group at a time below 860px, switched by the .jump bar. Every match
- * opens on Now: the hooks are the only thing between a finished video and the channel.
+ * opens on Now: the hooks are the only thing between a finished video and the channel. `panel`
+ * names the group to open on, which a link (openLinked) does: a match reopened from one is not
+ * the group the operator left it in.
  */
-async function select(id, { open = false } = {}) {
+async function select(id, { open = false, panel } = {}) {
   // Re-selecting the match on screen (the strip's last-run link, a card's "Rendered · open")
   // rebuilds the markup; the group the operator was in must survive it, or a phone drops back to
   // Now mid-Package.
@@ -474,7 +477,7 @@ async function select(id, { open = false } = {}) {
     showPanel(a.dataset.panel);
     window.scrollTo(0, 0);
   });
-  showPanel(keepPanel ?? "now");
+  showPanel(panel ?? keepPanel ?? "now");
   wireNow(id);
 
   $("#mhide") && wireHide($("#mhide"), id);
@@ -2563,6 +2566,8 @@ async function refresh() {
     return false;
   }
   renderList();
+  // A link's match opens once the list is there, including after a failed first load.
+  if (selected === null) openLinked();
   // A card whose match just landed on the shelf switches from render buttons to "open".
   if (suggestData) renderSuggestions(suggestData);
   return true;
@@ -3449,6 +3454,7 @@ function showPanel(name) {
 
 function showMatch() {
   document.body.classList.add("view-match");
+  syncHash();
   updateBackLabel();
   // Hiding the list shortens the page, and the browser would leave you clamped somewhere in
   // the middle of the detail.
@@ -3457,8 +3463,31 @@ function showMatch() {
 
 function showList() {
   document.body.classList.remove("view-match");
+  syncHash();
   updateBackLabel();
   window.scrollTo(0, 0);
+}
+
+/* --- The address bar names the match on screen -------------------------------------------------
+   `#match=<id>` while a match is open, nothing on the list: what the Telegram report links to, and
+   what a reload reopens. The URL is derived from the screen, never the other way round, and set
+   with replaceState, so it adds no history entry and does not scroll. */
+
+function syncHash() {
+  const want = selected && document.body.classList.contains("view-match") ? `#match=${selected}` : "";
+  if (location.hash !== want) history.replaceState(null, "", want || location.pathname + location.search);
+}
+
+/** The match the address bar names, opened on Now, when the list has it; false when there is
+    nothing to open (no link, or a match this list does not know). */
+function openLinked() {
+  const id = Number(/^#match=(\d+)$/.exec(location.hash)?.[1]);
+  if (!matches.some((m) => m.matchId === id)) return false;
+  // Rendered underneath, as if a row had been tapped: the way back is the list the match is in,
+  // not whichever tab the page happened to be on.
+  showTab("matches");
+  void select(id, { open: true, panel: "now" });
+  return true;
 }
 
 (async function init() {
@@ -3495,7 +3524,14 @@ function showList() {
   // is a published or half-encoded match the morning after any upload. Painted behind the list;
   // a row or the strip's last-run link is what shows it.
   const first = $("#list .card");
-  if (first) select(Number(first.dataset.id));
+  // A link's match (#match=<id>) is opened instead; a link to one this list does not have is the
+  // list, quietly, and the address bar stops naming it (list unread: first is null, the link stays).
+  if (selected === null && first) {
+    syncHash();
+    select(Number(first.dataset.id));
+  }
+  // Only now: a hash typed before the list arrived would find no match and be wiped.
+  window.addEventListener("hashchange", () => openLinked() || syncHash());
   // Not awaited: the first scan can take a minute against a cold cache, and the rendered-match
   // list is usable immediately.
   pollSuggestions().catch(

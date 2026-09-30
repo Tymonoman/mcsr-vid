@@ -11,6 +11,7 @@ import {
   renderMorningReport,
   renderStats,
   renderToday,
+  renderWaiting,
   renderYpp,
 } from "./report.js";
 import { MESSAGE_MAX_CHARS } from "./bot.js";
@@ -145,6 +146,32 @@ import type { YppProgress } from "../youtube/yppProgress.js";
   assert.ok(!out.includes("watch"), out);
   assert.ok(out.includes("1. do &lt;x&gt;") && out.includes("2. y &amp; z"), out);
   assert.ok(out.includes("boom"), out); // the facts error still shows
+}
+
+// A link about one match opens that match (`#match=<id>`, which public/app.js routes); a link
+// about the list stays the base URL. The row's players are escaped inside the anchor text.
+{
+  const base = "http://actimel:8080";
+  const todo = {
+    ok: true,
+    data: { waitingForHook: [{ matchId: 13559245, players: "a & b" }] },
+  } as unknown as ReportFacts["todo"];
+  const row = renderWaiting(todo, base);
+  assert.ok(row.includes(`<a href="${base}/#match=13559245">#13559245 a &amp; b</a>`), row);
+  const today = renderToday(
+    todo,
+    {
+      source: "agy",
+      answer: { headline: "h", todo: ["Save hooks for #13559245 and #2", "<b>#13559250</b>"] },
+    },
+    base,
+  );
+  assert.ok(
+    today.includes(`1. Save hooks for <a href="${base}/#match=13559245">#13559245</a> and #2`),
+    today,
+  );
+  assert.ok(today.includes(`&lt;b&gt;<a href="${base}/#match=13559250">#13559250</a>&lt;/b&gt;`), today);
+  assert.ok(today.includes(`<a href="${base}/">Open the dashboard</a>`), today); // the list: no #match
 }
 
 // --- YPP: "an estimated countdown in days", not just an absolute ETA date. ---

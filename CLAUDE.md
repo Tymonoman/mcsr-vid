@@ -71,7 +71,7 @@ Use the script, don't reconstruct the shell line. Extra arguments go after `--`.
 | `npm run analytics -- <videoId> [--traffic-sources] [--days N]` | YouTube Analytics via `~/.claude/skills/claude-youtube/` (outside the repo; token at `~/.claude/.tmp/youtube_oauth_token.json`). |
 | `bash scripts/agy-task.sh <name> <prompt-file> [model]` | Hand an easy, fully specified task to agy (Gemini, the operator's subscription) in worktree `.claude/worktrees/agy-<name>` on branch `agy/<name>`; its answer lands in `.tools/agy-dev/runs/<name>.json`. Its home `.tools/agy-dev` has ECC (pruned to this stack), ponytail, /watch and the Claude skills; it may write only under `.claude/worktrees` and run the read/test commands in its `settings.json`. Review the diff and commit yourself. The picker's home (`.tools/agy-home`) stays plugin-free on purpose. |
 | `python3 scripts/reap.py <command…>` | Subreaper wrapper, only needed if zombies ever climb again (see Pitfalls). |
-| `bash scripts/browser-checks/run-all.sh <url>` | Drives the dashboard in a real browser the way the operator does (25 Playwright checks, two of them only when a Studio upload or an unexported match exists; self-configuring from `/api/matches` and `/api/playoffs`). Point it at the real dashboard (`http://mcsr-dashboard:8080` from the Claude container), not just a local test server — four checks only ever exercised a secure origin and hid a broken Copy button for it. Needs `npx playwright install chromium firefox` once and a server with real data. |
+| `bash scripts/browser-checks/run-all.sh <url>` | Drives the dashboard in a real browser the way the operator does (26 Playwright checks, two of them only when a Studio upload or an unexported match exists; self-configuring from `/api/matches` and `/api/playoffs`). Point it at the real dashboard (`http://mcsr-dashboard:8080` from the Claude container), not just a local test server — four checks only ever exercised a secure origin and hid a broken Copy button for it. Needs `npx playwright install chromium firefox` once and a server with real data. |
 
 Lab timings for a 10-minute match: overlay render ~9 min, `export:fast` ~10 min, a Short in
 seconds; a nightly render takes ~12 min, ~21 min with the MP4 (the Short waits for the hooks).
@@ -221,7 +221,7 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   screen and the head above it is short, and the hash scroll put the head, `#headwarn` with it,
   under the back bar on the very panels that hold Upload and Adopt. Re-selecting the match on screen
   (the strip's last-run link, a card's "Rendered · open") keeps the group that was open; every match
-  opens on Now (`showPanel(keepPanel ?? "now")`). Any phone check that fills a Package or Publish
+  opens on Now, a link's too (`showPanel(panel ?? keepPanel ?? "now")`). Any phone check that fills a Package or Publish
   control taps `.jump [data-panel=…]` first. Now (`#now`, `public/app.js`, `paintNow`) is one column
   of steps in pipeline order from `GET /api/shorts/plan/:id` (`ShortPlanResponse`): **Video**
   (exported, and whether sync is weak/stale; `#nowsync` shows the two 9.6 s countdown frames
@@ -596,13 +596,13 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
   full breakdowns stay one command away (`/health`, `/ypp`, `/alerts`). HTML parse mode rather
   than MarkdownV2: it renders the same bold/code/links/quotes and needs escaping of three
   characters, not eighteen, in viewers' comment text. Every dynamic string goes through `escapeHtml`.
-- **Dashboard links are match ids, not deep links.** `public/app.js` has no hash route, no
-  `location.search` read at boot and no other way to open a specific match from a URL — the SPA's
-  only navigation is its own client-side state. Every "dashboard link" in a report is therefore
-  the dashboard's base URL (`dashboardBaseUrl`, default `http://actimel:8080`, the lab's own
-  address — CLAUDE.md's Clipboard API pitfall) with the match id named in the text beside it, not
-  a link that opens on that match. Wiring a real deep link is a `public/app.js` change, outside
-  this feature.
+- **A link about one match opens that match.** `public/app.js` routes `#match=<id>` once the list has
+  loaded and on `hashchange` (`openLinked`: the match on Now, Rendered under it; an id the list lacks
+  is the list, quietly), and `syncHash` keeps the address naming the match on screen
+  (`replaceState`: a reload keeps it, leaving clears it, no history entry). A report links a match as
+  `<dashboardBaseUrl>/#match=<id>` (`matchLink`: `/waiting` rows, any `#<id>` in a to-do item) and
+  the list as the bare base URL (default `http://actimel:8080`, the lab's own address — the
+  Clipboard API pitfall). `deep-link-check` pins the route.
 - **Dedupe is `<mediaDir>/.telegram.json`**, written atomically (write-then-rename, as
   `.dashboard.json` and `short-<id>.status.json` are): the Warsaw date the report last went out
   on, its instant (what "overnight" and "since the previous report" mean throughout), the
