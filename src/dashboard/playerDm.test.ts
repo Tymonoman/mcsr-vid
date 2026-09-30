@@ -38,6 +38,7 @@ const VIDEO = "https://youtu.be/dQw4w9WgXcQ";
 const NICKS = ["Pinne", "lowk3y_"] as const;
 const LEFT_LINE = "You caught the lava sound and dug down to find the hidden portal room";
 const RIGHT_LINE = "You traded gold for pearls on your first barter";
+const lc = (l: string) => l.replace(/^[A-Z]/, (c) => c.toLowerCase()).replace(/\.$/, "");
 const ASK =
   "ok if i keep posting your matches? both povs synced, credit and links in the description. say the word and it comes down.";
 
@@ -52,12 +53,16 @@ assert.equal(ANCHOR_SEC, 10, "the arithmetic below is written against a 10 s anc
 const [left, right] = await playerDms(100, NICKS, VIDEO);
 assert.equal(
   left,
-  [`hi Skycrab, the match against lowkey is up: ${VIDEO}?t=422`, LEFT_LINE, ASK].join("\n"),
-  "names take the title's spelling; the moment's line is the model's own words",
+  [`hi Pinne, the match against lowk3y_ is up on MCSR Replayoffs: ${VIDEO}?t=422`, lc(LEFT_LINE), ASK].join(
+    "\n",
+  ),
+  "names keep the API spelling; the moment's line is the model's, lowercased, without its full stop",
 );
 assert.equal(
   right,
-  [`hi lowkey, the match against Skycrab is up: ${VIDEO}?t=71`, RIGHT_LINE, ASK].join("\n"),
+  [`hi lowk3y_, the match against Pinne is up on MCSR Replayoffs: ${VIDEO}?t=71`, lc(RIGHT_LINE), ASK].join(
+    "\n",
+  ),
   "the right side gets the right player's moment",
 );
 assert.equal(left!.split("\n").length, 3);
@@ -85,7 +90,7 @@ assert.deepEqual(await playerDms(103, NICKS, VIDEO), [null, null], "a pick with 
 put(104, `short-104.pick.json`, pick(104, { right: { atMs: 61_000, line: RIGHT_LINE } }));
 const [none, only] = await playerDms(104, NICKS, VIDEO);
 assert.equal(none, null);
-assert.ok(only!.startsWith("hi lowkey, the match against Skycrab is up:"));
+assert.ok(only!.startsWith("hi lowk3y_, the match against Pinne is up on MCSR Replayoffs:"));
 
 // A series is game 1's directory and one joined file: a moment of game n is at that game's chapter
 // plus its own match start (game 3 has no record of one, so the anchor). Games 900 s and 1000 s long:
@@ -129,7 +134,7 @@ put(
 );
 const odd = await playerDms(106, NICKS, VIDEO);
 assert.equal(odd[0], null, "atMs that is not a number");
-assert.equal(odd[1]!.split("\n")[1], "You dug down fast");
+assert.equal(odd[1]!.split("\n")[1], "you dug down fast");
 put(107, `short-107.pick.json`, pick(107, { left: { atMs: 61_000, line: "   " } }));
 assert.deepEqual(await playerDms(107, NICKS, VIDEO), [null, null], "a blank line");
 

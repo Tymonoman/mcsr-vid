@@ -8,7 +8,6 @@
 import { readFile } from "node:fs/promises";
 import { matchDir } from "../config.js";
 import { exportMatchStartSec } from "../pipeline/exportFast.js";
-import { titleName } from "../pipeline/title.js";
 import { gameMatchStarts, readSeriesRecord, type SeriesRecord } from "../playoffs/series.js";
 import { pickFile, type PlayerMoment, type ShortPick } from "../shorts/shortPlan.js";
 
@@ -49,10 +48,15 @@ export async function playerDms(
     if (!moment || typeof moment.line !== "string" || !Number.isFinite(moment.atMs)) return null;
     const start = matchStartIn(dir, matchId, series, moment.gameMatchId ?? matchId);
     // One line whatever the model wrote: a newline in it would make a fourth.
-    const line = moment.line.replace(/\s+/g, " ").trim();
+    // Lowercase and without the model's full stop, so it reads in the kit's own voice.
+    const line = moment.line
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/^[A-Z]/, (c) => c.toLowerCase())
+      .replace(/\.$/, "");
     if (start === null || line === "") return null;
     return [
-      `hi ${titleName(nick)}, the match against ${titleName(other)} is up: ${videoUrl}?t=${Math.floor(start + moment.atMs / 1000)}`,
+      `hi ${nick}, the match against ${other} is up on MCSR Replayoffs: ${videoUrl}?t=${Math.floor(start + moment.atMs / 1000)}`,
       line,
       ASK,
     ].join("\n");
