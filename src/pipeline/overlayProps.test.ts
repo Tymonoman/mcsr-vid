@@ -168,4 +168,21 @@ const splitTimeline = [
   config.teaserSec = saved.forSec;
 }
 
+// The subscribe cards' reason: the config's line, trimmed, and nothing at all when it is empty,
+// which is the bare card.
+{
+  const { ctaReasonProp } = await import("./overlayProps.js");
+  const { config } = await import("../config.js");
+  const saved = config.ctaReason;
+  config.ctaReason = "A NEW MATCH EVERY DAY";
+  assert.deepEqual(ctaReasonProp(), { ctaReason: "A NEW MATCH EVERY DAY" });
+  config.ctaReason = "  EVERY DAY ";
+  assert.deepEqual(ctaReasonProp(), { ctaReason: "EVERY DAY" });
+  config.ctaReason = "";
+  assert.deepEqual(ctaReasonProp(), {}, "empty: the bare card");
+  config.ctaReason = "   ";
+  assert.deepEqual(ctaReasonProp(), {}, "blank is empty");
+  config.ctaReason = saved;
+}
+
 console.log("overlayProps: all checks passed");

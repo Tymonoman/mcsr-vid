@@ -9,7 +9,7 @@ import { config, matchDir } from "../config.js";
 import { listProcessedMatchIds } from "../dashboard/matchStatus.js";
 import { readManifest } from "../thumbnails/thumbnailVariants.js";
 import { buildTitle, HOOK_PLACEHOLDER, metaPaths, MOBILE_CUTOFF, SEPARATOR } from "../pipeline/title.js";
-import { CLOSER, seedPhrase } from "../pipeline/description.js";
+import { CLOSER, seedPhrase, SUBSCRIBE_LINE } from "../pipeline/description.js";
 import { playoffSeriesTail, playoffTitleTail, seedOrdinal } from "../playoffs/playoffs.js";
 import { buildShortTitle, readShortHook, TITLE_MAX_CHARS } from "../shorts/shortHook.js";
 import { describeError } from "../errorText.js";
@@ -260,8 +260,9 @@ export function refreshShortTitle(hook: string | null, longTitle: string): strin
  * again: its inputs (the VOD links with their synced offsets, the match-time and frozen seed
  * ratings, the chapters) are the API's and Twitch's, and a Twitch archive is gone after 14 days
  * — the stored links are the ones the render checked. The drifts: "#9 seed" is "9th seed"
- * (`seedOrdinal`, 24 Sept 2026), the closer is today's `CLOSER`, and the tip-jar line
- * (`supportUrl`) goes where the template puts it, before the closer. For a series (`series.json`
+ * (`seedOrdinal`, 24 Sept 2026), the closer is today's `CLOSER`, the tip-jar line
+ * (`supportUrl`) goes where the template puts it, before the closer, and the subscribe line
+ * (`SUBSCRIBE_LINE`) becomes its own paragraph after the opening one. For a series (`series.json`
  * beside game 1), old chapter lines of the form "M:SS game N" (or H:MM:SS) that have no " · " yet
  * are relabelled into "M:SS game N · <seed phrase>" using game N's world seed type from the match;
  * reading failure leaves that line unchanged. A Short's description gets the seed wording only;
@@ -281,6 +282,8 @@ export async function refreshDescription(
     const line = `tip jar: ${supportUrl}`;
     out = at < 0 ? `${out}\n${line}` : `${out.slice(0, at)}\n${line}${out.slice(at)}`;
   }
+  // The opening is one line, so the first blank line is its end; no blank line is no template.
+  if (!out.includes(SUBSCRIBE_LINE)) out = out.replace("\n\n", `\n\n${SUBSCRIBE_LINE}\n\n`);
   const record = typeof series === "string" ? await readSeriesRecord(series) : series;
   if (record) {
     const lines = out.split("\n");
@@ -332,13 +335,13 @@ export function refreshTags(tags: string[]): string[] {
 /**
  * The first comment on a match video, which the operator pins in Studio (pinning has no API).
  * The publish kit shows the same line. What the video is and where to report a sync slip, in
- * the operator's own voice; no question, no subscribe ask, and never the winner; the tip-jar line
- * follows supportUrl like the descriptions.
+ * the operator's own voice; no question and never the winner; the tip-jar line follows supportUrl
+ * like the descriptions, and the subscribe line (`SUBSCRIBE_LINE`, 30 Sept 2026) closes it.
  */
 export function pinnedComment(supportUrl = config.supportUrl): string {
   const sentence =
     "both povs are the players own streams, synced on the countdown. if the timer looks off anywhere drop the timestamp here and ill fix it";
-  return supportUrl ? `${sentence}\ntip jar: ${supportUrl}` : sentence;
+  return [sentence, ...(supportUrl ? [`tip jar: ${supportUrl}`] : []), SUBSCRIBE_LINE].join("\n");
 }
 
 /**

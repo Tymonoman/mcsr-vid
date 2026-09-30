@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { DEFAULTS, validateOverrides } from "./config.js";
+import { CTA_REASON_MAX_CHARS, DEFAULTS, validateOverrides } from "./config.js";
 
 // A hand-edited mcsr-vid.config.json with the wrong type must fail at load, naming the key,
 // rather than flowing into slot arithmetic or the Remotion renderer as a string.
@@ -76,5 +76,16 @@ assert.throws(() => validateOverrides({ introSec: 1 }), /introSec/);
 assert.throws(() => validateOverrides({ introSec: 8 }), /introSec/);
 assert.throws(() => validateOverrides({ introSec: "3" }), /introSec/);
 assert.throws(() => validateOverrides({ introSec: null }), /introSec/);
+
+// The subscribe cards' reason: one row of the meta column, or empty for the bare card. A second
+// row would push the post-roll card's last line out of its plate, so the limit is refused at load.
+assert.equal(DEFAULTS.ctaReason, "A NEW MATCH EVERY DAY");
+assert.ok(DEFAULTS.ctaReason.length <= CTA_REASON_MAX_CHARS);
+assert.doesNotThrow(() => validateOverrides({ ctaReason: "" }), "empty is the bare card");
+assert.doesNotThrow(() => validateOverrides({ ctaReason: "W".repeat(CTA_REASON_MAX_CHARS) }));
+assert.throws(() => validateOverrides({ ctaReason: "W".repeat(CTA_REASON_MAX_CHARS + 1) }), /ctaReason/);
+assert.throws(() => validateOverrides({ ctaReason: "ONE ROW\nNOT TWO" }), /ctaReason/);
+assert.throws(() => validateOverrides({ ctaReason: null }), /ctaReason/);
+assert.throws(() => validateOverrides({ ctaReason: 5 }), /ctaReason/);
 
 console.log("config: all checks passed");

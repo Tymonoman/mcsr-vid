@@ -141,6 +141,12 @@ export function teaserProp(match: MatchInfo): Pick<OverlayProps, "teaser"> {
   return t ? { teaser: { atSec: config.teaserAtSec, forSec: config.teaserSec, ...t } } : {};
 }
 
+/** The subscribe cards' reason, to spread into the props: empty while `ctaReason` is, which is the bare card. */
+export function ctaReasonProp(): Pick<OverlayProps, "ctaReason"> {
+  const ctaReason = config.ctaReason.trim();
+  return ctaReason ? { ctaReason } : {};
+}
+
 /** The "explain the moves" cards, to spread into the props: empty while `explainMovesSec` is null. */
 export function explainMovesProp(match: MatchInfo): Pick<OverlayProps, "explainMoves"> {
   return config.explainMovesSec === null
@@ -222,6 +228,7 @@ export async function computeOverlayProps(
     ...(config.midRollCtaAtSec !== null
       ? { midRollCta: { atSec: config.midRollCtaAtSec, forSec: config.midRollCtaSec } }
       : {}),
+    ...ctaReasonProp(),
     ...teaserProp(match),
     ...explainMovesProp(match),
     seedType: match.seedType,

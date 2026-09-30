@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { buildDescription, buildTags, type DescriptionInput } from "./description.js";
+import { buildDescription, buildTags, SUBSCRIBE_LINE, type DescriptionInput } from "./description.js";
 import type { MatchInfo, UserDetails } from "../api/types.js";
 import type { VodWindow } from "./vodAcquisition.js";
 
@@ -79,6 +79,13 @@ assert.equal(
   opening,
   "edcr vs doogile, mcsr ranked 1v1 on the same seed. a minecraft speedrun race, both streams side by side with the split timer in the middle. edcr came in at 2546 elo, doogile at 2440.",
 );
+// The subscribe ask (29 Sept 2026 plan, item 4): its own paragraph right after the opening, in the
+// same plain lowercase and with a reason. The list below bans the capitalised "Subscribe" of the old
+// copy, not this.
+assert.equal(SUBSCRIBE_LINE, "a new match every day. subscribe to catch the next one.");
+assert.equal(text.split("\n\n")[1], SUBSCRIBE_LINE);
+assert.equal(text.split(SUBSCRIBE_LINE).length, 2, "once");
+assert.doesNotMatch(SUBSCRIBE_LINE, /[!\u2014]|don'?t miss/i, "no exclamation mark, em dash or don't miss");
 // "synced" left this list on 22 Sept 2026: the closer says what the channel's own work is
 // ("synced to the frame off the countdown"), in the words of the operator's own pinned comment.
 for (const slop of ["dual-POV", "pipeline", "automation", "maintained", "Subscribe", "Full ", " — "]) {
@@ -100,7 +107,8 @@ assert.match(
 );
 
 // The links, one per line, in this order: the two streams, the match page, then the opt-in two.
-const links = text.split("\n\n")[2]!.split("\n");
+// The paragraphs are the opening, the subscribe line, the chapters, then these.
+const links = text.split("\n\n")[3]!.split("\n");
 assert.deepEqual(
   links.map((l) => l.split(":")[0]),
   ["edcr's stream", "doogile's stream", "match page"],
@@ -112,7 +120,7 @@ assert.deepEqual(
     playlistUrl: url,
     supportUrl: "https://ko-fi.com/mcsrreplayoffs",
   });
-  assert.deepEqual(withBoth.split("\n\n")[2]!.split("\n").slice(3), [
+  assert.deepEqual(withBoth.split("\n\n")[3]!.split("\n").slice(3), [
     `all the matches: ${url}`,
     "tip jar: https://ko-fi.com/mcsrreplayoffs",
   ]);
@@ -144,7 +152,7 @@ assert.ok(!draw.split("\n")[0].includes("Result:"), "no winner means no result c
 assert.match(draw.split("\n")[0], /^edcr vs doogile, mcsr ranked 1v1/);
 
 // A playoff game: the round and game number replace "1v1", the seeds paragraph follows the
-// opening, and the series score is nowhere.
+// opening and the subscribe line, and the series score is nowhere.
 {
   const po = build(match(), {
     playoff: {
@@ -165,7 +173,8 @@ assert.match(draw.split("\n")[0], /^edcr vs doogile, mcsr ranked 1v1/);
       ],
     },
   });
-  const [poOpening, poParagraph] = po.split("\n\n");
+  const [poOpening, poSubscribe, poParagraph] = po.split("\n\n");
+  assert.equal(poSubscribe, SUBSCRIBE_LINE, "the ask follows the opening on a playoff game too");
   assert.equal(
     poOpening,
     "edcr vs doogile, mcsr ranked season 11 playoffs, round of 16, game 2. a minecraft speedrun race, both streams side by side with the split timer in the middle. edcr came in at 2546 elo, doogile at 2440.",

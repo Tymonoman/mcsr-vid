@@ -17,7 +17,7 @@ writeFileSync(
   "utf8",
 );
 
-const { config, CONFIG_PATH } = await import("../config.js");
+const { config, CONFIG_PATH, CTA_REASON_MAX_CHARS } = await import("../config.js");
 const { coerce, saveSettings, SETTINGS, settingsPayload, READ_ONLY } = await import("./settings.js");
 assert.equal(CONFIG_PATH, path.join(dir, "mcsr-vid.config.json"), "the test owns the file it writes");
 
@@ -57,6 +57,10 @@ assert.deepEqual(coerce(field("reasonerCommand"), "agy -p {prompt} --output-form
 });
 assert.deepEqual(coerce(field("reasonerCommand"), "   "), { value: null });
 
+// The subscribe card's reason is text, and empty is the bare card rather than null.
+assert.deepEqual(coerce(field("ctaReason"), "  EVERY SINGLE DAY "), { value: "EVERY SINGLE DAY" });
+assert.deepEqual(coerce(field("ctaReason"), ""), { value: "" });
+
 console.log("settings: the allowlist holds and every kind coerces");
 
 // --- Writing: the file the loader reads ---------------------------------------------------------
@@ -94,6 +98,21 @@ console.log("settings: the allowlist holds and every kind coerces");
   assert.equal(readFileSync(CONFIG_PATH, "utf8"), good, "a refused save writes nothing at all");
 
   console.log("settings: a save is atomic, validated, live, and leaves foreign keys alone");
+
+  // The subscribe card's reason: what fits one row saves and applies, a second row is refused by the
+  // loader's own rule with nothing written, and emptying it is the bare card.
+  assert.equal(saveSettings({ ctaReason: "EVERY SINGLE DAY" }).changed[0], "ctaReason");
+  assert.equal(config.ctaReason, "EVERY SINGLE DAY");
+  const row = readFileSync(CONFIG_PATH, "utf8");
+  assert.throws(
+    () => saveSettings({ ctaReason: "W".repeat(CTA_REASON_MAX_CHARS + 1) }),
+    /ctaReason.*at most/,
+  );
+  assert.equal(readFileSync(CONFIG_PATH, "utf8"), row, "a refused save writes nothing at all");
+  assert.equal(config.ctaReason, "EVERY SINGLE DAY", "and the live value stays");
+  assert.deepEqual(saveSettings({ ctaReason: "" }).changed, ["ctaReason"]);
+  assert.equal(config.ctaReason, "", "empty is the bare SUBSCRIBE card, not null");
+  console.log("settings: the subscribe card's reason saves, is held to one row, and can be emptied");
 }
 
 process.chdir(cwd);

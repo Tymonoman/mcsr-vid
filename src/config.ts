@@ -202,6 +202,14 @@ export interface Config {
   midRollCtaAtSec: number | null;
   midRollCtaSec: number;
   /**
+   * The line above SUBSCRIBE on both subscribe cards, the mid-race line and the post-roll: why to
+   * subscribe (plan item 4, 29 Sept 2026 — a bare "SUBSCRIBE" gave the viewer no reason). One row
+   * of the meta column, at most `CTA_REASON_MAX_CHARS` characters, because the post-roll card sits
+   * under the final time and has room for no second row. It takes the place of "FOR THE NEXT ONE";
+   * empty shows today's bare card.
+   */
+  ctaReason: string;
+  /**
    * A "COMING UP · 5:22 / THE LEAD CHANGES AT THE FORTRESS" card in the meta column this many
    * seconds after match start, for `teaserSec` seconds; null shows none. Every long-form loses
    * 16–22 points of retention between 3% and 10% of the video (22 Sept 2026); at 10 s the card
@@ -324,6 +332,12 @@ export interface Config {
   dashboardBaseUrl: string;
 }
 
+/**
+ * The longest `ctaReason` one row of the subscribe card holds: its text is 276 px wide and 16 px
+ * Monocraft at 0.04em spacing runs 11.3 px a character (remotion/overlay.source.css, `.cta-why`).
+ */
+export const CTA_REASON_MAX_CHARS = 24;
+
 /** The lab's `reasonerCommand`: see its comment in `Config`. */
 export const LAB_REASONER_COMMAND: readonly string[] = [
   "env",
@@ -379,6 +393,7 @@ export const DEFAULTS: Config = {
   postRollCta: true,
   midRollCtaAtSec: 90,
   midRollCtaSec: 4,
+  ctaReason: "A NEW MATCH EVERY DAY",
   teaserAtSec: 10,
   teaserSec: 5,
   introSec: 7,
@@ -472,6 +487,16 @@ export function validateOverrides(raw: Record<string, unknown>): void {
     if (key === "introSec") {
       if (typeof value !== "number" || !(value >= 2 && value <= 7)) {
         throw new Error(`${CONFIG_PATH}: "introSec" must be seconds from 2 to 7.`);
+      }
+      continue;
+    }
+    // A second row would push the post-roll card's last line out of its plate, so the limit is
+    // the card's, not a taste: empty is the bare card.
+    if (key === "ctaReason") {
+      if (typeof value !== "string" || value.trim().length > CTA_REASON_MAX_CHARS || /[\r\n]/.test(value)) {
+        throw new Error(
+          `${CONFIG_PATH}: "ctaReason" must be one row of at most ${CTA_REASON_MAX_CHARS} characters, or empty for the bare SUBSCRIBE card.`,
+        );
       }
       continue;
     }

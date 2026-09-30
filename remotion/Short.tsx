@@ -266,7 +266,8 @@ export function splitEndCard(text: string): { headline: string; sub: string } {
 /**
  * The closing card that replaces FINAL TIME (`endCard`): the result card's slab and outline
  * carrying a question instead of a number, so the last frame asks rather than tells. Centred on
- * the board for the same reason the result card is.
+ * the board for the same reason the result card is, which also keeps the SUBSCRIBE row under it
+ * far above the bottom fifth of the frame that YouTube's own controls cover.
  */
 export const ShortEndCard: FC<ShortStillProps> = (props) => {
   if (!props.endCard) return null;
@@ -281,6 +282,7 @@ export const ShortEndCard: FC<ShortStillProps> = (props) => {
           ))}
         </div>
         {sub && <div className="short-endcard-sub">{sub}</div>}
+        <div className="short-endcard-ask">SUBSCRIBE</div>
       </div>
     </AbsoluteFill>
   );
