@@ -893,6 +893,8 @@ async function loadPublishKit(id, meta) {
   const url = kit.videoUrl ?? "<link once uploaded>";
   // Plain, and it offers the takedown in the same breath: this goes to someone who never asked
   // to be on the channel, and one line of "say so" is cheaper than a strike. No ask to share.
+  // Once the pick has the player's moment and the video is up, the server sends a longer one
+  // instead (`kit.dms`, src/dashboard/playerDm.ts): the moment as a timestamped link, and a yes to ask for.
   const dm = (who, opponent) =>
     `hi ${who}, your ranked match vs ${opponent} is up on MCSR Replayoffs, both streams side by side with the split timer: ${url}\nif youd rather it wasnt up say so and ill take it down`;
 
@@ -1124,8 +1126,16 @@ async function loadPublishKit(id, meta) {
         // The same flag as the Title block: this quotes the title, so it carries the same hole.
         title.includes("<HOOK>") ? counter("pick a hook first", true) : "",
       ),
-      block(`Message to ${left ?? "left player"}`, dm(left ?? "there", right ?? "your opponent"), 3),
-      block(`Message to ${right ?? "right player"}`, dm(right ?? "there", left ?? "your opponent"), 3),
+      block(
+        `Message to ${left ?? "left player"}`,
+        kit.dms?.[0] ?? dm(left ?? "there", right ?? "your opponent"),
+        kit.dms?.[0] ? 7 : 3,
+      ),
+      block(
+        `Message to ${right ?? "right player"}`,
+        kit.dms?.[1] ?? dm(right ?? "there", left ?? "your opponent"),
+        kit.dms?.[1] ? 7 : 3,
+      ),
       `</details>`,
     ].join("");
     wireWhen();
