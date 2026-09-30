@@ -26,7 +26,14 @@ import { config } from "../config.js";
 import { NOT_SIGNED_IN } from "./reasoner.js";
 import { decidedAtMs } from "./raceGap.js";
 import { pickFile, type ShortPick } from "./shortPlan.js";
-import { hookProblem, modelFailure, pickErrorFile, pickShortMoment, PROXY_FILE } from "./videoPick.js";
+import {
+  hookProblem,
+  hookRegister,
+  modelFailure,
+  pickErrorFile,
+  pickShortMoment,
+  PROXY_FILE,
+} from "./videoPick.js";
 import { endActivity, readShortLog, startActivity, stepActivity } from "./shortLog.js";
 import { SPEEDRUN_PRIMER } from "./speedrunPrimer.js";
 import { DryRunRefusal, watchDir, watchPovs } from "./watchPov.js";
@@ -591,14 +598,16 @@ assert.equal(hookProblem("2427 vs 2293"), "it uses a seed, rank or elo");
 assert.equal(hookProblem("Can the 1789 take down the 2080?"), "it uses a seed, rank or elo");
 console.log("OK: a spoiler, overlong hook, or seed/rank/elo is swapped for a chip; the window stands");
 
+/** A match directory holding a saved title, and a youtube.json unless it never went up. */
+const uploaded = (id: number, title: string, onYouTube = true) => {
+  const d = path.join(config.mediaDir, String(id));
+  mkdirSync(d, { recursive: true });
+  writeFileSync(path.join(d, `match-${id}.title.edited.txt`), `${title}\n`);
+  if (onYouTube) writeFileSync(path.join(d, "youtube.json"), "{}");
+};
+
 {
   // Title hooks in the operator's style: their past hooks on uploaded matches are the examples.
-  const uploaded = (id: number, title: string, onYouTube = true) => {
-    const d = path.join(config.mediaDir, String(id));
-    mkdirSync(d, { recursive: true });
-    writeFileSync(path.join(d, `match-${id}.title.edited.txt`), `${title}\n`);
-    if (onYouTube) writeFileSync(path.join(d, "youtube.json"), "{}");
-  };
   uploaded(1, "CARNIVORE vs VEGAN | BeefSalad vs silverrruns | MCSR Ranked 1v1 | Minecraft Speedrun");
   uploaded(2, "PLAYOFFS | SWEPT vs TAS | Aquacorde vs doogile | MCSR Ranked Season 11 Playoffs");
   uploaded(3, "WINNER vs 3rd PLACE | Infume vs Feinberg | MCSR Ranked 1v1");
@@ -673,6 +682,43 @@ console.log("OK: a spoiler, overlong hook, or seed/rank/elo is swapped for a chi
   for (const id of [1, 2, 3, 4, 5, 6, 7]) rmSync(path.join(config.mediaDir, String(id)), { recursive: true });
   console.log(
     "OK: title hooks in the operator's style, spoilers and repeats dropped by name; none is still a pick",
+  );
+}
+
+{
+  // Each past hook is labelled with its register, so the model sees the mix, and the prompt says
+  // which one to prefer (30 Sept 2026): the operator's own latest hooks state a stake.
+  const hooks: Array<[hook: string, register: string]> = [
+    ["58 MILLISECONDS", "stake"],
+    ["THREE SECONDS APART", "stake"],
+    ["WHO BLINKS FIRST?", "question"],
+    ["4 DEATHS IN ONE RACE?", "question"], // a question first, whatever else it holds
+    ["WR HOLDER vs THE GRINDER", "rivalry"],
+    ["CARNIVORE VS VEGAN", "rivalry"],
+    ["7ROWL vs SKYCRAB", "rivalry"], // a digit in a nickname is not a figure
+    ["Rematch: doogile leads 3-1", "rivalry"], // the chip a saved title kept: a record, not a stake
+    ["Their first 1v1", "rivalry"],
+    ["THE FORTRESS RUNBACK", "other"],
+  ];
+  for (const [hook, register] of hooks) assert.equal(hookRegister(hook), register, hook);
+
+  hooks.forEach(([hook], i) => uploaded(i + 1, `${hook} | p${i} vs q${i} | MCSR Ranked 1v1`));
+  answer(good);
+  await pickShortMoment(single, { force: true });
+  const prompt = sentArgv()[sentArgv().indexOf("-p") + 1]!;
+  const promptLines = prompt.split("\n");
+  hooks.forEach(([hook, register], i) =>
+    assert.ok(
+      promptLines.includes(`  ${JSON.stringify(hook)} (p${i} vs q${i}) — ${register}`),
+      `labelled ${register}: ${hook}\n${promptLines.filter((l) => l.startsWith('  "')).join("\n")}`,
+    ),
+  );
+  assert.match(prompt, /The stake register is the one to prefer/);
+  assert.match(prompt, /a figure belongs to its match/);
+  for (let id = 1; id <= hooks.length; id++)
+    rmSync(path.join(config.mediaDir, String(id)), { recursive: true });
+  console.log(
+    "OK: each past title hook is labelled stake, question, rivalry or other; stake is the one to prefer",
   );
 }
 
