@@ -345,8 +345,8 @@ async function runStages(
   // title editor, long after this runs — so the title file opens on the same opener that editor
   // will offer first, and a later re-run carries a headline an older thumbnail manifest committed
   // (`carriedHookText`). An unreadable match yields no suggestions, and then the title's
-  // placeholder stands. With `versus`, so the rematch line, which outranks everything else, is
-  // the one chosen.
+  // placeholder stands. With `versus`, as the editor's chips are built, so both rank the same
+  // chips and open on the same one.
   //
   // Hoisted above the thumbnail stage because a match whose variants are all on disk skips that
   // stage entirely.

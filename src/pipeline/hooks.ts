@@ -68,15 +68,18 @@ const seconds = (ms: number): string => (ms / 1000).toFixed(1).replace(/\.0$/, "
 /**
  * The facts, ranked. Order here is the tiebreak when several apply, and it is deliberate.
  *
- * Rivalry framing outranks everything: the channel audit measured rivalry hooks at 9.36% CTR
- * against 2.25% for descriptive ones (see CLAUDE.md). A contrast between two people is a reason
- * to click; a description of the match is not. So every rivalry candidate sits in the 100-130
- * band and every descriptive one below it, and a descriptive hook reaches the top of the list
- * only when the match has no rivalry to state.
+ * The stake outranks the rivalry (30 Sept 2026). What the match turns on — a photo finish, a lead
+ * that keeps changing, a real death — is the register the operator's own hooks are written in
+ * ("58 MILLISECONDS", "WHO BLINKS FIRST?"). The reading that put the two nicknames first, 9.36%
+ * CTR against 2.25% for descriptive hooks, was 4,590 subscriber-heavy impressions; over 126,745
+ * on 15 Sept it was 2.77% against 2.59%, a wash. The rematch line also reads the all-time record,
+ * which can already include this very match. So every stake chip sits above both head-to-head
+ * chips, down to "not a single death", and a rivalry reaches the top of the list only when the
+ * match has no stake to state.
  *
- * Within the rivalry band a shared history beats an upset beats a ranking beats a rating gap,
- * because that is how much of a story each one carries. Within the descriptive band the old
- * order stands: a photo finish beats a lead change beats a death count.
+ * Within the stake band the old order stands: a photo finish beats a lead change beats a death
+ * count. "One of them never reached the dragon" is last of all, under the head-to-head chips:
+ * the loser usually stops once the winner is done, so it is filler, not a stake.
  */
 function candidates(input: HookInput): Candidate[] {
   const { metrics, match, userLeft, userRight, versus } = input;
@@ -85,7 +88,7 @@ function candidates(input: HookInput): Candidate[] {
   // still this close" on five resets reads to a runner as not knowing the game.
   const { finishMarginMs, leadChanges, maxSwingMs, deaths, resultMs, winner } = metrics;
 
-  // --- Rivalry framing (100-130) ----------------------------------------------------------
+  // --- Rivalry framing (30-35): under every stake chip, over the dull fallback -------------
   if (versus) {
     const leftWins = versus.results.ranked[userLeft.uuid] ?? 0;
     const rightWins = versus.results.ranked[userRight.uuid] ?? 0;
@@ -98,14 +101,14 @@ function candidates(input: HookInput): Candidate[] {
       const lo = Math.min(leftWins, rightWins);
       out.push({
         text: hi === lo ? `Rematch: ${hi}-${lo} all time` : `Rematch: ${leader} leads ${hi}-${lo}`,
-        weight: 130,
+        weight: 35,
       });
     } else if (leftWins === 0 && rightWins === 0) {
-      out.push({ text: "Their first 1v1", weight: 92 });
+      out.push({ text: "Their first 1v1", weight: 30 });
     }
   }
 
-  // --- Descriptive fallbacks (below 100) --------------------------------------------------
+  // --- Stakes: what the match turns on (40-95; the dull fallback is 25) --------------------
 
   if (finishMarginMs !== null) {
     // Under three seconds after eight-plus minutes is the whole story; the scorer uses the same

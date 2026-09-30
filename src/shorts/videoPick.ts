@@ -504,13 +504,29 @@ export function pastTitleHooks(): PastHook[] {
     .map(({ hook, pair }) => ({ hook, pair }));
 }
 
+/**
+ * A hook's register by its shape alone (30 Sept 2026), for the label each past hook carries in the
+ * prompt: a question ends in "?", a rivalry sets two sides against each other ("WR HOLDER vs THE
+ * GRINDER") or is the head-to-head chip a saved title kept ("Rematch: doogile leads 3-1", "Their
+ * first 1v1"), a stake holds a figure or a time ("58 MILLISECONDS") — in that order when a hook is
+ * several, since a nickname or a record carries digits ("7ROWL vs SKYCRAB"). Blunt on purpose: it
+ * names the mix to the model, it judges nothing.
+ */
+export function hookRegister(hook: string): "stake" | "question" | "rivalry" | "other" {
+  const h = hook.trim();
+  if (h.endsWith("?")) return "question";
+  if (/ vs |\brematch\b|\b1v1\b/i.test(h)) return "rivalry";
+  if (/\d|\b(?:milli)?seconds\b/i.test(h)) return "stake";
+  return "other";
+}
+
 /** The title-hook and player-moment asks, with the operator's past hooks as the style to match. */
 function extrasSection(spans: readonly GameSpan[], past: readonly PastHook[]): string {
   const [l, r] = spans[0]!.match.players;
   const examples =
     past.length > 0
-      ? ` The channel's own past title hooks, for their style only. They are from OTHER matches and name OTHER players (the pair each was written for is in brackets): an epithet belongs to its player, so reuse one only when that same player is in this match.
-${past.map((p) => `  ${JSON.stringify(p.hook)}${p.pair ? ` (${p.pair})` : ""}`).join("\n")}`
+      ? ` The channel's own past title hooks, for their style only. They are from OTHER matches and name OTHER players (the pair each was written for is in brackets): an epithet belongs to its player, so reuse one only when that same player is in this match, and a figure belongs to its match. Each ends with its register: stake (a figure or a time), question, rivalry (two sides set against each other) or other. The stake register is the one to prefer: write about what THIS match turns on — a margin, a time, a count — from the video and the facts, never from an example and never who comes out ahead; use a question or a rivalry line only for variety.
+${past.map((p) => `  ${JSON.stringify(p.hook)}${p.pair ? ` (${p.pair})` : ""} — ${hookRegister(p.hook)}`).join("\n")}`
       : "";
   return `
 THE LONG-FORM'S TITLE (titleHooks, optional): up to ${TITLE_HOOKS} proposals for the hook that opens the full match video's title — "<hook> | ${l?.nickname} vs ${r?.nickname} | …", so it need not repeat their names. The same rules as hookSuggestion: at most ${HOOK_MAX_CHARS} characters, nothing about who wins or how it ends. Never use seeds, ladder ranks or elo numbers — they mean nothing to a viewer and change daily.${examples}

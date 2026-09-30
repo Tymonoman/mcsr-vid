@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   buildHookSuggestions,
+  HOOK_SEED_RANK_ELO,
   hookFacts,
   spoilsTheResult,
   suggestHooksExternally,
@@ -118,10 +119,10 @@ assert.ok(
 );
 assert.ok(!upset.concat(favourite).some((t) => /takes down/.test(t)), "no chip names the winner");
 
-// --- Rivalry framing outranks description ------------------------------------------------
-// Rivalry framing outranks description (see hooks.ts), so with rivalry data present a
-// descriptive chip must never reach the top of the list — and the top one is what public/app.js
-// drops into the hook input's placeholder.
+// --- The stake outranks the rivalry ------------------------------------------------------
+// What the match turns on outranks the two nicknames (see hooks.ts, 30 Sept 2026), so with a
+// head-to-head record present the top chip is still a stake — and the top one is what
+// public/app.js drops into the hook input's placeholder.
 const rivalry = buildHookSuggestions(
   input({ winner: "edcr", finishMarginMs: 2_400, leadChanges: 4 }, ELO_GAP, {
     userLeft: user("edcr", "uuid-l", 4),
@@ -131,14 +132,50 @@ const rivalry = buildHookSuggestions(
   4,
 );
 assert.deepEqual(rivalry, [
-  "Rematch: doogile leads 2-1",
   "Decided by 2.4 seconds",
   "The lead changed 4 times",
+  "Rematch: doogile leads 2-1",
 ]);
 assert.ok(
   !rivalry.some((t) => /#\d+/.test(t) || /seed/i.test(t) || /\b\d{3,4}\b[^\d]+\b\d{3,4}\b/.test(t)),
   "no seed, rank or elo in rivalry chips",
 );
+
+// Every stake chip sits above both head-to-head chips, down to the weakest ("not a single
+// death"); the rivalry still beats the dull fallback of a DNF. The rematch line reads the
+// all-time record, which can already include this match, so it may not lead. The house rules
+// hold for each of them.
+{
+  const both = buildHookSuggestions(
+    input(
+      { finishMarginMs: 2_400, leadChanges: 4, deaths: 0, maxSwingMs: 65_000, resultMs: 411_000 },
+      ELO_GAP,
+      { versus: versus(1, 2) },
+    ),
+    10,
+  );
+  assert.deepEqual(both, [
+    "Decided by 2.4 seconds",
+    "A sub-7 to win it",
+    "The lead changed 4 times",
+    "A 1:05 lead, gone",
+    "Not a single death between them",
+    "Rematch: doogile leads 2-1",
+  ]);
+  for (const text of both) {
+    assert.ok(!spoilsTheResult(text), `"${text}" gives the result away`);
+    assert.ok(!HOOK_SEED_RANK_ELO.test(text), `"${text}" uses a seed, rank or elo`);
+  }
+  // A first meeting is in the same band: under the stakes, over the fallback.
+  assert.deepEqual(
+    buildHookSuggestions(input({ finishMarginMs: 2_400, deaths: 0 }, {}, { versus: versus(0, 0) }), 10),
+    ["Decided by 2.4 seconds", "Not a single death between them", "Their first 1v1"],
+  );
+  assert.deepEqual(buildHookSuggestions(input({ finishMarginMs: null }, {}, { versus: versus(1, 2) })), [
+    "Rematch: doogile leads 2-1",
+    "One of them never reached the dragon",
+  ]);
+}
 
 // A playoff game: suggestions never use seeds, ranks or elo (the operator's call, 24 Sept 2026).
 {
@@ -237,8 +274,8 @@ assert.ok(
   ).some((t) => t.includes("#843")),
 );
 
-// Descriptive chips are still there underneath, and still lead when there is no rivalry to
-// state — a match between two unranked players of equal elo is exactly that case.
+// The stake chips are the same without a rivalry to state — a match with no head-to-head record
+// fetched is exactly that case.
 const plain = buildHookSuggestions(input({ finishMarginMs: 2_400, leadChanges: 4, deaths: 0 }));
 assert.equal(plain[0], "Decided by 2.4 seconds");
 assert.ok(plain.includes("The lead changed 4 times"));
