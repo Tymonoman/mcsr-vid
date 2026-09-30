@@ -7,6 +7,7 @@
  * "won by" not "Δ", float an expiring match to the top) and rules want a test.
  */
 import { formatShortTime } from "../../remotion/format.js";
+import { config } from "../config.js";
 import { rivalMatchFor, rivalPostsSnapshot, type RivalPost } from "./rivalPosts.js";
 import type { SplitGap } from "../pipeline/matchScore.js";
 import {
@@ -115,18 +116,34 @@ function toCard(s: Suggestion, nowMs: number, rival: readonly RivalPost[]): Sugg
 }
 
 /**
+ * What one favourite player in a match adds to its popularity when the cards are ordered: half
+ * again for one, twice for two. A multiple, not a number of points, because popularity is a sum
+ * of appearance counts that keeps growing (and of `suggestFollowerWeight`·log10 followers): a
+ * favourite's match passes one up to 1.5x (2x) as popular and never one clearly ahead of it, and
+ * the bonus does not shrink as the counts accumulate. ponytail: a constant — make it a setting if
+ * the operator wants to tune it.
+ */
+const FAVOURITE_BONUS = 0.5;
+
+/**
  * Cards in display order: buckets stay in the order they arrive (close, then chaos), and inside
- * a bucket the biggest audience wins — except a match whose VODs are about to die, which goes
- * to the top of its bucket because it is the only candidate that stops being renderable, and
- * except a matchup the rival channel has already posted, which goes after the fresh ones: it
- * would compete with the rival's own video for the same browse session.
+ * a bucket the biggest audience wins — popularity, counted up by `FAVOURITE_BONUS` for each of
+ * `favourites` (nicknames, compared whole and ignoring case) playing — except a match whose VODs
+ * are about to die, which goes to the top of its bucket because it is the only candidate that
+ * stops being renderable, and except a matchup the rival channel has already posted, which goes
+ * after the fresh ones: it would compete with the rival's own video for the same browse session.
+ * The bonus lives here and not in the scan's score, so a change to the list is the next read.
  */
 export function presentSuggestions(
   suggestions: readonly Suggestion[],
   nowMs: number = Date.now(),
   rival: readonly RivalPost[] = rivalPostsSnapshot(),
+  favourites: readonly string[] = config.favouritePlayers,
 ): SuggestionCard[] {
   const cards = suggestions.map((s) => toCard(s, nowMs, rival));
+  const liked = new Set(favourites.map((name) => name.toLowerCase()));
+  const audience = (c: SuggestionCard): number =>
+    c.popularity * (1 + FAVOURITE_BONUS * c.players.filter((p) => liked.has(p.toLowerCase())).length);
   const buckets = [...new Set(cards.map((c) => c.bucket))];
   return buckets.flatMap((bucket) =>
     cards
@@ -135,7 +152,7 @@ export function presentSuggestions(
         (x, y) =>
           Number(y.expiring) - Number(x.expiring) ||
           Number(x.rivalPosted !== null) - Number(y.rivalPosted !== null) ||
-          y.popularity - x.popularity,
+          audience(y) - audience(x),
       ),
   );
 }
@@ -148,8 +165,11 @@ export function orderForDisplay(
   suggestions: readonly Suggestion[],
   nowMs: number = Date.now(),
   rival: readonly RivalPost[] = rivalPostsSnapshot(),
+  favourites: readonly string[] = config.favouritePlayers,
 ): Suggestion[] {
-  const rank = new Map(presentSuggestions(suggestions, nowMs, rival).map((card, i) => [card.matchId, i]));
+  const rank = new Map(
+    presentSuggestions(suggestions, nowMs, rival, favourites).map((card, i) => [card.matchId, i]),
+  );
   return [...suggestions].sort(
     (a, b) => (rank.get(a.metrics.matchId) ?? Infinity) - (rank.get(b.metrics.matchId) ?? Infinity),
   );

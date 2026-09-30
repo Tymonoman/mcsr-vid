@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { config } from "../config.js";
 import type { MatchMetrics } from "../pipeline/matchScore.js";
 import { factsLine, orderForDisplay, presentSuggestions, storyLine } from "./suggestPresent.js";
 import type { Bucket, Suggestion, SuggestionPlayer } from "./suggest.js";
@@ -194,4 +195,107 @@ console.log("suggestPresent: ok");
   assert.equal(ordered[0], 13, "an expiring match still comes first, as on the cards");
   assert.equal(ordered[1], 12, "then the biggest audience");
   console.log("OK: orderForDisplay matches the cards");
+}
+
+// --- favourite players: a recognisable name's match goes above an equal one ---------------------
+// Inside a bucket the cards are ordered by popularity, not by score (the score only picks the slots
+// at scan time), so the bonus is a multiple of popularity: half again for one favourite, twice for
+// two. Every fixture below has the same score on purpose.
+{
+  const game = (
+    matchId: number,
+    players: [string, string],
+    popularity = 10,
+    over: Partial<Suggestion> = {},
+  ): Suggestion => suggestion({ popularity, dateSec: daysAgo(2), ...over }, { matchId, players });
+  const order = (
+    raw: Suggestion[],
+    favourites: string[],
+    rival: Parameters<typeof presentSuggestions>[2] = [],
+  ) => presentSuggestions(raw, NOW, rival, favourites).map((c) => c.matchId);
+
+  // (a) equal score and equal popularity: the favourite's match first, wherever it arrives.
+  const tie = [game(1, ["aaa", "bbb"]), game(2, ["doogile", "ccc"])];
+  assert.deepEqual(order(tie, ["doogile"]), [2, 1], "a favourite's match sorts above an equal one");
+  assert.deepEqual(order(tie, []), [1, 2], "without the list the tie keeps its arrival order");
+  assert.deepEqual(order([...tie].reverse(), ["doogile"]), [2, 1], "arrival order is not what moved it");
+
+  // (b) an empty list changes nothing: popularity alone, exactly as before the bonus existed.
+  const mixed = [
+    game(1, ["edcr", "doogile"], 30),
+    game(2, ["aaa", "bbb"], 90),
+    game(3, ["Feinberg", "ccc"], 50),
+  ];
+  assert.deepEqual(order(mixed, []), [2, 3, 1], "no favourites: the biggest audience first");
+  assert.deepEqual(
+    order(mixed, ["nobody"]),
+    order(mixed, []),
+    "a list naming nobody in the pool is the same as none",
+  );
+
+  // (c) case is ignored, spelling is not.
+  assert.deepEqual(order(tie, ["DOOGILE"]), [2, 1], "the list may be typed in any case");
+  assert.deepEqual(order([tie[0]!, game(2, ["Doogile", "ccc"])], ["doogile"]), [2, 1], "so may the API's");
+  assert.deepEqual(order(tie, ["doog"]), [1, 2], "a prefix is not a match");
+  assert.deepEqual(order([tie[0]!, game(2, ["doogile2", "ccc"])], ["doogile"]), [1, 2], "nor a longer name");
+
+  // The size of it: a match a little more popular is passed, one clearly ahead is not.
+  const passed = [game(1, ["aaa", "bbb"], 12), game(2, ["doogile", "ccc"], 10)];
+  assert.deepEqual(order(passed, ["doogile"]), [2, 1], "a favourite passes a match a bit more popular");
+  const ahead = [game(1, ["aaa", "bbb"], 40), game(2, ["doogile", "edcr"], 10)];
+  assert.deepEqual(order(ahead, ["doogile"]), [1, 2], "but not one clearly ahead of it");
+  assert.deepEqual(order(ahead, ["doogile", "edcr"]), [1, 2], "not even with both of them playing");
+  const pair = [game(1, ["doogile", "aaa"]), game(2, ["doogile", "edcr"])];
+  assert.deepEqual(
+    order(pair, ["doogile", "edcr"]),
+    [2, 1],
+    "two favourites outrank one at equal popularity",
+  );
+  assert.deepEqual(order(pair, ["doogile", "doogile", "DOOGILE"]), [1, 2], "a name listed twice counts once");
+
+  // What still outranks the bonus: a match about to expire, the rival's post, the other bucket.
+  const fav = game(1, ["doogile", "edcr"], 50);
+  const expiring = game(2, ["aaa", "bbb"], 1, { dateSec: daysAgo(9) });
+  const plain = game(3, ["ddd", "eee"], 10);
+  assert.deepEqual(order([fav, expiring, plain], ["doogile"]), [2, 1, 3], "an expiring match is still first");
+  const rival = [
+    {
+      title: "GG!! | doogile vs edcr",
+      publishedAtMs: NOW - 86_400_000,
+      players: ["doogile", "edcr"] as [string, string],
+    },
+  ];
+  assert.deepEqual(order([fav, plain], ["doogile"], rival), [3, 1], "the rival's matchup is still last");
+  const chaos = game(4, ["doogile", "edcr"], 90, { bucket: "chaos" });
+  assert.deepEqual(order([plain, chaos], ["doogile", "edcr"]), [3, 4], "buckets stay separate");
+
+  // The nightly takes the first eligible card of `orderForDisplay`, which is the cards' order.
+  const raw = [game(1, ["aaa", "bbb"], 12), game(2, ["doogile", "ccc"], 10), expiring];
+  assert.deepEqual(
+    orderForDisplay(raw, NOW, [], ["doogile"]).map((s) => s.metrics.matchId),
+    order(raw, ["doogile"]),
+    "the nightly's order is the cards' order, favourites included",
+  );
+  assert.equal(orderForDisplay(raw, NOW, [], ["doogile"])[1]!.metrics.matchId, 2);
+
+  // The list is read from `config` on every call, so a Settings save re-orders the next read.
+  config.favouritePlayers = ["doogile"];
+  assert.deepEqual(
+    presentSuggestions(tie, NOW, []).map((c) => c.matchId),
+    [2, 1],
+    "the live list applies",
+  );
+  assert.deepEqual(
+    orderForDisplay(tie, NOW, []).map((s) => s.metrics.matchId),
+    [2, 1],
+    "to the nightly too",
+  );
+  config.favouritePlayers = [];
+  assert.deepEqual(
+    presentSuggestions(tie, NOW, []).map((c) => c.matchId),
+    [1, 2],
+    "and emptied, it is off",
+  );
+
+  console.log("OK: favourite players lift a match within its bucket, never past an expiring one");
 }

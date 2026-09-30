@@ -76,6 +76,15 @@ export interface Config {
    */
   rivalChannelHandle: string;
   /**
+   * Players whose matches the suggestion list and the nightly rank higher (30 Sept 2026 plan:
+   * recognisable names are what converts subscribers). API spellings, compared whole and ignoring
+   * case — Pinne is Skycrab, lowk3y_ is lowkey. Inside its bucket a match's popularity counts half
+   * again for one of them and twice for two (`presentSuggestions`). Applied when the cards are
+   * ordered, not when they are scored, so a change needs no rescan. Empty = no bonus; the default
+   * list changes which card the nightly takes first.
+   */
+  favouritePlayers: string[];
+  /**
    * A tip-jar URL (Ko-fi, PayPal.me) for the description's "Tip jar" line. The
    * audit named it the one revenue stream not gated at 41 subscribers, and the active
    * competitor runs a PayPal.me link in every description. Empty: no line.
@@ -366,6 +375,7 @@ export const DEFAULTS: Config = {
   youtubePlaylistTitle: "MCSR Ranked matches",
   youtubePlaylistUrl: "",
   rivalChannelHandle: "mcsrmatches",
+  favouritePlayers: ["doogile", "Feinberg", "Infume", "Pinne", "lowk3y_", "silverrruns", "edcr"],
   supportUrl: "",
   pullSource: "",
   pullDest: "~/Replayoffs",
@@ -485,6 +495,14 @@ export function validateOverrides(raw: Record<string, unknown>): void {
         );
       if (!ok)
         throw new Error(`${CONFIG_PATH}: "titleNames" must map nicknames to the names the title shows.`);
+      continue;
+    }
+    // Its default is an array too, so the typeof check below would pass `null`, `{}` and `[1]`; an
+    // empty list is fine (no bonus), a blank name is a typo that would never match anyone.
+    if (key === "favouritePlayers") {
+      if (!Array.isArray(value) || !value.every((n) => typeof n === "string" && n.trim() !== "")) {
+        throw new Error(`${CONFIG_PATH}: "favouritePlayers" must be an array of nicknames ([] for none).`);
+      }
       continue;
     }
     if (key === "playoffThumbnailStyle") {

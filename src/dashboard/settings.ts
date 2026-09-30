@@ -19,7 +19,7 @@ import { config, CONFIG_PATH, validateOverrides, type Config } from "../config.j
 /** `Config` has no index signature; this is the one place that reaches it by key. */
 const live = config as unknown as Record<string, unknown>;
 
-export type SettingKind = "boolean" | "int" | "hour" | "text" | "words";
+export type SettingKind = "boolean" | "int" | "hour" | "text" | "words" | "list";
 
 export interface SettingField {
   key: keyof Config;
@@ -186,6 +186,14 @@ export const SETTINGS: readonly SettingField[] = [
     group: "Suggestions",
   },
   {
+    key: "favouritePlayers",
+    label: "Favourite players",
+    help: "MCSR nicknames separated by commas (Pinne is Skycrab, lowk3y_ is lowkey); case is ignored, spelling is not. Inside its bucket a match with one of them counts as half again as popular, with two as twice, in the list and in the nightly's first pick. A match about to expire still comes first and one the rival already posted still comes last. Empty is no bonus. Applies on the next read, no rescan.",
+    kind: "list",
+    group: "Suggestions",
+    unattended: true,
+  },
+  {
     key: "suggestCacheTtlMin",
     label: "Rescan every (min)",
     help: "How often the suggestion scan looks for new matches. Each full scan is ~340 MCSR API calls against a 500-per-10-minutes budget.",
@@ -271,6 +279,8 @@ export function coerce(field: SettingField, raw: unknown): { value: unknown } | 
   const text = typeof raw === "string" ? raw.trim() : raw === null ? "" : String(raw);
   if (field.kind === "text") return { value: text };
   if (field.kind === "words") return { value: text === "" ? null : text.split(/\s+/) };
+  // Empty is the empty list, not null: "none" is a value the loader accepts, and it replaces a default.
+  if (field.kind === "list") return { value: text.split(/\s*,\s*/).filter(Boolean) };
   if (text === "") {
     if (field.nullable) return { value: null };
     return { error: `${field.label}: cannot be empty` };

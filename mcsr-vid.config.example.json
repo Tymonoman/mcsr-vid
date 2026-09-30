@@ -30,6 +30,7 @@
   "youtubePlaylistTitle": "MCSR Ranked matches",
   "youtubePlaylistUrl": "",
   "rivalChannelHandle": "mcsrmatches",
+  "favouritePlayers": ["doogile", "Feinberg", "Infume", "Pinne", "lowk3y_", "silverrruns", "edcr"],
   "supportUrl": "",
   "pullSource": "",
   "pullDest": "~/Replayoffs",

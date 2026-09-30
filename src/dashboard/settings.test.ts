@@ -57,6 +57,15 @@ assert.deepEqual(coerce(field("reasonerCommand"), "agy -p {prompt} --output-form
 });
 assert.deepEqual(coerce(field("reasonerCommand"), "   "), { value: null });
 
+// The favourite players are a comma-separated list, and empty is the empty list — "no bonus" — not
+// null and not an error, so clearing the box is a way to switch the bonus off.
+assert.deepEqual(coerce(field("favouritePlayers"), "doogile, Feinberg ,edcr"), {
+  value: ["doogile", "Feinberg", "edcr"],
+});
+assert.deepEqual(coerce(field("favouritePlayers"), ""), { value: [] });
+assert.deepEqual(coerce(field("favouritePlayers"), " , ,"), { value: [] }, "stray commas name nobody");
+assert.ok(field("favouritePlayers").unattended, "it changes the nightly's pick, and the panel says so");
+
 console.log("settings: the allowlist holds and every kind coerces");
 
 // --- Writing: the file the loader reads ---------------------------------------------------------
@@ -94,6 +103,24 @@ console.log("settings: the allowlist holds and every kind coerces");
   assert.equal(readFileSync(CONFIG_PATH, "utf8"), good, "a refused save writes nothing at all");
 
   console.log("settings: a save is atomic, validated, live, and leaves foreign keys alone");
+
+  // The favourite players: the roster until the panel says otherwise, then live at once — the
+  // suggestion list and the nightly read `config` on every call, so nothing rescans or restarts.
+  assert.ok(config.favouritePlayers.includes("doogile"), "the default roster is live before any save");
+  assert.deepEqual(saveSettings({ favouritePlayers: "edcr, Feinberg" }).changed, ["favouritePlayers"]);
+  assert.deepEqual(config.favouritePlayers, ["edcr", "Feinberg"]);
+  assert.deepEqual(JSON.parse(readFileSync(CONFIG_PATH, "utf8")).favouritePlayers, ["edcr", "Feinberg"]);
+  assert.deepEqual(saveSettings({ favouritePlayers: "edcr,Feinberg" }).changed, [], "same list, no change");
+  assert.deepEqual(settingsPayload().fields.find((f) => f.key === "favouritePlayers")?.value, [
+    "edcr",
+    "Feinberg",
+  ]);
+  // Emptied, it is written as [] — an explicit "none" that beats the default roster on the next boot.
+  assert.deepEqual(saveSettings({ favouritePlayers: "" }).changed, ["favouritePlayers"]);
+  assert.deepEqual(config.favouritePlayers, []);
+  assert.deepEqual(JSON.parse(readFileSync(CONFIG_PATH, "utf8")).favouritePlayers, []);
+
+  console.log("settings: the favourite players save, apply live, and clear to none");
 }
 
 process.chdir(cwd);

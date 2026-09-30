@@ -76,5 +76,23 @@ assert.throws(() => validateOverrides({ introSec: 1 }), /introSec/);
 assert.throws(() => validateOverrides({ introSec: 8 }), /introSec/);
 assert.throws(() => validateOverrides({ introSec: "3" }), /introSec/);
 assert.throws(() => validateOverrides({ introSec: null }), /introSec/);
+// The favourite players: the roster by default, [] is "no bonus", and the generic typeof check (an
+// array default accepts any object) must not let null, a string or a blank name through.
+assert.deepEqual(DEFAULTS.favouritePlayers, [
+  "doogile",
+  "Feinberg",
+  "Infume",
+  "Pinne",
+  "lowk3y_",
+  "silverrruns",
+  "edcr",
+]);
+assert.doesNotThrow(() => validateOverrides({ favouritePlayers: [] }));
+assert.doesNotThrow(() => validateOverrides({ favouritePlayers: ["edcr", "Feinberg"] }));
+assert.throws(() => validateOverrides({ favouritePlayers: null }), /favouritePlayers/);
+assert.throws(() => validateOverrides({ favouritePlayers: "edcr, doogile" }), /favouritePlayers/);
+assert.throws(() => validateOverrides({ favouritePlayers: { edcr: true } }), /favouritePlayers/);
+assert.throws(() => validateOverrides({ favouritePlayers: ["edcr", 7] }), /favouritePlayers/);
+assert.throws(() => validateOverrides({ favouritePlayers: ["edcr", "  "] }), /favouritePlayers/);
 
 console.log("config: all checks passed");
