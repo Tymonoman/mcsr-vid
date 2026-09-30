@@ -14,7 +14,7 @@
  * Both are reported read-only so the panel can still say where they stand.
  */
 import { readFileSync, writeFileSync, renameSync, existsSync } from "node:fs";
-import { config, CONFIG_PATH, validateOverrides, type Config } from "../config.js";
+import { config, CONFIG_PATH, CTA_REASON_MAX_CHARS, validateOverrides, type Config } from "../config.js";
 
 /** `Config` has no index signature; this is the one place that reaches it by key. */
 const live = config as unknown as Record<string, unknown>;
@@ -103,6 +103,13 @@ export const SETTINGS: readonly SettingField[] = [
     min: 0,
     max: 3600,
     nullable: true,
+  },
+  {
+    key: "ctaReason",
+    label: "Subscribe card's reason",
+    help: `One row above SUBSCRIBE on the mid-race line and on the card after the finish, saying why: ${CTA_REASON_MAX_CHARS} characters at most, because the card after the finish sits under the final time and has room for one row. Empty shows the bare SUBSCRIBE and FOR THE NEXT ONE card. Applies to the next render.`,
+    kind: "text",
+    group: "Publishing",
   },
   {
     key: "teaserAtSec",

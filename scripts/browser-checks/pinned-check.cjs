@@ -32,7 +32,11 @@ const { launchFor, readClipboard } = require("./launch.cjs");
   );
   console.log("errors:", errors.length ? errors : "none");
   await browser.close();
-  process.exit(clip === text && /^both povs are the players.*ill fix it(\ntip jar: \S+)?$/.test(text) ? 0 : 1);
+  // The subscribe line closes it since 30 Sept 2026 (SUBSCRIBE_LINE): a server booted before that
+  // still serves the old text, so a failure here with the old text printed above means restart it.
+  const pinned =
+    /^both povs are the players.*ill fix it(\ntip jar: \S+)?\na new match every day\. subscribe to catch the next one\.$/;
+  process.exit(clip === text && pinned.test(text) ? 0 : 1);
 })().catch((e) => {
   console.error(e);
   process.exit(1);

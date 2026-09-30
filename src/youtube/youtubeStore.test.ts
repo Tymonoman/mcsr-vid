@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { config } from "../config.js";
-import { CLOSER } from "../pipeline/description.js";
+import { CLOSER, SUBSCRIBE_LINE } from "../pipeline/description.js";
 import { refreshDescription, refreshTitle, uploadTextFor } from "./youtubeStore.js";
 import type { SeriesRecord } from "../playoffs/series.js";
 
@@ -68,6 +68,11 @@ write(101, {
     ),
     text.description,
   );
+  // The subscribe line is its own paragraph after the opening one, where the template puts it,
+  // once; a second refresh of the result changes nothing.
+  assert.equal(text.description.split("\n\n")[1], SUBSCRIBE_LINE, text.description);
+  assert.equal(text.description.split(SUBSCRIBE_LINE).length, 2, text.description);
+  assert.equal(await refreshDescription(text.description, "video"), text.description);
   // The links the render checked are untouched.
   assert.ok(
     text.description.includes("match page: https://magmamcsr.com/ranked/player/7rowl/matches/101?season=12"),
@@ -78,6 +83,7 @@ write(101, {
   assert.equal(short.title, "Can the LCQ take down the 7th seed? | 7rowl vs Skycrab #mcsr #minecraft");
   assert.ok(short.description.includes("(7th seed)"));
   assert.ok(!short.description.includes("tip jar"), "a Short's layout gets the seed wording only");
+  assert.ok(!short.description.includes(SUBSCRIBE_LINE), "nor the subscribe line");
   assert.deepEqual(warnings, []);
 }
 
@@ -300,6 +306,8 @@ write(108, {
   assert.ok(refreshed.includes("1:05:40 game 3 · desert temple seed"));
   assert.ok(refreshed.includes("1:30:00 game 1 · already has seed"));
   assert.ok(refreshed.includes("0:00 intro"));
+  // No blank line is no template: there is no opening paragraph to place the subscribe line after.
+  assert.ok(!refreshed.includes(SUBSCRIBE_LINE));
 }
 
 console.log("youtubeStore.test: ok");

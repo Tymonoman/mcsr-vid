@@ -96,6 +96,8 @@ export function buildDescription(input: DescriptionInput): string {
   return [
     buildOpening(input),
     "",
+    SUBSCRIBE_LINE,
+    "",
     // The series context a playoff viewer arrives with: which round, which game, which seeds.
     // Never the series score — that is as much of a spoiler as the result is.
     ...(input.playoff ? [playoffParagraph(input.playoff), ""] : []),
@@ -118,6 +120,14 @@ export function buildDescription(input: DescriptionInput): string {
     HASHTAGS.join(" "),
   ].join("\n");
 }
+
+/**
+ * The subscribe ask, one plain line in the operator's lowercase voice and with a reason: the 29 Sept
+ * 2026 plan (item 4) found neither the description nor the pinned comment asking at all. It is its
+ * own paragraph after the opening one, on every video and every series, and the last line of the
+ * pinned comment (`pinnedComment`). `refreshDescription` adds it to a description rendered before.
+ */
+export const SUBSCRIBE_LINE = "a new match every day. subscribe to catch the next one.";
 
 /**
  * The last line before the hashtags, on every video and every series. What the video is and
@@ -171,6 +181,8 @@ export function buildSeriesDescription(input: SeriesDescriptionInput): string {
   const format = `${playoffPhrase(input.season, input.round)}, best of ${input.bestOf}`;
   return [
     `${left.nickname} vs ${right.nickname}, ${format}. every game of the series, a minecraft speedrun race with both streams side by side and the split timer in the middle. ${left.nickname} came in ${seedClause(left.label)} at ${left.seasonEloRate} elo, ${right.nickname} ${seedClause(right.label)} at ${right.seasonEloRate}.`,
+    "",
+    SUBSCRIBE_LINE,
     "",
     // "game 2 · desert temple seed": a chapter list that says what each game is, not only its
     // number. The world's seed type, which the tags carry too, never the bracket seed or a score.

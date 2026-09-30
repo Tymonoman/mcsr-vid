@@ -62,6 +62,12 @@ export type OverlayProps = {
    */
   midRollCta?: { atSec: number; forSec: number };
   /**
+   * Why to subscribe, on one row above SUBSCRIBE on both subscribe cards (config.ctaReason), in the
+   * place "for the next one" holds on the bare card. Absent or empty means the bare card. The same
+   * text for every frame of both cards, so it adds no still (src/pipeline/splitStates.ts).
+   */
+  ctaReason?: string;
+  /**
    * The first-minute "COMING UP" line in the meta column, from `atSec` after match start for
    * `forSec` (config.teaserAtSec / teaserSec): a moment `momentMs` into the race, as `text`
    * (src/pipeline/teaser.ts). Absent when nothing qualifies or it is switched off.

@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { config } from "../config.js";
+import { SUBSCRIBE_LINE } from "../pipeline/description.js";
 import { parseImpressionsCsv, REQUIRED_SCOPES, uploadVideo } from "./youtube.js";
 import { findExportedVideo, pinnedComment } from "./youtubeStore.js";
 
@@ -52,9 +53,13 @@ assert.ok(REQUIRED_SCOPES.includes("https://www.googleapis.com/auth/youtube.forc
 assert.ok(REQUIRED_SCOPES.includes("https://www.googleapis.com/auth/youtube.upload"));
 assert.ok(REQUIRED_SCOPES.includes("https://www.googleapis.com/auth/yt-analytics.readonly"));
 
-// --- Pinned comment on match videos: includes tip jar when supportUrl is set.
+// --- Pinned comment on match videos: includes tip jar when supportUrl is set, and closes on the
+// subscribe line either way (29 Sept 2026 plan, item 4).
 assert.ok(!pinnedComment("").includes("tip jar"));
-assert.ok(pinnedComment("https://ko-fi.com/x").endsWith("tip jar: https://ko-fi.com/x"));
+assert.ok(pinnedComment("https://ko-fi.com/x").includes("\ntip jar: https://ko-fi.com/x\n"));
+assert.ok(pinnedComment("").endsWith(`\n${SUBSCRIBE_LINE}`));
+assert.ok(pinnedComment("https://ko-fi.com/x").endsWith(`\n${SUBSCRIBE_LINE}`));
+assert.ok(pinnedComment("").startsWith("both povs are the players own streams"), "the sync line still leads");
 
 // --- Finding the exported video. The pipeline produces a Kdenlive project, not a finished
 // file, so this picks which file to upload — and picking wrong means a multi-GB POV clip on a

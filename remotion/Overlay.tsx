@@ -168,6 +168,21 @@ function SplitRowView({
   );
 }
 
+/**
+ * The subscribe card, shared by the post-roll and the mid-race line. With a reason (config.ctaReason)
+ * it is one row in quartz above the gold SUBSCRIBE, in the place "for the next one" holds; without,
+ * the bare card the channel shipped with.
+ */
+function SubscribeCard({ reason, midRace = false }: { reason?: string; midRace?: boolean }) {
+  return (
+    <div className={midRace ? "cta midroll" : "cta"}>
+      {reason && <span className="cta-why">{reason}</span>}
+      <span className="cta-value">SUBSCRIBE</span>
+      {!reason && <span className="cta-sub">for the next one</span>}
+    </div>
+  );
+}
+
 function SplitsPanel({
   props,
   elapsedMs,
@@ -233,18 +248,12 @@ function SplitsPanel({
                   <span className="final-value">{formatTime(props.runResultMs)}</span>
                 </div>
               )}
-              <div className="cta">
-                <span className="cta-value">SUBSCRIBE</span>
-                <span className="cta-sub">for the next one</span>
-              </div>
+              <SubscribeCard reason={props.ctaReason} />
             </>
           ) : mid !== null && frame >= mid[0] && frame < mid[1] ? (
             // The mid-race line, where the viewers still are (config.midRollCtaAtSec): the same
             // card as the post-roll's, for a few seconds, in the achievements' place.
-            <div className="cta midroll">
-              <span className="cta-value">SUBSCRIBE</span>
-              <span className="cta-sub">for the next one</span>
-            </div>
+            <SubscribeCard reason={props.ctaReason} midRace />
           ) : teaser !== null && frame >= teaser[0] && frame < teaser[1] ? (
             // The first-minute promise (config.teaserAtSec): a moment later in the race, at the
             // time the RTA column beside it will read. Names nobody (src/pipeline/teaser.ts).

@@ -413,9 +413,10 @@ async function writeSeriesText(
     supportUrl: config.supportUrl,
   });
   await writeFile(path.join(outDir, `match-${firstGameId}.description.txt`), description, "utf8");
+  // The chapter paragraph is the one that opens at 0:00, wherever the template puts it.
   await writeFile(
     path.join(outDir, `match-${firstGameId}.chapters.txt`),
-    description.split("\n\n")[1] ?? "",
+    description.split("\n\n").find((paragraph) => paragraph.startsWith("0:00")) ?? "",
     "utf8",
   );
 

@@ -92,7 +92,7 @@ const {
   renderSeries,
   seriesShortGame,
 } = await import("./series.js");
-const { buildSeriesDescription } = await import("../pipeline/description.js");
+const { buildSeriesDescription, SUBSCRIBE_LINE } = await import("../pipeline/description.js");
 const { formatChapterTime } = await import("../pipeline/chapters.js");
 
 /* --- Pure parts --------------------------------------------------------------------------- */
@@ -146,6 +146,7 @@ assert.match(
 );
 assert.ok(desc.includes("edcr came in as the 1st seed at 2688 elo, lauveer from the lcq at 2137."));
 assert.ok(!desc.split("\n\n")[0]!.includes("#"), `no hash in series description opening:\n${desc}`);
+assert.equal(desc.split("\n\n")[1], SUBSCRIBE_LINE, "the ask follows the opening, as on a match's");
 
 const desc9 = buildSeriesDescription({
   season: 11,

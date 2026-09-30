@@ -43,6 +43,7 @@
   "postRollCta": true,
   "midRollCtaAtSec": 90,
   "midRollCtaSec": 4,
+  "ctaReason": "A NEW MATCH EVERY DAY",
   "teaserAtSec": 10,
   "teaserSec": 5,
   "introSec": 7,
