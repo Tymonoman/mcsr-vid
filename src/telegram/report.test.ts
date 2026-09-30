@@ -12,10 +12,13 @@ import {
   renderStats,
   renderToday,
   renderYpp,
+  renderWorth,
+  whenWarsaw,
 } from "./report.js";
 import { MESSAGE_MAX_CHARS } from "./bot.js";
 import type { ReportFacts } from "./facts.js";
 import type { UnansweredComment } from "./comments.js";
+import type { WorthMatch } from "./worth.js";
 import type { YppProgress } from "../youtube/yppProgress.js";
 
 // --- HTML escaping: a malicious/odd string in any dynamic field must never reach the message
@@ -197,6 +200,17 @@ import type { YppProgress } from "../youtube/yppProgress.js";
 }
 
 // --- The morning report: three messages, each under the limit, each thing said once. ---
+/** One scored match for the worth-rendering block. */
+const worthMatch = (i: number, over: Partial<WorthMatch> = {}): WorthMatch => ({
+  matchId: 13800000 + i,
+  players: `a${i} vs b${i}`,
+  playedAt: "2026-09-29T20:46:27.000Z",
+  runMs: 819986,
+  story: "lead changes 3x, 0.2 s apart at Stronghold",
+  score: 0.5,
+  ...over,
+});
+
 {
   const now = Date.parse("2026-09-29T05:00:00Z");
   const windows = Object.fromEntries(
@@ -245,6 +259,7 @@ import type { YppProgress } from "../youtube/yppProgress.js";
     },
     comments: { ok: true, data: { unanswered: [], videoTitles: {} } },
     ypp: { ok: false, error: "no token" },
+    worthRendering: { ok: true, data: { matches: [worthMatch(1)], notes: [] } },
     dashboardBaseUrl: "http://actimel:8080",
   } as unknown as ReportFacts;
   const msgs = renderMorningReport(
@@ -264,9 +279,69 @@ import type { YppProgress } from "../youtube/yppProgress.js";
   assert.ok(!msgs[0]!.includes("200 ms"), msgs[0]);
   assert.ok(!msgs[0]!.includes("Problems"), msgs[0]); // no problems → no section
   assert.ok(!msgs[0]!.includes("Waiting for a hook"), msgs[0]); // the to-do says it; /waiting lists them
+  // The matches worth rendering sit in the day message, under the to-do and above the problems.
+  assert.ok(msgs[0]!.indexOf("To do") < msgs[0]!.indexOf("Worth rendering today"), msgs[0]);
+  assert.ok(msgs[0]!.includes("id <code>13800001</code>"), msgs[0]);
+  assert.ok(!msgs[1]!.includes("Worth rendering") && !msgs[2]!.includes("Worth rendering"));
   assert.ok(msgs[1]!.includes("<pre>") && msgs[1]!.includes("vs prev"), msgs[1]);
   assert.ok(!msgs[1]!.includes("(0)"), msgs[1]); // an unchanged count carries no "(0)"
   assert.ok(msgs[2]!.includes("No unanswered comments"), msgs[2]);
+}
+
+// "Worth rendering": one line per match — players, when (Warsaw), run, story, the id in <code> so a
+// tap copies it — five in the morning message, everything scored for /worth; all dynamic text escaped.
+{
+  const base = "http://actimel:8080";
+  const eight = Array.from({ length: 8 }, (_, i) => worthMatch(i));
+  const out = renderWorth({ ok: true, data: { matches: eight, notes: [] } }, base);
+  const rows = out.split("\n").filter((l) => l.startsWith("• "));
+  assert.equal(rows.length, 5, out);
+  assert.equal(
+    rows[0],
+    `• <b>a0 vs b0</b> · ${whenWarsaw("2026-09-29T20:46:27.000Z")} · 13:39 · lead changes 3x, 0.2 s apart at Stronghold · id <code>13800000</code>`,
+  );
+  assert.ok(out.startsWith(`<b>🎬 Worth rendering today</b> · <a href="${base}/">dashboard</a>`), out);
+  assert.ok(out.endsWith("+ 3 more — /worth"), out);
+  const all = renderWorth({ ok: true, data: { matches: eight, notes: [] } }, base, Infinity);
+  assert.equal(all.split("\n").filter((l) => l.startsWith("• ")).length, 8);
+  assert.ok(!all.includes("more — /worth"), all);
+
+  const evil = renderWorth(
+    {
+      ok: true,
+      data: {
+        matches: [worthMatch(1, { players: "<i>x</i> & y", story: "a < b" })],
+        notes: ["twitch.tv/<b> could not be listed"],
+      },
+    },
+    base,
+  );
+  assert.ok(!evil.includes("<i>x</i>") && !evil.includes("<b> could"), evil);
+  assert.ok(evil.includes("&lt;i&gt;x&lt;/i&gt; &amp; y") && evil.includes("a &lt; b"), evil);
+  assert.ok(evil.includes("<i>twitch.tv/&lt;b&gt; could not be listed</i>"), evil);
+
+  assert.equal(
+    renderWorth({ ok: true, data: { matches: [], notes: [] } }, base),
+    "🎬 Nothing new worth rendering from the last 3 days",
+  );
+  const quiet = renderWorth(
+    { ok: true, data: { matches: [], notes: ["Infume's matches could not be read (x)"] } },
+    base,
+  );
+  assert.ok(
+    quiet.includes("Nothing new") && quiet.includes("<i>Infume's matches could not be read (x)</i>"),
+    quiet,
+  );
+  assert.ok(renderWorth({ ok: false, error: "boom" }, base).includes("boom"));
+
+  // Five long lines still leave the day message under Telegram's limit.
+  const long = Array.from({ length: 5 }, (_, i) =>
+    worthMatch(i, {
+      players: "SomeVeryLongNickname vs AnotherLongNickname",
+      story: "lead changes 3x, 12 deaths, 100.3 s apart at Blind travel",
+    }),
+  );
+  assert.ok(visibleLength(renderWorth({ ok: true, data: { matches: long, notes: [] } }, base)) < 1200);
 }
 
 // The stats table: one column per window, the header and every row the same width.

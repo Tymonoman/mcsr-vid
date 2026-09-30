@@ -1,7 +1,7 @@
 // Self-check for commands.ts's slash-command parsing.
 // Run: npx tsx src/telegram/commands.test.ts
 import assert from "node:assert/strict";
-import { BOT_COMMANDS, parseCommand, parseStatsWindows } from "./commands.js";
+import { BOT_COMMANDS, HELP_TEXT, parseCommand, parseStatsWindows } from "./commands.js";
 
 // Not a command at all.
 assert.equal(parseCommand("hello there"), null);
@@ -34,6 +34,11 @@ assert.deepEqual(parseStatsWindows("3D"), [3]);
 assert.deepEqual(parseStatsWindows("7d"), [7]);
 assert.deepEqual(parseStatsWindows("30d"), [30]);
 assert.deepEqual(parseStatsWindows("nonsense"), [1, 3, 7, 30]);
+
+// /worth is in Telegram's menu and /help lists it (HELP_TEXT is built from the menu).
+assert.deepEqual(parseCommand("/worth"), { command: "worth", args: "" });
+assert.ok(BOT_COMMANDS.some((c) => c.command === "worth"));
+assert.ok(HELP_TEXT.includes("/worth — Matches worth rendering"), HELP_TEXT);
 
 // Every command in the menu is unique and lowercase — Telegram rejects a duplicate or mixed-case one.
 {

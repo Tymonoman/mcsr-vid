@@ -29,6 +29,7 @@ import { pickErrorFile } from "../shorts/videoPick.js";
 import { playoffBoard } from "../playoffs/playoffs.js";
 import { reasonerConfigured, runReasoner } from "../shorts/reasoner.js";
 import { filterUnanswered, type UnansweredComment } from "./comments.js";
+import { gatherWorth, type WorthFacts } from "./worth.js";
 import {
   aggregateWindows,
   latestDate,
@@ -473,13 +474,17 @@ export interface ReportFacts {
   stats: Section<StatsFacts>;
   comments: Section<CommentsFacts>;
   ypp: Section<YppProgress>;
+  worthRendering: Section<WorthFacts>;
   dashboardBaseUrl: string;
 }
 
 /** Which of `ReportFacts`' sections `gatherFacts` actually computes — a narrow slash command
- *  (`/stats`, `/comments`, `/ypp`, `/waiting`, `/health`, `/alerts`) asks for only its own, so it
- *  pays for only its own API calls and skips the live agy ping `gatherHealth` makes. */
-export type FactSection = "todo" | "alerts" | "health" | "overnight" | "stats" | "comments" | "ypp";
+ *  (`/stats`, `/comments`, `/ypp`, `/waiting`, `/health`, `/alerts`, `/worth`) asks for only its
+ *  own, so it pays for only its own API calls and skips the live agy ping `gatherHealth` makes. */
+export type FactSection =
+  "todo" | "alerts" | "health" | "overnight" | "stats" | "comments" | "ypp" | "worthRendering";
+/** The day's picture — what `/todo` and `/ask` read. `worthRendering` is not in it: it costs ~14 MCSR
+ *  calls and a few yt-dlp listings when its six-hour cache is cold, and neither command shows it. */
 const ALL_SECTIONS: readonly FactSection[] = [
   "todo",
   "alerts",
@@ -489,23 +494,27 @@ const ALL_SECTIONS: readonly FactSection[] = [
   "comments",
   "ypp",
 ];
+/** The morning report (scheduled or `/report`): the day's picture and the list of matches worth rendering. */
+export const MORNING_SECTIONS: readonly FactSection[] = [...ALL_SECTIONS, "worthRendering"];
 
 /**
  * `sinceMs` is when the last report went out (or 24 h ago, the default) — what "overnight" and
  * "since the previous report" mean throughout. `only` narrows which sections are actually
- * gathered (default: all, for `/report`/`/todo`/`/ask`, which want the full picture); a section
- * left out comes back `{ ok: false, error: "not requested" }` rather than being computed.
- * `alerts` needs the health checks itself (a down API is one of its lines), so asking for
- * `alerts` alone still runs `gatherHealth`.
+ * gathered (default: the day's picture, for `/todo`/`/ask`, which want it whole; the morning report
+ * passes `MORNING_SECTIONS`); a section left out comes back `{ ok: false, error: "not requested" }`
+ * rather than being computed. `alerts` needs the health checks itself (a down API is one of its
+ * lines), so asking for `alerts` alone still runs `gatherHealth`. `freshWorth` skips the six-hour
+ * cache of the `worthRendering` section (`/worth` asks for it).
  */
 export async function gatherFacts(
   nowMs = Date.now(),
   sinceMs = nowMs - DAY_MS,
   only: readonly FactSection[] = ALL_SECTIONS,
+  opts: { freshWorth?: boolean } = {},
 ): Promise<ReportFacts> {
   const want = new Set(only);
   const health = want.has("health") || want.has("alerts") ? await gatherHealth() : [];
-  const [todo, alerts, overnight, stats, comments, ypp] = await Promise.all([
+  const [todo, alerts, overnight, stats, comments, ypp, worthRendering] = await Promise.all([
     want.has("todo") ? section(() => gatherTodo(nowMs)) : Promise.resolve(notRequested<TodoFacts>()),
     want.has("alerts")
       ? section(() => gatherAlerts(nowMs, health))
@@ -521,6 +530,9 @@ export async function gatherFacts(
           return projectYpp(snapshot, nowMs);
         })
       : Promise.resolve(notRequested<YppProgress>()),
+    want.has("worthRendering")
+      ? section(() => gatherWorth(nowMs, { fresh: opts.freshWorth }))
+      : Promise.resolve(notRequested<WorthFacts>()),
   ]);
   return {
     nowMs,
@@ -531,6 +543,7 @@ export async function gatherFacts(
     stats,
     comments,
     ypp,
+    worthRendering,
     dashboardBaseUrl: dashboardMatchUrl(),
   };
 }

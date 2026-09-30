@@ -12,11 +12,13 @@ import { parseCommand } from "./commands.js";
 import { readFileSync } from "node:fs";
 import { buildMorningReport, dispatchCommand } from "./index.js";
 import { chunkMarkdown, mdToTelegramHtml } from "./markdown.js";
+import { setStateDryRun } from "./state.js";
 
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
 const rest = args.filter((a) => a !== "--dry-run");
 const [sub, ...subArgs] = rest;
+if (dryRun) setStateDryRun(); // a dry run leaves /media as it found it: no cache, no dedupe record
 
 const usage =
   'usage: npm run tg -- <report|cmd "<text>"|send <text>|send --md <report.md>|send --file <path>|whoami> [--dry-run]';
