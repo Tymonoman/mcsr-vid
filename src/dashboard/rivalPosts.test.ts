@@ -23,6 +23,95 @@ assert.equal(
   "the rival's capitalisation and our underscore meet in the middle",
 );
 
+// The rival's real titles, one per shape (yt-dlp on @mcsrmatches, 30 Sept 2026). The hook-less
+// `A vs B | MCSR Ranked | …` (10 of its newest 15 uploads) and a nickname with a space in it parsed
+// to null, so the badge and the nightly's order never saw those posts. "(made up)" is a shape it
+// has not posted yet.
+{
+  const shapes: [string, string, [string, string] | null][] = [
+    ["no hook", "Anjouu vs Skycrab | MCSR Ranked | Minecraft Speedrun", ["anjouu", "skycrab"]],
+    [
+      "no hook, v_strid typed Vstrid",
+      "Doogile vs Vstrid | MCSR Ranked | Minecraft Speedrun",
+      ["doogile", "vstrid"],
+    ],
+    [
+      "emoji against the pipe",
+      "SO FAST! 🤯| Infume vs Silverrruns | MCSR Ranked | Minecraft Speedrun",
+      ["infume", "silverrruns"],
+    ],
+    [
+      "two spaces after the pipe",
+      "What a Crazy Seed😮 |  Edcr vs Pinne | MCSR Ranked | Minecraft Speedrun",
+      ["edcr", "pinne"],
+    ],
+    [
+      "digits in the hook",
+      "Insane🤯6:51 | Doogile vs Edcr | MCSR Ranked | Minecraft Speedrun",
+      ["doogile", "edcr"],
+    ],
+    [
+      "lower case against camel case",
+      "UNLUCKY.!! | bbiddd vs BeefSalad | MCSR Ranked | Minecraft Speedrun",
+      ["bbiddd", "beefsalad"],
+    ],
+    [
+      "a nickname that starts with a digit",
+      "GIRL?? | 7astrid vs Dandannyboy | MCSR Ranked | Minecraft Speedrun",
+      ["7astrid", "dandannyboy"],
+    ],
+    [
+      "a digit inside a nickname",
+      "Insane Comeback 🤯 | Lowk3y vs edcr | MCSR Ranked | Minecraft Speedrun",
+      ["lowk3y", "edcr"],
+    ],
+    [
+      "a question hook with an apostrophe",
+      "WOULD HE HAVE WON IF HE HADN'T ..? | Silverrruns vs Infume | MCSR Ranked | Minecraft Speedrun",
+      ["silverrruns", "infume"],
+    ],
+    [
+      "a hook, then the old tail",
+      "I've never seen a match like this | Anjouu vs Infume | MCSR Ranked Minecraft Speedrun",
+      ["anjouu", "infume"],
+    ],
+    ["the old grammar, two spaces", "Lowkey vs Infume  MCSR Ranked Minecraft Speedrun", ["lowkey", "infume"]],
+    [
+      "a nickname with a space: DARVY__X1",
+      "Doogile vs Darvy  x1 MCSR Ranked Minecraft Speedrun",
+      ["doogile", "darvyx1"],
+    ],
+    [
+      "a nickname with a space: v_strid",
+      "Infume vs V strid MCSR Ranked Latest Match #30",
+      ["infume", "vstrid"],
+    ],
+    [
+      "a hook's own vs is not the pair (made up)",
+      "MY BEST vs YOUR WORST | Feinberg vs Infume | MCSR Ranked | Minecraft Speedrun",
+      ["feinberg", "infume"],
+    ],
+    [
+      "a spaced nickname after a hook (made up)",
+      "GG | V strid vs Infume | MCSR Ranked | Minecraft Speedrun",
+      ["vstrid", "infume"],
+    ],
+    [
+      "a spaced nickname, no hook (made up)",
+      "Infume vs V strid | MCSR Ranked | Minecraft Speedrun",
+      ["infume", "vstrid"],
+    ],
+    [
+      "a hook stuck to the first nickname, no pipe: no guess",
+      "Skilled players.. Feinberg vs BeefSalad MCSR ranked speedrun 1v1 #13",
+      null,
+    ],
+  ];
+  for (const [what, title, want] of shapes)
+    assert.deepEqual(playersFromTitle(title), want, `${what}: ${title}`);
+  console.log("OK: the rival's real title shapes parse to their pair");
+}
+
 const day = 86_400_000;
 const matchAt = Date.UTC(2026, 8, 6, 20); // 6 Sept 20:00
 const posts: RivalPost[] = [
@@ -50,6 +139,35 @@ assert.equal(
 // Too long after: the rival posts daily, so a post twelve days later is another match.
 assert.equal(rivalMatchFor(posts, ["nahhann", "Aquacorde"], (matchAt - 12 * day) / 1000), null);
 assert.equal(rivalMatchFor(posts, ["Infume", "BeefSalad"], matchAt / 1000), null, "not posted: nothing");
+
+// The bug end to end: a hook-less post has to count for its match like a hooked one, on the cards and
+// on the shelf, and "Darvy  x1" as the rival types it is the API's DARVY__X1.
+{
+  const { rivalRecentPostFor } = await import("./rivalPosts.js");
+  const post = (title: string): RivalPost => ({
+    title,
+    publishedAtMs: matchAt + day,
+    players: playersFromTitle(title),
+  });
+  const hookless = post("Feinberg vs Infume | MCSR Ranked | Minecraft Speedrun");
+  assert.equal(
+    rivalMatchFor([hookless], ["infume", "Feinberg"], matchAt / 1000)?.title,
+    hookless.title,
+    "a hook-less post is found for its match",
+  );
+  assert.equal(
+    rivalRecentPostFor([hookless], ["infume", "Feinberg"], matchAt + 2 * day)?.title,
+    hookless.title,
+    "and for the shelf",
+  );
+  const spaced = post("Doogile vs Darvy  x1 MCSR Ranked Minecraft Speedrun");
+  assert.equal(
+    rivalMatchFor([spaced], ["Doogile", "DARVY__X1"], matchAt / 1000)?.title,
+    spaced.title,
+    "a nickname the rival types with a space is the API's underscores",
+  );
+  console.log("OK: hook-less and spaced-nickname posts reach the badge");
+}
 
 // Two matches of one pair in one night: the video's length says which one was posted. Measured
 // on the rival: 8:59 for an 8:48 run. A post of the wrong length is the other match, not this
