@@ -44,12 +44,17 @@ export interface RivalMatch {
 export const normaliseNick = (nick: string): string => nick.toLowerCase().replace(/[^a-z0-9]/g, "");
 
 /**
- * Both title grammars the rival has used: `HOOK | A vs B | MCSR Ranked | ...` since August, and
- * `A vs B MCSR Ranked Minecraft Speedrun` before it.
+ * The title grammars the rival has used: `HOOK | A vs B | MCSR Ranked | ...` since August, the same
+ * without a hook (`A vs B | MCSR Ranked | ...`, 10 of its newest 15 uploads on 30 Sept 2026), and
+ * `A vs B MCSR Ranked Minecraft Speedrun` before it, still posted now and then. The pair is what
+ * stands right before the MCSR tag, so an "X vs Y" inside a hook is never taken for it. A nickname may
+ * hold spaces — the rival types an underscore as one ("Darvy  x1" is DARVY__X1) — which
+ * `normaliseNick` drops.
  */
 export function playersFromTitle(title: string): [string, string] | null {
-  const piped = /\|\s*([^|]+?)\s+vs\.?\s+([^|]+?)\s*\|/i.exec(title);
-  const plain = /^\s*(\S+)\s+vs\.?\s+(\S+)\s+MCSR/i.exec(title);
+  const piped = /(?:^|\|)\s*([^|]+?)\s+vs\.?\s+([^|]+?)\s*\|\s*MCSR/i.exec(title);
+  // Unpiped, a hook in front would read as part of the first nickname, so that one is a single word.
+  const plain = /^\s*(\S+)\s+vs\.?\s+([^|]+?)\s+MCSR/i.exec(title);
   const m = piped ?? plain;
   if (!m) return null;
   const a = normaliseNick(m[1]!);
