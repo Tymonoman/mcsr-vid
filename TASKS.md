@@ -60,11 +60,12 @@ deadline/cache). Then: merge each (resolve settings.test.ts for roster), tg-watc
 (handbook/knowledge/night-2026-09-30.md → `npm run tg -- send --md`), memory, commit.
 
 1 Oct 07:50 UTC: merged 09b55d5 roster-bonus (+ f271d89 /worth roster), bf5ded3 ypp-eta, 3b78854 docs
-fix, 207c9b5 post-mortem doc, CLAUDE.md notes 7c127b4/7885965. Pending: exportframes-test (agent),
-then the report send (`npm run tg -- send --md handbook/knowledge/night-2026-09-30.md`) and the
-worktree cleanup (merged: rival-title, kit-dm, deep-link, hooks-stake, cta-reason, tg-watch,
-roster-bonus, ypp-eta; keep claude-md-trim). The trim branch needs a rebase on main's CLAUDE.md
-before "apply".
+fix, 207c9b5 post-mortem doc, CLAUDE.md notes 7c127b4/7885965, c417280 exportframes-test (the
+real-media render check is green on main again). Report sent to Telegram 08:00 UTC (6954175).
+Merged worktrees removed, branches kept; claude-md-trim kept (needs a rebase on main's CLAUDE.md
+before "apply"). Flagged to the operator: published 7UcG1Y-k9dY (13672776, hand-set sync) runs its
+overlay timer ~6.5 s behind the players' own clocks, per the test agent's measurement — a re-export
+and re-upload is his call.
 
 ## RESUME (after a compaction): read this block, `git status`, `git worktree list`, `ls ~/.claude/jobs/8d7d95a1/tmp/night/`, then continue the plan.
 
