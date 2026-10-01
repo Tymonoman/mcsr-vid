@@ -1,5 +1,73 @@
 # TASKS — resume point (updated 24 Sept 2026 08:15 UTC)
 
+## ▶ NIGHT 30 Sept → 1 Oct 2026 (the operator's goal, set ~21:50 UTC 30 Sept)
+
+His words: "work until 8:50 polish time tomorrow or until you hit the usage limit … generate ONE
+report at the end … focus on hitting full ypp asap … investigate every upload so far and figure
+out what we did wrong … brainstorm ideas … if useful implement them … visually upgrade stuff if
+you're really desperate … YOUR GOAL FOR THE NIGHT IS TO BRING ME CLOSER TO MAKING MONEY. we need
+subscriptions." Deadline **06:50 UTC 1 Oct**. ONE report at the end: write it to
+`handbook/knowledge/night-2026-09-30.md`, commit, then `npm run tg -- send --md <file>` (~06:30 UTC).
+No other Telegram messages. Chat progress notes are fine.
+
+State at the start (21:56 UTC): 101 subs (+27/7d, 4/day), 39K views/7d, 703 h/7d; subs are the only
+YPP gate (500 → ~8 Jan, 1,000 → ~13 May). Disk /media 15 GB free (94%). Nightly 03:00 UTC, candidate
+13739821 Jabo_–sub5average (no recognisable player in the 8 cards); MIN_FREE_MATCHES 2 (~3 GB each).
+Scheduled: 13727988 30 Sept 19:00, 13333220 30 Sept 23:00, 13334677 1 Oct 23:00, Shorts. 1 Oct 19:00
+was EMPTY → hooks for 13766294 (silverrruns–dandannyboy, rendered+picked): "THE FORTRESS RUNBACK" /
+"HIS FIRST EYE BREAKS". 13705853's Short pick queued (POST pick; then its Short hook).
+The dashboard runs 450e34e until the operator restarts it: nothing merged tonight changes tonight's
+render or chain. CLAUDE.md trim parked on branch `claude-md-trim` (worktree), waits for his "apply".
+
+Plan: (1) dataset of every upload → `~/.claude/jobs/8d7d95a1/tmp/night/data/` (agent "dataset");
+(2) analysis workflow → per-upload post-mortem in handbook/knowledge; (3) code in worktrees: favourite
+roster bonus (Settings), CTA with a reason + description/pinned-comment line, Short card, Telegram
+deep link; (4) channel page sections/playlists via the API only if the data says so, with an undo;
+(5) tests, stills read as PNG; (6) report, memory, commit. Never a render of mine across 03:00 UTC;
+no test server without nightlyRenderHourUtc null. Nothing deleted, no live retitles, no config edits.
+
+Done by 22:30 UTC: hooks 13766294 saved (AnMlE3NnVcA, 1 Oct 19:00); the operator (awake at 22:10):
+"don't render the Jabo_ vs sub5average … no name players", "save some space delete the older uploads",
+"do we need to download the rest of the playoff vods?" (no: 58/58 on disk) → skip-night set for
+2026-10-01, 13739821 nightlySkip, 41.4 GB deleted (ledger research/deleted-2026-09-30.json; the R16
+series files ~45 GB are a question to him), quarterfinals rendering via night/series-night.sh (log
+night/series-night.log; 13493574 failed once on a bundle race — rerun it after 13495280 and 13496975;
+the lock file night/no-bundle.lock holds the cta agent's stills), channel sections added (undo via
+night/channel-sections.mts --undo), 13705853 pick queued. Running: agents dataset/roster/cta/deeplink/
+candidates, workflows sub-growth-brainstorm and upload-postmortem. Report draft:
+handbook/knowledge/night-2026-09-30.md.
+
+23:55 UTC: merged to main d8bb56e rival-title, 707d0f1 kit-dm (review + copy fixes a377368),
+29c7f15 deep-link (review + linked-boot fix 919c9d9; check 42/42), 58a3070 hooks-stake, 09e6981
+cta-reason (+ e911ecc ASCII cap); 12/12 merged-area test files green on main at 00:10 UTC.
+Awaiting review/merge: roster-bonus (review running; take() factor asked), roster-bonus 99c163b+ (agent adding take() factor + pairRepeatDays demotion). Still
+building: hooks-stake, tg-watch. Channel: trailer → aAX_ML4rHdo (undo night/trailer.mts --undo),
+sections ledger research/channel-sections-2026-09-30.json. Runner 2 (night/series-night-2.sh):
+after runner 1 → ranked 13560037, 13803834 via POST /api/render?export=1 → QF1 rerun → lock off.
+Post-mortem workflow wf_93c84a23-4bb running (doc → handbook/knowledge/uploads-postmortem-2026-09-30.md).
+
+1 Oct 07:10 UTC: the weekly limit stopped the session 00:11–07:00; the operator re-logged and set
+"resume the previous work. do everytging to hut ypp as early as possible. spin off sonnet 5.5
+agents. use opus 5.5 only as the orchestrstor." Overnight the runners finished: series 13495280,
+13496975, 13493574 joined (+ picks), ranked 13560037 and 13803834 exported (+ picks); lock removed;
+38 GB free. Hooks saved: 13803834 "DEAD EVEN AT THE STRONGHOLD" (2 Oct 19:00), 13560037
+"SIMULTANEOUS ZERO CYCLES" (3 Oct 19:00, publishAt pinned). Series titles = the operator's pick.
+Post-mortem: analysis done (night/pm-findings.json 44, pm-uploads.json 33), verification/writer
+died on the limit → Sonnet writer "pm-writer" now writes handbook/knowledge/uploads-postmortem-2026-09-30.md.
+Agents resumed on Sonnet: roster (4520abf + fixes), cta (a16b824 + hardenings), tg-watch (5acb935 +
+deadline/cache). Then: merge each (resolve settings.test.ts for roster), tg-watch follow-up
+(favouritePlayers roster), CLAUDE.md bullets, full `npm test` (lock is gone), the ONE report
+(handbook/knowledge/night-2026-09-30.md → `npm run tg -- send --md`), memory, commit.
+
+1 Oct 07:50 UTC: merged 09b55d5 roster-bonus (+ f271d89 /worth roster), bf5ded3 ypp-eta, 3b78854 docs
+fix, 207c9b5 post-mortem doc, CLAUDE.md notes 7c127b4/7885965. Pending: exportframes-test (agent),
+then the report send (`npm run tg -- send --md handbook/knowledge/night-2026-09-30.md`) and the
+worktree cleanup (merged: rival-title, kit-dm, deep-link, hooks-stake, cta-reason, tg-watch,
+roster-bonus, ypp-eta; keep claude-md-trim). The trim branch needs a rebase on main's CLAUDE.md
+before "apply".
+
+## RESUME (after a compaction): read this block, `git status`, `git worktree list`, `ls ~/.claude/jobs/8d7d95a1/tmp/night/`, then continue the plan.
+
 **26 Sept ~20:10 UTC.** publish-at: all 13 fixed (6455faf on a main merge; 64/64 unit files; browser check 105/107 checks ×2 browsers ×2 sizes locally; against the REAL dashboard 97 passed and 0 of 28 writes reached the server, /media unchanged) — review r2 running, also settling the fixer's claim that opening an unpicked match queues a model pick (CLAUDE.md says it does not).
 
 **26 Sept ~20:00 UTC — shipwreck options sent** (seed-icons-vanilla b9a7853: BURIED_TREASURE main = 2d-section, alt = iso; A–H in out/r5/shipwreck-options.png; recommended C · full ship, spruce, outlined; D the oak version). On his letter: point [SHIPWRECK] in scripts/seed-icons/icons.sh at that spec, `icons.sh SHIPWRECK`, tests, commit; then merge icons + watch-progress (his letter = the OK for both, as told).
