@@ -288,17 +288,32 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   width clause makes the 44 px targets a fact of the layout rather than of the emulation.
 - **Suggestions** (`src/dashboard/suggest.ts`, `src/dashboard/suggestPresent.ts`): scored candidates, cached in
   `<mediaDir>/.suggest-cache.json`; bumping `CACHE_VERSION` re-fetches everything on the next
-  scan (~340 MCSR API calls against 500/10 min). Scanned at boot, every `suggestCacheTtlMin`
-  (30) for new matches, before the nightly picks, and fully on the `rescan` link.
-- **Favourite players come first** (`favouritePlayers`, Settings tab, default doogile, Feinberg,
-  Infume, Pinne, lowk3y_, silverrruns — edcr is the operator's call; `pairRepeatDays`, default 3,
-  0 = off). The suggestion order, for the list and the nightly alike (`orderForDisplay`,
-  `src/dashboard/suggestPresent.ts`; `take()` in `suggest.ts` applies the same factor when a scan
-  picks the cards): expiring → the rival's post → a match with a favourite before any without →
-  audience (popularity × (1 + 0.5 × favourites) × 0.5 when the same pair had a long-form on the
-  channel, or a render waiting for hooks, within `pairRepeatDays`) → bucket as a tiebreaker →
-  popularity. The pair snapshot (`pairPosts.ts`) refreshes in the background; the nightly waits
-  for it at most 15 s. The operator, 30 Sept 2026: "no name players no one will click on that".
+  scan (~350 MCSR API calls against 500/10 min). Scanned at boot, every `suggestCacheTtlMin`
+  (30) for new matches, before the nightly picks, and fully on the `rescan` link. Every scan also
+  reads the own match lists of the favourites and of `STRONG_DRAWS` (measured draw ≥ 1.0 —
+  hackingnoises, BeefSalad, edcr, nahhann off the default roster): 10 calls, so a strong name too
+  quiet for the feed's paging still reaches the pool; only matches no scan has seen and young enough
+  for the pool are folded in. A scan's slots go one card per pair, across both buckets.
+- **Favourite players come first, then known ones** (`tierFor`, `suggest.ts`; `favouritePlayers`,
+  Settings tab, default doogile, Feinberg, Infume, Pinne, lowk3y_, silverrruns — edcr is the
+  operator's call; `knownFollowerThreshold`, default 10,000; `pairRepeatDays`, default 3, 0 = off).
+  The order, for the list and the nightly alike (`orderForDisplay`, `src/dashboard/suggestPresent.ts`;
+  `take()` in `suggest.ts` uses the same tier and audience when a scan picks the cards, then the
+  bucket's score): a match with a favourite → one with a known player → neither — above everything
+  else, an expiring card included (1 Oct 2026: an expiring no-name sat at #1 of 443) — then, inside a
+  tier, expiring → the rival's post after → audience → bucket → popularity. Audience is expected
+  views, not ladder activity (`audienceFor`): the bigger player's draw + half the other's × (1 + 0.5 ×
+  favourites) × 0.5 when the same pair had a long-form on the channel, or a render waiting for hooks,
+  within `pairRepeatDays`; popularity (appearances + followers, which is how often someone plays —
+  gothy666's 241 to Infume's 91) only breaks the last tie. Known: a favourite; else, when draw.json
+  measured them 3+ times (`DEFAULT_DRAW`, seeded once), a draw ≥ `KNOWN_DRAW_MIN` (0.6) —
+  authoritative either way (hackingnoises, no follower data: known; romuxii, 1,962 followers, 0.43:
+  not); else that many Twitch followers. A draw nobody measured is a prior from the following
+  (`UNMEASURED_DRAW`: 50k+ 1.0, 10k+ 0.75, else 0.5). No chaos/closeness term: match quality is
+  uncorrelated with views once players are controlled for (1 Oct 2026). The pair snapshot
+  (`pairPosts.ts`) refreshes in the background; the nightly waits for it at most 15 s. The operator,
+  30 Sept 2026: "no name players no one will click on that"; 1 Oct: "the suggestion system is shit
+  it recommends and schedules matches that no one will watch".
 - **Rival posts** (`src/dashboard/rivalPosts.ts`): the competitor's (`rivalChannelHandle`, default
   `mcsrmatches`) last 50 uploads, matched to cards by nickname pair, date and run length (their
   video is the run plus a few seconds; a post of the wrong length is another match of the same
@@ -507,6 +522,16 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   `nightlyMaxRenders` above 1 a clean run starts the next card, within four hours of the hour
   and through the same guards. The
   strip's `Run now` is the same path, as is a card's "Render + Short + MP4". Cards marked "not at night" (`nightlySkip`) are bypassed when picking candidates, and the strip's "Skip tonight" records `skipNightOf` in `.dashboard.json` to skip that night's scheduled run once and clear while `Run now` ignores it.
+  **A candidate also needs a known player** (`nightlyEligible`, `isKnownPick`, 1 Oct 2026): unless
+  the operator queued it themself, a pick is skipped unless a player is known (see Favourite
+  players; `knownTierFor`) — a playoff
+  pick (`bucket: "playoffs"`) always counts, since the bracket's players are the season's top 16
+  and their Twitch following is often unmeasured. Nothing eligible says so in the skip reason
+  ("…or has no known player"). A queued id the latest scan trimmed off the ranked list is still
+  resolved rather than dropped (`resolveQueuedPick`): the scan's own pool first, no API call, else
+  one `getMatch` and the scan's own scoring — the operator's own pick must not go silently empty.
+  The strip's preview (`GET /api/nightly`, `previewPick`) is polled, so it resolves from the pool only
+  and leaves such an id out; only the run may spend the `getMatch`.
 - **Playoffs** (`src/playoffs/playoffs.ts`): the bracket (`/playoffs`) knows the series, not the games;
   the games are private-room matches (type 3) found in each seed's history, and the API stamps
   them with the season *after* the bracket's (a Season 11 bracket's games are season 12). **No
@@ -565,7 +590,10 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
 - **Tonight's queue** (`queue` in `<mediaDir>/.dashboard.json`, `src/dashboard/matchShelf.ts`;
   `PUT /api/nightly/queue` takes the whole list): a card's "Queue for tonight" puts it ahead of the
   ranked pick, in the strip's order (↑ / ×); the nightly drops an entry the moment its render
-  starts, and skips one that is processed, hidden or gone from the list. Queueing a match removes it from `nightlySkip` so an explicit queue always wins over a card's "not at night" toggle.
+  starts, and skips one that is processed, hidden or gone from the list (the run resolves it from
+  the scan's pool or one `getMatch` first; the preview from the pool only, see Nightly). Queueing a match removes it from `nightlySkip` so an
+  explicit queue always wins over a card's "not at night" toggle — and over the known-player gate:
+  the operator's own pick is never second-guessed by a gate meant for the ranked list.
 - **The NAS** (`//192.168.0.240/homelab`, CIFS, ~33 MB/s; 562 GB free on 1 Oct 2026): `/archive` is
   `tymek/mcsr-archive`, where `src/dashboard/archive.ts` copies published matches (a delete there
   is recoverable, `isArchived`); `/home-media` is the whole share (the operator's movies, music,

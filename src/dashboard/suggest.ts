@@ -3,7 +3,15 @@ import path from "node:path";
 import { config } from "../config.js";
 import { chaosScore, closenessScore, computeMetrics, type MatchMetrics } from "../pipeline/matchScore.js";
 import { listProcessedMatchIds } from "./matchStatus.js";
-import { getMatch, getRecentMatches, getUser, getVersus, McsrApiError } from "../api/mcsrApi.js";
+import { pairKey, recentPairPostsSnapshot, type PairPost } from "./pairPosts.js";
+import {
+  getMatch,
+  getRecentMatches,
+  getUser,
+  getUserMatches,
+  getVersus,
+  McsrApiError,
+} from "../api/mcsrApi.js";
 import { eloAtMatchStart } from "../pipeline/overlayProps.js";
 import * as twitch from "../api/twitch.js";
 import type { FeedMatch, MatchInfo } from "../api/types.js";
@@ -78,6 +86,159 @@ export function favouriteFactorFor(favourites: readonly string[]): (players: rea
 export function favouriteTierFor(favourites: readonly string[]): (players: readonly string[]) => boolean {
   const count = favouriteCounter(favourites);
   return (players) => count(players) > 0;
+}
+
+/**
+ * How reliably a player's matches get watched, independent of `favouritePlayers` or Twitch follower
+ * counts. Seeded once from `draw.json`'s n>=3 rows (1 Oct 2026, the operator's night goal: "the
+ * suggestion system is shit it recommends and schedules matches that no one will watch"); anyone
+ * never measured gets `UNMEASURED_DRAW` instead. ponytail: a code constant, like `FAVOURITE_BONUS` —
+ * refresh by hand if the roster's draw drifts, there is no job that re-seeds it.
+ */
+export const DEFAULT_DRAW: Readonly<Record<string, number>> = {
+  hackingnoises: 2.08,
+  silverrruns: 1.93,
+  lowk3y_: 1.38,
+  beefsalad: 1.29,
+  infume: 1.19,
+  feinberg: 1.09,
+  edcr: 1.07,
+  nahhann: 1.04,
+  doogile: 1.03,
+  v_strid: 0.8,
+  aquacorde: 0.75,
+  blazemind: 0.74,
+  anjouu: 0.62,
+  dandannyboy: 0.5,
+  pinne: 0.46,
+  romuxii: 0.43,
+  badgamer: 0.34,
+  bbiddd: 0.29,
+  "7rowl": 0.2,
+};
+
+/**
+ * The draw of a player `DEFAULT_DRAW` never measured, by Twitch following, first band that fits. Not a
+ * neutral 1.0: that let an unmeasured grinder outrank Aquacorde (0.75) + Feinberg (1.09), and every
+ * sampled player under ~10k followers drew at or below the channel's median (draw.json, 1 Oct 2026).
+ * No follower data counts as 0.
+ */
+export const UNMEASURED_DRAW: readonly { minFollowers: number; draw: number }[] = [
+  { minFollowers: 50_000, draw: 1.0 },
+  { minFollowers: 10_000, draw: 0.75 },
+  { minFollowers: 0, draw: 0.5 },
+];
+
+/** `draw(name)`: `DEFAULT_DRAW`'s entry, lowercased, else `UNMEASURED_DRAW` by `followersOf`. */
+export function drawOf(name: string, followersOf: (name: string) => number | null): number {
+  const measured = DEFAULT_DRAW[name.toLowerCase()];
+  if (measured !== undefined) return measured;
+  const followers = followersOf(name) ?? 0;
+  return UNMEASURED_DRAW.find((band) => followers >= band.minFollowers)!.draw;
+}
+
+/**
+ * A match's expected draw: the bigger player's `drawOf` plus half the other's. The audience comes for
+ * the bigger name; a second one adds to it without doubling it (1 Oct 2026).
+ */
+export function expectedDrawFor(
+  players: readonly [string, string],
+  followersOf: (name: string) => number | null,
+): number {
+  const a = drawOf(players[0], followersOf);
+  const b = drawOf(players[1], followersOf);
+  return Math.max(a, b) + 0.5 * Math.min(a, b);
+}
+
+/** A pair the channel put out lately (`pairRepeatDays`, `posted`) counts for this much. */
+export const REPEAT_FACTOR = 0.5;
+
+/**
+ * A match's audience across cards: `expectedDrawFor` × `favouriteFactorFor` × `REPEAT_FACTOR` for a
+ * pair in `posted`. Expected views, not ladder activity: popularity (appearances + followers) is how
+ * often someone plays — gothy666's 241 appearances to Infume's 91 put a grinder and one favourite
+ * above two favourites — so it only breaks the last tie. `take()` and `presentSuggestions` both rank
+ * on it.
+ */
+export function audienceFor(
+  favourites: readonly string[],
+  followersOf: (name: string) => number | null,
+  posted: readonly PairPost[],
+): (players: readonly [string, string]) => number {
+  const favoured = favouriteFactorFor(favourites);
+  const repeats = new Set(posted.map((post) => pairKey(post.players)));
+  return (players) =>
+    expectedDrawFor(players, followersOf) *
+    favoured(players) *
+    (repeats.has(pairKey(players)) ? REPEAT_FACTOR : 1);
+}
+
+/**
+ * Measured draws at or above this get their own matches pulled every scan, favourite or not
+ * (`STRONG_DRAWS`): with the default roster that adds hackingnoises, BeefSalad, edcr and nahhann.
+ */
+export const STRONG_DRAW_MIN = 1.0;
+export const STRONG_DRAWS: readonly string[] = Object.keys(DEFAULT_DRAW).filter(
+  (name) => DEFAULT_DRAW[name]! >= STRONG_DRAW_MIN,
+);
+
+/**
+ * Below this measured draw a name is not "known" however many followers it has (romuxii: 1,962
+ * followers, 0.43 draw) — named so the gate's one magic number is not bare in `knownPlayerFor`.
+ */
+export const KNOWN_DRAW_MIN = 0.6;
+
+/**
+ * Whether one player is recognisable: on `favourites`, or — when enough of their matches have been
+ * measured (a `DEFAULT_DRAW` entry) — a draw at or above `KNOWN_DRAW_MIN`. A measured draw is
+ * authoritative and skips `followersOf` entirely: it can promote a name the Twitch lookup has never
+ * resolved (hackingnoises, no `twitchFollowers` entry on 1 Oct 2026) exactly as it can veto a high
+ * follower count the draw says does not convert (romuxii). Only a name with no measured draw falls
+ * back to `followersOf`.
+ */
+export function knownPlayerFor(
+  favourites: readonly string[],
+  followersOf: (name: string) => number | null,
+  threshold: number,
+): (name: string) => boolean {
+  const liked = new Set(favourites.map((n) => n.toLowerCase()));
+  return (name) => {
+    const lower = name.toLowerCase();
+    if (liked.has(lower)) return true;
+    const draw = DEFAULT_DRAW[lower];
+    return draw !== undefined ? draw >= KNOWN_DRAW_MIN : (followersOf(name) ?? 0) >= threshold;
+  };
+}
+
+/**
+ * Whether a match has at least one player people know (`knownPlayerFor`): the known-tier, mirroring
+ * `favouriteTierFor`'s shape (`favourite` is a subset of `known` — every favourite clears it through
+ * the first branch). The middle of `tierFor` for the list, and `nightly.ts`'s gate on the unattended
+ * pick.
+ */
+export function knownTierFor(
+  favourites: readonly string[],
+  followersOf: (name: string) => number | null,
+  threshold: number,
+): (players: readonly string[]) => boolean {
+  const known = knownPlayerFor(favourites, followersOf, threshold);
+  return (players) => players.some(known);
+}
+
+/**
+ * A match's tier, the first key of `take()` and of `presentSuggestions`: 2 with a favourite, 1 with a
+ * known player and no favourite (`knownTierFor`), 0 with neither. A favourite outranks every match
+ * without one — the operator's call of 30 Sept 2026 — and a known player lifts a match above the
+ * no-names, an expiring one included (1 Oct 2026).
+ */
+export function tierFor(
+  favourites: readonly string[],
+  followersOf: (name: string) => number | null,
+  threshold: number,
+): (players: readonly string[]) => number {
+  const isFavourite = favouriteTierFor(favourites);
+  const isKnown = knownTierFor(favourites, followersOf, threshold);
+  return (players) => (isFavourite(players) ? 2 : isKnown(players) ? 1 : 0);
 }
 
 const NO_TWITCH_NOTE =
@@ -255,6 +416,15 @@ export function scanKnowledge(): {
       return login ? { login, followers: cache.twitchFollowers[login]?.count ?? null } : null;
     },
   };
+}
+
+/**
+ * A pooled match's players by id, with no API call: the scan's own cache, for a queued match
+ * `take()`'s slots have since dropped (nightly.ts) — the operator's pick must not go silently empty
+ * because a later scan trimmed it off the ranked list.
+ */
+export function pooledMatchPlayers(matchId: number): [string, string] | null {
+  return loadCache().pool[String(matchId)]?.metrics.players ?? null;
 }
 
 /** Hide a suggestion permanently and drop it from the cached list. */
@@ -435,6 +605,27 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
   let highestSeen = cache.newestScannedId ?? 0;
   let scanAborted = false;
 
+  // Matches already folded into `candidates` this scan, across both sources below: the feed's own
+  // paging and a favourite's own list can easily name the same match, and a duplicate would cost a
+  // second detail fetch for nothing.
+  const candidateIds = new Set<number>();
+  /** One match, from either source: the popularity count and the candidate list both go through here. */
+  const foldMatch = (match: FeedMatch): void => {
+    const hasBothVods = (match.vod?.length ?? 0) >= 2;
+    // Popularity counts every dual-VOD match, forfeits and already-rendered ones
+    // included: it measures who streams, not who is worth watching.
+    if (hasBothVods && !counted.has(match.id)) {
+      counted.add(match.id);
+      for (const player of match.players) {
+        cache.playerAppearances[player.nickname] = (cache.playerAppearances[player.nickname] ?? 0) + 1;
+      }
+    }
+    if (!match.forfeited && hasBothVods && !excluded.has(match.id) && !candidateIds.has(match.id)) {
+      candidateIds.add(match.id);
+      candidates.push(match);
+    }
+  };
+
   /**
    * One page of the feed, retrying transient failures. Returns null once the scan should
    * stop — a non-transient error still throws, so a genuine bug isn't swallowed.
@@ -475,21 +666,28 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
     const highWater = cache.newestScannedId;
     const allSeen = highWater !== null && page[0]!.id <= highWater;
     highestSeen = Math.max(highestSeen, page[0]!.id);
-    for (const match of page) {
-      const hasBothVods = (match.vod?.length ?? 0) >= 2;
-      // Popularity counts every dual-VOD match, forfeits and already-rendered ones
-      // included: it measures who streams, not who is worth watching.
-      if (hasBothVods && !counted.has(match.id)) {
-        counted.add(match.id);
-        for (const player of match.players) {
-          cache.playerAppearances[player.nickname] = (cache.playerAppearances[player.nickname] ?? 0) + 1;
-        }
-      }
-      if (!match.forfeited && hasBothVods && !excluded.has(match.id)) candidates.push(match);
-    }
+    for (const match of page) foldMatch(match);
     options.onProgress?.(scanned, candidates.length);
     return { next: page[page.length - 1]!.id, allSeen };
   };
+
+  // A favourite or a strong draw (`STRONG_DRAWS`) too quiet to surface in the feed's own paging (it
+  // only reaches so far back) still gets a look: one list per name — 10 with the default roster —
+  // folded into the same candidates the feed fills. Only a match no scan has seen yet and young
+  // enough for the pool: a list is re-read every scan, and an already-counted match coming back
+  // would take a detail fetch from a new one (or be fetched again every time the pool drops it). One
+  // name failing (a stale nickname in the config) costs that name's coverage, not the scan.
+  const coveredSec = Date.now() / 1000 - POOL_MAX_AGE_DAYS * 86_400;
+  const covered = new Map([...config.favouritePlayers, ...STRONG_DRAWS].map((n) => [n.toLowerCase(), n]));
+  for (const nickname of covered.values()) {
+    try {
+      const list = await getUserMatches(nickname, { type: RANKED_TYPE, count: PAGE_SIZE });
+      requests += 1;
+      for (const match of list) if (!counted.has(match.id) && match.date >= coveredSec) foldMatch(match);
+    } catch (err) {
+      console.error(`suggest: ${nickname}'s own matches could not be read — ${(err as Error).message}`);
+    }
+  }
 
   // Pass 1 — catch up on matches played since the last launch. Stops as soon as a whole
   // page is already known, so this is usually one or two requests.
@@ -593,21 +791,40 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
       ? closenessScore(entry.metrics, suggestWeights, suggestFastRunTargetSec, suggestSlowRunCutoffSec)
       : chaosScore(entry.metrics, suggestWeights, suggestFastRunTargetSec, suggestSlowRunCutoffSec);
 
-  // The slots go to the matches with a favourite first, then to the best scores with a favourite's
-  // counted up, so such a match reaches the list; the `score` kept on the card stays the bucket's own,
-  // comparable with the rest of its bucket.
-  const favoured = favouriteFactorFor(config.favouritePlayers);
-  const isFavourite = favouriteTierFor(config.favouritePlayers);
-  const take = (pool: typeof selectable, bucket: Bucket, slots: number, exclude: Set<number>): Suggestion[] =>
-    pool
+  // The slots go by `tierFor` — the matches with a favourite, then those with a known player, then
+  // the rest — inside a tier by `audienceFor` (the pairs put out lately as the scan finds them), then
+  // the bucket's score, then popularity; the `score` kept on the card stays the bucket's own. One card
+  // per pair across both buckets (`pairs`): the best of a pair's matches, never two of them.
+  const followersOf = (name: string) => followers.get(name) ?? null;
+  const tier = tierFor(config.favouritePlayers, followersOf, config.knownFollowerThreshold);
+  const audience = audienceFor(config.favouritePlayers, followersOf, recentPairPostsSnapshot());
+  const pairs = new Set<string>();
+  const take = (
+    pool: typeof selectable,
+    bucket: Bucket,
+    slots: number,
+    exclude: Set<number>,
+  ): Suggestion[] => {
+    const ranked = pool
       .filter((entry) => !exclude.has(entry.metrics.matchId))
       .map((entry) => ({ ...entry, bucket, score: rank(entry, bucket) }))
       .sort(
         (a, b) =>
-          Number(isFavourite(b.metrics.players)) - Number(isFavourite(a.metrics.players)) ||
-          b.score * favoured(b.metrics.players) - a.score * favoured(a.metrics.players),
-      )
-      .slice(0, slots);
+          tier(b.metrics.players) - tier(a.metrics.players) ||
+          audience(b.metrics.players) - audience(a.metrics.players) ||
+          b.score - a.score ||
+          b.popularity - a.popularity,
+      );
+    const out: Suggestion[] = [];
+    for (const entry of ranked) {
+      if (out.length >= slots) break;
+      const key = pairKey(entry.metrics.players);
+      if (pairs.has(key)) continue;
+      pairs.add(key);
+      out.push(entry);
+    }
+    return out;
+  };
 
   // A match where the loser never killed the dragon has no finish to be close *at*, so it
   // can't hold a close-race slot however tense the middle was. It stays eligible for the

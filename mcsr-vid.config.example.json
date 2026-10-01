@@ -39,6 +39,7 @@
     "silverrruns"
   ],
   "pairRepeatDays": 3,
+  "knownFollowerThreshold": 10000,
   "supportUrl": "",
   "pullSource": "",
   "pullDest": "~/Replayoffs",

@@ -84,7 +84,8 @@ export interface Config {
    * only a tiebreaker (`presentSuggestions`, read fresh, so a change re-orders at once). Inside that
    * tier a match counts half again for one of them and twice for two. The cached `score` stays the
    * bucket's own. Empty = no tier and no bonus; the default list changes which card the nightly takes
-   * first.
+   * first. A player need not be on this list to rank above a no-name match — see
+   * `knownFollowerThreshold`, the other half of that tier.
    */
   favouritePlayers: string[];
   /**
@@ -97,6 +98,18 @@ export interface Config {
    * better than a repeat (30 Sept 2026 plan). The default changes which card the nightly takes first.
    */
   pairRepeatDays: number;
+  /**
+   * The Twitch follower count that makes a player off `favouritePlayers`, with no measured draw,
+   * "known" rather than a no-name: a match needs only *one* known player to rank above every match
+   * with none — below every match with a favourite — in the suggestion list and the nightly's pick
+   * alike (`tierFor`, src/dashboard/suggest.ts), and the nightly renders no match without one unless
+   * it was queued. 10,000: every sampled player under ~10k followers drew at or below the channel's
+   * median (draw.json, 1 Oct 2026), and on supply.json's 7 days the gate still left 100 matches,
+   * 8–23 a day — 1,000 let ninananina (6.6k), CxrtxR (4.5k) and grq_ (4.3k) fill the list (the
+   * operator, 1 Oct 2026: "the suggestion system is shit it recommends and schedules matches that no
+   * one will watch").
+   */
+  knownFollowerThreshold: number;
   /**
    * A tip-jar URL (Ko-fi, PayPal.me) for the description's "Tip jar" line. The
    * audit named it the one revenue stream not gated at 41 subscribers, and the active
@@ -404,6 +417,7 @@ export const DEFAULTS: Config = {
   rivalChannelHandle: "mcsrmatches",
   favouritePlayers: ["doogile", "Feinberg", "Infume", "Pinne", "lowk3y_", "silverrruns"],
   pairRepeatDays: 3,
+  knownFollowerThreshold: 10_000,
   supportUrl: "",
   pullSource: "",
   pullDest: "~/Replayoffs",
@@ -609,6 +623,15 @@ export function validateOverrides(raw: Record<string, unknown>): void {
     if (key === "seriesPairGapDays" || key === "pairRepeatDays") {
       if (!Number.isInteger(value) || (value as number) < 0 || (value as number) > 30) {
         throw new Error(`${CONFIG_PATH}: "${key}" must be whole days 0-30 (0 is off).`);
+      }
+      continue;
+    }
+    // A fraction or a negative would read as a lower bar than the file says.
+    if (key === "knownFollowerThreshold") {
+      if (!Number.isInteger(value) || (value as number) < 0) {
+        throw new Error(
+          `${CONFIG_PATH}: "knownFollowerThreshold" must be a whole number of followers, 0 or more.`,
+        );
       }
       continue;
     }

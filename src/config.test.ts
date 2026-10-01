@@ -103,6 +103,16 @@ assert.throws(() => validateOverrides({ pairRepeatDays: -1 }), /pairRepeatDays/)
 assert.throws(() => validateOverrides({ pairRepeatDays: 2.5 }), /pairRepeatDays/);
 assert.throws(() => validateOverrides({ pairRepeatDays: "3" }), /pairRepeatDays/);
 assert.throws(() => validateOverrides({ pairRepeatDays: null }), /pairRepeatDays/);
+// The known-player follower bar: whole followers, 0 or more (0: every player off the list is known).
+assert.equal(DEFAULTS.knownFollowerThreshold, 10_000);
+assert.doesNotThrow(() => validateOverrides({ knownFollowerThreshold: 0 }));
+assert.doesNotThrow(() => validateOverrides({ knownFollowerThreshold: 250_000 }));
+for (const bad of [-1, 2.5, "1000", null]) {
+  assert.throws(
+    () => validateOverrides({ knownFollowerThreshold: bad }),
+    /knownFollowerThreshold.*whole number/,
+  );
+}
 assert.throws(
   () => validateOverrides({ seriesPairGapDays: 31 }),
   /seriesPairGapDays.*0-30/,

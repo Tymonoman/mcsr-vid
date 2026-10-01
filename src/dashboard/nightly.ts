@@ -48,8 +48,10 @@ import { listProcessedMatchIds } from "./matchStatus.js";
 import { shortRunning } from "./shortsRoutes.js";
 import { nightlyShortSummary, picksIdle, shortTick } from "./shortFlow.js";
 import { snapshot, startScan } from "./suggestScan.js";
+import { knownTierFor, pooledMatchPlayers, scanKnowledge } from "./suggest.js";
 import { getMatch } from "../api/mcsrApi.js";
 import type { MatchInfo } from "../api/types.js";
+import { computeMetrics } from "../pipeline/matchScore.js";
 import { withDiscoveredVods } from "../pipeline/vodDiscovery.js";
 import { retryFailedPlaylists, retryPendingComments } from "../youtube/youtubeUpload.js";
 import { pickFile, type ShortPick } from "../shorts/shortPlan.js";
@@ -228,15 +230,24 @@ export async function pickNightlyCandidate<T extends { metrics: { matchId: numbe
   suggestions: readonly T[],
   { processedIds, hiddenIds, skipIds = new Set(), freeMatches, queue = [] }: NightlyPickContext,
   eligible: (candidate: T) => Promise<boolean> = async () => true,
+  /**
+   * A queued id missing from `suggestions` (a later scan trimmed it off the ranked list): resolved
+   * here rather than dropped, so the operator's own pick cannot go silently empty. The default gives
+   * up exactly as before this existed; the live one is `resolveQueuedPick`, injected by the two
+   * callers that build a real `T` (`runNightlyOnce`, `nightlyCandidate`).
+   */
+  resolveMissing: (id: number) => Promise<T | null> = async () => null,
 ): Promise<T | null> {
   if (freeMatches < MIN_FREE_MATCHES) return null;
   const processed = new Set(processedIds);
   // The queue is the operator's order and outranks the ranking; an id no longer on the list (the
   // VODs expired, the card was dismissed) has nothing to render and drops through.
   const queuedMatchIds = new Set(queue);
-  const queued = queue
-    .map((id) => suggestions.find((s) => s.metrics.matchId === id))
-    .filter((s): s is T => s !== undefined);
+  const queued: T[] = [];
+  for (const id of queue) {
+    const found = suggestions.find((s) => s.metrics.matchId === id) ?? (await resolveMissing(id));
+    if (found !== null) queued.push(found);
+  }
   for (const s of [...queued, ...suggestions]) {
     const id = s.metrics.matchId;
     if (processed.has(id) || hiddenIds.has(id)) continue;
@@ -289,6 +300,63 @@ export async function playoffVodsReady(
   } catch (err) {
     console.error(`nightly: playoff game #${id} skipped — ${describeError(err)}`);
     return false;
+  }
+}
+
+/**
+ * Whether a pick is a player people know: a playoff game always is (the bracket's players are the
+ * season's top 16, and their Twitch following is often unmeasured — a missing follower count must
+ * not gate out a game that is on the board precisely because it is worth watching), otherwise at
+ * least one player clears `knownTierFor` (favourite, measured draw, or Twitch followers). Reads the
+ * scan's own cache (`scanKnowledge`), so this costs no API call of its own.
+ */
+export function isKnownPick(pick: NightlyPick): boolean {
+  if (pick.bucket === "playoffs") return true;
+  const known = knownTierFor(
+    config.favouritePlayers,
+    (name) => scanKnowledge().twitchOf(name)?.followers ?? null,
+    config.knownFollowerThreshold,
+  );
+  return known(pick.metrics.players);
+}
+
+/**
+ * Whether a pick is worth an unattended render: findable VODs (a playoff game only —
+ * `playoffVodsReady` is a no-op for anything else) and, unless the operator queued it themself, a
+ * known player (`isKnownPick`). The queue always wins, the same as it already wins over
+ * `nightlySkip` — the operator's own pick is never second-guessed by a gate meant for the ranked
+ * list (1 Oct 2026, the operator: "the suggestion system is shit it recommends and schedules matches
+ * that no one will watch").
+ */
+export function nightlyEligible(
+  queue: readonly number[],
+  checkVods: (pick: NightlyPick) => Promise<boolean> = playoffVodsReady,
+): (pick: NightlyPick) => Promise<boolean> {
+  const queued = new Set(queue);
+  return async (pick) => (await checkVods(pick)) && (queued.has(pick.metrics.matchId) || isKnownPick(pick));
+}
+
+/** A queued id from the scan's own pool, or null — no API call (the preview's whole resolver). */
+export function pooledQueuedPick(id: number): NightlyPick | null {
+  const players = pooledMatchPlayers(id);
+  return players ? { metrics: { matchId: id, players }, bucket: "queued" } : null;
+}
+
+/**
+ * A queued id `take()`'s slots have since dropped (a later scan trimmed the ranked list; the operator's
+ * pick must not go silently empty for it): the scan's own pool first, no API call; failing that, one
+ * `getMatch` and the scan's own scoring (`computeMetrics`) — at most one request per such id. A match
+ * this cannot even read is skipped, logged, and left for the next scan to resolve.
+ */
+export async function resolveQueuedPick(id: number): Promise<NightlyPick | null> {
+  const pooled = pooledQueuedPick(id);
+  if (pooled) return pooled;
+  try {
+    const match = await getMatch(id);
+    return { metrics: { matchId: id, players: computeMetrics(match).players }, bucket: "queued" };
+  } catch (err) {
+    console.error(`nightly: queued #${id} could not be read — ${describeError(err)}`);
+    return null;
   }
 }
 
@@ -447,6 +515,8 @@ export interface NightlyDeps {
   scheduled: boolean;
   /** Mock clock for testing. Default Date.now. */
   now: () => number;
+  /** A queued id missing from the ranked list: `resolveQueuedPick` by default, a real `getMatch` away. */
+  resolveQueued: (id: number) => Promise<NightlyPick | null>;
 }
 
 /** How long the nightly waits for the pairs the channel put out lately before it picks without them. */
@@ -519,14 +589,30 @@ export async function nightlyCandidate(): Promise<NightlyPick | null> {
   // Only a kick, never awaited: a read of the records (and, for a new upload, one API request) is not
   // something a polled GET waits for. The preview uses what the last refresh found.
   void refreshPairPosts();
-  return result
-    ? // No VOD probe: a GET the browser polls must not spend a yt-dlp listing per candidate. The
-      // preview may therefore name a game the run itself falls through — it is a preview.
-      pickNightlyCandidate(
-        [...(await playoffPicks()), ...orderForDisplay(result.suggestions)],
-        await pickContext(),
-      )
-    : null;
+  if (!result) return null;
+  return previewPick(
+    [...(await playoffPicks()), ...orderForDisplay(result.suggestions)],
+    await pickContext(),
+  );
+}
+
+/**
+ * The preview's pick from a ranked list. No VOD probe: a GET the browser polls must not spend a
+ * yt-dlp listing per candidate, so the preview may name a game the run itself falls through. The
+ * known gate is cheap (the scan's own cache) and applies. A queued id off the list shows only from the
+ * scan's pool (`pooledQueuedPick`), else it is left out: only `runNightlyOnce` may spend a `getMatch`
+ * on it — a polled GET never touches the network for one.
+ */
+export function previewPick(
+  ranked: readonly NightlyPick[],
+  ctx: NightlyPickContext,
+): Promise<NightlyPick | null> {
+  return pickNightlyCandidate(
+    ranked,
+    ctx,
+    nightlyEligible(ctx.queue ?? [], async () => true),
+    async (id) => pooledQueuedPick(id),
+  );
 }
 
 /**
@@ -547,6 +633,7 @@ export async function runNightlyOnce(
     ranked = liveRanked,
     scheduled = false,
     now = () => Date.now(),
+    resolveQueued = resolveQueuedPick,
   } = deps;
   const startedAt = new Date(now()).toISOString();
 
@@ -591,13 +678,14 @@ export async function runNightlyOnce(
   const suggestions = await ranked();
   if (!suggestions) return skip("no suggestions available");
 
-  const pick = await pickNightlyCandidate(suggestions, await pickContext(), playoffVodsReady);
+  const ctx = await pickContext();
+  const pick = await pickNightlyCandidate(suggestions, ctx, nightlyEligible(ctx.queue ?? []), resolveQueued);
   if (!pick) {
     // Naming them: a bracket whose players stream on someone else's channel would otherwise
     // produce nothing but "nothing to render" for a fortnight, with the reason only in the log.
     const unstreamed = playoffsWithoutVods();
     return skip(
-      "every candidate is processed, hidden or without VODs, or the disk is full" +
+      "every candidate is processed, hidden, without VODs or has no known player, or the disk is full" +
         (unstreamed.length ? ` (no VOD: ${unstreamed.map((id) => `#${id}`).join(", ")})` : ""),
     );
   }
