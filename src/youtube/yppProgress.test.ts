@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -15,7 +16,8 @@ const now = Date.UTC(2026, 8, 8);
 const base = {
   fetchedAt: new Date(now).toISOString(),
   subscribers: 75,
-  subscribersPer7d: 34,
+  subscribersPer7d: 34, // 4.86 a day: a good week
+  subscribersPer28d: 56, // 2 a day
   watchHours365d: 1120,
   watchHoursPer28d: 52,
   shortsViews90d: 0,
@@ -26,11 +28,44 @@ const base = {
 const p = projectYpp(base, now);
 assert.equal(p.subscribers.need, 500, "the top-level gates are the expanded tier's, the next target");
 assert.equal(p.subscribers.have, 75);
-// 425 to go at 34 a week is ~87.5 days.
+// 425 to go. The date is the 28-day pace (2 a day, 212.5 days): a good week is not a pace.
+assert.equal(p.subscribers.ratePerDay, 2);
 assert.equal(
   p.subscribers.eta!.slice(0, 10),
+  new Date(now + Math.round((425 / 2) * 86_400_000)).toISOString().slice(0, 10),
+);
+// The week was faster, so it rides along as the optimistic end of the range: 34 a week, 87.5 days.
+assert.ok(Math.abs(p.subscribers.recent!.ratePerDay - 34 / 7) < 1e-9);
+assert.equal(
+  p.subscribers.recent!.eta.slice(0, 10),
   new Date(now + Math.round((425 / (34 / 7)) * 86_400_000)).toISOString().slice(0, 10),
 );
+assert.ok(p.subscribers.recent!.eta < p.subscribers.eta!, "the optimistic end lands first");
+// Both tiers carry it, and only the subscribers gate does: hours and Shorts keep their 28-day pace.
+assert.ok(p.tiers.full.subscribers.recent && p.tiers.expanded.subscribers.recent);
+assert.equal(p.watchHours.recent, undefined);
+assert.equal(p.shortsViews.recent, undefined);
+// No range when the week was no faster than the month (equal included), or when there is nothing to wait for.
+assert.equal(projectYpp({ ...base, subscribersPer7d: 7 }, now).subscribers.recent, undefined);
+assert.equal(projectYpp({ ...base, subscribersPer7d: 14 }, now).subscribers.recent, undefined);
+assert.equal(projectYpp({ ...base, subscribers: 600 }, now).subscribers.recent, undefined);
+// A flat month has no date, whatever the last week did: the week alone is not a date.
+{
+  const flat = projectYpp({ ...base, subscribersPer28d: 0 }, now).subscribers;
+  assert.equal(flat.eta, null);
+  assert.ok(flat.recent, "the week is still reported");
+}
+// The 30 Sept 2026 post-mortem's channel (102 subscribers; 63 net in 28 days, 27 in the last 7):
+// the week put 1,000 on 21 May 2027, the month on 3 Nov 2027 — the countdown now says both.
+{
+  const postMortemNow = Date.UTC(2026, 8, 30, 12);
+  const full = projectYpp(
+    { ...base, subscribers: 102, subscribersPer7d: 27, subscribersPer28d: 63 },
+    postMortemNow,
+  ).tiers.full.subscribers;
+  assert.equal(full.eta!.slice(0, 10), "2027-11-03");
+  assert.equal(full.recent!.eta.slice(0, 10), "2027-05-21");
+}
 // Hours are a rolling year: 52 h per 28 days levels off near 678 h, so the gate is out of reach
 // at this rate and the honest answer is the daily rate that would get there, not a date.
 assert.equal(p.watchHours.eta, null, "a ceiling under the gate is no ETA");
@@ -64,23 +99,25 @@ assert.deepEqual(yppThresholds(Date.UTC(2027, 0, 31)).full.watchHours, 4000);
 assert.equal(p.shortsRawViews90d, 3197);
 assert.equal(p.shortsViews.have, 0);
 
-// Lagging window: Analytics lags ~2–3 days so a 7-day query window returned only 4 days
-// (3 missing trailing days). Daily rate must divide by the 4 days actually returned,
-// not the 7 calendar days of the window.
+// Lagging window: Analytics lags ~2–3 days so a 28-day query window returned only 25 days
+// (3 missing trailing days). Daily rate must divide by the days actually returned, not the
+// calendar days of the window — for the week that rides along as `recent` too.
 {
-  const lagging = projectYpp({ ...base, subscribersPer7d: 10, subscribersDays: 4 }, now);
-  assert.equal(lagging.subscribers.ratePerDay, 2.5, "rate divides by 4 returned days, not 7 calendar days");
+  const lagging = projectYpp({ ...base, subscribersPer28d: 10, subscribersDays28: 4 }, now);
+  assert.equal(lagging.subscribers.ratePerDay, 2.5, "rate divides by 4 returned days, not 28 calendar days");
   assert.equal(
     lagging.subscribers.eta!.slice(0, 10),
     new Date(now + Math.round((425 / 2.5) * 86_400_000)).toISOString().slice(0, 10),
   );
+  const week = projectYpp({ ...base, subscribersPer7d: 10, subscribersDays: 4 }, now).subscribers;
+  assert.equal(week.recent!.ratePerDay, 2.5, "the week divides by its 4 returned days, not 7");
 
   // The audit item b5 scenario on 24 Sept 2026:
-  // Dividing by 7 calendar days gave 19 Jul 2027 (1.43/day), while the real rate over returned days (2.14/day) gives 11 Apr 2027.
+  // Dividing by the window's calendar days gave 19 Jul 2027 (1.43/day), while the real rate over returned days (2.14/day) gives 11 Apr 2027.
   const auditNow = Date.UTC(2026, 8, 24, 12, 0, 0);
-  const auditDivBy7 = projectYpp({ ...base, subscribersPer7d: 10, subscribersDays: 7 }, auditNow);
-  assert.equal(auditDivBy7.subscribers.eta!.slice(0, 10), "2027-07-19");
-  const auditReal = projectYpp({ ...base, subscribersPer7d: 10, subscribersDays: 10 / 2.14 }, auditNow);
+  const auditDivBy28 = projectYpp({ ...base, subscribersPer28d: 40, subscribersDays28: 28 }, auditNow);
+  assert.equal(auditDivBy28.subscribers.eta!.slice(0, 10), "2027-07-19");
+  const auditReal = projectYpp({ ...base, subscribersPer28d: 10, subscribersDays28: 10 / 2.14 }, auditNow);
   assert.ok(Math.abs(auditReal.subscribers.ratePerDay - 2.14) < 0.001);
   assert.equal(auditReal.subscribers.eta!.slice(0, 10), "2027-04-11");
 
@@ -92,6 +129,34 @@ assert.equal(p.shortsViews.have, 0);
   // Shorts views with 3 missing trailing days (25 days returned out of 28):
   const shortsLag = projectYpp({ ...base, shortsViewsPer28d: 25_000, shortsViewsDays: 25 }, now);
   assert.equal(shortsLag.shortsViews.ratePerDay, 1000);
+}
+
+// The panel (public/youtube.js, a browser script with no module system, probed the way
+// splitsChart.test.ts probes splits.js): the subscribers gate prints the 28-day pace and the date
+// at it, then the last week's date as the optimistic end — and the date alone when the week was no faster.
+{
+  const source = readFileSync(path.join(import.meta.dirname, "..", "..", "public", "youtube.js"), "utf8");
+  const yppInner = new Function("esc", `${source}; return yppInner;`)((s: unknown) => String(s ?? "")) as (
+    ypp: unknown,
+  ) => string;
+  const monthYear = (iso: string) =>
+    new Date(iso).toLocaleDateString([], { month: "short", year: "numeric" });
+  const at = Date.UTC(2026, 8, 30, 12);
+  const week = { ...base, subscribers: 102, subscribersPer7d: 27, subscribersPer28d: 63 };
+  const { subscribers } = projectYpp(week, at);
+  const html = yppInner({ progress: projectYpp(week, at) });
+  assert.ok(html.includes("+63 / 28 days"), "the rate is the 28 days', not a week's");
+  assert.ok(
+    html.includes(
+      `at this rate ${monthYear(subscribers.eta!)} &middot; ${monthYear(subscribers.recent!.eta)} at the last week's pace`,
+    ),
+    html,
+  );
+  const slow = yppInner({ progress: projectYpp({ ...week, subscribersPer7d: 7 }, at) });
+  assert.ok(
+    slow.includes(`at this rate ${monthYear(subscribers.eta!)}`) && !slow.includes("last week"),
+    slow,
+  );
 }
 
 // Per-video engagement: one top-videos request, rows keyed by video id. The fake answers the
@@ -309,12 +374,16 @@ assert.equal(p.shortsViews.have, 0);
       const u = new URL(url);
       const metrics = u.searchParams.get("metrics") ?? "";
       const dimensions = u.searchParams.get("dimensions") ?? "";
-      // Subscribers query: 4 days returned out of 7 calendar days (3 missing trailing days due to lag)
+      // Subscribers query: one 28-day report, 4 of its last 7 days returned (3 missing trailing
+      // days due to lag) and two older days that only the 28-day pace counts.
       if (metrics.includes("subscribersGained")) {
         assert.equal(dimensions, "day", "subscribers query asks for dimensions=day");
+        assert.equal(u.searchParams.get("startDate"), "2026-08-11", "28 days back from 8 Sept, not 7");
         return new Response(
           JSON.stringify({
             rows: [
+              ["2026-08-15", 1, 0],
+              ["2026-08-30", 0, 0],
               ["2026-09-02", 3, 0],
               ["2026-09-03", 2, 1],
               ["2026-09-04", 4, 0],
@@ -356,15 +425,23 @@ assert.equal(p.shortsViews.have, 0);
   try {
     const snap = await fetchYppSnapshot(now);
     assert.equal(snap.subscribers, 75);
-    // Net gained: (3+2+4+2) - (0+1+0+0) = 10 net subscribers over 4 days returned
-    assert.equal(snap.subscribersPer7d, 10);
+    // Net gained: (3+2+4+2) - (0+1+0+0) = 10 net subscribers over the 4 days returned in the last week
+    assert.equal(snap.subscribersPer7d, 10, "the week is the rows dated from 1 Sept on");
     assert.equal(snap.subscribersDays, 4, "subscribersDays reflects the 4 dates actually returned by Analytics");
+    // ...and 11 over the 6 days of the 28-day report: the same rows plus 15 Aug and 30 Aug.
+    assert.equal(snap.subscribersPer28d, 11);
+    assert.equal(snap.subscribersDays28, 6);
     assert.equal(snap.watchHoursDays, 2, "watchHoursDays reflects the 2 dates actually returned");
     assert.equal(snap.shortsViewsDays, 2, "shortsViewsDays reflects the 2 dates actually returned");
     assert.equal(snap.uploads90d, 1, "only the public upload is counted");
 
     const projected = projectYpp(snap, now);
-    assert.equal(projected.subscribers.ratePerDay, 2.5, "daily rate is 10 / 4 = 2.5 / day");
+    assert.equal(
+      projected.subscribers.ratePerDay,
+      11 / 6,
+      "the date's rate is the 28 days': 11 / 6 returned days",
+    );
+    assert.equal(projected.subscribers.recent!.ratePerDay, 2.5, "the week's rate is 10 / 4 = 2.5 / day");
   } finally {
     globalThis.fetch = realFetch;
     if (realToken === undefined) delete process.env.YOUTUBE_TOKEN_FILE;

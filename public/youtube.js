@@ -452,12 +452,14 @@ function yppInner(ypp) {
       : n >= 1e4
         ? `${(n / 1e3).toFixed(0)}k`
         : Math.round(n).toLocaleString();
+  const monthYear = (iso) => esc(new Date(iso).toLocaleDateString([], { month: "short", year: "numeric" }));
   // A rolling-window gate with a ceiling under it never lands at this rate; say what rate would.
+  // The subscribers gate also carries the last week's pace (`recent`), the optimistic end of a range.
   const when = (g) =>
     g.have >= g.need
       ? '<span class="ok">reached</span>'
       : g.eta
-        ? `at this rate ${esc(new Date(g.eta).toLocaleDateString([], { month: "short", year: "numeric" }))}`
+        ? `at this rate ${monthYear(g.eta)}${g.recent ? ` &middot; ${monthYear(g.recent.eta)} at the last week's pace` : ""}`
         : g.ceiling !== undefined && g.ratePerDay > 0
           ? `<span class="bad">levels off near ${fmt(g.ceiling)}</span> &middot; needs ${fmt(g.needPerDay)} / day`
           : '<span class="muted">no rate yet</span>';
@@ -469,7 +471,7 @@ function yppInner(ypp) {
     </div>`;
   return `<div class="ypp">
     <div class="ypphead">Partner programme &middot; 500 subscribers and either 4,000 watch hours or 10M Shorts views</div>
-    ${gate("Subscribers", p.subscribers, "", (r) => `+${(r * 7).toFixed(0)} / week`)}
+    ${gate("Subscribers", p.subscribers, "", (r) => `+${(r * 28).toFixed(0)} / 28 days`)}
     ${gate("Watch hours, last 365 days", p.watchHours, " h", (r) => `+${(r * 28).toFixed(0)} h / 28 days`)}
     ${gate(
       // YPP counts engaged Shorts views; a raw Shorts "view" is every start or replay.

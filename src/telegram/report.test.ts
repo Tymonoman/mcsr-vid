@@ -13,6 +13,7 @@ import {
   renderToday,
   renderWaiting,
   renderYpp,
+  renderYppShort,
   renderWorth,
   whenWarsaw,
 } from "./report.js";
@@ -20,7 +21,27 @@ import { MESSAGE_MAX_CHARS } from "./bot.js";
 import type { ReportFacts } from "./facts.js";
 import type { UnansweredComment } from "./comments.js";
 import type { WorthMatch } from "./worth.js";
-import type { YppProgress } from "../youtube/yppProgress.js";
+import { projectYpp, type YppProgress } from "../youtube/yppProgress.js";
+
+/** The channel as the 30 Sept 2026 post-mortem read it: 102 subscribers, 63 net in the last 28 days and 27 in the last 7. */
+const postMortemAt = Date.UTC(2026, 8, 30, 12);
+const postMortemYpp = (over: Partial<Parameters<typeof projectYpp>[0]> = {}): YppProgress =>
+  projectYpp(
+    {
+      fetchedAt: new Date(postMortemAt).toISOString(),
+      subscribers: 102,
+      subscribersPer7d: 27,
+      subscribersPer28d: 63,
+      watchHours365d: 1456,
+      watchHoursPer28d: 47 * 28,
+      shortsViews90d: 0,
+      shortsViewsPer28d: 0,
+      shortsRawViews90d: 0,
+      uploads90d: 12,
+      ...over,
+    },
+    postMortemAt,
+  );
 
 // --- HTML escaping: a malicious/odd string in any dynamic field must never reach the message
 // unescaped — Telegram's HTML parse_mode would otherwise choke on it or, worse, let it act as
@@ -311,6 +332,22 @@ const worthMatch = (i: number, over: Partial<WorthMatch> = {}): WorthMatch => ({
   assert.ok(msgs[0]!.includes("id <code>13800001</code>"), msgs[0]);
   assert.ok(!msgs[1]!.includes("Worth rendering") && !msgs[2]!.includes("Worth rendering"));
   assert.ok(msgs[1]!.includes("<pre>") && msgs[1]!.includes("vs prev"), msgs[1]);
+  // The channel message leads with net subscribers (a table row before views) and, with YPP data,
+  // carries the countdown's range in its one line.
+  assert.ok(msgs[1]!.indexOf("\nnet subs") < msgs[1]!.indexOf("\nviews"), msgs[1]);
+  const withYpp = renderMorningReport(
+    { ...facts, ypp: { ok: true, data: postMortemYpp() } },
+    { source: "agy", answer: { headline: "Covered through Thursday", todo: ["Save hooks for a vs b"] } },
+    { subscribers: 92, views: 64883, videos: 36 },
+    "UCxyz",
+    postMortemAt,
+  );
+  assert.equal(withYpp.length, 3);
+  assert.ok(
+    withYpp[1]!.includes("full tier ~400 days (3 Nov 2027; 21 May at the last week's pace)"),
+    withYpp[1],
+  );
+  assert.ok(visibleLength(withYpp[1]!) <= MESSAGE_MAX_CHARS);
   assert.ok(!msgs[1]!.includes("(0)"), msgs[1]); // an unchanged count carries no "(0)"
   assert.ok(msgs[2]!.includes("No unanswered comments"), msgs[2]);
 }
@@ -371,17 +408,32 @@ const worthMatch = (i: number, over: Partial<WorthMatch> = {}): WorthMatch => ({
   assert.ok(visibleLength(renderWorth({ ok: true, data: { matches: long, notes: [] } }, base)) < 1200);
 }
 
-// The stats table: one column per window, the header and every row the same width.
+// The stats table: one column per window, the header and every row the same width. Net subscribers
+// and subscribers gained per 1,000 engaged views lead, each with its own "vs prev" row, then views.
 {
+  const side = ([views, engagedViews, subscribersGained, subscribersLost]: number[]) => ({
+    views,
+    engagedViews,
+    subscribersGained,
+    subscribersLost,
+    estimatedMinutesWatched: 72150,
+  });
+  // [days, current, previous], each [views, engaged views, gained, lost].
+  const fixture: [number, number[], number[]][] = [
+    [1, [55381, 0, 3, 1], [304, 900, 2, 0]], // no engaged views today: no rate
+    [3, [55381, 3000, 6, 4], [304, 3000, 1, 5]], // the window before it lost more than it gained (net -4)
+    [7, [55381, 20000, 30, 6], [304, 10000, 10, 2]], // 30 gained over 20,000 engaged: 1.50 against 1.00
+    [30, [55381, 40000, 60, 12], [304, 0, 0, 0]], // the window before was flat and drew no engaged views
+  ];
   const windows = Object.fromEntries(
-    ([1, 3, 7, 30] as const).map((d) => [
-      d,
+    fixture.map(([days, current, previous]) => [
+      days,
       {
-        days: d,
-        current: { views: 55381, estimatedMinutesWatched: 72150 },
-        previous: { views: 304 },
-        currentDays: d === 30 ? 28 : d,
-        previousDays: d,
+        days,
+        current: side(current),
+        previous: side(previous),
+        currentDays: days === 30 ? 28 : days,
+        previousDays: days,
       },
     ]),
   ) as unknown as Extract<ReportFacts["stats"], { ok: true }>["data"]["windows"];
@@ -393,14 +445,42 @@ const worthMatch = (i: number, over: Partial<WorthMatch> = {}): WorthMatch => ({
   assert.equal(new Set(table.map((l) => l.length)).size, 1, table.join("\n"));
   assert.ok(table[0]!.includes("30d*") && out.includes("fewer days of data"), out);
   assert.ok(out.includes("92 subs (+2)"), out);
-  assert.ok(
-    table.some((l) => l.startsWith("views") && l.includes("55K")),
-    table.join("\n"),
+  // The order is the point: net subscribers, subscribers per 1,000 engaged views, then views and the rest.
+  assert.deepEqual(
+    table.map((l) => l.slice(0, 9).trim()),
+    [
+      "",
+      "net subs",
+      "vs prev",
+      "subs/1k",
+      "vs prev",
+      "views",
+      "vs prev",
+      "engaged",
+      "hours",
+      "avg view",
+      "likes",
+      "comments",
+    ],
   );
-  assert.ok(
-    table.some((l) => l.startsWith("vs prev") && l.includes("×182")),
-    table.join("\n"),
+  const cells = (label: string, nth = 0) =>
+    table
+      .filter((l) => l.slice(0, 9).trim() === label)
+      [nth]!.slice(9)
+      .match(/.{7}/g)!
+      .map((c) => c.trim());
+  assert.deepEqual(cells("net subs"), ["+2", "+2", "+24", "+48"], "gained minus lost");
+  // 2 vs 2; 2 vs -4 is a rise, not "-150%"; 24 vs 8; 48 vs a flat 0.
+  assert.deepEqual(cells("vs prev", 0), ["0%", "+150%", "+200%", "new"]);
+  assert.deepEqual(cells("subs/1k"), ["-", "2.00", "1.50", "1.50"], "no engaged views, no rate");
+  assert.deepEqual(
+    cells("vs prev", 1),
+    ["-", "+500%", "+50%", "-"],
+    "a rate needs engaged views on both sides",
   );
+  assert.ok(cells("views")[0] === "55K" && cells("vs prev", 2)[0] === "×182");
+  // The footer says what subs/1k is: gained, not net.
+  assert.ok(out.includes("subs/1k = subscribers gained per 1,000 engaged views"), out);
 }
 
 // The YPP countdown: subscribers AND (hours OR Shorts views) — the later of the two, named.
@@ -433,6 +513,90 @@ const worthMatch = (i: number, over: Partial<WorthMatch> = {}): WorthMatch => ({
     ),
     "reached",
   );
+}
+
+// The range: the 28-day pace is the date, the last week's pace — when it was faster — the optimistic end.
+{
+  const now = Date.parse("2026-09-28T12:00:00Z");
+  const g = (have: number, need: number, eta: string | null, recentEta?: string) => ({
+    have,
+    need,
+    eta,
+    recent: recentEta ? { ratePerDay: 5, eta: recentEta } : undefined,
+  });
+  const shorts = g(2583, 3e6, null);
+  const t = {
+    subscribers: g(92, 500, "2027-01-23", "2026-12-08"),
+    watchHours: g(1198, 3000, "2026-11-12"),
+    shortsViews: shorts,
+  };
+  assert.equal(
+    tierCountdown(t, now),
+    "<b>~117 days</b> (23 Jan; 8 Dec at the last week's pace) — subscribers hold it back",
+  );
+  // Hours would still be missing at the week's pace: the optimistic end is when hours land it.
+  assert.ok(
+    tierCountdown({ ...t, watchHours: g(1198, 3000, "2026-12-20") }, now).includes(
+      "(23 Jan; 20 Dec at the last week's pace)",
+    ),
+  );
+  // Hours hold the tier at either pace: nothing for the week to add.
+  const hoursHold = tierCountdown({ ...t, watchHours: g(1198, 3000, "2027-03-01") }, now);
+  assert.equal(hoursHold, "<b>~154 days</b> (1 Mar) — watch hours hold it back");
+  // No faster week, no range.
+  assert.ok(!tierCountdown({ ...t, subscribers: g(92, 500, "2027-01-23") }, now).includes("last week"));
+  // More than a year out the date carries its year (a bare "3 Nov" reads as the coming one); the optimistic end, under a year, does not.
+  const far = tierCountdown(
+    { ...t, subscribers: g(92, 1000, "2027-11-03", "2027-05-21"), watchHours: g(1198, 3000, "2026-11-12") },
+    now,
+  );
+  assert.ok(far.includes("(3 Nov 2027; 21 May at the last week's pace)"), far);
+}
+
+// The same range from a snapshot, through every Telegram surface that prints a subscriber ETA: the
+// 28-day pace's date first, the week's after it in the same parentheses.
+{
+  const ypp = postMortemYpp();
+  const full = renderYpp({ ok: true, data: ypp }, postMortemAt);
+  assert.ok(
+    full.includes(
+      "expanded tier <b>~177 days</b> (26 Mar; 11 Jan at the last week's pace) — subscribers hold it back",
+    ),
+    full,
+  );
+  assert.ok(
+    full.includes("<b>~400 days</b> (3 Nov 2027; 21 May at the last week's pace) — subscribers hold it back"),
+    full,
+  );
+  assert.ok(full.includes("subs: 102/500 (20%) — ~177 days (26 Mar; 11 Jan at the last week's pace)"), full);
+  assert.ok(
+    full.includes("subs: 102/1,000 (10%) — ~400 days (3 Nov 2027; 21 May at the last week's pace)"),
+    full,
+  );
+  assert.ok(
+    full.includes("watch hours: 1,456/3,000 (49%) — ~33 days (2 Nov)\n"),
+    "hours keep their own date, no range",
+  );
+  assert.ok(full.includes("at 2.25 subs/day over 28 days (3.86 in the last week)"), full);
+
+  const [head, subs] = renderYppShort({ ok: true, data: ypp }, postMortemAt).split("\n");
+  assert.equal(
+    head,
+    "<b>🎯 YPP</b> · expanded tier <b>~177 days</b> (26 Mar; 11 Jan at the last week's pace) · full tier ~400 days (3 Nov 2027; 21 May at the last week's pace)",
+  );
+  assert.equal(
+    subs,
+    "Subscribers 102/500 (~177 d) at 2.3/day over 28 days · watch hours 1,456/3,000 (~33 d)",
+  );
+
+  // A week no faster than the month adds nothing: the date alone, and no last-week rate.
+  const calm = postMortemYpp({ subscribersPer7d: 14 });
+  const calmFull = renderYpp({ ok: true, data: calm }, postMortemAt);
+  assert.ok(
+    !calmFull.includes("last week") &&
+      !renderYppShort({ ok: true, data: calm }, postMortemAt).includes("last week"),
+  );
+  assert.ok(calmFull.includes("subs: 102/1,000 (10%) — ~400 days (3 Nov 2027)"), calmFull);
 }
 
 console.log("report: all checks passed");

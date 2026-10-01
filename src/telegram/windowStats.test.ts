@@ -1,7 +1,15 @@
 // Self-check for windowStats.ts's window aggregation, from a synthetic day series.
 // Run: npx tsx src/telegram/windowStats.test.ts
 import assert from "node:assert/strict";
-import { aggregateWindow, aggregateWindows, latestDate, WINDOW_DAYS, type DayRow } from "./windowStats.js";
+import {
+  aggregateWindow,
+  aggregateWindows,
+  latestDate,
+  netSubscribers,
+  subsPer1kEngaged,
+  WINDOW_DAYS,
+  type DayRow,
+} from "./windowStats.js";
 
 // 40 days, 2026-01-01 .. 2026-02-09, views = day index (1..40) so every window's sum is easy to
 // hand-check, and shuffled so the function's own sort is exercised too.
@@ -71,6 +79,32 @@ assert.equal(latestDate([]), null);
     [...WINDOW_DAYS],
   );
   for (const d of WINDOW_DAYS) assert.deepEqual(all[d], aggregateWindow(shuffled, d, ["views"]));
+}
+
+// Net subscribers (gained minus lost) and subscribers gained per 1,000 engaged views, per window:
+// 14 days: the last 7 gained 10, lost 2 and drew 4,000 engaged views a day, the 7 before 5, 1 and 5,000.
+{
+  const days: DayRow[] = [];
+  for (let i = 1; i <= 14; i++) {
+    const last7 = i > 7;
+    days.push({
+      date: new Date(Date.UTC(2026, 8, i)).toISOString().slice(0, 10),
+      subscribersGained: last7 ? 10 : 5,
+      subscribersLost: last7 ? 2 : 1,
+      engagedViews: last7 ? 4000 : 5000,
+    });
+  }
+  const w = aggregateWindow(days, 7, ["subscribersGained", "subscribersLost", "engagedViews"]);
+  assert.equal(netSubscribers(w.current), 56, "7 x (10 - 2)");
+  assert.equal(netSubscribers(w.previous), 28, "7 x (5 - 1)");
+  assert.equal(subsPer1kEngaged(w.current), 2.5, "70 gained over 28,000 engaged views");
+  assert.equal(subsPer1kEngaged(w.previous), 1, "35 gained over 35,000 engaged views");
+  // A net loss is negative, not clamped; a window with no engaged views has no rate at all.
+  assert.equal(netSubscribers({ subscribersGained: 1, subscribersLost: 4 }), -3);
+  assert.equal(subsPer1kEngaged({ subscribersGained: 3, engagedViews: 0 }), null);
+  assert.equal(subsPer1kEngaged({}), null);
+  assert.equal(subsPer1kEngaged({ engagedViews: 2000 }), 0, "views but no subscribers is a rate of zero");
+  assert.equal(netSubscribers({}), 0);
 }
 
 console.log("windowStats: all checks passed");

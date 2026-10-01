@@ -10,8 +10,10 @@
  *     1 Feb 2027, 8,000 hours or 20M Shorts views for new applicants.
  * Watch hours count long-form only ("watch hours from Shorts views in the Shorts Feed won't
  * count"), so hours are read per `creatorContentType` and the Shorts rows left out.
- * Rates are measured over the last 28 days for hours and Shorts, and the last 7 for subscribers
- * — subscribers move on each upload, hours accumulate.
+ * Rates are measured over the last 28 days, subscribers included: a week with twelve uploads is a
+ * good week, not a pace (30 Sept 2026: the last 7 days put 1,000 subscribers on 21 May 2027, the
+ * last 28 on 3 Nov 2027). The last 7 days ride along as the optimistic end of a range
+ * (`YppGate.recent`), never as the date.
  * The Shorts gate counts engaged views: since the March 2025 change a Shorts "view" is every
  * start or replay, and YouTube kept the old, watched-for-a-while count (the Analytics API's
  * `engagedViews`) for eligibility. Raw views ride along for the label, 3–5x the engaged number.
@@ -37,9 +39,14 @@ export function yppThresholds(nowMs: number = Date.now()) {
 export interface YppSnapshot {
   fetchedAt: string;
   subscribers: number;
+  /** Net subscribers over the last 7 days: the optimistic end of the range. */
   subscribersPer7d: number;
-  /** Number of days Analytics actually returned for the subscriber window. */
+  /** Number of days Analytics actually returned for the 7-day subscriber window. */
   subscribersDays?: number;
+  /** Net subscribers over the last 28 days: the pace the date is read from. */
+  subscribersPer28d: number;
+  /** Number of days Analytics actually returned for the 28-day subscriber window. */
+  subscribersDays28?: number;
   watchHours365d: number;
   watchHoursPer28d: number;
   /** Number of days Analytics actually returned for the watch hours 28-day window. */
@@ -69,6 +76,12 @@ interface YppGate {
    */
   ceiling?: number;
   needPerDay?: number;
+  /**
+   * Subscribers only: the last 7 days' pace and the date the gate lands at it, set only when that
+   * week was faster than `ratePerDay` (the 28-day pace `eta` is read from) — the optimistic end
+   * of the range.
+   */
+  recent?: { ratePerDay: number; eta: string };
 }
 
 interface YppTier {
@@ -95,6 +108,7 @@ export function projectYpp(s: YppSnapshot, nowMs: number = Date.now()): YppProgr
     perWindow: number,
     windowDays: number,
     rollingDays?: number,
+    recent?: { perWindow: number; windowDays: number },
   ): YppGate => {
     // Analytics lags ~2–3 days, so the trailing days of the window are missing from the
     // report. Dividing by the window's full calendar length treats those missing days as
@@ -116,11 +130,27 @@ export function projectYpp(s: YppSnapshot, nowMs: number = Date.now()): YppProgr
         : ratePerDay > 0
           ? new Date(nowMs + (left / ratePerDay) * 86_400_000).toISOString()
           : null;
+    const recentRate = recent && recent.windowDays > 0 ? recent.perWindow / recent.windowDays : 0;
+    if (left > 0 && recentRate > ratePerDay)
+      out.recent = {
+        ratePerDay: recentRate,
+        eta: new Date(nowMs + (left / recentRate) * 86_400_000).toISOString(),
+      };
     return out;
   };
   const t = yppThresholds(nowMs);
   const tier = (need: { subscribers: number; watchHours: number; shortsViews: number }): YppTier => ({
-    subscribers: gate(s.subscribers, need.subscribers, s.subscribersPer7d, s.subscribersDays ?? 7),
+    subscribers: gate(
+      s.subscribers,
+      need.subscribers,
+      s.subscribersPer28d,
+      s.subscribersDays28 ?? 28,
+      undefined,
+      {
+        perWindow: s.subscribersPer7d,
+        windowDays: s.subscribersDays ?? 7,
+      },
+    ),
     watchHours: gate(s.watchHours365d, need.watchHours, s.watchHoursPer28d, s.watchHoursDays ?? 28, 365),
     shortsViews: gate(s.shortsViews90d, need.shortsViews, s.shortsViewsPer28d, s.shortsViewsDays ?? 28, 90),
   });
@@ -149,7 +179,10 @@ async function analytics(token: string, params: Record<string, string>): Promise
 
 const sum = (rows: (string | number)[][], col = 0) => rows.reduce((a, r) => a + Number(r[col] ?? 0), 0);
 
-/** Five requests: channel subscribers, hours over 365 and 28 days, Shorts views over 90 and 28 days. */
+/**
+ * Five requests: channel subscribers (net over 28 days, the last 7 split out of the same rows),
+ * hours over 365 and 28 days, Shorts views over 90 and 28 days.
+ */
 export async function fetchYppSnapshot(nowMs: number = Date.now()): Promise<YppSnapshot> {
   const token = await getAccessToken();
   const now = new Date(nowMs);
@@ -159,16 +192,20 @@ export async function fetchYppSnapshot(nowMs: number = Date.now()): Promise<YppS
   );
   const stats = channel.items?.[0]?.statistics;
 
-  // Analytics lags ~2–3 days, so the trailing days of the 7-day query window are missing.
-  // We query dimensions: "day" to measure the net rate over the days Analytics actually returned
-  // (the rows' dates) rather than dividing by 7 calendar days, which treats missing days as zero.
+  // Analytics lags ~2–3 days, so the trailing days of the query window are missing. We query
+  // dimensions: "day" to measure the net rate over the days Analytics actually returned (the rows'
+  // dates) rather than dividing by the calendar days, which treats missing days as zero. The
+  // 7-day pace is the rows dated from daysAgo(7) on, the window this query used to be.
   const subs = await analytics(token, {
-    startDate: daysAgo(7),
+    startDate: daysAgo(28),
     endDate: ymd(now),
     dimensions: "day",
     metrics: "subscribersGained,subscribersLost",
   });
-  const subsDays = new Set(subs.map((r) => String(r[0]))).size;
+  const weekStart = daysAgo(7);
+  const subsWeek = subs.filter((r) => String(r[0]) >= weekStart);
+  const netOf = (rows: (string | number)[][]) => sum(rows, 1) - sum(rows, 2);
+  const datesIn = (rows: (string | number)[][]) => new Set(rows.map((r) => String(r[0]))).size;
 
   // Both split by creatorContentType, whose values the API spells "videoOnDemand", "liveStream",
   // "shorts" and "creatorContentTypeUnspecified" — the panel compared against "SHORTS" and read
@@ -199,8 +236,10 @@ export async function fetchYppSnapshot(nowMs: number = Date.now()): Promise<YppS
   return {
     fetchedAt: now.toISOString(),
     subscribers: Number(stats?.subscriberCount ?? 0),
-    subscribersPer7d: sum(subs, 1) - sum(subs, 2),
-    subscribersDays: subsDays,
+    subscribersPer7d: netOf(subsWeek),
+    subscribersDays: datesIn(subsWeek),
+    subscribersPer28d: netOf(subs),
+    subscribersDays28: datesIn(subs),
     watchHours365d: h365 / 60,
     watchHoursPer28d: h28 / 60,
     watchHoursDays: h28Days,

@@ -16,7 +16,7 @@ import type {
   StatsFacts,
   TodoFacts,
 } from "./facts.js";
-import type { WindowDays } from "./windowStats.js";
+import { netSubscribers, subsPer1kEngaged, type WindowDays } from "./windowStats.js";
 import type { NightlyFacts, UpcomingRow } from "./facts.js";
 import type { NightlyLastRun } from "../dashboard/nightly.js";
 
@@ -36,10 +36,11 @@ const b = (s: string): string => `<b>${escapeHtml(s)}</b>`;
 const fmtInt = (n: number): string => Math.round(n).toLocaleString("en-US");
 const fmtDelta = (n: number): string => (n > 0 ? `+${fmtInt(n)}` : n < 0 ? fmtInt(n) : "0");
 const pctDelta = (curr: number, prev: number): string => {
-  if (prev === 0) return curr === 0 ? "0%" : "new";
-  const pct = ((curr - prev) / prev) * 100;
+  if (prev === 0) return curr === 0 ? "0%" : curr > 0 ? "new" : "-";
+  // |prev|: net subscribers can be negative, and a rise from -2 to +5 is not "-350%".
+  const pct = ((curr - prev) / Math.abs(prev)) * 100;
   // A window compared with one from before the channel had an audience reads as "+18070%": a ratio says it plainly.
-  if (pct >= 1000) return `×${(curr / prev).toFixed(0)}`;
+  if (pct >= 1000 && prev > 0) return `×${(curr / prev).toFixed(0)}`;
   return `${pct > 0 ? "+" : ""}${pct.toFixed(0)}%`;
 };
 const mmss = (ms: number): string =>
@@ -75,6 +76,15 @@ const warsawDay = (nowMs: number): string =>
 /** "9 Jan" — a date far enough out that the year and the weekday add nothing. */
 const dayMonth = (ms: number): string =>
   new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", day: "numeric", month: "short" }).format(new Date(ms));
+
+/** "3 Nov 2027" — the year, for a date more than a year out. */
+const dayMonthYear = (ms: number): string =>
+  new Intl.DateTimeFormat("en-GB", {
+    timeZone: "UTC",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(ms));
 
 /** A link to one match's page on the dashboard: `public/app.js` opens `#match=<id>` on its Now
  *  panel. `label` is HTML, already escaped. A link about the list is the base URL and nothing more. */
@@ -227,7 +237,10 @@ const cell = (n: number): string =>
 
 /**
  * The live counts, then one monospace table: a metric per row, a window per column (1/3/7/30 days
- * by default), the change in views against the equal window before. `/stats 7d` is one column.
+ * by default). Net subscribers and subscribers gained per 1,000 engaged views lead — the channel
+ * steered by views while subscribers per 1,000 views fell from 7.0 to 0.98 (post-mortem, 30 Sept
+ * 2026) — and each of them, and views, has a "vs prev" row under it: the change against the equal
+ * window before. `/stats 7d` is one column.
  */
 export function renderStats(
   stats: ReportFacts["stats"],
@@ -245,8 +258,12 @@ export function renderStats(
   const w = windows.map((d) => stats.data.windows[d]);
   const col = (vals: string[]) => vals.map((v) => v.padStart(7)).join("");
   const row = (label: string, f: (t: (typeof w)[number]) => string) => `${label.padEnd(9)}${col(w.map(f))}`;
-  const net = (t: (typeof w)[number]) =>
-    (t.current.subscribersGained ?? 0) - (t.current.subscribersLost ?? 0);
+  /** The change in `f` against the equal window before; "-" where either side has nothing to divide by. */
+  const vsPrev = (f: (m: Record<string, number>) => number | null) =>
+    row(" vs prev", (t) => {
+      const [now, before] = [f(t.current), f(t.previous)];
+      return now === null || before === null ? "-" : pctDelta(now, before);
+    });
   const avg = (t: (typeof w)[number]) => {
     const v = t.current.views ?? 0;
     return v > 0 ? mmss(Math.round(((t.current.estimatedMinutesWatched ?? 0) * 60) / v) * 1000) : "-";
@@ -254,17 +271,20 @@ export function renderStats(
   const partial = w.some((t) => t.currentDays < t.days);
   const table = [
     `${"".padEnd(9)}${col(w.map((t) => `${t.days}d${t.currentDays < t.days ? "*" : ""}`))}`,
+    row("net subs", (t) => fmtDelta(netSubscribers(t.current))),
+    vsPrev(netSubscribers),
+    row("subs/1k", (t) => subsPer1kEngaged(t.current)?.toFixed(2) ?? "-"),
+    vsPrev(subsPer1kEngaged),
     row("views", (t) => cell(t.current.views ?? 0)),
-    row("vs prev", (t) => pctDelta(t.current.views ?? 0, t.previous.views ?? 0)),
+    vsPrev((m) => m.views ?? 0),
     row("engaged", (t) => cell(t.current.engagedViews ?? 0)),
     row("hours", (t) => cell((t.current.estimatedMinutesWatched ?? 0) / 60)),
-    row("subs", (t) => fmtDelta(net(t))),
     row("avg view", avg),
     row("likes", (t) => cell(t.current.likes ?? 0)),
     row("comments", (t) => cell(t.current.comments ?? 0)),
   ].join("\n");
   const foot = dataEndsOn
-    ? `<i>Analytics through ${escapeHtml(dayMonth(Date.parse(dataEndsOn)))} (it lags 1–3 days)${partial ? " · * fewer days of data than the window" : ""}</i>`
+    ? `<i>Analytics through ${escapeHtml(dayMonth(Date.parse(dataEndsOn)))} (it lags 1–3 days)${partial ? " · * fewer days of data than the window" : ""} · subs/1k = subscribers gained per 1,000 engaged views</i>`
     : "";
   return [liveLine, `<pre>${escapeHtml(table)}</pre>`, foot].filter(Boolean).join("\n");
 }
@@ -275,28 +295,44 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const daysUntil = (iso: string, nowMs: number): number =>
   Math.max(0, Math.ceil((Date.parse(iso) - nowMs) / DAY_MS));
 
-type Gate = { have: number; need: number; eta: string | null; ceiling?: number; ratePerDay?: number };
+type Gate = {
+  have: number;
+  need: number;
+  eta: string | null;
+  ceiling?: number;
+  ratePerDay?: number;
+  /** Subscribers: the date at the last week's pace, set only when that week was the faster one. */
+  recent?: { ratePerDay: number; eta: string };
+};
 const unreachable = (g: Gate) => g.ceiling !== undefined && g.ceiling < g.need;
+
+/** "26 Mar"; more than a year out also the year ("3 Nov 2027"), where a bare "3 Nov" reads as the next one. */
+const etaDate = (ms: number, nowMs: number): string =>
+  ms - nowMs > 365 * DAY_MS ? dayMonthYear(ms) : dayMonth(ms);
+
+/** What follows the optimistic date of a subscribers range. */
+const LAST_WEEK = "at the last week's pace";
 
 function gateLine(name: string, g: Gate, nowMs: number): string {
   const pct = g.need > 0 ? Math.min(100, Math.round((g.have / g.need) * 100)) : 100;
   if (g.have >= g.need) return `${name}: ${fmtInt(g.have)}/${fmtInt(g.need)} — done`;
   if (unreachable(g))
     return `${name}: ${fmtInt(g.have)}/${fmtInt(g.need)} (${pct}%) — out of reach at this rate`;
-  const eta = g.eta ? `~${daysUntil(g.eta, nowMs)} days (${dayMonth(Date.parse(g.eta))})` : "unknown";
+  const range = g.recent ? `; ${etaDate(Date.parse(g.recent.eta), nowMs)} ${LAST_WEEK}` : "";
+  const eta = g.eta
+    ? `~${daysUntil(g.eta, nowMs)} days (${etaDate(Date.parse(g.eta), nowMs)}${range})`
+    : "unknown";
   return `${name}: ${fmtInt(g.have)}/${fmtInt(g.need)} (${pct}%) — ${eta}`;
 }
 
 type Tier = { subscribers: Gate; watchHours: Gate; shortsViews: Gate };
+type TierEta = { days: number; at: number; holder: keyof Tier };
 
 /**
  * When a tier is reached: subscribers AND (watch hours OR Shorts views), so the later of the two,
  * with the gate that holds it back. "reached", or null when it is not reachable at these rates.
  */
-export function tierEta(
-  t: Tier,
-  nowMs: number,
-): { days: number; at: number; holder: keyof Tier } | "reached" | null {
+export function tierEta(t: Tier, nowMs: number): TierEta | "reached" | null {
   const at = (g: Gate) =>
     g.have >= g.need ? nowMs : g.eta && !unreachable(g) ? Date.parse(g.eta) : Infinity;
   const hours = at(t.watchHours);
@@ -320,26 +356,40 @@ const GATE_NAME: Record<keyof Tier, string> = {
   shortsViews: "Shorts views",
 };
 
-/** "~102 days (9 Jan) — subscribers hold it back", the countdown the operator asked for. */
+/**
+ * "(3 Nov 2027; 21 May at the last week's pace)": where the tier lands at the 28-day subscriber pace,
+ * and, when the last week's pace lands it sooner, where that is. The countdown used to read the week
+ * alone and said 1,000 on 21 May 2027 against 3 Nov 2027 from the 28 days (post-mortem, 30 Sept 2026).
+ */
+function landing(t: Tier, e: TierEta, nowMs: number): string {
+  const fast = tierEta(
+    t.subscribers.recent ? { ...t, subscribers: { ...t.subscribers, eta: t.subscribers.recent.eta } } : t,
+    nowMs,
+  );
+  const sooner = typeof fast === "object" && fast !== null && fast.at < e.at ? fast : null;
+  return `(${etaDate(e.at, nowMs)}${sooner ? `; ${etaDate(sooner.at, nowMs)} ${LAST_WEEK}` : ""})`;
+}
+
+/** "~177 days (26 Mar; 12 Jan at the last week's pace) — subscribers hold it back": the operator's countdown. */
 export function tierCountdown(t: Tier, nowMs: number): string {
   const e = tierEta(t, nowMs);
   if (e === null) return "not reachable at the current rates";
   if (e === "reached") return "reached";
-  return `<b>~${e.days} days</b> (${dayMonth(e.at)}) — ${GATE_NAME[e.holder]} hold it back`;
+  return `<b>~${e.days} days</b> ${landing(t, e, nowMs)} — ${GATE_NAME[e.holder]} hold it back`;
 }
 
 /** The morning message's YPP: the countdown, then the gate holding it back and the next one. */
 export function renderYppShort(ypp: ReportFacts["ypp"], nowMs = Date.now()): string {
   if (!ypp.ok) return sectionError("🎯 YPP", ypp.error);
   const p = ypp.data;
-  const e = tierEta(p, nowMs);
-  const full = tierEta(p.tiers.full, nowMs);
-  const when = (x: typeof e) =>
-    x === null
+  const when = (t: Tier) => {
+    const x = tierEta(t, nowMs);
+    return x === null
       ? "out of reach at this rate"
       : x === "reached"
         ? "reached"
-        : `<b>~${x.days} days</b> (${dayMonth(x.at)})`;
+        : `<b>~${x.days} days</b> ${landing(t, x, nowMs)}`;
+  };
   const g = (name: string, x: Gate) =>
     `${name} ${fmtInt(x.have)}/${fmtInt(x.need)}` +
     (x.have >= x.need
@@ -348,8 +398,8 @@ export function renderYppShort(ypp: ReportFacts["ypp"], nowMs = Date.now()): str
         ? " (out of reach)"
         : ` (~${daysUntil(x.eta, nowMs)} d)`);
   return [
-    `${b("🎯 YPP")} · expanded tier ${when(e)} · full tier ${when(full).replace(/<\/?b>/g, "")}`,
-    `${g("Subscribers", p.subscribers)} at ${p.subscribers.ratePerDay.toFixed(1)}/day · ${g("watch hours", p.watchHours)}`,
+    `${b("🎯 YPP")} · expanded tier ${when(p)} · full tier ${when(p.tiers.full).replace(/<\/?b>/g, "")}`,
+    `${g("Subscribers", p.subscribers)} at ${p.subscribers.ratePerDay.toFixed(1)}/day over 28 days · ${g("watch hours", p.watchHours)}`,
   ].join("\n");
 }
 
@@ -359,7 +409,7 @@ export function renderYpp(ypp: ReportFacts["ypp"], nowMs = Date.now()): string {
   const p = ypp.data;
   return [
     `${b("🎯 YPP")} · expanded tier ${tierCountdown(p, nowMs)}`,
-    `<i>at ${p.subscribers.ratePerDay.toFixed(2)} subs/day · ${p.watchHours.ratePerDay.toFixed(1)} h/day · ${fmtInt(p.shortsViews.ratePerDay)} engaged Shorts views/day</i>`,
+    `<i>at ${p.subscribers.ratePerDay.toFixed(2)} subs/day over 28 days${p.subscribers.recent ? ` (${p.subscribers.recent.ratePerDay.toFixed(2)} in the last week)` : ""} · ${p.watchHours.ratePerDay.toFixed(1)} h/day · ${fmtInt(p.shortsViews.ratePerDay)} engaged Shorts views/day</i>`,
     "",
     "<b>Expanded tier</b> — 500 subs, 3 uploads in 90 days, and 3,000 h or 3M Shorts views",
     gateLine("subs", p.subscribers, nowMs),
