@@ -290,6 +290,15 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   `<mediaDir>/.suggest-cache.json`; bumping `CACHE_VERSION` re-fetches everything on the next
   scan (~340 MCSR API calls against 500/10 min). Scanned at boot, every `suggestCacheTtlMin`
   (30) for new matches, before the nightly picks, and fully on the `rescan` link.
+- **Favourite players come first** (`favouritePlayers`, Settings tab, default doogile, Feinberg,
+  Infume, Pinne, lowk3y_, silverrruns — edcr is the operator's call; `pairRepeatDays`, default 3,
+  0 = off). The suggestion order, for the list and the nightly alike (`orderForDisplay`,
+  `src/dashboard/suggestPresent.ts`; `take()` in `suggest.ts` applies the same factor when a scan
+  picks the cards): expiring → the rival's post → a match with a favourite before any without →
+  audience (popularity × (1 + 0.5 × favourites) × 0.5 when the same pair had a long-form on the
+  channel, or a render waiting for hooks, within `pairRepeatDays`) → bucket as a tiebreaker →
+  popularity. The pair snapshot (`pairPosts.ts`) refreshes in the background; the nightly waits
+  for it at most 15 s. The operator, 30 Sept 2026: "no name players no one will click on that".
 - **Rival posts** (`src/dashboard/rivalPosts.ts`): the competitor's (`rivalChannelHandle`, default
   `mcsrmatches`) last 50 uploads, matched to cards by nickname pair, date and run length (their
   video is the run plus a few seconds; a post of the wrong length is another match of the same
@@ -646,6 +655,12 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
   none of those were the channel's — genuinely uncertain, not counted as answered on a guess. Up
   to 8 shown, newest first, each with the exact-comment link (`&lc=<id>`) and the video's Studio
   comments page; the inbox link covers the rest.
+- **"Worth rendering today"** (`src/telegram/worth.ts`, in the day message and `/worth`): the
+  roster's (`favouritePlayers`) ranked matches of the last 3 days with both Twitch VODs, not on
+  disk or on the channel, scored by lead changes and the finish gap, at most five lines with the
+  match id in `<code>` (those ids are not in the rendered list, so no deep link). 6 list calls and
+  at most 8 match calls per gather, VOD listings only for empty slots, a 120 s deadline, cached
+  6 h in `.telegram.json`; `/worth` gathers fresh.
 - **`/health` pings agy for real** (a live `runReasoner` call, ~20 s timeout, not just the last
   pick's outcome) — the same headless-mode quirks the Short picker documents (reaching for a
   shell command Antigravity's sandbox denies) show up here too, and the report's fallback line is
