@@ -26,6 +26,7 @@ import { ANCHOR_SEC } from "./pipeline/kdenliveProject.js";
 import { frameMotion } from "./pipeline/countdownDetect.js";
 import { overlayPaths, readSplitStills, type SplitStill } from "./pipeline/overlayRender.js";
 import { runFastExport, vaapiAvailable } from "./pipeline/exportFast.js";
+import { readSyncOffsets, type SyncOffsets } from "./pipeline/syncFile.js";
 import { listProcessedMatchIds } from "./dashboard/matchStatus.js";
 import { getMatch } from "./api/mcsrApi.js";
 import { POV_WIDTH, STAGE_HEIGHT, STAGE_WIDTH, TOP_BAND_HEIGHT } from "../remotion/layout.js";
@@ -33,12 +34,13 @@ import { POV_WIDTH, STAGE_HEIGHT, STAGE_WIDTH, TOP_BAND_HEIGHT } from "../remoti
 const FPS = 60;
 /** Long enough to cover the intro (0-7s), the rest of the countdown, and gameplay past the anchor. */
 const RENDER_SEC = 14;
-/** Deep in the intro's 0.6s wipe-out, where the card is ~11% opaque over live gameplay: this far
- *  before the card on disk ends (config.introSec, 2-7 s), not a fixed 6.85 s past a short card. */
-const FADE_PROBE_BEFORE_END_SEC = 0.15;
-/** A point inside the left POV pane, below the top band. */
-const PROBE_X = 300;
-const PROBE_Y = 300;
+/** Where in the intro to look: this far before the card on disk ends (config.introSec, 2-7 s), not a
+ *  fixed 6.85 s past a short card. The versus screen's halves are parting there, so the card is solid
+ *  on the outside and see-through between at once; at a hold frame it is opaque and says nothing. */
+const EXIT_PROBE_BEFORE_END_SEC = 0.15;
+/** Mean error (0-255 per channel) under which the export is the card blended over the footage:
+ *  codec noise, 1.5-2.4 on eight real matches. The same export with the card painted opaque is 14-19 off. */
+const BLEND_ERR_MAX = 5;
 
 const skip = (why: string) => {
   console.log(`exportFrames: skipped — ${why}`);
@@ -47,8 +49,9 @@ const skip = (why: string) => {
 
 // Whichever match on this box has a rendered overlay and both POV clips, rather than a pinned
 // id: the fixtures are whatever the lab last rendered, and the desktop has none.
-// A ranked match that still has its own export first: a joined series' game 1 has a static
-// stream panel under the probe pixel, and the clips of older uploads get deleted to free disk.
+// A ranked match that still has its own export first: a playoff game's countdown is not frozen
+// (the player can look around) and a joined series' game 1 carries a static stream panel, and the
+// clips of older uploads get deleted to free disk.
 const processed = [...listProcessedMatchIds()].sort((a, b) => {
   const rank = (id: number) => {
     const dir = path.join(config.mediaDir, String(id));
@@ -61,6 +64,7 @@ const processed = [...listProcessedMatchIds()].sort((a, b) => {
 if (processed.length === 0) skip("no media at all (fixtures are 1.4 GB of VODs, not committed)");
 let outDir = "";
 let splits: SplitStill[] | null = null;
+let sync: SyncOffsets | null = null;
 let playerLeft: { nickname: string } | undefined;
 let playerRight: { nickname: string } | undefined;
 const clipFor = (nickname: string) => path.join(outDir, `${nickname}.mp4`);
@@ -68,6 +72,11 @@ for (const id of processed) {
   outDir = path.join(config.mediaDir, String(id));
   splits = await readSplitStills(outDir);
   if (splits === null) continue;
+  // Where match start falls in each clip is the countdown detector's reading, not a hand-set one
+  // or the download estimate: 2. below takes the export's placement for true, and a hand-set sync
+  // put one match's overlay timer 6.5 s behind the players' own (13672776).
+  sync = readSyncOffsets(outDir);
+  if (sync?.source !== "countdown") continue;
   const match = await getMatch(id).catch(() => null);
   if (match === null) skip("the MCSR API is unreachable, so the POV clips cannot be identified");
   [playerLeft, playerRight] = match!.players;
@@ -82,25 +91,43 @@ for (const id of processed) {
   }
   playerLeft = playerRight = undefined;
 }
-if (!playerLeft || !playerRight)
-  skip("no match has both a rendered overlay and both POV clips — run the pipeline for one first");
+if (!playerLeft || !playerRight || !sync)
+  skip(
+    "no match has a rendered overlay, a detected sync and both POV clips — run the pipeline for one first",
+  );
 const overlay = overlayPaths(outDir);
 
-/** Raw pixels of one frame at a timestamp, as RGB triples. */
-function framePixels(file: string, atSec: number, decoder?: string): Promise<Uint8Array> {
+/**
+ * Raw stage-sized frames of `file` from `atSec`, as many as `limit` (ffmpeg output options)
+ * lets through: RGB triples, or RGBA when the file's alpha plane is wanted. One frame per decoded
+ * frame, so a window of the 30 fps card is not padded to the timeline's 60.
+ */
+function stageFrames(
+  file: string,
+  atSec: number,
+  limit: string[],
+  opts: { alpha?: boolean; decoder?: string } = {},
+): Promise<Uint8Array[]> {
   return new Promise((resolve, reject) => {
     const args = ["-v", "error"];
-    if (decoder) args.push("-c:v", decoder);
-    args.push("-ss", String(atSec), "-i", file, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-");
+    if (opts.decoder) args.push("-c:v", opts.decoder);
+    args.push("-ss", String(atSec), "-i", file, ...limit, "-fps_mode", "passthrough");
+    args.push("-f", "rawvideo", "-pix_fmt", opts.alpha ? "rgba" : "rgb24", "-");
     const proc = spawn("ffmpeg", args, { stdio: ["ignore", "pipe", "pipe"] });
     const chunks: Buffer[] = [];
     let err = "";
     proc.stdout.on("data", (c: Buffer) => chunks.push(c));
     proc.stderr.on("data", (d: Buffer) => (err += d));
     proc.on("error", reject);
-    proc.on("close", (code) =>
-      code === 0 ? resolve(new Uint8Array(Buffer.concat(chunks))) : reject(new Error(err.slice(-300))),
-    );
+    proc.on("close", (code) => {
+      if (code !== 0) return reject(new Error(err.slice(-300)));
+      const buf = Buffer.concat(chunks);
+      const size = STAGE_WIDTH * STAGE_HEIGHT * (opts.alpha ? 4 : 3);
+      const frames: Uint8Array[] = [];
+      for (let i = 0; i + size <= buf.length; i += size)
+        frames.push(new Uint8Array(buf.subarray(i, i + size)));
+      resolve(frames);
+    });
   });
 }
 
@@ -181,19 +208,22 @@ try {
     probeDuration(clipFor(playerRight!.nickname)),
     probeDuration(overlay.intro),
   ]);
-  const FADE_PROBE_SEC = introDur - FADE_PROBE_BEFORE_END_SEC;
+  const probeSec = introDur - EXIT_PROBE_BEFORE_END_SEC;
 
+  // The clips are placed where the sync stage found match start, as `export:fast` places them: the
+  // download estimate (config.preRollSec) is seconds off a real match — 3 s on doogile vs BeefSalad,
+  // which starts one POV moving before the anchor and fails 2. below for nothing the export did.
   await runFastExport({
     leftClip: {
       path: clipFor(playerLeft!.nickname),
       durationSec: leftDur,
-      matchOffsetIntoClipSec: config.preRollSec,
+      matchOffsetIntoClipSec: sync!.left,
       clipName: "L",
     },
     rightClip: {
       path: clipFor(playerRight!.nickname),
       durationSec: rightDur,
-      matchOffsetIntoClipSec: config.preRollSec,
+      matchOffsetIntoClipSec: sync!.right,
       clipName: "R",
     },
     topPath: overlay.top,
@@ -209,22 +239,53 @@ try {
 
   // --- 1. The intro alpha-composites, rather than painting over the gameplay ------------------
   // THE regression. If alpha is dropped anywhere in the chain — MLT's qtblend, or ffmpeg's
-  // native vp9 decoder, both of which have done it — the composited pixel IS the card's own
-  // colour. Decoding the card with libvpx-vp9 is deliberate: the native decoder would report no
-  // alpha and make this test agree with a broken export.
-  const composited = await framePixels(out, FADE_PROBE_SEC);
-  const card = await framePixels(overlay.intro, FADE_PROBE_SEC, "libvpx-vp9");
-  const at = (px: Uint8Array, w: number) => {
-    const i = (PROBE_Y * w + PROBE_X) * 3;
-    return [px[i]!, px[i + 1]!, px[i + 2]!] as const;
-  };
-  const [cr, cg, cb] = at(composited, STAGE_WIDTH);
-  const [ir, ig, ib] = at(card, STAGE_WIDTH);
-  const delta = Math.max(Math.abs(cr - ir), Math.abs(cg - ig), Math.abs(cb - ib));
+  // native vp9 decoder, both of which have done it — the card is painted opaque: black between
+  // its halves, the VS at full strength, no gameplay. One frame of the card's exit is compared,
+  // all of it, with two models of what the export should show: the card blended over the footage
+  // by its own alpha, and the card painted opaque. Where the card is solid the two models are
+  // the same pixel, so a single pixel cannot tell them apart — and the one this test used to
+  // read sat inside the left half. Decoding the card with libvpx-vp9 is deliberate: the native
+  // decoder would report no alpha and make this test agree with a broken export. The footage
+  // under the card is the export once the card is gone: both POVs are frozen through the
+  // countdown (2. below).
+  const [composited] = await stageFrames(out, probeSec, ["-frames:v", "1"]);
+  const [footage] = await stageFrames(out, introDur + 0.2, ["-frames:v", "1"]);
+  // Which of the card's frames the 60 fps timeline shows at that instant is for the filter graph
+  // to say (the card has 30), and a neighbour is 100 px away: the one that fits best is the one.
+  const cards = await stageFrames(overlay.intro, probeSec - 0.15, ["-t", "0.2"], {
+    alpha: true,
+    decoder: "libvpx-vp9",
+  });
+  assert.ok(composited && footage && cards.length > 0, "could not read the frames to compare");
+  const channels = STAGE_WIDTH * STAGE_HEIGHT * 3;
+  let blended = Infinity;
+  let painted = 0;
+  for (const card of cards) {
+    let blend = 0;
+    let paint = 0;
+    for (let p = 0; p < STAGE_WIDTH * STAGE_HEIGHT; p++) {
+      const alpha = card[p * 4 + 3]! / 255;
+      for (let c = 0; c < 3; c++) {
+        const seen = composited[p * 3 + c]!;
+        const own = card[p * 4 + c]!;
+        blend += Math.abs(seen - (alpha * own + (1 - alpha) * footage[p * 3 + c]!));
+        paint += Math.abs(seen - own);
+      }
+    }
+    if (blend / channels < blended) [blended, painted] = [blend / channels, paint / channels];
+  }
+  const probeAt = `${probeSec.toFixed(2)} s`;
   assert.ok(
-    delta > 25,
-    `the intro is not being blended: composited (${cr},${cg},${cb}) is the card's own colour ` +
-      `(${ir},${ig},${ib}) — alpha was dropped somewhere in the chain`,
+    blended < BLEND_ERR_MAX,
+    `the intro is not being blended: at ${probeAt} the export is ${blended.toFixed(1)} off the card laid ` +
+      `over the footage and ${painted.toFixed(1)} off the card painted opaque — alpha was dropped ` +
+      `somewhere in the chain, or the card is missing or misplaced`,
+  );
+  assert.ok(
+    painted > 2 * BLEND_ERR_MAX,
+    `${probeAt} cannot tell a blended intro from an opaque one: painted opaque, the card would be only ` +
+      `${painted.toFixed(1)} off what the export shows. The card is solid there, or the footage under it ` +
+      `black — move EXIT_PROBE_BEFORE_END_SEC to where the card is part see-through`,
   );
 
   // --- 2. Both POVs are frozen through the countdown and move after it -----------------------
@@ -276,8 +337,8 @@ try {
   assert.ok(median(topMotion) < 1, `the top band is not static (${median(topMotion).toFixed(2)})`);
 
   console.log(
-    `exportFrames: intro blends (delta ${delta}), both POVs freeze then move at ${ANCHOR_SEC}s, ` +
-      `RTA runs only after it, top band static`,
+    `exportFrames: intro blends (${blended.toFixed(1)} off the blend, ${painted.toFixed(1)} off an opaque ` +
+      `card), both POVs freeze then move at ${ANCHOR_SEC}s, RTA runs only after it, top band static`,
   );
 } finally {
   await rm(dir, { recursive: true, force: true });
