@@ -57,6 +57,20 @@ export function aggregateWindows(
   >;
 }
 
+/** Subscribers gained minus lost, from one side of a window's summed metrics. */
+export const netSubscribers = (m: Record<string, number>): number =>
+  (m.subscribersGained ?? 0) - (m.subscribersLost ?? 0);
+
+/**
+ * Subscribers gained per 1,000 engaged views — what a view brought, whatever the traffic was. Weekly
+ * views rose 10x from late August to late September while gross subscribers rose 1.5x, and per
+ * 1,000 views they fell from 7.0 to 0.98 (post-mortem, 30 Sept 2026). Null with no engaged views.
+ */
+export const subsPer1kEngaged = (m: Record<string, number>): number | null => {
+  const engaged = m.engagedViews ?? 0;
+  return engaged > 0 ? ((m.subscribersGained ?? 0) / engaged) * 1000 : null;
+};
+
 /** The last (most recent) date in the rows, or null for an empty report — "data ends on …". */
 export function latestDate(rows: readonly DayRow[]): string | null {
   return rows.reduce(
