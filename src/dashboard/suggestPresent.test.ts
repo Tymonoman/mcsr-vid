@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { config } from "../config.js";
+import { config, DEFAULTS } from "../config.js";
 import type { MatchMetrics } from "../pipeline/matchScore.js";
+import { nightlyEligible, pickNightlyCandidate } from "./nightly.js";
 import { refreshPairPosts, type PairPost } from "./pairPosts.js";
 import { factsLine, orderForDisplay, presentSuggestions, storyLine } from "./suggestPresent.js";
 import type { Bucket, Suggestion, SuggestionPlayer } from "./suggest.js";
@@ -332,6 +333,44 @@ const order = (
     "a known card's low score does not cost it the top slot over an unknown card's high one",
   );
   console.log("OK: score never enters the cross-card order, only the known tier and the audience do");
+}
+
+// --- Three tiers (1 Oct 2026): a favourite, then a known player, then neither. A known player only
+// lifts a match above the no-names, and a draw nobody measured is a prior from the following, not 1.0.
+{
+  config.knownFollowerThreshold = DEFAULTS.knownFollowerThreshold;
+  const roster = ["doogile", "Feinberg", "Infume", "Pinne", "lowk3y_", "silverrruns"];
+  const fol = (nickname: string, followers: number | null) => player({ nickname, followers });
+
+  // hackingnoises (measured 2.08) is known, not a favourite: ten times the popularity stays below Pinne.
+  const fav = game(311, ["Pinne", "aaa"], 20);
+  const knownOnly = game(312, ["hackingnoises", "bbb"], 200);
+  assert.deepEqual(order([knownOnly, fav], roster), [311, 312], "a favourite before a known player");
+
+  // Both known, no favourite: hackingnoises + a stranger draw (2.08 + 0.5) / 2, a 30k grinder nobody
+  // measured + a stranger (0.75 + 0.5) / 2. At a neutral 1.0 the grinder's 18 would have won.
+  const measured = game(313, ["hackingnoises", "xxx"], 10);
+  const grinder = game(314, ["grinder30k", "yyy"], 18, {
+    profiles: [fol("grinder30k", 30_000), fol("yyy", null)],
+  });
+  assert.deepEqual(order([grinder, measured], []), [313, 314], "the unmeasured prior, not a neutral 1.0");
+
+  // The replay of 1 Oct: ninananina (6.6k, never measured) vs _Hypn0tic topped the list and was the
+  // nightly's pick. At 10,000 it is no-name, so its 185 cannot pass Aquacorde vs Feinberg's 60.
+  const nina = game(315, ["ninaStyle", "hypnoStyle"], 185, {
+    bucket: "chaos",
+    profiles: [fol("ninaStyle", 6_600), fol("hypnoStyle", 495)],
+  });
+  const aquaFein = game(316, ["Aquacorde", "Feinberg"], 60);
+  const picked = await pickNightlyCandidate(
+    orderForDisplay([nina, aquaFein], NOW, [], roster, []),
+    { processedIds: [], hiddenIds: new Set<number>(), freeMatches: 9 },
+    nightlyEligible([], async () => true),
+  );
+  assert.equal(picked?.metrics.matchId, 316, "the nightly renders the favourite card");
+  console.log(
+    "OK: a favourite, then a known player, then neither; the unmeasured prior; the nightly follows",
+  );
 }
 
 // --- One list across both buckets: the favourites' tier, then the audience; the bucket only breaks a tie --

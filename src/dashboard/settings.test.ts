@@ -162,7 +162,7 @@ console.log("settings: the allowlist holds and every kind coerces");
   console.log("settings: the pair-repeat window saves, applies live, and turns off at 0");
 
   // The known-opponent follower threshold: 1,000 until changed, live at once, bounded like any int.
-  assert.equal(config.knownFollowerThreshold, 1_000, "the default threshold is live before any save");
+  assert.equal(config.knownFollowerThreshold, 10_000, "the default threshold is live before any save");
   assert.deepEqual(saveSettings({ knownFollowerThreshold: "5000" }).changed, ["knownFollowerThreshold"]);
   assert.equal(config.knownFollowerThreshold, 5000);
   assert.equal(JSON.parse(readFileSync(CONFIG_PATH, "utf8")).knownFollowerThreshold, 5000);

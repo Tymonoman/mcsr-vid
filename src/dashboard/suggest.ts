@@ -90,9 +90,9 @@ export function favouriteTierFor(favourites: readonly string[]): (players: reado
 /**
  * How reliably a player's matches get watched, independent of `favouritePlayers` or Twitch follower
  * counts. Seeded once from `draw.json`'s n>=3 rows (1 Oct 2026, the operator's night goal: "the
- * suggestion system is shit it recommends and schedules matches that no one will watch"); 1.0 for
- * anyone never measured, which is neutral rather than a penalty. ponytail: a code constant, like
- * `FAVOURITE_BONUS` — refresh by hand if the roster's draw drifts, there is no job that re-seeds it.
+ * suggestion system is shit it recommends and schedules matches that no one will watch"); anyone
+ * never measured gets `UNMEASURED_DRAW` instead. ponytail: a code constant, like `FAVOURITE_BONUS` —
+ * refresh by hand if the roster's draw drifts, there is no job that re-seeds it.
  */
 export const DEFAULT_DRAW: Readonly<Record<string, number>> = {
   hackingnoises: 2.08,
@@ -116,12 +116,32 @@ export const DEFAULT_DRAW: Readonly<Record<string, number>> = {
   "7rowl": 0.2,
 };
 
-/** `draw(name)`: `DEFAULT_DRAW`'s entry, lowercased, or 1.0 (neutral) when never measured. */
-export const drawOf = (name: string): number => DEFAULT_DRAW[name.toLowerCase()] ?? 1.0;
+/**
+ * The draw of a player `DEFAULT_DRAW` never measured, by Twitch following, first band that fits. Not a
+ * neutral 1.0: that let an unmeasured grinder outrank Aquacorde (0.75) + Feinberg (1.09), and every
+ * sampled player under ~10k followers drew at or below the channel's median (draw.json, 1 Oct 2026).
+ * No follower data counts as 0.
+ */
+export const UNMEASURED_DRAW: readonly { minFollowers: number; draw: number }[] = [
+  { minFollowers: 50_000, draw: 1.0 },
+  { minFollowers: 10_000, draw: 0.75 },
+  { minFollowers: 0, draw: 0.5 },
+];
+
+/** `draw(name)`: `DEFAULT_DRAW`'s entry, lowercased, else `UNMEASURED_DRAW` by `followersOf`. */
+export function drawOf(name: string, followersOf: (name: string) => number | null): number {
+  const measured = DEFAULT_DRAW[name.toLowerCase()];
+  if (measured !== undefined) return measured;
+  const followers = followersOf(name) ?? 0;
+  return UNMEASURED_DRAW.find((band) => followers >= band.minFollowers)!.draw;
+}
 
 /** The audience term for a match: the simple average of each player's `drawOf`. */
-export function drawFactorFor(players: readonly [string, string]): number {
-  return (drawOf(players[0]) + drawOf(players[1])) / 2;
+export function drawFactorFor(
+  players: readonly [string, string],
+  followersOf: (name: string) => number | null,
+): number {
+  return (drawOf(players[0], followersOf) + drawOf(players[1], followersOf)) / 2;
 }
 
 /**
@@ -155,8 +175,8 @@ export function knownPlayerFor(
 /**
  * Whether a match has at least one player people know (`knownPlayerFor`): the known-tier, mirroring
  * `favouriteTierFor`'s shape (`favourite` is a subset of `known` — every favourite clears it through
- * the first branch). Used wherever a no-name match must sort, or render, behind one a viewer would
- * recognise: `take()` and `suggestPresent.ts` for the list, `nightly.ts` for the unattended pick.
+ * the first branch). The middle of `tierFor` for the list, and `nightly.ts`'s gate on the unattended
+ * pick.
  */
 export function knownTierFor(
   favourites: readonly string[],
@@ -165,6 +185,22 @@ export function knownTierFor(
 ): (players: readonly string[]) => boolean {
   const known = knownPlayerFor(favourites, followersOf, threshold);
   return (players) => players.some(known);
+}
+
+/**
+ * A match's tier, the first key of `take()` and the one after expiring and the rival's post in
+ * `presentSuggestions`: 2 with a favourite, 1 with a known player and no favourite (`knownTierFor`),
+ * 0 with neither. A favourite still outranks every match without one — the operator's call of 30 Sept
+ * 2026 — and a known player only lifts a match above the no-names (1 Oct 2026).
+ */
+export function tierFor(
+  favourites: readonly string[],
+  followersOf: (name: string) => number | null,
+  threshold: number,
+): (players: readonly string[]) => number {
+  const isFavourite = favouriteTierFor(favourites);
+  const isKnown = knownTierFor(favourites, followersOf, threshold);
+  return (players) => (isFavourite(players) ? 2 : isKnown(players) ? 1 : 0);
 }
 
 const NO_TWITCH_NOTE =
@@ -714,14 +750,12 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
       ? closenessScore(entry.metrics, suggestWeights, suggestFastRunTargetSec, suggestSlowRunCutoffSec)
       : chaosScore(entry.metrics, suggestWeights, suggestFastRunTargetSec, suggestSlowRunCutoffSec);
 
-  // The slots go to the matches with a known player first — a favourite, or a measured draw/follower
-  // count clearing `knownTierFor` — then to the best scores with a favourite's counted up, so such a
-  // match reaches the list; the `score` kept on the card stays the bucket's own, comparable with the
-  // rest of its bucket. No quality term here: Report 2 found match quality uncorrelated with views
-  // once players are controlled for, so chaos/closeness never decides which matches reach the list,
-  // only which slot inside it (`rank`, above).
+  // The slots go by `tierFor` — the matches with a favourite, then those with a known player, then
+  // the rest — and inside a tier to the best scores with a favourite's counted up, so such a match
+  // reaches the list; the `score` kept on the card stays the bucket's own, comparable with the rest
+  // of its bucket.
   const favoured = favouriteFactorFor(config.favouritePlayers);
-  const isKnown = knownTierFor(
+  const tier = tierFor(
     config.favouritePlayers,
     (name) => followers.get(name) ?? null,
     config.knownFollowerThreshold,
@@ -732,7 +766,7 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
       .map((entry) => ({ ...entry, bucket, score: rank(entry, bucket) }))
       .sort(
         (a, b) =>
-          Number(isKnown(b.metrics.players)) - Number(isKnown(a.metrics.players)) ||
+          tier(b.metrics.players) - tier(a.metrics.players) ||
           b.score * favoured(b.metrics.players) - a.score * favoured(a.metrics.players),
       )
       .slice(0, slots);

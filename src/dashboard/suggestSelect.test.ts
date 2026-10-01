@@ -6,17 +6,19 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { config } from "../config.js";
+import { config, DEFAULTS } from "../config.js";
 import { DEFAULT_WEIGHTS, type MatchMetrics } from "../pipeline/matchScore.js";
 import {
   DEFAULT_DRAW,
   dismissSuggestion,
   drawFactorFor,
+  drawOf,
   favouriteFactorFor,
   getSuggestions,
   KNOWN_DRAW_MIN,
   knownPlayerFor,
   knownTierFor,
+  tierFor,
 } from "./suggest.js";
 
 // --- The factor: half again per favourite, whole names, any case ----------------------------------
@@ -49,10 +51,29 @@ assert.equal(favouriteFactorFor([])(["doogile", "Feinberg"]), 1, "an empty list 
   const tier = knownTierFor([], noFollowers, 1_000);
   assert.equal(tier(["hackingnoises", "romuxii"]), true, "one known player is enough");
   assert.equal(tier(["romuxii", "nobody_ever_measured"]), false);
-  // drawFactorFor: the simple average, 1.0 (neutral) for anyone never measured.
-  assert.equal(drawFactorFor(["hackingnoises", "nobody_ever_measured"]), (2.08 + 1.0) / 2);
-  assert.equal(drawFactorFor(["a", "b"]), 1, "two unmeasured names average to neutral");
-  console.log("OK: knownPlayerFor/knownTierFor/drawFactorFor — a measured draw overrides followers");
+  // drawFactorFor: the simple average; a name never measured draws by its following (UNMEASURED_DRAW).
+  const fol = (n: number) => () => n;
+  assert.equal(drawFactorFor(["hackingnoises", "nobody_ever_measured"], noFollowers), (2.08 + 0.5) / 2);
+  assert.deepEqual(
+    [50_000, 49_999, 10_000, 9_999].map((n) => drawOf("nobody", fol(n))),
+    [1.0, 0.75, 0.75, 0.5],
+  );
+  assert.equal(drawOf("nobody", noFollowers), 0.5, "no follower data is the lowest band");
+  assert.equal(drawOf("Aquacorde", fol(1_000_000)), 0.75, "a measured draw keeps its value");
+  // At the default threshold a 6.6k following never measured is not known (ninananina, 1 Oct 2026).
+  assert.equal(DEFAULTS.knownFollowerThreshold, 10_000);
+  assert.equal(knownPlayerFor([], fol(6_600), DEFAULTS.knownFollowerThreshold)("ninananina"), false);
+  // tierFor: 2 with a favourite, 1 with a known player and no favourite, 0 with neither.
+  const tiers = tierFor(["Pinne"], noFollowers, DEFAULTS.knownFollowerThreshold);
+  assert.deepEqual(
+    [
+      ["Pinne", "aaa"],
+      ["hackingnoises", "aaa"],
+      ["aaa", "bbb"],
+    ].map(tiers),
+    [2, 1, 0],
+  );
+  console.log("OK: knownPlayerFor/knownTierFor/tierFor/drawOf — a measured draw overrides followers");
 }
 
 // --- The scan: no network, no Twitch; the pool is in the cache -----------------------------------
@@ -206,6 +227,25 @@ try {
   );
   config.suggestCloseSlots = 1;
   assert.deepEqual(await ids(["Pinne"]), [62], "and a single slot goes to the name");
+  // A favourite's match also takes the slot from a known player's with the better score
+  // (hackingnoises: measured 2.08, known, not a favourite).
+  const known = Object.fromEntries(
+    [pooled(62, ["Pinne", "someone"], 9_000), pooled(64, ["hackingnoises", "zzz"], 0)].map((entry) => [
+      String(entry.metrics.matchId),
+      entry,
+    ]),
+  );
+  await writeFile(
+    cachePath,
+    JSON.stringify({
+      ...JSON.parse(await readFile(cachePath, "utf8")),
+      dismissed: [],
+      pool: known,
+      scannedAt: 0,
+    }),
+    "utf8",
+  );
+  assert.deepEqual(await ids(["Pinne"]), [62], "a favourite before a known player with a better score");
   console.log("OK: a favourite's match is a tier above the no-name ones at the slots");
   console.log("suggestSelect: all checks passed");
 } finally {

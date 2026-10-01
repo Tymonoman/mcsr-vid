@@ -99,12 +99,15 @@ export interface Config {
    */
   pairRepeatDays: number;
   /**
-   * The Twitch follower count that makes an opponent off `favouritePlayers` "known" rather than a
-   * no-name — the other half of the tier `favouritePlayers` is the first half of: a match needs
-   * only *one* known player to rank above every match with none, in the suggestion list and the
-   * nightly's pick alike (`knownTierFor`, src/dashboard/suggest.ts). 1,000 is what
-   * `src/telegram/worth.ts` already used (Jabo_ 372, sub5average 31 followers — both short of it;
-   * the operator, 30 Sept 2026: "no name players no one will click on that").
+   * The Twitch follower count that makes a player off `favouritePlayers`, with no measured draw,
+   * "known" rather than a no-name: a match needs only *one* known player to rank above every match
+   * with none — below every match with a favourite — in the suggestion list and the nightly's pick
+   * alike (`tierFor`, src/dashboard/suggest.ts), and the nightly renders no match without one unless
+   * it was queued. 10,000: every sampled player under ~10k followers drew at or below the channel's
+   * median (draw.json, 1 Oct 2026), and on supply.json's 7 days the gate still left 100 matches,
+   * 8–23 a day — 1,000 let ninananina (6.6k), CxrtxR (4.5k) and grq_ (4.3k) fill the list (the
+   * operator, 1 Oct 2026: "the suggestion system is shit it recommends and schedules matches that no
+   * one will watch").
    */
   knownFollowerThreshold: number;
   /**
@@ -414,7 +417,7 @@ export const DEFAULTS: Config = {
   rivalChannelHandle: "mcsrmatches",
   favouritePlayers: ["doogile", "Feinberg", "Infume", "Pinne", "lowk3y_", "silverrruns"],
   pairRepeatDays: 3,
-  knownFollowerThreshold: 1_000,
+  knownFollowerThreshold: 10_000,
   supportUrl: "",
   pullSource: "",
   pullDest: "~/Replayoffs",

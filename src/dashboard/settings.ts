@@ -213,7 +213,7 @@ export const SETTINGS: readonly SettingField[] = [
   {
     key: "knownFollowerThreshold",
     label: "Known-opponent follower threshold",
-    help: "An opponent off the favourites list still ranks a match above the no-name ones once their Twitch following reaches this many: the other half of the favourites tier. 1,000 already clears Jabo_ (372) and sub5average (31).",
+    help: "A player off the favourites list with no measured draw ranks a match above the no-name ones (still below every favourite's) once their Twitch following reaches this many, and the nightly renders no unqueued match without such a player. Default 10,000: below it the sampled players drew at or below the channel's median.",
     kind: "int",
     group: "Suggestions",
     min: 0,

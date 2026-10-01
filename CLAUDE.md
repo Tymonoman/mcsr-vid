@@ -293,29 +293,25 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   own matches (`favouritePlayers`, one `getUserMatches` list each, ≤6 calls) are folded into the
   same candidates the feed scan finds, so a favourite too quiet to surface in the feed's own
   paging still gets a look (1 Oct 2026).
-- **Known players come first, not just favourites** (`knownTierFor`, `suggest.ts`, 1 Oct 2026 —
-  the operator: "the suggestion system is shit it recommends and schedules matches that no one
-  will watch"; `favouritePlayers`, Settings tab, default doogile, Feinberg, Infume, Pinne,
-  lowk3y_, silverrruns — edcr is the operator's call; `knownFollowerThreshold`, Settings tab,
-  default 1,000; `pairRepeatDays`, default 3, 0 = off). A player is known if they are a
-  favourite, **or** — when their matches have been measured three or more times
-  (`DEFAULT_DRAW` in `suggest.ts`, seeded once from `draw.json`, not refreshed) — their draw is
-  at or above `KNOWN_DRAW_MIN` (0.6): a measured draw is authoritative and skips the follower
-  check entirely, so it can promote a name Twitch has never resolved (hackingnoises, no cached
-  follower count) exactly as it can veto a well-followed one who does not actually convert
-  (romuxii: 1,962 followers, 0.43 draw — not known). Only a name never measured falls back to
-  `knownFollowerThreshold` Twitch followers. A match is known with **one** such player
-  (favourite ⊂ known). The suggestion order, for the list and the nightly alike
-  (`orderForDisplay`, `src/dashboard/suggestPresent.ts`; `take()` in `suggest.ts` applies the
-  same tier when a scan picks the cards, though its own within-tier ranking stays the bucket's
-  `score`, never audience): expiring → the rival's post → a known match before any without →
-  audience (popularity × (1 + 0.5 × favourites) × the two players' average measured draw (1.0 if
-  never measured) × 0.5 when the same pair had a long-form on the channel, or a render waiting
-  for hooks, within `pairRepeatDays`) → bucket as a tiebreaker → popularity. No quality term: a
-  match's chaos/closeness `score` never decides this order (Report 2, 1 Oct 2026, found match
-  quality uncorrelated with views once players are controlled for) — only which slot inside the
-  list a scan gives it. The pair snapshot (`pairPosts.ts`) refreshes in the background; the
-  nightly waits for it at most 15 s.
+- **Favourite players come first, then known ones** (`tierFor`, `suggest.ts`; `favouritePlayers`,
+  Settings tab, default doogile, Feinberg, Infume, Pinne, lowk3y_, silverrruns — edcr is the
+  operator's call; `knownFollowerThreshold`, default 10,000; `pairRepeatDays`, default 3, 0 = off).
+  The suggestion order, for the list and the nightly alike (`orderForDisplay`,
+  `src/dashboard/suggestPresent.ts`; `take()` in `suggest.ts` applies the same tier when a scan
+  picks the cards, then the bucket's score × the favourites' factor): expiring → the rival's post →
+  a match with a favourite → one with a known player → neither → audience (popularity × (1 + 0.5 ×
+  favourites) × the two players' average draw × 0.5 when the same pair had a long-form on the
+  channel, or a render waiting for hooks, within `pairRepeatDays`) → bucket as a tiebreaker →
+  popularity. Known: a favourite; else, when draw.json measured them 3+ times (`DEFAULT_DRAW`,
+  seeded once), a draw ≥ `KNOWN_DRAW_MIN` (0.6) — authoritative either way (hackingnoises, no
+  follower data: known; romuxii, 1,962 followers, 0.43: not); else that many Twitch followers. A
+  draw nobody measured is a prior from the following (`UNMEASURED_DRAW`: 50k+ 1.0, 10k+ 0.75,
+  else 0.5), never a neutral 1.0. No chaos/closeness term in the order: match quality is
+  uncorrelated with views once players are controlled for (1 Oct 2026). The pair snapshot
+  (`pairPosts.ts`) refreshes in the background; the nightly waits for it at most 15 s. The
+  operator, 30 Sept 2026: "no name players no one will click on that"; 1 Oct: "the suggestion
+  system is shit it recommends and schedules matches that no one will watch" — at 1,000 followers
+  ninananina (6.6k), CxrtxR and grq_ filled the list.
 - **Rival posts** (`src/dashboard/rivalPosts.ts`): the competitor's (`rivalChannelHandle`, default
   `mcsrmatches`) last 50 uploads, matched to cards by nickname pair, date and run length (their
   video is the run plus a few seconds; a post of the wrong length is another match of the same
@@ -525,7 +521,8 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   and through the same guards. The
   strip's `Run now` is the same path, as is a card's "Render + Short + MP4". Cards marked "not at night" (`nightlySkip`) are bypassed when picking candidates, and the strip's "Skip tonight" records `skipNightOf` in `.dashboard.json` to skip that night's scheduled run once and clear while `Run now` ignores it.
   **A candidate also needs a known player** (`nightlyEligible`, `isKnownPick`, 1 Oct 2026): unless
-  the operator queued it themself, a pick is skipped unless it clears `knownTierFor` — a playoff
+  the operator queued it themself, a pick is skipped unless a player is known (see Favourite
+  players; `knownTierFor`) — a playoff
   pick (`bucket: "playoffs"`) always counts, since the bracket's players are the season's top 16
   and their Twitch following is often unmeasured. Nothing eligible says so in the skip reason
   ("…or has no known player"). A queued id the latest scan trimmed off the ranked list is still

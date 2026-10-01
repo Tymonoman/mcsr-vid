@@ -14,7 +14,7 @@ import type { SplitGap } from "../pipeline/matchScore.js";
 import {
   drawFactorFor,
   favouriteFactorFor,
-  knownTierFor,
+  tierFor,
   POOL_MAX_AGE_DAYS,
   type Bucket,
   type HeadToHead,
@@ -134,21 +134,21 @@ const BUCKET_RANK: Record<Bucket, number> = { close: 0, chaos: 1 };
  * Cards in display order, one list across both buckets: a match whose VODs are about to die first,
  * because it is the only candidate that stops being renderable; a matchup the rival channel has
  * already posted after the fresh ones, because it would compete with the rival's own video for the
- * same browse session; and inside each of those a match with a known player (`knownTierFor`: a
- * favourite — `favourites`, nicknames, compared whole and ignoring case — or a player whose measured
- * draw or Twitch following clears the gate) above every match with none — no-name players are not
- * what gets clicked, and a bonus alone lost to their popularity. Inside a tier the biggest audience:
- * `popularity × favouriteFactor × drawFactor × repeatFactor` — counted up by `FAVOURITE_BONUS` for
- * each favourite playing, by each player's measured draw (`drawFactorFor`, 1 Oct 2026: match quality
- * does not predict views once players are controlled for, so there is no chaos/closeness term here),
- * and down by `REPEAT_FACTOR` for a pair the channel itself put out lately (`posted`: within
+ * same browse session; and inside each of those `tierFor`: a match with a favourite (`favourites`:
+ * nicknames, compared whole and ignoring case) above every match without one, then a match with a
+ * known player (a measured draw or a Twitch following that clears the gate) above the no-names — no-name
+ * players are not what gets clicked, and a bonus alone lost to their popularity. Inside a tier the
+ * biggest audience: `popularity × favouriteFactor × drawFactor × repeatFactor` — counted up by
+ * `FAVOURITE_BONUS` for each favourite playing, by the players' draw (`drawFactorFor`: the measured one,
+ * else a prior from their following; 1 Oct 2026: match quality does not predict views once players
+ * are controlled for, so there is no chaos/closeness term here), and down by `REPEAT_FACTOR` for a
+ * pair the channel itself put out lately (`posted`: within
  * `pairRepeatDays`, either side of now). The bucket only breaks a tie (`BUCKET_RANK`: close, then
  * chaos), and popularity the one after that. The audience decides, not the bucket: the one close race
- * of no names must not stay above a famous pair's chaos, or the nightly renders the first. With no
- * favourites, no measured draw and no follower data there is no tier and the audience is the
- * popularity. Everything here is read on every call and kept out of the scan's cache, so a change to
- * either setting re-orders the next read. (The known tier also counts when a scan chooses the slots,
- * `take` in suggest.ts: which matches are in the list follows at the next scan.)
+ * of no names must not stay above a famous pair's chaos, or the nightly renders the first. Everything
+ * here is read on every call and kept out of the scan's cache, so a change to either setting re-orders
+ * the next read. (The tier also counts when a scan chooses the slots, `take` in suggest.ts: which
+ * matches are in the list follows at the next scan.)
  */
 export function presentSuggestions(
   suggestions: readonly Suggestion[],
@@ -165,22 +165,19 @@ export function presentSuggestions(
   const followersByName = new Map<string, number | null>();
   for (const s of suggestions)
     for (const p of s.profiles) followersByName.set(p.nickname.toLowerCase(), p.followers);
-  const isKnown = knownTierFor(
-    favourites,
-    (name) => followersByName.get(name.toLowerCase()) ?? null,
-    knownFollowerThreshold,
-  );
+  const followersOf = (name: string) => followersByName.get(name.toLowerCase()) ?? null;
+  const tier = tierFor(favourites, followersOf, knownFollowerThreshold);
   const repeats = new Set(posted.map((post) => pairKey(post.players)));
   const audience = (c: SuggestionCard): number =>
     c.popularity *
     favoured(c.players) *
-    drawFactorFor(c.players) *
+    drawFactorFor(c.players, followersOf) *
     (repeats.has(pairKey(c.players)) ? REPEAT_FACTOR : 1);
   return cards.sort(
     (x, y) =>
       Number(y.expiring) - Number(x.expiring) ||
       Number(x.rivalPosted !== null) - Number(y.rivalPosted !== null) ||
-      Number(isKnown(y.players)) - Number(isKnown(x.players)) ||
+      tier(y.players) - tier(x.players) ||
       audience(y) - audience(x) ||
       BUCKET_RANK[x.bucket] - BUCKET_RANK[y.bucket] ||
       y.popularity - x.popularity,
