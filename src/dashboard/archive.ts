@@ -12,12 +12,48 @@ import { existsSync } from "node:fs";
 import { statfs } from "node:fs/promises";
 import path from "node:path";
 import { config } from "../config.js";
+import { warsawParts } from "../telegram/schedule.js";
 
 /** Where the NAS is mounted inside the container. See compose.yaml. */
 const ARCHIVE_ROOT = process.env.MCSR_ARCHIVE_DIR ?? "/archive";
 
+/**
+ * NAS transfers run only in this Warsaw wall-clock window — the disks are audible in the
+ * operator's home at night (the operator, 1 Oct 2026: "make the transfers to the nas only after
+ * 3am as it's a bit loud"). DST-correct via `warsawParts` (src/telegram/schedule.ts).
+ */
+const NAS_WINDOW_START_H = 3;
+const NAS_WINDOW_END_H = 8;
+
+export function inNasWindow(nowMs: number = Date.now()): boolean {
+  const { h } = warsawParts(nowMs);
+  return h >= NAS_WINDOW_START_H && h < NAS_WINDOW_END_H;
+}
+
+/**
+ * Cached in memory, never a TTL: true is permanent (an archive is never deleted, so a stat that
+ * found one stays valid forever); a cached false is refreshed only by `archiveMatch` itself on a
+ * successful copy, or by `refreshArchived` (the nightly sweep's ground-truth read, which must
+ * notice a copy made outside this process rather than trust a memoized false forever). A polled
+ * GET must never reach the CIFS mount on every request, so `isArchived` alone never re-stats.
+ */
+const archivedCache = new Map<number, boolean>();
+
+function readArchived(matchId: number): boolean {
+  const fresh = existsSync(path.join(ARCHIVE_ROOT, String(matchId)));
+  archivedCache.set(matchId, fresh);
+  return fresh;
+}
+
 /** True when a copy of this match is on the NAS, i.e. a delete of it would be recoverable. */
-export const isArchived = (matchId: number): boolean => existsSync(path.join(ARCHIVE_ROOT, String(matchId)));
+export function isArchived(matchId: number): boolean {
+  return archivedCache.get(matchId) ?? readArchived(matchId);
+}
+
+/** Bypasses the cache — only the nightly sweep should need to, to decide what still needs a copy. */
+export function refreshArchived(matchId: number): boolean {
+  return readArchived(matchId);
+}
 
 export interface ArchiveState {
   matchId: number;
@@ -45,8 +81,12 @@ let queue: Promise<unknown> = Promise.resolve();
  * rsync rather than cp: the NAS is a CIFS mount that can return an I/O error mid-write, and
  * rsync resumes instead of leaving a truncated file behind. Fire-and-forget: a match over the
  * CIFS mount takes minutes, which an upload response should not wait on.
+ *
+ * `now` is threaded through to the eventual spawn (not just checked here) so a queue backed up
+ * past the quiet window's end re-checks the clock on every item's turn, not just at the moment
+ * it was queued — see `copyToArchive`. Defaults to the real clock; only tests override it.
  */
-export function archiveMatch(matchId: number): ArchiveState {
+export function archiveMatch(matchId: number, now: () => number = Date.now): ArchiveState {
   const existing = states.get(matchId);
   if (existing?.running) return existing;
   // Already backed up: nothing to do. Here rather than at each caller because every one of them
@@ -57,17 +97,33 @@ export function archiveMatch(matchId: number): ArchiveState {
   // ponytail: existence, not completeness — an rsync that died half way leaves a directory that
   // reads as archived. Remove `<ARCHIVE_ROOT>/<id>` to force a fresh copy.
   if (isArchived(matchId)) return existing ?? { matchId, running: false, error: null, tookMs: null };
+  // Outside 03:00-08:00 Warsaw: do nothing but say so. An automatic call (after an upload, any
+  // hour) must not queue or touch the mount; the nightly sweep only calls this from inside the
+  // window in the first place (src/dashboard/nightly.ts), so this mainly catches the former.
+  if (!inNasWindow(now())) {
+    console.error(`archive of #${matchId} deferred to the 03:00 Warsaw window`);
+    return existing ?? { matchId, running: false, error: null, tookMs: null };
+  }
 
   const state: ArchiveState = { matchId, running: true, error: null, tookMs: null };
   states.set(matchId, state);
-  queue = queue.then(() => copyToArchive(state));
+  queue = queue.then(() => copyToArchive(state, now));
   return state;
 }
 
 /** Resolves when this match's rsync has finished, however it finished — the queue's turnstile. */
-function copyToArchive(state: ArchiveState): Promise<void> {
+function copyToArchive(state: ArchiveState, now: () => number): Promise<void> {
   return new Promise((resolve) => {
     const { matchId } = state;
+    // Re-checked here, not just in archiveMatch: a sweep can queue far more than one window can
+    // carry, and the match behind the one currently copying must stop and wait for tomorrow's
+    // sweep rather than start a fresh rsync past 08:00.
+    if (!inNasWindow(now())) {
+      state.running = false;
+      console.error(`archive of #${matchId} deferred to the 03:00 Warsaw window`);
+      resolve();
+      return;
+    }
     const startedAt = Date.now();
     const src = `${path.resolve(config.mediaDir, String(matchId))}/`;
     const dest = `${path.join(ARCHIVE_ROOT, String(matchId))}/`;
@@ -86,6 +142,7 @@ function copyToArchive(state: ArchiveState): Promise<void> {
       state.running = false;
       state.tookMs = Date.now() - startedAt;
       if (code !== 0) state.error = stderr.trim().split("\n").slice(-1)[0] || `rsync exited ${code}`;
+      else archivedCache.set(matchId, true); // known good without another stat.
       console.error(
         state.error
           ? `archive ${matchId}: FAILED — ${state.error}`
@@ -132,8 +189,21 @@ async function capacityOf(target: string): Promise<Capacity | null> {
   }
 }
 
-/** Both tiers, because archiving fills the NAS but never drains the SSD. */
-export async function capacity(): Promise<{ working: Capacity | null; archive: Capacity | null }> {
-  const [working, archive] = await Promise.all([capacityOf(config.mediaDir), capacityOf(ARCHIVE_ROOT)]);
-  return { working, archive };
+const ARCHIVE_CAPACITY_TTL_MS = 30 * 60 * 1000;
+let archiveCapacityCache: { atMs: number; value: Capacity | null } | null = null;
+
+/**
+ * Both tiers, because archiving fills the NAS but never drains the SSD. The working tier (the
+ * SSD `/media` is on) is always a fresh statfs. The archive tier is a CIFS statfs across the
+ * same mount the quiet window protects, and this is polled on every GET /api/nightly and
+ * /api/capacity, so it is cached for 30 minutes rather than read on every request.
+ */
+export async function capacity(
+  nowMs: number = Date.now(),
+): Promise<{ working: Capacity | null; archive: Capacity | null }> {
+  const workingP = capacityOf(config.mediaDir);
+  if (!archiveCapacityCache || nowMs - archiveCapacityCache.atMs >= ARCHIVE_CAPACITY_TTL_MS) {
+    archiveCapacityCache = { atMs: nowMs, value: await capacityOf(ARCHIVE_ROOT) };
+  }
+  return { working: await workingP, archive: archiveCapacityCache.value };
 }

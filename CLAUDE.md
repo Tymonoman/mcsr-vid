@@ -433,7 +433,9 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   A matchup playlist is created on a pair's *second* video, with the first added alongside
   (22 of 28 playlists held one video on 22 Sept 2026). The Season 11 playoffs playlist exists
   (`PLBtNy46ii7uU`). A Short's description gains "the whole match: https://youtu.be/<id>" at
-  upload time, once the long-form's id is in `youtube.json`.
+  upload time, once the long-form's id is in `youtube.json`. A published long-form also queues an
+  NAS copy (`archiveMatch`, same for a Studio upload the channel scan records), which now only
+  actually runs 03:00–08:00 Warsaw (see The NAS).
   **YouTube caps `playlists.insert` at about a dozen per rolling 24 h** (429 RATE_LIMIT_EXCEEDED;
   measured 15–16 Sept 2026): the step records the refusal in the ledger and the nightly's tick
   presses again (`retryFailedPlaylists`), so a cap line in the panel needs no press from anyone.
@@ -597,7 +599,13 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
 - **The NAS** (`//192.168.0.240/homelab`, CIFS, ~33 MB/s; 562 GB free on 1 Oct 2026): `/archive` is
   `tymek/mcsr-archive`, where `src/dashboard/archive.ts` copies published matches (a delete there
   is recoverable, `isArchived`); `/home-media` is the whole share (the operator's movies, music,
-  backups — never touch them). `/home-media/mcsr-replayoffs/` is the pipeline's own NAS folder (the
+  backups — never touch them). **Transfers run only 03:00–08:00 Warsaw** (`inNasWindow`,
+  DST-correct; the operator, 1 Oct 2026: "make the transfers to the nas only after 3am as it's a
+  bit loud" — the disks are audible in the house): an automatic copy asked for outside it defers
+  with one log line, a long queue stops when the window closes and the rest waits for the next
+  night's sweep (`sweepArchive` in `src/dashboard/nightly.ts`, run before the render, for every
+  upload the NAS does not have yet), and `isArchived` / the archive tier of `capacity()` are
+  cached in memory so a polled GET never reaches the mount itself. `/home-media/mcsr-replayoffs/` is the pipeline's own NAS folder (the
   operator, 1 Oct: "create a directory there and use the space responsibly"): `vods/<id>/` holds
   known-player matches' VOD sections secured before Twitch's 14-day expiry (copy the folder to
   `/media/<id>/` to render one), `research/` the datasets behind reports, `backups/` anything

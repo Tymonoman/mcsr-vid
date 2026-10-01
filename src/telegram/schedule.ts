@@ -3,8 +3,12 @@
  * via `Intl`, never a fixed UTC offset: CEST (UTC+2) now, CET (UTC+1) from late October.
  */
 
-/** The Warsaw wall-clock date and time (24h) at a UTC instant, from `Intl` — never a fixed offset. */
-function warsawParts(ms: number): { y: number; mo: number; d: number; h: number; mi: number } {
+/**
+ * The Warsaw wall-clock date and time (24h) at a UTC instant, from `Intl` — never a fixed offset.
+ * Exported for anything that needs one piece of Warsaw wall-clock time rather than a whole
+ * schedule — the NAS quiet window (`inNasWindow`, src/dashboard/archive.ts) reads `.h`.
+ */
+export function warsawParts(ms: number): { y: number; mo: number; d: number; h: number; mi: number } {
   const fmt = new Intl.DateTimeFormat("en-US", {
     timeZone: "Europe/Warsaw",
     year: "numeric",
