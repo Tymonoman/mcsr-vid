@@ -76,6 +76,38 @@ assert.throws(() => validateOverrides({ introSec: 1 }), /introSec/);
 assert.throws(() => validateOverrides({ introSec: 8 }), /introSec/);
 assert.throws(() => validateOverrides({ introSec: "3" }), /introSec/);
 assert.throws(() => validateOverrides({ introSec: null }), /introSec/);
+// The favourite players: the roster by default, [] is "no bonus", and the generic typeof check (an
+// array default accepts any object) must not let null, a string or a blank name through.
+// edcr is not on it: whether he is, is the operator's call, made in the Settings tab.
+assert.deepEqual(DEFAULTS.favouritePlayers, [
+  "doogile",
+  "Feinberg",
+  "Infume",
+  "Pinne",
+  "lowk3y_",
+  "silverrruns",
+]);
+assert.doesNotThrow(() => validateOverrides({ favouritePlayers: [] }));
+assert.doesNotThrow(() => validateOverrides({ favouritePlayers: ["edcr", "Feinberg"] }));
+assert.throws(() => validateOverrides({ favouritePlayers: null }), /favouritePlayers/);
+assert.throws(() => validateOverrides({ favouritePlayers: "edcr, doogile" }), /favouritePlayers/);
+assert.throws(() => validateOverrides({ favouritePlayers: { edcr: true } }), /favouritePlayers/);
+assert.throws(() => validateOverrides({ favouritePlayers: ["edcr", 7] }), /favouritePlayers/);
+assert.throws(() => validateOverrides({ favouritePlayers: ["edcr", "  "] }), /favouritePlayers/);
+// The pair-repeat window: 3 days by default, whole days 0-30, 0 is off (seriesPairGapDays' own rule).
+assert.equal(DEFAULTS.pairRepeatDays, 3);
+assert.doesNotThrow(() => validateOverrides({ pairRepeatDays: 0 }));
+assert.doesNotThrow(() => validateOverrides({ pairRepeatDays: 30 }));
+assert.throws(() => validateOverrides({ pairRepeatDays: 31 }), /pairRepeatDays.*0-30/);
+assert.throws(() => validateOverrides({ pairRepeatDays: -1 }), /pairRepeatDays/);
+assert.throws(() => validateOverrides({ pairRepeatDays: 2.5 }), /pairRepeatDays/);
+assert.throws(() => validateOverrides({ pairRepeatDays: "3" }), /pairRepeatDays/);
+assert.throws(() => validateOverrides({ pairRepeatDays: null }), /pairRepeatDays/);
+assert.throws(
+  () => validateOverrides({ seriesPairGapDays: 31 }),
+  /seriesPairGapDays.*0-30/,
+  "it shares the rule",
+);
 
 // The subscribe cards' reason: one row of the meta column, or empty for the bare card. A second
 // row would push the post-roll card's last line out of its plate, so the limit is refused at load.

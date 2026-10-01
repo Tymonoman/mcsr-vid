@@ -258,8 +258,9 @@
 .sugg .who {
   font-weight: 700;
 }
-/* Two buckets ranked separately so a run of very tight matches cannot crowd out the funny
-   ones -- the colours keep that split visible rather than implying one ordering. */
+/* Two buckets pick their cards separately, each with its own slots and score, so a run of very tight
+   matches cannot crowd out the funny ones. The list itself is one ordering across both (favourites'
+   matches first, then the audience); the chip only says which bucket a card came from. */
 .bucket {
   font-size: 10px;
   letter-spacing: 1px;

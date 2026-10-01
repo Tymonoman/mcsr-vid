@@ -61,6 +61,22 @@ assert.deepEqual(coerce(field("reasonerCommand"), "   "), { value: null });
 assert.deepEqual(coerce(field("ctaReason"), "  EVERY SINGLE DAY "), { value: "EVERY SINGLE DAY" });
 assert.deepEqual(coerce(field("ctaReason"), ""), { value: "" });
 
+// The favourite players are a comma-separated list, and empty is the empty list — "no bonus" — not
+// null and not an error, so clearing the box is a way to switch the bonus off.
+assert.deepEqual(coerce(field("favouritePlayers"), "doogile, Feinberg ,edcr"), {
+  value: ["doogile", "Feinberg", "edcr"],
+});
+assert.deepEqual(coerce(field("favouritePlayers"), ""), { value: [] });
+assert.deepEqual(coerce(field("favouritePlayers"), " , ,"), { value: [] }, "stray commas name nobody");
+assert.ok(field("favouritePlayers").unattended, "it changes the nightly's pick, and the panel says so");
+
+// The pair-repeat window is whole days 0-30, and 0 is off, not an error and not an empty box.
+assert.deepEqual(coerce(field("pairRepeatDays"), "0"), { value: 0 });
+assert.deepEqual(coerce(field("pairRepeatDays"), "7"), { value: 7 });
+assert.match(errorOf(coerce(field("pairRepeatDays"), "31")), /between 0 and 30/);
+assert.match(errorOf(coerce(field("pairRepeatDays"), "")), /cannot be empty/);
+assert.ok(field("pairRepeatDays").unattended, "it changes the nightly's pick too");
+
 console.log("settings: the allowlist holds and every kind coerces");
 
 // --- Writing: the file the loader reads ---------------------------------------------------------
@@ -113,6 +129,37 @@ console.log("settings: the allowlist holds and every kind coerces");
   assert.deepEqual(saveSettings({ ctaReason: "" }).changed, ["ctaReason"]);
   assert.equal(config.ctaReason, "", "empty is the bare SUBSCRIBE card, not null");
   console.log("settings: the subscribe card's reason saves, is held to one row, and can be emptied");
+
+  // The favourite players: the roster until the panel says otherwise, then live at once — the
+  // suggestion list and the nightly read `config` on every call, so nothing rescans or restarts.
+  assert.ok(config.favouritePlayers.includes("doogile"), "the default roster is live before any save");
+  assert.deepEqual(saveSettings({ favouritePlayers: "edcr, Feinberg" }).changed, ["favouritePlayers"]);
+  assert.deepEqual(config.favouritePlayers, ["edcr", "Feinberg"]);
+  assert.deepEqual(JSON.parse(readFileSync(CONFIG_PATH, "utf8")).favouritePlayers, ["edcr", "Feinberg"]);
+  assert.deepEqual(saveSettings({ favouritePlayers: "edcr,Feinberg" }).changed, [], "same list, no change");
+  assert.deepEqual(settingsPayload().fields.find((f) => f.key === "favouritePlayers")?.value, [
+    "edcr",
+    "Feinberg",
+  ]);
+  // Emptied, it is written as [] — an explicit "none" that beats the default roster on the next boot.
+  assert.deepEqual(saveSettings({ favouritePlayers: "" }).changed, ["favouritePlayers"]);
+  assert.deepEqual(config.favouritePlayers, []);
+  assert.deepEqual(JSON.parse(readFileSync(CONFIG_PATH, "utf8")).favouritePlayers, []);
+
+  console.log("settings: the favourite players save, apply live, and clear to none");
+
+  // The pair-repeat window: 3 until changed, live at once like the list, and a bad one writes nothing.
+  assert.equal(config.pairRepeatDays, 3, "the default window is live before any save");
+  assert.deepEqual(saveSettings({ pairRepeatDays: "5" }).changed, ["pairRepeatDays"]);
+  assert.equal(config.pairRepeatDays, 5);
+  assert.equal(JSON.parse(readFileSync(CONFIG_PATH, "utf8")).pairRepeatDays, 5);
+  const kept = readFileSync(CONFIG_PATH, "utf8");
+  assert.throws(() => saveSettings({ pairRepeatDays: "31" }), /between 0 and 30/);
+  assert.equal(readFileSync(CONFIG_PATH, "utf8"), kept, "a refused save writes nothing at all");
+  assert.deepEqual(saveSettings({ pairRepeatDays: "0" }).changed, ["pairRepeatDays"]);
+  assert.equal(config.pairRepeatDays, 0, "0 is off, and it is a value, not a missing one");
+
+  console.log("settings: the pair-repeat window saves, applies live, and turns off at 0");
 }
 
 process.chdir(cwd);

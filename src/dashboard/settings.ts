@@ -19,7 +19,7 @@ import { config, CONFIG_PATH, CTA_REASON_MAX_CHARS, validateOverrides, type Conf
 /** `Config` has no index signature; this is the one place that reaches it by key. */
 const live = config as unknown as Record<string, unknown>;
 
-export type SettingKind = "boolean" | "int" | "hour" | "text" | "words";
+export type SettingKind = "boolean" | "int" | "hour" | "text" | "words" | "list";
 
 export interface SettingField {
   key: keyof Config;
@@ -193,6 +193,24 @@ export const SETTINGS: readonly SettingField[] = [
     group: "Suggestions",
   },
   {
+    key: "favouritePlayers",
+    label: "Favourite players",
+    help: "MCSR nicknames separated by commas (Pinne is Skycrab, lowk3y_ is lowkey); case is ignored, spelling is not. The list sorts across the close and chaos cards, and a match with one of these players always comes before one with none, however popular that one is; among matches with a favourite, one counts half again as popular, two twice. The order changes at once and is what the nightly's first pick follows; which matches reach the list changes at the next scan (every 30 minutes or the rescan link), which gives its slots to such matches first. A match about to expire still comes first and one the rival already posted still comes last. Empty means no tier and no bonus: popularity across both buckets.",
+    kind: "list",
+    group: "Suggestions",
+    unattended: true,
+  },
+  {
+    key: "pairRepeatDays",
+    label: "Days before a pair repeats",
+    help: "A match whose two players this channel already put out a video for (public, scheduled, or rendered and still waiting for its hooks) within this many days either side of now counts for half in the list and in the nightly's first pick, so another pair goes first — among matches of the same kind: a repeated favourite pair still comes before a no-name one. Never skipped: a rematch still renders when nothing else qualifies. 0 is off. Applies on the next read.",
+    kind: "int",
+    group: "Suggestions",
+    min: 0,
+    max: 30,
+    unattended: true,
+  },
+  {
     key: "suggestCacheTtlMin",
     label: "Rescan every (min)",
     help: "How often the suggestion scan looks for new matches. Each full scan is ~340 MCSR API calls against a 500-per-10-minutes budget.",
@@ -278,6 +296,8 @@ export function coerce(field: SettingField, raw: unknown): { value: unknown } | 
   const text = typeof raw === "string" ? raw.trim() : raw === null ? "" : String(raw);
   if (field.kind === "text") return { value: text };
   if (field.kind === "words") return { value: text === "" ? null : text.split(/\s+/) };
+  // Empty is the empty list, not null: "none" is a value the loader accepts, and it replaces a default.
+  if (field.kind === "list") return { value: text.split(/\s*,\s*/).filter(Boolean) };
   if (text === "") {
     if (field.nullable) return { value: null };
     return { error: `${field.label}: cannot be empty` };

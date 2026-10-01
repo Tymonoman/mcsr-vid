@@ -3327,6 +3327,7 @@ async function loadSettings() {
 function settingValue(f) {
   if (f.kind === "boolean") return !!f.value;
   if (f.kind === "words") return Array.isArray(f.value) ? f.value.join(" ") : "";
+  if (f.kind === "list") return Array.isArray(f.value) ? f.value.join(", ") : "";
   return f.value === null || f.value === undefined ? "" : String(f.value);
 }
 
@@ -3405,6 +3406,9 @@ async function saveSettingsPanel() {
     settingsData = r;
     paintSettings();
     $("#setmsg").textContent = `saved ${r.changed.join(", ")}`;
+    // Both re-order the list, and its order is read fresh on every GET: the new order is one fetch away.
+    if (r.changed.some((key) => key === "favouritePlayers" || key === "pairRepeatDays"))
+      pollSuggestions().catch(() => {});
   } catch (e) {
     msg.textContent = "";
     failAt("#setsave", "Settings not saved", e.message);

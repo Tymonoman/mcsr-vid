@@ -76,6 +76,28 @@ export interface Config {
    */
   rivalChannelHandle: string;
   /**
+   * Players whose matches the suggestion list and the nightly rank first (30 Sept 2026 plan:
+   * recognisable names are what converts subscribers). API spellings, compared whole and ignoring
+   * case — Pinne is Skycrab, lowk3y_ is lowkey. A match with one of them ranks above every match with
+   * none, both when a scan chooses the slots (`take`, src/dashboard/suggest.ts, so its match reaches
+   * the list — at the next scan) and when the cards are ordered, close and chaos together, the bucket
+   * only a tiebreaker (`presentSuggestions`, read fresh, so a change re-orders at once). Inside that
+   * tier a match counts half again for one of them and twice for two. The cached `score` stays the
+   * bucket's own. Empty = no tier and no bonus; the default list changes which card the nightly takes
+   * first.
+   */
+  favouritePlayers: string[];
+  /**
+   * Whole days, 0-30 (0 is off): a match whose two players this channel already put out a
+   * long-form video for — public, scheduled, or rendered and waiting for its hooks — within this many
+   * days of now counts for half when the suggestion list is ordered (`presentSuggestions`,
+   * src/dashboard/pairPosts.ts). A demotion,
+   * not a skip: a marquee rematch still renders when nothing else qualifies. Feinberg vs Infume
+   * went up on 24, 27 and 29 Sept 2026, and a pair that brings a new runner's audience converts
+   * better than a repeat (30 Sept 2026 plan). The default changes which card the nightly takes first.
+   */
+  pairRepeatDays: number;
+  /**
    * A tip-jar URL (Ko-fi, PayPal.me) for the description's "Tip jar" line. The
    * audit named it the one revenue stream not gated at 41 subscribers, and the active
    * competitor runs a PayPal.me link in every description. Empty: no line.
@@ -380,6 +402,8 @@ export const DEFAULTS: Config = {
   youtubePlaylistTitle: "MCSR Ranked matches",
   youtubePlaylistUrl: "",
   rivalChannelHandle: "mcsrmatches",
+  favouritePlayers: ["doogile", "Feinberg", "Infume", "Pinne", "lowk3y_", "silverrruns"],
+  pairRepeatDays: 3,
   supportUrl: "",
   pullSource: "",
   pullDest: "~/Replayoffs",
@@ -517,6 +541,14 @@ export function validateOverrides(raw: Record<string, unknown>): void {
         throw new Error(`${CONFIG_PATH}: "titleNames" must map nicknames to the names the title shows.`);
       continue;
     }
+    // Its default is an array too, so the typeof check below would pass `null`, `{}` and `[1]`; an
+    // empty list is fine (no bonus), a blank name is a typo that would never match anyone.
+    if (key === "favouritePlayers") {
+      if (!Array.isArray(value) || !value.every((n) => typeof n === "string" && n.trim() !== "")) {
+        throw new Error(`${CONFIG_PATH}: "favouritePlayers" must be an array of nicknames ([] for none).`);
+      }
+      continue;
+    }
     if (key === "playoffThumbnailStyle") {
       if (value !== "plain" && value !== "bracket" && value !== "trophy") {
         throw new Error(`${CONFIG_PATH}: "playoffThumbnailStyle" must be "plain", "bracket" or "trophy".`);
@@ -574,9 +606,9 @@ export function validateOverrides(raw: Record<string, unknown>): void {
       continue;
     }
     // A fraction or a negative would silently read as its floor or as "off".
-    if (key === "seriesPairGapDays") {
+    if (key === "seriesPairGapDays" || key === "pairRepeatDays") {
       if (!Number.isInteger(value) || (value as number) < 0 || (value as number) > 30) {
-        throw new Error(`${CONFIG_PATH}: "seriesPairGapDays" must be whole days 0-30 (0 is off).`);
+        throw new Error(`${CONFIG_PATH}: "${key}" must be whole days 0-30 (0 is off).`);
       }
       continue;
     }

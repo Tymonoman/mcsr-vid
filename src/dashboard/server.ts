@@ -43,6 +43,7 @@ import { playerDms } from "./playerDm.js";
 import { playoffBoard } from "../playoffs/playoffs.js";
 import { renderSeries, seriesState, type SeriesRunners } from "../playoffs/series.js";
 import { refreshRivalPostsIfStale, rivalPostsSnapshot, rivalRecentPostFor } from "./rivalPosts.js";
+import { refreshPairPosts } from "./pairPosts.js";
 import { chooseVariant, readManifest } from "../thumbnails/thumbnailVariants.js";
 import { metaPaths } from "../pipeline/title.js";
 import { typedSpoiler } from "../pipeline/hooks.js";
@@ -376,8 +377,10 @@ const server = createServer(async (req, res) => {
 
     if (resource === "suggestions" && idRaw === undefined && req.method === "GET") {
       // Fire-and-forget: the first request after boot answers without the rival badges and the
-      // next has them; a failure is a log line, never a 500 on the suggestions page.
+      // next has them; a failure is a log line, never a 500 on the suggestions page. The pairs the
+      // channel put out lately (the repeat demotion) are read the same way.
       refreshRivalPostsIfStale();
+      void refreshPairPosts();
       json(res, 200, suggestionsPayload());
       return;
     }
@@ -801,6 +804,7 @@ server.listen(PORT, "0.0.0.0", () => {
   // once stale, so the evening list and the nightly's pick are never older than the TTL.
   setInterval(() => void startScan(false), config.suggestCacheTtlMin * 60_000).unref();
   refreshRivalPostsIfStale();
+  void refreshPairPosts();
   refreshChannelUploadsIfStale();
   // And then render one of them overnight, unattended. Waiting for a click is what caps output
   // at 7.24 videos a month: the render is cheap, the operator's attention is not.

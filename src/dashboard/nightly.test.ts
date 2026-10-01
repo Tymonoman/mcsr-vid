@@ -14,12 +14,14 @@ import {
   chainExport,
   type ExportStarter,
   msUntilNextRun,
+  PAIR_POSTS_WAIT_MS,
   pickClause,
   pickNightlyCandidate,
   playoffPicks,
   playoffsWithoutVods,
   playoffVodsReady,
   readNightlyState,
+  refreshPairPostsWithin,
   runNightlyOnce,
   shouldChainNextRender,
   writeNightlyState,
@@ -462,4 +464,50 @@ console.log("nightly: all checks passed");
     if (before === null) rmSync(stateFile, { force: true });
     else writeFileSync(stateFile, before);
   }
+}
+
+// --- The pick does not wait on a stalled API ------------------------------------------------------
+// The pairs the channel put out lately are looked up one at a time through a fetch with no timeout, so
+// the unattended pick races that refresh against a deadline and goes on with the last snapshot.
+{
+  assert.equal(PAIR_POSTS_WAIT_MS, 15_000, "fifteen seconds");
+  const logged: string[] = [];
+  const quiet = console.error;
+  console.error = (line: unknown) => {
+    logged.push(String(line));
+  };
+  try {
+    let finished = false;
+    const stalled = () =>
+      new Promise<void>((resolve) =>
+        setTimeout(() => {
+          finished = true;
+          resolve();
+        }, 600),
+      );
+    const started = Date.now();
+    await refreshPairPostsWithin(50, stalled);
+    assert.ok(Date.now() - started < 500, "it gives up at the deadline, not when the refresh ends");
+    assert.equal(finished, false, "the refresh is still running");
+    assert.match(logged.join("\n"), /picking with the last answer/);
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    assert.equal(finished, true, "and it carries on in the background");
+
+    // One that finishes in time returns at once and says nothing; one that fails does not reject the
+    // pick either. (A 60 s timer left behind would hold this process open for a minute.)
+    logged.length = 0;
+    const timers = () => process.getActiveResourcesInfo().filter((r) => r === "Timeout").length;
+    const before = timers();
+    const quick = Date.now();
+    await refreshPairPostsWithin(60_000, async () => {});
+    assert.ok(Date.now() - quick < 500, "a refresh in time is not waited out");
+    assert.deepEqual(logged, [], "and is not logged");
+    assert.equal(timers(), before, "and leaves no deadline timer behind");
+    await refreshPairPostsWithin(60_000, async () => {
+      throw new Error("the media disk is gone");
+    });
+  } finally {
+    console.error = quiet;
+  }
+  console.log("OK: the pick waits at most 15 s for the pairs the channel put out lately");
 }

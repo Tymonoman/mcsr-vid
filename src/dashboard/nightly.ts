@@ -41,6 +41,7 @@ import {
   setSkipNightOf,
   skipNightOf,
 } from "./matchShelf.js";
+import { refreshPairPosts } from "./pairPosts.js";
 import { orderForDisplay } from "./suggestPresent.js";
 import { playoffBoard, type PlayoffBoard } from "../playoffs/playoffs.js";
 import { listProcessedMatchIds } from "./matchStatus.js";
@@ -448,12 +449,42 @@ export interface NightlyDeps {
   now: () => number;
 }
 
+/** How long the nightly waits for the pairs the channel put out lately before it picks without them. */
+export const PAIR_POSTS_WAIT_MS = 15_000;
+
+/**
+ * `refreshPairPosts`, but never held for longer than `waitMs`. The names it needs are asked for one
+ * at a time through a fetch with no timeout, so a stalled API would otherwise hold the unattended
+ * 03:00 pick for minutes. Past the deadline the pick uses the last snapshot and the refresh carries
+ * on in the background; a refresh that fails settles it too, and nothing here ever rejects.
+ */
+export function refreshPairPostsWithin(
+  waitMs: number = PAIR_POSTS_WAIT_MS,
+  refresh: () => Promise<void> = () => refreshPairPosts(),
+): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      console.error(
+        `nightly: the pairs the channel put out lately took over ${waitMs / 1000} s — picking with the last answer`,
+      );
+      resolve();
+    }, waitMs);
+    const done = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    void refresh().then(done, done);
+  });
+}
+
 const liveRanked = async (): Promise<readonly NightlyPick[] | null> => {
   // Not `startScan(true)`: a forced rescan is hundreds of API requests. Unforced, the scan
   // returns the cache while it is fresh and walks only the matches played since the last one
   // when it is stale — so the pick is from tonight's feed, not from whenever the process booted.
   await startScan(false);
   const result = snapshot().result;
+  // The pairs the channel put out lately, fresh: the order demotes a repeat (src/dashboard/pairPosts.ts).
+  await refreshPairPostsWithin();
   return result ? [...(await playoffPicks()), ...orderForDisplay(result.suggestions)] : null;
 };
 
@@ -485,6 +516,9 @@ const pickContext = async (): Promise<NightlyPickContext> => ({
  */
 export async function nightlyCandidate(): Promise<NightlyPick | null> {
   const result = snapshot().result;
+  // Only a kick, never awaited: a read of the records (and, for a new upload, one API request) is not
+  // something a polled GET waits for. The preview uses what the last refresh found.
+  void refreshPairPosts();
   return result
     ? // No VOD probe: a GET the browser polls must not spend a yt-dlp listing per candidate. The
       // preview may therefore name a game the run itself falls through — it is a preview.

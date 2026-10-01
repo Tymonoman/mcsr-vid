@@ -7,9 +7,13 @@
  * "won by" not "Δ", float an expiring match to the top) and rules want a test.
  */
 import { formatShortTime } from "../../remotion/format.js";
+import { config } from "../config.js";
+import { pairKey, recentPairPostsSnapshot, type PairPost } from "./pairPosts.js";
 import { rivalMatchFor, rivalPostsSnapshot, type RivalPost } from "./rivalPosts.js";
 import type { SplitGap } from "../pipeline/matchScore.js";
 import {
+  favouriteFactorFor,
+  favouriteTierFor,
   POOL_MAX_AGE_DAYS,
   type Bucket,
   type HeadToHead,
@@ -115,28 +119,54 @@ function toCard(s: Suggestion, nowMs: number, rival: readonly RivalPost[]): Sugg
 }
 
 /**
- * Cards in display order: buckets stay in the order they arrive (close, then chaos), and inside
- * a bucket the biggest audience wins — except a match whose VODs are about to die, which goes
- * to the top of its bucket because it is the only candidate that stops being renderable, and
- * except a matchup the rival channel has already posted, which goes after the fresh ones: it
- * would compete with the rival's own video for the same browse session.
+ * What a pair the channel has just put out counts for: half (`pairRepeatDays`, src/dashboard/pairPosts.ts).
+ * A multiple like the favourites' bonus, and as soft: inside its tier a repeat more than twice as
+ * popular as the next card still goes first, and it never drops a favourite pair below a no-name one.
+ * ponytail: a constant, like `FAVOURITE_BONUS`.
+ */
+const REPEAT_FACTOR = 0.5;
+
+/** Which bucket breaks a tie: the close races, then the chaos. */
+const BUCKET_RANK: Record<Bucket, number> = { close: 0, chaos: 1 };
+
+/**
+ * Cards in display order, one list across both buckets: a match whose VODs are about to die first,
+ * because it is the only candidate that stops being renderable; a matchup the rival channel has
+ * already posted after the fresh ones, because it would compete with the rival's own video for the
+ * same browse session; and inside each of those a match with a favourite player (`favourites`:
+ * nicknames, compared whole and ignoring case) above every match with none — no-name players are not
+ * what gets clicked, and a bonus alone lost to their popularity. Inside a tier the biggest audience:
+ * the popularity counted up by `FAVOURITE_BONUS` for each favourite playing, and down by
+ * `REPEAT_FACTOR` for a pair the channel itself put out lately (`posted`: within `pairRepeatDays`,
+ * either side of now). The bucket only breaks a tie (`BUCKET_RANK`: close, then chaos), and
+ * popularity the one after that. The audience decides, not the bucket: the one close race of no
+ * names must not stay above a famous pair's chaos, or the nightly renders the first. With no
+ * favourites there is no tier and the audience is the popularity. Everything here is read on every
+ * call and kept out of the scan's cache, so a change to either setting re-orders the next read. (The
+ * favourites also count when a scan chooses the slots, `take` in suggest.ts: which matches are in
+ * the list follows at the next scan.)
  */
 export function presentSuggestions(
   suggestions: readonly Suggestion[],
   nowMs: number = Date.now(),
   rival: readonly RivalPost[] = rivalPostsSnapshot(),
+  favourites: readonly string[] = config.favouritePlayers,
+  posted: readonly PairPost[] = recentPairPostsSnapshot(nowMs),
 ): SuggestionCard[] {
   const cards = suggestions.map((s) => toCard(s, nowMs, rival));
-  const buckets = [...new Set(cards.map((c) => c.bucket))];
-  return buckets.flatMap((bucket) =>
-    cards
-      .filter((c) => c.bucket === bucket)
-      .sort(
-        (x, y) =>
-          Number(y.expiring) - Number(x.expiring) ||
-          Number(x.rivalPosted !== null) - Number(y.rivalPosted !== null) ||
-          y.popularity - x.popularity,
-      ),
+  const favoured = favouriteFactorFor(favourites);
+  const isFavourite = favouriteTierFor(favourites);
+  const repeats = new Set(posted.map((post) => pairKey(post.players)));
+  const audience = (c: SuggestionCard): number =>
+    c.popularity * favoured(c.players) * (repeats.has(pairKey(c.players)) ? REPEAT_FACTOR : 1);
+  return cards.sort(
+    (x, y) =>
+      Number(y.expiring) - Number(x.expiring) ||
+      Number(x.rivalPosted !== null) - Number(y.rivalPosted !== null) ||
+      Number(isFavourite(y.players)) - Number(isFavourite(x.players)) ||
+      audience(y) - audience(x) ||
+      BUCKET_RANK[x.bucket] - BUCKET_RANK[y.bucket] ||
+      y.popularity - x.popularity,
   );
 }
 
@@ -148,8 +178,12 @@ export function orderForDisplay(
   suggestions: readonly Suggestion[],
   nowMs: number = Date.now(),
   rival: readonly RivalPost[] = rivalPostsSnapshot(),
+  favourites: readonly string[] = config.favouritePlayers,
+  posted: readonly PairPost[] = recentPairPostsSnapshot(nowMs),
 ): Suggestion[] {
-  const rank = new Map(presentSuggestions(suggestions, nowMs, rival).map((card, i) => [card.matchId, i]));
+  const rank = new Map(
+    presentSuggestions(suggestions, nowMs, rival, favourites, posted).map((card, i) => [card.matchId, i]),
+  );
   return [...suggestions].sort(
     (a, b) => (rank.get(a.metrics.matchId) ?? Infinity) - (rank.get(b.metrics.matchId) ?? Infinity),
   );
