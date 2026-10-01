@@ -16,7 +16,8 @@ const PAGE_SIZE = 100;
 const DETAIL_CONCURRENCY = 4;
 /** Bumped whenever `PooledMatch` grows a field: a stale pool regenerates, it never migrates. */
 // 4: metrics.deaths counts real deaths only (hunger resets left out, 26 Sept 2026).
-const CACHE_VERSION = 4;
+// 5: the slots are chosen with the favourite players counted up (`favouriteFactorFor`, 30 Sept 2026).
+const CACHE_VERSION = 5;
 /**
  * Twitch handles are resolved one MCSR request per player and then cached forever, so
  * only a cold cache pays. Capped per scan so a first run can't blow the request budget;
@@ -48,6 +49,23 @@ const RETRY_DELAY_MS = 800;
 const isTransient = (err: unknown): boolean =>
   // A network-level failure surfaces as a plain TypeError from fetch, not McsrApiError.
   !(err instanceof McsrApiError) || err.status === 429 || err.status >= 500;
+
+/**
+ * What each favourite player in a match (`config.favouritePlayers`) adds to its weight: half again
+ * for one, twice for two. It counts up the bucket's 0-1 score when the slots are chosen (`take`,
+ * below) and the popularity when the cards are ordered (src/dashboard/suggestPresent.ts). A multiple,
+ * not a number of points: popularity is a sum of appearance counts that keeps growing, and the two
+ * scales differ. A favourite's match takes a slot from one up to 1.5x (2x) as good, or passes one
+ * that much more popular, and never one clearly ahead of it. ponytail: a constant — make it a
+ * setting if the operator wants to tune it.
+ */
+export const FAVOURITE_BONUS = 0.5;
+
+/** `1 + FAVOURITE_BONUS` per player on `favourites`, compared whole and ignoring case. */
+export function favouriteFactorFor(favourites: readonly string[]): (players: readonly string[]) => number {
+  const liked = new Set(favourites.map((name) => name.toLowerCase()));
+  return (players) => 1 + FAVOURITE_BONUS * players.filter((p) => liked.has(p.toLowerCase())).length;
+}
 
 const NO_TWITCH_NOTE =
   "popularity: streaming frequency only (set TWITCH_CLIENT_ID/TWITCH_CLIENT_SECRET in .env for follower data)";
@@ -171,8 +189,11 @@ function loadCache(): SuggestCache {
   try {
     const parsed = JSON.parse(readFileSync(file, "utf8")) as SuggestCache;
     // A cache written by an older layout is discarded rather than migrated; it is a
-    // derived file and rebuilding it costs one scan.
-    if (parsed.version !== CACHE_VERSION) return { ...EMPTY_CACHE };
+    // derived file and rebuilding it costs one scan. The operator's dismissals are not derived, and
+    // a dismissed match coming back is one the nightly could render: they come along.
+    if (parsed.version !== CACHE_VERSION) {
+      return { ...EMPTY_CACHE, dismissed: Array.isArray(parsed.dismissed) ? parsed.dismissed : [] };
+    }
     return { ...EMPTY_CACHE, ...parsed };
   } catch {
     return { ...EMPTY_CACHE };
@@ -536,11 +557,14 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
       ? closenessScore(entry.metrics, suggestWeights, suggestFastRunTargetSec, suggestSlowRunCutoffSec)
       : chaosScore(entry.metrics, suggestWeights, suggestFastRunTargetSec, suggestSlowRunCutoffSec);
 
+  // The slots go to the best scores with a favourite's counted up, so its match reaches the list; the
+  // `score` kept on the card stays the bucket's own, comparable with the rest of its bucket.
+  const favoured = favouriteFactorFor(config.favouritePlayers);
   const take = (pool: typeof selectable, bucket: Bucket, slots: number, exclude: Set<number>): Suggestion[] =>
     pool
       .filter((entry) => !exclude.has(entry.metrics.matchId))
       .map((entry) => ({ ...entry, bucket, score: rank(entry, bucket) }))
-      .sort((a, b) => b.score - a.score)
+      .sort((a, b) => b.score * favoured(b.metrics.players) - a.score * favoured(a.metrics.players))
       .slice(0, slots);
 
   // A match where the loser never killed the dragon has no finish to be close *at*, so it

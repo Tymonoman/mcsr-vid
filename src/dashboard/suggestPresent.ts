@@ -12,6 +12,7 @@ import { pairKey, recentPairPostsSnapshot, type PairPost } from "./pairPosts.js"
 import { rivalMatchFor, rivalPostsSnapshot, type RivalPost } from "./rivalPosts.js";
 import type { SplitGap } from "../pipeline/matchScore.js";
 import {
+  favouriteFactorFor,
   POOL_MAX_AGE_DAYS,
   type Bucket,
   type HeadToHead,
@@ -117,16 +118,6 @@ function toCard(s: Suggestion, nowMs: number, rival: readonly RivalPost[]): Sugg
 }
 
 /**
- * What one favourite player in a match adds to its popularity when the cards are ordered: half
- * again for one, twice for two. A multiple, not a number of points, because popularity is a sum
- * of appearance counts that keeps growing (and of `suggestFollowerWeight`·log10 followers): a
- * favourite's match passes one up to 1.5x (2x) as popular and never one clearly ahead of it, and
- * the bonus does not shrink as the counts accumulate. ponytail: a constant — make it a setting if
- * the operator wants to tune it.
- */
-const FAVOURITE_BONUS = 0.5;
-
-/**
  * What a pair the channel has just put out counts for: half (`pairRepeatDays`, src/dashboard/pairPosts.ts).
  * A multiple for the same reason as the bonus, and soft for the same one: a repeat more than twice as
  * popular as the next card still goes first. ponytail: a constant, like `FAVOURITE_BONUS`.
@@ -141,8 +132,10 @@ const REPEAT_FACTOR = 0.5;
  * stops being renderable, and except a matchup the rival channel has already posted, which goes
  * after the fresh ones: it would compete with the rival's own video for the same browse session.
  * A pair the channel itself put out lately (`posted`: within `pairRepeatDays`, either side of now)
- * counts for `REPEAT_FACTOR` of that audience — a demotion, never a skip. Both live here and not in
- * the scan's score, so a change to either setting is the next read.
+ * counts for `REPEAT_FACTOR` of that audience — a demotion, never a skip. Both are read on every call
+ * and not kept in the scan's cache, so a change to either setting re-orders the next read. (The
+ * favourites also count when a scan chooses the slots, `take` in suggest.ts: which matches are in the
+ * list follows at the next scan.)
  */
 export function presentSuggestions(
   suggestions: readonly Suggestion[],
@@ -152,12 +145,10 @@ export function presentSuggestions(
   posted: readonly PairPost[] = recentPairPostsSnapshot(nowMs),
 ): SuggestionCard[] {
   const cards = suggestions.map((s) => toCard(s, nowMs, rival));
-  const liked = new Set(favourites.map((name) => name.toLowerCase()));
+  const favoured = favouriteFactorFor(favourites);
   const repeats = new Set(posted.map((post) => pairKey(post.players)));
   const audience = (c: SuggestionCard): number =>
-    c.popularity *
-    (1 + FAVOURITE_BONUS * c.players.filter((p) => liked.has(p.toLowerCase())).length) *
-    (repeats.has(pairKey(c.players)) ? REPEAT_FACTOR : 1);
+    c.popularity * favoured(c.players) * (repeats.has(pairKey(c.players)) ? REPEAT_FACTOR : 1);
   const buckets = [...new Set(cards.map((c) => c.bucket))];
   return buckets.flatMap((bucket) =>
     cards

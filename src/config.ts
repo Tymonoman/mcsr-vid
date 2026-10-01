@@ -78,10 +78,11 @@ export interface Config {
   /**
    * Players whose matches the suggestion list and the nightly rank higher (30 Sept 2026 plan:
    * recognisable names are what converts subscribers). API spellings, compared whole and ignoring
-   * case — Pinne is Skycrab, lowk3y_ is lowkey. Inside its bucket a match's popularity counts half
-   * again for one of them and twice for two (`presentSuggestions`). Applied when the cards are
-   * ordered, not when they are scored, so a change needs no rescan. Empty = no bonus; the default
-   * list changes which card the nightly takes first.
+   * case — Pinne is Skycrab, lowk3y_ is lowkey. A match counts half again for one of them and twice
+   * for two: its score when a scan chooses the slots (`take`, src/dashboard/suggest.ts, so its match
+   * reaches the list — at the next scan), its popularity inside its bucket when the cards are ordered
+   * (`presentSuggestions`, read fresh, so a change re-orders at once). The cached `score` stays the
+   * bucket's own. Empty = no bonus; the default list changes which card the nightly takes first.
    */
   favouritePlayers: string[];
   /**

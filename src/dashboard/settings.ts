@@ -188,7 +188,7 @@ export const SETTINGS: readonly SettingField[] = [
   {
     key: "favouritePlayers",
     label: "Favourite players",
-    help: "MCSR nicknames separated by commas (Pinne is Skycrab, lowk3y_ is lowkey); case is ignored, spelling is not. Inside its bucket a match with one of them counts as half again as popular, with two as twice, in the list and in the nightly's first pick. A match about to expire still comes first and one the rival already posted still comes last. Empty is no bonus. Applies on the next read, no rescan.",
+    help: "MCSR nicknames separated by commas (Pinne is Skycrab, lowk3y_ is lowkey); case is ignored, spelling is not. A match with one of them counts as half again as good, with two as twice, both when a scan chooses which matches reach the list (the next scan, every 30 minutes or the rescan link) and when the list is ordered, which is at once and is what the nightly's first pick follows. A match about to expire still comes first and one the rival already posted still comes last. Empty is no bonus.",
     kind: "list",
     group: "Suggestions",
     unattended: true,
