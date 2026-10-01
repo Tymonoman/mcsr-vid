@@ -132,8 +132,10 @@ assert.equal(p.shortsViews.have, 0);
 }
 
 // The panel (public/youtube.js, a browser script with no module system, probed the way
-// splitsChart.test.ts probes splits.js): the subscribers gate prints the 28-day pace and the date
-// at it, then the last week's date as the optimistic end — and the date alone when the week was no faster.
+// splitsChart.test.ts probes splits.js): the header names the tier the bars show — the expanded
+// tier's, `progress`'s top level — with the bars' own thresholds; the subscribers gate prints the
+// 28-day pace and the date at it, then the last week's date as the optimistic end (the date alone when
+// the week was no faster), and the full tier's subscriber date the same way under it.
 {
   const source = readFileSync(path.join(import.meta.dirname, "..", "..", "public", "youtube.js"), "utf8");
   const yppInner = new Function("esc", `${source}; return yppInner;`)((s: unknown) => String(s ?? "")) as (
@@ -143,8 +145,9 @@ assert.equal(p.shortsViews.have, 0);
     new Date(iso).toLocaleDateString([], { month: "short", year: "numeric" });
   const at = Date.UTC(2026, 8, 30, 12);
   const week = { ...base, subscribers: 102, subscribersPer7d: 27, subscribersPer28d: 63 };
-  const { subscribers } = projectYpp(week, at);
-  const html = yppInner({ progress: projectYpp(week, at) });
+  const progress = projectYpp(week, at);
+  const { subscribers } = progress;
+  const html = yppInner({ progress });
   assert.ok(html.includes("+63 / 28 days"), "the rate is the 28 days', not a week's");
   assert.ok(
     html.includes(
@@ -157,6 +160,50 @@ assert.equal(p.shortsViews.have, 0);
     slow.includes(`at this rate ${monthYear(subscribers.eta!)}`) && !slow.includes("last week"),
     slow,
   );
+
+  // The header said "500 subscribers and either 4,000 watch hours or 10M Shorts views": the expanded
+  // tier's subscribers beside the full tier's hours and Shorts, while the bars read 3,000 h and 3M.
+  const header = (page: string) => /<div class="ypphead">(.*?)<\/div>/.exec(page)?.[1];
+  const goals = yppThresholds(at).expanded;
+  assert.equal(
+    header(html),
+    `Partner programme &middot; expanded tier (fan funding) &middot; ${goals.subscribers} subscribers and either ${goals.watchHours.toLocaleString()} watch hours or ${goals.shortsViews / 1e6}M Shorts views`,
+  );
+  assert.ok(!html.includes("4,000") && !html.includes("10M"), html);
+  // ...and those are the numbers on the bars.
+  assert.ok(
+    html.includes(`102 / ${goals.subscribers}`) && html.includes(`/ ${goals.watchHours.toLocaleString()} h`),
+    html,
+  );
+  assert.ok(html.includes("/ 3.0M"), html);
+
+  // Both tiers' subscriber dates: the bar's own first, the full tier's under it, each with the
+  // last week's date as the optimistic end.
+  const full = progress.tiers.full.subscribers;
+  const pace = (g: typeof full) =>
+    `at this rate ${monthYear(g.eta!)} &middot; ${monthYear(g.recent!.eta)} at the last week's pace`;
+  const fullLine = `full tier (ads) &middot; ${yppThresholds(at).full.subscribers.toLocaleString()}</span><span>`;
+  assert.notEqual(monthYear(full.eta!), monthYear(subscribers.eta!), "two tiers, two dates");
+  assert.ok(html.includes(`${fullLine}${pace(full)}`), html);
+  assert.ok(
+    html.indexOf(pace(subscribers)) < html.indexOf(fullLine),
+    "the bar's tier first, the full tier under it",
+  );
+  assert.ok(slow.includes(`${fullLine}at this rate ${monthYear(full.eta!)}</span>`), slow);
+  // The expanded tier reached: its bar says so, and the full tier still has its date.
+  const done = yppInner({ progress: projectYpp({ ...week, subscribers: 600 }, at) });
+  assert.equal(done.split('<span class="ok">reached</span>').length - 1, 1, done);
+  assert.ok(done.includes(`${fullLine}at this rate`), done);
+
+  // An older server cannot break it: no `tiers` (before 23 Sept) leaves the bar's date alone, no
+  // `recent` (before the 28-day pace) leaves dates without a range.
+  const noTiers = yppInner({ progress: { ...progress, tiers: undefined } });
+  assert.ok(!noTiers.includes("full tier") && noTiers.includes(pace(subscribers)), noTiers);
+  assert.equal(header(noTiers), header(html));
+  const noRecent = yppInner({
+    progress: JSON.parse(JSON.stringify(progress), (key, value) => (key === "recent" ? undefined : value)),
+  });
+  assert.ok(!noRecent.includes("last week") && noRecent.includes(`${fullLine}at this rate`), noRecent);
 }
 
 // Per-video engagement: one top-videos request, rows keyed by video id. The fake answers the
@@ -316,11 +363,16 @@ assert.equal(p.shortsViews.have, 0);
 
   try {
     const publicCount = await publicUploads90d(now);
-    assert.equal(publicCount, 1, "only public videos in the 90-day window count; private/unlisted/scheduled do not");
+    assert.equal(
+      publicCount,
+      1,
+      "only public videos in the 90-day window count; private/unlisted/scheduled do not",
+    );
     const playlistReq = askedUrls.find((u) => u.includes("/playlistItems"));
     assert.ok(playlistReq, "made a playlistItems request");
     assert.ok(
-      playlistReq.includes("part=contentDetails%2Cstatus") || playlistReq.includes("part=contentDetails,status"),
+      playlistReq.includes("part=contentDetails%2Cstatus") ||
+        playlistReq.includes("part=contentDetails,status"),
       "playlistItems requested part=contentDetails,status",
     );
   } finally {
@@ -427,7 +479,11 @@ assert.equal(p.shortsViews.have, 0);
     assert.equal(snap.subscribers, 75);
     // Net gained: (3+2+4+2) - (0+1+0+0) = 10 net subscribers over the 4 days returned in the last week
     assert.equal(snap.subscribersPer7d, 10, "the week is the rows dated from 1 Sept on");
-    assert.equal(snap.subscribersDays, 4, "subscribersDays reflects the 4 dates actually returned by Analytics");
+    assert.equal(
+      snap.subscribersDays,
+      4,
+      "subscribersDays reflects the 4 dates actually returned by Analytics",
+    );
     // ...and 11 over the 6 days of the 28-day report: the same rows plus 15 Aug and 30 Aug.
     assert.equal(snap.subscribersPer28d, 11);
     assert.equal(snap.subscribersDays28, 6);

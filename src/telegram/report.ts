@@ -29,8 +29,16 @@ function nightlySummary(n: NightlyLastRun): string {
   return said;
 }
 
-const nightlyTarget = (n: NightlyLastRun): string =>
-  n.matchId === null ? "" : `#${n.matchId} ${escapeHtml(n.players.join(" vs "))} — `;
+/** A link to one match's page on the dashboard: `public/app.js` opens `#match=<id>` on its Now
+ *  panel. `label` is HTML, already escaped. A link about the list is the base URL and nothing more. */
+const matchLink = (dashboardBaseUrl: string, id: string | number, label: string): string =>
+  `<a href="${escapeHtml(dashboardBaseUrl)}/#match=${escapeHtml(String(id))}">${label}</a>`;
+
+/** The match a nightly run worked on, linked, then " — "; a run that skipped has none. */
+const nightlyTarget = (n: NightlyLastRun, dashboardBaseUrl: string): string =>
+  n.matchId === null
+    ? ""
+    : `${matchLink(dashboardBaseUrl, n.matchId, `#${n.matchId} ${escapeHtml(n.players.join(" vs "))}`)} — `;
 
 const b = (s: string): string => `<b>${escapeHtml(s)}</b>`;
 const fmtInt = (n: number): string => Math.round(n).toLocaleString("en-US");
@@ -85,11 +93,6 @@ const dayMonthYear = (ms: number): string =>
     month: "short",
     year: "numeric",
   }).format(new Date(ms));
-
-/** A link to one match's page on the dashboard: `public/app.js` opens `#match=<id>` on its Now
- *  panel. `label` is HTML, already escaped. A link about the list is the base URL and nothing more. */
-const matchLink = (dashboardBaseUrl: string, id: string | number, label: string): string =>
-  `<a href="${escapeHtml(dashboardBaseUrl)}/#match=${id}">${label}</a>`;
 
 /** agy's headline and numbered to-do list, one dashboard link under it. `/todo` is this alone.
  *  A `#<id>` in an item (the prompt lets agy write one to name a match) opens that match. */
@@ -171,11 +174,16 @@ export function renderHealth(health: HealthCheck[], compact = false): string {
   return [b("Health"), ...lines].join("\n");
 }
 
-export function renderOvernight(overnight: ReportFacts["overnight"], compact = false): string {
+/** Each match's players open its page on the dashboard; "video" and "Short" open YouTube. */
+export function renderOvernight(
+  overnight: ReportFacts["overnight"],
+  dashboardBaseUrl: string,
+  compact = false,
+): string {
   if (!overnight.ok) return sectionError("🌙 Overnight", overnight.error);
   const { uploaded, nowPublic, nightlyRendered } = overnight.data;
   const nightly = nightlyRendered
-    ? `Nightly: ${nightlyTarget(nightlyRendered)}${escapeHtml(nightlySummary(nightlyRendered))}`
+    ? `Nightly: ${nightlyTarget(nightlyRendered, dashboardBaseUrl)}${escapeHtml(nightlySummary(nightlyRendered))}`
     : null;
   if (uploaded.length === 0 && nowPublic.length === 0)
     return `🌙 Nothing uploaded or published overnight${nightly ? ` · ${nightly.replace(/^Nightly/, "nightly")}` : ""}`;
@@ -186,7 +194,7 @@ export function renderOvernight(overnight: ReportFacts["overnight"], compact = f
     for (const r of rows) m.set(r.matchId, [...(m.get(r.matchId) ?? []), r]);
     return [...m.values()].map(
       (rs) =>
-        `• ${escapeHtml(rs[0]!.players)} — ` +
+        `• ${matchLink(dashboardBaseUrl, rs[0]!.matchId, escapeHtml(rs[0]!.players))} — ` +
         rs
           .map((r) => `<a href="https://youtu.be/${r.videoId}">${r.kind === "short" ? "Short" : "video"}</a>`)
           .join(" · "),
@@ -487,23 +495,25 @@ export function renderWaiting(todo: ReportFacts["todo"], dashboardBaseUrl: strin
 const DAY_LABEL = (offset: number): string =>
   offset === 0 ? "today" : offset === 1 ? "tomorrow" : `in ${offset} days`;
 
-export function renderUpcoming(rows: readonly UpcomingRow[], days: number): string {
+export function renderUpcoming(rows: readonly UpcomingRow[], days: number, dashboardBaseUrl: string): string {
   if (rows.length === 0) return `Nothing scheduled in the next ${days} days.`;
   const lines = [`<b>Next ${days} days</b>:`];
   for (const r of rows) {
     lines.push(
-      `${DAY_LABEL(r.dayOffset)} — #${r.matchId} ${escapeHtml(r.players)} (${r.kind}) at ${whenWarsaw(r.at)}`,
+      `${DAY_LABEL(r.dayOffset)} — ${matchLink(dashboardBaseUrl, r.matchId, `#${r.matchId} ${escapeHtml(r.players)}`)} (${r.kind}) at ${whenWarsaw(r.at)}`,
     );
   }
   return lines.join("\n");
 }
 
-export function renderNightly(n: NightlyFacts): string {
+/** The last run's match is a rendered one, so it opens; a queued or "not at night" id is a card the
+ *  dashboard's `#match=` cannot open (only the Rendered list answers it), so those stay text. */
+export function renderNightly(n: NightlyFacts, dashboardBaseUrl: string): string {
   const lines = [b("NIGHTLY")];
   lines.push(`Scheduled for ${n.hourUtc === null ? "off" : `${String(n.hourUtc).padStart(2, "0")}:00 UTC`}.`);
   if (n.lastRun) {
     lines.push(
-      `Last run (${whenWarsaw(n.lastRun.startedAt)}): ${nightlyTarget(n.lastRun)}${escapeHtml(nightlySummary(n.lastRun))}`,
+      `Last run (${whenWarsaw(n.lastRun.startedAt)}): ${nightlyTarget(n.lastRun, dashboardBaseUrl)}${escapeHtml(nightlySummary(n.lastRun))}`,
     );
   } else {
     lines.push("No run recorded yet.");
@@ -541,7 +551,7 @@ export function renderMorningReport(
     renderToday(facts.todo, agy, facts.dashboardBaseUrl),
     renderWorth(facts.worthRendering, facts.dashboardBaseUrl),
     renderAlerts(facts.alerts, true),
-    renderOvernight(facts.overnight, true),
+    renderOvernight(facts.overnight, facts.dashboardBaseUrl, true),
     renderHealth(facts.health, true),
   ];
   const channel = [renderStats(facts.stats, prevSnapshot), renderYppShort(facts.ypp, nowMs)];
