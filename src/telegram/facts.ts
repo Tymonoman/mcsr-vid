@@ -73,7 +73,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const playersOf = (m: { leftNickname: string; rightNickname: string }): string =>
   `${m.leftNickname} vs ${m.rightNickname}`;
 
-const dashboardMatchUrl = (): string => config.dashboardBaseUrl.replace(/\/+$/, "");
+/** The dashboard's base URL without a trailing slash: what every link in a report is built on. */
+export const dashboardMatchUrl = (): string => config.dashboardBaseUrl.replace(/\/+$/, "");
 
 /* --- Waiting for a hook / scheduled / playoffs (the TODAY facts) ------------------------------ */
 

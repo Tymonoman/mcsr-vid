@@ -14,6 +14,7 @@ import { askAgyForReport, askAgyFreeform, type AgyResult } from "./agy.js";
 import { knowledgeFor } from "./knowledge.js";
 import { BOT_COMMANDS, HELP_TEXT, parseCommand, parseStatsWindows, type ParsedCommand } from "./commands.js";
 import {
+  dashboardMatchUrl,
   gatherFacts,
   gatherNightlyInfo,
   gatherUpcoming,
@@ -175,7 +176,9 @@ export async function dispatchCommand({ command, args }: ParsedCommand): Promise
       const facts = await gatherFacts(Date.now(), undefined, ["overnight"]);
       const upcoming = await gatherUpcoming(Date.now(), 7);
       return {
-        messages: [`${renderOvernight(facts.overnight)}\n\n${renderUpcoming(upcoming, 7)}`],
+        messages: [
+          `${renderOvernight(facts.overnight, facts.dashboardBaseUrl)}\n\n${renderUpcoming(upcoming, 7, facts.dashboardBaseUrl)}`,
+        ],
         html: true,
       };
     }
@@ -209,7 +212,7 @@ export async function dispatchCommand({ command, args }: ParsedCommand): Promise
     }
     case "nightly": {
       const n = await gatherNightlyInfo();
-      return { messages: [renderNightly(n)], html: true };
+      return { messages: [renderNightly(n, dashboardMatchUrl())], html: true };
     }
     case "ask": {
       if (!args.trim()) return { messages: ["usage: /ask <question>"], html: false };

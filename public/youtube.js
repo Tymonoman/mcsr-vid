@@ -459,19 +459,32 @@ function yppInner(ypp) {
     g.have >= g.need
       ? '<span class="ok">reached</span>'
       : g.eta
-        ? `at this rate ${monthYear(g.eta)}${g.recent ? ` &middot; ${monthYear(g.recent.eta)} at the last week's pace` : ""}`
+        ? `at this rate ${monthYear(g.eta)}${g.recent?.eta ? ` &middot; ${monthYear(g.recent.eta)} at the last week's pace` : ""}`
         : g.ceiling !== undefined && g.ratePerDay > 0
           ? `<span class="bad">levels off near ${fmt(g.ceiling)}</span> &middot; needs ${fmt(g.needPerDay)} / day`
           : '<span class="muted">no rate yet</span>';
-  const gate = (label, g, unit, rateLabel) => `
+  // The header's numbers are the bars' own needs: it once paired the expanded tier's 500 subscribers
+  // with the full tier's 4,000 h and 10M while the bars read 3,000 h and 3M. `progress`'s top level is
+  // the expanded tier; the full tier's subscribers gate sits under `tiers` (absent on an older server).
+  const goal = (n) => (n >= 1e6 ? `${n / 1e6}M` : n.toLocaleString());
+  const fullSubs = p.tiers?.full?.subscribers;
+  const gate = (label, g, unit, rateLabel, more = "") => `
     <div class="gate">
       <div class="gatehead"><b>${esc(label)}</b><span>${fmt(g.have)} / ${fmt(g.need)}${unit}</span></div>
       <div class="bar"><i style="width:${Math.min(100, (100 * g.have) / g.need).toFixed(1)}%"></i></div>
-      <div class="gatefoot"><span>${esc(rateLabel(g.ratePerDay))}</span><span>${when(g)}</span></div>
+      <div class="gatefoot"><span>${esc(rateLabel(g.ratePerDay))}</span><span>${when(g)}</span></div>${more}
     </div>`;
   return `<div class="ypp">
-    <div class="ypphead">Partner programme &middot; 500 subscribers and either 4,000 watch hours or 10M Shorts views</div>
-    ${gate("Subscribers", p.subscribers, "", (r) => `+${(r * 28).toFixed(0)} / 28 days`)}
+    <div class="ypphead">Partner programme &middot; expanded tier (fan funding) &middot; ${goal(p.subscribers.need)} subscribers and either ${goal(p.watchHours.need)} watch hours or ${goal(p.shortsViews.need)} Shorts views</div>
+    ${gate(
+      "Subscribers",
+      p.subscribers,
+      "",
+      (r) => `+${(r * 28).toFixed(0)} / 28 days`,
+      fullSubs
+        ? `<div class="gatefoot"><span>full tier (ads) &middot; ${goal(fullSubs.need)}</span><span>${when(fullSubs)}</span></div>`
+        : "",
+    )}
     ${gate("Watch hours, last 365 days", p.watchHours, " h", (r) => `+${(r * 28).toFixed(0)} h / 28 days`)}
     ${gate(
       // YPP counts engaged Shorts views; a raw Shorts "view" is every start or replay.

@@ -9,8 +9,11 @@ import {
   renderComments,
   renderHealth,
   renderMorningReport,
+  renderNightly,
+  renderOvernight,
   renderStats,
   renderToday,
+  renderUpcoming,
   renderWaiting,
   renderYpp,
   renderYppShort,
@@ -21,6 +24,7 @@ import { MESSAGE_MAX_CHARS } from "./bot.js";
 import type { ReportFacts } from "./facts.js";
 import type { UnansweredComment } from "./comments.js";
 import type { WorthMatch } from "./worth.js";
+import type { NightlyLastRun } from "../dashboard/nightly.js";
 import { projectYpp, type YppProgress } from "../youtube/yppProgress.js";
 
 /** The channel as the 30 Sept 2026 post-mortem read it: 102 subscribers, 63 net in the last 28 days and 27 in the last 7. */
@@ -198,6 +202,126 @@ const postMortemYpp = (over: Partial<Parameters<typeof projectYpp>[0]> = {}): Yp
   assert.ok(today.includes(`<a href="${base}/">Open the dashboard</a>`), today); // the list: no #match
 }
 
+// The nightly, overnight and upcoming lines open the match they name: a rendered one (the last run,
+// an upload, a scheduled video) links to `<base>/#match=<id>` with its players escaped inside the
+// anchor. A queued or "not at night" id is a card, which `#match=` cannot open (only the Rendered
+// list answers it), so those stay text; the worth-rendering ids stay `<code>` for the same reason.
+{
+  const base = "http://actimel:8080";
+  const link = (id: number, label: string) => `<a href="${base}/#match=${id}">${label}</a>`;
+  const lastRun: NightlyLastRun = {
+    startedAt: "2026-09-30T01:00:00.000Z",
+    matchId: 13559245,
+    players: ["a & b", "<i>c</i>"],
+    outcome: "done",
+    export: "done",
+    pick: "agy",
+  };
+  const target = link(13559245, "#13559245 a &amp; b vs &lt;i&gt;c&lt;/i&gt;");
+
+  // /nightly: the last run's match opens; the queue and the skip list are text.
+  const nightly = renderNightly(
+    { lastRun, hourUtc: 3, queue: [{ matchId: 13559300, players: "x vs y" }], skipped: [13559301] },
+    base,
+  );
+  assert.ok(nightly.includes(`): ${target} — done · export done · picked by the model`), nightly);
+  assert.ok(nightly.includes("Queued tonight: #13559300 x vs y"), nightly);
+  assert.ok(nightly.includes('Marked "not at night": #13559301'), nightly);
+  assert.ok(!nightly.includes("#match=13559300") && !nightly.includes("#match=13559301"), nightly);
+  assert.ok(!nightly.includes("<i>c</i>"), nightly);
+  // A run that skipped chose no match: its reason alone, no link.
+  const skipped = renderNightly(
+    {
+      lastRun: {
+        startedAt: lastRun.startedAt,
+        matchId: null,
+        players: [],
+        outcome: "skipped",
+        reason: "a render is running",
+      },
+      hourUtc: 3,
+      queue: [],
+      skipped: [],
+    },
+    base,
+  );
+  assert.ok(skipped.includes("a render is running") && !skipped.includes("<a "), skipped);
+
+  // /overnight and the morning message: the Nightly line, and each upload's players, open the match;
+  // "video" and "Short" still open YouTube. A match whose players could not be read shows its id,
+  // now a link.
+  const upload = (kind: "video" | "short", videoId: string) => ({
+    matchId: 13559245,
+    kind,
+    players: "a & b",
+    videoId,
+    uploadedAt: "2026-09-30T02:00:00.000Z",
+    publishAt: null,
+  });
+  const overnight: ReportFacts["overnight"] = {
+    ok: true,
+    data: {
+      uploaded: [upload("video", "vid1"), upload("short", "sho1")],
+      nowPublic: [
+        {
+          matchId: 13559250,
+          kind: "video",
+          players: "#13559250",
+          videoId: "vid2",
+          publishAt: "2026-09-30T05:00:00.000Z",
+        },
+      ],
+      nightlyRendered: lastRun,
+    },
+  };
+  const night = renderOvernight(overnight, base);
+  assert.ok(night.includes(`Nightly: ${target} — done`), night);
+  assert.ok(
+    night.includes(
+      `• ${link(13559245, "a &amp; b")} — <a href="https://youtu.be/vid1">video</a> · <a href="https://youtu.be/sho1">Short</a>`,
+    ),
+    night,
+  );
+  assert.ok(
+    night.includes(`• ${link(13559250, "#13559250")} — <a href="https://youtu.be/vid2">video</a>`),
+    night,
+  );
+  const quiet = renderOvernight(
+    { ok: true, data: { uploaded: [], nowPublic: [], nightlyRendered: lastRun } },
+    base,
+    true,
+  );
+  assert.ok(quiet.startsWith("🌙 Nothing uploaded or published overnight"), quiet);
+  assert.ok(quiet.includes(` · nightly: ${target} — done`), quiet);
+
+  // The next days' schedule: each row's match opens.
+  const rows = [
+    {
+      matchId: 13559245,
+      players: "a & b",
+      kind: "video" as const,
+      at: "2026-09-30T17:00:00.000Z",
+      dayOffset: 0,
+    },
+    {
+      matchId: 13559245,
+      players: "a & b",
+      kind: "short" as const,
+      at: "2026-10-01T11:00:00.000Z",
+      dayOffset: 1,
+    },
+  ];
+  const upcoming = renderUpcoming(rows, 7, base);
+  assert.ok(
+    upcoming.includes(
+      `today — ${link(13559245, "#13559245 a &amp; b")} (video) at ${whenWarsaw(rows[0]!.at)}`,
+    ),
+    upcoming,
+  );
+  assert.ok(upcoming.includes(`tomorrow — ${link(13559245, "#13559245 a &amp; b")} (short) at`), upcoming);
+  assert.equal(renderUpcoming([], 7, base), "Nothing scheduled in the next 7 days.");
+}
+
 // --- YPP: "an estimated countdown in days", not just an absolute ETA date. ---
 {
   const gate = (have: number, need: number, eta: string | null) => ({ have, need, ratePerDay: 1, eta });
@@ -348,6 +472,35 @@ const worthMatch = (i: number, over: Partial<WorthMatch> = {}): WorthMatch => ({
     withYpp[1],
   );
   assert.ok(visibleLength(withYpp[1]!) <= MESSAGE_MAX_CHARS);
+  // The day message hands the base URL to the overnight lines: the nightly's match opens.
+  const withNightly = renderMorningReport(
+    {
+      ...facts,
+      overnight: {
+        ok: true,
+        data: {
+          uploaded: [],
+          nowPublic: [],
+          nightlyRendered: {
+            startedAt: "2026-09-29T01:00:00.000Z",
+            matchId: 13559245,
+            players: ["a", "b"],
+            outcome: "done",
+          },
+        },
+      },
+    },
+    { source: "agy", answer: { headline: "Covered through Thursday", todo: ["Save hooks for a vs b"] } },
+    { subscribers: 92, views: 64883, videos: 36 },
+    "UCxyz",
+    now,
+  );
+  assert.ok(
+    withNightly[0]!.includes(
+      'nightly: <a href="http://actimel:8080/#match=13559245">#13559245 a vs b</a> — done',
+    ),
+    withNightly[0],
+  );
   assert.ok(!msgs[1]!.includes("(0)"), msgs[1]); // an unchanged count carries no "(0)"
   assert.ok(msgs[2]!.includes("No unanswered comments"), msgs[2]);
 }
