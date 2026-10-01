@@ -109,11 +109,15 @@ try {
   );
   console.log("OK: a favourite's match reaches the list at scan time, with its own score");
 
-  // --- A cache of an older layout: the pool is rebuilt, the operator's dismissals are not lost ---
+  // A new selection needs no cache bump: every scan runs take() over the pool the cache keeps, and the
+  // five re-selections above have not touched it.
   const saved = JSON.parse(await readFile(cachePath, "utf8"));
+  assert.deepEqual(Object.keys(saved.pool).sort(), ["10", "20", "30", "40", "50"], "the pool outlives them");
+
+  // --- A cache of an older layout: the pool is rebuilt, the operator's dismissals are not lost ---
   await writeFile(
     cachePath,
-    JSON.stringify({ ...saved, version: 4, dismissed: [777], scannedAt: Date.now() }),
+    JSON.stringify({ ...saved, version: 3, dismissed: [777], scannedAt: Date.now() }),
     "utf8",
   );
   const rebuilt = await listed([]);
@@ -124,7 +128,7 @@ try {
   );
   const after = JSON.parse(await readFile(cachePath, "utf8"));
   assert.deepEqual(after.dismissed, [777], "a dismissed match does not come back");
-  assert.notEqual(after.version, 4, "the cache is written in today's layout");
+  assert.notEqual(after.version, 3, "the cache is written in today's layout");
   console.log("OK: an older cache is rebuilt and keeps its dismissals");
   console.log("suggestSelect: all checks passed");
 } finally {
