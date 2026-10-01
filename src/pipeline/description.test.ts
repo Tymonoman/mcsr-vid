@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { buildDescription, buildTags, SUBSCRIBE_LINE, type DescriptionInput } from "./description.js";
+import {
+  buildDescription,
+  buildTags,
+  LAST_MEETING,
+  SUBSCRIBE_LINE,
+  withLastMeeting,
+  type DescriptionInput,
+} from "./description.js";
 import type { MatchInfo, UserDetails } from "../api/types.js";
 import type { VodWindow } from "./vodAcquisition.js";
 
@@ -266,5 +273,36 @@ const capped = tagsFor(match(), "edcr", "doogile", 24);
 assert.deepEqual(capped, ["edcr", "doogile", "mcsr ranked"], "stops before the limit is exceeded");
 assert.equal(capped.join(",").length, 24);
 assert.ok(tagsFor(match({ seedType: "VILLAGE", bastionType: "BRIDGE" })).join(",").length <= 450);
+
+// "last time they met" (1 Oct 2026): one plain line with the other links, once, and only with an earlier video.
+{
+  const playlist = "https://www.youtube.com/playlist?list=PLHG-jSA-dWDo";
+  const full = build(match(), { playlistUrl: playlist, supportUrl: "https://ko-fi.com/mcsrreplayoffs" });
+  const line = `${LAST_MEETING}https://youtu.be/AAAAAAAAAAA`;
+  assert.equal(line, "last time they met: https://youtu.be/AAAAAAAAAAA");
+  assert.doesNotMatch(LAST_MEETING, /[!\u2014]/, "no exclamation mark or em dash");
+  // Between the match page and the playlist and tip jar lines.
+  const patched = withLastMeeting(full, "AAAAAAAAAAA");
+  assert.deepEqual(patched.split("\n\n")[3]!.split("\n").slice(2), [
+    full.split("\n").find((l) => l.startsWith("match page: ")),
+    line,
+    `all the matches: ${playlist}`,
+    "tip jar: https://ko-fi.com/mcsrreplayoffs",
+  ]);
+  assert.equal(patched.split(LAST_MEETING).length, 2, "once");
+  // A first meeting has no line; a description that has one is not touched again, whatever the id.
+  assert.equal(withLastMeeting(full, null), full);
+  assert.equal(withLastMeeting(patched, "BBBBBBBBBBB"), patched);
+  // No playlist or tip jar: the end of the links block, before the closer.
+  const bare = build(match());
+  assert.equal(
+    withLastMeeting(bare, "AAAAAAAAAAA").split("\n\n")[3]!.split("\n").at(-1),
+    line,
+    "ends the links block",
+  );
+  assert.equal(withLastMeeting(bare, "AAAAAAAAAAA").split("\n\n").length, bare.split("\n\n").length);
+  // No template, no line.
+  assert.equal(withLastMeeting("0:00 intro", "AAAAAAAAAAA"), "0:00 intro");
+}
 
 console.log("description: all checks passed");

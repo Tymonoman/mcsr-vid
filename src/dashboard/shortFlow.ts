@@ -77,7 +77,7 @@ import {
 import { MIN_LEAD_MS, publishSlotFor, slotWarnings } from "../youtube/publishSlot.js";
 import { reschedule } from "../youtube/youtube.js";
 import { beginUpload, SHORT_DELAY_MS, uploadRunning, type UploadRequest } from "../youtube/youtubeUpload.js";
-import { readUpload, writeUpload, type UploadKind } from "../youtube/youtubeStore.js";
+import { nicknameWarnings, readUpload, writeUpload, type UploadKind } from "../youtube/youtubeStore.js";
 import { hiddenMatchIds, isExported, isShortUploaded, isUploaded } from "./matchShelf.js";
 import { listProcessedMatchIds } from "./matchStatus.js";
 import { shortRunning, spawnShortJob } from "./shortsRoutes.js";
@@ -779,6 +779,8 @@ async function writeHooks(
         );
       }
     }
+    // A nickname already on the channel for another player (30 Sept 2026 post-mortem): a warning, as every check is.
+    saveWarnings.push(...(await nicknameWarnings(`${titleHook}${SEPARATOR}${built.generated}`, matchId)));
   }
 
   if (shortHook && !f.short) {
