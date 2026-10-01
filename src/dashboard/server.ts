@@ -626,8 +626,9 @@ const server = createServer(async (req, res) => {
         videoUrl: videoId ? `https://youtu.be/${videoId}` : null,
         players: [entry.leftNickname ?? null, entry.rightNickname ?? null],
         // The same text "Finish on YouTube" posts (src/youtube/youtubeUpload.ts), so the paste and the
-        // API call cannot say two different things.
-        pinnedComment: await pinnedCommentFor(matchId),
+        // API call cannot say two different things. The playlist lookup gets ten seconds: the kit
+        // answers a page, and YouTube has no timeout of its own to lean on.
+        pinnedComment: await pinnedCommentFor(matchId, 10_000),
         // The slot to schedule for, so the morning's paste into Studio carries a time too —
         // and the first free one, not the same time every match ready this morning would show.
         // The operator's time while it is ahead, else the slot; `publish` says which, and the state.

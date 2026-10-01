@@ -385,12 +385,40 @@ async function earlierVideoOfPair(
 }
 
 /**
+ * `part()`'s answer, or null with one log line: every part of the pinned comment is best effort
+ * (`uploadTextFor`'s rule), so a comment without its question or its link still goes up.
+ */
+async function quietly<T>(matchId: number, what: string, part: () => Promise<T>): Promise<T | null> {
+  try {
+    return await part();
+  } catch (err) {
+    console.warn(`pinned comment, match ${matchId}: no ${what} — ${describeError(err)}`);
+    return null;
+  }
+}
+
+/**
+ * `work`, or a rejection once `ms` have passed; no `ms` is no cap. A call to YouTube has no timeout
+ * of its own (undici waits up to five minutes for the headers), and a page must not wait on that.
+ */
+function within<T>(ms: number | undefined, work: Promise<T>): Promise<T> {
+  if (ms === undefined) return work;
+  let timer: NodeJS.Timeout | undefined;
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`no answer after ${ms / 1000} s`)), ms);
+  });
+  return Promise.race([work, late]).finally(() => clearTimeout(timer));
+}
+
+/**
  * The playlist a viewer is sent to from the first comment: the pair's (or the tournament's) if
  * the channel has one, else a player's, else the season's, as a link, or null. Looked up by title
  * without creating anything — the matchup playlist waits for the pair's second video — so
- * `playlistTitlesFor` (season first) is only reordered, most specific first.
+ * `playlistTitlesFor` (season first) is only reordered, most specific first. A lookup that fails
+ * is one title lost, not the chain: a later one may be an id this process already knows. Past
+ * `until` (epoch ms) the caller has stopped waiting and no more lookups are made for it.
  */
-async function playlistUrlFor(matchId: number): Promise<string | null> {
+async function playlistUrlFor(matchId: number, until = Infinity): Promise<string | null> {
   const titles = playlistTitlesFor(
     await matchStatusFor(matchId),
     "video",
@@ -398,7 +426,8 @@ async function playlistUrlFor(matchId: number): Promise<string | null> {
   ).map(([title]) => title);
   const season = config.youtubePlaylistTitle;
   for (const title of [...titles.filter((t) => t !== season), ...titles.filter((t) => t === season)]) {
-    const id = await findPlaylistId(title);
+    if (Date.now() >= until) return null;
+    const id = await quietly(matchId, `playlist "${title}"`, () => findPlaylistId(title));
     if (id) return `https://www.youtube.com/playlist?list=${id}`;
   }
   return null;
@@ -412,20 +441,19 @@ async function playlistUrlFor(matchId: number): Promise<string | null> {
  *
  * Each part is best effort and logged once when it cannot be had, the rule `uploadTextFor`
  * follows: a comment without its question or its link still goes up, and there is no playlist
- * lookup at all without a YouTube sign-in to make it with.
+ * lookup at all without a YouTube sign-in to make it with. `playlistWaitMs` caps the playlist
+ * part: the kit answers a page and passes ten seconds, while the finish step waits as long as it
+ * takes, since a comment posted without its link stays without it.
  */
-export async function pinnedCommentFor(matchId: number): Promise<string> {
-  const quietly = async <T>(what: string, part: () => Promise<T>): Promise<T | null> => {
-    try {
-      return await part();
-    } catch (err) {
-      console.warn(`pinned comment, match ${matchId}: no ${what} — ${describeError(err)}`);
-      return null;
-    }
-  };
+export async function pinnedCommentFor(matchId: number, playlistWaitMs?: number): Promise<string> {
   const series = existsSync(path.join(matchDir(matchId), "series.json"));
-  const question = await quietly("question", async () => pinnedQuestion(await getMatch(matchId), series));
-  const playlistUrl = isConfigured() ? await quietly("playlist link", () => playlistUrlFor(matchId)) : null;
+  const question = await quietly(matchId, "question", async () =>
+    pinnedQuestion(await getMatch(matchId), series),
+  );
+  const until = playlistWaitMs === undefined ? Infinity : Date.now() + playlistWaitMs;
+  const playlistUrl = isConfigured()
+    ? await quietly(matchId, "playlist link", () => within(playlistWaitMs, playlistUrlFor(matchId, until)))
+    : null;
   return pinnedComment({ question, playlistUrl });
 }
 
