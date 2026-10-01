@@ -20,7 +20,8 @@ Standing background on the YouTube channel MCSR Replayoffs, for answering the op
 - 28 Sept 2026 (Data API): 90 subscribers, 53,392 views, 35 videos. On 24 Sept: 74 subscribers, 33,776 views.
 - 23 Sept (Analytics): 766 long-form watch hours over the channel's life; 3,146 Shorts views in 90 days, all from 17-21 Sept, 0 subscribers from them. 24 Sept audit: CTR 3.23%, average view duration 42%, overall grade C+ (SEO B, performance C, strategy C+, money D+).
 - 26 Sept: 23 long-form thumbnails were replaced with the new design; no reading of the effect is on file.
-- 29 Sept estimates (chat-analyses.md): about 55K views a month; expanded tier (500 subscribers) about 9 Jan 2027, full tier (1,000) about mid-May 2027; ad money about $45-160 a month at today's views.
+- 29 Sept estimates (chat-analyses.md, at about 4 net subscribers a day; the 1 Oct outlook below corrects the two dates): about 55K views a month; expanded tier (500 subscribers) about 9 Jan 2027, full tier (1,000) about mid-May 2027; ad money about $45-160 a month at today's views.
+- 1 Oct 2026 YPP outlook (from the 30 Sept post-mortem, uploads-postmortem-2026-09-30.md: 102 subscribers read on 30 Sept, Analytics to 28 Sept, dates good to about two days). Subscribers bind, not hours. 500 subscribers lands 11 Jan 2027 on the last 7 days' pace (3.86 net a day, a 12-upload week) and 26 Mar 2027 on the last 28 days' (2.25). 1,000 lands 21 May 2027 on the 7-day pace, the optimistic one, and 3 Nov 2027 on the 28-day pace. No pace the channel has run puts it before 8 Apr 2027. At one long-form a day, plan on 2.25 to 3.75 net a day. 8,000 long-form hours land 2 Dec 2026 to 13 Feb 2027, so 1 Feb 2027 costs no days. Ads need the full tier: May 2027 at the soonest.
 - Analytics lags 1 to 3 days behind the Data API.
 
 ## YouTube Partner Program thresholds
@@ -28,7 +29,7 @@ Standing background on the YouTube channel MCSR Replayoffs, for answering the op
 Read from YouTube's own pages on 23 Sept 2026.
 - Expanded tier (memberships, Super Chat, Super Thanks; no ads; Poland is on the eligible list): 500 subscribers, 3 public uploads in 90 days, and 3,000 long-form watch hours in 12 months or 3M Shorts views in 90 days.
 - Full tier (ads): 1,000 subscribers plus 4,000 hours or 10M Shorts views. From 1 Feb 2027 new applicants need 8,000 hours or 20M Shorts views. The expanded tier does not change.
-- Subscribers are the binding constraint, not hours (3,000 hours projected for 2 to 18 Nov 2026, read 23 Sept). Applying under the old 4,000-hour rule needs 1,000 subscribers before 1 Feb 2027: about 7.3 a day against about 4 (29 Sept).
+- Subscribers are the binding constraint, not hours (3,000 hours projected for 2 to 18 Nov 2026, read 23 Sept). 1 Feb 2027 does not bind (30 Sept post-mortem, read 1 Oct): long-form hours were 1,456 through 28 Sept, and 8,000 lands between 2 Dec 2026 and 13 Feb 2027 at the last 7, 14 and 28 days' pace (100, 77 and 47 hours a day), while no pace the channel has run puts 1,000 subscribers before 8 Apr 2027. So the new rule costs no days. Applying under the old 4,000-hour rule would need 1,000 before 1 Feb 2027: 7.3 net a day, 1.55 times the best 7 days on record (4.71 a day, 30 Aug to 5 Sept).
 - Review takes about a month; a rejection means a 30-day wait. Reused content is the risk; the policy allows replays "where you explain the moves".
 
 ## Competitors
@@ -53,8 +54,8 @@ Given 28 Sept 2026.
 
 ## What the research says works and what does not
 
-- Hooks: on 7 Sept rivalry hooks measured 9.36% CTR against 2.25% for descriptive ones, but on only 4,590 subscriber-heavy impressions. On 15 Sept, over 126,745 impressions, it was 2.77% against 2.59%; rivalry hooks won impressions (106k vs 20k), not CTR.
-- 62% of long-form views are not real starts (24 Sept): the gap is muted previews on Browse and Search. Suggested-heavy videos convert 6.4 subscribers per 1,000 engaged views, Home-feed ones 2.0; 74% of views come from the Home feed.
+- Hooks: on 7 Sept rivalry hooks measured 9.36% CTR against 2.25% for descriptive ones, but on only 4,590 impressions, an early small sample. Who saw them is not in the data: YouTube's traffic key SUBSCRIBER means Browse (Home and the subscriptions feed), not views from subscribers, so the earlier "subscriber-heavy" label was a misreading (corrected 1 Oct 2026). On 15 Sept, over 126,745 impressions, it was 2.77% against 2.59%; rivalry hooks won impressions (106k vs 20k), not CTR.
+- 62% of long-form views are not real starts (24 Sept): the gap is muted previews on Browse and Search. Suggested-heavy videos convert 6.4 subscribers per 1,000 engaged views, Browse-heavy ones 2.0; 74% of views are Browse (Home and the subscriptions feed).
 - First minute: 16 to 22 points of viewers go between 3% and 10% of the video (22 Sept). The 24 Sept audit: 22.5 points lost in the first 3% (7 s intro card, frozen countdown) and 33 to 49 in the first minute. Answers built: the 90 s subscribe line, a COMING UP teaser, explain-the-moves captions (off unless the operator turns them on).
 - Old Shorts (to 20 Sept): 21 to 31% of plays engaged, 0 subscribers from 2,819 views (long-forms: 48 from 27,367). Fixed 22 s windows, 32 of 40 ending on the finish. Rebuilt 23 Sept: agy watches the match and picks one 12 to 60 s moment, with a 4 s hook, race captions and the off-focus POV lowered.
 - Borrowed audiences: edcr vs doogile brought 26 of 49 long-form subscribers (24 Sept). Series videos flopped in the feed: 84 views in 32 h against 2,095 for the same pair's ranked video.
@@ -72,3 +73,4 @@ Given 28 Sept 2026.
 - edcr-timeline.md: dated timeline of that story, sources marked verified or not.
 - ypp-report.md: YPP rules and math, when each gate falls, which lever moves the date.
 - chat-analyses.md: earlier answers of 29 Sept: competitor earnings, what YPP would pay us, posting edcr clips.
+- uploads-postmortem-2026-09-30.md: every upload so far (33 long-forms, 20 Shorts, read 30 Sept 2026): the 11 costliest mistakes ranked, the weekly views and subscriber table, one line per long-form, and the dated path to 500 and 1,000 subscribers.

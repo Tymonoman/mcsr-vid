@@ -36,12 +36,15 @@ Asked 29 Sept 2026 (07:22 UTC), answered 29 Sept 2026 (07:23 UTC). Estimates, no
 | ~9 Jan 2027, expanded tier at 500 subs | Memberships, Super Thanks, Super Chat. No ads. | Roughly $0–30 a month at our size. The Ko-fi tip jar already covers the same kind of support. |
 | ~mid-May 2027, full tier at 1,000 subs | Ad revenue | At today's views (~55K a month, ~45K of it long-form): ~$45–160 a month. At last week's pace (~120K a month): ~$100–400 a month. |
 
+**Corrected 1 Oct 2026:** both dates above assume about 4 net subscribers a day, close to the last 7 days' pace (3.86 a day, a 12-upload week). That pace is the optimistic one. On the last 28 days' pace (2.25 a day) the expanded tier lands 26 Mar 2027 and the full tier 3 Nov 2027, and no pace the channel has run puts 1,000 subscribers before 8 Apr 2027, so mid-May 2027 is the best case, not the middle (30 Sept post-mortem, 102 subscribers read on 30 Sept).
+
 **Assumptions:** the same revenue-per-1,000-views range as the competitor estimate, $1–3.50, for a young international gaming audience. Shorts add almost nothing. Our videos are over 8 minutes, so mid-roll ads can run, which helps. 62% of our views are muted autoplay previews, which do not show ads, and that pulls us toward the low end. Earnings scale with views: MCSR Matches gets 150–300K views a month and earns about $150–1,000 by the same method.
 
-**The date that matters, 1 February 2027**
-- Watch hours are not the problem. At 40 hours a day we pass 4,000 in about 45 days, and 8,000 by spring.
-- Subscribers are the bottleneck. To apply under the old 4,000-hour rule we need 1,000 subscribers before 1 Feb. That is 908 more in 125 days, about 7.3 a day, against the 4 a day we get now. We would need to roughly double how many viewers subscribe. The levers named by the channel audit and the competitor playbook: recurring rivalries, the mid-video subscribe line, end screens.
-- Miss that date and the full tier comes around May. We would still pass 8,000 hours by then, so the new rule would not hold us back, it would only take longer.
+**1 February 2027 does not bind (corrected 1 Oct 2026)**
+The 29 Sept answer called 1 Feb 2027 the date that matters. The post-mortem of 30 Sept (uploads-postmortem-2026-09-30.md) shows it does not.
+- Watch hours are not the problem. Long-form hours were 1,456 through 28 Sept. At the last 7, 14 and 28 days' pace (100, 77 and 47 hours a day) 8,000 lands on 2 Dec 2026, 22 Dec 2026 and 13 Feb 2027, so the new 8,000-hour rule costs no days.
+- Subscribers are the bottleneck. The Data API read 102 on 30 Sept. Applying under the old 4,000-hour rule would need 1,000 before 1 Feb 2027, about 7.3 net a day. That is 1.55 times the best 7 days on record (4.71 a day, 30 Aug to 5 Sept), and no pace the channel has run puts 1,000 before 8 Apr 2027. The last 7 days (3.86 a day, a 12-upload week) give 21 May 2027, which is optimistic. The last 28 days (2.25 a day) give 3 Nov 2027. The levers named by the channel audit and the competitor playbook: recurring rivalries, the mid-video subscribe line, end screens.
+- The full tier comes in May 2027 at the soonest: the earliest 1,000 date is 8 Apr 2027 and review takes about a month. 8,000 hours land long before, so the new rule does not hold us back. The subscriber count does.
 
 **Caution:** after we apply, YouTube's review takes about a month, and reused content (replays of other people's streams) is what gets examined. MCSR Matches posts plain replays much like ours and has a membership "Join" button, which only Partner Program channels get, so replay channels can clearly be accepted.
 
@@ -52,7 +55,7 @@ Asked 29 Sept 2026 (07:30 UTC), answered 29 Sept 2026 (07:35 UTC), after three p
 **Where subscribers come from**
 - Long videos, not Shorts. Long-form brings 1.43 subs per 1,000 views (66 subs from 46K views). Shorts bring 0.21 (2 from 9.6K); 11 of the 12 Shorts brought none.
 - A few matches do most of the work. edcr vs doogile alone brought 26 subs (26 of the first 49 long-form subscribers), and the best converters by rate feature doogile (TAS).
-- The gap: at ~4,000 views a day, the 7.3 subs a day needed means 1.8 subs per 1,000 views. The last reported days (22–26 Sept) ran at 0.94.
+- The gap (corrected 1 Oct 2026): the 29 Sept answer set a target of 1.8 subs per 1,000 views, which is 7.3 a day at about 4,000 views a day, to reach 1,000 subscribers by 1 Feb 2027. That date does not bind (see the monetisation answer above), and 1.8 is about twice what the channel has run: 1.05 gained per 1,000 views in the week of 14 to 20 Sept and 0.98 in 21 to 27 Sept (30 Sept post-mortem). Only the weeks of 24 Aug and 31 Aug held it (7.01 and 5.43), both under 3,700 views.
 - 32 of our 100 subs did not come from any video, most likely from the channel page, which has one section today.
 - Conversion fell as reach grew: 4.3, 2.5, 0.96 subs per 1,000 views, week by week.
 
@@ -67,7 +70,7 @@ Asked 29 Sept 2026 (07:30 UTC), answered 29 Sept 2026 (07:35 UTC), after three p
 
 **Not worth the time:** polishing Shorts for subscribers (keep them for reach only); judging the mid-video SUBSCRIBE line yet (only 5 days of data, look again in mid-October); chasing raw views.
 
-**How we will know:** two numbers weekly from the bot's `/stats`: subs per 1,000 views (target 1.8 or more) and days with a video (target 7 of 7). Channels under 500 subscribers get extra algorithm help now, so sooner is better.
+**How we will know:** two numbers weekly from the bot's `/stats`: subs per 1,000 views and days with a video (target 7 of 7). The 1.8 target of 29 Sept is dropped; read each week against the last two full weeks, 1.05 and 0.98 gained per 1,000 views (14 to 27 Sept, read 30 Sept). Channels under 500 subscribers get extra algorithm help now, so sooner is better.
 
 **Still waiting on the operator:** a go on items 3 and 4 (and the wording for 4), and his own Studio and settings steps.
 
