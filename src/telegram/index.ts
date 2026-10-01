@@ -13,7 +13,13 @@ import * as bot from "./bot.js";
 import { askAgyForReport, askAgyFreeform, type AgyResult } from "./agy.js";
 import { knowledgeFor } from "./knowledge.js";
 import { BOT_COMMANDS, HELP_TEXT, parseCommand, parseStatsWindows, type ParsedCommand } from "./commands.js";
-import { gatherFacts, gatherNightlyInfo, gatherUpcoming, type ReportFacts } from "./facts.js";
+import {
+  gatherFacts,
+  gatherNightlyInfo,
+  gatherUpcoming,
+  MORNING_SECTIONS,
+  type ReportFacts,
+} from "./facts.js";
 import {
   fallbackToday,
   renderAlerts,
@@ -26,6 +32,7 @@ import {
   renderToday,
   renderUpcoming,
   renderWaiting,
+  renderWorth,
   renderYpp,
 } from "./report.js";
 import { msUntilNextWarsawRun, shouldCatchUp, warsawDateStr } from "./schedule.js";
@@ -119,7 +126,7 @@ export interface BuiltReport {
 export async function buildMorningReport(nowMs = Date.now()): Promise<BuiltReport> {
   const state = readTelegramState();
   const sinceMs = state.lastReportAt ? Date.parse(state.lastReportAt) : nowMs - 24 * 60 * 60 * 1000;
-  const facts = await gatherFacts(nowMs, sinceMs);
+  const facts = await gatherFacts(nowMs, sinceMs, MORNING_SECTIONS);
   const agy = await todayAgy(facts);
   const messages = renderMorningReport(facts, agy, state.prevSnapshot, config.youtubeChannelId, nowMs);
   return { messages, facts, agy };
@@ -192,6 +199,14 @@ export async function dispatchCommand({ command, args }: ParsedCommand): Promise
       const facts = await gatherFacts(Date.now(), undefined, ["todo"]);
       return { messages: [renderWaiting(facts.todo, facts.dashboardBaseUrl)], html: true };
     }
+    case "worth": {
+      // Fresh, not the six-hour copy the morning report reads: the operator asked now.
+      const facts = await gatherFacts(Date.now(), undefined, ["worthRendering"], { freshWorth: true });
+      return {
+        messages: [renderWorth(facts.worthRendering, facts.dashboardBaseUrl, Infinity)],
+        html: true,
+      };
+    }
     case "nightly": {
       const n = await gatherNightlyInfo();
       return { messages: [renderNightly(n)], html: true };
@@ -255,6 +270,10 @@ async function handleUpdate(update: bot.TgUpdate): Promise<void> {
     // agy on the whole facts sheet takes one to three minutes: say so rather than go quiet.
     if (AGY_COMMANDS.has(parsed.command))
       await bot.sendMessage("asking agy — this takes a minute or two").catch(() => undefined);
+    else if (parsed.command === "worth")
+      await bot
+        .sendMessage("checking the last three days' matches — this can take up to a minute")
+        .catch(() => undefined);
     const { messages, html } = await dispatchCommand(parsed);
     for (const m of messages) await bot.sendMessage(m, { html });
   } catch (err) {

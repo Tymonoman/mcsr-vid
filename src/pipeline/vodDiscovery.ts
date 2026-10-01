@@ -49,14 +49,19 @@ export function parseArchives(stdout: string): Archive[] {
     .filter((a) => Number.isFinite(a.timestamp) && a.timestamp > 0);
 }
 
-function listArchivesWithYtDlp(twitchName: string): Promise<string> {
+/**
+ * One channel's archive listing, the `listArchives` default — exported so a caller can memoise it.
+ * Each archive costs a request (a second or two: forty take most of a minute), so a caller that
+ * only needs a match from the last days asks for fewer than `ARCHIVE_COUNT`.
+ */
+export function listArchivesWithYtDlp(twitchName: string, count = ARCHIVE_COUNT): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(
       "yt-dlp",
       [
         "--skip-download",
         "--playlist-end",
-        String(ARCHIVE_COUNT),
+        String(count),
         "--print",
         "%(id)s\t%(timestamp)s\t%(duration)s",
         `https://www.twitch.tv/${twitchName}/videos?filter=archives&sort=time`,

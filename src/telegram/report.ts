@@ -191,6 +191,30 @@ export function renderOvernight(overnight: ReportFacts["overnight"], compact = f
   return lines.join("\n");
 }
 
+/**
+ * Matches between players people know, played lately, not yet rendered, both VODs found — one line
+ * each, `players · played · run · story · id`, the id in `<code>` so a tap copies it for the
+ * dashboard. The morning message shows five; `/worth` passes more and gets what was scored.
+ */
+export function renderWorth(worth: ReportFacts["worthRendering"], dashboardBaseUrl: string, max = 5): string {
+  if (!worth.ok) return sectionError("🎬 Worth rendering", worth.error);
+  const { matches, notes } = worth.data;
+  const shown = matches.slice(0, max);
+  const lines =
+    shown.length === 0
+      ? ["🎬 Nothing new worth rendering from the last 3 days"]
+      : [
+          `${b("🎬 Worth rendering today")} · <a href="${escapeHtml(dashboardBaseUrl)}/">dashboard</a>`,
+          ...shown.map(
+            (w) =>
+              `• ${b(w.players)} · ${whenWarsaw(w.playedAt)} · ${mmss(w.runMs)} · ${escapeHtml(w.story)} · id <code>${w.matchId}</code>`,
+          ),
+        ];
+  if (matches.length > shown.length) lines.push(`+ ${matches.length - shown.length} more — /worth`);
+  for (const n of notes) lines.push(`<i>${escapeHtml(n)}</i>`);
+  return lines.join("\n");
+}
+
 /* --- Message 2: the channel (stats table, YPP) -------------------------------------------------- */
 
 /** 7616 → "7.6K", 55381 → "55K": a table cell on a phone, not an accountant's figure. */
@@ -450,9 +474,10 @@ export const visibleLength = (html: string): number =>
   html.replace(/<[^>]+>/g, "").replace(/&(?:lt|gt|amp|quot|#39);/g, "x").length;
 
 /**
- * The morning report as three messages, each saying a thing once: the day (agy's to-do, problems,
- * overnight, health), the channel (stats table and YPP), and the comments. The operator's call,
- * 29 Sept 2026: "too much repetitive info split it up into a couple messages".
+ * The morning report as three messages, each saying a thing once: the day (agy's to-do, the
+ * matches worth rendering, problems, overnight, health), the channel (stats table and YPP), and
+ * the comments. The operator's call, 29 Sept 2026: "too much repetitive info split it up into a
+ * couple messages".
  */
 export function renderMorningReport(
   facts: ReportFacts,
@@ -464,6 +489,7 @@ export function renderMorningReport(
   const day = [
     `☀️ <b>${escapeHtml(warsawDay(nowMs))}</b>`,
     renderToday(facts.todo, agy, facts.dashboardBaseUrl),
+    renderWorth(facts.worthRendering, facts.dashboardBaseUrl),
     renderAlerts(facts.alerts, true),
     renderOvernight(facts.overnight, true),
     renderHealth(facts.health, true),

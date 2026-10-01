@@ -43,6 +43,7 @@ export const BOT_COMMANDS: readonly { command: string; description: string }[] =
   { command: "comments", description: "Unanswered comments" },
   { command: "ypp", description: "Days to the next YPP tier" },
   { command: "waiting", description: "Matches waiting for a hook" },
+  { command: "worth", description: "Matches worth rendering: known players, both VODs, last 3 days" },
   { command: "nightly", description: "Last nightly run + tonight's pick" },
   { command: "ask", description: "Ask agy a question: /ask <question>" },
   { command: "help", description: "What this bot does" },

@@ -200,6 +200,29 @@ function excludedIds(cache: SuggestCache): Set<number> {
   return new Set<number>([...listProcessedMatchIds(), ...cache.dismissed]);
 }
 
+/**
+ * What the scans already know about players, for code that must not spend an MCSR profile call
+ * (the Telegram report's "worth rendering"): a nickname's Twitch login and follower count as the
+ * last scan cached them, null when never seen or no linked Twitch, and the ids the operator
+ * dismissed. One read of the cache file, nicknames matched without regard to case.
+ */
+export function scanKnowledge(): {
+  dismissed: ReadonlySet<number>;
+  twitchOf: (nickname: string) => { login: string; followers: number | null } | null;
+} {
+  const cache = loadCache();
+  const logins = new Map(
+    Object.entries(cache.twitchLogins).map(([nick, login]) => [nick.toLowerCase(), login]),
+  );
+  return {
+    dismissed: new Set(cache.dismissed),
+    twitchOf: (nickname) => {
+      const login = logins.get(nickname.toLowerCase());
+      return login ? { login, followers: cache.twitchFollowers[login]?.count ?? null } : null;
+    },
+  };
+}
+
 /** Hide a suggestion permanently and drop it from the cached list. */
 export function dismissSuggestion(matchId: number): void {
   const cache = loadCache();
