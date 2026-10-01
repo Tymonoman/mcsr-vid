@@ -28,7 +28,7 @@
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { capacity } from "./archive.js";
+import { archiveMatch, capacity, inNasWindow, refreshArchived } from "./archive.js";
 import { config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { exportRunning, startFastExport } from "./exportRoutes.js";
@@ -54,6 +54,7 @@ import type { MatchInfo } from "../api/types.js";
 import { computeMetrics } from "../pipeline/matchScore.js";
 import { withDiscoveredVods } from "../pipeline/vodDiscovery.js";
 import { retryFailedPlaylists, retryPendingComments } from "../youtube/youtubeUpload.js";
+import { allUploads } from "../youtube/youtubeStore.js";
 import { pickFile, type ShortPick } from "../shorts/shortPlan.js";
 import { pickErrorFile } from "../shorts/videoPick.js";
 
@@ -616,6 +617,24 @@ export function previewPick(
 }
 
 /**
+ * Queues `archiveMatch` for every uploaded match the NAS does not have yet — the periodic pass
+ * that catches an upload whose automatic copy was deferred to the quiet window (or missed for
+ * any other reason), with no click from the operator. Gated on the window itself, not just on
+ * each `archiveMatch` call it makes: "Run now" at 14:00 must not list every match and print a
+ * deferred line for each one. `now` is threaded into every `archiveMatch` call so a long queue's
+ * own re-check (src/dashboard/archive.ts) sees the same clock this gate did.
+ */
+export async function sweepArchive(
+  now: () => number = Date.now,
+  archive: (matchId: number, now: () => number) => void = archiveMatch,
+): Promise<void> {
+  if (!inNasWindow(now())) return;
+  for (const { matchId } of await allUploads()) {
+    if (!refreshArchived(matchId)) archive(matchId, now);
+  }
+}
+
+/**
  * One nightly run, from the guards to the notification.
  *
  * Split out of the timer callback so the route and the clock invoke the same body: the chain had
@@ -636,6 +655,17 @@ export async function runNightlyOnce(
     resolveQueued = resolveQueuedPick,
   } = deps;
   const startedAt = new Date(now()).toISOString();
+
+  // Independent of whether tonight renders anything, so it still runs on "Run now" and on a
+  // night that skips below — but only once a night, and `sweepArchive` is itself a no-op outside
+  // the window, so a daytime "Run now" does not even list every match. Never fails the run.
+  if (started === 1) {
+    try {
+      await sweepArchive(now);
+    } catch (err) {
+      console.error(`nightly: NAS sweep failed — ${describeError(err)}`);
+    }
+  }
 
   // The scheduled run whose date matches does nothing but log/notify one line, then clears.
   // "Run now" ignores skipNightOf.
