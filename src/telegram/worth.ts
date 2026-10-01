@@ -13,6 +13,7 @@
  * second report spends nothing.
  */
 import { getMatch, getUserMatches } from "../api/mcsrApi.js";
+import { config } from "../config.js";
 import type { FeedMatch, MatchInfo, MatchVod, UserDetails } from "../api/types.js";
 import { hiddenMatchIds } from "../dashboard/matchShelf.js";
 import { listProcessedMatchIds } from "../dashboard/matchStatus.js";
@@ -265,13 +266,15 @@ export function liveDeps(): WorthDeps {
     return p;
   };
   return {
-    roster: WATCH_ROSTER,
+    // The Settings tab's roster; the constant stands in when the operator empties the list.
+    roster: config.favouritePlayers.length ? config.favouritePlayers : WATCH_ROSTER,
     notes,
     listMatches: (nickname) => getUserMatches(nickname, { type: 2, count: 100 }),
     fetchMatch: getMatch,
     isTaken: takenNow(known.dismissed),
     isKnown: (nickname) =>
-      onRoster(WATCH_ROSTER, nickname) || (known.twitchOf(nickname)?.followers ?? 0) >= KNOWN_FOLLOWERS,
+      onRoster(config.favouritePlayers.length ? config.favouritePlayers : WATCH_ROSTER, nickname) ||
+      (known.twitchOf(nickname)?.followers ?? 0) >= KNOWN_FOLLOWERS,
     discover: (match) => {
       const loginOf = new Map(match.players.map((p) => [p.uuid, known.twitchOf(p.nickname)?.login]));
       return discoverVods(
