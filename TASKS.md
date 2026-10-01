@@ -70,6 +70,13 @@ bars show; the report's nightly/overnight/upcoming lines deep-link) and fb30d50 
 nickname-reuse warning in saveWarnings; "last time they met:" in the description at upload). Full
 `npm test` green on main at 08:00 UTC; every merged worktree removed, branches kept.
 
+### ▶ REDDIT POST — 1 Oct 2026 13:14 Warsaw = 11:14 UTC (the operator posted in r/minecraftspeedrun)
+"note down the time and monitor for new views and subs and analyze if they came from this post".
+Logger: ~/.claude/jobs/8d7d95a1/tmp/night/reddit/loop.sh (every 30 min for 72 h → snaps.jsonl; first
+snapshot 11:16 UTC: 104 subs, LUI5E7yF0zE 8,320 views). Report at +24 h (2 Oct ~11:15 UTC) and +72 h:
+per-video excess views (LUI5E7yF0zE is the linked one) and, once Analytics has the days, EXT_URL views
+with reddit referrers + subscribersGained per day vs the prior 7. Memory: project_reddit_post_2026_10_01.md.
+
 ### ▶ IN FLIGHT at 09:35 UTC 1 Oct (written before a /compact) — pick up from here
 
 The operator's 1 Oct calls: "3. I'll do them once I get home" (end screens) · "5. if they are already
@@ -80,27 +87,58 @@ to my nas share … create a directory there and use the space responsibly". Goa
 "resume the previous work. do everytging to hut ypp as early as possible. spin off sonnet 5.5
 agents. use opus 5.5 only as the orchestrstor." (Opus orchestrates; every agent on Sonnet.)
 
-1. 13672776 (7UcG1Y-k9dY, LOCKED IN vs UNC) re-export running (bash task btx1f89g7; log
+1. DONE 09:40 — re-export verified: at 0:30 / 4:00 / 9:00 the overlay's RTA and both in-game timers
+   agree to one frame (585.3 s, matchStartSec 8). 7UcG1Y-k9dY live: 5,573 views, 50 likes, 8
+   comments, no viewer mentions the timer; Short 1,511. Asked him: keep (recommended) or re-upload +
+   unlist. Was: 13672776 (7UcG1Y-k9dY, LOCKED IN vs UNC) re-export running (bash task btx1f89g7; log
    night/sync13672776/export2.log). sync.json corrected to left 148.329 / right 149.067 (both were
    6.6 s late: in-game RTA Feinberg 10.004 at 158.333, Infume 20.960 at 170.03 / 27.564 at 176.63);
    backups: sync.json.bak-2026-10-01, the old export moved to
    /home-media/mcsr-replayoffs/backups/13672776/. NEXT: check frames of the new final (overlay RTA vs
    both POVs' own RTA at 3 points), then ask him ONE question: upload the fixed file as a new video and
    unlist 7UcG1Y-k9dY, or keep it. Its Short ZyfAf2EG2AA has the same offset.
-2. Recommender rebuild: workflow wf_a7774255-db4 (task w4b5mkn4p), resumed; outputs in night/rec/
+2. 09:58 the spec is rec/spec.md (expected views = popularity × favourite × draw × repeat; known =
+   favourite or ≥1,000 Twitch followers; nightly never renders a no-known match unless queued; the
+   favourites' own recent matches join the pool). 09:59 I sent the build agent (ae68c5b90be91efe7)
+   four additions: known uses the MEASURED draw when draw.json has n≥3 (≥0.6 known, lower not known,
+   overriding followers: hackingnoises/v_strid/nahhann/edcr have no follower data); a queued id off the
+   list still renders (pool, else getMatch); playoff picks count as known. Check all four in its report.
+   10:01: that message RESUMED A SECOND COPY of the build agent (SendMessage to a workflow agent's id
+   does not reach the running one) — two writers on one worktree. I stopped the workflow (w4b5mkn4p,
+   which killed the original copy); the resumed copy (subagent ae68c5b90be91efe7, has spec + additions)
+   is the sole builder. NEXT after its commit: run the workflow script's two reviews (safety, outcome)
+   and the fix as plain Sonnet Agent calls (prompts in workflows/scripts/recommender-rebuild-*.js).
+   10:55: build commit 89fd10f (tests green) — but its replay put ninananina/CxrtxR/grq_ on top and the
+   nightly on ninananina vs _Hypn0tic. Sent 3 corrections (2nd commit): favourite tier stays first
+   (tier 2 fav / 1 known / 0 neither, then main's keys); knownFollowerThreshold 10_000 (supply 100 vs
+   106 a week); unmeasured draw prior by followers (≥50k 1.0, 10k–50k 0.75, else 0.5).
+   Recommender rebuild: workflow wf_a7774255-db4 (task w4b5mkn4p), resumed; outputs in night/rec/
    (draw.json, supply.json, spec.md), branch/worktree `known-only`. NEXT on completion: read its fix
    report + replay, check the nightly can never render a no-name, run test:unit, merge, CLAUDE.md
    bullets; he must `docker restart mcsr-dashboard`.
-3. Nightly queue set (outranks the ranking on the old code): [13782495 silverrruns–romuxii,
-   13805329 steez–doogile, 13782182 silverrruns–ANJOUU]; 13739821 (Jabo_) is nightlySkip.
-4. Agents: `report-update` refreshes night/report/ (template + build.py → index.html,
+3. 09:45: the dashboard was RESTARTED by him (boot f53e492 = all of last night's merges live). The
+   queue I set could never render: `pickNightlyCandidate` (nightly.ts:237) keeps only queued ids that
+   are ON the suggestion list, and none were (strip: players null) — cleared it. Tonight's pick is the
+   ranking's first: 13759761 Aquacorde–Feinberg (known; VODs 7 d). The list has 4 cards, the 4th a
+   no-name (13817299 slujish–qrynch). FOR known-only: a queued id off the list must still render
+   (fetch it by id) — add after the workflow's Build if its spec does not. 13739821 stays nightlySkip.
+4. DONE 09:51: the report page is published ONCE: https://claude.ai/artifact/HAQTHWQ7mXXKkNF1Wwxj4Y
+   (capabilities artifact; ticks saved to state.json); link sent on Telegram. Was: `report-update` refreshes night/report/ (template + build.py → index.html,
    capabilities.json) → then PUBLISH ONCE with the Artifact tool (icon "report", description one
    sentence) and send him the link (+ one Telegram line via `npm run tg -- send`). `nas-vods`
    secures known-player VODs to /home-media/mcsr-replayoffs/vods/<id>/ (≤150 GB, ledger).
 5. NAS: /home-media/mcsr-replayoffs/ (README, ledger.jsonl, vods/, research/2026-09-30-night/,
    backups/); /archive = the dashboard's archive (src/dashboard/archive.ts). compose.yaml has his
    uncommitted /home-media mount — his to commit.
-6. Still his: restart; titles for the 3 quarterfinals (13493574, 13495280, 13496975 → 2/3/4 Oct
+7. 09:42: the last four S11 series render in the dashboard one after another (bracket order; script
+   tmp/sf-queue.sh, log tmp/sf-queue.log): SF 13525852 BlazeMind–lowk3y_, SF 13527460 Infume–Feinberg,
+   3rd 13528697 BlazeMind–Feinberg, GF 13530634 lowk3y_–Infume → slots 5/6/7/8 Oct 23:00 once he
+   titles them (after the QFs, chronological; a GF title gives the semis away). ~5 h; uploads nothing.
+   10:54 SF1 13525852 STALLED: games 1–3 exported, game 4 (13526669) stopped after its splits + intro
+   (no overlay-timer.mp4, no error recorded — cause unseen from here; game 3's export, two agents' test
+   runs and the NAS downloads overlapped it on 4 CPUs). 11:25 tmp/sf-queue2.sh (same log) took over:
+   waits for SF2 13527460, retries SF1 (renders only game 4, then joins), then 3rd and GF; one retry each.
+6. Still his (the restart is DONE, boot f53e492): titles for the 3 quarterfinals (13493574, 13495280, 13496975 → 2/3/4 Oct
    23:00); end screens (when home); nightlyMaxRenders 2; two runner DMs; the 7UcG1Y-k9dY question.
 
 ## RESUME (after a compaction): read this block, `git status`, `git worktree list`, `ls ~/.claude/jobs/8d7d95a1/tmp/night/`, then continue the plan.
