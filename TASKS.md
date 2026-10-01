@@ -70,6 +70,39 @@ bars show; the report's nightly/overnight/upcoming lines deep-link) and fb30d50 
 nickname-reuse warning in saveWarnings; "last time they met:" in the description at upload). Full
 `npm test` green on main at 08:00 UTC; every merged worktree removed, branches kept.
 
+### ▶ IN FLIGHT at 09:35 UTC 1 Oct (written before a /compact) — pick up from here
+
+The operator's 1 Oct calls: "3. I'll do them once I get home" (end screens) · "5. if they are already
+scheduled and look correct remove the files" (R16 series files: DONE 08:49, 67.9 GB, 110 files,
+ledger research/deleted-r16-2026-10-01.json) · "7. re-export the broken overlay" · "the suggestion
+system is shit it recommends and schedules matches that no one will watch" · "you now have access
+to my nas share … create a directory there and use the space responsibly". Goal still active:
+"resume the previous work. do everytging to hut ypp as early as possible. spin off sonnet 5.5
+agents. use opus 5.5 only as the orchestrstor." (Opus orchestrates; every agent on Sonnet.)
+
+1. 13672776 (7UcG1Y-k9dY, LOCKED IN vs UNC) re-export running (bash task btx1f89g7; log
+   night/sync13672776/export2.log). sync.json corrected to left 148.329 / right 149.067 (both were
+   6.6 s late: in-game RTA Feinberg 10.004 at 158.333, Infume 20.960 at 170.03 / 27.564 at 176.63);
+   backups: sync.json.bak-2026-10-01, the old export moved to
+   /home-media/mcsr-replayoffs/backups/13672776/. NEXT: check frames of the new final (overlay RTA vs
+   both POVs' own RTA at 3 points), then ask him ONE question: upload the fixed file as a new video and
+   unlist 7UcG1Y-k9dY, or keep it. Its Short ZyfAf2EG2AA has the same offset.
+2. Recommender rebuild: workflow wf_a7774255-db4 (task w4b5mkn4p), resumed; outputs in night/rec/
+   (draw.json, supply.json, spec.md), branch/worktree `known-only`. NEXT on completion: read its fix
+   report + replay, check the nightly can never render a no-name, run test:unit, merge, CLAUDE.md
+   bullets; he must `docker restart mcsr-dashboard`.
+3. Nightly queue set (outranks the ranking on the old code): [13782495 silverrruns–romuxii,
+   13805329 steez–doogile, 13782182 silverrruns–ANJOUU]; 13739821 (Jabo_) is nightlySkip.
+4. Agents: `report-update` refreshes night/report/ (template + build.py → index.html,
+   capabilities.json) → then PUBLISH ONCE with the Artifact tool (icon "report", description one
+   sentence) and send him the link (+ one Telegram line via `npm run tg -- send`). `nas-vods`
+   secures known-player VODs to /home-media/mcsr-replayoffs/vods/<id>/ (≤150 GB, ledger).
+5. NAS: /home-media/mcsr-replayoffs/ (README, ledger.jsonl, vods/, research/2026-09-30-night/,
+   backups/); /archive = the dashboard's archive (src/dashboard/archive.ts). compose.yaml has his
+   uncommitted /home-media mount — his to commit.
+6. Still his: restart; titles for the 3 quarterfinals (13493574, 13495280, 13496975 → 2/3/4 Oct
+   23:00); end screens (when home); nightlyMaxRenders 2; two runner DMs; the 7UcG1Y-k9dY question.
+
 ## RESUME (after a compaction): read this block, `git status`, `git worktree list`, `ls ~/.claude/jobs/8d7d95a1/tmp/night/`, then continue the plan.
 
 **26 Sept ~20:10 UTC.** publish-at: all 13 fixed (6455faf on a main merge; 64/64 unit files; browser check 105/107 checks ×2 browsers ×2 sizes locally; against the REAL dashboard 97 passed and 0 of 28 writes reached the server, /media unchanged) — review r2 running, also settling the fixer's claim that opening an unpicked match queues a model pick (CLAUDE.md says it does not).
