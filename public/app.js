@@ -3390,8 +3390,9 @@ async function saveSettingsPanel() {
     settingsData = r;
     paintSettings();
     $("#setmsg").textContent = `saved ${r.changed.join(", ")}`;
-    // The list's order is read fresh on every GET, so the new order is one fetch away.
-    if (r.changed.includes("favouritePlayers")) pollSuggestions().catch(() => {});
+    // Both re-order the list, and its order is read fresh on every GET: the new order is one fetch away.
+    if (r.changed.some((key) => key === "favouritePlayers" || key === "pairRepeatDays"))
+      pollSuggestions().catch(() => {});
   } catch (e) {
     msg.textContent = "";
     failAt("#setsave", "Settings not saved", e.message);
