@@ -215,9 +215,9 @@ const order = (
 ) => presentSuggestions(raw, NOW, rival, favourites, posted).map((c) => c.matchId);
 
 // --- favourite players: a recognisable name's match goes above an equal one ---------------------
-// The cards are ordered by popularity, not by score (the score only picks the slots at scan time), so
-// the bonus is a multiple of popularity: half again for one favourite, twice for two. Every fixture
-// below has the same score on purpose.
+// A match with a favourite is a tier above any match with none; inside the tier the cards are ordered by
+// popularity, not by score (the score only picks the slots at scan time), counted up half again for one
+// favourite and twice for two. Every fixture below has the same score on purpose.
 {
   // (a) equal score and equal popularity: the favourite's match first, wherever it arrives.
   const tie = [game(1, ["aaa", "bbb"]), game(2, ["doogile", "ccc"])];
@@ -244,12 +244,11 @@ const order = (
   assert.deepEqual(order(tie, ["doog"]), [1, 2], "a prefix is not a match");
   assert.deepEqual(order([tie[0]!, game(2, ["doogile2", "ccc"])], ["doogile"]), [1, 2], "nor a longer name");
 
-  // The size of it: a match a little more popular is passed, one clearly ahead is not.
+  // The tier: a match with a favourite goes above every match with none, however popular that one is.
   const passed = [game(1, ["aaa", "bbb"], 12), game(2, ["doogile", "ccc"], 10)];
   assert.deepEqual(order(passed, ["doogile"]), [2, 1], "a favourite passes a match a bit more popular");
-  const ahead = [game(1, ["aaa", "bbb"], 40), game(2, ["doogile", "edcr"], 10)];
-  assert.deepEqual(order(ahead, ["doogile"]), [1, 2], "but not one clearly ahead of it");
-  assert.deepEqual(order(ahead, ["doogile", "edcr"]), [1, 2], "not even with both of them playing");
+  const ahead = [game(1, ["aaa", "bbb"], 400), game(2, ["doogile", "edcr"], 10)];
+  assert.deepEqual(order(ahead, ["doogile"]), [2, 1], "and one far ahead of it");
   const pair = [game(1, ["doogile", "aaa"]), game(2, ["doogile", "edcr"])];
   assert.deepEqual(
     order(pair, ["doogile", "edcr"]),
@@ -303,10 +302,10 @@ const order = (
     "and emptied, it is off",
   );
 
-  console.log("OK: favourite players lift a match above an equal one, never past an expiring one");
+  console.log("OK: favourite players are a tier above no-name matches, never past an expiring one");
 }
 
-// --- One list across both buckets: the audience decides, the bucket only breaks a tie ---------------
+// --- One list across both buckets: the favourites' tier, then the audience; the bucket only breaks a tie --
 // The live pool of 30 Sept 2026: one close race of no names (popularity 105) and silverrruns against
 // Infume in the chaos bucket (231). The close card stayed first, so the nightly rendered the one the
 // operator had refused ("no name players no one will click on that").
@@ -342,19 +341,18 @@ const order = (
     [8, 7],
     "the tiebreaker is only that",
   );
-  // After the bucket, the popularity: 100 x 1.5 and 150 are one audience; across the buckets the close
-  // race goes first, in one bucket the raw popularity does.
+  // Inside the tier, after the audience, the bucket and then the popularity: 150 x 2 and 200 x 1.5 are
+  // one audience of 300. Across the buckets the close race goes first though the chaos card is the more
+  // popular; in one bucket the raw popularity does.
+  const twoFavourites = game(12, ["Feinberg", "doogile"], 150);
   assert.deepEqual(
-    order(
-      [game(12, ["lll", "mmm"], 150, { bucket: "chaos" }), game(13, ["doogile", "nnn"], 100)],
-      ["doogile"],
-    ),
-    [13, 12],
+    order([game(13, ["Pinne", "zzz"], 200, { bucket: "chaos" }), twoFavourites], roster),
+    [12, 13],
     "the bucket comes before the popularity",
   );
   assert.deepEqual(
-    order([game(9, ["doogile", "kkk"], 100), game(10, ["lll", "mmm"], 150)], ["doogile"]),
-    [10, 9],
+    order([twoFavourites, game(10, ["Pinne", "zzz"], 200)], roster),
+    [10, 12],
     "the raw popularity breaks the last tie",
   );
 
@@ -367,12 +365,36 @@ const order = (
   ];
   assert.deepEqual(order([famous, noNames], roster, rival), [1, 2], "the rival's post after the fresh ones");
 
-  console.log("OK: the audience decides across the buckets, the bucket only breaks a tie");
+  // The offline replay of the live pool: Jabo_ against sub5average, popular from appearances alone,
+  // beat a Pinne match (38) and a lowk3y_ match (26) even counted up 1.5x. The tier puts the names first,
+  // and with an empty roster it is a no-op.
+  const jabo = game(21, ["Jabo_", "sub5average"], 108);
+  const pinne = game(22, ["Pinne", "someone"], 38);
+  const lowkey = game(23, ["lowk3y_", "another"], 26, { bucket: "chaos" });
+  assert.deepEqual(
+    order([jabo, pinne, lowkey], roster),
+    [22, 23, 21],
+    "a favourite's match goes above any no-name one, however popular",
+  );
+  assert.deepEqual(order([jabo, pinne, lowkey], []), [21, 22, 23], "an empty roster: the popularity");
+  assert.equal(orderForDisplay([jabo, pinne, lowkey], NOW, [], roster, [])[0]!.metrics.matchId, 22);
+  // The repeat demotion stays inside the tier: a Pinne pair the channel just put out still beats Jabo_.
+  const pinnePosted: PairPost[] = [{ players: ["pinne", "someone"], atMs: NOW - DAY }];
+  assert.deepEqual(order([jabo, pinne], roster, [], pinnePosted), [22, 21], "a repeated favourite pair");
+  // Expiring and the rival's post keep their precedence over the tier.
+  const expiringJabo = game(24, ["Jabo_", "sub5average"], 1, { dateSec: daysAgo(9) });
+  assert.deepEqual(order([pinne, expiringJabo], roster), [24, 22], "an expiring no-name match first");
+  const rivalPinne = [
+    { title: "x", publishedAtMs: NOW - DAY, players: ["pinne", "someone"] as [string, string] },
+  ];
+  assert.deepEqual(order([pinne, jabo], roster, rivalPinne), [21, 22], "the rival's post after the fresh");
+
+  console.log("OK: a favourite's tier, then the audience across the buckets, then the bucket");
 }
 
 // --- a pair the channel just put out: half the audience ---------------------------------------
-// The same multiplicative step as the favourites, and as soft: a repeat stays above a card less than
-// half as popular, and above everything when its VODs are about to expire.
+// The same multiplicative step as the favourites, and as soft: inside its tier a repeat stays above a
+// card less than half as popular, and above everything when its VODs are about to expire.
 {
   const DAY = 86_400_000;
   const posted: PairPost[] = [{ players: ["Feinberg", "Infume"], atMs: NOW - 2 * DAY }];
@@ -425,15 +447,16 @@ const order = (
     "an expiring repeat is still first",
   );
 
-  // With the favourites: a pair of two favourites (x2) that just went up (x0.5) is an ordinary match.
+  // With the favourites the demotion stays inside the tier: a pair of favourites that just went up is
+  // still above a match of no names.
   const pair: [string, string] = ["doogile", "Feinberg"];
   const favs = ["doogile", "Feinberg"];
-  const both = [game(2, ["aaa", "bbb"]), game(1, pair)];
+  const both = [game(2, ["aaa", "bbb"], 400), game(1, pair)];
   assert.deepEqual(order(both, favs, [], []), [1, 2], "two favourites go first");
   assert.deepEqual(
     order(both, favs, [], [{ players: pair, atMs: NOW }]),
-    [2, 1],
-    "a repeat of them is level with an ordinary match, so the tie keeps its order",
+    [1, 2],
+    "and a repeat of them still does, whatever the no-name match's audience",
   );
 
   // The nightly's order is the cards' order, repeats included.

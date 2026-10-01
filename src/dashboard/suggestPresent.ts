@@ -13,6 +13,7 @@ import { rivalMatchFor, rivalPostsSnapshot, type RivalPost } from "./rivalPosts.
 import type { SplitGap } from "../pipeline/matchScore.js";
 import {
   favouriteFactorFor,
+  favouriteTierFor,
   POOL_MAX_AGE_DAYS,
   type Bucket,
   type HeadToHead,
@@ -119,8 +120,9 @@ function toCard(s: Suggestion, nowMs: number, rival: readonly RivalPost[]): Sugg
 
 /**
  * What a pair the channel has just put out counts for: half (`pairRepeatDays`, src/dashboard/pairPosts.ts).
- * A multiple for the same reason as the favourites' bonus, and soft for the same one: a repeat more
- * than twice as popular as the next card still goes first. ponytail: a constant, like `FAVOURITE_BONUS`.
+ * A multiple like the favourites' bonus, and as soft: inside its tier a repeat more than twice as
+ * popular as the next card still goes first, and it never drops a favourite pair below a no-name one.
+ * ponytail: a constant, like `FAVOURITE_BONUS`.
  */
 const REPEAT_FACTOR = 0.5;
 
@@ -131,15 +133,18 @@ const BUCKET_RANK: Record<Bucket, number> = { close: 0, chaos: 1 };
  * Cards in display order, one list across both buckets: a match whose VODs are about to die first,
  * because it is the only candidate that stops being renderable; a matchup the rival channel has
  * already posted after the fresh ones, because it would compete with the rival's own video for the
- * same browse session; and inside each of those the biggest audience — the popularity counted up by
- * `FAVOURITE_BONUS` for each of `favourites` (nicknames, compared whole and ignoring case) playing,
- * and down by `REPEAT_FACTOR` for a pair the channel itself put out lately (`posted`: within
- * `pairRepeatDays`, either side of now). The bucket only breaks a tie (`BUCKET_RANK`: close, then
- * chaos), and popularity the one after that. The audience decides, not the bucket: the one close
- * race of no names must not stay above a famous pair's chaos, or the nightly renders the first.
- * Everything here is read on every call and kept out of the scan's cache, so a change to either
- * setting re-orders the next read. (The favourites also count when a scan chooses the slots, `take`
- * in suggest.ts: which matches are in the list follows at the next scan.)
+ * same browse session; and inside each of those a match with a favourite player (`favourites`:
+ * nicknames, compared whole and ignoring case) above every match with none — no-name players are not
+ * what gets clicked, and a bonus alone lost to their popularity. Inside a tier the biggest audience:
+ * the popularity counted up by `FAVOURITE_BONUS` for each favourite playing, and down by
+ * `REPEAT_FACTOR` for a pair the channel itself put out lately (`posted`: within `pairRepeatDays`,
+ * either side of now). The bucket only breaks a tie (`BUCKET_RANK`: close, then chaos), and
+ * popularity the one after that. The audience decides, not the bucket: the one close race of no
+ * names must not stay above a famous pair's chaos, or the nightly renders the first. With no
+ * favourites there is no tier and the audience is the popularity. Everything here is read on every
+ * call and kept out of the scan's cache, so a change to either setting re-orders the next read. (The
+ * favourites also count when a scan chooses the slots, `take` in suggest.ts: which matches are in
+ * the list follows at the next scan.)
  */
 export function presentSuggestions(
   suggestions: readonly Suggestion[],
@@ -150,6 +155,7 @@ export function presentSuggestions(
 ): SuggestionCard[] {
   const cards = suggestions.map((s) => toCard(s, nowMs, rival));
   const favoured = favouriteFactorFor(favourites);
+  const isFavourite = favouriteTierFor(favourites);
   const repeats = new Set(posted.map((post) => pairKey(post.players)));
   const audience = (c: SuggestionCard): number =>
     c.popularity * favoured(c.players) * (repeats.has(pairKey(c.players)) ? REPEAT_FACTOR : 1);
@@ -157,6 +163,7 @@ export function presentSuggestions(
     (x, y) =>
       Number(y.expiring) - Number(x.expiring) ||
       Number(x.rivalPosted !== null) - Number(y.rivalPosted !== null) ||
+      Number(isFavourite(y.players)) - Number(isFavourite(x.players)) ||
       audience(y) - audience(x) ||
       BUCKET_RANK[x.bucket] - BUCKET_RANK[y.bucket] ||
       y.popularity - x.popularity,

@@ -188,7 +188,7 @@ export const SETTINGS: readonly SettingField[] = [
   {
     key: "favouritePlayers",
     label: "Favourite players",
-    help: "MCSR nicknames separated by commas (Pinne is Skycrab, lowk3y_ is lowkey); case is ignored, spelling is not. A match with one of them counts as half again as good, with two as twice, both when a scan chooses which matches reach the list (the next scan, every 30 minutes or the rescan link) and when the list is ordered, which is at once and is what the nightly's first pick follows; the close and chaos cards sort together on it, the bucket only breaks a tie. A match about to expire still comes first and one the rival already posted still comes last. Empty is no bonus.",
+    help: "MCSR nicknames separated by commas (Pinne is Skycrab, lowk3y_ is lowkey); case is ignored, spelling is not. The list sorts across the close and chaos cards, and a match with one of these players always comes before one with none, however popular that one is; among matches with a favourite, one counts half again as popular, two twice. The order changes at once and is what the nightly's first pick follows; which matches reach the list changes at the next scan (every 30 minutes or the rescan link), which gives its slots to such matches first. A match about to expire still comes first and one the rival already posted still comes last. Empty means no tier and no bonus: popularity across both buckets.",
     kind: "list",
     group: "Suggestions",
     unattended: true,
@@ -196,7 +196,7 @@ export const SETTINGS: readonly SettingField[] = [
   {
     key: "pairRepeatDays",
     label: "Days before a pair repeats",
-    help: "A match whose two players this channel already put out a video for (public, scheduled, or rendered and still waiting for its hooks) within this many days either side of now counts for half in the list and in the nightly's first pick, so another pair goes first. Never skipped: a rematch still renders when nothing else qualifies. 0 is off. Applies on the next read.",
+    help: "A match whose two players this channel already put out a video for (public, scheduled, or rendered and still waiting for its hooks) within this many days either side of now counts for half in the list and in the nightly's first pick, so another pair goes first — among matches of the same kind: a repeated favourite pair still comes before a no-name one. Never skipped: a rematch still renders when nothing else qualifies. 0 is off. Applies on the next read.",
     kind: "int",
     group: "Suggestions",
     min: 0,

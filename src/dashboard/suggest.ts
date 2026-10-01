@@ -50,20 +50,34 @@ const isTransient = (err: unknown): boolean =>
   !(err instanceof McsrApiError) || err.status === 429 || err.status >= 500;
 
 /**
- * What each favourite player in a match (`config.favouritePlayers`) adds to its weight: half again
- * for one, twice for two. It counts up the bucket's 0-1 score when the slots are chosen (`take`,
- * below) and the popularity when the cards are ordered (src/dashboard/suggestPresent.ts). A multiple,
- * not a number of points: popularity is a sum of appearance counts that keeps growing, and the two
- * scales differ. A favourite's match takes a slot from one up to 1.5x (2x) as good, or passes one
- * that much more popular, and never one clearly ahead of it. ponytail: a constant — make it a
- * setting if the operator wants to tune it.
+ * The favourite players (`config.favouritePlayers`) are a tier and a bonus. A match with at least one
+ * of them ranks above every match with none, both when the slots are chosen (`take`, below) and when
+ * the cards are ordered (src/dashboard/suggestPresent.ts): no-name players are not what anyone clicks
+ * on (the operator), and a bonus alone lost to a no-name pair's popularity from appearances. Inside
+ * the tier each favourite playing adds half again to a match's weight, one counting 1.5x and two 2x:
+ * to its 0-1 score at the slots, to its popularity in the order. A multiple, not a number of points,
+ * because popularity is a sum of appearance counts that keeps growing and the two scales differ. With
+ * an empty list there is no tier and no bonus. ponytail: a constant — make it a setting if the
+ * operator wants to tune it.
  */
 export const FAVOURITE_BONUS = 0.5;
 
-/** `1 + FAVOURITE_BONUS` per player on `favourites`, compared whole and ignoring case. */
-export function favouriteFactorFor(favourites: readonly string[]): (players: readonly string[]) => number {
+/** How many of a match's players are on `favourites`, compared whole and ignoring case. */
+function favouriteCounter(favourites: readonly string[]): (players: readonly string[]) => number {
   const liked = new Set(favourites.map((name) => name.toLowerCase()));
-  return (players) => 1 + FAVOURITE_BONUS * players.filter((p) => liked.has(p.toLowerCase())).length;
+  return (players) => players.filter((p) => liked.has(p.toLowerCase())).length;
+}
+
+/** `1 + FAVOURITE_BONUS` per player on `favourites`: what a match is worth inside its tier. */
+export function favouriteFactorFor(favourites: readonly string[]): (players: readonly string[]) => number {
+  const count = favouriteCounter(favourites);
+  return (players) => 1 + FAVOURITE_BONUS * count(players);
+}
+
+/** Whether a match has at least one player on `favourites`: its tier, ranked before its audience. */
+export function favouriteTierFor(favourites: readonly string[]): (players: readonly string[]) => boolean {
+  const count = favouriteCounter(favourites);
+  return (players) => count(players) > 0;
 }
 
 const NO_TWITCH_NOTE =
@@ -556,14 +570,20 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
       ? closenessScore(entry.metrics, suggestWeights, suggestFastRunTargetSec, suggestSlowRunCutoffSec)
       : chaosScore(entry.metrics, suggestWeights, suggestFastRunTargetSec, suggestSlowRunCutoffSec);
 
-  // The slots go to the best scores with a favourite's counted up, so its match reaches the list; the
-  // `score` kept on the card stays the bucket's own, comparable with the rest of its bucket.
+  // The slots go to the matches with a favourite first, then to the best scores with a favourite's
+  // counted up, so such a match reaches the list; the `score` kept on the card stays the bucket's own,
+  // comparable with the rest of its bucket.
   const favoured = favouriteFactorFor(config.favouritePlayers);
+  const isFavourite = favouriteTierFor(config.favouritePlayers);
   const take = (pool: typeof selectable, bucket: Bucket, slots: number, exclude: Set<number>): Suggestion[] =>
     pool
       .filter((entry) => !exclude.has(entry.metrics.matchId))
       .map((entry) => ({ ...entry, bucket, score: rank(entry, bucket) }))
-      .sort((a, b) => b.score * favoured(b.metrics.players) - a.score * favoured(a.metrics.players))
+      .sort(
+        (a, b) =>
+          Number(isFavourite(b.metrics.players)) - Number(isFavourite(a.metrics.players)) ||
+          b.score * favoured(b.metrics.players) - a.score * favoured(a.metrics.players),
+      )
       .slice(0, slots);
 
   // A match where the loser never killed the dragon has no finish to be close *at*, so it
