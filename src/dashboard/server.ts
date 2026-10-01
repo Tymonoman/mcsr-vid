@@ -78,7 +78,8 @@ import { saveSettings, settingsPayload } from "./settings.js";
 import { handleYoutubeRoute, uploadRunning } from "./youtubeRoutes.js";
 import { handleSyncRoute } from "./syncRoutes.js";
 import { readMeta } from "./matchMeta.js";
-import { pinnedComment, readIfPresent, readUpload, uploadTextFor } from "../youtube/youtubeStore.js";
+import { pinnedCommentFor } from "../youtube/youtubeUpload.js";
+import { readIfPresent, readUpload, uploadTextFor } from "../youtube/youtubeStore.js";
 import { startTelegramBot } from "../telegram/index.js";
 
 const PORT = Number(process.env.PORT ?? 8080);
@@ -429,8 +430,7 @@ const server = createServer(async (req, res) => {
         code: codeVersions(),
         enabled: hourUtc !== null,
         hourUtc,
-        nextRunAt:
-          nextRunMs === null ? null : new Date(nextRunMs).toISOString(),
+        nextRunAt: nextRunMs === null ? null : new Date(nextRunMs).toISOString(),
         candidate: pick && {
           matchId: pick.metrics.matchId,
           players: pick.metrics.players,
@@ -629,9 +629,10 @@ const server = createServer(async (req, res) => {
         // The DM per player when the pick has their moment and the video is up (left, right);
         // null where the panel's plain line stands (src/dashboard/playerDm.ts).
         dms: await playerDms(matchId, [entry.leftNickname, entry.rightNickname], videoUrl),
-        // The same line "Finish on YouTube" posts (src/youtube/youtubeUpload.ts), so the paste and the
-        // API call cannot say two different things.
-        pinnedComment: pinnedComment(),
+        // The same text "Finish on YouTube" posts (src/youtube/youtubeUpload.ts), so the paste and the
+        // API call cannot say two different things. The playlist lookup gets ten seconds: the kit
+        // answers a page, and YouTube has no timeout of its own to lean on.
+        pinnedComment: await pinnedCommentFor(matchId, 10_000),
         // The slot to schedule for, so the morning's paste into Studio carries a time too —
         // and the first free one, not the same time every match ready this morning would show.
         // The operator's time while it is ahead, else the slot; `publish` says which, and the state.
