@@ -53,6 +53,20 @@ function notRequested<T>(): Section<T> {
   return { ok: false, error: "not requested" };
 }
 
+/**
+ * `work`, or a rejection with `message` once `ms` have passed. The timer is cleared the moment
+ * `work` settles, so it never holds a finished process open. `work` itself is not cancelled (what it
+ * calls takes no AbortSignal): a late finish still lands, and a late failure is handled by the
+ * race rather than becoming an unhandled rejection that would take the dashboard down.
+ */
+export function withDeadline<T>(work: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const overrun = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+  });
+  return Promise.race([work, overrun]).finally(() => clearTimeout(timer));
+}
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** `<left> vs <right>`, from a `matchStatusFor` entry — the one place this string is built. */
@@ -498,19 +512,35 @@ const ALL_SECTIONS: readonly FactSection[] = [
 export const MORNING_SECTIONS: readonly FactSection[] = [...ALL_SECTIONS, "worthRendering"];
 
 /**
+ * The one section that can outlast the report: its MCSR calls carry no timeout, so a slow API (the
+ * 27 Sept DNS kind) would hold `gatherFacts`' `Promise.all` — and the 07:00 report with it. Past
+ * this it degrades to its one failure line, and the gather finishes (and caches) in the background.
+ */
+export const WORTH_DEADLINE_MS = 120_000;
+
+export const gatherWorthSection = (
+  nowMs: number,
+  fresh = false,
+  deadlineMs = WORTH_DEADLINE_MS,
+  gather: typeof gatherWorth = gatherWorth,
+): Promise<Section<WorthFacts>> =>
+  section(() => withDeadline(gather(nowMs, { fresh }), deadlineMs, "worth rendering timed out"));
+
+/**
  * `sinceMs` is when the last report went out (or 24 h ago, the default) — what "overnight" and
  * "since the previous report" mean throughout. `only` narrows which sections are actually
  * gathered (default: the day's picture, for `/todo`/`/ask`, which want it whole; the morning report
  * passes `MORNING_SECTIONS`); a section left out comes back `{ ok: false, error: "not requested" }`
  * rather than being computed. `alerts` needs the health checks itself (a down API is one of its
  * lines), so asking for `alerts` alone still runs `gatherHealth`. `freshWorth` skips the six-hour
- * cache of the `worthRendering` section (`/worth` asks for it).
+ * cache of the `worthRendering` section (`/worth` asks for it); `worthDeadlineMs` is the test's
+ * way to shorten that section's `WORTH_DEADLINE_MS`.
  */
 export async function gatherFacts(
   nowMs = Date.now(),
   sinceMs = nowMs - DAY_MS,
   only: readonly FactSection[] = ALL_SECTIONS,
-  opts: { freshWorth?: boolean } = {},
+  opts: { freshWorth?: boolean; worthDeadlineMs?: number } = {},
 ): Promise<ReportFacts> {
   const want = new Set(only);
   const health = want.has("health") || want.has("alerts") ? await gatherHealth() : [];
@@ -531,7 +561,7 @@ export async function gatherFacts(
         })
       : Promise.resolve(notRequested<YppProgress>()),
     want.has("worthRendering")
-      ? section(() => gatherWorth(nowMs, { fresh: opts.freshWorth }))
+      ? gatherWorthSection(nowMs, opts.freshWorth, opts.worthDeadlineMs)
       : Promise.resolve(notRequested<WorthFacts>()),
   ]);
   return {

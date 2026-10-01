@@ -290,10 +290,11 @@ export function liveDeps(): WorthDeps {
 }
 
 /**
- * The section as the report reads it. Within `WORTH_TTL_MS` of the last clean gather the state
+ * The section as the report reads it. Within `WORTH_TTL_MS` of the last gather the state
  * file's copy is used (minus anything taken since); `fresh` — the `/worth` command — gathers anew.
- * A gather with notes is not kept, so the next ask retries what failed. Under `--dry-run` the
- * state write is skipped (state.ts).
+ * Whatever a gather found is kept, notes included: they are shown with it, and a dead Twitch login
+ * would otherwise cost 14 calls and a yt-dlp round on every report. A gather that throws is not
+ * kept. Under `--dry-run` the state write is skipped (state.ts).
  */
 export async function gatherWorth(
   nowMs: number,
@@ -306,10 +307,8 @@ export async function gatherWorth(
     return { ...cached.data, matches: cached.data.matches.filter((m) => !taken(m.matchId)) };
   }
   const facts = await findWorth(nowMs, deps ?? liveDeps());
-  if (facts.notes.length === 0) {
-    updateTelegramState((s) => {
-      s.worth = { at: nowMs, data: facts };
-    });
-  }
+  updateTelegramState((s) => {
+    s.worth = { at: nowMs, data: facts };
+  });
   return facts;
 }

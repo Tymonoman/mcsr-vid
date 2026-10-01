@@ -311,11 +311,22 @@ try {
   await gatherWorth(NOW - 3600_000, {}, deps); // the clock went back: the copy is not trusted
   assert.equal(calls.list.length, 24);
 
-  // A gather that had to leave something out is not kept, so the next ask retries it.
-  const kept = readTelegramState().worth;
+  // A gather that had to leave something out is kept too: its notes are shown with it, and
+  // gathering again on every report for a channel that will not list would cost 14 calls and a
+  // yt-dlp round each time. /worth (fresh) is the retry.
   const flaky = mkDeps(feeds, { notes: ["twitch.tv/x could not be listed"] });
-  await gatherWorth(NOW + 10 * WORTH_TTL_MS, {}, flaky);
-  assert.deepEqual(readTelegramState().worth, kept);
+  const flakyAt = NOW + 10 * WORTH_TTL_MS;
+  const listsBefore = calls.list.length;
+  const gathered = await gatherWorth(flakyAt, {}, flaky);
+  assert.deepEqual(gathered.notes, ["twitch.tv/x could not be listed"]);
+  assert.equal(readTelegramState().worth?.at, flakyAt);
+  const reread = await gatherWorth(flakyAt + 1000, {}, flaky);
+  assert.equal(calls.list.length, listsBefore + WATCH_ROSTER.length); // one gather's lists, not two
+  assert.deepEqual(reread.notes, ["twitch.tv/x could not be listed"]); // the copy tells it too
+
+  // A gather that throws (every list failed) leaves the last copy as it was.
+  await assert.rejects(gatherWorth(flakyAt + 2000, { fresh: true }, mkDeps({})), /429 for doogile/);
+  assert.equal(readTelegramState().worth?.at, flakyAt);
 
   // --dry-run: the state file is read, never written.
   setStateDryRun(true);

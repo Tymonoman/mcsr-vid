@@ -23,8 +23,8 @@ export interface TelegramState {
   /** Telegram's own update cursor — `getUpdates(offset)` — so a restart does not replay old commands. */
   updateOffset: number | null;
   /**
-   * The last clean "worth rendering" list and when it was gathered (ms), read for `WORTH_TTL_MS` —
-   * a second report inside that spends nothing.
+   * The last "worth rendering" list, with its notes, and when it was gathered (ms), read for
+   * `WORTH_TTL_MS` — a second report inside that spends nothing.
    */
   worth: { at: number; data: WorthFacts } | null;
 }
