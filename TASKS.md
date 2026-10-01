@@ -65,7 +65,10 @@ real-media render check is green on main again). Report sent to Telegram 08:00 U
 Merged worktrees removed, branches kept; claude-md-trim kept (needs a rebase on main's CLAUDE.md
 before "apply"). Flagged to the operator: published 7UcG1Y-k9dY (13672776, hand-set sync) runs its
 overlay timer ~6.5 s behind the players' own clocks, per the test agent's measurement — a re-export
-and re-upload is his call.
+and re-upload is his call. 08:25 UTC: also merged 15feb05 panel-links (YPP header names the tier its
+bars show; the report's nightly/overnight/upcoming lines deep-link) and fb30d50 titles-links (a
+nickname-reuse warning in saveWarnings; "last time they met:" in the description at upload). Full
+`npm test` green on main at 08:00 UTC; every merged worktree removed, branches kept.
 
 ## RESUME (after a compaction): read this block, `git status`, `git worktree list`, `ls ~/.claude/jobs/8d7d95a1/tmp/night/`, then continue the plan.
 

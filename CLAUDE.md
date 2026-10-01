@@ -310,7 +310,12 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   death — and put the nickname and "Rematch: X leads N-M" chips after them (1 Oct 2026: the early
   9.36%-vs-2.25% CTR reading was 4,590 impressions; at 126,745 it was 2.77% against 2.59%, a wash, and
   the rematch record can already include the match itself). The pick prompt labels the operator's past
-  hooks by register (stake, question, rivalry) and says stake is preferred. Suggestions never use seeds, ranks or elo (the operator's
+  hooks by register (stake, question, rivalry) and says stake is preferred. A typed hook that reuses a
+  nickname an earlier uploaded title gave another player ("TAS" stood for doogile) comes back with a
+  warning in `saveWarnings` — one nickname per player; the post-mortem of 30 Sept 2026 found "TAS" on
+  four players across seven titles. The description's links block gains "last time they met:
+  https://youtu.be/<id>" at upload when the same pair has an earlier long-form on the channel
+  (`lastMeetingFor`, `src/youtube/youtubeStore.ts`; once, unedited descriptions only). Suggestions never use seeds, ranks or elo (the operator's
   call, 24 Sept 2026: "no one cares about that" — and they change daily). "SWEPT"/"sweep" is a result word in
   `spoilsTheResult` (a best of 5 titled "PLAYOFFS | SWEPT vs TAS" told how it went). A typed hook always
   saves — any check on it (result words, length) comes back as a warning beside the field, never a refusal
@@ -629,7 +634,9 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
   loaded and on `hashchange` (`openLinked`: the match on Now, Rendered under it; an id the list lacks
   is the list, quietly), and `syncHash` keeps the address naming the match on screen
   (`replaceState`: a reload keeps it, leaving clears it, no history entry). A report links a match as
-  `<dashboardBaseUrl>/#match=<id>` (`matchLink`: `/waiting` rows, any `#<id>` in a to-do item) and
+  `<dashboardBaseUrl>/#match=<id>` (`matchLink`: `/waiting` rows, any `#<id>` in a to-do item, the
+  nightly's last run, each overnight upload and each upcoming row; queued and "not at night" ids and
+  the "Worth rendering today" ids stay text, since the route opens only rendered matches) and
   the list as the bare base URL (default `http://actimel:8080`, the lab's own address — the
   Clipboard API pitfall). `deep-link-check` pins the route.
 - **Dedupe is `<mediaDir>/.telegram.json`**, written atomically (write-then-rename, as
