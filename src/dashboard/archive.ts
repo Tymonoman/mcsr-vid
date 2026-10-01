@@ -89,6 +89,15 @@ let queue: Promise<unknown> = Promise.resolve();
 export function archiveMatch(matchId: number, now: () => number = Date.now): ArchiveState {
   const existing = states.get(matchId);
   if (existing?.running) return existing;
+  // Outside 03:00-08:00 Warsaw: do nothing — not even the isArchived stat below — and say so.
+  // Checked before isArchived so a cache miss here costs no existsSync on the mount; an automatic
+  // call (after an upload, any hour) must not touch it at all. The nightly sweep only calls this
+  // from inside the window in the first place (src/dashboard/nightly.ts), so this mainly catches
+  // the former.
+  if (!inNasWindow(now())) {
+    console.error(`archive of #${matchId} deferred to the 03:00 Warsaw window`);
+    return existing ?? { matchId, running: false, error: null, tookMs: null };
+  }
   // Already backed up: nothing to do. Here rather than at each caller because every one of them
   // is "this match is published, keep it" and would otherwise need the same test — the channel
   // scan re-pairs a Studio upload whenever its record is missing, and a re-upload of a re-export
@@ -97,13 +106,6 @@ export function archiveMatch(matchId: number, now: () => number = Date.now): Arc
   // ponytail: existence, not completeness — an rsync that died half way leaves a directory that
   // reads as archived. Remove `<ARCHIVE_ROOT>/<id>` to force a fresh copy.
   if (isArchived(matchId)) return existing ?? { matchId, running: false, error: null, tookMs: null };
-  // Outside 03:00-08:00 Warsaw: do nothing but say so. An automatic call (after an upload, any
-  // hour) must not queue or touch the mount; the nightly sweep only calls this from inside the
-  // window in the first place (src/dashboard/nightly.ts), so this mainly catches the former.
-  if (!inNasWindow(now())) {
-    console.error(`archive of #${matchId} deferred to the 03:00 Warsaw window`);
-    return existing ?? { matchId, running: false, error: null, tookMs: null };
-  }
 
   const state: ArchiveState = { matchId, running: true, error: null, tookMs: null };
   states.set(matchId, state);

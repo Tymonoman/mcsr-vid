@@ -34,7 +34,7 @@ assert.equal(inNasWindow(Date.UTC(2026, 10, 2, 6, 59)), true, "07:59 CET — sti
 assert.equal(inNasWindow(Date.UTC(2026, 10, 2, 7, 0)), false, "08:00 CET — window closed");
 console.log("OK: inNasWindow holds on both sides of DST");
 
-// --- archiveMatch: outside the window does nothing but log, no spawn -------------------------
+// --- archiveMatch: outside the window does nothing but log, no spawn, no stat at all ----------
 {
   const matchId = 9001;
   mkdirSync(path.join(media, String(matchId)), { recursive: true });
@@ -44,9 +44,13 @@ console.log("OK: inNasWindow holds on both sides of DST");
   assert.equal(state.running, false, "deferred, not queued");
   await new Promise((r) => setTimeout(r, 20));
   assert.equal(existsSync(path.join(archiveDir, String(matchId))), false, "rsync never ran");
-  assert.equal(isArchived(matchId), false);
+  // Proof the window check ran before isArchived's stat, not after: if archiveMatch had already
+  // cached this id as false, creating the directory now and asking again would still read the
+  // stale cache. It reads true instead, so the deferred call never touched the mount at all.
+  mkdirSync(path.join(archiveDir, String(matchId)), { recursive: true });
+  assert.equal(isArchived(matchId), true, "archiveMatch never stat'd — isArchived reads fresh");
 }
-console.log("OK: an automatic archive call outside the window does nothing but defer");
+console.log("OK: an automatic archive call outside the window does nothing but defer — not even a stat");
 
 // --- archiveMatch: queued while the window is open, but it closes before this item's turn ----
 {
