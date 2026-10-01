@@ -70,6 +70,21 @@ bars show; the report's nightly/overnight/upcoming lines deep-link) and fb30d50 
 nickname-reuse warning in saveWarnings; "last time they met:" in the description at upload). Full
 `npm test` green on main at 08:00 UTC; every merged worktree removed, branches kept.
 
+### ▶ NAS QUIET HOURS — the operator, 1 Oct ~15:55 UTC: "make the transfers to the nas only after 3am as it's a bit loud"
+Every NAS transfer (dashboard archive rsync, VOD passes, research/backups copies, bulk reads back) only
+03:00–08:00 Europe/Warsaw. Then: "something maybes reading from it" — /proc/fs/cifs/Stats showed ~2
+SMB reads/s host-wide (4,121 reads, 12 writes since the mount's 15:27 UTC epoch); nothing in the
+Claude container had a NAS file open, the dashboard had no archive job (/api/capacity archives []),
+NAS free space flat over 60 s → another homelab service (immich, *arr, media server, torrents);
+he can name it on the host with `sudo cat /proc/fs/cifs/open_files`. Branch nas-quiet (agent):
+inNasWindow, archive copies deferred outside it, nightly sweepArchive, cached isArchived/capacity —
+merge after its reorder fix, then he restarts the dashboard. Agent vods-night2 arms the second VOD
+pass (15 matches, 13759761 skipped — he dismissed it) for 2 Oct 01:00 UTC with a 08:00 Warsaw stop.
+ARMED 16:28 UTC: tmp/night/run-downloads-night2.py (guard first: exits outside 03:00–08:00 Warsaw
+before any NAS access; no new match after 07:30; kills at 08:00), sleeper pid 36192 (setsid nohup),
+log tmp/night/logs/night2.log. Ids: 13560269 13558392 13555441 13636888 13638675 13673686 13675346
+13705028 13704403 13705580 13705339 13753695 13804794 13804534 13805571.
+
 ### ▶ REDDIT POST — 1 Oct 2026 13:14 Warsaw = 11:14 UTC (the operator posted in r/minecraftspeedrun)
 "note down the time and monitor for new views and subs and analyze if they came from this post".
 Logger: ~/.claude/jobs/8d7d95a1/tmp/night/reddit/loop.sh (every 30 min for 72 h → snaps.jsonl; first
@@ -97,7 +112,12 @@ agents. use opus 5.5 only as the orchestrstor." (Opus orchestrates; every agent 
    /home-media/mcsr-replayoffs/backups/13672776/. NEXT: check frames of the new final (overlay RTA vs
    both POVs' own RTA at 3 points), then ask him ONE question: upload the fixed file as a new video and
    unlist 7UcG1Y-k9dY, or keep it. Its Short ZyfAf2EG2AA has the same offset.
-2. 09:58 the spec is rec/spec.md (expected views = popularity × favourite × draw × repeat; known =
+2. DONE 11:45: MERGED 999ad49 (known-only = 89fd10f + 85bfd67 + ae1b352; safety + outcome reviews,
+   85 unit files green, tsc clean). Needs `docker restart mcsr-dashboard` — NOT while a series renders
+   (it kills the in-flight game; sf-queue2.sh would retry it) and before 03:00 UTC. Tonight's pick is
+   gothy666 vs silverrruns on old and new code alike. Worktree .claude/worktrees/known-only kept (the
+   replay rec/replay-known-only.mts imports from it).
+   Was: 09:58 the spec is rec/spec.md (expected views = popularity × favourite × draw × repeat; known =
    favourite or ≥1,000 Twitch followers; nightly never renders a no-known match unless queued; the
    favourites' own recent matches join the pool). 09:59 I sent the build agent (ae68c5b90be91efe7)
    four additions: known uses the MEASURED draw when draw.json has n≥3 (≥0.6 known, lower not known,
@@ -127,6 +147,12 @@ agents. use opus 5.5 only as the orchestrstor." (Opus orchestrates; every agent 
    capabilities.json) → then PUBLISH ONCE with the Artifact tool (icon "report", description one
    sentence) and send him the link (+ one Telegram line via `npm run tg -- send`). `nas-vods`
    secures known-player VODs to /home-media/mcsr-replayoffs/vods/<id>/ (≤150 GB, ledger).
+4b. DONE 11:40 nas-vods: 15 known-player matches secured to /home-media/mcsr-replayoffs/vods/ (21.47 GB,
+   0 failures, 15 MCSR calls; Twitch expiry 2–5 Oct): 13472698, 13475499, 13476684 (silverrruns–Feinberg),
+   13475659, 13478836, 13478351, 13479996 (BeefSalad–Feinberg), 13503918, 13504479, 13502449
+   (v_strid–silverrruns), 13494951 (hackingnoises–silverrruns), 13477190, 13475820 (BeefSalad–silverrruns),
+   13557858 (doogile–v_strid), 13538050 (silverrruns–bbiddd). 16 more (expiring 8–14 Oct) not attempted.
+   To render one: copy vods/<id>/ to /media/<id>/ (clips + vods.json + chat), then render it.
 5. NAS: /home-media/mcsr-replayoffs/ (README, ledger.jsonl, vods/, research/2026-09-30-night/,
    backups/); /archive = the dashboard's archive (src/dashboard/archive.ts). compose.yaml has his
    uncommitted /home-media mount — his to commit.
