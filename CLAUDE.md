@@ -87,7 +87,12 @@ Almost nothing in the overlay moves, so the render is stills plus one strip (`sr
   Kdenlive project does not know the second still.
 - `overlay-splits-<n>.png` + `overlay-splits.json` — the meta+splits region (1440x346), one still
   per distinct state (`src/pipeline/splitStates.ts`). The manifest is written last and means "the render
-  finished". The last state is the subscribe card (`postRollCta`, `ctaFrameOf`).
+  finished". The last state is the subscribe card (`postRollCta`, `ctaFrameOf`). Both subscribe cards
+  (this one and the mid-roll) show `ctaReason` in quartz above the gold SUBSCRIBE ("A NEW MATCH EVERY
+  DAY", Settings → Publishing, one row of at most 24 plain-ASCII characters; empty = the bare card,
+  byte-identical to before 1 Oct 2026); the Short's closing card has a SUBSCRIBE row, and the
+  description carries "a new match every day. subscribe to catch the next one." as its own paragraph
+  (`uploadTextFor` adds it once to an older unedited description at upload).
   `renderOverlay({ only: ["splits"] })` redoes just the stills in seconds.
 - The first minute's **COMING UP card** is two more of those stills (`teaserFramesOf`): "COMING
   UP · AT 5:14 · THE LEAD CHANGES ON BLIND TRAVEL" in the meta column from `teaserAtSec` (10,
@@ -288,9 +293,15 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
 - **Rival posts** (`src/dashboard/rivalPosts.ts`): the competitor's (`rivalChannelHandle`, default
   `mcsrmatches`) last 50 uploads, matched to cards by nickname pair, date and run length (their
   video is the run plus a few seconds; a post of the wrong length is another match of the same
-  pair). A posted match sorts after the fresh ones, in the nightly's order too.
-- **Hook chips** (`src/pipeline/hooks.ts`) put rivalry framing first: the audit measured rivalry hooks at
-  9.36% CTR against 2.25% for descriptive ones. Suggestions never use seeds, ranks or elo (the operator's
+  pair). A posted match sorts after the fresh ones, in the nightly's order too. `playersFromTitle`
+  takes the pair right before the MCSR tag, so the rival's hook-less "A vs B | MCSR Ranked" titles
+  and spaced nicknames ("Darvy  x1" is DARVY__X1) parse too — 18 of its 129 titles were missed
+  before 1 Oct 2026.
+- **Hook chips** (`src/pipeline/hooks.ts`) lead with the match's stake — the margin, a lead change, a
+  death — and put the nickname and "Rematch: X leads N-M" chips after them (1 Oct 2026: the early
+  9.36%-vs-2.25% CTR reading was 4,590 impressions; at 126,745 it was 2.77% against 2.59%, a wash, and
+  the rematch record can already include the match itself). The pick prompt labels the operator's past
+  hooks by register (stake, question, rivalry) and says stake is preferred. Suggestions never use seeds, ranks or elo (the operator's
   call, 24 Sept 2026: "no one cares about that" — and they change daily). "SWEPT"/"sweep" is a result word in
   `spoilsTheResult` (a best of 5 titled "PLAYOFFS | SWEPT vs TAS" told how it went). A typed hook always
   saves — any check on it (result words, length) comes back as a warning beside the field, never a refusal
@@ -425,7 +436,16 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   a ranked video and a series of the same two players `seriesPairGapDays` (3) UTC days apart,
   scheduled or public, and says so beside the slot and in the chain's log, because the
   doogile–Aquacorde series drew 84 views beside their same-day ranked video's 2,095), description, tags, the
-  Short's title/description, a pinned comment, a community post, and a DM per player. When
+  Short's title/description, a pinned comment, a community post, and a DM per player. The pinned
+  comment (`pinnedCommentFor`, `src/youtube/youtubeUpload.ts`; the finish step and the kit build the
+  same text) is a spoiler-free question about the race's closest rung ("who would you have backed on
+  blind travel, X or Y?"; it never reads the result), the sync line, "more matches like this" with the
+  pair's playlist (a read-only lookup — a pair's playlist is only created on its second video — else the
+  left player's, else the season's) and the tip jar; the subscribe line lives in the description, not
+  here. The DM (`src/dashboard/playerDm.ts`), when the pick has the model's `playerMoments` and the
+  video is on YouTube, hands the runner a `?t=` link to their own moment and asks "ok if i keep posting
+  your matches?" (API spelling, the channel named, the takedown offer kept); sending it is the
+  operator's. When
   `pullSource` is set it opens with an rsync *pull* the operator's PC runs (`src/dashboard/publishSet.ts`;
   the lab host's path, not the container's `/media`) — pull, not push, because the image has no
   ssh client and the PC already reaches the lab. `GET /api/export/bundle/:id` is the same
