@@ -1,8 +1,9 @@
 // The pairs the channel put out lately (src/dashboard/pairPosts.ts): which uploads count and when,
-// who played them, the window the setting cuts, and a refresh that never takes the list down.
+// the rendered matches still waiting for their hooks, who played them, the window the setting cuts, and
+// a refresh that never takes the list down.
 // Run: npx tsx src/dashboard/pairPosts.test.ts
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { config } from "../config.js";
@@ -45,6 +46,9 @@ const players: Record<number, [string, string]> = {
   4: ["silverrruns", "dandannyboy"],
   5: ["old", "news"],
   6: ["bad", "time"],
+  11: ["rendered", "pair"],
+  12: ["recorded", "pair"],
+  13: ["old", "render"],
   99: ["never", "read"],
 };
 const uploads: Awaited<ReturnType<PairPostDeps["uploads"]>> = [
@@ -66,6 +70,7 @@ const uploads: Awaited<ReturnType<PairPostDeps["uploads"]>> = [
 ];
 const deps = (over: Partial<PairPostDeps> = {}): PairPostDeps => ({
   uploads: async () => uploads,
+  rendered: () => [],
   namesOf: async (id) => {
     if (id === 99) throw new Error("the API is down");
     return players[id] ?? null;
@@ -106,6 +111,7 @@ const deps = (over: Partial<PairPostDeps> = {}): PairPostDeps => ({
     write(2, null); // rendered, never uploaded
     const posts = await recentPairPosts(NOW, {
       uploads: allUploads,
+      rendered: () => [],
       namesOf: async (id) => players[id] ?? null,
     });
     assert.deepEqual(
@@ -118,6 +124,104 @@ const deps = (over: Partial<PairPostDeps> = {}): PairPostDeps => ({
     config.mediaDir = was;
     rmSync(media, { recursive: true, force: true });
   }
+}
+
+// A match rendered and waiting for its hooks has no youtube.json yet, and would render again tonight: it
+// counts at when its directory was last touched. A match with a record is dated by the record.
+{
+  const rendered = [
+    { matchId: 11, atMs: NOW - DAY }, // rendered last night, nothing uploaded
+    { matchId: 12, atMs: NOW - DAY }, // touched yesterday, but uploaded five days ago: the record's time
+    { matchId: 13, atMs: NOW - 40 * DAY }, // an abandoned render, beyond the horizon
+    { matchId: 14, atMs: NOW - DAY }, // players nobody could read
+  ];
+  const posts = await recentPairPosts(
+    NOW,
+    deps({
+      rendered: () => rendered,
+      uploads: async () => [{ matchId: 12, record: record({ uploadedAt: iso(NOW - 5 * DAY) }) }],
+    }),
+  );
+  assert.deepEqual(
+    posts.map((p) => [p.players.join(" vs "), p.atMs - NOW]).sort(),
+    [
+      ["recorded vs pair", -5 * DAY],
+      ["rendered vs pair", -DAY],
+    ],
+    "an unrecorded match counts at its directory's time, a recorded one at its record's",
+  );
+  console.log("OK: a rendered match waiting for its hooks counts at its directory's mtime");
+}
+
+// The same off a real media directory: processed, not hidden, no record, dated by `statSync` — with the
+// API down, so the players come off the clip names.
+{
+  const media = mkdtempSync(path.join(tmpdir(), "mcsr-pairs-rendered-"));
+  const was = config.mediaDir;
+  const realFetch = globalThis.fetch;
+  config.mediaDir = media;
+  globalThis.fetch = (async () => {
+    throw new TypeError("fetch failed");
+  }) as typeof fetch;
+  try {
+    const render = (id: number, ageDays: number, clips: string[], recorded = false) => {
+      const dir = path.join(media, String(id));
+      mkdirSync(dir);
+      for (const nick of clips) writeFileSync(path.join(dir, `${nick}.mp4`), "");
+      if (recorded) {
+        const rec = { videoId: "aaaaaaaaaaa", title: "t", thumbnailVariant: null, ...record() };
+        writeFileSync(
+          path.join(dir, "youtube.json"),
+          JSON.stringify({ ...rec, publishAt: iso(NOW - 6 * DAY) }),
+        );
+      }
+      // Last: writing a file into the directory moves its mtime.
+      utimesSync(dir, new Date(NOW - ageDays * DAY), new Date(NOW - ageDays * DAY));
+    };
+    render(301, 1, ["Infume", "Feinberg"]); // rendered last night, waiting for its hooks
+    render(302, 1, ["hidden", "match"]); // the operator hid it
+    render(303, 1, ["recorded", "pair"], true); // uploaded six days ago: its record, not its mtime
+    render(304, 40, ["abandoned", "render"]); // a month old
+    render(305, 1, []); // the clips are gone: nobody to name
+    writeFileSync(path.join(media, ".dashboard.json"), JSON.stringify({ hidden: [302] }));
+    const posts = await recentPairPosts(NOW);
+    assert.deepEqual(
+      posts.map((p) => [p.players.join(" vs "), Math.round((p.atMs - NOW) / DAY)]).sort(),
+      [
+        ["Feinberg vs Infume", -1],
+        ["pair vs recorded", -6],
+      ].sort(),
+      "the unrecorded match at its mtime, the recorded one at its record; hidden, old and unnamed left out",
+    );
+    console.log("OK: rendered matches are read off the media directory");
+  } finally {
+    globalThis.fetch = realFetch;
+    config.mediaDir = was;
+    rmSync(media, { recursive: true, force: true });
+  }
+}
+
+// The names are asked for one at a time: a boot with a month of videos is thirty requests, and the scan
+// beside it uses four at once.
+{
+  let inFlight = 0;
+  let mostAtOnce = 0;
+  const posts = await recentPairPosts(
+    NOW,
+    deps({
+      namesOf: async (id) => {
+        inFlight++;
+        mostAtOnce = Math.max(mostAtOnce, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        inFlight--;
+        if (id === 99) throw new Error("the API is down");
+        return players[id] ?? null;
+      },
+    }),
+  );
+  assert.equal(posts.length, 3, "the same three, whichever way they are asked for");
+  assert.equal(mostAtOnce, 1, "never two lookups at once");
+  console.log("OK: the names are looked up one at a time");
 }
 
 // The live path: the records on disk, and who played from the API — or, with it down, the clip names.

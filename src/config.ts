@@ -88,8 +88,9 @@ export interface Config {
   favouritePlayers: string[];
   /**
    * Whole days, 0-30 (0 is off): a match whose two players this channel already put out a
-   * long-form video for — public, or scheduled — within this many days of now counts for half when
-   * the suggestion list is ordered (`presentSuggestions`, src/dashboard/pairPosts.ts). A demotion,
+   * long-form video for — public, scheduled, or rendered and waiting for its hooks — within this many
+   * days of now counts for half when the suggestion list is ordered (`presentSuggestions`,
+   * src/dashboard/pairPosts.ts). A demotion,
    * not a skip: a marquee rematch still renders when nothing else qualifies. Feinberg vs Infume
    * went up on 24, 27 and 29 Sept 2026, and a pair that brings a new runner's audience converts
    * better than a repeat (30 Sept 2026 plan). The default changes which card the nightly takes first.

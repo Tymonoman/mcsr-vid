@@ -457,6 +457,7 @@ const order = (
         },
       },
     ],
+    rendered: () => [],
     namesOf: async () => ["Feinberg", "Infume"],
   });
   const live = (days: number) => {

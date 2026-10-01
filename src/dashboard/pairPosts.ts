@@ -7,7 +7,8 @@
  * counts for half when the cards are ordered (`presentSuggestions`), and the nightly takes the same
  * order. A demotion, not a skip: a marquee rematch still renders when nothing else qualifies.
  *
- * Two facts, both this machine's own: when each match's video goes or went public (`youtube.json`)
+ * Two facts, both this machine's own: when each match's video goes or went public (`youtube.json`;
+ * a match rendered and still waiting for its hooks has none yet, so its directory's mtime stands in)
  * and who played it (`matchStatusFor`: the API, the clip names on disk when it is down). They are
  * read in the background into a snapshot, as the rival's posts are (rivalPosts.ts): the suggestion
  * route is polled every two seconds during a scan and builds its payload synchronously. The snapshot
@@ -18,10 +19,12 @@
  * recorded is not seen; `pairGapTimes` (src/youtube/publishSlot.ts) also reads `channelUploadsSnapshot()`,
  * and so can this if that ever bites.
  */
-import { config } from "../config.js";
+import { statSync } from "node:fs";
+import { config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { allUploads, type UploadRecord } from "../youtube/youtubeStore.js";
-import { matchStatusFor } from "./matchStatus.js";
+import { hiddenMatchIds } from "./matchShelf.js";
+import { listProcessedMatchIds, matchStatusFor } from "./matchStatus.js";
 
 export interface PairPost {
   players: readonly [string, string];
@@ -49,6 +52,8 @@ export interface PairPostDeps {
       record: Pick<UploadRecord, "publishAt" | "privacyStatus" | "uploadedAt">;
     }>
   >;
+  /** Match directories still on the shelf, with when each was last touched; `recentPairPosts` drops the uploaded ones. */
+  rendered: () => ReadonlyArray<{ matchId: number; atMs: number }>;
   /** The match's two nicknames, or null when they cannot be known. */
   namesOf: (matchId: number) => Promise<[string, string] | null>;
 }
@@ -58,6 +63,17 @@ const names = new Map<number, [string, string]>();
 
 const liveDeps: PairPostDeps = {
   uploads: allUploads,
+  rendered: () => {
+    const hidden = hiddenMatchIds();
+    return listProcessedMatchIds().flatMap((matchId) => {
+      if (hidden.has(matchId)) return [];
+      try {
+        return [{ matchId, atMs: statSync(matchDir(matchId)).mtimeMs }];
+      } catch {
+        return []; // gone since the listing
+      }
+    });
+  },
   async namesOf(matchId) {
     const known = names.get(matchId);
     if (known) return known;
@@ -73,24 +89,30 @@ const liveDeps: PairPostDeps = {
 /**
  * Every long-form video within `HORIZON_DAYS` of `nowMs`, either side, with who played it. A video
  * counts at its scheduled time, else at its upload when it is not private; a private one with no
- * time has no day (the rule `pairGapTimes` in src/youtube/publishSlot.ts uses). A match whose
- * players cannot be read is left out: no constraint, never an error.
+ * time has no day (the rule `pairGapTimes` in src/youtube/publishSlot.ts uses). A match with no
+ * record that is still on the shelf — rendered last night, waiting for its hooks — counts at when
+ * its directory was last touched, or it could render again tonight. A match whose players cannot be
+ * read is left out: no constraint, never an error. The names are asked for one at a time: a boot
+ * with a month of videos is thirty requests, and the scan beside it uses four at once.
  */
 export async function recentPairPosts(nowMs: number, deps: PairPostDeps = liveDeps): Promise<PairPost[]> {
-  const near = (await deps.uploads()).flatMap(({ matchId, record }) => {
-    const atMs = Date.parse(
-      record.publishAt ?? (record.privacyStatus !== "private" ? record.uploadedAt : ""),
-    );
+  const uploads = await deps.uploads();
+  const recorded = new Set(uploads.map(({ matchId }) => matchId));
+  const dated = [
+    ...uploads.map(({ matchId, record }) => ({
+      matchId,
+      atMs: Date.parse(record.publishAt ?? (record.privacyStatus !== "private" ? record.uploadedAt : "")),
+    })),
+    ...deps.rendered().filter(({ matchId }) => !recorded.has(matchId)),
+  ];
+  const posts: PairPost[] = [];
+  for (const { matchId, atMs } of dated) {
     // NaN (no time, or an unparseable one) fails the comparison.
-    return Math.abs(nowMs - atMs) < HORIZON_DAYS * DAY_MS ? [{ matchId, atMs }] : [];
-  });
-  const posts = await Promise.all(
-    near.map(async ({ matchId, atMs }): Promise<PairPost | null> => {
-      const players = await deps.namesOf(matchId).catch(() => null);
-      return players ? { players, atMs } : null;
-    }),
-  );
-  return posts.filter((post): post is PairPost => post !== null);
+    if (!(Math.abs(nowMs - atMs) < HORIZON_DAYS * DAY_MS)) continue;
+    const players = await deps.namesOf(matchId).catch(() => null);
+    if (players) posts.push({ players, atMs });
+  }
+  return posts;
 }
 
 let cached: { atMs: number; posts: PairPost[] } = { atMs: 0, posts: [] };

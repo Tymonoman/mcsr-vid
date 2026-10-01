@@ -196,7 +196,7 @@ export const SETTINGS: readonly SettingField[] = [
   {
     key: "pairRepeatDays",
     label: "Days before a pair repeats",
-    help: "A match whose two players this channel already put out a video for, public or scheduled, within this many days either side of now counts for half in the list and in the nightly's first pick, so another pair goes first. Never skipped: a rematch still renders when nothing else qualifies. 0 is off. Applies on the next read.",
+    help: "A match whose two players this channel already put out a video for (public, scheduled, or rendered and still waiting for its hooks) within this many days either side of now counts for half in the list and in the nightly's first pick, so another pair goes first. Never skipped: a rematch still renders when nothing else qualifies. 0 is off. Applies on the next read.",
     kind: "int",
     group: "Suggestions",
     min: 0,
