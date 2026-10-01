@@ -11,11 +11,12 @@ import { DEFAULT_WEIGHTS, type MatchMetrics } from "../pipeline/matchScore.js";
 import {
   DEFAULT_DRAW,
   dismissSuggestion,
-  drawFactorFor,
   drawOf,
+  expectedDrawFor,
   favouriteFactorFor,
   getSuggestions,
   KNOWN_DRAW_MIN,
+  STRONG_DRAWS,
   knownPlayerFor,
   knownTierFor,
   tierFor,
@@ -51,9 +52,11 @@ assert.equal(favouriteFactorFor([])(["doogile", "Feinberg"]), 1, "an empty list 
   const tier = knownTierFor([], noFollowers, 1_000);
   assert.equal(tier(["hackingnoises", "romuxii"]), true, "one known player is enough");
   assert.equal(tier(["romuxii", "nobody_ever_measured"]), false);
-  // drawFactorFor: the simple average; a name never measured draws by its following (UNMEASURED_DRAW).
+  // expectedDrawFor: the bigger draw plus half the other; a name never measured draws by its
+  // following (UNMEASURED_DRAW).
   const fol = (n: number) => () => n;
-  assert.equal(drawFactorFor(["hackingnoises", "nobody_ever_measured"], noFollowers), (2.08 + 0.5) / 2);
+  assert.equal(expectedDrawFor(["nobody_ever_measured", "hackingnoises"], noFollowers), 2.08 + 0.5 * 0.5);
+  assert.equal(expectedDrawFor(["silverrruns", "Infume"], noFollowers), 1.93 + 0.5 * 1.19);
   assert.deepEqual(
     [50_000, 49_999, 10_000, 9_999].map((n) => drawOf("nobody", fol(n))),
     [1.0, 0.75, 0.75, 0.5],
@@ -89,8 +92,11 @@ config.suggestFastRunTargetSec = 420;
 config.suggestSlowRunCutoffSec = 600;
 // The feed and every roster player's own list (getSuggestions's pool-coverage pass) are both empty,
 // and nothing else may be asked: the selection is all that is under test.
+const asked: string[] = [];
 globalThis.fetch = (async (url: string) => {
   const u = String(url);
+  if (u.includes("/users/"))
+    asked.push(decodeURIComponent(u.split("/users/")[1]!.split("/")[0]!).toLowerCase());
   if (
     !u.startsWith("https://api.mcsrranked.com/matches") &&
     !u.startsWith("https://api.mcsrranked.com/users/")
@@ -159,8 +165,8 @@ try {
   );
   assert.deepEqual(
     await ids(["Hhh", "III"]),
-    [30, 40],
-    "in any case, and a weak favourite's match (0.141) still beats a clearly better no-name one",
+    [40, 30],
+    "in any case; two favourites outrank one on the audience whatever the score, and both beat the no-names",
   );
   assert.deepEqual(
     await ids([]),
@@ -215,8 +221,8 @@ try {
   );
   assert.deepEqual(
     await ids(["Pinne", "lowk3y_"]),
-    [62, 63],
-    "both slots go to the names, though the no-name pair has the best score",
+    [63, 62],
+    "both slots go to the names, though the no-name pair has the best score — lowk3y_'s draw first",
   );
   assert.deepEqual(
     await ids([]),
@@ -246,6 +252,43 @@ try {
     "utf8",
   );
   assert.deepEqual(await ids(["Pinne"]), [62], "a favourite before a known player with a better score");
+
+  // One card per pair, across both buckets: the better of dandannyboy vs silverrruns's two matches
+  // (by score — the audience is the pair's), then the next pair.
+  config.suggestCloseSlots = 2;
+  const twice = Object.fromEntries(
+    [
+      pooled(71, ["dandannyboy", "silverrruns"], 3_000),
+      pooled(72, ["silverrruns", "dandannyboy"], 0),
+      pooled(73, ["Pinne", "someone"], 9_000),
+    ].map((entry) => [String(entry.metrics.matchId), entry]),
+  );
+  await writeFile(
+    cachePath,
+    JSON.stringify({
+      ...JSON.parse(await readFile(cachePath, "utf8")),
+      dismissed: [],
+      pool: twice,
+      scannedAt: 0,
+    }),
+    "utf8",
+  );
+  asked.length = 0;
+  assert.deepEqual(await ids([...DEFAULTS.favouritePlayers]), [72, 73], "never two matches of one pair");
+
+  // The scan reads each favourite's own list and each strong draw's (STRONG_DRAWS: measured >= 1.0)
+  // once: the default roster's 6 and hackingnoises, BeefSalad, edcr, nahhann — 10 calls.
+  assert.deepEqual(
+    [...asked].sort(),
+    [
+      ...DEFAULTS.favouritePlayers.map((n) => n.toLowerCase()),
+      "beefsalad",
+      "edcr",
+      "hackingnoises",
+      "nahhann",
+    ].sort(),
+  );
+  assert.equal(STRONG_DRAWS.length, 9, "the 9 measured at 1.0 or more, 5 of them on the default roster");
   console.log("OK: a favourite's match is a tier above the no-name ones at the slots");
   console.log("suggestSelect: all checks passed");
 } finally {

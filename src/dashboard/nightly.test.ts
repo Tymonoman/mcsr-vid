@@ -20,6 +20,7 @@ import {
   pickClause,
   pickNightlyCandidate,
   playoffPicks,
+  previewPick,
   playoffsWithoutVods,
   playoffVodsReady,
   readNightlyState,
@@ -501,6 +502,29 @@ try {
       { metrics: { matchId: 9003, players: ["PoolOne", "PoolTwo"] }, bucket: "queued" },
       "resolved from the pool, not fetched",
     );
+    // The preview (`previewPick`, behind the polled GET /api/nightly) takes a queued id off the list
+    // from the pool only: 9003 shows, 9998 is left out, and nothing reaches the network — only a run
+    // may spend a getMatch on it.
+    const realFetch = globalThis.fetch;
+    const fetched: string[] = [];
+    globalThis.fetch = (async (url: string) => {
+      fetched.push(String(url));
+      throw new Error("the preview must not fetch");
+    }) as typeof fetch;
+    try {
+      const ranked = [
+        { metrics: { matchId: 9010, players: ["Feinberg", "zzz"] as [string, string] }, bucket: "chaos" },
+      ];
+      assert.equal((await previewPick(ranked, { ...roomy, queue: [9998, 9003] }))?.metrics.matchId, 9003);
+      assert.equal(
+        (await previewPick(ranked, { ...roomy, queue: [9998] }))?.metrics.matchId,
+        9010,
+        "9998 left out",
+      );
+      assert.deepEqual(fetched, [], "the preview never calls the network");
+    } finally {
+      globalThis.fetch = realFetch;
+    }
     // Missing from the pool too: resolveQueuedPick would fall to one getMatch call (not exercised
     // here — a live API call does not belong in a unit test); pickNightlyCandidate's own default
     // resolver (no injection) still drops a queued id it cannot resolve, exactly as before this

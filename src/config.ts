@@ -626,6 +626,15 @@ export function validateOverrides(raw: Record<string, unknown>): void {
       }
       continue;
     }
+    // A fraction or a negative would read as a lower bar than the file says.
+    if (key === "knownFollowerThreshold") {
+      if (!Number.isInteger(value) || (value as number) < 0) {
+        throw new Error(
+          `${CONFIG_PATH}: "knownFollowerThreshold" must be a whole number of followers, 0 or more.`,
+        );
+      }
+      continue;
+    }
     // Whole renders, at least one. 0 would turn the nightly off through a key that does not say
     // so — `"nightlyRenderHourUtc": null` is how you do that — and a fraction would read as a
     // limit while behaving like its floor.

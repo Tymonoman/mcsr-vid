@@ -8,12 +8,11 @@
  */
 import { formatShortTime } from "../../remotion/format.js";
 import { config } from "../config.js";
-import { pairKey, recentPairPostsSnapshot, type PairPost } from "./pairPosts.js";
+import { recentPairPostsSnapshot, type PairPost } from "./pairPosts.js";
 import { rivalMatchFor, rivalPostsSnapshot, type RivalPost } from "./rivalPosts.js";
 import type { SplitGap } from "../pipeline/matchScore.js";
 import {
-  drawFactorFor,
-  favouriteFactorFor,
+  audienceFor,
   tierFor,
   POOL_MAX_AGE_DAYS,
   type Bucket,
@@ -119,36 +118,24 @@ function toCard(s: Suggestion, nowMs: number, rival: readonly RivalPost[]): Sugg
   };
 }
 
-/**
- * What a pair the channel has just put out counts for: half (`pairRepeatDays`, src/dashboard/pairPosts.ts).
- * A multiple like the favourites' bonus, and as soft: inside its tier a repeat more than twice as
- * popular as the next card still goes first, and it never drops a favourite pair below a no-name one.
- * ponytail: a constant, like `FAVOURITE_BONUS`.
- */
-const REPEAT_FACTOR = 0.5;
-
 /** Which bucket breaks a tie: the close races, then the chaos. */
 const BUCKET_RANK: Record<Bucket, number> = { close: 0, chaos: 1 };
 
 /**
- * Cards in display order, one list across both buckets: a match whose VODs are about to die first,
- * because it is the only candidate that stops being renderable; a matchup the rival channel has
- * already posted after the fresh ones, because it would compete with the rival's own video for the
- * same browse session; and inside each of those `tierFor`: a match with a favourite (`favourites`:
- * nicknames, compared whole and ignoring case) above every match without one, then a match with a
- * known player (a measured draw or a Twitch following that clears the gate) above the no-names — no-name
- * players are not what gets clicked, and a bonus alone lost to their popularity. Inside a tier the
- * biggest audience: `popularity × favouriteFactor × drawFactor × repeatFactor` — counted up by
- * `FAVOURITE_BONUS` for each favourite playing, by the players' draw (`drawFactorFor`: the measured one,
- * else a prior from their following; 1 Oct 2026: match quality does not predict views once players
- * are controlled for, so there is no chaos/closeness term here), and down by `REPEAT_FACTOR` for a
- * pair the channel itself put out lately (`posted`: within
- * `pairRepeatDays`, either side of now). The bucket only breaks a tie (`BUCKET_RANK`: close, then
- * chaos), and popularity the one after that. The audience decides, not the bucket: the one close race
- * of no names must not stay above a famous pair's chaos, or the nightly renders the first. Everything
- * here is read on every call and kept out of the scan's cache, so a change to either setting re-orders
- * the next read. (The tier also counts when a scan chooses the slots, `take` in suggest.ts: which
- * matches are in the list follows at the next scan.)
+ * Cards in display order, one list across both buckets. First `tierFor`: a match with a favourite
+ * (`favourites`: nicknames, compared whole and ignoring case) above every match without one, then a
+ * match with a known player (a measured draw, or a Twitch following that clears the gate) above the
+ * no-names — whatever else is true of them, an expiring no-name card included (1 Oct 2026: one sat at
+ * #1 of 443). Inside a tier: a match whose VODs are about to die first, because it is the only
+ * candidate that stops being renderable; a matchup the rival channel has already posted after the
+ * fresh ones, because it would compete with the rival's own video for the same browse session; then
+ * the biggest audience (`audienceFor`: expected draw × the favourites' bonus × `REPEAT_FACTOR` for a
+ * pair the channel itself put out lately — `posted`, within `pairRepeatDays`, either side of now — and
+ * no chaos/closeness term: match quality does not predict views once players are controlled for). The
+ * bucket breaks a tie (`BUCKET_RANK`: close, then chaos), and popularity the one after that.
+ * Everything here is read on every call and kept out of the scan's cache, so a change to either
+ * setting re-orders the next read. (The tier and the audience also decide when a scan chooses the
+ * slots, `take` in suggest.ts: which matches are in the list follows at the next scan.)
  */
 export function presentSuggestions(
   suggestions: readonly Suggestion[],
@@ -159,7 +146,6 @@ export function presentSuggestions(
   knownFollowerThreshold: number = config.knownFollowerThreshold,
 ): SuggestionCard[] {
   const cards = suggestions.map((s) => toCard(s, nowMs, rival));
-  const favoured = favouriteFactorFor(favourites);
   // Follower counts are already on the suggestions themselves (`profiles`, resolved at scan time);
   // no second Twitch lookup here.
   const followersByName = new Map<string, number | null>();
@@ -167,18 +153,13 @@ export function presentSuggestions(
     for (const p of s.profiles) followersByName.set(p.nickname.toLowerCase(), p.followers);
   const followersOf = (name: string) => followersByName.get(name.toLowerCase()) ?? null;
   const tier = tierFor(favourites, followersOf, knownFollowerThreshold);
-  const repeats = new Set(posted.map((post) => pairKey(post.players)));
-  const audience = (c: SuggestionCard): number =>
-    c.popularity *
-    favoured(c.players) *
-    drawFactorFor(c.players, followersOf) *
-    (repeats.has(pairKey(c.players)) ? REPEAT_FACTOR : 1);
+  const audience = audienceFor(favourites, followersOf, posted);
   return cards.sort(
     (x, y) =>
+      tier(y.players) - tier(x.players) ||
       Number(y.expiring) - Number(x.expiring) ||
       Number(x.rivalPosted !== null) - Number(y.rivalPosted !== null) ||
-      tier(y.players) - tier(x.players) ||
-      audience(y) - audience(x) ||
+      audience(y.players) - audience(x.players) ||
       BUCKET_RANK[x.bucket] - BUCKET_RANK[y.bucket] ||
       y.popularity - x.popularity,
   );

@@ -3,6 +3,7 @@ import path from "node:path";
 import { config } from "../config.js";
 import { chaosScore, closenessScore, computeMetrics, type MatchMetrics } from "../pipeline/matchScore.js";
 import { listProcessedMatchIds } from "./matchStatus.js";
+import { pairKey, recentPairPostsSnapshot, type PairPost } from "./pairPosts.js";
 import {
   getMatch,
   getRecentMatches,
@@ -136,13 +137,50 @@ export function drawOf(name: string, followersOf: (name: string) => number | nul
   return UNMEASURED_DRAW.find((band) => followers >= band.minFollowers)!.draw;
 }
 
-/** The audience term for a match: the simple average of each player's `drawOf`. */
-export function drawFactorFor(
+/**
+ * A match's expected draw: the bigger player's `drawOf` plus half the other's. The audience comes for
+ * the bigger name; a second one adds to it without doubling it (1 Oct 2026).
+ */
+export function expectedDrawFor(
   players: readonly [string, string],
   followersOf: (name: string) => number | null,
 ): number {
-  return (drawOf(players[0], followersOf) + drawOf(players[1], followersOf)) / 2;
+  const a = drawOf(players[0], followersOf);
+  const b = drawOf(players[1], followersOf);
+  return Math.max(a, b) + 0.5 * Math.min(a, b);
 }
+
+/** A pair the channel put out lately (`pairRepeatDays`, `posted`) counts for this much. */
+export const REPEAT_FACTOR = 0.5;
+
+/**
+ * A match's audience across cards: `expectedDrawFor` × `favouriteFactorFor` × `REPEAT_FACTOR` for a
+ * pair in `posted`. Expected views, not ladder activity: popularity (appearances + followers) is how
+ * often someone plays — gothy666's 241 appearances to Infume's 91 put a grinder and one favourite
+ * above two favourites — so it only breaks the last tie. `take()` and `presentSuggestions` both rank
+ * on it.
+ */
+export function audienceFor(
+  favourites: readonly string[],
+  followersOf: (name: string) => number | null,
+  posted: readonly PairPost[],
+): (players: readonly [string, string]) => number {
+  const favoured = favouriteFactorFor(favourites);
+  const repeats = new Set(posted.map((post) => pairKey(post.players)));
+  return (players) =>
+    expectedDrawFor(players, followersOf) *
+    favoured(players) *
+    (repeats.has(pairKey(players)) ? REPEAT_FACTOR : 1);
+}
+
+/**
+ * Measured draws at or above this get their own matches pulled every scan, favourite or not
+ * (`STRONG_DRAWS`): with the default roster that adds hackingnoises, BeefSalad, edcr and nahhann.
+ */
+export const STRONG_DRAW_MIN = 1.0;
+export const STRONG_DRAWS: readonly string[] = Object.keys(DEFAULT_DRAW).filter(
+  (name) => DEFAULT_DRAW[name]! >= STRONG_DRAW_MIN,
+);
 
 /**
  * Below this measured draw a name is not "known" however many followers it has (romuxii: 1,962
@@ -188,10 +226,10 @@ export function knownTierFor(
 }
 
 /**
- * A match's tier, the first key of `take()` and the one after expiring and the rival's post in
- * `presentSuggestions`: 2 with a favourite, 1 with a known player and no favourite (`knownTierFor`),
- * 0 with neither. A favourite still outranks every match without one — the operator's call of 30 Sept
- * 2026 — and a known player only lifts a match above the no-names (1 Oct 2026).
+ * A match's tier, the first key of `take()` and of `presentSuggestions`: 2 with a favourite, 1 with a
+ * known player and no favourite (`knownTierFor`), 0 with neither. A favourite outranks every match
+ * without one — the operator's call of 30 Sept 2026 — and a known player lifts a match above the
+ * no-names, an expiring one included (1 Oct 2026).
  */
 export function tierFor(
   favourites: readonly string[],
@@ -633,16 +671,19 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
     return { next: page[page.length - 1]!.id, allSeen };
   };
 
-  // A favourite who is not active enough to surface in the feed's own paging (it only reaches so
-  // far back) still gets a look: one list per roster name, folded into the same candidates the feed
-  // fills. A no-name match drowning out doogile's own matches is exactly what the gate below exists
-  // for, and the gate cannot work on a match this scan never saw. One name failing (a stale nickname
-  // in the config) costs that name's coverage, not the scan.
-  for (const nickname of config.favouritePlayers) {
+  // A favourite or a strong draw (`STRONG_DRAWS`) too quiet to surface in the feed's own paging (it
+  // only reaches so far back) still gets a look: one list per name — 10 with the default roster —
+  // folded into the same candidates the feed fills. Only a match no scan has seen yet and young
+  // enough for the pool: a list is re-read every scan, and an already-counted match coming back
+  // would take a detail fetch from a new one (or be fetched again every time the pool drops it). One
+  // name failing (a stale nickname in the config) costs that name's coverage, not the scan.
+  const coveredSec = Date.now() / 1000 - POOL_MAX_AGE_DAYS * 86_400;
+  const covered = new Map([...config.favouritePlayers, ...STRONG_DRAWS].map((n) => [n.toLowerCase(), n]));
+  for (const nickname of covered.values()) {
     try {
       const list = await getUserMatches(nickname, { type: RANKED_TYPE, count: PAGE_SIZE });
       requests += 1;
-      for (const match of list) foldMatch(match);
+      for (const match of list) if (!counted.has(match.id) && match.date >= coveredSec) foldMatch(match);
     } catch (err) {
       console.error(`suggest: ${nickname}'s own matches could not be read — ${(err as Error).message}`);
     }
@@ -751,25 +792,39 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
       : chaosScore(entry.metrics, suggestWeights, suggestFastRunTargetSec, suggestSlowRunCutoffSec);
 
   // The slots go by `tierFor` — the matches with a favourite, then those with a known player, then
-  // the rest — and inside a tier to the best scores with a favourite's counted up, so such a match
-  // reaches the list; the `score` kept on the card stays the bucket's own, comparable with the rest
-  // of its bucket.
-  const favoured = favouriteFactorFor(config.favouritePlayers);
-  const tier = tierFor(
-    config.favouritePlayers,
-    (name) => followers.get(name) ?? null,
-    config.knownFollowerThreshold,
-  );
-  const take = (pool: typeof selectable, bucket: Bucket, slots: number, exclude: Set<number>): Suggestion[] =>
-    pool
+  // the rest — inside a tier by `audienceFor` (the pairs put out lately as the scan finds them), then
+  // the bucket's score, then popularity; the `score` kept on the card stays the bucket's own. One card
+  // per pair across both buckets (`pairs`): the best of a pair's matches, never two of them.
+  const followersOf = (name: string) => followers.get(name) ?? null;
+  const tier = tierFor(config.favouritePlayers, followersOf, config.knownFollowerThreshold);
+  const audience = audienceFor(config.favouritePlayers, followersOf, recentPairPostsSnapshot());
+  const pairs = new Set<string>();
+  const take = (
+    pool: typeof selectable,
+    bucket: Bucket,
+    slots: number,
+    exclude: Set<number>,
+  ): Suggestion[] => {
+    const ranked = pool
       .filter((entry) => !exclude.has(entry.metrics.matchId))
       .map((entry) => ({ ...entry, bucket, score: rank(entry, bucket) }))
       .sort(
         (a, b) =>
           tier(b.metrics.players) - tier(a.metrics.players) ||
-          b.score * favoured(b.metrics.players) - a.score * favoured(a.metrics.players),
-      )
-      .slice(0, slots);
+          audience(b.metrics.players) - audience(a.metrics.players) ||
+          b.score - a.score ||
+          b.popularity - a.popularity,
+      );
+    const out: Suggestion[] = [];
+    for (const entry of ranked) {
+      if (out.length >= slots) break;
+      const key = pairKey(entry.metrics.players);
+      if (pairs.has(key)) continue;
+      pairs.add(key);
+      out.push(entry);
+    }
+    return out;
+  };
 
   // A match where the loser never killed the dragon has no finish to be close *at*, so it
   // can't hold a close-race slot however tense the middle was. It stays eligible for the

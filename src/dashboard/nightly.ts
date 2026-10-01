@@ -336,6 +336,12 @@ export function nightlyEligible(
   return async (pick) => (await checkVods(pick)) && (queued.has(pick.metrics.matchId) || isKnownPick(pick));
 }
 
+/** A queued id from the scan's own pool, or null — no API call (the preview's whole resolver). */
+export function pooledQueuedPick(id: number): NightlyPick | null {
+  const players = pooledMatchPlayers(id);
+  return players ? { metrics: { matchId: id, players }, bucket: "queued" } : null;
+}
+
 /**
  * A queued id `take()`'s slots have since dropped (a later scan trimmed the ranked list; the operator's
  * pick must not go silently empty for it): the scan's own pool first, no API call; failing that, one
@@ -343,8 +349,8 @@ export function nightlyEligible(
  * this cannot even read is skipped, logged, and left for the next scan to resolve.
  */
 export async function resolveQueuedPick(id: number): Promise<NightlyPick | null> {
-  const pooled = pooledMatchPlayers(id);
-  if (pooled) return { metrics: { matchId: id, players: pooled }, bucket: "queued" };
+  const pooled = pooledQueuedPick(id);
+  if (pooled) return pooled;
   try {
     const match = await getMatch(id);
     return { metrics: { matchId: id, players: computeMetrics(match).players }, bucket: "queued" };
@@ -584,16 +590,28 @@ export async function nightlyCandidate(): Promise<NightlyPick | null> {
   // something a polled GET waits for. The preview uses what the last refresh found.
   void refreshPairPosts();
   if (!result) return null;
-  const ctx = await pickContext();
-  // No VOD probe: a GET the browser polls must not spend a yt-dlp listing per candidate. The
-  // preview may therefore name a game the run itself falls through — it is a preview. The known
-  // gate is cheap (the scan's own cache) and applies, so the preview agrees with what a run would
-  // actually pick.
-  return pickNightlyCandidate(
+  return previewPick(
     [...(await playoffPicks()), ...orderForDisplay(result.suggestions)],
+    await pickContext(),
+  );
+}
+
+/**
+ * The preview's pick from a ranked list. No VOD probe: a GET the browser polls must not spend a
+ * yt-dlp listing per candidate, so the preview may name a game the run itself falls through. The
+ * known gate is cheap (the scan's own cache) and applies. A queued id off the list shows only from the
+ * scan's pool (`pooledQueuedPick`), else it is left out: only `runNightlyOnce` may spend a `getMatch`
+ * on it — a polled GET never touches the network for one.
+ */
+export function previewPick(
+  ranked: readonly NightlyPick[],
+  ctx: NightlyPickContext,
+): Promise<NightlyPick | null> {
+  return pickNightlyCandidate(
+    ranked,
     ctx,
     nightlyEligible(ctx.queue ?? [], async () => true),
-    resolveQueuedPick,
+    async (id) => pooledQueuedPick(id),
   );
 }
 
