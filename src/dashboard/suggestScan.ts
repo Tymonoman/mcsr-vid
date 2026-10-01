@@ -103,7 +103,7 @@ export function dismiss(matchId: number): void {
 /**
  * Un-dismisses a match. True when the row is showing again now; false when this process never
  * saw it (a restart since), in which case it is back after the next scan. Order is not a
- * concern here: `presentSuggestions` sorts each bucket on every read.
+ * concern here: `presentSuggestions` orders the whole list on every read.
  */
 export function restore(matchId: number): boolean {
   const row = parked.get(matchId);
