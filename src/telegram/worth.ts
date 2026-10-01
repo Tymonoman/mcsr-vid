@@ -17,7 +17,7 @@ import { config } from "../config.js";
 import type { FeedMatch, MatchInfo, MatchVod, UserDetails } from "../api/types.js";
 import { hiddenMatchIds } from "../dashboard/matchShelf.js";
 import { listProcessedMatchIds } from "../dashboard/matchStatus.js";
-import { scanKnowledge } from "../dashboard/suggest.js";
+import { knownPlayerFor, scanKnowledge } from "../dashboard/suggest.js";
 import { describeError } from "../errorText.js";
 import { computeMetrics, type MatchMetrics } from "../pipeline/matchScore.js";
 import { discoverVods, listArchivesWithYtDlp } from "../pipeline/vodDiscovery.js";
@@ -37,11 +37,6 @@ export const WATCH_ROSTER: readonly string[] = [
 const WINDOW_DAYS = 3;
 /** A run under six minutes is a forfeit or a reset, not a match (the night's search used the same floor). */
 const MIN_RUN_MS = 6 * 60_000;
-/**
- * An opponent off the roster counts as a name at this many Twitch followers (the scans' own cached
- * count): on 30 Sept 2026 Jabo_ had 372 and sub5average 31, bbiddd 2,912 and BlazeMind 6,150.
- */
-const KNOWN_FOLLOWERS = 1_000;
 /**
  * Candidates whose match is fetched for its timeline, one MCSR call each. ponytail: the first eight
  * by name and recency, not by story — a thrilling ninth goes unseen; raise it when the API budget allows.
@@ -272,9 +267,13 @@ export function liveDeps(): WorthDeps {
     listMatches: (nickname) => getUserMatches(nickname, { type: 2, count: 100 }),
     fetchMatch: getMatch,
     isTaken: takenNow(known.dismissed),
-    isKnown: (nickname) =>
-      onRoster(config.favouritePlayers.length ? config.favouritePlayers : WATCH_ROSTER, nickname) ||
-      (known.twitchOf(nickname)?.followers ?? 0) >= KNOWN_FOLLOWERS,
+    // One definition of "known" (suggest.ts's knownTierFor/knownPlayerFor share it), not two: a
+    // favourite, or — for anyone else — a measured draw when one exists, else Twitch followers.
+    isKnown: knownPlayerFor(
+      config.favouritePlayers.length ? config.favouritePlayers : WATCH_ROSTER,
+      (nickname) => known.twitchOf(nickname)?.followers ?? null,
+      config.knownFollowerThreshold,
+    ),
     discover: (match) => {
       const loginOf = new Map(match.players.map((p) => [p.uuid, known.twitchOf(p.nickname)?.login]));
       return discoverVods(

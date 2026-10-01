@@ -211,6 +211,16 @@ export const SETTINGS: readonly SettingField[] = [
     unattended: true,
   },
   {
+    key: "knownFollowerThreshold",
+    label: "Known-opponent follower threshold",
+    help: "An opponent off the favourites list still ranks a match above the no-name ones once their Twitch following reaches this many: the other half of the favourites tier. 1,000 already clears Jabo_ (372) and sub5average (31).",
+    kind: "int",
+    group: "Suggestions",
+    min: 0,
+    max: 1_000_000,
+    unattended: true,
+  },
+  {
     key: "suggestCacheTtlMin",
     label: "Rescan every (min)",
     help: "How often the suggestion scan looks for new matches. Each full scan is ~340 MCSR API calls against a 500-per-10-minutes budget.",

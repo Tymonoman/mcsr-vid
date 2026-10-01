@@ -13,7 +13,9 @@ import { config } from "../config.js";
 import {
   chainExport,
   type ExportStarter,
+  isKnownPick,
   msUntilNextRun,
+  nightlyEligible,
   PAIR_POSTS_WAIT_MS,
   pickClause,
   pickNightlyCandidate,
@@ -22,6 +24,7 @@ import {
   playoffVodsReady,
   readNightlyState,
   refreshPairPostsWithin,
+  resolveQueuedPick,
   runNightlyOnce,
   shouldChainNextRender,
   writeNightlyState,
@@ -235,12 +238,12 @@ try {
   // because the real one is a scan; the job lookup because this box has no jobs.
   const empty = await runNightlyOnce("", { renderInFlight: () => false, ranked: async () => [] });
   assert.deepEqual(empty, {
-    skipped: "every candidate is processed, hidden or without VODs, or the disk is full",
+    skipped: "every candidate is processed, hidden, without VODs or has no known player, or the disk is full",
   });
   assert.equal(readNightlyState()?.outcome, "skipped", "an ordinary skip is recorded, with its reason");
   assert.equal(
     readNightlyState()?.reason,
-    "every candidate is processed, hidden or without VODs, or the disk is full",
+    "every candidate is processed, hidden, without VODs or has no known player, or the disk is full",
   );
   assert.equal(readNightlyState()?.matchId, null, "a skip chose nothing, so it names nothing");
   // No list at all is a different sentence — a cold process with a dead API, not a full disk.
@@ -297,7 +300,8 @@ try {
     // the log: an unstreamed bracket would otherwise be a fortnight of "nothing to render".
     const named = await runNightlyOnce("", { renderInFlight: () => false, ranked: async () => [] });
     assert.deepEqual(named, {
-      skipped: "every candidate is processed, hidden or without VODs, or the disk is full (no VOD: #2)",
+      skipped:
+        "every candidate is processed, hidden, without VODs or has no known player, or the disk is full (no VOD: #2)",
     });
   }
 
@@ -428,6 +432,88 @@ try {
     assert.equal(skipNightOf(), "2026-09-09", "non-matching date is not cleared");
     setSkipNightOf(null);
     console.log("OK: skipNightOf skips scheduled run once and clears; Run now ignores it");
+  }
+
+  // --- The known-player gate (1 Oct 2026, the operator: "the suggestion system is shit it
+  // recommends and schedules matches that no one will watch") -------------------------------------
+  {
+    const unknownPick = {
+      metrics: { matchId: 9001, players: ["RandoOne", "RandoTwo"] as [string, string] },
+      bucket: "chaos",
+    };
+
+    // A pool of one, and nobody in it is known: the night skips, names the reason, and renders
+    // nothing — readNightlyState().matchId stays null, so the Telegram report's "N waiting for a
+    // hook" and the strip's last-run line cannot say a match was rendered that was not.
+    const result = await runNightlyOnce("", {
+      renderInFlight: () => false,
+      ranked: async () => [unknownPick],
+    });
+    assert.deepEqual(result, {
+      // "(no VOD: #2)" rides along: the VOD-probe block above this one permanently remembers #2 as
+      // unstreamed (`noVods` is a module-level set, by design — see playoffVodsReady's doc comment),
+      // and that note is appended to every skip for the rest of this process.
+      skipped:
+        "every candidate is processed, hidden, without VODs or has no known player, or the disk is full (no VOD: #2)",
+    });
+    assert.equal(readNightlyState()?.matchId, null, "an unknown pair is not rendered");
+    assert.match(readNightlyState()?.reason ?? "", /no known player/);
+
+    // The same pick, not run through startJob (that would be a real pipeline invocation): the
+    // operator's own queue always wins over the gate, exactly as it already wins over nightlySkip.
+    assert.equal(await nightlyEligible([])(unknownPick), false, "unqueued and unknown: not eligible");
+    assert.equal(await nightlyEligible([9001])(unknownPick), true, "queued: the gate does not apply");
+    assert.deepEqual(
+      await pickNightlyCandidate([unknownPick], { ...roomy, queue: [9001] }, nightlyEligible([9001])),
+      unknownPick,
+      "queued and unknown — it IS picked",
+    );
+
+    // A playoff pick is always known: the bracket's players are the season's top 16, and their
+    // Twitch following is often unmeasured (`isKnownPick` reads the scan's cache, no API call).
+    const playoffPick = {
+      metrics: { matchId: 9002, players: ["RandoThree", "RandoFour"] as [string, string] },
+      bucket: "playoffs",
+    };
+    assert.equal(isKnownPick(playoffPick), true, "a playoff pick is known regardless of followers");
+    assert.equal(isKnownPick(unknownPick), false, "an ordinary no-name pick is not");
+
+    // Zero suggestions at all (not just zero known ones) is the same skip path, not a throw —
+    // already pinned above (`empty`/`none`), and `isKnownPick` never runs when there is nothing to
+    // call it on.
+    assert.equal(
+      await pickNightlyCandidate([], { ...roomy, queue: [] }, nightlyEligible([])),
+      null,
+      "nothing to pick from is a null, not a throw",
+    );
+
+    // A queued id the latest scan trimmed off the ranked list: the scan's own pool first, no API
+    // call — resolveQueuedPick is the live default pickNightlyCandidate falls back to.
+    writeFileSync(
+      path.join(media, ".suggest-cache.json"),
+      JSON.stringify({
+        version: 4,
+        pool: { "9003": { metrics: { matchId: 9003, players: ["PoolOne", "PoolTwo"] } } },
+      }),
+    );
+    assert.deepEqual(
+      await resolveQueuedPick(9003),
+      { metrics: { matchId: 9003, players: ["PoolOne", "PoolTwo"] }, bucket: "queued" },
+      "resolved from the pool, not fetched",
+    );
+    // Missing from the pool too: resolveQueuedPick would fall to one getMatch call (not exercised
+    // here — a live API call does not belong in a unit test); pickNightlyCandidate's own default
+    // resolver (no injection) still drops a queued id it cannot resolve, exactly as before this
+    // existed.
+    assert.equal(
+      await pickNightlyCandidate([], { ...roomy, queue: [9999] }),
+      null,
+      "an unresolvable queued id drops through rather than hanging the pick",
+    );
+
+    console.log(
+      "OK: the known-player gate skips a no-name match; the queue and the bracket both override it",
+    );
   }
 } finally {
   await rm(media, { recursive: true, force: true });

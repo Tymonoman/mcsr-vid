@@ -160,6 +160,17 @@ console.log("settings: the allowlist holds and every kind coerces");
   assert.equal(config.pairRepeatDays, 0, "0 is off, and it is a value, not a missing one");
 
   console.log("settings: the pair-repeat window saves, applies live, and turns off at 0");
+
+  // The known-opponent follower threshold: 1,000 until changed, live at once, bounded like any int.
+  assert.equal(config.knownFollowerThreshold, 1_000, "the default threshold is live before any save");
+  assert.deepEqual(saveSettings({ knownFollowerThreshold: "5000" }).changed, ["knownFollowerThreshold"]);
+  assert.equal(config.knownFollowerThreshold, 5000);
+  assert.equal(JSON.parse(readFileSync(CONFIG_PATH, "utf8")).knownFollowerThreshold, 5000);
+  assert.throws(() => saveSettings({ knownFollowerThreshold: "-1" }), /between 0 and 1000000/);
+  assert.deepEqual(saveSettings({ knownFollowerThreshold: "0" }).changed, ["knownFollowerThreshold"]);
+  assert.equal(config.knownFollowerThreshold, 0, "0 is a value: every opponent off the list is known");
+
+  console.log("settings: the known-opponent threshold saves, applies live, and is bounded");
 }
 
 process.chdir(cwd);

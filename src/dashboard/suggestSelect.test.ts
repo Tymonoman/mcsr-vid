@@ -8,7 +8,16 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { config } from "../config.js";
 import { DEFAULT_WEIGHTS, type MatchMetrics } from "../pipeline/matchScore.js";
-import { dismissSuggestion, favouriteFactorFor, getSuggestions } from "./suggest.js";
+import {
+  DEFAULT_DRAW,
+  dismissSuggestion,
+  drawFactorFor,
+  favouriteFactorFor,
+  getSuggestions,
+  KNOWN_DRAW_MIN,
+  knownPlayerFor,
+  knownTierFor,
+} from "./suggest.js";
 
 // --- The factor: half again per favourite, whole names, any case ----------------------------------
 const factor = favouriteFactorFor(["doogile", "Feinberg"]);
@@ -17,6 +26,34 @@ assert.equal(factor(["Doogile", "bbb"]), 1.5, "the list and the API may differ i
 assert.equal(factor(["FEINBERG", "doogile"]), 2);
 assert.equal(factor(["doogile2", "Feinber"]), 1, "whole names, not prefixes");
 assert.equal(favouriteFactorFor([])(["doogile", "Feinberg"]), 1, "an empty list is no bonus");
+
+// --- known(name): favourite, else a measured draw (DEFAULT_DRAW, n>=3 rows of draw.json) if one
+// exists, else Twitch followers. A measured draw is authoritative either way (1 Oct 2026).
+{
+  assert.equal(KNOWN_DRAW_MIN, 0.6, "named, not a bare number in knownPlayerFor");
+  const noFollowers = () => null;
+  const known = knownPlayerFor([], noFollowers, 1_000);
+  // hackingnoises: a high measured draw (2.08) with no cached Twitch follower count at all — the
+  // scenario that motivated reading draw.json before followers.
+  assert.equal(DEFAULT_DRAW["hackingnoises"], 2.08);
+  assert.equal(known("hackingnoises"), true, "a high measured draw is known with no follower data");
+  // romuxii: 1,962 real followers, but a measured draw (0.43) under KNOWN_DRAW_MIN — the draw wins.
+  assert.equal(known("romuxii"), false, "a low measured draw overrides a follower count");
+  assert.equal(knownPlayerFor([], () => 50_000, 1_000)("romuxii"), false, "even a huge one");
+  // Never measured (n < 3, or not in draw.json at all): falls back to followers.
+  assert.equal(knownPlayerFor([], () => 1_000, 1_000)("nobody_ever_measured"), true);
+  assert.equal(knownPlayerFor([], () => 999, 1_000)("nobody_ever_measured"), false);
+  // A favourite is known regardless of either: it is checked first.
+  assert.equal(knownPlayerFor(["romuxii"], noFollowers, 1_000)("romuxii"), true);
+  // The match-level tier needs only one known player (favourite ⊂ known, mirroring favouriteTierFor).
+  const tier = knownTierFor([], noFollowers, 1_000);
+  assert.equal(tier(["hackingnoises", "romuxii"]), true, "one known player is enough");
+  assert.equal(tier(["romuxii", "nobody_ever_measured"]), false);
+  // drawFactorFor: the simple average, 1.0 (neutral) for anyone never measured.
+  assert.equal(drawFactorFor(["hackingnoises", "nobody_ever_measured"]), (2.08 + 1.0) / 2);
+  assert.equal(drawFactorFor(["a", "b"]), 1, "two unmeasured names average to neutral");
+  console.log("OK: knownPlayerFor/knownTierFor/drawFactorFor — a measured draw overrides followers");
+}
 
 // --- The scan: no network, no Twitch; the pool is in the cache -----------------------------------
 delete process.env.TWITCH_CLIENT_ID;
@@ -29,9 +66,15 @@ config.suggestChaosSlots = 0;
 config.suggestWeights = { ...DEFAULT_WEIGHTS };
 config.suggestFastRunTargetSec = 420;
 config.suggestSlowRunCutoffSec = 600;
-// The feed is empty and nothing else may be asked: the selection is all that is under test.
+// The feed and every roster player's own list (getSuggestions's pool-coverage pass) are both empty,
+// and nothing else may be asked: the selection is all that is under test.
 globalThis.fetch = (async (url: string) => {
-  if (!String(url).startsWith("https://api.mcsrranked.com/matches")) throw new Error(`unexpected ${url}`);
+  const u = String(url);
+  if (
+    !u.startsWith("https://api.mcsrranked.com/matches") &&
+    !u.startsWith("https://api.mcsrranked.com/users/")
+  )
+    throw new Error(`unexpected ${url}`);
   return { ok: true, json: async () => ({ status: "success", data: [] }) };
 }) as unknown as typeof fetch;
 
@@ -61,13 +104,16 @@ const pooled = (matchId: number, players: [string, string], finishMarginMs: numb
   dateSec: nowSec - 86_400,
   scoredAt: Date.now(),
 });
+// "hhh"/"iii" stand in for a favourite here, not doogile/Feinberg: both carry a measured draw
+// (DEFAULT_DRAW, suggest.ts) that would make their matches "known" on its own, favourites list or
+// not, defeating the no-favourites baseline this pool exists to set.
 const pool = Object.fromEntries(
   [
-    pooled(10, ["aaa", "bbb"], 0), //                0.353
-    pooled(20, ["ccc", "ddd"], 1_500), //            0.318
-    pooled(30, ["doogile", "eee"], 4_500), //        0.247, x1.5 = 0.371
-    pooled(40, ["doogile", "Feinberg"], 9_000), //   0.141, x2   = 0.282
-    pooled(50, ["fff", "ggg"], 3_000), //            0.282
+    pooled(10, ["aaa", "bbb"], 0), //            0.353
+    pooled(20, ["ccc", "ddd"], 1_500), //        0.318
+    pooled(30, ["hhh", "eee"], 4_500), //        0.247, x1.5 = 0.371
+    pooled(40, ["hhh", "iii"], 9_000), //        0.141, x2   = 0.282
+    pooled(50, ["fff", "ggg"], 3_000), //        0.282
   ].map((entry) => [String(entry.metrics.matchId), entry]),
 );
 
@@ -86,12 +132,12 @@ try {
 
   assert.deepEqual(await ids([]), [10, 20], "by score alone: the two best");
   assert.deepEqual(
-    await ids(["doogile"]),
+    await ids(["hhh"]),
     [30, 40],
     "the matches with a favourite take both slots, though the two best scores are no-name matches",
   );
   assert.deepEqual(
-    await ids(["Doogile", "FEINBERG"]),
+    await ids(["Hhh", "III"]),
     [30, 40],
     "in any case, and a weak favourite's match (0.141) still beats a clearly better no-name one",
   );
@@ -102,7 +148,7 @@ try {
   );
 
   // The card keeps the bucket's own score: comparable, and what the TUI prints.
-  const card = (await listed(["doogile"])).suggestions.find((s) => s.metrics.matchId === 30)!;
+  const card = (await listed(["hhh"])).suggestions.find((s) => s.metrics.matchId === 30)!;
   assert.ok(
     Math.abs(card.score - (3 * (1 - 4_500 / 15_000)) / 8.5) < 1e-9,
     `the raw score, not ${card.score}`,
@@ -151,7 +197,13 @@ try {
     [62, 63],
     "both slots go to the names, though the no-name pair has the best score",
   );
-  assert.deepEqual(await ids([]), [61, 62], "with an empty roster the tier is a no-op: the best scores");
+  assert.deepEqual(
+    await ids([]),
+    [63, 61],
+    // lowk3y_'s own measured draw (1.38, DEFAULT_DRAW in suggest.ts) clears KNOWN_DRAW_MIN on its
+    // own, roster or not — Pinne's (0.46) does not, so her match needs the roster to be known at all.
+    "an empty roster does not switch the tier off entirely: lowk3y_ is still known",
+  );
   config.suggestCloseSlots = 1;
   assert.deepEqual(await ids(["Pinne"]), [62], "and a single slot goes to the name");
   console.log("OK: a favourite's match is a tier above the no-name ones at the slots");

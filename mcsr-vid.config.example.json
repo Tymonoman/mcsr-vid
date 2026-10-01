@@ -30,15 +30,9 @@
   "youtubePlaylistTitle": "MCSR Ranked matches",
   "youtubePlaylistUrl": "",
   "rivalChannelHandle": "mcsrmatches",
-  "favouritePlayers": [
-    "doogile",
-    "Feinberg",
-    "Infume",
-    "Pinne",
-    "lowk3y_",
-    "silverrruns"
-  ],
+  "favouritePlayers": ["doogile", "Feinberg", "Infume", "Pinne", "lowk3y_", "silverrruns"],
   "pairRepeatDays": 3,
+  "knownFollowerThreshold": 1000,
   "supportUrl": "",
   "pullSource": "",
   "pullDest": "~/Replayoffs",
