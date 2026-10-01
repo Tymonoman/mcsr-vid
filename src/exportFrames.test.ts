@@ -47,7 +47,17 @@ const skip = (why: string) => {
 
 // Whichever match on this box has a rendered overlay and both POV clips, rather than a pinned
 // id: the fixtures are whatever the lab last rendered, and the desktop has none.
-const processed = listProcessedMatchIds();
+// A ranked match that still has its own export first: a joined series' game 1 has a static
+// stream panel under the probe pixel, and the clips of older uploads get deleted to free disk.
+const processed = [...listProcessedMatchIds()].sort((a, b) => {
+  const rank = (id: number) => {
+    const dir = path.join(config.mediaDir, String(id));
+    const series = existsSync(path.join(dir, "series.json")) ? 2 : 0;
+    const noFinal = existsSync(path.join(dir, `final-${id}.mp4`)) ? 0 : 1;
+    return series + noFinal;
+  };
+  return rank(a) - rank(b) || b - a;
+});
 if (processed.length === 0) skip("no media at all (fixtures are 1.4 GB of VODs, not committed)");
 let outDir = "";
 let splits: SplitStill[] | null = null;
