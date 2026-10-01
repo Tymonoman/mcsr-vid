@@ -131,6 +131,25 @@ export function buildDescription(input: DescriptionInput): string {
 export const SUBSCRIBE_LINE = "a new match every day. subscribe to catch the next one.";
 
 /**
+ * "last time they met: <link>", one line with the other links when the pair has an earlier
+ * long-form on the channel. The 30 Sept 2026 post-mortem: nothing in a description sent a viewer
+ * onward, and Suggested viewers watch 4.1 minutes a view against Browse's 1.15. The earlier video
+ * is only known at upload time, so `uploadTextFor` adds the line (`lastMeetingFor`), once: a
+ * description that has it is returned as it is.
+ */
+export const LAST_MEETING = "last time they met: ";
+
+export function withLastMeeting(description: string, videoId: string | null): string {
+  if (!videoId || description.includes(LAST_MEETING)) return description;
+  const line = `${LAST_MEETING}https://youtu.be/${videoId}`;
+  // Before the playlist and tip-jar lines, else at the end of the links block. No template, no line.
+  const links = description.search(/^(?:all the matches: |tip jar: )/m);
+  if (links >= 0) return `${description.slice(0, links)}${line}\n${description.slice(links)}`;
+  const closer = description.search(/\n\n(?:fan channel, |#MCSR)/);
+  return closer < 0 ? description : `${description.slice(0, closer)}\n${line}${description.slice(closer)}`;
+}
+
+/**
  * The last line before the hashtags, on every video and every series. What the video is and
  * what is the channel's own work — the sync and the data layer — said plainly, so a reviewer
  * (or a viewer) does not read the channel as a compilation of other people's streams; the

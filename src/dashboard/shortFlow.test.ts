@@ -359,6 +359,42 @@ try {
     assert.equal(spoiled.status, 202, JSON.stringify(body));
     assert.ok(spoiled.payload.saveWarnings?.some((w) => /give the result away/i.test(w)));
   }
+
+  // A nickname the channel already uses for another player is a warning beside the field, never a
+  // refusal (30 Sept 2026 post-mortem): LOVERBOY is Infume's on two uploads, this match is edcr
+  // vs doogile; CARNIVORE sat beside doogile once, so it may be his.
+  {
+    const earlier = [
+      [13_200_001, "LOVERBOY vs TAS | Infume vs BeefSalad"],
+      [13_200_002, "LOVERBOY vs UNC | Infume vs Feinberg"],
+      [13_200_003, "CARNIVORE vs VEGAN | doogile vs silverrruns"],
+    ] as const;
+    for (const [id, title] of earlier) {
+      mkdirSync(dir(id), { recursive: true });
+      await writeUpload(id, {
+        videoId: `video-${id}`,
+        uploadedAt: "2026-09-12T19:00:00Z",
+        publishAt: null,
+        privacyStatus: "public",
+        thumbnailVariant: null,
+        title: `${title} | MCSR Ranked 1v1 | Minecraft Speedrun`,
+      });
+    }
+    const reused = await call("PUT", "hooks", W, { titleHook: "LOVERBOY vs LOCKED IN", shortHook: "x" });
+    assert.equal(reused.status, 202, "saved anyway");
+    assert.deepEqual(reused.payload.saveWarnings, [
+      '"LOVERBOY" stood for Infume on 2026-09-12 — one nickname per player',
+    ]);
+    assert.equal(
+      readFileSync(path.join(dir(W), `match-${W}.title.edited.txt`), "utf8").split("\n")[0],
+      "LOVERBOY vs LOCKED IN | edcr vs doogile | MCSR Ranked 1v1 | Minecraft Speedrun",
+    );
+    const own = await call("PUT", "hooks", W, { titleHook: "CARNIVORE vs ASIAN", shortHook: "x" });
+    assert.equal(own.status, 202);
+    assert.equal(own.payload.saveWarnings, undefined, "a nickname with its player in the match is quiet");
+    // Their records would count as uploads in the chain's slot rules below.
+    for (const [id] of earlier) rmSync(dir(id), { recursive: true, force: true });
+  }
   await flow.chainIdle(W);
 
   /* --- 4. Saved: render, then the long-form, then the Short, at their times ---------------------- */

@@ -6,8 +6,15 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { config } from "../config.js";
-import { CLOSER, SUBSCRIBE_LINE } from "../pipeline/description.js";
-import { refreshDescription, refreshTitle, uploadTextFor } from "./youtubeStore.js";
+import { CLOSER, LAST_MEETING, SUBSCRIBE_LINE } from "../pipeline/description.js";
+import {
+  lastMeetingFor,
+  nicknameWarnings,
+  refreshDescription,
+  refreshTitle,
+  uploadTextFor,
+  type UploadRecord,
+} from "./youtubeStore.js";
 import type { SeriesRecord } from "../playoffs/series.js";
 
 const media = mkdtempSync(path.join(tmpdir(), "mcsr-uploadtext-"));
@@ -308,6 +315,159 @@ write(108, {
   assert.ok(refreshed.includes("0:00 intro"));
   // No blank line is no template: there is no opening paragraph to place the subscribe line after.
   assert.ok(!refreshed.includes(SUBSCRIBE_LINE));
+}
+
+// --- Earlier uploads: "last time they met" and the nickname check ------------------------------
+// Both read the records on disk (`allUploads`): the title each long-form went up under, and when.
+const TAIL = "MCSR Ranked 1v1 | Minecraft Speedrun";
+const uploaded = (id: number, videoId: string, title: string, over: Partial<UploadRecord> = {}) =>
+  write(id, {
+    "youtube.json": JSON.stringify({
+      videoId,
+      uploadedAt: "2026-09-20T19:00:00Z",
+      publishAt: null,
+      privacyStatus: "public",
+      thumbnailVariant: null,
+      title,
+      ...over,
+    } satisfies UploadRecord),
+  });
+const day = (d: number) => ({ uploadedAt: `2026-09-${String(d).padStart(2, "0")}T19:00:00Z` });
+// doogile and Feinberg have met three times: two public, one private with no time yet.
+uploaded(301, "AAAAAAAAAAA", `LOVERBOY vs TAS | Infume vs BeefSalad | ${TAIL}`, {
+  privacyStatus: "private",
+  publishAt: "2026-09-09T19:00:00Z",
+});
+uploaded(302, "BBBBBBBBBBB", `LOVERBOY vs UNC | Infume vs Feinberg | ${TAIL}`, day(24));
+uploaded(303, "CCCCCCCCCCC", `TAS vs UNC | doogile vs Feinberg | ${TAIL}`, day(10));
+uploaded(304, "DDDDDDDDDDD", `TAS vs IKEA GUY | doogile vs v_strid | ${TAIL}`, day(19));
+uploaded(305, "EEEEEEEEEEE", `TAS vs OG | doogile vs Aquacorde | ${TAIL}`, day(22));
+uploaded(306, "FFFFFFFFFFF", `TAS vs DOG | lowkey vs woofdoggo_ | ${TAIL}`, day(25));
+uploaded(311, "GGGGGGGGGGG", `Rematch: doogile leads 3-1 | Feinberg vs doogile | ${TAIL}`, day(26));
+uploaded(312, "HHHHHHHHHHH", `Another one | doogile vs Feinberg | ${TAIL}`, { privacyStatus: "private" });
+// Pinne played under the old spelling, then as Skycrab; the second is a series, scheduled.
+uploaded(320, "IIIIIIIIIII", `Hook | Pinne vs Zed | ${TAIL}`, day(14));
+uploaded(321, "JJJJJJJJJJJ", "The series | Skycrab vs Zed | MCSR Ranked Season 11 Playoffs | Round of 16", {
+  privacyStatus: "private",
+  publishAt: "2026-10-02T23:00:00Z",
+});
+// A Short is not a long-form, and a title with no pair names nobody.
+write(322, {
+  "youtube-short.json": JSON.stringify({ videoId: "SSSSSSSSSSS", title: "Hook | Pinne vs Zed #mcsr" }),
+});
+uploaded(330, "KKKKKKKKKKK", "Feinberg on the edcr Situation");
+
+const modern = (matchId: number, pair: string) =>
+  [
+    `${pair}, mcsr ranked 1v1 on the same seed. a minecraft speedrun race.`,
+    "",
+    SUBSCRIBE_LINE,
+    "",
+    "0:00 intro",
+    "",
+    `match page: https://magmamcsr.com/ranked/player/x/matches/${matchId}?season=12`,
+    "all the matches: https://www.youtube.com/playlist?list=PL",
+    "tip jar: https://ko-fi.com/x",
+    "",
+    CLOSER,
+    "",
+    "#MCSRRanked #MCSR #MinecraftSpeedrunning",
+  ].join("\n");
+const meeting = (videoId: string) => `${LAST_MEETING}https://youtu.be/${videoId}`;
+const linksOf = (description: string) => description.split("\n\n")[3]!.split("\n");
+
+// The most recent earlier meeting, in either order of the two names: not the private one with no
+// time, not a later match, not a Short, and the same pair under the old and the new spelling.
+write(400, {
+  "match-400.title.edited.txt": `Hook | Feinberg vs doogile | ${TAIL}\n`,
+  "match-400.description.txt": modern(400, "doogile vs Feinberg"),
+});
+write(401, {
+  "match-401.title.edited.txt": `Hook | doogile vs Feinberg | ${TAIL}\n`,
+  "match-401.description.txt": modern(401, "doogile vs Feinberg"),
+  "match-401.description.edited.txt": "my own words\nno link here",
+});
+write(500, {
+  "match-500.title.edited.txt": `Hook | Zed vs Pinne | ${TAIL}\n`,
+  "match-500.description.txt": modern(500, "Zed vs Skycrab"),
+});
+write(600, {
+  "match-600.title.edited.txt": `Hook | Aa vs Bb | ${TAIL}\n`,
+  "match-600.description.txt": modern(600, "Aa vs Bb"),
+});
+{
+  const second = (await uploadTextFor(400, "video")).description;
+  assert.deepEqual(linksOf(second), [
+    "match page: https://magmamcsr.com/ranked/player/x/matches/400?season=12",
+    meeting("GGGGGGGGGGG"),
+    "all the matches: https://www.youtube.com/playlist?list=PL",
+    "tip jar: https://ko-fi.com/x",
+  ]);
+  // A retried upload, the kit and the adopt press all ask again: the line is there once.
+  assert.equal((await uploadTextFor(400, "video")).description, second);
+  assert.equal(second.split(LAST_MEETING).length, 2);
+  assert.equal(await refreshDescription(second, "video"), second);
+  assert.doesNotMatch(second, /—/, "plain voice, no em dash");
+
+  // The pair's first meeting has no line, and an older match does not point at a newer one.
+  assert.ok(!(await uploadTextFor(600, "video")).description.includes(LAST_MEETING));
+  assert.ok(!(await uploadTextFor(303, "video")).description.includes(LAST_MEETING), "no earlier game");
+  assert.equal(await lastMeetingFor(311, `Hook | doogile vs Feinberg | ${TAIL}`), "CCCCCCCCCCC");
+  assert.equal(await lastMeetingFor(303, `Hook | doogile vs Feinberg | ${TAIL}`), null);
+  // The operator's own words are theirs.
+  assert.equal((await uploadTextFor(401, "video")).description, "my own words\nno link here");
+
+  // Pinne, Pinne's old spelling and a series: the series is the most recent, and one video.
+  const third = (await uploadTextFor(500, "video")).description;
+  assert.ok(third.includes(meeting("JJJJJJJJJJJ")), third);
+  assert.equal(await lastMeetingFor(321, `Hook | Zed vs Pinne | ${TAIL}`), "IIIIIIIIIII");
+  // A Short's record (match 322, between the two) never counts.
+  assert.ok(!third.includes("SSSSSSSSSSS"));
+  assert.equal(await lastMeetingFor(500, "no pair here"), null);
+}
+
+// A hook's nickname that earlier titles used beside another player: TAS is doogile's (three
+// titles), LOVERBOY Infume's, UNC Feinberg's; a warning names who and when, and nothing refuses.
+const hookTitle = (hook: string, pair: string) => `${hook} | ${pair} | ${TAIL}`;
+{
+  const tas = '"TAS" stood for doogile on 2026-09-22 — one nickname per player';
+  assert.deepEqual(await nicknameWarnings(hookTitle("LOVERBOY vs TAS", "Infume vs Feinberg"), 400), [tas]);
+  // The owner's own match, either side of the pair, is clean; so is a hook with no nickname.
+  assert.deepEqual(await nicknameWarnings(hookTitle("TAS vs UNC", "doogile vs Feinberg"), 400), []);
+  assert.deepEqual(await nicknameWarnings(hookTitle("UNC vs TAS", "Feinberg vs doogile"), 400), []);
+  assert.deepEqual(
+    await nicknameWarnings(hookTitle("Down to the last heart", "Infume vs Feinberg"), 400),
+    [],
+  );
+  // Case does not make a new nickname; a hook with a label in front is read from its "vs" segment.
+  assert.deepEqual(await nicknameWarnings(hookTitle("tas vs UNC", "Infume vs Feinberg"), 400), [
+    '"tas" stood for doogile on 2026-09-22 — one nickname per player',
+  ]);
+  assert.equal(
+    (await nicknameWarnings(hookTitle("PLAYOFFS | TAS vs UNC", "Infume vs Feinberg"), 400)).length,
+    1,
+  );
+  // After a single earlier title its two players tie: either one in the match will do.
+  assert.deepEqual(await nicknameWarnings(hookTitle("WASHED vs IKEA GUY", "Infume vs Feinberg"), 400), [
+    '"IKEA GUY" stood for doogile or v_strid on 2026-09-19 — one nickname per player',
+  ]);
+  assert.deepEqual(
+    await nicknameWarnings(hookTitle("WASHED vs IKEA GUY", "silverrruns vs v_strid"), 400),
+    [],
+  );
+  // A match's own record is not earlier.
+  assert.deepEqual(await nicknameWarnings(hookTitle("WASHED vs IKEA GUY", "silverrruns vs Zed"), 304), []);
+  // The players' own names are no nicknames, nor are figures; a title with no pair has none to check.
+  assert.deepEqual(await nicknameWarnings(hookTitle("Infume vs Feinberg", "Infume vs Feinberg"), 400), []);
+  assert.deepEqual(await nicknameWarnings(hookTitle("2699 vs 2376", "Infume vs Feinberg"), 400), []);
+  assert.deepEqual(await nicknameWarnings("TAS vs UNC", 400), []);
+  // Spelling: BEEF sat beside Pinne, then beside Skycrab (one player), and stands for Skycrab.
+  uploaded(340, "LLLLLLLLLLL", `BEEF vs HAM | Pinne vs Zed | ${TAIL}`, day(1));
+  uploaded(341, "MMMMMMMMMMM", `BEEF vs CAT | Skycrab vs Yan | ${TAIL}`, day(2));
+  assert.deepEqual(await nicknameWarnings(hookTitle("BEEF vs X", "Skycrab vs Wil"), 400), []);
+  assert.deepEqual(await nicknameWarnings(hookTitle("BEEF vs X", "Zed vs Wil"), 400), [
+    '"BEEF" stood for Skycrab on 2026-09-02 — one nickname per player',
+  ]);
 }
 
 console.log("youtubeStore.test: ok");

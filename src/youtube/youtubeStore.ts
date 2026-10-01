@@ -9,7 +9,7 @@ import { config, matchDir } from "../config.js";
 import { listProcessedMatchIds } from "../dashboard/matchStatus.js";
 import { readManifest } from "../thumbnails/thumbnailVariants.js";
 import { buildTitle, HOOK_PLACEHOLDER, metaPaths, MOBILE_CUTOFF, SEPARATOR } from "../pipeline/title.js";
-import { CLOSER, seedPhrase, SUBSCRIBE_LINE } from "../pipeline/description.js";
+import { CLOSER, seedPhrase, SUBSCRIBE_LINE, withLastMeeting } from "../pipeline/description.js";
 import { playoffSeriesTail, playoffTitleTail, seedOrdinal } from "../playoffs/playoffs.js";
 import { buildShortTitle, readShortHook, TITLE_MAX_CHARS } from "../shorts/shortHook.js";
 import { describeError } from "../errorText.js";
@@ -89,7 +89,8 @@ export const readIfPresent = async (file: string): Promise<string | null> => {
  * The generated half is refreshed on today's templates, because the files are the render's and a
  * match can wait days for its upload (the 24 Sept 2026 audit, fix 4): the title keeps the
  * operator's hook and rebuilds the rest (`refreshTitle`), a description nobody edited gets the
- * known drifts patched (`refreshDescription`), the tags gain the broadcast spellings
+ * known drifts patched (`refreshDescription`) and a "last time they met" line when the pair has
+ * an earlier long-form on the channel (`lastMeetingFor`), the tags gain the broadcast spellings
  * (`refreshTags`), and the Short's title follows `buildShortTitle` with the saved Short hook.
  * Each one that cannot be refreshed goes up as stored, with one log line — never a refusal.
  *
@@ -153,6 +154,12 @@ export async function uploadTextFor(
     description = await refreshed("description", stored, () =>
       refreshDescription(stored, kind, config.supportUrl, dir),
     );
+    // The pair's last meeting is only known now, and only a long-form sends a viewer on.
+    if (kind === "video")
+      description = withLastMeeting(
+        description,
+        await refreshed<string | null>("last meeting", null, () => lastMeetingFor(matchId, title)),
+      );
   }
   // A Short's description is written when it is cut, before the long-form has an id; by the
   // time it uploads (18 h after the video) the id is in youtube.json, and a Short whose job is
@@ -197,6 +204,106 @@ function splitTitle(line: string): { hook: string; left: string; right: string; 
       };
   }
   return null;
+}
+
+/**
+ * A name as the API spells it, lower case: `titleNames`' Skycrab is Pinne again, so a title
+ * written before 22 Sept 2026 and one written after name the same player.
+ */
+const canonName = (shown: string): string => {
+  const name = shown.toLowerCase();
+  const api = Object.entries(config.titleNames).find(([, spelled]) => spelled.toLowerCase() === name);
+  return api ? api[0].toLowerCase() : name;
+};
+
+/** The two players a title names as one key, whichever side each is on; null when it names none. */
+function pairKey(line: string): string | null {
+  const parts = splitTitle(line);
+  return parts ? [parts.left, parts.right].map(canonName).sort().join("|") : null;
+}
+
+/**
+ * The video of the pair's most recent earlier meeting on the channel, or null for a first one;
+ * `withLastMeeting` puts it in the description. "Earlier" is by match id, which runs in game time,
+ * so a match uploaded after a newer one of its pair does not point at the newer game. Long-forms
+ * only, one record each (a series is game 1's), and a private video with no time is not on the
+ * channel for anyone yet.
+ * ponytail: the pair comes off each record's title, so a Studio title the kit did not write is
+ * skipped, and a deleted video's record counts until the operator clears it.
+ */
+export async function lastMeetingFor(matchId: number, title: string): Promise<string | null> {
+  const pair = pairKey(title);
+  if (!pair) return null;
+  const earlier = (await allUploads()).filter(
+    ({ matchId: other, record }) =>
+      other < matchId &&
+      (record.privacyStatus !== "private" || !!record.publishAt) &&
+      pairKey(record.title ?? "") === pair,
+  );
+  return earlier[earlier.length - 1]?.record.videoId ?? null;
+}
+
+/** The nicknames a title's hook sets against each other ("TAS", "UNC"), and the two players it names. */
+function hookNicknames(line: string) {
+  const parts = splitTitle(line);
+  if (!parts) return null;
+  const players = [parts.left, parts.right].map((shown) => ({ key: canonName(shown), shown }));
+  const nicknames = parts.hook
+    .split(SEPARATOR)
+    .map((segment) => segment.split(/\s+vs\.?\s+/i))
+    .filter((sides) => sides.length === 2)
+    .flat()
+    .map((side) => side.trim())
+    // A player's own name is no nickname, and nor is a figure ("2699 vs 2376").
+    .filter((side) => /\p{L}/u.test(side) && !players.some((p) => p.key === canonName(side)));
+  return { nicknames, players };
+}
+
+/**
+ * Warnings, never refusals, for each nickname in `titleLine`'s hook that earlier uploaded titles
+ * used beside other players. A nickname stands for one player ("TAS" is doogile) and a viewer
+ * learns which by seeing it again; the 30 Sept 2026 post-mortem found "LOVERBOY vs TAS" on two
+ * videos with different second players, and TAS standing for four players across seven titles.
+ * Who it means is the player seen beside it in the most earlier titles: a hook's order is not
+ * trusted, since "LOVERBOY vs AWKWARD" sits over "Aquacorde vs Infume". The match must have that
+ * player in it (after one earlier title the two players tie: either will do). Nothing earlier, no
+ * warning, and the match's own record is not earlier. It never throws: a save does not wait on it.
+ * ponytail: uploaded titles only, so a hook saved in the same sitting whose upload has not run
+ * yet is not seen; read the saved title files too if that bites.
+ */
+export async function nicknameWarnings(titleLine: string, matchId: number): Promise<string[]> {
+  try {
+    const now = hookNicknames(titleLine);
+    if (!now?.nicknames.length) return [];
+    // Ascending by match id, so a player's `shown` spelling below ends as the latest title's.
+    const earlier = (await allUploads()).flatMap(({ matchId: other, record }) => {
+      const past = other === matchId ? null : hookNicknames(record.title ?? "");
+      const at = Date.parse(record.publishAt ?? record.uploadedAt);
+      return past ? [{ ...past, at: Number.isFinite(at) ? at : 0 }] : [];
+    });
+    const warnings: string[] = [];
+    for (const nickname of now.nicknames) {
+      const beside = new Map<string, { shown: string; titles: number; at: number }>();
+      for (const past of earlier) {
+        if (!past.nicknames.some((n) => n.toLowerCase() === nickname.toLowerCase())) continue;
+        for (const { key, shown } of past.players) {
+          const seen = beside.get(key);
+          beside.set(key, { shown, titles: (seen?.titles ?? 0) + 1, at: Math.max(seen?.at ?? 0, past.at) });
+        }
+      }
+      const most = Math.max(0, ...[...beside.values()].map((b) => b.titles));
+      const owners = [...beside].filter(([, b]) => b.titles === most);
+      if (owners.length === 0 || owners.some(([key]) => now.players.some((p) => p.key === key))) continue;
+      const day = Math.max(...owners.map(([, b]) => b.at));
+      warnings.push(
+        `"${nickname}" stood for ${owners.map(([, b]) => b.shown).join(" or ")}${day ? ` on ${new Date(day).toISOString().slice(0, 10)}` : ""} — one nickname per player`,
+      );
+    }
+    return warnings;
+  } catch (err) {
+    console.warn(`nickname check, match ${matchId}: skipped — ${describeError(err)}`);
+    return [];
+  }
 }
 
 /**
