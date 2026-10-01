@@ -566,6 +566,15 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   `PUT /api/nightly/queue` takes the whole list): a card's "Queue for tonight" puts it ahead of the
   ranked pick, in the strip's order (↑ / ×); the nightly drops an entry the moment its render
   starts, and skips one that is processed, hidden or gone from the list. Queueing a match removes it from `nightlySkip` so an explicit queue always wins over a card's "not at night" toggle.
+- **The NAS** (`//192.168.0.240/homelab`, CIFS, ~33 MB/s; 562 GB free on 1 Oct 2026): `/archive` is
+  `tymek/mcsr-archive`, where `src/dashboard/archive.ts` copies published matches (a delete there
+  is recoverable, `isArchived`); `/home-media` is the whole share (the operator's movies, music,
+  backups — never touch them). `/home-media/mcsr-replayoffs/` is the pipeline's own NAS folder (the
+  operator, 1 Oct: "create a directory there and use the space responsibly"): `vods/<id>/` holds
+  known-player matches' VOD sections secured before Twitch's 14-day expiry (copy the folder to
+  `/media/<id>/` to render one), `research/` the datasets behind reports, `backups/` anything
+  replaced; at most 300 GB, every write a line in `ledger.jsonl`, README there. Free SSD space by
+  archiving to the NAS first, not by deleting.
 - `docs/` is the GitHub Pages site (`mcsr.sezamki.site`: the OAuth homepage, privacy and terms
   pages Google checks). `deploy/mcsr-claude.service` is the lab's systemd user unit for the
   Claude container. Only `~/.claude` is a persisted volume in that container: save loose ends
