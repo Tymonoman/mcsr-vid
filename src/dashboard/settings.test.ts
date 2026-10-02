@@ -70,6 +70,16 @@ assert.deepEqual(coerce(field("favouritePlayers"), ""), { value: [] });
 assert.deepEqual(coerce(field("favouritePlayers"), " , ,"), { value: [] }, "stray commas name nobody");
 assert.ok(field("favouritePlayers").unattended, "it changes the nightly's pick, and the panel says so");
 
+// The blocked players are the same list kind, empty likewise means none.
+assert.deepEqual(coerce(field("blockedPlayers"), "Aquacorde, someoneElse"), {
+  value: ["Aquacorde", "someoneElse"],
+});
+assert.deepEqual(coerce(field("blockedPlayers"), ""), { value: [] });
+assert.ok(
+  field("blockedPlayers").unattended,
+  "it changes what the nightly may render, and the panel says so",
+);
+
 // The pair-repeat window is whole days 0-30, and 0 is off, not an error and not an empty box.
 assert.deepEqual(coerce(field("pairRepeatDays"), "0"), { value: 0 });
 assert.deepEqual(coerce(field("pairRepeatDays"), "7"), { value: 7 });
@@ -147,6 +157,23 @@ console.log("settings: the allowlist holds and every kind coerces");
   assert.deepEqual(JSON.parse(readFileSync(CONFIG_PATH, "utf8")).favouritePlayers, []);
 
   console.log("settings: the favourite players save, apply live, and clear to none");
+
+  // The blocked players: Aquacorde by default, live at once, and clearable the same way.
+  assert.deepEqual(config.blockedPlayers, ["Aquacorde"], "the default is live before any save");
+  assert.deepEqual(saveSettings({ blockedPlayers: "Aquacorde, someoneElse" }).changed, ["blockedPlayers"]);
+  assert.deepEqual(config.blockedPlayers, ["Aquacorde", "someoneElse"]);
+  assert.deepEqual(JSON.parse(readFileSync(CONFIG_PATH, "utf8")).blockedPlayers, [
+    "Aquacorde",
+    "someoneElse",
+  ]);
+  assert.deepEqual(saveSettings({ blockedPlayers: "" }).changed, ["blockedPlayers"]);
+  assert.deepEqual(config.blockedPlayers, [], "emptied is nobody blocked, not a missing key");
+  // Left empty for the rest of this file's tests, which do not touch it; restored for anything
+  // that runs after this process exits is the next boot's job, not this test's.
+  assert.deepEqual(saveSettings({ blockedPlayers: "Aquacorde" }).changed, ["blockedPlayers"]);
+  assert.deepEqual(config.blockedPlayers, ["Aquacorde"]);
+
+  console.log("settings: the blocked players save, apply live, and clear to none");
 
   // The pair-repeat window: 3 until changed, live at once like the list, and a bad one writes nothing.
   assert.equal(config.pairRepeatDays, 3, "the default window is live before any save");

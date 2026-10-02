@@ -160,6 +160,24 @@ try {
     [1, 10, 2], // roster pairs first, newest first within; each match once
   );
 
+  // A blocked player's match is never worth rendering, however it would otherwise rank
+  // (config.blockedPlayers, 2 Oct 2026: "blacklist him").
+  {
+    const savedBlocked = config.blockedPlayers;
+    config.blockedPlayers = ["silverrruns"]; // any case
+    const withBlocked = [
+      feedMatch(20, "doogile", "silverrruns", { hoursAgo: 0.5 }), // newest, both known — would win
+      feedMatch(21, "doogile", "Feinberg", { hoursAgo: 1 }),
+    ];
+    assert.deepEqual(
+      worthCandidates(withBlocked, NOW, pure).map((m) => m.id),
+      [21],
+      "the blocked pair never counts, however it would otherwise rank",
+    );
+    config.blockedPlayers = savedBlocked;
+    console.log("OK: a blocked player's match is never worth rendering");
+  }
+
   /* --- What a gather costs, and what it leaves out ----------------------------------------- */
   // Scored matches are real fixtures, so scores differ: the fake `fetchMatch` hands out one per id.
   const fixtureIds = [12730175, 12929221, 13448958, 13549300, 13673240, 13446429, 12898432, 12902901];

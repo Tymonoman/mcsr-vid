@@ -38,7 +38,7 @@ import path from "node:path";
 import { getMatch, getUser, McsrApiError } from "../api/mcsrApi.js";
 import { readChats, readChatTimes, type ChatMessage } from "../api/twitchChat.js";
 import type { MatchInfo } from "../api/types.js";
-import { config, matchDir } from "../config.js";
+import { blockedIn, config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { atomicOutput } from "../pipeline/atomicOutput.js";
 import { hookSuggestions, HOOK_SEED_RANK_ELO, spoilsTheResult } from "../pipeline/hooks.js";
@@ -492,6 +492,9 @@ export function pastTitleHooks(): PastHook[] {
       const [hook = "", pair = ""] = readFileSync(file, "utf8").split("\n")[0]!.split(SEPARATOR);
       const h = hook.trim();
       if (/^playoffs$/i.test(h) || h.includes("<") || hookProblem(h) !== null) continue;
+      // Never a blocked player's match, however it made it onto the channel before they were
+      // blocked: not even as someone else's unnamed style example (config.blockedPlayers).
+      if (blockedIn(pair.split(" vs ").map((n) => n.trim()))) continue;
       if (found.some((f) => f.hook === h)) continue;
       found.push({ hook: h, pair: / vs /.test(pair) ? pair.trim() : "", at: statSync(file).mtimeMs });
     } catch {

@@ -142,6 +142,27 @@ assert.equal(
 
 console.log("suggestPresent: ok");
 
+// --- A blocked player's card is dropped outright, not just sorted last (config.blockedPlayers):
+// a stale cached list scanned before the player was blocked must not show their match either.
+{
+  const saved = config.blockedPlayers;
+  config.blockedPlayers = ["edcr"];
+  const withBlocked = presentSuggestions(
+    [
+      suggestion({ metrics: { ...suggestion().metrics, matchId: 40 } }), // edcr vs doogile
+      suggestion({ metrics: { ...suggestion().metrics, matchId: 41, players: ["aaa", "bbb"] } }),
+    ],
+    NOW,
+  );
+  assert.deepEqual(
+    withBlocked.map((c) => c.matchId),
+    [41],
+    "edcr's match is dropped outright, not just sorted last",
+  );
+  config.blockedPlayers = saved;
+  console.log("OK: a blocked player's card never appears on the list");
+}
+
 // --- inside a tier, a matchup the rival already posted goes after the fresh ones, but never above an
 // expiring one. Three known pairs and no favourites, so all three share tier 1.
 {
@@ -367,14 +388,14 @@ const order = (
   assert.deepEqual(order([grinder, measured], []), [313, 314], "the unmeasured prior, not a neutral 1.0");
 
   // The replay of 1 Oct: ninananina (6.6k, never measured) vs _Hypn0tic topped the list and was the
-  // nightly's pick. At 10,000 it is no-name, so its 185 cannot pass Aquacorde vs Feinberg's 60.
+  // nightly's pick. At 10,000 it is no-name, so its 185 cannot pass a favourite pair's 60.
   const nina = game(315, ["ninaStyle", "hypnoStyle"], 185, {
     bucket: "chaos",
     profiles: [fol("ninaStyle", 6_600), fol("hypnoStyle", 495)],
   });
-  const aquaFein = game(316, ["Aquacorde", "Feinberg"], 60);
+  const favPair = game(316, ["zzz", "Feinberg"], 60);
   const picked = await pickNightlyCandidate(
-    orderForDisplay([nina, aquaFein], NOW, [], roster, []),
+    orderForDisplay([nina, favPair], NOW, [], roster, []),
     { processedIds: [], hiddenIds: new Set<number>(), freeMatches: 9 },
     nightlyEligible([], async () => true),
   );
@@ -390,22 +411,27 @@ const order = (
     [317, 318],
     "two favourites over a grinder and one",
   );
-  // Feinberg vs cofesho (606 followers: 0.5) is 1.09 + 0.25; Aquacorde (0.75) vs Feinberg 1.09 + 0.375.
+  // Feinberg vs cofesho (606 followers: 0.5) is 1.09 + 0.25; a 10k longtail vs Feinberg is 1.09 + 0.375.
   const feinCofesho = game(319, ["Feinberg", "cofesho"], 300, {
     profiles: [fol("Feinberg", 281_000), fol("cofesho", 606)],
   });
-  const aquaFeinberg = game(320, ["Aquacorde", "Feinberg"], 100);
+  // Unmeasured, 10,000 followers exactly: the same 0.75 band Aquacorde's own measured draw used to
+  // give, before he was blocked and his row removed from DEFAULT_DRAW (2 Oct 2026).
+  const longtailFeinberg = game(320, ["longtail10k", "Feinberg"], 100, {
+    profiles: [fol("longtail10k", 10_000), fol("Feinberg", 281_000)],
+  });
   assert.deepEqual(
-    order([feinCofesho, aquaFeinberg], roster),
+    order([feinCofesho, longtailFeinberg], roster),
     [320, 319],
     "the order follows the expected draw",
   );
-  // The prior, not a neutral 1.0: Aquacorde + Feinberg (1.465) above a 30k grinder nobody measured and
-  // a stranger (0.75 + 0.25) — at 1.0 each the grinder's pair would have drawn 1.5. All known, no roster.
+  // The prior, not a neutral 1.0: the 10k longtail + Feinberg (1.465) above a 30k grinder nobody
+  // measured and a stranger (0.75 + 0.25) — at 1.0 each the grinder's pair would have drawn 1.5.
+  // All known, no roster.
   assert.deepEqual(
-    order([grinder, aquaFeinberg], []),
+    order([grinder, longtailFeinberg], []),
     [320, 314],
-    "an unmeasured grinder below Aquacorde + Feinberg",
+    "an unmeasured grinder below the 10k longtail + Feinberg",
   );
   console.log(
     "OK: a favourite, then a known player, then neither; expected views; the unmeasured prior; the nightly follows",

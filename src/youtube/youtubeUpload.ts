@@ -11,10 +11,10 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { archiveMatch } from "../dashboard/archive.js";
 import type { ChannelVideo } from "./channelUploads.js";
-import { config, matchDir } from "../config.js";
+import { blockedIn, config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { getMatch } from "../api/mcsrApi.js";
-import { listProcessedMatchIds, matchStatusFor } from "../dashboard/matchStatus.js";
+import { listProcessedMatchIds, matchStatusFor, povNicknamesOnDisk } from "../dashboard/matchStatus.js";
 import { playoffContextForId } from "../playoffs/playoffs.js";
 import { exportStale, staleExportMessage } from "../pipeline/syncFile.js";
 import { readManifest } from "../thumbnails/thumbnailVariants.js";
@@ -106,6 +106,20 @@ type Begun =
   { status: number; error: string } | { progress: UploadProgress; finished: Promise<UploadProgress> };
 
 /**
+ * Whether this match's own POV clips (`povNicknamesOnDisk`, src/dashboard/matchStatus.ts) name a
+ * blocked player (config.blockedPlayers) — disk only, no network: the clips are on disk by the
+ * time anything is ever uploaded, and this must never be slower or less available than the
+ * upload it gates. The same reader `matchStatusFor` uses, so a generated MP4
+ * (`overlay-timer.mp4`, `final-<id>.mp4`, …) is never mistaken for a player.
+ */
+function hasBlockedPlayer(dir: string): boolean {
+  return blockedIn(povNicknamesOnDisk(dir));
+}
+
+/** Why a blocked match's still-pending finish steps are left undone — `finishOnYouTube`'s own note. */
+const BLOCKED_FINISH = "a blocked player — no YouTube writes are made for this match";
+
+/**
  * Nothing goes up before the operator has saved the hooks (23 Sept 2026). The long-form needs a
  * saved title hook — the edited title, not the generated one the pipeline fills with its first
  * chip; the Short needs its confirmed hook, burned into the file being sent (the cut records
@@ -116,6 +130,10 @@ export async function hookRefusal(
   kind: UploadKind,
 ): Promise<{ status: number; error: string } | null> {
   const dir = matchDir(matchId);
+  // Checked before anything else, hook state included: a blocked player's match is refused
+  // outright, long-form or Short (config.blockedPlayers — the operator, 2 Oct 2026: "blacklist him").
+  if (hasBlockedPlayer(dir))
+    return { status: 403, error: `match ${matchId} has a blocked player — uploads of it are refused` };
   if (kind === "video") {
     // Once, like the Short: on 24 Sept a press of Upload 3 minutes after the chain's own upload
     // put the same long-form on the channel twice (spIyAaQmZr8 / hMA09SfxwxE), both scheduled.
@@ -497,18 +515,34 @@ export async function finishOnYouTube(
     }
   };
   const dir = matchDir(matchId);
-  const status = await matchStatusFor(matchId);
-  const manifest = await readManifest(dir);
-  const thumb = path.join(
-    dir,
-    manifest?.variants.find((v) => v.key === manifest.chosen)?.file ?? "thumbnail.png",
-  );
   const record = await readUpload(matchId, kind);
   const already = record?.finished ?? {};
   // A step is redone only if it has not already succeeded. `undefined` is "not attempted", so a
   // Short that later needs nothing, or a comment skipped while the video was private, is retried
   // — the same press that fixes a genuine failure.
   const todo = (step: keyof FinishedSteps): boolean => already[step] !== null;
+
+  // Checked before any read or write reaches YouTube, and before the match status / manifest
+  // reads below: Adopt, the Finish button and the nightly's retries (retryFailedPlaylists,
+  // retryPendingComments) all settle through this one function, so all three inherit the
+  // refusal without a check of their own. A step already finished (from before the player was
+  // blocked) is left alone — nothing true becomes a lie — and nothing not yet done is attempted.
+  // Not persisted: the record keeps whatever it already said, so unblocking needs no repair.
+  if (hasBlockedPlayer(dir)) {
+    return {
+      playlists: todo("playlists") ? BLOCKED_FINISH : null,
+      thumbnail: todo("thumbnail") ? BLOCKED_FINISH : null,
+      comment: todo("comment") ? BLOCKED_FINISH : null,
+      tags: todo("tags") ? BLOCKED_FINISH : null,
+    };
+  }
+
+  const status = await matchStatusFor(matchId);
+  const manifest = await readManifest(dir);
+  const thumb = path.join(
+    dir,
+    manifest?.variants.find((v) => v.key === manifest.chosen)?.file ?? "thumbnail.png",
+  );
 
   const finished: FinishedSteps = { ...already };
 

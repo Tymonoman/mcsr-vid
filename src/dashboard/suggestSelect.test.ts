@@ -62,7 +62,7 @@ assert.equal(favouriteFactorFor([])(["doogile", "Feinberg"]), 1, "an empty list 
     [1.0, 0.75, 0.75, 0.5],
   );
   assert.equal(drawOf("nobody", noFollowers), 0.5, "no follower data is the lowest band");
-  assert.equal(drawOf("Aquacorde", fol(1_000_000)), 0.75, "a measured draw keeps its value");
+  assert.equal(drawOf("hackingnoises", fol(1_000_000)), 2.08, "a measured draw keeps its value");
   // At the default threshold a 6.6k following never measured is not known (ninananina, 1 Oct 2026).
   assert.equal(DEFAULTS.knownFollowerThreshold, 10_000);
   assert.equal(knownPlayerFor([], fol(6_600), DEFAULTS.knownFollowerThreshold)("ninananina"), false);
@@ -290,6 +290,40 @@ try {
   );
   assert.equal(STRONG_DRAWS.length, 9, "the 9 measured at 1.0 or more, 5 of them on the default roster");
   console.log("OK: a favourite's match is a tier above the no-name ones at the slots");
+
+  // --- A blocked player's match never reaches the list, however it scores, and does not even stay
+  // in the pool once a scan has dropped it — the Aquacorde case: a match pooled before a player was
+  // blocked must not go on being carried forward just because it was already scored.
+  {
+    const blocked = Object.fromEntries(
+      [
+        pooled(81, ["blockedguy", "clean"], 0), //   0.353 — would win outright
+        pooled(82, ["another", "pair"], 5_000), //   0.235
+      ].map((entry) => [String(entry.metrics.matchId), entry]),
+    );
+    await writeFile(
+      cachePath,
+      JSON.stringify({
+        ...JSON.parse(await readFile(cachePath, "utf8")),
+        dismissed: [],
+        pool: blocked,
+        scannedAt: 0,
+      }),
+      "utf8",
+    );
+    const savedBlocked = config.blockedPlayers;
+    config.blockedPlayers = ["blockedGuy"]; // any case
+    assert.deepEqual(await ids([]), [82], "the blocked pair's match never fills a slot, however it scores");
+    const afterScan = JSON.parse(await readFile(cachePath, "utf8"));
+    assert.deepEqual(
+      Object.keys(afterScan.pool).sort(),
+      ["82"],
+      "and it leaves the pool entirely, not just the list",
+    );
+    config.blockedPlayers = savedBlocked;
+    console.log("OK: a blocked player's match never reaches the list, and leaves the pool entirely");
+  }
+
   console.log("suggestSelect: all checks passed");
 } finally {
   await rm(media, { recursive: true, force: true });

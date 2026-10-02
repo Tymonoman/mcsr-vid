@@ -18,7 +18,7 @@ import {
   type ChannelVideo,
 } from "../youtube/channelUploads.js";
 import { auditState, readAudit, startAudit } from "./audit.js";
-import { config, matchDir } from "../config.js";
+import { blockedIn, config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { listProcessedMatchIds, matchStatusFor } from "./matchStatus.js";
 import { exportStale, staleExportMessage } from "../pipeline/syncFile.js";
@@ -199,6 +199,11 @@ export async function handleYoutubeRoute(
     // the export places the clips by numbers the operator has since corrected. The same refusal
     // the Upload button gets (`beginUpload`); no export at all is not stale, only unverifiable.
     const status = await matchStatusFor(matchId);
+    // Up front, before any read or write reaches YouTube (config.blockedPlayers).
+    if (blockedIn([status.leftNickname, status.rightNickname])) {
+      ctx.json(res, 403, { error: `match ${matchId} has a blocked player — it cannot be adopted` });
+      return true;
+    }
     const located = findExportedVideo(matchId, [status.leftNickname, status.rightNickname]);
     const staleness = "error" in located ? null : exportStale(matchDir(matchId), located.path);
     if (staleness?.stale) {

@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { CTA_REASON_MAX_CHARS, DEFAULTS, validateOverrides } from "./config.js";
+import {
+  blockedIn,
+  config,
+  CTA_REASON_MAX_CHARS,
+  DEFAULTS,
+  isBlockedPlayer,
+  validateOverrides,
+} from "./config.js";
 
 // A hand-edited mcsr-vid.config.json with the wrong type must fail at load, naming the key,
 // rather than flowing into slot arithmetic or the Remotion renderer as a string.
@@ -94,6 +101,36 @@ assert.throws(() => validateOverrides({ favouritePlayers: "edcr, doogile" }), /f
 assert.throws(() => validateOverrides({ favouritePlayers: { edcr: true } }), /favouritePlayers/);
 assert.throws(() => validateOverrides({ favouritePlayers: ["edcr", 7] }), /favouritePlayers/);
 assert.throws(() => validateOverrides({ favouritePlayers: ["edcr", "  "] }), /favouritePlayers/);
+
+// The blocklist: same rule as favouritePlayers (an array of nicknames, [] for nobody blocked),
+// and on by default for the one name the operator named (2 Oct 2026).
+assert.deepEqual(DEFAULTS.blockedPlayers, ["Aquacorde"]);
+assert.doesNotThrow(() => validateOverrides({ blockedPlayers: [] }));
+assert.doesNotThrow(() => validateOverrides({ blockedPlayers: ["Aquacorde", "someoneElse"] }));
+assert.throws(() => validateOverrides({ blockedPlayers: null }), /blockedPlayers/);
+assert.throws(() => validateOverrides({ blockedPlayers: "Aquacorde" }), /blockedPlayers/);
+assert.throws(() => validateOverrides({ blockedPlayers: { Aquacorde: true } }), /blockedPlayers/);
+assert.throws(() => validateOverrides({ blockedPlayers: ["Aquacorde", 7] }), /blockedPlayers/);
+assert.throws(() => validateOverrides({ blockedPlayers: ["  "] }), /blockedPlayers/);
+
+// isBlockedPlayer/blockedIn: whole names, any case, read live off config so a Settings save applies
+// at once. Saved and restored so this file leaves the default in place for whatever runs after it.
+{
+  const saved = config.blockedPlayers;
+  config.blockedPlayers = ["Aquacorde"];
+  assert.equal(isBlockedPlayer("Aquacorde"), true);
+  assert.equal(isBlockedPlayer("AQUACORDE"), true, "case is ignored");
+  assert.equal(isBlockedPlayer("aquacorde2"), false, "whole names, not prefixes");
+  assert.equal(isBlockedPlayer("doogile"), false);
+  assert.equal(blockedIn(["doogile", "Aquacorde"]), true, "either side");
+  assert.equal(blockedIn(["doogile", "Feinberg"]), false);
+  config.blockedPlayers = [];
+  assert.equal(isBlockedPlayer("Aquacorde"), false, "an empty list blocks nobody");
+  config.blockedPlayers = saved;
+  console.log(
+    "OK: blockedPlayers validates like favouritePlayers; isBlockedPlayer/blockedIn are case-insensitive",
+  );
+}
 // The pair-repeat window: 3 days by default, whole days 0-30, 0 is off (seriesPairGapDays' own rule).
 assert.equal(DEFAULTS.pairRepeatDays, 3);
 assert.doesNotThrow(() => validateOverrides({ pairRepeatDays: 0 }));

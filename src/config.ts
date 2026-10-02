@@ -365,6 +365,16 @@ export interface Config {
    * plain http (see CLAUDE.md's Clipboard API pitfall for why it is not https). No trailing slash.
    */
   dashboardBaseUrl: string;
+  /**
+   * Nicknames permanently off limits, API spelling, compared whole and ignoring case
+   * (`isBlockedPlayer`/`blockedIn`, below). The operator, 2 Oct 2026, after Aquacorde commented
+   * that he does not give permission for his footage to be used in the videos: "were fuuuuucked
+   * … take down all his videos and blacklist him." A match with a blocked player is dropped
+   * before it is scored (suggestions), never offered to the nightly even when queued, never
+   * listed as "worth rendering", never uploaded (long-form or Short), and never rendered. Empty
+   * means nobody is blocked.
+   */
+  blockedPlayers: string[];
 }
 
 /**
@@ -461,6 +471,10 @@ export const DEFAULTS: Config = {
   watchScript: path.join(os.homedir(), ".claude/plugins/cache/claude-watch/watch/0.2.0/scripts/watch.py"),
   telegramReportHourWarsaw: 7,
   dashboardBaseUrl: "http://actimel:8080",
+  // The operator, 2 Oct 2026: "were fuuuuucked. aquacorde just commented he doesn't give
+  // permission for his footage to be used in the vids. take down all his videos and blacklist
+  // him." His 7 videos and 4 playlists were set private on the channel the same day.
+  blockedPlayers: ["Aquacorde"],
 };
 
 /** The overrides file. Exported so the settings panel writes the same one the loader reads. */
@@ -560,6 +574,12 @@ export function validateOverrides(raw: Record<string, unknown>): void {
     if (key === "favouritePlayers") {
       if (!Array.isArray(value) || !value.every((n) => typeof n === "string" && n.trim() !== "")) {
         throw new Error(`${CONFIG_PATH}: "favouritePlayers" must be an array of nicknames ([] for none).`);
+      }
+      continue;
+    }
+    if (key === "blockedPlayers") {
+      if (!Array.isArray(value) || !value.every((n) => typeof n === "string" && n.trim() !== "")) {
+        throw new Error(`${CONFIG_PATH}: "blockedPlayers" must be an array of nicknames ([] for none).`);
       }
       continue;
     }
@@ -688,3 +708,14 @@ export const config: Config = loadConfig();
 
 /** Every match's working directory: `<mediaDir>/<id>`. */
 export const matchDir = (matchId: number): string => path.join(config.mediaDir, String(matchId));
+
+/** Whether `name` is on `config.blockedPlayers` (`blockedPlayers`, above), whole names, any case. */
+export function isBlockedPlayer(name: string): boolean {
+  const lower = name.toLowerCase();
+  return config.blockedPlayers.some((n) => n.toLowerCase() === lower);
+}
+
+/** Whether any of `players` is blocked (`isBlockedPlayer`) — the one check every surface shares. */
+export function blockedIn(players: readonly string[]): boolean {
+  return players.some(isBlockedPlayer);
+}

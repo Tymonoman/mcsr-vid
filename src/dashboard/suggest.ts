@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { config } from "../config.js";
+import { blockedIn, config } from "../config.js";
 import { chaosScore, closenessScore, computeMetrics, type MatchMetrics } from "../pipeline/matchScore.js";
 import { listProcessedMatchIds } from "./matchStatus.js";
 import { pairKey, recentPairPostsSnapshot, type PairPost } from "./pairPosts.js";
@@ -106,7 +106,7 @@ export const DEFAULT_DRAW: Readonly<Record<string, number>> = {
   nahhann: 1.04,
   doogile: 1.03,
   v_strid: 0.8,
-  aquacorde: 0.75,
+  // Aquacorde is gone, not just below the gate: blocked (config.blockedPlayers, 2 Oct 2026).
   blazemind: 0.74,
   anjouu: 0.62,
   dandannyboy: 0.5,
@@ -119,7 +119,7 @@ export const DEFAULT_DRAW: Readonly<Record<string, number>> = {
 
 /**
  * The draw of a player `DEFAULT_DRAW` never measured, by Twitch following, first band that fits. Not a
- * neutral 1.0: that let an unmeasured grinder outrank Aquacorde (0.75) + Feinberg (1.09), and every
+ * neutral 1.0: that let an unmeasured grinder outrank BlazeMind (0.74) + Feinberg (1.09), and every
  * sampled player under ~10k followers drew at or below the channel's median (draw.json, 1 Oct 2026).
  * No follower data counts as 0.
  */
@@ -611,6 +611,10 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
   const candidateIds = new Set<number>();
   /** One match, from either source: the popularity count and the candidate list both go through here. */
   const foldMatch = (match: FeedMatch): void => {
+    // A blocked player's match does not exist for this purpose: not counted, not a candidate,
+    // never scored (config.blockedPlayers). Checked here rather than only at the pool so it also
+    // never spends a detail fetch, whether the match came from the feed or a favourite's own list.
+    if (blockedIn(match.players.map((p) => p.nickname))) return;
     const hasBothVods = (match.vod?.length ?? 0) >= 2;
     // Popularity counts every dual-VOD match, forfeits and already-rendered ones
     // included: it measures who streams, not who is worth watching.
@@ -765,9 +769,13 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
 
   // Matches whose Twitch VODs have aged out can't be rendered any more, so they leave
   // the pool. Then cap it, oldest first, so it can't grow without bound.
+  //
+  // A blocked player's match also leaves here, not just at foldMatch: a match pooled before the
+  // player was blocked must not go on being carried forward (or selected) just because it was
+  // already scored.
   const cutoff = Date.now() - POOL_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
   const live = Object.values(cache.pool)
-    .filter((entry) => entry.dateSec * 1000 >= cutoff)
+    .filter((entry) => entry.dateSec * 1000 >= cutoff && !blockedIn(entry.metrics.players))
     .sort((a, b) => b.dateSec - a.dateSec)
     .slice(0, POOL_MAX_ENTRIES);
   cache.pool = Object.fromEntries(live.map((entry) => [String(entry.metrics.matchId), entry]));

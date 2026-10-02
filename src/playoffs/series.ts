@@ -18,7 +18,7 @@ import { spawn } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { config, matchDir } from "../config.js";
+import { blockedIn, config, matchDir } from "../config.js";
 import {
   buildSeriesDescription,
   buildTags,
@@ -144,6 +144,7 @@ async function concatVideos(files: readonly string[], outPath: string): Promise<
 
 export type AssembleResult =
   | { kind: "not-a-series"; matchId: number }
+  | { kind: "blocked"; matchId: number }
   | { kind: "incomplete"; firstGameId: number; missing: number[] }
   | { kind: "stale"; firstGameId: number; stale: number[] }
   | { kind: "joined" | "current"; firstGameId: number; path: string; games: SeriesGame[] };
@@ -508,6 +509,13 @@ export async function renderSeries(
   seams: JoinSeams = {},
 ): Promise<AssembleResult> {
   const match = await getMatch(anyGameId);
+  // Before any render or export starts — one game's render alone is ~10 minutes
+  // (config.blockedPlayers). The dashboard's own route also refuses up front so the HTTP
+  // response carries it; this is what `npm run series` gets too.
+  if (blockedIn(match.players.map((p) => p.nickname))) {
+    runners.log(`series ${anyGameId}: blocked — a blocked player, not rendered`);
+    return { kind: "blocked", matchId: anyGameId };
+  }
   const series = await seriesOf(match);
   if (!series || series.games.length === 0) return { kind: "not-a-series", matchId: anyGameId };
   const first = series.games[0]!;

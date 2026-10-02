@@ -23,7 +23,7 @@ import { readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { getMatch, getUser } from "../api/mcsrApi.js";
 import type { MatchInfo } from "../api/types.js";
-import { config, matchDir } from "../config.js";
+import { blockedIn, config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { hookSuggestions, spoilsTheResult } from "../pipeline/hooks.js";
 import { exportMatchStartSec } from "../pipeline/exportFast.js";
@@ -777,6 +777,10 @@ async function writeHooks(
   }
   const [left, right] = match.players;
   if (!left || !right) return { status: 404, error: `match ${matchId} does not have two players` };
+  // Checked before anything else is written: no hooks saved means no pick, no render and no
+  // upload for a blocked match — the chain never starts (config.blockedPlayers).
+  if (blockedIn([left.nickname, right.nickname]))
+    return { status: 403, error: `match ${matchId} has a blocked player — hooks cannot be saved for it` };
   if (!f.video && (await seriesGameUnjoined(match, f.series))) return { status: 409, error: SERIES_GAME };
   const built = titleFor(match, f.series, f.series ? null : await playoffContextFor(match));
 

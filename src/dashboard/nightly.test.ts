@@ -175,6 +175,46 @@ assert.equal(await picked(ranked, { ...roomy, freeMatches: 2 }), 1);
   config.playoffsFirst = false;
 }
 
+// --- A blocked seed's games are skipped, same as any other candidate (config.blockedPlayers). ---
+{
+  const seed = (nickname: string) => ({ uuid: nickname, nickname, label: "LCQ", seasonEloRate: 2000 });
+  const board: PlayoffBoard = {
+    season: 11,
+    bracketUrl: "",
+    slots: [
+      {
+        id: 9,
+        round: "Round of 16",
+        bestOf: 5,
+        firstTo: 3,
+        startTime: 0,
+        seeds: [seed("edcr"), seed("Aquacorde")],
+        games: [{ matchId: 1, url: "", dateSec: 100, gameNo: 1, winnerUuid: null }],
+      },
+      {
+        id: 10,
+        round: "Round of 16",
+        bestOf: 5,
+        firstTo: 3,
+        startTime: 0,
+        seeds: [seed("doogile"), seed("lauveer")],
+        games: [{ matchId: 2, url: "", dateSec: 200, gameNo: 1, winnerUuid: null }],
+      },
+    ],
+  };
+  const saved = config.blockedPlayers;
+  config.blockedPlayers = ["aquacorde"]; // any case
+  config.playoffsFirst = true;
+  assert.deepEqual(
+    (await playoffPicks(async () => board)).map((p) => p.metrics.matchId),
+    [2],
+    "edcr vs Aquacorde's game is skipped; doogile vs lauveer's is not",
+  );
+  config.blockedPlayers = saved;
+  config.playoffsFirst = false;
+  console.log("OK: playoffPicks skips a blocked seed's games");
+}
+
 // --- And whether it ends with a finished MP4. Same gate, same clause shape; the starter is
 // injected because the real one is a ten-minute ffmpeg encode.
 {
@@ -470,6 +510,26 @@ try {
       "queued and unknown — it IS picked",
     );
 
+    // A blocked match is never rendered, even queued: the block outranks the queue, the way
+    // nothing else here does (config.blockedPlayers, 2 Oct 2026).
+    const blockedPick = {
+      metrics: { matchId: 9050, players: ["Aquacorde", "doogile"] as [string, string] },
+      bucket: "chaos",
+    };
+    const savedBlocked = config.blockedPlayers;
+    config.blockedPlayers = ["aquacorde"]; // any case
+    assert.equal(
+      await nightlyEligible([9050])(blockedPick),
+      false,
+      "queued and known would both say yes — the block says no first",
+    );
+    assert.equal(
+      await pickNightlyCandidate([blockedPick], { ...roomy, queue: [9050] }, nightlyEligible([9050])),
+      null,
+      "so the queue finds nothing to pick",
+    );
+    config.blockedPlayers = savedBlocked;
+
     // A playoff pick is always known: the bracket's players are the season's top 16, and their
     // Twitch following is often unmeasured (`isKnownPick` reads the scan's cache, no API call).
     const playoffPick = {
@@ -494,7 +554,10 @@ try {
       path.join(media, ".suggest-cache.json"),
       JSON.stringify({
         version: 4,
-        pool: { "9003": { metrics: { matchId: 9003, players: ["PoolOne", "PoolTwo"] } } },
+        pool: {
+          "9003": { metrics: { matchId: 9003, players: ["PoolOne", "PoolTwo"] } },
+          "9004": { metrics: { matchId: 9004, players: ["PoolOne", "Aquacorde"] } },
+        },
       }),
     );
     assert.deepEqual(
@@ -502,6 +565,13 @@ try {
       { metrics: { matchId: 9003, players: ["PoolOne", "PoolTwo"] }, bucket: "queued" },
       "resolved from the pool, not fetched",
     );
+    // Resolved from the pool, and refused all the same: the operator's own queue must not go
+    // silently empty for it (resolveQueuedPick's whole point), but it must not resolve to a
+    // blocked match either.
+    const savedBlocked2 = config.blockedPlayers;
+    config.blockedPlayers = ["Aquacorde"];
+    assert.equal(await resolveQueuedPick(9004), null, "a blocked pooled pick resolves to nothing");
+    config.blockedPlayers = savedBlocked2;
     // The preview (`previewPick`, behind the polled GET /api/nightly) takes a queued id off the list
     // from the pool only: 9003 shows, 9998 is left out, and nothing reaches the network — only a run
     // may spend a getMatch on it.

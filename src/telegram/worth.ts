@@ -13,7 +13,7 @@
  * second report spends nothing.
  */
 import { getMatch, getUserMatches } from "../api/mcsrApi.js";
-import { config } from "../config.js";
+import { blockedIn, config } from "../config.js";
 import type { FeedMatch, MatchInfo, MatchVod, UserDetails } from "../api/types.js";
 import { hiddenMatchIds } from "../dashboard/matchShelf.js";
 import { listProcessedMatchIds } from "../dashboard/matchStatus.js";
@@ -108,7 +108,8 @@ export function worthCandidates(
         m.result.uuid !== null &&
         m.result.time >= MIN_RUN_MS &&
         !d.isTaken(m.id) &&
-        m.players.every((p) => d.isKnown(p.nickname)),
+        m.players.every((p) => d.isKnown(p.nickname)) &&
+        !blockedIn(m.players.map((p) => p.nickname)),
     )
     .sort((a, b) => rosterSeats(b) - rosterSeats(a) || b.date - a.date);
 }
