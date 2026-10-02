@@ -15,6 +15,7 @@ import {
   retryFailedPlaylists,
   retryPendingComments,
   SHORT_DELAY_MS,
+  uploadRunning,
 } from "./youtubeUpload.js";
 import { readShortLog, stepActivity } from "../shorts/shortLog.js";
 import { staleExportMessage, writeSyncOffsets } from "../pipeline/syncFile.js";
@@ -786,6 +787,43 @@ try {
     };
     const stillForeign = await resumeUpload(rMatchId, "short", failingSend);
     assert.match(String(stillForeign), /Studio/);
+    assert.match(String(stillForeign), /Retry/);
+
+    // `send` itself succeeds — the video is live, and uploadVideo has already forgotten the
+    // session — but writing the record then throws: the one failure where sending it again
+    // would be a second copy, so it must say the video is up under its id, not read as foreign
+    // (the stale studio record above is still on disk) and not a generic "send failed" either.
+    await writeFile(rSession, JSON.stringify({ filePath: rFile, total: 1, sessionUrl: "https://x" }));
+    const recordFile = path.join(rDir, "youtube-short.json");
+    await rm(recordFile, { force: true });
+    await mkdir(recordFile); // a directory where the record file must go: writeUpload's write throws
+    const sendOk = async (): Promise<UploadResult> => ({
+      videoId: "vidLive",
+      publishAt: null,
+      privacyStatus: "private",
+    });
+    const liveNotRecorded = await resumeUpload(rMatchId, "short", sendOk);
+    assert.match(String(liveNotRecorded), /vidLive/, "names the id that is actually live");
+    assert.match(String(liveNotRecorded), /do not upload it again/);
+    assert.ok(!/Studio/.test(String(liveNotRecorded)), "not the foreign-record message");
+    await rm(recordFile, { recursive: true, force: true });
+
+    // uploadRunning() must see a resume in flight too, or a concurrent manual Upload press, or a
+    // writeHooks save, cannot tell one is already sending bytes — and could race the same session.
+    await writeFile(rSession, JSON.stringify({ filePath: rFile, total: 1, sessionUrl: "https://x" }));
+    assert.equal(uploadRunning(rMatchId), false, "nothing running before this one starts");
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const slowSend = async (): Promise<UploadResult> => {
+      await gate;
+      return { videoId: "vidSlow", publishAt: null, privacyStatus: "private" };
+    };
+    const inFlight = resumeUpload(rMatchId, "short", slowSend);
+    await new Promise((r) => setTimeout(r, 10)); // past the file reads, into the send() await
+    assert.equal(uploadRunning(rMatchId), true, "a live resume is visible to uploadRunning");
+    release();
+    assert.equal(await inFlight, null);
+    assert.equal(uploadRunning(rMatchId), false, "and not once it has settled");
 
     console.log("OK: a cut-short upload resumes its own session and never starts a second one");
   }

@@ -598,9 +598,25 @@ export async function finishOnYouTube(
   return finished;
 }
 
-/** What a record with no session left to resume, and no proof it was ever finished, means. */
-const studioNoSession = (kind: UploadKind, record: UploadRecord): string =>
-  `${kindName(kind)} shows as uploaded (${record.videoId}, from ${record.source === "studio" ? "Studio" : "elsewhere"}) but this chain never finished sending it and its upload session is gone — delete it in Studio if it is broken, then Retry`;
+/**
+ * A record with no session left to resume and no proof it was ever finished: the channel scan's
+ * own premature pairing (`recordStudioUpload`), or anything else this chain did not itself write.
+ * `hookRefusal` would have refused the chain's own upload from ever starting had this record
+ * existed first, so finding one now means it appeared *after* — almost certainly the scan pairing
+ * the very upload this step is trying to settle. Deleting it on a guess would risk forgetting a
+ * genuinely finished upload (and uploading it a second time), so it is named instead: Retry alone
+ * only clears the step, never this file, so without deleting the file too it would keep reading
+ * as already uploaded forever.
+ */
+const studioNoSession = (kind: UploadKind, matchId: number, record: UploadRecord): string => {
+  const file = kind === "video" ? "youtube.json" : "youtube-short.json";
+  return (
+    `${kindName(kind)} shows as uploaded (${record.videoId}, from ${record.source === "studio" ? "Studio" : "elsewhere"}) ` +
+    `but this chain never finished sending it and its upload session is gone — check Studio (delete the video there ` +
+    `if it is broken), then delete ${path.join(matchDir(matchId), file)} by hand: Retry alone will not, and this ` +
+    `record would keep reading as already uploaded`
+  );
+};
 
 /**
  * A step `shortTick` finds recorded "running" with no chain alive in this process to finish it:
@@ -612,13 +628,21 @@ const studioNoSession = (kind: UploadKind, record: UploadRecord): string =>
  * record used to read as "done" and leave the step "running" forever (2 Oct 2026, the Grand
  * Final's `series-13530634.mp4`, paired at 30% uploaded). `resumeOnly` is the guarantee this never
  * falls through to starting a second copy of the video — the one thing a restart must not cause.
+ * Reserves the same `uploads` slot `startUpload` does, so `uploadRunning` — and so `writeHooks`'s
+ * in-flight guard, the manual Upload route's own, and the publish-time lock — can see a resume in
+ * flight exactly as they would a fresh upload; a browser poll of `uploadProgress` sees it too.
  *
- * No session left and a `source: "dashboard"` record is trusted as done (the crash landed between
- * writing it and marking the step so); no session and anything else on record — the scan's own
- * pairing, or nothing — fails the step instead of guessing, and says to check Studio. A completed
- * resume writes the chain's own record over whatever was there, so the finish steps (thumbnail,
- * playlists, tags, comment) run as for any dashboard upload rather than declining as "uploaded
- * elsewhere". Null settles the step done; a message is its failure.
+ * No session left and no record either is a safe no-op (nothing of this chain's is in flight, and
+ * the normal upload step starts fresh right after). No session and a `source: "dashboard"` record
+ * is trusted as done (the crash landed between writing it and marking the step so). No session and
+ * anything else on record fails the step and names Studio, never a guess (`studioNoSession`).
+ *
+ * `send` succeeding is not the same as the step succeeding: `uploadVideo` has already forgotten
+ * the session by the time it returns, so if writing the record or finishing it then throws, the
+ * video is live under `result.videoId` with nothing here that remembers it — the one failure
+ * where sending it again would be a second copy, same as `startUpload`'s own `recorded` tracking
+ * exists for. That takes priority over a foreign record: a live id is worth more than a guess.
+ * Null settles the step done; a message is its failure.
  */
 export async function resumeUpload(
   matchId: number,
@@ -631,12 +655,16 @@ export async function resumeUpload(
   const record = await readUpload(matchId, kind);
   if (!existsSync(sessionPath(filePath))) {
     if (!record || record.source === "dashboard") return null;
-    return studioNoSession(kind, record);
+    return studioNoSession(kind, matchId, record);
   }
   const manifest = await readManifest(matchDir(matchId));
   const text = await uploadTextFor(matchId, kind);
   const step = logStep(kind);
+  const key = progressKey(matchId, kind);
+  const progress = idle(matchId, kind);
+  uploads.set(key, progress);
   startActivity(matchId, step, `resuming ${kindName(kind)} after a restart`);
+  let recorded = false;
   try {
     const result = await send({
       filePath,
@@ -646,9 +674,12 @@ export async function resumeUpload(
       privacyStatus: "private",
       resumeOnly: true,
       onProgress: (uploaded, total) => {
+        progress.uploaded = uploaded;
+        progress.total = total;
         if (total > 0) activityProgress(matchId, step, (uploaded / total) * 100);
       },
     });
+    progress.videoId = result.videoId;
     shortLog(
       matchId,
       step,
@@ -667,6 +698,7 @@ export async function resumeUpload(
       },
       kind,
     );
+    recorded = true;
     const steps = await finishOnYouTube(matchId, result.videoId, kind);
     for (const [finishStep, error] of Object.entries(steps))
       if (typeof error === "string")
@@ -674,14 +706,32 @@ export async function resumeUpload(
     if (kind === "video") archiveMatch(matchId);
     return null;
   } catch (err) {
-    // The session on disk, and YouTube no longer honours it (expired): the same "ask the
-    // operator" case as no session at all, just discovered live instead of from a missing file.
-    if (record && record.source !== "dashboard") return studioNoSession(kind, record);
     const raw = describeError(err);
+    if (recorded) {
+      // Up and recorded; only the finishing threw. A problem on the way, not a failed step —
+      // startUpload's own catch treats this the same way, as a warning, not an error.
+      shortLog(matchId, step, `Uploaded, but finishing it failed: ${raw} — Finish on YouTube retries it`, {
+        level: "warn",
+      });
+      return null;
+    }
+    if (progress.videoId) {
+      // send() finished and forgot the session; only writing the record threw. The video is up
+      // with nothing here that remembers it — sending it again would be the second copy this
+      // whole function exists to prevent.
+      const message = `${kindName(kind)} IS on the channel as ${progress.videoId}, but recording it failed (${boxFailure("writing the upload record", raw) ?? raw}) — do not upload it again; fix that, then "check the channel" pairs it`;
+      shortLog(matchId, step, message, { level: "error", detail: raw });
+      return message;
+    }
+    // send() itself failed (resumeOnly's own refusal included). The session on disk, with
+    // YouTube no longer honouring it (expired, say), is the same "ask the operator" case as no
+    // session at all, just discovered live instead of from a missing file.
+    if (record && record.source !== "dashboard") return studioNoSession(kind, matchId, record);
     const message = explainUploadError(raw);
     shortLog(matchId, step, `resuming after a restart failed: ${message}`, { level: "error", detail: raw });
     return message;
   } finally {
+    progress.done = true;
     endActivity(matchId, step);
   }
 }
