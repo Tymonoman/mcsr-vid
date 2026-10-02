@@ -346,7 +346,15 @@ function runCommand(command: string, stdin: string): Promise<string> {
  * The one place that decides; before this the command reached only the title editor, so a hook
  * the operator liked in the browser was not the hook the nightly burned into the thumbnail and
  * the Short. Async because the command is; the built-ins are the fallback on every failure.
+ *
+ * Filtered once more against the match's own two players (2 Oct 2026): `suggestHooksExternally`
+ * already does this for its own output, and the built-ins never produce a "vs" shape at all, so
+ * this mostly guards against a future built-in or command that does — but it means every caller
+ * gets clean chips without having to remember `hookLabelProblem` itself, `pipeline.ts`'s
+ * cold-start default included.
  */
 export async function hookSuggestions(input: HookInput): Promise<string[]> {
-  return (await suggestHooksExternally(input)) ?? buildHookSuggestions(input);
+  const chips = (await suggestHooksExternally(input)) ?? buildHookSuggestions(input);
+  const players = [input.userLeft, input.userRight];
+  return chips.filter((c) => hookLabelProblem(c, players) === null);
 }
