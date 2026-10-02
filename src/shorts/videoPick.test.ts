@@ -633,6 +633,23 @@ assert.equal(hookProblem("2427 vs 2293"), "it uses a seed, rank or elo");
 assert.equal(hookProblem("Can the 1789 take down the 2080?"), "it uses a seed, rank or elo");
 console.log("OK: a spoiler, overlong hook, or seed/rank/elo is swapped for a chip; the window stands");
 
+// Never a nickname, label or epithet for a runner (2 Oct 2026: "LCQ vs YN" and "ASIAN VS
+// CARNIVORE" both went out this way). A denied word is caught with no match in hand; a mismatched
+// "<x> vs <y>" pair needs the match's real players to tell it apart from a real rematch line.
+// ("LCQ vs YN" is caught a step earlier here, by the pre-existing seed/rank/elo check above — LCQ
+// is also the bracket's Last Chance Qualifier term; hookLabelProblem's own tests in hooks.test.ts
+// cover it directly, since that check never reaches the label rule either way.)
+const LABEL_PROBLEM = "names a runner with a label: runners have objected to this (2 Oct 2026)";
+assert.equal(hookProblem("ASIAN VS CARNIVORE"), LABEL_PROBLEM);
+assert.equal(hookProblem("TAS vs CATBOY"), null, "no players given — nothing to compare against");
+{
+  const players = [{ nickname: "edcr" }, { nickname: "doogile" }];
+  assert.equal(hookProblem("TAS vs CATBOY", undefined, players), LABEL_PROBLEM, "neither side is real");
+  assert.equal(hookProblem("edcr vs doogile", undefined, players), null, "the real nicknames, not a label");
+  assert.equal(hookProblem("Rematch: edcr leads 2-1", undefined, players), null, "not vs-shaped at all");
+}
+console.log("OK: hookProblem rejects a denied word and an invented vs-pair, never a real one");
+
 /** A match directory holding a saved title, and a youtube.json unless it never went up. */
 const uploaded = (id: number, title: string, onYouTube = true) => {
   const d = path.join(config.mediaDir, String(id));
@@ -643,13 +660,16 @@ const uploaded = (id: number, title: string, onYouTube = true) => {
 
 {
   // Title hooks in the operator's style: their past hooks on uploaded matches are the examples.
-  uploaded(1, "CARNIVORE vs VEGAN | BeefSalad vs silverrruns | MCSR Ranked 1v1 | Minecraft Speedrun");
+  uploaded(1, "DEAD HEAT AT THE DRAGON | BeefSalad vs silverrruns | MCSR Ranked 1v1 | Minecraft Speedrun");
   uploaded(2, "PLAYOFFS | SWEPT vs TAS | Aquacorde vs doogile | MCSR Ranked Season 11 Playoffs");
   uploaded(3, "WINNER vs 3rd PLACE | Infume vs Feinberg | MCSR Ranked 1v1");
   uploaded(4, "NEVER UPLOADED | a vs b | MCSR Ranked 1v1", false);
   uploaded(5, "<HOOK> | a vs b | MCSR Ranked 1v1");
   uploaded(6, "TAS vs SWEPT | doogile vs Aquacorde | MCSR Ranked 1v1");
   uploaded(7, "2427 vs 2293 | a vs b | MCSR Ranked 1v1");
+  // Never a "vs" hook as a style example any more (2 Oct 2026), real nicknames or not: this pair
+  // is real, but the shape is exactly how "YN" had been copied onto a different match's player.
+  uploaded(8, "CARNIVORE vs VEGAN | BeefSalad vs silverrruns | MCSR Ranked 1v1 | Minecraft Speedrun");
   answer({
     ...good,
     titleHooks: [
@@ -658,9 +678,9 @@ const uploaded = (id: number, title: string, onYouTube = true) => {
       "2427 vs 2293",
       "#4 vs #11",
       "7th seed",
-      "TAS vs YN",
-      "B".repeat(41),
       "ICE COLD",
+      "ICE COLD",
+      "B".repeat(41),
       "ONE TOO MANY",
     ],
     playerMoments: {
@@ -671,14 +691,17 @@ const uploaded = (id: number, title: string, onYouTube = true) => {
   lines.length = 0;
   const pick = await pickShortMoment(single, { force: true, log });
   assert.equal(pick.source, "agy");
-  assert.deepEqual(pick.titleHooks, ["TAS vs YN", "ICE COLD", "ONE TOO MANY"]);
+  assert.deepEqual(pick.titleHooks, ["ICE COLD", "ONE TOO MANY"]);
   assert.deepEqual(pick.playerMoments, { left: { atMs: 575_000, line: "your blind into the portal room" } });
   for (const why of [
+    // edcr and doogile race this match: neither "TAS" nor "YN" is either of them, and "YN" is a
+    // denied word regardless (2 Oct 2026).
+    `title hook "TAS vs YN" was dropped (names a runner with a label: runners have objected to this (2 Oct 2026))`,
     `title hook "WINNER vs 3rd PLACE" was dropped (it gives the result away)`,
     `title hook "2427 vs 2293" was dropped (it uses a seed, rank or elo)`,
     `title hook "#4 vs #11" was dropped (it uses a seed, rank or elo)`,
     `title hook "7th seed" was dropped (it uses a seed, rank or elo)`,
-    `title hook "TAS vs YN" was dropped (a repeat)`,
+    `title hook "ICE COLD" was dropped (a repeat)`,
     `title hook "${"B".repeat(41)}" was dropped (over 40 characters)`,
     `right player's moment {"atSec":9999,"line":"a moment after the match"} was dropped (166:39.0 is outside the match)`,
   ])
@@ -689,7 +712,16 @@ const uploaded = (id: number, title: string, onYouTube = true) => {
   assert.deepEqual(readJson(pickFile(dir, single)).titleHooks, pick.titleHooks, "written with the pick");
   const prompt = sentArgv()[sentArgv().indexOf("-p") + 1]!;
   assert.match(prompt, /They are from OTHER matches and name OTHER players/);
-  assert.match(prompt, / {2}"CARNIVORE vs VEGAN" \(BeefSalad vs silverrruns\)/);
+  assert.match(prompt, /never reuse a name, nickname, label or epithet/);
+  assert.ok(
+    !prompt.includes("reuse one only when that same player is in this match"),
+    "the old epithet-reuse permission is gone",
+  );
+  assert.match(prompt, / {2}"DEAD HEAT AT THE DRAGON" \(BeefSalad vs silverrruns\)/);
+  assert.match(
+    prompt,
+    /never a nickname, label or epithet for a runner, and never a word about ethnicity, nationality, appearance, age or a slang abbreviation/,
+  );
   assert.match(
     prompt,
     /Never use seeds, ladder ranks or elo numbers — they mean nothing to a viewer and change daily\./,
@@ -702,6 +734,8 @@ const uploaded = (id: number, title: string, onYouTube = true) => {
     "NEVER UPLOADED",
     "<HOOK>",
     "2427 vs 2293",
+    // Excluded now even though it names the real players (2 Oct 2026): no "vs" example at all.
+    "CARNIVORE vs VEGAN",
   ])
     assert.ok(!prompt.includes(`"${left}`), `not an example: ${left}`);
   assert.equal(
@@ -714,23 +748,27 @@ const uploaded = (id: number, title: string, onYouTube = true) => {
   const plain = await pickShortMoment(single, { force: true });
   assert.equal(plain.source, "agy");
   assert.ok(!("titleHooks" in plain) && !("playerMoments" in plain));
-  for (const id of [1, 2, 3, 4, 5, 6, 7]) rmSync(path.join(config.mediaDir, String(id)), { recursive: true });
+  for (const id of [1, 2, 3, 4, 5, 6, 7, 8])
+    rmSync(path.join(config.mediaDir, String(id)), { recursive: true });
   console.log(
-    "OK: title hooks in the operator's style, spoilers and repeats dropped by name; none is still a pick",
+    "OK: title hooks in the operator's style, spoilers, repeats and nickname labels dropped by name; none is still a pick",
   );
 }
 
 {
   // Each past hook is labelled with its register, so the model sees the mix, and the prompt says
   // which one to prefer (30 Sept 2026): the operator's own latest hooks state a stake.
+  // hookRegister still classifies a "vs" shaped rivalry hook correctly (it is a pure text
+  // classifier); pastTitleHooks is what now refuses to show one as an example at all (2 Oct 2026),
+  // so three of these never reach the prompt whatever register they would have carried.
   const hooks: Array<[hook: string, register: string]> = [
     ["58 MILLISECONDS", "stake"],
     ["THREE SECONDS APART", "stake"],
     ["WHO BLINKS FIRST?", "question"],
     ["4 DEATHS IN ONE RACE?", "question"], // a question first, whatever else it holds
-    ["WR HOLDER vs THE GRINDER", "rivalry"],
-    ["CARNIVORE VS VEGAN", "rivalry"],
-    ["7ROWL vs SKYCRAB", "rivalry"], // a digit in a nickname is not a figure
+    ["WR HOLDER vs THE GRINDER", "rivalry"], // "vs" shaped: never shown (2 Oct 2026)
+    ["CARNIVORE VS VEGAN", "rivalry"], // "vs" shaped: never shown
+    ["7ROWL vs SKYCRAB", "rivalry"], // "vs" shaped: never shown; a digit in a nickname is not a figure
     ["Rematch: doogile leads 3-1", "rivalry"], // the chip a saved title kept: a record, not a stake
     ["Their first 1v1", "rivalry"],
     ["THE FORTRESS RUNBACK", "other"],
@@ -742,18 +780,21 @@ const uploaded = (id: number, title: string, onYouTube = true) => {
   await pickShortMoment(single, { force: true });
   const prompt = sentArgv()[sentArgv().indexOf("-p") + 1]!;
   const promptLines = prompt.split("\n");
-  hooks.forEach(([hook, register], i) =>
-    assert.ok(
-      promptLines.includes(`  ${JSON.stringify(hook)} (p${i} vs q${i}) — ${register}`),
-      `labelled ${register}: ${hook}\n${promptLines.filter((l) => l.startsWith('  "')).join("\n")}`,
-    ),
-  );
+  hooks.forEach(([hook, register], i) => {
+    const shown = promptLines.includes(`  ${JSON.stringify(hook)} (p${i} vs q${i}) — ${register}`);
+    // A "vs" shaped hook is never shown as an example any more, whatever its register.
+    assert.equal(
+      shown,
+      !/ vs /i.test(hook),
+      `${shown ? "should be excluded" : "should still be shown"}, labelled ${register}: ${hook}\n${promptLines.filter((l) => l.startsWith('  "')).join("\n")}`,
+    );
+  });
   assert.match(prompt, /The stake register is the one to prefer/);
-  assert.match(prompt, /a figure belongs to its match/);
+  assert.match(prompt, /a figure belongs to its own match/);
   for (let id = 1; id <= hooks.length; id++)
     rmSync(path.join(config.mediaDir, String(id)), { recursive: true });
   console.log(
-    "OK: each past title hook is labelled stake, question, rivalry or other; stake is the one to prefer",
+    'OK: each past title hook is labelled stake, question, rivalry or other; a "vs" one is never shown',
   );
 }
 

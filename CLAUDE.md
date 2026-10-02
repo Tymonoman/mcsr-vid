@@ -184,10 +184,32 @@ views brought 0 subscribers.
   for the runner DMs, both optional on `ShortPick`; operator's ask, 24 Sept 2026: "use agy to propose
   the hooks based on previous ones"). The prompt shows the operator's own past saved hooks as style
   examples (the first ` | ` segment of every `match-<id>.title.edited.txt` beside a `youtube.json`,
-  spoilers and "PLAYOFFS" left out, labelled as being about other players); each proposal passes
-  `hookProblem` or is dropped with the reason logged; `suggestions.title` lists them first. The
-  operator's calls (24 Sept): the examples keep naming the players each hook was for, and when the
-  model's window is rejected its title hooks go with it — the heuristic fallback carries none.
+  spoilers, "PLAYOFFS" and, since 2 Oct 2026, any "vs" shaped hook at all left out, real nicknames or
+  not); each proposal passes `hookProblem` or is dropped with the reason logged; `suggestions.title`
+  lists them first (the dashboard's chips are held to the same rule, so one cannot reach the panel
+  either). The operator's calls (24 Sept): when the model's window is rejected its title hooks go
+  with it — the heuristic fallback carries none.
+- **Never a nickname, label or epithet for a runner, "vs" or not** (`hookLabelProblem`,
+  `src/pipeline/hooks.ts`; `hookProblem`'s `players` argument, `src/shorts/videoPick.ts`; `withHook`'s,
+  `src/pipeline/title.ts`; 2 Oct 2026). The operator, after "LCQ vs YN | lauveer vs edcr" and "ASIAN
+  VS CARNIVORE | hackingnoises vs BeefSalad" were both called out on X as naming a runner by a slur
+  and a race label, and the replies read it as Claude's suggestion: "we fucked up." Root cause traced
+  further back than the model: `match-12730175.title.txt` (edcr vs doogile) had "YN vs TAS" as its
+  own first suggestion — `withHook` carrying forward whatever a thumbnail manifest's `hookText` held,
+  unvalidated, from before the thumbnail's hook text came off (18 Sept) — nobody had typed it for
+  that match. It reached the operator's edit from there, then `pastTitleHooks` showed it as a style
+  example, and the prompt told the model an epithet could be reused "when that same player is in this
+  match" — the model copied "YN" onto lauveer–edcr, a different match's different player. Both
+  permissions are gone now: `pastTitleHooks` shows no "vs" example at all (above), and `withHook`
+  refuses a carried hook that labels a player exactly as `hookProblem` refuses a model's or warns on
+  a typed one — a carried value is as untrusted as either. The shared rule everywhere: a denied word
+  (an ethnicity or nationality term, a slur-adjacent abbreviation) is refused outright, "vs" or not;
+  a fresh "X vs Y" is checked against the match's own two players (API or `titleNames` spelling) and
+  a mismatch is a label too. A model's proposal and a carried one both fail closed; the operator's
+  own typed hook still always saves (`writeHooks`, `src/dashboard/shortFlow.ts`), the problem landing
+  in `saveWarnings` next to the field like every other check there — "it should just be a
+  suggestion." A match rendered before this fix keeps whatever its `title.txt` already carries until
+  its next full re-render.
 - **The Short's title** is `<hook> | <left> vs <right>` with `titleName` (Skycrab, lowkey), plus
   `#mcsr #minecraft` when it fits in 100 characters — the only Short with a player name in its
   title drew the search traffic.

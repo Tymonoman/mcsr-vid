@@ -25,7 +25,7 @@ import { getMatch, getUser } from "../api/mcsrApi.js";
 import type { MatchInfo } from "../api/types.js";
 import { blockedIn, config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
-import { hookSuggestions, spoilsTheResult } from "../pipeline/hooks.js";
+import { hookLabelProblem, hookSuggestions, spoilsTheResult } from "../pipeline/hooks.js";
 import { exportMatchStartSec } from "../pipeline/exportFast.js";
 import { computeMetrics } from "../pipeline/matchScore.js";
 import { exportStale, readSyncOffsets } from "../pipeline/syncFile.js";
@@ -531,16 +531,17 @@ async function suggestionsFor(
     );
   }
   return {
-    // The model's proposals (in the operator's own style, videoPick.ts) ahead of the chips.
+    // The model's proposals (in the operator's own style, videoPick.ts) ahead of the chips. A
+    // nickname-pair chip never reaches the panel either (2 Oct 2026, hookProblem's players arg).
     title: dedupe([committed, ...(f.pick?.titleHooks ?? []), ...title]).filter(
-      (h) => h.length <= budget.hookMax && hookProblem(h, budget.hookMax) === null,
+      (h) => h.length <= budget.hookMax && hookProblem(h, budget.hookMax, match.players) === null,
     ),
     // Held to the rule the model's own suggestion is: no result, and short enough to read at a
     // glance. No `#` (a rank chip's "#7" is a hashtag in the Short's title) and no line naming
     // both players, which the title already does after the hook.
     short: dedupe([f.pick?.hookSuggestion, committed, ...short, moment]).filter(
       (h) =>
-        hookProblem(h) === null &&
+        hookProblem(h, HOOK_MAX_CHARS, match.players) === null &&
         !h.includes("#") &&
         !(h.includes(left.nickname) && h.includes(right.nickname)),
     ),
@@ -781,6 +782,17 @@ async function writeHooks(
   // upload for a blocked match — the chain never starts (config.blockedPlayers).
   if (blockedIn([left.nickname, right.nickname]))
     return { status: 403, error: `match ${matchId} has a blocked player — hooks cannot be saved for it` };
+
+  // A nickname, label or epithet for a runner: a warning, never a refusal — "it should just be a
+  // suggestion" is the operator's rule for every check here, and both of these went out this way
+  // and drew public objection from the runners named (2 Oct 2026): "LCQ vs YN", "ASIAN VS CARNIVORE".
+  for (const h of new Set(
+    [f.video ? "" : titleHook, f.short ? "" : (shortHook ?? "")].filter((h) => h !== ""),
+  )) {
+    const problem = hookLabelProblem(h, match.players);
+    if (problem) saveWarnings.push(`"${h}" ${problem} — saved anyway`);
+  }
+
   if (!f.video && (await seriesGameUnjoined(match, f.series))) return { status: 409, error: SERIES_GAME };
   const built = titleFor(match, f.series, f.series ? null : await playoffContextFor(match));
 

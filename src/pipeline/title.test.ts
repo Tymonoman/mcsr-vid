@@ -85,9 +85,40 @@ assert.equal(withHook(edcr, "x".repeat(edcr.hookMax + 1)).title, edcr.title, "on
 
 // The guidance still names the real budget once the hook is in place — the operator is editing,
 // not filling a blank, and the character band is the same either way.
-const filled = formatTitle(withHook(edcr, "YN vs TAS"));
-assert.equal(filled.split("\n")[0], "YN vs TAS | edcr vs doogile | MCSR Ranked 1v1 | Minecraft Speedrun");
+const filled = formatTitle(withHook(edcr, "Can the 1789 take down the 2080?"));
+assert.equal(
+  filled.split("\n")[0],
+  "Can the 1789 take down the 2080? | edcr vs doogile | MCSR Ranked 1v1 | Minecraft Speedrun",
+);
 assert.ok(filled.includes("13-32 characters"), "the budget line survives a filled hook");
 assert.ok(!filled.includes(HOOK_PLACEHOLDER), "nothing tells you to replace a placeholder that is gone");
+
+// --- A carried hook is as untrusted as a typed or a model one (2 Oct 2026) ---------------------
+// "YN vs TAS" is the hook that actually shipped on edcr vs doogile's title.txt — nobody had typed
+// it, the pipeline's own carried value put it there (see pipeline.ts, series.ts) — and it ended up
+// in the operator's edit, then a style example, then "LCQ vs YN" on a different match entirely.
+// Without a match to check it against, withHook cannot tell (the historical bug's mechanism); with
+// one, "YN" and "TAS" are neither edcr nor doogile, so the hook is refused like any other.
+assert.equal(
+  withHook(edcr, "YN vs TAS").title,
+  "YN vs TAS | edcr vs doogile | MCSR Ranked 1v1 | Minecraft Speedrun",
+  "no match given — the historical bug, unfixed on this call shape alone",
+);
+const players = [{ nickname: "edcr" }, { nickname: "doogile" }];
+assert.equal(
+  withHook(edcr, "YN vs TAS", players).title,
+  edcr.title,
+  "a nickname pair is refused, not carried",
+);
+assert.equal(
+  withHook(edcr, "LCQ vs YN", players).title,
+  edcr.title,
+  "a denied word on its own is refused the same way",
+);
+// A real rematch chip, in the match's own nicknames, still carries through.
+assert.equal(
+  withHook(edcr, "Rematch: edcr leads 2-1", players).title,
+  "Rematch: edcr leads 2-1 | edcr vs doogile | MCSR Ranked 1v1 | Minecraft Speedrun",
+);
 
 console.log("title: all checks passed");
