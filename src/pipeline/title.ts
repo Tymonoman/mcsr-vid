@@ -1,5 +1,6 @@
 import path from "node:path";
 import { config, matchDir } from "../config.js";
+import { hookLabelProblem } from "./hooks.js";
 
 /**
  * The format half every upload shares. "Minecraft Speedrun" was added on 22 Sept 2026 after the
@@ -47,7 +48,11 @@ export interface BuiltTitle {
 /** The name the title shows for a nickname: the API's spelling unless `config.titleNames` says otherwise. */
 export const titleName = (nickname: string): string => config.titleNames[nickname] ?? nickname;
 
-export function buildTitle({ leftNickname: left, rightNickname: right, suffix = FORMAT_SUFFIX }: TitleInput): BuiltTitle {
+export function buildTitle({
+  leftNickname: left,
+  rightNickname: right,
+  suffix = FORMAT_SUFFIX,
+}: TitleInput): BuiltTitle {
   const leftNickname = titleName(left);
   const rightNickname = titleName(right);
   const generated = `${leftNickname} vs ${rightNickname}${SEPARATOR}${suffix}`;
@@ -77,10 +82,20 @@ export function buildTitle({ leftNickname: left, rightNickname: right, suffix = 
  * A hook over budget is left as the placeholder rather than cut to fit: the budget is what keeps
  * both nicknames inside YouTube's mobile cutoff, and a silently truncated hook stops mid-word on
  * the one line that has to earn the click. Rejecting it puts the decision back where it belongs.
+ *
+ * `players`, when given, also refuses a nickname-labelled hook the same way (2 Oct 2026):
+ * `match-12730175.title.txt` once carried "YN vs TAS" as its own first suggestion — nobody had
+ * typed it for this match — straight into the operator's edit and from there into a later
+ * match's title ("LCQ vs YN"). A carried hook is as untrusted as a typed or a model one.
  */
-export function withHook(built: BuiltTitle, hook: string | null | undefined): BuiltTitle {
+export function withHook(
+  built: BuiltTitle,
+  hook: string | null | undefined,
+  players?: readonly { nickname: string }[],
+): BuiltTitle {
   const text = hook?.trim() ?? "";
   if (text === "" || text.length > built.hookMax) return built;
+  if (players && hookLabelProblem(text, players) !== null) return built;
   return { ...built, title: `${text}${SEPARATOR}${built.generated}` };
 }
 

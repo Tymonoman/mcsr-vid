@@ -440,11 +440,12 @@ async function writeSeriesText(
     rightNickname: right.nickname,
     suffix: playoffSeriesTail(record.season, record.round),
   });
-  // The same hook the strip committed to, as the pipeline's own title file carries it.
+  // The same hook the strip committed to, as the pipeline's own title file carries it — as
+  // untrusted as a typed or a model one, so a carried value that labels a player is refused too.
   const hook = (await readManifest(outDir))?.hookText ?? undefined;
   await writeFile(
     path.join(outDir, `match-${firstGameId}.title.txt`),
-    formatTitle(withHook(title, hook)),
+    formatTitle(withHook(title, hook, [left, right])),
     "utf8",
   );
 }

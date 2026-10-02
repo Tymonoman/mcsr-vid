@@ -531,8 +531,9 @@ async function runStages(
   const titlePath = path.join(outDir, `match-${matchId}.title.txt`);
   // Carrying the same hook the thumbnail and the Short committed to, so the one editorial
   // decision this run made reaches all three artifacts instead of being retyped into the title
-  // by hand. No hook, or one that overruns the budget, leaves the placeholder — see `withHook`.
-  await writeFile(titlePath, formatTitle(withHook(title, hookText)), "utf8");
+  // by hand. No hook, one that overruns the budget, or one that labels a player — a carried
+  // value is as untrusted as a typed or a model one — leaves the placeholder; see `withHook`.
+  await writeFile(titlePath, formatTitle(withHook(title, hookText, [userLeft, userRight])), "utf8");
   emit(done("write"));
 
   return {
