@@ -7,7 +7,7 @@
  * "won by" not "Δ", float an expiring match to the top) and rules want a test.
  */
 import { formatShortTime } from "../../remotion/format.js";
-import { config } from "../config.js";
+import { blockedIn, config } from "../config.js";
 import { recentPairPostsSnapshot, type PairPost } from "./pairPosts.js";
 import { rivalMatchFor, rivalPostsSnapshot, type RivalPost } from "./rivalPosts.js";
 import type { SplitGap } from "../pipeline/matchScore.js";
@@ -145,7 +145,9 @@ export function presentSuggestions(
   posted: readonly PairPost[] = recentPairPostsSnapshot(nowMs),
   knownFollowerThreshold: number = config.knownFollowerThreshold,
 ): SuggestionCard[] {
-  const cards = suggestions.map((s) => toCard(s, nowMs, rival));
+  // Dropped outright, not just reordered: a stale cached list scanned before a player was
+  // blocked (config.blockedPlayers) must not show their match until the next rescan catches up.
+  const cards = suggestions.filter((s) => !blockedIn(s.metrics.players)).map((s) => toCard(s, nowMs, rival));
   // Follower counts are already on the suggestions themselves (`profiles`, resolved at scan time);
   // no second Twitch lookup here.
   const followersByName = new Map<string, number | null>();

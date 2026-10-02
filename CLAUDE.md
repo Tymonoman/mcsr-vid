@@ -314,6 +314,21 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   (`pairPosts.ts`) refreshes in the background; the nightly waits for it at most 15 s. The operator,
   30 Sept 2026: "no name players no one will click on that"; 1 Oct: "the suggestion system is shit
   it recommends and schedules matches that no one will watch".
+- **Blocked players** (`blockedPlayers`, Settings tab, default `["Aquacorde"]`; `isBlockedPlayer`/
+  `blockedIn` in `src/config.ts`, compared whole and ignoring case): a runner who has withdrawn
+  permission for their footage. A match with one is dropped before the suggestion scan scores it
+  and leaves the pool on the next scan even if it was already in there (`suggest.ts`), never shown
+  on the list however stale the cache (`suggestPresent.ts`), never rendered by the nightly even
+  if the operator queued it — the block outranks the queue, the only gate that does
+  (`nightlyEligible`/`resolveQueuedPick`/`playoffPicks`, `nightly.ts`), never "worth rendering today"
+  (`src/telegram/worth.ts`), never uploaded, long-form or Short, one clear line like `hookRefusal`
+  (`src/youtube/youtubeUpload.ts`), never gets its hooks saved so its chain never starts
+  (`src/dashboard/shortFlow.ts`), never rendered by `npm run short` even run by hand
+  (`src/shorts/generateShort.ts`), and never a style example in the pick prompt's past hooks
+  (`pastTitleHooks`, `src/shorts/videoPick.ts`). The operator, 2 Oct 2026, after Aquacorde commented
+  that he does not give permission for his footage to be used in the videos: "were fuuuuucked …
+  take down all his videos and blacklist him." His 7 videos and 4 playlists were set private on
+  the channel the same day (ledger `/home/node/.claude/jobs/8d7d95a1/tmp/aquacorde/ledger-apply.json`).
 - **Rival posts** (`src/dashboard/rivalPosts.ts`): the competitor's (`rivalChannelHandle`, default
   `mcsrmatches`) last 50 uploads, matched to cards by nickname pair, date and run length (their
   video is the run plus a few seconds; a post of the wrong length is another match of the same

@@ -23,7 +23,7 @@ import { readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { getMatch, getUser } from "../api/mcsrApi.js";
 import type { MatchInfo } from "../api/types.js";
-import { config, matchDir } from "../config.js";
+import { blockedIn, config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { hookSuggestions, spoilsTheResult } from "../pipeline/hooks.js";
 import { exportMatchStartSec } from "../pipeline/exportFast.js";
@@ -625,7 +625,9 @@ export async function shortPlan(
     : { short: f.pick?.hookSuggestion ? [f.pick.hookSuggestion] : [], title: f.pick?.titleHooks ?? [] };
   f = await factsOf(matchId);
   const { state, detail } =
-    seriesGame && !f.video ? { state: "no-export" as const, detail: SERIES_GAME } : stateOf(matchId, f, opts.now);
+    seriesGame && !f.video
+      ? { state: "no-export" as const, detail: SERIES_GAME }
+      : stateOf(matchId, f, opts.now);
   const errors = [
     ...f.status.errors,
     ...(f.pickError ? [{ step: "pick" as const, at: f.pickError.at, message: f.pickError.message }] : []),
@@ -719,13 +721,19 @@ async function writeHooks(
 
   // A hook with a newline or < > is not refused: newlines become spaces and < > are removed.
   if (/[<>\r\n]/.test(titleHook)) {
-    titleHook = titleHook.replace(/[\r\n]+/g, " ").replace(/[<>]/g, "").trim();
+    titleHook = titleHook
+      .replace(/[\r\n]+/g, " ")
+      .replace(/[<>]/g, "")
+      .trim();
     saveWarnings.push(
       "newlines in the title hook became spaces and < > were removed (they would break the <HOOK> placeholder and the one-line title files)",
     );
   }
   if (shortHook && /[<>\r\n]/.test(shortHook)) {
-    shortHook = shortHook.replace(/[\r\n]+/g, " ").replace(/[<>]/g, "").trim();
+    shortHook = shortHook
+      .replace(/[\r\n]+/g, " ")
+      .replace(/[<>]/g, "")
+      .trim();
     saveWarnings.push(
       "newlines in the Short hook became spaces and < > were removed (they would break the one-line title files)",
     );
@@ -763,6 +771,10 @@ async function writeHooks(
   }
   const [left, right] = match.players;
   if (!left || !right) return { status: 404, error: `match ${matchId} does not have two players` };
+  // Checked before anything else is written: no hooks saved means no pick, no render and no
+  // upload for a blocked match — the chain never starts (config.blockedPlayers).
+  if (blockedIn([left.nickname, right.nickname]))
+    return { status: 403, error: `match ${matchId} has a blocked player — hooks cannot be saved for it` };
   if (!f.video && (await seriesGameUnjoined(match, f.series))) return { status: 409, error: SERIES_GAME };
   const built = titleFor(match, f.series, f.series ? null : await playoffContextFor(match));
 

@@ -30,6 +30,7 @@ import {
   hookProblem,
   hookRegister,
   modelFailure,
+  pastTitleHooks,
   pickErrorFile,
   pickShortMoment,
   PROXY_FILE,
@@ -43,6 +44,40 @@ config.mediaDir = path.join(tmp, "media");
 // /watch is off until the block that fakes it: the machine's real plugin must not run here.
 config.watchScript = null;
 delete process.env.HOOK_SUGGEST_CMD;
+
+// --- pastTitleHooks: the model's style examples, minus a blocked player's (config.blockedPlayers) ---
+{
+  const pastDir = mkdtempSync(path.join(tmpdir(), "videopick-past-"));
+  const savedMediaDir = config.mediaDir;
+  const savedBlocked = config.blockedPlayers;
+  config.mediaDir = pastDir;
+  const write = (id: number, hookLine: string) => {
+    const dir = path.join(pastDir, String(id));
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, "youtube.json"), "{}");
+    writeFileSync(path.join(dir, `match-${id}.title.edited.txt`), `${hookLine}\n`);
+  };
+  write(1, "A clean hook | doogile vs Feinberg | MCSR Ranked 1v1");
+  write(2, "A blocked hook | doogile vs Aquacorde | MCSR Ranked 1v1");
+  config.blockedPlayers = ["aquacorde"]; // any case
+  assert.deepEqual(
+    pastTitleHooks().map((h) => h.hook),
+    ["A clean hook"],
+    "a blocked player's past hook is never a style example",
+  );
+  config.blockedPlayers = [];
+  assert.deepEqual(
+    pastTitleHooks()
+      .map((h) => h.hook)
+      .sort(),
+    ["A blocked hook", "A clean hook"],
+    "unblocked, it is back",
+  );
+  config.blockedPlayers = savedBlocked;
+  config.mediaDir = savedMediaDir;
+  rmSync(pastDir, { recursive: true, force: true });
+  console.log("OK: pastTitleHooks leaves out a blocked player's match");
+}
 
 const load = (id: number): MatchInfo => ({
   ...(JSON.parse(

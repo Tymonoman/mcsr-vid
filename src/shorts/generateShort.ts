@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { appendFile, readFile, writeFile } from "node:fs/promises";
 import { requireArg } from "../cliArgs.js";
 import { describeError } from "../errorText.js";
-import { config, matchDir } from "../config.js";
+import { blockedIn, config, matchDir } from "../config.js";
 import { getMatch, getUser, parseMatchId } from "../api/mcsrApi.js";
 import { readManifest } from "../thumbnails/thumbnailVariants.js";
 import { renderShort } from "./shortRender.js";
@@ -105,6 +105,8 @@ const game = await getMatch(window.gameMatchId).catch(unreachable);
 const playoff = await playoffContextFor(game);
 const [playerLeft, playerRight] = game.players;
 if (!playerLeft || !playerRight) throw new Error(`Match ${game.id} does not have two players.`);
+if (blockedIn([playerLeft.nickname, playerRight.nickname]))
+  refuse(`match ${game.id} has a blocked player — the Short is not cut`);
 
 const gameDir = matchDir(game.id);
 const clipFor = (nickname: string) => path.join(gameDir, `${nickname}.mp4`);

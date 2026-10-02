@@ -29,7 +29,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { archiveMatch, capacity, inNasWindow, refreshArchived } from "./archive.js";
-import { config, matchDir } from "../config.js";
+import { blockedIn, config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { exportRunning, startFastExport } from "./exportRoutes.js";
 import { getJob, startJob, type Job } from "./jobs.js";
@@ -208,18 +208,22 @@ export async function playoffPicks(
 ): Promise<NightlyPick[]> {
   if (!config.playoffsFirst) return [];
   try {
-    return (await board()).slots
-      .flatMap((slot) =>
-        slot.games.map((g) => ({
-          metrics: {
-            matchId: g.matchId,
-            players: [slot.seeds[0].nickname, slot.seeds[1].nickname] as [string, string],
-          },
-          bucket: "playoffs",
-          dateSec: g.dateSec,
-        })),
-      )
-      .sort((a, b) => a.dateSec - b.dateSec);
+    return (
+      (await board()).slots
+        .flatMap((slot) =>
+          slot.games.map((g) => ({
+            metrics: {
+              matchId: g.matchId,
+              players: [slot.seeds[0].nickname, slot.seeds[1].nickname] as [string, string],
+            },
+            bucket: "playoffs",
+            dateSec: g.dateSec,
+          })),
+        )
+        // A blocked seed's games too, same as any other candidate (config.blockedPlayers).
+        .filter((pick) => !blockedIn(pick.metrics.players))
+        .sort((a, b) => a.dateSec - b.dateSec)
+    );
   } catch (err) {
     // The bracket is a bonus on top of the feed, never the reason a night renders nothing.
     console.error(`nightly: playoffs unavailable — ${describeError(err)}`);
@@ -334,7 +338,13 @@ export function nightlyEligible(
   checkVods: (pick: NightlyPick) => Promise<boolean> = playoffVodsReady,
 ): (pick: NightlyPick) => Promise<boolean> {
   const queued = new Set(queue);
-  return async (pick) => (await checkVods(pick)) && (queued.has(pick.metrics.matchId) || isKnownPick(pick));
+  // Checked before the queue, not after: a blocked match is never rendered, however it got here —
+  // the operator's own queue does not override this the way it overrides nightlySkip and the
+  // known-player gate (config.blockedPlayers).
+  return async (pick) =>
+    !blockedIn(pick.metrics.players) &&
+    (await checkVods(pick)) &&
+    (queued.has(pick.metrics.matchId) || isKnownPick(pick));
 }
 
 /** A queued id from the scan's own pool, or null — no API call (the preview's whole resolver). */
@@ -351,10 +361,12 @@ export function pooledQueuedPick(id: number): NightlyPick | null {
  */
 export async function resolveQueuedPick(id: number): Promise<NightlyPick | null> {
   const pooled = pooledQueuedPick(id);
-  if (pooled) return pooled;
+  if (pooled) return blockedIn(pooled.metrics.players) ? null : pooled;
   try {
     const match = await getMatch(id);
-    return { metrics: { matchId: id, players: computeMetrics(match).players }, bucket: "queued" };
+    const players = computeMetrics(match).players;
+    if (blockedIn(players)) return null;
+    return { metrics: { matchId: id, players }, bucket: "queued" };
   } catch (err) {
     console.error(`nightly: queued #${id} could not be read — ${describeError(err)}`);
     return null;

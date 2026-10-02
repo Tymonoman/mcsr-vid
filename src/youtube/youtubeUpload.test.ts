@@ -147,6 +147,34 @@ try {
   assert.ok("error" in shortTwice && /already on the channel/.test(shortTwice.error), "a Short goes up once");
   await rm(path.join(dir, "youtube-short.json"));
   console.log("OK: no upload without its saved hook, no Short behind another hook, no Short twice");
+
+  /* --- A blocked player's match is refused outright, before any hook, file or network lookup. -- */
+  {
+    const saved = config.blockedPlayers;
+    config.blockedPlayers = ["TestBlocked"];
+    // Case-insensitive, and read off the POV clips on disk — not the title text.
+    await writeFile(path.join(dir, "testblocked.mp4"), "x");
+    const blockedVideo = await beginUpload(matchId, { kind: "video", privacyStatus: "private" });
+    assert.ok(
+      "error" in blockedVideo && blockedVideo.status === 403 && /blocked player/.test(blockedVideo.error),
+      "the long-form is refused",
+    );
+    const blockedShort = await beginUpload(matchId, { kind: "short", privacyStatus: "private" });
+    assert.ok(
+      "error" in blockedShort && blockedShort.status === 403 && /blocked player/.test(blockedShort.error),
+      "and so is the Short",
+    );
+    await rm(path.join(dir, "testblocked.mp4"));
+    config.blockedPlayers = saved;
+    // Unblocked: past the gate. Whatever the next check says (no title file yet, at this point in
+    // the test), it is not the blocklist refusing it a second time.
+    const clear = await beginUpload(matchId, { kind: "short", privacyStatus: "private" });
+    assert.ok(
+      !("error" in clear) || !/blocked player/.test(clear.error),
+      "unblocked, it is not the blocklist refusing it any more",
+    );
+    console.log("OK: a blocked player's match is refused outright, for both kinds, case-insensitively");
+  }
   const tryPath = async (videoPath: string) => {
     const begun = await beginUpload(matchId, { kind: "video", privacyStatus: "private", videoPath });
     assert.ok("error" in begun, `${videoPath} should have been refused`);

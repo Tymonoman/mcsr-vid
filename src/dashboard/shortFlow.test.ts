@@ -333,7 +333,10 @@ try {
   assert.equal(withAngle.status, 202);
   assert.ok(withAngle.payload.saveWarnings?.some((w) => /< > were removed/.test(w)));
 
-  const newlineSave = await call("PUT", "hooks", W, { titleHook: "Line 1\nLine 2", shortHook: "Short\nhook" });
+  const newlineSave = await call("PUT", "hooks", W, {
+    titleHook: "Line 1\nLine 2",
+    shortHook: "Short\nhook",
+  });
   assert.equal(newlineSave.status, 202);
   assert.ok(newlineSave.payload.saveWarnings?.some((w) => /newlines/i.test(w)));
   assert.equal(
@@ -1337,6 +1340,24 @@ try {
     console.log(
       "OK: the publish time — kept for the upload, warned not refused, moved on YouTube with its Short",
     );
+  }
+
+  /* --- A blocked match: no hooks, so no pick, no render and no upload (config.blockedPlayers) --- */
+  {
+    const BL = 13_000_060;
+    exported(BL);
+    const savedBlocked = config.blockedPlayers;
+    config.blockedPlayers = ["edcr"]; // the fixture's own left player, any case
+    const refused = await save(BL, { titleHook: "Blocked", shortHook: "Also blocked" });
+    assert.equal(refused.status, 403);
+    assert.match((refused.payload as { error: string }).error, /blocked player/);
+    assert.ok(!picks.some((p) => p.id === BL), "the model is never asked");
+    assert.ok(!renders.some((r) => r.id === BL), "and nothing is rendered");
+    assert.ok(!sent.some((s) => s.id === BL), "or uploaded");
+    config.blockedPlayers = savedBlocked;
+    const unblocked = await save(BL, { titleHook: "Not blocked", shortHook: "Still fine" });
+    assert.equal(unblocked.status, 202, "unblocked, the save goes through");
+    console.log("OK: a blocked match never gets its hooks saved, so the chain never starts");
   }
 } finally {
   rmSync(media, { recursive: true, force: true });

@@ -6,12 +6,12 @@
  * refused, what gets sent, or what happens after the insert. Nothing here calls `videos.insert`
  * while `youtubeUploadEnabled` is off — see src/config.ts and CLAUDE.md.
  */
-import { existsSync, statSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { archiveMatch } from "../dashboard/archive.js";
 import type { ChannelVideo } from "./channelUploads.js";
-import { config, matchDir } from "../config.js";
+import { config, isBlockedPlayer, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { getMatch } from "../api/mcsrApi.js";
 import { listProcessedMatchIds, matchStatusFor } from "../dashboard/matchStatus.js";
@@ -105,6 +105,17 @@ type Begun =
   { status: number; error: string } | { progress: UploadProgress; finished: Promise<UploadProgress> };
 
 /**
+ * Whether this match's own POV clips (`<nickname>.mp4`, src/dashboard/matchStatus.ts) name a
+ * blocked player (config.blockedPlayers) — disk only, no network: the clips are on disk by the
+ * time anything is ever uploaded, and this must never be slower or less available than the
+ * upload it gates.
+ */
+function hasBlockedPlayer(dir: string): boolean {
+  if (!existsSync(dir)) return false;
+  return readdirSync(dir).some((f) => f.endsWith(".mp4") && isBlockedPlayer(f.slice(0, -".mp4".length)));
+}
+
+/**
  * Nothing goes up before the operator has saved the hooks (23 Sept 2026). The long-form needs a
  * saved title hook — the edited title, not the generated one the pipeline fills with its first
  * chip; the Short needs its confirmed hook, burned into the file being sent (the cut records
@@ -115,6 +126,10 @@ export async function hookRefusal(
   kind: UploadKind,
 ): Promise<{ status: number; error: string } | null> {
   const dir = matchDir(matchId);
+  // Checked before anything else, hook state included: a blocked player's match is refused
+  // outright, long-form or Short (config.blockedPlayers — the operator, 2 Oct 2026: "blacklist him").
+  if (hasBlockedPlayer(dir))
+    return { status: 403, error: `match ${matchId} has a blocked player — uploads of it are refused` };
   if (kind === "video") {
     // Once, like the Short: on 24 Sept a press of Upload 3 minutes after the chain's own upload
     // put the same long-form on the channel twice (spIyAaQmZr8 / hMA09SfxwxE), both scheduled.
