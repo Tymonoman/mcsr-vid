@@ -3,6 +3,7 @@ import {
   buildHookSuggestions,
   HOOK_SEED_RANK_ELO,
   hookFacts,
+  hookLabelProblem,
   spoilsTheResult,
   suggestHooksExternally,
   typedSpoiler,
@@ -417,3 +418,35 @@ console.log("hooks: all checks passed");
   );
   assert.equal(typedSpoiler("TAS vs SWEPT | a vs b", "", "TAS vs SWEPT | a vs b"), null, "already on disk");
 }
+
+// --- hookLabelProblem: never a nickname, label or epithet for a runner (2 Oct 2026) -----------
+// "LCQ vs YN" and "ASIAN VS CARNIVORE" both went out this way and drew public objection from the
+// runners named.
+{
+  const LABEL = "names a runner with a label: runners have objected to this (2 Oct 2026)";
+  // A denied word is a label on its own, "vs" or not, match or no match.
+  for (const denied of ["LCQ vs YN", "ASIAN VS CARNIVORE", "the ASIAN player", "YN"]) {
+    assert.equal(hookLabelProblem(denied), LABEL, denied);
+  }
+  // No match context: nothing to compare an "X vs Y" pair against, so it passes unless a denied
+  // word already caught it above.
+  assert.equal(hookLabelProblem("TAS vs CATBOY"), null, "no players given");
+  assert.equal(hookLabelProblem("Decided by 2.4 seconds"), null, "not even shaped like a pair");
+
+  const players = [user("edcr", "uuid-l"), user("doogile", "uuid-r")];
+  assert.equal(hookLabelProblem("TAS vs CATBOY", players), LABEL, "neither side is a real player");
+  assert.equal(hookLabelProblem("edcr vs CATBOY", players), LABEL, "one side is still invented");
+  assert.equal(hookLabelProblem("edcr vs doogile", players), null, "the real nicknames, not a label");
+  assert.equal(hookLabelProblem("DOOGILE vs EDCR", players), null, "case-insensitive, either order");
+
+  // titleNames: the broadcast's spelling is not a label either (Pinne is Skycrab).
+  const broadcast = [user("Pinne", "uuid-p"), user("lowk3y_", "uuid-k")];
+  assert.equal(hookLabelProblem("Skycrab vs lowkey", broadcast), null, "titleNames spelling, not a label");
+  console.log("OK: hookLabelProblem rejects a denied word and an invented vs-pair, never a real one");
+}
+
+// The external generator is held to the same rule as the built-ins.
+process.env.HOOK_SUGGEST_CMD = `printf 'Decided at the dragon\\nLCQ vs YN\\nASIAN VS CARNIVORE\\n'`;
+assert.deepEqual(await suggestHooksExternally(input()), ["Decided at the dragon"]);
+delete process.env.HOOK_SUGGEST_CMD;
+console.log("OK: HOOK_SUGGEST_CMD is held to the no-label rule too");

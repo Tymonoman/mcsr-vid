@@ -281,13 +281,34 @@ try {
       file,
       JSON.stringify({
         ...pickOf(A),
-        titleHooks: ["UNC vs OG", "ICE COLD"],
+        titleHooks: ["DEAD HEAT AT THE DRAGON", "ICE COLD"],
         createdAt: "2026-09-24T08:00:00Z",
       }),
     );
     const titled = (await plan(A)).suggestions.title;
-    assert.deepEqual(titled.slice(0, 2), ["UNC vs OG", "ICE COLD"], "the model's proposals first");
+    assert.deepEqual(
+      titled.slice(0, 2),
+      ["DEAD HEAT AT THE DRAGON", "ICE COLD"],
+      "the model's proposals first",
+    );
     assert.ok(titled.length > 2, "the chips after them");
+
+    // A nickname-pair title hook never reaches the chips, whatever proposed it (2 Oct 2026: "LCQ
+    // vs YN" and "ASIAN VS CARNIVORE" both went out this way) — this match is edcr vs doogile, so
+    // "UNC vs OG" names neither and is the dashboard's second line of defence for whatever is on
+    // disk, behind the model-proposal filter at pick time.
+    writeFileSync(
+      file,
+      JSON.stringify({
+        ...pickOf(A),
+        titleHooks: ["UNC vs OG", "ICE COLD"],
+        createdAt: "2026-09-24T09:00:00Z",
+      }),
+    );
+    const guarded = (await plan(A)).suggestions.title;
+    assert.ok(!guarded.includes("UNC vs OG"), `a nickname pair must not reach the chips: ${guarded}`);
+    assert.ok(guarded.includes("ICE COLD"), "a clean proposal still does");
+
     writeFileSync(file, kept);
   }
 
@@ -383,18 +404,27 @@ try {
         title: `${title} | MCSR Ranked 1v1 | Minecraft Speedrun`,
       });
     }
+    // Also: a nickname-pair hook is now a warning too, whatever it names (2 Oct 2026) — "LOVERBOY
+    // vs LOCKED IN" names neither edcr nor doogile, so it is flagged on that count as well as (or
+    // instead of) any reuse; the reuse and label checks are independent and both land in the array.
     const reused = await call("PUT", "hooks", W, { titleHook: "LOVERBOY vs LOCKED IN", shortHook: "x" });
     assert.equal(reused.status, 202, "saved anyway");
     assert.deepEqual(reused.payload.saveWarnings, [
+      '"LOVERBOY vs LOCKED IN" names a runner with a label: runners have objected to this (2 Oct 2026) — saved anyway',
       '"LOVERBOY" stood for Infume on 2026-09-12 — one nickname per player',
     ]);
     assert.equal(
       readFileSync(path.join(dir(W), `match-${W}.title.edited.txt`), "utf8").split("\n")[0],
       "LOVERBOY vs LOCKED IN | edcr vs doogile | MCSR Ranked 1v1 | Minecraft Speedrun",
     );
+    // "ASIAN" is also a denied word on its own (2 Oct 2026: "ASIAN VS CARNIVORE" was a live
+    // title) — CARNIVORE's own reuse is still quiet (its one past pairing, doogile, is in this
+    // match), so the label warning below is the *only* one, not a second reuse warning for it.
     const own = await call("PUT", "hooks", W, { titleHook: "CARNIVORE vs ASIAN", shortHook: "x" });
     assert.equal(own.status, 202);
-    assert.equal(own.payload.saveWarnings, undefined, "a nickname with its player in the match is quiet");
+    assert.deepEqual(own.payload.saveWarnings, [
+      '"CARNIVORE vs ASIAN" names a runner with a label: runners have objected to this (2 Oct 2026) — saved anyway',
+    ]);
     // Their records would count as uploads in the chain's slot rules below.
     for (const [id] of earlier) rmSync(dir(id), { recursive: true, force: true });
   }

@@ -41,7 +41,7 @@ import type { MatchInfo } from "../api/types.js";
 import { blockedIn, config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { atomicOutput } from "../pipeline/atomicOutput.js";
-import { hookSuggestions, HOOK_SEED_RANK_ELO, spoilsTheResult } from "../pipeline/hooks.js";
+import { hookLabelProblem, hookSuggestions, HOOK_SEED_RANK_ELO, spoilsTheResult } from "../pipeline/hooks.js";
 import { ANCHOR_SEC } from "../pipeline/kdenliveProject.js";
 import { SEPARATOR } from "../pipeline/title.js";
 import { computeMetrics, deathKind, phaseAt } from "../pipeline/matchScore.js";
@@ -100,13 +100,23 @@ const HORIZON_MARGIN_MS = 1000;
 const HOOK_SPOILER =
   /\b(win|wins|winning|won|winner|beat|beats|beaten|beating|lost|lose|loses|losing|loser|defeat\w*|champion\w*|victor\w*|takes it|took it|comebacks?)\b/i;
 
-/** Why a hook suggestion cannot stand, or null when it can. `maxChars`: a player moment's line is longer. */
-export function hookProblem(hook: unknown, maxChars = HOOK_MAX_CHARS): string | null {
+/**
+ * Why a hook suggestion cannot stand, or null when it can. `maxChars`: a player moment's line is
+ * longer. `players` lets the "<x> vs <y>" check in `hookLabelProblem` tell a real nickname pair
+ * from an invented one (2 Oct 2026) — omit it where the match is not at hand, which skips only
+ * that one check; a denied word is still caught either way.
+ */
+export function hookProblem(
+  hook: unknown,
+  maxChars = HOOK_MAX_CHARS,
+  players?: readonly { nickname: string }[],
+): string | null {
   if (typeof hook !== "string" || hook.trim() === "") return "no hook";
-  if (hook.trim().length > maxChars) return `over ${maxChars} characters`;
-  if (HOOK_SPOILER.test(hook) || spoilsTheResult(hook)) return "it gives the result away";
-  if (HOOK_SEED_RANK_ELO.test(hook)) return "it uses a seed, rank or elo";
-  return null;
+  const h = hook.trim();
+  if (h.length > maxChars) return `over ${maxChars} characters`;
+  if (HOOK_SPOILER.test(h) || spoilsTheResult(h)) return "it gives the result away";
+  if (HOOK_SEED_RANK_ELO.test(h)) return "it uses a seed, rank or elo";
+  return hookLabelProblem(h, players);
 }
 
 /** How many title hooks the model may propose, and how many past ones the prompt quotes. */
@@ -473,8 +483,12 @@ export interface PastHook {
 /**
  * The operator's own title hooks on uploaded matches, newest first: the first segment of each
  * saved title (`match-<id>.title.edited.txt`) whose directory has a `youtube.json`. Left out:
- * "PLAYOFFS" (a label, not a hook), a placeholder, and anything `hookProblem` refuses — "WINNER vs
- * 3rd PLACE" is a result, and an example is what the model copies.
+ * "PLAYOFFS" (a label, not a hook), a placeholder, anything `hookProblem` refuses — "WINNER vs
+ * 3rd PLACE" is a result — and, since 2 Oct 2026, any "<x> vs <y>" shaped hook at all, real
+ * nicknames or not: an example is what the model copies, and that shape is exactly how it had
+ * copied "YN" from one match's hook onto a different match's different player ("YN vs TAS" →
+ * "LCQ vs YN"). `hookProblem`'s own "<x> vs <y>" check only catches a mismatched pair; this is
+ * stricter, for the examples the model sees.
  */
 export function pastTitleHooks(): PastHook[] {
   let names: string[];
@@ -491,7 +505,7 @@ export function pastTitleHooks(): PastHook[] {
     try {
       const [hook = "", pair = ""] = readFileSync(file, "utf8").split("\n")[0]!.split(SEPARATOR);
       const h = hook.trim();
-      if (/^playoffs$/i.test(h) || h.includes("<") || hookProblem(h) !== null) continue;
+      if (/^playoffs$/i.test(h) || h.includes("<") || / vs /i.test(h) || hookProblem(h) !== null) continue;
       // Never a blocked player's match, however it made it onto the channel before they were
       // blocked: not even as someone else's unnamed style example (config.blockedPlayers).
       if (blockedIn(pair.split(" vs ").map((n) => n.trim()))) continue;
@@ -528,11 +542,11 @@ function extrasSection(spans: readonly GameSpan[], past: readonly PastHook[]): s
   const [l, r] = spans[0]!.match.players;
   const examples =
     past.length > 0
-      ? ` The channel's own past title hooks, for their style only. They are from OTHER matches and name OTHER players (the pair each was written for is in brackets): an epithet belongs to its player, so reuse one only when that same player is in this match, and a figure belongs to its match. Each ends with its register: stake (a figure or a time), question, rivalry (two sides set against each other) or other. The stake register is the one to prefer: write about what THIS match turns on — a margin, a time, a count — from the video and the facts, never from an example and never who comes out ahead; use a question or a rivalry line only for variety.
+      ? ` The channel's own past title hooks, for their style only. They are from OTHER matches and name OTHER players (the pair each was written for is in brackets): never reuse a name, nickname, label or epithet from one of them, for that player or any other — a hook is never about a person, and a figure belongs to its own match. Each ends with its register: stake (a figure or a time), question, rivalry (two sides set against each other) or other. The stake register is the one to prefer: write about what THIS match turns on — a margin, a time, a count — from the video and the facts, never from an example and never who comes out ahead; use a question or a rivalry line only for variety.
 ${past.map((p) => `  ${JSON.stringify(p.hook)}${p.pair ? ` (${p.pair})` : ""} — ${hookRegister(p.hook)}`).join("\n")}`
       : "";
   return `
-THE LONG-FORM'S TITLE (titleHooks, optional): up to ${TITLE_HOOKS} proposals for the hook that opens the full match video's title — "<hook> | ${l?.nickname} vs ${r?.nickname} | …", so it need not repeat their names. The same rules as hookSuggestion: at most ${HOOK_MAX_CHARS} characters, nothing about who wins or how it ends. Never use seeds, ladder ranks or elo numbers — they mean nothing to a viewer and change daily.${examples}
+THE LONG-FORM'S TITLE (titleHooks, optional): up to ${TITLE_HOOKS} proposals for the hook that opens the full match video's title — "<hook> | ${l?.nickname} vs ${r?.nickname} | …", so it need not repeat their names. The same rules as hookSuggestion: at most ${HOOK_MAX_CHARS} characters, nothing about who wins or how it ends, never a nickname, label or epithet for a runner, and never a word about ethnicity, nationality, appearance, age or a slang abbreviation of one — a title hook is about the match, never the person. Never use seeds, ladder ranks or elo numbers — they mean nothing to a viewer and change daily.${examples}
 
 PLAYER MOMENTS (playerMoments, optional): for each player, the one moment of theirs in this video worth sending to them — "left" for ${l?.nickname}, "right" for ${r?.nickname}. atSec: seconds of the video file where it starts. line: one sentence to them, at most ${MOMENT_MAX_CHARS} characters, saying what they did — never who wins.
 `;
@@ -602,7 +616,7 @@ THE WINDOW
       : ""
   }
 
-THE HOOK (hookSuggestion): the line on screen for the Short's first 4 seconds. At most ${HOOK_MAX_CHARS} characters, punchy, in a viewer's words; it may name the player making the play. Write it from what you saw — nothing in these instructions hints at what happens in this match. It must never name or hint at who wins the match or how it ends — none of: win, won, winner, beat, lost, lose, defeat, champion, victory, takes it, clutch, comeback, chokes, throws. Never use seeds, ladder ranks or elo numbers — they mean nothing to a viewer and change daily.
+THE HOOK (hookSuggestion): the line on screen for the Short's first 4 seconds. At most ${HOOK_MAX_CHARS} characters, punchy, in a viewer's words; it may name the player making the play, by their real nickname only — never a nickname you invent, a label or an epithet, and never a word about ethnicity, nationality, appearance, age, or a slang abbreviation of one: a hook is about the match, never the person. Write it from what you saw — nothing in these instructions hints at what happens in this match. It must never name or hint at who wins the match or how it ends — none of: win, won, winner, beat, lost, lose, defeat, champion, victory, takes it, clutch, comeback, chokes, throws. Never use seeds, ladder ranks or elo numbers — they mean nothing to a viewer and change daily.
 
 why: one line for the operator on why this moment.
 ${extrasSection(spans, past)}
@@ -687,6 +701,9 @@ function extrasOf(
   note: Note,
 ): Pick<ShortPick, "titleHooks" | "playerMoments"> {
   const a = (typeof answer === "object" && answer !== null ? answer : {}) as Record<string, unknown>;
+  // Every game of a series is the same two players, so one list of real nicknames covers titleHooks
+  // and every player moment below (hookLabelProblem's "<x> vs <y>" check, 2 Oct 2026).
+  const players = spans[0]!.match.players;
   const drop = (what: string, value: unknown, why: string) =>
     note(`the model's ${what} ${JSON.stringify(value)} was dropped (${why})`, { level: "warn" });
   const hooks: string[] = [];
@@ -696,7 +713,7 @@ function extrasOf(
   for (const h of proposed) {
     const text = typeof h === "string" ? h.trim() : h;
     const why =
-      hookProblem(text) ??
+      hookProblem(text, HOOK_MAX_CHARS, players) ??
       (hooks.includes(text as string)
         ? "a repeat"
         : hooks.length >= TITLE_HOOKS
@@ -720,7 +737,7 @@ function extrasOf(
         ? "atSec is not a number"
         : !span || at - span.offsetSec > span.runSec + RUN_SLACK_SEC
           ? `${clock(at)} is outside the match`
-          : hookProblem(line, MOMENT_MAX_CHARS);
+          : hookProblem(line, MOMENT_MAX_CHARS, players);
     if (why) drop(`${side} player's moment`, m, why);
     else {
       const moment: PlayerMoment = {
@@ -752,7 +769,7 @@ async function chipHook(match: MatchInfo): Promise<string> {
       minChars: 20,
     });
     // A rank chip ("#31 vs #14") is two hashtags and no words on a Short: a worded one first.
-    const usable = chips.filter((c) => hookProblem(c) === null);
+    const usable = chips.filter((c) => hookProblem(c, HOOK_MAX_CHARS, match.players) === null);
     const chip = usable.find((c) => !c.includes("#")) ?? usable[0];
     if (chip) return chip.trim();
   } catch {
@@ -893,10 +910,11 @@ async function askModel(
       };
     }
     const { hook, ...window } = checked;
+    const windowMatch = spans.find((s) => s.match.id === window.gameMatchId)!.match;
     let hookSuggestion = typeof hook === "string" ? hook.trim() : "";
-    const problem = hookProblem(hookSuggestion);
+    const problem = hookProblem(hookSuggestion, HOOK_MAX_CHARS, windowMatch.players);
     if (problem) {
-      hookSuggestion = await chipHook(spans.find((s) => s.match.id === window.gameMatchId)!.match);
+      hookSuggestion = await chipHook(windowMatch);
       note(
         `the model's hook ${JSON.stringify(hook)} was replaced (${problem}) by a chip: ${hookSuggestion}`,
         {

@@ -19,6 +19,7 @@ import { formatShortTime } from "../../remotion/format.js";
 import { describeError } from "../errorText.js";
 import type { MatchMetrics } from "./matchScore.js";
 import { eloAtMatchStart } from "./overlayProps.js";
+import { titleName } from "./title.js";
 import type { PlayoffContext } from "../playoffs/playoffs.js";
 import type { MatchInfo, UserDetails, VersusStats } from "../api/types.js";
 
@@ -31,6 +32,40 @@ import type { MatchInfo, UserDetails, VersusStats } from "../api/types.js";
 // A bracket seed only ("7th seed", "#7 seed", "the LCQ"): the world's seed type ("village seed",
 // "same seed") is fair game for a hook.
 export const HOOK_SEED_RANK_ELO = /#\d+|\b\d+(?:st|nd|rd|th) seed\b|\blcq\b|\b\d{3,4}\b[^\d]+\b\d{3,4}\b/i;
+
+/**
+ * Words that name a runner by race, ethnicity or nationality, or a slur-adjacent abbreviation of
+ * one — never a hook, "vs" or not (2 Oct 2026: "LCQ vs YN" and "ASIAN VS CARNIVORE" both went out
+ * this way and were called out in public as naming a runner by a slur and a race label). Short on
+ * purpose: a false positive costs one dropped suggestion or a warning beside a typed field, never
+ * a refusal — see `hookLabelProblem`.
+ */
+const HOOK_DENIED_LABELS =
+  /\b(?:yn|asian|asians|black|white|latino|latina|hispanic|african|arab|arabs|european|american|chinese|korean|japanese|mexican|indian)\b/i;
+
+/**
+ * A hook that names a runner with a label: either `HOOK_DENIED_LABELS` on its own, or a "<x> vs
+ * <y>" shape where `x` or `y` is not one of `players`' real nicknames or `titleNames` spellings —
+ * an invented nickname ("LCQ", "TAS", "CARNIVORE") standing in for a runner. `players` is the
+ * match the hook is for; omit it where that is not at hand and only the denied-label half runs.
+ *
+ * The root cause (2 Oct 2026): the title-hook model had been shown the operator's own past hooks
+ * as style examples and reused "YN" from one ("YN vs TAS") onto a different match's different
+ * player. `pastTitleHooks` (videoPick.ts) no longer shows the model a "vs" hook to copy at all;
+ * this is the second line of defence for whatever a model proposes or the operator types anyway —
+ * dropped from a model's proposal, a warning beside a typed one (`hookProblem`, `writeHooks`).
+ */
+export function hookLabelProblem(hook: string, players?: readonly { nickname: string }[]): string | null {
+  const problem = "names a runner with a label: runners have objected to this (2 Oct 2026)";
+  if (HOOK_DENIED_LABELS.test(hook)) return problem;
+  if (!players) return null;
+  const sides = hook.split(/\s+vs\.?\s+/i);
+  if (sides.length !== 2) return null;
+  const known = new Set(
+    players.flatMap((p) => [p.nickname.toLowerCase(), titleName(p.nickname).toLowerCase()]),
+  );
+  return sides.some((s) => !known.has(s.trim().toLowerCase())) ? problem : null;
+}
 
 /** A hook nobody would read as a hook. Below this a suggestion is noise, not a shorter option. */
 const MIN_USEFUL_CHARS = 8;
@@ -267,7 +302,8 @@ export async function suggestHooksExternally(input: HookInput): Promise<string[]
       .map((line) => line.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, ""))
       .filter((line) => line.length >= MIN_USEFUL_CHARS && line.length <= input.maxChars)
       .filter((line) => !spoilsTheResult(line))
-      .filter((line) => !HOOK_SEED_RANK_ELO.test(line));
+      .filter((line) => !HOOK_SEED_RANK_ELO.test(line))
+      .filter((line) => hookLabelProblem(line, [input.userLeft, input.userRight]) === null);
     return lines.length > 0 ? lines.slice(0, 5) : null;
   } catch (err) {
     console.error(`HOOK_SUGGEST_CMD failed, using built-in hooks: ${describeError(err)}`);
