@@ -158,6 +158,13 @@ export interface UploadOptions {
   publishAt?: string;
   /** `notifySubscribers=false` on the insert: a Short must not push a second bell for one match. */
   notifySubscribers?: boolean;
+  /**
+   * Only resume a session already on disk; never start a new one. For a cut-short upload a
+   * restart is resuming (`resumeUpload`, src/youtube/youtubeUpload.ts) — the one case where
+   * falling through to a fresh `videos.insert` would put a second copy of the match on the
+   * channel, which only Studio can undo.
+   */
+  resumeOnly?: boolean;
   onProgress?: (uploadedBytes: number, totalBytes: number) => void;
   signal?: AbortSignal;
   /** Test seam for the start POST and the chunk PUTs; the token refresh still uses global fetch. */
@@ -175,7 +182,7 @@ export interface UploadOptions {
  * nightly uploads them back to back: one shared name meant starting the Short threw away the
  * long-form's resume, which is the whole point of the feature.
  */
-const sessionPath = (filePath: string): string =>
+export const sessionPath = (filePath: string): string =>
   path.join(path.dirname(filePath), `.upload-session-${path.basename(filePath)}.json`);
 
 async function readSession(filePath: string, total: number): Promise<string | null> {
@@ -274,6 +281,10 @@ export async function uploadVideo(opts: UploadOptions): Promise<UploadResult> {
   }
 
   if (!sessionUrl) {
+    if (opts.resumeOnly)
+      throw new Error(
+        `No resumable session for ${opts.filePath} — refusing to start a new upload (resumeOnly)`,
+      );
     const notify = opts.notifySubscribers === false ? "&notifySubscribers=false" : "";
     const start = await fetchImpl(`${UPLOAD_API}/videos?uploadType=resumable&part=snippet,status${notify}`, {
       method: "POST",

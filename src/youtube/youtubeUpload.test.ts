@@ -6,10 +6,12 @@ import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { config } from "../config.js";
+import type { UploadOptions, UploadResult } from "./youtube.js";
 import {
   beginUpload,
   explainUploadError,
   playlistTitlesFor,
+  resumeUpload,
   retryFailedPlaylists,
   retryPendingComments,
   SHORT_DELAY_MS,
@@ -727,6 +729,66 @@ try {
   );
 
   console.log("OK: comment retry posts for public scheduled videos, skips private ones and Shorts");
+
+  /* --- Resuming a cut-short upload (shortTick → src/dashboard/shortFlow.ts, after a restart) - */
+  // The channel scan can pair a half-uploaded video to its match long before every byte of it has
+  // landed (`recordStudioUpload`), so a record on disk is not proof of anything: only a session
+  // still on disk, or a record this chain itself wrote, settle the step without the operator.
+  {
+    const rMatchId = matchId + 500;
+    const rDir = path.join(media, String(rMatchId));
+    await mkdir(rDir, { recursive: true });
+    const rFile = path.join(rDir, `short-${rMatchId}.mp4`);
+    const rSession = path.join(rDir, `.upload-session-short-${rMatchId}.mp4.json`);
+    const sent: Array<{ resumeOnly?: boolean; filePath: string }> = [];
+    const stubSend = async (opts: UploadOptions): Promise<UploadResult> => {
+      sent.push({ resumeOnly: opts.resumeOnly, filePath: opts.filePath });
+      return { videoId: "vidResumed", publishAt: null, privacyStatus: "private" };
+    };
+
+    // No session, no record: nothing of this chain's is in flight — a safe no-op, so the normal
+    // upload step starts fresh right after.
+    assert.equal(await resumeUpload(rMatchId, "short", stubSend), null);
+    assert.equal(sent.length, 0, "nothing in flight, nothing to resume");
+
+    // No session, a dashboard record: the crash landed between writing it and marking the step
+    // done, so it is trusted as done.
+    await writeUpload(rMatchId, { ...record, videoId: "vidOld", source: "dashboard" }, "short");
+    assert.equal(await resumeUpload(rMatchId, "short", stubSend), null);
+    assert.equal(sent.length, 0);
+
+    // No session, a studio record — the channel scan's own premature pairing, or anything else
+    // this chain did not write itself: the step fails rather than guessing, and nothing is sent.
+    await writeUpload(rMatchId, { ...record, videoId: "vidOld", source: "studio" }, "short");
+    const refused = await resumeUpload(rMatchId, "short", stubSend);
+    assert.match(String(refused), /Studio/);
+    assert.match(String(refused), /Retry/);
+    assert.equal(sent.length, 0, "a foreign record with no session is never sent");
+
+    // A session on disk: resumed through `send` with resumeOnly, and the chain's own record
+    // replaces whatever (the studio one above) was there — the scan's premature pairing does not
+    // stick once the chain actually finishes the upload.
+    await writeFile(rFile, "x");
+    await writeFile(rSession, JSON.stringify({ filePath: rFile, total: 1, sessionUrl: "https://x" }));
+    const resumed = await resumeUpload(rMatchId, "short", stubSend);
+    assert.equal(resumed, null);
+    assert.deepEqual(sent, [{ resumeOnly: true, filePath: rFile }], "resumed, never a fresh start");
+    const after = await readUpload(rMatchId, "short");
+    assert.equal(after?.videoId, "vidResumed");
+    assert.equal(after?.source, "dashboard", "the chain's record replaces the scan's studio one");
+
+    // The session resumes, but `send` itself still fails (expired, say) with a foreign record on
+    // disk: the same "ask the operator" message as no session at all, discovered live instead.
+    await writeUpload(rMatchId, { ...record, videoId: "vidOld", source: "studio" }, "short");
+    await writeFile(rSession, JSON.stringify({ filePath: rFile, total: 1, sessionUrl: "https://x" }));
+    const failingSend = async (): Promise<UploadResult> => {
+      throw new Error("No resumable session for x — refusing to start a new upload (resumeOnly)");
+    };
+    const stillForeign = await resumeUpload(rMatchId, "short", failingSend);
+    assert.match(String(stillForeign), /Studio/);
+
+    console.log("OK: a cut-short upload resumes its own session and never starts a second one");
+  }
 
   globalThis.fetch = realFetch;
   console.log("OK: the tags step adds what is missing without blanking the snippet");

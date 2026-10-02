@@ -895,6 +895,21 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
   reason — `navigator.clipboard.readText` made four of them pass against 127.0.0.1 and die against
   the real dashboard. `--unsafely-treat-insecure-origin-as-secure` does not help: it needs a
   persistent profile.
+- **A cut-short upload resumes its own session, never trusts a record.** A restart mid-upload
+  leaves `upload-video`/`upload-short` recorded `"running"` in `short-<id>.status.json` with the
+  file's `.upload-session-<name>.json` still on disk — and the channel scan can pair that same
+  half-uploaded video to its match by the description link alone (`recordStudioUpload`,
+  `src/youtube/channelUploads.ts`) long before every byte of it has actually landed, which used to
+  make `advance()` read that record as "done" and leave the step `"running"` for ever (2 Oct 2026,
+  the Grand Final's `series-13530634.mp4`, paired at 30% uploaded, 48 ticks with no progress).
+  `shortTick`'s restart now settles a `"running"` upload step through `resumeUpload`
+  (`src/youtube/youtubeUpload.ts`) instead of the normal upload-video/upload-short step: a session
+  still on disk is finished through `uploadVideo`'s own resume with `resumeOnly` — which refuses to
+  ever fall through to starting a second one, the one thing a restart must not cause — and writes
+  the chain's own `source: "dashboard"` record over whatever the scan wrote, so the finish steps
+  run as for any dashboard upload rather than declining as "uploaded elsewhere". No session and a
+  `source: "dashboard"` record is trusted as done (the crash landed between writing it and marking
+  the step so); no session and anything else on record fails the step and names Studio, not a guess.
 - **Country flags render as tofu** without a colour-emoji font (cosmetic, intro card).
 - **Verify visual changes by rendering** (`npm run still`, then read the PNG).
 - **`npm run test:unit` after any edit; `npm test` after touching rendering or asset

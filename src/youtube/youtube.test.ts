@@ -427,6 +427,88 @@ console.log("youtube: all checks passed");
     "bytes 524288-786431/786432",
   ]);
 
+  // 3. `resumeOnly`: a cut-short upload's restart (`resumeUpload`, src/youtube/youtubeUpload.ts)
+  //    must never fall through to starting a fresh `videos.insert` — a second copy of the same
+  //    match on the channel, which only Studio can undo. No session on disk at all (the odd-Range
+  //    test above left none):
+  let posted = false;
+  const refuseFresh: typeof fetch = async (_url, init) => {
+    if (init?.method === "POST") posted = true;
+    return new Response("", { status: 404 });
+  };
+  await assert.rejects(
+    uploadVideo({
+      filePath: file,
+      title: "t",
+      description: "d",
+      privacyStatus: "private",
+      resumeOnly: true,
+      fetchImpl: refuseFresh,
+      chunkBytes: CHUNK,
+    }),
+    /resumeOnly/,
+  );
+  assert.equal(posted, false, "no session at all: resumeOnly never starts one");
+
+  // A session file is there, but YouTube no longer honours it (expired, say): resumeOnly still
+  // refuses to fall back to a fresh start, and the stale file is left for a human to look at
+  // rather than deleted on a guess.
+  await writeFile(
+    session,
+    JSON.stringify({ filePath: file, total: 3 * CHUNK, sessionUrl: "https://upload/session" }),
+  );
+  let posted2 = false;
+  const goneSession: typeof fetch = async (_url, init) => {
+    if (init?.method === "POST") posted2 = true;
+    return new Response("", { status: 404 }); // the probe: not 2xx, not 308 — the session is gone
+  };
+  await assert.rejects(
+    uploadVideo({
+      filePath: file,
+      title: "t",
+      description: "d",
+      privacyStatus: "private",
+      resumeOnly: true,
+      fetchImpl: goneSession,
+      chunkBytes: CHUNK,
+    }),
+    /resumeOnly/,
+  );
+  assert.equal(
+    posted2,
+    false,
+    "a session gone at YouTube's end must not fall through to a fresh POST either",
+  );
+  assert.equal(existsSync(session), true, "the stale session file is left on disk, not deleted blind");
+
+  // A session that is genuinely still good resumes exactly as without resumeOnly — the guard
+  // only ever refuses the fall-through to a fresh start, never a real resume.
+  await writeFile(
+    session,
+    JSON.stringify({ filePath: file, total: 3 * CHUNK, sessionUrl: "https://upload/session" }),
+  );
+  let resumeCalls = 0;
+  const goodSession: typeof fetch = async (url) => {
+    assert.equal(String(url), "https://upload/session");
+    resumeCalls++;
+    return new Response(JSON.stringify({ id: "vidResumed", status: { privacyStatus: "private" } }), {
+      status: 200,
+    });
+  };
+  const resumedOk = await uploadVideo({
+    filePath: file,
+    title: "t",
+    description: "d",
+    privacyStatus: "private",
+    resumeOnly: true,
+    fetchImpl: goodSession,
+    chunkBytes: CHUNK,
+  });
+  assert.equal(resumedOk.videoId, "vidResumed");
+  assert.equal(resumeCalls, 1, "the probe alone finished it — YouTube already had every byte");
+  assert.equal(existsSync(session), false, "a completed resume forgets its session like any other");
+  console.log("OK: resumeOnly finishes a real session and never starts a second one");
+
   globalThis.fetch = realFetch;
   console.log("OK: a finished session is not uploaded twice, and an odd Range does not restart it");
   await rm(dir, { recursive: true, force: true });

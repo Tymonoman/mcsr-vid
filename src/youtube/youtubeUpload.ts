@@ -36,6 +36,7 @@ import {
   isConfigured,
   postComment,
   SEASON_PLAYLIST_DESCRIPTION,
+  sessionPath,
   setThumbnail,
   uploadVideo,
   videoStats,
@@ -194,6 +195,20 @@ export function explainUploadError(raw: string): string {
   return raw;
 }
 
+/**
+ * Where a kind's upload reads its bytes from, absent the hand-named `videoPath` escape hatch —
+ * shared by a fresh upload and a resume (`resumeUpload`), so the two can never resolve to
+ * different files for the same match.
+ */
+async function uploadFilePath(
+  matchId: number,
+  kind: UploadKind,
+): Promise<{ path: string } | { error: string }> {
+  if (kind === "short") return { path: path.join(matchDir(matchId), `short-${matchId}.mp4`) };
+  const status = await matchStatusFor(matchId);
+  return findExportedVideo(matchId, [status.leftNickname, status.rightNickname]);
+}
+
 async function startUpload(matchId: number, req: UploadRequest, send: typeof uploadVideo): Promise<Begun> {
   if (!config.youtubeUploadEnabled) return { status: 403, error: UPLOADS_OFF };
   const key = progressKey(matchId, req.kind);
@@ -223,11 +238,8 @@ async function startUpload(matchId: number, req: UploadRequest, send: typeof upl
   if (req.videoPath) {
     filePath = path.resolve(req.videoPath);
     if (!filePath.startsWith(dir + path.sep)) return bad(`videoPath must be inside ${dir}`);
-  } else if (req.kind === "short") {
-    filePath = path.join(dir, `short-${matchId}.mp4`);
   } else {
-    const status = await matchStatusFor(matchId);
-    const located = findExportedVideo(matchId, [status.leftNickname, status.rightNickname]);
+    const located = await uploadFilePath(matchId, req.kind);
     if ("error" in located) return bad(located.error);
     filePath = located.path;
   }
@@ -584,6 +596,94 @@ export async function finishOnYouTube(
   }
   if (record) await writeUpload(matchId, { ...record, finished }, kind);
   return finished;
+}
+
+/** What a record with no session left to resume, and no proof it was ever finished, means. */
+const studioNoSession = (kind: UploadKind, record: UploadRecord): string =>
+  `${kindName(kind)} shows as uploaded (${record.videoId}, from ${record.source === "studio" ? "Studio" : "elsewhere"}) but this chain never finished sending it and its upload session is gone — delete it in Studio if it is broken, then Retry`;
+
+/**
+ * A step `shortTick` finds recorded "running" with no chain alive in this process to finish it:
+ * whatever was sending the bytes is gone, but the upload itself may not be — YouTube keeps a
+ * resumable session for about a day. Finishes it through `uploadVideo`'s own resume (its 2xx
+ * probe path is "already all there", 308 is "keep sending") rather than trusting whatever is on
+ * disk: the channel scan can pair a half-uploaded video to its match by the description link
+ * alone, long before every byte of it has actually landed (`recordStudioUpload` below), and that
+ * record used to read as "done" and leave the step "running" forever (2 Oct 2026, the Grand
+ * Final's `series-13530634.mp4`, paired at 30% uploaded). `resumeOnly` is the guarantee this never
+ * falls through to starting a second copy of the video — the one thing a restart must not cause.
+ *
+ * No session left and a `source: "dashboard"` record is trusted as done (the crash landed between
+ * writing it and marking the step so); no session and anything else on record — the scan's own
+ * pairing, or nothing — fails the step instead of guessing, and says to check Studio. A completed
+ * resume writes the chain's own record over whatever was there, so the finish steps (thumbnail,
+ * playlists, tags, comment) run as for any dashboard upload rather than declining as "uploaded
+ * elsewhere". Null settles the step done; a message is its failure.
+ */
+export async function resumeUpload(
+  matchId: number,
+  kind: UploadKind,
+  send: typeof uploadVideo = uploadVideo,
+): Promise<string | null> {
+  const located = await uploadFilePath(matchId, kind);
+  if ("error" in located) return located.error;
+  const filePath = located.path;
+  const record = await readUpload(matchId, kind);
+  if (!existsSync(sessionPath(filePath))) {
+    if (!record || record.source === "dashboard") return null;
+    return studioNoSession(kind, record);
+  }
+  const manifest = await readManifest(matchDir(matchId));
+  const text = await uploadTextFor(matchId, kind);
+  const step = logStep(kind);
+  startActivity(matchId, step, `resuming ${kindName(kind)} after a restart`);
+  try {
+    const result = await send({
+      filePath,
+      title: text.title,
+      description: text.description,
+      tags: text.tags,
+      privacyStatus: "private",
+      resumeOnly: true,
+      onProgress: (uploaded, total) => {
+        if (total > 0) activityProgress(matchId, step, (uploaded / total) * 100);
+      },
+    });
+    shortLog(
+      matchId,
+      step,
+      `resumed after a restart — ${kindName(kind)} is up: https://youtu.be/${result.videoId}`,
+    );
+    await writeUpload(
+      matchId,
+      {
+        videoId: result.videoId,
+        uploadedAt: new Date().toISOString(),
+        publishAt: result.publishAt,
+        privacyStatus: result.privacyStatus,
+        thumbnailVariant: manifest?.chosen ?? null,
+        title: text.title,
+        source: "dashboard",
+      },
+      kind,
+    );
+    const steps = await finishOnYouTube(matchId, result.videoId, kind);
+    for (const [finishStep, error] of Object.entries(steps))
+      if (typeof error === "string")
+        shortLog(matchId, step, `Uploaded, but the ${finishStep} step failed: ${error}`, { level: "warn" });
+    if (kind === "video") archiveMatch(matchId);
+    return null;
+  } catch (err) {
+    // The session on disk, and YouTube no longer honours it (expired): the same "ask the
+    // operator" case as no session at all, just discovered live instead of from a missing file.
+    if (record && record.source !== "dashboard") return studioNoSession(kind, record);
+    const raw = describeError(err);
+    const message = explainUploadError(raw);
+    shortLog(matchId, step, `resuming after a restart failed: ${message}`, { level: "error", detail: raw });
+    return message;
+  } finally {
+    endActivity(matchId, step);
+  }
 }
 
 /**
