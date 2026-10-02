@@ -76,7 +76,13 @@ import {
 } from "../youtube/channelUploads.js";
 import { MIN_LEAD_MS, publishSlotFor, slotWarnings } from "../youtube/publishSlot.js";
 import { reschedule } from "../youtube/youtube.js";
-import { beginUpload, SHORT_DELAY_MS, uploadRunning, type UploadRequest } from "../youtube/youtubeUpload.js";
+import {
+  beginUpload,
+  resumeUpload,
+  SHORT_DELAY_MS,
+  uploadRunning,
+  type UploadRequest,
+} from "../youtube/youtubeUpload.js";
 import { nicknameWarnings, readUpload, writeUpload, type UploadKind } from "../youtube/youtubeStore.js";
 import { hiddenMatchIds, isExported, isShortUploaded, isUploaded } from "./matchShelf.js";
 import { listProcessedMatchIds } from "./matchStatus.js";
@@ -625,7 +631,9 @@ export async function shortPlan(
     : { short: f.pick?.hookSuggestion ? [f.pick.hookSuggestion] : [], title: f.pick?.titleHooks ?? [] };
   f = await factsOf(matchId);
   const { state, detail } =
-    seriesGame && !f.video ? { state: "no-export" as const, detail: SERIES_GAME } : stateOf(matchId, f, opts.now);
+    seriesGame && !f.video
+      ? { state: "no-export" as const, detail: SERIES_GAME }
+      : stateOf(matchId, f, opts.now);
   const errors = [
     ...f.status.errors,
     ...(f.pickError ? [{ step: "pick" as const, at: f.pickError.at, message: f.pickError.message }] : []),
@@ -719,13 +727,19 @@ async function writeHooks(
 
   // A hook with a newline or < > is not refused: newlines become spaces and < > are removed.
   if (/[<>\r\n]/.test(titleHook)) {
-    titleHook = titleHook.replace(/[\r\n]+/g, " ").replace(/[<>]/g, "").trim();
+    titleHook = titleHook
+      .replace(/[\r\n]+/g, " ")
+      .replace(/[<>]/g, "")
+      .trim();
     saveWarnings.push(
       "newlines in the title hook became spaces and < > were removed (they would break the <HOOK> placeholder and the one-line title files)",
     );
   }
   if (shortHook && /[<>\r\n]/.test(shortHook)) {
-    shortHook = shortHook.replace(/[\r\n]+/g, " ").replace(/[<>]/g, "").trim();
+    shortHook = shortHook
+      .replace(/[\r\n]+/g, " ")
+      .replace(/[<>]/g, "")
+      .trim();
     saveWarnings.push(
       "newlines in the Short hook became spaces and < > were removed (they would break the one-line title files)",
     );
@@ -845,6 +859,8 @@ export interface ChainDeps {
   pick: (matchId: number) => Promise<void>;
   /** List the channel now — before re-sending an upload a restart cut short. */
   refreshChannel: () => Promise<unknown>;
+  /** Settle an upload-video/upload-short step a restart left "running" (`resumeUpload`). */
+  resumeUpload: (matchId: number, kind: UploadKind) => Promise<string | null>;
   now: () => number;
 }
 
@@ -854,6 +870,7 @@ const liveDeps = (): ChainDeps => ({
   upload: beginUpload,
   pick: (matchId) => queuePick(matchId),
   refreshChannel: () => refreshChannelUploadsNow(),
+  resumeUpload,
   now: Date.now,
 });
 
@@ -1194,13 +1211,19 @@ async function runStep(matchId: number, step: Step, fn: () => Promise<string | n
 async function advance(matchId: number, deps: ChainDeps): Promise<void> {
   const status = readStatus(matchId);
   const before = status.steps;
-  // An upload a restart cut short, or one that failed, may have reached YouTube before the record
-  // was written: ask the channel first, or the retry would put a second copy on it.
-  if (
-    before["upload-video"]?.state === "running" ||
-    before["upload-short"]?.state === "running" ||
-    status.recheckChannel
-  ) {
+  // A restart leaves an upload-video/upload-short step "running" with nothing left to finish it:
+  // resume its own file through `resumeUpload` rather than trusting a record, because the channel
+  // scan can pair a half-uploaded video to its match long before every byte of it has landed
+  // (`recordStudioUpload`) — treating that as "done" used to leave the step "running" forever.
+  // `runStep` settles it done or failed either way, so the tick never resumes it a second time.
+  for (const step of ["upload-video", "upload-short"] as const) {
+    if (before[step]?.state !== "running") continue;
+    const kind: UploadKind = step === "upload-video" ? "video" : "short";
+    if (!(await runStep(matchId, step, () => deps.resumeUpload(matchId, kind)))) return;
+  }
+  // A failed upload may have reached YouTube before the record was written: a save that retries
+  // it lists the channel first, or the retry would put a second copy on it.
+  if (status.recheckChannel) {
     updateStatus(matchId, (s) => delete s.recheckChannel);
     shortLog(
       matchId,

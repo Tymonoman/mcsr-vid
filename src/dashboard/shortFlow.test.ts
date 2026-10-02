@@ -333,7 +333,10 @@ try {
   assert.equal(withAngle.status, 202);
   assert.ok(withAngle.payload.saveWarnings?.some((w) => /< > were removed/.test(w)));
 
-  const newlineSave = await call("PUT", "hooks", W, { titleHook: "Line 1\nLine 2", shortHook: "Short\nhook" });
+  const newlineSave = await call("PUT", "hooks", W, {
+    titleHook: "Line 1\nLine 2",
+    shortHook: "Short\nhook",
+  });
   assert.equal(newlineSave.status, 202);
   assert.ok(newlineSave.payload.saveWarnings?.some((w) => /newlines/i.test(w)));
   assert.equal(
@@ -598,6 +601,81 @@ try {
   assert.ok(!existsSync(path.join(dir(G), `short-${G}.pick-error.json`)));
   assert.deepEqual((await flow.nightlyShortSummary()).picker, { ok: true });
   console.log("OK: the tick resumes an interrupted chain and retries heuristic picks once a day");
+
+  /* --- 11b. A restart cut short an UPLOAD step: resumed through its own session, never re-sent -- */
+  // The real resumeUpload is unit-tested in youtube(Upload).test.ts; this pins the wiring —
+  // `advance` must settle a "running" upload step through `deps.resumeUpload`, not the record a
+  // premature channel-scan pairing could have written, and never fall back to `deps.upload`.
+  {
+    const RESUME = 13_000_900;
+    exported(RESUME);
+    writePick(RESUME);
+    writeFileSync(path.join(dir(RESUME), `match-${RESUME}.title.edited.txt`), "Resumed | edcr vs doogile\n");
+    writeFileSync(
+      path.join(dir(RESUME), `short-${RESUME}.status.json`),
+      JSON.stringify({
+        hooksSavedAt: "2026-09-24T07:00:00Z",
+        noShort: true,
+        steps: { "upload-video": { state: "running", at: "2026-09-24T07:01:00Z" } },
+        errors: [],
+      }),
+    );
+    const resumeCalls: Array<{ id: number; kind: string }> = [];
+    const resumedOk = {
+      ...chain,
+      resumeUpload: async (id: number, kind: "video" | "short") => {
+        resumeCalls.push({ id, kind });
+        // What the real resumeUpload does on success: its own record, so the main loop sees the
+        // upload as done rather than looping back into a fresh `deps.upload`.
+        await writeUpload(
+          id,
+          {
+            videoId: `resumed-${kind}-${id}`,
+            uploadedAt: new Date().toISOString(),
+            publishAt: null,
+            privacyStatus: "private",
+            thumbnailVariant: null,
+            title: "t",
+            source: "dashboard",
+          },
+          kind,
+        );
+        return null;
+      },
+    };
+    const sentBefore = sent.length;
+    await flow.shortTick(resumedOk, NOW);
+    await flow.chainIdle(RESUME);
+    assert.deepEqual(resumeCalls, [{ id: RESUME, kind: "video" }], "resumed once, through its own session");
+    assert.equal(sent.length, sentBefore, "the normal upload step never ran for it");
+    assert.equal((await readUpload(RESUME, "video"))?.videoId, `resumed-video-${RESUME}`);
+    assert.equal(
+      JSON.parse(readFileSync(path.join(dir(RESUME), `short-${RESUME}.status.json`), "utf8")).steps[
+        "upload-video"
+      ].state,
+      "done",
+      "the step settles instead of staying running forever",
+    );
+
+    // A resume that cannot settle it (no session left, nothing trustworthy on record) fails the
+    // step with the server's own message, so the tick does not spin on it either.
+    writeFileSync(
+      path.join(dir(RESUME), `short-${RESUME}.status.json`),
+      JSON.stringify({
+        hooksSavedAt: "2026-09-24T07:00:00Z",
+        noShort: true,
+        steps: { "upload-video": { state: "running", at: "2026-09-24T07:01:00Z" } },
+        errors: [],
+      }),
+    );
+    const resumedFailing = { ...chain, resumeUpload: async () => "check Studio, then Retry" };
+    await flow.shortTick(resumedFailing, NOW);
+    await flow.chainIdle(RESUME);
+    const afterFail = JSON.parse(readFileSync(path.join(dir(RESUME), `short-${RESUME}.status.json`), "utf8"));
+    assert.equal(afterFail.steps["upload-video"].state, "failed");
+    assert.equal(afterFail.steps["upload-video"].detail, "check Studio, then Retry");
+    console.log("OK: a cut-short upload step resumes through its own session and always settles");
+  }
 
   /* --- 12. Weak sync, and a series' preview offset ------------------------------------------------ */
   writeFileSync(
