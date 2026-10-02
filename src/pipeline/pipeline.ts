@@ -364,6 +364,7 @@ async function runStages(
         versus,
       })
     )[0],
+    [userLeft, userRight],
   );
 
   const thumbnailPath = path.join(outDir, "thumbnail.png");

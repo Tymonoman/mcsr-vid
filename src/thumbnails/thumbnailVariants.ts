@@ -15,6 +15,7 @@ import { existsSync } from "node:fs";
 import { copyFile, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { atomicOutput } from "../pipeline/atomicOutput.js";
+import { hookLabelProblem } from "../pipeline/hooks.js";
 import { bundleOnce } from "../pipeline/remotionBundle.js";
 import type { AvatarProvider } from "../api/avatarUrl.js";
 import { computeThumbnailProps, type PosePair } from "./thumbnailProps.js";
@@ -150,12 +151,21 @@ export function variantStillReusable(previous: VariantsManifest | null, poses: P
  * The title hook a pipeline run writes. A manifest's headline is the committed choice from when
  * thumbnails carried one, and a re-run keeps it; a manifest with no text is a deliberate
  * text-free render, kept too. Only a match with no manifest takes the chip.
+ *
+ * A carried headline that labels a player is dropped in favour of the (already-filtered) chip
+ * instead (2 Oct 2026): `match-12730175.title.txt` carried "YN vs TAS" this way, from a manifest
+ * written before the thumbnail's hook text came off on 18 Sept 2026 — long before any check here
+ * existed, and no re-run had ever re-judged it since. `players` is optional for the same reason
+ * `hookLabelProblem` makes it optional everywhere else; omit it and only a denied word is caught.
  */
 export function carriedHookText(
   previous: VariantsManifest | null,
   chip: string | undefined,
+  players?: readonly { nickname: string }[],
 ): string | undefined {
-  return previous ? (previous.hookText ?? undefined) : chip;
+  if (!previous) return chip;
+  const carried = previous.hookText ?? undefined;
+  return carried !== undefined && hookLabelProblem(carried, players) !== null ? chip : carried;
 }
 
 /**

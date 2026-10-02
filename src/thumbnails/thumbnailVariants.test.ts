@@ -271,4 +271,26 @@ console.log("thumbnailVariants: all checks passed");
     "a deliberate text-free render stays text-free",
   );
   console.log("OK: a re-run carries the manifest's headline forward");
+
+  // A carried headline that labels a player is dropped for the chip instead (2 Oct 2026):
+  // match-13223455.title.txt carried "TAS vs UNC" this way, from a manifest written before the
+  // thumbnail's hook text came off on 18 Sept 2026 — no re-run had ever re-judged it since.
+  const players = [{ nickname: "doogile" }, { nickname: "Feinberg" }];
+  const labelled = { ...prev, hookText: "TAS vs UNC" } as VariantsManifest;
+  assert.equal(
+    carriedHookText(labelled, "ICE COLD", players),
+    "ICE COLD",
+    "a labelled carried headline is dropped for the chip",
+  );
+  assert.equal(
+    carriedHookText(labelled, undefined, players),
+    undefined,
+    "no clean chip either: the placeholder stands",
+  );
+  // No players given: the historical bug's mechanism, unfixed on this call shape alone — same as
+  // hookLabelProblem and hookProblem everywhere else.
+  assert.equal(carriedHookText(labelled, "ICE COLD"), "TAS vs UNC", "no match given — carried as before");
+  // A clean carried headline still wins over the chip, players or not.
+  assert.equal(carriedHookText(prev, "#3 vs #21", players), "OLD", "a clean carry still wins");
+  console.log("OK: a carried headline that labels a player is dropped for the chip, not kept");
 }

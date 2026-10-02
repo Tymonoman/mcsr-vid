@@ -4,6 +4,7 @@ import {
   HOOK_SEED_RANK_ELO,
   hookFacts,
   hookLabelProblem,
+  hookSuggestions,
   spoilsTheResult,
   suggestHooksExternally,
   typedSpoiler,
@@ -450,3 +451,14 @@ process.env.HOOK_SUGGEST_CMD = `printf 'Decided at the dragon\\nLCQ vs YN\\nASIA
 assert.deepEqual(await suggestHooksExternally(input()), ["Decided at the dragon"]);
 delete process.env.HOOK_SUGGEST_CMD;
 console.log("OK: HOOK_SUGGEST_CMD is held to the no-label rule too");
+
+// hookSuggestions itself is held to the same rule, whatever produced the chip (2 Oct 2026) — the
+// render pipeline's cold-start default (pipeline.ts) calls this function directly, never through
+// the dashboard's own chip filter, so this is the one place that has to catch "TAS vs UNC" (the
+// real string match-13223455.title.txt carried as its first suggestion).
+process.env.HOOK_SUGGEST_CMD = `printf 'TAS vs UNC\\nDecided at the dragon\\n'`;
+assert.deepEqual(await hookSuggestions(input()), ["Decided at the dragon"], "edcr vs doogile: TAS/UNC is neither");
+delete process.env.HOOK_SUGGEST_CMD;
+// Unset, the built-ins never produce a labelled chip anyway — hookSuggestions changes nothing for them.
+assert.deepEqual(await hookSuggestions(input({ finishMarginMs: 2_400 })), ["Decided by 2.4 seconds"]);
+console.log("OK: hookSuggestions filters a labelled chip too, not just suggestHooksExternally");
