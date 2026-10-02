@@ -196,8 +196,9 @@ views brought 0 subscribers.
   and a race label, and the replies read it as Claude's suggestion: "we fucked up." Root cause traced
   further back than the model: `match-12730175.title.txt` (edcr vs doogile) had "YN vs TAS" as its
   own first suggestion — `withHook` carrying forward whatever a thumbnail manifest's `hookText` held,
-  unvalidated, from before the thumbnail's hook text came off (18 Sept) — nobody had typed it for
-  that match. It reached the operator's edit from there, then `pastTitleHooks` showed it as a style
+  unvalidated, from before the thumbnail's hook text came off (18 Sept). Where that August headline
+  came from first (typed, or an early chip) is not on record. It reached the operator's edit from
+  there, then `pastTitleHooks` showed it as a style
   example, and the prompt told the model an epithet could be reused "when that same player is in this
   match" — the model copied "YN" onto lauveer–edcr, a different match's different player. Both
   permissions are gone now: `pastTitleHooks` shows no "vs" example at all (above), and `withHook`
