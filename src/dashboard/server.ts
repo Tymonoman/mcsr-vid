@@ -21,7 +21,7 @@ import { config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { codeVersions } from "./repoHead.js";
 import { computeMetrics } from "../pipeline/matchScore.js";
-import { listMatchStatuses, matchStatusFor } from "./matchStatus.js";
+import { listMatchStatuses, matchIsBlocked, matchStatusFor } from "./matchStatus.js";
 import { getMatch, matchPageUrl, parseMatchId } from "../api/mcsrApi.js";
 import {
   afterSettled,
@@ -338,6 +338,11 @@ const server = createServer(async (req, res) => {
         json(res, 400, { error: describeError(err) });
         return;
       }
+      // Cheap next to the render it would otherwise start (config.blockedPlayers).
+      if (await matchIsBlocked(parsed)) {
+        json(res, 403, { error: `match ${parsed} has a blocked player — it is not rendered` });
+        return;
+      }
       const job = startJob(parsed);
       armFollowUps(job, url);
       json(res, 202, { matchId: parsed, running: !job.done });
@@ -364,6 +369,13 @@ const server = createServer(async (req, res) => {
       const matchId = Number(idRaw);
       if (!Number.isInteger(matchId)) {
         json(res, 400, { error: "expected a match id" });
+        return;
+      }
+      // Up front, before the fire-and-forget run starts: a 202 with nothing happening after it
+      // is a worse refusal than a plain one now (config.blockedPlayers). `renderSeries` itself
+      // also refuses — this is so the route answers it rather than staying silent.
+      if (await matchIsBlocked(matchId)) {
+        json(res, 403, { error: `match ${matchId} has a blocked player — the series is not rendered` });
         return;
       }
       void renderSeries(matchId, serverSeriesRunners)

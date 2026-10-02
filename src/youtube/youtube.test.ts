@@ -655,9 +655,36 @@ console.log("youtube: all checks passed");
 
   assert.equal(calls, 0, "not one of those refusals touched the network");
 
+  // A blocked player refuses too — up front, after matchStatusFor has read who they are, and
+  // before any write (videos.update, videos.list) is even attempted (config.blockedPlayers).
+  const savedBlocked = config.blockedPlayers;
+  config.blockedPlayers = ["TestBlockedAdopt"];
+  calls = 0;
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    calls += 1;
+    const url = String(input);
+    if (url.includes("mcsrranked.com"))
+      return new Response(
+        JSON.stringify({
+          status: "success",
+          data: { players: [{ nickname: "TestBlockedAdopt" }, { nickname: "doogile" }] },
+        }),
+      );
+    throw new Error("the block should have refused before any YouTube call");
+  }) as typeof fetch;
+  {
+    const a = await adopt("aAX_ML4rHdo");
+    assert.equal(a.status, 403);
+    assert.match(String((a.body as { error: string }).error), /blocked player/);
+  }
+  assert.equal(calls, 1, "one MCSR read to learn who they are, then nothing — no YouTube call");
+  config.blockedPlayers = savedBlocked;
+
   globalThis.fetch = realFetch;
   config.mediaDir = realMediaDir;
-  console.log("OK: adopt refuses a bad id, an unpicked hook and a description that would not pair");
+  console.log(
+    "OK: adopt refuses a bad id, an unpicked hook, a description that would not pair, and a blocked player",
+  );
   await rm(dir, { recursive: true, force: true });
 }
 

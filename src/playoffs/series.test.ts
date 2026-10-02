@@ -317,6 +317,34 @@ const nothing = await renderSeries(
 assert.equal(nothing.kind, "current");
 assert.deepEqual(log, [], "a current series renders nothing");
 
+// A blocked player's match refuses outright — before any render, export or disk write
+// (config.blockedPlayers). The dashboard's own route also refuses up front so the HTTP response
+// carries it; this is what `npm run series` gets, since both call this one function.
+{
+  const savedBlocked = config.blockedPlayers;
+  config.blockedPlayers = ["edcr"]; // one of this series' own two seeds
+  const calls: string[] = [];
+  const blocked = await renderSeries(
+    101,
+    {
+      renderGame: async (id) => {
+        calls.push(`render ${id}`);
+        return null;
+      },
+      exportGame: async (id) => {
+        calls.push(`export ${id}`);
+        return null;
+      },
+      log: () => {},
+    },
+    seams,
+  );
+  assert.deepEqual(blocked, { kind: "blocked", matchId: 101 });
+  assert.deepEqual(calls, [], "nothing is rendered or exported for a blocked player's series");
+  config.blockedPlayers = savedBlocked;
+  console.log("OK: renderSeries refuses a blocked player's series outright, before any work");
+}
+
 // A newer export of one game re-joins: the other two come back out of the series at their
 // recorded offsets, the three are joined, the exports go again.
 await new Promise((r) => setTimeout(r, 20));

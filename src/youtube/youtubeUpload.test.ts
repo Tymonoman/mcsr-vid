@@ -486,6 +486,44 @@ try {
     "while the step that had succeeded stayed untouched",
   );
 
+  // A blocked player's match: no further writes, ever — Adopt, the Finish button and the
+  // nightly's retries all settle through this one function (config.blockedPlayers).
+  {
+    const savedBlocked = config.blockedPlayers;
+    config.blockedPlayers = ["TestBlocked"];
+    await writeFile(path.join(dir, "TestBlocked.mp4"), "x");
+    await writeUpload(matchId, {
+      ...record,
+      finished: { playlists: '"Season 11": quota', thumbnail: null, comment: undefined, tags: undefined },
+    });
+    hits.length = 0;
+    const blocked = await finishOnYouTube(matchId, "vidX");
+    assert.deepEqual(
+      blocked,
+      {
+        playlists: "a blocked player — no YouTube writes are made for this match",
+        thumbnail: null,
+        comment: "a blocked player — no YouTube writes are made for this match",
+        tags: "a blocked player — no YouTube writes are made for this match",
+      },
+      "already-done steps are left alone; pending ones get the blocked note instead of a retry",
+    );
+    assert.deepEqual(
+      hits.filter((h) => h.includes("googleapis.com/youtube")),
+      [],
+      "no playlist, thumbnail, comment or tag write reaches YouTube",
+    );
+    const onDisk = await readUpload(matchId);
+    assert.equal(
+      onDisk?.finished?.playlists,
+      '"Season 11": quota',
+      "not persisted — the record is untouched, so unblocking needs no repair",
+    );
+    await rm(path.join(dir, "TestBlocked.mp4"));
+    config.blockedPlayers = savedBlocked;
+    console.log("OK: a blocked player's match makes no YouTube writes on Finish, and nothing is persisted");
+  }
+
   // A private video — every nightly upload — cannot be commented on. Left unattempted rather than
   // recorded as an error, or every nightly push would read ", with a problem".
   livePrivacy = "private";

@@ -1,6 +1,6 @@
 import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
-import { config, matchDir } from "../config.js";
+import { blockedIn, config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { getMatch } from "../api/mcsrApi.js";
 import { SPLITS_MANIFEST } from "../pipeline/overlayRender.js";
@@ -54,7 +54,22 @@ export async function listMatchStatuses(): Promise<MatchStatusEntry[]> {
  * tax on an API budgeted at 500 requests per 10 minutes.
  */
 /** MP4s the pipeline writes beside the POV clips — never a player's `<nickname>.mp4`. */
-const GENERATED_MP4 = /^(overlay-|final-|series-|short-|smoke-)/;
+export const GENERATED_MP4 = /^(overlay-|final-|series-|short-|smoke-)/;
+
+/**
+ * The POV clip nicknames already on disk for a match (`<nickname>.mp4`, never the pipeline's own
+ * generated MP4s) — disk only, no API call, so it survives the API being down and is safe on a
+ * hot path (`youtubeUpload.ts`'s blocklist check reads it on every upload attempt).
+ */
+export function povNicknamesOnDisk(dir: string): string[] {
+  return existsSync(dir)
+    ? readdirSync(dir, { withFileTypes: true })
+        // The pipeline's own MP4s share the folder (overlay-timer.mp4 read as a player on 27 Sept 2026).
+        .filter((entry) => entry.isFile() && entry.name.endsWith(".mp4") && !GENERATED_MP4.test(entry.name))
+        .map((entry) => entry.name.slice(0, -".mp4".length))
+        .sort()
+    : [];
+}
 
 export async function matchStatusFor(matchId: number): Promise<MatchStatusEntry> {
   const outDir = matchDir(matchId);
@@ -62,13 +77,7 @@ export async function matchStatusFor(matchId: number): Promise<MatchStatusEntry>
   // Read from disk first so the answer survives the API being down. The pipeline names each
   // clip `<nickname>.mp4`, so the files alone tell us the VODs are there — the API is only
   // needed to say which of the two is players[0].
-  const downloadedNicknames = existsSync(outDir)
-    ? readdirSync(outDir, { withFileTypes: true })
-        // The pipeline's own MP4s share the folder (overlay-timer.mp4 read as a player on 27 Sept 2026).
-        .filter((entry) => entry.isFile() && entry.name.endsWith(".mp4") && !GENERATED_MP4.test(entry.name))
-        .map((entry) => entry.name.slice(0, -".mp4".length))
-        .sort()
-    : [];
+  const downloadedNicknames = povNicknamesOnDisk(outDir);
 
   let leftNickname = "?";
   let rightNickname = "?";
@@ -126,4 +135,15 @@ export async function matchStatusFor(matchId: number): Promise<MatchStatusEntry>
     projectPath: hasProject ? path.resolve(projectFilePath) : null,
     error,
   };
+}
+
+/**
+ * Whether a match's players include a blocked one (config.blockedPlayers) — the gate before
+ * starting a brand-new render (`POST /api/render`), whose working directory does not exist yet,
+ * so `povNicknamesOnDisk` has nothing to read. One MCSR read, same as `matchStatusFor`'s own; a
+ * down API degrades to "?" nicknames, which block nobody.
+ */
+export async function matchIsBlocked(matchId: number): Promise<boolean> {
+  const status = await matchStatusFor(matchId);
+  return blockedIn([status.leftNickname, status.rightNickname]);
 }

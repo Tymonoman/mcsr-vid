@@ -6,15 +6,15 @@
  * refused, what gets sent, or what happens after the insert. Nothing here calls `videos.insert`
  * while `youtubeUploadEnabled` is off — see src/config.ts and CLAUDE.md.
  */
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { archiveMatch } from "../dashboard/archive.js";
 import type { ChannelVideo } from "./channelUploads.js";
-import { config, isBlockedPlayer, matchDir } from "../config.js";
+import { blockedIn, config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { getMatch } from "../api/mcsrApi.js";
-import { listProcessedMatchIds, matchStatusFor } from "../dashboard/matchStatus.js";
+import { listProcessedMatchIds, matchStatusFor, povNicknamesOnDisk } from "../dashboard/matchStatus.js";
 import { playoffContextForId } from "../playoffs/playoffs.js";
 import { exportStale, staleExportMessage } from "../pipeline/syncFile.js";
 import { readManifest } from "../thumbnails/thumbnailVariants.js";
@@ -105,15 +105,18 @@ type Begun =
   { status: number; error: string } | { progress: UploadProgress; finished: Promise<UploadProgress> };
 
 /**
- * Whether this match's own POV clips (`<nickname>.mp4`, src/dashboard/matchStatus.ts) name a
+ * Whether this match's own POV clips (`povNicknamesOnDisk`, src/dashboard/matchStatus.ts) name a
  * blocked player (config.blockedPlayers) — disk only, no network: the clips are on disk by the
  * time anything is ever uploaded, and this must never be slower or less available than the
- * upload it gates.
+ * upload it gates. The same reader `matchStatusFor` uses, so a generated MP4
+ * (`overlay-timer.mp4`, `final-<id>.mp4`, …) is never mistaken for a player.
  */
 function hasBlockedPlayer(dir: string): boolean {
-  if (!existsSync(dir)) return false;
-  return readdirSync(dir).some((f) => f.endsWith(".mp4") && isBlockedPlayer(f.slice(0, -".mp4".length)));
+  return blockedIn(povNicknamesOnDisk(dir));
 }
+
+/** Why a blocked match's still-pending finish steps are left undone — `finishOnYouTube`'s own note. */
+const BLOCKED_FINISH = "a blocked player — no YouTube writes are made for this match";
 
 /**
  * Nothing goes up before the operator has saved the hooks (23 Sept 2026). The long-form needs a
@@ -500,18 +503,34 @@ export async function finishOnYouTube(
     }
   };
   const dir = matchDir(matchId);
-  const status = await matchStatusFor(matchId);
-  const manifest = await readManifest(dir);
-  const thumb = path.join(
-    dir,
-    manifest?.variants.find((v) => v.key === manifest.chosen)?.file ?? "thumbnail.png",
-  );
   const record = await readUpload(matchId, kind);
   const already = record?.finished ?? {};
   // A step is redone only if it has not already succeeded. `undefined` is "not attempted", so a
   // Short that later needs nothing, or a comment skipped while the video was private, is retried
   // — the same press that fixes a genuine failure.
   const todo = (step: keyof FinishedSteps): boolean => already[step] !== null;
+
+  // Checked before any read or write reaches YouTube, and before the match status / manifest
+  // reads below: Adopt, the Finish button and the nightly's retries (retryFailedPlaylists,
+  // retryPendingComments) all settle through this one function, so all three inherit the
+  // refusal without a check of their own. A step already finished (from before the player was
+  // blocked) is left alone — nothing true becomes a lie — and nothing not yet done is attempted.
+  // Not persisted: the record keeps whatever it already said, so unblocking needs no repair.
+  if (hasBlockedPlayer(dir)) {
+    return {
+      playlists: todo("playlists") ? BLOCKED_FINISH : null,
+      thumbnail: todo("thumbnail") ? BLOCKED_FINISH : null,
+      comment: todo("comment") ? BLOCKED_FINISH : null,
+      tags: todo("tags") ? BLOCKED_FINISH : null,
+    };
+  }
+
+  const status = await matchStatusFor(matchId);
+  const manifest = await readManifest(dir);
+  const thumb = path.join(
+    dir,
+    manifest?.variants.find((v) => v.key === manifest.chosen)?.file ?? "thumbnail.png",
+  );
 
   const finished: FinishedSteps = { ...already };
 
