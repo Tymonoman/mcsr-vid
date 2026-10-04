@@ -258,9 +258,10 @@
 .sugg .who {
   font-weight: 700;
 }
-/* Two buckets pick their cards separately, each with its own slots and score, so a run of very tight
-   matches cannot crowd out the funny ones. The list itself is one ordering across both (favourites'
-   matches first, then the audience); the chip only says which bucket a card came from. */
+/* Three buckets pick their cards separately, each with its own slots, so a run of very tight matches
+   cannot crowd out the funny ones, and a known player's one-sided match still gets a card ("known",
+   4 Oct 2026). The list itself is one ordering across all of them (favourites' matches first, then
+   the audience); the chip only says which bucket a card came from. */
 .bucket {
   font-size: 10px;
   letter-spacing: 1px;
@@ -275,6 +276,9 @@
 }
 .bucket.playoffs {
   color: var(--crimson);
+}
+.bucket.known {
+  color: var(--quartz);
 }
 .sugg .muted {
   color: var(--muted);
