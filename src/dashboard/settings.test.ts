@@ -158,8 +158,8 @@ console.log("settings: the allowlist holds and every kind coerces");
 
   console.log("settings: the favourite players save, apply live, and clear to none");
 
-  // The blocked players: Aquacorde by default, live at once, and clearable the same way.
-  assert.deepEqual(config.blockedPlayers, ["Aquacorde"], "the default is live before any save");
+  // The blocked players: Aquacorde and BeefSalad by default, live at once, and clearable the same way.
+  assert.deepEqual(config.blockedPlayers, ["Aquacorde", "BeefSalad"], "the default is live before any save");
   assert.deepEqual(saveSettings({ blockedPlayers: "Aquacorde, someoneElse" }).changed, ["blockedPlayers"]);
   assert.deepEqual(config.blockedPlayers, ["Aquacorde", "someoneElse"]);
   assert.deepEqual(JSON.parse(readFileSync(CONFIG_PATH, "utf8")).blockedPlayers, [

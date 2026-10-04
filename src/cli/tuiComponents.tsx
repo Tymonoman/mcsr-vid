@@ -122,12 +122,14 @@ function pad(text: string, width: number): string {
 export function SuggestionRow({ suggestion, selected }: { suggestion: Suggestion; selected: boolean }) {
   const { metrics, bucket, score } = suggestion;
   const isClose = bucket === "close";
+  const bucketColor = bucket === "close" ? COLORS.lead : bucket === "chaos" ? COLORS.gold : COLORS.quartz;
+  const bucketLabel = bucket === "close" ? "[CLOSE]" : bucket === "chaos" ? "[CHAOS]" : "[KNOWN]";
   const margin =
     metrics.finishMarginMs === null ? "  DNF" : `${(metrics.finishMarginMs / 1000).toFixed(2).padStart(5)}s`;
   return (
     <Box>
       <Text color={COLORS.gold}>{selected ? "❯ " : "  "}</Text>
-      <Text color={isClose ? COLORS.lead : COLORS.gold}>{isClose ? "[CLOSE]" : "[CHAOS]"}</Text>
+      <Text color={bucketColor}>{bucketLabel}</Text>
       <Text color={selected ? COLORS.quartz : COLORS.muted}>
         {" "}
         {metrics.matchId} {pad(`${metrics.players[0]} v ${metrics.players[1]}`, 30)}

@@ -87,6 +87,10 @@ assert.ok(media.startsWith(tmpdir()), "refusing to run outside tmpdir");
 config.mediaDir = media;
 config.suggestCloseSlots = 2;
 config.suggestChaosSlots = 0;
+// Off until its own test below turns it on: every close/chaos check here predates the known
+// bucket and asserts an exact result list, which a nonzero default would otherwise pad out with
+// whatever known-tier matches the pool happens to hold.
+config.suggestKnownSlots = 0;
 config.suggestWeights = { ...DEFAULT_WEIGHTS };
 config.suggestFastRunTargetSec = 420;
 config.suggestSlowRunCutoffSec = 600;
@@ -108,7 +112,8 @@ globalThis.fetch = (async (url: string) => {
 const cachePath = path.join(media, ".suggest-cache.json");
 const nowSec = Math.floor(Date.now() / 1000);
 // A close race scored on its finish margin alone: 3 of the weights' 8.5 times (1 - margin / 15 s).
-const pooled = (matchId: number, players: [string, string], finishMarginMs: number) => ({
+// null is a DNF — the loser never killed the dragon, so there is no margin and no close slot.
+const pooled = (matchId: number, players: [string, string], finishMarginMs: number | null) => ({
   metrics: {
     matchId,
     players,
@@ -277,18 +282,13 @@ try {
   assert.deepEqual(await ids([...DEFAULTS.favouritePlayers]), [72, 73], "never two matches of one pair");
 
   // The scan reads each favourite's own list and each strong draw's (STRONG_DRAWS: measured >= 1.0)
-  // once: the default roster's 6 and hackingnoises, BeefSalad, edcr, nahhann — 10 calls.
+  // once: the default roster's 6 and hackingnoises, edcr, nahhann — 9 calls. BeefSalad was one of
+  // these too, until he was blocked (config.blockedPlayers, 4 Oct 2026).
   assert.deepEqual(
     [...asked].sort(),
-    [
-      ...DEFAULTS.favouritePlayers.map((n) => n.toLowerCase()),
-      "beefsalad",
-      "edcr",
-      "hackingnoises",
-      "nahhann",
-    ].sort(),
+    [...DEFAULTS.favouritePlayers.map((n) => n.toLowerCase()), "edcr", "hackingnoises", "nahhann"].sort(),
   );
-  assert.equal(STRONG_DRAWS.length, 9, "the 9 measured at 1.0 or more, 5 of them on the default roster");
+  assert.equal(STRONG_DRAWS.length, 8, "the 8 measured at 1.0 or more, 5 of them on the default roster");
   console.log("OK: a favourite's match is a tier above the no-name ones at the slots");
 
   // --- A blocked player's match never reaches the list, however it scores, and does not even stay
@@ -322,6 +322,130 @@ try {
     );
     config.blockedPlayers = savedBlocked;
     console.log("OK: a blocked player's match never reaches the list, and leaves the pool entirely");
+  }
+
+  // --- The known bucket: no closeness or chaos score needed, just the tier (4 Oct 2026) -----------
+  {
+    config.suggestCloseSlots = 1;
+    config.suggestChaosSlots = 0;
+    config.suggestKnownSlots = 2;
+    const closeKnown = pooled(301, ["hackingnoises", "aaa"], 0); // a finish: wins the one close slot
+    const dnfKnown = pooled(302, ["silverrruns", "bbb"], null); // no finish — ineligible for close
+    const nonameFinish = pooled(303, ["ccc", "ddd"], 100); // a finish, but no known player
+    await writeFile(
+      cachePath,
+      JSON.stringify({
+        ...JSON.parse(await readFile(cachePath, "utf8")),
+        dismissed: [],
+        pool: Object.fromEntries(
+          [closeKnown, dnfKnown, nonameFinish].map((e) => [String(e.metrics.matchId), e]),
+        ),
+        scannedAt: 0,
+      }),
+      "utf8",
+    );
+    config.favouritePlayers = [];
+    const result = await getSuggestions({ force: true });
+    const byId = new Map(result.suggestions.map((s) => [s.metrics.matchId, s.bucket]));
+    assert.equal(byId.get(301), "close", "the known player with a finish takes the one close slot");
+    assert.equal(byId.get(302), "known", "the DNF known player still gets a card, via the known bucket");
+    assert.equal(byId.get(303), undefined, "the no-name match with a finish loses the close slot to tier");
+    assert.equal(
+      result.suggestions.filter((s) => s.metrics.matchId === 301).length,
+      1,
+      "a match the close bucket already claimed is not also given a known slot",
+    );
+    console.log("OK: a known player's match is a card whether or not it is close or chaotic, never twice");
+  }
+
+  // --- Pool pruning keeps a known player's match over newer no-names once the pool is full --------
+  {
+    const bulk: Record<string, unknown> = {};
+    for (let i = 0; i < 500; i++) {
+      const entry = pooled(100_000 + i, [`nn${i}a`, `nn${i}b`], 0);
+      entry.dateSec = nowSec - i; // every one newer than the known player's match below
+      bulk[String(entry.metrics.matchId)] = entry;
+    }
+    const knownOld = pooled(99, ["hackingnoises", "zzz"], 0);
+    knownOld.dateSec = nowSec - 9 * 86_400; // the oldest entry in the pool, by far, but inside 10 days
+    bulk["99"] = knownOld;
+    await writeFile(
+      cachePath,
+      JSON.stringify({
+        ...JSON.parse(await readFile(cachePath, "utf8")),
+        dismissed: [],
+        pool: bulk,
+        scannedAt: 0,
+      }),
+      "utf8",
+    );
+    config.favouritePlayers = [];
+    await getSuggestions({ force: true });
+    const afterPrune = JSON.parse(await readFile(cachePath, "utf8"));
+    assert.equal(Object.keys(afterPrune.pool).length, 500, "still capped at POOL_MAX_ENTRIES");
+    assert.ok("99" in afterPrune.pool, "the known player's match survives although it is by far the oldest");
+    console.log("OK: pool pruning keeps a known match over a newer no-name one once the pool is full");
+  }
+
+  // --- `countedMatchIds` alone must not stop a favourite's match reaching the pool (4 Oct 2026) ----
+  // Simulates a match that crossed into "counted" on an earlier scan (its VODs were seen) but never
+  // got scored — a shortlist cut, or scored once and later pruned. The favourite-list pull used to
+  // skip it forever once counted; it must get another look as long as it is not already in the pool.
+  {
+    config.favouritePlayers = ["doogile"];
+    const fresh = JSON.parse(await readFile(cachePath, "utf8"));
+    await writeFile(
+      cachePath,
+      JSON.stringify({ ...fresh, dismissed: [], pool: {}, countedMatchIds: [555], scannedAt: 0 }),
+      "utf8",
+    );
+    const feedMatch = {
+      id: 555,
+      type: 2,
+      date: nowSec - 3_600,
+      players: [
+        { nickname: "doogile", uuid: "u1", eloRank: null, eloRate: null },
+        { nickname: "opp", uuid: "u2", eloRank: null, eloRate: null },
+      ],
+      forfeited: false,
+      vod: [
+        { uuid: "u1", url: "a", startsAt: 0 },
+        { uuid: "u2", url: "b", startsAt: 0 },
+      ],
+      changes: [],
+      result: { time: 600_000, uuid: "u1" },
+    };
+    globalThis.fetch = (async (url: string) => {
+      const u = String(url);
+      if (u.startsWith("https://api.mcsrranked.com/matches/555")) {
+        return {
+          ok: true,
+          json: async () => ({
+            status: "success",
+            data: { ...feedMatch, timelines: [], completions: [] },
+          }),
+        };
+      }
+      if (u.includes("/users/") && u.includes("/versus/")) {
+        return { ok: true, json: async () => ({ status: "success", data: { results: { ranked: {} } } }) };
+      }
+      if (u.includes("/users/doogile/matches")) {
+        return { ok: true, json: async () => ({ status: "success", data: [feedMatch] }) };
+      }
+      if (u.includes("/users/") || u.startsWith("https://api.mcsrranked.com/matches")) {
+        return { ok: true, json: async () => ({ status: "success", data: [] }) };
+      }
+      throw new Error(`unexpected ${url}`);
+    }) as unknown as typeof fetch;
+
+    const r = await getSuggestions({ force: true });
+    assert.ok(
+      r.suggestions.some((s) => s.metrics.matchId === 555),
+      "the match reaches the list",
+    );
+    const savedAfter = JSON.parse(await readFile(cachePath, "utf8"));
+    assert.ok("555" in savedAfter.pool, "and the pool, though it was already in countedMatchIds");
+    console.log("OK: a match already in countedMatchIds still gets offered to the pool");
   }
 
   console.log("suggestSelect: all checks passed");

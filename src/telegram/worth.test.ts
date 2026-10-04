@@ -132,7 +132,7 @@ try {
     seedType: null,
     bastionType: null,
   });
-  const names = new Set(["beefsalad", ...WATCH_ROSTER.map((n) => n.toLowerCase())]);
+  const names = new Set(["hackingnoises", ...WATCH_ROSTER.map((n) => n.toLowerCase())]);
   const pure = {
     roster: WATCH_ROSTER,
     isKnown: (n: string) => names.has(n.toLowerCase()),
@@ -143,7 +143,7 @@ try {
     players: [player("doogile"), player("Feinberg"), player("Infume")],
   };
   const pool = [
-    feedMatch(2, "doogile", "BeefSalad", { hoursAgo: 1 }), // one roster seat, newest
+    feedMatch(2, "doogile", "hackingnoises", { hoursAgo: 1 }), // one roster seat, newest
     feedMatch(1, "doogile", "Feinberg", { hoursAgo: 2 }), // a roster pair
     feedMatch(1, "doogile", "Feinberg", { hoursAgo: 2 }), // …read again in the other player's list
     feedMatch(10, "Infume", "silverrruns", { hoursAgo: 30 }), // a roster pair, older

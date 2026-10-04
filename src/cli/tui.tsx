@@ -438,7 +438,9 @@ function App({ signal }: { signal: AbortSignal }) {
         <Header />
         <Box
           borderStyle="round"
-          borderColor={entry.bucket === "close" ? COLORS.lead : COLORS.gold}
+          borderColor={
+            entry.bucket === "close" ? COLORS.lead : entry.bucket === "chaos" ? COLORS.gold : COLORS.quartz
+          }
           paddingX={2}
           flexDirection="column"
         >
@@ -453,8 +455,12 @@ function App({ signal }: { signal: AbortSignal }) {
         </Box>
         <Box marginTop={1} flexDirection="column">
           <Text color={COLORS.muted}>
-            {entry.bucket === "close" ? "Close race" : "Chaotic run"} · score {entry.score.toFixed(2)} ·
-            popularity {entry.popularity.toFixed(1)}
+            {entry.bucket === "close"
+              ? "Close race"
+              : entry.bucket === "chaos"
+                ? "Chaotic run"
+                : "Known pair"}{" "}
+            · score {entry.score.toFixed(2)} · popularity {entry.popularity.toFixed(1)}
           </Text>
           {entry.vodUrls.map((url) => (
             <Text key={url} color={COLORS.muted}>

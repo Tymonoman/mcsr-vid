@@ -469,9 +469,9 @@ const order = (
   const level = [game(5, ["ccc", "ddd"], 100, { bucket: "chaos" }), game(6, ["eee", "fff"], 100)];
   assert.deepEqual(order(level, []), [6, 5], "an equal audience: close before chaos");
   assert.deepEqual(order([...level].reverse(), []), [6, 5], "wherever they arrive");
-  // Both known: BeefSalad (1.29) and a stranger draw 1.54, v_strid (0.8) and a stranger 1.05.
+  // Both known: nahhann (1.04) and a stranger draw 1.29, v_strid (0.8) and a stranger 1.05.
   assert.deepEqual(
-    order([game(7, ["v_strid", "ggg"], 100), game(8, ["BeefSalad", "jjj"], 10, { bucket: "chaos" })], []),
+    order([game(7, ["v_strid", "ggg"], 100), game(8, ["nahhann", "jjj"], 10, { bucket: "chaos" })], []),
     [8, 7],
     "the tiebreaker is only that: the audience first, whatever the bucket or the popularity",
   );
@@ -610,9 +610,9 @@ const order = (
     "2.33 -> 1.17 beats 1.05",
   );
   assert.deepEqual(
-    order([strongRepeat, game(2, ["BeefSalad", "ddd"])], [], [], strongPosted),
+    order([strongRepeat, game(2, ["nahhann", "ddd"])], [], [], strongPosted),
     [2, 1],
-    "2.33 -> 1.17 loses to 1.54",
+    "2.33 -> 1.17 loses to 1.29",
   );
 
   // An empty list changes nothing; the repeat is the only card, so it is still shown.
