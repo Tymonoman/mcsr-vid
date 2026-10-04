@@ -67,6 +67,7 @@
   "nightlyUpload": "off",
   "suggestCloseSlots": 8,
   "suggestChaosSlots": 2,
+  "suggestKnownSlots": 4,
   "suggestCacheTtlMin": 30,
   "suggestMaxScanRequests": 40,
   "suggestDetailFetchLimit": 120,
@@ -112,6 +113,7 @@
   "telegramReportHourWarsaw": 7,
   "dashboardBaseUrl": "http://actimel:8080",
   "blockedPlayers": [
-    "Aquacorde"
+    "Aquacorde",
+    "BeefSalad"
   ]
 }

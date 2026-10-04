@@ -99,7 +99,7 @@ export const DEFAULT_DRAW: Readonly<Record<string, number>> = {
   hackingnoises: 2.08,
   silverrruns: 1.93,
   lowk3y_: 1.38,
-  beefsalad: 1.29,
+  // BeefSalad is gone too, not just below the gate: blocked (config.blockedPlayers, 4 Oct 2026).
   infume: 1.19,
   feinberg: 1.09,
   edcr: 1.07,
@@ -244,7 +244,7 @@ export function tierFor(
 const NO_TWITCH_NOTE =
   "popularity: streaming frequency only (set TWITCH_CLIENT_ID/TWITCH_CLIENT_SECRET in .env for follower data)";
 
-export type Bucket = "close" | "chaos";
+export type Bucket = "close" | "chaos" | "known";
 
 /** Who a player is, for the card: the operator picks on names and stakes, not on a score. */
 export interface SuggestionPlayer {
@@ -572,8 +572,9 @@ export interface SuggestOptions {
 }
 
 /**
- * Ten suggested matches: `suggestCloseSlots` ranked on how close the race was, then
- * `suggestChaosSlots` ranked on how entertainingly it fell apart.
+ * Suggested matches in three groups: `suggestCloseSlots` ranked on how close the race was, then
+ * `suggestChaosSlots` on how entertainingly it fell apart, then `suggestKnownSlots` for a known
+ * player's match needing neither — it is a card on tier alone (`tierFor`).
  *
  * Only ~2% of ranked matches have the two Twitch VODs the pipeline needs, so the feed is
  * paged (100 per request, `vod`/`forfeited` both present there) to build a candidate list
@@ -676,18 +677,23 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
   };
 
   // A favourite or a strong draw (`STRONG_DRAWS`) too quiet to surface in the feed's own paging (it
-  // only reaches so far back) still gets a look: one list per name — 10 with the default roster —
-  // folded into the same candidates the feed fills. Only a match no scan has seen yet and young
-  // enough for the pool: a list is re-read every scan, and an already-counted match coming back
-  // would take a detail fetch from a new one (or be fetched again every time the pool drops it). One
-  // name failing (a stale nickname in the config) costs that name's coverage, not the scan.
+  // only reaches so far back) still gets a look: one list per name — 9 with the default roster —
+  // folded into the same candidates the feed fills. Offered regardless of `counted`: that flag means
+  // only "already counted for popularity" (foldMatch below keeps that idempotent on its own), and
+  // gating this pull on it too meant a match that missed one scan's detail-fetch shortlist, or that
+  // fell out of the pool once full, never got a second look — on a live pool, 60 of 114 known-player
+  // dual-VOD matches from the last 10 days were stuck exactly that way (4 Oct 2026). Skipped only when
+  // it is already scored (`cache.pool` — no sense re-adding what is already there) or too old for the
+  // pool. One name failing (a stale nickname in the config) costs that name's coverage, not the scan.
   const coveredSec = Date.now() / 1000 - POOL_MAX_AGE_DAYS * 86_400;
   const covered = new Map([...config.favouritePlayers, ...STRONG_DRAWS].map((n) => [n.toLowerCase(), n]));
   for (const nickname of covered.values()) {
     try {
       const list = await getUserMatches(nickname, { type: RANKED_TYPE, count: PAGE_SIZE });
       requests += 1;
-      for (const match of list) if (!counted.has(match.id) && match.date >= coveredSec) foldMatch(match);
+      for (const match of list) {
+        if (match.date >= coveredSec && !(String(match.id) in cache.pool)) foldMatch(match);
+      }
     } catch (err) {
       console.error(`suggest: ${nickname}'s own matches could not be read — ${(err as Error).message}`);
     }
@@ -728,6 +734,10 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
     ]),
   ];
   const { followers, usedTwitch, note } = await resolveFollowers(nicknames, cache);
+  // Built here, ahead of pruning, so a known player's match can be protected from it below —
+  // `take()` further down reuses the same two functions.
+  const followersOf = (name: string) => followers.get(name) ?? null;
+  const tier = tierFor(config.favouritePlayers, followersOf, config.knownFollowerThreshold);
 
   // Popularity blends how often a player streams ranked matches with the size of their
   // Twitch following. Followers go through log10 because the counts are heavy-tailed —
@@ -768,7 +778,11 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
   for (const entry of newlyScored) cache.pool[String(entry.metrics.matchId)] = entry;
 
   // Matches whose Twitch VODs have aged out can't be rendered any more, so they leave
-  // the pool. Then cap it, oldest first, so it can't grow without bound.
+  // the pool. Then cap it, a known player's matches first and oldest within each of those two
+  // groups, so it can't grow without bound. Recency alone (date all the way down) let plain volume
+  // crowd a favourite or a known player's matches out: the global feed produces far more no-name
+  // dual-VOD matches than any one roster does, so without the tier a known match that is even a
+  // couple of days old was being evicted long before it aged out on its own (4 Oct 2026).
   //
   // A blocked player's match also leaves here, not just at foldMatch: a match pooled before the
   // player was blocked must not go on being carried forward (or selected) just because it was
@@ -776,7 +790,7 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
   const cutoff = Date.now() - POOL_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
   const live = Object.values(cache.pool)
     .filter((entry) => entry.dateSec * 1000 >= cutoff && !blockedIn(entry.metrics.players))
-    .sort((a, b) => b.dateSec - a.dateSec)
+    .sort((a, b) => tier(b.metrics.players) - tier(a.metrics.players) || b.dateSec - a.dateSec)
     .slice(0, POOL_MAX_ENTRIES);
   cache.pool = Object.fromEntries(live.map((entry) => [String(entry.metrics.matchId), entry]));
 
@@ -794,6 +808,8 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
     }));
 
   const { suggestWeights, suggestFastRunTargetSec, suggestSlowRunCutoffSec } = config;
+  // "known" shares chaos's score: it is not a gate here, just the same tiebreaker chaos already
+  // used, since every entry in that bucket already cleared the one thing that matters to it (tier).
   const rank = (entry: (typeof selectable)[number], bucket: Bucket): number =>
     bucket === "close"
       ? closenessScore(entry.metrics, suggestWeights, suggestFastRunTargetSec, suggestSlowRunCutoffSec)
@@ -802,9 +818,7 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
   // The slots go by `tierFor` — the matches with a favourite, then those with a known player, then
   // the rest — inside a tier by `audienceFor` (the pairs put out lately as the scan finds them), then
   // the bucket's score, then popularity; the `score` kept on the card stays the bucket's own. One card
-  // per pair across both buckets (`pairs`): the best of a pair's matches, never two of them.
-  const followersOf = (name: string) => followers.get(name) ?? null;
-  const tier = tierFor(config.favouritePlayers, followersOf, config.knownFollowerThreshold);
+  // per pair across all three buckets (`pairs`): the best of a pair's matches, never two of them.
   const audience = audienceFor(config.favouritePlayers, followersOf, recentPairPostsSnapshot());
   const pairs = new Set<string>();
   const take = (
@@ -851,7 +865,17 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
   // Close slots that couldn't be filled roll over, so the list still comes back full.
   const chaosSlots = config.suggestChaosSlots + (config.suggestCloseSlots - close.length);
   const chaos = take(selectable, "chaos", chaosSlots, claimed);
-  const suggestions = [...close, ...chaos];
+  for (const s of chaos) claimed.add(s.metrics.matchId);
+
+  // A known player's match is a card whether or not it is close or chaotic, on top of the close and
+  // chaos slots rather than competing with them for one: the operator, 4 Oct 2026, "schedule some
+  // matches really known players the matches don't have to be that interesting you can lower the
+  // threshold like this for the suggestion mechanism." No score gate, just `tier` — already used to
+  // rank every other bucket — so a favourite still outranks a merely-known player here too. A match
+  // this bucket would have picked but that close or chaos already claimed does not take a second slot.
+  const knownEligible = selectable.filter((entry) => tier(entry.metrics.players) >= 1);
+  const known = take(knownEligible, "known", config.suggestKnownSlots, claimed);
+  const suggestions = [...close, ...chaos, ...known];
 
   cache.version = CACHE_VERSION;
   cache.scannedAt = Date.now();

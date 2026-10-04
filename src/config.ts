@@ -280,6 +280,14 @@ export interface Config {
    */
   suggestCloseSlots: number;
   suggestChaosSlots: number;
+  /**
+   * Slots, on top of the close and chaos ones, for a known player's match (`tierFor`: a favourite
+   * or a measured/followed draw) that needs no closeness or chaos score at all. The operator,
+   * 4 Oct 2026: "schedule some matches really known players the matches don't have to be that
+   * interesting you can lower the threshold like this for the suggestion mechanism." A match
+   * already claimed by the close or chaos bucket does not also take one of these.
+   */
+  suggestKnownSlots: number;
   /** Reuse the cached suggestion list for this long before rescanning. */
   suggestCacheTtlMin: number;
   /**
@@ -369,10 +377,12 @@ export interface Config {
    * Nicknames permanently off limits, API spelling, compared whole and ignoring case
    * (`isBlockedPlayer`/`blockedIn`, below). The operator, 2 Oct 2026, after Aquacorde commented
    * that he does not give permission for his footage to be used in the videos: "were fuuuuucked
-   * … take down all his videos and blacklist him." A match with a blocked player is dropped
-   * before it is scored (suggestions), never offered to the nightly even when queued, never
-   * listed as "worth rendering", never uploaded (long-form or Short), and never rendered. Empty
-   * means nobody is blocked.
+   * … take down all his videos and blacklist him." BeefSalad joined 4 Oct 2026 after commenting
+   * "do not use my footage again" — the operator's standing rule is that a runner's no is a
+   * block, same as Aquacorde's. A match with a blocked player is dropped before it is scored
+   * (suggestions), never offered to the nightly even when queued, never listed as "worth
+   * rendering", never uploaded (long-form or Short), and never rendered. Empty means nobody is
+   * blocked.
    */
   blockedPlayers: string[];
 }
@@ -455,6 +465,7 @@ export const DEFAULTS: Config = {
   nightlyUpload: "off",
   suggestCloseSlots: 8,
   suggestChaosSlots: 2,
+  suggestKnownSlots: 4,
   suggestCacheTtlMin: 30,
   suggestMaxScanRequests: 40,
   // Only ~10% of dual-VOD matches have a comparable finish (usually the loser stops once the
@@ -473,8 +484,9 @@ export const DEFAULTS: Config = {
   dashboardBaseUrl: "http://actimel:8080",
   // The operator, 2 Oct 2026: "were fuuuuucked. aquacorde just commented he doesn't give
   // permission for his footage to be used in the vids. take down all his videos and blacklist
-  // him." His 7 videos and 4 playlists were set private on the channel the same day.
-  blockedPlayers: ["Aquacorde"],
+  // him." His 7 videos and 4 playlists were set private on the channel the same day. BeefSalad
+  // joined 4 Oct 2026 after commenting "do not use my footage again" on the channel.
+  blockedPlayers: ["Aquacorde", "BeefSalad"],
 };
 
 /** The overrides file. Exported so the settings panel writes the same one the loader reads. */

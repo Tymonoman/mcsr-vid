@@ -314,9 +314,20 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   scan (~350 MCSR API calls against 500/10 min). Scanned at boot, every `suggestCacheTtlMin`
   (30) for new matches, before the nightly picks, and fully on the `rescan` link. Every scan also
   reads the own match lists of the favourites and of `STRONG_DRAWS` (measured draw ≥ 1.0 —
-  hackingnoises, BeefSalad, edcr, nahhann off the default roster): 10 calls, so a strong name too
-  quiet for the feed's paging still reaches the pool; only matches no scan has seen and young enough
-  for the pool are folded in. A scan's slots go one card per pair, across both buckets.
+  hackingnoises, edcr, nahhann off the default roster; BeefSalad was the fourth until the block):
+  9 calls, so a strong name too quiet for the feed's paging still reaches the pool — offered every
+  scan a match is not yet in the pool (`cache.pool`), not just the scan its VODs are first seen on
+  (4 Oct 2026: gating this pull on `countedMatchIds` too — a flag that means only "already counted
+  for popularity" — left a match that missed one scan's detail-fetch shortlist, or that fell out of
+  the pool once full, stuck there for good; a live 10-day sample had 60 of 114 known-player dual-VOD
+  matches stuck exactly that way). Pruning to `POOL_MAX_ENTRIES` (500) now keeps a known player's
+  matches ahead of a newer no-name one too, not just the newest overall — plain recency let the
+  feed's sheer volume of random matches crowd a known player's matches out days before they actually
+  aged out. A scan's slots go one card per pair, across all three buckets: close, chaos, and `known` —
+  a known player's match (`suggestKnownSlots`, default 4, on top of the close/chaos slots, settings
+  tab) needing no closeness or chaos score at all. The operator, 4 Oct 2026: "schedule some matches
+  really known players the matches don't have to be that interesting you can lower the threshold
+  like this for the suggestion mechanism."
 - **Favourite players come first, then known ones** (`tierFor`, `suggest.ts`; `favouritePlayers`,
   Settings tab, default doogile, Feinberg, Infume, Pinne, lowk3y_, silverrruns — edcr is the
   operator's call; `knownFollowerThreshold`, default 10,000; `pairRepeatDays`, default 3, 0 = off).
@@ -337,9 +348,9 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   (`pairPosts.ts`) refreshes in the background; the nightly waits for it at most 15 s. The operator,
   30 Sept 2026: "no name players no one will click on that"; 1 Oct: "the suggestion system is shit
   it recommends and schedules matches that no one will watch".
-- **Blocked players** (`blockedPlayers`, Settings tab, default `["Aquacorde"]`; `isBlockedPlayer`/
-  `blockedIn` in `src/config.ts`, compared whole and ignoring case): a runner who has withdrawn
-  permission for their footage. A match with one is dropped before the suggestion scan scores it
+- **Blocked players** (`blockedPlayers`, Settings tab, default `["Aquacorde", "BeefSalad"]`;
+  `isBlockedPlayer`/`blockedIn` in `src/config.ts`, compared whole and ignoring case): a runner who
+  has withdrawn permission for their footage. A match with one is dropped before the suggestion scan scores it
   and leaves the pool on the next scan even if it was already in there (`suggest.ts`), never shown
   on the list however stale the cache (`suggestPresent.ts`), never rendered by the nightly even
   if the operator queued it — the block outranks the queue, the only gate that does
@@ -363,7 +374,10 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   operator, 2 Oct 2026, after Aquacorde commented that he does not give permission for his footage
   to be used in the videos: "were fuuuuucked … take down all his videos and blacklist him." His 7
   videos and 4 playlists were set private on the channel the same day (ledger
-  `/home/node/.claude/jobs/8d7d95a1/tmp/aquacorde/ledger-apply.json`).
+  `/home/node/.claude/jobs/8d7d95a1/tmp/aquacorde/ledger-apply.json`). BeefSalad joined the list
+  4 Oct 2026 after commenting "do not use my footage again" — the operator's standing rule is that
+  a runner's no is a block, same as Aquacorde's. The known bucket (`suggestKnownSlots`, above) is no
+  exception: a match is pruned from the pool for being blocked before `tier()` ever sees it.
 - **Rival posts** (`src/dashboard/rivalPosts.ts`): the competitor's (`rivalChannelHandle`, default
   `mcsrmatches`) last 50 uploads, matched to cards by nickname pair, date and run length (their
   video is the run plus a few seconds; a post of the wrong length is another match of the same

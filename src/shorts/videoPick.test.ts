@@ -660,7 +660,7 @@ const uploaded = (id: number, title: string, onYouTube = true) => {
 
 {
   // Title hooks in the operator's style: their past hooks on uploaded matches are the examples.
-  uploaded(1, "DEAD HEAT AT THE DRAGON | BeefSalad vs silverrruns | MCSR Ranked 1v1 | Minecraft Speedrun");
+  uploaded(1, "DEAD HEAT AT THE DRAGON | hackingnoises vs silverrruns | MCSR Ranked 1v1 | Minecraft Speedrun");
   uploaded(2, "PLAYOFFS | SWEPT vs TAS | Aquacorde vs doogile | MCSR Ranked Season 11 Playoffs");
   uploaded(3, "WINNER vs 3rd PLACE | Infume vs Feinberg | MCSR Ranked 1v1");
   uploaded(4, "NEVER UPLOADED | a vs b | MCSR Ranked 1v1", false);
@@ -669,7 +669,7 @@ const uploaded = (id: number, title: string, onYouTube = true) => {
   uploaded(7, "2427 vs 2293 | a vs b | MCSR Ranked 1v1");
   // Never a "vs" hook as a style example any more (2 Oct 2026), real nicknames or not: this pair
   // is real, but the shape is exactly how "YN" had been copied onto a different match's player.
-  uploaded(8, "CARNIVORE vs VEGAN | BeefSalad vs silverrruns | MCSR Ranked 1v1 | Minecraft Speedrun");
+  uploaded(8, "CARNIVORE vs VEGAN | hackingnoises vs silverrruns | MCSR Ranked 1v1 | Minecraft Speedrun");
   answer({
     ...good,
     titleHooks: [
@@ -717,7 +717,7 @@ const uploaded = (id: number, title: string, onYouTube = true) => {
     !prompt.includes("reuse one only when that same player is in this match"),
     "the old epithet-reuse permission is gone",
   );
-  assert.match(prompt, / {2}"DEAD HEAT AT THE DRAGON" \(BeefSalad vs silverrruns\)/);
+  assert.match(prompt, / {2}"DEAD HEAT AT THE DRAGON" \(hackingnoises vs silverrruns\)/);
   assert.match(
     prompt,
     /never a nickname, label or epithet for a runner, and never a word about ethnicity, nationality, appearance, age or a slang abbreviation/,

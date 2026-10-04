@@ -118,8 +118,8 @@ function toCard(s: Suggestion, nowMs: number, rival: readonly RivalPost[]): Sugg
   };
 }
 
-/** Which bucket breaks a tie: the close races, then the chaos. */
-const BUCKET_RANK: Record<Bucket, number> = { close: 0, chaos: 1 };
+/** Which bucket breaks a tie: the close races, then the chaos, then a known player's plain match. */
+const BUCKET_RANK: Record<Bucket, number> = { close: 0, chaos: 1, known: 2 };
 
 /**
  * Cards in display order, one list across both buckets. First `tierFor`: a match with a favourite
@@ -132,7 +132,7 @@ const BUCKET_RANK: Record<Bucket, number> = { close: 0, chaos: 1 };
  * the biggest audience (`audienceFor`: expected draw × the favourites' bonus × `REPEAT_FACTOR` for a
  * pair the channel itself put out lately — `posted`, within `pairRepeatDays`, either side of now — and
  * no chaos/closeness term: match quality does not predict views once players are controlled for). The
- * bucket breaks a tie (`BUCKET_RANK`: close, then chaos), and popularity the one after that.
+ * bucket breaks a tie (`BUCKET_RANK`: close, then chaos, then known), and popularity the one after that.
  * Everything here is read on every call and kept out of the scan's cache, so a change to either
  * setting re-orders the next read. (The tier and the audience also decide when a scan chooses the
  * slots, `take` in suggest.ts: which matches are in the list follows at the next scan.)

@@ -103,8 +103,8 @@ assert.throws(() => validateOverrides({ favouritePlayers: ["edcr", 7] }), /favou
 assert.throws(() => validateOverrides({ favouritePlayers: ["edcr", "  "] }), /favouritePlayers/);
 
 // The blocklist: same rule as favouritePlayers (an array of nicknames, [] for nobody blocked),
-// and on by default for the one name the operator named (2 Oct 2026).
-assert.deepEqual(DEFAULTS.blockedPlayers, ["Aquacorde"]);
+// and on by default for the names the operator named (Aquacorde 2 Oct 2026, BeefSalad 4 Oct 2026).
+assert.deepEqual(DEFAULTS.blockedPlayers, ["Aquacorde", "BeefSalad"]);
 assert.doesNotThrow(() => validateOverrides({ blockedPlayers: [] }));
 assert.doesNotThrow(() => validateOverrides({ blockedPlayers: ["Aquacorde", "someoneElse"] }));
 assert.throws(() => validateOverrides({ blockedPlayers: null }), /blockedPlayers/);

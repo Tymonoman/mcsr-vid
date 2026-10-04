@@ -256,6 +256,15 @@ export const SETTINGS: readonly SettingField[] = [
     max: 30,
   },
   {
+    key: "suggestKnownSlots",
+    label: "Known-player slots",
+    help: "Cards for a known player's match on top of the above, close or chaotic or not.",
+    kind: "int",
+    group: "Suggestions",
+    min: 0,
+    max: 30,
+  },
+  {
     key: "postRollSec",
     label: "Post-roll (s)",
     help: "The most footage kept after the run ends. Cut earlier where the winner goes quiet, never under 15 s.",
