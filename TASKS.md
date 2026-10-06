@@ -1,5 +1,23 @@
 # TASKS — resume point (updated 24 Sept 2026 08:15 UTC)
 
+## ▶ RESUME HERE (night of 6→7 Oct 2026) — the operator's overnight goal, report by 07:00 UTC
+His prompt (start of this session): Studio-access memo → comments + "low quality / automated" diagnosis →
+competitor title study + hooks (Opus judge panel) → ideas scored → suggestion backtest + fix → Telegram bot on
+Haiku via the Claude CLI → merge to local main → branded report artifact + `npm run tg -- send --md` by 07:00
+UTC (09:00 Warsaw). Hard stop 08:00 UTC. He is AFK ("do everything as if I'm not here"). Agents on Sonnet;
+Opus only for the hook judges and the report synthesis. Progress line to Telegram every ~2 h.
+Scratch: /home/node/.claude/jobs/8d7d95a1/tmp/night1006/p0..p6. P0 memo done: p0/studio-access.md
+(no setup tonight; scopes unchanged until YPP; Studio-only steps by hand; the 28 Sept automation plan only
+with an Editor account, never the owner's).
+Workflows launched 22:05–22:20 UTC: P1 wf_af045b2a-6c5 (comments/analytics/packaging → p1/diagnosis.md),
+P5 wf_fe5979bc-18c (worktree tg-haiku), P2 wf_89d960dd-8f1 (worktree hooks-guide; p2/hooks-final.md),
+P4 wf_c4be7aeb-70b (worktree suggest-tune; p4/backtest.md, coverage.md). Then: P3 ideas (needs P1+P2),
+merge each branch (test:unit + tsc + review), P6 report. Never tonight: live retitle/delete/reschedule/
+privacy, nightly-changing config, .env/config edits, docker restart, Aquacorde/BeefSalad footage.
+Facts found: the dashboard image has `claude` but no login (no claude-config mount) → morning step:
+`claude setup-token` → CLAUDE_CODE_OAUTH_TOKEN in /app/.env → restart. `--bare` refuses OAuth. Tonight's
+03:00 UTC nightly candidate: 13782182 silverrruns vs ANJOUU. Gemini quota out (picks = heuristic).
+
 ## ▶ NIGHT 30 Sept → 1 Oct 2026 (the operator's goal, set ~21:50 UTC 30 Sept)
 
 His words: "work until 8:50 polish time tomorrow or until you hit the usage limit … generate ONE
