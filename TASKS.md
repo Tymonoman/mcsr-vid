@@ -14,6 +14,12 @@ P5 wf_fe5979bc-18c (worktree tg-haiku), P2 wf_89d960dd-8f1 (worktree hooks-guide
 P4 wf_c4be7aeb-70b (worktree suggest-tune; p4/backtest.md, coverage.md). Then: P3 ideas (needs P1+P2),
 merge each branch (test:unit + tsc + review), P6 report. Never tonight: live retitle/delete/reschedule/
 privacy, nightly-changing config, .env/config edits, docker restart, Aquacorde/BeefSalad footage.
+23:05 UTC: P5 MERGED to main (7764d63 + 20155da, merge commit; tsc + 87 unit files green in /app). P1 done
+(p1/diagnosis.md skeptic-corrected; p1/picture-quality.md: YT VP9 1080p ≈ SSIM 0.86 on fast turns, layout = competitors').
+P3 launched wf_618a7ba6-409 (ideas → score → 3 skeptics → build ≤2 default-off survivors in idea-* worktrees).
+MORNING #1: SF2 13527460 (Feinberg vs Infume?) missed 6 Oct 23:00 (hooks never saved); 3rd place EeAbgZQgZPk 7 Oct
+23:00 + GF _2EOkOOX0PQ 8 Oct 23:00 spoil it → he saves SF2 hooks with Publish at 7 Oct 21:00 UTC (no moves needed).
+Known test leak: suggestSelect.test.ts passes only with /app's config (mediaDir=/media) — fails in a fresh worktree.
 Facts found: the dashboard image has `claude` but no login (no claude-config mount) → morning step:
 `claude setup-token` → CLAUDE_CODE_OAUTH_TOKEN in /app/.env → restart. `--bare` refuses OAuth. Tonight's
 03:00 UTC nightly candidate: 13782182 silverrruns vs ANJOUU. Gemini quota out (picks = heuristic).
