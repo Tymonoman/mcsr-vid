@@ -68,6 +68,9 @@ export function startScan(force = false): Promise<void> {
       // A flaky feed must not clear a good previous list — a stale suggestion is still a
       // renderable match, and the error is reported alongside it rather than instead of it.
       state.error = describeError(err);
+      // state.error alone is only visible to whoever happens to be looking at the dashboard;
+      // a broken scan must also show up in the log the operator actually checks (7 Oct 2026).
+      console.error(`suggest: scan failed — ${state.error}`);
     })
     .finally(() => {
       state.scanning = false;

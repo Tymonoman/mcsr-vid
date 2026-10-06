@@ -697,7 +697,9 @@ export function validateOverrides(raw: Record<string, unknown>): void {
 }
 
 function loadConfig(): Config {
-  if (!existsSync(CONFIG_PATH)) return DEFAULTS;
+  // DEFAULTS is the module's one shared object; handing it out directly would let any mutation
+  // of the live config (including a test's) corrupt the default every later reader sees.
+  if (!existsSync(CONFIG_PATH)) return structuredClone(DEFAULTS);
   const parsed: unknown = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     throw new Error(`${CONFIG_PATH}: expected a JSON object.`);

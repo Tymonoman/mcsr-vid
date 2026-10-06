@@ -13,12 +13,13 @@
  * Hiding is the reversible option and the one the list uses by default: it only filters the
  * dashboard, and touches nothing on disk inside the match directory.
  */
-import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import { readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { isArchived } from "./archive.js";
 import { channelShortFor, channelUploadsSnapshot, channelVideoFor } from "../youtube/channelUploads.js";
 import { config, matchDir } from "../config.js";
+import { describeError } from "../errorText.js";
 import { readManifest } from "../thumbnails/thumbnailVariants.js";
 import { HOOK_PLACEHOLDER, metaPaths } from "../pipeline/title.js";
 import { readUpload } from "../youtube/youtubeStore.js";
@@ -51,8 +52,17 @@ function read(): ShelfState {
       nightlySkip: (parsed.nightlySkip ?? []).filter((n) => Number.isSafeInteger(n)),
       skipNightOf: typeof parsed.skipNightOf === "string" ? parsed.skipNightOf : null,
     };
-  } catch {
-    // A corrupt preferences file must not take the dashboard down over a cosmetic setting.
+  } catch (err) {
+    // A corrupt preferences file must not take the dashboard down over a cosmetic setting — but
+    // silently returning empty would let the very next write (setNightlyQueue, setHidden, …)
+    // overwrite it clean, losing the hidden list, tonight's queue and nightlySkip for good.
+    // Log it and rename the corrupt file aside so the evidence survives that write.
+    console.error(`matchShelf: ${file} unreadable, resetting — ${describeError(err)}`);
+    try {
+      renameSync(file, `${file}.corrupt-${new Date().toISOString().replace(/:/g, "-")}`);
+    } catch (renameErr) {
+      console.error(`matchShelf: could not back up ${file} — ${describeError(renameErr)}`);
+    }
     return { hidden: [], queue: [], nightlySkip: [], skipNightOf: null };
   }
 }

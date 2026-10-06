@@ -40,3 +40,34 @@ try {
 } finally {
   await rm(media, { recursive: true, force: true });
 }
+
+// A broken scan keeps the last good list and records state.error (above), but must also show
+// up in the dashboard's own log — swallowing it into `state.error` alone left a flaky feed
+// invisible until the operator noticed the list had gone stale.
+{
+  const media2 = await mkdtemp(path.join(tmpdir(), "mcsr-scan-fail-"));
+  assert.ok(media2.startsWith(tmpdir()), "refusing to run outside tmpdir");
+  config.mediaDir = media2;
+
+  globalThis.fetch = (async () =>
+    ({ ok: false, status: 400, statusText: "Bad Request" }) as unknown as Response) as typeof fetch;
+
+  const logged: unknown[][] = [];
+  const realError = console.error;
+  console.error = (...args: unknown[]) => logged.push(args);
+  try {
+    await startScan(false);
+  } finally {
+    console.error = realError;
+    await rm(media2, { recursive: true, force: true });
+  }
+
+  const s = snapshot();
+  assert.ok(s.error, "a scan that cannot reach the API must set state.error");
+  assert.ok(s.error!.includes("400"), `sanity: the error is the API failure (got: ${s.error})`);
+  assert.ok(
+    logged.some((args) => String(args[0]).includes(s.error!)),
+    `the scan's error must also be console.error'd (got: ${JSON.stringify(logged)})`,
+  );
+  console.log("suggestScan: a broken scan is logged, not just stored");
+}
