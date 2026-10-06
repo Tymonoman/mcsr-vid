@@ -358,6 +358,73 @@ try {
     console.log("OK: a known player's match is a card whether or not it is close or chaotic, never twice");
   }
 
+  // --- The known bucket is a diversity slot, not a repeat-the-same-name slot (7 Oct 2026) ---------
+  // silverrruns' matches (paired with measured-but-lesser-draw opponents, so each outscores
+  // hackingnoises' own on audience alone) would take every "known" slot under plain audience
+  // sorting, though hackingnoises is known too and never gets a card — the coverage.md finding.
+  {
+    config.suggestCloseSlots = 0;
+    config.suggestChaosSlots = 0;
+    config.suggestKnownSlots = 2;
+    config.favouritePlayers = [];
+    const monopoly = Object.fromEntries(
+      [
+        pooled(401, ["silverrruns", "feinberg"], null), // audience 2.475 — highest
+        pooled(402, ["silverrruns", "edcr"], null), //    audience 2.465
+        pooled(403, ["silverrruns", "nahhann"], null), //  audience 2.450
+        pooled(404, ["hackingnoises", "zzz"], null), //    audience 2.330 — known, never picked before
+      ].map((e) => [String(e.metrics.matchId), e]),
+    );
+    await writeFile(
+      cachePath,
+      JSON.stringify({
+        ...JSON.parse(await readFile(cachePath, "utf8")),
+        dismissed: [],
+        pool: monopoly,
+        scannedAt: 0,
+      }),
+      "utf8",
+    );
+    const result = await getSuggestions({ force: true });
+    const ids = result.suggestions.map((s) => s.metrics.matchId).sort((a, b) => a - b);
+    assert.deepEqual(
+      ids,
+      [401, 404],
+      "silverrruns' best match plus hackingnoises', not silverrruns' best two — one slot per player",
+    );
+    console.log("OK: the known bucket caps one slot per player, so a second name is never crowded out");
+  }
+
+  // --- ...and a second pass backfills a slot the per-player cap would otherwise leave empty -------
+  {
+    config.suggestKnownSlots = 3;
+    const onePlayer = Object.fromEntries(
+      [
+        pooled(411, ["silverrruns", "feinberg"], null),
+        pooled(412, ["silverrruns", "edcr"], null),
+        pooled(413, ["silverrruns", "nahhann"], null),
+      ].map((e) => [String(e.metrics.matchId), e]),
+    );
+    await writeFile(
+      cachePath,
+      JSON.stringify({
+        ...JSON.parse(await readFile(cachePath, "utf8")),
+        dismissed: [],
+        pool: onePlayer,
+        scannedAt: 0,
+      }),
+      "utf8",
+    );
+    const result = await getSuggestions({ force: true });
+    const ids = result.suggestions.map((s) => s.metrics.matchId).sort((a, b) => a - b);
+    assert.deepEqual(
+      ids,
+      [411, 412, 413],
+      "no other known player exists here, so the backfill still fills every slot — never emptier than before",
+    );
+    console.log("OK: the known bucket's backfill pass still fills every slot when no other name is around");
+  }
+
   // --- Pool pruning keeps a known player's match over newer no-names once the pool is full --------
   {
     const bulk: Record<string, unknown> = {};

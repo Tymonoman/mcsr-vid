@@ -838,12 +838,34 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
           b.popularity - a.popularity,
       );
     const out: Suggestion[] = [];
+    // The known bucket is a diversity slot, not a repeat-the-biggest-audience-name slot: without
+    // a per-player cap, one or two favourites/known players with the best-audience matches can
+    // legitimately sweep every suggestKnownSlots, and a different known player's own fresh match
+    // never gets a card (7 Oct 2026 — live, silverrruns alone held 3 of 4 known slots every scan).
+    // Same shape as `pairs` one level up, just per player instead of per pair. A second,
+    // unconstrained pass backfills any slots the cap leaves empty, so the bucket is never
+    // emptier than it was before this cap.
+    const usedPlayers = bucket === "known" ? new Set<string>() : null;
     for (const entry of ranked) {
       if (out.length >= slots) break;
       const key = pairKey(entry.metrics.players);
       if (pairs.has(key)) continue;
+      const [p1, p2] = entry.metrics.players.map((p) => p.toLowerCase());
+      if (usedPlayers?.has(p1) || usedPlayers?.has(p2)) continue;
       pairs.add(key);
+      usedPlayers?.add(p1).add(p2);
       out.push(entry);
+    }
+    if (usedPlayers && out.length < slots) {
+      const picked = new Set(out.map((entry) => entry.metrics.matchId));
+      for (const entry of ranked) {
+        if (out.length >= slots) break;
+        if (picked.has(entry.metrics.matchId)) continue;
+        const key = pairKey(entry.metrics.players);
+        if (pairs.has(key)) continue;
+        pairs.add(key);
+        out.push(entry);
+      }
     }
     return out;
   };

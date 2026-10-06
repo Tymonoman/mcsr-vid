@@ -328,12 +328,21 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   tab) needing no closeness or chaos score at all. The operator, 4 Oct 2026: "schedule some matches
   really known players the matches don't have to be that interesting you can lower the threshold
   like this for the suggestion mechanism."
+  **The known bucket is also capped one slot per player, not just one per pair** (`take()`,
+  `src/dashboard/suggest.ts`, 7 Oct 2026): sorted by audience alone it was a 1-2 name monopoly —
+  silverrruns' matches held 3 of 4 live "known" slots every scan, and a sample of the last 4
+  days' 15 pooled, known-player, dual-VOD matches from doogile, hackingnoises and Pinne got zero
+  of them (read-only investigation, 6 Oct 2026). A first pass skips a candidate if either player
+  already filled a slot this scan (same shape as the pair-level `pairs` Set, one level up); a
+  second, unconstrained pass backfills any slot the cap leaves empty, so the bucket is never
+  emptier than before. No scoring input changed — `CACHE_VERSION` stays 4.
 - **Favourite players come first, then known ones** (`tierFor`, `suggest.ts`; `favouritePlayers`,
   Settings tab, default doogile, Feinberg, Infume, Pinne, lowk3y_, silverrruns — edcr is the
   operator's call; `knownFollowerThreshold`, default 10,000; `pairRepeatDays`, default 3, 0 = off).
   The order, for the list and the nightly alike (`orderForDisplay`, `src/dashboard/suggestPresent.ts`;
   `take()` in `suggest.ts` uses the same tier and audience when a scan picks the cards, then the
-  bucket's score): a match with a favourite → one with a known player → neither — above everything
+  bucket's score, and — for the `known` bucket only, 7 Oct 2026 — one slot per player as well as
+  one per pair): a match with a favourite → one with a known player → neither — above everything
   else, an expiring card included (1 Oct 2026: an expiring no-name sat at #1 of 443) — then, inside a
   tier, expiring → the rival's post after → audience → bucket → popularity. Audience is expected
   views, not ladder activity (`audienceFor`): the bigger player's draw + half the other's × (1 + 0.5 ×
@@ -597,7 +606,10 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   resolved rather than dropped (`resolveQueuedPick`): the scan's own pool first, no API call, else
   one `getMatch` and the scan's own scoring — the operator's own pick must not go silently empty.
   The strip's preview (`GET /api/nightly`, `previewPick`) is polled, so it resolves from the pool only
-  and leaves such an id out; only the run may spend the `getMatch`.
+  and leaves such an id out; only the run may spend the `getMatch`. The nightly picks from
+  `getSuggestions()`'s own cards, never the full pool, so the known bucket's per-player cap
+  (7 Oct 2026, above) reaches it for free — fixing the shared selection once, in `suggest.ts`,
+  rather than patching `nightly.ts` too.
 - **Playoffs** (`src/playoffs/playoffs.ts`): the bracket (`/playoffs`) knows the series, not the games;
   the games are private-room matches (type 3) found in each seed's history, and the API stamps
   them with the season *after* the bracket's (a Season 11 bracket's games are season 12). **No
