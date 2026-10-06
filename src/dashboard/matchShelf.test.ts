@@ -2,7 +2,7 @@
 // this pins the parts that decide *what* gets removed and what the caller is told about it.
 // Run: npx tsx src/matchShelf.test.ts
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -58,11 +58,36 @@ try {
   // treat the operator's preferences as footage.
   assert.ok(existsSync(path.join(media, ".dashboard.json")), "state file should be dot-prefixed in mediaDir");
 
-  // --- 2. A corrupt state file degrades to "nothing hidden" ---------------------------------
-  // A cosmetic preference must never be able to take the dashboard down.
-  writeFileSync(path.join(media, ".dashboard.json"), "{ not json");
+  // --- 2. A corrupt state file degrades to "nothing hidden" — and keeps the evidence --------
+  // A cosmetic preference must never be able to take the dashboard down, but silently returning
+  // empty would let the very next write overwrite it clean, losing the hidden list, tonight's
+  // queue and nightlySkip for good (7 Oct 2026).
+  const corruptBytes = "{ not json";
+  writeFileSync(path.join(media, ".dashboard.json"), corruptBytes);
+  const loggedCorrupt: unknown[][] = [];
+  const realConsoleError = console.error;
+  console.error = (...args: unknown[]) => loggedCorrupt.push(args);
   assert.deepEqual([...hiddenMatchIds()], [], "a corrupt state file must read as empty, not throw");
+  console.error = realConsoleError;
+  assert.ok(loggedCorrupt.length >= 1, "a corrupt state file must be logged, not silently reset");
+
+  const backups = readdirSync(media).filter((f) => f.startsWith(".dashboard.json.corrupt-"));
+  assert.equal(backups.length, 1, "the corrupt file is renamed aside, not left in place or deleted");
+  assert.equal(
+    readFileSync(path.join(media, backups[0]!), "utf8"),
+    corruptBytes,
+    "the backup keeps the exact bytes that failed to parse",
+  );
+  assert.ok(
+    !existsSync(path.join(media, ".dashboard.json")),
+    "the corrupt file no longer sits at the live path",
+  );
+
   setHidden(222, true);
+  assert.doesNotThrow(
+    () => JSON.parse(readFileSync(path.join(media, ".dashboard.json"), "utf8")),
+    "the next write produces valid JSON again",
+  );
 
   // --- 3. Delete reports the bytes it actually freed, counting nested files ------------------
   // The size is what the operator judges the decision by, so counting only the top level would
