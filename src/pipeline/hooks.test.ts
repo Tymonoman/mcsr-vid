@@ -250,7 +250,10 @@ assert.ok(
     offPanel.includes("Can a 1:36 lead survive?"),
     `must quote the panel-visible split, not the bigger off-panel one: ${JSON.stringify(offPanel)}`,
   );
-  assert.ok(!offPanel.some((t) => /2:36/.test(t)), `must not quote an off-panel gap: ${JSON.stringify(offPanel)}`);
+  assert.ok(
+    !offPanel.some((t) => /2:36/.test(t)),
+    `must not quote an off-panel gap: ${JSON.stringify(offPanel)}`,
+  );
 
   // Under a minute: the shorter, second-tier phrasing, still a question.
   const lostSmall = buildHookSuggestions(
@@ -474,6 +477,9 @@ console.log("hooks: all checks passed");
     "PLAYOFFS | SWEPT vs TAS",
     "TAS vs SWEPT",
     "doogile sweeps the round of 16",
+    // Not the sanctioned pace idiom ("A sub-N to win it") — a real nickname next to "to win"
+    // language, which a blanket `\bto win\b` strip briefly let through (6 Oct 2026).
+    "doogile battles back to win it",
   ]) {
     assert.ok(spoilsTheResult(spoiler), `should be rejected: ${spoiler}`);
   }

@@ -175,7 +175,10 @@ function candidates(input: HookInput): Candidate[] {
     // bare "N seconds apart" — every such hook in the 6 Oct 2026 panel was dropped for not saying
     // what the number measured.
     if (finishMarginMs < 10_000)
-      out.push({ text: `Decided by ${secondsPhrase(finishMarginMs)}`, weight: finishMarginMs < 3_000 ? 95 : 65 });
+      out.push({
+        text: `Decided by ${secondsPhrase(finishMarginMs)}`,
+        weight: finishMarginMs < 3_000 ? 95 : 65,
+      });
   } else {
     // The loser usually stops once the winner is done, so a null margin is normal, not dramatic.
     out.push({ text: "One of them never killed the dragon", weight: 25 });
@@ -206,7 +209,8 @@ function candidates(input: HookInput): Candidate[] {
           : max,
       0,
     );
-    if (lostLeadMs >= 60_000) out.push({ text: `Can a ${formatShortTime(lostLeadMs)} lead survive?`, weight: 75 });
+    if (lostLeadMs >= 60_000)
+      out.push({ text: `Can a ${formatShortTime(lostLeadMs)} lead survive?`, weight: 75 });
     else if (lostLeadMs >= 30_000)
       out.push({ text: `Can a ${Math.round(lostLeadMs / 1000)}-second lead survive?`, weight: 45 });
   }
@@ -296,16 +300,29 @@ export function hookFacts(input: HookInput) {
  * because an empty hook box is a worse outcome than a less clever hook.
  */
 /**
+ * The one shape allowed to carry "win": the pace stake itself ("A sub-8 to win it", `candidates`'
+ * own highest-weighted suggestion under 8 minutes) states what winning takes, not who did.
+ * Anchored to "sub-N ... to win" rather than a blanket `\bto win\b` strip (6 Oct 2026 panel bug,
+ * fixed everywhere this is used): a blanket strip also erases the only spoiler word from a hook
+ * that names a real player next to "win" language ("doogile battles back to win it"), which must
+ * stay rejected. Exported so `hookProblem` (videoPick.ts) strips the identical shape before its
+ * own spoiler regex runs, rather than drifting from this one again.
+ */
+export const PACE_TO_WIN = /\bsub-?\d+(?:\.\d+)?\s+to win(?:\s+it)?\b/i;
+
+/**
  * Whether a line gives the result away.
  *
  * A question never does — "Can the 1789 take down the 2080?" is the channel's whole framing — so
  * anything ending in "?" passes. Otherwise a verb of winning or losing next to anything is out.
  * Deliberately blunt: a false positive costs one suggestion, a false negative costs the video.
  * Since 24 Sept it also refuses the operator's typed hooks on save, so a stake is let through:
- * "A SUB-8 TO WIN IT" says what winning takes, not who did ("to win" is stripped before the test).
+ * "A SUB-8 TO WIN IT" says what winning takes, not who did (`PACE_TO_WIN` is stripped before the
+ * test — not every "to win", which would also strip the only spoiler word out of a hook naming a
+ * real player, 6 Oct 2026).
  */
 export function spoilsTheResult(text: string): boolean {
-  const line = text.trim().replace(/\bto win\b/gi, "");
+  const line = text.trim().replace(PACE_TO_WIN, "");
   if (line.endsWith("?")) return false;
   // Placements are results too: a playoff placing in a ranked video's title ("WINNER vs 3rd
   // PLACE", 23 Sept 2026) told the Season 11 bracket's outcome while its series were still

@@ -41,7 +41,13 @@ import type { MatchInfo } from "../api/types.js";
 import { blockedIn, config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { atomicOutput } from "../pipeline/atomicOutput.js";
-import { hookLabelProblem, hookSuggestions, HOOK_SEED_RANK_ELO, spoilsTheResult } from "../pipeline/hooks.js";
+import {
+  hookLabelProblem,
+  hookSuggestions,
+  HOOK_SEED_RANK_ELO,
+  PACE_TO_WIN,
+  spoilsTheResult,
+} from "../pipeline/hooks.js";
 import { ANCHOR_SEC } from "../pipeline/kdenliveProject.js";
 import { SEPARATOR } from "../pipeline/title.js";
 import { computeMetrics, deathKind, phaseAt } from "../pipeline/matchScore.js";
@@ -106,12 +112,17 @@ const HOOK_SPOILER =
  * from an invented one (2 Oct 2026) — omit it where the match is not at hand, which skips only
  * that one check; a denied word is still caught either way.
  *
- * `HOOK_SPOILER` strips "to win" first, same as `spoilsTheResult` (hooks.ts): "A SUB-8 TO WIN IT"
- * says what winning takes, not who did, and `hooks.ts` already ships it as its own highest-weight
- * candidate under 8 minutes. Before 6 Oct 2026 this check disagreed with `spoilsTheResult` and
- * silently dropped that pace chip wherever it would otherwise have won — `chipHook`'s "usable"
- * filter and `extrasOf`'s titleHooks check both route through here, so several real matches fell
- * through to duller filler instead (verified against the night's judge panel).
+ * `HOOK_SPOILER` strips the sanctioned pace idiom first (`PACE_TO_WIN`, hooks.ts), same as
+ * `spoilsTheResult`: "A SUB-8 TO WIN IT" says what winning takes, not who did, and `hooks.ts`
+ * already ships it as its own highest-weight candidate under 8 minutes. Before 6 Oct 2026 this
+ * check disagreed with `spoilsTheResult` and silently dropped that pace chip wherever it would
+ * otherwise have won — `chipHook`'s "usable" filter and `extrasOf`'s titleHooks check both route
+ * through here, so several real matches fell through to duller filler instead (verified against
+ * the night's judge panel). The first fix for that (6 Oct 2026) stripped every bare "to win"
+ * instead of just `PACE_TO_WIN`, which also erased the only spoiler word from a hook naming a
+ * real player next to "win" language ("doogile battles back to win it") — caught the same day by
+ * a direct repro against this function; `PACE_TO_WIN` is the narrow fix, shared with hooks.ts so
+ * the two checks cannot disagree again.
  */
 export function hookProblem(
   hook: unknown,
@@ -121,7 +132,8 @@ export function hookProblem(
   if (typeof hook !== "string" || hook.trim() === "") return "no hook";
   const h = hook.trim();
   if (h.length > maxChars) return `over ${maxChars} characters`;
-  if (HOOK_SPOILER.test(h.replace(/\bto win\b/gi, "")) || spoilsTheResult(h)) return "it gives the result away";
+  if (HOOK_SPOILER.test(h.replace(PACE_TO_WIN, "")) || spoilsTheResult(h))
+    return "it gives the result away";
   if (HOOK_SEED_RANK_ELO.test(h)) return "it uses a seed, rank or elo";
   return hookLabelProblem(h, players);
 }
