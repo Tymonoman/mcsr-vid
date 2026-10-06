@@ -113,7 +113,11 @@ const dayMonthYear = (ms: number): string =>
 
 /** Claude's headline and numbered to-do list, one dashboard link under it. `/todo` is this alone.
  *  A `#<id>` in an item (the prompt lets Claude write one to name a match) opens that match. */
-export function renderToday(todo: ReportFacts["todo"], claude: TodayResult, dashboardBaseUrl: string): string {
+export function renderToday(
+  todo: ReportFacts["todo"],
+  claude: TodayResult,
+  dashboardBaseUrl: string,
+): string {
   const lines = [`<b>${escapeHtml(claude.answer.headline)}</b>`, "", "<b>To do</b>"];
   claude.answer.todo.forEach((item, i) =>
     lines.push(

@@ -18,12 +18,19 @@ function script(name: string, body: string): string {
 }
 /** `process.stdout.write(<the JSON text of o>)`, baked into the fake script as a string literal
  *  — no re-serializing at the fake's runtime, so what it prints is exactly `o`. */
-const writesEnvelope = (o: Record<string, unknown>) => `process.stdout.write(${JSON.stringify(JSON.stringify(o))});`;
+const writesEnvelope = (o: Record<string, unknown>) =>
+  `process.stdout.write(${JSON.stringify(JSON.stringify(o))});`;
 
 try {
   // ok: the CLI's own envelope, trimmed.
-  const ok = script("ok.js", writesEnvelope({ type: "result", is_error: false, result: "  OK plain text  " }));
-  assert.deepEqual(await runClaude("hi", { binary: ok, systemPrompt: "s" }), { ok: true, text: "OK plain text" });
+  const ok = script(
+    "ok.js",
+    writesEnvelope({ type: "result", is_error: false, result: "  OK plain text  " }),
+  );
+  assert.deepEqual(await runClaude("hi", { binary: ok, systemPrompt: "s" }), {
+    ok: true,
+    text: "OK plain text",
+  });
 
   // empty: a success envelope with nothing in it — not read as the bare envelope JSON itself.
   const empty = script("empty.js", writesEnvelope({ type: "result", is_error: false, result: "" }));
@@ -77,6 +84,22 @@ try {
   assert.ok(Date.now() - startedAt < 3000, "did not wait out the SIGKILL grace period");
   assert.equal(timedOut.ok, false);
   assert.equal((timedOut as ClaudeFailure).kind, "timeout");
+
+  // over-cap output: a child that floods stdout past the combined buffer ceiling is killed early,
+  // not buffered without bound until the 120 s timeout would otherwise end it.
+  const overflow = script(
+    "overflow.js",
+    `const buf = Buffer.alloc(1024 * 1024, "x");\nfor (let i = 0; i < 4; i++) process.stdout.write(buf);\nsetInterval(() => {}, 1000);`,
+  );
+  const overflowStarted = Date.now();
+  const overflowed = await runClaude("hi", { binary: overflow, systemPrompt: "s", timeoutMs: 60_000 });
+  assert.ok(
+    Date.now() - overflowStarted < 3000,
+    "did not wait out the 60 s timeout before killing an over-cap child",
+  );
+  assert.equal(overflowed.ok, false);
+  assert.equal((overflowed as ClaudeFailure).kind, "error");
+  assert.match((overflowed as ClaudeFailure).message, /produced over/);
 
   // The env the child gets is a short allow-list — never this process's own secrets.
   process.env.A_SECRET_NOBODY_SHOULD_FORWARD = "shh";

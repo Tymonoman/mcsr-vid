@@ -19,6 +19,10 @@ export const MODEL = "claude-haiku-4-5-20251001";
 export const DEFAULT_TIMEOUT_MS = 120_000;
 /** How long a SIGTERM'd child gets before SIGKILL. */
 const STOP_GRACE_MS = 5_000;
+/** ponytail: a defensive ceiling, not a budget — a short plain-text answer never comes close to
+ *  this; raise it if a real use ever needs more. Caps combined stdout+stderr so a misbehaving
+ *  child can't grow this process's memory unbounded over the up-to-120 s window before timeout. */
+const MAX_OUTPUT_BYTES = 2_000_000;
 
 export type ClaudeReply =
   | { ok: true; text: string }
@@ -36,7 +40,8 @@ interface Envelope {
  *  your usage limit · resets 3pm". */
 export const LIMIT_RE = /usage limit|limit reached|rate.?limit|quota|out of (extra )?usage|resets? (at|in)/i;
 /** "/login" is the real slash command the CLI tells a signed-out run to run. */
-export const AUTH_RE = /not logged in|\/login|invalid api key|authentication_error|please sign in|claude setup-token/i;
+export const AUTH_RE =
+  /not logged in|\/login|invalid api key|authentication_error|please sign in|claude setup-token/i;
 
 const ENV_ALLOW = ["PATH", "HOME", "LANG", "TMPDIR"] as const;
 const ENV_AUTH = ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"] as const;
@@ -94,6 +99,7 @@ export function runClaude(prompt: string, opts: ClaudeOptions): Promise<ClaudeRe
     let stdout = "";
     let stderr = "";
     let timedOut = false;
+    let overflowed = false;
     let done = false;
     const finish = (reply: ClaudeReply) => {
       if (done) return;
@@ -110,16 +116,29 @@ export function runClaude(prompt: string, opts: ClaudeOptions): Promise<ClaudeRe
       return;
     }
 
-    const timer = setTimeout(() => {
-      timedOut = true;
+    const stop = () => {
       proc.kill("SIGTERM");
       setTimeout(() => {
         if (proc.exitCode === null && proc.signalCode === null) proc.kill("SIGKILL");
       }, STOP_GRACE_MS).unref();
+    };
+    const timer = setTimeout(() => {
+      timedOut = true;
+      stop();
     }, timeoutMs);
+    const onChunk = (into: "stdout" | "stderr") => (chunk: Buffer) => {
+      if (overflowed) return;
+      if (stdout.length + stderr.length + chunk.length > MAX_OUTPUT_BYTES) {
+        overflowed = true;
+        stop();
+        return;
+      }
+      if (into === "stdout") stdout += chunk.toString();
+      else stderr += chunk.toString();
+    };
 
-    proc.stdout!.on("data", (chunk: Buffer) => (stdout += chunk.toString()));
-    proc.stderr!.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
+    proc.stdout!.on("data", onChunk("stdout"));
+    proc.stderr!.on("data", onChunk("stderr"));
     proc.on("error", (err: NodeJS.ErrnoException) => {
       finish(
         err.code === "ENOENT"
@@ -128,6 +147,13 @@ export function runClaude(prompt: string, opts: ClaudeOptions): Promise<ClaudeRe
       );
     });
     proc.on("close", (code) => {
+      if (overflowed) {
+        return finish({
+          ok: false,
+          kind: "error",
+          message: `${bin} produced over ${Math.round(MAX_OUTPUT_BYTES / 1_000_000)} MB combined output; killed early`,
+        });
+      }
       if (timedOut) {
         return finish({
           ok: false,

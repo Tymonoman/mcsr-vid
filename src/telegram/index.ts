@@ -280,7 +280,9 @@ export async function dispatchCommand({ command, args }: ParsedCommand): Promise
       const reply = await runClaude(prompt, { systemPrompt: ASK_SYSTEM_PROMPT });
       // On a limit this is exactly "usage limit reached — try again later" and nothing else;
       // any other failure is the same one-line reason the TODAY note gives.
-      return reply.ok ? { messages: [reply.text], html: false } : { messages: [describeFailure(reply)], html: false };
+      return reply.ok
+        ? { messages: [reply.text], html: false }
+        : { messages: [describeFailure(reply)], html: false };
     }
     default:
       return { messages: [`Unknown command /${command}. /help lists what this bot answers.`], html: false };
@@ -320,9 +322,7 @@ async function handleUpdate(update: bot.TgUpdate): Promise<void> {
     // The adapter's own timeout is two minutes; Haiku on a plain-text ask usually answers in
     // seconds, but say so rather than go quiet on a slow one.
     if (CLAUDE_COMMANDS.has(parsed.command))
-      await bot
-        .sendMessage("asking Claude (haiku) — this can take up to two minutes")
-        .catch(() => undefined);
+      await bot.sendMessage("asking Claude (haiku) — this can take up to two minutes").catch(() => undefined);
     else if (parsed.command === "worth")
       await bot
         .sendMessage("checking the last three days' matches — this can take up to a minute")
