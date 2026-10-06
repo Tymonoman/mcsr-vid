@@ -5,7 +5,8 @@ import { fileURLToPath } from "node:url";
 /** `handbook/knowledge/`: the channel's reports, in the repo because the dashboard container cannot see `~/.claude`. */
 const DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "handbook", "knowledge");
 
-/** The prompt is one argv argument (cap ~128 KiB); this leaves room for FACTS and the question. */
+/** Sent to Claude over stdin, not argv, so there is no ~128 KiB cap to budget against; 70 KB
+ *  still keeps `/ask` answering quickly and leaves room for FACTS and the question. */
 export const KNOWLEDGE_BUDGET = 70_000;
 
 const STOP = new Set(
@@ -22,7 +23,7 @@ const words = (s: string): string[] =>
 const bytes = (s: string) => Buffer.byteLength(s);
 
 /**
- * What agy is told besides FACTS: `channel.md` whole, an index of every doc, and the `## ` sections
+ * What Claude is told besides FACTS: `channel.md` whole, an index of every doc, and the `## ` sections
  * that share the most words with the question (a heading match counts triple), best first until
  * the budget is spent, then put back in reading order. A plain substring match, so "earning" finds
  * "earn". ponytail: keyword scoring, no embeddings — swap in a retriever if the docs outgrow this.

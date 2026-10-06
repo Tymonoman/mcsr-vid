@@ -159,19 +159,18 @@ const postMortemYpp = (over: Partial<Parameters<typeof projectYpp>[0]> = {}): Yp
   assert.ok(long.includes(`+ ${60 - shown} more in the Studio inbox`), long.slice(-200));
 }
 
-// A to-do item from agy is escaped, and numbered; agy's notes are not shown (they repeated Problems).
+// A to-do item from Claude is escaped, and numbered.
 {
   const todo: ReportFacts["todo"] = { ok: false, error: "boom" };
   const out = renderToday(
     todo,
-    { source: "agy", answer: { headline: "hi <b>", todo: ["do <x>", "y & z"], notes: ["watch <this>"] } },
+    { source: "claude", answer: { headline: "hi <b>", todo: ["do <x>", "y & z"] } },
     "http://actimel:8080",
   );
   assert.ok(!out.includes("hi <b>"), out);
   assert.ok(out.includes("hi &lt;b&gt;"), out);
   assert.ok(out.includes("do &lt;x&gt;"), out);
   assert.ok(out.includes("y &amp; z"), out);
-  assert.ok(!out.includes("watch"), out);
   assert.ok(out.includes("1. do &lt;x&gt;") && out.includes("2. y &amp; z"), out);
   assert.ok(out.includes("boom"), out); // the facts error still shows
 }
@@ -189,7 +188,7 @@ const postMortemYpp = (over: Partial<Parameters<typeof projectYpp>[0]> = {}): Yp
   const today = renderToday(
     todo,
     {
-      source: "agy",
+      source: "claude",
       answer: { headline: "h", todo: ["Save hooks for #13559245 and #2", "<b>#13559250</b>"] },
     },
     base,
@@ -436,7 +435,7 @@ const worthMatch = (i: number, over: Partial<WorthMatch> = {}): WorthMatch => ({
   } as unknown as ReportFacts;
   const msgs = renderMorningReport(
     facts,
-    { source: "agy", answer: { headline: "Covered through Thursday", todo: ["Save hooks for a vs b"] } },
+    { source: "claude", answer: { headline: "Covered through Thursday", todo: ["Save hooks for a vs b"] } },
     { subscribers: 92, views: 64883, videos: 36 },
     "UCxyz",
     now,
@@ -461,7 +460,7 @@ const worthMatch = (i: number, over: Partial<WorthMatch> = {}): WorthMatch => ({
   assert.ok(msgs[1]!.indexOf("\nnet subs") < msgs[1]!.indexOf("\nviews"), msgs[1]);
   const withYpp = renderMorningReport(
     { ...facts, ypp: { ok: true, data: postMortemYpp() } },
-    { source: "agy", answer: { headline: "Covered through Thursday", todo: ["Save hooks for a vs b"] } },
+    { source: "claude", answer: { headline: "Covered through Thursday", todo: ["Save hooks for a vs b"] } },
     { subscribers: 92, views: 64883, videos: 36 },
     "UCxyz",
     postMortemAt,
@@ -490,7 +489,7 @@ const worthMatch = (i: number, over: Partial<WorthMatch> = {}): WorthMatch => ({
         },
       },
     },
-    { source: "agy", answer: { headline: "Covered through Thursday", todo: ["Save hooks for a vs b"] } },
+    { source: "claude", answer: { headline: "Covered through Thursday", todo: ["Save hooks for a vs b"] } },
     { subscribers: 92, views: 64883, videos: 36 },
     "UCxyz",
     now,
