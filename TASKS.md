@@ -70,6 +70,130 @@ bars show; the report's nightly/overnight/upcoming lines deep-link) and fb30d50 
 nickname-reuse warning in saveWarnings; "last time they met:" in the description at upload). Full
 `npm test` green on main at 08:00 UTC; every merged worktree removed, branches kept.
 
+### ▶ 2 Oct 06:40 UTC: DONE on his "move into bracket order" — live (verified): QF1 1f6fOD3KiMI 2 Oct,
+QF2 a-mimffZSlg 3 Oct, QF3 gvNE1jxzLzY 4 Oct, SF1 ZmVvxiOb5GA 5 Oct, [SF2 13527460 6 Oct — publishAt
+claimed, series render started 06:37 via POST /api/series/13527460/render], 3rd EeAbgZQgZPk 7 Oct, GF
+_2EOkOOX0PQ 8 Oct, all 23:00 UTC, Shorts 18 h after. GF upload resumed 06:26–06:31 (same id, no second
+copy), processed 06:38 (35:46), record source → dashboard, stale step → done (backups
+tmp/series-fix/gf-*.bak), Finish set its thumbnail. He: "I didn't delete maybe it was aquacorde" — no
+session transcript deletes it; cause unknown. SF2 needs his hooks once rendered (+ heuristic pick).
+DM page PUBLISHED 06:50 UTC: https://claude.ai/artifact/NkYyfyN6Bq5jxm9UC4hDpV (21 runners, links to
+public videos only, 7UcG1Y-k9dY + hMA09SfxwxE excluded as DM links; rebuild = tmp/dms/build.py; never
+republish mid-session). Findings: Reddit thread has no Aquacorde (one AI exchange with another user,
+ended with an apology); our titles nicknamed him AWKWARD ×3 + SWEPT; 25 of 41 long-forms carry
+runner nicknames (Matches 0/129, Replays 0/93, Vault 9/101); Infume 34% / Feinberg 27% / Aquacorde 20%
+of views (400–750/day); Vault contact = Discord mcsrvault; Replays mr.derp; Matches
+mcsrmatches@gmail.com. The API flapped "public" for aAX_ML4rHdo (replica lag); anonymous yt-dlp says
+all 7 private. Reddit logger restarted (pid 151813, until 4 Oct 11:14 UTC).
+### ▶ RESUME HERE (4 Oct ~18:35 UTC, before a /compact)
+1. As each `known-render` match lands (tmp/known/<id>.json): review its hooks (no nickname/label, no
+   spoiler, catchy), save them with PUT /api/shorts/hooks/<id> → the chain uploads to the next free 19:00
+   UTC slot + Short 18 h later; verify with tmp/strategy/schedule-read.mts. Max ~3 hook saves per day.
+2. `known-bucket` branch → review (Sonnet reviewer), merge with trailers, test:unit + tsc.
+3. Restart still pending (main 94bb581+): ask once more; only when no render/upload runs; then confirm
+   /api/nightly code.boot; unhide nothing (13864517 stays hidden: Aquacorde).
+4. Open with him: SF2 13527460 hooks ("A TWO-MINUTE LEAD, GONE"); his DMs (edcr, hackingnoises,
+   Aquacorde, BeefSalad drafts given); NAS VODs of Aquacorde (13560269, 13558392) + BeefSalad → delete?
+5. Reddit: logger ended 4 Oct 11:14 UTC (snaps.jsonl) → +72 h read + Analytics EXT_URL report.
+6. Gemini quota back ~8 Oct 13:40 UTC.
+
+### ▶ 4 Oct 2026 18:30 UTC — WEEK FILL (his "schedule some matches really known players … you can lower
+the threshold … for the suggestion mechanism")
+State: dashboard STILL on 2dca37f (no restart since 1 Oct) → the 4 Oct 03:00 nightly rendered an
+Aquacorde match 13864517 (hidden via PUT /api/hidden; never uploaded). BeefSalad commented 2 Oct ~18:20
+UTC "do not use my footage again" → 8 videos + 4 playlists private (ledger tmp/aquacorde/ledger-beefsalad-
+apply.json, script tmp/aquacorde/takedown-player.mts --name=<nick>). Scheduled: series 4/5/7/8 Oct 23:00
+UTC + Shorts; SF2 6 Oct needs HIS hooks; NO ranked 19:00 slot from 4 Oct; nothing after 8 Oct. 117 subs.
+Agents: `known-render` (download-vods + dashboard render + pick + hook drafts for Feinberg–nahhann,
+Pinne–edcr, lowk3y_–BlazeMind, steez–doogile, nahhann–edcr, nahhann–v_strid; coordinator saves hooks
+→ chain schedules 19:00 UTC slots); `known-bucket` (branch: known-player cards without closeness gate,
+fix the favourites/STRONG_DRAWS pool pull, blockedPlayers default + BeefSalad). Asked him to restart now.
+18:20 UTC (2 Oct) — MAIN 94bb581: chain-resume (96b9102), blocklist (c786060), title-guard (eb0ef10 + 94bb581,
+CLAUDE.md origin wording 8031ac4); tsc + 87 unit files green; worktrees removed, branches kept. Local
+title.txt of unuploaded 13223455/13395245 reset to <HOOK> (backups tmp/strategy/title-*.bak). ASKED HIM
+for `docker restart mcsr-dashboard` (nothing running) → then verify /api/nightly code.boot == 94bb581.
+18:10 UTC — ALL 31 NICKNAME TITLES RENAMED (his "change all titles to a non nickname one like "duality
+of man" … make them catchy analyze each vid"): 7 scheduled + 24 public long-forms/Shorts, each from a
+per-match analysis (agents retitle-drafts/-a/-b; picks mine; tmp/strategy/retitles*.json). Script
+tmp/strategy/retitle.mts (snippet sent back whole; local youtube.json + title files follow; --undo
+<ledger>); ledgers tmp/strategy/retitle-ledger-*.json; list sent to Telegram (retitles-final.md). The
+API flaps between old/new titles for minutes (replica lag) — verify with anonymous yt-dlp. SF2 13527460
+hooks still HIS (suggested "A TWO-MINUTE LEAD, GONE"). Loose end: JcDsBWo49U0 (7rowl–Skycrab R16) may
+be an unjoined 3-game series (13333502/13333718 rendered, never joined).
+08:0x UTC — THE REAL CAUSE: Aquacorde sent him an X thread. "LCQ vs YN | lauveer vs edcr" (YN read as a
+slur) was dunked 27 Sept (116 likes), tied to his Reddit post 1 Oct (183 likes, "okay so this was ai").
+"ASIAN VS CARNIVORE" was named in the replies. LCQ vs YN = agy titleHooks (13303619 pick), learned from his own
+"YN vs TAS" (22 Aug); ASIAN = his own; our 15 Sept audit praised nickname hooks, the 24 Sept one missed
+ASIAN. He retitled: LCQ vs FALLEN KING (flagged: may read as a dig at edcr), GOAT vs TAS, VEGAN VS
+CARNIVORE; tonight's 19:00 WtP6sDsdBvA is now "TAS^2???" (still a nickname). 31 nickname titles remain.
+Drafts given: apology DMs to edcr + hackingnoises (Twitch), Aquacorde reply, one optional public line.
+ASKED: "say yes and I'll draft match hooks for all 31 and apply them by API, tonight's two first".
+Agent `title-guard` (branch title-guard): pastTitleHooks drops nickname hooks, prompt forbids labels,
+hookProblem drops model proposals / warns typed ones, chips audited — merge before the restart if ready.
+Local match-<id>.title.edited.txt still hold the old titles: sync from YouTube once he's done retitling.
+07:29 UTC: SF2 13527460 rebuilt + joined (series-13527460.mp4, 2.7 GB); pick queued (heuristic, agy
+quota out); publishAt 6 Oct 23:00 UTC stored; title "<HOOK> | Feinberg vs Infume | … | Semifinals"
+waits for HIS hooks. MERGED 96b9102 chain-resume (b9f3799 + c0094cb review follow-up); tsc + 86
+unit files green on main. MERGED c786060 blocklist (52044fb + a6aa5ec: finishOnYouTube/Adopt/render/
+series gates); tsc + 87 unit files green. NEXT: ONE `docker restart mcsr-dashboard` once SF2's pick
+lands (no chain running) → verify /api/nightly code.boot == c786060, then remove the merged worktrees.
+STRATEGY REPORT PUBLISHED 07:03 UTC: https://claude.ai/artifact/DqeCcYXK8BhZC5MRywpUEy (+ Telegram).
+Source tmp/strategy/content.md → report/index.html. ASKED HIM: stake titles for the bracket instead of
+nicknames (tonight's QF "RSG vs SHAKY" goes public 23:00 UTC) — on yes, retitle each scheduled video
+(snippet whole, like addTags) before it publishes; live retitles (ASIAN VS CARNIVORE, WASHED vs IKEA GUY,
+YN) are his. Blocklist: review said merge + follow-up (finishOnYouTube/Adopt/render gates) — agent
+`blocklist` adding it; then merge with chain-resume, one restart once SF2's render is done.
+(was) IN FLIGHT: strategy report for 09:40 Warsaw (= 07:40 UTC): agents vault-contact, reddit-thread,
+exposure (+ restarts the Reddit logger, dead since 15:17 UTC 1 Oct), report-writer
+(tmp/strategy/report/index.html from tmp/strategy/content.md) → publish once, link + Telegram.
+
+### ▶ PLAYOFF SERIES SCHEDULED BACKWARDS + GF UPLOAD CUT AT 30% — found 2 Oct 06:25 UTC, ASKED HIM
+His hook saves of 1 Oct 18:34–20:52 UTC put the series up in reverse order: GF _2EOkOOX0PQ 2 Oct 23:00
+UTC (tonight), SF1 ZmVvxiOb5GA + 3rd EeAbgZQgZPk both 3 Oct 23:00, QFs 1f6fOD3KiMI a-mimffZSlg
+gvNE1jxzLzY all 4 Oct 23:00 (Shorts 18 h after each; all processed except the GF). The restart at
+~18:36 UTC 1 Oct cut the GF upload: YouTube holds 934,281,216 of 3,116,114,853 bytes (session probe
+308), video "processing" P0D; the channel scan recorded it as source "studio" (no thumbnail/playlists);
+its chain loops every 15 min on a step left "running" (agent `chain-resume` fixes the code on branch
+chain-resume). On his yes: `bash tmp/series-fix/reorder.sh` (GF first → 8 Oct; 3rd 7 Oct, SF1 5 Oct,
+QF3 4 Oct, QF2 3 Oct, QF1 2 Oct; all 23:00 UTC) → `cd /app && npx tsx tmp/series-fix/gf-resume.mts`
+(resume only, POST refused) → when processed: GF youtube.json source → "dashboard", status
+upload-video → done, POST /api/youtube/finish/13530634. SF2 13527460 (Feinberg–Infume): game 1's folder
+was deleted after 16:32 UTC 1 Oct (not by this session; never uploaded); game 1 VODs re-secured 06:30
+UTC 2 Oct (/media/13527460, Twitch 2879374680 / 2879432044); asked him whether he deleted it — if not,
+`npm run series -- 13527460` in the daytime, publish 6 Oct 23:00 UTC. Ranked: nothing after 3 Oct 19:00
+(last night skipped). LESSONS: ask for a dashboard restart only when no chain is uploading; agents
+must never call EnterWorktree (it moves the shared session's cwd — tell them `git worktree add` +
+absolute paths).
+
+### ▶ AQUACORDE WITHDREW PERMISSION — 2 Oct 2026 (the operator: "take down all his videos and blacklist him")
+DONE: 7 videos + 4 playlists set PRIVATE, nothing deleted (aAX_ML4rHdo, xF_DFvTDo-E, opWF0g2VCP0,
+6YWABc--rQk, series 4dIJIAEUJCk, Shorts zSon9yOTYpM, UchGHjZUuXk; playlists PLKkQA0S3tHYc PLO1u0OuUDt5E
+PLEWDrM9ipECU PLTDgcZR2urgM) — ledger tmp/aquacorde/ledger-apply.json, script tmp/aquacorde/takedown.mts.
+Channel trailer (was his aAX_ML4rHdo): now LUI5E7yF0zE THE DUALITY OF MAN, Infume vs Feinberg (the
+operator: "the channel trailer should be infume vs feinberg"); `trailer.mts --undo` goes back to FtJ-VEv6pgk.
+CORRECTION: the night-2 VOD pass had already run (01:00–01:16 UTC 2 Oct, before his comment; all 15 OK,
+vods/ 41.72 GB) — it secured two doogile–Aquacorde matches, 13560269 + 13558392 (2.8 GB, NAS
+vods/<id>/); the BLOCKED_PLAYERS edit (06:06 UTC) only guards a rerun. Asked him: delete those two in
+the next NAS window (03:00–08:00 Warsaw, ledger line each)? Night 1 held none of his. Local /media: 8
+folders name him (all uploaded, media already freed, ~150 MB of text/stills); every recorded id is in
+the takedown ledger. Competitors (rival-aquacorde, 2 Oct 06:12 UTC, yt-dlp only): Matches 8, Vault 4,
+Replays 1 of his matches, none removed since the 28/30 Sept snapshots; Replays' descriptions carry a
+standing runner opt-out line (Discord mr.derp). Files tmp/aquacorde/*-flat.txt, descriptions.txt.
+IN FLIGHT (Sonnet): `blocklist` (branch blocklist: blockedPlayers default ["Aquacorde"] everywhere incl.
+the queue and an upload refusal) → review, test, merge, restart; `rival-aquacorde` (do Matches/Vault/Replays
+post him; did Matches remove any since the 30 Sept snapshot); `runner-dms` (tmp/dms/index.html: per runner
+Discord name+id from the MCSR API connections, videos, DM text, asked/yes/no status saved via the artifact
+capability) → read fully, publish ONCE, send him the link. His exact comment is unreadable via the API
+(private video → 403); deleting the private videos stays his call.
+
+### ▶ GEMINI (agy) QUOTA OUT until ~8 Oct 2026 13:40 UTC
+The GF pick (13530634, 17:48 UTC 1 Oct) got "Individual quota reached … Resets in 163h53m": the
+eight series picks of 30 Sept–1 Oct used the operator's weekly Gemini quota. Until then every Short
+pick falls back to the heuristic (no titleHooks, no playerMoments), the morning report's agy part
+and /ask fall back too. Title proposals meanwhile: the dashboard's hook chips (GET
+/api/shorts/plan/<id> → suggestions.title) or written here. GF chips: "A 1:27 lead, gone", "Not a
+single death between them". Re-pick the GF once it resets if he wants the model's window.
+
 ### ▶ NAS QUIET HOURS — the operator, 1 Oct ~15:55 UTC: "make the transfers to the nas only after 3am as it's a bit loud"
 Every NAS transfer (dashboard archive rsync, VOD passes, research/backups copies, bulk reads back) only
 03:00–08:00 Europe/Warsaw. Then: "something maybes reading from it" — /proc/fs/cifs/Stats showed ~2
