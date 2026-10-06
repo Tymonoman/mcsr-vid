@@ -402,8 +402,7 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   (`typedSpoiler` — "3rd Place" is a round name there, not a result).
 - **Three `hooks.ts` chip bugs fixed 6 Oct 2026**, after a 3-judge panel (click, accuracy, risk)
   scored 26 real matches' hooks: `secondsPhrase()` replaces the old `seconds()` helper, which
-  stripped a trailing ".0" and left the plural behind ("Decided by 1 seconds" — the exact
-  "low quality" look viewers reported); it also renders under 100ms as exact milliseconds rather
+  stripped a trailing ".0" and left the plural behind ("Decided by 1 seconds"); it also renders under 100ms as exact milliseconds rather
   than a rounded, overstated "0.1 seconds" (the channel's own past title was "58 MILLISECONDS"),
   and the 3-10s tier keeps the same "Decided by" subject instead of a bare "N seconds apart" (every
   such hook in the panel was dropped for not saying what the number measured). The lead-change
@@ -419,8 +418,9 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   `getMatch` recheck, not the panel's notes), and asks "Can a M:SS lead survive?" rather than
   asserting the outcome. The DNF fallback says "One of them never **killed** the dragon", not "reached" —
   `finishMarginMs` null only means no dragon kill; the loser can have fought and died in the End.
-  `src/shorts/videoPick.ts`'s `hookProblem` also strips "to win" before its own spoiler check, same
-  as `spoilsTheResult`: it had disagreed with `hooks.ts` and was silently dropping the pace chip
+  `src/shorts/videoPick.ts`'s `hookProblem` also strips `PACE_TO_WIN` (`hooks.ts`: "sub-N to win
+  [it]" only, never a bare "to win", so "X battles back to win it" stays refused) before its own
+  spoiler check, as `spoilsTheResult` does: it had disagreed with `hooks.ts` and was silently dropping the pace chip
   ("A sub-N to win it", already `hooks.ts`'s own highest-weighted candidate under 8 minutes)
   wherever it would otherwise have won, in both the dashboard's chip list (`shortFlow.ts`) and the
   Short's own `chipHook`/`extrasOf`. Full write-up: `handbook/knowledge/hooks-2026-10-06.md`.
