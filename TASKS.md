@@ -85,6 +85,14 @@ runner nicknames (Matches 0/129, Replays 0/93, Vault 9/101); Infume 34% / Feinbe
 of views (400–750/day); Vault contact = Discord mcsrvault; Replays mr.derp; Matches
 mcsrmatches@gmail.com. The API flapped "public" for aAX_ML4rHdo (replica lag); anonymous yt-dlp says
 all 7 private. Reddit logger restarted (pid 151813, until 4 Oct 11:14 UTC).
+### ▶ 5 Oct 05:30 UTC — session closed for a context clear
+- 13845421 (lowk3y_ vs takachaaaaaaan, "random guy" — his call): Lt8nkWN1Niw + Short DGFdGfem9Ug set
+  private with no publish time (tmp/strategy/unschedule.mts), records' publishAt dropped, match hidden.
+- Its 5 Oct 19:00 UTC slot → 13830612 v_strid vs doogile: hooks "A SUB-9 RACE TO THE END" / "Two routes,
+  one shipwreck world" saved; 8ddRytlH1xw scheduled 5 Oct 19:00 UTC, Short ylXZwXIlRlY 6 Oct 13:00 UTC.
+- Ready and waiting for hooks: 13906935 hackingnoises vs romuxii (exported). Don't render 13910970
+  (takachaaaaaaan). Dashboard restarted onto a0b1400 (confirmed via /api/nightly code.boot).
+
 ### ▶ RESUME HERE (4 Oct ~18:35 UTC, before a /compact)
 1. As each `known-render` match lands (tmp/known/<id>.json): review its hooks (no nickname/label, no
    spoiler, catchy), save them with PUT /api/shorts/hooks/<id> → the chain uploads to the next free 19:00
