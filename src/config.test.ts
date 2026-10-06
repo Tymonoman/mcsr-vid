@@ -8,6 +8,17 @@ import {
   validateOverrides,
 } from "./config.js";
 
+// loadConfig() (behind the `config` export) must hand out a copy, never the literal DEFAULTS
+// object — otherwise any mutation of the live config (a test's included, suggestSelect.test.ts
+// in a worktree with no mcsr-vid.config.json) corrupts the one shared default forever.
+assert.notEqual(config, DEFAULTS, "config must not be the DEFAULTS object itself");
+{
+  const before = DEFAULTS.suggestCloseSlots;
+  config.suggestCloseSlots = before + 1;
+  assert.equal(DEFAULTS.suggestCloseSlots, before, "mutating config must leave DEFAULTS unchanged");
+  config.suggestCloseSlots = before;
+}
+
 // A hand-edited mcsr-vid.config.json with the wrong type must fail at load, naming the key,
 // rather than flowing into slot arithmetic or the Remotion renderer as a string.
 assert.throws(() => validateOverrides({ renderConcurrency: "4" }), /renderConcurrency/);
