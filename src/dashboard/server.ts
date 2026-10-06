@@ -79,7 +79,7 @@ import { saveSettings, settingsPayload } from "./settings.js";
 import { handleYoutubeRoute, uploadRunning } from "./youtubeRoutes.js";
 import { handleSyncRoute } from "./syncRoutes.js";
 import { readMeta } from "./matchMeta.js";
-import { pinnedCommentFor } from "../youtube/youtubeUpload.js";
+import { commentSoonTick, pinnedCommentFor } from "../youtube/youtubeUpload.js";
 import { readIfPresent, readUpload, uploadTextFor } from "../youtube/youtubeStore.js";
 import { startTelegramBot } from "../telegram/index.js";
 
@@ -824,8 +824,13 @@ server.listen(PORT, "0.0.0.0", () => {
   // null, so the settings panel can switch the nightly on later without a restart.
   scheduleNightly({ notifyUrl: config.nightlyNotifyUrl });
   // The Short chains a restart cut short resume now, and every quarter hour after; the same tick
-  // re-asks the model, once a day per match, for a pick the heuristic stood in for.
-  const tick = () => void shortTick().catch((err: unknown) => console.error(`shorts: ${describeError(err)}`));
+  // re-asks the model, once a day per match, for a pick the heuristic stood in for. With
+  // commentSoonAfterPublish on (default off), it also posts a just-published video's first
+  // comment within minutes rather than waiting for the nightly's tick hours later.
+  const tick = () => {
+    void shortTick().catch((err: unknown) => console.error(`shorts: ${describeError(err)}`));
+    void commentSoonTick().catch((err: unknown) => console.error(`comments: ${describeError(err)}`));
+  };
   tick();
   setInterval(tick, 15 * 60_000).unref();
   // A test server (any PORT other than 8080 — CLAUDE.md's "a test server arms its own nightly")
