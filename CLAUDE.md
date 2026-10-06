@@ -335,7 +335,12 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   of them (read-only investigation, 6 Oct 2026). A first pass skips a candidate if either player
   already filled a slot this scan (same shape as the pair-level `pairs` Set, one level up); a
   second, unconstrained pass backfills any slot the cap leaves empty, so the bucket is never
-  emptier than before. No scoring input changed — `CACHE_VERSION` stays 4.
+  emptier than before. No scoring input changed — `CACHE_VERSION` stays 4. A scan that stumbles —
+  a corrupt `.suggest-cache.json`, a match whose detail fetch keeps failing, a Twitch login lookup
+  that never resolves — now says so with a `console.error` instead of quietly resetting dismissals
+  or returning fewer matches than it found; a scan where more than a couple of detail fetches fail
+  also surfaces one note in the result, next to `scanNote`, rather than looking like "no good
+  matches" (7 Oct 2026).
 - **Favourite players come first, then known ones** (`tierFor`, `suggest.ts`; `favouritePlayers`,
   Settings tab, default doogile, Feinberg, Infume, Pinne, lowk3y_, silverrruns — edcr is the
   operator's call; `knownFollowerThreshold`, default 10,000; `pairRepeatDays`, default 3, 0 = off).

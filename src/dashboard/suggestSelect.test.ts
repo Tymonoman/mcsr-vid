@@ -425,6 +425,41 @@ try {
     console.log("OK: the known bucket's backfill pass still fills every slot when no other name is around");
   }
 
+  // --- The per-player cap is case-insensitive, like the pair-level one (7 Oct 2026) ---------------
+  // A regression that dropped `.toLowerCase()` in the usedPlayers check would not recognise
+  // "SILVERRRUNS" as the same player as "Silverrruns" and would hand both of them a slot.
+  {
+    config.suggestCloseSlots = 0;
+    config.suggestChaosSlots = 0;
+    config.suggestKnownSlots = 2;
+    config.favouritePlayers = [];
+    const mixedCase = Object.fromEntries(
+      [
+        pooled(421, ["Silverrruns", "feinberg"], null), //    audience 2.475 — highest
+        pooled(422, ["SILVERRRUNS", "edcr"], null), //        audience 2.465 — same player, other case
+        pooled(423, ["hackingnoises", "zzz"], null), //       audience 2.330 — known, the right backfill
+      ].map((e) => [String(e.metrics.matchId), e]),
+    );
+    await writeFile(
+      cachePath,
+      JSON.stringify({
+        ...JSON.parse(await readFile(cachePath, "utf8")),
+        dismissed: [],
+        pool: mixedCase,
+        scannedAt: 0,
+      }),
+      "utf8",
+    );
+    const result = await getSuggestions({ force: true });
+    const ids = result.suggestions.map((s) => s.metrics.matchId).sort((a, b) => a - b);
+    assert.deepEqual(
+      ids,
+      [421, 423],
+      "SILVERRRUNS is capped as the same player as Silverrruns, so hackingnoises' match backfills the second slot",
+    );
+    console.log("OK: the known bucket's per-player cap catches a player written in a different case");
+  }
+
   // --- Pool pruning keeps a known player's match over newer no-names once the pool is full --------
   {
     const bulk: Record<string, unknown> = {};
