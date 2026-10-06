@@ -633,6 +633,29 @@ assert.equal(hookProblem("2427 vs 2293"), "it uses a seed, rank or elo");
 assert.equal(hookProblem("Can the 1789 take down the 2080?"), "it uses a seed, rank or elo");
 console.log("OK: a spoiler, overlong hook, or seed/rank/elo is swapped for a chip; the window stands");
 
+// "A sub-N to win it" is the house-sanctioned pace stake (hooks.ts's own highest-weighted
+// candidate under 8 minutes, spoilsTheResult's own "safe" example) — hookProblem must not reject
+// it just because the bare word "win" appears inside the idiom "to win" (6 Oct 2026 panel: this
+// silently dropped the pace chip on several real matches, surfacing duller filler instead).
+for (const pace of ["A sub-7 to win it", "A sub-9 to win it", "A SUB-8 TO WIN IT"]) {
+  assert.equal(hookProblem(pace), null, `"${pace}" is a stake, not a spoiler`);
+}
+// A real "who wins" question is still refused — only the "to win" idiom is exempt.
+assert.equal(hookProblem("Who wins this one?"), "it gives the result away");
+// The idiom's exemption must not swallow the only spoiler word in a hook that names a real player
+// and says they won ("doogile battles back to win it" is not the pace stake "A sub-N to win it" —
+// a blanket `\bto win\b` strip briefly let it through, 6 Oct 2026, since stripping "to win" left
+// no other spoiler word and `hookLabelProblem` does not catch a bare nickname next to win-language).
+{
+  const players = [{ nickname: "doogile" }, { nickname: "edcr" }];
+  assert.equal(
+    hookProblem("doogile battles back to win it", undefined, players),
+    "it gives the result away",
+    "a real nickname next to win-language is still a spoiler, 'to win it' or not",
+  );
+}
+console.log('OK: hookProblem allows "to win it" (a stake) while still refusing "who wins" (a result)');
+
 // Never a nickname, label or epithet for a runner (2 Oct 2026: "LCQ vs YN" and "ASIAN VS
 // CARNIVORE" both went out this way). A denied word is caught with no match in hand; a mismatched
 // "<x> vs <y>" pair needs the match's real players to tell it apart from a real rematch line.
@@ -660,7 +683,10 @@ const uploaded = (id: number, title: string, onYouTube = true) => {
 
 {
   // Title hooks in the operator's style: their past hooks on uploaded matches are the examples.
-  uploaded(1, "DEAD HEAT AT THE DRAGON | hackingnoises vs silverrruns | MCSR Ranked 1v1 | Minecraft Speedrun");
+  uploaded(
+    1,
+    "DEAD HEAT AT THE DRAGON | hackingnoises vs silverrruns | MCSR Ranked 1v1 | Minecraft Speedrun",
+  );
   uploaded(2, "PLAYOFFS | SWEPT vs TAS | Aquacorde vs doogile | MCSR Ranked Season 11 Playoffs");
   uploaded(3, "WINNER vs 3rd PLACE | Infume vs Feinberg | MCSR Ranked 1v1");
   uploaded(4, "NEVER UPLOADED | a vs b | MCSR Ranked 1v1", false);

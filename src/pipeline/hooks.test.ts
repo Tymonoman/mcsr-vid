@@ -79,9 +79,23 @@ assert.equal(photo[0], "Decided by 2.4 seconds");
 // A whole second renders without a trailing ".0".
 assert.equal(buildHookSuggestions(input({ finishMarginMs: 2_000 }))[0], "Decided by 2 seconds");
 
+// Grammar bug (6 Oct 2026 panel): a margin that rounds to exactly one second must say "1 second",
+// never "1 seconds" (seconds() used to strip ".0" and leave the plural word behind — the exact
+// "low quality" look viewers reported). A real case: match 12730175's 1.03s dragon-death gap.
+assert.equal(buildHookSuggestions(input({ finishMarginMs: 1_033 }))[0], "Decided by 1 second");
+assert.equal(buildHookSuggestions(input({ finishMarginMs: 1_000 }))[0], "Decided by 1 second");
+
+// Sub-100ms is exact milliseconds, not a rounded-up "0.1 seconds" that overstates the margin
+// 1.7x (accuracy panel, 6 Oct 2026; the channel's own past title was "58 MILLISECONDS").
+assert.equal(buildHookSuggestions(input({ finishMarginMs: 58 }))[0], "Decided by 58 milliseconds");
+
+// 3-10s margins now state the same subject ("Decided by"), never a bare "N seconds apart" with
+// nothing saying it is the finish (click panel, 6 Oct 2026: every such hook was dropped).
+assert.equal(buildHookSuggestions(input({ finishMarginMs: 5_000 }))[0], "Decided by 5 seconds");
+
 // Ranking: a 4-lead-change race outranks the deathless note that also applies to it.
 const chaotic = buildHookSuggestions(input({ leadChanges: 4, deaths: 0, finishMarginMs: 30_000 }));
-assert.equal(chaotic[0], "The lead changed 4 times");
+assert.equal(chaotic[0], "Does the lead ever settle?");
 assert.ok(chaotic.includes("Not a single death between them"));
 
 // The death chips count real deaths only (26 Sept 2026): five hunger resets are routine, so a match
@@ -95,8 +109,11 @@ assert.ok(buildHookSuggestions(input({ deaths: 4 })).includes("4 deaths and stil
 
 // A DNF is normal (the loser stops once the winner is done), so it must not outrank real drama.
 const dnf = buildHookSuggestions(input({ finishMarginMs: null, leadChanges: 3 }));
-assert.equal(dnf[0], "The lead changed 3 times");
-assert.ok(dnf.includes("One of them never reached the dragon"));
+assert.equal(dnf[0], "Does the lead ever settle?");
+// "killed", not "reached": a null margin only means the loser never killed the dragon, not that
+// they never got there — accuracy panel, 6 Oct 2026 (match 12396259: the loser entered the End
+// 1.4s behind and died in the dragon fight, so "never reached" read as false on screen).
+assert.ok(dnf.includes("One of them never killed the dragon"));
 
 // Every suggestion has to fit the title budget, or it cannot be used at all.
 for (const text of buildHookSuggestions(input({ leadChanges: 5, deaths: 7, maxSwingMs: 90_000 }))) {
@@ -135,7 +152,7 @@ const rivalry = buildHookSuggestions(
 );
 assert.deepEqual(rivalry, [
   "Decided by 2.4 seconds",
-  "The lead changed 4 times",
+  "Does the lead ever settle?",
   "Rematch: doogile leads 2-1",
 ]);
 assert.ok(
@@ -148,9 +165,18 @@ assert.ok(
 // all-time record, which can already include this match, so it may not lead. The house rules
 // hold for each of them.
 {
+  // `winner` defaults to "edcr" (see input()); doogile led one split by 65s and did not go on to
+  // win it, so that is the lead actually lost — not a bare maxSwingMs delta (6 Oct 2026 panel: the
+  // old maxSwingMs-only version fired just as readily when a leader simply pulled further ahead).
   const both = buildHookSuggestions(
     input(
-      { finishMarginMs: 2_400, leadChanges: 4, deaths: 0, maxSwingMs: 65_000, resultMs: 411_000 },
+      {
+        finishMarginMs: 2_400,
+        leadChanges: 4,
+        deaths: 0,
+        resultMs: 411_000,
+        splits: [{ label: "Test", aMs: null, bMs: null, gapMs: 65_000, leader: "doogile" }],
+      },
       ELO_GAP,
       { versus: versus(1, 2) },
     ),
@@ -159,8 +185,8 @@ assert.ok(
   assert.deepEqual(both, [
     "Decided by 2.4 seconds",
     "A sub-7 to win it",
-    "The lead changed 4 times",
-    "A 1:05 lead, gone",
+    "Does the lead ever settle?",
+    "Can a 1:05 lead survive?",
     "Not a single death between them",
     "Rematch: doogile leads 2-1",
   ]);
@@ -175,8 +201,68 @@ assert.ok(
   );
   assert.deepEqual(buildHookSuggestions(input({ finishMarginMs: null }, {}, { versus: versus(1, 2) })), [
     "Rematch: doogile leads 2-1",
-    "One of them never reached the dragon",
+    "One of them never killed the dragon",
   ]);
+}
+
+// --- The swing/comeback fix: only a real reversal, never a leader pulling further ahead --------
+// (6 Oct 2026 panel: "A M:SS lead, gone" fired on 5 real matches where the leader led every split
+// and won — the "swing" was the lead growing, not collapsing. Matches 13301662/13766294/13333220.)
+{
+  // doogile leads one split by a lot, but doogile is also the winner: no lead was ever lost.
+  const grew = buildHookSuggestions(
+    input({
+      winner: "doogile",
+      leadChanges: 0,
+      splits: [{ label: "Test", aMs: null, bMs: null, gapMs: 97_600, leader: "doogile" }],
+    }),
+  );
+  assert.ok(
+    !grew.some((t) => /lead survive/.test(t)),
+    `a leader who wins must not get a "lead lost" chip: ${JSON.stringify(grew)}`,
+  );
+
+  // edcr (the default winner) trailed by 1:36 at one split and still won: that lead really was
+  // lost, and the chip quotes the real split gap, not an arbitrary consecutive-split delta.
+  const lost = buildHookSuggestions(
+    input({
+      leadChanges: 1,
+      splits: [{ label: "Test", aMs: null, bMs: null, gapMs: 96_600, leader: "doogile" }],
+    }),
+  );
+  assert.ok(lost.includes("Can a 1:36 lead survive?"), JSON.stringify(lost));
+
+  // The overlay panel never shows "Bastion loot" or "Blaze rod" (overlayProps.ts's SPLIT_EVENTS
+  // has only 6 rows: Nether enter, Bastion enter, Fortress, Blind travel, Stronghold, End enter).
+  // A bigger gap at one of the two off-panel splits must not be quoted — live-verified on match
+  // 13705580 (6 Oct 2026): "Bastion loot" showed a 2:36 gap, but the panel's own "Blind travel"
+  // row shows 1:36, which is the real, checkable fact a viewer can confirm on screen.
+  const offPanel = buildHookSuggestions(
+    input({
+      leadChanges: 1,
+      splits: [
+        { label: "Bastion loot", aMs: null, bMs: null, gapMs: 156_762, leader: "doogile" },
+        { label: "Blind travel", aMs: null, bMs: null, gapMs: 96_613, leader: "doogile" },
+      ],
+    }),
+  );
+  assert.ok(
+    offPanel.includes("Can a 1:36 lead survive?"),
+    `must quote the panel-visible split, not the bigger off-panel one: ${JSON.stringify(offPanel)}`,
+  );
+  assert.ok(
+    !offPanel.some((t) => /2:36/.test(t)),
+    `must not quote an off-panel gap: ${JSON.stringify(offPanel)}`,
+  );
+
+  // Under a minute: the shorter, second-tier phrasing, still a question.
+  const lostSmall = buildHookSuggestions(
+    input({
+      leadChanges: 1,
+      splits: [{ label: "Test", aMs: null, bMs: null, gapMs: 48_000, leader: "doogile" }],
+    }),
+  );
+  assert.ok(lostSmall.includes("Can a 48-second lead survive?"), JSON.stringify(lostSmall));
 }
 
 // A playoff game: suggestions never use seeds, ranks or elo (the operator's call, 24 Sept 2026).
@@ -262,7 +348,10 @@ assert.ok(buildHookSuggestions(input({ resultMs: 411_000 })).includes("A sub-7 t
 assert.ok(buildHookSuggestions(input({ resultMs: 420_000 })).includes("A sub-8 to win it"));
 assert.ok(buildHookSuggestions(input({ resultMs: 599_000 })).includes("A sub-10 to win it"));
 const fast = buildHookSuggestions(input({ resultMs: 411_000, leadChanges: 3 }));
-assert.ok(fast.indexOf("A sub-7 to win it") < fast.indexOf("The lead changed 3 times"), JSON.stringify(fast));
+assert.ok(
+  fast.indexOf("A sub-7 to win it") < fast.indexOf("Does the lead ever settle?"),
+  JSON.stringify(fast),
+);
 
 // `versus` is optional — every caller that predates it still works, and just loses that chip.
 const noVersus = buildHookSuggestions(input({ finishMarginMs: 2_400 }));
@@ -280,7 +369,7 @@ assert.ok(
 // fetched is exactly that case.
 const plain = buildHookSuggestions(input({ finishMarginMs: 2_400, leadChanges: 4, deaths: 0 }));
 assert.equal(plain[0], "Decided by 2.4 seconds");
-assert.ok(plain.includes("The lead changed 4 times"));
+assert.ok(plain.includes("Does the lead ever settle?"));
 assert.ok(plain.includes("Not a single death between them"));
 
 // The budget applies to rivalry chips too: an over-long rematch line is dropped, not truncated.
@@ -388,6 +477,9 @@ console.log("hooks: all checks passed");
     "PLAYOFFS | SWEPT vs TAS",
     "TAS vs SWEPT",
     "doogile sweeps the round of 16",
+    // Not the sanctioned pace idiom ("A sub-N to win it") — a real nickname next to "to win"
+    // language, which a blanket `\bto win\b` strip briefly let through (6 Oct 2026).
+    "doogile battles back to win it",
   ]) {
     assert.ok(spoilsTheResult(spoiler), `should be rejected: ${spoiler}`);
   }
@@ -457,7 +549,11 @@ console.log("OK: HOOK_SUGGEST_CMD is held to the no-label rule too");
 // the dashboard's own chip filter, so this is the one place that has to catch "TAS vs UNC" (the
 // real string match-13223455.title.txt carried as its first suggestion).
 process.env.HOOK_SUGGEST_CMD = `printf 'TAS vs UNC\\nDecided at the dragon\\n'`;
-assert.deepEqual(await hookSuggestions(input()), ["Decided at the dragon"], "edcr vs doogile: TAS/UNC is neither");
+assert.deepEqual(
+  await hookSuggestions(input()),
+  ["Decided at the dragon"],
+  "edcr vs doogile: TAS/UNC is neither",
+);
 delete process.env.HOOK_SUGGEST_CMD;
 // Unset, the built-ins never produce a labelled chip anyway — hookSuggestions changes nothing for them.
 assert.deepEqual(await hookSuggestions(input({ finishMarginMs: 2_400 })), ["Decided by 2.4 seconds"]);

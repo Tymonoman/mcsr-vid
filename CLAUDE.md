@@ -414,6 +414,30 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   saves — any check on it (result words, length) comes back as a warning beside the field, never a refusal
   (the operator: "it should just be a suggestion"); so does the Title & description fold's save for a segment the generated title does not carry
   (`typedSpoiler` — "3rd Place" is a round name there, not a result).
+- **Three `hooks.ts` chip bugs fixed 6 Oct 2026**, after a 3-judge panel (click, accuracy, risk)
+  scored 26 real matches' hooks: `secondsPhrase()` replaces the old `seconds()` helper, which
+  stripped a trailing ".0" and left the plural behind ("Decided by 1 seconds"); it also renders under 100ms as exact milliseconds rather
+  than a rounded, overstated "0.1 seconds" (the channel's own past title was "58 MILLISECONDS"),
+  and the 3-10s tier keeps the same "Decided by" subject instead of a bare "N seconds apart" (every
+  such hook in the panel was dropped for not saying what the number measured). The lead-change
+  chip ("The lead changed N times") is now the numberless question "Does the lead ever settle?":
+  the exact count both overcounted (it read splits — bastion loot, the blaze rod — the overlay
+  panel never shows) and let a viewer work out who leads at the end by parity once they'd counted
+  the flips on screen. The swing chip ("A M:SS lead, gone" / "N seconds swung it") used
+  `maxSwingMs`, the raw step between two splits' signed gaps, which fires just as readily when a
+  leader simply pulls further ahead — verified false on 5 real matches where the leader led wire
+  to wire and won. It now reads `metrics.splits` for the biggest lead a player actually held at a
+  split they did not go on to win from (`OFF_PANEL_SPLITS` excludes "Bastion loot" and "Blaze rod",
+  the two the overlay never shows — a bug this fix's own first draft had, caught only by a live
+  `getMatch` recheck, not the panel's notes), and asks "Can a M:SS lead survive?" rather than
+  asserting the outcome. The DNF fallback says "One of them never **killed** the dragon", not "reached" —
+  `finishMarginMs` null only means no dragon kill; the loser can have fought and died in the End.
+  `src/shorts/videoPick.ts`'s `hookProblem` also strips `PACE_TO_WIN` (`hooks.ts`: "sub-N to win
+  [it]" only, never a bare "to win", so "X battles back to win it" stays refused) before its own
+  spoiler check, as `spoilsTheResult` does: it had disagreed with `hooks.ts` and was silently dropping the pace chip
+  ("A sub-N to win it", already `hooks.ts`'s own highest-weighted candidate under 8 minutes)
+  wherever it would otherwise have won, in both the dashboard's chip list (`shortFlow.ts`) and the
+  Short's own `chipHook`/`extrasOf`. Full write-up: `handbook/knowledge/hooks-2026-10-06.md`.
 - **A subscribe line during the race** (`midRollCtaAtSec`, Settings → Publishing; default 90,
   null = none): the post-roll card in the meta column reaches 25–45% of viewers, the first split
   (~90 s) 50–60% (`npm run retention`, 22 Sept 2026). The meta column shows SUBSCRIBE for
