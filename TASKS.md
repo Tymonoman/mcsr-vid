@@ -17,6 +17,12 @@ privacy, nightly-changing config, .env/config edits, docker restart, Aquacorde/B
 23:05 UTC: P5 MERGED to main (7764d63 + 20155da, merge commit; tsc + 87 unit files green in /app). P1 done
 (p1/diagnosis.md skeptic-corrected; p1/picture-quality.md: YT VP9 1080p ≈ SSIM 0.86 on fast turns, layout = competitors').
 P3 launched wf_618a7ba6-409 (ideas → score → 3 skeptics → build ≤2 default-off survivors in idea-* worktrees).
+23:30 UTC: P4 MERGED (3d78966 + 3e55cfc via merge a3b66c2; tsc + 87 unit files green). Backtest: n=21 ranked
+LOO ρ=-0.04 CI(-0.50,0.42) → formula unchanged, CACHE_VERSION 4; fix = known bucket one card per player (live:
+silverrruns held 3 of 4 known slots; 0 of 15 known-player dual-VOD matches became a card). Operator calls:
+suggestChaosSlots 0 (live) vs 2 default; hackingnoises (draw 2.08) not a favourite → never above tier 2.
+Hardening wf_5e78d666-e21 (worktree hardening): loadConfig copy (fixes the suggestSelect worktree leak), scan
+failure log, corrupt .dashboard.json kept aside. Takes effect only after his docker restart.
 MORNING #1: SF2 13527460 (Feinberg vs Infume?) missed 6 Oct 23:00 (hooks never saved); 3rd place EeAbgZQgZPk 7 Oct
 23:00 + GF _2EOkOOX0PQ 8 Oct 23:00 spoil it → he saves SF2 hooks with Publish at 7 Oct 21:00 UTC (no moves needed).
 Known test leak: suggestSelect.test.ts passes only with /app's config (mediaDir=/media) — fails in a fresh worktree.
