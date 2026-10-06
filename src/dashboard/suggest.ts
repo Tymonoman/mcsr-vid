@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { blockedIn, config } from "../config.js";
+import { describeError } from "../errorText.js";
 import { chaosScore, closenessScore, computeMetrics, type MatchMetrics } from "../pipeline/matchScore.js";
 import { listProcessedMatchIds } from "./matchStatus.js";
 import { pairKey, recentPairPostsSnapshot, type PairPost } from "./pairPosts.js";
@@ -369,7 +370,12 @@ function loadCache(): SuggestCache {
       return { ...EMPTY_CACHE, dismissed: Array.isArray(parsed.dismissed) ? parsed.dismissed : [] };
     }
     return { ...EMPTY_CACHE, ...parsed };
-  } catch {
+  } catch (err) {
+    // Unlike the version-mismatch branch above, JSON.parse itself threw here — there is no
+    // `parsed` object to salvage dismissals or Twitch caches from, malformed JSON leaves
+    // nothing to read. Still must not vanish silently: without this the operator just sees
+    // every dismissal quietly come back and a full rescan with no clue why.
+    console.error(`suggest: cache ${file} unreadable, resetting — ${describeError(err)}`);
     return { ...EMPTY_CACHE };
   }
 }
@@ -489,8 +495,10 @@ async function resolveFollowers(
     try {
       const user = await getUser(nickname);
       cache.twitchLogins[nickname] = user.connections?.twitch?.id?.toLowerCase() ?? null;
-    } catch {
-      // Leave unset so the next scan retries rather than caching a transient failure.
+    } catch (err) {
+      // Leave unset so the next scan retries rather than caching a transient failure, but say
+      // so: a sustained failure on this one call otherwise retries forever with no trace.
+      console.error(`suggest: ${nickname}'s Twitch login lookup failed — ${describeError(err)}`);
     }
   }
 
@@ -757,6 +765,7 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
 
   // Only matches not already scored on a previous launch need a detail fetch.
   const unscored = shortlist.filter((m) => !(String(m.id) in cache.pool));
+  let detailFailures = 0;
   const newlyScored = (
     await mapWithConcurrency(unscored, DETAIL_CONCURRENCY, async (feedMatch) => {
       try {
@@ -769,8 +778,12 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
           dateSec: feedMatch.date,
           scoredAt: Date.now(),
         };
-      } catch {
-        // One unreadable match shouldn't sink the whole list.
+      } catch (err) {
+        // One unreadable match shouldn't sink the whole list, but a silent run of them (a
+        // shape change, a sustained outage on this one call) must not look identical to
+        // "nothing good to show" — see the aggregate note below.
+        detailFailures++;
+        console.error(`suggest: match #${feedMatch.id} detail fetch failed — ${describeError(err)}`);
         return null;
       }
     })
@@ -838,12 +851,34 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
           b.popularity - a.popularity,
       );
     const out: Suggestion[] = [];
+    // The known bucket is a diversity slot, not a repeat-the-biggest-audience-name slot: without
+    // a per-player cap, one or two favourites/known players with the best-audience matches can
+    // legitimately sweep every suggestKnownSlots, and a different known player's own fresh match
+    // never gets a card (7 Oct 2026 — live, silverrruns alone held 3 of 4 known slots every scan).
+    // Same shape as `pairs` one level up, just per player instead of per pair. A second,
+    // unconstrained pass backfills any slots the cap leaves empty, so the bucket is never
+    // emptier than it was before this cap.
+    const usedPlayers = bucket === "known" ? new Set<string>() : null;
     for (const entry of ranked) {
       if (out.length >= slots) break;
       const key = pairKey(entry.metrics.players);
       if (pairs.has(key)) continue;
+      const [p1, p2] = entry.metrics.players.map((p) => p.toLowerCase());
+      if (usedPlayers?.has(p1) || usedPlayers?.has(p2)) continue;
       pairs.add(key);
+      usedPlayers?.add(p1).add(p2);
       out.push(entry);
+    }
+    if (usedPlayers && out.length < slots) {
+      // No separate "already picked" check needed: every entry pass 1 pushed into `out` already
+      // added its pairKey to `pairs`, so `pairs.has(key)` alone already skips it here too.
+      for (const entry of ranked) {
+        if (out.length >= slots) break;
+        const key = pairKey(entry.metrics.players);
+        if (pairs.has(key)) continue;
+        pairs.add(key);
+        out.push(entry);
+      }
     }
     return out;
   };
@@ -891,7 +926,10 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
   const scanNote = scanAborted
     ? `scan stopped early after ${requests} requests (rate limit or MCSR API error) — press r to continue`
     : null;
-  const notes = [scanNote, note].filter((n): n is string => n !== null);
+  // More than a couple of failures in one scan is the shape of a broken call, not bad luck.
+  const detailFailureNote =
+    detailFailures > 2 ? `${detailFailures} of ${unscored.length} match details failed to fetch` : null;
+  const notes = [scanNote, note, detailFailureNote].filter((n): n is string => n !== null);
 
   return {
     suggestions: cache.suggestions,

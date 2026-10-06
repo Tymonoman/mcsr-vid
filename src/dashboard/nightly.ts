@@ -392,7 +392,11 @@ const renderInFlight = (): boolean =>
 
 /** The notification's reminder line: "\n3 waiting for a hook", or nothing when none is. */
 async function waitingLine(): Promise<string> {
-  const n = (await nightlyShortSummary().catch(() => null))?.waitingForHook.length ?? 0;
+  const summary = await nightlyShortSummary().catch((err) => {
+    console.error(`nightly: waiting-for-hook summary failed — ${describeError(err)}`);
+    return null;
+  });
+  const n = summary?.waitingForHook.length ?? 0;
   return n > 0 ? `\n${n} waiting for a hook` : "";
 }
 
@@ -476,7 +480,10 @@ export async function pickClause(matchId: number, idle: () => Promise<void> = pi
       // No reason on disk: the clause without one.
     }
     return ` + heuristic pick (the model failed${why ? `: ${why.length > 160 ? `${why.slice(0, 159)}…` : why}` : ""})`;
-  } catch {
+  } catch (err) {
+    // Distinct from "no pick file exists yet" above (which returns the same empty clause by
+    // design): this is a pick file that exists but didn't parse, and must not look identical.
+    console.error(`nightly: pick file for #${matchId} unreadable — ${describeError(err)}`);
     return "";
   }
 }
