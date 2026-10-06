@@ -292,14 +292,6 @@ export function hookFacts(input: HookInput) {
 }
 
 /**
- * Runs `HOOK_SUGGEST_CMD` with the match facts on stdin, one suggestion per stdout line.
- *
- * Deliberately a command rather than a client for any particular tool, so whatever generates
- * these can be swapped without a release.
- * Any failure — unset, missing binary, timeout, empty output — falls back to the built-ins,
- * because an empty hook box is a worse outcome than a less clever hook.
- */
-/**
  * The one shape allowed to carry "win": the pace stake itself ("A sub-8 to win it", `candidates`'
  * own highest-weighted suggestion under 8 minutes) states what winning takes, not who did.
  * Anchored to "sub-N ... to win" rather than a blanket `\bto win\b` strip (6 Oct 2026 panel bug,
@@ -349,6 +341,14 @@ export function typedSpoiler(title: string, ...known: string[]): string | null {
   return segments(title).find((s) => s !== "" && !ours.has(s) && spoilsTheResult(s)) ?? null;
 }
 
+/**
+ * Runs `HOOK_SUGGEST_CMD` with the match facts on stdin, one suggestion per stdout line.
+ *
+ * Deliberately a command rather than a client for any particular tool, so whatever generates
+ * these can be swapped without a release.
+ * Any failure — unset, missing binary, timeout, empty output — falls back to the built-ins,
+ * because an empty hook box is a worse outcome than a less clever hook.
+ */
 export async function suggestHooksExternally(input: HookInput): Promise<string[] | null> {
   const command = process.env.HOOK_SUGGEST_CMD;
   if (!command || command.trim() === "") return null;
