@@ -10,7 +10,7 @@
 import { config } from "../config.js";
 import { describeError } from "../errorText.js";
 import * as bot from "./bot.js";
-import { askAgyForReport, askAgyFreeform, type AgyResult } from "./agy.js";
+import { describeFailure, runClaude } from "./claude.js";
 import { knowledgeFor } from "./knowledge.js";
 import { BOT_COMMANDS, HELP_TEXT, parseCommand, parseStatsWindows, type ParsedCommand } from "./commands.js";
 import {
@@ -35,16 +35,18 @@ import {
   renderWaiting,
   renderWorth,
   renderYpp,
+  type TodayAnswer,
+  type TodayResult,
 } from "./report.js";
 import { msUntilNextWarsawRun, shouldCatchUp, warsawDateStr } from "./schedule.js";
 import { readTelegramState, updateTelegramState } from "./state.js";
 import { whenWarsaw } from "./report.js";
 
-/** Only counts, ids and titles ever reach agy — never a comment's own text or author. */
-function factsForAgy(f: ReportFacts): object {
+/** Only counts, ids and titles ever reach Claude — never a comment's own text or author. */
+function factsForPrompt(f: ReportFacts): object {
   return {
-    // Times as the operator's clock reads them, so agy never has to convert (or print) an ISO
-    // instant; the nightly's optional queue left out — it read to agy as a chore.
+    // Times as the operator's clock reads them, so Claude never has to convert (or print) an ISO
+    // instant; the nightly's optional queue left out — it read to Claude as a chore.
     todo: f.todo.ok
       ? {
           waitingForHook: f.todo.data.waitingForHook,
@@ -88,7 +90,7 @@ function factsForAgy(f: ReportFacts): object {
   };
 }
 
-/** What the operator's day is, so agy's to-do list is his, not a reading of the JSON. */
+/** What the operator's day is, so Claude's to-do list is his, not a reading of the JSON. */
 const CHANNEL_CONTEXT = [
   "You write for the person who runs MCSR Replayoffs, a small YouTube channel of Minecraft speedrun (MCSR Ranked) match replays; he lives in Poland.",
   "The pipeline renders one match every night by itself and uploads on its own once he saves that match's hooks (the long-form title hook and the Short's hook) on the dashboard: nothing uploads until he does.",
@@ -96,31 +98,78 @@ const CHANNEL_CONTEXT = [
   "Videos already scheduled publish by themselves: never list them as tasks. Services that are up need nothing.",
 ].join(" ");
 
+/** The TODAY session's whole instructions — no tools, no project context, nothing beyond this. */
+const TODAY_SYSTEM_PROMPT =
+  "You write a short status update for the person who runs a small YouTube channel. Plain text " +
+  "only: no tools, no markdown, no JSON, no code fences. Every number you write must be copied " +
+  "exactly from the FACTS you are given, never invented, estimated, or rounded differently. This " +
+  "is for the operator's own eyes, never published.";
+
+/** `/ask`'s whole instructions — same plain-text, no-invented-numbers contract as TODAY's. */
+const ASK_SYSTEM_PROMPT =
+  "You answer one question from the person who runs a small YouTube channel, using only the " +
+  "FACTS and KNOWLEDGE he gives you. Plain text only: no tools, no markdown, no JSON. Never " +
+  "invent a number. A few sentences at most. This is for the operator's own eyes, never published.";
+
 function reportPrompt(facts: object): string {
   return [
     CHANNEL_CONTEXT,
     "FACTS below is a JSON object computed by code. Every number in your answer must be copied from FACTS, never invented, estimated, or rounded differently.",
-    "Write a headline and an ordered to-do list. The headline is one short line on how things stand (what is covered, what is at risk) and must not repeat a to-do item. The to-do list has at most 6 items, most important first, each starting with a verb and one line long; leave out anything that needs no action from him; if nothing does, say so in one item.",
+    "Reply in plain text, in exactly this shape: line 1 is a short headline on how things stand (what is covered, what is at risk), which must not repeat a to-do item; then an ordered to-do list, one item per line, each starting with its number and a period, like '1. Save hooks for #12345'.",
+    "The to-do list has at most 6 items, most important first, each starting with a verb and one line long; leave out anything that needs no action from him; if nothing does, say so in its one item.",
     "The same message lists the problems, overnight uploads, stats and comments in detail below your list, so each item names the action, not the details.",
     "Write for a phone: plain words, no JSON field names, no ISO timestamps (times in FACTS are already his local time), '#<id>' only when he needs it to find a match.",
     "This goes only to the operator, never published: do not include any viewer comment text or names, and use only what is in FACTS.",
-    'Reply with exactly one JSON object: { "headline": string, "todo": string[] } and nothing else.',
     "",
     `FACTS = ${JSON.stringify(facts)}`,
   ].join("\n");
 }
 
-async function todayAgy(facts: ReportFacts): Promise<AgyResult> {
+const MAX_TODO = 8;
+const MAX_LINE_CHARS = 300;
+
+/** Strips control characters (not `\n`, there are none left by here) and bounds a line's length. */
+function cleanLine(s: string): string | null {
+  // eslint-disable-next-line no-control-regex -- deliberately stripping control bytes
+  const t = s.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "").trim();
+  return t && t.length <= MAX_LINE_CHARS ? t : null;
+}
+
+/** Haiku's plain-text TODAY answer: line 1 the headline, then "1. …" items. Null for anything
+ *  else — the caller's cue to fall back, same as a JSON answer that didn't validate used to be. */
+export function parseTodayPlainText(raw: string): TodayAnswer | null {
+  const lines = raw
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const headline = lines.length ? cleanLine(lines[0]!) : null;
+  if (!headline) return null;
+  const todo = lines
+    .slice(1)
+    .map((l) => cleanLine(l.replace(/^\d+[.)]\s*/, "")))
+    .filter((x): x is string => x !== null)
+    .slice(0, MAX_TODO);
+  return todo.length ? { headline, todo } : null;
+}
+
+async function todayClaude(facts: ReportFacts): Promise<TodayResult> {
   const alertCount = facts.alerts.ok ? facts.alerts.data.length : 0;
   const unansweredCount = facts.comments.ok ? facts.comments.data.unanswered.length : 0;
   const fallback = () => fallbackToday(facts.todo.ok ? facts.todo.data : null, alertCount, unansweredCount);
-  return askAgyForReport(reportPrompt(factsForAgy(facts)), fallback);
+  const reply = await runClaude(reportPrompt(factsForPrompt(facts)), { systemPrompt: TODAY_SYSTEM_PROMPT });
+  // ponytail: no retry-on-empty (one is allowed by spec); Haiku with no tools rarely answers
+  // blank — add a single retry here if a real run proves that wrong.
+  if (!reply.ok) return { source: "fallback", answer: fallback(), note: describeFailure(reply) };
+  const answer = parseTodayPlainText(reply.text);
+  return answer
+    ? { source: "claude", answer }
+    : { source: "fallback", answer: fallback(), note: "answered, but not a usable to-do list" };
 }
 
 export interface BuiltReport {
   messages: string[];
   facts: ReportFacts;
-  agy: AgyResult;
+  claude: TodayResult;
 }
 
 /** The full morning report's text, fresh — used by both the scheduled send and `/report`. */
@@ -128,9 +177,9 @@ export async function buildMorningReport(nowMs = Date.now()): Promise<BuiltRepor
   const state = readTelegramState();
   const sinceMs = state.lastReportAt ? Date.parse(state.lastReportAt) : nowMs - 24 * 60 * 60 * 1000;
   const facts = await gatherFacts(nowMs, sinceMs, MORNING_SECTIONS);
-  const agy = await todayAgy(facts);
-  const messages = renderMorningReport(facts, agy, state.prevSnapshot, config.youtubeChannelId, nowMs);
-  return { messages, facts, agy };
+  const claude = await todayClaude(facts);
+  const messages = renderMorningReport(facts, claude, state.prevSnapshot, config.youtubeChannelId, nowMs);
+  return { messages, facts, claude };
 }
 
 /** Sends the morning report and records that it went out — the dedupe write. */
@@ -160,8 +209,8 @@ export async function dispatchCommand({ command, args }: ParsedCommand): Promise
     }
     case "todo": {
       const facts = await gatherFacts();
-      const agy = await todayAgy(facts);
-      return { messages: [renderToday(facts.todo, agy, facts.dashboardBaseUrl)], html: true };
+      const claude = await todayClaude(facts);
+      return { messages: [renderToday(facts.todo, claude, facts.dashboardBaseUrl)], html: true };
     }
     case "alerts": {
       const facts = await gatherFacts(Date.now(), undefined, ["alerts"]);
@@ -219,21 +268,19 @@ export async function dispatchCommand({ command, args }: ParsedCommand): Promise
       const facts = await gatherFacts();
       const prompt = [
         CHANNEL_CONTEXT,
-        "Answer his one question below briefly, in plain words for a phone. FACTS is today's live channel data; KNOWLEDGE is the channel's own reports (competitors, audience, YPP, edcr, what was decided in chat) with the date each figure was read.",
+        "Answer his one question below briefly, in plain words for a phone, as plain text (no markdown, no JSON). FACTS is today's live channel data; KNOWLEDGE is the channel's own reports (competitors, audience, YPP, edcr, what was decided in chat) with the date each figure was read.",
         "Every number in your answer must come from FACTS or KNOWLEDGE, never invented; say how old a figure is when it matters. This goes only to the operator: never include any viewer comment text or names.",
         "If neither has the answer, say what is missing and where it could be found (which report, which YouTube Studio page) instead of only saying you do not know.",
         `QUESTION: ${args.trim()}`,
         "",
-        `FACTS = ${JSON.stringify(factsForAgy(facts))}`,
+        `FACTS = ${JSON.stringify(factsForPrompt(facts))}`,
         "",
         `KNOWLEDGE (markdown):\n${knowledgeFor(args)}`,
-        "",
-        'Reply with exactly one JSON object: { "answer": string } and nothing else.',
       ].join("\n");
-      const reply = await askAgyFreeform(prompt);
-      return reply.ok
-        ? { messages: [reply.text], html: false }
-        : { messages: [`agy unavailable: ${reply.reason}`], html: false };
+      const reply = await runClaude(prompt, { systemPrompt: ASK_SYSTEM_PROMPT });
+      // On a limit this is exactly "usage limit reached — try again later" and nothing else;
+      // any other failure is the same one-line reason the TODAY note gives.
+      return reply.ok ? { messages: [reply.text], html: false } : { messages: [describeFailure(reply)], html: false };
     }
     default:
       return { messages: [`Unknown command /${command}. /help lists what this bot answers.`], html: false };
@@ -246,7 +293,7 @@ let pollerRunning = false;
 let stopped = false;
 let reportTimer: ReturnType<typeof setTimeout> | null = null;
 
-const AGY_COMMANDS = new Set(["report", "todo", "ask"]);
+const CLAUDE_COMMANDS = new Set(["report", "todo", "ask"]);
 
 async function handleUpdate(update: bot.TgUpdate): Promise<void> {
   const msg = update.message;
@@ -270,9 +317,12 @@ async function handleUpdate(update: bot.TgUpdate): Promise<void> {
   const parsed = parseCommand(msg.text);
   if (!parsed) return;
   try {
-    // agy on the whole facts sheet takes one to three minutes: say so rather than go quiet.
-    if (AGY_COMMANDS.has(parsed.command))
-      await bot.sendMessage("asking agy — this takes a minute or two").catch(() => undefined);
+    // The adapter's own timeout is two minutes; Haiku on a plain-text ask usually answers in
+    // seconds, but say so rather than go quiet on a slow one.
+    if (CLAUDE_COMMANDS.has(parsed.command))
+      await bot
+        .sendMessage("asking Claude (haiku) — this can take up to two minutes")
+        .catch(() => undefined);
     else if (parsed.command === "worth")
       await bot
         .sendMessage("checking the last three days' matches — this can take up to a minute")

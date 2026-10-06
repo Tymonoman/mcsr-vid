@@ -37,7 +37,7 @@ what an agent cannot derive from the code; the rest is in the files it names.
 | `src/playoffs/` | The bracket and its games (`playoffs.ts`), a series as one video (`series.ts`, `seriesCli.ts`). |
 | `src/youtube/` | The Data API client and auth, upload records, the upload itself, the channel pairing, the publish slot. |
 | `src/dashboard/` | The web server (`server.ts`, one dispatch chain), its route groups (`youtubeRoutes`, `exportRoutes`, `shortsRoutes`, `syncRoutes`), the match screen's payload (`matchMeta.ts`), jobs, the nightly, suggestions, the shelf (hidden/queue/checklist), the publish set. |
-| `src/telegram/` | The Telegram bot: the Bot API client (`bot.ts`), the morning report's facts (`facts.ts`) and its rendering (`report.ts`), agy as the report's brain (`agy.ts`), the reports `/ask` reads (`knowledge.ts`), the 07:00 Warsaw schedule (`schedule.ts`), slash-command parsing (`commands.ts`), the dedupe/snapshot state file (`state.ts`), the wiring `server.ts` boots (`index.ts`) and the CLI (`tgCli.ts`). |
+| `src/telegram/` | The Telegram bot: the Bot API client (`bot.ts`), the morning report's facts (`facts.ts`) and its rendering (`report.ts`), the Claude CLI adapter that is the report's brain (`claude.ts`), the reports `/ask` reads (`knowledge.ts`), the 07:00 Warsaw schedule (`schedule.ts`), slash-command parsing (`commands.ts`), the dedupe/snapshot state file (`state.ts`), the wiring `server.ts` boots (`index.ts`) and the CLI (`tgCli.ts`). |
 | `src/cli/` | Entry points nothing else imports: batch, status, score, chat, bench, retention, the TUI. |
 | `src/` root | `config.ts`, `cliArgs.ts`, `errorText.ts`, and the tests that cut across folders. |
 
@@ -684,8 +684,10 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
 
 One morning report at `telegramReportHourWarsaw` (Settings has no field for it — a config-file
 edit, like `nightlyUpload`), Europe/Warsaw, DST-correct; every slash command answers fresh, on
-demand. Built 28 Sept 2026 (the operator's ask: "I want AGY to be the brain of it"). Runs inside
-the dashboard process (`server.ts` calls `startTelegramBot()`), over the Bot API's `fetch` calls
+demand. Built 28 Sept 2026 (the operator's ask: "I want AGY to be the brain of it"); the brain
+moved from agy (Antigravity) to Claude Haiku on 6 Oct 2026 — the Short picker keeps agy
+(`src/shorts/reasoner.ts`, `src/shorts/videoPick.ts`); only this bot moved. Runs inside the
+dashboard process (`server.ts` calls `startTelegramBot()`), over the Bot API's `fetch` calls
 directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, no webhook, no port.
 
 - **Secrets are `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in `/app/.env`**, loaded the way
@@ -698,25 +700,42 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
   means another process is polling and this one backs off rather than fight it.
 - **A narrow command gathers only its own section.** `gatherFacts(nowMs, sinceMs, only)`
   (`facts.ts`) takes which sections to compute; `/report`, `/todo` and `/ask` want the full
-  picture (agy's prompt is richer for it) and pass none, but `/stats`, `/comments`, `/ypp`,
+  picture (Claude's prompt is richer for it) and pass none, but `/stats`, `/comments`, `/ypp`,
   `/waiting` and `/health` each pass their one section, so they skip the other five API round
-  trips — including the live agy ping `gatherHealth` makes, which only `/health` and `/alerts`
+  trips — including the live Claude ping `gatherHealth` makes, which only `/health` and `/alerts`
   (it folds a down API into its own lines) still pay for.
-- **agy is the brain, code is the facts.** `facts.ts` gathers everything deterministically —
-  every number, list and link in a report — and only the TODAY section's headline and ordered
-  to-do list come from agy (`agy.ts`, the same `reasonerCommand` adapter as the Short picker,
-  `src/shorts/reasoner.ts`). The prompt tells agy every number must be copied from FACTS, never
-  invented, and that this is for the operator's eyes only; **no viewer comment text or author
-  name is ever put in an agy prompt** (`/ask` included) — only counts, video titles and ids.
-  The prompt opens with what the operator's day is (`CHANNEL_CONTEXT` in `index.ts`: save hooks,
-  fix failures, keep every day scheduled, reply to comments; scheduled uploads are not chores) and
-  gets times already in Warsaw local time (`whenWarsaw`), so the list reads as a plan, not the
-  JSON. Flash reaches for a shell command now and then, which headless mode denies and the run
-  ends empty (seen on the first real run, 28 Sept) — so every prompt says "no tools", and a denied
-  or empty run is asked once more (`askOnce`, `agy.ts`). Not configured, a failure, a 300 s timeout
-  (one real run took 47 s, the next over 120 s) or an unusable answer falls back to a rule-based
-  to-do list (`fallbackToday`) and the report says "agy unavailable: <reason>" in one line.
-  `/report`, `/todo` and `/ask` first answer "asking agy — this takes a minute or two".
+- **Claude Haiku is the brain, code is the facts** (moved off agy 6 Oct 2026). `facts.ts` gathers
+  everything deterministically — every number, list and link in a report — and only the TODAY
+  section's headline and ordered to-do list, and `/ask`'s answer, come from Claude through one
+  small adapter, `src/telegram/claude.ts` (`runClaude`), called from `index.ts`. It spawns
+  `claude -p --model claude-haiku-4-5-20251001 --output-format json --tools "" --strict-mcp-config
+  --disable-slash-commands --no-session-persistence --setting-sources "" --system-prompt
+  "<…>"` as a plain argv array (never a shell), `cwd` the OS temp dir and the prompt on stdin —
+  never argv, so a knowledge pack can run ~70 KB without flirting with argv's own cap. No
+  project CLAUDE.md, hooks, plugins or user settings load (`--setting-sources ""`, confirmed by a
+  real run: an identical trivial prompt took ~2,100 input tokens without it, ~390 with it); auth
+  still works because it comes from `~/.claude/.credentials.json` under `HOME`, not a setting
+  source, and `HOME` is one of the four env vars (`PATH`, `HOME`, `LANG`, `TMPDIR`) in the child's
+  short allow-list — never the Telegram token or any other secret this process holds.
+  `--tools ""` and `--strict-mcp-config` give it nothing to call; `--disable-slash-commands`
+  turns off skills. TODAY asks for **plain text**, not JSON: line 1 the headline (must not repeat
+  a to-do item), then "1. …" items, parsed by `parseTodayPlainText`; `/ask` gets a few plain
+  sentences back directly. Every prompt's system message says plain text only, no tools, every
+  number copied from FACTS; **no viewer comment text or author name is ever put in a Claude
+  prompt** (`/ask` included) — only counts, video titles and ids (`factsForPrompt`, `index.ts`).
+  The user prompt opens with what the operator's day is (`CHANNEL_CONTEXT` in `index.ts`: save
+  hooks, fix failures, keep every day scheduled, reply to comments; scheduled uploads are not
+  chores) and gets times already in Warsaw local time (`whenWarsaw`), so the list reads as a
+  plan, not the JSON. The adapter never retries — a limit, a timeout, a missing binary or no
+  login all mean asking again right now gets the same answer (`describeFailure`, `claude.ts`);
+  a limit reads **exactly** "usage limit reached — try again later" everywhere it can happen
+  (the TODAY note and `/ask`'s whole reply, verbatim, nothing else), a missing binary says
+  "binary missing in the container", no login says to run `claude setup-token` and put
+  `CLAUDE_CODE_OAUTH_TOKEN` in `/app/.env`, and anything else is the adapter's own message.
+  A failure (120 s timeout; a ping uses ~30 s) or an unusable answer falls back to a rule-based
+  to-do list (`fallbackToday`) and the report shows that one-line reason under it.
+  `/report`, `/todo` and `/ask` first answer "asking Claude (haiku) — this can take up to two
+  minutes".
 - **`/ask` also gets the channel's reports** (the operator, 29 Sept 2026: "give agy some knowledge
   about the channel competitors and such let it have access to reports you made so I can ask him
   questions without him reporting he doesn't know"). `handbook/knowledge/*.md` is in the repo because
@@ -724,12 +743,13 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
   whole), the competitor, audit, audience, YPP, edcr and Studio reports, and `chat-analyses.md`
   (what was answered in chat). `knowledgeFor` (`knowledge.ts`) sends the briefing, an index of
   every doc and the `## ` sections that share the most words with the question, best first, inside
-  70 KB (the prompt is one argv argument, ~128 KiB at most). **No viewer comment text or name goes
+  70 KB (sent to Claude over stdin, not argv, so there is no ~128 KiB cap to budget against —
+  70 KB just keeps `/ask` answering quickly). **No viewer comment text or name goes
   into these docs** — they are paraphrased — and a figure carries the date it was read. Add a
   report by copying it in; a new answer worth keeping goes into `chat-analyses.md` or `channel.md`.
 - **The report is three messages, each saying a thing once** (the operator, 29 Sept 2026: "too
   much repetitive info split it up into a couple messages"; `renderMorningReport` returns them):
-  the day (agy's headline, which must not repeat a to-do item, and its numbered to-do list with one
+  the day (Claude's headline, which must not repeat a to-do item, and its numbered to-do list with one
   dashboard link; Problems only when there are any; overnight in a line when quiet; health as one
   line naming only what is down), the channel (live counts, then the 1/3/7/30-day stats as one
   `<pre>` table, a metric per row; YPP as the countdown and the gate holding it back — `tierEta`,
@@ -777,11 +797,19 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
   match id in `<code>` (those ids are not in the rendered list, so no deep link). 6 list calls and
   at most 8 match calls per gather, VOD listings only for empty slots, a 120 s deadline, cached
   6 h in `.telegram.json`; `/worth` gathers fresh.
-- **`/health` pings agy for real** (a live `runReasoner` call, ~20 s timeout, not just the last
-  pick's outcome) — the same headless-mode quirks the Short picker documents (reaching for a
-  shell command Antigravity's sandbox denies) show up here too, and the report's fallback line is
-  what that looks like from the operator's phone. DNS timing flags `api.mcsrranked.com` over 1 s
-  (the Tailscale DNS incident of 27 Sept 2026).
+- **`/health` pings Claude for real** (a live `runClaude` call, named "claude (haiku)", ~30 s
+  timeout — not just the last report's outcome), and `/alerts` folds the same ping's failure into
+  its own lines. DNS timing flags `api.mcsrranked.com` over 1 s (the Tailscale DNS incident of
+  27 Sept 2026).
+- **The dashboard container needs its own login.** The image already has the binary (`Dockerfile`:
+  `npm install -g @anthropic-ai/claude-code`), but the `mcsr-dashboard` service mounts no login for
+  it — `claude.ts`'s auth comes from `~/.claude/.credentials.json`, which only exists where someone
+  has signed in, and from `CLAUDE_CODE_OAUTH_TOKEN`/`ANTHROPIC_API_KEY` if either is set (the only
+  two secrets in the adapter's own env allow-list besides `PATH`/`HOME`/`LANG`/`TMPDIR`). The
+  operator runs `claude setup-token` once, in the `mcsr` container's tmux (a Claude subscription —
+  separate from agy's Antigravity/Gemini one, which the Short picker keeps), adds
+  `CLAUDE_CODE_OAUTH_TOKEN=<the token>` to `/app/.env`, and restarts `mcsr-dashboard` — until then
+  every Claude call in the bot fails "auth" and `/health` says so.
 - **Reports reach Telegram because they are sent, not by a hook** (the operator's ask, 28 Sept: "All
   reports made in this chat should also be forwarded there for safekeeping"; then 29 Sept: "not
   every message should be on telegram"). A session writes the report to a file and runs `npm run

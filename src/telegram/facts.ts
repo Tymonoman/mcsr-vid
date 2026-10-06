@@ -1,7 +1,8 @@
 /**
  * Everything the Telegram report needs, gathered once and rendered deterministically
- * (report.ts): every number, list and link in a report comes from here, never from agy — agy
- * only turns the TODAY section's facts into a headline and an ordered to-do list (agy.ts).
+ * (report.ts): every number, list and link in a report comes from here, never from Claude —
+ * Claude only turns the TODAY section's facts into a headline and an ordered to-do list, asked
+ * from index.ts through the adapter in claude.ts.
  *
  * Every section catches its own errors (`section()`): a dead API or a corrupt file on disk costs
  * that one line of the report, never the whole message.
@@ -27,7 +28,7 @@ import { listProcessedMatchIds, matchStatusFor } from "../dashboard/matchStatus.
 import { nightlyShortSummary, readStatus } from "../dashboard/shortFlow.js";
 import { pickErrorFile } from "../shorts/videoPick.js";
 import { playoffBoard } from "../playoffs/playoffs.js";
-import { reasonerConfigured, runReasoner } from "../shorts/reasoner.js";
+import { describeFailure, runClaude } from "./claude.js";
 import { filterUnanswered, type UnansweredComment } from "./comments.js";
 import { gatherWorth, type WorthFacts } from "./worth.js";
 import {
@@ -268,15 +269,19 @@ async function pingYoutubeData(): Promise<HealthCheck> {
     : { name: "YouTube Data API", ok: false, ms: r.ms, detail: r.error };
 }
 
-async function pingAgy(): Promise<HealthCheck> {
-  if (!reasonerConfigured()) return { name: "agy", ok: false, detail: "reasonerCommand is not set" };
+/** ~30 s: a live round trip, not the TODAY ask's full two-minute budget. */
+const PING_TIMEOUT_MS = 30_000;
+
+async function pingClaude(): Promise<HealthCheck> {
   const start = Date.now();
-  const reply = await runReasoner('Reply with exactly {"ok": true} and nothing else.', {
-    schema: { type: "object", properties: { ok: { type: "boolean" } }, required: ["ok"] },
-    timeoutMs: 25_000,
+  const reply = await runClaude("Reply with exactly the word OK and nothing else.", {
+    systemPrompt: "Plain text only, no tools. Reply with exactly the word OK and nothing else.",
+    timeoutMs: PING_TIMEOUT_MS,
   });
   const ms = Date.now() - start;
-  return reply.ok ? { name: "agy", ok: true, ms } : { name: "agy", ok: false, ms, detail: reply.error };
+  return reply.ok
+    ? { name: "claude (haiku)", ok: true, ms }
+    : { name: "claude (haiku)", ok: false, ms, detail: describeFailure(reply) };
 }
 
 async function pingGroq(): Promise<HealthCheck | null> {
@@ -321,7 +326,7 @@ async function gatherHealth(): Promise<HealthCheck[]> {
     pingMcsr(),
     pingTwitch(),
     pingYoutubeData(),
-    pingAgy(),
+    pingClaude(),
     pingGroq(),
     pingDns(),
     diskHealth(),
@@ -495,7 +500,7 @@ export interface ReportFacts {
 
 /** Which of `ReportFacts`' sections `gatherFacts` actually computes — a narrow slash command
  *  (`/stats`, `/comments`, `/ypp`, `/waiting`, `/health`, `/alerts`, `/worth`) asks for only its
- *  own, so it pays for only its own API calls and skips the live agy ping `gatherHealth` makes. */
+ *  own, so it pays for only its own API calls and skips the live Claude ping `gatherHealth` makes. */
 export type FactSection =
   "todo" | "alerts" | "health" | "overnight" | "stats" | "comments" | "ypp" | "worthRendering";
 /** The day's picture — what `/todo` and `/ask` read. `worthRendering` is not in it: it costs ~14 MCSR

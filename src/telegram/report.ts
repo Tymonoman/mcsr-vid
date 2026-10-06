@@ -1,11 +1,10 @@
 /**
- * Turns `ReportFacts` (facts.ts) plus agy's answer (agy.ts) into the morning report's text —
- * every number, list and link rendered deterministically; agy only supplies the headline and the
- * to-do list's wording. HTML-escaped throughout (Telegram's `parse_mode: "HTML"`), and the whole
- * report capped at 4096 characters.
+ * Turns `ReportFacts` (facts.ts) plus Claude's answer (claude.ts, asked from index.ts) into the
+ * morning report's text — every number, list and link rendered deterministically; Claude only
+ * supplies the TODAY section's headline and to-do wording. HTML-escaped throughout (Telegram's
+ * `parse_mode: "HTML"`), and the whole report capped at 4096 characters.
  */
 import { escapeHtml, MESSAGE_MAX_CHARS } from "./bot.js";
-import type { AgyAnswer } from "./agy.js";
 import type {
   AlertItem,
   ChannelSnapshot,
@@ -19,6 +18,24 @@ import type {
 import { netSubscribers, subsPer1kEngaged, type WindowDays } from "./windowStats.js";
 import type { NightlyFacts, UpcomingRow } from "./facts.js";
 import type { NightlyLastRun } from "../dashboard/nightly.js";
+
+/** Claude's TODAY answer: a headline and an ordered to-do list, parsed from its plain text
+ *  (index.ts `parseTodayPlainText`) or built by `fallbackToday` below. */
+export interface TodayAnswer {
+  /** At most two lines. */
+  headline: string;
+  /** Ordered by what matters most; at most 8. */
+  todo: string[];
+}
+
+/** TODAY's result: Claude's answer, or the rule-based fallback's — and why, when it fell back.
+ *  `note` is exactly "usage limit reached — try again later" on a limit (claude.ts
+ *  `describeFailure`); any other reason is one line. */
+export interface TodayResult {
+  source: "claude" | "fallback";
+  answer: TodayAnswer;
+  note?: string;
+}
 
 /** One line for a nightly run's record: skipped runs (no matchId) read as just their reason. */
 function nightlySummary(n: NightlyLastRun): string {
@@ -94,33 +111,28 @@ const dayMonthYear = (ms: number): string =>
     year: "numeric",
   }).format(new Date(ms));
 
-/** agy's headline and numbered to-do list, one dashboard link under it. `/todo` is this alone.
- *  A `#<id>` in an item (the prompt lets agy write one to name a match) opens that match. */
-export function renderToday(
-  todo: ReportFacts["todo"],
-  agy: { source: "agy" | "fallback"; answer: AgyAnswer; note?: string },
-  dashboardBaseUrl: string,
-): string {
-  const lines = [`<b>${escapeHtml(agy.answer.headline)}</b>`, "", "<b>To do</b>"];
-  agy.answer.todo.forEach((item, i) =>
+/** Claude's headline and numbered to-do list, one dashboard link under it. `/todo` is this alone.
+ *  A `#<id>` in an item (the prompt lets Claude write one to name a match) opens that match. */
+export function renderToday(todo: ReportFacts["todo"], claude: TodayResult, dashboardBaseUrl: string): string {
+  const lines = [`<b>${escapeHtml(claude.answer.headline)}</b>`, "", "<b>To do</b>"];
+  claude.answer.todo.forEach((item, i) =>
     lines.push(
       `${i + 1}. ${escapeHtml(item).replace(/#(\d{6,})\b/g, (tag, id: string) => matchLink(dashboardBaseUrl, id, tag))}`,
     ),
   );
   lines.push(`<a href="${escapeHtml(dashboardBaseUrl)}/">Open the dashboard</a>`);
-  if (agy.source === "fallback")
-    lines.push(`<i>agy unavailable (${escapeHtml(agy.note ?? "unknown reason")}) — a rule-based list</i>`);
+  if (claude.source === "fallback") lines.push(`<i>${escapeHtml(claude.note ?? "Claude unavailable")}</i>`);
   if (!todo.ok) lines.push(escapeHtml(`(today's facts: ${todo.error})`));
   return lines.join("\n");
 }
 
-/** The rule-based to-do list agy's answer stands in for — CLAUDE.md's own priority order:
+/** The rule-based to-do list Claude's answer stands in for — CLAUDE.md's own priority order:
  *  failed, then waiting for a hook, then running, scheduled, published. */
 export function fallbackToday(
   todo: TodoFacts | null,
   alertCount: number,
   unansweredCount: number,
-): AgyAnswer {
+): TodayAnswer {
   const items: string[] = [];
   if (alertCount > 0) items.push(`Look at ${alertCount} problem${alertCount === 1 ? "" : "s"} (below)`);
   if (todo?.waitingForHook.length) {
@@ -534,21 +546,21 @@ export const visibleLength = (html: string): number =>
   html.replace(/<[^>]+>/g, "").replace(/&(?:lt|gt|amp|quot|#39);/g, "x").length;
 
 /**
- * The morning report as three messages, each saying a thing once: the day (agy's to-do, the
+ * The morning report as three messages, each saying a thing once: the day (Claude's to-do, the
  * matches worth rendering, problems, overnight, health), the channel (stats table and YPP), and
  * the comments. The operator's call, 29 Sept 2026: "too much repetitive info split it up into a
  * couple messages".
  */
 export function renderMorningReport(
   facts: ReportFacts,
-  agy: { source: "agy" | "fallback"; answer: AgyAnswer; note?: string },
+  claude: TodayResult,
   prevSnapshot: ChannelSnapshot | null,
   channelId: string,
   nowMs = Date.now(),
 ): string[] {
   const day = [
     `☀️ <b>${escapeHtml(warsawDay(nowMs))}</b>`,
-    renderToday(facts.todo, agy, facts.dashboardBaseUrl),
+    renderToday(facts.todo, claude, facts.dashboardBaseUrl),
     renderWorth(facts.worthRendering, facts.dashboardBaseUrl),
     renderAlerts(facts.alerts, true),
     renderOvernight(facts.overnight, facts.dashboardBaseUrl, true),
