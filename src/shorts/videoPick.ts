@@ -105,6 +105,13 @@ const HOOK_SPOILER =
  * longer. `players` lets the "<x> vs <y>" check in `hookLabelProblem` tell a real nickname pair
  * from an invented one (2 Oct 2026) — omit it where the match is not at hand, which skips only
  * that one check; a denied word is still caught either way.
+ *
+ * `HOOK_SPOILER` strips "to win" first, same as `spoilsTheResult` (hooks.ts): "A SUB-8 TO WIN IT"
+ * says what winning takes, not who did, and `hooks.ts` already ships it as its own highest-weight
+ * candidate under 8 minutes. Before 6 Oct 2026 this check disagreed with `spoilsTheResult` and
+ * silently dropped that pace chip wherever it would otherwise have won — `chipHook`'s "usable"
+ * filter and `extrasOf`'s titleHooks check both route through here, so several real matches fell
+ * through to duller filler instead (verified against the night's judge panel).
  */
 export function hookProblem(
   hook: unknown,
@@ -114,7 +121,7 @@ export function hookProblem(
   if (typeof hook !== "string" || hook.trim() === "") return "no hook";
   const h = hook.trim();
   if (h.length > maxChars) return `over ${maxChars} characters`;
-  if (HOOK_SPOILER.test(h) || spoilsTheResult(h)) return "it gives the result away";
+  if (HOOK_SPOILER.test(h.replace(/\bto win\b/gi, "")) || spoilsTheResult(h)) return "it gives the result away";
   if (HOOK_SEED_RANK_ELO.test(h)) return "it uses a seed, rank or elo";
   return hookLabelProblem(h, players);
 }

@@ -44,6 +44,16 @@ const HOOK_DENIED_LABELS =
   /\b(?:yn|asian|asians|black|white|latino|latina|hispanic|african|arab|arabs|european|american|chinese|korean|japanese|mexican|indian)\b/i;
 
 /**
+ * The two `matchScore.ts` splits the overlay's own panel never shows (`SPLIT_EVENTS`,
+ * overlayProps.ts, has 6 rows: Nether enter, Bastion enter, Fortress, Blind travel, Stronghold,
+ * End enter — matchScore.ts additionally tracks "Bastion loot" and "Blaze rod" for its own
+ * closeness/chaos scoring). A hook that quotes a gap must not read one of these two: a viewer
+ * cannot check it against what is on screen (6 Oct 2026 panel, live-verified on match 13705580 —
+ * "Bastion loot" showed a bigger gap than the panel's own biggest).
+ */
+const OFF_PANEL_SPLITS = new Set(["Bastion loot", "Blaze rod"]);
+
+/**
  * A hook that names a runner with a label: either `HOOK_DENIED_LABELS` on its own, or a "<x> vs
  * <y>" shape where `x` or `y` is not one of `players`' real nicknames or `titleNames` spellings —
  * an invented nickname ("LCQ", "TAS", "CARNIVORE") standing in for a runner. `players` is the
@@ -98,7 +108,21 @@ interface Candidate {
   weight: number;
 }
 
-const seconds = (ms: number): string => (ms / 1000).toFixed(1).replace(/\.0$/, "");
+/**
+ * "Decided by N seconds", grammatically and factually right at every scale (6 Oct 2026 panel —
+ * `seconds()` used to strip a trailing ".0" and leave the plural word behind, so a 1033ms margin
+ * shipped as "Decided by 1 seconds": the exact "low quality" look viewers reported). Under 100ms
+ * the exact millisecond count beats a rounded "0.1 seconds", which overstates a real 58ms margin
+ * 1.7x (the channel's own past title was "58 MILLISECONDS"); otherwise one decimal, dropped when
+ * it rounds to a whole number, and "1 second" (singular) when that whole number is 1.
+ */
+function secondsPhrase(ms: number): string {
+  if (ms < 100) return `${Math.round(ms)} milliseconds`;
+  const tenths = Math.round(ms / 100);
+  if (tenths === 10) return "1 second";
+  const whole = tenths / 10;
+  return `${tenths % 10 === 0 ? String(whole) : whole.toFixed(1)} seconds`;
+}
 
 /**
  * The facts, ranked. Order here is the tiebreak when several apply, and it is deliberate.
@@ -113,7 +137,7 @@ const seconds = (ms: number): string => (ms / 1000).toFixed(1).replace(/\.0$/, "
  * match has no stake to state.
  *
  * Within the stake band the old order stands: a photo finish beats a lead change beats a death
- * count. "One of them never reached the dragon" is last of all, under the head-to-head chips:
+ * count. "One of them never killed the dragon" is last of all, under the head-to-head chips:
  * the loser usually stops once the winner is done, so it is filler, not a stake.
  */
 function candidates(input: HookInput): Candidate[] {
@@ -121,7 +145,7 @@ function candidates(input: HookInput): Candidate[] {
   const out: Candidate[] = [];
   // Real deaths only: a hunger reset is routine (matchScore.ts `deathKind`), and "5 deaths and
   // still this close" on five resets reads to a runner as not knowing the game.
-  const { finishMarginMs, leadChanges, maxSwingMs, deaths, resultMs, winner } = metrics;
+  const { finishMarginMs, leadChanges, deaths, resultMs, winner } = metrics;
 
   // --- Rivalry framing (30-35): under every stake chip, over the dull fallback -------------
   if (versus) {
@@ -147,26 +171,45 @@ function candidates(input: HookInput): Candidate[] {
 
   if (finishMarginMs !== null) {
     // Under three seconds after eight-plus minutes is the whole story; the scorer uses the same
-    // 3s window to call a split "close".
-    if (finishMarginMs < 3_000)
-      out.push({ text: `Decided by ${seconds(finishMarginMs)} seconds`, weight: 95 });
-    else if (finishMarginMs < 10_000)
-      out.push({ text: `${seconds(finishMarginMs)} seconds apart`, weight: 65 });
+    // 3s window to call a split "close". 3-10s keeps the same "Decided by" subject rather than a
+    // bare "N seconds apart" — every such hook in the 6 Oct 2026 panel was dropped for not saying
+    // what the number measured.
+    if (finishMarginMs < 10_000)
+      out.push({ text: `Decided by ${secondsPhrase(finishMarginMs)}`, weight: finishMarginMs < 3_000 ? 95 : 65 });
   } else {
     // The loser usually stops once the winner is done, so a null margin is normal, not dramatic.
-    out.push({ text: "One of them never reached the dragon", weight: 25 });
+    out.push({ text: "One of them never killed the dragon", weight: 25 });
   }
 
   if (match.forfeited) out.push({ text: "It ended in a forfeit", weight: 60 });
 
-  if (leadChanges >= 3) out.push({ text: `The lead changed ${leadChanges} times`, weight: 80 });
-  else if (leadChanges === 2) out.push({ text: "The lead changed twice", weight: 50 });
+  // An exact count is a countdown: once a viewer has seen that many flips go by, parity tells
+  // them who leads at the end (risk panel, 6 Oct 2026 — every "The lead changed N times" in the
+  // sample was dropped for this, several also for overcounting splits the overlay never shows).
+  // The question form states no number, so neither problem applies.
+  if (leadChanges >= 3) out.push({ text: "Does the lead ever settle?", weight: 80 });
+  else if (leadChanges === 2) out.push({ text: "Does the lead ever settle?", weight: 50 });
 
-  // A swing is the largest single-split collapse, which is the thing that actually looks
-  // dramatic on the splits panel.
-  if (maxSwingMs >= 60_000) out.push({ text: `A ${formatShortTime(maxSwingMs)} lead, gone`, weight: 75 });
-  else if (maxSwingMs >= 30_000)
-    out.push({ text: `${Math.round(maxSwingMs / 1000)} seconds swung it`, weight: 45 });
+  // The biggest lead a player actually lost: a split where they led but did not go on to win —
+  // never a leader simply extending their lead. The old `maxSwingMs` (the raw step between two
+  // splits' signed gaps) fired on both; verified false on 5 real matches where the leader led
+  // wire to wire and "the swing" was the lead growing (6 Oct 2026 panel). A question, not a flat
+  // claim: "gone"/"swung it" named the eventual loser by elimination. Panel-visible splits only
+  // (`OFF_PANEL_SPLITS`) — live-verified on match 13705580: "Bastion loot" showed a bigger gap
+  // than any split the overlay actually displays, which is exactly the overcounting the accuracy
+  // panel flagged for the (separate) lead-change count; the same fix applies here.
+  if (winner) {
+    const lostLeadMs = metrics.splits.reduce(
+      (max, s) =>
+        s.gapMs !== null && s.leader !== null && s.leader !== winner && !OFF_PANEL_SPLITS.has(s.label)
+          ? Math.max(max, s.gapMs)
+          : max,
+      0,
+    );
+    if (lostLeadMs >= 60_000) out.push({ text: `Can a ${formatShortTime(lostLeadMs)} lead survive?`, weight: 75 });
+    else if (lostLeadMs >= 30_000)
+      out.push({ text: `Can a ${Math.round(lostLeadMs / 1000)}-second lead survive?`, weight: 45 });
+  }
 
   if (deaths === 0) out.push({ text: "Not a single death between them", weight: 40 });
   else if (deaths >= 4) out.push({ text: `${deaths} deaths and still this close`, weight: 55 });
