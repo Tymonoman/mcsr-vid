@@ -180,9 +180,10 @@ export const publishHourFor = (dir: string): number =>
  *
  * Three sources, because uploading is half manual: what the channel says is scheduled (a Studio
  * upload with a future `publishAt`, src/youtube/channelUploads.ts), what this dashboard recorded when
- * it uploaded (`youtube.json`), and a time the operator chose in the kit for a match not uploaded
- * yet (`short-<id>.status.json`). This match's own scheduling is excluded — a match already booked
- * into tomorrow's slot must not push its own kit into the day after.
+ * it uploaded (`youtube.json`), and a time already settled on for a match not uploaded yet — the
+ * operator's own choice in the kit, or a slot a chain has already auto-claimed for itself
+ * (`short-<id>.status.json`, `storedTimes` below). This match's own scheduling is excluded — a
+ * match already booked into tomorrow's slot must not push its own kit into the day after.
  */
 export async function claimedPublishTimes(exceptMatchId: number): Promise<string[]> {
   const channel = channelUploadsSnapshot();
@@ -203,9 +204,12 @@ export async function claimedPublishTimes(exceptMatchId: number): Promise<string
 }
 
 /**
- * The times the operator chose in the kit (`publishAt` in `short-<id>.status.json`,
- * src/dashboard/shortFlow.ts `setPublishTime`) for matches not uploaded yet: the chain will take
- * them. A hidden match's is left out — it is not going anywhere.
+ * Two kinds of time stored in `short-<id>.status.json` for a match not uploaded yet, both of
+ * which the chain will take: `publishAt`, the operator's own choice in the kit
+ * (src/dashboard/shortFlow.ts `setPublishTime`), and `slotClaim`, a slot a chain has already
+ * auto-picked for itself (`claimSlot`, 7 Oct 2026 — written the instant it is picked, so a
+ * concurrent chain's own pick sees it before the slow upload that follows even starts). A hidden
+ * match's is left out — it is not going anywhere.
  */
 function storedTimes(uploads: ReadonlyArray<{ matchId: number }>): Array<{ id: number; at: string }> {
   const hidden = hiddenMatchIds();
@@ -215,10 +219,12 @@ function storedTimes(uploads: ReadonlyArray<{ matchId: number }>): Array<{ id: n
     try {
       const s = JSON.parse(readFileSync(path.join(matchDir(id), `short-${id}.status.json`), "utf8")) as {
         publishAt?: unknown;
+        slotClaim?: unknown;
       };
       if (typeof s.publishAt === "string") out.push({ id, at: s.publishAt });
+      if (typeof s.slotClaim === "string") out.push({ id, at: s.slotClaim });
     } catch {
-      // No status file: nothing chosen.
+      // No status file: nothing chosen or claimed.
     }
   }
   return out;

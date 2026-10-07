@@ -112,6 +112,13 @@ export interface ShortStatus {
   recheckChannel?: boolean;
   /** The operator's publish time for the long-form (RFC 3339, the kit's field); the upload takes it while it is ahead. */
   publishAt?: string;
+  /**
+   * A slot this chain has auto-picked for its own upload (RFC 3339) — never the operator's own
+   * `publishAt`. Written by `claimSlot` the instant the slot is chosen, before the slow real
+   * upload starts, so a concurrent chain's own pick sees it (`storedTimes`,
+   * src/youtube/publishSlot.ts); cleared once the upload-video step settles, done or failed.
+   */
+  slotClaim?: string;
 }
 
 const statusFile = (dir: string, matchId: number): string => path.join(dir, `short-${matchId}.status.json`);
@@ -1154,12 +1161,45 @@ async function moveOnYouTube(
   return { status: 200, body: { publishAt: moved.publishAt, message, warnings } };
 }
 
+/* --- The publish-slot lock ---------------------------------------------------------------------
+ *
+ * Four hooks saved inside one second (7 Oct 2026) started four chains whose renders all finished
+ * at about the same moment, so all four reached `uploadOne` together: nothing had written a slot
+ * claim yet, `claimedPublishTimes` looked empty to every one of them, and three landed on the same
+ * 19:00 UTC hour. `videoPublishTime` only *reads* the disk; nothing wrote a claim until the real
+ * upload's own record landed, minutes later. `claimSlot` below is the one place a chain decides
+ * its slot, serialized by an in-process lock so the pick and its claim are one step: whichever
+ * chain gets there first writes its slot to its own status file before the lock lets the next one
+ * compute. ponytail: a promise chain, not a true mutex — fine, since every chain runs in this one
+ * process and only the slot *pick* is serialized, not the slow upload that follows.
+ */
+let slotLock: Promise<unknown> = Promise.resolve();
+function withSlotLock<T>(fn: () => Promise<T>): Promise<T> {
+  const run = slotLock.then(fn, fn);
+  slotLock = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
+/** The long-form's publish time, claimed: an auto-picked slot is written to this match's own
+ * `slotClaim` before the lock lets the next chain compute its — never the operator's own
+ * `publishAt`, which is already a claim on disk before any chain runs. */
+function claimSlot(matchId: number, nowMs: number): Promise<VideoPublishTime> {
+  return withSlotLock(async () => {
+    const t = await videoPublishTime(matchId, nowMs);
+    if (!t.chosen) updateStatus(matchId, (s) => void (s.slotClaim = t.at.toISOString()));
+    return t;
+  });
+}
+
 async function uploadOne(matchId: number, kind: UploadKind, deps: ChainDeps): Promise<string | null> {
   let publishAt: Date | null = null;
   const notes: string[] = [];
   if (config.nightlyUpload === "scheduled") {
     if (kind === "video") {
-      const t = await videoPublishTime(matchId, deps.now());
+      const t = await claimSlot(matchId, deps.now());
       if (t.passed) {
         shortLog(matchId, "chain", t.passed, { level: "warn" });
         notes.push(t.passed);
@@ -1219,6 +1259,10 @@ async function runStep(matchId: number, step: Step, fn: () => Promise<string | n
       ...(error ? { detail: error } : {}),
     };
     if (error !== null) s.errors.unshift({ step, at: at(), message: error });
+    // The attempt is settled either way — a real record now exists, or the slot is free to try
+    // again — so `claimSlot`'s transient claim must not linger (also covers a restart's resume,
+    // which never writes one itself).
+    if (step === "upload-video") delete s.slotClaim;
   });
   if (error !== null) console.error(`chain #${matchId}: ${step} failed — ${error}`);
   return error === null;

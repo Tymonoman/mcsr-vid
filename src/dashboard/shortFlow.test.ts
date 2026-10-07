@@ -167,10 +167,15 @@ const render = async (id: number): Promise<string | null> => {
 
 // The uploader: the real guard, then a record as beginUpload writes one.
 const sent: Array<{ id: number; kind: string; publishAt?: string; privacyStatus: string }> = [];
+/** Every match id `upload` has been called for, pushed before the gate: lets a test wait until
+ * two concurrent chains have both *finished picking their slot and called upload*, not just
+ * entered the upload-video step (which `chainStep` marks before either has). */
+const uploadCalls: number[] = [];
 let failVideo: string | null = null;
 /** Holds an upload once it has begun, so a press can land while it is being sent. */
 let uploadGate: Promise<void> = Promise.resolve();
 const upload: import("./shortFlow.js").ChainDeps["upload"] = async (id, req) => {
+  uploadCalls.push(id);
   await uploadGate;
   const refused = await hookRefusal(id, req.kind);
   if (refused) return refused;
@@ -1467,6 +1472,33 @@ try {
     const unblocked = await save(BL, { titleHook: "Not blocked", shortHook: "Still fine" });
     assert.equal(unblocked.status, 202, "unblocked, the save goes through");
     console.log("OK: a blocked match never gets its hooks saved, so the chain never starts");
+  }
+
+  /* --- Two chains must not claim the same publish slot (7 Oct 2026: four hooks saved inside one
+     second started four chains whose renders all finished together, and every one of them
+     computed "the next free slot" before any other had written one — three long-forms landed on
+     the same 19:00 UTC hour) ------------------------------------------------------------------- */
+  {
+    const F = 13_000_061;
+    const G = 13_000_062;
+    exported(F);
+    exported(G);
+    let openUpload = () => {};
+    uploadGate = new Promise((r) => (openUpload = r));
+    await call("PUT", "hooks", F, { titleHook: "One heart left", shortHook: null, noShort: true });
+    await call("PUT", "hooks", G, { titleHook: "One heart left", shortHook: null, noShort: true });
+    // Both chains must have finished picking their slot and called `upload` — the window the real
+    // bug raced in — before either is let through.
+    for (let i = 0; i < 500 && !(uploadCalls.includes(F) && uploadCalls.includes(G)); i++)
+      await new Promise((r) => setTimeout(r, 5));
+    assert.ok(uploadCalls.includes(F) && uploadCalls.includes(G), "both reached the upload step");
+    openUpload();
+    uploadGate = Promise.resolve();
+    await Promise.all([flow.chainIdle(F), flow.chainIdle(G)]);
+    const slotOf = (id: number) => sent.find((s) => s.id === id && s.kind === "video")?.publishAt;
+    assert.ok(slotOf(F) && slotOf(G), "both videos uploaded");
+    assert.notEqual(slotOf(F), slotOf(G), "two chains must not claim the same publish slot");
+    console.log("OK: concurrent chains claim different publish slots, not the same one");
   }
 } finally {
   rmSync(media, { recursive: true, force: true });

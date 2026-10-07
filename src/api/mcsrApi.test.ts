@@ -5,10 +5,13 @@ import { getMatch, withoutGhostPlayers } from "./mcsrApi.js";
 import type { MatchInfo } from "./types.js";
 
 let calls = 0;
-globalThis.fetch = (async (input: string | URL | Request) => {
+globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
   calls++;
   const url = String(input);
   assert.match(url, /\/matches\/\d+$/, `unexpected fetch: ${url}`);
+  // A call that stalls must not hang its caller forever (the publish-slot lock's review, 7 Oct
+  // 2026): every request carries a timeout signal.
+  assert.ok(init?.signal instanceof AbortSignal, "getJson passes a timeout signal");
   return new Response(JSON.stringify({ status: "success", data: { id: Number(url.split("/").pop()) } }));
 }) as typeof fetch;
 
