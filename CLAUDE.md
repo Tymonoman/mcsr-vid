@@ -487,6 +487,16 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   across any later save so the morning report's "Auto-saved hooks" block can always say what it
   last picked; a later operator save overwrites the hooks as usual. The session turns the setting
   on live (`PUT /api/settings`) once this merges — it is not on anywhere by default.
+  **Review fixes, 8 Oct 2026**: `autoHooksTick` skips a playoff game whose series hasn't joined
+  yet (game 1 before the join, or game 2..n) before ever calling `saveHooks` — the same
+  `seriesGameUnjoined` check `shortPlan` already makes — because `saveHooks` would otherwise only
+  ever refuse it with `SERIES_GAME`, every tick, until the bracket catches up. Any refusal
+  `saveHooks` does return (that one included, were the pre-check ever to miss a case) now fails
+  the match's `hooks` step the same way `AUTO_HOOKS_NO_PASS` does, so it reaches
+  `gatherNeedsYou`'s `failedStepItems` — the one place the operator said he acts from — instead of
+  only a `short-<id>.log.jsonl` line nothing reads. The tick's own loop wraps each match's
+  `autoSaveHooks` call in try/catch, so one broken match directory throwing instead of returning a
+  controlled result can't abort the tick and starve every match due after it.
 - **A playoff game's thumbnails can carry the tournament** (`playoffThumbnailStyle`, in the
   Settings tab; `remotion/Thumbnail.tsx` `playoff`): "bracket" puts the round in the band and
   "Best of 5" under the VS; "trophy" grows the band for a gold PLAYOFFS wordmark over the round
@@ -865,7 +875,12 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
   engine's own file, another branch — also read defensively). Below it, **"Auto-saved hooks"**
   (`renderAutoHooks`, `listAutoHooks`) lists the last 36 h of auto-hooks saves (see Dashboard, above)
   — never part of Needs you, since there is nothing left to act on unless the operator wants to
-  change one before its upload — and is omitted entirely when empty. Both cap themselves to a
+  change one before its upload — and is omitted entirely when empty. "Published" reads
+  `AutoHooksRow.privacyStatus` (review fix, 8 Oct 2026), not just whether an upload record
+  exists: the chain's own upload is a private, scheduled draft within minutes of the Short
+  rendering, so `uploaded: true` alone was "published" on almost every row that ever reached this
+  36 h window while it was still private — the row says "goes up `<when>`" until the record's own
+  `privacyStatus` is actually `"public"`. Both cap themselves to a
   share of the 4096-character message (`NEEDS_YOU_BUDGET_CHARS`/`AUTO_HOOKS_BUDGET_CHARS`) rather
   than trusting the day to stay short by luck. `/needs` answers the Needs-you section alone, fresh,
   on demand (the narrow-command pattern above); it goes into Claude's own FACTS too

@@ -538,11 +538,15 @@ export function renderAutoHooks(rows: readonly AutoHooksRow[], dashboardBaseUrl:
   const line = (r: AutoHooksRow): string => {
     const label = matchLink(dashboardBaseUrl, r.matchId, `#${r.matchId} ${escapeHtml(r.players)}`);
     const hooks = `${escapeHtml(r.titleHook)}${r.shortHook ? ` / ${escapeHtml(r.shortHook)}` : " (no Short)"}`;
-    const when = r.uploaded
-      ? "published"
-      : r.publishAt
-        ? `goes up ${whenWarsaw(r.publishAt)}`
-        : "no time set yet";
+    // `uploaded` alone means only "has an upload record" — the chain's upload is a private,
+    // scheduled draft, so "published" has to come from the record's own privacyStatus, not from
+    // having a record at all (shortFlow.ts's AutoHooksRow.privacyStatus).
+    const when =
+      r.privacyStatus === "public"
+        ? "published"
+        : r.publishAt
+          ? `goes up ${whenWarsaw(r.publishAt)}`
+          : "no time set yet";
     return `• ${label} — ${hooks} — ${when}`;
   };
   const head = b("🤖 Auto-saved hooks");

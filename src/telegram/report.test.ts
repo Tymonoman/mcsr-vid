@@ -194,6 +194,7 @@ const postMortemYpp = (over: Partial<Parameters<typeof projectYpp>[0]> = {}): Yp
     stillCurrent: true,
     publishAt: "2026-10-09T19:00:00Z",
     uploaded: false,
+    privacyStatus: null,
     ...over,
   });
   const out = renderAutoHooks([row({})], base);
@@ -202,10 +203,24 @@ const postMortemYpp = (over: Partial<Parameters<typeof projectYpp>[0]> = {}): Yp
   assert.ok(out.includes("A sub-8 to win it / Down to one heart"), out);
   assert.ok(out.includes(whenWarsaw("2026-10-09T19:00:00Z")), out);
 
-  // No Short, and already published, read in words rather than a null or an ISO instant.
-  const noShortUp = renderAutoHooks([row({ shortHook: null, uploaded: true })], base);
+  // No Short, and really published (privacyStatus "public"), read in words.
+  const noShortUp = renderAutoHooks(
+    [row({ shortHook: null, uploaded: true, privacyStatus: "public" })],
+    base,
+  );
   assert.ok(noShortUp.includes("(no Short)"), noShortUp);
   assert.ok(noShortUp.includes("published"), noShortUp);
+
+  // Uploaded is not published: the chain's own upload is a private, scheduled draft, so a row
+  // with an upload record but privacyStatus still "private" must say when it goes up, not
+  // "published" — the exact mislabelling a real row would hit within minutes of every Short
+  // rendering (reviewer finding, 8 Oct 2026).
+  const uploadedButPrivate = renderAutoHooks(
+    [row({ uploaded: true, privacyStatus: "private", publishAt: "2026-10-09T19:00:00Z" })],
+    base,
+  );
+  assert.ok(!uploadedButPrivate.includes("published"), uploadedButPrivate);
+  assert.ok(uploadedButPrivate.includes(whenWarsaw("2026-10-09T19:00:00Z")), uploadedButPrivate);
 
   // The budget caps this section on its own, the same way: it must not crowd out the rest of the
   // day message just because many matches went un-hooked at once.
@@ -538,6 +553,7 @@ const worthMatch = (i: number, over: Partial<WorthMatch> = {}): WorthMatch => ({
     stillCurrent: true,
     publishAt: null,
     uploaded: false,
+    privacyStatus: null,
   };
   const msgs = renderMorningReport(
     facts,

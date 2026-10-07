@@ -1565,7 +1565,17 @@ async function autoSaveHooks(
   );
   const result = await saveHooks(matchId, req, deps);
   if (result && "status" in result) {
-    shortLog(matchId, "chain", `auto-hooks: save refused — ${result.error}`, { level: "error" });
+    // A refusal here (SERIES_GAME from a bracket the scan hasn't caught up to yet, a race
+    // against a manual save or an upload that started in between, …) must read as a failed
+    // "hooks" step like AUTO_HOOKS_NO_PASS above, or it is invisible to `gatherNeedsYou` — the
+    // one place the operator said he acts from — and the next tick just tries again forever.
+    const detail = `auto-hooks: save refused — ${result.error}`;
+    updateStatus(matchId, (s) => {
+      const at = new Date().toISOString();
+      s.steps.hooks = { state: "failed", at, detail };
+      s.errors.unshift({ step: "hooks", at, message: detail });
+    });
+    shortLog(matchId, "chain", detail, { level: "error" });
     return;
   }
   updateStatus(matchId, (s) => {
@@ -1612,7 +1622,19 @@ export async function autoHooksTick(deps: Partial<ChainDeps> = {}, nowMs = Date.
       }
       const [left, right] = match.players;
       if (!left || !right || blockedIn([left.nickname, right.nickname])) continue;
-      await autoSaveHooks(matchId, match, f, deps);
+      // A playoff game whose series hasn't joined yet (game 1 before the join, or game 2..n) —
+      // same check `shortPlan` makes before it will even queue a pick. Its hooks are the series',
+      // saved from game 1 once every game is in; saveHooks would only refuse it with SERIES_GAME,
+      // forever, until the bracket catches up (shortPlan.ts's own pre-check reused here).
+      if (await seriesGameUnjoined(match, f.series)) continue;
+      try {
+        await autoSaveHooks(matchId, match, f, deps);
+      } catch (err: unknown) {
+        // autoSaveHooks controls its own failures internally; this is only a last-resort net so
+        // one broken match directory can't abort the loop and starve every match due after it,
+        // same as the getMatch guard just above.
+        shortLog(matchId, "chain", `auto-hooks: ${describeError(err)}`, { level: "error" });
+      }
     }
   } finally {
     autoHooksTicking = false;
@@ -1630,6 +1652,12 @@ export interface AutoHooksRow {
   publishAt: string | null;
   /** The long-form is on the channel. */
   uploaded: boolean;
+  /** The upload's own `privacyStatus` ("public", "private", "unlisted") when it has one — from
+   *  upload time, not updated since (same caveat as everywhere else that reads it). Null with no
+   *  upload record yet. `uploaded` alone is not "published": the chain uploads a private,
+   *  scheduled draft within minutes of the Short rendering, so almost every row here has
+   *  `uploaded: true` while still private. */
+  privacyStatus: string | null;
 }
 
 /** Every auto-hooks save between `sinceMs` and `nowMs` — the morning report's "Auto-saved hooks" block. */
@@ -1652,6 +1680,7 @@ export async function listAutoHooks(sinceMs: number, nowMs = Date.now()): Promis
       stillCurrent: f.titleHook === a.titleHook,
       publishAt: f.video?.publishAt ?? status.slotClaim ?? status.publishAt ?? null,
       uploaded: f.video !== null,
+      privacyStatus: f.video?.privacyStatus ?? null,
     });
   }
   return rows.sort((a, b) => (a.at < b.at ? 1 : -1));

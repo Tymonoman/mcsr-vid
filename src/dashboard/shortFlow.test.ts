@@ -1632,6 +1632,87 @@ try {
     console.log(
       "OK: hidden, already-on-the-channel, blocked, unexported and stale-export matches are all skipped",
     );
+
+    /* --- Review fix (8 Oct 2026): an unjoined series game 1 must never reach saveHooks, and any
+       refusal that does reach it must read as a failed "hooks" step, not vanish into a log line
+       nothing reads — `gatherNeedsYou` reads `status.steps`, not the chain log. --------------- */
+    {
+      const { _setPlayoffContextForTest } = await import("../playoffs/playoffs.js");
+      const { readShortLog } = await import("../shorts/shortLog.js");
+      const ctx = {
+        season: 11,
+        round: "Round of 16",
+        gameNo: 1,
+        bestOf: 5,
+        firstTo: 3,
+        seeds: [] as never,
+        score: [0, 0] as [number, number],
+      };
+
+      // A playoff game 1 the bracket already recognises, with no series.json yet (the join
+      // hasn't happened): `saveHooks` would refuse it with SERIES_GAME every single tick,
+      // forever, until the join catches up — `autoHooksTick` must skip it before ever calling
+      // saveHooks, the same pre-check `shortPlan` already makes.
+      const seriesGame1 = 13_000_078;
+      exported(seriesGame1);
+      customPick(seriesGame1, { createdAt: dueAt(7) });
+      _setPlayoffContextForTest(seriesGame1, ctx);
+      await flow.autoHooksTick(chain, AH_NOW);
+      let st = flow.readStatus(seriesGame1);
+      assert.ok(!st.hooksSavedAt, "an unjoined series game 1 is never auto-saved");
+      assert.ok(!st.steps.hooks, "skipped before saveHooks — no failed step, no SERIES_GAME spam");
+      assert.ok(!st.autoHooks);
+      // The discriminating check: a failed step this clean could also be the old swallow-bug
+      // (saveHooks refused, the refusal only logged) — so pin that saveHooks, and the "save
+      // refused" log line it would produce, were never reached at all.
+      assert.ok(
+        !readShortLog(seriesGame1).some((l) => l.text.includes("save refused")),
+        "the pre-check skips it before saveHooks is ever called, not after",
+      );
+      // A later tick (the bracket still not joined) leaves it exactly as untouched, not retried
+      // into a growing errors list.
+      await flow.autoHooksTick(chain, AH_NOW);
+      st = flow.readStatus(seriesGame1);
+      assert.ok(!st.steps.hooks && st.errors.length === 0);
+      console.log("OK: an unjoined series game 1 is skipped before saveHooks, every tick");
+
+      // A refusal saveHooks does reach (anything other than the pre-filtered series case — here,
+      // the title file's own path is a directory, so the write saveHooks does fails) must surface
+      // as a failed "hooks" step: that is what `gatherNeedsYou`'s `failedStepItems` reads, the one
+      // place the operator said he acts from. Before this fix, `autoSaveHooks` only logged the
+      // refusal and returned — invisible to the report, retried forever.
+      const refused = 13_000_079;
+      exported(refused);
+      customPick(refused, { createdAt: dueAt(7) });
+      mkdirSync(path.join(dir(refused), `match-${refused}.title.edited.txt`), { recursive: true });
+      await flow.autoHooksTick(chain, AH_NOW);
+      const stRefused = flow.readStatus(refused);
+      assert.ok(!stRefused.hooksSavedAt, "the write failed — nothing was saved");
+      assert.equal(stRefused.steps.hooks?.state, "failed");
+      assert.match(stRefused.errors[0]?.message ?? "", /^auto-hooks: save refused/);
+      const planRefused = await plan(refused);
+      assert.equal(planRefused.state, "failed");
+      console.log("OK: a non-series saveHooks refusal still fails the hooks step, not just the log");
+
+      // One match whose own auto-save throws instead of returning a controlled result (here: a
+      // corrupted match directory, its status file's own ".part" write target replaced by a
+      // directory, so every `updateStatus` call for it throws EISDIR — including the one
+      // `autoSaveHooks` makes straight after a successful `saveHooks`, with no try/catch around
+      // it) must not stop the tick from reaching matches due after it — same as the getMatch
+      // guard a few lines above this one in the source.
+      const broken = 13_000_080;
+      const healthy = 13_000_081; // sorts after `broken`: listProcessedMatchIds() is numeric order
+      exported(broken);
+      customPick(broken, { createdAt: dueAt(7) }); // an ordinary due pick: a candidate is found
+      mkdirSync(path.join(dir(broken), `short-${broken}.status.json.part`), { recursive: true });
+      exported(healthy);
+      customPick(healthy, { createdAt: dueAt(7) });
+      await flow.autoHooksTick(chain, AH_NOW);
+      await flow.chainIdle(healthy);
+      assert.ok(!flow.readStatus(broken).hooksSavedAt, "the broken match itself never saved");
+      assert.ok(flow.readStatus(healthy).hooksSavedAt, "a later due match is still reached and saved");
+      console.log("OK: one match throwing out of autoSaveHooks doesn't starve the matches due after it");
+    }
   }
 } finally {
   rmSync(media, { recursive: true, force: true });
