@@ -23,6 +23,15 @@ silverrruns held 3 of 4 known slots; 0 of 15 known-player dual-VOD matches becam
 suggestChaosSlots 0 (live) vs 2 default; hackingnoises (draw 2.08) not a favourite → never above tier 2.
 Hardening wf_5e78d666-e21 (worktree hardening): loadConfig copy (fixes the suggestSelect worktree leak), scan
 failure log, corrupt .dashboard.json kept aside. Takes effect only after his docker restart.
+00:50 UTC 7 Oct: ALL CODE MERGED to local main (not pushed): tg-haiku, suggest-tune, hooks-guide (+ my doc fixes
+4dc034a 5433824 4a50ece), hardening (a022f83 b5e20c4 4375267), and four default-OFF switches with Settings fields:
+thumb-rotate (thumbnailRotatePoses), comment-at-publish (commentSoonAfterPublish), copy-variety (copyVariety),
+upload-1440 (exportUpscale1440; 20 s CPU smoke: 1.12x size, 1.44x encode; lab VAAPI path untested). NOT merged:
+idea-cold-trailer (CLAUDE.md note only; the trailer idea goes in the report). tsc + 87 unit files green after each
+merge; full npm test running. Report: tmp/night1006/p6/report.src.html + build.py (+ fill.json) → report.html →
+Artifact → `npm run tg -- send --md` with the link + 5 lines. Hooks for the morning (all pass the repo checks):
+SF2 "WHO REACHES THE GRAND FINAL?" (Publish at 7 Oct 21:00 UTC), 13705580 "CAN A 1:36 LEAD SURVIVE?",
+13906935 "DECIDED BY 4.2 SECONDS".
 MORNING #1: SF2 13527460 (Feinberg vs Infume?) missed 6 Oct 23:00 (hooks never saved); 3rd place EeAbgZQgZPk 7 Oct
 23:00 + GF _2EOkOOX0PQ 8 Oct 23:00 spoil it → he saves SF2 hooks with Publish at 7 Oct 21:00 UTC (no moves needed).
 Known test leak: suggestSelect.test.ts passes only with /app's config (mediaDir=/media) — fails in a fresh worktree.
