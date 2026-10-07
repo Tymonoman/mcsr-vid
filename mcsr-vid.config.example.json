@@ -19,6 +19,7 @@
       "right": "crouching"
     }
   ],
+  "thumbnailRotatePoses": false,
   "syncConfidenceThreshold": 0.15,
   "preRollSec": 150,
   "povAudioPan": 0.7,
