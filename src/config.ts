@@ -117,6 +117,16 @@ export interface Config {
    */
   supportUrl: string;
   /**
+   * Rotates the pinned comment's sync sentence and the description's closer/subscribe lines
+   * through 3-4 stock phrasings of the same facts, picked by match id so a re-render or
+   * re-upload of one match keeps its phrasing (`closerFor`/`subscribeLineFor`,
+   * src/pipeline/description.ts; `SYNC_SENTENCE_VARIANTS`, src/youtube/youtubeStore.ts). Off by
+   * default: the 6 Oct 2026 packaging audit found the same three sentences byte-identical across
+   * 93%+ of descriptions and pinned comments for 7 weeks, confirmable by any viewer who opens two
+   * videos — on breaks that, changing no fact or link. Off is byte for byte today's wording.
+   */
+  copyVariety: boolean;
+  /**
    * Where the PC that publishes pulls finished files *from*, as an rsync/ssh target — e.g.
    * `homelab@actimel:/home/homelab/mcsr-media`, which is this container's `/media` seen from
    * the lab host (compose bind mount), not the container path. A pull target, not a push (see
@@ -439,6 +449,7 @@ export const DEFAULTS: Config = {
   pairRepeatDays: 3,
   knownFollowerThreshold: 10_000,
   supportUrl: "",
+  copyVariety: false,
   pullSource: "",
   pullDest: "~/Replayoffs",
   overlayLeadInSec: 10,

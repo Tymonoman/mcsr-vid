@@ -518,6 +518,7 @@ async function runStages(
     playlistUrl: config.youtubePlaylistUrl,
     supportUrl: config.supportUrl,
     playoff,
+    copyVariety: config.copyVariety,
   });
   const descriptionPath = path.join(outDir, `match-${matchId}.description.txt`);
   await writeFile(descriptionPath, description, "utf8");

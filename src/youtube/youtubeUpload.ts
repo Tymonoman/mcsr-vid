@@ -484,7 +484,7 @@ export async function pinnedCommentFor(matchId: number, playlistWaitMs?: number)
   const playlistUrl = isConfigured()
     ? await quietly(matchId, "playlist link", () => within(playlistWaitMs, playlistUrlFor(matchId, until)))
     : null;
-  return pinnedComment({ question, playlistUrl });
+  return pinnedComment({ question, playlistUrl, matchId });
 }
 
 /**

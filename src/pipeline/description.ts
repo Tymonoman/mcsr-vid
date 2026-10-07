@@ -46,6 +46,8 @@ export interface DescriptionInput {
   supportUrl?: string;
   /** `playoffContextFor(match)`: the round and game replace "1v1" and earn a paragraph. */
   playoff?: PlayoffContext | null;
+  /** `config.copyVariety`; absent/false is today's single phrasing. */
+  copyVariety?: boolean;
 }
 
 /**
@@ -96,7 +98,7 @@ export function buildDescription(input: DescriptionInput): string {
   return [
     buildOpening(input),
     "",
-    SUBSCRIBE_LINE,
+    subscribeLineFor(matchId, input.copyVariety),
     "",
     // The series context a playoff viewer arrives with: which round, which game, which seeds.
     // Never the series score — that is as much of a spoiler as the result is.
@@ -115,7 +117,7 @@ export function buildDescription(input: DescriptionInput): string {
     // The one line that can earn before the Partner Programme does.
     ...(input.supportUrl ? [`tip jar: ${input.supportUrl}`] : []),
     "",
-    CLOSER,
+    closerFor(matchId, input.copyVariety),
     "",
     HASHTAGS.join(" "),
   ].join("\n");
@@ -127,8 +129,27 @@ export function buildDescription(input: DescriptionInput): string {
  * opening one, on every video and every series, and `refreshDescription` adds it to a description
  * rendered before. The pinned comment does not repeat it (30 Sept 2026: that would be a third
  * copy beside the cards and this): it asks a question instead (`pinnedQuestion`).
+ *
+ * `SUBSCRIBE_LINE_VARIANTS[0]` and this constant are the same string: every caller that read
+ * `SUBSCRIBE_LINE` before `copyVariety` existed keeps reading today's exact line.
  */
-export const SUBSCRIBE_LINE = "a new match every day. subscribe to catch the next one.";
+export const SUBSCRIBE_LINE_VARIANTS: readonly string[] = [
+  "a new match every day. subscribe to catch the next one.",
+  "a new match drops every day. subscribe to catch the next one.",
+  "a new match every day. subscribe and youll catch the next one.",
+  "one new match every day. subscribe to catch the next one.",
+];
+export const SUBSCRIBE_LINE = SUBSCRIBE_LINE_VARIANTS[0]!;
+
+/**
+ * One of `SUBSCRIBE_LINE_VARIANTS`, by match id — the same one every time a given match is
+ * rendered or re-uploaded. `copyVariety` off (the default, or no id to key off) is always index 0,
+ * byte for byte what every description carried before this existed.
+ */
+export function subscribeLineFor(matchId: number | undefined, copyVariety: boolean | undefined): string {
+  if (!copyVariety || matchId === undefined) return SUBSCRIBE_LINE_VARIANTS[0]!;
+  return SUBSCRIBE_LINE_VARIANTS[matchId % SUBSCRIBE_LINE_VARIANTS.length]!;
+}
 
 /**
  * "last time they met: <link>", one line with the other links when the pair has an earlier
@@ -154,9 +175,30 @@ export function withLastMeeting(description: string, videoId: string | null): st
  * what is the channel's own work — the sync and the data layer — said plainly, so a reviewer
  * (or a viewer) does not read the channel as a compilation of other people's streams; the
  * monetisation audit of 22 Sept 2026 asked for the transformation to be legible.
+ *
+ * Byte-identical across 93% of descriptions for 7 weeks was the loudest "this is scripted" tell
+ * the 6 Oct 2026 packaging audit found (`packaging.md` #4) — `CLOSER_VARIANTS` gives it 3 more
+ * phrasings of the same three facts (unaffiliated fan channel, the sync/elo source, the invite to
+ * report a sync slip), picked by match id when `copyVariety` is on. Every variant still starts
+ * with "fan channel, " so `refreshDescription`'s drift patch keeps finding the line to replace.
+ * `CLOSER_VARIANTS[0]` is this constant, unchanged: `copyVariety` off is byte for byte today's.
  */
-export const CLOSER =
-  "fan channel, mcsr ranked has no idea i exist. both streams are synced to the frame off the countdown, the splits and elo come straight from the ranked api. if the sync looks off anywhere say where in the comments and ill fix it.";
+export const CLOSER_VARIANTS: readonly string[] = [
+  "fan channel, mcsr ranked has no idea i exist. both streams are synced to the frame off the countdown, the splits and elo come straight from the ranked api. if the sync looks off anywhere say where in the comments and ill fix it.",
+  "fan channel, mcsr ranked has no idea i exist. the povs are synced to the frame off the countdown and the splits and elo come straight from the ranked api. drop a timestamp in the comments if the sync looks off anywhere and ill get it fixed.",
+  "fan channel, mcsr ranked has no idea i exist. both povs are lined up to the frame on the countdown, the splits and elo are pulled right from the ranked api. if anything looks out of sync just say where in the comments and ill fix it.",
+  "fan channel, mcsr ranked has no idea i exist. the two streams are synced frame by frame off the countdown, splits and elo straight from the ranked api. spotted the sync off anywhere? say where in the comments and ill fix it.",
+];
+export const CLOSER = CLOSER_VARIANTS[0]!;
+
+/**
+ * One of `CLOSER_VARIANTS`, by match id — the same one every time a given match is rendered or
+ * re-uploaded. `copyVariety` off (the default, or no id to key off) is always index 0.
+ */
+export function closerFor(matchId: number | undefined, copyVariety: boolean | undefined): string {
+  if (!copyVariety || matchId === undefined) return CLOSER_VARIANTS[0]!;
+  return CLOSER_VARIANTS[matchId % CLOSER_VARIANTS.length]!;
+}
 
 /** One game of a series, as its lines in the series description. */
 export interface SeriesDescriptionGame {
@@ -182,6 +224,10 @@ export interface SeriesDescriptionInput {
   bracketUrl: string;
   playlistUrl?: string;
   supportUrl?: string;
+  /** Game 1's id — the series' own id, for `copyVariety`'s phrasing pick. */
+  matchId?: number;
+  /** `config.copyVariety`; absent/false is today's single phrasing. */
+  copyVariety?: boolean;
 }
 
 /** "as the 1st seed" / "from the lcq" — the label in a sentence. */
@@ -202,7 +248,7 @@ export function buildSeriesDescription(input: SeriesDescriptionInput): string {
   return [
     `${left.nickname} vs ${right.nickname}, ${format}. every game of the series, a minecraft speedrun race with both streams side by side and the split timer in the middle. ${left.nickname} came in ${seedClause(left.label)} at ${left.seasonEloRate} elo, ${right.nickname} ${seedClause(right.label)} at ${right.seasonEloRate}.`,
     "",
-    SUBSCRIBE_LINE,
+    subscribeLineFor(input.matchId, input.copyVariety),
     "",
     // "game 2 · desert temple seed": a chapter list that says what each game is, not only its
     // number. The world's seed type, which the tags carry too, never the bracket seed or a score.
@@ -223,7 +269,7 @@ export function buildSeriesDescription(input: SeriesDescriptionInput): string {
     ...(input.playlistUrl ? [`all the matches: ${input.playlistUrl}`] : []),
     ...(input.supportUrl ? [`tip jar: ${input.supportUrl}`] : []),
     "",
-    CLOSER,
+    closerFor(input.matchId, input.copyVariety),
     "",
     HASHTAGS.join(" "),
   ].join("\n");

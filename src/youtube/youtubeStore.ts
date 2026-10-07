@@ -9,7 +9,13 @@ import { config, matchDir } from "../config.js";
 import { listProcessedMatchIds } from "../dashboard/matchStatus.js";
 import { readManifest } from "../thumbnails/thumbnailVariants.js";
 import { buildTitle, HOOK_PLACEHOLDER, metaPaths, MOBILE_CUTOFF, SEPARATOR } from "../pipeline/title.js";
-import { CLOSER, seedPhrase, SUBSCRIBE_LINE, withLastMeeting } from "../pipeline/description.js";
+import {
+  closerFor,
+  seedPhrase,
+  subscribeLineFor,
+  SUBSCRIBE_LINE_VARIANTS,
+  withLastMeeting,
+} from "../pipeline/description.js";
 import { playoffSeriesTail, playoffTitleTail, seedOrdinal } from "../playoffs/playoffs.js";
 import { buildShortTitle, readShortHook, TITLE_MAX_CHARS } from "../shorts/shortHook.js";
 import { describeError } from "../errorText.js";
@@ -152,7 +158,7 @@ export async function uploadTextFor(
   if (editedDescription === null) {
     const stored = description;
     description = await refreshed("description", stored, () =>
-      refreshDescription(stored, kind, config.supportUrl, dir),
+      refreshDescription(stored, kind, config.supportUrl, dir, matchId),
     );
     // The pair's last meeting is only known now, and only a long-form sends a viewer on.
     if (kind === "video")
@@ -367,30 +373,39 @@ export function refreshShortTitle(hook: string | null, longTitle: string): strin
  * again: its inputs (the VOD links with their synced offsets, the match-time and frozen seed
  * ratings, the chapters) are the API's and Twitch's, and a Twitch archive is gone after 14 days
  * — the stored links are the ones the render checked. The drifts: "#9 seed" is "9th seed"
- * (`seedOrdinal`, 24 Sept 2026), the closer is today's `CLOSER`, the tip-jar line
+ * (`seedOrdinal`, 24 Sept 2026), the closer is today's phrasing (`closerFor`), the tip-jar line
  * (`supportUrl`) goes where the template puts it, before the closer, and the subscribe line
- * (`SUBSCRIBE_LINE`) becomes its own paragraph after the opening one. For a series (`series.json`
+ * (`subscribeLineFor`) becomes its own paragraph after the opening one. For a series (`series.json`
  * beside game 1), old chapter lines of the form "M:SS game N" (or H:MM:SS) that have no " · " yet
  * are relabelled into "M:SS game N · <seed phrase>" using game N's world seed type from the match;
  * reading failure leaves that line unchanged. A Short's description gets the seed wording only;
  * its layout has no closer.
+ *
+ * `matchId` keys `copyVariety`'s phrasing pick (`uploadTextFor` passes its own); omitted, both
+ * lines are always `CLOSER_VARIANTS[0]`/`SUBSCRIBE_LINE_VARIANTS[0]`, today's exact text. The
+ * subscribe-line check matches any variant, not only index 0 — otherwise a description that
+ * already carries, say, variant 2 would read as missing the line and gain a second copy of it.
  */
 export async function refreshDescription(
   text: string,
   kind: UploadKind,
   supportUrl = config.supportUrl,
   series?: SeriesRecord | string | null,
+  matchId?: number,
 ): Promise<string> {
   let out = text.replace(/#(\d+) seed\b/g, (label) => seedOrdinal(label));
   if (kind === "short" || out === "") return out;
-  out = out.replace(/^fan channel, .*$/m, CLOSER);
+  out = out.replace(/^fan channel, .*$/m, closerFor(matchId, config.copyVariety));
   if (supportUrl && !out.includes("tip jar: ")) {
     const at = out.search(/\n\n(?:fan channel, |#MCSR)/);
     const line = `tip jar: ${supportUrl}`;
     out = at < 0 ? `${out}\n${line}` : `${out.slice(0, at)}\n${line}${out.slice(at)}`;
   }
   // The opening is one line, so the first blank line is its end; no blank line is no template.
-  if (!out.includes(SUBSCRIBE_LINE)) out = out.replace("\n\n", `\n\n${SUBSCRIBE_LINE}\n\n`);
+  if (!SUBSCRIBE_LINE_VARIANTS.some((v) => out.includes(v))) {
+    const line = subscribeLineFor(matchId, config.copyVariety);
+    out = out.replace("\n\n", `\n\n${line}\n\n`);
+  }
   const record = typeof series === "string" ? await readSeriesRecord(series) : series;
   if (record) {
     const lines = out.split("\n");
@@ -440,19 +455,43 @@ export function refreshTags(tags: string[]): string[] {
 }
 
 /**
+ * The sync sentence, byte-identical on 29 of 76 pinned comments for 7 weeks — the loudest
+ * "this is scripted" tell the 6 Oct 2026 packaging audit found (`packaging.md` #1, confirmed by
+ * two posting bursts seconds apart across already-published videos). `SYNC_SENTENCE_VARIANTS`
+ * gives it 3 more phrasings of the same facts (both POVs are the players' own streams, synced on
+ * the countdown, report a bad timestamp and it gets fixed), picked by match id when
+ * `copyVariety` is on. Index 0 is unchanged: `copyVariety` off is byte for byte today's.
+ */
+export const SYNC_SENTENCE_VARIANTS: readonly string[] = [
+  "both povs are the players own streams, synced on the countdown. if the timer looks off anywhere drop the timestamp here and ill fix it",
+  "both povs are the players own streams, lined up on the countdown. if the timer looks off anywhere drop the timestamp below and ill fix it",
+  "both povs are the players own streams, matched up on the countdown. spot the timer off anywhere? drop the timestamp here and ill fix it",
+  "both povs are the players own streams, synced off the countdown. if the timer looks off anywhere just drop the timestamp and ill fix it",
+];
+
+/**
  * The first comment on a match video, which the operator pins in Studio (pinning has no API).
  * The publish kit shows the same text (`pinnedCommentFor`, src/youtube/youtubeUpload.ts, gathers
  * what it is handed here). In the operator's own voice and never the winner: a spoiler-free
  * question to answer (`pinnedQuestion`, 30 Sept 2026), where to report a sync slip, a playlist to
  * watch next, and the tip-jar line, which follows supportUrl like the descriptions. The subscribe
  * ask is the description's and the cards', not a third copy here.
+ *
+ * `matchId` keys `copyVariety`'s pick of `SYNC_SENTENCE_VARIANTS`; omitted (every call before
+ * this existed, and every test that does not pass it) is always index 0.
  */
 export function pinnedComment(
-  { question, playlistUrl }: { question?: string | null; playlistUrl?: string | null } = {},
+  {
+    question,
+    playlistUrl,
+    matchId,
+  }: { question?: string | null; playlistUrl?: string | null; matchId?: number } = {},
   supportUrl = config.supportUrl,
 ): string {
   const sentence =
-    "both povs are the players own streams, synced on the countdown. if the timer looks off anywhere drop the timestamp here and ill fix it";
+    !config.copyVariety || matchId === undefined
+      ? SYNC_SENTENCE_VARIANTS[0]!
+      : SYNC_SENTENCE_VARIANTS[matchId % SYNC_SENTENCE_VARIANTS.length]!;
   return [
     ...(question ? [question] : []),
     sentence,

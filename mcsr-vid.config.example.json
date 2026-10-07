@@ -41,6 +41,7 @@
   "pairRepeatDays": 3,
   "knownFollowerThreshold": 10000,
   "supportUrl": "",
+  "copyVariety": false,
   "pullSource": "",
   "pullDest": "~/Replayoffs",
   "overlayLeadInSec": 10,

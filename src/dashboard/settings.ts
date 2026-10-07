@@ -164,6 +164,14 @@ export const SETTINGS: readonly SettingField[] = [
     max: 30,
   },
   {
+    key: "copyVariety",
+    label: "Vary the pinned comment and description wording",
+    help: "Rotates the pinned comment's sync line and the description's closer and subscribe lines through a few phrasings of the same facts, one per match id, so a re-render or re-upload keeps the same wording. Off is today's single byte-identical wording on every video.",
+    kind: "boolean",
+    group: "Publishing",
+    unattended: true,
+  },
+  {
     key: "youtubeAutoFinish",
     label: "Finish a Studio upload automatically",
     help: "When the channel scan pairs a new Studio upload, give it its thumbnail, playlists, first comment and tags without waiting to be asked. Not gated by the audit — none of those is videos.insert.",
