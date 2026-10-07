@@ -32,6 +32,9 @@ merge; full npm test running. Report: tmp/night1006/p6/report.src.html + build.p
 Artifact → `npm run tg -- send --md` with the link + 5 lines. Hooks for the morning (all pass the repo checks):
 SF2 "WHO REACHES THE GRAND FINAL?" (Publish at 7 Oct 21:00 UTC), 13705580 "CAN A 1:36 LEAD SURVIVE?",
 13906935 "DECIDED BY 4.2 SECONDS".
+03:50 UTC 7 Oct: nightly done (13782182 silverrruns vs ANJOUU, exported, pick by agy). Its prefilled title hook
+"A 1:22 lead, gone" (old code) is FALSE — silverrruns led every panel split; suggest "A SUB-10 RACE TO THE FINISH".
+Waiting for hooks: 13527460 (SF2), 13705580, 13782182, 13906935. Telegram summary sends 06:40 UTC (task byvxtxoxu).
 MORNING #1: SF2 13527460 (Feinberg vs Infume?) missed 6 Oct 23:00 (hooks never saved); 3rd place EeAbgZQgZPk 7 Oct
 23:00 + GF _2EOkOOX0PQ 8 Oct 23:00 spoil it → he saves SF2 hooks with Publish at 7 Oct 21:00 UTC (no moves needed).
 (Fixed 00:10 UTC by hardening a022f83: loadConfig copies DEFAULTS, so suggestSelect.test.ts passes in a fresh worktree.)
