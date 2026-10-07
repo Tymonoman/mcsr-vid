@@ -38,6 +38,9 @@ export interface FinishedSteps {
   playlists?: string | null;
   comment?: string | null;
   tags?: string | null;
+  /** Studio automation's own step (config.studioAutomation): pinning the channel's first comment.
+   * Absent on every record from before 7 Oct 2026, and on every record ever, while the setting is off. */
+  pin?: string | null;
 }
 
 export interface UploadRecord {

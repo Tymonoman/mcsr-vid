@@ -31,7 +31,7 @@ import path from "node:path";
 import { archiveMatch, capacity, inNasWindow, refreshArchived } from "./archive.js";
 import { blockedIn, config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
-import { exportRunning, startFastExport } from "./exportRoutes.js";
+import { anyExportRunning, exportRunning, startFastExport } from "./exportRoutes.js";
 import { getJob, startJob, type Job } from "./jobs.js";
 import {
   hiddenMatchIds,
@@ -53,7 +53,7 @@ import { getMatch } from "../api/mcsrApi.js";
 import type { MatchInfo } from "../api/types.js";
 import { computeMetrics } from "../pipeline/matchScore.js";
 import { withDiscoveredVods } from "../pipeline/vodDiscovery.js";
-import { retryFailedPlaylists, retryPendingComments } from "../youtube/youtubeUpload.js";
+import { retryFailedPlaylists, retryPendingComments, retryPendingStudio } from "../youtube/youtubeUpload.js";
 import { allUploads } from "../youtube/youtubeStore.js";
 import { pickFile, type ShortPick } from "../shorts/shortPlan.js";
 import { pickErrorFile } from "../shorts/videoPick.js";
@@ -815,6 +815,10 @@ export function scheduleNightly(options: NightlyOptions): void {
     retryFailedPlaylists().catch((err: unknown) => console.error(`playlists: ${describeError(err)}`));
     // And posts the first comment on a scheduled video once it goes public.
     retryPendingComments().catch((err: unknown) => console.error(`comments: ${describeError(err)}`));
+    // And pins it through Studio automation (config.studioAutomation; a no-op while it's off) —
+    // skipped outright while an export is running, since Chrome and ffmpeg share this box's four cores.
+    if (!anyExportRunning())
+      retryPendingStudio().catch((err: unknown) => console.error(`studio: ${describeError(err)}`));
     // And the tick that asks the model again for a pick the heuristic stood in for.
     shortTick().catch((err: unknown) => console.error(`shorts: ${describeError(err)}`));
     runNightlyOnce(options.notifyUrl, { scheduled: true })

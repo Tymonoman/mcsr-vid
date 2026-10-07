@@ -22,6 +22,12 @@ import { pinnedQuestion } from "../pipeline/pinnedQuestion.js";
 import { HOOK_PLACEHOLDER, metaPaths } from "../pipeline/title.js";
 import { readShortCut, readShortHook, WAITING_FOR_HOOK } from "../shorts/shortHook.js";
 import { activityProgress, boxFailure, endActivity, shortLog, startActivity } from "../shorts/shortLog.js";
+import { pinComment } from "./studioActions.js";
+import {
+  isRunning as studioBrowserRunning,
+  probe as probeStudio,
+  start as startStudioBrowser,
+} from "./studioBrowser.js";
 import {
   addTags,
   addToPlaylist,
@@ -505,6 +511,8 @@ export async function finishOnYouTube(
   matchId: number,
   videoId: string,
   kind: UploadKind = "video",
+  /** The Studio pin itself — a real browser, so this is the one seam tests replace. */
+  pinAction: typeof attemptStudioPin = attemptStudioPin,
 ): Promise<FinishedSteps> {
   const attempt = async (step: () => Promise<void>): Promise<string | null> => {
     try {
@@ -534,6 +542,8 @@ export async function finishOnYouTube(
       thumbnail: todo("thumbnail") ? BLOCKED_FINISH : null,
       comment: todo("comment") ? BLOCKED_FINISH : null,
       tags: todo("tags") ? BLOCKED_FINISH : null,
+      // Zero behaviour change while studioAutomation is off (the key is absent, as it always was).
+      ...(config.studioAutomation ? { pin: todo("pin") ? BLOCKED_FINISH : null } : {}),
     };
   }
 
@@ -628,8 +638,103 @@ export async function finishOnYouTube(
             });
     }
   }
+  // Studio automation's own step (config.studioAutomation, default off — a deliberate edit on the
+  // box, like nightlyUpload): pins the channel's first comment through a real browser, since
+  // pinning has no API. Off, this reads and launches nothing — `finished.pin` stays whatever it
+  // already was (absent, on every record, while the setting has never been on).
+  if (config.studioAutomation && kind === "video" && todo("pin")) {
+    // Waits for the comment itself to have landed (Studio pins an existing thread) and for the
+    // video to actually be public — re-read live, the same reason the comment step does: the
+    // record's `privacyStatus` is from upload time and is never updated.
+    if (finished.comment === null) {
+      const live =
+        record?.privacyStatus === "public"
+          ? "public"
+          : ((await videoStats([videoId]))[0]?.privacyStatus ?? record?.privacyStatus);
+      if (live === "public") finished.pin = await pinAction(matchId, videoId);
+    }
+    // Neither condition met yet: `finished.pin` is left untouched (absent, or whatever `already`
+    // carried), which is exactly what `todo` reads as "still to do" on the next call.
+  }
   if (record) await writeUpload(matchId, { ...record, finished }, kind);
   return finished;
+}
+
+/**
+ * One Studio action: launches Chrome fresh, probes the session, pins the comment, then always
+ * stops the browser again — one browser at a time (src/youtube/studioBrowser.ts). A `verify`,
+ * `signed-out` or `wrong-channel` probe is recorded as this attempt's error and not chased any
+ * further within this call; nothing about the session actually changes until the operator logs
+ * in again through the YouTube panel's Studio login, so a later tick finding the same thing is
+ * expected, not a bug.
+ */
+async function attemptStudioPin(matchId: number, videoId: string): Promise<string | null> {
+  if (studioBrowserRunning()) return "another Studio job holds the browser — retried next tick";
+  let handle;
+  try {
+    handle = await startStudioBrowser();
+  } catch (err) {
+    return describeError(err);
+  }
+  try {
+    const probed = await probeStudio(handle);
+    if (probed.result !== "ok")
+      return `Studio ${probed.result} — log in again through the YouTube panel's Studio login`;
+    const outcome = await pinComment(handle, videoId, { matchId });
+    if (typeof outcome === "object") return outcome.error;
+    return outcome === "pinned" || outcome === "already-pinned" ? null : `Studio: ${outcome}`;
+  } catch (err) {
+    return describeError(err);
+  } finally {
+    await handle.stop().catch(() => {});
+  }
+}
+
+/**
+ * One long-form video whose comment has already landed but whose Studio pin has not: `matchId` is
+ * whichever folder first recorded it, same shape as `pendingComments` (a series copies one record
+ * into every game's folder).
+ */
+interface PendingPin {
+  matchId: number;
+  done: boolean;
+}
+
+async function pendingPins(): Promise<Map<string, PendingPin>> {
+  const byVideo = new Map<string, PendingPin>();
+  for (const matchId of listProcessedMatchIds()) {
+    const record = await readUpload(matchId, "video");
+    // The pin step itself waits for the comment to land (above); so does this list — there is
+    // nothing yet for Studio to pin.
+    if (!record || record.finished?.comment !== null) continue;
+    const done = record.finished?.pin === null;
+    const seen = byVideo.get(record.videoId);
+    if (seen) seen.done ||= done;
+    else byVideo.set(record.videoId, { matchId, done });
+  }
+  return byVideo;
+}
+
+/**
+ * The nightly's tick for a comment already posted whose pin is not — one Chrome launch per
+ * pending video, at most `maxPerTick` (10). Off (the default, `config.studioAutomation`), this
+ * reads nothing and launches nothing: the whole body is skipped. `nightly.ts` calls this only
+ * when no export is running, since Chrome and ffmpeg share this box's four cores.
+ */
+export async function retryPendingStudio(
+  finish: typeof finishOnYouTube = finishOnYouTube,
+  maxPerTick = 10,
+): Promise<void> {
+  if (!config.studioAutomation) return;
+  const byVideo = await pendingPins();
+  let attempted = 0;
+  for (const [videoId, v] of byVideo) {
+    if (attempted >= maxPerTick) break;
+    if (v.done) continue;
+    attempted++;
+    const { pin } = await finish(v.matchId, videoId, "video");
+    console.error(`studio: #${v.matchId} pin ${pin === null ? "done" : (pin ?? "pending")}`);
+  }
 }
 
 /**
