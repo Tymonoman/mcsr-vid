@@ -41,6 +41,9 @@ const jobs = new Map<number, ShortJob>();
 /** A Short render writing into this match's directory right now. */
 export const shortRunning = (matchId: number): boolean => jobs.get(matchId)?.done === false;
 
+/** Any Short render in flight, whichever match — restartWhenIdle.ts's gate. */
+export const anyShortRunning = (): boolean => [...jobs.values()].some((j) => !j.done);
+
 const shortPath = (dir: string, matchId: number) => path.join(dir, `short-${matchId}.mp4`);
 
 function broadcast(job: ShortJob, payload: unknown): void {

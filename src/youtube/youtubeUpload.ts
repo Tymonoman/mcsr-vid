@@ -75,6 +75,9 @@ const progressKey = (matchId: number, kind: UploadKind) => `${kind}:${matchId}`;
 export const uploadRunning = (matchId: number): boolean =>
   [...uploads.values()].some((u) => u.matchId === matchId && !u.done);
 
+/** Any upload in flight, whichever match or kind — restartWhenIdle.ts's gate. */
+export const anyUploadRunning = (): boolean => [...uploads.values()].some((u) => !u.done);
+
 const idle = (matchId: number, kind: UploadKind): UploadProgress => ({
   matchId,
   kind,

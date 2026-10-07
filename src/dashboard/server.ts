@@ -75,6 +75,7 @@ import {
   publishTimeView,
   shortTick,
 } from "./shortFlow.js";
+import { armRestart, disarmRestart, restartState } from "./restartWhenIdle.js";
 import { saveSettings, settingsPayload } from "./settings.js";
 import { handleYoutubeRoute, uploadRunning } from "./youtubeRoutes.js";
 import { handleSyncRoute } from "./syncRoutes.js";
@@ -271,6 +272,21 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    // Arms a restart for the moment the box is next idle, so new code reaches the running
+    // process without racing an upload (src/dashboard/restartWhenIdle.ts).
+    if (resource === "restart-when-idle" && req.method === "POST") {
+      json(res, 202, armRestart());
+      return;
+    }
+    if (resource === "restart-when-idle" && req.method === "GET") {
+      json(res, 200, restartState());
+      return;
+    }
+    if (resource === "restart-when-idle" && req.method === "DELETE") {
+      json(res, 200, { cancelled: disarmRestart() });
+      return;
+    }
+
     if (resource === "stages" && req.method === "GET") {
       json(res, 200, { order: STAGE_ORDER, labels: STAGE_LABELS, short: STAGE_SHORT_LABELS });
       return;
@@ -462,6 +478,8 @@ const server = createServer(async (req, res) => {
         lastRun: readNightlyState(),
         // "3 waiting for a hook ›", "1 failed ›", and whether the model can be reached at all.
         ...(await nightlyShortSummary()),
+        // A restart armed for the moment the box is next idle — the strip's own small line.
+        restart: restartState(),
       });
       return;
     }
