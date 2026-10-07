@@ -1028,6 +1028,34 @@
     -5px 5px 0 var(--panel-edge),
     0 12px 0 rgba(0, 0, 0, 0.45);
 }
+/* Test & Compare only (props.caption, `src/thumbnails/tcThumbs.ts`): the one empty band on the
+   canvas, between the VS (ends y 416) and the nameplates (start y 516) — clear of the seed icon
+   (ends y 252), both plates and YouTube's duration stamp (x 1110-1270, y 625-695). Same hard
+   pixel-outline treatment as .thumb-vs, scaled to a 56px line (14 characters fits at ~517px, well
+   inside the canvas) so it reads at YouTube's smallest (168x94) the way the 56px nameplates do. */
+.thumb-caption {
+  position: absolute;
+  top: 466px;
+  left: 640px;
+  transform: translate(-50%, -50%);
+  z-index: 4;
+  font-weight: 700;
+  font-size: 56px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--quartz);
+  text-shadow:
+    4px 0 0 var(--panel-edge),
+    -4px 0 0 var(--panel-edge),
+    0 4px 0 var(--panel-edge),
+    0 -4px 0 var(--panel-edge),
+    4px 4px 0 var(--panel-edge),
+    -4px -4px 0 var(--panel-edge),
+    4px -4px 0 var(--panel-edge),
+    -4px 4px 0 var(--panel-edge);
+}
 .thumb-logo {
   position: absolute;
   bottom: 14px;

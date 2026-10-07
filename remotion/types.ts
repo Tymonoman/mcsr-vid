@@ -125,6 +125,15 @@ export type ThumbnailProps = {
     rightSeed: string;
     style: "bracket" | "trophy";
   };
+  /**
+   * A short on-image caption for Test & Compare only (`src/thumbnails/tcThumbs.ts`): never set by
+   * the normal render path (`computeThumbnailProps`/`renderThumbnailVariants`), so an absent value
+   * is every match rendered today, byte for byte. At most 14 characters, upper case, a fact of the
+   * match (never the result — `hookProblem`/`hookLabelProblem`/`spoilsTheResult` gate it before it
+   * ever reaches here). Sits in the gap between the VS and the nameplates (`.thumb-caption`), clear
+   * of the seed icon, both nameplates and YouTube's duration stamp.
+   */
+  caption?: string;
 };
 
 /** One player as a Shorts nameplate shows them. */

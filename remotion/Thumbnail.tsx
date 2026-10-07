@@ -81,6 +81,7 @@ export const Thumbnail: FC<ThumbnailProps> = (props) => {
         )}
         <span className="thumb-vs">VS</span>
         {playoff && !trophy && <span className="thumb-bestof">Best of {playoff.bestOf}</span>}
+        {props.caption && <span className="thumb-caption">{props.caption}</span>}
         <PlayerTag player={props.left} side="left" />
         <PlayerTag player={props.right} side="right" />
         <div className="thumb-logo">
