@@ -1,5 +1,25 @@
 # TASKS — resume point (updated 24 Sept 2026 08:15 UTC)
 
+## ▶ RESUME HERE — THE WEEK GOAL (set 7 Oct 2026 ~21:40 UTC, runs 8–14 Oct) — the operator's /goal "mega prompt"
+Goal: YPP ETA back to last week's pace (subs are the only gate: 123/500 on 7 Oct, 4.0/day last week, 2.93/day 28d →
+500 ~13 Feb, ~10 Jan at last week's pace). The channel runs itself; he acts only on the 07:00 Warsaw report's "Needs you".
+His grants: auto-save hooks 6 h after a pick lands (hookProblem + hookLabelProblem + spoilsTheResult); change any
+Settings switch, publishHourUtc, the Short offset, nightlyMaxRenders as experiment arms; retitle/re-thumbnail live
+videos ONLY via Studio Test & Compare; drive Studio with the browser automation (Chrome: --no-sandbox --disable-sync
+--disable-extensions, the profile he logged into = /app/.studio-profile). STILL HIS: comment replies/hearts/deletes,
+video deletion/privacy/monetization/account settings, runner DMs, /app/.env + compose.yaml, image rebuild, git push,
+docker restart while a chain uploads, NAS outside 03–08 Warsaw or outside /home-media/mcsr-replayoffs, blocked players,
+winner/nickname/label/seed/rank/elo hooks, comment text or names in LLM prompts.
+Plan (Day 0 = night 7→8 Oct): (1) baseline → handbook/knowledge/experiments.md before any channel/config change;
+(2) merge studio-p1; (3) autopilot code: auto-hooks + "Needs you" + restart-when-idle (no docker CLI here — the
+FIRST restart to load it is his; ask in the morning message, then POST restart-when-idle deploys); (4) experiment
+engine (<mediaDir>/.experiments.json: schedule of render arms applied before the nightly, slot arms = ranked hours
+per publish day + Short delay per day, per-match arm record, daily evaluator, ≥1,000 impressions/arm else
+"inconclusive"); (5) Studio phase 2 (end screens from his template POQrpE0-5d8) + phase 3 (T&C thumbnails AND titles);
+(6) T&C on the top-10-by-impressions videos, then every upload; (7) final branded artifact + tg send.
+Dashboard boot fd47b32 (he restarted it 7 Oct evening). /media 70 GB free. Live: introSec 3, countdownTeaser on,
+explainMovesSec 8 (on), suggestKnownSlots 10.
+
 ## ▶ RESUME HERE (7 Oct 2026 ~21:35 UTC, before a /compact) — the operator went to sleep; a "mega prompt" is coming
 In flight (background workflows; read their journals/results when they land):
 - studio-automation-p1 wf_3f4f7afb-65c (worktree .claude/worktrees/studio-p1, branch studio-p1): phase 1 of
