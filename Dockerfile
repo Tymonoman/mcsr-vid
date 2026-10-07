@@ -96,6 +96,31 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip3 install --no-cache-dir --break-system-packages \
       google-api-python-client google-auth-oauthlib
 
+# Studio automation (CLAUDE.md, phase 1): a real, headed google-chrome-stable — never the
+# chrome-headless-shell Remotion already downloads above, which carries none of a real browser's
+# own login UI — on Google's own apt repo, since Debian ships no Chrome package at all. gnupg is
+# only here to `dearmor` that repo's signing key; nothing else in the image needs it.
+# x11vnc + novnc + websockify are the one-time remote login screen (src/dashboard/studioLogin.ts):
+# x11vnc shares the Xvfb display below over VNC, websockify is what lets a plain browser speak
+# VNC over a websocket (novnc's own JS client, served from /usr/share/novnc). fonts-liberation is
+# already installed above — Chrome reuses it, nothing extra to add for Studio's own pages.
+RUN apt-get update && apt-get install -y --no-install-recommends gnupg \
+    && curl -fsSL https://dl.google.com/linux/linux_signing_key.pub \
+      | gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg \
+    && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" \
+      > /etc/apt/sources.list.d/google-chrome.list \
+    && apt-get update && apt-get install -y --no-install-recommends \
+      google-chrome-stable x11vnc novnc websockify \
+    && rm -rf /var/lib/apt/lists/*
+
+# Chrome's own cookies and login for Studio automation — a credential, never `/media` and never
+# git. Created now, owned by node, BEFORE compose.yaml's named volume mounts over it: the same
+# reason /home/node/.claude is pre-created above, or Docker would create the mountpoint as
+# root:root and leave Chrome unable to write its own profile. 700: nothing else should read it.
+RUN mkdir -p /home/node/.studio-profile \
+    && chown node:node /home/node/.studio-profile \
+    && chmod 700 /home/node/.studio-profile
+
 # Claude Code refuses --dangerously-skip-permissions when running as root, so the
 # autonomy decision depends on this line. node:24 ships a `node` user at uid 1000,
 # which matches the host's `homelab` user (uid=1000, gid=1000) exactly, so
