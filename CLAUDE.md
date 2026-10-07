@@ -682,6 +682,10 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   the kit and the pairing (game 1's `/matches/<id>` link first) work on game 1 as on any match.
   `series.json` beside it names the games and their lengths. Its chapters name each game's world
   ("0:00 game 1 · village seed", `seedPhrase`, as the tags do), never the bracket seed or a score.
+  Each game's own split/Result chapters follow its header too (7 Oct 2026, `buildChapters`,
+  `src/pipeline/chapters.ts`), offset to where that game starts in the joined video, and the
+  whole merged list is re-filtered to YouTube's 10s minimum once more since a sub-chapter can
+  land within that gap of its own header or of the next game's.
   **The join deletes the games'
   own exports** — a series is fifty minutes of 1080p60 and the disk holds one copy — and takes a
   game back out of the series (`-c copy` at its recorded offset, exact because every game

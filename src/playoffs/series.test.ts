@@ -50,6 +50,12 @@ const g3 = game(103, start + 1500, edcr.uuid);
 // The worlds' seed types name the chapters; game 3's is unknown and its chapter stays bare.
 g1.seedType = "VILLAGE";
 g2.seedType = "DESERT_TEMPLE";
+// Game 1's own split (7 Oct 2026, per-split series chapters): a real sub-chapter, not just the
+// header, must appear in the assembled series' chapter list, offset into the joined video.
+g1.timelines = [
+  { uuid: edcr.uuid, time: 130_000, type: "story.enter_the_nether" },
+  { uuid: lauveer.uuid, time: 107_000, type: "story.enter_the_nether" },
+];
 const games: Record<number, MatchInfo> = { 101: g1, 102: g2, 103: g3 };
 const feed = (m: MatchInfo): FeedMatch => {
   const { timelines: _t, completions: _c, ...rest } = m;
@@ -133,6 +139,7 @@ const desc = buildSeriesDescription({
       startSec: 0,
       pageUrl: "https://x/matches/101",
       streams: [{ nickname: "edcr", url: "https://t/1?t=5s" }],
+      chapters: [],
     },
     {
       matchId: 102,
@@ -141,8 +148,9 @@ const desc = buildSeriesDescription({
       seed: "desert temple seed",
       pageUrl: "https://x/matches/102",
       streams: [],
+      chapters: [],
     },
-    { matchId: 103, gameNo: 3, startSec: 3700, pageUrl: "https://x/matches/103", streams: [] },
+    { matchId: 103, gameNo: 3, startSec: 3700, pageUrl: "https://x/matches/103", streams: [], chapters: [] },
   ],
   bracketUrl: "https://magmamcsr.com/events/playoffs/s11/bracket",
   playlistUrl: "https://www.youtube.com/playlist?list=PL1",
@@ -290,8 +298,14 @@ assert.equal(
 );
 const description = readFileSync(path.join(dir(101), "match-101.description.txt"), "utf8");
 assert.ok(
-  description.includes("0:00 game 1 · village seed\n10:00 game 2 · desert temple seed\n18:20 game 3\n"),
-  "a chapter per game, named by the world's seed type (never the bracket's seed or a score)",
+  description.includes(
+    // Game 1's own split (its timelines, above) follows its header, offset into the joined
+    // video (10s lead-in + 107s to Nether Enter); games 2 and 3 have no timeline data and keep
+    // just their header and Result, never the bracket's seed or a score.
+    "0:00 game 1 · village seed\n1:57 Nether Enter\n8:10 Result\n10:00 game 2 · desert temple seed\n" +
+      "18:10 Result\n18:20 game 3\n26:30 Result\n",
+  ),
+  `a chapter per game plus each game's own split/Result chapters, offset into the series:\n${description}`,
 );
 assert.ok(
   description.includes(
@@ -307,7 +321,8 @@ assert.ok(
 );
 assert.equal(
   readFileSync(path.join(dir(101), "match-101.chapters.txt"), "utf8"),
-  "0:00 game 1 · village seed\n10:00 game 2 · desert temple seed\n18:20 game 3",
+  "0:00 game 1 · village seed\n1:57 Nether Enter\n8:10 Result\n10:00 game 2 · desert temple seed\n" +
+    "18:10 Result\n18:20 game 3\n26:30 Result",
 );
 const tags = readFileSync(path.join(dir(101), "match-101.tags.txt"), "utf8").split("\n");
 assert.deepEqual(tags.slice(0, 6), [

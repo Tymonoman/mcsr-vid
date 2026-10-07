@@ -1,6 +1,6 @@
 import type { VodWindow } from "./vodAcquisition.js";
 import { matchPageUrl } from "../api/mcsrApi.js";
-import { type ChapterMarker, formatChapters } from "./chapters.js";
+import { type ChapterMarker, filterChapterGap, formatChapters } from "./chapters.js";
 import { eloAtMatchStart } from "./overlayProps.js";
 import { playoffParagraph, playoffPhrase, seedOrdinal, type PlayoffContext } from "../playoffs/playoffs.js";
 import type { MatchInfo, UserDetails } from "../api/types.js";
@@ -236,6 +236,14 @@ export interface SeriesDescriptionGame {
   pageUrl: string;
   /** Each player's stream, deep-linked to the game's start; absent when a VOD was never found. */
   streams: Array<{ nickname: string; url: string }>;
+  /**
+   * This game's own split/Result chapters (7 Oct 2026), already shifted to where they land in
+   * the *joined* video (`buildChapters(splits, match, gameMatchStarts[i]).slice(1)` —
+   * `src/playoffs/series.ts`; the slice drops `buildChapters`' own "Start" marker, which is
+   * pinned to 0:00 of a single match and would be wrong here: the header line below is this
+   * game's 0:00). Empty when the game has no split data.
+   */
+  chapters: ChapterMarker[];
 }
 
 export interface SeriesDescriptionInput {
@@ -266,6 +274,13 @@ const seedClause = (label: string): string =>
  * pairs a channel upload to its match (src/youtube/channelUploads.ts), and the series is game 1's
  * directory. No score anywhere: the chapter count already says how long it went, the dots on
  * the video say the rest as it happens.
+ *
+ * Each game's header ("game 2 · desert temple seed") is followed by that game's own
+ * `g.chapters` (7 Oct 2026, the 7 Oct audit: "per-split chapters inside each game would give
+ * Google more key moments") — the world's seed type, which the tags carry too, never the
+ * bracket seed or a score. The whole merged list is re-filtered to YouTube's 10s minimum once
+ * more (`filterChapterGap`), since a game's own chapter can land within that gap of its header
+ * or of the next game's.
  */
 export function buildSeriesDescription(input: SeriesDescriptionInput): string {
   const { left, right } = input;
@@ -275,13 +290,13 @@ export function buildSeriesDescription(input: SeriesDescriptionInput): string {
     "",
     subscribeLineFor(input.matchId, input.copyVariety),
     "",
-    // "game 2 · desert temple seed": a chapter list that says what each game is, not only its
-    // number. The world's seed type, which the tags carry too, never the bracket seed or a score.
     formatChapters(
-      input.games.map((g) => ({
-        label: `game ${g.gameNo}${g.seed ? ` · ${g.seed}` : ""}`,
-        timeSec: g.startSec,
-      })),
+      filterChapterGap(
+        input.games.flatMap((g) => [
+          { label: `game ${g.gameNo}${g.seed ? ` · ${g.seed}` : ""}`, timeSec: g.startSec },
+          ...g.chapters,
+        ]),
+      ),
     ),
     "",
     ...input.games.map(
