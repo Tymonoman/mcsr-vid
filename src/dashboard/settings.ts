@@ -140,9 +140,10 @@ export const SETTINGS: readonly SettingField[] = [
   {
     key: "exportUpscale1440",
     label: "Upload at 2560x1440 (upscaled)",
-    help: "export:fast's final pass blows the finished 1080p frame up to 2560x1440 before encoding — no extra detail, every overlay asset stays 1080p — to test whether YouTube's transcoder grants a higher bitrate tier for a 1440p upload. Bigger files, ~50-80% longer encodes. A playoff series needs every game exported with the same setting, or the games cannot be joined. Applies to the next export.",
+    help: "export:fast's final pass blows the finished 1080p frame up to 2560x1440 before encoding — no extra detail, every overlay asset stays 1080p — to test whether YouTube's transcoder grants a higher bitrate tier for a 1440p upload. A 20 s CPU test (7 Oct 2026) measured 12% bigger files and 44% longer encodes; the lab's GPU path is untested. A playoff series needs every game exported with the same setting, or the games cannot be joined. Applies to the next export.",
     kind: "boolean",
     group: "Publishing",
+    unattended: true,
   },
   {
     key: "explainMovesSec",

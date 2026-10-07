@@ -34,7 +34,7 @@ SF2 "WHO REACHES THE GRAND FINAL?" (Publish at 7 Oct 21:00 UTC), 13705580 "CAN A
 13906935 "DECIDED BY 4.2 SECONDS".
 MORNING #1: SF2 13527460 (Feinberg vs Infume?) missed 6 Oct 23:00 (hooks never saved); 3rd place EeAbgZQgZPk 7 Oct
 23:00 + GF _2EOkOOX0PQ 8 Oct 23:00 spoil it → he saves SF2 hooks with Publish at 7 Oct 21:00 UTC (no moves needed).
-Known test leak: suggestSelect.test.ts passes only with /app's config (mediaDir=/media) — fails in a fresh worktree.
+(Fixed 00:10 UTC by hardening a022f83: loadConfig copies DEFAULTS, so suggestSelect.test.ts passes in a fresh worktree.)
 Facts found: the dashboard image has `claude` but no login (no claude-config mount) → morning step:
 `claude setup-token` → CLAUDE_CODE_OAUTH_TOKEN in /app/.env → restart. `--bare` refuses OAuth. Tonight's
 03:00 UTC nightly candidate: 13782182 silverrruns vs ANJOUU. Gemini quota out (picks = heuristic).
