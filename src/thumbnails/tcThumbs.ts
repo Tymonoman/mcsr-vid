@@ -27,8 +27,8 @@ import { bundleOnce } from "../pipeline/remotionBundle.js";
 import { getMatch, getUser, getVersus, parseMatchId } from "../api/mcsrApi.js";
 import { matchDir } from "../config.js";
 import { computeMetrics } from "../pipeline/matchScore.js";
-import { buildTitle } from "../pipeline/title.js";
 import type { HookInput } from "../pipeline/hooks.js";
+import { HOOK_MAX_CHARS } from "../shorts/videoPick.js";
 import { playoffContextFor } from "../playoffs/playoffs.js";
 import { readManifest, type VariantRecord } from "./thumbnailVariants.js";
 import { computeThumbnailProps } from "./thumbnailProps.js";
@@ -40,7 +40,9 @@ const MAX_BYTES = 2 * 1024 * 1024;
 /** ffmpeg's own SSIM filter, "All:" line — lower means more different. No image library needed. */
 function ssimAll(a: string, b: string): Promise<number> {
   return new Promise((resolve, reject) => {
-    const proc = spawn("ffmpeg", ["-v", "error", "-i", a, "-i", b, "-lavfi", "ssim", "-f", "null", "-"], {
+    // No "-v error": the ssim filter prints its "All:" summary at the default log level, not
+    // AV_LOG_ERROR, so quieting ffmpeg down to errors-only silences the one line this needs.
+    const proc = spawn("ffmpeg", ["-nostats", "-i", a, "-i", b, "-lavfi", "ssim", "-f", "null", "-"], {
       stdio: ["ignore", "ignore", "pipe"],
     });
     let err = "";
@@ -103,14 +105,17 @@ async function run(matchId: number, serveUrl: () => Promise<string>): Promise<Ma
     getVersus(left.uuid, right.uuid).catch(() => undefined),
   ]);
 
-  const budget = buildTitle({ leftNickname: userLeft.nickname, rightNickname: userRight.nickname });
+  // A generous, fixed budget — not the title's own `hookMax` (buildTitle), which shrinks with
+  // the players' nicknames and would wrongly exclude a candidate like "Decided by 58
+  // milliseconds" (27 chars) before shortenHookChip ever gets to compress it to "58 MS": the
+  // title's length budget has nothing to do with what this CLI shortens the chip to.
   const hookInput: HookInput = {
     metrics: computeMetrics(match),
     match,
     userLeft,
     userRight,
     playoff: await playoffContextFor(match),
-    maxChars: budget.hookMax,
+    maxChars: HOOK_MAX_CHARS,
     minChars: 0,
     versus,
   };
