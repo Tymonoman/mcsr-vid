@@ -84,6 +84,7 @@ export async function handleYoutubeRoute(
       connected: isConfigured(),
       channelId: config.youtubeChannelId,
       uploadsEnabled: config.youtubeUploadEnabled,
+      studioAutomation: config.studioAutomation,
     });
     return true;
   }

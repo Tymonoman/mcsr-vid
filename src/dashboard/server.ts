@@ -82,6 +82,12 @@ import { readMeta } from "./matchMeta.js";
 import { commentSoonTick, pinnedCommentFor } from "../youtube/youtubeUpload.js";
 import { readIfPresent, readUpload, uploadTextFor } from "../youtube/youtubeStore.js";
 import { startTelegramBot } from "../telegram/index.js";
+import { readLastProbe } from "../youtube/studioBrowser.js";
+import {
+  finishLogin as finishStudioLogin,
+  loginStatus,
+  startLogin as startStudioLogin,
+} from "./studioLogin.js";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const ROOT = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
@@ -239,6 +245,36 @@ const server = createServer(async (req, res) => {
 
     // The sync editor — the frames, the offsets, the save — is its own group (syncRoutes.ts).
     if (await handleSyncRoute(req, res, segments, { json, readBody, matchDir, parseId })) return;
+
+    // The Studio login screen (src/dashboard/studioLogin.ts): Chrome on a virtual display plus a
+    // remote screen over websockets. `segments` is ["api","studio","login"] / [...,"login","done"]
+    // / [...,"status"] — one extra id level deep, so this is matched directly rather than reusing
+    // the `[, resource, idRaw]` destructure above.
+    if (segments[1] === "studio" && segments[2] === "status" && req.method === "GET") {
+      json(res, 200, loginStatus());
+      return;
+    }
+    if (
+      segments[1] === "studio" &&
+      segments[2] === "login" &&
+      segments[3] === undefined &&
+      req.method === "POST"
+    ) {
+      const hostname = (req.headers.host ?? "localhost").split(":")[0]!;
+      const started = await startStudioLogin(hostname);
+      json(res, "error" in started ? 409 : 200, started);
+      return;
+    }
+    if (
+      segments[1] === "studio" &&
+      segments[2] === "login" &&
+      segments[3] === "done" &&
+      req.method === "POST"
+    ) {
+      const done = await finishStudioLogin();
+      json(res, "error" in done ? 409 : 200, done);
+      return;
+    }
 
     if (resource === "settings" && req.method === "GET") {
       json(res, 200, { ...settingsPayload(), nightlyArmedAt: nightlyArmedAtMs() });
@@ -462,6 +498,9 @@ const server = createServer(async (req, res) => {
         lastRun: readNightlyState(),
         // "3 waiting for a hook ›", "1 failed ›", and whether the model can be reached at all.
         ...(await nightlyShortSummary()),
+        // Only when the operator has turned it on: the strip reads nothing from a feature that
+        // launches nothing (config.studioAutomation, src/youtube/studioBrowser.ts).
+        studio: config.studioAutomation ? { lastProbe: readLastProbe() } : undefined,
       });
       return;
     }
