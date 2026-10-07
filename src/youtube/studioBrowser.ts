@@ -16,8 +16,11 @@ import path from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
 import { config, matchDir } from "../config.js";
 
-/** The profile Chrome's cookies and login live in — a named volume mounted here (compose.yaml). */
-export const DEFAULT_PROFILE_DIR = "/home/node/.studio-profile";
+/** The profile Chrome's cookies and login live in — a named volume mounted here (compose.yaml) once the
+ * image carries Chrome; `STUDIO_PROFILE_DIR` points elsewhere. Until that rebuild, the operator's login
+ * (7 Oct 2026) lives in `/app/.studio-profile` (gitignored, 700) and the jobs run from the Claude
+ * container, which has Chrome, with `STUDIO_PROFILE_DIR=/app/.studio-profile`. */
+export const DEFAULT_PROFILE_DIR = process.env.STUDIO_PROFILE_DIR || "/home/node/.studio-profile";
 /** `google-chrome-stable`'s install path on the Debian package; resolved via PATH. */
 export const DEFAULT_CHROME_PATH = "google-chrome-stable";
 
@@ -27,10 +30,7 @@ export interface StudioBrowserOptions {
   debugPort?: number;
   /** The X display Chrome renders on, e.g. ":99". */
   display?: string;
-  /** Appended after the fixed flags below — never part of the production default. A test running
-   * in a container with no usable Chromium sandbox (no unprivileged user namespaces) is the one
-   * reason this exists: it passes `["--no-sandbox"]` itself, explicitly, rather than this module
-   * ever deciding to weaken a browser signed into the channel owner's own Google account. */
+  /** Appended after the fixed flags below (which already carry `--no-sandbox`). */
   extraArgs?: string[];
 }
 
@@ -133,7 +133,7 @@ export async function start(opts: StudioBrowserOptions = {}): Promise<StudioHand
 
     mkdirSync(profileDir, { recursive: true });
 
-    const xvfb = spawn("Xvfb", [display, "-screen", "0", "1280x800x24", "-nolisten", "tcp"], {
+    const xvfb = spawn("Xvfb", [display, "-screen", "0", "1440x900x24", "-nolisten", "tcp"], {
       stdio: "ignore",
     });
     // Xvfb needs no handshake; this is comfortably enough for its socket to exist before Chrome
@@ -149,6 +149,17 @@ export async function start(opts: StudioBrowserOptions = {}): Promise<StudioHand
         "--no-first-run",
         "--no-default-browser-check",
         "--lang=en-US",
+        // The operator, 7 Oct 2026: "The Chrome launcher must pass --no-sandbox, --disable-sync,
+        // --disable-extensions and use the profile I logged into." He signed in to Chrome itself
+        // (sync on, his own extensions): sync and extensions stay off for every automated run, and
+        // the containers have no usable Chromium sandbox (no unprivileged user namespaces).
+        "--no-sandbox",
+        "--disable-sync",
+        "--disable-extensions",
+        // The profile was created with the basic store (no keyring in a container); the cookies
+        // only decrypt under the same one.
+        "--password-store=basic",
+        "--window-size=1440,900",
         ...(opts.extraArgs ?? []),
         "about:blank",
       ],

@@ -88,23 +88,11 @@ services:
       - /home/homelab/mcsr-vid:/app
       - /home/homelab/mcsr-media:/media
       - /home/homelab/media/tymek/mcsr-archive:/archive
-      # Chrome's Studio automation profile (CLAUDE.md, phase 1) — a named volume, not a bind
-      # mount, so Docker creates it owned by node:node the first time (the Dockerfile's own
-      # mkdir only seeds an *image* layer; a fresh named volume still needs this). It never
-      # touches /media, git, or a backup that leaves the box: it is a login credential.
-      - studio-profile:/home/node/.studio-profile
     ports:
       # Binds 0.0.0.0 on the host, which includes its Tailscale interface — so the
       # dashboard is reachable at http://actimel:8080 from anywhere on the tailnet
       # with no tailscaled inside the container. Port verified free on the lab.
       - "8080:8080"
-      # The Studio login screen (src/dashboard/studioLogin.ts): localhost-only by default, so
-      # nothing reaches it until the operator deliberately opens it up. Set
-      # STUDIO_VNC_BIND=<tailscale ip> in /app/.env (compose reads the project's .env for
-      # substitution) to reach it from the tailnet instead — never 0.0.0.0, or anyone on the
-      # home LAN could type the one-time password while it is up.
-      - "${STUDIO_VNC_BIND:-127.0.0.1}:6080:6080"
 
 volumes:
   claude-config:
-  studio-profile:
