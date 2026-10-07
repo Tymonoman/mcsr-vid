@@ -142,13 +142,36 @@ export const SUBSCRIBE_LINE_VARIANTS: readonly string[] = [
 export const SUBSCRIBE_LINE = SUBSCRIBE_LINE_VARIANTS[0]!;
 
 /**
+ * A deterministic index into one `copyVariety` pool, mixed from the match id and a salt that is
+ * fixed per pool (`SALT_CLOSER`/`SALT_SUBSCRIBE` here, a sync-sentence salt in youtubeStore.ts).
+ * Plain `matchId % length` made the closer, the subscribe line and the pinned comment's sync
+ * sentence move in lockstep — always the same one of only 4 fixed profiles, since all three pools
+ * are keyed off the identical `matchId % 4` (review finding, 7 Oct 2026). Multiplying first
+ * spreads the match id's bits before the salt and the modulus narrow it back down, so two pools
+ * salted differently land on different indices for most ids instead of a fixed offset of each
+ * other.
+ */
+export function variantIndex(matchId: number, salt: number, length: number): number {
+  let h = (matchId ^ salt) >>> 0;
+  h = Math.imul(h, 2654435761) >>> 0;
+  // `^` converts both operands through ToInt32, so a value with the top bit set would come out
+  // negative without this final `>>> 0`, and `% length` would stay negative too.
+  h = (h ^ (h >>> 15)) >>> 0;
+  return h % length;
+}
+
+const SALT_CLOSER = 0;
+const SALT_SUBSCRIBE = 1;
+
+/**
  * One of `SUBSCRIBE_LINE_VARIANTS`, by match id — the same one every time a given match is
  * rendered or re-uploaded. `copyVariety` off (the default, or no id to key off) is always index 0,
- * byte for byte what every description carried before this existed.
+ * byte for byte what every description carried before this existed. Salted differently from
+ * `closerFor` so the two lines of the same match don't always change together.
  */
 export function subscribeLineFor(matchId: number | undefined, copyVariety: boolean | undefined): string {
   if (!copyVariety || matchId === undefined) return SUBSCRIBE_LINE_VARIANTS[0]!;
-  return SUBSCRIBE_LINE_VARIANTS[matchId % SUBSCRIBE_LINE_VARIANTS.length]!;
+  return SUBSCRIBE_LINE_VARIANTS[variantIndex(matchId, SALT_SUBSCRIBE, SUBSCRIBE_LINE_VARIANTS.length)]!;
 }
 
 /**
@@ -185,19 +208,21 @@ export function withLastMeeting(description: string, videoId: string | null): st
  */
 export const CLOSER_VARIANTS: readonly string[] = [
   "fan channel, mcsr ranked has no idea i exist. both streams are synced to the frame off the countdown, the splits and elo come straight from the ranked api. if the sync looks off anywhere say where in the comments and ill fix it.",
-  "fan channel, mcsr ranked has no idea i exist. the povs are synced to the frame off the countdown and the splits and elo come straight from the ranked api. drop a timestamp in the comments if the sync looks off anywhere and ill get it fixed.",
+  "fan channel, mcsr ranked has no idea i exist. the povs are synced to the frame off the countdown and the splits and elo come straight from the ranked api. drop a timestamp in the comments if the sync looks off anywhere and ill fix it.",
   "fan channel, mcsr ranked has no idea i exist. both povs are lined up to the frame on the countdown, the splits and elo are pulled right from the ranked api. if anything looks out of sync just say where in the comments and ill fix it.",
-  "fan channel, mcsr ranked has no idea i exist. the two streams are synced frame by frame off the countdown, splits and elo straight from the ranked api. spotted the sync off anywhere? say where in the comments and ill fix it.",
+  "fan channel, mcsr ranked has no idea i exist. the two streams are synced to the frame off the countdown, splits and elo straight from the ranked api. say where in the comments if the sync looks off anywhere and ill fix it.",
 ];
 export const CLOSER = CLOSER_VARIANTS[0]!;
 
 /**
  * One of `CLOSER_VARIANTS`, by match id — the same one every time a given match is rendered or
- * re-uploaded. `copyVariety` off (the default, or no id to key off) is always index 0.
+ * re-uploaded. `copyVariety` off (the default, or no id to key off) is always index 0. Salted
+ * differently from `subscribeLineFor` (see `variantIndex`) so the two paragraphs don't always
+ * change together.
  */
 export function closerFor(matchId: number | undefined, copyVariety: boolean | undefined): string {
   if (!copyVariety || matchId === undefined) return CLOSER_VARIANTS[0]!;
-  return CLOSER_VARIANTS[matchId % CLOSER_VARIANTS.length]!;
+  return CLOSER_VARIANTS[variantIndex(matchId, SALT_CLOSER, CLOSER_VARIANTS.length)]!;
 }
 
 /** One game of a series, as its lines in the series description. */

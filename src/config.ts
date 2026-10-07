@@ -118,12 +118,15 @@ export interface Config {
   supportUrl: string;
   /**
    * Rotates the pinned comment's sync sentence and the description's closer/subscribe lines
-   * through 3-4 stock phrasings of the same facts, picked by match id so a re-render or
-   * re-upload of one match keeps its phrasing (`closerFor`/`subscribeLineFor`,
-   * src/pipeline/description.ts; `SYNC_SENTENCE_VARIANTS`, src/youtube/youtubeStore.ts). Off by
-   * default: the 6 Oct 2026 packaging audit found the same three sentences byte-identical across
-   * 93%+ of descriptions and pinned comments for 7 weeks, confirmable by any viewer who opens two
-   * videos — on breaks that, changing no fact or link. Off is byte for byte today's wording.
+   * through 3-4 stock phrasings of the same facts, each picked by its own match-id-derived index
+   * so the three don't move in lockstep, and stable per match so a re-render or re-upload keeps
+   * its phrasing (`closerFor`/`subscribeLineFor`, src/pipeline/description.ts;
+   * `SYNC_SENTENCE_VARIANTS`, src/youtube/youtubeStore.ts). Off by default: the 6 Oct 2026
+   * packaging audit found the description's closer byte-identical in 93% of descriptions for
+   * 7 weeks (`packaging.md` #4), and the pinned comment's sync sentence byte-identical in 29 of
+   * 76 channel replies over the same stretch (`packaging.md` #1) — confirmable by any viewer who
+   * opens two videos; on breaks that, changing no fact or link. Off is byte for byte today's
+   * wording.
    */
   copyVariety: boolean;
   /**

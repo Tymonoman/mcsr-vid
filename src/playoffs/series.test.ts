@@ -92,8 +92,14 @@ const {
   renderSeries,
   seriesShortGame,
 } = await import("./series.js");
-const { buildSeriesDescription, CLOSER, CLOSER_VARIANTS, SUBSCRIBE_LINE, SUBSCRIBE_LINE_VARIANTS } =
-  await import("../pipeline/description.js");
+const {
+  buildSeriesDescription,
+  CLOSER,
+  CLOSER_VARIANTS,
+  SUBSCRIBE_LINE,
+  SUBSCRIBE_LINE_VARIANTS,
+  variantIndex,
+} = await import("../pipeline/description.js");
 const { formatChapterTime } = await import("../pipeline/chapters.js");
 
 /* --- Pure parts --------------------------------------------------------------------------- */
@@ -181,8 +187,10 @@ assert.ok(!/won|winner|sweep/i.test(desc));
 // copyVariety: off (above, `desc`/`desc9` never set it) is byte for byte today's closer and
 // subscribe line; on picks game 1's own variant.
 {
-  const idx = 101 % CLOSER_VARIANTS.length;
-  assert.notEqual(idx, 0, "the fixture must exercise a non-canonical variant");
+  const closerIdx = variantIndex(101, 0, CLOSER_VARIANTS.length);
+  const subscribeIdx = variantIndex(101, 1, SUBSCRIBE_LINE_VARIANTS.length);
+  assert.notEqual(closerIdx, 0, "the fixture must exercise a non-canonical closer variant");
+  assert.notEqual(subscribeIdx, 0, "the fixture must exercise a non-canonical subscribe variant");
   const varied = buildSeriesDescription({
     season: 11,
     round: "Round of 16",
@@ -194,8 +202,8 @@ assert.ok(!/won|winner|sweep/i.test(desc));
     matchId: 101,
     copyVariety: true,
   });
-  assert.equal(varied.split("\n\n")[1], SUBSCRIBE_LINE_VARIANTS[idx]);
-  assert.equal(varied.split("\n\n").at(-2), CLOSER_VARIANTS[idx]);
+  assert.equal(varied.split("\n\n")[1], SUBSCRIBE_LINE_VARIANTS[subscribeIdx]);
+  assert.equal(varied.split("\n\n").at(-2), CLOSER_VARIANTS[closerIdx]);
   assert.ok(!varied.includes(SUBSCRIBE_LINE) && !varied.includes(CLOSER));
 }
 

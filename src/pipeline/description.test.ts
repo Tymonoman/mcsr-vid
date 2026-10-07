@@ -8,6 +8,7 @@ import {
   subscribeLineFor,
   SUBSCRIBE_LINE,
   SUBSCRIBE_LINE_VARIANTS,
+  variantIndex,
   withLastMeeting,
   type DescriptionInput,
 } from "./description.js";
@@ -323,10 +324,17 @@ assert.ok(tagsFor(match({ seedType: "VILLAGE", bastionType: "BRIDGE" })).join(",
   const onceA = closerFor(12730175, true);
   const onceB = closerFor(12730175, true);
   assert.equal(onceA, onceB, "the same match id always picks the same variant");
-  assert.equal(onceA, CLOSER_VARIANTS[12730175 % CLOSER_VARIANTS.length]);
+  assert.equal(onceA, CLOSER_VARIANTS[variantIndex(12730175, 0, CLOSER_VARIANTS.length)]);
   assert.equal(
     subscribeLineFor(12730175, true),
-    SUBSCRIBE_LINE_VARIANTS[12730175 % SUBSCRIBE_LINE_VARIANTS.length],
+    SUBSCRIBE_LINE_VARIANTS[variantIndex(12730175, 1, SUBSCRIBE_LINE_VARIANTS.length)],
+  );
+  // The closer and the subscribe line are salted differently, so the same match id need not pick
+  // the same index in both pools — the lockstep this fix removes (review finding, 7 Oct 2026).
+  assert.notEqual(
+    variantIndex(12730175, 0, CLOSER_VARIANTS.length),
+    variantIndex(12730175, 1, SUBSCRIBE_LINE_VARIANTS.length),
+    "a fixture that actually exercises independent pools",
   );
 
   // Every variant keeps the same facts (unaffiliated fan channel, synced off the countdown,
@@ -357,10 +365,15 @@ assert.ok(tagsFor(match({ seedType: "VILLAGE", bastionType: "BRIDGE" })).join(",
   // text pinned by the assertions at the top of this file.
   const on = build(match(), { copyVariety: true });
   const paragraphs = on.split("\n\n");
-  assert.equal(paragraphs[1], SUBSCRIBE_LINE_VARIANTS[12730175 % SUBSCRIBE_LINE_VARIANTS.length]);
-  assert.equal(paragraphs.at(-2), CLOSER_VARIANTS[12730175 % CLOSER_VARIANTS.length]);
-  // A playoff/series id that lands on index 0 is still, correctly, today's wording.
-  assert.equal(closerFor(12730172, true), CLOSER_VARIANTS[0]);
+  assert.equal(
+    paragraphs[1],
+    SUBSCRIBE_LINE_VARIANTS[variantIndex(12730175, 1, SUBSCRIBE_LINE_VARIANTS.length)],
+  );
+  assert.equal(paragraphs.at(-2), CLOSER_VARIANTS[variantIndex(12730175, 0, CLOSER_VARIANTS.length)]);
+  // An id that happens to hash to index 0 is still, correctly, today's wording even with
+  // copyVariety on.
+  const zeroId = [...Array(5000).keys()].find((id) => variantIndex(id, 0, CLOSER_VARIANTS.length) === 0)!;
+  assert.equal(closerFor(zeroId, true), CLOSER_VARIANTS[0]);
 }
 
 console.log("description: all checks passed");

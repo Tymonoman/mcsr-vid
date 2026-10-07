@@ -14,6 +14,7 @@ import {
   seedPhrase,
   subscribeLineFor,
   SUBSCRIBE_LINE_VARIANTS,
+  variantIndex,
   withLastMeeting,
 } from "../pipeline/description.js";
 import { playoffSeriesTail, playoffTitleTail, seedOrdinal } from "../playoffs/playoffs.js";
@@ -454,13 +455,18 @@ export function refreshTags(tags: string[]): string[] {
   return out.join(",").length <= 450 ? out : tags;
 }
 
+/** `variantIndex`'s salt for this pool — distinct from the description's closer/subscribe salts. */
+const SALT_SYNC = 2;
+
 /**
  * The sync sentence, byte-identical on 29 of 76 pinned comments for 7 weeks — the loudest
  * "this is scripted" tell the 6 Oct 2026 packaging audit found (`packaging.md` #1, confirmed by
  * two posting bursts seconds apart across already-published videos). `SYNC_SENTENCE_VARIANTS`
  * gives it 3 more phrasings of the same facts (both POVs are the players' own streams, synced on
  * the countdown, report a bad timestamp and it gets fixed), picked by match id when
- * `copyVariety` is on. Index 0 is unchanged: `copyVariety` off is byte for byte today's.
+ * `copyVariety` is on — salted differently from the description's closer and subscribe lines
+ * (`variantIndex`, src/pipeline/description.ts) so the two surfaces don't always change together.
+ * Index 0 is unchanged: `copyVariety` off is byte for byte today's.
  */
 export const SYNC_SENTENCE_VARIANTS: readonly string[] = [
   "both povs are the players own streams, synced on the countdown. if the timer looks off anywhere drop the timestamp here and ill fix it",
@@ -491,7 +497,7 @@ export function pinnedComment(
   const sentence =
     !config.copyVariety || matchId === undefined
       ? SYNC_SENTENCE_VARIANTS[0]!
-      : SYNC_SENTENCE_VARIANTS[matchId % SYNC_SENTENCE_VARIANTS.length]!;
+      : SYNC_SENTENCE_VARIANTS[variantIndex(matchId, SALT_SYNC, SYNC_SENTENCE_VARIANTS.length)]!;
   return [
     ...(question ? [question] : []),
     sentence,

@@ -19,6 +19,7 @@ config.youtubePlaylistTitle = "MCSR Ranked matches";
 const { pinnedCommentFor } = await import("./youtubeUpload.js");
 const { matchupPlaylistTitle, playerPlaylistTitle } = await import("./youtube.js");
 const { SYNC_SENTENCE_VARIANTS } = await import("./youtubeStore.js");
+const { variantIndex } = await import("../pipeline/description.js");
 
 const FIXTURES = [12730175, 12929221, 12902901, 12898432, 13446429, 13549300, 13448958, 13617328, 13673240];
 const fixture = (id: number) =>
@@ -179,29 +180,27 @@ await delay(700);
 assert.ok(listCalls <= 1, `${listCalls} lookups, past the point anyone was waiting`);
 
 // copyVariety (6 Oct 2026): off (default, above) is always SYNC, whatever the match id. On
-// picks one of SYNC_SENTENCE_VARIANTS by match id, the same one every time.
+// picks one of SYNC_SENTENCE_VARIANTS by match id, the same one every time — salted
+// differently from the description's closer/subscribe lines (`variantIndex`,
+// src/pipeline/description.ts, 7 Oct 2026 fix) so this pick need not track either of those.
 reset();
-playlists = {
-  [matchupPlaylistTitle("edcr", "doogile")]: "PLPAIR",
-  [playerPlaylistTitle("edcr")]: "PLEDCR",
-  "MCSR Ranked matches": "PLSEASON",
-};
-const idx = 12730175 % SYNC_SENTENCE_VARIANTS.length;
+playlists = { [playerPlaylistTitle("Feinberg")]: "PLFEIN", "MCSR Ranked matches": "PLSEASON" };
+const idx = variantIndex(12929221, 2, SYNC_SENTENCE_VARIANTS.length);
 assert.notEqual(idx, 0, "the fixture must exercise a non-canonical variant");
 config.copyVariety = true;
 try {
-  const withVariety = await lines(12730175);
+  const withVariety = await lines(12929221);
   assert.deepEqual(withVariety, [
-    "who would you have backed on blind travel, edcr or doogile?",
+    "who would you have backed at the bastion, Feinberg or silverrruns?",
     SYNC_SENTENCE_VARIANTS[idx]!,
-    link("PLPAIR"),
+    link("PLFEIN"),
     TIP,
   ]);
   assert.notEqual(SYNC_SENTENCE_VARIANTS[idx], SYNC, "must actually differ from the canonical line");
-  assert.deepEqual(await lines(12730175), withVariety, "the same match id picks the same variant again");
+  assert.deepEqual(await lines(12929221), withVariety, "the same match id picks the same variant again");
 } finally {
   config.copyVariety = false;
 }
-assert.deepEqual((await lines(12730175))[1], SYNC, "off again is the canonical line");
+assert.deepEqual((await lines(12929221))[1], SYNC, "off again is the canonical line");
 
 console.log("pinnedComment: all checks passed");
