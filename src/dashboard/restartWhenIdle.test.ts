@@ -25,6 +25,7 @@ const allClear = (): IdleDeps => ({
   uploadRunning: () => false,
   uploadSessionFile: () => false,
   archiveRunning: () => false,
+  nightlyChainRunning: () => false,
   nightlyHourUtc: null,
 });
 
@@ -41,6 +42,7 @@ const SIGNALS: [Exclude<keyof IdleDeps, "nightlyHourUtc">, string][] = [
   ["uploadRunning", "an upload is running"],
   ["uploadSessionFile", "an upload session is still on disk"],
   ["archiveRunning", "an archive copy to the NAS is running"],
+  ["nightlyChainRunning", "a nightly chain is between renders"],
 ];
 for (const [key, reason] of SIGNALS) {
   const deps = { ...allClear(), [key]: () => true };
@@ -115,9 +117,41 @@ console.log("OK: the 20-minute nightly window blocks exactly on its boundary");
 }
 console.log("OK: a failed boot check disarms the loop and keeps its error");
 
+// --- A signal function throwing (not just a failed tsc) also surfaces as an error --------------
+{
+  const state = armRestart({
+    // Idle on the first read (so the boot check runs), broken on the second (the one right
+    // before the would-be exit) — the exact shape of a transient failure in one of the real
+    // idleDeps functions, not a failing tsc.
+    idleDeps: (() => {
+      let calls = 0;
+      return () => {
+        calls += 1;
+        if (calls === 1) return { ...allClear() };
+        throw new Error("transient: disk read failed");
+      };
+    })(),
+    bootCheck: async () => null,
+    checkIntervalMs: 10,
+    expireMs: 5_000,
+  });
+  assert.equal(state.error, undefined, "a fresh arm starts with no error");
+  await sleep(120);
+  const after = restartState();
+  assert.ok(after, "still armed — a broken check must not silently vanish");
+  assert.equal(
+    after?.error,
+    "transient: disk read failed",
+    "a thrown signal must surface the same way a failed boot check does, not only in the log",
+  );
+  disarmRestart();
+}
+console.log("OK: a thrown idleDeps signal sets the same visible error a failed boot check does");
+
 // --- Something starts during the (idle) boot check: resume rather than exit --------------------
 {
   let idleReads = 0;
+  let exitCalls = 0;
   const state = armRestart({
     idleDeps: () => {
       idleReads += 1;
@@ -128,15 +162,34 @@ console.log("OK: a failed boot check disarms the loop and keeps its error");
     bootCheck: async () => null,
     checkIntervalMs: 10,
     expireMs: 5_000,
+    exit: () => (exitCalls += 1),
   });
   assert.equal(state.blockedBy.length, 0);
   await sleep(120);
   const after = restartState();
   assert.ok(after, "a render that started mid-check must not have been exited past");
   assert.deepEqual(after?.blockedBy, ["a render is running"], "the second reading wins, not the first");
+  assert.equal(exitCalls, 0, "a new blocker on the second read must stop this from ever calling exit");
   disarmRestart();
 }
 console.log("OK: a signal that turns true during the boot check is caught before exiting");
+
+// --- Genuinely idle both times, the boot check passes: exit is actually called ------------------
+{
+  let exitCalls = 0;
+  const state = armRestart({
+    idleDeps: () => allClear(),
+    bootCheck: async () => null,
+    checkIntervalMs: 10,
+    expireMs: 5_000,
+    exit: () => (exitCalls += 1),
+  });
+  assert.equal(state.blockedBy.length, 0);
+  await sleep(120);
+  assert.equal(exitCalls, 1, "idle before and after a passing boot check must call exit exactly once");
+  disarmRestart();
+}
+console.log("OK: idle() clear on both reads with a clean boot check actually calls exit, once");
 
 // --- Expiry: an arm that never goes idle gives up after its window, cleanly --------------------
 {

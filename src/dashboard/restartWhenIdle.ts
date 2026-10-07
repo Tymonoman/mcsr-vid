@@ -28,7 +28,7 @@ import { allArchiveStates } from "./archive.js";
 import { anyExportRunning } from "./exportRoutes.js";
 import { anyJobRunning } from "./jobs.js";
 import { listProcessedMatchIds } from "./matchStatus.js";
-import { msUntilNextRun } from "./nightly.js";
+import { msUntilNextRun, nightlyChainRunning } from "./nightly.js";
 import { repoHead } from "./repoHead.js";
 import { anyShortRunning } from "./shortsRoutes.js";
 import { chainsRunning, picksRunning } from "./shortFlow.js";
@@ -79,6 +79,9 @@ export interface IdleDeps {
   uploadSessionFile: () => boolean;
   /** archive.ts — an rsync to the NAS. */
   archiveRunning: () => boolean;
+  /** nightly.ts — between a chained render's job settling and the next one's `startJob`, where a
+   *  live suggestion scan/pickContext can run with no job and no export yet in flight. */
+  nightlyChainRunning: () => boolean;
   /** `config.nightlyRenderHourUtc`, read fresh since the Settings tab can move it without a restart. */
   nightlyHourUtc: number | null;
 }
@@ -92,6 +95,7 @@ const liveDeps = (): IdleDeps => ({
   uploadRunning: anyUploadRunning,
   uploadSessionFile: anyUploadSessionFile,
   archiveRunning: () => allArchiveStates().some((a) => a.running),
+  nightlyChainRunning,
   nightlyHourUtc: config.nightlyRenderHourUtc,
 });
 
@@ -109,6 +113,7 @@ export function blockedBy(deps: IdleDeps, nowMs: number = Date.now()): string[] 
   if (deps.uploadRunning()) blockers.push("an upload is running");
   if (deps.uploadSessionFile()) blockers.push("an upload session is still on disk");
   if (deps.archiveRunning()) blockers.push("an archive copy to the NAS is running");
+  if (deps.nightlyChainRunning()) blockers.push("a nightly chain is between renders");
   if (deps.nightlyHourUtc !== null && msUntilNextRun(nowMs, deps.nightlyHourUtc) <= NIGHTLY_GUARD_MS) {
     blockers.push("within 20 min of the nightly render");
   }
@@ -174,6 +179,9 @@ export interface ArmOptions {
   expireMs: number;
   idleDeps: () => IdleDeps;
   bootCheck: () => Promise<string | null>;
+  /** `process.exit` in production; the tests' seam for the one call that actually stops the
+   *  process, so the exit path itself — not just the state leading up to it — is pinned. */
+  exit: (code: number) => void;
 }
 
 const defaultOptions = (): ArmOptions => ({
@@ -181,6 +189,7 @@ const defaultOptions = (): ArmOptions => ({
   expireMs: EXPIRE_MS,
   idleDeps: liveDeps,
   bootCheck: runBootCheck,
+  exit: (code) => process.exit(code),
 });
 
 let active: ArmOptions = defaultOptions();
@@ -198,7 +207,12 @@ function startChecking(): void {
 }
 
 function onTickError(err: unknown): void {
-  console.error(`restart-when-idle: ${describeError(err)}`);
+  const message = describeError(err);
+  console.error(`restart-when-idle: ${message}`);
+  // Same treatment as a failed boot check: kept on the state until a fresh POST or a DELETE, so
+  // GET and the nightly strip show something is actually wrong rather than the calm "waiting
+  // for: …" line with a stale blockedBy (a broken signal function must not look like busy-ness).
+  lastError = message;
 }
 
 async function tick(): Promise<void> {
@@ -234,7 +248,7 @@ async function tick(): Promise<void> {
   );
   // setImmediate rather than exiting inline, so the log line above is flushed before the process
   // actually goes down.
-  setImmediate(() => process.exit(0));
+  setImmediate(() => active.exit(0));
 }
 
 /**

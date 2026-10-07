@@ -23,6 +23,7 @@ import { readUpload } from "../youtube/youtubeStore.js";
 import { fetchYppSnapshot, projectYpp, type YppProgress } from "../youtube/yppProgress.js";
 import { capacity } from "../dashboard/archive.js";
 import { readNightlyState, MIN_FREE_MATCHES, type NightlyLastRun } from "../dashboard/nightly.js";
+import { restartState } from "../dashboard/restartWhenIdle.js";
 import { nightlyQueue, nightlySkip } from "../dashboard/matchShelf.js";
 import { listProcessedMatchIds, matchStatusFor } from "../dashboard/matchStatus.js";
 import { nightlyShortSummary, readStatus } from "../dashboard/shortFlow.js";
@@ -297,6 +298,18 @@ async function pingGroq(): Promise<HealthCheck | null> {
   return r.ok ? { name: "Groq", ok: true, ms: r.ms } : { name: "Groq", ok: false, ms: r.ms, detail: r.error };
 }
 
+/**
+ * restartWhenIdle.ts's own kept state, not a ping: an armed restart whose boot check failed or
+ * whose idle() check itself threw stays invisible otherwise — nothing else reads it, and the
+ * operator's workflow is "reads only the morning report" (review fix, 8 Oct 2026; before this, a
+ * stuck self-deploy showed only in container logs or a GET nobody was polling).
+ */
+export function restartIdleHealth(): HealthCheck | null {
+  const state = restartState();
+  if (!state?.error) return null;
+  return { name: "restart-when-idle", ok: false, detail: state.error.split("\n")[0] };
+}
+
 /** The Tailscale DNS incident of 27 Sept 2026: a lookup over 1 s is worth flagging on its own. */
 async function pingDns(): Promise<HealthCheck> {
   const r = await timed(() => lookup("api.mcsrranked.com"));
@@ -330,6 +343,7 @@ async function gatherHealth(): Promise<HealthCheck[]> {
     pingGroq(),
     pingDns(),
     diskHealth(),
+    Promise.resolve(restartIdleHealth()),
   ]);
   return checks.filter((c): c is HealthCheck => c !== null);
 }

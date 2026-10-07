@@ -241,6 +241,17 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   retry) and keeps its error on the state until a fresh POST or a DELETE; an arm that never goes
   idle for 6 h gives up on its own. The nightly strip shows one small, non-`.bad` line while
   armed.
+  **Review fixes, 8 Oct 2026**: `idle()` also reads `nightly.ts`'s own `nightlyChainRunning()` —
+  between a chained render's job settling and the next one's `startJob` (`nightlyMaxRenders` > 1),
+  this function is awaiting a live suggestion scan and `pickContext`, so a job and an export can
+  both read "not running" while a render is still about to start; the flag covers that gap and is
+  cleared by whichever call ends the chain (a skip, "not chaining further", or a thrown ranking
+  step). A signal function throwing (not just a failing `tsc`) now also sets `restartState().error`
+  the same way a failed boot check does, instead of only a `console.error`. And a failed or stuck
+  arm (that `error`) is folded into the Telegram morning report's health section
+  (`restartIdleHealth`, `src/telegram/facts.ts`) — before this, a self-deploy that never landed was
+  invisible unless someone opened the dashboard, which contradicts "I act only on what the 07:00
+  report lists."
 
 - **Two screens, one bar.** The list and the match are two screens at every width
   (`body.view-match`, `public/app.css`), not just under 860 px: the desktop no longer keeps a
