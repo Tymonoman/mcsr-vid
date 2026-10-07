@@ -11,10 +11,32 @@ export interface ChapterMarker {
 const MIN_CHAPTER_GAP_SEC = 10;
 
 /**
+ * Keeps the first chapter and every later one at least `minGapSec` past the previous KEPT one —
+ * YouTube's own minimum. Shared by `buildChapters` (one match) and a series' merged, multi-game
+ * list (`buildSeriesDescription`, src/pipeline/description.ts): a game's own "Start" chapter can
+ * land within the gap of its own header line, or its "Result" within the gap of the next game's.
+ */
+export function filterChapterGap(
+  chapters: readonly ChapterMarker[],
+  minGapSec = MIN_CHAPTER_GAP_SEC,
+): ChapterMarker[] {
+  if (chapters.length === 0) return [];
+  const filtered = [chapters[0]!];
+  for (const c of chapters.slice(1)) {
+    if (c.timeSec - filtered[filtered.length - 1]!.timeSec >= minGapSec) filtered.push(c);
+  }
+  return filtered;
+}
+
+/**
  * Builds YouTube chapter markers from split data, anchored to when the race starts in the
  * published video. `leadInSec` is the fixed gap before RTA 0:00 (see config.overlayLeadInSec) —
  * this assumes the final export is trimmed to start exactly at the overlay/intro clips' own
- * timeline start; shift every timestamp by hand if the export has extra pre-roll.
+ * timeline start; shift every timestamp by hand if the export has extra pre-roll. The leading
+ * "Start" chapter is always `timeSec: 0` — a single match's own 0:00 — so a series building one
+ * game's sub-chapters (`src/playoffs/series.ts`) passes the game's absolute start-in-the-joined-
+ * video as `leadInSec` and drops that first entry with `.slice(1)`: the game's header line is
+ * its 0:00, not this function's.
  * ponytail: greedy min-gap filter over a true DNF-aware repack — fine for MCSR's checkpoint count.
  */
 export function buildChapters(splits: SplitRow[], match: MatchInfo, leadInSec: number): ChapterMarker[] {
@@ -30,11 +52,7 @@ export function buildChapters(splits: SplitRow[], match: MatchInfo, leadInSec: n
     chapters.push({ label: "Result", timeSec: leadInSec + match.result.time / 1000 });
   }
 
-  const filtered = [chapters[0]];
-  for (const c of chapters.slice(1)) {
-    if (c.timeSec - filtered[filtered.length - 1].timeSec >= MIN_CHAPTER_GAP_SEC) filtered.push(c);
-  }
-  return filtered;
+  return filterChapterGap(chapters);
 }
 
 /** `M:SS`, or `H:MM:SS` past the hour — a series video runs to fifty minutes and more. */

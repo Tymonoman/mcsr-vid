@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   buildDescription,
+  buildSeriesDescription,
   buildTags,
   closerFor,
   CLOSER_VARIANTS,
@@ -374,6 +375,87 @@ assert.ok(tagsFor(match({ seedType: "VILLAGE", bastionType: "BRIDGE" })).join(",
   // copyVariety on.
   const zeroId = [...Array(5000).keys()].find((id) => variantIndex(id, 0, CLOSER_VARIANTS.length) === 0)!;
   assert.equal(closerFor(zeroId, true), CLOSER_VARIANTS[0]);
+}
+
+// buildSeriesDescription (7 Oct 2026): each game's own split/Result chapters follow its header,
+// offset into the joined video, and the merged list is re-filtered to YouTube's 10s minimum —
+// a sub-chapter too close to its own header, or to the next game's, is dropped.
+{
+  const base = {
+    season: 11,
+    round: "Round of 16",
+    bestOf: 5,
+    left: { nickname: "edcr", label: "#1 seed", seasonEloRate: 2688 },
+    right: { nickname: "lauveer", label: "LCQ", seasonEloRate: 2137 },
+    bracketUrl: "https://magmamcsr.com/events/playoffs/s11/bracket",
+  };
+
+  const desc = buildSeriesDescription({
+    ...base,
+    games: [
+      {
+        matchId: 101,
+        gameNo: 1,
+        startSec: 0,
+        pageUrl: "https://x/matches/101",
+        streams: [],
+        // A split 2 minutes in, then Result — both must survive, offset by startSec (0).
+        chapters: [
+          { label: "Nether Enter", timeSec: 120 },
+          { label: "Result", timeSec: 490 },
+        ],
+      },
+      {
+        matchId: 102,
+        gameNo: 2,
+        startSec: 600,
+        pageUrl: "https://x/matches/102",
+        streams: [],
+        // Result lands only 5s before game 3's header — the filter is greedy (kept chapters win,
+        // as buildChapters' own filter already is), so the header is what gets dropped here.
+        chapters: [{ label: "Result", timeSec: 1095 }],
+      },
+      {
+        matchId: 103,
+        gameNo: 3,
+        startSec: 1100,
+        pageUrl: "https://x/matches/103",
+        streams: [],
+        chapters: [],
+      },
+    ],
+  });
+  const chapterBlock = desc.split("\n\n").find((p) => p.startsWith("0:00"))!;
+  assert.equal(
+    chapterBlock,
+    "0:00 game 1\n2:00 Nether Enter\n8:10 Result\n10:00 game 2\n18:15 Result",
+    `per-game sub-chapters follow each header, offset into the joined video, and game 3's header\n` +
+      `(within 10s of game 2's Result, the last kept chapter) is dropped:\n${desc}`,
+  );
+  assert.ok(!/won|winner|sweep/i.test(desc), "chapters never name the winner or a score");
+
+  // A header right after another game's "Result" within the 10s gap is itself dropped — the
+  // merged list's filter runs across every game, not reset at each one's own chapters.
+  const tight = buildSeriesDescription({
+    ...base,
+    games: [
+      { matchId: 101, gameNo: 1, startSec: 0, pageUrl: "https://x/matches/101", streams: [], chapters: [] },
+      {
+        matchId: 102,
+        gameNo: 2,
+        startSec: 5,
+        pageUrl: "https://x/matches/102",
+        streams: [],
+        chapters: [],
+      },
+    ],
+  });
+  const tightBlock = tight.split("\n\n").find((p) => p.startsWith("0:00"))!;
+  assert.equal(
+    tightBlock,
+    "0:00 game 1",
+    `game 2's header lands 5s after game 1's and must be dropped:\n${tight}`,
+  );
 }
 
 console.log("description: all checks passed");

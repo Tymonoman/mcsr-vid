@@ -25,11 +25,13 @@ import {
   seedPhrase,
   type SeriesDescriptionGame,
 } from "../pipeline/description.js";
+import { buildChapters } from "../pipeline/chapters.js";
 import { describeError } from "../errorText.js";
 import { exportMatchStartSec, exportOutputPath } from "../pipeline/exportFast.js";
 import { ANCHOR_SEC } from "../pipeline/kdenliveProject.js";
 import { setHidden } from "../dashboard/matchShelf.js";
 import { getMatch, getUser, matchPageUrl, playoffsBracketUrl } from "../api/mcsrApi.js";
+import { computeSplits } from "../pipeline/overlayProps.js";
 import { readSplitStills } from "../pipeline/overlayRender.js";
 import { exportStale, readSyncOffsets } from "../pipeline/syncFile.js";
 import {
@@ -451,9 +453,16 @@ async function writeSeriesText(
   if (!leftSeed || !rightSeed) throw new Error(`Match ${firstGameId}: its players are not the slot's seeds.`);
 
   const starts = chapterStarts(record.games.map((g) => g.durationSec));
+  const matchStarts = gameMatchStarts(record.games);
   const games: SeriesDescriptionGame[] = [];
   for (const [i, g] of record.games.entries()) {
     const m = await getMatch(g.matchId);
+    const [gLeft, gRight] = m.players;
+    if (!gLeft || !gRight) throw new Error(`Match ${g.matchId} does not have two players.`);
+    // `buildChapters`' own leading "Start" is a single match's 0:00 — wrong here, since this
+    // game's 0:00 is its header line below; drop it and keep the splits and the Result, shifted
+    // to where this game starts in the *joined* video.
+    const chapters = buildChapters(computeSplits(m, gLeft.uuid, gRight.uuid), m, matchStarts[i]!).slice(1);
     games.push({
       matchId: g.matchId,
       gameNo: g.gameNo,
@@ -461,6 +470,7 @@ async function writeSeriesText(
       seed: seedPhrase(m),
       pageUrl: matchPageUrl(g.matchId, left.nickname, m.season),
       streams: await streamLinks(m, [left.uuid, right.uuid]),
+      chapters,
     });
   }
   const description = buildSeriesDescription({
