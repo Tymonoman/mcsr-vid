@@ -26,7 +26,7 @@ import type { MatchInfo, UserDetails } from "../api/types.js";
 /** Sidecar naming the variants on disk and which one `thumbnail.png` currently is. */
 const VARIANTS_FILE = "thumbnail.json";
 
-interface VariantRecord {
+export interface VariantRecord {
   /** `<leftPose>-<rightPose>` (`-hook` on a legacy hooked twin); also the filename infix and the A/B grouping key. */
   key: string;
   leftPose: string;
