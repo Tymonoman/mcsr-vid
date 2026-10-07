@@ -926,6 +926,13 @@ the operator logs in again — not retried in a loop.
    layers) and recreate the `dashboard` service so it picks up the `studio-profile` volume.
 2. Set `STUDIO_VNC_BIND=<your Tailscale IP>` in `/app/.env` — compose reads the project's `.env`
    for substitution — so the login screen's port (6080) binds there instead of `127.0.0.1` only.
+   **Never set it to `0.0.0.0`**: the dashboard's own port (8080) is already LAN-reachable by
+   design, and port 6080 is the one thing standing between that and an interactive, already
+   signed-in Google session. Optionally also set `STUDIO_LOGIN_SECRET=<any string>` — unset (the
+   default) leaves the three `/api/studio/*` routes exactly as unauthenticated as every other
+   dashboard route; set, a request without the same string in an `x-studio-secret` header is
+   refused before it starts a browser or returns the one-time VNC password, which matters more
+   here than anywhere else because 8080 is reachable from the whole LAN even when 6080 is not.
 3. Turn on 2FA on the account that will sign in (phone prompt primary, an authenticator app
    backup, printed backup codes) before the first login — see the plan's section 1a.
 4. **YouTube panel → Studio login**: opens a one-time URL and an 8-character password good for
@@ -938,14 +945,25 @@ the operator logs in again — not retried in a loop.
 **Safety rails**: never types a password or touches 2FA; never unpins, replaces, or removes a pin
 someone set by hand — `pinComment` (`src/youtube/studioActions.ts`) checks for an existing "Pinned
 by" line first and returns `"already-pinned"` rather than touch it; one browser at a time, an
-in-process lock plus the profile's own `SingletonLock`; at most 10 Studio actions per nightly tick
-(`retryPendingStudio`, `src/youtube/youtubeUpload.ts`), each with a random 2-6 s pause between
-clicks; a `verify` probe is never retried within the same call — nothing about the session changes
-until the operator logs in again; Studio jobs wait while an `export:fast` is running, since Chrome
-and ffmpeg share the lab's four cores. The pin step itself only ever runs after the comment it is
-pinning has actually posted and the video is re-confirmed public live (`finishOnYouTube`, same
-reason the comment step re-checks). `npm run studio -- probe | pin <id> [--dry-run] | login` drives
-all of this from the terminal.
+in-process lock claimed synchronously before Chrome ever spawns (`starting`, `src/youtube/studioBrowser.ts`
+— a login and a probe pressed back to back must not race into two Xvfb/Chrome pairs) plus the
+profile's own `SingletonLock`; at most 10 Studio actions per nightly tick (`retryPendingStudio`,
+`src/youtube/youtubeUpload.ts`), each with a random 2-6 s pause between clicks; a `verify` probe is
+never retried within the same call — nothing about the session changes until the operator logs in
+again. **The nightly's own retry tick** waits while an `export:fast` is running, since Chrome and
+ffmpeg share the lab's four cores (`anyExportRunning`, `src/dashboard/nightly.ts`) — a manual press
+(Finish on YouTube, Adopt) does not wait on that check, since those are the operator's own
+occasional presses rather than a background loop; a rare moment of contention there is accepted
+rather than given its own gate. The pin step itself only ever runs after the comment it is pinning
+has actually posted and the video is re-confirmed public live (`finishOnYouTube`, same reason the
+comment step re-checks). A login screen a crash or restart left open (Chrome, x11vnc, websockify
+all survive a dashboard restart as orphans — tini reparents them) is swept at the next boot
+(`killOrphanedLoginScreen`, `src/dashboard/studioLogin.ts`): the x11vnc/websockify pids are written
+to a pidfile in the profile dir while the screen is open and checked against `/proc/<pid>/cmdline`
+before being signalled, so a pid a fresh container happens to reuse for something else is never
+touched on a guess. `npm run studio -- probe | pin <id> [--dry-run] | login [--profile-dir=<path>]`
+drives all of this from the terminal; `--profile-dir` points any of the three at a throwaway
+profile instead of the real login.
 
 ## Clips (prototype)
 

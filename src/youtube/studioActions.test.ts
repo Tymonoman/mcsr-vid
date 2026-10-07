@@ -81,11 +81,12 @@ function fixtureHtml(pinned: boolean): string {
 
 const media = mkdtempSync(path.join(tmpdir(), "mcsr-studio-fixture-"));
 const profileDir = mkdtempSync(path.join(tmpdir(), "mcsr-studio-profile-"));
+const profileDir2 = mkdtempSync(path.join(tmpdir(), "mcsr-studio-profile2-"));
 const { config } = await import("../config.js");
 const mediaDir = config.mediaDir;
 config.mediaDir = media;
 
-const { page: pageOf, start } = await import("./studioBrowser.js");
+const { isRunning, page: pageOf, start } = await import("./studioBrowser.js");
 const { pinComment } = await import("./studioActions.js");
 
 const matchId = 1;
@@ -95,13 +96,24 @@ mkdirSync(path.join(media, String(matchId)), { recursive: true });
 // namespaces — the same message Chrome gives on some locked-down Ubuntu kernels), so plain
 // `start()` never gets past spawn here. Test-only: production's own default carries no such flag
 // (studioBrowser.ts), and the real Studio login never runs where this matters.
-const handle = await start({
+const startOpts = {
   profileDir,
   chromePath,
   debugPort: 9293,
   display: ":97",
   extraArgs: ["--no-sandbox"],
-});
+};
+
+// `start()` claims its in-process lock on its very first line, before Xvfb or Chrome ever spawn —
+// a second call issued in the same tick (a different profile dir, so this is testing the
+// in-process lock, not the profile's own SingletonLock) must be refused immediately rather than
+// race the first one into spawning a second Xvfb/Chrome pair.
+const first = start(startOpts);
+const second = start({ ...startOpts, profileDir: profileDir2, debugPort: 9294 });
+await assert.rejects(second, /already running in this process/);
+console.log("OK: a concurrent start() is refused synchronously, before it can spawn anything");
+
+const handle = await first;
 try {
   const page = await pageOf(handle);
   let pinnedOnServer = false;
@@ -140,8 +152,10 @@ try {
   console.log(`OK: screenshots landed in the match directory (${shots.length})`);
 } finally {
   await handle.stop();
+  assert.equal(isRunning(), false, "the lock must clear once the browser actually stops");
   config.mediaDir = mediaDir;
   rmSync(media, { recursive: true, force: true });
   rmSync(profileDir, { recursive: true, force: true });
+  rmSync(profileDir2, { recursive: true, force: true });
 }
 console.log("studioActions: all checks passed");

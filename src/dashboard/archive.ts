@@ -130,7 +130,11 @@ function copyToArchive(state: ArchiveState, now: () => number): Promise<void> {
     const src = `${path.resolve(config.mediaDir, String(matchId))}/`;
     const dest = `${path.join(ARCHIVE_ROOT, String(matchId))}/`;
     // --partial so an interrupted transfer resumes rather than restarting the biggest clip.
-    const proc = spawn("rsync", ["-a", "--partial", src, dest], {
+    // --exclude studio-*.png: the Studio pin step's before/after screenshots of the public watch
+    // page (src/youtube/studioActions.ts `shot()`) — one more copy of "this Google account is
+    // signed in here" than the profile-isolation design intends, and publishSet.ts's own bundle
+    // already leaves them out the same way (its RSYNC_INCLUDES allowlist never names them).
+    const proc = spawn("rsync", ["-a", "--partial", "--exclude", "studio-*.png", src, dest], {
       stdio: ["ignore", "ignore", "pipe"],
     });
 

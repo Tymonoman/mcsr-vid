@@ -1,11 +1,14 @@
 /**
- * npm run studio -- probe | pin <matchId|videoId> [--dry-run] | login
+ * npm run studio -- probe | pin <matchId|videoId> [--dry-run] | login [--profile-dir=<path>]
  *
  * probe: starts Chrome, loads Studio, prints what it found, stops.
  * pin: pins the channel's own first comment on a video — by match id (reads its recorded
  *      videoId) or by the video id directly (resolved back to a match for its screenshots).
  * login: the same one-time login screen the dashboard's YouTube panel offers, from the terminal —
  *      prints the URL and password, waits for Enter, then probes and stops.
+ *
+ * `--profile-dir=<path>` overrides the real `/home/node/.studio-profile` on any subcommand — ad
+ * hoc testing against a throwaway profile without ever touching the operator's actual login.
  */
 import { createInterface } from "node:readline/promises";
 import { readUpload } from "./youtubeStore.js";
@@ -17,14 +20,18 @@ import { finishLogin, startLogin } from "../dashboard/studioLogin.js";
 const [command, ...rest] = process.argv.slice(2);
 const args = rest.filter((a) => !a.startsWith("--"));
 const dryRun = rest.includes("--dry-run");
+const profileDirArg = rest.find((a) => a.startsWith("--profile-dir="))?.slice("--profile-dir=".length);
+const startOpts = profileDirArg ? { profileDir: profileDirArg } : {};
 
 function usage(): never {
-  console.error("usage: npm run studio -- probe | pin <matchId|videoId> [--dry-run] | login");
+  console.error(
+    "usage: npm run studio -- probe | pin <matchId|videoId> [--dry-run] | login [--profile-dir=<path>]",
+  );
   process.exit(2);
 }
 
 async function probeCmd(): Promise<void> {
-  const handle = await start();
+  const handle = await start(startOpts);
   try {
     const { result, url, title } = await probe(handle);
     console.log(`${result}: ${title} (${url})`);
@@ -55,7 +62,7 @@ async function pinCmd(target: string | undefined): Promise<void> {
     matchId = owner.matchId;
     videoId = target;
   }
-  const handle = await start();
+  const handle = await start(startOpts);
   try {
     const probed = await probe(handle);
     if (probed.result !== "ok") {
@@ -76,7 +83,7 @@ async function pinCmd(target: string | undefined): Promise<void> {
 }
 
 async function loginCmd(): Promise<void> {
-  const started = await startLogin(process.env.STUDIO_VNC_HOST ?? "localhost");
+  const started = await startLogin(process.env.STUDIO_VNC_HOST ?? "localhost", startOpts);
   if ("error" in started) {
     console.error(started.error);
     process.exit(1);

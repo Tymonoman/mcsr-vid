@@ -85,8 +85,10 @@ import { startTelegramBot } from "../telegram/index.js";
 import { readLastProbe } from "../youtube/studioBrowser.js";
 import {
   finishLogin as finishStudioLogin,
+  killOrphanedLoginScreen,
   loginStatus,
   startLogin as startStudioLogin,
+  studioSecretOk,
 } from "./studioLogin.js";
 
 const PORT = Number(process.env.PORT ?? 8080);
@@ -260,6 +262,13 @@ const server = createServer(async (req, res) => {
       segments[3] === undefined &&
       req.method === "POST"
     ) {
+      // Gated when STUDIO_LOGIN_SECRET is set (src/dashboard/studioLogin.ts) — unlike every other
+      // route here, this one hands back an interactive, already-authenticated Google session and
+      // its one-time password, and the dashboard port is LAN-reachable by design.
+      if (!studioSecretOk(req.headers["x-studio-secret"] as string | undefined)) {
+        json(res, 401, { error: "wrong or missing studio secret" });
+        return;
+      }
       const hostname = (req.headers.host ?? "localhost").split(":")[0]!;
       const started = await startStudioLogin(hostname);
       json(res, "error" in started ? 409 : 200, started);
@@ -271,6 +280,10 @@ const server = createServer(async (req, res) => {
       segments[3] === "done" &&
       req.method === "POST"
     ) {
+      if (!studioSecretOk(req.headers["x-studio-secret"] as string | undefined)) {
+        json(res, 401, { error: "wrong or missing studio secret" });
+        return;
+      }
       const done = await finishStudioLogin();
       json(res, "error" in done ? 409 : 200, done);
       return;
@@ -847,6 +860,10 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, "0.0.0.0", () => {
   console.error(`mcsr-vid dashboard on http://0.0.0.0:${PORT}  (mediaDir: ${config.mediaDir})`);
+  // A login screen a previous instance never closed (crash, OOM, a restart with it open) leaves
+  // x11vnc/websockify running with the one-time password still valid, independent of this
+  // process's own (freshly reset) in-memory state — see studioLogin.ts.
+  killOrphanedLoginScreen();
   // Warm the suggestions in the background, as the TUI does on mount. A cold scan pages the
   // MCSR feed dozens of times, so waiting until someone asks means waiting a minute for an
   // answer; a fresh cache returns immediately and this costs nothing.

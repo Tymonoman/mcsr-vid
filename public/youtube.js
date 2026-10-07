@@ -575,6 +575,22 @@ async function loadAbTest() {
 /** The URL/password this box is showing, while the screen is open; cleared once Done settles. */
 let studioOpenState = null;
 
+/**
+ * `status.secretRequired` (GET /api/studio/status) is true only when the box's own
+ * STUDIO_LOGIN_SECRET env var is set (src/dashboard/studioLogin.ts) — unset, as it is until the
+ * operator chooses to set it, this returns no header and the route behaves as it always has.
+ * Prompted once per tab (sessionStorage), cleared on a 401 so a wrong paste can be retried.
+ */
+function studioSecretHeader(status) {
+  if (!status?.secretRequired) return {};
+  let secret = sessionStorage.getItem("studioSecret");
+  if (!secret) {
+    secret = window.prompt("Studio login secret (STUDIO_LOGIN_SECRET in /app/.env):") || "";
+    sessionStorage.setItem("studioSecret", secret);
+  }
+  return { "x-studio-secret": secret };
+}
+
 function studioLoginHtml(status) {
   if (studioOpenState) {
     return `<div class="scanline">
@@ -607,9 +623,13 @@ async function loadStudioLogin() {
     btn.disabled = true;
     btn.textContent = "starting…";
     try {
-      studioOpenState = await api("/api/studio/login", { method: "POST" });
+      studioOpenState = await api("/api/studio/login", {
+        method: "POST",
+        headers: studioSecretHeader(status),
+      });
       await loadStudioLogin();
     } catch (e) {
+      if (/studio secret/.test(e.message)) sessionStorage.removeItem("studioSecret");
       btn.disabled = false;
       btn.textContent = "Studio login";
       failAt(btn, "Studio login failed", e.message);
@@ -621,11 +641,15 @@ async function loadStudioLogin() {
     btn.disabled = true;
     btn.textContent = "checking…";
     try {
-      const r = await api("/api/studio/login/done", { method: "POST" });
+      const r = await api("/api/studio/login/done", {
+        method: "POST",
+        headers: studioSecretHeader(status),
+      });
       studioOpenState = null;
       await loadStudioLogin();
       if (r.result !== "ok") failAt("#studioLogin", "Studio", r.message ?? r.result);
     } catch (e) {
+      if (/studio secret/.test(e.message)) sessionStorage.removeItem("studioSecret");
       btn.disabled = false;
       btn.textContent = "Done";
       failAt(btn, "Done failed", e.message);

@@ -42,10 +42,17 @@ export interface StudioHandle {
 }
 
 let active: StudioHandle | null = null;
+/** Claimed synchronously as `start`'s first statement, before any `await` — `active` itself is
+ * only set once Chrome has actually connected, several awaits later (Xvfb's sleep, the CDP poll),
+ * so two `start()` calls issued back to back would otherwise both read `active` as null and both
+ * pass the guard, each spawning its own Xvfb/Chrome against the same profile. Cleared in `start`'s
+ * catch so a failed start does not wedge the lock open forever. */
+let starting = false;
 
 /** One browser at a time, in this process — the in-process half of the lock (the other half is
- * the profile's own `SingletonLock`, checked in `start`). */
-export const isRunning = (): boolean => active !== null;
+ * the profile's own `SingletonLock`, checked in `start`). True for the whole span from the first
+ * line of `start()` to `stop()`, not just once Chrome has connected. */
+export const isRunning = (): boolean => active !== null || starting;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -112,65 +119,70 @@ async function terminate(proc: ChildProcess, graceMs = 5000): Promise<void> {
  * cleans up what it started) rather than returning a handle that is not actually usable.
  */
 export async function start(opts: StudioBrowserOptions = {}): Promise<StudioHandle> {
-  if (active) throw new Error("a Studio browser is already running in this process");
-  const profileDir = opts.profileDir ?? DEFAULT_PROFILE_DIR;
-  const chromePath = opts.chromePath ?? DEFAULT_CHROME_PATH;
-  const debugPort = opts.debugPort ?? 9222;
-  const display = opts.display ?? ":99";
-
-  const livePid = liveLockPid(profileDir);
-  if (livePid !== null)
-    throw new Error(`Chrome is already running against ${profileDir} (pid ${livePid}) — close it first`);
-
-  mkdirSync(profileDir, { recursive: true });
-
-  const xvfb = spawn("Xvfb", [display, "-screen", "0", "1280x800x24", "-nolisten", "tcp"], {
-    stdio: "ignore",
-  });
-  // Xvfb needs no handshake; this is comfortably enough for its socket to exist before Chrome
-  // tries to open the display.
-  await sleep(300);
-
-  const chrome = spawn(
-    chromePath,
-    [
-      `--user-data-dir=${profileDir}`,
-      `--remote-debugging-port=${debugPort}`,
-      "--remote-debugging-address=127.0.0.1",
-      "--no-first-run",
-      "--no-default-browser-check",
-      "--lang=en-US",
-      ...(opts.extraArgs ?? []),
-      "about:blank",
-    ],
-    { env: { ...process.env, DISPLAY: display }, stdio: "ignore" },
-  );
-
+  if (isRunning()) throw new Error("a Studio browser is already running in this process");
+  starting = true;
   try {
-    await waitForCdp(debugPort, 20_000);
-  } catch (err) {
-    chrome.kill("SIGKILL");
-    xvfb.kill("SIGTERM");
-    throw err;
-  }
+    const profileDir = opts.profileDir ?? DEFAULT_PROFILE_DIR;
+    const chromePath = opts.chromePath ?? DEFAULT_CHROME_PATH;
+    const debugPort = opts.debugPort ?? 9222;
+    const display = opts.display ?? ":99";
 
-  const browser = await chromium.connectOverCDP(`http://127.0.0.1:${debugPort}`);
+    const livePid = liveLockPid(profileDir);
+    if (livePid !== null)
+      throw new Error(`Chrome is already running against ${profileDir} (pid ${livePid}) — close it first`);
 
-  const handle: StudioHandle = {
-    browser,
-    debugPort,
-    async stop() {
-      if (active !== handle) return;
-      active = null;
-      // `browser.close()` on a `connectOverCDP` connection disconnects Playwright without
-      // killing Chrome — the SIGTERM below is what actually flushes cookies and exits it.
-      await browser.close().catch(() => {});
-      await terminate(chrome);
+    mkdirSync(profileDir, { recursive: true });
+
+    const xvfb = spawn("Xvfb", [display, "-screen", "0", "1280x800x24", "-nolisten", "tcp"], {
+      stdio: "ignore",
+    });
+    // Xvfb needs no handshake; this is comfortably enough for its socket to exist before Chrome
+    // tries to open the display.
+    await sleep(300);
+
+    const chrome = spawn(
+      chromePath,
+      [
+        `--user-data-dir=${profileDir}`,
+        `--remote-debugging-port=${debugPort}`,
+        "--remote-debugging-address=127.0.0.1",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--lang=en-US",
+        ...(opts.extraArgs ?? []),
+        "about:blank",
+      ],
+      { env: { ...process.env, DISPLAY: display }, stdio: "ignore" },
+    );
+
+    try {
+      await waitForCdp(debugPort, 20_000);
+    } catch (err) {
+      chrome.kill("SIGKILL");
       xvfb.kill("SIGTERM");
-    },
-  };
-  active = handle;
-  return handle;
+      throw err;
+    }
+
+    const browser = await chromium.connectOverCDP(`http://127.0.0.1:${debugPort}`);
+
+    const handle: StudioHandle = {
+      browser,
+      debugPort,
+      async stop() {
+        if (active !== handle) return;
+        active = null;
+        // `browser.close()` on a `connectOverCDP` connection disconnects Playwright without
+        // killing Chrome — the SIGTERM below is what actually flushes cookies and exits it.
+        await browser.close().catch(() => {});
+        await terminate(chrome);
+        xvfb.kill("SIGTERM");
+      },
+    };
+    active = handle;
+    return handle;
+  } finally {
+    starting = false;
+  }
 }
 
 /** The handle's first page, or a fresh one — Chrome was launched on `about:blank`, so there is
