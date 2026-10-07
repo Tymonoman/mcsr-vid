@@ -267,12 +267,15 @@ export async function probe(
 ): Promise<{ result: ProbeResult; url: string; title: string }> {
   const p = await page(handle);
   await withTimeout(
-    p.goto("https://studio.youtube.com/?hl=en", { waitUntil: "domcontentloaded" }),
+    // The channel's own Studio URL, never the root: the root opens the signed-in account's default
+    // channel (the operator's personal one, 7 Oct 2026), while this one switches to the brand channel
+    // he manages — and redirects to the default one only when the account has no access to it.
+    p.goto(`https://studio.youtube.com/channel/${channelId}?hl=en`, { waitUntil: "domcontentloaded" }),
     30_000,
     "loading Studio",
   );
-  // A sign-in or challenge redirect settles a moment after the initial load.
-  await p.waitForTimeout(1500);
+  // A sign-in, challenge or no-access redirect settles a few seconds after the initial load.
+  await p.waitForTimeout(5000);
   const url = p.url();
   const title = await p.title().catch(() => "");
   const text = await p
