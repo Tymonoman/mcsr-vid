@@ -15,6 +15,11 @@
 - CLAUDE_CODE_OAUTH_TOKEN in /app/.env is 60 chars = TRUNCATED (401 "OAuth access token is invalid"); he must paste
   the full token, then restart only when no upload runs. b347aba: a 401 now shows the setup-token hint in /health.
 - series-chapters workflow (worktree series-chapters): per-split chapters inside each game of a series.
+- 08:28 UTC: all four uploaded. MY RACE: three ranked landed on 7 Oct 19:00 → moved (Move on YouTube) 13705580 → 8 Oct
+  19:00, 13782182 → 9 Oct 19:00 (Shorts follow +18 h). Cause fixed + merged: slot-race (claimSlot lock, 63a3d32) + MCSR
+  API 15 s timeout. Runner DM sheet sent to Telegram (8 DMs, send after each goes public). series-chapters merged;
+  per-split chapters written to the 3 scheduled playoff videos (24/31/32 chapters; undo = tmp/ops1007/chapters/*.live.txt).
+  test:unit now runs on DEFAULTS (MCSR_CONFIG); thumbnailVariants autoDefaultKey NaN guard. Main 63a3d32, 87/87 green.
 
 ## ▶ RESUME HERE (night of 6→7 Oct 2026) — the operator's overnight goal, report by 07:00 UTC
 His prompt (start of this session): Studio-access memo → comments + "low quality / automated" diagnosis →
