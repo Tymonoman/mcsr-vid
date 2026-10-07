@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { renderExperimentsDoc } from "../dashboard/experiments.js";
 
 /** `handbook/knowledge/`: the channel's reports, in the repo because the dashboard container cannot see `~/.claude`. */
 const DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "handbook", "knowledge");
@@ -27,6 +28,10 @@ const bytes = (s: string) => Buffer.byteLength(s);
  * that share the most words with the question (a heading match counts triple), best first until
  * the budget is spent, then put back in reading order. A plain substring match, so "earning" finds
  * "earn". ponytail: keyword scoring, no embeddings — swap in a retriever if the docs outgrow this.
+ *
+ * One doc is generated rather than read off disk: "experiments-live" (src/dashboard/experiments.ts
+ * `renderExperimentsDoc`), the between-video A/B tests' own ledger — scored and chunked exactly
+ * like `handbook/knowledge/*.md`, so a question about a running test finds it the same way.
  */
 export function knowledgeFor(question: string, budget = KNOWLEDGE_BUDGET, dir = DIR): string {
   const files = fs
@@ -37,21 +42,24 @@ export function knowledgeFor(question: string, budget = KNOWLEDGE_BUDGET, dir = 
   const title = (t: string) => t.match(/^# (.+)$/m)?.[1] ?? "";
 
   const brief = files.includes("channel.md") ? `### channel.md\n${read("channel.md")}` : "";
-  const others = files.filter((f) => f !== "channel.md");
-  const index = others.map((f) => `- ${f}: ${title(read(f))}`).join("\n");
+  const docs = [
+    ...files.filter((f) => f !== "channel.md").map((f) => ({ name: f, text: read(f) })),
+    { name: "experiments-live", text: renderExperimentsDoc() },
+  ];
+  const index = docs.map((d) => `- ${d.name}: ${title(d.text)}`).join("\n");
   const head = [brief, `### Every document (sections below are picked for the question)\n${index}`].join(
     "\n\n",
   );
 
   const q = words(question);
-  const chunks = others.flatMap((f, doc) =>
-    read(f)
+  const chunks = docs.flatMap(({ name, text: full }, doc) =>
+    full
       .split(/^(?=## )/m)
       .map((text, i) => {
         const heading = (text.match(/^#{1,2} (.+)$/m)?.[1] ?? "").toLowerCase();
         const body = text.toLowerCase();
         const score = q.reduce((n, w) => n + (body.includes(w) ? 1 : 0) + (heading.includes(w) ? 3 : 0), 0);
-        return { doc, i, score, text: `### ${f}\n${text.trim()}` };
+        return { doc, i, score, text: `### ${name}\n${text.trim()}` };
       }),
   );
 

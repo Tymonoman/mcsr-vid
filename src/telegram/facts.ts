@@ -26,6 +26,7 @@ import { readNightlyState, MIN_FREE_MATCHES, type NightlyLastRun } from "../dash
 import { nightlyQueue, nightlySkip } from "../dashboard/matchShelf.js";
 import { listProcessedMatchIds, matchStatusFor } from "../dashboard/matchStatus.js";
 import { nightlyShortSummary, readStatus } from "../dashboard/shortFlow.js";
+import { testsSummary, type TestsSummary } from "../dashboard/experiments.js";
 import { pickErrorFile } from "../shorts/videoPick.js";
 import { playoffBoard } from "../playoffs/playoffs.js";
 import { describeFailure, runClaude } from "./claude.js";
@@ -496,6 +497,9 @@ export interface ReportFacts {
   ypp: Section<YppProgress>;
   worthRendering: Section<WorthFacts>;
   dashboardBaseUrl: string;
+  /** The experiment engine's own ledger (src/dashboard/experiments.ts) — a local file read, no
+   *  API call, so it is never gated behind `only` the way the sections above are. */
+  tests: TestsSummary;
 }
 
 /** Which of `ReportFacts`' sections `gatherFacts` actually computes — a narrow slash command
@@ -581,6 +585,7 @@ export async function gatherFacts(
     ypp,
     worthRendering,
     dashboardBaseUrl: dashboardMatchUrl(),
+    tests: testsSummary(nowMs, sinceMs),
   };
 }
 

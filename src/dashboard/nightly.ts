@@ -31,6 +31,7 @@ import path from "node:path";
 import { archiveMatch, capacity, inNasWindow, refreshArchived } from "./archive.js";
 import { blockedIn, config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
+import { writeExperimentArmFile } from "./experiments.js";
 import { exportRunning, startFastExport } from "./exportRoutes.js";
 import { getJob, startJob, type Job } from "./jobs.js";
 import {
@@ -746,6 +747,10 @@ export async function runNightlyOnce(
   const label = `${players[0]} vs ${players[1]}`;
   console.error(`nightly: starting render of #${matchId} ${label}`);
   lastStartedId = matchId;
+  // A no-op unless today's UTC date has a schedule entry (src/dashboard/experiments.ts) — the
+  // render's own arm settings were already applied by `applyScheduledRenderArm` closer to this
+  // hour; this just leaves a record of which arm they were in the match directory.
+  writeExperimentArmFile(matchId, now());
   // A queue entry is one night's work: out of the list the moment its render starts.
   setNightlyQueue(nightlyQueue().filter((id) => id !== matchId));
   if (config.nightlyRenderExport) requestExport(matchId);

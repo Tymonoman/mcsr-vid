@@ -1,0 +1,330 @@
+/**
+ * The experiment engine: between-video A/B tests that run unattended, so the channel keeps
+ * testing arms (publish hour, the Short's delay, `explainMovesSec`, `countdownTeaser`, `introSec`,
+ * cadence) while nobody is watching the dashboard. The operator's /goal, 7 Oct 2026: "the
+ * automation lives in the dashboard code, not this session: when the usage limit hits, the
+ * channel keeps running."
+ *
+ * The data is `<mediaDir>/.experiments.json` — hypotheses, arms, a day-by-day schedule, and each
+ * experiment's result once evaluated (`experimentsEvaluator.ts`). This file is everything that
+ * *reads* it: what today's schedule entry says to do to a render and a publish slot, and the
+ * readable summaries (`testsSummary` for the Telegram report, `renderExperimentsDoc` for `/ask`).
+ * Nothing here decides which hypotheses to run or writes the schedule — that is the operator's
+ * plan, or the Studio automation's own "tc" (Test & Compare) experiments on another branch, which
+ * this file carries untouched: filtering by `kind !== "between"` is the evaluator's job
+ * (`experimentsEvaluator.ts`), not this one's, since a schedule entry's `render`/`slot` patch is
+ * applied the same way regardless of which experiment it names.
+ */
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import { config, matchDir } from "../config.js";
+import { describeError } from "../errorText.js";
+import { saveSettings, SETTINGS } from "./settings.js";
+
+export interface SlotArm {
+  /** Ranked-video (never series) candidate publish hours UTC for this day, tried in order. */
+  rankedHoursUtc?: number[];
+  /** Hours after the long-form the Short follows, 1–48; out of range is ignored. */
+  shortDelayHours?: number;
+}
+
+export interface ExperimentArm {
+  name: string;
+  /** Settings keys this arm sets — applied through `saveSettings`, the only way this engine
+   *  ever changes a setting. */
+  settings?: Record<string, unknown>;
+  slot?: SlotArm;
+}
+
+export interface ExperimentVideo {
+  /** Filled in by the evaluator from the match's `youtube.json` when absent. */
+  videoId?: string;
+  matchId: number;
+  arm: string;
+}
+
+export type ExperimentStatus = "planned" | "running" | "done";
+
+export interface Experiment {
+  id: string;
+  /** "tc": Studio's Test & Compare, written by the automation on another branch — carried
+   *  through every read and write here, never evaluated or adopted. */
+  kind: "between" | "tc";
+  hypothesis: string;
+  variable: string;
+  metric: string;
+  controlArm: string;
+  arms: ExperimentArm[];
+  videos: ExperimentVideo[];
+  /** YYYY-MM-DD, UTC. */
+  start: string;
+  end: string;
+  status: ExperimentStatus;
+  /** Adopt the winning arm's settings at `end`; otherwise the control arm's are kept. */
+  adoptWinner?: boolean;
+  result?: Record<string, unknown>;
+  verdict?: string;
+  decision?: string;
+  needsHuman?: string;
+  needsHumanAck?: boolean;
+  /** RFC 3339, set each time the evaluator computes a fresh result — what "since the last
+   *  report" (the Telegram summary) and the two-day failure streak below are measured against. */
+  evaluatedAt?: string;
+  /** The evaluator's own retry memory: the UTC date and message of the last failed attempt, so a
+   *  second failure on the very next day's tick can set `needsHuman` instead of guessing or
+   *  retrying silently forever. Cleared the next time evaluation succeeds. */
+  lastEvalFailure?: { date: string; message: string };
+}
+
+export interface ScheduleEntry {
+  /** YYYY-MM-DD, UTC. */
+  date: string;
+  experimentId: string;
+  arm: string;
+  /** Settings keys applied before that night's render (`applyScheduledRenderArm`). */
+  render?: Record<string, unknown>;
+  /** Applies to long-forms whose publish slot falls on this UTC date. */
+  slot?: SlotArm;
+}
+
+export interface ExperimentsFile {
+  baseline?: Record<string, unknown>;
+  experiments: Experiment[];
+  schedule: ScheduleEntry[];
+  /** The UTC date `applyScheduledRenderArm` last applied — set whether or not that date had a
+   *  render patch, so a restart or a later 15-minute tick never re-applies the same day twice. */
+  appliedOn?: string;
+  /** The UTC date the evaluator last ran — once a day, whatever it found. */
+  evaluatedOn?: string;
+}
+
+const EMPTY: ExperimentsFile = { experiments: [], schedule: [] };
+
+const filePath = (): string => path.join(config.mediaDir, ".experiments.json");
+
+/** Missing or corrupt reads as "no experiments running", never a crash — this file is read on
+ *  every publish-slot lookup and every 15-minute tick. */
+export function readExperiments(): ExperimentsFile {
+  const file = filePath();
+  if (!existsSync(file)) return EMPTY;
+  try {
+    const parsed = JSON.parse(readFileSync(file, "utf8")) as Partial<ExperimentsFile>;
+    return {
+      ...(parsed.baseline !== undefined ? { baseline: parsed.baseline } : {}),
+      experiments: Array.isArray(parsed.experiments) ? parsed.experiments : [],
+      schedule: Array.isArray(parsed.schedule) ? parsed.schedule : [],
+      ...(typeof parsed.appliedOn === "string" ? { appliedOn: parsed.appliedOn } : {}),
+      ...(typeof parsed.evaluatedOn === "string" ? { evaluatedOn: parsed.evaluatedOn } : {}),
+    };
+  } catch (err) {
+    console.error(`experiments: ${file} unreadable — ${describeError(err)}`);
+    return EMPTY;
+  }
+}
+
+/** Atomic (write-then-rename), as `short-<id>.status.json` is. */
+export function writeExperiments(data: ExperimentsFile): void {
+  const file = filePath();
+  writeFileSync(`${file}.part`, JSON.stringify(data, null, 2));
+  renameSync(`${file}.part`, file);
+}
+
+export const scheduleEntryFor = (
+  date: string,
+  data: ExperimentsFile = readExperiments(),
+): ScheduleEntry | undefined => data.schedule.find((s) => s.date === date);
+
+/**
+ * Sorted ranked-video (never series) candidate publish hours for a UTC date, or undefined when
+ * nothing overrides it — `nextPublishSlot` then falls back to `config.publishHourUtc` alone,
+ * exactly as before this existed.
+ */
+export function rankedHoursForDate(
+  date: string,
+  data: ExperimentsFile = readExperiments(),
+): number[] | undefined {
+  const hours = scheduleEntryFor(date, data)?.slot?.rankedHoursUtc;
+  return hours && hours.length > 0 ? [...hours].sort((a, b) => a - b) : undefined;
+}
+
+/**
+ * The Short's delay in ms for a long-form publishing on this UTC date, or undefined for the
+ * standing 18 h (`SHORT_DELAY_MS`, src/youtube/youtubeUpload.ts). Out-of-range hours (the spec is
+ * 1–48) are ignored rather than trusted — this file can be hand-edited, or written by the Studio
+ * automation's own code on another branch.
+ */
+export function shortDelayMsForDate(
+  date: string,
+  data: ExperimentsFile = readExperiments(),
+): number | undefined {
+  const hours = scheduleEntryFor(date, data)?.slot?.shortDelayHours;
+  return hours !== undefined && Number.isFinite(hours) && hours >= 1 && hours <= 48
+    ? hours * 3600_000
+    : undefined;
+}
+
+/* --- Render arms: a tick close to tonight's render --------------------------------------------- */
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const RENDER_ARM_LEAD_MS = 30 * 60_000;
+
+// ponytail: duplicates nightly.ts's msUntilNextRun rather than importing it — nightly.ts imports
+// `writeExperimentArmFile` below, and importing back would cycle the two modules. Both sides are
+// five lines of date arithmetic; keep them in sync if the nightly's own rule ever changes.
+function msUntilHourUtc(nowMs: number, hourUtc: number): number {
+  const next = new Date(nowMs);
+  next.setUTCHours(hourUtc, 0, 0, 0);
+  const ms = next.getTime() - nowMs;
+  return ms > 0 ? ms : ms + DAY_MS;
+}
+
+const SETTINGS_KEYS = new Set(SETTINGS.map((f) => f.key as string));
+
+/**
+ * A tick close to tonight's render (within `RENDER_ARM_LEAD_MS` of `nightlyRenderHourUtc`; no
+ * nightly scheduled means nothing to arm): applies the UTC date it is about to render on's
+ * schedule entry, if any, through `saveSettings` — the only way this ever changes a setting — and
+ * records `appliedOn` so a restart, or the next 15-minute tick, does not apply the same day twice.
+ * A key in the entry's `render` patch that is not a real Settings field is refused with one log
+ * line; the rest still applies.
+ */
+export function applyScheduledRenderArm(nowMs: number = Date.now()): void {
+  const hourUtc = config.nightlyRenderHourUtc;
+  if (hourUtc === null) return;
+  if (msUntilHourUtc(nowMs, hourUtc) > RENDER_ARM_LEAD_MS) return;
+  const date = new Date(nowMs + msUntilHourUtc(nowMs, hourUtc)).toISOString().slice(0, 10);
+  const data = readExperiments();
+  if (data.appliedOn === date) return;
+  const entry = scheduleEntryFor(date, data);
+  if (!entry?.render) {
+    // Nothing was ever set up (no .experiments.json worth having): leave no trace of a tick that
+    // did nothing. Once there is a file, recording appliedOn every night keeps this cheap either way.
+    if (data.experiments.length === 0 && data.schedule.length === 0) return;
+    writeExperiments({ ...data, appliedOn: date });
+    return;
+  }
+  const patch: Record<string, unknown> = {};
+  const refused: string[] = [];
+  for (const [key, value] of Object.entries(entry.render)) {
+    if (SETTINGS_KEYS.has(key)) patch[key] = value;
+    else refused.push(key);
+  }
+  const name = `${date}'s render arm (${entry.experimentId}/${entry.arm})`;
+  if (refused.length) console.error(`experiments: ${name} ignored unknown key(s) ${refused.join(", ")}`);
+  if (Object.keys(patch).length) {
+    try {
+      const result = saveSettings(patch);
+      if (result.changed.length) console.error(`experiments: applied ${name} — changed ${result.changed.join(", ")}`);
+    } catch (err) {
+      console.error(`experiments: ${name} failed — ${describeError(err)}`);
+    }
+  }
+  writeExperiments({ ...data, appliedOn: date });
+}
+
+/* --- experiment-arm.json: which arm a render actually ran under --------------------------------- */
+
+/** Besides the keys the day's experiment itself tests, always snapshotted — the levers most
+ *  likely to be under test together or to confound one that is. */
+const FIXED_SNAPSHOT_KEYS = [
+  "introSec",
+  "countdownTeaser",
+  "explainMovesSec",
+  "nightlyMaxRenders",
+  "exportUpscale1440",
+  "thumbnailRotatePoses",
+  "copyVariety",
+  "publishHourUtc",
+] as const;
+
+/**
+ * Written the moment the nightly starts rendering a match, when today's UTC date has a schedule
+ * entry: a snapshot of the live settings an experiment cares about, so the match directory still
+ * says which arm it rendered under even after a later settings change. A no-op otherwise.
+ */
+export function writeExperimentArmFile(matchId: number, nowMs: number = Date.now()): void {
+  const date = new Date(nowMs).toISOString().slice(0, 10);
+  const data = readExperiments();
+  const entry = scheduleEntryFor(date, data);
+  if (!entry) return;
+  const experiment = data.experiments.find((e) => e.id === entry.experimentId);
+  const keys = new Set<string>(FIXED_SNAPSHOT_KEYS);
+  for (const arm of experiment?.arms ?? []) for (const k of Object.keys(arm.settings ?? {})) keys.add(k);
+  const live = config as unknown as Record<string, unknown>;
+  const settings: Record<string, unknown> = {};
+  for (const k of keys) settings[k] = live[k];
+
+  const dir = matchDir(matchId);
+  // The pipeline creates this directory itself moments later; writing first just means this file
+  // is never lost to a race with it.
+  mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, "experiment-arm.json");
+  const body = { date, experimentId: entry.experimentId, arm: entry.arm, settings };
+  writeFileSync(`${file}.part`, JSON.stringify(body, null, 2));
+  renameSync(`${file}.part`, file);
+}
+
+/* --- The Telegram report's one line and the /ask doc -------------------------------------------- */
+
+export interface TestsSummary {
+  runningCount: number;
+  scheduleToday: { experimentId: string; arm: string }[];
+  /** "between" experiments the evaluator produced a fresh verdict or decision for since the last
+   *  report (`evaluatedAt >= sinceMs`). */
+  since: { experimentId: string; verdict?: string; decision?: string }[];
+}
+
+const between = (e: Experiment): boolean => e.kind === "between";
+
+export function testsSummary(
+  nowMs: number,
+  sinceMs: number,
+  data: ExperimentsFile = readExperiments(),
+): TestsSummary {
+  const today = new Date(nowMs).toISOString().slice(0, 10);
+  const experiments = data.experiments.filter(between);
+  return {
+    runningCount: experiments.filter((e) => e.status === "running").length,
+    scheduleToday: data.schedule
+      .filter((s) => s.date === today)
+      .map((s) => ({ experimentId: s.experimentId, arm: s.arm })),
+    since: experiments
+      .filter((e) => e.evaluatedAt && Date.parse(e.evaluatedAt) >= sinceMs && (e.verdict ?? e.decision))
+      .map((e) => ({ experimentId: e.id, verdict: e.verdict, decision: e.decision })),
+  };
+}
+
+/**
+ * The live ledger `/ask` reads alongside `handbook/knowledge/*.md` (src/telegram/knowledge.ts) —
+ * generated from `.experiments.json`, never hand-edited.
+ */
+export function renderExperimentsDoc(
+  nowMs: number = Date.now(),
+  data: ExperimentsFile = readExperiments(),
+): string {
+  const today = new Date(nowMs).toISOString().slice(0, 10);
+  const experiments = data.experiments.filter(between);
+  const lines = [
+    "# Experiments — live ledger",
+    "",
+    "Generated from `.experiments.json`; never hand-edited. Studio's own Test & Compare runs are not listed here.",
+  ];
+  if (experiments.length === 0) lines.push("", "No between-video experiments on record.");
+  for (const e of experiments) {
+    lines.push("", `## ${e.id} — ${e.hypothesis}`);
+    lines.push(
+      `variable: ${e.variable} · metric: ${e.metric} · control arm: ${e.controlArm} · status: ${e.status}`,
+    );
+    lines.push(
+      `arms: ${e.arms.map((a) => a.name).join(", ")} · window: ${e.start} to ${e.end} · videos so far: ${e.videos.length}`,
+    );
+    if (e.result) lines.push(`numbers: ${JSON.stringify(e.result)}`);
+    if (e.verdict) lines.push(`verdict: ${e.verdict}`);
+    if (e.decision) lines.push(`decision: ${e.decision}`);
+    if (e.needsHuman) lines.push(`needs a human: ${e.needsHuman}`);
+  }
+  const ahead = data.schedule.filter((s) => s.date >= today).sort((a, b) => (a.date < b.date ? -1 : 1));
+  lines.push("", "## Schedule ahead");
+  lines.push(...(ahead.length ? ahead.map((s) => `- ${s.date}: ${s.experimentId} / ${s.arm}`) : ["Nothing scheduled."]));
+  return lines.join("\n");
+}

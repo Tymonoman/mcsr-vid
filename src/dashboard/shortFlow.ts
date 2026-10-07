@@ -84,6 +84,7 @@ import {
   type UploadRequest,
 } from "../youtube/youtubeUpload.js";
 import { nicknameWarnings, readUpload, writeUpload, type UploadKind } from "../youtube/youtubeStore.js";
+import { shortDelayMsForDate } from "./experiments.js";
 import { hiddenMatchIds, isExported, isShortUploaded, isUploaded } from "./matchShelf.js";
 import { listProcessedMatchIds } from "./matchStatus.js";
 import { shortRunning, spawnShortJob } from "./shortsRoutes.js";
@@ -898,13 +899,18 @@ const liveDeps = (): ChainDeps => ({
 });
 
 /**
- * When the Short goes public: 18 h after the long-form (it lands while the match video is still
- * fresh in Browse), or an hour from now if that is later. A long-form already public gives the
- * hour; one private with no time gives none, and the Short waits private beside it.
+ * When the Short goes public: the standing 18 h after the long-form (it lands while the match
+ * video is still fresh in Browse) — or the day the long-form publishes on's Short-delay
+ * experiment arm (`shortDelayMsForDate`, src/dashboard/experiments.ts, 1–48 h), when that day has
+ * one — or an hour from now if that is later. A long-form already public gives the hour; one
+ * private with no time gives none, and the Short waits private beside it.
  */
 export function shortPublishAt(video: OnChannel | null, nowMs: number): Date | null {
   const soonest = nowMs + 3600_000;
-  if (video?.publishAt) return new Date(Math.max(Date.parse(video.publishAt) + SHORT_DELAY_MS, soonest));
+  if (video?.publishAt) {
+    const delayMs = shortDelayMsForDate(video.publishAt.slice(0, 10)) ?? SHORT_DELAY_MS;
+    return new Date(Math.max(Date.parse(video.publishAt) + delayMs, soonest));
+  }
   if (video && video.privacyStatus !== null && video.privacyStatus !== "private") return new Date(soonest);
   return null;
 }
@@ -1122,13 +1128,15 @@ async function moveOnYouTube(
   }
   if ("refused" in moved) return no(409, moved.refused);
   await writeUpload(matchId, { ...record, publishAt: moved.publishAt }, "video");
-  // The Short keeps its 18 h behind the long-form: moved with it when it is scheduled too, and
-  // when it is not up yet the chain reads the time just written (shortPublishAt).
+  // The Short keeps its standing delay behind the long-form (18 h, or the day's Short-delay
+  // experiment arm — `shortPublishAt`): moved with it when it is scheduled too, and when it is
+  // not up yet the chain reads the time just written.
   const shortAt = shortPublishAt({ videoId, publishAt: moved.publishAt, privacyStatus: "private" }, nowMs)!;
+  const delayText = `${Math.round((shortAt.getTime() - Date.parse(moved.publishAt)) / 3600_000)} h`;
   const short = await onChannel(matchId, "short");
   let shortLine = readStatus(matchId).noShort
     ? "no Short"
-    : `the Short is not up yet — it goes up for ${when(shortAt.toISOString())}, 18 h after`;
+    : `the Short is not up yet — it goes up for ${when(shortAt.toISOString())}, ${delayText} after`;
   if (short) {
     let failed: string;
     try {
@@ -1140,7 +1148,7 @@ async function moveOnYouTube(
         failed = "";
         const rec = await readUpload(matchId, "short");
         if (rec) await writeUpload(matchId, { ...rec, publishAt: s.publishAt }, "short");
-        shortLine = `the Short moved with it to ${when(s.publishAt)}, 18 h after`;
+        shortLine = `the Short moved with it to ${when(s.publishAt)}, ${delayText} after`;
       }
     } catch (err) {
       failed = describeError(err);
