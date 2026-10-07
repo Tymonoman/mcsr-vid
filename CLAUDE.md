@@ -1071,7 +1071,9 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
 - **Verify visual changes by rendering** (`npm run still`, then read the PNG).
 - **`npm run test:unit` after any edit; `npm test` after touching rendering or asset
   generation** — the full run adds the two tests that drive Chromium and ffmpeg. The
-  PostToolUse hook's `prettier` + `tsc --noEmit` covers per-edit mistakes.
+  PostToolUse hook's `prettier` + `tsc --noEmit` covers per-edit mistakes. `test:unit` runs on
+  `DEFAULTS` (it sets `MCSR_CONFIG` to a missing file), so a switch the operator turns on in Settings
+  cannot break it; the two render tests still read the live config, for `mediaDir` (7 Oct 2026).
 - **Generated projects carry `<mlt root>`** with every resource relative to it, which is what
   lets a project rendered on the lab open on the desktop.
 
