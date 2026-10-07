@@ -17,7 +17,7 @@
 import { spawn } from "node:child_process";
 import { formatShortTime } from "../../remotion/format.js";
 import { describeError } from "../errorText.js";
-import type { MatchMetrics } from "./matchScore.js";
+import { OFF_PANEL_SPLITS, onScreenDeaths, type MatchMetrics } from "./matchScore.js";
 import { eloAtMatchStart } from "./overlayProps.js";
 import { titleName } from "./title.js";
 import type { PlayoffContext } from "../playoffs/playoffs.js";
@@ -43,15 +43,9 @@ export const HOOK_SEED_RANK_ELO = /#\d+|\b\d+(?:st|nd|rd|th) seed\b|\blcq\b|\b\d
 const HOOK_DENIED_LABELS =
   /\b(?:yn|asian|asians|black|white|latino|latina|hispanic|african|arab|arabs|european|american|chinese|korean|japanese|mexican|indian)\b/i;
 
-/**
- * The two `matchScore.ts` splits the overlay's own panel never shows (`SPLIT_EVENTS`,
- * overlayProps.ts, has 6 rows: Nether enter, Bastion enter, Fortress, Blind travel, Stronghold,
- * End enter — matchScore.ts additionally tracks "Bastion loot" and "Blaze rod" for its own
- * closeness/chaos scoring). A hook that quotes a gap must not read one of these two: a viewer
- * cannot check it against what is on screen (6 Oct 2026 panel, live-verified on match 13705580 —
- * "Bastion loot" showed a bigger gap than the panel's own biggest).
- */
-const OFF_PANEL_SPLITS = new Set(["Bastion loot", "Blaze rod"]);
+// OFF_PANEL_SPLITS (which `matchScore.ts` splits the overlay's panel never shows: "Bastion loot",
+// "Blaze rod") now lives there, next to `panelLeadChanges`, which uses the same exclusion — one
+// definition rather than two that could drift apart again.
 
 /**
  * A hook that names a runner with a label: either `HOOK_DENIED_LABELS` on its own, or a "<x> vs
@@ -145,7 +139,7 @@ function candidates(input: HookInput): Candidate[] {
   const out: Candidate[] = [];
   // Real deaths only: a hunger reset is routine (matchScore.ts `deathKind`), and "5 deaths and
   // still this close" on five resets reads to a runner as not knowing the game.
-  const { finishMarginMs, leadChanges, deaths, resultMs, winner } = metrics;
+  const { finishMarginMs, panelLeadChanges, deaths, resultMs, winner } = metrics;
 
   // --- Rivalry framing (30-35): under every stake chip, over the dull fallback -------------
   if (versus) {
@@ -189,9 +183,12 @@ function candidates(input: HookInput): Candidate[] {
   // An exact count is a countdown: once a viewer has seen that many flips go by, parity tells
   // them who leads at the end (risk panel, 6 Oct 2026 — every "The lead changed N times" in the
   // sample was dropped for this, several also for overcounting splits the overlay never shows).
-  // The question form states no number, so neither problem applies.
-  if (leadChanges >= 3) out.push({ text: "Does the lead ever settle?", weight: 80 });
-  else if (leadChanges === 2) out.push({ text: "Does the lead ever settle?", weight: 50 });
+  // The question form states no number, so neither problem applies. `panelLeadChanges`, not the
+  // shared `leadChanges`: the latter still counts "Bastion loot", "Blaze rod" and the dragon, so
+  // it fired this chip on matches whose panel shows 0-1 real flips (8 Oct 2026 chip-truth review —
+  // live-verified on 13560037, panel 1 vs the shared field's 3, and 13782182, panel 0 vs 2).
+  if (panelLeadChanges >= 3) out.push({ text: "Does the lead ever settle?", weight: 80 });
+  else if (panelLeadChanges === 2) out.push({ text: "Does the lead ever settle?", weight: 50 });
 
   // The biggest lead a player actually lost: a split where they led but did not go on to win —
   // never a leader simply extending their lead. The old `maxSwingMs` (the raw step between two
@@ -215,7 +212,12 @@ function candidates(input: HookInput): Candidate[] {
       out.push({ text: `Can a ${Math.round(lostLeadMs / 1000)}-second lead survive?`, weight: 45 });
   }
 
-  if (deaths === 0) out.push({ text: "Not a single death between them", weight: 40 });
+  // "Not a single death" is a claim about what the POV shows, so it gates on every death the
+  // viewer actually sees — a hunger reset included, since starving to 0 is the same death screen
+  // (`onScreenDeaths`). `deaths` (real deaths only, `metrics.deaths`) still names the dramatic
+  // count once there has been at least one on-screen death (8 Oct 2026 chip-truth review:
+  // `deaths === 0` alone was false in 8 of 10 proposals — 12730175's five resets, 13766294's one).
+  if (onScreenDeaths(match) === 0) out.push({ text: "Not a single death between them", weight: 40 });
   else if (deaths >= 4) out.push({ text: `${deaths} deaths and still this close`, weight: 55 });
 
   // The actual minute, not "sub-10": "SUB 7" and "Insane 6:51" both ran ~1.5x the competitor's

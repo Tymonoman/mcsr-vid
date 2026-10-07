@@ -47,10 +47,11 @@ const SEED_ICON = { x0: 564, y0: 100, x1: 716, y1: 252 };
 const PLATE_LEFT = { x0: 20, y0: 516, x1: 620, y1: 600 };
 const PLATE_RIGHT = { x0: 660, y0: 516, x1: 1260, y1: 600 };
 const DURATION_STAMP = { x0: 1110, y0: 625, x1: 1270, y1: 695 };
-// Generous bound around `.thumb-caption` (centred at 640,466, 56px font, 8px hard shadow): wide
-// enough to hold any <=14-character caption plus its outline, nowhere near the four zones above
-// (its bottom, 510, stays clear of the nameplates' own top at 516).
-const CAPTION_BOX = { x0: 60, y0: 410, x1: 1220, y1: 510 };
+// Generous bound around `.thumb-caption` (centred at 640,466, 76px font since 8 Oct 2026's
+// chip-truth fix made it larger to actually read at 168x94, 10px hard shadow): wide enough to
+// hold any <=9-character caption (CAPTION_MAX_CHARS, tcCaption.ts) plus its outline, nowhere near
+// the four zones above (its bottom, 510, stays clear of the nameplates' own top at 516).
+const CAPTION_BOX = { x0: 60, y0: 405, x1: 1220, y1: 512 };
 
 function overlaps(a: typeof SEED_ICON, b: typeof SEED_ICON): boolean {
   return a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
@@ -71,31 +72,35 @@ try {
   };
 
   const without = await still(baseProps, "without-caption");
-  const withCaption = await still({ ...baseProps, caption: "58 MS" }, "with-caption");
   const width = without.width;
   assert.equal(width, 1280);
 
   // The absent-prop invariant the task asks for: every pixel outside the caption's own box is
   // byte-identical whether or not `caption` is set — i.e. the feature is purely additive, so a
-  // match rendered without it (every match today) is unaffected.
-  let changedOutsideBox = 0;
-  let changedInsideBox = 0;
-  for (let i = 0; i < without.pixels.length; i += 4) {
-    const px = i / 4;
-    const x = px % width;
-    const y = Math.floor(px / width);
-    const same =
-      without.pixels[i] === withCaption.pixels[i] &&
-      without.pixels[i + 1] === withCaption.pixels[i + 1] &&
-      without.pixels[i + 2] === withCaption.pixels[i + 2] &&
-      without.pixels[i + 3] === withCaption.pixels[i + 3];
-    if (same) continue;
-    const inBox = x >= CAPTION_BOX.x0 && x < CAPTION_BOX.x1 && y >= CAPTION_BOX.y0 && y < CAPTION_BOX.y1;
-    if (inBox) changedInsideBox++;
-    else changedOutsideBox++;
+  // match rendered without it (every match today) is unaffected. Checked for the shortest real
+  // token ("58 MS") and the longest one CAPTION_MAX_CHARS (tcCaption.ts) allows ("1:36 LEAD",
+  // 9 characters) — the one that most needs the box to actually be wide enough at the larger font.
+  for (const caption of ["58 MS", "1:36 LEAD"]) {
+    const withCaption = await still({ ...baseProps, caption }, `with-${caption.replace(/\W+/g, "-")}`);
+    let changedOutsideBox = 0;
+    let changedInsideBox = 0;
+    for (let i = 0; i < without.pixels.length; i += 4) {
+      const px = i / 4;
+      const x = px % width;
+      const y = Math.floor(px / width);
+      const same =
+        without.pixels[i] === withCaption.pixels[i] &&
+        without.pixels[i + 1] === withCaption.pixels[i + 1] &&
+        without.pixels[i + 2] === withCaption.pixels[i + 2] &&
+        without.pixels[i + 3] === withCaption.pixels[i + 3];
+      if (same) continue;
+      const inBox = x >= CAPTION_BOX.x0 && x < CAPTION_BOX.x1 && y >= CAPTION_BOX.y0 && y < CAPTION_BOX.y1;
+      if (inBox) changedInsideBox++;
+      else changedOutsideBox++;
+    }
+    assert.equal(changedOutsideBox, 0, `"${caption}" changed a pixel outside its own box`);
+    assert.ok(changedInsideBox > 0, `"${caption}" changed no pixel at all — it did not render`);
   }
-  assert.equal(changedOutsideBox, 0, "caption changed a pixel outside its own box");
-  assert.ok(changedInsideBox > 0, "caption changed no pixel at all — it did not render");
 
   console.log("thumbnailCaption: caption is additive-only, and its box clears every forbidden zone");
 } finally {

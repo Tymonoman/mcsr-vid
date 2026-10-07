@@ -45,16 +45,28 @@ function input(
     comparedSplits: 8,
     maxLeadMs: 20_000,
     leadChanges: 0,
+    panelLeadChanges: 0,
     maxSwingMs: 0,
     deaths: 1,
     deathsByPlayer: { edcr: 1 },
     ...over,
   };
+  // hooks.ts's "not a single death" chip now reads `match.timelines` directly (onScreenDeaths,
+  // 8 Oct 2026 chip-truth fix), not `metrics.deaths`. Mirroring `metrics.deaths` with that many
+  // ordinary death entries by default keeps every test that only sets `deaths` behaving exactly
+  // as it did before that fix; a test about hunger resets specifically overrides `timelines` in
+  // matchOver instead (see "the death chips read the POV, not just deathKind" below).
+  const defaultTimelines = Array.from({ length: metrics.deaths }, (_, i) => ({
+    uuid: `uuid-death-${i}`,
+    time: 0,
+    type: "projectelo.timeline.death",
+  }));
   const match = {
     forfeited: false,
     changes: [],
     result: { uuid: null, time: metrics.resultMs },
     players: [],
+    timelines: defaultTimelines,
     ...matchOver,
   } as unknown as MatchInfo;
   return {
@@ -94,21 +106,50 @@ assert.equal(buildHookSuggestions(input({ finishMarginMs: 58 }))[0], "Decided by
 assert.equal(buildHookSuggestions(input({ finishMarginMs: 5_000 }))[0], "Decided by 5 seconds");
 
 // Ranking: a 4-lead-change race outranks the deathless note that also applies to it.
-const chaotic = buildHookSuggestions(input({ leadChanges: 4, deaths: 0, finishMarginMs: 30_000 }));
+const chaotic = buildHookSuggestions(input({ panelLeadChanges: 4, deaths: 0, finishMarginMs: 30_000 }));
 assert.equal(chaotic[0], "Does the lead ever settle?");
 assert.ok(chaotic.includes("Not a single death between them"));
 
-// The death chips count real deaths only (26 Sept 2026): five hunger resets are routine, so a match
-// of five resets and no death is "not a single death", never "5 deaths and still this close" —
-// and a generator is handed the same count.
-const resets = input({ deaths: 0, deathsByPlayer: { edcr: 0, doogile: 0 } });
-assert.ok(buildHookSuggestions(resets).includes("Not a single death between them"));
-assert.ok(!buildHookSuggestions(resets).some((t) => /\d deaths/.test(t)));
-assert.equal(hookFacts(resets).deaths, 0);
+// The death chips read what the POV actually shows, not just `deathKind`'s "real death" label
+// (8 Oct 2026 chip-truth fix): matchScore.ts's own `deaths` still counts real deaths only (a
+// hunger reset is routine there, 26 Sept 2026), but the viewer still watches a death screen for
+// one, so "not a single death" and the "N deaths" count both read `onScreenDeaths(match)` —
+// real cases: 12730175 (five hunger resets, fired "not a single death" under the old code),
+// 13766294 (one).
+const resetTimelines = (n: number) =>
+  Array.from({ length: n }, (_, i) => ({
+    uuid: i % 2 === 0 ? "uuid-l" : "uuid-r",
+    time: i * 10_000,
+    type: "projectelo.timeline.death_spawnpoint",
+  }));
+const resets = input(
+  { deaths: 0, deathsByPlayer: { edcr: 0, doogile: 0 } },
+  { timelines: resetTimelines(5) },
+);
+assert.ok(
+  !buildHookSuggestions(resets).includes("Not a single death between them"),
+  'five on-screen resets are not "not a single death" (12730175)',
+);
+assert.ok(
+  !buildHookSuggestions(resets).some((t) => /\d deaths/.test(t)),
+  "0 real deaths never reaches the >=4 chip either, resets or not",
+);
+assert.equal(hookFacts(resets).deaths, 0, "the external generator still gets the real-death count");
+
+const oneReset = input({ deaths: 0 }, { timelines: resetTimelines(1) });
+assert.ok(
+  !buildHookSuggestions(oneReset).includes("Not a single death between them"),
+  'one on-screen reset is not "not a single death" either (13766294)',
+);
+
+// Genuinely no on-screen death (the default mirrors `deaths: 0` with none at all) is still
+// "not a single death".
+assert.ok(buildHookSuggestions(input({ deaths: 0 })).includes("Not a single death between them"));
+
 assert.ok(buildHookSuggestions(input({ deaths: 4 })).includes("4 deaths and still this close"));
 
 // A DNF is normal (the loser stops once the winner is done), so it must not outrank real drama.
-const dnf = buildHookSuggestions(input({ finishMarginMs: null, leadChanges: 3 }));
+const dnf = buildHookSuggestions(input({ finishMarginMs: null, panelLeadChanges: 3 }));
 assert.equal(dnf[0], "Does the lead ever settle?");
 // "killed", not "reached": a null margin only means the loser never killed the dragon, not that
 // they never got there — accuracy panel, 6 Oct 2026 (match 12396259: the loser entered the End
@@ -143,7 +184,7 @@ assert.ok(!upset.concat(favourite).some((t) => /takes down/.test(t)), "no chip n
 // head-to-head record present the top chip is still a stake — and the top one is what
 // public/app.js drops into the hook input's placeholder.
 const rivalry = buildHookSuggestions(
-  input({ winner: "edcr", finishMarginMs: 2_400, leadChanges: 4 }, ELO_GAP, {
+  input({ winner: "edcr", finishMarginMs: 2_400, panelLeadChanges: 4 }, ELO_GAP, {
     userLeft: user("edcr", "uuid-l", 4),
     userRight: user("doogile", "uuid-r", 11),
     versus: versus(1, 2),
@@ -173,6 +214,7 @@ assert.ok(
       {
         finishMarginMs: 2_400,
         leadChanges: 4,
+        panelLeadChanges: 4,
         deaths: 0,
         resultMs: 411_000,
         splits: [{ label: "Test", aMs: null, bMs: null, gapMs: 65_000, leader: "doogile" }],
@@ -347,7 +389,7 @@ assert.equal(first[1], "Their first 1v1");
 assert.ok(buildHookSuggestions(input({ resultMs: 411_000 })).includes("A sub-7 to win it"));
 assert.ok(buildHookSuggestions(input({ resultMs: 420_000 })).includes("A sub-8 to win it"));
 assert.ok(buildHookSuggestions(input({ resultMs: 599_000 })).includes("A sub-10 to win it"));
-const fast = buildHookSuggestions(input({ resultMs: 411_000, leadChanges: 3 }));
+const fast = buildHookSuggestions(input({ resultMs: 411_000, panelLeadChanges: 3 }));
 assert.ok(
   fast.indexOf("A sub-7 to win it") < fast.indexOf("Does the lead ever settle?"),
   JSON.stringify(fast),
@@ -367,7 +409,7 @@ assert.ok(
 
 // The stake chips are the same without a rivalry to state — a match with no head-to-head record
 // fetched is exactly that case.
-const plain = buildHookSuggestions(input({ finishMarginMs: 2_400, leadChanges: 4, deaths: 0 }));
+const plain = buildHookSuggestions(input({ finishMarginMs: 2_400, panelLeadChanges: 4, deaths: 0 }));
 assert.equal(plain[0], "Decided by 2.4 seconds");
 assert.ok(plain.includes("Does the lead ever settle?"));
 assert.ok(plain.includes("Not a single death between them"));

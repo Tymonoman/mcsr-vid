@@ -438,6 +438,35 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   ("A sub-N to win it", already `hooks.ts`'s own highest-weighted candidate under 8 minutes)
   wherever it would otherwise have won, in both the dashboard's chip list (`shortFlow.ts`) and the
   Short's own `chipHook`/`extrasOf`. Full write-up: `handbook/knowledge/hooks-2026-10-06.md`.
+- **Three more chip-truth fixes, 8 Oct 2026**, ahead of the operator's planned auto-hooks (a match
+  whose hooks go unsaved 6 h after its pick gets the best chip auto-saved, so a chip must be true
+  unattended): an Opus judge reviewing Test & Compare material found the lead-change and no-death
+  chips still checkably false against real matches, and a playoff series' chips reading the wrong
+  game.
+  - **The lead-change chip still counted the two off-panel splits** (`panelLeadChanges`,
+    `MatchMetrics`, `matchScore.ts`): `leadChanges` — the shared field `closenessScore`/`chaosScore`
+    read, so left unchanged, `CACHE_VERSION` untouched — counts every split including "Bastion
+    loot" and "Blaze rod" (`OFF_PANEL_SPLITS`, now exported from `matchScore.ts` so `hooks.ts`'s
+    swing-chip filter and this one share one definition) and the dragon; `panelLeadChanges` is a
+    second field counting only the six the panel shows, excluding the dragon too (it almost always
+    "flips" to the winner, which would let a viewer read the result off the last flip by parity).
+    "Does the lead ever settle?" now reads it. Live-verified: 13560037 (panel 1, old field 3),
+    13782182 (panel 0, old field 2) — the chip fired on both under the old count.
+  - **"Not a single death" counted real deaths only** (`onScreenDeaths(match)`, `matchScore.ts`):
+    a hunger reset is routine in `metrics.deaths` (the chaos score's own term, unchanged, 26 Sept
+    2026) but the POV still shows a death screen for one, so the chip now reads every
+    `death`/`death_spawnpoint` timeline entry regardless of kind. Live-verified false under the
+    old `deaths === 0` test: 12730175 (five hunger resets), 13766294 (one).
+  - **A joined series' chips read game 1's own numbers, not the game that decided it**
+    (`hookFactsMatchId`, `src/playoffs/series.ts`): `matchMeta.ts`'s `readHookSuggestions` and
+    `shortFlow.ts`'s `suggestionsFor` both now build the `HookInput`'s `metrics`/`match` from
+    `series.games`' last entry (chronological, so the last is the one that reached `firstTo`) when
+    the match is a joined series, while the manifest/budget/identity stay keyed on game 1 as
+    before — a margin, a pace or a lead-change chip quoting game 1 can be false of the video once
+    a later game actually decided it.
+  Pinned against real match/series data (fixtures `src/fixtures/match-{13560037,13782182,
+  13766294}.json`, and the real edcr-lauveer Round of 16 record in `series.test.ts`), not a live
+  write.
 - **A subscribe line during the race** (`midRollCtaAtSec`, Settings → Publishing; default 90,
   null = none): the post-roll card in the meta column reaches 25–45% of viewers, the first split
   (~90 s) 50–60% (`npm run retention`, 22 Sept 2026). The meta column shows SUBSCRIBE for
@@ -501,12 +530,33 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   default; `thumbnailRotatePoses` (7 Oct 2026, Settings → Publishing) switches a fresh auto pick
   to deterministic-by-match-id rotation among the pairs actually rendered instead, because 88% of
   uploads were wearing that one pose pair (the 7 Oct packaging audit). An operator's pick and an
-  already-uploaded thumbnail are never touched either way. `RIGHT_RENDER_SIDE` follows the CSS
-  mirror of the right image. The hook text came off on 18 Sept
+  already-uploaded thumbnail are never touched either way. **"cheering-relaxing" (the left runner,
+  arms up) is excluded from every automatic pick** (`RESULT_LOOKING_POSE_KEY`,
+  `thumbnailVariants.ts`; 8 Oct 2026, chip-truth): it reads as the result, spoiling when the left
+  player won and misleading when they didn't, so both `autoDefaultKey`'s rotation and `tc-thumbs`'s
+  SSIM "most different" pick (`tcThumbs.ts`, which had picked it 7 of its first 10 sets) filter it
+  out of their own pool first, falling back to the full list only if that would leave nothing to
+  pick from. The operator can still choose it by hand (`chooseVariant`) — the exclusion is only on
+  the paths nobody reviews. `RIGHT_RENDER_SIDE` follows the CSS mirror of the right image. The hook text came off on 18 Sept
   and its twins were deleted on 24 Sept: an older manifest's `hookText`/`-hook` records are read
   by `readManifest`, hidden by the panel and handed to the title by `carriedHookText`. The
   checklist's thumbnail pill ticks on `chosenBy: "operator"`, and `variantStillReusable` keeps a
   PNG already on disk, so the layout reaches only matches rendered after it.
+- **`npm run tc-thumbs -- <matchId…>`** builds a Test & Compare set per match
+  (`<mediaDir>/<id>/tc/`: the live pose as a control, the most-different already-rendered pose by
+  SSIM, and the live pose re-rendered with a short on-image caption, `src/thumbnails/tcThumbs.ts`).
+  **The caption (`.thumb-caption`, `remotion/overlay.source.css`; `tcCaption.ts`) was unreadable
+  and sometimes wrong at YouTube's 168x94 thumbnail size, fixed 8 Oct 2026 (chip-truth, verified by
+  rendering stills and reading the PNGs at that size, not just by eye on the full canvas):** the
+  font grew 56px to 76px so it is actually legible that small, `CAPTION_MAX_CHARS` tightened 14 to
+  9 to match what still fits at the larger size (the longest clean token, "1:36 LEAD"), a
+  decimal-seconds margin and the lead-change question are now dropped outright rather
+  than squeezed (no clean short form exists, and `shortenHookChip` returns null — "a caption is a
+  clean token or nothing"), and no template glues a bare "S" unit onto a digit any more ("1.3S" +
+  Monocraft read as "1.35"; "48S LEAD?" had the same problem) — a whole number of seconds keeps a
+  space before "SEC" instead. The byte-identical-when-`caption`-absent pin
+  (`thumbnailCaption.render.test.ts`) still holds; its own box widened slightly for the bigger font
+  and is checked against both the shortest live token and the longest approved one.
 - **`videos.insert` is the only call the audit gated** (`youtubeUploadEnabled`). `playlistItems.insert`,
   `thumbnails.set`, `commentThreads.insert` and `videos.update` are all inside the token's
   `force-ssl` scope, so **Finish on YouTube** repairs a Studio upload too: playlists, the pinned

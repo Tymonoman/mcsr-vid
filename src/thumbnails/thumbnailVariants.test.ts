@@ -263,35 +263,51 @@ config.thumbnailRotatePoses = true;
 try {
   const keys = ["walking-crossed", "cheering-relaxing", "marching-crouching"];
   assert.equal(autoDefaultKey(13525852, keys), autoDefaultKey(13525852, keys), "stable for the same id");
-  assert.equal(autoDefaultKey(13525852, keys), "cheering-relaxing", "13525852 % 3 === 1");
+  // "cheering-relaxing" shows the left runner with arms up -- it reads as the match's result, so
+  // the rotation must never land on it automatically (8 Oct 2026, chip-truth): excluded from the
+  // pool first, 13525852 lands on the first remaining key ("walking-crossed", 13525852 % 2 === 0
+  // of the two-entry safe pool) and a wide sweep of ids never picks it either.
+  assert.equal(autoDefaultKey(13525852, keys), "walking-crossed", "13525852 % 2 === 0 of the safe pool");
+  for (let id = 0; id < 50; id++) {
+    assert.notEqual(autoDefaultKey(id, keys), "cheering-relaxing", `id ${id} must never auto-pick it`);
+  }
   assert.equal(autoDefaultKey(10, ["only-one"]), "only-one", "nothing to rotate between");
-  // A match with no usable id (a test fixture, a malformed record) keeps the first variant rather
-  // than indexing with NaN and handing renderThumbnailVariants an undefined key (7 Oct 2026).
+  // Excluding the result-looking pose must not crash a config that renders only that one pose
+  // pair -- the exclusion falls back to the full list rather than indexing an empty array.
+  assert.equal(autoDefaultKey(10, ["cheering-relaxing"]), "cheering-relaxing", "nothing else to pick");
+  // A match with no usable id (a test fixture, a malformed record) keeps the first safe variant
+  // rather than indexing with NaN and handing renderThumbnailVariants an undefined key (7 Oct 2026).
   assert.equal(
     autoDefaultKey(undefined as unknown as number, keys),
     "walking-crossed",
-    "no id: first variant",
+    "no id: first safe variant",
   );
 
   // End to end: a fresh render (no manifest yet) with rotation on picks the rotated key as the
-  // auto default, through the real renderThumbnailVariants, not just the pure helper.
+  // auto default, through the real renderThumbnailVariants, not just the pure helper -- and still
+  // never the result-looking pose (13525853, odd, lands on the safe pool's second entry).
   const dir2 = await mkdtemp(path.join(tmpdir(), "mcsr-variants-rotate-"));
   for (const p of pairs) await writeFile(path.join(dir2, variantFile(p)), `${p.left} plain`, "utf8");
   const matchArgs = {
     ...renderArgs,
     outDir: dir2,
-    match: { tag: null, changes: [], id: 13525852 } as unknown as MatchInfo,
+    match: { tag: null, changes: [], id: 13525853 } as unknown as MatchInfo,
   };
   const rotated = await renderThumbnailVariants(matchArgs);
-  assert.equal(rotated.chosen, "cheering-relaxing", "rotated away from the first variant");
+  assert.equal(
+    rotated.chosen,
+    "marching-crouching",
+    "rotated away from the first variant, never to cheering-relaxing",
+  );
   assert.equal(rotated.chosenBy, "auto");
 
   // An operator's pick, or one already chosen (auto or not), is never rotated out from under a
-  // re-render -- the flag only ever decides the FIRST auto choice.
-  const operatorPicked = await chooseVariant(dir2, "marching-crouching");
+  // re-render -- the flag only ever decides the FIRST auto choice. The operator can still choose
+  // the result-looking pose themself; only the automatic paths refuse it.
+  const operatorPicked = await chooseVariant(dir2, "cheering-relaxing");
   assert.equal(operatorPicked.chosenBy, "operator");
   const again = await renderThumbnailVariants(matchArgs);
-  assert.equal(again.chosen, "marching-crouching", "an operator's pick is never rotated away");
+  assert.equal(again.chosen, "cheering-relaxing", "an operator's own pick is never rotated away");
   assert.equal(again.chosenBy, "operator");
 
   await rm(dir2, { recursive: true, force: true });

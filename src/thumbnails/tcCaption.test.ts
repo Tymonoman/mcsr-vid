@@ -4,7 +4,8 @@ import type { MatchMetrics } from "../pipeline/matchScore.js";
 import type { HookInput } from "../pipeline/hooks.js";
 import type { MatchInfo, UserDetails } from "../api/types.js";
 
-const user = (nickname: string, uuid: string): UserDetails => ({ nickname, uuid, eloRate: 1900 }) as unknown as UserDetails;
+const user = (nickname: string, uuid: string): UserDetails =>
+  ({ nickname, uuid, eloRate: 1900 }) as unknown as UserDetails;
 
 function input(over: Partial<MatchMetrics>): HookInput {
   const metrics: MatchMetrics = {
@@ -19,12 +20,27 @@ function input(over: Partial<MatchMetrics>): HookInput {
     comparedSplits: 8,
     maxLeadMs: 0,
     leadChanges: 0,
+    panelLeadChanges: 0,
     maxSwingMs: 0,
     deaths: 0,
     deathsByPlayer: {},
     ...over,
   };
-  const match = { forfeited: false, changes: [], result: { uuid: null, time: metrics.resultMs }, players: [] } as unknown as MatchInfo;
+  // onScreenDeaths (hooks.ts's "not a single death" chip, 8 Oct 2026 chip-truth fix) reads
+  // `match.timelines` directly; mirroring `deaths` with that many ordinary death entries keeps
+  // every case below behaving the way its `deaths` field already says.
+  const timelines = Array.from({ length: metrics.deaths }, (_, i) => ({
+    uuid: `uuid-death-${i}`,
+    time: 0,
+    type: "projectelo.timeline.death",
+  }));
+  const match = {
+    forfeited: false,
+    changes: [],
+    result: { uuid: null, time: metrics.resultMs },
+    players: [],
+    timelines,
+  } as unknown as MatchInfo;
   return {
     metrics,
     match,
@@ -35,17 +51,23 @@ function input(over: Partial<MatchMetrics>): HookInput {
   };
 }
 
-// Every shape `src/pipeline/hooks.ts` `candidates()` can produce, including the task's own two
-// worked examples ("58 MS", a lead-survive hook): one assertion each, so a future hooks.ts
+// Every shape `src/pipeline/hooks.ts` `candidates()` can produce, including the task's own
+// approved tokens ("58 MS", "SUB-9", "1:36 LEAD"): one assertion each, so a future hooks.ts
 // template that forgets to teach this module shows up as a silent `null`, not a wrong caption.
+// Two templates are dropped outright now (8 Oct 2026 chip-truth): "Does the lead ever settle?"
+// has no clean short token (broken-English "LEAD SETTLE?" read wrong, and nothing shorter still
+// says what it means), and a decimal margin ("Decided by 1.3 seconds") would need an "S" glued
+// right onto a digit to abbreviate ("1.3S" reads as "1.35" in Monocraft) — the margin caption only
+// survives for a whole number of seconds, where "N SEC" has a space before the unit.
 assert.equal(shortenHookChip("Decided by 58 milliseconds"), "58 MS");
-assert.equal(shortenHookChip("Decided by 1.3 seconds"), "1.3S DECIDED");
-assert.equal(shortenHookChip("Decided by 1 second"), "1S DECIDED");
+assert.equal(shortenHookChip("Decided by 2 seconds"), "2 SEC");
+assert.equal(shortenHookChip("Decided by 1 second"), "1 SEC");
+assert.equal(shortenHookChip("Decided by 1.3 seconds"), null, "a decimal margin has no clean token, dropped");
 assert.equal(shortenHookChip("A sub-8 to win it"), "SUB-8");
 assert.equal(shortenHookChip("A sub-10 to win it"), "SUB-10");
-assert.equal(shortenHookChip("Does the lead ever settle?"), "LEAD SETTLE?");
-assert.equal(shortenHookChip("Can a 1:36 lead survive?"), "1:36 LEAD?");
-assert.equal(shortenHookChip("Can a 45-second lead survive?"), "45S LEAD?");
+assert.equal(shortenHookChip("Does the lead ever settle?"), null, "no clean token reads right, dropped");
+assert.equal(shortenHookChip("Can a 1:36 lead survive?"), "1:36 LEAD");
+assert.equal(shortenHookChip("Can a 45-second lead survive?"), "45 LEAD", "no glued S unit either");
 assert.equal(shortenHookChip("4 deaths and still this close"), "4 DEATHS");
 assert.equal(shortenHookChip("Not a single death between them"), "0 DEATHS");
 assert.equal(shortenHookChip("Rematch: left leads 19-7"), "19-7 REMATCH");
@@ -55,18 +77,29 @@ assert.equal(shortenHookChip("It ended in a forfeit"), "A FORFEIT");
 assert.equal(shortenHookChip("One of them never killed the dragon"), "NO DRAGON KILL");
 assert.equal(shortenHookChip("THE DUALITY OF MAN"), null, "freeform prose has no known template");
 
-// Every shortened chip above must actually fit the caption's own budget.
+// Every shortened chip below must actually fit the caption's own (now tighter) budget — the
+// rematch and dragon-kill templates above are legitimately over it and `pickCaption` skips them
+// (checked separately below), not asserted here.
 for (const hook of [
   "Decided by 58 milliseconds",
+  "Decided by 2 seconds",
+  "Decided by 1 second",
   "A sub-10 to win it",
-  "Does the lead ever settle?",
   "Can a 1:36 lead survive?",
-  "Rematch: left leads 19-7",
-  "One of them never killed the dragon",
+  "Can a 45-second lead survive?",
+  "4 deaths and still this close",
+  "Not a single death between them",
+  "Their first 1v1",
+  "It ended in a forfeit",
 ]) {
   const short = shortenHookChip(hook)!;
   assert.ok(short.length <= CAPTION_MAX_CHARS, `"${short}" (from "${hook}") is ${short.length} chars`);
 }
+assert.ok(
+  shortenHookChip("Rematch: left leads 19-7")!.length > CAPTION_MAX_CHARS,
+  "a rematch token is legitimately over budget and must be skipped, not shortened further",
+);
+assert.ok(shortenHookChip("One of them never killed the dragon")!.length > CAPTION_MAX_CHARS);
 
 const players = [{ nickname: "left" }, { nickname: "right" }];
 
@@ -81,23 +114,35 @@ function checkPicked(over: Partial<MatchMetrics>, expectedCaption: string) {
 }
 
 // The ten real Test & Compare matches (handbook/knowledge/experiments.md), metrics read live
-// 7 Oct 2026 — pickCaption's choice must match `buildHookSuggestions`' own top-weighted chip for
-// each, shortened, and clear every check.
-checkPicked({ finishMarginMs: 12_054, leadChanges: 3, deaths: 0, resultMs: 493_570 }, "LEAD SETTLE?"); // 13673240
-checkPicked({ finishMarginMs: 1_259, leadChanges: 2, deaths: 0, resultMs: 559_394 }, "1.3S DECIDED"); // 13395245
-checkPicked({ finishMarginMs: 14_682, leadChanges: 1, deaths: 0, resultMs: 532_425 }, "SUB-9"); // 13473906
-checkPicked({ finishMarginMs: 10_383, leadChanges: 0, deaths: 0, resultMs: 548_267 }, "SUB-10"); // 13672776
-checkPicked({ finishMarginMs: 584, leadChanges: 2, deaths: 1, resultMs: 746_168 }, "0.6S DECIDED"); // 13705853
-checkPicked({ finishMarginMs: 58, leadChanges: 4, deaths: 0, resultMs: 562_387 }, "58 MS"); // 13704828
-checkPicked({ finishMarginMs: null, leadChanges: 0, deaths: 0, resultMs: 463_204 }, "SUB-8"); // 13305732
-checkPicked({ finishMarginMs: 1_607, leadChanges: 4, deaths: 0, resultMs: 542_517 }, "1.6S DECIDED"); // 13223455
-checkPicked({ finishMarginMs: 17_070, leadChanges: 0, deaths: 0, resultMs: 649_755 }, "0 DEATHS"); // 13766294
-checkPicked({ finishMarginMs: 7_131, leadChanges: 5, deaths: 0, resultMs: 645_655 }, "LEAD SETTLE?"); // 13391780
+// 7 Oct 2026 — pickCaption's choice must match `buildHookSuggestions`' own top-weighted chip that
+// both shortens and fits, for each, and clear every check. Re-pinned 8 Oct 2026 (chip-truth): the
+// "Does the lead ever settle?" and decimal-seconds templates these cases used to pick are now
+// dropped (see above), so several move to the next-best real chip for the same match.
+checkPicked({ finishMarginMs: 12_054, panelLeadChanges: 3, deaths: 0, resultMs: 493_570 }, "SUB-9"); // 13673240
+checkPicked({ finishMarginMs: 1_259, panelLeadChanges: 2, deaths: 0, resultMs: 559_394 }, "SUB-10"); // 13395245
+checkPicked({ finishMarginMs: 14_682, panelLeadChanges: 1, deaths: 0, resultMs: 532_425 }, "SUB-9"); // 13473906
+checkPicked({ finishMarginMs: 10_383, panelLeadChanges: 0, deaths: 0, resultMs: 548_267 }, "SUB-10"); // 13672776
+checkPicked({ finishMarginMs: 58, panelLeadChanges: 4, deaths: 0, resultMs: 562_387 }, "58 MS"); // 13704828
+checkPicked({ finishMarginMs: null, panelLeadChanges: 0, deaths: 0, resultMs: 463_204 }, "SUB-8"); // 13305732
+checkPicked({ finishMarginMs: 1_607, panelLeadChanges: 4, deaths: 0, resultMs: 542_517 }, "SUB-10"); // 13223455
+checkPicked({ finishMarginMs: 17_070, panelLeadChanges: 0, deaths: 0, resultMs: 649_755 }, "0 DEATHS"); // 13766294
+checkPicked({ finishMarginMs: 7_131, panelLeadChanges: 5, deaths: 0, resultMs: 645_655 }, "0 DEATHS"); // 13391780
+
+// 13705853 (margin 584ms, 2 panel lead changes, 1 real death, 746.2s): every candidate the old
+// panel had for it — the decimal margin, the lead-settle question — is now a dropped template,
+// deaths is 1 (neither "0 DEATHS" nor the >=4 chip applies), and the match ran too long for a
+// sub-N chip. No real `hooks.ts` candidate survives shortening, so the caption is "nothing" — the
+// one correct answer per the task's own rule, not a made-up token.
+assert.equal(
+  pickCaption(input({ finishMarginMs: 584, panelLeadChanges: 2, deaths: 1, resultMs: 746_168 }), players),
+  null,
+  "no clean token survives for 13705853 — the caption is absent, not a broken one",
+);
 
 // A denied label never reaches a caption, even shortened past recognition — the check runs on
 // the shortened text, not just the source chip, so this is a real regression guard rather than
 // a restatement of hookLabelProblem's own test.
 assert.equal(shortenHookChip("Rematch: left leads 19-7"), "19-7 REMATCH");
-assert.equal(pickCaption(input({ leadChanges: 3 }), players)?.checks.hookLabelProblem, null);
+assert.equal(pickCaption(input({ panelLeadChanges: 3 }), players)?.checks.hookLabelProblem, null);
 
 console.log("tcCaption: all checks passed");

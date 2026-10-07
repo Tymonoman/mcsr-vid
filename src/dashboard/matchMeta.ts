@@ -18,7 +18,12 @@ import {
   playoffSeriesTail,
   playoffTitleTail,
 } from "../playoffs/playoffs.js";
-import { readSeriesRecord, seriesShortGame } from "../playoffs/series.js";
+import {
+  hookFactsMatchId,
+  readSeriesRecord,
+  seriesShortGame,
+  type SeriesRecord,
+} from "../playoffs/series.js";
 import { readManifest } from "../thumbnails/thumbnailVariants.js";
 import { readIfPresent } from "../youtube/youtubeStore.js";
 import { matchStatusFor } from "./matchStatus.js";
@@ -51,7 +56,7 @@ export async function readMeta(matchId: number) {
         ? { suffix: playoffTitleTail(playoff) }
         : {}),
   });
-  const hookSuggestions = await readHookSuggestions(matchId, budget);
+  const hookSuggestions = await readHookSuggestions(matchId, budget, series);
 
   return {
     matchId,
@@ -113,10 +118,18 @@ export async function readMeta(matchId: number) {
  * budget, so it is affordable; it would not be if this ran per row of the suggestions list.
  * A failure degrades to no suggestions rather than failing the whole metadata response, since
  * the title and description are still perfectly editable without them.
+ *
+ * A joined series reads the game that actually decided it (`hookFactsMatchId`, 8 Oct 2026
+ * chip-truth), not game 1's own numbers — `matchId` itself stays game 1's for the manifest read
+ * below, since that is where the committed hook actually lives.
  */
-async function readHookSuggestions(matchId: number, budget: BuiltTitle): Promise<string[]> {
+async function readHookSuggestions(
+  matchId: number,
+  budget: BuiltTitle,
+  series: SeriesRecord | null,
+): Promise<string[]> {
   try {
-    const match = await getMatch(matchId);
+    const match = await getMatch(hookFactsMatchId(matchId, series));
     const [left, right] = match.players;
     if (!left || !right) return [];
     const [userLeft, userRight, versus] = await Promise.all([

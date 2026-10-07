@@ -92,6 +92,20 @@ export async function readSeriesRecord(outDir: string): Promise<SeriesRecord | n
   }
 }
 
+/**
+ * Which game's own match data a hook chip must read: the game that actually decided the series,
+ * not game 1's — `record.games` is chronological (`slotGames`, playoffs.ts), so its last entry is
+ * the one that reached `firstTo`. A margin, a pace or a lead-change chip quoting game 1's numbers
+ * can be checkably false of the video once a later game decided it instead (8 Oct 2026
+ * chip-truth: live-verified on the edcr-lauveer Round of 16, where game 1's 550s/9.9s-margin facts
+ * are not game 5's, the one that actually clinched it). `matchId` unchanged with no series — the
+ * ordinary case, and a series with no games recorded yet (should not happen for a joined one).
+ */
+export function hookFactsMatchId(matchId: number, series: SeriesRecord | null): number {
+  if (!series || series.games.length === 0) return matchId;
+  return series.games[series.games.length - 1]!.matchId;
+}
+
 /** The file's length in seconds; 0 when ffprobe cannot read it. */
 export const probeDuration = (file: string): Promise<number> =>
   new Promise((resolve, reject) => {

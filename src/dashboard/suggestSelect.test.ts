@@ -126,6 +126,7 @@ const pooled = (matchId: number, players: [string, string], finishMarginMs: numb
     comparedSplits: 0,
     maxLeadMs: 60_000,
     leadChanges: 0,
+    panelLeadChanges: 0,
     maxSwingMs: 0,
     deaths: 0,
     deathsByPlayer: {},

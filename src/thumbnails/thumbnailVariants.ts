@@ -181,17 +181,30 @@ export function carriedChoice(previous: VariantsManifest | null): string | undef
 }
 
 /**
+ * "cheering-relaxing" shows the left runner with arms up — on screen it reads as the match's
+ * result (a celebration if the left player won, a misleading one if they didn't), so nothing
+ * automatic may land on it: not this rotation, not Test & Compare's most-different pick
+ * (`tcThumbs.ts`, which picked it 7 of 10 times before this fix). The operator can still choose it
+ * by hand (`chooseVariant`) — this only keeps it out of a pick nobody reviewed (8 Oct 2026,
+ * chip-truth).
+ */
+export const RESULT_LOOKING_POSE_KEY = "cheering-relaxing";
+
+/**
  * Which pose pair the auto default picks when nobody has chosen one yet (an operator's pick, or
  * a choice already carried from an earlier manifest, never reaches this). `config.thumbnailRotatePoses`
  * off (default) keeps today's exact behaviour: always the first variant, the look every match has
  * shipped with. On, it picks deterministically by match id among the keys actually rendered, so
  * the auto default is not the same pose pair 88% of the time (7 Oct 2026 packaging audit) — same
  * match id, same pick every re-render, so a render retried before any choice is saved does not
- * flap between poses.
+ * flap between poses. Either way, `RESULT_LOOKING_POSE_KEY` is excluded from the pool first (falls
+ * back to the full list only if that pool would otherwise be empty, which no default config does).
  */
 export function autoDefaultKey(matchId: number, keys: readonly string[]): string {
-  if (!config.thumbnailRotatePoses || keys.length <= 1 || !Number.isFinite(matchId)) return keys[0]!;
-  return keys[((matchId % keys.length) + keys.length) % keys.length]!;
+  const safe = keys.filter((k) => k !== RESULT_LOOKING_POSE_KEY);
+  const pool = safe.length > 0 ? safe : keys;
+  if (!config.thumbnailRotatePoses || pool.length <= 1 || !Number.isFinite(matchId)) return pool[0]!;
+  return pool[((matchId % pool.length) + pool.length) % pool.length]!;
 }
 
 /**

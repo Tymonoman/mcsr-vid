@@ -94,6 +94,7 @@ const {
   chapterStarts,
   concatList,
   gameMatchStarts,
+  hookFactsMatchId,
   readSeriesRecord,
   renderSeries,
   seriesShortGame,
@@ -481,5 +482,45 @@ writeFileSync(
   JSON.stringify({ pick: 0, startMs: 1, fromMatchId: 102 }),
 );
 assert.equal(await seriesShortGame(101), 102);
+
+/* --- hookFactsMatchId: a series video's hook chips read the clinching game, not game 1 --------
+   (8 Oct 2026, chip-truth). Real record, edcr-lauveer Round of 16 (/media/13303619/series.json,
+   assembled 22 Sept 2026): 5 games, edcr won games 1/3/5, so game 5 is the one that actually
+   decided it — game 1's own margin, pace and lead-change facts are not the video's whole story
+   once four more games followed it. */
+{
+  const realSeries: import("./series.js").SeriesRecord = {
+    season: 11,
+    slotId: 9,
+    round: "Round of 16",
+    bestOf: 5,
+    firstTo: 3,
+    seeds: [
+      { uuid: "635f35ee69ed4f0c94ff26ece4818956", nickname: "edcr", label: "#1 seed", seasonEloRate: 2688 },
+      { uuid: "410e5776b03a424d8740557bac2d9014", nickname: "lauveer", label: "LCQ", seasonEloRate: 2137 },
+    ],
+    games: [
+      { matchId: 13303619, gameNo: 1, winnerUuid: "635f35ee69ed4f0c94ff26ece4818956", durationSec: 550.4 },
+      { matchId: 13303909, gameNo: 2, winnerUuid: "410e5776b03a424d8740557bac2d9014", durationSec: 646.067 },
+      { matchId: 13304282, gameNo: 3, winnerUuid: "635f35ee69ed4f0c94ff26ece4818956", durationSec: 614.7 },
+      { matchId: 13304568, gameNo: 4, winnerUuid: "410e5776b03a424d8740557bac2d9014", durationSec: 656.017 },
+      { matchId: 13304815, gameNo: 5, winnerUuid: "635f35ee69ed4f0c94ff26ece4818956", durationSec: 550.7 },
+    ],
+    assembledAt: "2026-09-22T09:26:59.484Z",
+    shortFromMatchId: 13304815,
+  };
+  assert.equal(
+    hookFactsMatchId(13303619, realSeries),
+    13304815,
+    "the clinching game (5), not game 1 (its own directory)",
+  );
+  assert.equal(hookFactsMatchId(13303619, null), 13303619, "no series: the match itself, unchanged");
+  assert.equal(
+    hookFactsMatchId(13303619, { ...realSeries, games: [] }),
+    13303619,
+    "a series record with no games recorded falls back to the match itself",
+  );
+  console.log("OK: hookFactsMatchId reads the game that decided the series, not game 1");
+}
 
 console.log("series: all checks passed");
