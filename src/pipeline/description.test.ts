@@ -2,8 +2,13 @@ import assert from "node:assert/strict";
 import {
   buildDescription,
   buildTags,
+  closerFor,
+  CLOSER_VARIANTS,
   LAST_MEETING,
+  subscribeLineFor,
   SUBSCRIBE_LINE,
+  SUBSCRIBE_LINE_VARIANTS,
+  variantIndex,
   withLastMeeting,
   type DescriptionInput,
 } from "./description.js";
@@ -303,6 +308,72 @@ assert.ok(tagsFor(match({ seedType: "VILLAGE", bastionType: "BRIDGE" })).join(",
   assert.equal(withLastMeeting(bare, "AAAAAAAAAAA").split("\n\n").length, bare.split("\n\n").length);
   // No template, no line.
   assert.equal(withLastMeeting("0:00 intro", "AAAAAAAAAAA"), "0:00 intro");
+}
+
+// --- copyVariety (off by default: byte-identical to today) -----------------------------------
+{
+  // Off (the default, and every build above that never set it) is always index 0 — today's
+  // exact wording, whatever the match id.
+  assert.equal(closerFor(12730175, false), CLOSER_VARIANTS[0]);
+  assert.equal(closerFor(12730175, undefined), CLOSER_VARIANTS[0]);
+  assert.equal(closerFor(undefined, true), CLOSER_VARIANTS[0], "no id to key off is index 0 too");
+  assert.equal(subscribeLineFor(12730175, false), SUBSCRIBE_LINE_VARIANTS[0]);
+  assert.equal(subscribeLineFor(undefined, true), SUBSCRIBE_LINE_VARIANTS[0]);
+
+  // On: deterministic by match id, so a re-render of the same match keeps its phrasing.
+  const onceA = closerFor(12730175, true);
+  const onceB = closerFor(12730175, true);
+  assert.equal(onceA, onceB, "the same match id always picks the same variant");
+  assert.equal(onceA, CLOSER_VARIANTS[variantIndex(12730175, 0, CLOSER_VARIANTS.length)]);
+  assert.equal(
+    subscribeLineFor(12730175, true),
+    SUBSCRIBE_LINE_VARIANTS[variantIndex(12730175, 1, SUBSCRIBE_LINE_VARIANTS.length)],
+  );
+  // The closer and the subscribe line are salted differently, so the same match id need not pick
+  // the same index in both pools — the lockstep this fix removes (review finding, 7 Oct 2026).
+  assert.notEqual(
+    variantIndex(12730175, 0, CLOSER_VARIANTS.length),
+    variantIndex(12730175, 1, SUBSCRIBE_LINE_VARIANTS.length),
+    "a fixture that actually exercises independent pools",
+  );
+
+  // Every variant keeps the same facts (unaffiliated fan channel, synced off the countdown,
+  // splits/elo from the API, invite to report a sync slip) and the house style (no em dash, no
+  // exclamation mark, no banned words).
+  for (const variant of CLOSER_VARIANTS) {
+    assert.match(variant, /^fan channel, mcsr ranked has no idea i exist\./);
+    assert.match(variant, /countdown/);
+    assert.match(variant, /splits.*elo.*ranked api|ranked api.*splits.*elo/s);
+    assert.match(variant, /comments/);
+    assert.doesNotMatch(variant, /[!—]/, `no exclamation mark or em dash: ${variant}`);
+  }
+  assert.equal(new Set(CLOSER_VARIANTS).size, CLOSER_VARIANTS.length, "no two phrasings the same");
+
+  for (const variant of SUBSCRIBE_LINE_VARIANTS) {
+    assert.match(variant, /every day/);
+    assert.match(variant, /subscribe/);
+    assert.match(variant, /the next/);
+    assert.doesNotMatch(variant, /[!—]|don'?t miss/i, `house style: ${variant}`);
+  }
+  assert.equal(
+    new Set(SUBSCRIBE_LINE_VARIANTS).size,
+    SUBSCRIBE_LINE_VARIANTS.length,
+    "no two phrasings the same",
+  );
+
+  // Wired into the actual description: on picks the match id's variant, off stays the canonical
+  // text pinned by the assertions at the top of this file.
+  const on = build(match(), { copyVariety: true });
+  const paragraphs = on.split("\n\n");
+  assert.equal(
+    paragraphs[1],
+    SUBSCRIBE_LINE_VARIANTS[variantIndex(12730175, 1, SUBSCRIBE_LINE_VARIANTS.length)],
+  );
+  assert.equal(paragraphs.at(-2), CLOSER_VARIANTS[variantIndex(12730175, 0, CLOSER_VARIANTS.length)]);
+  // An id that happens to hash to index 0 is still, correctly, today's wording even with
+  // copyVariety on.
+  const zeroId = [...Array(5000).keys()].find((id) => variantIndex(id, 0, CLOSER_VARIANTS.length) === 0)!;
+  assert.equal(closerFor(zeroId, true), CLOSER_VARIANTS[0]);
 }
 
 console.log("description: all checks passed");

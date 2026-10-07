@@ -412,6 +412,8 @@ async function writeSeriesText(
     bracketUrl: playoffsBracketUrl(record.season),
     playlistUrl: config.youtubePlaylistUrl,
     supportUrl: config.supportUrl,
+    matchId: firstGameId,
+    copyVariety: config.copyVariety,
   });
   await writeFile(path.join(outDir, `match-${firstGameId}.description.txt`), description, "utf8");
   // The chapter paragraph is the one that opens at 0:00, wherever the template puts it.

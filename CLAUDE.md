@@ -583,7 +583,11 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   blind travel, X or Y?"; it never reads the result), the sync line, "more matches like this" with the
   pair's playlist (a read-only lookup — a pair's playlist is only created on its second video — else the
   left player's, else the season's) and the tip jar; the subscribe line lives in the description, not
-  here. The DM (`src/dashboard/playerDm.ts`), when the pick has the model's `playerMoments` and the
+  here. `copyVariety` (7 Oct 2026, off by default): rotates this sync sentence and the description's
+  closer and subscribe-line paragraphs through a few phrasings of the same facts, each keyed off the
+  match id by its own salt (`variantIndex`, `src/pipeline/description.ts`) so the three don't always
+  move together, and a re-render or re-upload keeps its own phrasing rather than the one
+  byte-identical sentence every video carried before. The DM (`src/dashboard/playerDm.ts`), when the pick has the model's `playerMoments` and the
   video is on YouTube, hands the runner a `?t=` link to their own moment and asks "ok if i keep posting
   your matches?" (API spelling, the channel named, the takedown offer kept); sending it is the
   operator's. When

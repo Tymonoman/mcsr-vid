@@ -169,6 +169,15 @@ export const SETTINGS: readonly SettingField[] = [
     help: "Off: a fresh render's auto-picked thumbnail is always the first pose pair (today's look on every match). On: it picks deterministically by match id among the pose pairs actually rendered, so the auto default is not the same pose on 88% of uploads. An operator's pick and an already-uploaded thumbnail are never touched either way.",
     kind: "boolean",
     group: "Publishing",
+    unattended: true,
+  },
+  {
+    key: "copyVariety",
+    label: "Vary the pinned comment and description wording",
+    help: "Rotates the pinned comment's sync line and the description's closer and subscribe lines through a few phrasings of the same facts, one per match id, so a re-render or re-upload keeps the same wording. Off is today's single byte-identical wording on every video.",
+    kind: "boolean",
+    group: "Publishing",
+    unattended: true,
   },
   {
     key: "youtubeAutoFinish",

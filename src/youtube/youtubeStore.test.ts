@@ -6,7 +6,14 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { config } from "../config.js";
-import { CLOSER, LAST_MEETING, SUBSCRIBE_LINE } from "../pipeline/description.js";
+import {
+  CLOSER,
+  CLOSER_VARIANTS,
+  LAST_MEETING,
+  SUBSCRIBE_LINE,
+  SUBSCRIBE_LINE_VARIANTS,
+  variantIndex,
+} from "../pipeline/description.js";
 import {
   lastMeetingFor,
   nicknameWarnings,
@@ -216,8 +223,7 @@ const seriesRecord: SeriesRecord = {
 // title gains " | Minecraft Speedrun" because it fits in 100 characters.
 write(105, {
   "series.json": JSON.stringify(seriesRecord),
-  "match-105.title.edited.txt":
-    "The series | 7rowl vs Pinne | MCSR Ranked S11 Playoffs · Round of 16\n",
+  "match-105.title.edited.txt": "The series | 7rowl vs Pinne | MCSR Ranked S11 Playoffs · Round of 16\n",
   "match-105.description.txt": [
     "7rowl vs Pinne, mcsr ranked season 11 playoffs, round of 16, best of 5. every game of the series.",
     "",
@@ -255,8 +261,7 @@ write(105, {
 // 106: an operator-edited description is never touched.
 write(106, {
   "series.json": JSON.stringify(seriesRecord),
-  "match-106.title.edited.txt":
-    "The series | 7rowl vs Pinne | MCSR Ranked S11 Playoffs · Round of 16\n",
+  "match-106.title.edited.txt": "The series | 7rowl vs Pinne | MCSR Ranked S11 Playoffs · Round of 16\n",
   "match-106.description.txt": "0:00 game 1\n",
   "match-106.description.edited.txt": "operator edited description\n0:00 game 1\n10:00 game 2\n",
 });
@@ -468,6 +473,65 @@ const hookTitle = (hook: string, pair: string) => `${hook} | ${pair} | ${TAIL}`;
   assert.deepEqual(await nicknameWarnings(hookTitle("BEEF vs X", "Zed vs Wil"), 400), [
     '"BEEF" stood for Skycrab on 2026-09-02 — one nickname per player',
   ]);
+}
+
+// --- copyVariety (6 Oct 2026): off is byte for byte today's wording; on picks one of a few --
+// phrasings by match id, and a repeated upload-text computation (the kit, a retry, the adopt
+// route, all of which call uploadTextFor again) must not grow a second copy of either line.
+{
+  // id 40's closer and subscribe-line indices differ (the independence this fix adds) and both
+  // are non-canonical, so the fixture below exercises a distinct variant of each pool, not one
+  // shared index (review finding, 7 Oct 2026: both pools used to be keyed off the identical
+  // `matchId % 4`).
+  const matchId = 40;
+  const closerIdx = variantIndex(matchId, 0, CLOSER_VARIANTS.length);
+  const subscribeIdx = variantIndex(matchId, 1, SUBSCRIBE_LINE_VARIANTS.length);
+  assert.notEqual(closerIdx, 0, "the fixture must exercise a non-canonical closer variant");
+  assert.notEqual(subscribeIdx, 0, "the fixture must exercise a non-canonical subscribe variant");
+  assert.notEqual(closerIdx, subscribeIdx, "the fixture must show the two pools picking different variants");
+  // What `buildDescription` itself would have written to disk for this match rendered with
+  // copyVariety on: this match id's own variant of each line, not the canonical text.
+  const variantModern = (matchId: number, pair: string) =>
+    modern(matchId, pair)
+      .replace(SUBSCRIBE_LINE, SUBSCRIBE_LINE_VARIANTS[subscribeIdx]!)
+      .replace(CLOSER, CLOSER_VARIANTS[closerIdx]!);
+  write(matchId, {
+    [`match-${matchId}.title.edited.txt`]: `Hook | Cc vs Dd | ${TAIL}\n`,
+    [`match-${matchId}.description.txt`]: variantModern(matchId, "Cc vs Dd"),
+  });
+
+  config.copyVariety = true;
+  try {
+    const text40 = (await uploadTextFor(matchId, "video")).description;
+    assert.ok(text40.includes(CLOSER_VARIANTS[closerIdx]!), text40);
+    assert.ok(!text40.includes(CLOSER), "replaced by this match's own variant, not the canonical one");
+    assert.ok(text40.includes(SUBSCRIBE_LINE_VARIANTS[subscribeIdx]!), text40);
+    assert.ok(!text40.includes(SUBSCRIBE_LINE));
+    // Exactly one of each paragraph — not the variant plus a second, canonical copy.
+    assert.equal(text40.split(CLOSER_VARIANTS[closerIdx]!).length, 2);
+    assert.equal(text40.split(SUBSCRIBE_LINE_VARIANTS[subscribeIdx]!).length, 2);
+
+    // Computing the upload text again (every retry and every kit page view does) must be a
+    // no-op: before the fix, the subscribe-line check only ever looked for index 0, so a
+    // description already carrying a different variant read as "missing it" and gained a
+    // second copy on every single call.
+    const again = (await uploadTextFor(matchId, "video")).description;
+    assert.equal(again, text40, "a second computation changes nothing");
+    assert.equal(again.split(SUBSCRIBE_LINE_VARIANTS[subscribeIdx]!).length, 2, "still exactly one copy");
+  } finally {
+    config.copyVariety = false;
+  }
+
+  // Off again: id 700's description, built fresh at render for a match whose template never
+  // changes, is byte for byte the same canonical wording as every other match in this file.
+  write(700, {
+    "match-700.title.edited.txt": `Hook | Aa vs Bb | ${TAIL}\n`,
+    "match-700.description.txt": modern(700, "Aa vs Bb"),
+  });
+  const text700Off = (await uploadTextFor(700, "video")).description;
+  assert.ok(text700Off.includes(CLOSER));
+  assert.ok(text700Off.includes(SUBSCRIBE_LINE));
+  assert.equal(text700Off.split(SUBSCRIBE_LINE).length, 2);
 }
 
 console.log("youtubeStore.test: ok");

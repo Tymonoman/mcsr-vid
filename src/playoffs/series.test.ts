@@ -92,7 +92,14 @@ const {
   renderSeries,
   seriesShortGame,
 } = await import("./series.js");
-const { buildSeriesDescription, SUBSCRIBE_LINE } = await import("../pipeline/description.js");
+const {
+  buildSeriesDescription,
+  CLOSER,
+  CLOSER_VARIANTS,
+  SUBSCRIBE_LINE,
+  SUBSCRIBE_LINE_VARIANTS,
+  variantIndex,
+} = await import("../pipeline/description.js");
 const { formatChapterTime } = await import("../pipeline/chapters.js");
 
 /* --- Pure parts --------------------------------------------------------------------------- */
@@ -176,6 +183,29 @@ assert.ok(
   `a score-shaped pair in:\n${desc}`,
 );
 assert.ok(!/won|winner|sweep/i.test(desc));
+
+// copyVariety: off (above, `desc`/`desc9` never set it) is byte for byte today's closer and
+// subscribe line; on picks game 1's own variant.
+{
+  const closerIdx = variantIndex(101, 0, CLOSER_VARIANTS.length);
+  const subscribeIdx = variantIndex(101, 1, SUBSCRIBE_LINE_VARIANTS.length);
+  assert.notEqual(closerIdx, 0, "the fixture must exercise a non-canonical closer variant");
+  assert.notEqual(subscribeIdx, 0, "the fixture must exercise a non-canonical subscribe variant");
+  const varied = buildSeriesDescription({
+    season: 11,
+    round: "Round of 16",
+    bestOf: 5,
+    left: { nickname: "edcr", label: "#1 seed", seasonEloRate: 2688 },
+    right: { nickname: "lauveer", label: "LCQ", seasonEloRate: 2137 },
+    games: [],
+    bracketUrl: "https://magmamcsr.com/events/playoffs/s11/bracket",
+    matchId: 101,
+    copyVariety: true,
+  });
+  assert.equal(varied.split("\n\n")[1], SUBSCRIBE_LINE_VARIANTS[subscribeIdx]);
+  assert.equal(varied.split("\n\n").at(-2), CLOSER_VARIANTS[closerIdx]);
+  assert.ok(!varied.includes(SUBSCRIBE_LINE) && !varied.includes(CLOSER));
+}
 
 /* --- Rendering a series: order, skipping, the join, the text, the hiding ------------------- */
 
