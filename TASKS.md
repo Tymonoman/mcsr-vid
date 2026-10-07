@@ -1,5 +1,21 @@
 # TASKS — resume point (updated 24 Sept 2026 08:15 UTC)
 
+## ▶ 7 Oct 2026 morning (08:00–08:30 UTC) — the operator: "toggle on all the features … do all the stuff you can without me"
+- Settings ON via PUT /api/settings (live, no restart): copyVariety, commentSoonAfterPublish, thumbnailRotatePoses,
+  exportUpscale1440, countdownTeaser, introSec 5→3, suggestChaosSlots 0→2. Undo: the config before is
+  tmp/audit1007/config-before-toggles.json. hackingnoises NOT added to favourites (consent sensitivity, his call).
+- 1440p export verified on the lab GPU (VAAPI): 20 s smoke on 13560037 → 2560x1440, 14.3 Mbps; smoke file deleted.
+- Thumbnails chosen (operator pick): 13527460 marching-crouching, 13705580 default-default, 13782182 marching-crouching,
+  13906935 default-default. SF2 publishAt 7 Oct 21:00 UTC. Hooks saved 08:09 UTC (all pass hookProblem/label/spoils):
+  SF2 "WHO REACHES THE GRAND FINAL?" / "Feinberg's one-heart boat drop"; 13705580 "CAN A 1:36 LEAD SURVIVE?" /
+  "54 SECONDS DOWN IN THE END"; 13782182 "A SUB-10 RACE TO THE FINISH" / "silverrruns goes for the zero cycle";
+  13906935 "DECIDED BY 4.2 SECONDS" / "romuxii lit the portal with 3 rods". Shorts rendered 08:14; uploads running.
+- 11 replies posted as the channel (reviewed; 8 threads skipped on purpose). Ledger + undo ids:
+  tmp/ops1007/replies-ledger.json (DELETE comments?id=<id>).
+- CLAUDE_CODE_OAUTH_TOKEN in /app/.env is 60 chars = TRUNCATED (401 "OAuth access token is invalid"); he must paste
+  the full token, then restart only when no upload runs. b347aba: a 401 now shows the setup-token hint in /health.
+- series-chapters workflow (worktree series-chapters): per-split chapters inside each game of a series.
+
 ## ▶ RESUME HERE (night of 6→7 Oct 2026) — the operator's overnight goal, report by 07:00 UTC
 His prompt (start of this session): Studio-access memo → comments + "low quality / automated" diagnosis →
 competitor title study + hooks (Opus judge panel) → ideas scored → suggestion backtest + fix → Telegram bot on
