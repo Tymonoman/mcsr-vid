@@ -1,5 +1,27 @@
 # TASKS — resume point (updated 24 Sept 2026 08:15 UTC)
 
+## ▶ RESUME HERE (7 Oct 2026 ~21:35 UTC, before a /compact) — the operator went to sleep; a "mega prompt" is coming
+In flight (background workflows; read their journals/results when they land):
+- studio-automation-p1 wf_3f4f7afb-65c (worktree .claude/worktrees/studio-p1, branch studio-p1): phase 1 of
+  handbook/knowledge/studio-automation-plan-2026-09-28.md (Chrome on Xvfb + noVNC login + probe + pin), default OFF
+  (studioAutomation not writable from Settings). After it lands: review, merge, then phase 2 (related video + end
+  screens; template = one of the 8 videos with his end screens, tmp/studio/endscreen-scan.json, e.g. POQrpE0-5d8 "THE
+  STRONGHOLD FLIP") and phase 3 (Test & Compare: THUMBNAILS AND TITLES — his answer; titles must pass hookProblem).
+- title-styles-compare wf_d2a06af0-0ff (tmp/titles1007): his ask "compare the titles we use now to the nicknames we
+  used earlier" — within-video DiD around the 2 Oct retitle + between-video; skeptic. Report the result to him.
+Login session (done 21:29 UTC): he logged in via a noVNC screen in the mcsr container (Chrome 155 installed with sudo
+from the .deb — ephemeral; needs --no-sandbox in the container; screen script tmp/studio/login-screen.sh; phone access
+worked through a temporary userspace Tailscale node: tmp/studio/ts/tailscaled --tun=userspace-networking, `tailscale
+up` must stay running until approved, then `tailscale serve --bg --http=80 http://127.0.0.1:6080`; all stopped and
+logged out). PROBLEM: he clicked "Sign in to Chrome" → /app/.studio-profile (344 MB, 700, gitignored) holds his synced
+personal Chrome (18 extensions incl. an Omegle IP-locator, bookmarks, maybe passwords). ASKED him: "delete the profile"?
+Recommend wiping it and re-signing on the web page only (no Chrome sync), ideally with an Editor account. Never let the
+automation use that profile as is.
+Still his: the CLAUDE_CODE_OAUTH_TOKEN line in /app/.env was truncated (60 chars) at 08:25 UTC — confirm he fixed it;
+dashboard restart to load main (slot-race fix 63a3d32 + later) when nothing uploads; push main.
+Live schedule (verified): 7 Oct 19:00 358mpZeBqFo, 21:00 SF2 wJM43EOCEHA, 23:00 3rd EeAbgZQgZPk; 8 Oct 19:00
+la_h_HmMuF8, 23:00 GF _2EOkOOX0PQ; 9 Oct 19:00 s7R5FUKU0KQ; Shorts 18 h after each.
+
 ## ▶ 7 Oct 2026 morning (08:00–08:30 UTC) — the operator: "toggle on all the features … do all the stuff you can without me"
 - Settings ON via PUT /api/settings (live, no restart): copyVariety, commentSoonAfterPublish, thumbnailRotatePoses,
   exportUpscale1440, countdownTeaser, introSec 5→3, suggestChaosSlots 0→2. Undo: the config before is
