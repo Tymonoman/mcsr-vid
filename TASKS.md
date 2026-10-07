@@ -17,6 +17,15 @@ engine (<mediaDir>/.experiments.json: schedule of render arms applied before the
 per publish day + Short delay per day, per-match arm record, daily evaluator, ≥1,000 impressions/arm else
 "inconclusive"); (5) Studio phase 2 (end screens from his template POQrpE0-5d8) + phase 3 (T&C thumbnails AND titles);
 (6) T&C on the top-10-by-impressions videos, then every upload; (7) final branded artifact + tg send.
+Progress 7 Oct 23:15 UTC: baseline written (experiments.md cb26c7a; 4.0 net subs/day, 101.7 h/day); title comparison =
+no difference (titles-nicknames-vs-facts-2026-10-07.md); tc-thumbs merged (ee3949b); studio-p1 merged (99b34d2) with his
+launcher flags + STUDIO_PROFILE_DIR=/app/.studio-profile; probe fixed to the channel URL (5c881a0) → ok (account = MANAGER
+of the brand channel; default channel is his personal TYMONOMAN). compose patch for him: tmp/week/studio-compose.patch.
+Settings changed: nightlyMaxRenders 1→2 (buffer), thumbnailRotatePoses OFF (cheering-relaxing pose reads as the result —
+chip-truth excludes it, then back ON). In flight: autopilot-build wf_0f0fbfaf-353 (autopilot / restart-idle / exp-engine
+branches), chip-truth wf_005c2204-3f4 (false chips: panel lead changes, hunger-reset deaths, series facts; caption size;
+re-render tc sets + Opus re-judge), studio-p23 wf_8a0a3aed-fbf (explore → worker → live end screen on s7R5FUKU0KQ +
+thumbnail T&C on LUI5E7yF0zE → review). T&C plan (Opus judge): tmp/week/tc/tc-plan.json (7 thumbnail + 14 title tests).
 Dashboard boot fd47b32 (he restarted it 7 Oct evening). /media 70 GB free. Live: introSec 3, countdownTeaser on,
 explainMovesSec 8 (on), suggestKnownSlots 10.
 
