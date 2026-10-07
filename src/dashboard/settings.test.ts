@@ -89,6 +89,12 @@ assert.match(errorOf(coerce(field("pairRepeatDays"), "31")), /between 0 and 30/)
 assert.match(errorOf(coerce(field("pairRepeatDays"), "")), /cannot be empty/);
 assert.ok(field("pairRepeatDays").unattended, "it changes the nightly's pick too");
 
+// Auto-hooks: off (empty) by default, whole hours 1-48 when it is on, and it says so.
+assert.deepEqual(coerce(field("autoHooksAfterHours"), ""), { value: null });
+assert.deepEqual(coerce(field("autoHooksAfterHours"), "6"), { value: 6 });
+assert.match(errorOf(coerce(field("autoHooksAfterHours"), "49")), /between 1 and 48/);
+assert.ok(field("autoHooksAfterHours").unattended, "it starts an upload nobody has looked at");
+
 console.log("settings: the allowlist holds and every kind coerces");
 
 // --- Writing: the file the loader reads ---------------------------------------------------------

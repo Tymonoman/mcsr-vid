@@ -140,8 +140,16 @@ export interface ShortPlanResponse {
   state: ShortState;
   /** One line on what is happening, or what failed and what to do about it. */
   detail?: string;
-  /** Every problem on the way, newest first, each naming the step it came from — the panel shows them under that step. */
-  errors: Array<{ step: "pick" | "render" | "upload-video" | "upload-short"; at: string; message: string }>;
+  /**
+   * Every problem on the way, newest first, each naming the step it came from — the panel shows
+   * them under that step. "hooks" is auto-hooks' own (8 Oct 2026): no model/chip hook passed, so
+   * nothing was saved and the match reads as failed until the operator saves one by hand.
+   */
+  errors: Array<{
+    step: "pick" | "render" | "upload-video" | "upload-short" | "hooks";
+    at: string;
+    message: string;
+  }>;
   /** The step running now, if any. */
   activity?: ShortActivity;
   /** The last lines of `short-<id>.log.jsonl`, newest last (at most 60). */

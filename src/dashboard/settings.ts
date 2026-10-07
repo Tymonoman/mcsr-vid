@@ -156,6 +156,17 @@ export const SETTINGS: readonly SettingField[] = [
     nullable: true,
   },
   {
+    key: "autoHooksAfterHours",
+    label: "Auto-save hooks after (hours)",
+    help: "The operator's own grant, 8 Oct 2026: a match whose hooks are still unsaved this many hours after its pick lands gets the best title hook that passes the usual checks (the model's, else a hooks.ts chip) and a Short hook chosen the same way, and the chain runs as if Save had been pressed. Empty is off. The morning report's \"Auto-saved hooks\" block lists every one, so a bad pick can be changed before its upload.",
+    kind: "int",
+    group: "Publishing",
+    min: 1,
+    max: 48,
+    nullable: true,
+    unattended: true,
+  },
+  {
     key: "seriesPublishHourUtc",
     label: "Series publish hour (UTC)",
     help: "The slot a playoff series video takes, its own so it and the day's ranked match do not compete. 23:00 UTC is 19:00 on the US east coast.",

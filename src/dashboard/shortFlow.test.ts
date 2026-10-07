@@ -92,6 +92,7 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
 }) as typeof fetch;
 
 const flow = await import("./shortFlow.js");
+const { setHidden } = await import("./matchShelf.js");
 const { handleShortsRoute } = await import("./shortsRoutes.js");
 const { hookRefusal, recordStudioUpload } = await import("../youtube/youtubeUpload.js");
 const { readUpload, writeUpload } = await import("../youtube/youtubeStore.js");
@@ -1499,6 +1500,138 @@ try {
     assert.ok(slotOf(F) && slotOf(G), "both videos uploaded");
     assert.notEqual(slotOf(F), slotOf(G), "two chains must not claim the same publish slot");
     console.log("OK: concurrent chains claim different publish slots, not the same one");
+  }
+
+  /* --- Auto-hooks: the operator's own grant (8 Oct 2026) — a pick nobody has looked at for
+     `autoHooksAfterHours` gets saved by itself, exactly as the dashboard's own Save would. The
+     "noShort" path and the upper-casing rule are pinned in autoHooks.test.ts, which needs no
+     network: a real match's hooks.ts chips almost always have a dull fallback that survives, so
+     forcing the Short list empty through this fixture is not worth fighting for. --------------- */
+  {
+    config.autoHooksAfterHours = 6;
+    const AH_NOW = Date.now();
+    const dueAt = (hoursAgo: number) => new Date(AH_NOW - hoursAgo * 3600_000).toISOString();
+    const customPick = (id: number, over: Partial<ShortPick>) =>
+      writeFileSync(path.join(dir(id), `short-${id}.pick.json`), JSON.stringify({ ...pickOf(id), ...over }));
+
+    // Not yet due: an hour-old pick is left alone.
+    const AH1 = 13_000_070;
+    exported(AH1);
+    customPick(AH1, { createdAt: dueAt(1) });
+    await flow.autoHooksTick(chain, AH_NOW);
+    assert.ok(!flow.readStatus(AH1).hooksSavedAt, "an hour-old pick is not due at 6 h");
+    assert.ok(!flow.readStatus(AH1).autoHooks);
+
+    // Due, and candidates are checked in the dashboard's own order: the model's labelled and
+    // spoiler proposals are skipped, the first clean one wins; its own Short suggestion is a
+    // denied word, so the Short falls back to a hooks.ts chip.
+    const AH2 = 13_000_071;
+    exported(AH2);
+    customPick(AH2, {
+      createdAt: dueAt(7),
+      titleHooks: ["doogile wins it", "TAS vs YN", "A clean one"],
+      hookSuggestion: "the asian pulls ahead",
+    });
+    await flow.autoHooksTick(chain, AH_NOW);
+    await flow.chainIdle(AH2);
+    const st2 = flow.readStatus(AH2);
+    assert.ok(st2.hooksSavedAt, "a due pick with a clean candidate is saved");
+    assert.equal(st2.autoHooks?.titleHook, "A clean one", "the spoiler and the labelled one were skipped");
+    assert.equal(st2.autoHooks?.source.title, "model");
+    assert.ok(st2.autoHooks?.shortHook, "a chip stood in for the model's own denied Short hook");
+    assert.equal(st2.autoHooks?.source.short, "chip");
+    assert.ok(
+      sent.some((s) => s.id === AH2 && s.kind === "video"),
+      "the chain ran as if Save had been pressed",
+    );
+    const rows = await flow.listAutoHooks(AH_NOW - 3600_000, AH_NOW + 3600_000);
+    const row2 = rows.find((r) => r.matchId === AH2);
+    assert.ok(row2, "listAutoHooks reports the save");
+    assert.equal(row2!.titleHook, "A clean one");
+    assert.equal(row2!.stillCurrent, true, "nobody has edited it since");
+    assert.equal(row2!.uploaded, true);
+    console.log("OK: auto-hooks skips a labelled/spoiler candidate and keeps the dashboard's own order");
+
+    // No candidate survives at all (both nicknames spelled long enough to leave no room for any
+    // hook — the same budget #hook is held to): the hooks step fails with its own message, and
+    // nothing is saved.
+    const AH3 = 13_000_072;
+    exported(AH3);
+    customPick(AH3, { createdAt: dueAt(7), titleHooks: ["A clean one too"] });
+    const savedTitleNames = config.titleNames;
+    config.titleNames = { edcr: "E".repeat(30), doogile: "D".repeat(30) };
+    await flow.autoHooksTick(chain, AH_NOW);
+    config.titleNames = savedTitleNames;
+    const st3 = flow.readStatus(AH3);
+    assert.ok(!st3.hooksSavedAt, "nothing was saved");
+    assert.equal(st3.steps.hooks?.state, "failed");
+    assert.match(st3.errors[0]?.message ?? "", /no suggested hook passed/);
+    const plan3 = await plan(AH3);
+    assert.equal(plan3.state, "failed");
+    assert.match(plan3.detail ?? "", /no suggested hook passed/);
+    console.log("OK: no candidate passing fails the hooks step and saves nothing");
+
+    // Each skip reason, all otherwise due.
+    const hidden = 13_000_073;
+    exported(hidden);
+    customPick(hidden, { createdAt: dueAt(7) });
+    setHidden(hidden, true);
+    await flow.autoHooksTick(chain, AH_NOW);
+    assert.ok(!flow.readStatus(hidden).hooksSavedAt, "a hidden match is left alone");
+    setHidden(hidden, false);
+
+    const onChannel = 13_000_074;
+    exported(onChannel);
+    customPick(onChannel, { createdAt: dueAt(7) });
+    await writeUpload(
+      onChannel,
+      {
+        videoId: "adopted",
+        uploadedAt: new Date().toISOString(),
+        publishAt: null,
+        privacyStatus: "public",
+        thumbnailVariant: null,
+        title: "t",
+      },
+      "video",
+    );
+    await flow.autoHooksTick(chain, AH_NOW);
+    assert.ok(
+      !flow.readStatus(onChannel).hooksSavedAt,
+      "already on the channel (an adopted draft): never touched",
+    );
+
+    const blockedMatch = 13_000_075;
+    exported(blockedMatch);
+    customPick(blockedMatch, { createdAt: dueAt(7) });
+    const savedBlocked2 = config.blockedPlayers;
+    config.blockedPlayers = ["edcr"]; // the fixture's own left player
+    await flow.autoHooksTick(chain, AH_NOW);
+    config.blockedPlayers = savedBlocked2;
+    assert.ok(!flow.readStatus(blockedMatch).hooksSavedAt, "a blocked player's match is never auto-saved");
+
+    const noExport = 13_000_076;
+    mkdirSync(dir(noExport), { recursive: true });
+    customPick(noExport, { createdAt: dueAt(7) });
+    await flow.autoHooksTick(chain, AH_NOW);
+    assert.ok(!flow.readStatus(noExport).hooksSavedAt, "not exported yet: nothing to save hooks for");
+
+    const staleExport = 13_000_077;
+    exported(staleExport);
+    utimesSync(
+      path.join(dir(staleExport), "sync.json"),
+      new Date(Date.now() + 5000),
+      new Date(Date.now() + 5000),
+    );
+    customPick(staleExport, { createdAt: dueAt(7) });
+    await flow.autoHooksTick(chain, AH_NOW);
+    assert.ok(
+      !flow.readStatus(staleExport).hooksSavedAt,
+      "a stale export is re-encoded first, not auto-saved over",
+    );
+    console.log(
+      "OK: hidden, already-on-the-channel, blocked, unexported and stale-export matches are all skipped",
+    );
   }
 } finally {
   rmSync(media, { recursive: true, force: true });

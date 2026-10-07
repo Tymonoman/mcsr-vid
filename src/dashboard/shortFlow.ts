@@ -18,7 +18,7 @@
  * kept in `short-<id>.status.json`, the one record the panel, the list and a restarted server
  * all read.
  */
-import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { getMatch, getUser } from "../api/mcsrApi.js";
@@ -66,7 +66,13 @@ import {
   startActivity,
   stepActivity,
 } from "../shorts/shortLog.js";
-import { hookProblem, HOOK_MAX_CHARS, pickErrorFile, pickShortMoment } from "../shorts/videoPick.js";
+import {
+  hookProblem,
+  HOOK_MAX_CHARS,
+  pastTitleHooks,
+  pickErrorFile,
+  pickShortMoment,
+} from "../shorts/videoPick.js";
 import { readManifest } from "../thumbnails/thumbnailVariants.js";
 import {
   channelShortFor,
@@ -85,7 +91,7 @@ import {
 } from "../youtube/youtubeUpload.js";
 import { nicknameWarnings, readUpload, writeUpload, type UploadKind } from "../youtube/youtubeStore.js";
 import { hiddenMatchIds, isExported, isShortUploaded, isUploaded } from "./matchShelf.js";
-import { listProcessedMatchIds } from "./matchStatus.js";
+import { listProcessedMatchIds, matchStatusFor } from "./matchStatus.js";
 import { shortRunning, spawnShortJob } from "./shortsRoutes.js";
 
 type Step = ShortPlanResponse["errors"][number]["step"];
@@ -119,6 +125,17 @@ export interface ShortStatus {
    * src/youtube/publishSlot.ts); cleared once the upload-video step settles, done or failed.
    */
   slotClaim?: string;
+  /** The last auto-hooks save (autoHooksAfterHours, below) — kept across any later save, by the
+   *  operator or auto-hooks again, so the morning report can always say what it last picked. */
+  autoHooks?: AutoHooksRecord;
+}
+
+/** One auto-hooks save: what it chose and where each hook came from. */
+export interface AutoHooksRecord {
+  at: string;
+  titleHook: string;
+  shortHook: string | null;
+  source: { title: "model" | "chip"; short: "model" | "chip" | null };
 }
 
 const statusFile = (dir: string, matchId: number): string => path.join(dir, `short-${matchId}.status.json`);
@@ -1438,4 +1455,204 @@ export async function shortTick(deps: Partial<ChainDeps> = {}, nowMs = Date.now(
   } finally {
     ticking = false;
   }
+}
+
+/* --- Auto-hooks ---------------------------------------------------------------------------------
+ *
+ * The operator's own grant, 8 Oct 2026: "a match whose hooks I haven't saved 6 h after its pick
+ * lands gets the best title hook that passes hookProblem + hookLabelProblem + spoilsTheResult (the
+ * model's, else a hooks.ts chip) and a Short hook chosen the same way; the chain then runs as if
+ * I'd pressed Save." Off while `config.autoHooksAfterHours` is null; `autoHooksTick` is a no-op
+ * then, so nothing here runs on a box the operator has not switched it on for.
+ */
+
+const AUTO_HOOKS_NO_PASS = "auto-hooks: no suggested hook passed the checks — save one by hand";
+
+/** The pick's own age, or the file's mtime when it has none readable — a truncated or very old
+ *  pick file still counts as "due", rather than ageless. Null when there is no pick file at all. */
+export function pickAgeMs(
+  dir: string,
+  matchId: number,
+  nowMs: number,
+  pick: ShortPick | null,
+): number | null {
+  const file = pickFile(dir, matchId);
+  if (!existsSync(file)) return null;
+  const createdAt = pick ? Date.parse(pick.createdAt) : NaN;
+  const at = Number.isFinite(createdAt) ? createdAt : statSync(file).mtimeMs;
+  return nowMs - at;
+}
+
+/** Whether the operator's own saved hooks (`pastTitleHooks`) read as upper case, majority rule —
+ *  so an auto-chosen hook matches the channel's house style instead of standing out as machine-made. */
+export function pastHooksAreUpperCase(past: readonly { hook: string }[]): boolean {
+  const lettered = past.map((p) => p.hook).filter((h) => /[a-z]/i.test(h));
+  if (lettered.length === 0) return false;
+  return lettered.filter((h) => h === h.toUpperCase()).length / lettered.length >= 0.5;
+}
+
+export interface AutoHooksChoice {
+  titleHook: string;
+  titleSource: "model" | "chip";
+  shortHook: string | null;
+  shortSource: "model" | "chip" | null;
+}
+
+/** `choice` turned into the exact body `saveHooks` takes — upper-cased to the house style when
+ *  `upper` is set, "no Short" when nothing survived for it. Pulled out of `autoSaveHooks` so the
+ *  case rule and the no-Short derivation have a test that needs no network or match fixture. */
+export function autoHooksBody(choice: AutoHooksChoice, upper: boolean): SaveHooksRequest {
+  const titleHook = upper ? choice.titleHook.toUpperCase() : choice.titleHook;
+  const shortHook =
+    choice.shortHook === null ? null : upper ? choice.shortHook.toUpperCase() : choice.shortHook;
+  return { titleHook, shortHook, noShort: shortHook === null };
+}
+
+/**
+ * The same candidates, in the same order, the dashboard offers for `#hook`/`#shorthook`
+ * (`suggestionsFor`, not re-implemented here): the model's own proposals first, then the
+ * `hooks.ts` chips — each already filtered through `hookProblem`, which is `hookLabelProblem` and
+ * `spoilsTheResult` together, so the first survivor is the first one that passes all three. null
+ * when nothing survived for the title (the Short may still come back null on its own: "no Short
+ * hook passed" is not "no title hook passed").
+ */
+async function chooseAutoHooks(matchId: number, match: MatchInfo, f: Facts): Promise<AutoHooksChoice | null> {
+  const suggestions = await suggestionsFor(matchId, match, f);
+  const titleHook = suggestions.title[0] ?? null;
+  if (titleHook === null) return null;
+  const shortHook = suggestions.short[0] ?? null;
+  return {
+    titleHook,
+    titleSource: f.pick?.titleHooks?.includes(titleHook) ? "model" : "chip",
+    shortHook,
+    shortSource: shortHook === null ? null : shortHook === f.pick?.hookSuggestion ? "model" : "chip",
+  };
+}
+
+/** Chooses and saves one match's hooks, exactly as `PUT /api/shorts/hooks/:id` would, and records
+ *  what it chose. No candidate passing is a failed "hooks" step, not a thrown error — the match
+ *  reads as failed until the operator saves one by hand, same as any other stopped step. */
+async function autoSaveHooks(
+  matchId: number,
+  match: MatchInfo,
+  f: Facts,
+  deps?: Partial<ChainDeps>,
+): Promise<void> {
+  const choice = await chooseAutoHooks(matchId, match, f).catch((err: unknown) => {
+    shortLog(matchId, "chain", `auto-hooks: could not choose a hook — ${describeError(err)}`, {
+      level: "error",
+    });
+    return null;
+  });
+  if (!choice) {
+    updateStatus(matchId, (s) => {
+      const at = new Date().toISOString();
+      s.steps.hooks = { state: "failed", at, detail: AUTO_HOOKS_NO_PASS };
+      s.errors.unshift({ step: "hooks", at, message: AUTO_HOOKS_NO_PASS });
+    });
+    shortLog(matchId, "chain", AUTO_HOOKS_NO_PASS, { level: "error" });
+    return;
+  }
+  const upper = pastHooksAreUpperCase(pastTitleHooks());
+  const req = autoHooksBody(choice, upper);
+  shortLog(
+    matchId,
+    "chain",
+    `auto-hooks: no hooks saved since the pick landed — saving title ${JSON.stringify(req.titleHook)} (${choice.titleSource})` +
+      (req.noShort
+        ? " and no Short (no Short hook passed the checks)"
+        : ` and Short ${JSON.stringify(req.shortHook)} (${choice.shortSource})`),
+  );
+  const result = await saveHooks(matchId, req, deps);
+  if (result && "status" in result) {
+    shortLog(matchId, "chain", `auto-hooks: save refused — ${result.error}`, { level: "error" });
+    return;
+  }
+  updateStatus(matchId, (s) => {
+    s.autoHooks = {
+      at: new Date().toISOString(),
+      titleHook: req.titleHook,
+      shortHook: req.shortHook,
+      source: { title: choice.titleSource, short: req.noShort ? null : choice.shortSource },
+    };
+  });
+}
+
+let autoHooksTicking = false;
+
+/**
+ * Saves hooks by itself for every match that has gone `config.autoHooksAfterHours` hours since
+ * its pick with nobody looking at it — a no-op while that setting is null. Driven by the same
+ * 15-minute tick as `shortTick` (server.ts); candidates come from `listProcessedMatchIds`, same
+ * as every other sweep here. `deps` is `startChain`'s own seam — a test's stand-ins for the
+ * render and the upload, never a real one in production (the default `{}` takes `liveDeps()`).
+ */
+export async function autoHooksTick(deps: Partial<ChainDeps> = {}, nowMs = Date.now()): Promise<void> {
+  const hours = config.autoHooksAfterHours;
+  if (hours === null || autoHooksTicking) return;
+  autoHooksTicking = true;
+  try {
+    const hidden = hiddenMatchIds();
+    for (const matchId of listProcessedMatchIds()) {
+      if (hidden.has(matchId)) continue;
+      const status = readStatus(matchId);
+      if (status.hooksSavedAt || status.noShort) continue;
+      if (chains.has(matchId) || saving.has(matchId)) continue;
+      const f = await factsOf(matchId);
+      if (!f.pick || f.video || f.short) continue;
+      const age = pickAgeMs(f.dir, matchId, nowMs, f.pick);
+      if (age === null || age < hours * 3600_000) continue;
+      const video = exportPath(f.dir, matchId);
+      if (video === null || exportStale(f.dir, video).stale) continue;
+      let match: MatchInfo;
+      try {
+        match = await getMatch(matchId);
+      } catch {
+        continue; // the API is down — try again next tick
+      }
+      const [left, right] = match.players;
+      if (!left || !right || blockedIn([left.nickname, right.nickname])) continue;
+      await autoSaveHooks(matchId, match, f, deps);
+    }
+  } finally {
+    autoHooksTicking = false;
+  }
+}
+
+export interface AutoHooksRow {
+  matchId: number;
+  players: string;
+  titleHook: string;
+  shortHook: string | null;
+  at: string;
+  /** The saved title hook still reads exactly as auto-hooks left it — the operator has not edited it since. */
+  stillCurrent: boolean;
+  publishAt: string | null;
+  /** The long-form is on the channel. */
+  uploaded: boolean;
+}
+
+/** Every auto-hooks save between `sinceMs` and `nowMs` — the morning report's "Auto-saved hooks" block. */
+export async function listAutoHooks(sinceMs: number, nowMs = Date.now()): Promise<AutoHooksRow[]> {
+  const rows: AutoHooksRow[] = [];
+  for (const matchId of listProcessedMatchIds()) {
+    const status = readStatus(matchId);
+    const a = status.autoHooks;
+    if (!a) continue;
+    const at = Date.parse(a.at);
+    if (!(at >= sinceMs && at <= nowMs)) continue;
+    const f = await factsOf(matchId);
+    const m = await matchStatusFor(matchId).catch(() => null);
+    rows.push({
+      matchId,
+      players: m ? `${m.leftNickname} vs ${m.rightNickname}` : `#${matchId}`,
+      titleHook: a.titleHook,
+      shortHook: a.shortHook,
+      at: a.at,
+      stillCurrent: f.titleHook === a.titleHook,
+      publishAt: f.video?.publishAt ?? status.slotClaim ?? status.publishAt ?? null,
+      uploaded: f.video !== null,
+    });
+  }
+  return rows.sort((a, b) => (a.at < b.at ? 1 : -1));
 }
