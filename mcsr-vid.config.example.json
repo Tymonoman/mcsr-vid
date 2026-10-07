@@ -65,6 +65,7 @@
   "nightlyNotifyUrl": "",
   "youtubeUploadEnabled": false,
   "youtubeAutoFinish": false,
+  "commentSoonAfterPublish": false,
   "nightlyUpload": "off",
   "suggestCloseSlots": 8,
   "suggestChaosSlots": 2,

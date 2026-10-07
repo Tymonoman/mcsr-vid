@@ -826,6 +826,34 @@ export async function retryFailedPlaylists(finish: typeof finishOnYouTube = fini
   }
 }
 
+/** One long-form video, as the comment step sees it: who it belongs to, when it went public, and
+ * whether the comment is already posted. */
+interface PendingComment {
+  matchId: number;
+  publishAt: string | null;
+  done: boolean;
+}
+
+/**
+ * Every long-form video with an upload record, one entry per video id rather than per match
+ * directory — a series' record is copied into every game's folder (the same videoId), so the
+ * ledgers are read per VIDEO and any folder that already has the comment settles all of them.
+ * Shared by `retryPendingComments` and `commentSoonTick`, so the two can never disagree about
+ * which videos still need a comment.
+ */
+async function pendingComments(): Promise<Map<string, PendingComment>> {
+  const byVideo = new Map<string, PendingComment>();
+  for (const matchId of listProcessedMatchIds()) {
+    const record = await readUpload(matchId, "video");
+    if (!record) continue;
+    const seen = byVideo.get(record.videoId);
+    const done = record.finished?.comment === null;
+    if (seen) seen.done ||= done;
+    else byVideo.set(record.videoId, { matchId, publishAt: record.publishAt ?? null, done });
+  }
+  return byVideo;
+}
+
 /**
  * The press that posts the first comment (with the tip jar) on a video uploaded
  * private-and-scheduled once it goes public. The comment step cannot post while a video is
@@ -839,18 +867,7 @@ export async function retryPendingComments(
   maxPerTick = 5,
   nowMs = Date.now(),
 ): Promise<void> {
-  // One video, one comment: a series' record is copied into every game's folder (the same
-  // videoId), so the ledgers are read per VIDEO and any folder that already has the comment
-  // settles it — finishing each game's folder posted the comment once per game.
-  const byVideo = new Map<string, { matchId: number; publishAt: string | null; done: boolean }>();
-  for (const matchId of listProcessedMatchIds()) {
-    const record = await readUpload(matchId, "video");
-    if (!record) continue;
-    const seen = byVideo.get(record.videoId);
-    const done = record.finished?.comment === null;
-    if (seen) seen.done ||= done;
-    else byVideo.set(record.videoId, { matchId, publishAt: record.publishAt ?? null, done });
-  }
+  const byVideo = await pendingComments();
   let attempted = 0;
   for (const [videoId, v] of byVideo) {
     if (attempted >= maxPerTick) break;
@@ -862,5 +879,65 @@ export async function retryPendingComments(
     attempted++;
     const { comment } = await finish(v.matchId, videoId, "video");
     console.error(`comment: #${v.matchId} ${comment === null ? "done" : (comment ?? "private")}`);
+  }
+}
+
+/** How long after `publishAt` `commentSoonTick` still considers a video its own — past this, a
+ * video is `retryPendingComments`'s to catch on the nightly tick, so a restart or an old stuck
+ * record does not make every 15-minute tick re-list the whole channel's history. */
+const COMMENT_SOON_WINDOW_MS = 2 * 3600_000;
+
+/** The jittered delay range `commentSoonTick` posts within: 5-20 minutes after `publishAt`. */
+const COMMENT_SOON_MIN_MS = 5 * 60_000;
+const COMMENT_SOON_RANGE_MS = 15 * 60_000;
+
+/**
+ * How long after `publishAt` this video's comment goes up — 5 to 20 minutes, derived from the
+ * video id so every video does not land in the same minute of its own hour (ponytail: a simple
+ * string hash, not a CSPRNG — nothing here is adversarial, it only has to not be a constant).
+ */
+function commentSoonDelayMs(videoId: string): number {
+  let hash = 0;
+  for (let i = 0; i < videoId.length; i++) hash = (hash * 31 + videoId.charCodeAt(i)) >>> 0;
+  return COMMENT_SOON_MIN_MS + (hash % COMMENT_SOON_RANGE_MS);
+}
+
+/**
+ * With `config.commentSoonAfterPublish` on, posts a scheduled video's first comment within
+ * minutes of it actually going public, rather than waiting for `retryPendingComments`'s once-a-
+ * night tick hours later — the gap between "video goes public at 19:00" and "first comment at
+ * 03:00" was one of the clearest machine-made tells a viewer could catch (packaging diagnosis,
+ * 6 Oct 2026). Same comment, same `finishOnYouTube` step, same once-only guards (a channel
+ * comment already there, a still-private video skipped) — only the schedule moves earlier.
+ *
+ * Checked by the 15-minute tick that already drives `shortTick` (src/dashboard/server.ts), so a
+ * video crosses its delay within one tick of it elapsing. `maxPerTick` keeps a quiet night from
+ * spending more than one `finishOnYouTube` call per tick even if several videos are due at once;
+ * anything it does not reach this tick is simply due again next tick, or caught by the nightly's
+ * own sweep regardless.
+ *
+ * Off (the default), this reads nothing and calls nothing — `retryPendingComments`'s nightly tick
+ * is the only thing that ever posts this comment, exactly as before this existed.
+ */
+export async function commentSoonTick(
+  finish: typeof finishOnYouTube = finishOnYouTube,
+  maxPerTick = 1,
+  nowMs = Date.now(),
+): Promise<void> {
+  if (!config.commentSoonAfterPublish) return;
+  const byVideo = await pendingComments();
+  let attempted = 0;
+  for (const [videoId, v] of byVideo) {
+    if (attempted >= maxPerTick) break;
+    if (v.done || v.publishAt === null) continue;
+    const publishMs = Date.parse(v.publishAt);
+    if (Number.isNaN(publishMs)) continue;
+    const since = nowMs - publishMs;
+    if (since < 0 || since > COMMENT_SOON_WINDOW_MS || since < commentSoonDelayMs(videoId)) continue;
+    attempted++;
+    const { comment } = await finish(v.matchId, videoId, "video");
+    console.error(
+      `comment: #${v.matchId} ${comment === null ? "done" : (comment ?? "private")} (soon after publish)`,
+    );
   }
 }

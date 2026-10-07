@@ -520,7 +520,11 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   re-reads the live status before it skips: a draft adopted while private and published an hour
   later would otherwise carry "private" for ever and never get its first comment. The comment
   still cannot go up while the video really is private, so a scheduled video gets it on the
-  nightly's tick once it goes public (`retryPendingComments`).
+  nightly's tick once it goes public (`retryPendingComments`) — or, with `commentSoonAfterPublish`
+  on (7 Oct 2026, default **off**), within a jittered 5-20 minutes of going public, checked by the
+  same 15-minute tick that drives `shortTick` (`commentSoonTick`, `src/youtube/youtubeUpload.ts`).
+  Off keeps the comment landing on the nightly's tick, hours after the video goes public — the
+  03:00:0X pattern the 6 Oct 2026 packaging read flagged as a visible machine-made tell.
 - **`videos.update` replaces the part it is given.** `addTags` (`src/youtube/youtube.ts`) reads the snippet
   and sends it back whole — a `part=snippet` write that omits the description blanks it on a
   published video. It only ever adds tags, so a tag typed in Studio survives, and it refuses to

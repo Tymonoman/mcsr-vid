@@ -9,6 +9,7 @@ import { config } from "../config.js";
 import type { UploadOptions, UploadResult } from "./youtube.js";
 import {
   beginUpload,
+  commentSoonTick,
   explainUploadError,
   playlistTitlesFor,
   resumeUpload,
@@ -27,6 +28,7 @@ const LATER_UTC = `${LATER.slice(0, 16).replace("T", " ")} UTC`;
 const mediaDir = config.mediaDir;
 const playlistTitle = config.youtubePlaylistTitle;
 const uploadEnabled = config.youtubeUploadEnabled;
+const commentSoonAfterPublish = config.commentSoonAfterPublish;
 config.mediaDir = media;
 config.youtubePlaylistTitle = "MCSR Replayoffs · Season 11";
 
@@ -797,6 +799,132 @@ try {
 
   console.log("OK: comment retry posts for public scheduled videos, skips private ones and Shorts");
 
+  /* --- commentSoonAfterPublish: the same comment, sooner, only when switched on ------------- */
+  {
+    // A fixed anchor rather than the wall clock: commentSoonTick takes `nowMs` explicitly, so
+    // every case below is deterministic regardless of when this test actually runs.
+    const anchor = Date.parse(pastPublishAt) + 21 * 60_000;
+    const publishedAt = new Date(anchor - 21 * 60_000).toISOString(); // 21 min before `anchor`
+    const dueRecord = {
+      ...record,
+      publishAt: publishedAt,
+      privacyStatus: "private",
+      finished: { playlists: null, thumbnail: null, tags: null },
+    };
+
+    // Off (the default): reads and calls nothing, even for a video that would otherwise qualify
+    // at every step below. This is the state every worktree starts in.
+    config.commentSoonAfterPublish = false;
+    livePrivacy = "public";
+    await writeUpload(matchId, dueRecord);
+    hits.length = 0;
+    await commentSoonTick(undefined, 1, anchor);
+    assert.equal(
+      hits.filter((h) => h.startsWith("POST") && h.includes("/commentThreads?")).length,
+      0,
+      "off: nothing posted",
+    );
+    assert.equal((await readUpload(matchId, "video"))?.finished?.comment, undefined, "and nothing recorded");
+
+    config.commentSoonAfterPublish = true;
+
+    // On, but under the 5-minute floor: never due yet, whatever the video id hashes to.
+    hits.length = 0;
+    await commentSoonTick(undefined, 1, anchor - 20 * 60_000 + 4 * 60_000); // 4 min after publish
+    assert.equal(
+      hits.filter((h) => h.startsWith("POST") && h.includes("/commentThreads?")).length,
+      0,
+      "on, 4 minutes in: under the floor, not due",
+    );
+
+    // On, past the 20-minute ceiling: always due, whatever the video id hashes to.
+    hits.length = 0;
+    await commentSoonTick(undefined, 1, anchor);
+    assert.equal(
+      hits.filter((h) => h.startsWith("POST") && h.includes("/commentThreads?")).length,
+      1,
+      "on, 21 minutes in: past the ceiling, posted",
+    );
+    assert.equal((await readUpload(matchId, "video"))?.finished?.comment, null, "recorded as done");
+
+    // On, but published over 2 hours ago: left for retryPendingComments's nightly sweep, not this
+    // tick's — keeps a restart or an old stuck record from re-listing the whole channel.
+    await writeUpload(matchId, dueRecord);
+    hits.length = 0;
+    await commentSoonTick(undefined, 1, anchor + 3 * 3600_000);
+    assert.equal(
+      hits.filter((h) => h.startsWith("POST") && h.includes("/commentThreads?")).length,
+      0,
+      "published over 2 hours ago: not this tick's",
+    );
+
+    // Same once-only guards as retryPendingComments, through the same finishOnYouTube step:
+    // a still-private video is skipped and recorded as nothing attempted...
+    livePrivacy = "private";
+    await writeUpload(matchId, dueRecord);
+    hits.length = 0;
+    await commentSoonTick(undefined, 1, anchor);
+    assert.equal(
+      hits.filter((h) => h.startsWith("POST") && h.includes("/commentThreads?")).length,
+      0,
+      "still private: skipped",
+    );
+    assert.equal(
+      (await readUpload(matchId, "video"))?.finished?.comment,
+      undefined,
+      "not recorded either way",
+    );
+    livePrivacy = "public";
+
+    // ...and the channel's comment already on the video means nothing is posted a second time.
+    threads = [
+      {
+        id: "t1",
+        snippet: {
+          topLevelComment: {
+            snippet: {
+              authorDisplayName: "MCSR Replayoffs",
+              textDisplay: "both povs…",
+              publishedAt: "2026-09-26T03:00:02Z",
+              likeCount: 0,
+              authorChannelId: { value: config.youtubeChannelId },
+            },
+          },
+        },
+      },
+    ];
+    await writeUpload(matchId, dueRecord);
+    hits.length = 0;
+    await commentSoonTick(undefined, 1, anchor);
+    assert.equal(
+      hits.filter((h) => h.startsWith("POST") && h.includes("/commentThreads?")).length,
+      0,
+      "the channel's comment is already there: nothing posted again",
+    );
+    assert.equal((await readUpload(matchId, "video"))?.finished?.comment, null, "and the step reads as done");
+    threads = [];
+
+    // maxPerTick bounds the API cost even with several videos due in the same tick.
+    const dir2 = path.join(media, String(matchId + 2));
+    await mkdir(dir2, { recursive: true });
+    await writeUpload(matchId, dueRecord);
+    await writeUpload(matchId + 2, { ...dueRecord, videoId: "vidY" });
+    const attempted: string[] = [];
+    await commentSoonTick(
+      async (id, videoId) => {
+        attempted.push(videoId);
+        return { comment: null };
+      },
+      1,
+      anchor,
+    );
+    assert.equal(attempted.length, 1, "at most one comment per tick, however many videos are due");
+    await rm(dir2, { recursive: true, force: true });
+
+    config.commentSoonAfterPublish = false;
+    console.log("OK: commentSoonAfterPublish posts the same comment within minutes, nothing when off");
+  }
+
   /* --- Resuming a cut-short upload (shortTick → src/dashboard/shortFlow.ts, after a restart) - */
   // The channel scan can pair a half-uploaded video to its match long before every byte of it has
   // landed (`recordStudioUpload`), so a record on disk is not proof of anything: only a session
@@ -902,5 +1030,6 @@ try {
   config.mediaDir = mediaDir;
   config.youtubePlaylistTitle = playlistTitle;
   config.youtubeUploadEnabled = uploadEnabled;
+  config.commentSoonAfterPublish = commentSoonAfterPublish;
   await rm(media, { recursive: true, force: true });
 }

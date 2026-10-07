@@ -204,6 +204,16 @@ export interface Config {
    */
   youtubeAutoFinish: boolean;
   /**
+   * Whether the first comment on a scheduled video is posted soon after it actually goes public
+   * instead of waiting for the nightly's once-a-night tick hours later. On, the 15-minute tick
+   * (src/dashboard/server.ts, the one that already drives `shortTick`) posts it within a jittered
+   * 5-20 minutes of `publishAt` — the same `finishOnYouTube` comment step, the same once-only
+   * guards (a thread already there, a still-private video) as `retryPendingComments`. Off by
+   * default: the comment keeps landing on the nightly's tick, which is the visible 03:00:0X
+   * pattern the 6 Oct 2026 packaging read named as one of the channel's "machine-made" tells.
+   */
+  commentSoonAfterPublish: boolean;
+  /**
    * What the nightly does with the MP4 it just exported: nothing, upload it private, or upload
    * it scheduled for the next publish slot (`publishHourUtc`; the Short follows 18 h later).
    * Needs `youtubeUploadEnabled` too. "off" by default so no config default changes what a
@@ -473,6 +483,7 @@ export const DEFAULTS: Config = {
   nightlyNotifyUrl: "",
   youtubeUploadEnabled: false,
   youtubeAutoFinish: false,
+  commentSoonAfterPublish: false,
   nightlyUpload: "off",
   suggestCloseSlots: 8,
   suggestChaosSlots: 2,

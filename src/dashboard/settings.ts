@@ -179,6 +179,14 @@ export const SETTINGS: readonly SettingField[] = [
     unattended: true,
   },
   {
+    key: "commentSoonAfterPublish",
+    label: "Comment soon after publish",
+    help: "Post the first comment within 5-20 minutes of a scheduled video going public, instead of waiting for the nightly's tick hours later. Same comment, same once-only checks — just timed to look less like a nightly batch job.",
+    kind: "boolean",
+    group: "Publishing",
+    unattended: true,
+  },
+  {
     key: "youtubePlaylistUrl",
     label: "Season playlist URL",
     help: "The playlist every description links to, and the one the panel checks a video is in.",
