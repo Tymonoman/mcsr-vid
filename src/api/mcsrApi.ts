@@ -18,8 +18,18 @@ export class McsrApiError extends Error {
   }
 }
 
+/**
+ * A hung connection must not hang its caller forever — `claimSlot`'s publish-slot lock
+ * (src/dashboard/shortFlow.ts) serializes every concurrent chain's upload through one call that
+ * can reach here (`pairGapTimes`'s `getMatch`, `playoffContextForId`'s bracket fetch), so an
+ * un-timed fetch here would stall every other chain's upload, not just the slow one's. Same
+ * 15 s bound the rest of the codebase uses for an external API (facts.ts, twitchChat.ts,
+ * yppProgress.ts, bot.ts).
+ */
+const API_TIMEOUT_MS = 15_000;
+
 async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`);
+  const res = await fetch(`${BASE_URL}${path}`, { signal: AbortSignal.timeout(API_TIMEOUT_MS) });
   if (!res.ok) {
     throw new McsrApiError(`MCSR Ranked API ${path} -> ${res.status} ${res.statusText}`, res.status);
   }

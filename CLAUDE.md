@@ -463,7 +463,11 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   concurrent chain's own pick sees it (`storedTimes`, `src/youtube/publishSlot.ts`) before the
   slow real upload that follows even starts; the claim clears once the upload-video step settles,
   done or failed. The operator's own chosen time (the kit's Publish at) is untouched by this —
-  it is already a claim on disk before any chain runs.
+  it is already a claim on disk before any chain runs. The lock's critical section can reach the
+  MCSR API (`pairGapTimes`'s `getMatch`, a cold playoff-bracket fetch) — a stall there would once
+  have blocked every other chain's upload, not just the slow one's, so `getJson`
+  (`src/api/mcsrApi.ts`) now carries a 15 s `AbortSignal.timeout`, the same bound every other
+  external call in this codebase already uses (review fix, 7 Oct 2026).
 - **A playoff game's thumbnails can carry the tournament** (`playoffThumbnailStyle`, in the
   Settings tab; `remotion/Thumbnail.tsx` `playoff`): "bracket" puts the round in the band and
   "Best of 5" under the VS; "trophy" grows the band for a gold PLAYOFFS wordmark over the round
