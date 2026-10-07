@@ -41,7 +41,7 @@ interface Envelope {
 export const LIMIT_RE = /usage limit|limit reached|rate.?limit|quota|out of (extra )?usage|resets? (at|in)/i;
 /** "/login" is the real slash command the CLI tells a signed-out run to run. */
 export const AUTH_RE =
-  /not logged in|\/login|invalid api key|authentication_error|please sign in|claude setup-token/i;
+  /not logged in|\/login|invalid api key|authentication_error|please sign in|claude setup-token|failed to authenticate|oauth access token is invalid/i;
 
 const ENV_ALLOW = ["PATH", "HOME", "LANG", "TMPDIR"] as const;
 const ENV_AUTH = ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"] as const;

@@ -122,6 +122,8 @@ try {
   assert.ok(LIMIT_RE.test("Claude AI usage limit reached|1760000000"));
   assert.ok(LIMIT_RE.test(limitText));
   assert.ok(AUTH_RE.test("Please run /login to continue"));
+  // What a truncated CLAUDE_CODE_OAUTH_TOKEN actually printed (7 Oct 2026).
+  assert.ok(AUTH_RE.test("Failed to authenticate. API Error: 401 OAuth access token is invalid."));
   assert.ok(!LIMIT_RE.test("the render finished"));
   assert.ok(!AUTH_RE.test("the render finished"));
 
