@@ -23,6 +23,9 @@ what an agent cannot derive from the code; the rest is in the files it names.
   inside what the recording showed (own channel, own data, nothing shown to anyone else).
 - Nothing irreversible without the operator: deletions, retitles on the live channel, config
   that changes what a nightly render does.
+- **Studio automation stays inside the audit's own rule** (own channel, own data, nothing shown
+  to anyone else) and never does what rail 2 of its plan rules out — see "Studio automation"
+  below.
 
 ## Layout
 
@@ -579,10 +582,11 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   on every arm and the route re-arms it when that key moves, or the setting would lie. The file is
   read fresh and merged, so a hand-edited key the panel does not know about survives a save, and
   the merged object goes through `validateOverrides` — the loader's own function — so the panel
-  cannot write a file that then fails to boot. **`youtubeUploadEnabled` and `nightlyUpload` are
-  deliberately not writable here**: one switches the live channel's upload path, the other what
-  a nightly does with its MP4, so they stay a deliberate edit on the box and the panel only
-  reports them. Add a key by
+  cannot write a file that then fails to boot. **`youtubeUploadEnabled`, `nightlyUpload` and
+  `studioAutomation` are deliberately not writable here**: the first switches the live channel's
+  upload path, the second what a nightly does with its MP4, the third whether a real Chrome ever
+  signs into the channel's own Google account (see "Studio automation") — all three stay a
+  deliberate edit on the box and the panel only reports them. Add a key by
   adding a `SettingField` to `SETTINGS`; the panel and both tests derive from that list.
 - **Publish kit** (`GET /api/publishkit/:id`): copy buttons for the title, the publish slot
   (`publishHourUtc`, default 19:00 UTC, the competitor's measured hour; a series video takes
@@ -893,6 +897,55 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
 - **What is not built**: `youtubeUploadEnabled`-gated actions, renders, queue edits — every
   command is read-only, and `/help` says so. No command writes anything the dashboard would show
   as changed.
+
+## Studio automation (phase 1, 7 Oct 2026)
+
+Does what Studio has no API for, starting with pinning a video's own first comment. The operator,
+7 Oct 2026, after reading the plan (`handbook/knowledge/studio-automation-plan-2026-09-28.md`) and
+asking "will it lock the whole account like ban it or what": a separate Google account added as
+an **Editor** of the channel (Studio → Settings → Permissions), not the owner, with 2FA on, is the
+recommended way to run this — it keeps the owner account out of the blast radius of anything
+Google's anti-abuse systems do to a container-run browser. Off by default
+(`studioAutomation`, like `nightlyUpload` and `youtubeUploadEnabled`: not writable from the
+Settings tab, a deliberate edit on the box) and phase 1 only — pinning, nothing else of the full
+plan's phases 2-4.
+
+**How it works** (`src/youtube/studioBrowser.ts`): a real, headed `google-chrome-stable` on a
+virtual Xvfb display, with a login profile saved in the `studio-profile` volume. Automation
+connects to that already-running Chrome with Playwright's `chromium.connectOverCDP` — **never**
+`chromium.launch()`, which stamps a browser with its own automation markers. Nothing here ever
+types a password, answers 2FA, solves a CAPTCHA, or opens accounts.google.com on its own; the
+operator signs in by hand, over a remote screen, whenever Google asks. `probe()` classifies the
+session (`ok` / `signed-out` / `verify` / `wrong-channel`) at the start of every Studio job; a
+`verify` or `signed-out` result is recorded as that attempt's error and chased no further until
+the operator logs in again — not retried in a loop.
+
+**Setup**, in order:
+
+1. Rebuild the image (`google-chrome-stable`, `x11vnc`, `novnc`, `websockify` are new Dockerfile
+   layers) and recreate the `dashboard` service so it picks up the `studio-profile` volume.
+2. Set `STUDIO_VNC_BIND=<your Tailscale IP>` in `/app/.env` — compose reads the project's `.env`
+   for substitution — so the login screen's port (6080) binds there instead of `127.0.0.1` only.
+3. Turn on 2FA on the account that will sign in (phone prompt primary, an authenticator app
+   backup, printed backup codes) before the first login — see the plan's section 1a.
+4. **YouTube panel → Studio login**: opens a one-time URL and an 8-character password good for
+   15 minutes. Open it on the Tailscale IP, sign in by hand, approve 2FA, wait for Studio's own
+   channel to load, then press **Done** — it probes the session and stops the screen.
+5. Test on an unlisted video you name: `npm run studio -- pin <matchId|videoId> --dry-run` opens
+   the confirm dialog and screenshots it without ever clicking the final Pin.
+6. Only then set `studioAutomation: true` on the box.
+
+**Safety rails**: never types a password or touches 2FA; never unpins, replaces, or removes a pin
+someone set by hand — `pinComment` (`src/youtube/studioActions.ts`) checks for an existing "Pinned
+by" line first and returns `"already-pinned"` rather than touch it; one browser at a time, an
+in-process lock plus the profile's own `SingletonLock`; at most 10 Studio actions per nightly tick
+(`retryPendingStudio`, `src/youtube/youtubeUpload.ts`), each with a random 2-6 s pause between
+clicks; a `verify` probe is never retried within the same call — nothing about the session changes
+until the operator logs in again; Studio jobs wait while an `export:fast` is running, since Chrome
+and ffmpeg share the lab's four cores. The pin step itself only ever runs after the comment it is
+pinning has actually posted and the video is re-confirmed public live (`finishOnYouTube`, same
+reason the comment step re-checks). `npm run studio -- probe | pin <id> [--dry-run] | login` drives
+all of this from the terminal.
 
 ## Clips (prototype)
 

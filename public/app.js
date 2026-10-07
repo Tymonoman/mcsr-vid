@@ -2679,6 +2679,20 @@ function nightlyBody() {
       ? `<div class="bad">The server is running <code>${esc(boot)}</code>; the repo is at <code>${esc(now)}</code> &middot; <code>docker restart mcsr-dashboard</code> picks it up.</div>`
       : "";
 
+  // Only sent at all when studioAutomation is on (server.ts): the last probe any Studio job
+  // made, which is what the operator needs to see before the chain's own pin step just keeps
+  // failing the same way tick after tick.
+  const STUDIO_LINES = {
+    "signed-out": "Studio signed out: YouTube panel &rarr; Studio login",
+    verify: "Google wants verification: log in by hand, nothing will retry",
+    "wrong-channel": "Studio is on another channel: nothing was done",
+  };
+  const studioProbe = nightly.studio?.lastProbe;
+  const studioBad =
+    studioProbe && studioProbe.result !== "ok"
+      ? `<div class="bad">${STUDIO_LINES[studioProbe.result] ?? `Studio: ${esc(studioProbe.result)}`}</div>`
+      : "";
+
   const { enabled, hourUtc, nextRunAt, candidate, lastRun, skipTonight } = nightly;
   // The browser knows the operator's zone; the config only knows UTC. Both, so "03:00" is not
   // mistaken for a small-hours render when it is 05:00 where the operator sleeps.
@@ -2777,7 +2791,7 @@ function nightlyBody() {
   const activity = [...running, ...queuedPicks]
     .map((l) => `<div class="activity"><span class="muted">Now</span> ${l}</div>`)
     .join("");
-  return `${behind}${failed}${shortsFailed}${picker}<div class="lines">
+  return `${behind}${studioBad}${failed}${shortsFailed}${picker}<div class="lines">
       ${activity}
       <div class="plan" title="${esc(nextRunAt ?? "no schedule")}">${plan}</div>
       <div class="last" title="${esc(lastRun ? lastRun.startedAt : "")}">${last}</div>
