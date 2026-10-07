@@ -483,8 +483,12 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   2d. the portal is not complete so it looks off. […] the buried treasure actually looks the best and
   most correct its simple and easy to grasp"): the portal's frame is completed on purpose; the buried
   treasure's old scene is its iso alt) — no rating, seed, placement or other text. The four pose pairs
-  of `thumbnailVariants` still render, the first (`walking`/`crossed`) the auto default, and
-  `RIGHT_RENDER_SIDE` follows the CSS mirror of the right image. The hook text came off on 18 Sept
+  of `thumbnailVariants` still render, the first (`walking`/`crossed`) the auto default — off by
+  default; `thumbnailRotatePoses` (7 Oct 2026, Settings → Publishing) switches a fresh auto pick
+  to deterministic-by-match-id rotation among the pairs actually rendered instead, because 88% of
+  uploads were wearing that one pose pair (the 7 Oct packaging audit). An operator's pick and an
+  already-uploaded thumbnail are never touched either way. `RIGHT_RENDER_SIDE` follows the CSS
+  mirror of the right image. The hook text came off on 18 Sept
   and its twins were deleted on 24 Sept: an older manifest's `hookText`/`-hook` records are read
   by `readManifest`, hidden by the panel and handed to the title by `carriedHookText`. The
   checklist's thumbnail pill ticks on `chosenBy: "operator"`, and `variantStillReusable` keeps a

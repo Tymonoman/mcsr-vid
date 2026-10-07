@@ -20,6 +20,16 @@ export interface Config {
    * variable that never varied.
    */
   thumbnailVariants: Array<{ left: string; right: string }>;
+  /**
+   * Off (default): the auto-picked thumbnail is always the first `thumbnailVariants` entry
+   * (`walking-crossed`), byte for byte what every match has shipped with. On: a fresh render
+   * with no operator pick yet chooses deterministically by match id among the pose pairs
+   * actually rendered, so the auto default stops being the same pose 88% of the time (7 Oct
+   * 2026 packaging audit). Only decides the *first* choice — an operator's pick, and a video
+   * already uploaded, are never touched either way (`renderThumbnailVariants` carries an
+   * earlier choice forward regardless of this key).
+   */
+  thumbnailRotatePoses: boolean;
   /** Minimum cross-correlation confidence (sync.ts) to trust the refined audio sync offset. */
   syncConfidenceThreshold: number;
   /** VOD trim window: seconds of buffer before the estimated match start. */
@@ -424,6 +434,7 @@ export const DEFAULTS: Config = {
     { left: "cheering", right: "relaxing" },
     { left: "marching", right: "crouching" },
   ],
+  thumbnailRotatePoses: false,
   syncConfidenceThreshold: 0.15,
   preRollSec: 150,
   povAudioPan: 0.7,

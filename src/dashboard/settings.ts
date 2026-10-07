@@ -164,6 +164,13 @@ export const SETTINGS: readonly SettingField[] = [
     max: 30,
   },
   {
+    key: "thumbnailRotatePoses",
+    label: "Rotate the auto thumbnail pose",
+    help: "Off: a fresh render's auto-picked thumbnail is always the first pose pair (today's look on every match). On: it picks deterministically by match id among the pose pairs actually rendered, so the auto default is not the same pose on 88% of uploads. An operator's pick and an already-uploaded thumbnail are never touched either way.",
+    kind: "boolean",
+    group: "Publishing",
+  },
+  {
     key: "youtubeAutoFinish",
     label: "Finish a Studio upload automatically",
     help: "When the channel scan pairs a new Studio upload, give it its thumbnail, playlists, first comment and tags without waiting to be asked. Not gated by the audit — none of those is videos.insert.",

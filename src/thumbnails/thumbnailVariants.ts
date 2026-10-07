@@ -15,6 +15,7 @@ import { existsSync } from "node:fs";
 import { copyFile, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { atomicOutput } from "../pipeline/atomicOutput.js";
+import { config } from "../config.js";
 import { hookLabelProblem } from "../pipeline/hooks.js";
 import { bundleOnce } from "../pipeline/remotionBundle.js";
 import type { AvatarProvider } from "../api/avatarUrl.js";
@@ -180,6 +181,20 @@ export function carriedChoice(previous: VariantsManifest | null): string | undef
 }
 
 /**
+ * Which pose pair the auto default picks when nobody has chosen one yet (an operator's pick, or
+ * a choice already carried from an earlier manifest, never reaches this). `config.thumbnailRotatePoses`
+ * off (default) keeps today's exact behaviour: always the first variant, the look every match has
+ * shipped with. On, it picks deterministically by match id among the keys actually rendered, so
+ * the auto default is not the same pose pair 88% of the time (7 Oct 2026 packaging audit) — same
+ * match id, same pick every re-render, so a render retried before any choice is saved does not
+ * flap between poses.
+ */
+export function autoDefaultKey(matchId: number, keys: readonly string[]): string {
+  if (!config.thumbnailRotatePoses || keys.length <= 1) return keys[0]!;
+  return keys[((matchId % keys.length) + keys.length) % keys.length]!;
+}
+
+/**
  * Whether a variant's pose was honoured. `nmsr` is the static render every failed pose falls
  * back to, so two variants with different pose names can be the same image; the A/B tab and
  * the pipeline's message both need to know. One rule, here, so they cannot drift again.
@@ -264,7 +279,12 @@ export async function renderThumbnailVariants(args: RenderVariantsArgs): Promise
   const keys = new Set(records.map((r) => r.key));
   const wanted = carriedChoice(previous);
   const kept = previous !== null && wanted !== undefined && keys.has(wanted);
-  const chosen = kept ? wanted : records[0]!.key;
+  const chosen = kept
+    ? wanted
+    : autoDefaultKey(
+        args.match.id,
+        records.map((r) => r.key),
+      );
   // A choice carried over keeps whatever it said about itself — including nothing, for a sidecar
   // written before the field, whose pill must not change meaning because a pose was added to the
   // config. A fresh default says so: nobody has picked this one yet.

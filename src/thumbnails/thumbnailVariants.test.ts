@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { config } from "../config.js";
 import {
+  autoDefaultKey,
   chooseVariant,
   manifestPath,
   readManifest,
@@ -235,6 +237,61 @@ assert.deepEqual(
   assert.equal(abTestKey("cheering-relaxing", rerun.variants[1]), "cheering-relaxing (facing)");
   assert.equal(abTestKey("walking-crossed", undefined), "walking-crossed", "no manifest: the key as sent");
 }
+
+// thumbnailRotatePoses OFF (default): the auto default is always the first key, whatever the
+// match id -- byte for byte today's behaviour, pinned on the pure function so no render is
+// needed to check it.
+assert.equal(config.thumbnailRotatePoses, false, "default is off");
+assert.equal(
+  autoDefaultKey(13525852, ["walking-crossed", "cheering-relaxing", "marching-crouching"]),
+  "walking-crossed",
+);
+assert.equal(
+  autoDefaultKey(99999999, ["walking-crossed", "cheering-relaxing", "marching-crouching"]),
+  "walking-crossed",
+  "off ignores the id entirely",
+);
+assert.equal(
+  rendered.chosen,
+  "walking-crossed",
+  "the full render above (flag off, no manifest) picked the first variant too",
+);
+
+// ON: deterministic by match id among the keys handed in -- same id, same pick every time -- and
+// it actually varies the pick (otherwise "rotate" would be a no-op for this pose list).
+config.thumbnailRotatePoses = true;
+try {
+  const keys = ["walking-crossed", "cheering-relaxing", "marching-crouching"];
+  assert.equal(autoDefaultKey(13525852, keys), autoDefaultKey(13525852, keys), "stable for the same id");
+  assert.equal(autoDefaultKey(13525852, keys), "cheering-relaxing", "13525852 % 3 === 1");
+  assert.equal(autoDefaultKey(10, ["only-one"]), "only-one", "nothing to rotate between");
+
+  // End to end: a fresh render (no manifest yet) with rotation on picks the rotated key as the
+  // auto default, through the real renderThumbnailVariants, not just the pure helper.
+  const dir2 = await mkdtemp(path.join(tmpdir(), "mcsr-variants-rotate-"));
+  for (const p of pairs) await writeFile(path.join(dir2, variantFile(p)), `${p.left} plain`, "utf8");
+  const matchArgs = {
+    ...renderArgs,
+    outDir: dir2,
+    match: { tag: null, changes: [], id: 13525852 } as unknown as MatchInfo,
+  };
+  const rotated = await renderThumbnailVariants(matchArgs);
+  assert.equal(rotated.chosen, "cheering-relaxing", "rotated away from the first variant");
+  assert.equal(rotated.chosenBy, "auto");
+
+  // An operator's pick, or one already chosen (auto or not), is never rotated out from under a
+  // re-render -- the flag only ever decides the FIRST auto choice.
+  const operatorPicked = await chooseVariant(dir2, "marching-crouching");
+  assert.equal(operatorPicked.chosenBy, "operator");
+  const again = await renderThumbnailVariants(matchArgs);
+  assert.equal(again.chosen, "marching-crouching", "an operator's pick is never rotated away");
+  assert.equal(again.chosenBy, "operator");
+
+  await rm(dir2, { recursive: true, force: true });
+} finally {
+  config.thumbnailRotatePoses = false;
+}
+console.log("thumbnailVariants: thumbnailRotatePoses off keeps today's pick, on rotates by match id");
 
 await rm(dir, { recursive: true, force: true });
 console.log("thumbnailVariants: all checks passed");
