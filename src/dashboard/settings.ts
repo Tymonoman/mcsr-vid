@@ -8,10 +8,11 @@
  * (`preRollSec`, `overlayLeadInSec` — see the ANCHOR_SEC pitfall in CLAUDE.md). A web form is the
  * wrong place to discover that changing one silently slides every overlay late.
  *
- * **`youtubeUploadEnabled` and `nightlyUpload` are deliberately not here.** One switches the
- * live channel's upload path, the other what a nightly does with its MP4, and a mis-click on
- * either shows up on the channel. They stay a deliberate edit on the box.
- * Both are reported read-only so the panel can still say where they stand.
+ * **`youtubeUploadEnabled`, `nightlyUpload` and `studioAutomation` are deliberately not here.**
+ * One switches the live channel's upload path, the second what a nightly does with its MP4, the
+ * third whether a real Chrome ever signs into the channel owner's own Google account — a
+ * mis-click on any of them shows up on the channel. They stay a deliberate edit on the box.
+ * All three are reported read-only so the panel can still say where they stand.
  */
 import { readFileSync, writeFileSync, renameSync, existsSync } from "node:fs";
 import { config, CONFIG_PATH, CTA_REASON_MAX_CHARS, validateOverrides, type Config } from "../config.js";
@@ -335,6 +336,7 @@ export const SETTINGS: readonly SettingField[] = [
 export const READ_ONLY: readonly (keyof Config)[] = [
   "youtubeUploadEnabled",
   "nightlyUpload",
+  "studioAutomation",
   "mediaDir",
   "youtubeChannelId",
 ];

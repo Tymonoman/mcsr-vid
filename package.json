@@ -34,8 +34,8 @@
     "//archive": "Copy a finished match to the NAS. Copies, never moves - nothing is deleted.",
     "archive": "sh -c 'rsync -a --info=progress2 \"/media/$0/\" \"/archive/$0/\"'",
     "//test": "test:unit is every *.test.ts except the two that drive Chromium or ffmpeg; test runs those after it.",
-    "test:unit": "export MCSR_ARCHIVE_DIR=$(mktemp -d) MCSR_CONFIG=/nonexistent/mcsr-vid.config.json; for f in $(find src remotion scripts -name '*.test.ts' | sort); do case \"$f\" in */overlayRender.test.ts|*/exportFrames.test.ts|*/thumbnailCaption.render.test.ts) continue;; esac; echo \"-- $f --\"; tsx \"$f\" || exit 1; done",
-    "test": "npm run test:unit && export MCSR_ARCHIVE_DIR=$(mktemp -d) && for f in src/pipeline/overlayRender.test.ts src/exportFrames.test.ts src/thumbnails/thumbnailCaption.render.test.ts; do echo \"-- $f --\"; tsx \"$f\" || exit 1; done",
+    "test:unit": "export MCSR_ARCHIVE_DIR=$(mktemp -d) MCSR_CONFIG=/nonexistent/mcsr-vid.config.json; for f in $(find src remotion scripts -name '*.test.ts' | sort); do case \"$f\" in */overlayRender.test.ts|*/exportFrames.test.ts|*/thumbnailCaption.render.test.ts|*/studioActions.test.ts) continue;; esac; echo \"-- $f --\"; tsx \"$f\" || exit 1; done",
+    "test": "npm run test:unit && export MCSR_ARCHIVE_DIR=$(mktemp -d) && for f in src/pipeline/overlayRender.test.ts src/exportFrames.test.ts src/thumbnails/thumbnailCaption.render.test.ts src/youtube/studioActions.test.ts; do echo \"-- $f --\"; tsx \"$f\" || exit 1; done",
     "youtube-auth": "tsx src/youtube/youtubeAuth.ts",
     "bench": "npm run build-overlay-css && tsx src/cli/benchRender.ts",
     "short": "npm run build-overlay-css && tsx src/shorts/generateShort.ts",
@@ -52,7 +52,9 @@
     "//pick": "Have the model (reasonerCommand) watch the finished video and pick the Short's window; prints the prompt size, the raw answer and why it was rejected. <matchId|all> [--force]",
     "pick": "tsx src/shorts/pickCli.ts",
     "//tg": "The Telegram bot's morning report and slash commands from the terminal — see src/telegram/tgCli.ts.",
-    "tg": "tsx src/telegram/tgCli.ts"
+    "tg": "tsx src/telegram/tgCli.ts",
+    "//studio": "Studio automation from the terminal: probe the session, pin a comment, or run the one-time login screen.",
+    "studio": "tsx src/youtube/studioCli.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

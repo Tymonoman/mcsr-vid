@@ -15,6 +15,7 @@ import {
   resumeUpload,
   retryFailedPlaylists,
   retryPendingComments,
+  retryPendingStudio,
   SHORT_DELAY_MS,
   uploadRunning,
 } from "./youtubeUpload.js";
@@ -1020,6 +1021,145 @@ try {
     assert.equal(uploadRunning(rMatchId), false, "and not once it has settled");
 
     console.log("OK: a cut-short upload resumes its own session and never starts a second one");
+  }
+
+  /* --- Studio automation's pin step: off is a no-op, on waits for comment+public ------------- */
+  {
+    const savedStudio = config.studioAutomation;
+
+    // Off (the default): the key never appears, and the browser seam is never called — "zero
+    // behaviour change, nothing launched, nothing read."
+    config.studioAutomation = false;
+    livePrivacy = "public";
+    let pinCalls = 0;
+    const neverCalled = async (): Promise<string | null> => {
+      pinCalls++;
+      return null;
+    };
+    await writeUpload(matchId, { ...record, finished: { comment: null } });
+    const off = await finishOnYouTube(matchId, "vidX", "video", neverCalled);
+    assert.equal("pin" in off, false, "off: no pin key at all");
+    assert.equal(pinCalls, 0, "off: the browser seam is never reached");
+
+    config.studioAutomation = true;
+
+    // On, but the comment has not landed yet (the video is still private, so the comment step
+    // itself leaves it unattempted): Studio has nothing to pin, so this waits too — left absent,
+    // which `todo()` reads as still-to-do on the next call, not a failure.
+    livePrivacy = "private";
+    await writeUpload(matchId, { ...record, privacyStatus: "private", finished: {} });
+    const noComment = await finishOnYouTube(matchId, "vidX", "video", neverCalled);
+    assert.equal(noComment.comment, undefined, "sanity: the comment step itself is still pending too");
+    assert.equal(noComment.pin, undefined, "on, comment pending: pin waits, not attempted");
+    assert.equal(pinCalls, 0);
+    livePrivacy = "public";
+
+    // On, comment done, but the video is not actually public yet (re-checked live, the same
+    // reason the comment step itself re-checks): waits rather than failing.
+    livePrivacy = "unlisted";
+    await writeUpload(matchId, { ...record, privacyStatus: "private", finished: { comment: null } });
+    const notPublic = await finishOnYouTube(matchId, "vidX", "video", neverCalled);
+    assert.equal(notPublic.pin, undefined, "on, not public yet: pin waits");
+    assert.equal(pinCalls, 0);
+
+    // On, comment done, live public: the seam is called once, and its answer lands verbatim.
+    livePrivacy = "public";
+    await writeUpload(matchId, { ...record, finished: { comment: null } });
+    const ok = await finishOnYouTube(matchId, "vidX", "video", async () => null);
+    assert.equal(ok.pin, null, "pinned (or already pinned) reads as done");
+
+    // A verify/signed-out/wrong-channel probe is this attempt's error, recorded — and the
+    // ledger's own idempotence means a fresh call retries it, rather than this function looping.
+    await writeUpload(matchId, { ...record, finished: { comment: null } });
+    const verify = await finishOnYouTube(
+      matchId,
+      "vidX",
+      "video",
+      async () => "Studio verify — log in again through the YouTube panel's Studio login",
+    );
+    assert.match(String(verify.pin), /^Studio verify/, "a verify probe is recorded as this attempt's error");
+    // Called again without a login having happened: fails the same way, and does not hang —
+    // this is "not retried in the same run," not "never retried at all."
+    const stillVerify = await finishOnYouTube(
+      matchId,
+      "vidX",
+      "video",
+      async () => "Studio verify — log in again through the YouTube panel's Studio login",
+    );
+    assert.match(String(stillVerify.pin), /^Studio verify/);
+
+    // A Short never gets a pin — there is no comment on one to pin.
+    await writeUpload(matchId, { ...record, finished: {} }, "short");
+    const shortPin = await finishOnYouTube(matchId, "vidX", "short", neverCalled);
+    assert.equal("pin" in shortPin, false, "a Short's finish never touches pin");
+    assert.equal(pinCalls, 0);
+
+    // A blocked player, with studioAutomation on: the pin step gets the same refusal note as the
+    // other three, pending only — an already-done pin (from before the block) is left alone.
+    const savedBlocked = config.blockedPlayers;
+    config.blockedPlayers = ["TestBlocked"];
+    await writeFile(path.join(dir, "TestBlocked.mp4"), "x");
+    await writeUpload(matchId, { ...record, finished: { comment: null, pin: null } });
+    const blockedDone = await finishOnYouTube(matchId, "vidX", "video", neverCalled);
+    assert.equal(blockedDone.pin, null, "an already-done pin stays done under a later block");
+    await writeUpload(matchId, { ...record, finished: { comment: null } });
+    const blockedPending = await finishOnYouTube(matchId, "vidX", "video", neverCalled);
+    assert.match(String(blockedPending.pin), /blocked player/);
+    await rm(path.join(dir, "TestBlocked.mp4"));
+    config.blockedPlayers = savedBlocked;
+
+    config.studioAutomation = savedStudio;
+    console.log("OK: the Studio pin step is off by default and waits for the comment and for public");
+  }
+
+  /* --- retryPendingStudio: the nightly's once-a-tick pass over pending pins ------------------- */
+  {
+    const savedStudio = config.studioAutomation;
+
+    // Off: reads nothing, calls nothing.
+    config.studioAutomation = false;
+    await writeUpload(matchId, { ...record, finished: { comment: null } });
+    const offPressed: string[] = [];
+    await retryPendingStudio(async (id) => {
+      offPressed.push(String(id));
+      return {};
+    });
+    assert.deepEqual(offPressed, [], "off: retryPendingStudio touches nothing");
+
+    config.studioAutomation = true;
+
+    // A pending pin (comment done, pin not) is pressed; a done one and one whose comment has not
+    // landed yet are both left alone.
+    const dirB = path.join(media, String(matchId + 50));
+    await mkdir(dirB, { recursive: true });
+    await writeUpload(matchId, { ...record, videoId: "vidPending", finished: { comment: null } });
+    await writeUpload(matchId + 50, {
+      ...record,
+      videoId: "vidDone",
+      finished: { comment: null, pin: null },
+    });
+    const pressedOn: string[] = [];
+    await retryPendingStudio(async (id, videoId) => {
+      pressedOn.push(videoId);
+      return { pin: null };
+    });
+    assert.deepEqual(pressedOn, ["vidPending"], "only the comment-done, pin-pending video is pressed");
+
+    // maxPerTick bounds it even with several pending at once.
+    const dirC = path.join(media, String(matchId + 51));
+    await mkdir(dirC, { recursive: true });
+    await writeUpload(matchId + 51, { ...record, videoId: "vidPending2", finished: { comment: null } });
+    const bounded: string[] = [];
+    await retryPendingStudio(async (id, videoId) => {
+      bounded.push(videoId);
+      return { pin: null };
+    }, 1);
+    assert.equal(bounded.length, 1, "at most maxPerTick videos are pressed in one tick");
+    await rm(dirB, { recursive: true, force: true });
+    await rm(dirC, { recursive: true, force: true });
+
+    config.studioAutomation = savedStudio;
+    console.log("OK: retryPendingStudio is off by default and otherwise presses only pending pins");
   }
 
   globalThis.fetch = realFetch;

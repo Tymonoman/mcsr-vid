@@ -57,6 +57,10 @@ const jobs = new Map<number, ExportJob>();
 /** An export writing into this match's directory right now. */
 export const exportRunning = (matchId: number): boolean => jobs.get(matchId)?.done === false;
 
+/** Any match's export running at all — Studio automation shares the box's four cores with ffmpeg
+ * and waits its turn rather than contend for them (src/dashboard/studioLogin.ts, nightly.ts). */
+export const anyExportRunning = (): boolean => [...jobs.values()].some((j) => !j.done);
+
 const projectPath = (dir: string, matchId: number) => path.join(dir, `match-${matchId}.kdenlive`);
 const finalPath = (dir: string) => path.join(dir, "final.mp4");
 

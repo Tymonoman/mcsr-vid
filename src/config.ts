@@ -239,6 +239,14 @@ export interface Config {
    */
   commentSoonAfterPublish: boolean;
   /**
+   * Whether a real, headed Chrome (src/youtube/studioBrowser.ts) is ever launched to do what
+   * Studio has no API for — phase 1 is pinning the channel's own first comment
+   * (src/youtube/studioActions.ts). Off by default, like `nightlyUpload`: it is a deliberate edit
+   * on the box, since turning it on starts a browser signed into the channel owner's own Google
+   * account. See CLAUDE.md's "Studio automation" section.
+   */
+  studioAutomation: boolean;
+  /**
    * What the nightly does with the MP4 it just exported: nothing, upload it private, or upload
    * it scheduled for the next publish slot (`publishHourUtc`; the Short follows 18 h later).
    * Needs `youtubeUploadEnabled` too. "off" by default so no config default changes what a
@@ -511,6 +519,7 @@ export const DEFAULTS: Config = {
   youtubeUploadEnabled: false,
   youtubeAutoFinish: false,
   commentSoonAfterPublish: false,
+  studioAutomation: false,
   nightlyUpload: "off",
   suggestCloseSlots: 8,
   suggestChaosSlots: 2,

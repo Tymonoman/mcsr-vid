@@ -35,9 +35,14 @@ async function loadYoutube(id, meta) {
   }
   ytStatus = status;
   paintSave();
+  // Account-level, not match-level — it still belongs in this panel because it is where the
+  // operator is already looking, and it renders whether or not the Data API itself is connected.
+  const studioBox = status.studioAutomation ? '<div id="studioLoginBox"></div>' : "";
   if (!status.connected) {
     el.innerHTML =
+      studioBox +
       '<div class="scanline">Not connected. Run <code>npm run youtube-auth</code> on a machine with a browser, then copy <code>youtube-token.json</code> into the repo root.</div>';
+    if (status.studioAutomation) void loadStudioLogin();
     return;
   }
 
@@ -48,11 +53,12 @@ async function loadYoutube(id, meta) {
   const mine = all.uploads.find((u) => u.matchId === id);
 
   if (mine) {
-    el.innerHTML = uploadedHtml(mine, all.statsError, all.engagementError);
+    el.innerHTML = studioBox + uploadedHtml(mine, all.statsError, all.engagementError);
     $("#loadcomments")?.addEventListener("click", () => loadComments(id));
     $("#runaudit")?.addEventListener("click", () => requestAudit(id));
     $("#ytFinish")?.addEventListener("click", (ev) => finishOnYouTube(id, meta, ev.currentTarget));
     loadAudit(id);
+    if (status.studioAutomation) void loadStudioLogin();
     return;
   }
 
@@ -75,7 +81,7 @@ async function loadYoutube(id, meta) {
     loadChecklist(id);
   };
 
-  el.innerHTML = `
+  el.innerHTML = `${studioBox}
     <div class="scanline">Uploaded it in Studio already? <a href="#" data-act="checkchannel">check the channel</a> <span class="muted">(otherwise it is noticed within six hours)</span></div>
     <div class="scanline">
       Or drop the file into Studio and leave every box empty &mdash; paste its id here and the
@@ -140,6 +146,8 @@ async function loadYoutube(id, meta) {
       failAt("#ytAdoptId", "Could not adopt that video", e.message);
     }
   });
+
+  if (status.studioAutomation) void loadStudioLogin();
 
   if (!status.uploadsEnabled) return;
 
@@ -556,4 +564,95 @@ async function loadAbTest() {
     </table>
     ${data.rows.some((r) => r.fellBack) ? '<div class="scanline">* avatars fell back to the static NMSR render, so this row is not a distinct pose.</div>' : ""}`;
   void loadYpp(el);
+}
+
+/* --- Studio login ---------------------------------------------------------------------------- */
+// The one-time (and whenever Google asks again) remote screen for signing a real Chrome into
+// the channel's own Google account — src/dashboard/studioLogin.ts. Shown only when
+// config.studioAutomation is on (GET /api/youtube/status). The password is shown exactly once,
+// in this box, right after Studio login starts it — never logged, never re-fetched.
+
+/** The URL/password this box is showing, while the screen is open; cleared once Done settles. */
+let studioOpenState = null;
+
+/**
+ * `status.secretRequired` (GET /api/studio/status) is true only when the box's own
+ * STUDIO_LOGIN_SECRET env var is set (src/dashboard/studioLogin.ts) — unset, as it is until the
+ * operator chooses to set it, this returns no header and the route behaves as it always has.
+ * Prompted once per tab (sessionStorage), cleared on a 401 so a wrong paste can be retried.
+ */
+function studioSecretHeader(status) {
+  if (!status?.secretRequired) return {};
+  let secret = sessionStorage.getItem("studioSecret");
+  if (!secret) {
+    secret = window.prompt("Studio login secret (STUDIO_LOGIN_SECRET in /app/.env):") || "";
+    sessionStorage.setItem("studioSecret", secret);
+  }
+  return { "x-studio-secret": secret };
+}
+
+function studioLoginHtml(status) {
+  if (studioOpenState) {
+    return `<div class="scanline">
+      Studio login is open: <a href="${esc(studioOpenState.url)}" target="_blank" rel="noopener">${esc(studioOpenState.url)}</a>
+      &middot; password <code>${esc(studioOpenState.password)}</code>
+      &middot; closes itself at ${new Date(studioOpenState.expiresAt).toLocaleTimeString()}
+      <div class="row"><button id="studioDone" class="ghost">Done</button> <span class="msg" id="studioMsg"></span></div>
+    </div>`;
+  }
+  const probe = status?.lastProbe;
+  const probeLine = probe
+    ? ` <span class="id" title="${esc(probe.message ?? "")}">last check: ${esc(probe.result)} &middot; ${ago(probe.at)}</span>`
+    : "";
+  return `<div class="scanline"><button id="studioLogin" class="ghost">Studio login</button>${probeLine}</div>`;
+}
+
+async function loadStudioLogin() {
+  const el = $("#studioLoginBox");
+  if (!el) return;
+  let status = null;
+  try {
+    status = await api("/api/studio/status");
+  } catch {
+    // Best effort: the button still renders and a press reports its own failure.
+  }
+  el.innerHTML = studioLoginHtml(status);
+  el.querySelector("#studioLogin")?.addEventListener("click", async (ev) => {
+    const btn = ev.currentTarget;
+    clearFailAt(btn);
+    btn.disabled = true;
+    btn.textContent = "starting…";
+    try {
+      studioOpenState = await api("/api/studio/login", {
+        method: "POST",
+        headers: studioSecretHeader(status),
+      });
+      await loadStudioLogin();
+    } catch (e) {
+      if (/studio secret/.test(e.message)) sessionStorage.removeItem("studioSecret");
+      btn.disabled = false;
+      btn.textContent = "Studio login";
+      failAt(btn, "Studio login failed", e.message);
+    }
+  });
+  el.querySelector("#studioDone")?.addEventListener("click", async (ev) => {
+    const btn = ev.currentTarget;
+    clearFailAt(btn);
+    btn.disabled = true;
+    btn.textContent = "checking…";
+    try {
+      const r = await api("/api/studio/login/done", {
+        method: "POST",
+        headers: studioSecretHeader(status),
+      });
+      studioOpenState = null;
+      await loadStudioLogin();
+      if (r.result !== "ok") failAt("#studioLogin", "Studio", r.message ?? r.result);
+    } catch (e) {
+      if (/studio secret/.test(e.message)) sessionStorage.removeItem("studioSecret");
+      btn.disabled = false;
+      btn.textContent = "Done";
+      failAt(btn, "Done failed", e.message);
+    }
+  });
 }
