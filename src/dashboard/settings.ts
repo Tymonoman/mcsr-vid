@@ -138,6 +138,13 @@ export const SETTINGS: readonly SettingField[] = [
     group: "Publishing",
   },
   {
+    key: "exportUpscale1440",
+    label: "Upload at 2560x1440 (upscaled)",
+    help: "export:fast's final pass blows the finished 1080p frame up to 2560x1440 before encoding — no extra detail, every overlay asset stays 1080p — to test whether YouTube's transcoder grants a higher bitrate tier for a 1440p upload. Bigger files, ~50-80% longer encodes. A playoff series needs every game exported with the same setting, or the games cannot be joined. Applies to the next export.",
+    kind: "boolean",
+    group: "Publishing",
+  },
+  {
     key: "explainMovesSec",
     label: "Explain the moves (seconds on screen)",
     help: "The first time either player reaches a split, the meta column says what it is for, in words for someone who has never watched a speedrun: BASTION, TRADING GOLD TO PIGLINS FOR ENDER PEARLS. Never who got there. The subscribe line and the teaser go first; a card waits for them. Empty shows none. Applies to the next render.",

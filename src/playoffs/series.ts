@@ -104,6 +104,38 @@ export const probeDuration = (file: string): Promise<number> =>
     proc.on("close", () => resolve(parseFloat(out.trim()) || 0));
   });
 
+/**
+ * The video stream's pixel size, or null when ffprobe cannot read one — `exportUpscale1440`
+ * (`src/pipeline/exportFast.ts`) can make one game's export 2560x1440 and another's 1920x1080;
+ * `-c copy` cannot join streams of different sizes, so `assembleSeries` checks this before it
+ * tries.
+ */
+export const probeResolution = (file: string): Promise<{ width: number; height: number } | null> =>
+  new Promise((resolve, reject) => {
+    const proc = spawn(
+      "ffprobe",
+      [
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=width,height",
+        "-of",
+        "csv=s=x:p=0",
+        file,
+      ],
+      { stdio: ["ignore", "pipe", "ignore"] },
+    );
+    let out = "";
+    proc.stdout.on("data", (d: Buffer) => (out += d.toString()));
+    proc.on("error", reject);
+    proc.on("close", () => {
+      const m = /^(\d+)x(\d+)/.exec(out.trim());
+      resolve(m ? { width: Number(m[1]), height: Number(m[2]) } : null);
+    });
+  });
+
 /** The concat demuxer's list file: one absolute path per line, quoted the way it wants. */
 export const concatList = (files: readonly string[]): string =>
   files.map((f) => `file '${f.replace(/'/g, "'\\''")}'`).join("\n") + "\n";
@@ -147,6 +179,16 @@ export type AssembleResult =
   | { kind: "blocked"; matchId: number }
   | { kind: "incomplete"; firstGameId: number; missing: number[] }
   | { kind: "stale"; firstGameId: number; stale: number[] }
+  /**
+   * Every export exists and is current, but not all the same resolution — `exportUpscale1440`
+   * toggled between games' exports (`-c copy` cannot join streams of different sizes).
+   * `mismatched` names each game whose resolution was read, in game order.
+   */
+  | {
+      kind: "mixed-resolution";
+      firstGameId: number;
+      mismatched: Array<{ matchId: number; width: number; height: number }>;
+    }
   | { kind: "joined" | "current"; firstGameId: number; path: string; games: SeriesGame[] };
 
 /** Chapter start of each game: the sum of the exports before it. */
@@ -176,6 +218,7 @@ export interface JoinSeams {
   join?: (files: readonly string[], outPath: string) => Promise<void>;
   probe?: (file: string) => Promise<number>;
   extract?: (seriesPath: string, startSec: number, durationSec: number, outPath: string) => Promise<void>;
+  probeResolution?: (file: string) => Promise<{ width: number; height: number } | null>;
 }
 
 /**
@@ -317,6 +360,24 @@ export async function assembleSeries(
     ? previous!.games.map((g) => g.durationSec)
     : await Promise.all(finals.map(probe));
   if (!current) {
+    // `exportUpscale1440` (src/pipeline/exportFast.ts) can make one game's export 2560x1440 and
+    // another's 1920x1080 — `-c copy` cannot join streams of different sizes, so check before
+    // spending the join on a file ffmpeg would refuse (or silently mis-play).
+    const probeRes = opts.probeResolution ?? probeResolution;
+    const resolutions = await Promise.all(finals.map(probeRes));
+    const known = resolutions.filter((r): r is { width: number; height: number } => r !== null);
+    if (new Set(known.map((r) => `${r.width}x${r.height}`)).size > 1) {
+      const mismatched = series.games
+        .map((g, i) => ({ matchId: g.matchId, res: resolutions[i] }))
+        .filter((x): x is { matchId: number; res: { width: number; height: number } } => x.res !== null)
+        .map((x) => ({ matchId: x.matchId, width: x.res.width, height: x.res.height }));
+      log(
+        `series ${first.matchId}: not joined — games export at different resolutions ` +
+          `(${mismatched.map((m) => `#${m.matchId} ${m.width}x${m.height}`).join(", ")}) — ` +
+          `-c copy cannot join them; re-export every game with the same exportUpscale1440 setting`,
+      );
+      return { kind: "mixed-resolution", firstGameId: first.matchId, mismatched };
+    }
     log(`series: joining ${finals.length} games into ${outPath}`);
     await join(finals, outPath);
   }

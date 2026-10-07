@@ -43,6 +43,18 @@ export interface Config {
    */
   povAudioPan: number;
   /**
+   * `export:fast`'s final pass upscales the already-composited 1080p frame to 2560x1440
+   * (lanczos, same fps) before encoding — every overlay asset (`remotion/layout.ts`, the stills,
+   * the intro card) stays 1080p; only the last filter in the graph changes. Uploading a 1920x1080
+   * video's worth of detail at a higher pixel count is widely reported to land it in YouTube's
+   * higher-bitrate transcode tier at every resolution a viewer picks — unconfirmed for this
+   * channel, which is what this flag is for testing (picture-quality.md, the night-1006 report).
+   * Off by default: it changes what a render uploads, the operator's call. A playoff series
+   * needs every game joined by `-c copy` at the same resolution — `assembleSeries` refuses to
+   * join a series whose games were exported with this flag on for some and off for others.
+   */
+  exportUpscale1440: boolean;
+  /**
    * Seconds kept after the finish, at most (the tail is cut earlier where the winner goes quiet
    * and still, never under 15 s). 30, not 60: measured on the same match the competitor posted,
    * their video ends ~10 s after the finish and ours ran 59 s into the winner's stats screen; the
@@ -461,6 +473,7 @@ export const DEFAULTS: Config = {
   syncConfidenceThreshold: 0.15,
   preRollSec: 150,
   povAudioPan: 0.7,
+  exportUpscale1440: false,
   postRollSec: 30,
   defaultRunSec: 900,
   mediaDir: "media",
