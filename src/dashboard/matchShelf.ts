@@ -79,10 +79,7 @@ export function setNightlyQueue(queue: readonly number[]): void {
   const queuedSet = new Set(nextQueue);
   // Queueing a match for tonight takes it off nightlySkip — an explicit queue wins.
   const nextSkip = state.nightlySkip.filter((id) => !queuedSet.has(id));
-  writeFileSync(
-    statePath(),
-    JSON.stringify({ ...state, queue: nextQueue, nightlySkip: nextSkip }, null, 2),
-  );
+  writeFileSync(statePath(), JSON.stringify({ ...state, queue: nextQueue, nightlySkip: nextSkip }, null, 2));
 }
 
 export function nightlySkip(): number[] {

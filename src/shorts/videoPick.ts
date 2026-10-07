@@ -132,8 +132,7 @@ export function hookProblem(
   if (typeof hook !== "string" || hook.trim() === "") return "no hook";
   const h = hook.trim();
   if (h.length > maxChars) return `over ${maxChars} characters`;
-  if (HOOK_SPOILER.test(h.replace(PACE_TO_WIN, "")) || spoilsTheResult(h))
-    return "it gives the result away";
+  if (HOOK_SPOILER.test(h.replace(PACE_TO_WIN, "")) || spoilsTheResult(h)) return "it gives the result away";
   if (HOOK_SEED_RANK_ELO.test(h)) return "it uses a seed, rank or elo";
   return hookLabelProblem(h, players);
 }

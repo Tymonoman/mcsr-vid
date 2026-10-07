@@ -252,7 +252,18 @@ export function buildFastExportCommand(input: FastExportInput): BuiltCommand {
     // Measured 9.5ms CPU/frame against libx264 veryfast's 43.8ms. Encode only: this GPU exposes
     // no VAAPI VPP entrypoints (`vainfo | grep -c VideoProc` is 0), so frames cannot be scaled
     // on it, and hardware *decode* then loses more to the 8.1ms/frame download than it saves.
-    args.push("-c:v", "h264_vaapi", "-rc_mode", "CQP", "-qp", String(23 + softer), "-profile:v", "high", "-bf", "0");
+    args.push(
+      "-c:v",
+      "h264_vaapi",
+      "-rc_mode",
+      "CQP",
+      "-qp",
+      String(23 + softer),
+      "-profile:v",
+      "high",
+      "-bf",
+      "0",
+    );
   } else {
     args.push("-c:v", "libx264", "-preset", "veryfast", "-crf", String(21 + softer), "-pix_fmt", "yuv420p");
   }
