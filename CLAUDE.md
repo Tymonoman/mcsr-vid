@@ -926,6 +926,14 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
   `headTrimSec(config.introSec)` instead. Anything on timeline seconds is unchanged: the sync
   editor and the 9.6 s sync check read the POV clips (`clipTimeFor`), and the teaser, mid-roll
   and top-end stills are timed on the timeline before the cut.
+- **`exportUpscale1440` (7 Oct 2026, off by default):** `export:fast`'s last filter can scale the
+  already-composited 1080p frame up to 2560x1440 (lanczos, same fps) right before encoding —
+  every overlay asset (`remotion/layout.ts`, the stills, the intro card) stays 1080p, and the
+  Kdenlive project is untouched. A cheap test of the widely reported trick of uploading above a
+  viewer's playback resolution to land in YouTube's higher-bitrate transcode tier; unconfirmed for
+  this channel. Off keeps the filter graph and command line byte for byte what they were before
+  this. A playoff series needs every game exported with the same setting — `assembleSeries`
+  refuses to `-c copy`-join games at different resolutions and names which.
 - **When the detector is not sure, a human settles it.** `GET/PUT /api/sync/:id` plus
   `GET /api/sync/frame?match=&side=&t=&offset=` back the match screen's "Fix the sync by hand"
   fold (`src/pipeline/syncEdit.ts`): one frame out of each POV clip at the same second of the *finished*

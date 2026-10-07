@@ -130,7 +130,8 @@ const outPath = Number.isFinite(limitSec)
   : exportOutputPath(outDir, matchId);
 console.error(
   `Exporting match ${matchId} (${playerLeft.nickname} vs ${playerRight.nickname}) ` +
-    `with ${useVaapi ? "h264_vaapi" : "libx264"}...`,
+    `with ${useVaapi ? "h264_vaapi" : "libx264"}` +
+    `${config.exportUpscale1440 ? " at 2560x1440 (exportUpscale1440)" : ""}...`,
 );
 
 const started = Date.now();
@@ -172,6 +173,7 @@ await runFastExport(
     outPath,
     useVaapi,
     povAudioPan: config.povAudioPan,
+    upscale1440: config.exportUpscale1440,
   },
   (line) => process.stderr.write(`  ${line}\n`),
 );

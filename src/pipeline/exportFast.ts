@@ -69,7 +69,17 @@ export interface FastExportInput {
   outPath: string;
   /** Hardware H.264 encode. Falls back to libx264 when the render node is absent. */
   useVaapi?: boolean;
+  /**
+   * `config.exportUpscale1440`: one lanczos `scale` on the finished 1080p frame, after every
+   * overlay is composited — on the CPU even on the VAAPI path, since this GPU has no VAAPI
+   * scaling entrypoint. Absent or false leaves the graph exactly as it is today.
+   */
+  upscale1440?: boolean;
 }
+
+/** The upscale's target — 4:3 of the 1920x1080 stage, same aspect ratio. */
+const UPSCALE_WIDTH = 2560;
+const UPSCALE_HEIGHT = 1440;
 
 interface BuiltCommand {
   args: string[];
@@ -194,9 +204,23 @@ export function buildFastExportCommand(input: FastExportInput): BuiltCommand {
   chains.push(
     `[4:v]format=yuva420p,setsar=1,fps=${fps},settb=1/${fps},setpts=N/${fps}/TB+${input.introOffsetSec}/TB[INTRO]`,
   );
-  const videoOut = input.useVaapi ? "[STAGEI]" : "[V]";
+  // Anything that still has to happen to the composited frame (the upscale, then VAAPI's
+  // upload) runs after the overlay, so off leaves this overlay's own output label — and the
+  // graph after it — exactly as it is today.
+  const needsPost = input.useVaapi || input.upscale1440;
+  const videoOut = needsPost ? "[STAGEI]" : "[V]";
   chains.push(`${stage}[INTRO]overlay=0:0:format=yuv420:eof_action=pass:repeatlast=0${videoOut}`);
-  if (input.useVaapi) chains.push(`[STAGEI]format=nv12,hwupload[V]`);
+  let composited = videoOut;
+  if (input.upscale1440) {
+    // Every overlay asset (remotion/layout.ts, the stills, the intro card) is composited at
+    // 1920x1080 above this line; this is the one place the canvas changes, after all of it. No
+    // VAAPI scaling entrypoint on this GPU (see the encoder comment below), so this runs on the
+    // CPU on both paths.
+    const next = input.useVaapi ? "[STAGEU]" : "[V]";
+    chains.push(`${composited}scale=${UPSCALE_WIDTH}:${UPSCALE_HEIGHT}:flags=lanczos${next}`);
+    composited = next;
+  }
+  if (input.useVaapi) chains.push(`${composited}format=nv12,hwupload[V]`);
 
   // Each POV folded to mono and placed toward its own side: the left ear gets `p` of the left
   // stream and `1-p` of the right, mirrored for the right ear. At p=0.5 both ears get half of
@@ -218,13 +242,19 @@ export function buildFastExportCommand(input: FastExportInput): BuiltCommand {
   args.push("-map", "[V]", "-map", "[A]");
   args.push("-t", outSec.toFixed(3), "-r", String(fps), "-fps_mode", "cfr");
   args.push("-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv");
+  // 2560x1440 is 1.78x the pixels of 1920x1080; at the same quality setting that is roughly
+  // 1.78x the bitrate (measured: ~12 Mbps at crf 21/qp 23 → an estimated ~21 Mbps at the same
+  // setting). The upscale adds no real detail — it's the same 1080p frame blown up — so two
+  // steps softer (~20-25% less bitrate per step, the standard x264/VAAPI-CQP rule of thumb)
+  // keeps the file from nearly doubling without a visible loss at normal viewing size.
+  const softer = input.upscale1440 ? 2 : 0;
   if (input.useVaapi) {
     // Measured 9.5ms CPU/frame against libx264 veryfast's 43.8ms. Encode only: this GPU exposes
     // no VAAPI VPP entrypoints (`vainfo | grep -c VideoProc` is 0), so frames cannot be scaled
     // on it, and hardware *decode* then loses more to the 8.1ms/frame download than it saves.
-    args.push("-c:v", "h264_vaapi", "-rc_mode", "CQP", "-qp", "23", "-profile:v", "high", "-bf", "0");
+    args.push("-c:v", "h264_vaapi", "-rc_mode", "CQP", "-qp", String(23 + softer), "-profile:v", "high", "-bf", "0");
   } else {
-    args.push("-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p");
+    args.push("-c:v", "libx264", "-preset", "veryfast", "-crf", String(21 + softer), "-pix_fmt", "yuv420p");
   }
   args.push("-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2", "-movflags", "+faststart");
   args.push(input.outPath);

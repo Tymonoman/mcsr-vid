@@ -6,7 +6,7 @@
 // is copied in: a series' Short is picked and cut in game 1's directory like any match's.
 // Run: npx tsx src/series.test.ts
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { config } from "../config.js";
@@ -377,6 +377,40 @@ const fixed = await assembleSeries(101, seams);
 assert.equal(fixed.kind, "joined");
 utimesSync(path.join(dir(101), "series-101.mp4"), new Date(Date.now() + 20000), new Date(Date.now() + 20000));
 assert.equal(exportStale(dir(101), path.join(dir(101), "series-101.mp4")).stale, false);
+
+/* --- exportUpscale1440: games exported at different resolutions refuse the join ------------- */
+{
+  // A fresh export of game 1, newer than the series file, forces a rejoin attempt; games 2 and 3
+  // come back out of the series as before, recovered from it rather than re-exported.
+  writeFileSync(final(101), "yy");
+  utimesSync(final(101), new Date(Date.now() + 30000), new Date(Date.now() + 30000));
+  const resByFile: Record<string, { width: number; height: number }> = {
+    [final(101)]: { width: 2560, height: 1440 },
+    [final(102)]: { width: 1920, height: 1080 },
+    [final(103)]: { width: 1920, height: 1080 },
+  };
+  const joinsBefore = joins.length;
+  const mixed = await assembleSeries(101, {
+    ...seams,
+    probeResolution: async (file: string) => resByFile[file] ?? null,
+  });
+  assert.deepEqual(mixed, {
+    kind: "mixed-resolution",
+    firstGameId: 101,
+    mismatched: [
+      { matchId: 101, width: 2560, height: 1440 },
+      { matchId: 102, width: 1920, height: 1080 },
+      { matchId: 103, width: 1920, height: 1080 },
+    ],
+  });
+  assert.equal(joins.length, joinsBefore, "a mixed-resolution series is never -c copy joined");
+  assert.ok(existsSync(path.join(dir(101), "series-101.mp4")), "the old joined video is left alone");
+  console.log("OK: assembleSeries refuses to -c copy a series exported at mixed resolutions");
+  // The refusal returns before pruning, so games 2 and 3's recovered exports are left on disk —
+  // clean them back up so the tests below see the same "freshly joined, finals pruned" state
+  // the mixed-resolution check interrupted.
+  for (const id of [101, 102, 103]) rmSync(final(id), { force: true });
+}
 
 /* --- No game's Short is copied in; the series' Short game is its cut's, else its pick's ------- */
 

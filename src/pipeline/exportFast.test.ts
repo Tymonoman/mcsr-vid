@@ -184,4 +184,46 @@ assert.throws(
   assert.equal(exportMatchStartSec(dir, 2), 10, "an unreadable record is the default");
 }
 
+// --- exportUpscale1440 (7 Oct 2026) --------------------------------------------------------
+{
+  // Off (absent, same as every export before this) is today's command, byte for byte.
+  assert.deepEqual(buildFastExportCommand({ ...base, upscale1440: false }).args, args);
+
+  // On: the composited 1080p frame is scaled up once, after the intro overlay, nothing before
+  // it changes, and the quality setting softens so the file does not nearly double.
+  const up = buildFastExportCommand({ ...base, upscale1440: true });
+  const uf = up.args[up.args.indexOf("-filter_complex") + 1]!;
+  assert.ok(
+    /overlay=0:0:format=yuv420:eof_action=pass:repeatlast=0\[STAGEI\]/.test(uf),
+    "overlay lands on an intermediate label when a post-step follows",
+  );
+  assert.ok(
+    uf.includes("[STAGEI]scale=2560:1440:flags=lanczos[V]"),
+    "the upscale is the one post-overlay step on the CPU path",
+  );
+  assert.equal(
+    (uf.match(/scale=2560:1440/g) ?? []).length,
+    1,
+    "every overlay asset stays 1080p; only the final frame is scaled",
+  );
+  assert.ok(up.args.includes("libx264"));
+  assert.ok(up.args.includes("23"), "crf softened from 21 to 23 so the upscale does not ~double the file");
+  assert.ok(!up.args.includes("21"), "the base crf must not also be present");
+
+  // On top of VAAPI: overlay -> scale (still CPU) -> format/hwupload -> the encoder.
+  const upGpu = buildFastExportCommand({ ...base, upscale1440: true, useVaapi: true });
+  const ugf = upGpu.args[upGpu.args.indexOf("-filter_complex") + 1]!;
+  assert.ok(ugf.includes("[STAGEI]scale=2560:1440:flags=lanczos[STAGEU]"));
+  assert.ok(ugf.includes("[STAGEU]format=nv12,hwupload[V]"));
+  assert.ok(upGpu.args.includes("25"), "qp softened from 23 to 25 to match");
+  assert.ok(!upGpu.args.includes("23"), "the base qp must not also be present");
+
+  // VAAPI alone (no upscale) is unchanged: overlay -> format/hwupload directly.
+  const gpuOnly = buildFastExportCommand({ ...base, useVaapi: true });
+  const gof = gpuOnly.args[gpuOnly.args.indexOf("-filter_complex") + 1]!;
+  assert.ok(gof.includes("overlay=0:0:format=yuv420:eof_action=pass:repeatlast=0[STAGEI]"));
+  assert.ok(gof.includes("[STAGEI]format=nv12,hwupload[V]"));
+  assert.ok(!gof.includes("scale=2560:1440"));
+}
+
 console.log("exportFast: all checks passed");
