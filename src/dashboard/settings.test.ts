@@ -11,6 +11,8 @@ import path from "node:path";
 const dir = mkdtempSync(path.join(tmpdir(), "mcsr-settings-"));
 const cwd = process.cwd();
 process.chdir(dir);
+// test:unit points MCSR_CONFIG at a missing file for every other test; this one owns a real file.
+delete process.env.MCSR_CONFIG;
 writeFileSync(
   path.join(dir, "mcsr-vid.config.json"),
   JSON.stringify({ mediaDir: "/media", preRollSec: 150 }, null, 2),

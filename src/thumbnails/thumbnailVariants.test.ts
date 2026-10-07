@@ -265,6 +265,13 @@ try {
   assert.equal(autoDefaultKey(13525852, keys), autoDefaultKey(13525852, keys), "stable for the same id");
   assert.equal(autoDefaultKey(13525852, keys), "cheering-relaxing", "13525852 % 3 === 1");
   assert.equal(autoDefaultKey(10, ["only-one"]), "only-one", "nothing to rotate between");
+  // A match with no usable id (a test fixture, a malformed record) keeps the first variant rather
+  // than indexing with NaN and handing renderThumbnailVariants an undefined key (7 Oct 2026).
+  assert.equal(
+    autoDefaultKey(undefined as unknown as number, keys),
+    "walking-crossed",
+    "no id: first variant",
+  );
 
   // End to end: a fresh render (no manifest yet) with rotation on picks the rotated key as the
   // auto default, through the real renderThumbnailVariants, not just the pure helper.

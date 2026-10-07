@@ -190,7 +190,7 @@ export function carriedChoice(previous: VariantsManifest | null): string | undef
  * flap between poses.
  */
 export function autoDefaultKey(matchId: number, keys: readonly string[]): string {
-  if (!config.thumbnailRotatePoses || keys.length <= 1) return keys[0]!;
+  if (!config.thumbnailRotatePoses || keys.length <= 1 || !Number.isFinite(matchId)) return keys[0]!;
   return keys[((matchId % keys.length) + keys.length) % keys.length]!;
 }
 

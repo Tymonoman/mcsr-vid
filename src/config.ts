@@ -539,7 +539,9 @@ export const DEFAULTS: Config = {
 };
 
 /** The overrides file. Exported so the settings panel writes the same one the loader reads. */
-export const CONFIG_PATH = path.resolve("mcsr-vid.config.json");
+/** `MCSR_CONFIG` points elsewhere: `npm run test:unit` sets it to a missing file, so the unit tests run on
+ *  `DEFAULTS` and never on the operator's live switches (7 Oct 2026: a switch turned on in Settings broke a test). */
+export const CONFIG_PATH = path.resolve(process.env.MCSR_CONFIG ?? "mcsr-vid.config.json");
 
 /**
  * The config file is hand-edited, so a wrong type (`"renderConcurrency": "4"`) would otherwise be

@@ -17,6 +17,10 @@ import { config } from "../config.js";
 import type { MatchInfo } from "../api/types.js";
 import type { ShortPick, ShortPlanResponse } from "../shorts/shortPlan.js";
 
+// The CLI runs in a temp cwd with its own config file: test:unit's MCSR_CONFIG (a missing file, so
+// unit tests run on DEFAULTS) must not follow it into the child, or the child ignores that file.
+const { MCSR_CONFIG: _ignoredConfig, ...cliEnv } = process.env;
+
 const media = mkdtempSync(path.join(tmpdir(), "mcsr-shortflow-"));
 config.mediaDir = media;
 // A Studio upload's record step backs the match up (archiveMatch): here, never the NAS's /archive.
@@ -329,7 +333,7 @@ try {
     const cli = spawnSync(
       path.join(root, "node_modules", ".bin", "tsx"),
       [path.join(root, "src", "shorts", "generateShort.ts"), String(A)],
-      { cwd, encoding: "utf8", timeout: 60_000 },
+      { cwd, env: cliEnv, encoding: "utf8", timeout: 60_000 },
     );
     assert.equal(cli.status, 1, cli.stderr);
     assert.match(cli.stderr, /waiting for the Short's hook/);
@@ -950,7 +954,7 @@ try {
     const cli = spawnSync(
       path.join(root, "node_modules", ".bin", "tsx"),
       [path.join(root, "src", "shorts", "generateShort.ts"), String(Y)],
-      { cwd, encoding: "utf8", timeout: 60_000 },
+      { cwd, env: cliEnv, encoding: "utf8", timeout: 60_000 },
     );
     rmSync(cwd, { recursive: true, force: true });
     assert.equal(cli.status, 1, cli.stderr);
