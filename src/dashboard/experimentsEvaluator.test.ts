@@ -1,10 +1,11 @@
 // Self-check for experimentsEvaluator.ts. Run: npx tsx src/dashboard/experimentsEvaluator.test.ts
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { Experiment } from "./experiments.js";
 import type { ArmTotals, VideoMetrics } from "./experimentsEvaluator.js";
+import type { UploadRecord } from "../youtube/youtubeStore.js";
 
 // Same recipe as experiments.test.ts / settings.test.ts: CONFIG_PATH is resolved once at config.js's
 // first import, so `settle()`'s `saveSettings` calls need their own cwd, and the ledger its own
@@ -15,10 +16,33 @@ process.chdir(cwdDir);
 delete process.env.MCSR_CONFIG;
 writeFileSync(path.join(cwdDir, "mcsr-vid.config.json"), JSON.stringify({ mediaDir: media }, null, 2));
 
-const { config } = await import("../config.js");
+const { config, matchDir } = await import("../config.js");
 const { readExperiments, writeExperiments } = await import("./experiments.js");
 const { armTotalsFor, twoProportionZ, verdictFor, evaluateExperiments } =
   await import("./experimentsEvaluator.js");
+const { writeUpload } = await import("../youtube/youtubeStore.js");
+
+// Fixtures for `enrolVideos`: a real match directory, since it's discovered by `listProcessedMatchIds`
+// (a directory scan), not by anything in `.experiments.json` itself.
+function fixtureArmFile(matchId: number, experimentId: string, arm: string): void {
+  mkdirSync(matchDir(matchId), { recursive: true });
+  writeFileSync(
+    path.join(matchDir(matchId), "experiment-arm.json"),
+    JSON.stringify({ date: "2026-10-01", experimentId, arm, settings: {} }),
+  );
+}
+async function fixtureUpload(matchId: number, over: Partial<UploadRecord> = {}): Promise<void> {
+  mkdirSync(matchDir(matchId), { recursive: true });
+  await writeUpload(matchId, {
+    videoId: `v${matchId}`,
+    uploadedAt: "2026-10-01T00:00:00Z",
+    publishAt: null,
+    privacyStatus: "public",
+    thumbnailVariant: null,
+    title: "t",
+    ...over,
+  });
+}
 
 const DAY_MS = 86_400_000;
 const arm = (name: string, impressions: number, clicks: number, pcts: number[] = []): ArmTotals => ({
@@ -444,6 +468,156 @@ assert.equal(twoProportionZ(0, 0, 10, 100), 0, "nothing to divide by on one side
   after = readExperiments().experiments.find((e) => e.id === "flaky")!;
   assert.equal(after.needsHuman, undefined, "a clean run clears the flag");
   assert.equal(after.lastEvalFailure, undefined);
+}
+
+// --- enrolVideos (gap #2), via evaluateExperiments: RENDER experiments -------------------------
+// Nothing pre-fills `videos` here — proving the evaluator itself discovers them from disk, unlike
+// every test above, which hands `videos` to it by hand.
+{
+  fixtureArmFile(910001, "render-enrol", "control"); // not uploaded yet — enrolled anyway, no videoId
+  fixtureArmFile(910002, "render-enrol", "variant");
+  await fixtureUpload(910002, { videoId: "rv2" });
+
+  const exp = baseExperiment({ id: "render-enrol", end: "2026-10-20", videos: [] });
+  writeExperiments({ experiments: [exp], schedule: [] });
+  const calls: (string | undefined)[] = [];
+  const fetch = async (_matchId: number, videoId?: string): Promise<VideoMetrics | null> => {
+    calls.push(videoId);
+    if (videoId !== "rv2") return null;
+    return {
+      impressions: 2000,
+      clicks: 80,
+      views: 500,
+      engagedViews: 200,
+      averageViewPercentage: 30,
+      subscribersGained: 0,
+    };
+  };
+  await evaluateExperiments({ fetch, now: () => Date.parse("2026-10-08T04:15:00Z") });
+
+  const after = readExperiments().experiments.find((e) => e.id === "render-enrol")!;
+  assert.equal(after.videos.length, 2, "both match directories were enrolled");
+  const control = after.videos.find((v) => v.matchId === 910001)!;
+  assert.equal(control.arm, "control");
+  assert.equal(control.videoId, undefined, "not uploaded yet — enrolled with no videoId");
+  const variant = after.videos.find((v) => v.matchId === 910002)!;
+  assert.equal(variant.arm, "variant");
+  assert.equal(variant.videoId, "rv2", "videoId came from youtube.json");
+  assert.ok(after.evaluatedAt, "the enrolled videos were actually evaluated, not just listed");
+  assert.ok(calls.includes(undefined), "fetch was still asked about the not-yet-uploaded match");
+
+  // A second day's tick must not duplicate — the same two directories are still on disk.
+  await evaluateExperiments({ fetch, now: () => Date.parse("2026-10-09T04:15:00Z") });
+  const again = readExperiments().experiments.find((e) => e.id === "render-enrol")!;
+  assert.equal(again.videos.length, 2, "idempotent — re-scanning the same directories adds nothing");
+}
+
+// --- enrolVideos: SLOT experiments ---------------------------------------------------------------
+{
+  await fixtureUpload(920001, { videoId: "sv1", publishAt: "2026-10-08T18:00:00Z" }); // hour 18
+  await fixtureUpload(920002, { videoId: "sv2", publishAt: "2026-10-08T20:00:00Z" }); // hour 20
+  await fixtureUpload(920003, { videoId: "sv3", publishAt: "2026-10-08T05:00:00Z" }); // no arm's own hour
+  await fixtureUpload(920004, { videoId: "sv4", publishAt: "2026-10-09T18:00:00Z" }); // no entry this date
+
+  const exp = baseExperiment({
+    id: "slot-enrol",
+    end: "2026-10-20",
+    controlArm: "18utc",
+    arms: [
+      { name: "18utc", slot: { rankedHoursUtc: [18] } },
+      { name: "20utc", slot: { rankedHoursUtc: [20] } },
+    ],
+    videos: [],
+  });
+  writeExperiments({
+    experiments: [exp],
+    schedule: [
+      {
+        date: "2026-10-08",
+        experimentId: "slot-enrol",
+        arm: "fallback-label",
+        slot: { rankedHoursUtc: [18, 20] },
+      },
+    ],
+  });
+  const fetch = async (): Promise<VideoMetrics | null> => ({
+    impressions: 10,
+    clicks: 1,
+    views: 10,
+    engagedViews: 4,
+    averageViewPercentage: 40,
+    subscribersGained: 0,
+  });
+  await evaluateExperiments({ fetch, now: () => Date.parse("2026-10-08T04:15:00Z") });
+
+  const after = readExperiments().experiments.find((e) => e.id === "slot-enrol")!;
+  assert.equal(after.videos.length, 3, "920004 (a different, un-scheduled date) was not enrolled");
+  assert.equal(after.videos.find((v) => v.matchId === 920001)?.arm, "18utc", "matched its own hour's arm");
+  assert.equal(after.videos.find((v) => v.matchId === 920002)?.arm, "20utc", "matched its own hour's arm");
+  assert.equal(
+    after.videos.find((v) => v.matchId === 920003)?.arm,
+    "fallback-label",
+    "no arm claims hour 5 — falls back to the schedule entry's own arm",
+  );
+  assert.equal(
+    after.videos.find((v) => v.matchId === 920004),
+    undefined,
+  );
+}
+
+// --- evaluateExperiments: a concurrent edit to a DONE experiment's own field survives -----------
+// (review fix, 8 Oct 2026): before this, `touched` was seeded with *every* between experiment —
+// done or planned included — regardless of whether `enrolVideos` found anything new for it, so
+// the final write force-wrote a stale copy over any of them. A "done" experiment enrolVideos
+// finds nothing new for this run must be left exactly as `fresh` holds it.
+{
+  const running = baseExperiment({
+    id: "merge-done-running",
+    videos: [{ matchId: 70, arm: "control", videoId: "c70" }],
+  });
+  const done = baseExperiment({
+    id: "merge-done-finished",
+    status: "done",
+    videos: [{ matchId: 71, arm: "control", videoId: "c71" }],
+  });
+  writeExperiments({ experiments: [running, done], schedule: [] });
+  let released: () => void = () => {};
+  const held = new Promise<void>((resolve) => {
+    released = resolve;
+  });
+  const fetch = async (): Promise<VideoMetrics | null> => {
+    await held; // holds the evaluation open while the "concurrent" write below lands
+    return {
+      impressions: 10,
+      clicks: 1,
+      views: 10,
+      engagedViews: 4,
+      averageViewPercentage: 40,
+      subscribersGained: 0,
+    };
+  };
+  const run = evaluateExperiments({ fetch, now: () => Date.parse("2026-10-08T04:15:00Z") });
+  // Simulates a write to the done experiment's own field — not its `videos`, which enrolVideos
+  // never touches for it since no match directory names it this run — landing mid-flight.
+  const mid = readExperiments();
+  writeExperiments({
+    ...mid,
+    experiments: mid.experiments.map((e) =>
+      e.id === "merge-done-finished" ? { ...e, needsHumanAck: true } : e,
+    ),
+  });
+  released();
+  await run;
+  const after = readExperiments();
+  assert.equal(
+    after.experiments.find((e) => e.id === "merge-done-finished")?.needsHumanAck,
+    true,
+    "the concurrent edit to the untouched done experiment survived",
+  );
+  assert.ok(
+    after.experiments.find((e) => e.id === "merge-done-running")?.evaluatedAt,
+    "and the running experiment's own result still landed",
+  );
 }
 
 console.log("experimentsEvaluator: all checks passed");

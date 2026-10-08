@@ -135,6 +135,27 @@ export const scheduleEntryFor = (
 ): ScheduleEntry | undefined => data.schedule.find((s) => s.date === date);
 
 /**
+ * A date's schedule entries can now number more than one — a render arm (`render`, applied
+ * before that night's render) and a slot arm (`slot`, publish hours / Short delay) of *different*
+ * experiments both naming the same date. These two helpers pick the entry tagged for the side
+ * that's asking, falling back to the date's first entry when none carries that tag — so a date
+ * with just the one entry (every shape on disk before this existed) resolves exactly as
+ * `scheduleEntryFor` always did.
+ */
+export function slotEntryFor(
+  date: string,
+  data: ExperimentsFile = readExperiments(),
+): ScheduleEntry | undefined {
+  const entries = data.schedule.filter((s) => s.date === date);
+  return entries.find((s) => s.slot) ?? entries[0];
+}
+
+function renderEntryFor(date: string, data: ExperimentsFile): ScheduleEntry | undefined {
+  const entries = data.schedule.filter((s) => s.date === date);
+  return entries.find((s) => s.render) ?? entries[0];
+}
+
+/**
  * Sorted ranked-video (never series) candidate publish hours for a UTC date, or undefined when
  * nothing overrides it — `nextPublishSlot` then falls back to `config.publishHourUtc` alone,
  * exactly as before this existed.
@@ -143,7 +164,7 @@ export function rankedHoursForDate(
   date: string,
   data: ExperimentsFile = readExperiments(),
 ): number[] | undefined {
-  const hours = scheduleEntryFor(date, data)?.slot?.rankedHoursUtc;
+  const hours = slotEntryFor(date, data)?.slot?.rankedHoursUtc;
   return hours && hours.length > 0 ? [...hours].sort((a, b) => a - b) : undefined;
 }
 
@@ -157,7 +178,7 @@ export function shortDelayMsForDate(
   date: string,
   data: ExperimentsFile = readExperiments(),
 ): number | undefined {
-  const hours = scheduleEntryFor(date, data)?.slot?.shortDelayHours;
+  const hours = slotEntryFor(date, data)?.slot?.shortDelayHours;
   return hours !== undefined && Number.isFinite(hours) && hours >= 1 && hours <= 48
     ? hours * 3600_000
     : undefined;
@@ -203,7 +224,7 @@ export function applyScheduledRenderArm(nowMs: number = Date.now()): boolean {
   const date = new Date(nowMs + msUntilHourUtc(nowMs, hourUtc)).toISOString().slice(0, 10);
   const data = readExperiments();
   if (data.appliedOn === date) return false;
-  const entry = scheduleEntryFor(date, data);
+  const entry = renderEntryFor(date, data);
   if (!entry?.render) {
     // Nothing was ever set up (no .experiments.json worth having): leave no trace of a tick that
     // did nothing. Once there is a file, recording appliedOn every night keeps this cheap either way.
@@ -268,7 +289,7 @@ export function writeExperimentArmFile(matchId: number, nowMs: number = Date.now
   const appliedRecently =
     data.appliedOn !== undefined && Math.abs(Date.parse(today) - Date.parse(data.appliedOn)) <= DAY_MS;
   const date = appliedRecently ? data.appliedOn! : today;
-  const entry = scheduleEntryFor(date, data);
+  const entry = renderEntryFor(date, data);
   if (!entry) return;
   const experiment = data.experiments.find((e) => e.id === entry.experimentId);
   const keys = new Set<string>(FIXED_SNAPSHOT_KEYS);

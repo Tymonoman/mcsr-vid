@@ -9,14 +9,18 @@
  * never touched: the loop below skips anything whose `kind !== "between"` before it reads or
  * writes a single field of it.
  */
-import { config } from "../config.js";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
+import { listProcessedMatchIds } from "./matchStatus.js";
 import { getAccessToken, latestImpressions } from "../youtube/youtube.js";
 import { analytics } from "../youtube/yppProgress.js";
 import { readUpload } from "../youtube/youtubeStore.js";
 import { totalReach } from "./youtubeRoutes.js";
 import {
   readExperiments,
+  slotEntryFor,
   writeExperiments,
   type Experiment,
   type ExperimentArm,
@@ -249,16 +253,71 @@ function settle(exp: Experiment, verdict: Verdict): void {
     : `kept ${exp.controlArm}: ${verdict.text}`;
 }
 
+/**
+ * Fills every "between" experiment's `videos` array from what's on disk, before the evaluation
+ * loop below ever reads it — nothing wrote `exp.videos` until this existed. Idempotent (checked
+ * by `matchId` per experiment below), never duplicates, never removes.
+ *
+ *  (a) RENDER experiments: a match directory's own `experiment-arm.json`
+ *      (`writeExperimentArmFile`, src/dashboard/experiments.ts) names the experiment and the arm
+ *      it rendered under; `videoId` comes from `youtube.json` when the match has one by now — a
+ *      match not yet uploaded is enrolled anyway and simply has no metrics to fetch until it is.
+ *  (b) SLOT experiments: a long-form upload record (`youtube.json`, never a Short) whose publish
+ *      time (`publishAt`, else `uploadedAt`) falls on a date whose slot entry (`slotEntryFor`)
+ *      names the experiment; the arm is the arm whose own `slot.rankedHoursUtc` is exactly that
+ *      one publish hour (an hour-split experiment: two hours a day, each its own arm) when such
+ *      an arm exists, else the schedule entry's own `arm`.
+ *
+ * Mutates the experiments inside `data` in place (same objects `evaluateExperiments`'s own loop
+ * then reads), rather than returning a copy — there is nothing else to do with the result.
+ */
+async function enrolVideos(data: ExperimentsFile): Promise<void> {
+  const byId = new Map(data.experiments.filter((e) => e.kind === "between").map((e) => [e.id, e]));
+  if (byId.size === 0) return;
+
+  for (const matchId of listProcessedMatchIds()) {
+    const upload = await readUpload(matchId, "video");
+
+    // (a) This match's own render-arm snapshot, if it has one.
+    const armFile = path.join(matchDir(matchId), "experiment-arm.json");
+    if (existsSync(armFile)) {
+      try {
+        const body = JSON.parse(readFileSync(armFile, "utf8")) as { experimentId?: string; arm?: string };
+        const exp = body.experimentId ? byId.get(body.experimentId) : undefined;
+        if (exp && body.arm && !exp.videos.some((v) => v.matchId === matchId)) {
+          exp.videos.push({ matchId, arm: body.arm, ...(upload ? { videoId: upload.videoId } : {}) });
+        }
+      } catch (err) {
+        console.error(`experiments: ${armFile} unreadable — ${describeError(err)}`);
+      }
+    }
+
+    // (b) This match's own upload, if its publish date names a slot experiment.
+    if (!upload) continue;
+    const publishIso = upload.publishAt ?? upload.uploadedAt;
+    const entry = slotEntryFor(publishIso.slice(0, 10), data);
+    if (!entry) continue;
+    const exp = byId.get(entry.experimentId);
+    if (!exp || exp.videos.some((v) => v.matchId === matchId)) continue;
+    const hour = new Date(publishIso).getUTCHours();
+    const hourArm = exp.arms.find(
+      (a) => a.slot?.rankedHoursUtc?.length === 1 && a.slot.rankedHoursUtc[0] === hour,
+    );
+    exp.videos.push({ matchId, arm: hourArm?.name ?? entry.arm, videoId: upload.videoId });
+  }
+}
+
 export interface EvaluatorDeps {
   fetch: MetricsFetcher;
   now: () => number;
 }
 
 /**
- * Once a UTC day (`evaluatedOn`): every running "between" experiment gets fresh per-arm totals and
- * a verdict; one whose `end` has passed is settled (`settle`) and marked done. A fetch failure
- * leaves the experiment as it was and is remembered (`lastEvalFailure`); a second failure the very
- * next day's attempt sets `needsHuman` rather than retrying silently forever.
+ * Once a UTC day (`evaluatedOn`): `enrolVideos` fills every between experiment's `videos` array
+ * from disk first, then every running one gets fresh per-arm totals and a verdict; one whose
+ * `end` has passed is settled (`settle`) and marked done. A fetch failure leaves the experiment
+ * as it was and is remembered (`lastEvalFailure`); a second failure the very next day's attempt
+ * sets `needsHuman` rather than retrying silently forever.
  *
  * Guarded against itself (`evaluating`, the same shape as `shortTick`'s `ticking` in
  * src/dashboard/shortFlow.ts): server.ts's 15-minute tick fires this unconditionally, and several
@@ -267,7 +326,10 @@ export interface EvaluatorDeps {
  * The final write also re-reads the file fresh rather than reusing the `data` read at the top: the
  * same 15-minute tick runs `applyScheduledRenderArm` right before this, and a long evaluation must
  * not clobber (revert) an `appliedOn` — or any schedule/baseline edit — that call made in the
- * meantime; only this experiment's own fields are overlaid onto whatever the file holds now.
+ * meantime; only an experiment this run actually changed (enrolled a new video into, or ran the
+ * running-loop below on) is overlaid onto whatever the file holds now — a "done" or "planned"
+ * experiment `enrolVideos` found nothing new for is left to whatever `fresh` holds for it, so a
+ * concurrent edit to one of its other fields survives too.
  *
  * ponytail: `evaluatedOn`'s read-then-write still assumes one dashboard process against the
  * mediaDir (`claimSlot`, src/dashboard/shortFlow.ts, same assumption) — two processes could both
@@ -285,7 +347,22 @@ export async function evaluateExperiments(deps: Partial<EvaluatorDeps> = {}): Pr
     const data: ExperimentsFile = readExperiments();
     if (data.evaluatedOn === today) return;
 
-    const touched = new Map<string, Experiment>();
+    // Only a between experiment `enrolVideos` actually added a video to goes into `touched` here
+    // — not every between experiment regardless of whether anything changed. `touched` is what the
+    // final write below force-writes over whatever is on disk by then; a "done" or "planned"
+    // experiment enrolVideos left untouched (nothing new on disk for it this run) must stay exactly
+    // that untouched, so a concurrent edit to one of its *other* fields (`needsHumanAck`, say, from
+    // the operator or another route) is never overwritten by this run's stale copy of it.
+    const videoCounts = new Map(
+      data.experiments.filter((e) => e.kind === "between").map((e) => [e.id, e.videos.length]),
+    );
+    await enrolVideos(data);
+
+    const touched = new Map<string, Experiment>(
+      data.experiments
+        .filter((e) => e.kind === "between" && e.videos.length !== videoCounts.get(e.id))
+        .map((e) => [e.id, e]),
+    );
     for (const exp of data.experiments) {
       if (exp.kind !== "between" || exp.status !== "running") continue;
       try {
