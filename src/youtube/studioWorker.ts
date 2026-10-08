@@ -1,8 +1,9 @@
 /**
  * `npm run studio -- worker` — a standalone loop (phase 2/3, 8 Oct 2026; CLAUDE.md's "Studio
  * automation" section) that does, on its own, what phase 1 only ever did on the dashboard's
- * nightly tick: add the operator's end-screen template to a long-form that has none, and run
- * Test & Compare experiments the dashboard's experiment engine has planned.
+ * nightly tick: add the operator's end-screen template to a long-form that has none, pin a
+ * public long-form's own channel comment (phase 5), and run Test & Compare experiments the
+ * dashboard's experiment engine has planned.
  *
  * Gated on `opts.enable` (the CLI's own `--enable`, or `STUDIO_WORKER=1`) OR'd with
  * `config.studioAutomation` — never on `config.studioAutomation` alone (phase 4, 8 Oct 2026). That
@@ -14,6 +15,13 @@
  * worker --enable &`, which is the operator's own browser-automation grant exercised directly, not
  * a second, ungated path to the same browser the dashboard's flag was built to gate. Without
  * either, a cycle is still a no-op recorded as `"skipped"` — see CLAUDE.md.
+ *
+ * `scripts/studio-worker.sh` supervises this process (restarts it 60s after any exit, logs to
+ * `~/.claude/studio-worker.log`): `runWorker` itself exits cleanly (code 0) at the start of its
+ * nightly blackout — never mid-cycle, since no browser session is open there — when the repo's
+ * live HEAD (`src/dashboard/repoHead.ts`) has moved past the one this process started on, so a
+ * `git pull` into the same bind mount reaches the worker the same way a dashboard restart reaches
+ * the dashboard (`newCodeWaiting`, `BOOT_HEAD` below).
  */
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
@@ -21,9 +29,11 @@ import { readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { blockedIn, config, matchDir } from "../config.js";
 import { povNicknamesOnDisk } from "../dashboard/matchStatus.js";
+import { repoHead } from "../dashboard/repoHead.js";
 import { describeError } from "../errorText.js";
 import {
   addEndScreenFromTemplate,
+  pinComment,
   readTestAndCompare,
   startTestAndCompare,
   type TcReadResult,
@@ -37,7 +47,8 @@ import {
   type Experiment,
   type TcPlanThumbEntry,
 } from "./studioExperiments.js";
-import { allUploads, splitTitle } from "./youtubeStore.js";
+import { videoStats } from "./youtube.js";
+import { allUploads, readUpload, splitTitle, writeUpload } from "./youtubeStore.js";
 
 /** The operator's own end-screen template, set up by hand once (CLAUDE.md, the task's own FACTS). */
 export const END_SCREEN_TEMPLATE_VIDEO_ID = "POQrpE0-5d8";
@@ -49,6 +60,12 @@ export const MAX_TC_STARTS_PER_CYCLE = 2;
  * Test & Compare (phase 4, 8 Oct 2026) — the day this feature shipped; nothing retroactive. */
 export const THUMBNAIL_TC_CUTOFF_ISO = "2026-10-08T00:00:00.000Z";
 export const MAX_THUMBNAIL_PLANS_PER_CYCLE = 2;
+/** Phase 5, 8 Oct 2026: the worker pins a PUBLIC long-form's own channel comment itself, the same
+ * `finished.pin` ledger step `finishOnYouTube` (`src/youtube/youtubeUpload.ts`) uses — gated there
+ * on `config.studioAutomation`, off, since the dashboard has no Chrome. Capped per cycle for the
+ * same reason the other Studio actions are: a cold start with many unpinned videos must not spend
+ * a whole cycle here. */
+export const MAX_PINS_PER_CYCLE = 3;
 /** The caption arm only ships in this fully-automated flow when it is this short. A judge reads
  * every caption in the manual tc-plan.json flow (CLAUDE.md's "Phase 2/3"); nobody reviews this
  * one before it goes live on real viewers' thumbnails, so the ceiling here is tighter than
@@ -129,6 +146,8 @@ export interface WorkerHeartbeat {
     tcStarted: number;
     tcChecked: number;
     thumbnailTestsPlanned: number;
+    /** PUBLIC long-forms whose channel comment was pinned this cycle (phase 5, 8 Oct 2026). */
+    pinsAdded: number;
   } | null;
   /** The first error of the cycle, kept for anything that only ever read this one field. */
   lastError: string | null;
@@ -175,6 +194,10 @@ export interface LongFormRef {
   /** Absent on a record written before source tracking existed (`UploadRecord.source`,
    *  youtubeStore.ts) — the auto-thumbnail-test filter below only ever matches `"dashboard"`. */
   source?: "dashboard" | "studio";
+  /** `record.finished?.comment`/`.pin` off youtubeStore's own `FinishedSteps` — read only by the
+   *  pin plan below. `undefined` on either means that step has never been attempted. */
+  finishedComment?: string | null;
+  finishedPin?: string | null;
 }
 
 export interface CyclePlan {
@@ -185,6 +208,12 @@ export interface CyclePlan {
    *  2026) — `runCycle` renders each one's thumbnail set and plans a "tc" experiment for it,
    *  which a *later* cycle's own `tcToStart` picks up, never this same cycle's. */
   thumbnailTcTargets: LongFormRef[];
+  /** Comment posted, pin not done, capped at `MAX_PINS_PER_CYCLE` (phase 5, 8 Oct 2026). Whether
+   *  the video is actually public *right now* is left to `runCycle`'s own live check — the stored
+   *  `privacyStatus` here is upload-time only and never updated (same reason `finishOnYouTube`'s
+   *  own pin step re-checks live), so filtering on it here would leave a scheduled upload that
+   *  only went public after the fact permanently unpinned. */
+  pinTargets: LongFormRef[];
 }
 
 const utcDate = (d: Date): string => d.toISOString().slice(0, 10);
@@ -239,7 +268,26 @@ export function planCycle(
     .filter((v) => !isBlocked(v.matchId))
     .slice(0, MAX_THUMBNAIL_PLANS_PER_CYCLE);
 
-  return { endScreenTargets, tcToStart, tcToCheck, thumbnailTcTargets };
+  // Same `todo()` reading `finishOnYouTube` already uses for this field: `null` is done, a
+  // string is a failed attempt worth retrying, `undefined` is never attempted — either of the
+  // last two is still "to do". A blocked player's footage never reaches this list at all: nothing
+  // in `allUploads()` is itself blocked-aware, but `finishOnYouTube` already refuses every step
+  // (including `pin`) for one, so a blocked match's `finishedComment` can only ever be `undefined`
+  // or a `BLOCKED_FINISH` string — never `null` — and the first filter below already excludes it.
+  // A series copies this same `youtube.json` (same videoId, same `finished`) into every game's own
+  // folder, so the de-dup below keeps the cap meaningful rather than spending it on one video N
+  // times a cycle.
+  const seenPinVideos = new Set<string>();
+  const pinTargets = longForms
+    .filter((v) => v.finishedComment === null && v.finishedPin !== null)
+    .filter((v) => {
+      if (seenPinVideos.has(v.videoId)) return false;
+      seenPinVideos.add(v.videoId);
+      return true;
+    })
+    .slice(0, MAX_PINS_PER_CYCLE);
+
+  return { endScreenTargets, tcToStart, tcToCheck, thumbnailTcTargets, pinTargets };
 }
 
 const MINUTES_PER_DAY = 24 * 60;
@@ -302,6 +350,16 @@ export function playersFor(exp: Experiment): { nickname: string }[] {
 
 async function setNeedsHuman(id: string, reason: string): Promise<void> {
   await updateTcExperiments((tc) => tc.map((e) => (e.id === id ? { ...e, needsHuman: reason } : e)));
+}
+
+/** Writes `finished.pin = null` (done) to this one match's own `youtube.json` — the exact field
+ * `finishOnYouTube`'s `todo("pin")` reads, so a later tick of either path sees this pin as done
+ * rather than attempting it again. A gone record (deleted between the plan and the pin) is left
+ * alone — nothing to mark. */
+async function markPinDone(matchId: number): Promise<void> {
+  const record = await readUpload(matchId, "video");
+  if (!record) return;
+  await writeUpload(matchId, { ...record, finished: { ...record.finished, pin: null } }, "video");
 }
 
 async function setExperimentRunning(id: string): Promise<void> {
@@ -394,6 +452,8 @@ export interface CycleResult {
    *  this cycle (phase 4, 8 Oct 2026) — distinct from `tcStarted`, since the plan always waits for
    *  a *later* cycle's own `tcToStart` (see `CyclePlan.thumbnailTcTargets`'s own comment). */
   thumbnailTestsPlanned: number;
+  /** PUBLIC long-forms whose channel comment was pinned this cycle (phase 5, 8 Oct 2026). */
+  pinsAdded: number;
   errors: string[];
 }
 
@@ -404,6 +464,7 @@ const SKIPPED_RESULT: CycleResult = {
   tcStarted: 0,
   tcChecked: 0,
   thumbnailTestsPlanned: 0,
+  pinsAdded: 0,
   errors: [],
 };
 
@@ -437,6 +498,8 @@ export async function runCycle(
       uploadedAt: record.uploadedAt,
       privacyStatus: record.privacyStatus,
       source: record.source,
+      finishedComment: record.finished?.comment,
+      finishedPin: record.finished?.pin,
     }));
     const ledger = await readLedger();
     const experimentsFile = await readExperiments();
@@ -553,6 +616,39 @@ export async function runCycle(
       }
     }
 
+    // Phase 5, 8 Oct 2026: pin a public long-form's own channel comment, the same `finished.pin`
+    // ledger step `finishOnYouTube` uses (off there — `config.studioAutomation` is false, the
+    // dashboard has no Chrome) — so the two never both do it, and `pinComment` itself (rail 2)
+    // refuses to touch a pin someone already set by hand. `plan.pinTargets` is comment-posted,
+    // pin-not-done only; whether the video is actually public *right now* is re-read live here,
+    // exactly the recheck `finishOnYouTube`'s own pin step makes, because the stored
+    // `privacyStatus` is from upload time and is never updated — a scheduled upload that only
+    // went public after the fact must not sit permanently unpinned for being read as still private.
+    let pinsAdded = 0;
+    if (plan.pinTargets.length) {
+      const stats = await videoStats(plan.pinTargets.map((t) => t.videoId));
+      for (const target of plan.pinTargets) {
+        const live = stats.find((s) => s.videoId === target.videoId)?.privacyStatus;
+        if (live !== "public") continue; // not public yet — retried a later cycle, not an error
+        const outcome = await pinComment(handle, target.videoId, {
+          matchId: target.matchId,
+          dryRun: opts.dryRun,
+        });
+        if (typeof outcome === "object") {
+          errors.push(`pin ${target.videoId}: ${outcome.error}`);
+          continue;
+        }
+        if (outcome === "pinned" || outcome === "already-pinned") {
+          if (!opts.dryRun) {
+            await markPinDone(target.matchId);
+            pinsAdded++;
+          }
+        } else {
+          errors.push(`pin ${target.videoId}: ${outcome}`);
+        }
+      }
+    }
+
     return {
       probe: probed.result,
       endScreensAdded,
@@ -560,6 +656,7 @@ export async function runCycle(
       tcStarted,
       tcChecked,
       thumbnailTestsPlanned,
+      pinsAdded,
       errors,
     };
   } finally {
@@ -584,20 +681,60 @@ export async function nextSameErrorStreak(currentError: string | null): Promise<
   return prev?.lastError === currentError ? (prev.sameErrorStreak ?? 0) + 1 : 1;
 }
 
+/** HEAD at the moment this process loaded this module — "the HEAD it started on"
+ * (`scripts/studio-worker.sh`'s own supervisor section in CLAUDE.md), the same read-once pattern
+ * `src/dashboard/repoHead.ts`'s own `BOOT_HEAD` uses for the dashboard. */
+const BOOT_HEAD = repoHead();
+
+/** Pure: true once the live repo HEAD has moved past the one this process started on — null on
+ * either side (an unreadable `.git`) never counts as a change, so a repo this can't read for any
+ * reason just keeps the worker running on what it already loaded. */
+export function newCodeWaiting(bootHead: string | null, liveHead: string | null): boolean {
+  return bootHead !== null && liveHead !== null && bootHead !== liveHead;
+}
+
 /**
  * Runs cycles forever (or once, with `--once`), human-paced between videos within a cycle
  * (`randomPause` in `studioActions.ts`) and ~20 min ± 3 min between cycles. Never runs inside
  * `inBlackoutWindow` — that cycle is recorded as `"skipped"` and the loop waits for the next one
  * rather than busy-poll the clock. `opts.enable` is this module's own top-of-file comment's gate.
+ *
+ * Inside that same blackout branch — never mid-cycle, since no browser session is open there —
+ * it also checks whether the repo has moved on since this process started
+ * (`newCodeWaiting`/`BOOT_HEAD`) and, if so, exits cleanly (code 0) rather than keep looping on
+ * stale code: `scripts/studio-worker.sh` restarts the command 60s later, and the new process's
+ * own `BOOT_HEAD` then matches, so this fires once per actual change, not every cycle the
+ * blackout lasts. `opts.bootHead`/`headNow`/`exit`/`now` are test seams only — every real caller
+ * (the CLI) leaves them at their defaults.
  */
 export async function runWorker(
-  opts: { once?: boolean; dryRun?: boolean; startOpts?: StudioBrowserOptions; enable?: boolean } = {},
+  opts: {
+    once?: boolean;
+    dryRun?: boolean;
+    startOpts?: StudioBrowserOptions;
+    enable?: boolean;
+    bootHead?: string | null;
+    headNow?: () => string | null;
+    exit?: (code: number) => void;
+    now?: () => Date;
+  } = {},
 ): Promise<void> {
+  const bootHead = opts.bootHead ?? BOOT_HEAD;
+  const headNow = opts.headNow ?? repoHead;
+  const exit = opts.exit ?? ((code: number) => process.exit(code));
+  const clock = opts.now ?? (() => new Date());
   for (;;) {
-    const now = new Date();
+    const now = clock();
     let result: CycleResult;
     if (inBlackoutWindow(now)) {
       result = SKIPPED_RESULT;
+      if (!opts.once && newCodeWaiting(bootHead, headNow())) {
+        console.log(
+          `studio worker: new code on disk (${bootHead} -> ${headNow()}) during the blackout — exiting for the supervisor to restart`,
+        );
+        exit(0);
+        return;
+      }
     } else {
       try {
         result = await runCycle({ dryRun: opts.dryRun, startOpts: opts.startOpts, enable: opts.enable });
@@ -617,6 +754,7 @@ export async function runWorker(
         tcStarted: result.tcStarted,
         tcChecked: result.tcChecked,
         thumbnailTestsPlanned: result.thumbnailTestsPlanned,
+        pinsAdded: result.pinsAdded,
       },
       lastError: currentError,
       lastErrors: result.errors,
