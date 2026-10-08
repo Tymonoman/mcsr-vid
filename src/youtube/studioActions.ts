@@ -132,6 +132,28 @@ export type PinOutcome = "pinned" | "already-pinned" | "no-channel-comment" | "s
 const randomPause = (): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, 2000 + Math.random() * 4000));
 
+/** Studio's buttons are `ytcp-button`s that grey out with `aria-disabled`/`disabled` attributes,
+ *  which Playwright's own actionability check does not read — so wait for them by hand. Throws
+ *  after `timeoutMs`, which the caller's catch turns into the attempt's error. */
+async function waitForEnabled(
+  page: import("playwright").Page,
+  selector: string,
+  timeoutMs: number,
+): Promise<void> {
+  const el = page.locator(selector).first();
+  await el.waitFor({ state: "visible", timeout: timeoutMs });
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const [aria, disabled] = await Promise.all([
+      el.getAttribute("aria-disabled"),
+      el.getAttribute("disabled"),
+    ]);
+    if (aria !== "true" && disabled === null) return;
+    await page.waitForTimeout(500);
+  }
+  throw new Error(`${selector} stayed disabled for ${Math.round(timeoutMs / 1000)} s`);
+}
+
 async function scrollToComments(page: import("playwright").Page): Promise<void> {
   for (let i = 0; i < 20; i++) {
     if (
@@ -526,12 +548,21 @@ export async function startTestAndCompare(
       return "started";
     }
 
+    // Confirmed live 8 Oct 2026 (the worker's first cycle, vASY6MzFRNM): the thumbnails are still
+    // "Uploading…" right after setInputFiles and Set test stays greyed out until they land — a
+    // ytcp-button with aria-disabled, which Playwright's click does not treat as disabled, so the
+    // click went nowhere, the dialog stayed open and its backdrop then blocked the page's Save.
+    await waitForEnabled(page, SELECTORS.abTestSetButton, 120_000);
     await page.locator(SELECTORS.abTestSetButton).click();
-    // Confirmed live 8 Oct 2026: Set test only stages the change inside the dialog — it does not
-    // actually start until the page's own Save is pressed too (see SELECTORS.pageSaveButton).
-    // Skipping this left an earlier live attempt looking like it had started (no error, a
-    // screenshot of a closed dialog) when nothing had actually happened: reopening the video
-    // later showed a blank, unset form again.
+    // Set test closes the dialog and only stages the change — it does not actually start until the
+    // page's own Save is pressed too (see SELECTORS.pageSaveButton). Skipping this left an earlier
+    // live attempt looking like it had started (no error, a screenshot of a closed dialog) when
+    // nothing had actually happened: reopening the video later showed a blank, unset form again.
+    await page
+      .locator("ytcp-creator-experiment-create-dialog")
+      .first()
+      .waitFor({ state: "hidden", timeout: 30_000 });
+    await waitForEnabled(page, SELECTORS.pageSaveButton, 15_000);
     await randomPause();
     await page.locator(SELECTORS.pageSaveButton).click();
     await page
