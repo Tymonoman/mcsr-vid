@@ -965,6 +965,75 @@ touched on a guess. `npm run studio -- probe | pin <id> [--dry-run] | login [--p
 drives all of this from the terminal; `--profile-dir` points any of the three at a throwaway
 profile instead of the real login.
 
+### Phase 2/3: end screens and Test & Compare (8 Oct 2026)
+
+Built from a read-only exploration of the real UI the same day (no Save/Start/Publish pressed —
+see `s7r-*`/`lui-*` in that run's own `tmp/studio2/`): `addEndScreenFromTemplate`, `startTestAndCompare`
+and `readTestAndCompare` (`src/youtube/studioActions.ts`), a standalone loop (`src/youtube/studioWorker.ts`,
+`npm run studio -- worker [--once] [--dry-run]`), and a plan importer (`npm run studio -- tc-plan
+<plan.json>`, `src/youtube/studioExperiments.ts`). **Nothing here has run against the real channel** —
+every check above is a fixture page or pure logic; see "What is verified live vs only on fixtures" below.
+
+- **One gate still covers all of it.** The worker checks `config.studioAutomation` itself, the
+  same flag phase 1's `retryPendingStudio` reads — off, every cycle is a no-op recorded as
+  `"skipped"`. The task that asked for this loop framed it as living outside the dashboard
+  entirely (Chrome is only installed in this container, not the dashboard image yet) and did not
+  mention the flag, but turning a real Chrome loose on the channel's own Google account is
+  exactly what `studioAutomation` already exists to gate — a second, ungated path to the same
+  browser would make that switch a lie. Starting the worker for real (`nohup npm run studio --
+  worker &`) still needs `studioAutomation: true` on the box, the operator's own deliberate edit,
+  same as phase 1 ever did.
+- **Never runs 02:50–04:30 UTC** (`inBlackoutWindow`) — the nightly render's own window, Chrome
+  and ffmpeg sharing the lab's four cores. One browser session per cycle, ~20 min apart (± 3 min
+  jitter), human-paced clicks inside it (the same `randomPause` phase 1 uses). At most 3 end
+  screens and 2 new Test & Compare starts a cycle; a running test is read once a day by UTC
+  calendar date. A ledger (`<mediaDir>/.studio-ledger.json`) remembers which videos already have
+  the template so a restart does not re-import; a heartbeat (`<mediaDir>/.studio-worker.json`)
+  records `{ pid, at, lastCycle, lastError }` for the morning report to notice if the process died.
+- **Every Test & Compare title is checked before any page opens** (`titleTestProblem`, exported
+  from `studioActions.ts`, reused by the plan importer so a title that could never start is never
+  even planned): `hookProblem` (which already finishes with its own `hookLabelProblem` call),
+  `hookLabelProblem` again directly, `spoilsTheResult` against the whole line, and the
+  100-character ceiling. A thumbnail test's 2-3 files just need to exist on disk. Any refusal is
+  returned before `startTestAndCompare` ever calls `page.goto`, pinned by a unit test that passes
+  it a handle which throws if its `browser` property is ever read.
+- **`npm run studio -- tc-plan <plan.json>`** turns a judge's approved plan (thumbnails[]/titles[])
+  into planned `"tc"` experiments in `<mediaDir>/.experiments.json` (the dashboard's not-yet-merged
+  experiment engine's own file — `src/youtube/studioExperiments.ts` only ever reads the whole file
+  and writes `kind: "tc"` entries back, read-merge-write, atomic write-then-rename; a `kind:
+  "between"` entry or any field it does not know about is never touched). Deterministic ids
+  (`tc-thumbnail-<videoId>`, `tc-title-<videoId>`) are the whole idempotency mechanism — running it
+  twice on the same plan adds nothing the second time. A pose-challenger file under `<id>/tc/tc-pose.png`
+  is rewritten to its strip equivalent (`<id>/thumbnail.<pose>.png`, the pose read out of the plan's
+  own note) because another job re-renders `tc/*.png` the same night; `tc-control.png`/`tc-caption.png`
+  pass through unchanged — nobody asked those to move, and there is no strip equivalent for either.
+- **The worker never sets a Test & Compare winner itself** — `readTestAndCompare`'s `"done"` state
+  only ever records what it read off YouTube's own page (the live title/thumbnail it already
+  applied). A `"needsHuman"` note lands on the experiment for anything `startTestAndCompare`/
+  `readTestAndCompare` could not get past (a refused title, an unreadable page), and the worker
+  never guesses past an ambiguous state on its own.
+
+**What is verified live vs only on fixtures.** Confirmed against the real Studio UI, 7 Oct 2026
+(read-only — no Save/Start/Publish pressed): `#endscreen-editor-link`, the "Import from video"
+button, `ytcp-video-pick-dialog` and its search-then-"No matching results" behaviour (a confirmed
+*bug* on this profile — the picker's own search call resolves against the operator's personal
+channel, not the brand one, so it returns zero results for every query tried, including the raw
+template id; `addEndScreenFromTemplate` reports this as its own `"picker-empty"` outcome rather
+than guessing past it), `#ab-test-button`, the "A/B Testing" dialog, its three mode chips
+(`#chip-0`/`#chip-1`/`#chip-2`), `#set-test-button`, and that a dialog's `Close` button (not
+Escape) is the reliable way to leave one open. **Unverified, built against synthetic fixture
+pages instead** (`studioActions.test.ts`, excluded from `test:unit`, run by `npm test`): which row
+to click once the picker actually returns a result (no query ever did), the A/B Testing dialog's
+own title/thumbnail input fields (neither sample video ever reached that far — both open on a
+blank "set up a new test" form), and the look of a *running* or *finished* test (neither sample
+video had one). `readTestAndCompare`'s `"none"` is read with confidence (the same chips/button
+`startTestAndCompare` itself checks for); `"running"` is "not none", and `"done"` is a best-effort
+guess at the word "winner" appearing once those chips are gone — both need confirming against a
+real test before anyone trusts them in production. Confirm those four unverified spots (the
+picker's result row, the dialog's input fields, and the running/done read) the first time a real
+end screen or a real Test & Compare actually runs, and tighten the selectors/heuristic from what
+is actually seen rather than from this guess.
+
 ## Clips (prototype)
 
 For a video that is not a match — a stream statement, a reaction, something worth posting on the

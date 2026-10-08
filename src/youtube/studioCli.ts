@@ -1,21 +1,32 @@
 /**
  * npm run studio -- probe | pin <matchId|videoId> [--dry-run] | login [--profile-dir=<path>]
+ *   | worker [--once] [--dry-run] | tc-plan <plan.json>
  *
  * probe: starts Chrome, loads Studio, prints what it found, stops.
  * pin: pins the channel's own first comment on a video — by match id (reads its recorded
  *      videoId) or by the video id directly (resolved back to a match for its screenshots).
  * login: the same one-time login screen the dashboard's YouTube panel offers, from the terminal —
  *      prints the URL and password, waits for Enter, then probes and stops.
+ * worker: the phase 2/3 loop (src/youtube/studioWorker.ts) — end screens, then Test & Compare
+ *      starts and daily checks, one browser session per cycle, ~20 min apart. `--once` runs a
+ *      single cycle and exits (what this is tested with); without it the process runs forever,
+ *      meant for `nohup`. A no-op, reported as `"skipped"`, while `config.studioAutomation` is off.
+ * tc-plan: turns an approved judge's plan (tc-plan.json's own shape) into planned "tc" experiments
+ *      in `<mediaDir>/.experiments.json` — idempotent, prints what it added and what it skipped
+ *      and why. Opens no browser.
  *
- * `--profile-dir=<path>` overrides the real `/home/node/.studio-profile` on any subcommand — ad
- * hoc testing against a throwaway profile without ever touching the operator's actual login.
+ * `--profile-dir=<path>` overrides the real `/home/node/.studio-profile` on probe/pin/login/worker
+ * — ad hoc testing against a throwaway profile without ever touching the operator's actual login.
  */
+import { readFile } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
 import { readUpload } from "./youtubeStore.js";
 import { videoIdOwner } from "./youtubeStore.js";
 import { pinComment } from "./studioActions.js";
 import { probe, start } from "./studioBrowser.js";
 import { finishLogin, startLogin } from "../dashboard/studioLogin.js";
+import { importTcPlan, type TcPlan } from "./studioExperiments.js";
+import { runWorker } from "./studioWorker.js";
 
 const [command, ...rest] = process.argv.slice(2);
 const args = rest.filter((a) => !a.startsWith("--"));
@@ -25,7 +36,8 @@ const startOpts = profileDirArg ? { profileDir: profileDirArg } : {};
 
 function usage(): never {
   console.error(
-    "usage: npm run studio -- probe | pin <matchId|videoId> [--dry-run] | login [--profile-dir=<path>]",
+    "usage: npm run studio -- probe | pin <matchId|videoId> [--dry-run] | login [--profile-dir=<path>]" +
+      " | worker [--once] [--dry-run] | tc-plan <plan.json>",
   );
   process.exit(2);
 }
@@ -103,6 +115,20 @@ async function loginCmd(): Promise<void> {
   if (done.result !== "ok") process.exitCode = 1;
 }
 
+async function workerCmd(): Promise<void> {
+  const once = rest.includes("--once");
+  await runWorker({ once, dryRun, startOpts });
+}
+
+async function tcPlanCmd(file: string | undefined): Promise<void> {
+  if (!file) usage();
+  const plan = JSON.parse(await readFile(file, "utf8")) as TcPlan;
+  const { added, skipped } = await importTcPlan(plan);
+  for (const exp of added) console.log(`planned ${exp.id} (${exp.arms.length} arms)`);
+  for (const s of skipped) console.log(`skipped ${s.videoId} (${s.kind}): ${s.reason}`);
+  console.log(`${added.length} planned, ${skipped.length} skipped`);
+}
+
 switch (command) {
   case "probe":
     await probeCmd();
@@ -112,6 +138,12 @@ switch (command) {
     break;
   case "login":
     await loginCmd();
+    break;
+  case "worker":
+    await workerCmd();
+    break;
+  case "tc-plan":
+    await tcPlanCmd(args[0]);
     break;
   default:
     usage();
