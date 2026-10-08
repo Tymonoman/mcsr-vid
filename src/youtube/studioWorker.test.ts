@@ -487,6 +487,32 @@ config.mediaDir = media;
   );
 }
 
+// --- planCycle: pinTargets — a series copy already marked done elsewhere is never re-offered ---
+// (a cross-cycle case: `markPinDone` only ever writes the one matchId it pinned through, so a
+// *different* game folder's own copy of the same video can still read `finishedPin: undefined` on
+// the very next cycle. Without the OR-merge this must still exclude every copy of that videoId.)
+{
+  const longForms: LongFormRef[] = [
+    // Game 1's own copy: already pinned (a previous cycle marked this one done).
+    { videoId: "a", matchId: 1, uploadedAt: "x", privacyStatus: "public", finishedComment: null, finishedPin: null },
+    // Game 2's copy of the SAME video: never itself marked done — would pass the per-entry filter
+    // on its own, and must still be excluded because the video it points at is already pinned.
+    { videoId: "a", matchId: 2, uploadedAt: "x", privacyStatus: "public", finishedComment: null },
+    // An unrelated, genuinely pending video must still be offered.
+    { videoId: "h", matchId: 9, uploadedAt: "x", privacyStatus: "public", finishedComment: null },
+  ];
+  const plan = planCycle(
+    new Date("2026-10-11T12:00:00.000Z"),
+    longForms,
+    { endScreens: {}, pickerEmptySeen: {} },
+    [],
+  );
+  const ids = plan.pinTargets.map((t) => t.videoId);
+  assert.ok(!ids.includes("a"), "a videoId already pinned through one series copy is never re-offered via another");
+  assert.ok(ids.includes("h"), "a genuinely pending, unrelated video is still offered");
+  console.log("OK: pinTargets excludes a videoId already marked done through a different series copy");
+}
+
 // --- setExperimentChecked: promotes "planned" to "running" when Studio already has one going ---
 // (phase 4, 8 Oct 2026 — LUI5E7yF0zE's own history: a test started by hand before this experiment
 // was ever planned must be reconciled, never started a second time).

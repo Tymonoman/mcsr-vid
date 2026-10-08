@@ -275,11 +275,17 @@ export function planCycle(
   // (including `pin`) for one, so a blocked match's `finishedComment` can only ever be `undefined`
   // or a `BLOCKED_FINISH` string — never `null` — and the first filter below already excludes it.
   // A series copies this same `youtube.json` (same videoId, same `finished`) into every game's own
-  // folder, so the de-dup below keeps the cap meaningful rather than spending it on one video N
-  // times a cycle.
+  // folder, but `markPinDone` below only ever writes the one matchId it pinned through — so once
+  // one copy reads back `null`, every *other* copy of that same videoId must still be excluded, not
+  // just de-duped within this one cycle (`pendingPins()`'s own OR-merge, src/youtube/
+  // youtubeUpload.ts, reads the same series shape the same way): without this, a later cycle finds
+  // the still-undone copy, re-opens the real (already-pinned) video for nothing, and only converges
+  // after as many extra cycles as the series has games — each one spending a `MAX_PINS_PER_CYCLE`
+  // slot a genuinely pending video could have used instead.
+  const pinnedDoneVideoIds = new Set(longForms.filter((v) => v.finishedPin === null).map((v) => v.videoId));
   const seenPinVideos = new Set<string>();
   const pinTargets = longForms
-    .filter((v) => v.finishedComment === null && v.finishedPin !== null)
+    .filter((v) => v.finishedComment === null && v.finishedPin !== null && !pinnedDoneVideoIds.has(v.videoId))
     .filter((v) => {
       if (seenPinVideos.has(v.videoId)) return false;
       seenPinVideos.add(v.videoId);

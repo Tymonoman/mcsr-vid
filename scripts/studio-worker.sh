@@ -18,10 +18,22 @@ mkdir -p "$(dirname "$LOG")"
 
 # ponytail: a pidfile, not a real flock — one supervisor on one box is the only case that
 # matters here; upgrade to flock(1) if this ever runs on more than one host against the same
-# profile. A dead pid left over from a crashed supervisor is not a lock at all.
-if [ -f "$LOCK" ] && kill -0 "$(cat "$LOCK" 2>/dev/null)" 2>/dev/null; then
-  echo "studio-worker supervisor already running (pid $(cat "$LOCK"))" >&2
-  exit 1
+# profile. A dead pid left over from a crashed supervisor is not a lock at all — and nor is a
+# live one some fresh container boot has already reused for an unrelated process: ~/.claude is
+# the only persisted volume in this container (CLAUDE.md), so a pidfile a SIGKILL'd supervisor
+# left behind outlives the low PID numbers a fresh container hands out to whatever starts first,
+# the exact hazard src/dashboard/studioLogin.ts's own killOrphanedLoginScreen already guards
+# against with the same /proc/<pid>/cmdline check — never trust a pid on a guess.
+pid_is_this_script() {
+  grep -qa "studio-worker\.sh" "/proc/$1/cmdline" 2>/dev/null
+}
+
+if [ -f "$LOCK" ]; then
+  old_pid="$(cat "$LOCK" 2>/dev/null)"
+  if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null && pid_is_this_script "$old_pid"; then
+    echo "studio-worker supervisor already running (pid $old_pid)" >&2
+    exit 1
+  fi
 fi
 echo "$$" >"$LOCK"
 trap 'rm -f "$LOCK"' EXIT

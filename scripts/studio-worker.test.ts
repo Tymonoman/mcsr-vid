@@ -21,20 +21,52 @@ function sandboxHome(): { home: string; log: string; lock: string } {
   };
 }
 
-// --- a live pid in the lock file refuses a second start, no loop ever starts -------------------
+const sleepMs = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+// --- a real first instance (matching cmdline) still running refuses a second start -------------
 {
   const { home, lock, log } = sandboxHome();
-  // A pid that is certainly alive right now, without starting anything real: this test's own.
-  writeFileSync(lock, String(process.pid));
+  const first = spawn("bash", [SCRIPT], {
+    env: { ...process.env, HOME: home, STUDIO_WORKER_CMD: "sleep 20", STUDIO_WORKER_RESTART_DELAY: "60" },
+  });
+  for (let i = 0; i < 50 && !existsSync(lock); i++) await sleepMs(100);
+  assert.ok(existsSync(lock), "the first instance wrote its own pid into the lock file");
+
   const result = spawnSync("bash", [SCRIPT], {
     env: { ...process.env, HOME: home, STUDIO_WORKER_CMD: "true" },
     encoding: "utf8",
     timeout: 5000,
   });
-  assert.equal(result.status, 1, "a live pid in the lock file refuses a second start");
+  assert.equal(result.status, 1, "a second start refuses while a real first instance still holds the lock");
   assert.match(result.stderr, /already running/i);
-  assert.ok(!existsSync(log), "refused before ever starting the loop — no log file at all");
-  console.log("OK: a second start refuses while the lock names a live pid, and starts nothing");
+  assert.equal(
+    (readFileSync(log, "utf8").match(/starting:/g) ?? []).length,
+    1,
+    "only the first instance's own loop ever started — the second start never ran its command",
+  );
+  first.kill("SIGKILL");
+  console.log("OK: a second start refuses while a real first instance (matching cmdline) still holds the lock");
+}
+
+// --- a live pid that is NOT running this script does not block a new start ---------------------
+// (the hazard this guards against: ~/.claude is the only persisted volume in this container, so a
+// pidfile a SIGKILL'd supervisor left behind outlives the low pid numbers a fresh container hands
+// out to whatever starts first — the same reason src/dashboard/studioLogin.ts's own
+// killOrphanedLoginScreen checks /proc/<pid>/cmdline before ever trusting a recorded pid.)
+{
+  const { home, lock, log } = sandboxHome();
+  const decoy = spawn("sleep", ["20"]); // alive, but its cmdline has nothing to do with this script
+  for (let i = 0; i < 20 && !decoy.pid; i++) await sleepMs(50);
+  writeFileSync(lock, String(decoy.pid));
+  const result = spawnSync("bash", [SCRIPT], {
+    env: { ...process.env, HOME: home, STUDIO_WORKER_CMD: "true", STUDIO_WORKER_RESTART_DELAY: "60" },
+    encoding: "utf8",
+    timeout: 5000,
+  });
+  assert.notEqual(result.status, 1, "a live pid that isn't this script must not be read as a running supervisor");
+  assert.ok(existsSync(log) && readFileSync(log, "utf8").includes("starting:"), "the loop actually started");
+  decoy.kill();
+  console.log("OK: a live pid reused by an unrelated process does not block a new start (cmdline-checked)");
 }
 
 // --- a stale lock (a pid that is certainly dead) does not block a new start --------------------
