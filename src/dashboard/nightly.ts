@@ -384,6 +384,17 @@ export interface NightlyOptions {
  */
 let lastStartedId: number | null = null;
 
+/**
+ * True from the first render of a night's chain (`nightlyMaxRenders` > 1 can mean several) until
+ * the last one has either started nothing or settled its last job. `renderInFlight`/`anyJobRunning`/
+ * `anyExportRunning` all read false in the gap between two chained renders — this function is
+ * awaiting the suggestion scan and `pickContext` for the next one, which can themselves be
+ * network-bound — so `restartWhenIdle.ts`'s `idle()` reads this too, or a restart armed during the
+ * day could land in that gap and silently drop the rest of the night's chain (review fix, 8 Oct 2026).
+ */
+let chainActive = false;
+export const nightlyChainRunning = (): boolean => chainActive;
+
 /** A pipeline, an encode or a Short on this match: the same three the delete guard refuses for. */
 const busyWith = (id: number): boolean => getJob(id)?.done === false || exportRunning(id) || shortRunning(id);
 
@@ -675,118 +686,149 @@ export async function runNightlyOnce(
   } = deps;
   const startedAt = new Date(now()).toISOString();
 
-  // Independent of whether tonight renders anything, so it still runs on "Run now" and on a
-  // night that skips below — but only once a night, and `sweepArchive` is itself a no-op outside
-  // the window, so a daytime "Run now" does not even list every match. Never fails the run.
-  if (started === 1) {
-    try {
-      await sweepArchive(now);
-    } catch (err) {
-      console.error(`nightly: NAS sweep failed — ${describeError(err)}`);
-    }
+  // Set once, at the chain's very first call, and cleared at every point below where this
+  // function settles without a job left running or about to be chained from — see `chainActive`.
+  if (started === 1) chainActive = true;
+  try {
+    return await runNightlyOnceInner();
+  } catch (err) {
+    chainActive = false;
+    throw err;
   }
 
-  // The scheduled run whose date matches does nothing but log/notify one line, then clears.
-  // "Run now" ignores skipNightOf.
-  if (scheduled && started === 1) {
-    const skipDate = skipNightOf();
-    const todayUtc = new Date(now()).toISOString().slice(0, 10);
-    if (skipDate === todayUtc) {
-      setSkipNightOf(null);
-      console.error("nightly: skipped by the operator");
-      writeNightlyState({
-        startedAt,
-        matchId: null,
-        players: [],
-        outcome: "skipped",
-        reason: "skipped by the operator",
-      });
-      if (notifyUrl) await notify(notifyUrl, "skipped by the operator");
-      return { skipped: "skipped by the operator" };
+  async function runNightlyOnceInner(): Promise<NightlyRunResult> {
+    // Independent of whether tonight renders anything, so it still runs on "Run now" and on a
+    // night that skips below — but only once a night, and `sweepArchive` is itself a no-op outside
+    // the window, so a daytime "Run now" does not even list every match. Never fails the run.
+    if (started === 1) {
+      try {
+        await sweepArchive(now);
+      } catch (err) {
+        console.error(`nightly: NAS sweep failed — ${describeError(err)}`);
+      }
     }
-  }
 
-  const skip = async (reason: string, conflict = false): Promise<NightlyRunResult> => {
-    console.error(`nightly: skipped — ${reason}`);
-    // A conflict is the one skip that is not an outcome: the route answers it 409 and the run
-    // already in flight is what the night produced. Recording it would replace last night's
-    // real result with "skipped" on the strip — and a push for it would wake nobody usefully.
-    // Neither is a chained run's skip, and that one is the common case: a match is 2–2.5 GB, so
-    // the render that just finished is usually what drops `freeMatches` under the guard. The
-    // night's outcome is the render this run was chained from, which has already written its
-    // "done" and pushed for it; recording this would put "skipped" over it.
-    if (!conflict && started === 1) {
-      writeNightlyState({ startedAt, matchId: null, players: [], outcome: "skipped", reason });
-      if (notifyUrl) await notify(notifyUrl, `Nightly skipped — ${reason}${await waitingLine()}`);
+    // The scheduled run whose date matches does nothing but log/notify one line, then clears.
+    // "Run now" ignores skipNightOf.
+    if (scheduled && started === 1) {
+      const skipDate = skipNightOf();
+      const todayUtc = new Date(now()).toISOString().slice(0, 10);
+      if (skipDate === todayUtc) {
+        setSkipNightOf(null);
+        console.error("nightly: skipped by the operator");
+        writeNightlyState({
+          startedAt,
+          matchId: null,
+          players: [],
+          outcome: "skipped",
+          reason: "skipped by the operator",
+        });
+        if (notifyUrl) await notify(notifyUrl, "skipped by the operator");
+        chainActive = false;
+        return { skipped: "skipped by the operator" };
+      }
     }
-    return { skipped: reason, ...(conflict ? { busy: true } : {}) };
-  };
 
-  if (busy()) return skip("a render is already in flight", true);
+    const skip = async (reason: string, conflict = false): Promise<NightlyRunResult> => {
+      console.error(`nightly: skipped — ${reason}`);
+      // A conflict is the one skip that is not an outcome: the route answers it 409 and the run
+      // already in flight is what the night produced. Recording it would replace last night's
+      // real result with "skipped" on the strip — and a push for it would wake nobody usefully.
+      // Neither is a chained run's skip, and that one is the common case: a match is 2–2.5 GB, so
+      // the render that just finished is usually what drops `freeMatches` under the guard. The
+      // night's outcome is the render this run was chained from, which has already written its
+      // "done" and pushed for it; recording this would put "skipped" over it.
+      if (!conflict && started === 1) {
+        writeNightlyState({ startedAt, matchId: null, players: [], outcome: "skipped", reason });
+        if (notifyUrl) await notify(notifyUrl, `Nightly skipped — ${reason}${await waitingLine()}`);
+      }
+      // Whatever level of the chain this is, nothing further will start from this call —
+      // the chain (this call's branch of it) is over.
+      chainActive = false;
+      return { skipped: reason, ...(conflict ? { busy: true } : {}) };
+    };
 
-  const suggestions = await ranked();
-  if (!suggestions) return skip("no suggestions available");
+    if (busy()) return skip("a render is already in flight", true);
 
-  const ctx = await pickContext();
-  const pick = await pickNightlyCandidate(suggestions, ctx, nightlyEligible(ctx.queue ?? []), resolveQueued);
-  if (!pick) {
-    // Naming them: a bracket whose players stream on someone else's channel would otherwise
-    // produce nothing but "nothing to render" for a fortnight, with the reason only in the log.
-    const unstreamed = playoffsWithoutVods();
-    return skip(
-      "every candidate is processed, hidden, without VODs or has no known player, or the disk is full" +
-        (unstreamed.length ? ` (no VOD: ${unstreamed.map((id) => `#${id}`).join(", ")})` : ""),
+    const suggestions = await ranked();
+    if (!suggestions) return skip("no suggestions available");
+
+    const ctx = await pickContext();
+    const pick = await pickNightlyCandidate(
+      suggestions,
+      ctx,
+      nightlyEligible(ctx.queue ?? []),
+      resolveQueued,
     );
-  }
-  // Checked again after the awaits above: a render clicked while the list was being ranked
-  // must not get a second one started on top of it.
-  if (busy()) return skip("a render is already in flight", true);
-
-  const { matchId, players } = pick.metrics;
-  const label = `${players[0]} vs ${players[1]}`;
-  console.error(`nightly: starting render of #${matchId} ${label}`);
-  lastStartedId = matchId;
-  // A queue entry is one night's work: out of the list the moment its render starts.
-  setNightlyQueue(nightlyQueue().filter((id) => id !== matchId));
-  if (config.nightlyRenderExport) requestExport(matchId);
-  // The same call `POST /api/render` makes, so a nightly render and a clicked one are one code
-  // path: startJob de-duplicates by match id and owns the whole pipeline invocation.
-  const job = startJob(matchId);
-  // Recorded now, so a restart mid-render leaves "started" on the strip rather than nothing.
-  writeNightlyState({ startedAt, matchId, players: [...players], outcome: "started" });
-  afterSettled(job, async (verdict, exportClause, picked) => {
-    // State first, then the push, from the same values: a panel that disagreed with the
-    // notification would be worse than either on its own.
-    writeNightlyState({
-      startedAt,
-      matchId,
-      players: [...players],
-      outcome: verdict.outcome,
-      ...(verdict.reason ? { reason: verdict.reason } : {}),
-      export: exportOutcome(exportClause),
-      ...(picked ? { pick: picked.startsWith(" + picked") ? "agy" : "heuristic" } : {}),
-    });
-    const said = verdict.reason ? `${verdict.outcome}: ${verdict.reason}` : verdict.outcome;
-    if (notifyUrl) {
-      await notify(
-        notifyUrl,
-        `Rendered #${matchId} ${label} — ${said}${exportClause}${picked}${await waitingLine()}`,
+    if (!pick) {
+      // Naming them: a bracket whose players stream on someone else's channel would otherwise
+      // produce nothing but "nothing to render" for a fortnight, with the reason only in the log.
+      const unstreamed = playoffsWithoutVods();
+      return skip(
+        "every candidate is processed, hidden, without VODs or has no known player, or the disk is full" +
+          (unstreamed.length ? ` (no VOD: ${unstreamed.map((id) => `#${id}`).join(", ")})` : ""),
       );
     }
-    // A lab that finished at 04:30 is idle for the rest of the night, and the operator's morning
-    // is the bottleneck this scheduler exists to widen. The next card goes through the whole of
-    // this function again — the scan, the disk check, the busy check — so nothing that stops the
-    // first render can be skipped by the second. Only a clean run earns one, as the Short and
-    // the export do; the state file then describes the later render, which is the one still
-    // worth acting on.
-    if (
-      verdict.outcome === "done" &&
-      shouldChainNextRender(started, config.nightlyMaxRenders, Date.now(), config.nightlyRenderHourUtc)
-    ) {
-      await runNightlyOnce(notifyUrl, deps, started + 1);
-    }
-  });
-  return { matchId, players: [...players] };
+    // Checked again after the awaits above: a render clicked while the list was being ranked
+    // must not get a second one started on top of it.
+    if (busy()) return skip("a render is already in flight", true);
+
+    const { matchId, players } = pick.metrics;
+    const label = `${players[0]} vs ${players[1]}`;
+    console.error(`nightly: starting render of #${matchId} ${label}`);
+    lastStartedId = matchId;
+    // A queue entry is one night's work: out of the list the moment its render starts.
+    setNightlyQueue(nightlyQueue().filter((id) => id !== matchId));
+    if (config.nightlyRenderExport) requestExport(matchId);
+    // The same call `POST /api/render` makes, so a nightly render and a clicked one are one code
+    // path: startJob de-duplicates by match id and owns the whole pipeline invocation.
+    const job = startJob(matchId);
+    // Recorded now, so a restart mid-render leaves "started" on the strip rather than nothing.
+    writeNightlyState({ startedAt, matchId, players: [...players], outcome: "started" });
+    afterSettled(job, async (verdict, exportClause, picked) => {
+      // State first, then the push, from the same values: a panel that disagreed with the
+      // notification would be worse than either on its own.
+      writeNightlyState({
+        startedAt,
+        matchId,
+        players: [...players],
+        outcome: verdict.outcome,
+        ...(verdict.reason ? { reason: verdict.reason } : {}),
+        export: exportOutcome(exportClause),
+        ...(picked ? { pick: picked.startsWith(" + picked") ? "agy" : "heuristic" } : {}),
+      });
+      const said = verdict.reason ? `${verdict.outcome}: ${verdict.reason}` : verdict.outcome;
+      if (notifyUrl) {
+        await notify(
+          notifyUrl,
+          `Rendered #${matchId} ${label} — ${said}${exportClause}${picked}${await waitingLine()}`,
+        );
+      }
+      // A lab that finished at 04:30 is idle for the rest of the night, and the operator's morning
+      // is the bottleneck this scheduler exists to widen. The next card goes through the whole of
+      // this function again — the scan, the disk check, the busy check — so nothing that stops the
+      // first render can be skipped by the second. Only a clean run earns one, as the Short and
+      // the export do; the state file then describes the later render, which is the one still
+      // worth acting on.
+      if (
+        verdict.outcome === "done" &&
+        shouldChainNextRender(started, config.nightlyMaxRenders, Date.now(), config.nightlyRenderHourUtc)
+      ) {
+        // `chainActive` stays true across this call — cleared by whichever level of the
+        // recursion finally ends the chain (a skip, a "not chaining further" below, or this
+        // catch if starting the next one blew up before it could reach either).
+        try {
+          await runNightlyOnce(notifyUrl, deps, started + 1);
+        } catch (err) {
+          console.error(`nightly: chained render failed to start — ${describeError(err)}`);
+          chainActive = false;
+        }
+      } else {
+        chainActive = false;
+      }
+    });
+    return { matchId, players: [...players] };
+  }
 }
 
 let nightlyTimer: ReturnType<typeof setTimeout> | null = null;

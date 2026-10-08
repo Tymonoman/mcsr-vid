@@ -15,6 +15,7 @@ import {
   type ExportStarter,
   isKnownPick,
   msUntilNextRun,
+  nightlyChainRunning,
   nightlyEligible,
   PAIR_POSTS_WAIT_MS,
   pickClause,
@@ -644,6 +645,54 @@ console.log("nightly: all checks passed");
     if (before === null) rmSync(stateFile, { force: true });
     else writeFileSync(stateFile, before);
   }
+}
+
+// --- restartWhenIdle.ts must see a chain as busy during the gap between two renders, not just
+// while a job or an export is actually running -----------------------------------------------
+// The gap: `ranked()`/`pickContext()` are network-bound and run with no job and no export yet
+// started. Without `chainActive`, restartWhenIdle's idle() would read this moment as idle and
+// could exit mid-chain (review fix, 8 Oct 2026).
+{
+  assert.equal(nightlyChainRunning(), false, "nothing running before this test starts");
+  let duringRanked: boolean | null = null;
+  const result = await runNightlyOnce(
+    "",
+    {
+      renderInFlight: () => false,
+      ranked: async () => {
+        duringRanked = nightlyChainRunning();
+        return [];
+      },
+    },
+    1,
+  );
+  assert.equal(duringRanked, true, "set before the suggestion scan even resolves, not after");
+  assert.ok(result.skipped, "nothing was found to render in this run");
+  assert.equal(nightlyChainRunning(), false, "cleared once this run settled without starting a job");
+
+  // A chained call (started > 1) that also finds nothing must not leave the flag stuck true
+  // either — it is cleared by the same `skip`, whatever level of the chain called it.
+  const chainedResult = await runNightlyOnce("", { renderInFlight: () => false, ranked: async () => [] }, 2);
+  assert.ok(chainedResult.skipped);
+  assert.equal(nightlyChainRunning(), false, "a chained call's own skip clears the flag too");
+
+  // An exception from the ranking step must not leave the flag stuck true for the rest of the
+  // process either — the same guarantee `restartState().error` relies on in restartWhenIdle.ts.
+  await assert.rejects(
+    runNightlyOnce(
+      "",
+      {
+        renderInFlight: () => false,
+        ranked: async () => {
+          throw new Error("boom");
+        },
+      },
+      1,
+    ),
+    /boom/,
+  );
+  assert.equal(nightlyChainRunning(), false, "a thrown ranking step clears the flag too, not just skip()");
+  console.log("OK: the nightly chain flag covers the network-bound gap, and always clears");
 }
 
 // --- The pick does not wait on a stalled API ------------------------------------------------------

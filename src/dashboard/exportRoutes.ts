@@ -57,8 +57,12 @@ const jobs = new Map<number, ExportJob>();
 /** An export writing into this match's directory right now. */
 export const exportRunning = (matchId: number): boolean => jobs.get(matchId)?.done === false;
 
-/** Any match's export running at all — Studio automation shares the box's four cores with ffmpeg
- * and waits its turn rather than contend for them (src/dashboard/studioLogin.ts, nightly.ts). */
+/**
+ * Any encode in flight, whichever match. Studio automation waits its turn rather than share the
+ * box's four cores with ffmpeg (src/dashboard/studioLogin.ts, nightly.ts), and restartWhenIdle.ts
+ * holds a restart for it. Covers a series game's export and a sync fix's Re-encode too: both are
+ * this same job table, not a table of their own.
+ */
 export const anyExportRunning = (): boolean => [...jobs.values()].some((j) => !j.done);
 
 const projectPath = (dir: string, matchId: number) => path.join(dir, `match-${matchId}.kdenlive`);

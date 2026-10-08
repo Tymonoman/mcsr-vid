@@ -245,6 +245,9 @@ const queuedPicks = (): number[] => [...queued.keys()].filter((id) => id !== pic
 /** Settles once every pick queued so far has run — what the nightly waits on before it reports. */
 export const picksIdle = (): Promise<void> => tail;
 
+/** Whether any pick is running or waiting its turn right now — restartWhenIdle.ts's gate. */
+export const picksRunning = (): boolean => pickingNow !== null || queued.size > 0;
+
 /**
  * Queue a pick for a match that has none and still needs one. Never for a Short already on the
  * channel or a match the operator said gets none; a pick that exists is left alone (a re-export
@@ -1396,6 +1399,9 @@ export function startChain(matchId: number, deps: Partial<ChainDeps> = {}): Prom
 
 /** Settles when this match's chain, if one is running, has finished. */
 export const chainIdle = (matchId: number): Promise<void> => chains.get(matchId) ?? Promise.resolve();
+
+/** Whether any match's chain is running right now — restartWhenIdle.ts's gate. */
+export const chainsRunning = (): boolean => chains.size > 0;
 
 /* --- The tick ---------------------------------------------------------------------------------- */
 

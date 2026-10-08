@@ -30,6 +30,9 @@ const jobs = new Map<number, Job>();
 
 export const getJob = (matchId: number): Job | undefined => jobs.get(matchId);
 
+/** Any pipeline render in flight, whichever match — restartWhenIdle.ts's gate. */
+export const anyJobRunning = (): boolean => [...jobs.values()].some((j) => !j.done);
+
 export function abortJob(matchId: number): void {
   jobs.get(matchId)?.controller.abort();
 }

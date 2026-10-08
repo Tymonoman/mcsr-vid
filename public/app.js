@@ -2755,6 +2755,13 @@ function nightlyBody() {
     last = `${lastLabel} ${who}<span class="${cls}">${esc(said + why)}</span>${short}${exported}`;
   }
 
+  // A restart armed for the moment the box goes idle (src/dashboard/restartWhenIdle.ts): one
+  // small line, not `.bad` — it is not a problem, so it stays off the phone's match screen with
+  // the plan and the queue.
+  const restart = nightly.restart
+    ? `<div class="restartline muted">restart pending${nightly.restart.blockedBy.length ? ` &middot; waiting for: ${nightly.restart.blockedBy.map(esc).join(", ")}` : ""}${nightly.restart.error ? ` &middot; <span class="bad">boot check failed: ${esc(nightly.restart.error.split("\n")[0])}</span>` : ""}</div>`
+    : "";
+
   const failed = stripError ? `<div class="bad">${esc(stripError)}</div>` : "";
   // The morning's two numbers (NightlyShortSummary): what waits for a hook, and what failed on
   // its way to the channel. The failure is a direct `.bad` child, so a phone's match screen
@@ -2791,7 +2798,7 @@ function nightlyBody() {
   const activity = [...running, ...queuedPicks]
     .map((l) => `<div class="activity"><span class="muted">Now</span> ${l}</div>`)
     .join("");
-  return `${behind}${studioBad}${failed}${shortsFailed}${picker}<div class="lines">
+  return `${behind}${studioBad}${restart}${failed}${shortsFailed}${picker}<div class="lines">
       ${activity}
       <div class="plan" title="${esc(nextRunAt ?? "no schedule")}">${plan}</div>
       <div class="last" title="${esc(lastRun ? lastRun.startedAt : "")}">${last}</div>

@@ -6,7 +6,14 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { config } from "../config.js";
-import { gatherFacts, gatherWorthSection, WORTH_DEADLINE_MS, withDeadline } from "./facts.js";
+import { armRestart, disarmRestart } from "../dashboard/restartWhenIdle.js";
+import {
+  gatherFacts,
+  gatherWorthSection,
+  restartIdleHealth,
+  WORTH_DEADLINE_MS,
+  withDeadline,
+} from "./facts.js";
 import type { WorthFacts } from "./worth.js";
 
 // A gather reads the state file and the scans' cache from the media directory: keep it a scratch one.
@@ -71,6 +78,37 @@ try {
     globalThis.fetch = realFetch;
   }
   assert.equal(timers(), baseline);
+
+  // A failed restart-when-idle boot check (src/dashboard/restartWhenIdle.ts) is this process'
+  // own state, not a ping — it must surface in `gatherHealth`'s list the same way a down API
+  // does, since that is the only way it ever reaches the Telegram report (review fix, 8 Oct 2026).
+  assert.equal(restartIdleHealth(), null, "nothing armed — no health line");
+  armRestart({
+    idleDeps: () => ({
+      jobRunning: () => false,
+      exportRunning: () => false,
+      shortRunning: () => false,
+      pickRunning: () => false,
+      chainRunning: () => false,
+      uploadRunning: () => false,
+      uploadSessionFile: () => false,
+      archiveRunning: () => false,
+      nightlyChainRunning: () => false,
+      nightlyHourUtc: null,
+    }),
+    bootCheck: async () => "src/foo.ts(1,1): error TS1: bogus\nmore detail",
+    checkIntervalMs: 10,
+    expireMs: 5_000,
+  });
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  const restartHealth = restartIdleHealth();
+  assert.deepEqual(restartHealth, {
+    name: "restart-when-idle",
+    ok: false,
+    detail: "src/foo.ts(1,1): error TS1: bogus",
+  });
+  disarmRestart();
+  assert.equal(restartIdleHealth(), null, "disarming clears the health line too");
 
   console.log("facts: all checks passed");
 } finally {
