@@ -483,4 +483,137 @@ assert.deepEqual(readExperiments().schedule, [{ date: "2026-10-08", experimentId
   assert.ok(!doc.includes("2026-10-01: e3 / control"), "past dates are not 'ahead'");
 }
 
+// --- baseline round-trips (never exercised above: every writeExperiments call so far omits it) --
+{
+  writeExperiments({ baseline: { introSec: 7 }, experiments: [], schedule: [] });
+  assert.deepEqual(readExperiments().baseline, { introSec: 7 }, "baseline survives a round trip");
+  writeExperiments({ experiments: [], schedule: [] });
+  assert.equal(readExperiments().baseline, undefined, "omitting baseline on write means no field, not null");
+}
+
+// --- rankedHoursForDate: an empty array is "nothing set", same as no slot at all -----------------
+{
+  const data = {
+    experiments: [],
+    schedule: [{ date: "2026-10-08", experimentId: "e1", arm: "a", slot: { rankedHoursUtc: [] } }],
+  };
+  assert.equal(
+    rankedHoursForDate("2026-10-08", data),
+    undefined,
+    "an empty hours list is not a real override",
+  );
+}
+
+// --- shortDelayMsForDate: the 1-48 range's own edges are included, not just what's outside it ----
+{
+  const data = {
+    experiments: [],
+    schedule: [
+      { date: "2026-10-08", experimentId: "e1", arm: "a", slot: { shortDelayHours: 1 } },
+      { date: "2026-10-09", experimentId: "e1", arm: "a", slot: { shortDelayHours: 48 } },
+    ],
+  };
+  assert.equal(shortDelayMsForDate("2026-10-08", data), 1 * 3600_000, "1 h is the low edge, included");
+  assert.equal(shortDelayMsForDate("2026-10-09", data), 48 * 3600_000, "48 h is the high edge, included");
+}
+
+// --- applyScheduledRenderArm: the lead window's own edge (exactly RENDER_ARM_LEAD_MS out) applies -
+{
+  writeExperiments({
+    experiments: [],
+    schedule: [{ date: "2026-10-13", experimentId: "e1", arm: "edge", render: { introSec: 6 } }],
+  });
+  config.nightlyRenderHourUtc = 3;
+  const originalIntroSec = config.introSec;
+  // Exactly 30 minutes before 03:00 UTC — the check is "> lead", so this boundary must still apply.
+  applyScheduledRenderArm(Date.parse("2026-10-13T02:30:00Z"));
+  assert.equal(config.introSec, 6, "exactly on the lead-window edge still applies");
+  config.introSec = originalIntroSec;
+}
+
+// --- writeExperimentArmFile: a schedule entry naming an experiment id that no longer exists ------
+// (renamed or deleted from `experiments`) must not crash — just the fixed keys, no arm settings.
+{
+  writeExperiments({
+    experiments: [],
+    schedule: [{ date: "2026-10-14", experimentId: "long-gone", arm: "ghost", render: { introSec: 2 } }],
+  });
+  writeExperimentArmFile(900006, Date.parse("2026-10-14T03:00:00Z"));
+  const armFile6 = path.join(media, "900006", "experiment-arm.json");
+  const body6 = JSON.parse(readFileSync(armFile6, "utf8")) as {
+    experimentId: string;
+    arm: string;
+    settings: Record<string, unknown>;
+  };
+  assert.equal(body6.experimentId, "long-gone");
+  assert.equal(body6.arm, "ghost");
+  assert.ok("introSec" in body6.settings, "the fixed snapshot keys are still taken");
+  assert.equal(Object.keys(body6.settings).length, 8, "no arm to pull extra keys from — just the fixed set");
+}
+
+// --- testsSummary: a decision with no verdict still counts as "something to report since" --------
+{
+  const data = {
+    experiments: [
+      {
+        id: "decision-only",
+        kind: "between" as const,
+        hypothesis: "h",
+        variable: "v",
+        metric: "ctr",
+        controlArm: "control",
+        arms: [],
+        videos: [],
+        start: "2026-09-01",
+        end: "2026-10-01",
+        status: "done" as const,
+        decision: "kept control: numbers only",
+        evaluatedAt: "2026-10-08T04:15:00Z",
+      },
+    ],
+    schedule: [],
+  };
+  const summary = testsSummary(Date.parse("2026-10-08T07:00:00Z"), Date.parse("2026-10-07T07:00:00Z"), data);
+  assert.deepEqual(summary.since, [
+    { experimentId: "decision-only", verdict: undefined, decision: "kept control: numbers only" },
+  ]);
+}
+
+// --- renderExperimentsDoc: no experiments at all, nothing ahead, and the result/needsHuman lines -
+{
+  assert.ok(
+    renderExperimentsDoc(Date.parse("2026-10-08T07:00:00Z"), { experiments: [], schedule: [] }).includes(
+      "No between-video experiments on record.",
+    ),
+  );
+  const nothingAheadDoc = renderExperimentsDoc(Date.parse("2026-10-08T07:00:00Z"), {
+    experiments: [],
+    schedule: [{ date: "2026-10-01", experimentId: "e1", arm: "a" }], // only a past date
+  });
+  assert.ok(nothingAheadDoc.includes("Nothing scheduled."));
+
+  const withResultAndNeedsHuman = renderExperimentsDoc(Date.parse("2026-10-08T07:00:00Z"), {
+    experiments: [
+      {
+        id: "e5",
+        kind: "between",
+        hypothesis: "h",
+        variable: "v",
+        metric: "ctr",
+        controlArm: "control",
+        arms: [{ name: "control" }],
+        videos: [],
+        start: "2026-10-01",
+        end: "2026-10-14",
+        status: "running",
+        result: { arms: [{ arm: "control", impressions: 10 }] },
+        needsHuman: "Reporting API down",
+      },
+    ],
+    schedule: [],
+  });
+  assert.ok(withResultAndNeedsHuman.includes('numbers: {"arms"'), "the result line prints the JSON");
+  assert.ok(withResultAndNeedsHuman.includes("needs a human: Reporting API down"));
+}
+
 console.log("experiments: all checks passed");
