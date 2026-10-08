@@ -19,7 +19,7 @@
  */
 import { spawn } from "node:child_process";
 import { stat } from "node:fs/promises";
-import { copyFile, mkdir } from "node:fs/promises";
+import { copyFile, mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { renderStill, selectComposition } from "@remotion/renderer";
 import { atomicOutput } from "../pipeline/atomicOutput.js";
@@ -30,6 +30,7 @@ import { computeMetrics } from "../pipeline/matchScore.js";
 import type { HookInput } from "../pipeline/hooks.js";
 import { HOOK_MAX_CHARS } from "../shorts/videoPick.js";
 import { playoffContextFor } from "../playoffs/playoffs.js";
+import { hookFactsMatchId, readSeriesRecord } from "../playoffs/series.js";
 import { readManifest, RESULT_LOOKING_POSE_KEY, type VariantRecord } from "./thumbnailVariants.js";
 import { computeThumbnailProps } from "./thumbnailProps.js";
 import { pickCaption, type CaptionResult } from "./tcCaption.js";
@@ -82,9 +83,10 @@ async function assertUnderLimit(file: string): Promise<void> {
 interface MatchResult {
   matchId: number;
   files: string[];
-  caption: string;
-  captionSource: string;
-  captionChecks: CaptionResult["checks"];
+  /** null: no hooks.ts candidate shortens to a clean token — the set is control + pose only. */
+  caption: string | null;
+  captionSource: string | null;
+  captionChecks: CaptionResult["checks"] | null;
   poseControl: string;
   poseAlt: string;
   poseAltSsim: number;
@@ -123,9 +125,13 @@ async function run(matchId: number, serveUrl: () => Promise<string>): Promise<Ma
   // the players' nicknames and would wrongly exclude a candidate like "Decided by 58
   // milliseconds" (27 chars) before shortenHookChip ever gets to compress it to "58 MS": the
   // title's length budget has nothing to do with what this CLI shortens the chip to.
+  // A series video's caption is about the series: its facts come from the game that decided it
+  // (`hookFactsMatchId`), never game 1 alone — "SUB-8" was game 1's 7:43 on a series won in game 4.
+  const factsId = hookFactsMatchId(matchId, await readSeriesRecord(dir));
+  const factsMatch = factsId === matchId ? match : await getMatch(factsId);
   const hookInput: HookInput = {
-    metrics: computeMetrics(match),
-    match,
+    metrics: computeMetrics(factsMatch),
+    match: factsMatch,
     userLeft,
     userRight,
     playoff: await playoffContextFor(match),
@@ -133,12 +139,9 @@ async function run(matchId: number, serveUrl: () => Promise<string>): Promise<Ma
     minChars: 0,
     versus,
   };
+  // No clean caption is a normal outcome (no candidate shortens to a clean token): the set is then
+  // the control and the pose challenger alone, not a crash that leaves the match's old tc/ files.
   const captionResult = pickCaption(hookInput, [userLeft, userRight]);
-  if (!captionResult) {
-    throw new Error(
-      `${matchId}: no hooks.ts candidate shortens to <=${14} characters and passes every check`,
-    );
-  }
 
   const tcDir = path.join(dir, "tc");
   await mkdir(tcDir, { recursive: true });
@@ -151,6 +154,21 @@ async function run(matchId: number, serveUrl: () => Promise<string>): Promise<Ma
 
   await copyFile(path.join(dir, chosen.file), controlOut);
   await copyFile(path.join(dir, alt.file), poseOut);
+
+  if (!captionResult) {
+    await rm(captionOut, { force: true });
+    for (const f of [controlOut, poseOut]) await assertUnderLimit(f);
+    return {
+      matchId,
+      files: [controlOut, poseOut],
+      caption: null,
+      captionSource: null,
+      captionChecks: null,
+      poseControl: chosen.key,
+      poseAlt: alt.key,
+      poseAltSsim: alt.ssim,
+    };
+  }
 
   // The caption variant is the live pose pair re-rendered with `caption` set — everything else
   // about it (avatars, seed, header) must match tc-control.png exactly, so the caption is the

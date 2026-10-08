@@ -51,9 +51,9 @@ export function shortenHookChip(hook: string): string | null {
   // "Does the lead ever settle?" has no short form that still reads as English ("LEAD SETTLE?"
   // was backwards grammar) and no number to turn into a token, so it is dropped outright.
   if ((m = h.match(/^Can a (\d+):(\d+) lead survive\?$/i))) return `${m[1]}:${m[2]} LEAD`;
-  // Same fix as the margin above: no "S" glued onto the digit, and no "?" either — "48 LEAD" reads
-  // clean and matches the M:SS form's own "LEAD" word.
-  if ((m = h.match(/^Can a (\d+)-second lead survive\?$/i))) return `${m[1]} LEAD`;
+  // Same fix as the margin above: no "S" glued onto the digit, and no "?" either. Written M:SS
+  // like the minute form ("0:48 LEAD"): a bare "38 LEAD" left the viewer asking 38 of what.
+  if ((m = h.match(/^Can a (\d+)-second lead survive\?$/i))) return `0:${m[1].padStart(2, "0")} LEAD`;
   if ((m = h.match(/^(\d+) deaths and still this close$/i))) return `${m[1]} DEATHS`;
   if (/^Not a single death between them$/i.test(h)) return "0 DEATHS";
   if ((m = h.match(/^Rematch: .+ leads (\d+)-(\d+)$/i))) return `${m[1]}-${m[2]} REMATCH`;
