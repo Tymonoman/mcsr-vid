@@ -53,14 +53,12 @@ export function knowledgeFor(question: string, budget = KNOWLEDGE_BUDGET, dir = 
 
   const q = words(question);
   const chunks = docs.flatMap(({ name, text: full }, doc) =>
-    full
-      .split(/^(?=## )/m)
-      .map((text, i) => {
-        const heading = (text.match(/^#{1,2} (.+)$/m)?.[1] ?? "").toLowerCase();
-        const body = text.toLowerCase();
-        const score = q.reduce((n, w) => n + (body.includes(w) ? 1 : 0) + (heading.includes(w) ? 3 : 0), 0);
-        return { doc, i, score, text: `### ${name}\n${text.trim()}` };
-      }),
+    full.split(/^(?=## )/m).map((text, i) => {
+      const heading = (text.match(/^#{1,2} (.+)$/m)?.[1] ?? "").toLowerCase();
+      const body = text.toLowerCase();
+      const score = q.reduce((n, w) => n + (body.includes(w) ? 1 : 0) + (heading.includes(w) ? 3 : 0), 0);
+      return { doc, i, score, text: `### ${name}\n${text.trim()}` };
+    }),
   );
 
   let left = budget - bytes(head);

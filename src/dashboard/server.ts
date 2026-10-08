@@ -836,7 +836,9 @@ server.listen(PORT, "0.0.0.0", () => {
     void shortTick().catch((err: unknown) => console.error(`shorts: ${describeError(err)}`));
     void commentSoonTick().catch((err: unknown) => console.error(`comments: ${describeError(err)}`));
     try {
-      applyScheduledRenderArm();
+      // The nightly's own pending timer was armed for the old hour: rearm it, the same signal
+      // `/api/settings`' PUT handler acts on above.
+      if (applyScheduledRenderArm()) scheduleNightly({ notifyUrl: config.nightlyNotifyUrl });
     } catch (err) {
       console.error(`experiments: render arm tick failed — ${describeError(err)}`);
     }

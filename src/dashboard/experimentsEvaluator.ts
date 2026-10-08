@@ -94,11 +94,17 @@ export interface ArmTotals {
   avgViewPercentages: number[];
 }
 
-export type MetricsFetcher = (matchId: number, videoIdHint: string | undefined) => Promise<VideoMetrics | null>;
+export type MetricsFetcher = (
+  matchId: number,
+  videoIdHint: string | undefined,
+) => Promise<VideoMetrics | null>;
 
 /** Every arm's totals, in the experiment's own arm order. `fetch` defaults to the live Reporting +
  *  Analytics reads above; tests inject a map so no network call is needed to pin a verdict rule. */
-export async function armTotalsFor(exp: Experiment, fetch: MetricsFetcher = liveMetricsFor): Promise<ArmTotals[]> {
+export async function armTotalsFor(
+  exp: Experiment,
+  fetch: MetricsFetcher = liveMetricsFor,
+): Promise<ArmTotals[]> {
   const out: ArmTotals[] = [];
   for (const arm of exp.arms) {
     const totals: ArmTotals = {
@@ -209,13 +215,15 @@ export function verdictFor(exp: Experiment, arms: ArmTotals[]): Verdict {
   const under = arms
     .filter((a) => a.impressions < MIN_IMPRESSIONS)
     .sort((a, b) => a.impressions - b.impressions)[0];
-  if (under) return { text: `inconclusive (${under.impressions} impressions in arm ${under.arm})`, winnerArm: null };
+  if (under)
+    return { text: `inconclusive (${under.impressions} impressions in arm ${under.arm})`, winnerArm: null };
   return exp.metric.toLowerCase() === "ctr"
     ? ctrVerdict(arms, exp.controlArm)
     : retentionVerdict(arms, exp.controlArm);
 }
 
-const isYesterday = (date: string, today: string): boolean => Date.parse(today) - Date.parse(date) === 86_400_000;
+const isYesterday = (date: string, today: string): boolean =>
+  Date.parse(today) - Date.parse(date) === 86_400_000;
 
 /**
  * At `end`: a declared winner with `adoptWinner` becomes the new default; otherwise (no winner, or
@@ -224,20 +232,21 @@ const isYesterday = (date: string, today: string): boolean => Date.parse(today) 
  * is ever pushed through `saveSettings`; an arm whose lever was a `slot` (the publish-hour or
  * Short-delay mechanism, which has no standing Settings field to adopt into) is recorded in the
  * decision with nothing to apply.
+ *
+ * A `saveSettings` failure (a typo'd key, a value `validateOverrides` rejects) is thrown, not
+ * swallowed: `evaluateExperiments` catches it exactly like a Reporting/Analytics read failing, so
+ * the experiment stays `running` and is retried tomorrow rather than being marked `done` with a
+ * decision claiming a setting change took effect when it did not.
  */
 function settle(exp: Experiment, verdict: Verdict): void {
-  exp.status = "done";
   const winner = verdict.winnerArm ? exp.arms.find((a) => a.name === verdict.winnerArm) : undefined;
   const adopted = winner && exp.adoptWinner;
   const arm: ExperimentArm | undefined = adopted ? winner : exp.arms.find((a) => a.name === exp.controlArm);
-  if (arm?.settings && Object.keys(arm.settings).length) {
-    try {
-      saveSettings(arm.settings);
-    } catch (err) {
-      console.error(`experiments: ${exp.id} could not apply ${arm.name}'s settings — ${describeError(err)}`);
-    }
-  }
-  exp.decision = adopted ? `adopted ${winner.name}: ${verdict.text}` : `kept ${exp.controlArm}: ${verdict.text}`;
+  if (arm?.settings && Object.keys(arm.settings).length) saveSettings(arm.settings);
+  exp.status = "done";
+  exp.decision = adopted
+    ? `adopted ${winner.name}: ${verdict.text}`
+    : `kept ${exp.controlArm}: ${verdict.text}`;
 }
 
 export interface EvaluatorDeps {
@@ -251,35 +260,59 @@ export interface EvaluatorDeps {
  * leaves the experiment as it was and is remembered (`lastEvalFailure`); a second failure the very
  * next day's attempt sets `needsHuman` rather than retrying silently forever.
  *
- * ponytail: `evaluatedOn`'s read-then-write is not locked, same as the rest of this codebase's
- * single-dashboard-process assumption (`claimSlot`, src/dashboard/shortFlow.ts) — two dashboard
- * processes against the same mediaDir could both evaluate the same day; add a lock if that ever
- * stops being true.
+ * Guarded against itself (`evaluating`, the same shape as `shortTick`'s `ticking` in
+ * src/dashboard/shortFlow.ts): server.ts's 15-minute tick fires this unconditionally, and several
+ * experiments' worth of serial network reads can outlast one tick's 15 minutes, so a second call
+ * must not start a second read-modify-write over the same file while the first is still in flight.
+ * The final write also re-reads the file fresh rather than reusing the `data` read at the top: the
+ * same 15-minute tick runs `applyScheduledRenderArm` right before this, and a long evaluation must
+ * not clobber (revert) an `appliedOn` — or any schedule/baseline edit — that call made in the
+ * meantime; only this experiment's own fields are overlaid onto whatever the file holds now.
+ *
+ * ponytail: `evaluatedOn`'s read-then-write still assumes one dashboard process against the
+ * mediaDir (`claimSlot`, src/dashboard/shortFlow.ts, same assumption) — two processes could both
+ * evaluate the same day; add a cross-process lock if that ever stops being true.
  */
-export async function evaluateExperiments(deps: Partial<EvaluatorDeps> = {}): Promise<void> {
-  const { fetch = liveMetricsFor, now = Date.now } = deps;
-  const nowMs = now();
-  const today = new Date(nowMs).toISOString().slice(0, 10);
-  const data: ExperimentsFile = readExperiments();
-  if (data.evaluatedOn === today) return;
+let evaluating = false;
 
-  for (const exp of data.experiments) {
-    if (exp.kind !== "between" || exp.status !== "running") continue;
-    try {
-      const arms = await armTotalsFor(exp, fetch);
-      const verdict = verdictFor(exp, arms);
-      exp.result = { arms, computedAt: new Date(nowMs).toISOString() };
-      exp.verdict = verdict.text;
-      exp.evaluatedAt = new Date(nowMs).toISOString();
-      delete exp.lastEvalFailure;
-      delete exp.needsHuman;
-      if (exp.end <= today) settle(exp, verdict);
-    } catch (err) {
-      const message = describeError(err);
-      if (exp.lastEvalFailure && isYesterday(exp.lastEvalFailure.date, today)) exp.needsHuman = message;
-      exp.lastEvalFailure = { date: today, message };
-      console.error(`experiments: ${exp.id} evaluation failed — ${message}`);
+export async function evaluateExperiments(deps: Partial<EvaluatorDeps> = {}): Promise<void> {
+  if (evaluating) return;
+  evaluating = true;
+  try {
+    const { fetch = liveMetricsFor, now = Date.now } = deps;
+    const nowMs = now();
+    const today = new Date(nowMs).toISOString().slice(0, 10);
+    const data: ExperimentsFile = readExperiments();
+    if (data.evaluatedOn === today) return;
+
+    const touched = new Map<string, Experiment>();
+    for (const exp of data.experiments) {
+      if (exp.kind !== "between" || exp.status !== "running") continue;
+      try {
+        const arms = await armTotalsFor(exp, fetch);
+        const verdict = verdictFor(exp, arms);
+        exp.result = { arms, computedAt: new Date(nowMs).toISOString() };
+        exp.verdict = verdict.text;
+        exp.evaluatedAt = new Date(nowMs).toISOString();
+        delete exp.lastEvalFailure;
+        delete exp.needsHuman;
+        if (exp.end <= today) settle(exp, verdict);
+      } catch (err) {
+        const message = describeError(err);
+        if (exp.lastEvalFailure && isYesterday(exp.lastEvalFailure.date, today)) exp.needsHuman = message;
+        exp.lastEvalFailure = { date: today, message };
+        console.error(`experiments: ${exp.id} evaluation failed — ${message}`);
+      }
+      touched.set(exp.id, exp);
     }
+
+    const fresh = readExperiments();
+    writeExperiments({
+      ...fresh,
+      experiments: fresh.experiments.map((e) => touched.get(e.id) ?? e),
+      evaluatedOn: today,
+    });
+  } finally {
+    evaluating = false;
   }
-  writeExperiments({ ...data, evaluatedOn: today });
 }

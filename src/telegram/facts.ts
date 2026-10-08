@@ -26,7 +26,7 @@ import { readNightlyState, MIN_FREE_MATCHES, type NightlyLastRun } from "../dash
 import { nightlyQueue, nightlySkip } from "../dashboard/matchShelf.js";
 import { listProcessedMatchIds, matchStatusFor } from "../dashboard/matchStatus.js";
 import { nightlyShortSummary, readStatus } from "../dashboard/shortFlow.js";
-import { testsSummary, type TestsSummary } from "../dashboard/experiments.js";
+import { needsHumanExperiments, testsSummary, type TestsSummary } from "../dashboard/experiments.js";
 import { pickErrorFile } from "../shorts/videoPick.js";
 import { playoffBoard } from "../playoffs/playoffs.js";
 import { describeFailure, runClaude } from "./claude.js";
@@ -217,6 +217,10 @@ async function gatherAlerts(nowMs: number, health: HealthCheck[]): Promise<Alert
         out.push({ source: `playlist ${kind} #${matchId}`, message: failed });
       }
     }
+  }
+
+  for (const exp of needsHumanExperiments()) {
+    out.push({ source: `experiment ${exp.id}`, message: exp.needsHuman! });
   }
 
   for (const h of health) {

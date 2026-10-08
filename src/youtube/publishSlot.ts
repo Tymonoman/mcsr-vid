@@ -93,7 +93,8 @@ export async function publishSlotFor(matchId: number, nowMs: number): Promise<Pu
   const seriesVideo = isSeries(matchId);
   // A playoff game 1 not joined yet goes out as its series, at the series' hour.
   const gameOneAsSeries = !seriesVideo && (await playoffContextForId(matchId))?.gameNo === 1;
-  const hour = seriesVideo || gameOneAsSeries ? config.seriesPublishHourUtc : publishHourFor(matchDir(matchId));
+  const hour =
+    seriesVideo || gameOneAsSeries ? config.seriesPublishHourUtc : publishHourFor(matchDir(matchId));
   // The publish-hour experiment arm only ever touches a ranked video's own slot, never a series'.
   const hoursForDate = seriesVideo || gameOneAsSeries ? undefined : rankedHoursForDate;
   const claimed = await claimedPublishTimes(matchId);

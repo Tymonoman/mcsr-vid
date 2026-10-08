@@ -187,21 +187,29 @@ const SETTINGS_KEYS = new Set(SETTINGS.map((f) => f.key as string));
  * records `appliedOn` so a restart, or the next 15-minute tick, does not apply the same day twice.
  * A key in the entry's `render` patch that is not a real Settings field is refused with one log
  * line; the rest still applies.
+ *
+ * Returns whether the nightly's own timer needs re-arming (`SaveResult.rearmNightly`, true only
+ * when the patch changed `nightlyRenderHourUtc` itself) — `scheduleNightly`'s `setTimeout`
+ * computes its delay once at arm time and does not notice a new hour until it next fires, exactly
+ * why `/api/settings`' own PUT handler calls it on the same signal (server.ts). This module cannot
+ * call `scheduleNightly` itself: nightly.ts already imports `writeExperimentArmFile` below, and
+ * importing back would cycle the two modules, so the caller (server.ts, which already imports
+ * both) does it.
  */
-export function applyScheduledRenderArm(nowMs: number = Date.now()): void {
+export function applyScheduledRenderArm(nowMs: number = Date.now()): boolean {
   const hourUtc = config.nightlyRenderHourUtc;
-  if (hourUtc === null) return;
-  if (msUntilHourUtc(nowMs, hourUtc) > RENDER_ARM_LEAD_MS) return;
+  if (hourUtc === null) return false;
+  if (msUntilHourUtc(nowMs, hourUtc) > RENDER_ARM_LEAD_MS) return false;
   const date = new Date(nowMs + msUntilHourUtc(nowMs, hourUtc)).toISOString().slice(0, 10);
   const data = readExperiments();
-  if (data.appliedOn === date) return;
+  if (data.appliedOn === date) return false;
   const entry = scheduleEntryFor(date, data);
   if (!entry?.render) {
     // Nothing was ever set up (no .experiments.json worth having): leave no trace of a tick that
     // did nothing. Once there is a file, recording appliedOn every night keeps this cheap either way.
-    if (data.experiments.length === 0 && data.schedule.length === 0) return;
+    if (data.experiments.length === 0 && data.schedule.length === 0) return false;
     writeExperiments({ ...data, appliedOn: date });
-    return;
+    return false;
   }
   const patch: Record<string, unknown> = {};
   const refused: string[] = [];
@@ -211,15 +219,19 @@ export function applyScheduledRenderArm(nowMs: number = Date.now()): void {
   }
   const name = `${date}'s render arm (${entry.experimentId}/${entry.arm})`;
   if (refused.length) console.error(`experiments: ${name} ignored unknown key(s) ${refused.join(", ")}`);
+  let rearmNightly = false;
   if (Object.keys(patch).length) {
     try {
       const result = saveSettings(patch);
-      if (result.changed.length) console.error(`experiments: applied ${name} — changed ${result.changed.join(", ")}`);
+      if (result.changed.length)
+        console.error(`experiments: applied ${name} — changed ${result.changed.join(", ")}`);
+      rearmNightly = result.rearmNightly;
     } catch (err) {
       console.error(`experiments: ${name} failed — ${describeError(err)}`);
     }
   }
   writeExperiments({ ...data, appliedOn: date });
+  return rearmNightly;
 }
 
 /* --- experiment-arm.json: which arm a render actually ran under --------------------------------- */
@@ -238,13 +250,24 @@ const FIXED_SNAPSHOT_KEYS = [
 ] as const;
 
 /**
- * Written the moment the nightly starts rendering a match, when today's UTC date has a schedule
- * entry: a snapshot of the live settings an experiment cares about, so the match directory still
- * says which arm it rendered under even after a later settings change. A no-op otherwise.
+ * Written the moment the nightly starts rendering a match, when the night's UTC date has a
+ * schedule entry: a snapshot of the live settings an experiment cares about, so the match
+ * directory still says which arm it rendered under even after a later settings change. A no-op
+ * otherwise.
+ *
+ * The "night's" date is `appliedOn` — the date `applyScheduledRenderArm` already committed to,
+ * ~30 minutes before the render started — when that is within a day of `nowMs`, not a fresh
+ * wall-clock read: a chained render (`nightlyMaxRenders` > 1) that starts after UTC midnight has
+ * passed would otherwise label itself under *tomorrow's* schedule entry while the settings
+ * actually in effect are still last night's arm. Further than a day off (the nightly disabled
+ * since, or never armed) falls back to wall-clock today, same as before this existed.
  */
 export function writeExperimentArmFile(matchId: number, nowMs: number = Date.now()): void {
-  const date = new Date(nowMs).toISOString().slice(0, 10);
   const data = readExperiments();
+  const today = new Date(nowMs).toISOString().slice(0, 10);
+  const appliedRecently =
+    data.appliedOn !== undefined && Math.abs(Date.parse(today) - Date.parse(data.appliedOn)) <= DAY_MS;
+  const date = appliedRecently ? data.appliedOn! : today;
   const entry = scheduleEntryFor(date, data);
   if (!entry) return;
   const experiment = data.experiments.find((e) => e.id === entry.experimentId);
@@ -275,6 +298,16 @@ export interface TestsSummary {
 }
 
 const between = (e: Experiment): boolean => e.kind === "between";
+
+/** Experiments the evaluator could not settle two days running (`experimentsEvaluator.ts`'s
+ *  `needsHuman`) — the one thing this engine cannot fix by itself. `gatherAlerts`
+ *  (src/telegram/facts.ts) surfaces these under the morning report's "⚠️ Problems", the one place
+ *  the operator said he reads: without this, a dead Reporting/Analytics credential or a removed
+ *  video would leave an experiment stuck `running` past its own `end` forever with nothing on
+ *  screen anywhere but an `/ask` query that happens to match it. */
+export function needsHumanExperiments(data: ExperimentsFile = readExperiments()): Experiment[] {
+  return data.experiments.filter((e) => between(e) && e.needsHuman);
+}
 
 export function testsSummary(
   nowMs: number,
@@ -325,6 +358,10 @@ export function renderExperimentsDoc(
   }
   const ahead = data.schedule.filter((s) => s.date >= today).sort((a, b) => (a.date < b.date ? -1 : 1));
   lines.push("", "## Schedule ahead");
-  lines.push(...(ahead.length ? ahead.map((s) => `- ${s.date}: ${s.experimentId} / ${s.arm}`) : ["Nothing scheduled."]));
+  lines.push(
+    ...(ahead.length
+      ? ahead.map((s) => `- ${s.date}: ${s.experimentId} / ${s.arm}`)
+      : ["Nothing scheduled."]),
+  );
   return lines.join("\n");
 }

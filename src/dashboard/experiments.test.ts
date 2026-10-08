@@ -25,6 +25,7 @@ const {
   applyScheduledRenderArm,
   writeExperimentArmFile,
   testsSummary,
+  needsHumanExperiments,
   renderExperimentsDoc,
 } = await import("./experiments.js");
 
@@ -83,10 +84,27 @@ assert.deepEqual(readExperiments().schedule, [{ date: "2026-10-08", experimentId
 
   writeExperiments({
     experiments: [
-      { id: "e1", kind: "between", hypothesis: "h", variable: "v", metric: "ctr", controlArm: "control", arms: [], videos: [], start: "2026-10-08", end: "2026-10-14", status: "running" },
+      {
+        id: "e1",
+        kind: "between",
+        hypothesis: "h",
+        variable: "v",
+        metric: "ctr",
+        controlArm: "control",
+        arms: [],
+        videos: [],
+        start: "2026-10-08",
+        end: "2026-10-14",
+        status: "running",
+      },
     ],
     schedule: [
-      { date: "2026-10-08", experimentId: "e1", arm: "4s", render: { introSec: 4, mediaDir: "/not/allowed" } },
+      {
+        date: "2026-10-08",
+        experimentId: "e1",
+        arm: "4s",
+        render: { introSec: 4, mediaDir: "/not/allowed" },
+      },
     ],
   });
   const originalIntroSec = config.introSec;
@@ -120,7 +138,34 @@ assert.deepEqual(readExperiments().schedule, [{ date: "2026-10-08", experimentId
   const before = config.introSec;
   applyScheduledRenderArm(Date.parse("2026-10-09T02:45:00Z"));
   assert.equal(config.introSec, before);
-  assert.equal(readExperiments().appliedOn, "2026-10-09", "still recorded, so the window is cheap to re-check");
+  assert.equal(
+    readExperiments().appliedOn,
+    "2026-10-09",
+    "still recorded, so the window is cheap to re-check",
+  );
+}
+
+// --- applyScheduledRenderArm: tells the caller when nightlyRenderHourUtc itself just moved -----
+// (so server.ts knows to rearm the nightly's own pending timer — the same signal /api/settings'
+// PUT handler already acts on; scheduleNightly's setTimeout would otherwise keep firing at the
+// stale hour until the render it's mid-way through finishes and re-arms itself.)
+{
+  writeExperiments({
+    experiments: [],
+    schedule: [{ date: "2026-10-10", experimentId: "e1", arm: "later", render: { introSec: 5 } }],
+  });
+  config.nightlyRenderHourUtc = 3;
+  const noHourChange = applyScheduledRenderArm(Date.parse("2026-10-10T02:45:00Z"));
+  assert.equal(noHourChange, false, "the patch didn't touch nightlyRenderHourUtc — nothing to rearm");
+
+  writeExperiments({
+    experiments: [],
+    schedule: [{ date: "2026-10-11", experimentId: "e1", arm: "later", render: { nightlyRenderHourUtc: 4 } }],
+  });
+  config.nightlyRenderHourUtc = 3;
+  const hourChanged = applyScheduledRenderArm(Date.parse("2026-10-11T02:45:00Z"));
+  assert.equal(hourChanged, true, "nightlyRenderHourUtc itself moved — the caller must rearm the nightly");
+  assert.equal(config.nightlyRenderHourUtc, 4, "the new hour took effect through saveSettings");
 }
 
 // --- writeExperimentArmFile: a snapshot, only when today has an entry ----------------------------
@@ -138,7 +183,10 @@ assert.deepEqual(readExperiments().schedule, [{ date: "2026-10-08", experimentId
         variable: "midRollCtaAtSec",
         metric: "ctr",
         controlArm: "control",
-        arms: [{ name: "control", settings: { midRollCtaAtSec: 90 } }, { name: "off", settings: { midRollCtaAtSec: null } }],
+        arms: [
+          { name: "control", settings: { midRollCtaAtSec: 90 } },
+          { name: "off", settings: { midRollCtaAtSec: null } },
+        ],
         videos: [],
         start: "2026-10-08",
         end: "2026-10-14",
@@ -163,6 +211,95 @@ assert.deepEqual(readExperiments().schedule, [{ date: "2026-10-08", experimentId
   assert.equal(body.settings.midRollCtaAtSec, null, "the arm's own tested key is in the snapshot");
   assert.equal(body.settings.introSec, config.introSec, "the fixed keys ride along too");
   assert.ok(!existsSync(`${armFile}.part`));
+}
+
+// --- writeExperimentArmFile: prefers the night applyScheduledRenderArm actually applied for ----
+// A chained render (nightlyMaxRenders > 1) that starts after UTC midnight must not file itself
+// under *tomorrow's* schedule entry while the settings actually in effect are still last night's.
+{
+  writeExperiments({
+    experiments: [],
+    schedule: [{ date: "2026-10-08", experimentId: "e3", arm: "late-night" }],
+    appliedOn: "2026-10-08",
+  });
+  // The chained render starts just after UTC midnight — wall-clock "today" is already 2026-10-09,
+  // a date this schedule has no entry for.
+  writeExperimentArmFile(900003, Date.parse("2026-10-09T00:10:00Z"));
+  const armFile3 = path.join(media, "900003", "experiment-arm.json");
+  assert.ok(existsSync(armFile3), "filed under the night's own date, not the one it happened to start on");
+  const body3 = JSON.parse(readFileSync(armFile3, "utf8")) as { date: string; experimentId: string };
+  assert.equal(body3.date, "2026-10-08", "appliedOn's date wins over wall-clock 'today'");
+  assert.equal(body3.experimentId, "e3");
+
+  // A stale appliedOn (the nightly off since, or never armed this far back) is not trusted —
+  // falls back to wall-clock today, same as before this existed.
+  writeExperiments({
+    experiments: [],
+    schedule: [{ date: "2026-10-09", experimentId: "e4", arm: "today" }],
+    appliedOn: "2026-09-20",
+  });
+  writeExperimentArmFile(900004, Date.parse("2026-10-09T03:00:00Z"));
+  const armFile4 = path.join(media, "900004", "experiment-arm.json");
+  assert.ok(existsSync(armFile4), "a stale appliedOn falls back to wall-clock today's own entry");
+  const body4 = JSON.parse(readFileSync(armFile4, "utf8")) as { date: string; experimentId: string };
+  assert.equal(body4.date, "2026-10-09");
+  assert.equal(body4.experimentId, "e4");
+}
+
+// --- needsHumanExperiments: the "Needs you" source gatherAlerts (src/telegram/facts.ts) reads ---
+{
+  const data = {
+    experiments: [
+      {
+        id: "stuck",
+        kind: "between" as const,
+        hypothesis: "h",
+        variable: "v",
+        metric: "ctr",
+        controlArm: "control",
+        arms: [],
+        videos: [],
+        start: "2026-09-01",
+        end: "2026-09-14",
+        status: "running" as const,
+        needsHuman: "Reporting API down",
+      },
+      {
+        id: "fine",
+        kind: "between" as const,
+        hypothesis: "h",
+        variable: "v",
+        metric: "ctr",
+        controlArm: "control",
+        arms: [],
+        videos: [],
+        start: "2026-10-01",
+        end: "2026-10-14",
+        status: "running" as const,
+      },
+      {
+        id: "tc-stuck",
+        kind: "tc" as const,
+        hypothesis: "h",
+        variable: "v",
+        metric: "ctr",
+        controlArm: "control",
+        arms: [],
+        videos: [],
+        start: "2026-09-01",
+        end: "2026-09-14",
+        status: "running" as const,
+        needsHuman: "should never be set on a tc experiment, but filtered out either way",
+      },
+    ],
+    schedule: [],
+  };
+  const flagged = needsHumanExperiments(data);
+  assert.deepEqual(
+    flagged.map((e) => e.id),
+    ["stuck"],
+    "only the between experiment that needs one",
+  );
 }
 
 // --- testsSummary: running count, today's schedule, verdicts/decisions since the last report -----
@@ -236,7 +373,11 @@ assert.deepEqual(readExperiments().schedule, [{ date: "2026-10-08", experimentId
   assert.equal(summary.runningCount, 1, "the tc experiment does not count");
   assert.deepEqual(summary.scheduleToday, [{ experimentId: "running-one", arm: "19" }]);
   assert.deepEqual(summary.since, [
-    { experimentId: "done-recent", verdict: "no difference on CTR", decision: "kept control: no difference on CTR" },
+    {
+      experimentId: "done-recent",
+      verdict: "no difference on CTR",
+      decision: "kept control: no difference on CTR",
+    },
   ]);
 }
 

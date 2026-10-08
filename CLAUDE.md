@@ -695,6 +695,27 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   the morning report's channel message gets one deterministic "🧪 Tests" line (running count,
   today's schedule, any verdict or decision since the last report) — see
   `handbook/knowledge/experiments.md` for the week's baseline and ledger.
+  **Review fix, 8 Oct 2026**: `settle()` no longer marks an experiment `done`, or writes a
+  `decision` claiming a setting took effect, when its own `saveSettings` throws (a typo'd key, a
+  value `validateOverrides` rejects) — the failure now falls into the same `lastEvalFailure`/
+  `needsHuman` retry path a Reporting/Analytics read failure already does, so the experiment stays
+  `running` and tries again tomorrow instead of being frozen "done" on a change that never
+  happened. `evaluateExperiments` is guarded against itself (`evaluating`, the same shape as
+  `shortTick`'s `ticking`, `src/dashboard/shortFlow.ts`) since several experiments' worth of serial
+  network reads can outlast one 15-minute tick; its final write also re-reads the file fresh and
+  overlays only the experiments it touched, so a slow evaluation cannot clobber an `appliedOn` (or
+  anything else) `applyScheduledRenderArm` wrote while it was still awaiting a response.
+  `applyScheduledRenderArm` itself now returns whether `nightlyRenderHourUtc` was the key that
+  moved (`SaveResult.rearmNightly`), and the 15-minute tick (`server.ts`) calls `scheduleNightly`
+  when it does — the same signal `/api/settings`'s own PUT handler already acts on, since the
+  nightly's pending timer computes its delay once at arm time and would otherwise keep firing at
+  the stale hour for a night. `writeExperimentArmFile` files a chained render (`nightlyMaxRenders`
+  > 1) that starts after UTC midnight under the night's own date — `appliedOn`, when it is within
+  a day of now — rather than the wall-clock date it happens to start on, which can already be a
+  different (or missing) schedule entry than the one actually applied. And `needsHuman` now
+  reaches `gatherAlerts` (`needsHumanExperiments`, read from `src/telegram/facts.ts`) — the morning
+  report's "⚠️ Problems" and Claude's own prompt — not just the on-demand `/ask` doc, since the
+  operator said he acts only on what that report lists under "Needs you".
 - **Playoffs** (`src/playoffs/playoffs.ts`): the bracket (`/playoffs`) knows the series, not the games;
   the games are private-room matches (type 3) found in each seed's history, and the API stamps
   them with the season *after* the bracket's (a Season 11 bracket's games are season 12). **No

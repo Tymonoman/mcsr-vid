@@ -167,7 +167,10 @@ const ymd = (d: Date) => d.toISOString().slice(0, 10);
 
 /** Exported for `src/dashboard/experimentsEvaluator.ts`, which needs the same one-video, one-metric
  *  shape (`filters: "video==<id>"`) this module already calls for the channel-wide reports. */
-export async function analytics(token: string, params: Record<string, string>): Promise<(string | number)[][]> {
+export async function analytics(
+  token: string,
+  params: Record<string, string>,
+): Promise<(string | number)[][]> {
   const url = `https://youtubeanalytics.googleapis.com/v2/reports?${new URLSearchParams({ ids: "channel==MINE", ...params })}`;
   // A hung Analytics call would otherwise hold the YouTube panel (Upload, Adopt) for minutes.
   const res = await fetch(url, {

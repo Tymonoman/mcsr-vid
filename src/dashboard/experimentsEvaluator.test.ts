@@ -17,9 +17,8 @@ writeFileSync(path.join(cwdDir, "mcsr-vid.config.json"), JSON.stringify({ mediaD
 
 const { config } = await import("../config.js");
 const { readExperiments, writeExperiments } = await import("./experiments.js");
-const { armTotalsFor, twoProportionZ, verdictFor, evaluateExperiments } = await import(
-  "./experimentsEvaluator.js"
-);
+const { armTotalsFor, twoProportionZ, verdictFor, evaluateExperiments } =
+  await import("./experimentsEvaluator.js");
 
 const DAY_MS = 86_400_000;
 const arm = (name: string, impressions: number, clicks: number, pcts: number[] = []): ArmTotals => ({
@@ -86,7 +85,10 @@ assert.equal(twoProportionZ(0, 0, 10, 100), 0, "nothing to divide by on one side
 {
   const metric = baseExperiment({ metric: "averageViewPercentage" });
   // Fewer than 3 videos on one side: numbers only, however far apart the means are.
-  const thin = verdictFor(metric, [arm("control", 5000, 100, [10, 90]), arm("variant", 5000, 100, [80, 85, 90])]);
+  const thin = verdictFor(metric, [
+    arm("control", 5000, 100, [10, 90]),
+    arm("variant", 5000, 100, [80, 85, 90]),
+  ]);
   assert.equal(thin.text, "numbers only");
   assert.equal(thin.winnerArm, null);
 
@@ -180,8 +182,28 @@ assert.equal(twoProportionZ(0, 0, 10, 100), 0, "nothing to divide by on one side
   });
   writeExperiments({ experiments: [exp], schedule: [] });
   const metricsOf = new Map<string, VideoMetrics>([
-    ["v10", { impressions: 5000, clicks: 100, views: 1000, engagedViews: 400, averageViewPercentage: 40, subscribersGained: 1 }],
-    ["v11", { impressions: 5000, clicks: 250, views: 1000, engagedViews: 400, averageViewPercentage: 42, subscribersGained: 2 }],
+    [
+      "v10",
+      {
+        impressions: 5000,
+        clicks: 100,
+        views: 1000,
+        engagedViews: 400,
+        averageViewPercentage: 40,
+        subscribersGained: 1,
+      },
+    ],
+    [
+      "v11",
+      {
+        impressions: 5000,
+        clicks: 250,
+        views: 1000,
+        engagedViews: 400,
+        averageViewPercentage: 42,
+        subscribersGained: 2,
+      },
+    ],
   ]);
   await evaluateExperiments({
     fetch: async (_matchId, videoId) => (videoId ? (metricsOf.get(videoId) ?? null) : null),
@@ -197,8 +219,28 @@ assert.equal(twoProportionZ(0, 0, 10, 100), 0, "nothing to divide by on one side
 // --- evaluateExperiments: adoption and revert decisions at `end` -------------------------------
 {
   const winningMetrics = new Map<string, VideoMetrics>([
-    ["c1", { impressions: 5000, clicks: 100, views: 1000, engagedViews: 400, averageViewPercentage: 40, subscribersGained: 1 }],
-    ["v1", { impressions: 5000, clicks: 250, views: 1000, engagedViews: 400, averageViewPercentage: 42, subscribersGained: 2 }],
+    [
+      "c1",
+      {
+        impressions: 5000,
+        clicks: 100,
+        views: 1000,
+        engagedViews: 400,
+        averageViewPercentage: 40,
+        subscribersGained: 1,
+      },
+    ],
+    [
+      "v1",
+      {
+        impressions: 5000,
+        clicks: 250,
+        views: 1000,
+        engagedViews: 400,
+        averageViewPercentage: 42,
+        subscribersGained: 2,
+      },
+    ],
   ]);
   const fetch = async (_matchId: number, videoId: string | undefined): Promise<VideoMetrics | null> =>
     videoId ? (winningMetrics.get(videoId) ?? null) : null;
@@ -209,7 +251,10 @@ assert.equal(twoProportionZ(0, 0, 10, 100), 0, "nothing to divide by on one side
     id: "adopt-case",
     end: "2026-10-08",
     adoptWinner: true,
-    arms: [{ name: "control", settings: { publishHourUtc: 19 } }, { name: "variant", settings: { publishHourUtc: 21 } }],
+    arms: [
+      { name: "control", settings: { publishHourUtc: 19 } },
+      { name: "variant", settings: { publishHourUtc: 21 } },
+    ],
     videos: [
       { matchId: 20, arm: "control", videoId: "c1" },
       { matchId: 21, arm: "variant", videoId: "v1" },
@@ -228,7 +273,10 @@ assert.equal(twoProportionZ(0, 0, 10, 100), 0, "nothing to divide by on one side
   const revert = baseExperiment({
     id: "revert-case",
     end: "2026-10-08",
-    arms: [{ name: "control", settings: { publishHourUtc: 19 } }, { name: "variant", settings: { publishHourUtc: 21 } }],
+    arms: [
+      { name: "control", settings: { publishHourUtc: 19 } },
+      { name: "variant", settings: { publishHourUtc: 21 } },
+    ],
     videos: [
       { matchId: 22, arm: "control", videoId: "c1" },
       { matchId: 23, arm: "variant", videoId: "v1" },
@@ -240,6 +288,112 @@ assert.equal(twoProportionZ(0, 0, 10, 100), 0, "nothing to divide by on one side
   const reverted = readExperiments().experiments.find((e) => e.id === "revert-case")!;
   assert.equal(reverted.status, "done");
   assert.ok(reverted.decision?.startsWith("kept control:"), reverted.decision);
+}
+
+// --- evaluateExperiments: a saveSettings failure inside settle() must not mark it "done" --------
+// A typo'd key (or a value validateOverrides rejects) must not be reported as a decision that
+// took effect: it has to fall into the same retry path a Reporting/Analytics read failure does.
+{
+  const exp = baseExperiment({
+    id: "bad-key",
+    end: "2026-10-08",
+    arms: [{ name: "control", settings: { notARealSetting: 1 } }, { name: "variant" }],
+    videos: [{ matchId: 40, arm: "control", videoId: "c40" }],
+  });
+  writeExperiments({ experiments: [exp], schedule: [] });
+  const fetch = async (): Promise<VideoMetrics | null> => ({
+    impressions: 10,
+    clicks: 1,
+    views: 10,
+    engagedViews: 4,
+    averageViewPercentage: 40,
+    subscribersGained: 0,
+  });
+  const logged: unknown[][] = [];
+  const realError = console.error;
+  console.error = (...args: unknown[]) => logged.push(args);
+  try {
+    await evaluateExperiments({ fetch, now: () => Date.parse("2026-10-08T04:15:00Z") });
+  } finally {
+    console.error = realError;
+  }
+  const after = readExperiments().experiments.find((e) => e.id === "bad-key")!;
+  assert.equal(after.status, "running", "a saveSettings failure must not be marked done");
+  assert.equal(after.decision, undefined, "no decision claiming a setting that never applied");
+  assert.ok(after.lastEvalFailure?.message.includes("notARealSetting"), after.lastEvalFailure?.message);
+  assert.ok(
+    logged.some((l) => String(l[0]).includes("bad-key evaluation failed")),
+    `logged the same way any other evaluation failure is (got ${JSON.stringify(logged)})`,
+  );
+}
+
+// --- evaluateExperiments: a second concurrent call is a no-op while the first is in flight ------
+{
+  const exp = baseExperiment({ id: "reentrant", videos: [{ matchId: 50, arm: "control", videoId: "c50" }] });
+  writeExperiments({ experiments: [exp], schedule: [] });
+  let inFlight = 0;
+  let maxInFlight = 0;
+  let calls = 0;
+  const slow = async (): Promise<VideoMetrics | null> => {
+    calls++;
+    inFlight++;
+    maxInFlight = Math.max(maxInFlight, inFlight);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    inFlight--;
+    return {
+      impressions: 10,
+      clicks: 1,
+      views: 10,
+      engagedViews: 4,
+      averageViewPercentage: 40,
+      subscribersGained: 0,
+    };
+  };
+  const now = () => Date.parse("2026-10-08T04:15:00Z");
+  const first = evaluateExperiments({ fetch: slow, now });
+  const second = evaluateExperiments({ fetch: slow, now }); // fired while `first` is still awaiting `slow`
+  await Promise.all([first, second]);
+  assert.equal(calls, 1, "the second call returned at once rather than fetching a second time");
+  assert.equal(maxInFlight, 1, "never two evaluations in flight together");
+}
+
+// --- evaluateExperiments: a slow run's final write does not clobber a concurrent appliedOn ------
+// server.ts's tick calls applyScheduledRenderArm (synchronous) right before this; a long
+// evaluation must merge onto whatever the file holds when it finally writes, not the snapshot it
+// read at the start.
+{
+  const exp = baseExperiment({
+    id: "merge-check",
+    videos: [{ matchId: 60, arm: "control", videoId: "c60" }],
+  });
+  writeExperiments({ experiments: [exp], schedule: [] });
+  let released: () => void = () => {};
+  const held = new Promise<void>((resolve) => {
+    released = resolve;
+  });
+  const fetch = async (): Promise<VideoMetrics | null> => {
+    await held; // holds the evaluation open while the "concurrent" write below lands
+    return {
+      impressions: 10,
+      clicks: 1,
+      views: 10,
+      engagedViews: 4,
+      averageViewPercentage: 40,
+      subscribersGained: 0,
+    };
+  };
+  const run = evaluateExperiments({ fetch, now: () => Date.parse("2026-10-08T04:15:00Z") });
+  // Simulates applyScheduledRenderArm's own write landing while the evaluation above is still
+  // mid-flight, holding only `data` (its own stale read) in memory.
+  writeExperiments({ ...readExperiments(), appliedOn: "2026-10-08" });
+  released();
+  await run;
+  const after = readExperiments();
+  assert.equal(after.appliedOn, "2026-10-08", "the concurrent appliedOn write survived");
+  assert.ok(
+    after.experiments.find((e) => e.id === "merge-check")?.evaluatedAt,
+    "and this call's own result landed too",
+  );
 }
 
 // --- evaluateExperiments: once a day, and a failure two days running sets needsHuman -----------
