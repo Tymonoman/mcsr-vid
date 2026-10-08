@@ -1089,7 +1089,10 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
   `repliesTruncated` flags a thread whose `totalReplyCount` exceeds what the API returned and
   none of those were the channel's — genuinely uncertain, not counted as answered on a guess. Up
   to 8 shown, newest first, each with the exact-comment link (`&lc=<id>`) and the video's Studio
-  comments page; the inbox link covers the rest.
+  comments page; the inbox link covers the rest. **Every YouTube link the bot sends opens Studio,
+  never the public watch page** (8 Oct 2026, the operator's ask — the bot is for managing the
+  channel, not watching it): the exact-comment link is `studio.youtube.com/video/<id>/comments?lc=<id>`
+  and the overnight section's "video"/"Short" links are `studio.youtube.com/video/<id>/edit`.
 - **"Worth rendering today"** (`src/telegram/worth.ts`, in the day message and `/worth`): the
   roster's (`favouritePlayers`) ranked matches of the last 3 days with both Twitch VODs, not on
   disk or on the channel, scored by lead changes and the finish gap, at most five lines with the
