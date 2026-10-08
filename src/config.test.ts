@@ -86,6 +86,16 @@ assert.doesNotThrow(() => validateOverrides({ explainMovesSec: null }));
 assert.doesNotThrow(() => validateOverrides({ explainMovesSec: 6 }));
 assert.throws(() => validateOverrides({ explainMovesSec: -1 }), /explainMovesSec/);
 assert.throws(() => validateOverrides({ explainMovesSec: "6" }), /explainMovesSec/);
+// Auto-hooks: off (null) by default, whole hours 1-48 when the operator turns it on.
+assert.equal(DEFAULTS.autoHooksAfterHours, null);
+assert.doesNotThrow(() => validateOverrides({ autoHooksAfterHours: null }));
+assert.doesNotThrow(() => validateOverrides({ autoHooksAfterHours: 6 }));
+assert.doesNotThrow(() => validateOverrides({ autoHooksAfterHours: 1 }));
+assert.doesNotThrow(() => validateOverrides({ autoHooksAfterHours: 48 }));
+assert.throws(() => validateOverrides({ autoHooksAfterHours: 0 }), /autoHooksAfterHours/);
+assert.throws(() => validateOverrides({ autoHooksAfterHours: 49 }), /autoHooksAfterHours/);
+assert.throws(() => validateOverrides({ autoHooksAfterHours: 6.5 }), /autoHooksAfterHours/);
+assert.throws(() => validateOverrides({ autoHooksAfterHours: "6" }), /autoHooksAfterHours/);
 // The intro card: 7 s by default (today's card), 2-7 allowed (24 Sept 2026 audit, fix #1).
 assert.equal(DEFAULTS.introSec, 7);
 assert.doesNotThrow(() => validateOverrides({ introSec: 3 }));

@@ -328,6 +328,15 @@ export interface Config {
    */
   explainMovesSec: number | null;
   /**
+   * The operator's own grant, 8 Oct 2026 ("a match whose hooks I haven't saved 6 h after its pick
+   * lands gets the best title hook that passes hookProblem + hookLabelProblem + spoilsTheResult
+   * (the model's, else a hooks.ts chip) and a Short hook chosen the same way; the chain then runs
+   * as if I'd pressed Save"): `autoHooksTick` (src/dashboard/shortFlow.ts) saves a match's hooks
+   * by itself once its pick is this many hours old. Null (default) is off; the operator turns it
+   * on live in Settings, since it is what starts uploading a video nobody has looked at.
+   */
+  autoHooksAfterHours: number | null;
+  /**
    * Suggestion slots per bucket. Close races and entertaining messes are ranked
    * separately so a run of very tight matches can't crowd the funny ones off the list.
    */
@@ -513,6 +522,7 @@ export const DEFAULTS: Config = {
   introSec: 7,
   countdownTeaser: false,
   explainMovesSec: null,
+  autoHooksAfterHours: null,
   nightlyRenderExport: true,
   nightlyMaxRenders: 1,
   nightlyNotifyUrl: "",
@@ -605,6 +615,12 @@ export function validateOverrides(raw: Record<string, unknown>): void {
         throw new Error(
           `${CONFIG_PATH}: "${key}" must be seconds from 0 to 3600${nullable ? ", or null" : ""}.`,
         );
+      }
+      continue;
+    }
+    if (key === "autoHooksAfterHours") {
+      if (value !== null && (!Number.isInteger(value) || (value as number) < 1 || (value as number) > 48)) {
+        throw new Error(`${CONFIG_PATH}: "autoHooksAfterHours" must be whole hours 1-48, or null for off.`);
       }
       continue;
     }

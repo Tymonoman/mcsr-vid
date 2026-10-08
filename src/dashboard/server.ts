@@ -68,6 +68,7 @@ import {
 } from "./matchShelf.js";
 import { handleShortsRoute, shortRunning } from "./shortsRoutes.js";
 import {
+  autoHooksTick,
   ensurePick,
   matchRowShort,
   nightlyShortSummary,
@@ -900,10 +901,13 @@ server.listen(PORT, "0.0.0.0", () => {
   // The Short chains a restart cut short resume now, and every quarter hour after; the same tick
   // re-asks the model, once a day per match, for a pick the heuristic stood in for. With
   // commentSoonAfterPublish on (default off), it also posts a just-published video's first
-  // comment within minutes rather than waiting for the nightly's tick hours later.
+  // comment within minutes rather than waiting for the nightly's tick hours later. With
+  // autoHooksAfterHours set (off by default — the operator's own grant), it also saves hooks by
+  // itself for a match nobody has looked at in that long.
   const tick = () => {
     void shortTick().catch((err: unknown) => console.error(`shorts: ${describeError(err)}`));
     void commentSoonTick().catch((err: unknown) => console.error(`comments: ${describeError(err)}`));
+    void autoHooksTick().catch((err: unknown) => console.error(`auto-hooks: ${describeError(err)}`));
   };
   tick();
   setInterval(tick, 15 * 60_000).unref();

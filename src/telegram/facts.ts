@@ -9,7 +9,8 @@
  */
 import { lookup } from "node:dns/promises";
 import { existsSync, readFileSync } from "node:fs";
-import { config, matchDir } from "../config.js";
+import path from "node:path";
+import { blockedIn, config, isBlockedPlayer, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { getRecentMatches } from "../api/mcsrApi.js";
 import { getBroadcasterIds, isConfigured as twitchConfigured } from "../api/twitch.js";
@@ -24,7 +25,7 @@ import { fetchYppSnapshot, projectYpp, type YppProgress } from "../youtube/yppPr
 import { capacity } from "../dashboard/archive.js";
 import { readNightlyState, MIN_FREE_MATCHES, type NightlyLastRun } from "../dashboard/nightly.js";
 import { restartState } from "../dashboard/restartWhenIdle.js";
-import { nightlyQueue, nightlySkip } from "../dashboard/matchShelf.js";
+import { hiddenMatchIds, isExported, nightlyQueue, nightlySkip } from "../dashboard/matchShelf.js";
 import { listProcessedMatchIds, matchStatusFor } from "../dashboard/matchStatus.js";
 import { nightlyShortSummary, readStatus } from "../dashboard/shortFlow.js";
 import { pickErrorFile } from "../shorts/videoPick.js";
@@ -166,6 +167,157 @@ async function gatherTodo(nowMs: number): Promise<TodoFacts> {
     playoffsSoon,
     queuedTonight: nightlyQueue().length,
   };
+}
+
+/* --- Needs you (the operator's grant, 8 Oct 2026: "I act only on what the 07:00 Warsaw Telegram
+   report lists under 'Needs you'") ---------------------------------------------------------------
+ *
+ * Deterministic, code only — never Claude — and only these five kinds, each a fact a human has to
+ * settle: everything else (a scheduled upload, a quiet night) needs nobody. A match is named by its
+ * deep link where there is one; a comment's own text or author is never shown (`blockedRunnerItems`
+ * names the video a blocked runner commented on, nothing they wrote). */
+
+export interface NeedsYouItem {
+  /** The match this is about, when there is one — the report links it. */
+  matchId?: number;
+  /** "doogile vs Feinberg", paired with `matchId` for the link's label. */
+  players?: string;
+  /** The rest of the line. */
+  text: string;
+}
+
+export interface NeedsYouFacts {
+  items: NeedsYouItem[];
+}
+
+/** Every `short-<id>.status.json` step still recorded "failed" — it stays an item until the
+ *  operator retries or re-saves, which is what clears a step (`shortFlow.ts`'s own retry rule). */
+async function failedStepItems(): Promise<NeedsYouItem[]> {
+  const items: NeedsYouItem[] = [];
+  for (const matchId of listProcessedMatchIds()) {
+    const status = readStatus(matchId);
+    for (const [step, rec] of Object.entries(status.steps)) {
+      if (rec?.state !== "failed") continue;
+      const message = (status.errors.find((e) => e.step === step)?.message ?? rec.detail ?? "failed").split(
+        "\n",
+      )[0];
+      const m = await matchStatusFor(matchId).catch(() => null);
+      items.push({ matchId, players: m ? playersOf(m) : undefined, text: `${step} failed: ${message}` });
+    }
+  }
+  return items;
+}
+
+interface StudioProbe {
+  result: "ok" | "signed-out" | "verify" | "wrong-channel";
+  message: string;
+  at: string;
+}
+
+/** `<mediaDir>/.studio-probe.json`, written by the Studio automation (another branch) — read
+ *  defensively, since this branch may not have it yet: absent is no item, not an error. */
+function studioItem(): NeedsYouItem | null {
+  const file = path.join(config.mediaDir, ".studio-probe.json");
+  if (!existsSync(file)) return null;
+  try {
+    const probe = JSON.parse(readFileSync(file, "utf8")) as Partial<StudioProbe>;
+    if (!probe.result || probe.result === "ok") return null;
+    return { text: probe.message || `Studio: ${probe.result}` };
+  } catch (err) {
+    console.error(`needsYou: .studio-probe.json: ${describeError(err)}`);
+    return null;
+  }
+}
+
+/** "8 Oct" — a bare UTC calendar day, named beside the other one when neither has a long-form yet. */
+const utcDayLabel = (ms: number): string =>
+  new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", day: "numeric", month: "short" }).format(new Date(ms));
+
+/** No long-form due to go public in the next 48 h — named days included, since the report's one
+ *  job here is to say which days still need a video scheduled. */
+async function noUploadSoonItem(nowMs: number): Promise<NeedsYouItem | null> {
+  const upcoming = await gatherUpcoming(nowMs, 2);
+  if (upcoming.some((u) => u.kind === "video")) return null;
+  return {
+    text: `No long-form is scheduled to go public in the next 48 h — nothing for ${utcDayLabel(nowMs)} or ${utcDayLabel(nowMs + DAY_MS)}`,
+  };
+}
+
+/** A blocked runner appearing somewhere the block is supposed to keep them out of, or commenting —
+ *  which it cannot keep out of. Each match named once, first place it is found. */
+async function blockedRunnerItems(sinceMs: number): Promise<NeedsYouItem[]> {
+  const items: NeedsYouItem[] = [];
+  const seen = new Set<number>();
+  const addMatch = async (matchId: number, where: string) => {
+    if (seen.has(matchId)) return;
+    const m = await matchStatusFor(matchId).catch(() => null);
+    if (!m || !blockedIn([m.leftNickname, m.rightNickname])) return;
+    seen.add(matchId);
+    items.push({ matchId, players: playersOf(m), text: `a blocked player — ${where}` });
+  };
+  for (const matchId of nightlyQueue()) await addMatch(matchId, "in tonight's queue");
+  const hidden = hiddenMatchIds();
+  for (const matchId of listProcessedMatchIds()) {
+    if (!hidden.has(matchId) && isExported(matchId)) await addMatch(matchId, "rendered on disk");
+  }
+  for (const matchId of listProcessedMatchIds()) {
+    if ((await readUpload(matchId, "video")) || (await readUpload(matchId, "short")))
+      await addMatch(matchId, "has an upload record");
+  }
+  try {
+    const threads = await channelCommentThreads(config.youtubeChannelId, 50);
+    const byBlocked = threads.filter(
+      (t) => Date.parse(t.publishedAt) >= sinceMs && isBlockedPlayer(t.author),
+    );
+    if (byBlocked.length > 0) {
+      const titles = await videoTitlesFor([...new Set(byBlocked.map((t) => t.videoId))]);
+      for (const t of byBlocked)
+        items.push({ text: `a blocked runner commented on ${titles[t.videoId] ?? t.videoId}` });
+    }
+  } catch (err) {
+    console.error(`needsYou: checking comments for a blocked runner: ${describeError(err)}`);
+  }
+  return items;
+}
+
+interface ExperimentsFile {
+  experiments?: Array<{ needsHuman?: unknown; needsHumanAck?: unknown }>;
+}
+
+/** `<mediaDir>/.experiments.json`, written by the experiment engine (another branch) — read
+ *  defensively: absent is no item, garbage is one `console.error` and no item either. */
+function needsHumanItems(): NeedsYouItem[] {
+  const file = path.join(config.mediaDir, ".experiments.json");
+  if (!existsSync(file)) return [];
+  try {
+    const data = JSON.parse(readFileSync(file, "utf8")) as Partial<ExperimentsFile>;
+    const experiments = Array.isArray(data.experiments) ? data.experiments : [];
+    return experiments
+      .filter(
+        (e) => typeof e?.needsHuman === "string" && e.needsHuman.trim() !== "" && e.needsHumanAck !== true,
+      )
+      .map((e) => ({ text: e.needsHuman as string }));
+  } catch (err) {
+    console.error(`needsYou: .experiments.json: ${describeError(err)}`);
+    return [];
+  }
+}
+
+async function gatherNeedsYou(nowMs: number, sinceMs: number): Promise<NeedsYouFacts> {
+  const [failed, studio, noUpload, blocked] = await Promise.all([
+    failedStepItems(),
+    Promise.resolve(studioItem()),
+    noUploadSoonItem(nowMs),
+    blockedRunnerItems(sinceMs),
+  ]);
+  const items = [
+    ...failed,
+    ...(studio ? [studio] : []),
+    ...(noUpload ? [noUpload] : []),
+    ...blocked,
+    ...needsHumanItems(),
+  ];
+  return { items };
 }
 
 /* --- Alerts ------------------------------------------------------------------------------------ */
@@ -483,17 +635,23 @@ export interface CommentsFacts {
   videoTitles: Record<string, string>;
 }
 
+/** A `videos.list` title lookup, up to 50 ids — shared by `gatherComments` and `gatherNeedsYou`'s
+ *  blocked-runner-commented item, which both need a video's title and nothing else about it. */
+async function videoTitlesFor(ids: readonly string[]): Promise<Record<string, string>> {
+  const titles: Record<string, string> = {};
+  const slice = ids.slice(0, 50);
+  if (slice.length === 0) return titles;
+  const body = await dataApiGet<{ items?: Array<{ id: string; snippet: { title: string } }> }>(
+    `/videos?part=snippet&id=${slice.map(encodeURIComponent).join(",")}`,
+  );
+  for (const v of body.items ?? []) titles[v.id] = v.snippet.title;
+  return titles;
+}
+
 async function gatherComments(): Promise<CommentsFacts> {
   const threads = await channelCommentThreads(config.youtubeChannelId, 50);
   const unanswered = filterUnanswered(threads).sort((a, b) => (a.publishedAt < b.publishedAt ? 1 : -1));
-  const ids = [...new Set(unanswered.map((c) => c.videoId))].slice(0, 50);
-  const videoTitles: Record<string, string> = {};
-  if (ids.length) {
-    const body = await dataApiGet<{ items?: Array<{ id: string; snippet: { title: string } }> }>(
-      `/videos?part=snippet&id=${ids.map(encodeURIComponent).join(",")}`,
-    );
-    for (const v of body.items ?? []) videoTitles[v.id] = v.snippet.title;
-  }
+  const videoTitles = await videoTitlesFor([...new Set(unanswered.map((c) => c.videoId))]);
   return { unanswered, videoTitles };
 }
 
@@ -502,6 +660,7 @@ async function gatherComments(): Promise<CommentsFacts> {
 export interface ReportFacts {
   nowMs: number;
   todo: Section<TodoFacts>;
+  needsYou: Section<NeedsYouFacts>;
   alerts: Section<AlertItem[]>;
   health: HealthCheck[];
   overnight: Section<OvernightFacts>;
@@ -516,11 +675,12 @@ export interface ReportFacts {
  *  (`/stats`, `/comments`, `/ypp`, `/waiting`, `/health`, `/alerts`, `/worth`) asks for only its
  *  own, so it pays for only its own API calls and skips the live Claude ping `gatherHealth` makes. */
 export type FactSection =
-  "todo" | "alerts" | "health" | "overnight" | "stats" | "comments" | "ypp" | "worthRendering";
+  "todo" | "needsYou" | "alerts" | "health" | "overnight" | "stats" | "comments" | "ypp" | "worthRendering";
 /** The day's picture — what `/todo` and `/ask` read. `worthRendering` is not in it: it costs ~14 MCSR
  *  calls and a few yt-dlp listings when its six-hour cache is cold, and neither command shows it. */
 const ALL_SECTIONS: readonly FactSection[] = [
   "todo",
+  "needsYou",
   "alerts",
   "health",
   "overnight",
@@ -564,8 +724,11 @@ export async function gatherFacts(
 ): Promise<ReportFacts> {
   const want = new Set(only);
   const health = want.has("health") || want.has("alerts") ? await gatherHealth() : [];
-  const [todo, alerts, overnight, stats, comments, ypp, worthRendering] = await Promise.all([
+  const [todo, needsYou, alerts, overnight, stats, comments, ypp, worthRendering] = await Promise.all([
     want.has("todo") ? section(() => gatherTodo(nowMs)) : Promise.resolve(notRequested<TodoFacts>()),
+    want.has("needsYou")
+      ? section(() => gatherNeedsYou(nowMs, sinceMs))
+      : Promise.resolve(notRequested<NeedsYouFacts>()),
     want.has("alerts")
       ? section(() => gatherAlerts(nowMs, health))
       : Promise.resolve(notRequested<AlertItem[]>()),
@@ -587,6 +750,7 @@ export async function gatherFacts(
   return {
     nowMs,
     todo,
+    needsYou,
     alerts,
     health,
     overnight,

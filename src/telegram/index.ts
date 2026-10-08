@@ -9,6 +9,7 @@
  */
 import { config } from "../config.js";
 import { describeError } from "../errorText.js";
+import { listAutoHooks } from "../dashboard/shortFlow.js";
 import * as bot from "./bot.js";
 import { describeFailure, runClaude } from "./claude.js";
 import { knowledgeFor } from "./knowledge.js";
@@ -27,6 +28,7 @@ import {
   renderComments,
   renderHealth,
   renderMorningReport,
+  renderNeedsYou,
   renderNightly,
   renderOvernight,
   renderStats,
@@ -67,6 +69,11 @@ function factsForPrompt(f: ReportFacts): object {
           },
         }
       : { error: f.todo.error },
+    // Already safe for a prompt: `NeedsYouItem.text` never carries a comment's own text or name
+    // (gatherNeedsYou names the video a blocked runner commented on, nothing they wrote).
+    needsYou: f.needsYou.ok
+      ? f.needsYou.data.items.map((i) => ({ matchId: i.matchId, text: i.text }))
+      : { error: f.needsYou.error },
     alerts: f.alerts.ok ? f.alerts.data : { error: f.alerts.error },
     servicesDown: f.health.filter((h) => !h.ok).map((h) => ({ name: h.name, detail: h.detail })),
     overnight: f.overnight.ok
@@ -117,7 +124,8 @@ function reportPrompt(facts: object): string {
     "FACTS below is a JSON object computed by code. Every number in your answer must be copied from FACTS, never invented, estimated, or rounded differently.",
     "Reply in plain text, in exactly this shape: line 1 is a short headline on how things stand (what is covered, what is at risk), which must not repeat a to-do item; then an ordered to-do list, one item per line, each starting with its number and a period, like '1. Save hooks for #12345'.",
     "The to-do list has at most 6 items, most important first, each starting with a verb and one line long; leave out anything that needs no action from him; if nothing does, say so in its one item.",
-    "The same message lists the problems, overnight uploads, stats and comments in detail below your list, so each item names the action, not the details.",
+    "FACTS.needsYou is the deterministic list of exactly what still needs him (a printed, separate section he reads below your list): your to-do list must agree with it rather than inventing its own reasons, though you may put it in your own words and order it by what matters most.",
+    "The same message lists needsYou, the problems, overnight uploads, stats and comments in detail below your list, so each item names the action, not the details.",
     "Write for a phone: plain words, no JSON field names, no ISO timestamps (times in FACTS are already his local time), '#<id>' only when he needs it to find a match.",
     "This goes only to the operator, never published: do not include any viewer comment text or names, and use only what is in FACTS.",
     "",
@@ -172,13 +180,27 @@ export interface BuiltReport {
   claude: TodayResult;
 }
 
+/** Over this long: the "Auto-saved hooks" block's own window (not Needs you's — those items stand
+ *  until the operator settles them, same as every other section here). */
+const AUTO_HOOKS_REPORT_WINDOW_MS = 36 * 60 * 60 * 1000;
+
 /** The full morning report's text, fresh — used by both the scheduled send and `/report`. */
 export async function buildMorningReport(nowMs = Date.now()): Promise<BuiltReport> {
   const state = readTelegramState();
   const sinceMs = state.lastReportAt ? Date.parse(state.lastReportAt) : nowMs - 24 * 60 * 60 * 1000;
-  const facts = await gatherFacts(nowMs, sinceMs, MORNING_SECTIONS);
+  const [facts, autoHooks] = await Promise.all([
+    gatherFacts(nowMs, sinceMs, MORNING_SECTIONS),
+    listAutoHooks(nowMs - AUTO_HOOKS_REPORT_WINDOW_MS, nowMs),
+  ]);
   const claude = await todayClaude(facts);
-  const messages = renderMorningReport(facts, claude, state.prevSnapshot, config.youtubeChannelId, nowMs);
+  const messages = renderMorningReport(
+    facts,
+    claude,
+    state.prevSnapshot,
+    config.youtubeChannelId,
+    nowMs,
+    autoHooks,
+  );
   return { messages, facts, claude };
 }
 
@@ -250,6 +272,10 @@ export async function dispatchCommand({ command, args }: ParsedCommand): Promise
     case "waiting": {
       const facts = await gatherFacts(Date.now(), undefined, ["todo"]);
       return { messages: [renderWaiting(facts.todo, facts.dashboardBaseUrl)], html: true };
+    }
+    case "needs": {
+      const facts = await gatherFacts(Date.now(), undefined, ["needsYou"]);
+      return { messages: [renderNeedsYou(facts.needsYou, facts.dashboardBaseUrl)], html: true };
     }
     case "worth": {
       // Fresh, not the six-hour copy the morning report reads: the operator asked now.

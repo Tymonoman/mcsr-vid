@@ -2,11 +2,13 @@
 // (a slow MCSR API, a hung yt-dlp) must cost the report one failure line, not the report.
 // Run: npx tsx src/telegram/facts.test.ts
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { config } from "../config.js";
 import { armRestart, disarmRestart } from "../dashboard/restartWhenIdle.js";
+import { setHidden, setNightlyQueue } from "../dashboard/matchShelf.js";
+import { writeUpload } from "../youtube/youtubeStore.js";
 import {
   gatherFacts,
   gatherWorthSection,
@@ -20,6 +22,14 @@ import type { WorthFacts } from "./worth.js";
 const media = mkdtempSync(path.join(tmpdir(), "mcsr-facts-"));
 assert.ok(media.startsWith(tmpdir()), "refusing to run outside tmpdir");
 config.mediaDir = media;
+
+// gatherNeedsYou's comment check spends a real YouTube read: a token file of its own (the fetch
+// stub for it is local to that test block below, same as the worth-rendering one already is).
+process.env.YOUTUBE_TOKEN_FILE = path.join(media, "token.json");
+writeFileSync(
+  process.env.YOUTUBE_TOKEN_FILE,
+  JSON.stringify({ client_id: "c", client_secret: "s", refresh_token: "r" }),
+);
 
 const timers = (): number => process.getActiveResourcesInfo().filter((r) => r === "Timeout").length;
 const baseline = timers();
@@ -109,6 +119,238 @@ try {
   });
   disarmRestart();
   assert.equal(restartIdleHealth(), null, "disarming clears the health line too");
+  /* --- Needs you: every kind, the empty case, and the 4096-char budget ------------------------- */
+  {
+    const dir = (id: number) => path.join(media, String(id));
+    const NOW = Date.parse("2026-10-08T07:00:00Z");
+    const SINCE = NOW - 24 * 60 * 60 * 1000;
+    const needsYouOf = async () => {
+      const facts = await gatherFacts(NOW, SINCE, ["needsYou"]);
+      assert.ok(facts.needsYou.ok, JSON.stringify(facts.needsYou));
+      return facts.needsYou.ok ? facts.needsYou.data.items : [];
+    };
+
+    // Every disk-only check here still calls matchStatusFor, which spends one MCSR API read per
+    // match — stubbed to fail at once (matchStatusFor's own fallback to the POV filenames on disk
+    // is what this test actually exercises) so none of it reaches for the real network; the
+    // comment check's own reads (oauth2, commentThreads, videos) are answered from `commentThreads`
+    // and `videoTitles` below, mutated per scenario.
+    const realFetch = globalThis.fetch;
+    let commentThreads: unknown[] = [];
+    const videoTitles = new Map<string, string>();
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.startsWith("https://api.mcsrranked.com/")) throw new Error("no network in this test");
+      if (url.startsWith("https://oauth2.googleapis.com/"))
+        return new Response(JSON.stringify({ access_token: "t", expires_in: 3600 }));
+      if (url.includes("/commentThreads?")) return new Response(JSON.stringify({ items: commentThreads }));
+      if (url.includes("/videos?")) {
+        const ids = new URL(url).searchParams.get("id")!.split(",");
+        return new Response(
+          JSON.stringify({ items: ids.map((id) => ({ id, snippet: { title: videoTitles.get(id) ?? id } })) }),
+        );
+      }
+      throw new Error(`gatherNeedsYou reached for the real network: ${url}`);
+    }) as typeof fetch;
+
+    try {
+      // Empty: one upload already covers the next 48 h, and nothing else on disk needs a look.
+      const CLEAN = 1;
+      mkdirSync(dir(CLEAN), { recursive: true });
+      await writeUpload(
+        CLEAN,
+        {
+          videoId: "v1",
+          uploadedAt: new Date(NOW - 3600_000).toISOString(),
+          publishAt: new Date(NOW + 10 * 3600_000).toISOString(),
+          privacyStatus: "private",
+          thumbnailVariant: null,
+          title: "t",
+        },
+        "video",
+      );
+      assert.deepEqual(await needsYouOf(), [], "nothing needs the operator on a quiet day");
+
+      // 1. A failed chain step: the match, the step and the error's first line only.
+      const FAILED = 2;
+      mkdirSync(dir(FAILED), { recursive: true });
+      writeFileSync(
+        path.join(dir(FAILED), `short-${FAILED}.status.json`),
+        JSON.stringify({
+          steps: { "upload-video": { state: "failed", at: new Date(NOW).toISOString() } },
+          errors: [
+            {
+              step: "upload-video",
+              at: new Date(NOW).toISOString(),
+              message: "the sign-in is gone\nrun npm run youtube-auth",
+            },
+          ],
+        }),
+      );
+      let items = await needsYouOf();
+      const failedItem = items.find((i) => i.matchId === FAILED);
+      assert.ok(failedItem, "the failed step is an item");
+      assert.equal(failedItem!.text, "upload-video failed: the sign-in is gone", "first line only");
+      console.log("OK: a failed chain step is one line, first line of its error only");
+
+      // 2. Studio: absent is no item; each non-"ok" result is, in its own words; "ok" is none.
+      const probe = path.join(media, ".studio-probe.json");
+      assert.ok(!items.some((i) => /studio/i.test(i.text)), "no probe file yet: no item");
+      writeFileSync(
+        probe,
+        JSON.stringify({ result: "signed-out", message: "Studio is signed out — sign in again", at: "x" }),
+      );
+      items = await needsYouOf();
+      assert.ok(items.some((i) => i.text === "Studio is signed out — sign in again"));
+      writeFileSync(probe, JSON.stringify({ result: "ok", message: "fine", at: "x" }));
+      items = await needsYouOf();
+      assert.ok(!items.some((i) => /studio/i.test(i.text)), '"ok" is no item');
+      writeFileSync(probe, "not json");
+      items = await needsYouOf(); // garbage: no item, no throw (one console.error, not asserted here)
+      assert.ok(!items.some((i) => /studio/i.test(i.text)));
+      rmSync(probe);
+      console.log("OK: Studio is an item for anything but ok, absent or garbage is none");
+
+      // 3. No upload in the next 48 h: both days named, by their bare UTC date.
+      await writeUpload(
+        CLEAN,
+        {
+          videoId: "v1",
+          uploadedAt: new Date(NOW - 3600_000).toISOString(),
+          publishAt: new Date(NOW + 72 * 3600_000).toISOString(), // past 48 h now
+          privacyStatus: "private",
+          thumbnailVariant: null,
+          title: "t",
+        },
+        "video",
+      );
+      items = await needsYouOf();
+      const noUpload = items.find((i) => /no long-form/i.test(i.text));
+      assert.ok(noUpload, "nothing lands inside 48 h any more");
+      assert.match(noUpload!.text, /8 Oct.*9 Oct|9 Oct.*8 Oct/);
+      // Scheduled back inside the window: the item goes away.
+      await writeUpload(
+        CLEAN,
+        {
+          videoId: "v1",
+          uploadedAt: new Date(NOW - 3600_000).toISOString(),
+          publishAt: new Date(NOW + 10 * 3600_000).toISOString(),
+          privacyStatus: "private",
+          thumbnailVariant: null,
+          title: "t",
+        },
+        "video",
+      );
+      items = await needsYouOf();
+      assert.ok(!items.some((i) => /no long-form/i.test(i.text)), "back inside 48 h: the item clears");
+      console.log("OK: no upload in 48 h names both bare UTC days, and clears once one is scheduled");
+
+      // 4. A blocked runner: the queue, a rendered-and-not-hidden match, an upload record, and a
+      //    comment's author — each names the match or the video, never the comment's own text.
+      const QUEUED = 3;
+      mkdirSync(dir(QUEUED), { recursive: true });
+      writeFileSync(path.join(dir(QUEUED), "Aquacorde.mp4"), "x");
+      writeFileSync(path.join(dir(QUEUED), "someoneElse.mp4"), "x");
+      setNightlyQueue([QUEUED]);
+      items = await needsYouOf();
+      assert.ok(
+        items.some((i) => i.matchId === QUEUED && /blocked player/.test(i.text)),
+        "a blocked player queued for tonight",
+      );
+      setNightlyQueue([]);
+
+      const RENDERED = 4;
+      mkdirSync(dir(RENDERED), { recursive: true });
+      writeFileSync(path.join(dir(RENDERED), "Aquacorde.mp4"), "x");
+      writeFileSync(path.join(dir(RENDERED), "someoneElse.mp4"), "x");
+      writeFileSync(path.join(dir(RENDERED), `final-${RENDERED}.mp4`), "x");
+      items = await needsYouOf();
+      assert.ok(
+        items.some((i) => i.matchId === RENDERED),
+        "rendered and not hidden",
+      );
+      setHidden(RENDERED, true);
+      items = await needsYouOf();
+      assert.ok(!items.some((i) => i.matchId === RENDERED), "hidden: no longer an item");
+      setHidden(RENDERED, false);
+
+      const UPLOADED_REC = 5;
+      mkdirSync(dir(UPLOADED_REC), { recursive: true });
+      writeFileSync(path.join(dir(UPLOADED_REC), "Aquacorde.mp4"), "x");
+      writeFileSync(path.join(dir(UPLOADED_REC), "someoneElse.mp4"), "x");
+      await writeUpload(
+        UPLOADED_REC,
+        {
+          videoId: "v2",
+          uploadedAt: new Date(NOW).toISOString(),
+          publishAt: null,
+          privacyStatus: "private",
+          thumbnailVariant: null,
+          title: "t",
+        },
+        "video",
+      );
+      items = await needsYouOf();
+      assert.ok(
+        items.some((i) => i.matchId === UPLOADED_REC),
+        "has an upload record",
+      );
+
+      videoTitles.set("v3", "A clean match");
+      commentThreads = [
+        {
+          id: "c1",
+          snippet: {
+            videoId: "v3",
+            totalReplyCount: 0,
+            topLevelComment: {
+              snippet: {
+                authorDisplayName: "Aquacorde",
+                textOriginal: "do not use my footage",
+                publishedAt: new Date(NOW - 3600_000).toISOString(),
+              },
+            },
+          },
+        },
+      ];
+      items = await needsYouOf();
+      const commentItem = items.find((i) => /commented on/.test(i.text));
+      assert.ok(commentItem, "a blocked runner's comment is an item");
+      assert.equal(commentItem!.text, "a blocked runner commented on A clean match");
+      assert.ok(!commentItem!.matchId, "no deep link for a comment-only sighting");
+      assert.ok(
+        !JSON.stringify(items).includes("do not use my footage"),
+        "the comment's own text never appears",
+      );
+      commentThreads = [];
+      console.log(
+        "OK: a blocked runner is named in the queue, on disk, in an upload record and in a comment",
+      );
+
+      // 5. A test result needing a human call: `needsHuman` only when not acknowledged; garbage is
+      //    read defensively, never thrown.
+      const experiments = path.join(media, ".experiments.json");
+      writeFileSync(
+        experiments,
+        JSON.stringify({
+          experiments: [
+            { needsHuman: "arm A or B for publishHourUtc?", needsHumanAck: false },
+            { needsHuman: "already answered", needsHumanAck: true },
+          ],
+        }),
+      );
+      items = await needsYouOf();
+      assert.ok(items.some((i) => i.text === "arm A or B for publishHourUtc?"));
+      assert.ok(!items.some((i) => i.text === "already answered"), "acknowledged: no longer an item");
+      writeFileSync(experiments, "not json");
+      items = await needsYouOf(); // garbage: no item, no throw
+      assert.ok(!items.some((i) => /arm A or B/.test(i.text)));
+      rmSync(experiments);
+      console.log("OK: an experiment needing a human call is an item until it is acknowledged");
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  }
 
   console.log("facts: all checks passed");
 } finally {

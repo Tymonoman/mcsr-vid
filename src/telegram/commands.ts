@@ -36,6 +36,7 @@ export function parseStatsWindows(args: string): WindowDays[] {
 export const BOT_COMMANDS: readonly { command: string; description: string }[] = [
   { command: "report", description: "The full morning report, right now" },
   { command: "todo", description: "Today's to-do list" },
+  { command: "needs", description: "Needs you: the deterministic shortlist, right now" },
   { command: "alerts", description: "What failed in the last 24 h" },
   { command: "health", description: "Ping the APIs" },
   { command: "overnight", description: "Overnight uploads + the next 7 days' schedule" },

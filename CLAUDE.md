@@ -528,6 +528,35 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   have blocked every other chain's upload, not just the slow one's, so `getJson`
   (`src/api/mcsrApi.ts`) now carries a 15 s `AbortSignal.timeout`, the same bound every other
   external call in this codebase already uses (review fix, 7 Oct 2026).
+- **Auto-hooks** (`autoHooksAfterHours`, Settings → Publishing, default null = off; `autoHooksTick`,
+  `src/dashboard/shortFlow.ts`, on the same 15-minute tick as `shortTick`): the operator's own
+  grant for the week of 8–14 Oct 2026 ("a match whose hooks I haven't saved 6 h after its pick
+  lands gets the best title hook that passes hookProblem + hookLabelProblem + spoilsTheResult (the
+  model's, else a hooks.ts chip) and a Short hook chosen the same way; the chain then runs as if
+  I'd pressed Save"). Due: a readable pick (the heuristic's counts) whose own `createdAt`, or the
+  file's mtime without one, is at least that many hours old, hooks not yet saved, not hidden,
+  neither video on the channel, no blocked player, the export present and not stale, no chain or
+  save already running for it. The candidates and their order are exactly `#hook`/`#shorthook`'s
+  own (`suggestionsFor`, not re-implemented): the model's proposals first, then the chips, each
+  already filtered through `hookProblem` (which is `hookLabelProblem` and `spoilsTheResult`
+  together) — the first survivor wins. Upper-cased to match the house style when the operator's
+  own recent saved hooks (`pastTitleHooks`) read mostly upper case. No title candidate survives:
+  nothing is saved and the match's `hooks` step reads failed, with "no suggested hook passed the
+  checks — save one by hand". A title that survives with no Short hook saves with `noShort: true`.
+  Every save is logged to `short-<id>.status.json`'s own `autoHooks` record (`listAutoHooks`), kept
+  across any later save so the morning report's "Auto-saved hooks" block can always say what it
+  last picked; a later operator save overwrites the hooks as usual. The session turns the setting
+  on live (`PUT /api/settings`) once this merges — it is not on anywhere by default.
+  **Review fixes, 8 Oct 2026**: `autoHooksTick` skips a playoff game whose series hasn't joined
+  yet (game 1 before the join, or game 2..n) before ever calling `saveHooks` — the same
+  `seriesGameUnjoined` check `shortPlan` already makes — because `saveHooks` would otherwise only
+  ever refuse it with `SERIES_GAME`, every tick, until the bracket catches up. Any refusal
+  `saveHooks` does return (that one included, were the pre-check ever to miss a case) now fails
+  the match's `hooks` step the same way `AUTO_HOOKS_NO_PASS` does, so it reaches
+  `gatherNeedsYou`'s `failedStepItems` — the one place the operator said he acts from — instead of
+  only a `short-<id>.log.jsonl` line nothing reads. The tick's own loop wraps each match's
+  `autoSaveHooks` call in try/catch, so one broken match directory throwing instead of returning a
+  controlled result can't abort the tick and starve every match due after it.
 - **A playoff game's thumbnails can carry the tournament** (`playoffThumbnailStyle`, in the
   Settings tab; `remotion/Thumbnail.tsx` `playoff`): "bracket" puts the round in the band and
   "Best of 5" under the VS; "trophy" grows the band for a gold PLAYOFFS wordmark over the round
@@ -902,16 +931,42 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
   report by copying it in; a new answer worth keeping goes into `chat-analyses.md` or `channel.md`.
 - **The report is three messages, each saying a thing once** (the operator, 29 Sept 2026: "too
   much repetitive info split it up into a couple messages"; `renderMorningReport` returns them):
-  the day (Claude's headline, which must not repeat a to-do item, and its numbered to-do list with one
+  the day (**Needs you** at the top, then **Auto-saved hooks** below it, Claude's headline, which
+  must not repeat a to-do item, and its numbered to-do list with one
   dashboard link; Problems only when there are any; overnight in a line when quiet; health as one
   line naming only what is down), the channel (live counts, then the 1/3/7/30-day stats as one
   `<pre>` table, a metric per row; YPP as the countdown and the gate holding it back — `tierEta`,
   a tier lands when subscribers AND watch hours-or-Shorts-views do), and the comments (grouped by
   video, each title once as hook · players, in a `<blockquote expandable>`, filled until the
   4096-character limit — `visibleLength`, the text Telegram counts after parsing the HTML). The
-  full breakdowns stay one command away (`/health`, `/ypp`, `/alerts`). HTML parse mode rather
+  full breakdowns stay one command away (`/health`, `/ypp`, `/alerts`, `/needs`). HTML parse mode rather
   than MarkdownV2: it renders the same bold/code/links/quotes and needs escaping of three
   characters, not eighteen, in viewers' comment text. Every dynamic string goes through `escapeHtml`.
+- **"Needs you"** (`gatherNeedsYou`, `facts.ts`; `renderNeedsYou`, `report.ts`; the operator's own
+  rule for the week of 8–14 Oct 2026, "I act only on what the 07:00 Warsaw Telegram report lists
+  under 'Needs you'"): a deterministic section — code, not Claude — at the top of the day message,
+  "Nothing today." when empty. Only five kinds, one line each, a deep link where there is a match:
+  a failed `short-<id>.status.json` step (match, step, the error's first line) until the operator
+  retries or re-saves; Studio signed out/needing verification/wrong channel
+  (`<mediaDir>/.studio-probe.json`, the Studio automation's own file — absent is no item, read
+  defensively); no long-form scheduled to go public in the next 48 h, naming both bare UTC days;
+  a blocked runner in tonight's queue, rendered and not hidden, with an upload record, or as a
+  comment's author newer than the last report (`isBlockedPlayer` against the display name — the
+  line names the video or the match, never the comment's own text); and
+  `<mediaDir>/.experiments.json`'s `needsHuman` entries not yet `needsHumanAck`'d (the experiment
+  engine's own file, another branch — also read defensively). Below it, **"Auto-saved hooks"**
+  (`renderAutoHooks`, `listAutoHooks`) lists the last 36 h of auto-hooks saves (see Dashboard, above)
+  — never part of Needs you, since there is nothing left to act on unless the operator wants to
+  change one before its upload — and is omitted entirely when empty. "Published" reads
+  `AutoHooksRow.privacyStatus` (review fix, 8 Oct 2026), not just whether an upload record
+  exists: the chain's own upload is a private, scheduled draft within minutes of the Short
+  rendering, so `uploaded: true` alone was "published" on almost every row that ever reached this
+  36 h window while it was still private — the row says "goes up `<when>`" until the record's own
+  `privacyStatus` is actually `"public"`. Both cap themselves to a
+  share of the 4096-character message (`NEEDS_YOU_BUDGET_CHARS`/`AUTO_HOOKS_BUDGET_CHARS`) rather
+  than trusting the day to stay short by luck. `/needs` answers the Needs-you section alone, fresh,
+  on demand (the narrow-command pattern above); it goes into Claude's own FACTS too
+  (`factsForPrompt`), so the to-do list agrees with it rather than inventing its own reasons.
 - **A link about one match opens that match.** `public/app.js` routes `#match=<id>` once the list has
   loaded and on `hashchange` (`openLinked`: the match on Now, Rendered under it; an id the list lacks
   is the list, quietly), and `syncHash` keeps the address naming the match on screen

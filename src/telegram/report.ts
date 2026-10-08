@@ -5,6 +5,7 @@
  * `parse_mode: "HTML"`), and the whole report capped at 4096 characters.
  */
 import { escapeHtml, MESSAGE_MAX_CHARS } from "./bot.js";
+import type { AutoHooksRow } from "../dashboard/shortFlow.js";
 import type {
   AlertItem,
   ChannelSnapshot,
@@ -496,6 +497,69 @@ export function renderComments(comments: ReportFacts["comments"], channelId: str
   ].join("\n");
 }
 
+/**
+ * Both sections below share one message with `renderToday`, `renderWorth`, `renderAlerts`,
+ * `renderOvernight` and `renderHealth` (the day message, `renderMorningReport`), none of which
+ * grow without bound the way a list of matches can — so each caps itself to a share of the
+ * 4096-character message rather than relying on the whole day staying short by luck.
+ */
+const NEEDS_YOU_BUDGET_CHARS = 1500;
+const AUTO_HOOKS_BUDGET_CHARS = 1000;
+
+/**
+ * "Needs you": the operator's own grant, 8 Oct 2026 ("I act only on what the 07:00 Warsaw Telegram
+ * report lists under 'Needs you'") — a deterministic shortlist (`gatherNeedsYou`, facts.ts), never
+ * Claude's. Empty says so in words, same as every other section here, rather than vanishing.
+ */
+export function renderNeedsYou(needsYou: ReportFacts["needsYou"], dashboardBaseUrl: string): string {
+  if (!needsYou.ok) return sectionError("Needs you", needsYou.error);
+  if (needsYou.data.items.length === 0) return `${b("Needs you")}\nNothing today.`;
+  const line = (item: (typeof needsYou.data.items)[number]): string => {
+    if (item.matchId === undefined) return `• ${escapeHtml(item.text)}`;
+    const label = `#${item.matchId}${item.players ? ` ${escapeHtml(item.players)}` : ""}`;
+    return `• ${matchLink(dashboardBaseUrl, item.matchId, label)} — ${escapeHtml(item.text)}`;
+  };
+  const head = b("Needs you");
+  const lines: string[] = [];
+  for (const item of needsYou.data.items) {
+    const l = line(item);
+    if (visibleLength([head, ...lines, l].join("\n")) > NEEDS_YOU_BUDGET_CHARS) break;
+    lines.push(l);
+  }
+  const more = needsYou.data.items.length - lines.length;
+  return [head, ...lines, ...(more > 0 ? [`+ ${more} more — open the dashboard`] : [])].join("\n");
+}
+
+/** The auto-hooks grant's own log (shortFlow.ts `listAutoHooks`) — not part of Needs you: these
+ *  already have a hook and are already in the chain, so there is nothing left to act on unless
+ *  the operator wants to change one before its upload. Omitted entirely when nothing auto-saved. */
+export function renderAutoHooks(rows: readonly AutoHooksRow[], dashboardBaseUrl: string): string {
+  if (rows.length === 0) return "";
+  const line = (r: AutoHooksRow): string => {
+    const label = matchLink(dashboardBaseUrl, r.matchId, `#${r.matchId} ${escapeHtml(r.players)}`);
+    const hooks = `${escapeHtml(r.titleHook)}${r.shortHook ? ` / ${escapeHtml(r.shortHook)}` : " (no Short)"}`;
+    // `uploaded` alone means only "has an upload record" — the chain's upload is a private,
+    // scheduled draft, so "published" has to come from the record's own privacyStatus, not from
+    // having a record at all (shortFlow.ts's AutoHooksRow.privacyStatus).
+    const when =
+      r.privacyStatus === "public"
+        ? "published"
+        : r.publishAt
+          ? `goes up ${whenWarsaw(r.publishAt)}`
+          : "no time set yet";
+    return `• ${label} — ${hooks} — ${when}`;
+  };
+  const head = b("🤖 Auto-saved hooks");
+  const lines: string[] = [];
+  for (const r of rows) {
+    const l = line(r);
+    if (visibleLength([head, ...lines, l].join("\n")) > AUTO_HOOKS_BUDGET_CHARS) break;
+    lines.push(l);
+  }
+  const more = rows.length - lines.length;
+  return [head, ...lines, ...(more > 0 ? [`+ ${more} more`] : [])].join("\n");
+}
+
 /* --- /waiting, /overnight's 7-day schedule, /nightly ------------------------------------------ */
 
 export function renderWaiting(todo: ReportFacts["todo"], dashboardBaseUrl: string): string {
@@ -561,9 +625,12 @@ export function renderMorningReport(
   prevSnapshot: ChannelSnapshot | null,
   channelId: string,
   nowMs = Date.now(),
+  autoHooks: readonly AutoHooksRow[] = [],
 ): string[] {
   const day = [
     `☀️ <b>${escapeHtml(warsawDay(nowMs))}</b>`,
+    renderNeedsYou(facts.needsYou, facts.dashboardBaseUrl),
+    renderAutoHooks(autoHooks, facts.dashboardBaseUrl),
     renderToday(facts.todo, claude, facts.dashboardBaseUrl),
     renderWorth(facts.worthRendering, facts.dashboardBaseUrl),
     renderAlerts(facts.alerts, true),

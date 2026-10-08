@@ -6,9 +6,11 @@ import {
   visibleLength,
   tierCountdown,
   renderAlerts,
+  renderAutoHooks,
   renderComments,
   renderHealth,
   renderMorningReport,
+  renderNeedsYou,
   renderNightly,
   renderOvernight,
   renderStats,
@@ -22,6 +24,7 @@ import {
 } from "./report.js";
 import { MESSAGE_MAX_CHARS } from "./bot.js";
 import type { ReportFacts } from "./facts.js";
+import type { AutoHooksRow } from "../dashboard/shortFlow.js";
 import type { UnansweredComment } from "./comments.js";
 import type { WorthMatch } from "./worth.js";
 import type { NightlyLastRun } from "../dashboard/nightly.js";
@@ -121,6 +124,110 @@ const postMortemYpp = (over: Partial<Parameters<typeof projectYpp>[0]> = {}): Yp
   const out = renderComments(comments, "UCreal");
   assert.ok(out.includes(`<a href="https://studio.youtube.com/channel/UCreal/comments/inbox">`), out);
   assert.ok(out.includes("__CHANNEL_ID__ lol"), out); // the comment text is untouched
+}
+
+// --- Needs you: a deterministic shortlist, never Claude's --------------------------------------
+
+// Empty says so in words, like every other section — never blank, never missing.
+{
+  const base = "http://actimel:8080";
+  const out = renderNeedsYou({ ok: true, data: { items: [] } }, base);
+  assert.equal(out, "<b>Needs you</b>\nNothing today.");
+}
+
+// A failed section is this section's own error line, same as every other.
+{
+  const out = renderNeedsYou({ ok: false, error: "boom" }, "http://actimel:8080");
+  assert.match(out, /Needs you/);
+  assert.match(out, /boom/);
+}
+
+// An item with a match deep-links it ("#id players"); one with none (Studio, no upload in 48 h,
+// a comment-only sighting, a test needing a human call) is just its line — and every dynamic
+// string, the players included, is escaped.
+{
+  const base = "http://actimel:8080";
+  const out = renderNeedsYou(
+    {
+      ok: true,
+      data: {
+        items: [
+          { matchId: 1, players: "<b>a</b> vs b", text: "upload-video failed: boom" },
+          { text: "Studio is signed out — sign in again" },
+        ],
+      },
+    },
+    base,
+  );
+  assert.ok(out.includes(`<a href="${base}/#match=1">#1 &lt;b&gt;a&lt;/b&gt; vs b</a>`), out);
+  assert.ok(out.includes("upload-video failed: boom"), out);
+  assert.ok(out.includes("Studio is signed out"), out);
+  // The second item has no match: just its line, not a bare "• —".
+  assert.ok(out.includes("• Studio is signed out — sign in again"), out);
+}
+
+// A list too long for its own budget stops short and says how many more, same shape as /comments'.
+{
+  const base = "http://actimel:8080";
+  const items = Array.from({ length: 200 }, (_, i) => ({
+    matchId: i,
+    players: "a vs b",
+    text: "x".repeat(60),
+  }));
+  const out = renderNeedsYou({ ok: true, data: { items } }, base);
+  assert.ok(visibleLength(out) <= 1600, `${visibleLength(out)}`);
+  assert.match(out, /\+ \d+ more — open the dashboard/);
+}
+
+// --- Auto-saved hooks: not part of Needs you, omitted entirely when nothing auto-saved ---------
+
+{
+  const base = "http://actimel:8080";
+  assert.equal(renderAutoHooks([], base), "", "nothing auto-saved: nothing printed");
+
+  const row = (over: Partial<AutoHooksRow>): AutoHooksRow => ({
+    matchId: 1,
+    players: "doogile vs Feinberg",
+    titleHook: "A sub-8 to win it",
+    shortHook: "Down to one heart",
+    at: "2026-10-08T06:00:00Z",
+    stillCurrent: true,
+    publishAt: "2026-10-09T19:00:00Z",
+    uploaded: false,
+    privacyStatus: null,
+    ...over,
+  });
+  const out = renderAutoHooks([row({})], base);
+  assert.ok(out.includes("Auto-saved hooks"), out);
+  assert.ok(out.includes(`<a href="${base}/#match=1">#1 doogile vs Feinberg</a>`), out);
+  assert.ok(out.includes("A sub-8 to win it / Down to one heart"), out);
+  assert.ok(out.includes(whenWarsaw("2026-10-09T19:00:00Z")), out);
+
+  // No Short, and really published (privacyStatus "public"), read in words.
+  const noShortUp = renderAutoHooks(
+    [row({ shortHook: null, uploaded: true, privacyStatus: "public" })],
+    base,
+  );
+  assert.ok(noShortUp.includes("(no Short)"), noShortUp);
+  assert.ok(noShortUp.includes("published"), noShortUp);
+
+  // Uploaded is not published: the chain's own upload is a private, scheduled draft, so a row
+  // with an upload record but privacyStatus still "private" must say when it goes up, not
+  // "published" — the exact mislabelling a real row would hit within minutes of every Short
+  // rendering (reviewer finding, 8 Oct 2026).
+  const uploadedButPrivate = renderAutoHooks(
+    [row({ uploaded: true, privacyStatus: "private", publishAt: "2026-10-09T19:00:00Z" })],
+    base,
+  );
+  assert.ok(!uploadedButPrivate.includes("published"), uploadedButPrivate);
+  assert.ok(uploadedButPrivate.includes(whenWarsaw("2026-10-09T19:00:00Z")), uploadedButPrivate);
+
+  // The budget caps this section on its own, the same way: it must not crowd out the rest of the
+  // day message just because many matches went un-hooked at once.
+  const many = Array.from({ length: 100 }, (_, i) => row({ matchId: i }));
+  const capped = renderAutoHooks(many, base);
+  assert.ok(visibleLength(capped) <= 1100, `${visibleLength(capped)}`);
+  assert.match(capped, /\+ \d+ more/);
 }
 
 // Comments are grouped by video: the title once, every comment under it, inside an expandable
@@ -418,6 +525,10 @@ const worthMatch = (i: number, over: Partial<WorthMatch> = {}): WorthMatch => ({
         queuedTonight: 0,
       },
     },
+    needsYou: {
+      ok: true,
+      data: { items: [{ matchId: 2, players: "c vs d", text: "upload-video failed: boom" }] },
+    },
     alerts: { ok: true, data: [] },
     health: [
       { name: "MCSR", ok: true, ms: 200 },
@@ -433,12 +544,24 @@ const worthMatch = (i: number, over: Partial<WorthMatch> = {}): WorthMatch => ({
     worthRendering: { ok: true, data: { matches: [worthMatch(1)], notes: [] } },
     dashboardBaseUrl: "http://actimel:8080",
   } as unknown as ReportFacts;
+  const autoHooksRow: AutoHooksRow = {
+    matchId: 3,
+    players: "e vs f",
+    titleHook: "A quiet one",
+    shortHook: null,
+    at: "2026-09-29T05:00:00Z",
+    stillCurrent: true,
+    publishAt: null,
+    uploaded: false,
+    privacyStatus: null,
+  };
   const msgs = renderMorningReport(
     facts,
     { source: "claude", answer: { headline: "Covered through Thursday", todo: ["Save hooks for a vs b"] } },
     { subscribers: 92, views: 64883, videos: 36 },
     "UCxyz",
     now,
+    [autoHooksRow],
   );
   assert.equal(msgs.length, 3);
   for (const m of msgs) assert.ok(visibleLength(m) <= MESSAGE_MAX_CHARS);
@@ -450,6 +573,12 @@ const worthMatch = (i: number, over: Partial<WorthMatch> = {}): WorthMatch => ({
   assert.ok(!msgs[0]!.includes("200 ms"), msgs[0]);
   assert.ok(!msgs[0]!.includes("Problems"), msgs[0]); // no problems → no section
   assert.ok(!msgs[0]!.includes("Waiting for a hook"), msgs[0]); // the to-do says it; /waiting lists them
+  // Needs you is the top of the day, by the operator's own rule; Auto-saved hooks sits right
+  // under it, both above Claude's own to-do.
+  assert.ok(msgs[0]!.indexOf("Needs you") < msgs[0]!.indexOf("Auto-saved hooks"), msgs[0]);
+  assert.ok(msgs[0]!.indexOf("Auto-saved hooks") < msgs[0]!.indexOf("To do"), msgs[0]);
+  assert.ok(msgs[0]!.includes("upload-video failed: boom"), msgs[0]);
+  assert.ok(msgs[0]!.includes("A quiet one (no Short)"), msgs[0]);
   // The matches worth rendering sit in the day message, under the to-do and above the problems.
   assert.ok(msgs[0]!.indexOf("To do") < msgs[0]!.indexOf("Worth rendering today"), msgs[0]);
   assert.ok(msgs[0]!.includes("id <code>13800001</code>"), msgs[0]);
