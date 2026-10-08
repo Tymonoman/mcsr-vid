@@ -35,6 +35,15 @@ exp-discovery wf_67d8c6b6-cdb (render+slot entries per date; auto-enrol videos),
 T&C thumbnail plan (re-judged): tmp/week/tc2/tc-thumbs-plan.json (10 tests); titles: tmp/week/tc/tc-plan.json.
 Tonight's 8 Oct 03:00 renders run on OLD code (no auto-hooks): save their hooks by hand ≥6 h after the pick if he
 has not restarted, applying the three checks + the new truth rules (panel lead changes, on-screen deaths).
+Progress 8 Oct 03:50 UTC: studio-p23 + studio-p4 MERGED. Live on the channel: A/B test (thumbnail) on LUI5E7yF0zE
+(started 01:1x UTC, ~14 days); end screens (starter "1 video, 1 subscribe" — "Import from video" picker is scoped to his
+personal channel and finds nothing) saved on s7R5FUKU0KQ + la_h_HmMuF8. Plan imported: 23 tc experiments planned in
+/media/.experiments.json (10 thumbnail, 13 title; 1f6fOD3KiMI title refused by spoilsTheResult). STUDIO WORKER RUNNING
+in this container: `STUDIO_PROFILE_DIR=/app/.studio-profile setsid nohup npm run -s studio -- worker --enable >>
+~/.claude/studio-worker.log` (heartbeat /media/.studio-worker.json; ledger /media/.studio-ledger.json; blackout 02:50–07:30
+UTC; ≤2 tc starts + ≤3 end screens per 20-min cycle; also auto-plans a thumbnail test per new upload from 8 Oct). If this
+container restarts, start it again with that line. Nightly 8 Oct: 13754336 Pinne–ANJOUU done (waiting for hook), 13765754
+dandannyboy–silverrruns rendering.
 Dashboard boot fd47b32 (he restarted it 7 Oct evening). /media 70 GB free. Live: introSec 3, countdownTeaser on,
 explainMovesSec 8 (on), suggestKnownSlots 10.
 
