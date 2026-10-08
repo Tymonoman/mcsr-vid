@@ -173,7 +173,7 @@ async function gatherTodo(nowMs: number): Promise<TodoFacts> {
 /* --- Needs you (the operator's grant, 8 Oct 2026: "I act only on what the 07:00 Warsaw Telegram
    report lists under 'Needs you'") ---------------------------------------------------------------
  *
- * Deterministic, code only — never Claude — and only these five kinds, each a fact a human has to
+ * Deterministic, code only — never Claude — and only these six kinds, each a fact a human has to
  * settle: everything else (a scheduled upload, a quiet night) needs nobody. A match is named by its
  * deep link where there is one; a comment's own text or author is never shown (`blockedRunnerItems`
  * names the video a blocked runner commented on, nothing they wrote). */
@@ -281,6 +281,67 @@ async function blockedRunnerItems(sinceMs: number): Promise<NeedsYouItem[]> {
   return items;
 }
 
+/** `<mediaDir>/.studio-worker.json`, the standalone worker's own heartbeat
+ *  (`src/youtube/studioWorker.ts`'s `WorkerHeartbeat`, written fresh every cycle) — read
+ *  defensively and only the fields this report needs, same reason as `StudioProbe` above: a
+ *  shape duplicated locally rather than imported, so a change on that side cannot fail this read. */
+interface StudioWorkerHeartbeat {
+  at: string;
+  lastError: string | null;
+  sameErrorStreak?: number;
+}
+
+/** 90 minutes — about 4-5 cycles at the worker's own ~20 min pace — before a stopped heartbeat is
+ *  worth the operator's attention rather than one slow cycle. */
+const STUDIO_WORKER_STALE_MS = 90 * 60_000;
+
+const STUDIO_WORKER_RESTART_CMD =
+  "STUDIO_PROFILE_DIR=/app/.studio-profile setsid nohup npm run -s studio -- worker --enable >> ~/.claude/studio-worker.log 2>&1 &";
+
+/** "Tue 29 Sept, 01:00" (Europe/Warsaw, DST-correct) — report.ts's own `whenWarsaw` is not
+ *  imported here to avoid a cycle (report.ts already imports this module's types). */
+const warsawTime = (iso: string): string =>
+  new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Warsaw",
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(iso));
+
+function readStudioWorkerHeartbeat(): StudioWorkerHeartbeat | null {
+  const file = path.join(config.mediaDir, ".studio-worker.json");
+  if (!existsSync(file)) return null;
+  try {
+    return JSON.parse(readFileSync(file, "utf8")) as StudioWorkerHeartbeat;
+  } catch (err) {
+    console.error(`needsYou: .studio-worker.json: ${describeError(err)}`);
+    return null;
+  }
+}
+
+/** No file = the worker was never started = no item, same convention as `studioItem` above. A
+ *  stale heartbeat and a standing repeated error are independent facts, so either or both can
+ *  appear. */
+function studioWorkerItems(nowMs: number): NeedsYouItem[] {
+  const hb = readStudioWorkerHeartbeat();
+  if (!hb) return [];
+  const items: NeedsYouItem[] = [];
+  const at = Date.parse(hb.at);
+  if (Number.isFinite(at) && nowMs - at > STUDIO_WORKER_STALE_MS) {
+    items.push({
+      text: `the Studio worker has stopped (last heartbeat ${warsawTime(hb.at)}) — A/B tests and end screens are paused; restart it in the mcsr container: ${STUDIO_WORKER_RESTART_CMD}`,
+    });
+  }
+  if ((hb.sameErrorStreak ?? 0) >= 3 && hb.lastError) {
+    items.push({
+      text: `the Studio worker has hit the same error 3 cycles running: ${hb.lastError.split("\n")[0]}`,
+    });
+  }
+  return items;
+}
+
 interface ExperimentsFile {
   experiments?: Array<{ needsHuman?: unknown; needsHumanAck?: unknown }>;
 }
@@ -317,6 +378,7 @@ async function gatherNeedsYou(nowMs: number, sinceMs: number): Promise<NeedsYouF
     ...(noUpload ? [noUpload] : []),
     ...blocked,
     ...needsHumanItems(),
+    ...studioWorkerItems(nowMs),
   ];
   return { items };
 }
@@ -467,6 +529,21 @@ export function restartIdleHealth(): HealthCheck | null {
   return { name: "restart-when-idle", ok: false, detail: state.error.split("\n")[0] };
 }
 
+/** The Studio worker's own heartbeat (see "Needs you" above) folded into one health line: no
+ *  file means the worker was never started (no line, same as `restartIdleHealth`'s own "nothing
+ *  armed" case), otherwise ok with the last cycle's time or down with when it last beat. */
+export function studioWorkerHealth(): HealthCheck | null {
+  const hb = readStudioWorkerHeartbeat();
+  if (!hb) return null;
+  const at = Date.parse(hb.at);
+  const stale = !Number.isFinite(at) || Date.now() - at > STUDIO_WORKER_STALE_MS;
+  return {
+    name: "studio worker",
+    ok: !stale,
+    detail: stale ? `down — last heartbeat ${warsawTime(hb.at)}` : `last cycle ${warsawTime(hb.at)}`,
+  };
+}
+
 /** The Tailscale DNS incident of 27 Sept 2026: a lookup over 1 s is worth flagging on its own. */
 async function pingDns(): Promise<HealthCheck> {
   const r = await timed(() => lookup("api.mcsrranked.com"));
@@ -501,6 +578,7 @@ async function gatherHealth(): Promise<HealthCheck[]> {
     pingDns(),
     diskHealth(),
     Promise.resolve(restartIdleHealth()),
+    Promise.resolve(studioWorkerHealth()),
   ]);
   return checks.filter((c): c is HealthCheck => c !== null);
 }

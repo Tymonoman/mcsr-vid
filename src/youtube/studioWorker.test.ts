@@ -16,6 +16,7 @@ import {
   markPickerEmptySeen,
   planCycle,
   playersFor,
+  nextSameErrorStreak,
   readHeartbeat,
   readLedger,
   runCycle,
@@ -257,6 +258,28 @@ config.mediaDir = media;
   assert.equal(hb?.pid, 123);
   assert.deepEqual(hb?.lastErrors, ["a", "b"], "every error of the cycle, not just the first");
   console.log("OK: ledger and heartbeat round-trip atomically and a corrupt ledger degrades to empty");
+}
+
+// --- nextSameErrorStreak: read-before-write streak the morning report leans on ------------------
+{
+  await writeHeartbeat({ pid: 1, at: "t0", lastCycle: null, lastError: null, lastErrors: [] });
+  assert.equal(await nextSameErrorStreak(null), 0, "no error this cycle — no streak");
+  assert.equal(await nextSameErrorStreak("boom"), 1, "a fresh error after a clean cycle starts at 1");
+
+  await writeHeartbeat({
+    pid: 1,
+    at: "t1",
+    lastCycle: null,
+    lastError: "boom",
+    lastErrors: ["boom"],
+    sameErrorStreak: 1,
+  });
+  assert.equal(await nextSameErrorStreak("boom"), 2, "the same message again — streak grows");
+  assert.equal(await nextSameErrorStreak("different"), 1, "a different message resets to 1, not 0");
+
+  await writeHeartbeat({ pid: 1, at: "t2", lastCycle: null, lastError: null, lastErrors: [] });
+  assert.equal(await nextSameErrorStreak("boom"), 1, "a clean cycle in between resets the streak");
+  console.log("OK: nextSameErrorStreak grows on a repeat, resets on a change or a clean cycle");
 }
 
 // --- planCycle: thumbnailTcTargets, auto-planned thumbnail tests (phase 4, 8 Oct 2026) ---------

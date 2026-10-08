@@ -1028,16 +1028,24 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
 - **"Needs you"** (`gatherNeedsYou`, `facts.ts`; `renderNeedsYou`, `report.ts`; the operator's own
   rule for the week of 8–14 Oct 2026, "I act only on what the 07:00 Warsaw Telegram report lists
   under 'Needs you'"): a deterministic section — code, not Claude — at the top of the day message,
-  "Nothing today." when empty. Only five kinds, one line each, a deep link where there is a match:
+  "Nothing today." when empty. Only six kinds, one line each, a deep link where there is a match:
   a failed `short-<id>.status.json` step (match, step, the error's first line) until the operator
   retries or re-saves; Studio signed out/needing verification/wrong channel
   (`<mediaDir>/.studio-probe.json`, the Studio automation's own file — absent is no item, read
   defensively); no long-form scheduled to go public in the next 48 h, naming both bare UTC days;
   a blocked runner in tonight's queue, rendered and not hidden, with an upload record, or as a
   comment's author newer than the last report (`isBlockedPlayer` against the display name — the
-  line names the video or the match, never the comment's own text); and
+  line names the video or the match, never the comment's own text);
   `<mediaDir>/.experiments.json`'s `needsHuman` entries not yet `needsHumanAck`'d (the experiment
-  engine's own file, another branch — also read defensively). Below it, **"Auto-saved hooks"**
+  engine's own file, another branch — also read defensively); and the standalone Studio worker's
+  own heartbeat (`<mediaDir>/.studio-worker.json`, `studioWorkerItems`/`studioWorkerHealth`,
+  `facts.ts`, 8 Oct 2026 — read defensively the same way, a type duplicated locally rather than
+  imported from `studioWorker.ts`): a heartbeat over 90 min old is one item naming when it last
+  beat and the restart command (`npm run -s studio -- worker --enable`, same as "Studio
+  automation" below), and `WorkerHeartbeat.sameErrorStreak` (computed read-before-write in
+  `runWorker`) at 3 or more is a second, independent item quoting that error's first line — both
+  on the same file as `gatherHealth`'s own "studio worker" line (ok with the last cycle's time, or
+  down); no file at all means the worker was never started, so neither fires. Below it, **"Auto-saved hooks"**
   (`renderAutoHooks`, `listAutoHooks`) lists the last 36 h of auto-hooks saves (see Dashboard, above)
   — never part of Needs you, since there is nothing left to act on unless the operator wants to
   change one before its upload — and is omitted entirely when empty. "Published" reads
@@ -1205,7 +1213,11 @@ every check above is a fixture page or pure logic; see "What is verified live vs
   screens and 2 new Test & Compare starts a cycle; a running test is read once a day by UTC
   calendar date. A ledger (`<mediaDir>/.studio-ledger.json`) remembers which videos already have
   the template so a restart does not re-import; a heartbeat (`<mediaDir>/.studio-worker.json`)
-  records `{ pid, at, lastCycle, lastError }` for the morning report to notice if the process died.
+  records `{ pid, at, lastCycle, lastError, lastErrors, sameErrorStreak }` — `sameErrorStreak`
+  (read-before-write in `runWorker`, 8 Oct 2026) counts how many cycles running have now ended
+  with this exact `lastError` — so the morning report's "Needs you" can notice both a dead process
+  (`at` over 90 min old) and a standing error (the streak at 3+) without keeping its own history
+  (`studioWorkerItems`/`studioWorkerHealth`, `src/telegram/facts.ts`).
 - **Every Test & Compare title is checked before any page opens** (`titleTestProblem`, exported
   from `studioActions.ts`, reused by the plan importer so a title that could never start is never
   even planned): `hookProblem` (which already finishes with its own `hookLabelProblem` call),
