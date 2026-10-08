@@ -354,7 +354,7 @@ const postMortemYpp = (over: Partial<Parameters<typeof projectYpp>[0]> = {}): Yp
   assert.ok(skipped.includes("a render is running") && !skipped.includes("<a "), skipped);
 
   // /overnight and the morning message: the Nightly line, and each upload's players, open the match;
-  // "video" and "Short" still open YouTube. A match whose players could not be read shows its id,
+  // "video" and "Short" open YouTube Studio. A match whose players could not be read shows its id,
   // now a link.
   const upload = (kind: "video" | "short", videoId: string) => ({
     matchId: 13559245,
@@ -384,12 +384,14 @@ const postMortemYpp = (over: Partial<Parameters<typeof projectYpp>[0]> = {}): Yp
   assert.ok(night.includes(`Nightly: ${target} — done`), night);
   assert.ok(
     night.includes(
-      `• ${link(13559245, "a &amp; b")} — <a href="https://youtu.be/vid1">video</a> · <a href="https://youtu.be/sho1">Short</a>`,
+      `• ${link(13559245, "a &amp; b")} — <a href="https://studio.youtube.com/video/vid1/edit">video</a> · <a href="https://studio.youtube.com/video/sho1/edit">Short</a>`,
     ),
     night,
   );
   assert.ok(
-    night.includes(`• ${link(13559250, "#13559250")} — <a href="https://youtu.be/vid2">video</a>`),
+    night.includes(
+      `• ${link(13559250, "#13559250")} — <a href="https://studio.youtube.com/video/vid2/edit">video</a>`,
+    ),
     night,
   );
   const quiet = renderOvernight(

@@ -192,7 +192,7 @@ export function renderHealth(health: HealthCheck[], compact = false): string {
   return [b("Health"), ...lines].join("\n");
 }
 
-/** Each match's players open its page on the dashboard; "video" and "Short" open YouTube. */
+/** Each match's players open its page on the dashboard; "video" and "Short" open YouTube Studio. */
 export function renderOvernight(
   overnight: ReportFacts["overnight"],
   dashboardBaseUrl: string,
@@ -214,7 +214,10 @@ export function renderOvernight(
       (rs) =>
         `• ${matchLink(dashboardBaseUrl, rs[0]!.matchId, escapeHtml(rs[0]!.players))} — ` +
         rs
-          .map((r) => `<a href="https://youtu.be/${r.videoId}">${r.kind === "short" ? "Short" : "video"}</a>`)
+          .map(
+            (r) =>
+              `<a href="https://studio.youtube.com/video/${r.videoId}/edit">${r.kind === "short" ? "Short" : "video"}</a>`,
+          )
           .join(" · "),
     );
   };
@@ -497,7 +500,7 @@ export function renderComments(comments: ReportFacts["comments"], channelId: str
       const excerpt = c.text.replace(/\s+/g, " ").trim();
       const cut = excerpt.length > 110 ? `${excerpt.slice(0, 109)}…` : excerpt;
       const maybe = c.repliesTruncated ? " <i>(may be answered)</i>" : "";
-      const line = `• <b>${escapeHtml(c.author)}</b>: ${escapeHtml(cut)}${maybe} · <a href="https://www.youtube.com/watch?v=${c.videoId}&amp;lc=${c.threadId}">reply</a>`;
+      const line = `• <b>${escapeHtml(c.author)}</b>: ${escapeHtml(cut)}${maybe} · <a href="https://studio.youtube.com/video/${c.videoId}/comments?lc=${c.threadId}">reply</a>`;
       if (visibleLength([head, ...body, ...lines, line].join("\n")) > MESSAGE_MAX_CHARS - 200) break;
       lines.push(line);
       shown++;
