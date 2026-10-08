@@ -326,7 +326,10 @@ export interface EvaluatorDeps {
  * The final write also re-reads the file fresh rather than reusing the `data` read at the top: the
  * same 15-minute tick runs `applyScheduledRenderArm` right before this, and a long evaluation must
  * not clobber (revert) an `appliedOn` — or any schedule/baseline edit — that call made in the
- * meantime; only this experiment's own fields are overlaid onto whatever the file holds now.
+ * meantime; only an experiment this run actually changed (enrolled a new video into, or ran the
+ * running-loop below on) is overlaid onto whatever the file holds now — a "done" or "planned"
+ * experiment `enrolVideos` found nothing new for is left to whatever `fresh` holds for it, so a
+ * concurrent edit to one of its other fields survives too.
  *
  * ponytail: `evaluatedOn`'s read-then-write still assumes one dashboard process against the
  * mediaDir (`claimSlot`, src/dashboard/shortFlow.ts, same assumption) — two processes could both
@@ -344,10 +347,21 @@ export async function evaluateExperiments(deps: Partial<EvaluatorDeps> = {}): Pr
     const data: ExperimentsFile = readExperiments();
     if (data.evaluatedOn === today) return;
 
+    // Only a between experiment `enrolVideos` actually added a video to goes into `touched` here
+    // — not every between experiment regardless of whether anything changed. `touched` is what the
+    // final write below force-writes over whatever is on disk by then; a "done" or "planned"
+    // experiment enrolVideos left untouched (nothing new on disk for it this run) must stay exactly
+    // that untouched, so a concurrent edit to one of its *other* fields (`needsHumanAck`, say, from
+    // the operator or another route) is never overwritten by this run's stale copy of it.
+    const videoCounts = new Map(
+      data.experiments.filter((e) => e.kind === "between").map((e) => [e.id, e.videos.length]),
+    );
     await enrolVideos(data);
 
     const touched = new Map<string, Experiment>(
-      data.experiments.filter((e) => e.kind === "between").map((e) => [e.id, e]),
+      data.experiments
+        .filter((e) => e.kind === "between" && e.videos.length !== videoCounts.get(e.id))
+        .map((e) => [e.id, e]),
     );
     for (const exp of data.experiments) {
       if (exp.kind !== "between" || exp.status !== "running") continue;

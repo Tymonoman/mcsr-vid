@@ -850,6 +850,15 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
     enrols too, into the arm whose own `slot.rankedHoursUtc` is exactly that one publish hour
     (an hour-split experiment: two hours a day, each its own arm) when such an arm exists, else
     the schedule entry's own `arm`.
+  **Review fix, 8 Oct 2026**: `evaluateExperiments`'s final write used to force-write a stale
+  in-memory copy over *every* between experiment, not just the ones this run actually changed —
+  widened from the old behaviour (only a `status: "running"` one, evaluated in the loop) by
+  `enrolVideos` needing its own mutations persisted for a "done" or "planned" experiment too. A
+  concurrent edit to one of those untouched experiments' *other* fields (`needsHumanAck`, from
+  some future route) landing mid-run would have been silently reverted. Fixed by seeding `touched`
+  from which between experiments' `videos.length` actually changed (plus whatever the running-loop
+  itself touches, as before) — a "done"/"planned" experiment `enrolVideos` finds nothing new for
+  is left to whatever the final fresh read holds for it.
 - **Playoffs** (`src/playoffs/playoffs.ts`): the bracket (`/playoffs`) knows the series, not the games;
   the games are private-room matches (type 3) found in each seed's history, and the API stamps
   them with the season *after* the bracket's (a Season 11 bracket's games are season 12). **No

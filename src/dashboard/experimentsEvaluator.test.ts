@@ -532,7 +532,12 @@ assert.equal(twoProportionZ(0, 0, 10, 100), 0, "nothing to divide by on one side
   writeExperiments({
     experiments: [exp],
     schedule: [
-      { date: "2026-10-08", experimentId: "slot-enrol", arm: "fallback-label", slot: { rankedHoursUtc: [18, 20] } },
+      {
+        date: "2026-10-08",
+        experimentId: "slot-enrol",
+        arm: "fallback-label",
+        slot: { rankedHoursUtc: [18, 20] },
+      },
     ],
   });
   const fetch = async (): Promise<VideoMetrics | null> => ({
@@ -554,7 +559,65 @@ assert.equal(twoProportionZ(0, 0, 10, 100), 0, "nothing to divide by on one side
     "fallback-label",
     "no arm claims hour 5 — falls back to the schedule entry's own arm",
   );
-  assert.equal(after.videos.find((v) => v.matchId === 920004), undefined);
+  assert.equal(
+    after.videos.find((v) => v.matchId === 920004),
+    undefined,
+  );
+}
+
+// --- evaluateExperiments: a concurrent edit to a DONE experiment's own field survives -----------
+// (review fix, 8 Oct 2026): before this, `touched` was seeded with *every* between experiment —
+// done or planned included — regardless of whether `enrolVideos` found anything new for it, so
+// the final write force-wrote a stale copy over any of them. A "done" experiment enrolVideos
+// finds nothing new for this run must be left exactly as `fresh` holds it.
+{
+  const running = baseExperiment({
+    id: "merge-done-running",
+    videos: [{ matchId: 70, arm: "control", videoId: "c70" }],
+  });
+  const done = baseExperiment({
+    id: "merge-done-finished",
+    status: "done",
+    videos: [{ matchId: 71, arm: "control", videoId: "c71" }],
+  });
+  writeExperiments({ experiments: [running, done], schedule: [] });
+  let released: () => void = () => {};
+  const held = new Promise<void>((resolve) => {
+    released = resolve;
+  });
+  const fetch = async (): Promise<VideoMetrics | null> => {
+    await held; // holds the evaluation open while the "concurrent" write below lands
+    return {
+      impressions: 10,
+      clicks: 1,
+      views: 10,
+      engagedViews: 4,
+      averageViewPercentage: 40,
+      subscribersGained: 0,
+    };
+  };
+  const run = evaluateExperiments({ fetch, now: () => Date.parse("2026-10-08T04:15:00Z") });
+  // Simulates a write to the done experiment's own field — not its `videos`, which enrolVideos
+  // never touches for it since no match directory names it this run — landing mid-flight.
+  const mid = readExperiments();
+  writeExperiments({
+    ...mid,
+    experiments: mid.experiments.map((e) =>
+      e.id === "merge-done-finished" ? { ...e, needsHumanAck: true } : e,
+    ),
+  });
+  released();
+  await run;
+  const after = readExperiments();
+  assert.equal(
+    after.experiments.find((e) => e.id === "merge-done-finished")?.needsHumanAck,
+    true,
+    "the concurrent edit to the untouched done experiment survived",
+  );
+  assert.ok(
+    after.experiments.find((e) => e.id === "merge-done-running")?.evaluatedAt,
+    "and the running experiment's own result still landed",
+  );
 }
 
 console.log("experimentsEvaluator: all checks passed");
