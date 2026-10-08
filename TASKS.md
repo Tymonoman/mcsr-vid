@@ -65,6 +65,11 @@ ticked on youtube.com/channel_switcher); clicking MCSR Replayoffs there from the
 read-only otherwise). Linking Shorts → long-forms stays blocked until the profile's active channel is MCSR Replayoffs —
 optional for him (one click on that page in the Studio browser's login screen), not a Needs-you item. End screens are
 unaffected (starter layout). Workflows: all done or stopped; nothing in flight but the supervised Studio worker.
+8 Oct 09:50 UTC: HE RESTARTED THE DASHBOARD (boot fc36480 — auto-hooks, Needs you, experiment engine, restart-when-idle
+live). Set live: autoHooksAfterHours 6, thumbnailRotatePoses true. First auto-save 09:44: 13754336 "A 75-SECOND LEAD
+SWING" (verified true on the panel: ANJOUU +27.5 s at blind → Pinne +47.9 s at stronghold) / Short "ANJOUU'S 33-SECOND
+FORTRESS" (model's); 13765754 due 10:14 (expect "A SUB-7 TO WIN IT", dragon 6:49 — true). experiment-arm.json written by
+hand for both (x2 arm "on", 8 Oct). Later deploys: POST /api/restart-when-idle (fc36480 → main has worker-only changes).
 Dashboard boot fd47b32 (he restarted it 7 Oct evening). /media 70 GB free. Live: introSec 3, countdownTeaser on,
 explainMovesSec 8 (on), suggestKnownSlots 10.
 
