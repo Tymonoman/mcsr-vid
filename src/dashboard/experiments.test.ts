@@ -20,6 +20,7 @@ const {
   readExperiments,
   writeExperiments,
   scheduleEntryFor,
+  slotEntryFor,
   rankedHoursForDate,
   shortDelayMsForDate,
   applyScheduledRenderArm,
@@ -64,6 +65,44 @@ assert.deepEqual(readExperiments().schedule, [{ date: "2026-10-08", experimentId
   assert.equal(shortDelayMsForDate("2026-10-10", data), undefined, "72 h is out of the 1-48 range");
   assert.equal(shortDelayMsForDate("2026-10-11", data), undefined, "0 h is out of range too");
   assert.equal(shortDelayMsForDate("2026-10-30", data), undefined, "no entry at all");
+}
+
+// --- A date can carry both a render arm and a slot arm of DIFFERENT experiments ------------------
+// (gap #1): the slot lookups take the date's `slot`-tagged entry, the render lookups the date's
+// `render`-tagged entry, independently of each other and of array order.
+{
+  const data = {
+    experiments: [],
+    schedule: [
+      // Slot entry (publish hour) listed first, for a different experiment than the render entry.
+      { date: "2026-10-08", experimentId: "slot-exp", arm: "19", slot: { rankedHoursUtc: [19] } },
+      { date: "2026-10-08", experimentId: "render-exp", arm: "4s", render: { introSec: 4 } },
+    ],
+  };
+  assert.equal(slotEntryFor("2026-10-08", data)?.experimentId, "slot-exp");
+  assert.deepEqual(rankedHoursForDate("2026-10-08", data), [19]);
+
+  writeExperiments(data);
+  config.nightlyRenderHourUtc = 3;
+  const originalIntroSec = config.introSec;
+  applyScheduledRenderArm(Date.parse("2026-10-08T02:45:00Z"));
+  assert.equal(config.introSec, 4, "the render-tagged entry was applied, not the slot-tagged one");
+  config.introSec = originalIntroSec;
+
+  // Order reversed: the render entry listed first this time — same result either way.
+  const reversed = {
+    experiments: [],
+    schedule: [
+      { date: "2026-10-09", experimentId: "render-exp", arm: "4s", render: { introSec: 5 } },
+      { date: "2026-10-09", experimentId: "slot-exp", arm: "21", slot: { rankedHoursUtc: [21] } },
+    ],
+  };
+  assert.equal(slotEntryFor("2026-10-09", reversed)?.experimentId, "slot-exp");
+  assert.deepEqual(rankedHoursForDate("2026-10-09", reversed), [21]);
+  writeExperiments(reversed);
+  applyScheduledRenderArm(Date.parse("2026-10-09T02:45:00Z"));
+  assert.equal(config.introSec, 5, "still the render-tagged entry, regardless of array order");
+  config.introSec = originalIntroSec;
 }
 
 // --- applyScheduledRenderArm: once, only with valid keys ------------------------------------------
@@ -211,6 +250,23 @@ assert.deepEqual(readExperiments().schedule, [{ date: "2026-10-08", experimentId
   assert.equal(body.settings.midRollCtaAtSec, null, "the arm's own tested key is in the snapshot");
   assert.equal(body.settings.introSec, config.introSec, "the fixed keys ride along too");
   assert.ok(!existsSync(`${armFile}.part`));
+}
+
+// --- writeExperimentArmFile: picks the render-tagged entry, not a slot-tagged one for a *different*
+// experiment sharing the same date (gap #1) ------------------------------------------------------
+{
+  writeExperiments({
+    experiments: [],
+    schedule: [
+      { date: "2026-10-12", experimentId: "slot-exp", arm: "19", slot: { rankedHoursUtc: [19] } },
+      { date: "2026-10-12", experimentId: "render-exp", arm: "snapshot-me", render: { introSec: 6 } },
+    ],
+  });
+  writeExperimentArmFile(900005, Date.parse("2026-10-12T03:00:00Z"));
+  const armFile5 = path.join(media, "900005", "experiment-arm.json");
+  const body5 = JSON.parse(readFileSync(armFile5, "utf8")) as { experimentId: string; arm: string };
+  assert.equal(body5.experimentId, "render-exp", "not the slot experiment sharing the date");
+  assert.equal(body5.arm, "snapshot-me");
 }
 
 // --- writeExperimentArmFile: prefers the night applyScheduledRenderArm actually applied for ----

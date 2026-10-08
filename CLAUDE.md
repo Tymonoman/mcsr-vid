@@ -827,6 +827,29 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   reaches `gatherAlerts` (`needsHumanExperiments`, read from `src/telegram/facts.ts`) — the morning
   report's "⚠️ Problems" and Claude's own prompt — not just the on-demand `/ask` doc, since the
   operator said he acts only on what that report lists under "Needs you".
+  **Two discovery fixes, 8 Oct 2026, needed before any of this can actually run unattended**: a
+  day was carrying at most one `ScheduleEntry`, and nothing ever filled `exp.videos`, so a real
+  cadence (the operator's own plan: "publish hour, the Short's offset, `explainMovesSec` on/off,
+  `countdownTeaser`, `introSec`, alternating by day") had nowhere to put two experiments' worth of
+  data on one date, and the evaluator above was evaluating an array that stayed empty forever.
+  - **A date can now carry a render-arm entry and a slot-arm entry of *different* experiments at
+    once** (`slotEntryFor`/`renderEntryFor`, `src/dashboard/experiments.ts`): the slot lookups
+    (`rankedHoursForDate`, `shortDelayMsForDate`) take the date's first entry tagged `slot`; the
+    render lookups (`applyScheduledRenderArm`, `writeExperimentArmFile`) the date's first entry
+    tagged `render`. Either falls back to the date's first entry at all when none carries that
+    tag, so a date with just the one entry — every shape on disk before this existed — resolves
+    exactly as before, tag or no tag.
+  - **The evaluator enrols `exp.videos` from disk before it evaluates anything**
+    (`enrolVideos`, `src/dashboard/experimentsEvaluator.ts`, idempotent — checked by `matchId` per
+    experiment, never duplicates, never removes): every match directory with its own
+    `experiment-arm.json` (`writeExperimentArmFile`) enrols `{ matchId, arm }` into the render
+    experiment it names, with `videoId` from `youtube.json` when the match has one by now — a
+    match not yet uploaded is enrolled anyway and simply has no metrics to fetch until it is.
+    Every long-form upload record (`youtube.json`, `kind: "video"`, never a Short) whose publish
+    time (`publishAt`, else `uploadedAt`) falls on a date whose slot entry names a slot experiment
+    enrols too, into the arm whose own `slot.rankedHoursUtc` is exactly that one publish hour
+    (an hour-split experiment: two hours a day, each its own arm) when such an arm exists, else
+    the schedule entry's own `arm`.
 - **Playoffs** (`src/playoffs/playoffs.ts`): the bracket (`/playoffs`) knows the series, not the games;
   the games are private-room matches (type 3) found in each seed's history, and the API stamps
   them with the season *after* the bracket's (a Season 11 bracket's games are season 12). **No
