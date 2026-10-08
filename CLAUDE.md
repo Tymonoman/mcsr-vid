@@ -1435,6 +1435,44 @@ since a terminal shows the extra line fine. Fixed at the root: that status line 
 `console.error` — every other `npm run build-overlay-css && …` script in `package.json` only ever
 shows it to a human, nobody else parses its stdout as data.
 
+### Phase 5: a supervisor, and pinning from the worker (8 Oct 2026)
+
+- **A supervisor keeps the worker itself running unattended.** `scripts/studio-worker.sh` is a
+  tiny forever loop around `npm run -s studio -- worker --enable`: it restarts the command 60s
+  after any exit — a crash, a plain `--once`, or the worker's own clean exit below — logging every
+  line to `~/.claude/studio-worker.log`, and a pidfile (`~/.claude/studio-worker-supervisor.pid`)
+  makes a second start refuse rather than run two loops against one Chrome profile. Start it with:
+
+  ```
+  nohup bash /app/scripts/studio-worker.sh >/dev/null 2>&1 &
+  ```
+
+  `STUDIO_PROFILE_DIR` (default `/app/.studio-profile`) and `STUDIO_WORKER_RESTART_DELAY` (default
+  60) are overridable env vars; `STUDIO_WORKER_CMD` is a test-only seam
+  (`scripts/studio-worker.test.ts`), never set for a real run.
+- **The worker itself exits cleanly (code 0) for new code, but only at the start of its own
+  blackout** (`newCodeWaiting`/`BOOT_HEAD`, `runWorker`, `src/youtube/studioWorker.ts`): a `git
+  pull` into the same bind mount only reaches a running `tsx` process on its own restart, same as
+  the dashboard (`repoHead.ts`), and this process never restarts itself mid-cycle — the one moment
+  it is already a safe no-op is the nightly blackout `inBlackoutWindow` already carves out, with no
+  browser session open. There, if the live repo HEAD has moved past the one this process started
+  on, it logs the two hashes and exits; the supervisor above brings it back up 60s later already on
+  the new code, so this fires once per actual change, not every cycle the blackout lasts (the new
+  process's own `BOOT_HEAD` then matches). `--once` never exits this way on its own — the caller
+  already gets a normal return after its one cycle.
+- **The worker now pins too** (`planCycle`'s `pinTargets`, the pin loop in `runCycle`): the same
+  `finished.pin` ledger step `finishOnYouTube` uses for a dashboard-driven pin (`src/youtube/
+  youtubeUpload.ts`, gated there on `config.studioAutomation`, off, since the dashboard has no
+  Chrome) — so the two paths read and write one shared field and never both pin the same video.
+  Every PUBLIC long-form whose `youtube.json` says its channel comment posted (`finished.comment
+  === null`) and whose pin is not yet done (`undefined` or a past error, never `null`) is a
+  candidate, de-duped by video id (a series copies the same record into every game's folder) and
+  capped at `MAX_PINS_PER_CYCLE` (3). The stored `privacyStatus` is upload-time only, so the cycle
+  re-reads it live (`videoStats`) right before pinning — the same recheck `finishOnYouTube`'s own
+  pin step makes — rather than skip a video that only went public after the record was written.
+  `pinComment` itself (phase 1's own rail 2) still refuses to touch a pin someone already set by
+  hand, so "never replace an existing pin" holds here exactly as it does for the dashboard's path.
+
 ## Clips (prototype)
 
 For a video that is not a match — a stream statement, a reaction, something worth posting on the

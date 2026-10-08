@@ -14,12 +14,14 @@ import {
   inBlackoutWindow,
   markEndScreenDone,
   markPickerEmptySeen,
+  newCodeWaiting,
   planCycle,
   playersFor,
   nextSameErrorStreak,
   readHeartbeat,
   readLedger,
   runCycle,
+  runWorker,
   setExperimentChecked,
   testFor,
   writeHeartbeat,
@@ -148,6 +150,71 @@ config.mediaDir = media;
   // null (nightly disabled) turns the blackout off entirely — nothing to avoid colliding with.
   assert.equal(inBlackoutWindow(new Date("2026-10-11T03:00:00.000Z"), null), false);
   console.log("OK: a null nightlyRenderHourUtc disables the blackout");
+}
+
+// --- newCodeWaiting: pure HEAD-changed check (the supervisor's own restart signal) --------------
+{
+  assert.equal(newCodeWaiting("abc1234", "abc1234"), false, "same HEAD — nothing waiting");
+  assert.equal(newCodeWaiting("abc1234", "def5678"), true, "live HEAD moved past the boot HEAD");
+  assert.equal(newCodeWaiting(null, "def5678"), false, "an unreadable boot HEAD never counts as a change");
+  assert.equal(newCodeWaiting("abc1234", null), false, "an unreadable live HEAD never counts as a change");
+  console.log("OK: newCodeWaiting is true only when both HEADs are readable and differ");
+}
+
+// --- runWorker: exits cleanly for new code at the start of the blackout, never mid-cycle --------
+{
+  const exits: number[] = [];
+  // Inside the blackout window at the default hour (3 UTC; see inBlackoutWindow's own tests).
+  const blackout = new Date("2026-10-11T03:00:00.000Z");
+  await runWorker({
+    bootHead: "abc1234",
+    headNow: () => "def5678",
+    now: () => blackout,
+    exit: (code) => {
+      exits.push(code);
+    },
+  });
+  assert.deepEqual(exits, [0], "exits exactly once, with code 0, on new code during the blackout");
+  // No heartbeat written for this cycle: the exit happens before any cycle work, same as a real
+  // process dying right there — nothing to report that the next (new-code) process won't also say.
+  assert.equal(await readHeartbeat(), null, "exited before ever reaching the heartbeat write");
+  console.log("OK: runWorker exits once (code 0) when new code is waiting during the blackout");
+}
+{
+  // Same blackout window, no code change: the loop must NOT exit — it writes a skipped heartbeat
+  // and returns normally when `once` is set, exactly like today's behaviour.
+  const exits: number[] = [];
+  const blackout = new Date("2026-10-11T03:00:00.000Z");
+  await runWorker({
+    once: true,
+    bootHead: "abc1234",
+    headNow: () => "abc1234",
+    now: () => blackout,
+    exit: (code) => {
+      exits.push(code);
+    },
+  });
+  assert.deepEqual(exits, [], "no code change — never exits");
+  const hb = await readHeartbeat();
+  assert.equal(hb?.lastCycle?.probe, "skipped", "the blackout cycle itself is still recorded as skipped");
+  console.log("OK: runWorker does not exit for new code when the live HEAD matches what it started on");
+}
+{
+  // `--once` is for a manual/test run: it must not call exit() on our behalf even if new code is
+  // waiting — the caller already gets a normal return after one cycle.
+  const exits: number[] = [];
+  const blackout = new Date("2026-10-11T03:00:00.000Z");
+  await runWorker({
+    once: true,
+    bootHead: "abc1234",
+    headNow: () => "def5678",
+    now: () => blackout,
+    exit: (code) => {
+      exits.push(code);
+    },
+  });
+  assert.deepEqual(exits, [], "--once never calls exit() itself, even with new code waiting");
+  console.log("OK: --once returns normally rather than exiting, even during a new-code blackout");
 }
 
 // --- testFor / playersFor --------------------------------------------------------------------
@@ -369,6 +436,83 @@ config.mediaDir = media;
   );
 }
 
+// --- planCycle: pinTargets (phase 5, 8 Oct 2026) -----------------------------------------------
+{
+  const longForms: LongFormRef[] = [
+    // Comment posted, pin never attempted — a candidate.
+    { videoId: "a", matchId: 1, uploadedAt: "x", privacyStatus: "public", finishedComment: null },
+    // Comment posted, pin already failed once — still "to do", worth retrying.
+    {
+      videoId: "b",
+      matchId: 2,
+      uploadedAt: "x",
+      privacyStatus: "public",
+      finishedComment: null,
+      finishedPin: "a Studio error from last time",
+    },
+    // Comment posted, pin already done — never offered again.
+    {
+      videoId: "c",
+      matchId: 3,
+      uploadedAt: "x",
+      privacyStatus: "public",
+      finishedComment: null,
+      finishedPin: null,
+    },
+    // No comment posted yet (never attempted) — nothing for Studio to pin.
+    { videoId: "d", matchId: 4, uploadedAt: "x", privacyStatus: "public", finishedComment: undefined },
+    // Comment attempt failed (private at the time) — still no comment to pin.
+    { videoId: "e", matchId: 5, uploadedAt: "x", privacyStatus: "private", finishedComment: "left alone" },
+    // A series copy of "a" in a second game folder — same videoId, different matchId.
+    { videoId: "a", matchId: 6, uploadedAt: "x", privacyStatus: "public", finishedComment: null },
+    // Three more fresh candidates to prove the cap.
+    { videoId: "f", matchId: 7, uploadedAt: "x", privacyStatus: "public", finishedComment: null },
+    { videoId: "g", matchId: 8, uploadedAt: "x", privacyStatus: "public", finishedComment: null },
+  ];
+  const plan = planCycle(
+    new Date("2026-10-11T12:00:00.000Z"),
+    longForms,
+    { endScreens: {}, pickerEmptySeen: {} },
+    [],
+  );
+  const ids = plan.pinTargets.map((t) => t.videoId);
+  assert.ok(ids.includes("a") && ids.includes("b"), "comment posted, pin never done or previously failed");
+  assert.ok(!ids.includes("c"), "pin already done — never offered again");
+  assert.ok(!ids.includes("d"), "comment never attempted — nothing to pin");
+  assert.ok(!ids.includes("e"), "comment attempt itself failed — nothing to pin");
+  assert.equal(ids.filter((id) => id === "a").length, 1, "a series copy of the same video is de-duped");
+  assert.equal(plan.pinTargets.length, 3, `capped at 3 per cycle, got ${ids.join(",")}`);
+  console.log(
+    "OK: pinTargets is comment-posted/pin-not-done, de-duped by videoId across series copies, capped at 3",
+  );
+}
+
+// --- planCycle: pinTargets — a series copy already marked done elsewhere is never re-offered ---
+// (a cross-cycle case: `markPinDone` only ever writes the one matchId it pinned through, so a
+// *different* game folder's own copy of the same video can still read `finishedPin: undefined` on
+// the very next cycle. Without the OR-merge this must still exclude every copy of that videoId.)
+{
+  const longForms: LongFormRef[] = [
+    // Game 1's own copy: already pinned (a previous cycle marked this one done).
+    { videoId: "a", matchId: 1, uploadedAt: "x", privacyStatus: "public", finishedComment: null, finishedPin: null },
+    // Game 2's copy of the SAME video: never itself marked done — would pass the per-entry filter
+    // on its own, and must still be excluded because the video it points at is already pinned.
+    { videoId: "a", matchId: 2, uploadedAt: "x", privacyStatus: "public", finishedComment: null },
+    // An unrelated, genuinely pending video must still be offered.
+    { videoId: "h", matchId: 9, uploadedAt: "x", privacyStatus: "public", finishedComment: null },
+  ];
+  const plan = planCycle(
+    new Date("2026-10-11T12:00:00.000Z"),
+    longForms,
+    { endScreens: {}, pickerEmptySeen: {} },
+    [],
+  );
+  const ids = plan.pinTargets.map((t) => t.videoId);
+  assert.ok(!ids.includes("a"), "a videoId already pinned through one series copy is never re-offered via another");
+  assert.ok(ids.includes("h"), "a genuinely pending, unrelated video is still offered");
+  console.log("OK: pinTargets excludes a videoId already marked done through a different series copy");
+}
+
 // --- setExperimentChecked: promotes "planned" to "running" when Studio already has one going ---
 // (phase 4, 8 Oct 2026 — LUI5E7yF0zE's own history: a test started by hand before this experiment
 // was ever planned must be reconciled, never started a second time).
@@ -453,6 +597,7 @@ config.mediaDir = media;
       tcStarted: 0,
       tcChecked: 0,
       thumbnailTestsPlanned: 0,
+      pinsAdded: 0,
       errors: [],
     },
     "neither --enable/STUDIO_WORKER=1 nor config.studioAutomation set",
