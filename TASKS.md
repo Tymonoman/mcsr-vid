@@ -26,6 +26,15 @@ chip-truth excludes it, then back ON). In flight: autopilot-build wf_0f0fbfaf-35
 branches), chip-truth wf_005c2204-3f4 (false chips: panel lead changes, hunger-reset deaths, series facts; caption size;
 re-render tc sets + Opus re-judge), studio-p23 wf_8a0a3aed-fbf (explore → worker → live end screen on s7R5FUKU0KQ +
 thumbnail T&C on LUI5E7yF0zE → review). T&C plan (Opus judge): tmp/week/tc/tc-plan.json (7 thumbnail + 14 title tests).
+Progress 8 Oct 00:40 UTC: MERGED to main: chip-truth (true chips; cheering pose never auto), tc-thumbs follow-up d55397c,
+restart-idle + autopilot (auto-hooks, Needs you, /needs) + exp-engine (cdd064e); unit suite green. NOT LIVE until the
+dashboard restarts (boot fd47b32; no docker CLI here) — his ONE restart, then: PUT /api/settings autoHooksAfterHours 6 +
+thumbnailRotatePoses true; later deploys = POST /api/restart-when-idle. Schedule written: /media/.experiments.json
+(x1 two-a-day 19+23 UTC 9–15 Oct, x2 explainMovesSec on/off render nights 8–12, x3 countdownTeaser 13–16). In flight:
+exp-discovery wf_67d8c6b6-cdb (render+slot entries per date; auto-enrol videos), studio-p23 wf_8a0a3aed-fbf.
+T&C thumbnail plan (re-judged): tmp/week/tc2/tc-thumbs-plan.json (10 tests); titles: tmp/week/tc/tc-plan.json.
+Tonight's 8 Oct 03:00 renders run on OLD code (no auto-hooks): save their hooks by hand ≥6 h after the pick if he
+has not restarted, applying the three checks + the new truth rules (panel lead changes, on-screen deaths).
 Dashboard boot fd47b32 (he restarted it 7 Oct evening). /media 70 GB free. Live: introSec 3, countdownTeaser on,
 explainMovesSec 8 (on), suggestKnownSlots 10.
 
