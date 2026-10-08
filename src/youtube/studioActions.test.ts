@@ -167,10 +167,13 @@ try {
     <button id="endscreen-editor-link" role="button">End screen</button>
     <button id="ab-test-button" aria-label="A/B Testing">A/B Testing</button>
     <div id="dialog-root"></div>
+    <button id="save" onclick="window.__tcSaved=true;document.getElementById('saved-msg').style.display='block'">Save</button>
+    <div id="saved-msg" style="display:none">Changes saved</div>
     <script>
       window.__state = ${JSON.stringify(uiState)};
       window.__endscreenSaved = false;
       window.__tcStarted = null;
+      window.__tcSaved = false;
       function closeDialog() { document.getElementById("dialog-root").innerHTML = ""; }
       function renderEndScreen() {
         // Live run, 8 Oct 2026: the real End Screens editor has no aria-label="Close" element
@@ -278,6 +281,7 @@ try {
   );
   assert.equal(dryTitle, "started");
   assert.equal(await page.evaluate("window.__tcStarted"), null, "a dry run must never click Set test");
+  assert.equal(await page.evaluate("window.__tcSaved"), false, "a dry run must never reach page Save either");
   console.log("OK: startTestAndCompare's dry run fills the title chip and stops before Set test");
 
   const realTitle = await startTestAndCompare(
@@ -294,7 +298,10 @@ try {
     kind: "title",
     title2: "DECIDED BY 1 SECOND | edcr vs doogile | MCSR Ranked 1v1 | Minecraft Speedrun",
   });
-  console.log("OK: a real run picks the Title chip, fills the challenger slot and clicks Set test");
+  // Live run, 8 Oct 2026: Set test alone left an earlier real attempt unsaved and invisible on
+  // reload — page Save is what actually commits it (see SELECTORS.pageSaveButton).
+  assert.equal(await page.evaluate("window.__tcSaved"), true, "a real run must also click page Save");
+  console.log("OK: a real run picks the Title chip, fills the challenger slot, Set test and page Save");
 
   const thumbA = path.join(media, "thumb-a.png");
   const thumbB = path.join(media, "thumb-b.png");

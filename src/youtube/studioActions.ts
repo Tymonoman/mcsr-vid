@@ -64,6 +64,12 @@ const SELECTORS = {
   abTestChipTitle: "#chip-0",
   abTestChipThumbnail: "#chip-1",
   abTestSetButton: "#set-test-button",
+  // Confirmed live 8 Oct 2026: "Set test" only stages the test inside the dialog — the banner
+  // "The test is ready and will start once you save your changes" appears, and the test does not
+  // actually start until the Details page's own Save button is pressed too (the same one that
+  // saves a title/description edit). Without it, reopening the video later shows a blank, unset
+  // A/B Testing form again, as if nothing had happened.
+  pageSaveButton: "#save",
   // Confirmed live 8 Oct 2026 (LUI5E7yF0zE, dry-run): the dialog's own element is
   // ytcp-creator-experiment-create-dialog, not ytcp-ab-test-dialog (that tag does not exist on
   // the page at all — the earlier selectors matched zero elements, title or thumbnail, so a real
@@ -407,6 +413,18 @@ export async function startTestAndCompare(
     }
 
     await page.locator(SELECTORS.abTestSetButton).click();
+    // Confirmed live 8 Oct 2026: Set test only stages the change inside the dialog — it does not
+    // actually start until the page's own Save is pressed too (see SELECTORS.pageSaveButton).
+    // Skipping this left an earlier live attempt looking like it had started (no error, a
+    // screenshot of a closed dialog) when nothing had actually happened: reopening the video
+    // later showed a blank, unset form again.
+    await randomPause();
+    await page.locator(SELECTORS.pageSaveButton).click();
+    await page
+      .locator('text="Changes saved"')
+      .first()
+      .waitFor({ state: "visible", timeout: 15_000 })
+      .catch(() => {});
     await shot(handle, opts.matchId, "tc-after");
     return "started";
   } catch (err) {

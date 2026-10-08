@@ -1039,17 +1039,25 @@ from the video's live title/thumbnail already, so only the challenger slot(s) st
 filling (`startTestAndCompare`'s title path already only fills from slot 2 on; its thumbnail path
 also fills slot 1 with the caller's own control file, redundant but harmless — same bytes already
 showing). The A/B Testing dialog's `Close` button (not Escape) is confirmed the reliable way to
-leave it. **Still unverified, built against synthetic fixture pages instead**
-(`studioActions.test.ts`, excluded from `test:unit`, run by `npm test`): which row to click once
-the picker actually returns a result (no query ever has, on this profile — see above), whether
-`abTestSetButton`'s mere visibility (true even before a chip is chosen, confirmed 8 Oct) is
-actually a reliable "no test already running" signal, and the look of a *running* or *finished*
-test (no sample video has had one yet). `readTestAndCompare`'s `"none"` is read with confidence
-(the same chips/button `startTestAndCompare` itself checks for); `"running"` is "not none", and
-`"done"` is a best-effort guess at the word "winner" appearing once those chips are gone — both
-need confirming against a real test before anyone trusts them in production. Confirm those once a
-real Test & Compare has run long enough to read either state, and tighten the heuristic from what
-is actually seen rather than from this guess.
+leave it. **A third live correction, the real one that mattered**: `#set-test-button` only
+*stages* the test inside the dialog — a banner reads "The test is ready and will start once you
+save your changes" — and nothing actually starts until the Details page's own `#save` button
+(`SELECTORS.pageSaveButton`, the same one that saves a title/description edit) is pressed too. The
+first live attempt skipped this: `startTestAndCompare` returned `"started"` with no error, its
+screenshot showed a closed dialog, and nothing had actually happened — reopening the video later
+showed a blank, unset A/B Testing form again, exactly as if nothing had run. `startTestAndCompare`
+now clicks `pageSaveButton` and waits for "Changes saved" after `#set-test-button`, confirmed live
+against the channel's actual first real Test & Compare (LUI5E7yF0zE, thumbnail-only, started 8 Oct
+2026 — Studio's own report showed "Test running… · Estimated time remaining: 13 days 23 hours").
+**`readTestAndCompare`'s `"running"` is now confirmed live too** (read against that same test,
+right after it started) — only `"none"` and `"running"` are confirmed; `"done"`'s guess at the
+word "winner" still needs a test to actually finish. **Still unverified, built against synthetic
+fixture pages instead** (`studioActions.test.ts`, excluded from `test:unit`, run by `npm test`):
+which row to click once the picker actually returns a result (no query ever has, on this profile —
+see above), and whether `abTestSetButton`'s mere visibility (true even before a chip is chosen,
+confirmed 8 Oct) is actually a reliable "no test already running" signal rather than just "the
+dialog opened". Confirm the picker row the day the account-scoping bug is fixed, and the "already
+running" signal against a second video while LUI5E7yF0zE's own test is still live.
 
 ## Clips (prototype)
 
