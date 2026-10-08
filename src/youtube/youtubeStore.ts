@@ -201,7 +201,7 @@ async function longFormTitle(matchId: number): Promise<string> {
  * itself possibly carrying a " | "), the two names, and the format half after them. The names
  * segment is the LAST "<a> vs <b>" without spaces, since a hook can read "2699 vs 2376" too.
  */
-function splitTitle(line: string): { hook: string; left: string; right: string; tail: string } | null {
+export function splitTitle(line: string): { hook: string; left: string; right: string; tail: string } | null {
   const segments = line.split(SEPARATOR);
   for (let at = segments.length - 1; at >= 0; at--) {
     const names = /^(\S+) vs (\S+)$/.exec(segments[at]!);

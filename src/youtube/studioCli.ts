@@ -1,21 +1,50 @@
 /**
  * npm run studio -- probe | pin <matchId|videoId> [--dry-run] | login [--profile-dir=<path>]
+ *   | endscreen <matchId|videoId> [--dry-run] | tc <matchId|videoId> title <title…> [--dry-run]
+ *   | tc <matchId|videoId> thumbnail <file…> [--dry-run] | tc-read <matchId|videoId>
+ *   | worker [--once] [--dry-run] | tc-plan <plan.json>
  *
  * probe: starts Chrome, loads Studio, prints what it found, stops.
  * pin: pins the channel's own first comment on a video — by match id (reads its recorded
  *      videoId) or by the video id directly (resolved back to a match for its screenshots).
  * login: the same one-time login screen the dashboard's YouTube panel offers, from the terminal —
  *      prints the URL and password, waits for Enter, then probes and stops.
+ * endscreen/tc/tc-read: the same single-video actions the worker's cycle runs, for a manual,
+ *      targeted test on one named video — never gated on `config.studioAutomation` (see `pin`
+ *      above; these are the operator's own terminal presses, same as `pin`'s own dry-run step in
+ *      its setup instructions). `tc`'s mode is `title` (one or more challenger titles) or
+ *      `thumbnail` (2-3 challenger file paths).
+ * worker: the phase 2/3 loop (src/youtube/studioWorker.ts) — end screens, then Test & Compare
+ *      starts and daily checks, one browser session per cycle, ~20 min apart. `--once` runs a
+ *      single cycle and exits (what this is tested with); without it the process runs forever,
+ *      meant for `nohup`. A no-op, reported as `"skipped"`, while `config.studioAutomation` is off.
+ * tc-plan: turns an approved judge's plan (tc-plan.json's own shape) into planned "tc" experiments
+ *      in `<mediaDir>/.experiments.json` — idempotent, prints what it added and what it skipped
+ *      and why. Opens no browser.
  *
- * `--profile-dir=<path>` overrides the real `/home/node/.studio-profile` on any subcommand — ad
- * hoc testing against a throwaway profile without ever touching the operator's actual login.
+ * `--profile-dir=<path>` overrides the real `/home/node/.studio-profile` on probe/pin/login/worker
+ * — ad hoc testing against a throwaway profile without ever touching the operator's actual login.
  */
+import { readFile } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
-import { readUpload } from "./youtubeStore.js";
-import { videoIdOwner } from "./youtubeStore.js";
-import { pinComment } from "./studioActions.js";
-import { probe, start } from "./studioBrowser.js";
+import { readUpload, videoIdOwner } from "./youtubeStore.js";
+import {
+  addEndScreenFromTemplate,
+  pinComment,
+  readTestAndCompare,
+  startTestAndCompare,
+  type TcTest,
+} from "./studioActions.js";
+import {
+  probe,
+  readLastProbe,
+  start,
+  startAndProbe as startAndProbeShared,
+  type StudioHandle,
+} from "./studioBrowser.js";
 import { finishLogin, startLogin } from "../dashboard/studioLogin.js";
+import { importTcPlan, type TcPlan } from "./studioExperiments.js";
+import { END_SCREEN_TEMPLATE_VIDEO_ID, runWorker } from "./studioWorker.js";
 
 const [command, ...rest] = process.argv.slice(2);
 const args = rest.filter((a) => !a.startsWith("--"));
@@ -25,7 +54,10 @@ const startOpts = profileDirArg ? { profileDir: profileDirArg } : {};
 
 function usage(): never {
   console.error(
-    "usage: npm run studio -- probe | pin <matchId|videoId> [--dry-run] | login [--profile-dir=<path>]",
+    "usage: npm run studio -- probe | pin <matchId|videoId> [--dry-run] | login [--profile-dir=<path>]" +
+      " | endscreen <matchId|videoId> [--dry-run]" +
+      " | tc <matchId|videoId> title|thumbnail <variant…> [--dry-run] | tc-read <matchId|videoId>" +
+      " | worker [--once] [--dry-run] | tc-plan <plan.json>",
   );
   process.exit(2);
 }
@@ -41,35 +73,47 @@ async function probeCmd(): Promise<void> {
   }
 }
 
-async function pinCmd(target: string | undefined): Promise<void> {
+/** Resolves a CLI target to its matchId/videoId pair, by match id (its recorded upload) or by
+ * video id directly (resolved back to a match for screenshots) — the lookup `pin` always did,
+ * now shared with `endscreen`/`tc`/`tc-read`. */
+async function resolveVideo(target: string | undefined): Promise<{ matchId: number; videoId: string }> {
   if (!target) usage();
-  let matchId: number;
-  let videoId: string;
   if (/^\d+$/.test(target)) {
-    matchId = Number(target);
+    const matchId = Number(target);
     const record = await readUpload(matchId, "video");
     if (!record) {
-      console.error(`match ${matchId} has no recorded upload (youtube.json) — nothing to pin`);
+      console.error(`match ${matchId} has no recorded upload (youtube.json) — nothing to do`);
       process.exit(1);
     }
-    videoId = record.videoId;
-  } else {
-    const owner = await videoIdOwner(target);
-    if (!owner) {
-      console.error(`${target} is not a known video id (no match records it in youtube.json)`);
-      process.exit(1);
-    }
-    matchId = owner.matchId;
-    videoId = target;
+    return { matchId, videoId: record.videoId };
   }
-  const handle = await start(startOpts);
+  const owner = await videoIdOwner(target);
+  if (!owner) {
+    console.error(`${target} is not a known video id (no match records it in youtube.json)`);
+    process.exit(1);
+  }
+  return { matchId: owner.matchId, videoId: target };
+}
+
+/** Prints and returns null on anything but `ok`; the actual start-probe-stop-on-failure shape
+ * lives in `studioBrowser.ts` (`startAndProbe`), shared with anything else that wants it, and
+ * fixed there 8 Oct 2026 to stop Chrome when `probe()` itself throws, not only on a non-`ok`
+ * result — this CLI-local wrapper used to be the leaky version; see that function's own comment. */
+async function startAndProbe(): Promise<StudioHandle | null> {
+  const handle = await startAndProbeShared(startOpts);
+  if (!handle) {
+    const last = readLastProbe();
+    console.error(last ? `Studio ${last.result}: ${last.message}` : "Studio probe failed");
+    process.exitCode = 1;
+  }
+  return handle;
+}
+
+async function pinCmd(target: string | undefined): Promise<void> {
+  const { matchId, videoId } = await resolveVideo(target);
+  const handle = await startAndProbe();
+  if (!handle) return;
   try {
-    const probed = await probe(handle);
-    if (probed.result !== "ok") {
-      console.error(`Studio ${probed.result}: ${probed.title} (${probed.url})`);
-      process.exitCode = 1;
-      return;
-    }
     const outcome = await pinComment(handle, videoId, { matchId, dryRun });
     if (typeof outcome === "object") {
       console.error(`error: ${outcome.error}`);
@@ -77,6 +121,67 @@ async function pinCmd(target: string | undefined): Promise<void> {
       return;
     }
     console.log(`${outcome}${dryRun ? " (dry run — stopped before the confirm click)" : ""}`);
+  } finally {
+    await handle.stop();
+  }
+}
+
+async function endscreenCmd(target: string | undefined): Promise<void> {
+  const { matchId, videoId } = await resolveVideo(target);
+  const handle = await startAndProbe();
+  if (!handle) return;
+  try {
+    const outcome = await addEndScreenFromTemplate(handle, videoId, END_SCREEN_TEMPLATE_VIDEO_ID, {
+      matchId,
+      dryRun,
+    });
+    if (typeof outcome === "object") {
+      console.error(`error: ${outcome.error}`);
+      process.exitCode = 1;
+      return;
+    }
+    console.log(`${outcome}${dryRun ? " (dry run — stopped before the save click)" : ""}`);
+  } finally {
+    await handle.stop();
+  }
+}
+
+async function tcCmd(
+  target: string | undefined,
+  kind: string | undefined,
+  variants: string[],
+): Promise<void> {
+  if (kind !== "title" && kind !== "thumbnail") usage();
+  const { matchId, videoId } = await resolveVideo(target);
+  const test: TcTest =
+    kind === "title" ? { kind: "title", titles: variants } : { kind: "thumbnail", files: variants };
+  const handle = await startAndProbe();
+  if (!handle) return;
+  try {
+    const outcome = await startTestAndCompare(handle, videoId, test, { matchId, dryRun });
+    if (typeof outcome === "object") {
+      console.error(`error: ${outcome.error}`);
+      process.exitCode = 1;
+      return;
+    }
+    console.log(`${outcome}${dryRun ? " (dry run — stopped before the set-test click)" : ""}`);
+  } finally {
+    await handle.stop();
+  }
+}
+
+async function tcReadCmd(target: string | undefined): Promise<void> {
+  const { videoId } = await resolveVideo(target);
+  const handle = await startAndProbe();
+  if (!handle) return;
+  try {
+    const read = await readTestAndCompare(handle, videoId);
+    if ("error" in read) {
+      console.error(`error: ${read.error}`);
+      process.exitCode = 1;
+      return;
+    }
+    console.log(`${read.state}${read.winner ? ` (${read.winner})` : ""}`);
   } finally {
     await handle.stop();
   }
@@ -103,6 +208,20 @@ async function loginCmd(): Promise<void> {
   if (done.result !== "ok") process.exitCode = 1;
 }
 
+async function workerCmd(): Promise<void> {
+  const once = rest.includes("--once");
+  await runWorker({ once, dryRun, startOpts });
+}
+
+async function tcPlanCmd(file: string | undefined): Promise<void> {
+  if (!file) usage();
+  const plan = JSON.parse(await readFile(file, "utf8")) as TcPlan;
+  const { added, skipped } = await importTcPlan(plan);
+  for (const exp of added) console.log(`planned ${exp.id} (${exp.arms.length} arms)`);
+  for (const s of skipped) console.log(`skipped ${s.videoId} (${s.kind}): ${s.reason}`);
+  console.log(`${added.length} planned, ${skipped.length} skipped`);
+}
+
 switch (command) {
   case "probe":
     await probeCmd();
@@ -112,6 +231,21 @@ switch (command) {
     break;
   case "login":
     await loginCmd();
+    break;
+  case "endscreen":
+    await endscreenCmd(args[0]);
+    break;
+  case "tc":
+    await tcCmd(args[0], args[1], args.slice(2));
+    break;
+  case "tc-read":
+    await tcReadCmd(args[0]);
+    break;
+  case "worker":
+    await workerCmd();
+    break;
+  case "tc-plan":
+    await tcPlanCmd(args[0]);
     break;
   default:
     usage();

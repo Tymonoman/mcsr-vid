@@ -1181,6 +1181,145 @@ touched on a guess. `npm run studio -- probe | pin <id> [--dry-run] | login [--p
 drives all of this from the terminal; `--profile-dir` points any of the three at a throwaway
 profile instead of the real login.
 
+### Phase 2/3: end screens and Test & Compare (8 Oct 2026)
+
+Built from a read-only exploration of the real UI the same day (no Save/Start/Publish pressed —
+see `s7r-*`/`lui-*` in that run's own `tmp/studio2/`): `addEndScreenFromTemplate`, `startTestAndCompare`
+and `readTestAndCompare` (`src/youtube/studioActions.ts`), a standalone loop (`src/youtube/studioWorker.ts`,
+`npm run studio -- worker [--once] [--dry-run]`), and a plan importer (`npm run studio -- tc-plan
+<plan.json>`, `src/youtube/studioExperiments.ts`). **Nothing here has run against the real channel** —
+every check above is a fixture page or pure logic; see "What is verified live vs only on fixtures" below.
+
+- **One gate still covers all of it.** The worker checks `config.studioAutomation` itself, the
+  same flag phase 1's `retryPendingStudio` reads — off, every cycle is a no-op recorded as
+  `"skipped"`. The task that asked for this loop framed it as living outside the dashboard
+  entirely (Chrome is only installed in this container, not the dashboard image yet) and did not
+  mention the flag, but turning a real Chrome loose on the channel's own Google account is
+  exactly what `studioAutomation` already exists to gate — a second, ungated path to the same
+  browser would make that switch a lie. Starting the worker for real (`nohup npm run studio --
+  worker &`) still needs `studioAutomation: true` on the box, the operator's own deliberate edit,
+  same as phase 1 ever did.
+- **Never runs 02:50–04:30 UTC** (`inBlackoutWindow`) — the nightly render's own window, Chrome
+  and ffmpeg sharing the lab's four cores. One browser session per cycle, ~20 min apart (± 3 min
+  jitter), human-paced clicks inside it (the same `randomPause` phase 1 uses). At most 3 end
+  screens and 2 new Test & Compare starts a cycle; a running test is read once a day by UTC
+  calendar date. A ledger (`<mediaDir>/.studio-ledger.json`) remembers which videos already have
+  the template so a restart does not re-import; a heartbeat (`<mediaDir>/.studio-worker.json`)
+  records `{ pid, at, lastCycle, lastError }` for the morning report to notice if the process died.
+- **Every Test & Compare title is checked before any page opens** (`titleTestProblem`, exported
+  from `studioActions.ts`, reused by the plan importer so a title that could never start is never
+  even planned): `hookProblem` (which already finishes with its own `hookLabelProblem` call),
+  `hookLabelProblem` again directly, `spoilsTheResult` against the whole line, and the
+  100-character ceiling. A thumbnail test's 2-3 files just need to exist on disk. Any refusal is
+  returned before `startTestAndCompare` ever calls `page.goto`, pinned by a unit test that passes
+  it a handle which throws if its `browser` property is ever read.
+- **`npm run studio -- tc-plan <plan.json>`** turns a judge's approved plan (thumbnails[]/titles[])
+  into planned `"tc"` experiments in `<mediaDir>/.experiments.json` (the dashboard's not-yet-merged
+  experiment engine's own file — `src/youtube/studioExperiments.ts` only ever reads the whole file
+  and writes `kind: "tc"` entries back, read-merge-write, atomic write-then-rename; a `kind:
+  "between"` entry or any field it does not know about is never touched). Deterministic ids
+  (`tc-thumbnail-<videoId>`, `tc-title-<videoId>`) are the whole idempotency mechanism — running it
+  twice on the same plan adds nothing the second time. A pose-challenger file under `<id>/tc/tc-pose.png`
+  is rewritten to its strip equivalent (`<id>/thumbnail.<pose>.png`, the pose read out of the plan's
+  own note) because another job re-renders `tc/*.png` the same night; `tc-control.png`/`tc-caption.png`
+  pass through unchanged — nobody asked those to move, and there is no strip equivalent for either.
+- **The worker never sets a Test & Compare winner itself** — `readTestAndCompare`'s `"done"` state
+  only ever records what it read off YouTube's own page (the live title/thumbnail it already
+  applied). A `"needsHuman"` note lands on the experiment for anything `startTestAndCompare`/
+  `readTestAndCompare` could not get past (a refused title, an unreadable page), and the worker
+  never guesses past an ambiguous state on its own.
+
+**What is verified live vs only on fixtures.** Confirmed against the real Studio UI, 7–8 Oct 2026:
+`#endscreen-editor-link`, the "Import from video" button, `ytcp-video-pick-dialog` and its
+search-then-"No matching results" behaviour (a confirmed *bug* on this profile — the picker's own
+search call resolves against the operator's personal channel, not the brand one, so it returns
+zero results for every query tried, including the raw template id, an empty query and the
+template's exact title; `addEndScreenFromTemplate` reports this as its own `"picker-empty"`
+outcome rather than guessing past it — **every attempt at a real end screen hits this today**,
+operator-side account/permission fix needed before phase 2's end-screen half can do anything),
+`#ab-test-button`, the "A/B Testing" dialog, its three mode chips (`#chip-0`/`#chip-1`/`#chip-2`),
+`#set-test-button`. **Two live corrections, 8 Oct 2026** (both were guesses the first live run
+proved wrong, not corner cases — both are fixed in code and in the fixture, which was wrong the
+same way): the End Screens editor is a full panel with **no `aria-label="Close"` element at all**
+(the two such elements anywhere on the page are hidden and belong to unrelated Studio dialogs) —
+`addEndScreenFromTemplate` now waits on the confirmed "Discard changes" button instead, its own
+real open/cleanup signal; and the A/B Testing dialog's own element is
+`ytcp-creator-experiment-create-dialog`, not `ytcp-ab-test-dialog` (that tag does not exist on the
+page — the original selectors for its title/thumbnail fields matched **zero** elements, so a real
+run would have clicked Set test with nothing filled in). Confirmed live instead: title fields are
+`[contenteditable="true"]` divs by `aria-label="Add title N"` (`Locator.fill()` does work on them,
+verified), not `<input>`; thumbnail fields are real `<input type="file">` (3, `accept="image/jpeg,
+image/png"`, under `ytcp-thumbnail-uploader`, scoped to the dialog root so this can never reach the
+Details page's own separate thumbnail input sitting just outside it); slot 1 of both is pre-filled
+from the video's live title/thumbnail already, so only the challenger slot(s) strictly need
+filling (`startTestAndCompare`'s title path already only fills from slot 2 on; its thumbnail path
+also fills slot 1 with the caller's own control file, redundant but harmless — same bytes already
+showing). The A/B Testing dialog's `Close` button (not Escape) is confirmed the reliable way to
+leave it. **A third live correction, the real one that mattered**: `#set-test-button` only
+*stages* the test inside the dialog — a banner reads "The test is ready and will start once you
+save your changes" — and nothing actually starts until the Details page's own `#save` button
+(`SELECTORS.pageSaveButton`, the same one that saves a title/description edit) is pressed too. The
+first live attempt skipped this: `startTestAndCompare` returned `"started"` with no error, its
+screenshot showed a closed dialog, and nothing had actually happened — reopening the video later
+showed a blank, unset A/B Testing form again, exactly as if nothing had run. `startTestAndCompare`
+now clicks `pageSaveButton` and waits for "Changes saved" after `#set-test-button`, confirmed live
+against the channel's actual first real Test & Compare (LUI5E7yF0zE, thumbnail-only, started 8 Oct
+2026 — Studio's own report showed "Test running… · Estimated time remaining: 13 days 23 hours").
+**`readTestAndCompare`'s `"running"` is now confirmed live too** (read against that same test,
+right after it started) — only `"none"` and `"running"` are confirmed; `"done"`'s guess at the
+word "winner" still needs a test to actually finish. **Still unverified, built against synthetic
+fixture pages instead** (`studioActions.test.ts`, excluded from `test:unit`, run by `npm test`):
+which row to click once the picker actually returns a result (no query ever has, on this profile —
+see above), and whether `abTestSetButton`'s mere visibility (true even before a chip is chosen,
+confirmed 8 Oct) is actually a reliable "no test already running" signal rather than just "the
+dialog opened". Confirm the picker row the day the account-scoping bug is fixed, and the "already
+running" signal against a second video while LUI5E7yF0zE's own test is still live.
+
+**Review fixes, 8 Oct 2026** (branch `studio-p23`): `studioCli.ts`'s own `startAndProbe` used to
+call `start()` then `probe(handle)` with no try/catch of its own, trusting a caller's later
+`try { ... } finally { await handle.stop(); }` around the handle it would *return* — but a `goto`
+timeout or crashed renderer inside `probe()` threw straight out of it first, before any handle
+reached that finally, leaking Chrome+Xvfb and holding the profile's `SingletonLock` until
+something killed it by hand (wedging every later Studio job, the unattended worker's own cycles
+included, on "Chrome is already running against \<profile\>"). The fixed version now lives in
+`studioBrowser.ts` itself (`startAndProbe`, injectable `start`/`probe` for a real unit test,
+`studioBrowser.test.ts`), stopping on a throw the same way it already did on a non-`ok` result;
+`studioCli.ts` wraps it only for the console/exit-code text, read back off `readLastProbe()`.
+`inBlackoutWindow` read two hardcoded constants (02:50-04:30 UTC) instead of
+`config.nightlyRenderHourUtc` — a Settings-tab change to the render hour, or a chained render
+under `nightlyMaxRenders` running past 04:30, could desync the two and let Chrome and ffmpeg
+contend for the lab's four cores after all. It now derives the window from the live config value
+(10 min lead-in through the 4h chain window `nightlyMaxRenders` can use plus a 30 min finish
+buffer — 02:50-07:30 at the default hour; `null` disables the blackout with the nightly).
+`endscreenSaveButton`/`endscreenDiscardButton` were a plain `button:has-text("Save")`/
+`"Discard changes")`, picked with `.first()` with nothing to say *which* "Save" that would
+resolve to on a page the end-screen editor shares with the Details page's own `#save` — rereading
+the 7 Oct exploration's own raw DOM dump (`s7r-endscreen-open.json`) found the answer already
+sitting in it: the page's two "Save"-labelled `<button>`s are each wrapped in a `ytcp-button` with
+its own id, `#save` (page-level, confirmed as `pageSaveButton`) and `#save-button` (the editor's
+own, paired with `#discard-button`) — and in DOM order the page-level one comes *first*, so
+`.first()` would have clicked the wrong button the moment a real end screen ever got this far.
+Both selectors are now the confirmed ids; `studioActions.test.ts`'s fixture was reordered to match
+the real page's own DOM order (page `#save` before the dialog) specifically so a reversion to the
+old text-based `.first()` guess fails the test instead of passing by the fixture's own coincidence.
+The worker's `"picker-empty"` outcome (the account-scoping bug, confirmed daily) was invisible on
+the heartbeat — `endScreensAdded: 0` with no error looked identical to "nothing to do" — and retried
+every ~20 min cycle for as long as the bug lasts, screenshotting each time; `.studio-ledger.json`
+now also tracks `pickerEmptySeen` (once-a-day retry, same shape as a Test & Compare's own daily
+check) and the heartbeat's `lastCycle.endScreenPickerEmpty` makes the standing bug visible rather
+than silent. `writeHeartbeat` kept only `errors[0]`; it now also carries the whole cycle's
+`lastErrors`. `.experiments.json`'s read-merge-write (`updateTcExperiments`) is reached from two
+separate OS processes — this worker's own cycles and a one-off CLI invocation run alongside it —
+unlike the rest of this codebase's read-merge-write files, which lean on "there is only ever one
+dashboard process"; unguarded, two concurrent writers did not just lose an update, they crashed
+outright (`writeExperiments`'s shared `.experiments.json.tmp` name means the second caller's own
+`rename` hits an `ENOENT`, confirmed by temporarily removing the lock and running
+`studioExperiments.test.ts`'s new concurrency check). `updateTcExperiments` now serializes through
+a `wx`-flag lockfile (`withExperimentsLock`, `.experiments.json.lock`, stale after 30 s) — a plain
+mutex, not a true cross-platform advisory lock (ponytail: good enough for two cooperating
+processes on one filesystem; `src/dashboard/experiments.ts`, merged into `main` since this branch
+split off it but not onto this branch, would need to honour the same lockfile to be covered too).
+
 ## Clips (prototype)
 
 For a video that is not a match — a stream statement, a reaction, something worth posting on the

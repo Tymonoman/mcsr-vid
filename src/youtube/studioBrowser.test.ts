@@ -1,7 +1,9 @@
-// Self-check for studioBrowser.ts's pure half: classify() needs no browser at all.
+// Self-check for studioBrowser.ts's pure half: classify() needs no browser at all, and
+// startAndProbe()'s stop-on-failure shape is tested with fake start/probe deps instead of a
+// real Chrome.
 // Run: npx tsx src/youtube/studioBrowser.test.ts
 import assert from "node:assert/strict";
-import { classify } from "./studioBrowser.js";
+import { classify, startAndProbe, type StudioHandle } from "./studioBrowser.js";
 
 const CHANNEL = "UCm2mAyONTHlmIxZzNmi388w";
 
@@ -76,5 +78,66 @@ assert.equal(
   ),
   "signed-out",
 );
+
+// --- startAndProbe: stop-on-failure, including the regression (a throw from probe()) ---------
+function fakeHandle(stopped: { count: number }): StudioHandle {
+  return {
+    browser: null as unknown as StudioHandle["browser"],
+    debugPort: 0,
+    async stop() {
+      stopped.count++;
+    },
+  };
+}
+
+{
+  // A non-"ok" probe result: stops and returns null, same as before this fix.
+  const stopped = { count: 0 };
+  const handle = fakeHandle(stopped);
+  const result = await startAndProbe(
+    {},
+    {
+      start: async () => handle,
+      probe: async () => ({ result: "signed-out", url: "u", title: "t" }),
+    },
+  );
+  assert.equal(result, null);
+  assert.equal(stopped.count, 1, "a non-ok probe must stop the handle exactly once");
+  console.log("OK: a non-ok probe stops Chrome and returns null");
+}
+
+{
+  // The regression this fixes: probe() itself throwing (a goto timeout, a crashed renderer) must
+  // still stop what start() spawned, not leak it.
+  const stopped = { count: 0 };
+  const handle = fakeHandle(stopped);
+  await assert.rejects(
+    startAndProbe(
+      {},
+      {
+        start: async () => handle,
+        probe: async () => {
+          throw new Error("loading Studio: no answer after 30000ms");
+        },
+      },
+    ),
+    /no answer after 30000ms/,
+  );
+  assert.equal(stopped.count, 1, "a throw from probe() must still stop the handle it leaked before this fix");
+  console.log("OK: a throw from probe() stops Chrome instead of leaking it (the 8 Oct 2026 regression)");
+}
+
+{
+  // An "ok" probe: the handle is returned, untouched, for the caller's own try/finally to stop.
+  const stopped = { count: 0 };
+  const handle = fakeHandle(stopped);
+  const result = await startAndProbe(
+    {},
+    { start: async () => handle, probe: async () => ({ result: "ok", url: "u", title: "t" }) },
+  );
+  assert.equal(result, handle);
+  assert.equal(stopped.count, 0, "an ok probe must not stop the handle — the caller owns it now");
+  console.log("OK: an ok probe returns the handle without stopping it");
+}
 
 console.log("studioBrowser: all checks passed");

@@ -6,7 +6,7 @@
 // Run: npx tsx src/youtube/studioActions.test.ts
 import assert from "node:assert/strict";
 import { execSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { chromium } from "playwright";
@@ -87,7 +87,8 @@ const mediaDir = config.mediaDir;
 config.mediaDir = media;
 
 const { isRunning, page: pageOf, start } = await import("./studioBrowser.js");
-const { pinComment } = await import("./studioActions.js");
+const { pinComment, addEndScreenFromTemplate, startTestAndCompare, readTestAndCompare } =
+  await import("./studioActions.js");
 
 const matchId = 1;
 mkdirSync(path.join(media, String(matchId)), { recursive: true });
@@ -150,6 +151,215 @@ try {
   const shots = readdirSync(path.join(media, String(matchId))).filter((f) => f.startsWith("studio-"));
   assert.ok(shots.length >= 2, `expected before/after screenshots on disk, got: ${shots.join(", ")}`);
   console.log(`OK: screenshots landed in the match directory (${shots.length})`);
+
+  // --- End screens + Test & Compare (phase 2/3, 8 Oct 2026) -----------------------------------
+  // A fixture for the Details page's two dialogs (End Screens, A/B Testing), mimicking the real
+  // UI's own role/id selectors from the 7 Oct 2026 exploration (`uiState` plays the Node-side
+  // server; `window.__*` is what a real click would have actually done, read back below).
+  const uiState = {
+    endScreenHasElements: false,
+    pickerHasResults: true,
+    abTest: "none" as "none" | "running" | "done",
+  };
+  function editPageHtml(): string {
+    return `<!doctype html><html><body>
+    <style>button,div,input,ytcp-ab-test-dialog,ytcp-video-pick-dialog{display:block;padding:2px;}</style>
+    <button id="endscreen-editor-link" role="button">End screen</button>
+    <button id="ab-test-button" aria-label="A/B Testing">A/B Testing</button>
+    <!-- Page-level Save placed BEFORE dialog-root, same DOM order as the real page
+         (s7r-endscreen-open.json: the page's own #save sits before the editor's own #save-button) —
+         a reversion to a plain text-based Save selector plus .first() would click this one, not
+         the editor's, and this fixture would catch it (the regression fixed 8 Oct 2026). -->
+    <button id="save" onclick="window.__tcSaved=true;document.getElementById('saved-msg').style.display='block'">Save</button>
+    <div id="saved-msg" style="display:none">Changes saved</div>
+    <div id="dialog-root"></div>
+    <script>
+      window.__state = ${JSON.stringify(uiState)};
+      window.__endscreenSaved = false;
+      window.__tcStarted = null;
+      window.__tcSaved = false;
+      function closeDialog() { document.getElementById("dialog-root").innerHTML = ""; }
+      function renderEndScreen() {
+        // Live run, 8 Oct 2026: the real End Screens editor has no aria-label="Close" element
+        // at all (DOM-inspected, not a guess) — "Discard changes" is the confirmed "panel is
+        // open" signal addEndScreenFromTemplate now waits on, so this fixture leaves Close out.
+        // id="save-button"/"discard-button" mirror the real page's own ytcp-button wrapper ids
+        // (s7r-endscreen-open.json) — distinct from the page-level #save button below, which a
+        // plain text match alone cannot tell apart (the regression this fixture now guards).
+        const hasElements = window.__state.endScreenHasElements;
+        document.getElementById("dialog-root").innerHTML =
+          '<div><span>End Screens</span>' +
+          (hasElements
+            ? '<div>existing elements</div>'
+            : '<div>1 video, 1 subscribe</div><button onclick="openPicker()">Import from video</button>') +
+          '<button id="discard-button" onclick="closeDialog()">Discard changes</button>' +
+          '<button id="save-button" onclick="window.__endscreenSaved=true;closeDialog()">Save</button></div>';
+      }
+      function openPicker() {
+        document.getElementById("dialog-root").innerHTML +=
+          '<ytcp-video-pick-dialog><input oninput="onPickerInput(this.value)" /><div id="picker-results"></div></ytcp-video-pick-dialog>';
+      }
+      function onPickerInput(value) {
+        const results = document.getElementById("picker-results");
+        if (!value) { results.innerHTML = ""; return; }
+        results.innerHTML = window.__state.pickerHasResults
+          ? '<div role="option" onclick="document.querySelector(\\'ytcp-video-pick-dialog\\').remove()">POQrpE0-5d8</div>'
+          : '<div>No matching results. Please try again.</div>';
+      }
+      // Live run, 8 Oct 2026 (LUI5E7yF0zE): the dialog's own element is
+      // ytcp-creator-experiment-create-dialog (ytcp-ab-test-dialog does not exist at all — the
+      // original fixture matched its own wrong guess, not reality); title fields are
+      // contenteditable divs by aria-label ("Add title N"), not <input>, with slot 1 holding the
+      // live title already; thumbnail fields are real <input type="file"> (slot 1 pre-filled from
+      // the live thumbnail, no upload needed — confirmed by the UI, not exercised by this fixture).
+      function renderAbTest() {
+        const s = window.__state.abTest;
+        const root = document.getElementById("dialog-root");
+        if (s === "none") {
+          root.innerHTML =
+            '<ytcp-creator-experiment-create-dialog><span>A/B Testing</span><button aria-label="Close" onclick="closeDialog()">Close</button>' +
+            '<button id="chip-0" onclick="selectChip(\\'title\\')">Title only</button>' +
+            '<button id="chip-1" onclick="selectChip(\\'thumbnail\\')">Thumbnail only</button>' +
+            '<div id="chip-body"></div>' +
+            '<button id="set-test-button" onclick="window.__tcStarted={kind:window.__chipKind,title2:window.__title2};closeDialog()">Set test</button></ytcp-creator-experiment-create-dialog>';
+        } else if (s === "running") {
+          root.innerHTML = '<div><span>A/B Testing</span><button aria-label="Close" onclick="closeDialog()">Close</button><p>Your test is live. Check back later.</p></div>';
+        } else {
+          root.innerHTML = '<div><span>A/B Testing</span><button aria-label="Close" onclick="closeDialog()">Close</button><p>Winner: Thumbnail 2 was applied automatically.</p></div>';
+        }
+      }
+      function selectChip(kind) {
+        window.__chipKind = kind;
+        document.getElementById("chip-body").innerHTML = kind === "title"
+          ? '<div contenteditable="true" aria-label="Add title 1">live title</div>' +
+            '<div contenteditable="true" aria-label="Add title 2" oninput="window.__title2=this.textContent"></div>'
+          : '<input type="file" /><input type="file" />';
+      }
+      document.getElementById("endscreen-editor-link").addEventListener("click", renderEndScreen);
+      document.getElementById("ab-test-button").addEventListener("click", renderAbTest);
+    </script>
+    </body></html>`;
+  }
+  await page.route("https://studio.youtube.com/video/**", (route) =>
+    route.fulfill({ body: editPageHtml(), contentType: "text/html" }),
+  );
+
+  const players = [{ nickname: "edcr" }, { nickname: "doogile" }];
+
+  // addEndScreenFromTemplate: already has one -> left alone, never saved.
+  uiState.endScreenHasElements = true;
+  const already = await addEndScreenFromTemplate(handle, "vidE1", "POQrpE0-5d8", { matchId });
+  assert.equal(already, "already-has-endscreen");
+  console.log('OK: addEndScreenFromTemplate leaves a video with elements alone ("already-has-endscreen")');
+
+  // Empty + the picker's own confirmed bug (no results for any query, 7 Oct 2026): reported as
+  // its own outcome, not a crash.
+  uiState.endScreenHasElements = false;
+  uiState.pickerHasResults = false;
+  const empty = await addEndScreenFromTemplate(handle, "vidE2", "POQrpE0-5d8", { matchId });
+  assert.equal(empty, "picker-empty");
+  console.log('OK: a picker with no results is reported as "picker-empty", not a crash');
+
+  // Empty + a result: dry run picks the template but never saves; a real run does.
+  uiState.pickerHasResults = true;
+  const dryImport = await addEndScreenFromTemplate(handle, "vidE3", "POQrpE0-5d8", { matchId, dryRun: true });
+  assert.equal(dryImport, "imported");
+  assert.equal(await page.evaluate("window.__endscreenSaved"), false, "a dry run must never actually save");
+  console.log("OK: addEndScreenFromTemplate's dry run picks the template and stops before Save");
+
+  const realImport = await addEndScreenFromTemplate(handle, "vidE4", "POQrpE0-5d8", { matchId });
+  assert.equal(realImport, "imported");
+  assert.equal(await page.evaluate("window.__endscreenSaved"), true);
+  // The regression this guards: the page-level #save (DOM-first, same order as the real page)
+  // must be left untouched — an id-scoped click, not a `.first()` guess across two same-text
+  // buttons.
+  assert.equal(
+    await page.evaluate("window.__tcSaved"),
+    false,
+    "must click the end-screen editor's own Save (#save-button), not the page-level #save",
+  );
+  console.log("OK: a real run clicks the editor's own Save, scoped by id, not the page-level Save");
+
+  // startTestAndCompare: refuses before this point are covered by studioWorker.test.ts (a poisoned
+  // handle that never reaches a page at all); here the dialog is real, so this is the rest of the
+  // flow — filling the right chip's fields, dry run stopping before Set test, a real run clicking it,
+  // and refusing outright when the dialog shows no fresh "set up a test" form (already running).
+  uiState.abTest = "none";
+  const dryTitle = await startTestAndCompare(
+    handle,
+    "vidT1",
+    {
+      kind: "title",
+      titles: ["DECIDED BY 1 SECOND | edcr vs doogile | MCSR Ranked 1v1 | Minecraft Speedrun"],
+    },
+    { matchId, dryRun: true, players },
+  );
+  assert.equal(dryTitle, "started");
+  assert.equal(await page.evaluate("window.__tcStarted"), null, "a dry run must never click Set test");
+  assert.equal(await page.evaluate("window.__tcSaved"), false, "a dry run must never reach page Save either");
+  console.log("OK: startTestAndCompare's dry run fills the title chip and stops before Set test");
+
+  const realTitle = await startTestAndCompare(
+    handle,
+    "vidT1",
+    {
+      kind: "title",
+      titles: ["DECIDED BY 1 SECOND | edcr vs doogile | MCSR Ranked 1v1 | Minecraft Speedrun"],
+    },
+    { matchId, players },
+  );
+  assert.equal(realTitle, "started");
+  assert.deepEqual(await page.evaluate("window.__tcStarted"), {
+    kind: "title",
+    title2: "DECIDED BY 1 SECOND | edcr vs doogile | MCSR Ranked 1v1 | Minecraft Speedrun",
+  });
+  // Live run, 8 Oct 2026: Set test alone left an earlier real attempt unsaved and invisible on
+  // reload — page Save is what actually commits it (see SELECTORS.pageSaveButton).
+  assert.equal(await page.evaluate("window.__tcSaved"), true, "a real run must also click page Save");
+  console.log("OK: a real run picks the Title chip, fills the challenger slot, Set test and page Save");
+
+  const thumbA = path.join(media, "thumb-a.png");
+  const thumbB = path.join(media, "thumb-b.png");
+  writeFileSync(thumbA, "a");
+  writeFileSync(thumbB, "b");
+  const realThumb = await startTestAndCompare(
+    handle,
+    "vidT2",
+    { kind: "thumbnail", files: [thumbA, thumbB] },
+    { matchId },
+  );
+  assert.equal(realThumb, "started");
+  console.log("OK: a thumbnail test picks the Thumbnail chip and uploads both files");
+
+  uiState.abTest = "running";
+  const already2 = await startTestAndCompare(
+    handle,
+    "vidT1",
+    { kind: "title", titles: ["ANOTHER HOOK | edcr vs doogile | MCSR Ranked 1v1 | Minecraft Speedrun"] },
+    { matchId, players },
+  );
+  assert.ok(typeof already2 === "object" && "error" in already2);
+  assert.match((already2 as { error: string }).error, /already be set up/);
+  console.log(
+    "OK: startTestAndCompare refuses to touch a video with no fresh test form (one may be running)",
+  );
+
+  // readTestAndCompare: the one confidently-read state ("none"), then the two best-effort ones.
+  uiState.abTest = "none";
+  const readNone = await readTestAndCompare(handle, "vidT1");
+  assert.deepEqual((readNone as { state: string }).state, "none");
+
+  uiState.abTest = "running";
+  const readRunning = await readTestAndCompare(handle, "vidT1");
+  assert.equal((readRunning as { state: string }).state, "running");
+
+  uiState.abTest = "done";
+  const readDone = await readTestAndCompare(handle, "vidT1");
+  assert.equal((readDone as { state: string }).state, "done");
+  assert.match((readDone as { winner?: string }).winner ?? "", /Thumbnail 2/);
+  console.log(
+    'OK: readTestAndCompare reads "none" confidently and "running"/"done" as its documented best effort',
+  );
 } finally {
   await handle.stop();
   assert.equal(isRunning(), false, "the lock must clear once the browser actually stops");
