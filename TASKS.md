@@ -59,6 +59,12 @@ start line) → 08:00 cycle started 2 tests (vASY6MzFRNM, f4Z2Dvg9ihc; "Changes 
 `setsid nohup bash /app/scripts/studio-worker.sh >/dev/null 2>&1 &` (pidfile ~/.claude/studio-worker-supervisor.pid;
 restarts the worker 60 s after any exit; the worker exits itself at the nightly blackout when HEAD moved, so merges reach
 it without a hand restart; it also pins our own comment on public videos now). 5 A/B tests running at 08:19.
+8 Oct 09:10 UTC: shorts-related MERGED (read-only checkRelatedVideoPicker + `npm run studio -- related`). The Short's
+"Related video" picker, like end-screen "Import from video", searches the account's ACTIVE channel (his personal TYMONOMAN,
+ticked on youtube.com/channel_switcher); clicking MCSR Replayoffs there from the automation does not stick (tried twice,
+read-only otherwise). Linking Shorts → long-forms stays blocked until the profile's active channel is MCSR Replayoffs —
+optional for him (one click on that page in the Studio browser's login screen), not a Needs-you item. End screens are
+unaffected (starter layout). Workflows: all done or stopped; nothing in flight but the supervised Studio worker.
 Dashboard boot fd47b32 (he restarted it 7 Oct evening). /media 70 GB free. Live: introSec 3, countdownTeaser on,
 explainMovesSec 8 (on), suggestKnownSlots 10.
 
