@@ -95,6 +95,13 @@ const SELECTORS = {
   // unscoped, only 3 of them inside this dialog).
   abTestTitleInputs: 'ytcp-creator-experiment-create-dialog [aria-label^="Add title"]',
   abTestFileInputs: 'ytcp-creator-experiment-create-dialog input[type="file"]',
+  // Related video (phase 2's own second half, 8 Oct 2026 — `tmp/studio3/`, read-only, no
+  // Save ever pressed): the Details-page sidebar row below Subtitles. Confirmed live: clicking
+  // it opens the *exact same* `ytcp-video-pick-dialog` the end-screen "Import from video" button
+  // above already does — same dialog, same search-then-"No matching results" selectors, same
+  // confirmed account-scoping bug. `dialogClose` (above) is also confirmed live for this one:
+  // unlike the end-screen panel, this dialog closes clean on it, no discard prompt.
+  relatedVideoTrigger: "ytcp-text-dropdown-trigger#linked-video-editor-link",
 };
 
 /**
@@ -404,6 +411,76 @@ export async function addEndScreenFromTemplate(
 
     await saveEndScreenChange(page, handle, opts.matchId);
     return "imported";
+  } catch (err) {
+    return { error: describeError(err) };
+  }
+}
+
+export type RelatedVideoOutcome = "already-linked" | "picker-empty";
+
+/**
+ * A Short's "Related video" link (phase 2's own second half, quoted directly in its own 8 Oct
+ * 2026 read-only exploration, `tmp/studio3/01-related-video-explore.ts`): never touched, never
+ * saved, confirmed live. The control (`SELECTORS.relatedVideoTrigger`) opens the *exact same*
+ * `ytcp-video-pick-dialog` `addEndScreenFromTemplate`'s "Import from video" fallback above
+ * already drives — same search input, same "No matching results" text — and the same account-
+ * scoping bug already confirmed there answers "no" for every query on this profile, title or
+ * exact video id alike: the picker's own search call resolves against the operator's personal
+ * channel, not the brand one.
+ *
+ * This only ever checks and reports, by design. It never clicks a returned row or presses the
+ * page's own Save: the exploration never got that far (nothing ever came back to click), so
+ * which row is the real long-form and whether this dialog even needs the page-level Save after
+ * — unlike the end-screen editor, confirmed to need it, this dialog may not — are both unverified
+ * guesses, not confirmed behaviour. Guessing at either now, with nothing live to check it
+ * against, is exactly the thing `endscreenPickerRow`'s own doc comment already warns against
+ * doing twice; build the real `addRelatedVideo` click-and-save the day a search here actually
+ * returns a row to confirm those selectors against (the account-scoping bug is fixed, or
+ * worked around by switching the signed-in account before Studio opens).
+ *
+ * Already linked to *anything* (not just `longFormVideoId`) is left alone and reported
+ * `"already-linked"` without ever opening the dialog — the same "never replace what's already
+ * set" rail `pinComment`/`addEndScreenFromTemplate` already keep.
+ */
+export async function checkRelatedVideoPicker(
+  handle: StudioHandle,
+  shortVideoId: string,
+  longFormVideoId: string,
+  opts: { matchId: number },
+): Promise<RelatedVideoOutcome | { error: string }> {
+  try {
+    const page = await pageOf(handle);
+    await page.goto(`https://studio.youtube.com/video/${shortVideoId}/edit?hl=en`, {
+      waitUntil: "domcontentloaded",
+      timeout: 30_000,
+    });
+    await randomPause();
+
+    const trigger = page.locator(SELECTORS.relatedVideoTrigger).first();
+    const current = await trigger.innerText().catch(() => "");
+    if (current.trim() && !/^none$/i.test(current.trim())) return "already-linked";
+
+    await trigger.click();
+    await page.locator(SELECTORS.endscreenPickerDialog).waitFor({ state: "visible", timeout: 15_000 });
+    await page.locator(SELECTORS.endscreenPickerInput).first().fill(longFormVideoId);
+    await randomPause();
+    await shot(handle, opts.matchId, "related-video-search");
+
+    const noResults = await page
+      .locator(SELECTORS.endscreenPickerNoResults)
+      .first()
+      .isVisible()
+      .catch(() => false);
+    await page
+      .locator(SELECTORS.dialogClose)
+      .first()
+      .click()
+      .catch(() => {});
+    if (noResults) return "picker-empty";
+
+    // A row actually came back — the day the account-scoping bug above is fixed. Report it
+    // rather than guess at which row is right or how this dialog's own Save behaves.
+    return { error: "the picker returned a result — selecting/saving it is not yet built" };
   } catch (err) {
     return { error: describeError(err) };
   }

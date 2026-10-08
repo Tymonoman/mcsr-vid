@@ -3,6 +3,7 @@
  *   | endscreen <matchId|videoId> [--dry-run] | tc <matchId|videoId> title <title…> [--dry-run]
  *   | tc <matchId|videoId> thumbnail <file…> [--dry-run] | tc-read <matchId|videoId>
  *   | worker [--once] [--dry-run] | tc-plan <plan.json>
+ *   | related <shortId> <longFormId>
  *
  * probe: starts Chrome, loads Studio, prints what it found, stops.
  * pin: pins the channel's own first comment on a video — by match id (reads its recorded
@@ -24,6 +25,11 @@
  * tc-plan: turns an approved judge's plan (tc-plan.json's own shape) into planned "tc" experiments
  *      in `<mediaDir>/.experiments.json` — idempotent, prints what it added and what it skipped
  *      and why. Opens no browser.
+ * related: checks a Short's "Related video" field against its own long-form — confirmed-empty
+ *      on this profile today (CLAUDE.md's "Studio automation" → "Related video"), so this only
+ *      ever opens the picker, searches, and reports `"already-linked"`/`"picker-empty"`/an error;
+ *      it never selects or saves anything. No `--dry-run`: there is nothing destructive to stop
+ *      short of yet.
  *
  * `--profile-dir=<path>` overrides the real `/home/node/.studio-profile` on probe/pin/login/worker
  * — ad hoc testing against a throwaway profile without ever touching the operator's actual login.
@@ -33,6 +39,7 @@ import { createInterface } from "node:readline/promises";
 import { readUpload, videoIdOwner } from "./youtubeStore.js";
 import {
   addEndScreenFromTemplate,
+  checkRelatedVideoPicker,
   pinComment,
   readTestAndCompare,
   startTestAndCompare,
@@ -60,7 +67,8 @@ function usage(): never {
     "usage: npm run studio -- probe | pin <matchId|videoId> [--dry-run] | login [--profile-dir=<path>]" +
       " | endscreen <matchId|videoId> [--dry-run]" +
       " | tc <matchId|videoId> title|thumbnail <variant…> [--dry-run] | tc-read <matchId|videoId>" +
-      " | worker [--once] [--dry-run] [--enable] | tc-plan <plan.json>",
+      " | worker [--once] [--dry-run] [--enable] | tc-plan <plan.json>" +
+      " | related <shortId|matchId> <longFormVideoId>",
   );
   process.exit(2);
 }
@@ -222,6 +230,49 @@ async function workerCmd(): Promise<void> {
   await runWorker({ once, dryRun, startOpts, enable });
 }
 
+/** `related`'s own target resolution: a Short, by match id (its recorded `youtube-short.json`)
+ * or by its video id directly — mirrors `resolveVideo` above, but reads the short record, not
+ * the long-form's (there is no shared helper for "which kind" because every other command here
+ * only ever means the long-form). */
+async function resolveShort(target: string | undefined): Promise<{ matchId: number; shortId: string }> {
+  if (!target) usage();
+  if (/^\d+$/.test(target)) {
+    const matchId = Number(target);
+    const record = await readUpload(matchId, "short");
+    if (!record) {
+      console.error(`match ${matchId} has no recorded Short upload (youtube-short.json) — nothing to do`);
+      process.exit(1);
+    }
+    return { matchId, shortId: record.videoId };
+  }
+  const owner = await videoIdOwner(target);
+  if (!owner) {
+    console.error(
+      `${target} is not a known video id (no match records it in youtube.json/youtube-short.json)`,
+    );
+    process.exit(1);
+  }
+  return { matchId: owner.matchId, shortId: target };
+}
+
+async function relatedCmd(shortTarget: string | undefined, longFormId: string | undefined): Promise<void> {
+  if (!longFormId) usage();
+  const { matchId, shortId } = await resolveShort(shortTarget);
+  const handle = await startAndProbe();
+  if (!handle) return;
+  try {
+    const outcome = await checkRelatedVideoPicker(handle, shortId, longFormId, { matchId });
+    if (typeof outcome === "object") {
+      console.error(`error: ${outcome.error}`);
+      process.exitCode = 1;
+      return;
+    }
+    console.log(outcome);
+  } finally {
+    await handle.stop();
+  }
+}
+
 async function tcPlanCmd(file: string | undefined): Promise<void> {
   if (!file) usage();
   const plan = JSON.parse(await readFile(file, "utf8")) as TcPlan;
@@ -255,6 +306,9 @@ switch (command) {
     break;
   case "tc-plan":
     await tcPlanCmd(args[0]);
+    break;
+  case "related":
+    await relatedCmd(args[0], args[1]);
     break;
   default:
     usage();

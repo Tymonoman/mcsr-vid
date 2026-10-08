@@ -1290,6 +1290,33 @@ confirmed 8 Oct) is actually a reliable "no test already running" signal rather 
 dialog opened". Confirm the picker row the day the account-scoping bug is fixed, and the "already
 running" signal against a second video while LUI5E7yF0zE's own test is still live.
 
+**Related video — the plan's own second half of phase 2, confirmed dead-end today, 8 Oct 2026**
+(read-only exploration, `tmp/studio3/`, no Save ever pressed — see the plan's section "Phase 2:
+the Short's related video and end screens"): a Short's Details page carries its own "Related
+video" control in the right-hand metadata column, between Visibility and Subtitles —
+`ytcp-text-dropdown-trigger#linked-video-editor-link` (`SELECTORS.relatedVideoTrigger`), reading
+"None" until something is linked. Clicking it opens the *exact same* `ytcp-video-pick-dialog`
+the end-screen "Import from video" fallback above already drives — same search input, same
+"No matching results" text, confirmed live by searching the exact match title ("Infume vs
+Feinberg") and the exact long-form video id (`vASY6MzFRNM`) against the Short `k9m6lFIRs0g`:
+both came back empty, and both videos independently confirmed genuinely public (not
+private/scheduled, which would be a different, expected empty) via YouTube's own unauthenticated
+oembed endpoint. This is the same account-scoping bug already confirmed for the end-screen
+picker, not a second, separate one — the network capture shows the identical
+`youtubei/v1/creator/list_creator_videos` call resolving against the signed-in account's default
+(personal) channel rather than the brand one. `checkRelatedVideoPicker`
+(`src/youtube/studioActions.ts`) only ever checks and reports, by design: it never clicks a
+returned row or presses the page's own Save, because no search here has ever returned one to
+confirm those selectors against — guessing at either now would be exactly what
+`endscreenPickerRow`'s own doc comment already warns against doing twice. Already linked to
+*anything* (not just the target long-form) is left alone and reported `"already-linked"` without
+ever opening the dialog, the same "never replace what's already set" rail `pinComment`/
+`addEndScreenFromTemplate` keep. `npm run studio -- related <shortId|matchId> <longFormVideoId>`
+drives it from the terminal (no `--dry-run`: there is nothing destructive to stop short of yet).
+Build the real click-and-save the day a search anywhere in Studio actually returns a row to
+confirm against — the account-scoping fix, or signing in as an account whose default channel
+already is the brand one.
+
 **Review fixes, 8 Oct 2026** (branch `studio-p23`): `studioCli.ts`'s own `startAndProbe` used to
 call `start()` then `probe(handle)` with no try/catch of its own, trusting a caller's later
 `try { ... } finally { await handle.stop(); }` around the handle it would *return* — but a `goto`
