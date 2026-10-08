@@ -362,6 +362,10 @@ async function setNeedsHuman(id: string, reason: string): Promise<void> {
  * `finishOnYouTube`'s `todo("pin")` reads, so a later tick of either path sees this pin as done
  * rather than attempting it again. A gone record (deleted between the plan and the pin) is left
  * alone — nothing to mark. */
+/** Videos whose pin came back "no-channel-comment"/"skipped-private", by the UTC day it did — skipped
+ *  for the rest of that day instead of re-tried (and re-reported) every cycle. */
+const pinSkippedOn = new Map<string, string>();
+
 async function markPinDone(matchId: number): Promise<void> {
   const record = await readUpload(matchId, "video");
   if (!record) return;
@@ -634,6 +638,7 @@ export async function runCycle(
     if (plan.pinTargets.length) {
       const stats = await videoStats(plan.pinTargets.map((t) => t.videoId));
       for (const target of plan.pinTargets) {
+        if (pinSkippedOn.get(target.videoId) === new Date().toISOString().slice(0, 10)) continue;
         const live = stats.find((s) => s.videoId === target.videoId)?.privacyStatus;
         if (live !== "public") continue; // not public yet — retried a later cycle, not an error
         const outcome = await pinComment(handle, target.videoId, {
@@ -650,7 +655,12 @@ export async function runCycle(
             pinsAdded++;
           }
         } else {
-          errors.push(`pin ${target.videoId}: ${outcome}`);
+          // "no-channel-comment" / "skipped-private" are states of the video, not failures: an
+          // error here grew the heartbeat's sameErrorStreak into a false "Needs you" item and
+          // spent a pin slot on the same video every cycle (8 Oct 2026, gRjV1jG4-Ng).
+          // ponytail: in-memory, so a worker restart retries it sooner; persist if that matters.
+          console.error(`studio worker: pin ${target.videoId} skipped today — ${outcome}`);
+          pinSkippedOn.set(target.videoId, new Date().toISOString().slice(0, 10));
         }
       }
     }
