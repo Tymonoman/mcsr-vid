@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { config } from "../config.js";
 import type { StudioHandle } from "./studioBrowser.js";
-import { startTestAndCompare } from "./studioActions.js";
+import { pickStarterLayoutLabel, startTestAndCompare, STARTER_LAYOUT_PREFERENCE } from "./studioActions.js";
 import type { Experiment } from "./studioExperiments.js";
 import {
   inBlackoutWindow,
@@ -18,12 +18,15 @@ import {
   playersFor,
   readHeartbeat,
   readLedger,
+  runCycle,
+  setExperimentChecked,
   testFor,
   writeHeartbeat,
   writeLedger,
   type LongFormRef,
   type StudioLedger,
 } from "./studioWorker.js";
+import { readExperiments, updateTcExperiments } from "./studioExperiments.js";
 
 const media = mkdtempSync(path.join(tmpdir(), "mcsr-studioworker-"));
 config.mediaDir = media;
@@ -254,6 +257,186 @@ config.mediaDir = media;
   assert.equal(hb?.pid, 123);
   assert.deepEqual(hb?.lastErrors, ["a", "b"], "every error of the cycle, not just the first");
   console.log("OK: ledger and heartbeat round-trip atomically and a corrupt ledger degrades to empty");
+}
+
+// --- planCycle: thumbnailTcTargets, auto-planned thumbnail tests (phase 4, 8 Oct 2026) ---------
+{
+  const longForms: LongFormRef[] = [
+    // Not source "dashboard" — a Studio-recorded upload is never auto-tested.
+    {
+      videoId: "studio1",
+      matchId: 10,
+      uploadedAt: "2026-10-09T00:00:00.000Z",
+      privacyStatus: "public",
+      source: "studio",
+    },
+    // Before the cutoff — never retroactive.
+    {
+      videoId: "old1",
+      matchId: 11,
+      uploadedAt: "2026-10-07T23:59:59.000Z",
+      privacyStatus: "public",
+      source: "dashboard",
+    },
+    // Already has a tc experiment (a title test, not even a thumbnail one — "no tc experiment
+    // yet" covers any kind, since Studio only ever runs one at a time anyway).
+    {
+      videoId: "titled1",
+      matchId: 12,
+      uploadedAt: "2026-10-09T00:00:00.000Z",
+      privacyStatus: "public",
+      source: "dashboard",
+    },
+    // Blocked player's footage — never offered, same as every other Studio action.
+    {
+      videoId: "blocked1",
+      matchId: 13,
+      uploadedAt: "2026-10-09T00:00:00.000Z",
+      privacyStatus: "private",
+      source: "dashboard",
+    },
+    // Two good candidates, to prove the cap.
+    {
+      videoId: "good1",
+      matchId: 14,
+      uploadedAt: "2026-10-08T00:00:00.000Z",
+      privacyStatus: "private",
+      source: "dashboard",
+    },
+    {
+      videoId: "good2",
+      matchId: 15,
+      uploadedAt: "2026-10-09T00:00:00.000Z",
+      privacyStatus: "private",
+      source: "dashboard",
+    },
+    {
+      videoId: "good3",
+      matchId: 16,
+      uploadedAt: "2026-10-09T00:00:00.000Z",
+      privacyStatus: "private",
+      source: "dashboard",
+    },
+  ];
+  const experiments: Experiment[] = [
+    {
+      id: "tc-title-titled1",
+      kind: "tc",
+      variable: "title",
+      arms: [{ name: "control" }],
+      videos: [{ videoId: "titled1", matchId: 12, arm: "tc" }],
+      status: "running",
+    },
+  ];
+  const now = new Date("2026-10-09T12:00:00.000Z");
+  const isBlocked = (matchId: number): boolean => matchId === 13;
+  const plan = planCycle(now, longForms, { endScreens: {}, pickerEmptySeen: {} }, experiments, isBlocked);
+  const ids = plan.thumbnailTcTargets.map((t) => t.videoId);
+  assert.ok(!ids.includes("studio1"), "a Studio-recorded upload is never auto-tested");
+  assert.ok(!ids.includes("old1"), "uploaded before the cutoff — never retroactive");
+  assert.ok(!ids.includes("titled1"), "already has a tc experiment of its own (any kind)");
+  assert.ok(!ids.includes("blocked1"), "a blocked player's footage is never offered");
+  assert.equal(plan.thumbnailTcTargets.length, 2, `capped at 2 per cycle, got ${ids.join(",")}`);
+  assert.ok(
+    ids.includes("good1") && ids.includes("good2"),
+    `good1/good2 expected ahead of good3, got ${ids.join(",")}`,
+  );
+  console.log(
+    "OK: thumbnailTcTargets is dashboard-sourced, on/after the cutoff, untested, unblocked, capped at 2",
+  );
+}
+
+// --- setExperimentChecked: promotes "planned" to "running" when Studio already has one going ---
+// (phase 4, 8 Oct 2026 — LUI5E7yF0zE's own history: a test started by hand before this experiment
+// was ever planned must be reconciled, never started a second time).
+{
+  const expId = "tc-thumbnail-reconcile-test";
+  await updateTcExperiments((tc) => [
+    ...tc,
+    {
+      id: expId,
+      kind: "tc",
+      variable: "thumbnail",
+      arms: [{ name: "control" }],
+      videos: [{ videoId: "vidReconcile", matchId: 1, arm: "tc" }],
+      status: "planned",
+    },
+  ]);
+
+  await setExperimentChecked(expId, { state: "running", raw: "Your test is live." });
+  const afterRunning = (await readExperiments()).experiments.find((e) => e.id === expId);
+  assert.equal(
+    afterRunning?.status,
+    "running",
+    "a 'planned' experiment is promoted once Studio shows it running",
+  );
+  assert.ok(afterRunning?.start, "a start timestamp is set when promoting from planned");
+  const firstStart = afterRunning?.start;
+
+  // A later daily check of the same already-running experiment must not reset its start time.
+  await setExperimentChecked(expId, { state: "running", raw: "Your test is live." });
+  const afterSecondCheck = (await readExperiments()).experiments.find((e) => e.id === expId);
+  assert.equal(afterSecondCheck?.status, "running");
+  assert.equal(afterSecondCheck?.start, firstStart, "start is not clobbered on a later check");
+
+  await setExperimentChecked(expId, { state: "done", winner: "Thumbnail 2", raw: "Winner: Thumbnail 2" });
+  const afterDone = (await readExperiments()).experiments.find((e) => e.id === expId);
+  assert.equal(afterDone?.status, "done");
+  assert.match(afterDone?.verdict ?? "", /Thumbnail 2/);
+  console.log(
+    "OK: setExperimentChecked promotes planned->running on first sight of a live test, keeps start stable, and still reaches done",
+  );
+}
+
+// --- pickStarterLayoutLabel: end-screen starter-layout preference (phase 4, 8 Oct 2026) --------
+{
+  assert.equal(
+    pickStarterLayoutLabel(new Set(STARTER_LAYOUT_PREFERENCE)),
+    "2 videos, 1 subscribe",
+    "closest to the operator's own template wins when both are on offer",
+  );
+  assert.equal(
+    pickStarterLayoutLabel(new Set(["1 video, 1 subscribe"])),
+    "1 video, 1 subscribe",
+    "falls back to 1 video + 1 subscribe when that is all there is — the real gallery's own shape",
+  );
+  assert.equal(
+    pickStarterLayoutLabel(new Set(["2 videos", "1 video, 1 playlist, 1 subscribe"])),
+    null,
+    "a plain '2 videos' card (no subscribe element) is not a close-enough match on its own",
+  );
+  assert.equal(
+    pickStarterLayoutLabel(new Set()),
+    null,
+    "no starter cards at all — the Import fallback's cue",
+  );
+  console.log("OK: pickStarterLayoutLabel prefers 2 videos + 1 subscribe, falls back to 1 + 1, else null");
+}
+
+// --- runCycle: the explicit-enable gate (phase 4, 8 Oct 2026) ----------------------------------
+{
+  // config.studioAutomation is false by default (DEFAULTS, src/config.ts) and nothing above
+  // turns it on — neither it nor an explicit enable is set, so this must no-op before ever
+  // touching a browser (no Chrome/Xvfb exists in this test environment; if the gate let this
+  // through, `start()` would throw or hang instead of resolving cleanly).
+  assert.equal(config.studioAutomation, false, "precondition: the flag this test relies on being off");
+  const result = await runCycle({});
+  assert.deepEqual(
+    result,
+    {
+      probe: "skipped",
+      endScreensAdded: 0,
+      endScreenPickerEmpty: 0,
+      tcStarted: 0,
+      tcChecked: 0,
+      thumbnailTestsPlanned: 0,
+      errors: [],
+    },
+    "neither --enable/STUDIO_WORKER=1 nor config.studioAutomation set",
+  );
+  console.log(
+    "OK: runCycle no-ops without config.studioAutomation or an explicit enable, no browser touched",
+  );
 }
 
 console.log("studioWorker: all checks passed");

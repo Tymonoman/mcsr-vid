@@ -1,9 +1,25 @@
 /**
- * `<mediaDir>/.experiments.json` — owned by the dashboard's experiment engine (branch
- * `exp-engine`, not merged yet). This module only ever reads the whole file and writes `kind:
- * "tc"` entries back into it (read-merge-write, atomic write-then-rename): a `between` entry, or
- * any field on the file this module does not know about, is passed through untouched — it is
- * someone else's data that happens to share this file.
+ * `<mediaDir>/.experiments.json` — owned by the dashboard's experiment engine
+ * (`src/dashboard/experiments.ts`, merged into `main` 8 Oct 2026). This module only ever reads
+ * the whole file and writes `kind: "tc"` entries back into it (read-merge-write, atomic
+ * write-then-rename): a `between` entry, or any field on the file this module does not know
+ * about — `baseline`, `appliedOn`, `evaluatedOn`, the engine's own once-a-day guards, or anything
+ * a future writer adds — is passed through untouched. It is someone else's data that happens to
+ * share this file.
+ *
+ * `readExperiments`/`writeExperiments` below used to reconstruct the file as `{ experiments,
+ * schedule }` only, which silently dropped every other top-level field on every single write —
+ * `baseline`/`appliedOn`/`evaluatedOn` included (review fix, 8 Oct 2026: `updateTcExperiments` ran
+ * on `main` the same night the engine's own `applyScheduledRenderArm` started relying on
+ * `appliedOn` to never re-apply a night's render arm twice, so losing it on any `tc`-plan or
+ * worker write would have silently re-applied last night's settings patch). They now carry the
+ * whole parsed object through (`{ ...parsed, experiments, schedule }`, validated only enough to
+ * guarantee those two are real arrays) rather than reconstructing a narrow shape the dashboard's
+ * own richer `ExperimentsFile` (`src/dashboard/experiments.ts`) does not share — that richer type
+ * requires `hypothesis`/`metric`/`start`/`end` on every `Experiment`, which a `tc` entry never
+ * sets, so importing it directly here would not type-check against what `planTcExperiments`
+ * actually builds. This is the "raw read-merge-write" alternative instead: same losslessness,
+ * without fighting that mismatch.
  *
  * `updateTcExperiments` is this module's own read-merge-write entry point, and it is reached
  * from two separate OS processes (the standalone `npm run studio -- worker`'s own cycles, and a
@@ -59,6 +75,9 @@ export interface Experiment {
 export interface ExperimentsFile {
   experiments: Experiment[];
   schedule: unknown[];
+  /** `baseline`, `appliedOn`, `evaluatedOn` (`src/dashboard/experiments.ts`'s own fields) and
+   *  anything else a future writer adds — never read or written by name here, only round-tripped. */
+  [key: string]: unknown;
 }
 
 const filePath = (): string => path.join(config.mediaDir, ".experiments.json");
@@ -66,15 +85,19 @@ const filePath = (): string => path.join(config.mediaDir, ".experiments.json");
 export async function readExperiments(): Promise<ExperimentsFile> {
   const file = filePath();
   if (!existsSync(file)) return { experiments: [], schedule: [] };
-  let parsed: Partial<ExperimentsFile>;
+  let parsed: Record<string, unknown>;
   try {
-    parsed = JSON.parse(await readFile(file, "utf8")) as Partial<ExperimentsFile>;
+    parsed = JSON.parse(await readFile(file, "utf8")) as Record<string, unknown>;
   } catch (err) {
     // A corrupt file from another writer mid-save must not read as "no experiments" — that would
     // silently re-plan or re-start whatever this run thinks is missing.
     throw new Error(`${file} did not parse as JSON: ${(err as Error).message}`);
   }
-  return { experiments: parsed.experiments ?? [], schedule: parsed.schedule ?? [] };
+  return {
+    ...parsed,
+    experiments: Array.isArray(parsed.experiments) ? (parsed.experiments as Experiment[]) : [],
+    schedule: Array.isArray(parsed.schedule) ? (parsed.schedule as unknown[]) : [],
+  };
 }
 
 export async function writeExperiments(file: ExperimentsFile): Promise<void> {
@@ -175,31 +198,22 @@ export interface TcPlanSkip {
   reason: string;
 }
 
-const POSE_NAMES = ["walking-crossed", "default-default", "cheering-relaxing", "marching-crouching"];
-
-/**
- * A pose-challenger file under `<id>/tc/tc-pose.png` rewritten to its STRIP equivalent
- * (`<id>/thumbnail.<pose>.png`) — the one substitution the operator's brief asked for, because
- * another job re-renders `tc/*.png` tonight and the strip files are not part of that run. Any
- * other variant path (`tc-control.png`, `tc-caption.png`, or one already pointing at the strip)
- * passes through unchanged — nobody asked for those to move. Null when the path is a pose
- * challenger but its note names no pose this function recognises.
- */
-function resolveThumbnailVariant(variantPath: string, note: string | undefined): string | null {
-  if (!/\/tc\/tc-pose\.png$/.test(variantPath)) return variantPath;
-  const pose = POSE_NAMES.find((p) => note?.includes(p));
-  if (!pose) return null;
-  const dir = path.dirname(path.dirname(variantPath));
-  return path.join(dir, `thumbnail.${pose}.png`);
-}
-
 /**
  * Pure transform: approved plan entries into planned `"tc"` `Experiment`s, one per video per
  * kind. Deterministic ids (`tc-thumbnail-<videoId>`, `tc-title-<videoId>`) are the whole
  * idempotency mechanism — `existingIds` is just "what the file already has", no separate dedupe
  * pass. A title variant is run through `titleTestProblem`, the same refusal `startTestAndCompare`
  * applies later, so nothing gets planned that could never be started; an entry with every variant
- * refused is skipped entirely rather than planned with zero challengers.
+ * refused is skipped entirely rather than planned with zero challengers. A title test only ever
+ * gets one challenger arm, the first variant to pass (8 Oct 2026) — Title-only mode's own dialog
+ * has exactly one challenger slot (live + 1, CLAUDE.md's "Phase 2/3" facts), so a plan with more
+ * than one surviving variant would otherwise be planned with an arm `startTestAndCompare` has no
+ * slot to fill. A thumbnail entry's own variant files are used exactly as given — every one of
+ * them is already the final, judged render (`tc-thumbs`'s own output, or a human judge's
+ * approved set), never rewritten to some other file on disk (dropped 8 Oct 2026: the one-off
+ * `tc-pose.png`→strip-file substitution this used to do existed only for a single night's plan
+ * whose `tc/` files were about to be re-rendered out from under it; every plan since stands on
+ * its own files).
  */
 export function planTcExperiments(
   plan: TcPlan,
@@ -215,17 +229,7 @@ export function planTcExperiments(
       skipped.push({ videoId: entry.videoId, kind: "thumbnail", reason: "not approved" });
       continue;
     }
-    const resolved = entry.variants.map((v) => resolveThumbnailVariant(v, entry.note));
-    const unresolvedAt = resolved.indexOf(null);
-    if (unresolvedAt >= 0) {
-      skipped.push({
-        videoId: entry.videoId,
-        kind: "thumbnail",
-        reason: `variant ${unresolvedAt + 1} is a pose challenger under tc/ with no known pose named in its note`,
-      });
-      continue;
-    }
-    const files = resolved as string[];
+    const files = entry.variants;
     if (files.length < 2) {
       skipped.push({ videoId: entry.videoId, kind: "thumbnail", reason: "fewer than 2 variants" });
       continue;
@@ -259,17 +263,21 @@ export function planTcExperiments(
     }
     const rest = entry.live.slice(parts.hook.length + (parts.hook ? SEPARATOR.length : 0));
     const players = [{ nickname: parts.left }, { nickname: parts.right }];
-    const challengers: { name: string; title: string }[] = [];
-    entry.variants.forEach((hook, i) => {
+    // Exactly one challenger — the first variant to pass (see this function's own doc comment).
+    // Every variant is still checked and a failing one still logged, so a bad first suggestion
+    // never silently hides a usable second one; a passing variant past the first is simply not
+    // needed and is neither used nor logged.
+    let challenger: { name: string; title: string } | null = null;
+    for (const hook of entry.variants) {
       const title = `${hook}${SEPARATOR}${rest}`;
       const problem = titleTestProblem(title, players);
       if (problem) {
         skipped.push({ videoId: entry.videoId, kind: "title", reason: `"${hook}": ${problem}` });
-        return;
+        continue;
       }
-      challengers.push({ name: `challenger${i + 1}`, title });
-    });
-    if (challengers.length === 0) continue; // every variant refused; already logged above
+      if (!challenger) challenger = { name: "challenger1", title };
+    }
+    if (!challenger) continue; // every variant refused; already logged above
     added.push({
       id,
       kind: "tc",
@@ -277,7 +285,7 @@ export function planTcExperiments(
       controlArm: "control",
       arms: [
         { name: "control", settings: { title: entry.live } },
-        ...challengers.map((c) => ({ name: c.name, settings: { title: c.title } })),
+        { name: challenger.name, settings: { title: challenger.title } },
       ],
       videos: [{ videoId: entry.videoId, matchId: entry.matchId, arm: "tc" }],
       status: "planned",

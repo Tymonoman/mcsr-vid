@@ -2,17 +2,25 @@
  * `npm run studio -- worker` — a standalone loop (phase 2/3, 8 Oct 2026; CLAUDE.md's "Studio
  * automation" section) that does, on its own, what phase 1 only ever did on the dashboard's
  * nightly tick: add the operator's end-screen template to a long-form that has none, and run
- * Test & Compare experiments the dashboard's (not-yet-merged) experiment engine has planned.
+ * Test & Compare experiments the dashboard's experiment engine has planned.
  *
- * Gated on `config.studioAutomation` exactly like `retryPendingStudio` (src/youtube/youtubeUpload.ts)
- * — the box's own deliberate switch for "a real Chrome is ever allowed to sign into the channel's
- * Google account", on or off, covers this loop too rather than it being a second, ungated way to
- * reach the same browser. See CLAUDE.md for why this gate is load-bearing rather than incidental.
+ * Gated on `opts.enable` (the CLI's own `--enable`, or `STUDIO_WORKER=1`) OR'd with
+ * `config.studioAutomation` — never on `config.studioAutomation` alone (phase 4, 8 Oct 2026). That
+ * flag is also the dashboard's own switch for letting a real Chrome sign into the channel's
+ * Google account from *its* container, which has no Chrome at all, so it must stay `false` there;
+ * the operator's own words, his /goal, 7 Oct 2026: "the automation lives in the dashboard code,
+ * not this session: when the usage limit hits, the channel keeps running" — but *this* loop runs
+ * in the Claude container, started deliberately by a session with `nohup npm run studio --
+ * worker --enable &`, which is the operator's own browser-automation grant exercised directly, not
+ * a second, ungated path to the same browser the dashboard's flag was built to gate. Without
+ * either, a cycle is still a no-op recorded as `"skipped"` — see CLAUDE.md.
  */
+import { spawn } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { config } from "../config.js";
+import { blockedIn, config, matchDir } from "../config.js";
+import { povNicknamesOnDisk } from "../dashboard/matchStatus.js";
 import { describeError } from "../errorText.js";
 import {
   addEndScreenFromTemplate,
@@ -22,7 +30,13 @@ import {
   type TcTest,
 } from "./studioActions.js";
 import { probe, start, type StudioBrowserOptions } from "./studioBrowser.js";
-import { readExperiments, updateTcExperiments, type Experiment } from "./studioExperiments.js";
+import {
+  importTcPlan,
+  readExperiments,
+  updateTcExperiments,
+  type Experiment,
+  type TcPlanThumbEntry,
+} from "./studioExperiments.js";
 import { allUploads, splitTitle } from "./youtubeStore.js";
 
 /** The operator's own end-screen template, set up by hand once (CLAUDE.md, the task's own FACTS). */
@@ -31,6 +45,16 @@ export const END_SCREEN_TEMPLATE_VIDEO_ID = "POQrpE0-5d8";
 export const END_SCREEN_CUTOFF_ISO = "2026-10-07T00:00:00.000Z";
 export const MAX_ENDSCREENS_PER_CYCLE = 3;
 export const MAX_TC_STARTS_PER_CYCLE = 2;
+/** A long-form uploaded by the chain on or after this date gets its own auto-planned thumbnail
+ * Test & Compare (phase 4, 8 Oct 2026) — the day this feature shipped; nothing retroactive. */
+export const THUMBNAIL_TC_CUTOFF_ISO = "2026-10-08T00:00:00.000Z";
+export const MAX_THUMBNAIL_PLANS_PER_CYCLE = 2;
+/** The caption arm only ships in this fully-automated flow when it is this short. A judge reads
+ * every caption in the manual tc-plan.json flow (CLAUDE.md's "Phase 2/3"); nobody reviews this
+ * one before it goes live on real viewers' thumbnails, so the ceiling here is tighter than
+ * tcCaption.ts's own CAPTION_MAX_CHARS (9, the 8 Oct 2026 chip-truth fix) — "a caption is a clean
+ * token or nothing" applies twice over when nobody is there to catch a borderline one. */
+export const AUTO_CAPTION_MAX_CHARS = 6;
 const CYCLE_MS = 20 * 60 * 1000;
 const JITTER_MS = 3 * 60 * 1000;
 
@@ -104,6 +128,7 @@ export interface WorkerHeartbeat {
     endScreenPickerEmpty: number;
     tcStarted: number;
     tcChecked: number;
+    thumbnailTestsPlanned: number;
   } | null;
   /** The first error of the cycle, kept for anything that only ever read this one field. */
   lastError: string | null;
@@ -142,12 +167,19 @@ export interface LongFormRef {
   matchId: number;
   uploadedAt: string;
   privacyStatus: string;
+  /** Absent on a record written before source tracking existed (`UploadRecord.source`,
+   *  youtubeStore.ts) — the auto-thumbnail-test filter below only ever matches `"dashboard"`. */
+  source?: "dashboard" | "studio";
 }
 
 export interface CyclePlan {
   endScreenTargets: LongFormRef[];
   tcToStart: Experiment[];
   tcToCheck: Experiment[];
+  /** New dashboard-chain long-forms with no tc experiment of their own yet (phase 4, 8 Oct
+   *  2026) — `runCycle` renders each one's thumbnail set and plans a "tc" experiment for it,
+   *  which a *later* cycle's own `tcToStart` picks up, never this same cycle's. */
+  thumbnailTcTargets: LongFormRef[];
 }
 
 const utcDate = (d: Date): string => d.toISOString().slice(0, 10);
@@ -167,11 +199,17 @@ function pickerEmptyToday(videoId: string, ledger: StudioLedger, now: Date): boo
   return !!seenAt && utcDate(new Date(seenAt)) === utcDate(now);
 }
 
+/** The real "is this match's own POV footage a blocked runner's" check (CLAUDE.md's "Blocked
+ * players") — `planCycle`'s own default, overridable by a test with a plain stub so the rest of
+ * its logic stays a pure, filesystem-free unit test. */
+const realIsBlocked = (matchId: number): boolean => blockedIn(povNicknamesOnDisk(matchDir(matchId)));
+
 export function planCycle(
   now: Date,
   longForms: readonly LongFormRef[],
   ledger: StudioLedger,
   experiments: readonly Experiment[],
+  isBlocked: (matchId: number) => boolean = realIsBlocked,
 ): CyclePlan {
   const endScreenTargets = longForms
     .filter((v) => !ledger.endScreens[v.videoId])
@@ -183,7 +221,20 @@ export function planCycle(
   const tcToStart = tc.filter((e) => e.status === "planned").slice(0, MAX_TC_STARTS_PER_CYCLE);
   const tcToCheck = tc.filter((e) => e.status === "running" && needsDailyCheck(e, now));
 
-  return { endScreenTargets, tcToStart, tcToCheck };
+  // "no tc experiment yet" (the task's own words) means any kind — Studio only ever runs one
+  // Test & Compare per video at a time anyway, so a video already in a title test is not also
+  // offered a thumbnail one.
+  const alreadyTested = new Set(
+    tc.flatMap((e) => e.videos.map((v) => v.videoId).filter((id): id is string => !!id)),
+  );
+  const thumbnailTcTargets = longForms
+    .filter((v) => v.source === "dashboard")
+    .filter((v) => v.uploadedAt >= THUMBNAIL_TC_CUTOFF_ISO)
+    .filter((v) => !alreadyTested.has(v.videoId))
+    .filter((v) => !isBlocked(v.matchId))
+    .slice(0, MAX_THUMBNAIL_PLANS_PER_CYCLE);
+
+  return { endScreenTargets, tcToStart, tcToCheck, thumbnailTcTargets };
 }
 
 const MINUTES_PER_DAY = 24 * 60;
@@ -254,12 +305,24 @@ async function setExperimentRunning(id: string): Promise<void> {
   );
 }
 
-async function setExperimentChecked(id: string, read: TcReadResult): Promise<void> {
+/**
+ * Records what `readTestAndCompare` saw, for both of its callers: the daily check of an
+ * already-`"running"` experiment (the only caller before 8 Oct 2026), and — since phase 4 —
+ * reconciling a `"planned"` one the `tcToStart` loop below finds *already* running live (started
+ * outside this bookkeeping entirely, e.g. a manual `npm run studio -- tc` CLI press before the
+ * experiment ever existed — exactly LUI5E7yF0zE's own history). Either way, `"running"`/`"done"`
+ * read off the real page always wins over whatever status this experiment already had — a
+ * `"planned"` experiment is promoted to `"running"` (with a `start` it may not have had yet)
+ * rather than left `"planned"` with no indication Studio has already started it, which would
+ * otherwise never again be picked up by `tcToCheck`'s own `status === "running"` filter.
+ */
+export async function setExperimentChecked(id: string, read: TcReadResult): Promise<void> {
   const checkedAt = new Date().toISOString();
   await updateTcExperiments((tc) =>
     tc.map((e) => {
       if (e.id !== id) return e;
-      if (read.state !== "done") return { ...e, result: { checkedAt, raw: read.raw } };
+      if (read.state !== "done")
+        return { ...e, status: "running", start: e.start ?? checkedAt, result: { checkedAt, raw: read.raw } };
       return {
         ...e,
         status: "done",
@@ -273,6 +336,48 @@ async function setExperimentChecked(id: string, read: TcReadResult): Promise<voi
   );
 }
 
+interface TcThumbResult {
+  matchId: number;
+  files: string[];
+  caption: string | null;
+}
+
+/**
+ * Spawns the existing `npm run tc-thumbs` (src/thumbnails/tcThumbs.ts) for one match — reused
+ * rather than reimplemented, the same way `startFastExport` (src/dashboard/exportRoutes.ts)
+ * shells out to `npm run export:fast` for its own heavy render instead of calling into it as a
+ * library. Its own logic already gives exactly what the task asks for: control + the
+ * most-different non-result-looking pose + a caption only when one passes its checks — this
+ * worker adds nothing on top except, in `runCycle`, dropping the caption arm when it is longer
+ * than `AUTO_CAPTION_MAX_CHARS`.
+ */
+function renderTcThumbSet(matchId: number): Promise<TcThumbResult | { error: string }> {
+  return new Promise((resolve) => {
+    const proc = spawn("npm", ["run", "--silent", "tc-thumbs", "--", String(matchId)], {
+      cwd: path.resolve(new URL("../..", import.meta.url).pathname),
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let out = "";
+    let err = "";
+    proc.stdout.on("data", (d: Buffer) => (out += d));
+    proc.stderr.on("data", (d: Buffer) => (err += d));
+    proc.on("error", (e) => resolve({ error: describeError(e) }));
+    proc.on("close", (code) => {
+      if (code !== 0) {
+        resolve({ error: `tc-thumbs exit ${code}: ${err.slice(-500) || "(no stderr)"}` });
+        return;
+      }
+      try {
+        const results = JSON.parse(out) as TcThumbResult[];
+        const result = results.find((r) => r.matchId === matchId);
+        resolve(result ?? { error: "tc-thumbs produced no result for this match" });
+      } catch (parseErr) {
+        resolve({ error: `tc-thumbs output did not parse as JSON: ${describeError(parseErr)}` });
+      }
+    });
+  });
+}
+
 export interface CycleResult {
   probe: string;
   endScreensAdded: number;
@@ -280,6 +385,10 @@ export interface CycleResult {
   endScreenPickerEmpty: number;
   tcStarted: number;
   tcChecked: number;
+  /** New dashboard long-forms whose thumbnail set got rendered and a "tc" experiment planned for
+   *  this cycle (phase 4, 8 Oct 2026) — distinct from `tcStarted`, since the plan always waits for
+   *  a *later* cycle's own `tcToStart` (see `CyclePlan.thumbnailTcTargets`'s own comment). */
+  thumbnailTestsPlanned: number;
   errors: string[];
 }
 
@@ -289,6 +398,7 @@ const SKIPPED_RESULT: CycleResult = {
   endScreenPickerEmpty: 0,
   tcStarted: 0,
   tcChecked: 0,
+  thumbnailTestsPlanned: 0,
   errors: [],
 };
 
@@ -300,9 +410,9 @@ const SKIPPED_RESULT: CycleResult = {
  * `.studio-probe.json` for the nightly strip to read.
  */
 export async function runCycle(
-  opts: { dryRun?: boolean; startOpts?: StudioBrowserOptions } = {},
+  opts: { dryRun?: boolean; startOpts?: StudioBrowserOptions; enable?: boolean } = {},
 ): Promise<CycleResult> {
-  if (!config.studioAutomation) return SKIPPED_RESULT;
+  if (!opts.enable && !config.studioAutomation) return SKIPPED_RESULT;
 
   const errors: string[] = [];
   const handle = await start(opts.startOpts);
@@ -321,6 +431,7 @@ export async function runCycle(
       matchId,
       uploadedAt: record.uploadedAt,
       privacyStatus: record.privacyStatus,
+      source: record.source,
     }));
     const ledger = await readLedger();
     const experimentsFile = await readExperiments();
@@ -355,10 +466,22 @@ export async function runCycle(
     }
 
     let tcStarted = 0;
+    let tcChecked = 0;
     for (const exp of plan.tcToStart) {
       const video = exp.videos[0];
       if (!video?.videoId) {
         errors.push(`${exp.id}: no videoId on the experiment yet`);
+        continue;
+      }
+      // A test can already be running on the real page — started outside this bookkeeping
+      // entirely (a manual `npm run studio -- tc` CLI press before this experiment ever existed,
+      // exactly LUI5E7yF0zE's own history, phase 4 8 Oct 2026). Reconcile ground truth rather
+      // than ever call startTestAndCompare a second time on it, which Studio refuses anyway (see
+      // its own "a test may already be set up" error below).
+      const existing = await readTestAndCompare(handle, video.videoId);
+      if (!("error" in existing) && existing.state !== "none") {
+        await setExperimentChecked(exp.id, existing);
+        tcChecked++;
         continue;
       }
       const test = testFor(exp);
@@ -383,7 +506,6 @@ export async function runCycle(
       }
     }
 
-    let tcChecked = 0;
     for (const exp of plan.tcToCheck) {
       const video = exp.videos[0];
       if (!video?.videoId) continue;
@@ -397,7 +519,44 @@ export async function runCycle(
       tcChecked++;
     }
 
-    return { probe: probed.result, endScreensAdded, endScreenPickerEmpty, tcStarted, tcChecked, errors };
+    // New dashboard long-forms get a thumbnail Test & Compare planned for them automatically
+    // (phase 4, 8 Oct 2026) — rendering is heavy (ffmpeg SSIM + a Remotion still) but touches no
+    // Studio page at all, so it needs no browser session of its own; it rides along in this one
+    // only because `runCycle` already has one open. Skipped under `--dry-run`: unlike everything
+    // above, there is no "stop right before the last click" point to fall back on here — the
+    // render and the `.experiments.json` write are the whole action, so a dry run simply does
+    // neither, exactly as `--dry-run` promises elsewhere in this file.
+    let thumbnailTestsPlanned = 0;
+    if (!opts.dryRun) {
+      for (const target of plan.thumbnailTcTargets) {
+        const rendered = await renderTcThumbSet(target.matchId);
+        if ("error" in rendered) {
+          errors.push(`thumbnail tc ${target.videoId}: ${rendered.error}`);
+          continue;
+        }
+        const includeCaption = rendered.caption !== null && rendered.caption.length <= AUTO_CAPTION_MAX_CHARS;
+        const files = includeCaption ? rendered.files : rendered.files.slice(0, 2);
+        const entry: TcPlanThumbEntry = {
+          matchId: target.matchId,
+          videoId: target.videoId,
+          variants: files,
+          approved: true,
+        };
+        const { added, skipped } = await importTcPlan({ thumbnails: [entry] });
+        if (added.length) thumbnailTestsPlanned++;
+        for (const s of skipped) errors.push(`thumbnail tc ${s.videoId}: ${s.reason}`);
+      }
+    }
+
+    return {
+      probe: probed.result,
+      endScreensAdded,
+      endScreenPickerEmpty,
+      tcStarted,
+      tcChecked,
+      thumbnailTestsPlanned,
+      errors,
+    };
   } finally {
     await handle.stop();
   }
@@ -415,10 +574,10 @@ function jitteredDelayMs(): number {
  * Runs cycles forever (or once, with `--once`), human-paced between videos within a cycle
  * (`randomPause` in `studioActions.ts`) and ~20 min ± 3 min between cycles. Never runs inside
  * `inBlackoutWindow` — that cycle is recorded as `"skipped"` and the loop waits for the next one
- * rather than busy-poll the clock.
+ * rather than busy-poll the clock. `opts.enable` is this module's own top-of-file comment's gate.
  */
 export async function runWorker(
-  opts: { once?: boolean; dryRun?: boolean; startOpts?: StudioBrowserOptions } = {},
+  opts: { once?: boolean; dryRun?: boolean; startOpts?: StudioBrowserOptions; enable?: boolean } = {},
 ): Promise<void> {
   for (;;) {
     const now = new Date();
@@ -427,7 +586,7 @@ export async function runWorker(
       result = SKIPPED_RESULT;
     } else {
       try {
-        result = await runCycle({ dryRun: opts.dryRun, startOpts: opts.startOpts });
+        result = await runCycle({ dryRun: opts.dryRun, startOpts: opts.startOpts, enable: opts.enable });
       } catch (err) {
         result = { ...SKIPPED_RESULT, probe: "error", errors: [describeError(err)] };
       }
@@ -442,6 +601,7 @@ export async function runWorker(
         endScreenPickerEmpty: result.endScreenPickerEmpty,
         tcStarted: result.tcStarted,
         tcChecked: result.tcChecked,
+        thumbnailTestsPlanned: result.thumbnailTestsPlanned,
       },
       lastError: result.errors[0] ?? null,
       lastErrors: result.errors,
