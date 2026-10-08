@@ -36,7 +36,7 @@
  */
 import { readFile } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
-import { readUpload, videoIdOwner } from "./youtubeStore.js";
+import { readUpload, resolveShortVideoId, videoIdOwner } from "./youtubeStore.js";
 import {
   addEndScreenFromTemplate,
   checkRelatedVideoPicker,
@@ -233,26 +233,17 @@ async function workerCmd(): Promise<void> {
 /** `related`'s own target resolution: a Short, by match id (its recorded `youtube-short.json`)
  * or by its video id directly — mirrors `resolveVideo` above, but reads the short record, not
  * the long-form's (there is no shared helper for "which kind" because every other command here
- * only ever means the long-form). */
+ * only ever means the long-form). The actual kind check — refusing a long-form id pasted or
+ * swapped in where a Short's was expected — lives in `youtubeStore.ts`'s `resolveShortVideoId`,
+ * where it has a real unit test; this is just the CLI's exit-on-error wrapper around it. */
 async function resolveShort(target: string | undefined): Promise<{ matchId: number; shortId: string }> {
   if (!target) usage();
-  if (/^\d+$/.test(target)) {
-    const matchId = Number(target);
-    const record = await readUpload(matchId, "short");
-    if (!record) {
-      console.error(`match ${matchId} has no recorded Short upload (youtube-short.json) — nothing to do`);
-      process.exit(1);
-    }
-    return { matchId, shortId: record.videoId };
-  }
-  const owner = await videoIdOwner(target);
-  if (!owner) {
-    console.error(
-      `${target} is not a known video id (no match records it in youtube.json/youtube-short.json)`,
-    );
+  const resolved = await resolveShortVideoId(target);
+  if ("error" in resolved) {
+    console.error(resolved.error);
     process.exit(1);
   }
-  return { matchId: owner.matchId, shortId: target };
+  return resolved;
 }
 
 async function relatedCmd(shortTarget: string | undefined, longFormId: string | undefined): Promise<void> {
