@@ -166,9 +166,13 @@ try {
     <style>button,div,input,ytcp-ab-test-dialog,ytcp-video-pick-dialog{display:block;padding:2px;}</style>
     <button id="endscreen-editor-link" role="button">End screen</button>
     <button id="ab-test-button" aria-label="A/B Testing">A/B Testing</button>
-    <div id="dialog-root"></div>
+    <!-- Page-level Save placed BEFORE dialog-root, same DOM order as the real page
+         (s7r-endscreen-open.json: the page's own #save sits before the editor's own #save-button) —
+         a reversion to a plain text-based Save selector plus .first() would click this one, not
+         the editor's, and this fixture would catch it (the regression fixed 8 Oct 2026). -->
     <button id="save" onclick="window.__tcSaved=true;document.getElementById('saved-msg').style.display='block'">Save</button>
     <div id="saved-msg" style="display:none">Changes saved</div>
+    <div id="dialog-root"></div>
     <script>
       window.__state = ${JSON.stringify(uiState)};
       window.__endscreenSaved = false;
@@ -179,14 +183,17 @@ try {
         // Live run, 8 Oct 2026: the real End Screens editor has no aria-label="Close" element
         // at all (DOM-inspected, not a guess) — "Discard changes" is the confirmed "panel is
         // open" signal addEndScreenFromTemplate now waits on, so this fixture leaves Close out.
+        // id="save-button"/"discard-button" mirror the real page's own ytcp-button wrapper ids
+        // (s7r-endscreen-open.json) — distinct from the page-level #save button below, which a
+        // plain text match alone cannot tell apart (the regression this fixture now guards).
         const hasElements = window.__state.endScreenHasElements;
         document.getElementById("dialog-root").innerHTML =
           '<div><span>End Screens</span>' +
           (hasElements
             ? '<div>existing elements</div>'
             : '<div>1 video, 1 subscribe</div><button onclick="openPicker()">Import from video</button>') +
-          '<button onclick="closeDialog()">Discard changes</button>' +
-          '<button onclick="window.__endscreenSaved=true;closeDialog()">Save</button></div>';
+          '<button id="discard-button" onclick="closeDialog()">Discard changes</button>' +
+          '<button id="save-button" onclick="window.__endscreenSaved=true;closeDialog()">Save</button></div>';
       }
       function openPicker() {
         document.getElementById("dialog-root").innerHTML +=
@@ -263,7 +270,15 @@ try {
   const realImport = await addEndScreenFromTemplate(handle, "vidE4", "POQrpE0-5d8", { matchId });
   assert.equal(realImport, "imported");
   assert.equal(await page.evaluate("window.__endscreenSaved"), true);
-  console.log("OK: a real run clicks all the way through to Save");
+  // The regression this guards: the page-level #save (DOM-first, same order as the real page)
+  // must be left untouched — an id-scoped click, not a `.first()` guess across two same-text
+  // buttons.
+  assert.equal(
+    await page.evaluate("window.__tcSaved"),
+    false,
+    "must click the end-screen editor's own Save (#save-button), not the page-level #save",
+  );
+  console.log("OK: a real run clicks the editor's own Save, scoped by id, not the page-level Save");
 
   // startTestAndCompare: refuses before this point are covered by studioWorker.test.ts (a poisoned
   // handle that never reaches a page at all); here the dialog is real, so this is the rest of the

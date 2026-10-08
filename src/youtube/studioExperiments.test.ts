@@ -10,7 +10,9 @@ import {
   importTcPlan,
   planTcExperiments,
   readExperiments,
+  updateTcExperiments,
   writeExperiments,
+  type Experiment,
   type ExperimentsFile,
   type TcPlan,
 } from "./studioExperiments.js";
@@ -171,6 +173,30 @@ function thumbPlan(): TcPlan {
   const stillTwo = await readExperiments();
   assert.equal(stillTwo.experiments.length, 2);
   console.log("OK: re-importing the same plan writes nothing new to disk");
+}
+
+// 5. updateTcExperiments is a cross-process-safe critical section: two concurrent callers (the
+// standalone worker and a one-off CLI invocation run alongside it, in this process modelled as
+// two concurrent calls) each adding their own experiment must both land — neither read-merge-write
+// may interleave with the other and silently drop one caller's addition.
+{
+  await writeExperiments({ experiments: [], schedule: [] });
+  const expOf = (id: string): Experiment => ({
+    id,
+    kind: "tc",
+    arms: [{ name: "control" }],
+    videos: [],
+    status: "planned",
+  });
+  await Promise.all([
+    updateTcExperiments((tc) => [...tc, expOf("race-a")]),
+    updateTcExperiments((tc) => [...tc, expOf("race-b")]),
+  ]);
+  const after = await readExperiments();
+  const ids = after.experiments.map((e) => e.id);
+  assert.ok(ids.includes("race-a") && ids.includes("race-b"), `both concurrent writes must land, got ${ids}`);
+  assert.equal(after.experiments.length, 2, "neither write may be lost to the other");
+  console.log("OK: two concurrent updateTcExperiments calls serialize — neither one's write is lost");
 }
 
 console.log("studioExperiments: all checks passed");

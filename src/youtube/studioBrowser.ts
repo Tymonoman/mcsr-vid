@@ -287,6 +287,41 @@ export async function probe(
   return { result, url, title };
 }
 
+/**
+ * Starts Chrome and probes Studio; stops Chrome and returns null on anything but `ok` (a failed
+ * probe is already recorded on disk by `probe()` itself, `readLastProbe()`) — the one "stop,
+ * don't guess" gate every single-video CLI command shares (`studioCli.ts`'s `pin`/`endscreen`/
+ * `tc`/`tc-read`). `deps` is for testing without a real browser.
+ *
+ * Regression fixed 8 Oct 2026: this used to be a `studioCli.ts`-local helper that called `start()`
+ * then `probe(handle)` with no try/catch of its own, trusting that every caller's own
+ * `try { ... } finally { await handle.stop(); }` around the *returned* handle would cover it —
+ * but that finally only ever runs once this function has already returned a handle. A `goto`
+ * timeout or a crashed renderer inside `probe()` threw straight out of this function instead,
+ * before any handle reached a caller's try/finally, leaking Chrome+Xvfb and holding the
+ * profile's `SingletonLock` until something killed it by hand — wedging every later Studio job,
+ * including the unattended worker's own `start()` calls, on "Chrome is already running against
+ * <profile>". Catching the throw here and stopping before rethrowing is the fix.
+ */
+export async function startAndProbe(
+  opts: StudioBrowserOptions = {},
+  deps: { start: typeof start; probe: typeof probe } = { start, probe },
+): Promise<StudioHandle | null> {
+  const handle = await deps.start(opts);
+  let probed: Awaited<ReturnType<typeof probe>>;
+  try {
+    probed = await deps.probe(handle);
+  } catch (err) {
+    await handle.stop();
+    throw err;
+  }
+  if (probed.result !== "ok") {
+    await handle.stop();
+    return null;
+  }
+  return handle;
+}
+
 /** `studio-<label>-<UTC timestamp>.png` into the match directory — the record of what a Studio
  * action actually saw. */
 export async function shot(handle: StudioHandle, matchId: number, label: string): Promise<string> {

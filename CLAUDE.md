@@ -1059,6 +1059,51 @@ confirmed 8 Oct) is actually a reliable "no test already running" signal rather 
 dialog opened". Confirm the picker row the day the account-scoping bug is fixed, and the "already
 running" signal against a second video while LUI5E7yF0zE's own test is still live.
 
+**Review fixes, 8 Oct 2026** (branch `studio-p23`): `studioCli.ts`'s own `startAndProbe` used to
+call `start()` then `probe(handle)` with no try/catch of its own, trusting a caller's later
+`try { ... } finally { await handle.stop(); }` around the handle it would *return* — but a `goto`
+timeout or crashed renderer inside `probe()` threw straight out of it first, before any handle
+reached that finally, leaking Chrome+Xvfb and holding the profile's `SingletonLock` until
+something killed it by hand (wedging every later Studio job, the unattended worker's own cycles
+included, on "Chrome is already running against \<profile\>"). The fixed version now lives in
+`studioBrowser.ts` itself (`startAndProbe`, injectable `start`/`probe` for a real unit test,
+`studioBrowser.test.ts`), stopping on a throw the same way it already did on a non-`ok` result;
+`studioCli.ts` wraps it only for the console/exit-code text, read back off `readLastProbe()`.
+`inBlackoutWindow` read two hardcoded constants (02:50-04:30 UTC) instead of
+`config.nightlyRenderHourUtc` — a Settings-tab change to the render hour, or a chained render
+under `nightlyMaxRenders` running past 04:30, could desync the two and let Chrome and ffmpeg
+contend for the lab's four cores after all. It now derives the window from the live config value
+(10 min lead-in through the 4h chain window `nightlyMaxRenders` can use plus a 30 min finish
+buffer — 02:50-07:30 at the default hour; `null` disables the blackout with the nightly).
+`endscreenSaveButton`/`endscreenDiscardButton` were a plain `button:has-text("Save")`/
+`"Discard changes")`, picked with `.first()` with nothing to say *which* "Save" that would
+resolve to on a page the end-screen editor shares with the Details page's own `#save` — rereading
+the 7 Oct exploration's own raw DOM dump (`s7r-endscreen-open.json`) found the answer already
+sitting in it: the page's two "Save"-labelled `<button>`s are each wrapped in a `ytcp-button` with
+its own id, `#save` (page-level, confirmed as `pageSaveButton`) and `#save-button` (the editor's
+own, paired with `#discard-button`) — and in DOM order the page-level one comes *first*, so
+`.first()` would have clicked the wrong button the moment a real end screen ever got this far.
+Both selectors are now the confirmed ids; `studioActions.test.ts`'s fixture was reordered to match
+the real page's own DOM order (page `#save` before the dialog) specifically so a reversion to the
+old text-based `.first()` guess fails the test instead of passing by the fixture's own coincidence.
+The worker's `"picker-empty"` outcome (the account-scoping bug, confirmed daily) was invisible on
+the heartbeat — `endScreensAdded: 0` with no error looked identical to "nothing to do" — and retried
+every ~20 min cycle for as long as the bug lasts, screenshotting each time; `.studio-ledger.json`
+now also tracks `pickerEmptySeen` (once-a-day retry, same shape as a Test & Compare's own daily
+check) and the heartbeat's `lastCycle.endScreenPickerEmpty` makes the standing bug visible rather
+than silent. `writeHeartbeat` kept only `errors[0]`; it now also carries the whole cycle's
+`lastErrors`. `.experiments.json`'s read-merge-write (`updateTcExperiments`) is reached from two
+separate OS processes — this worker's own cycles and a one-off CLI invocation run alongside it —
+unlike the rest of this codebase's read-merge-write files, which lean on "there is only ever one
+dashboard process"; unguarded, two concurrent writers did not just lose an update, they crashed
+outright (`writeExperiments`'s shared `.experiments.json.tmp` name means the second caller's own
+`rename` hits an `ENOENT`, confirmed by temporarily removing the lock and running
+`studioExperiments.test.ts`'s new concurrency check). `updateTcExperiments` now serializes through
+a `wx`-flag lockfile (`withExperimentsLock`, `.experiments.json.lock`, stale after 30 s) — a plain
+mutex, not a true cross-platform advisory lock (ponytail: good enough for two cooperating
+processes on one filesystem; `src/dashboard/experiments.ts`, merged into `main` since this branch
+split off it but not onto this branch, would need to honour the same lockfile to be covered too).
+
 ## Clips (prototype)
 
 For a video that is not a match — a stream statement, a reaction, something worth posting on the

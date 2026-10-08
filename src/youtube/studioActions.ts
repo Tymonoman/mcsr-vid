@@ -48,8 +48,17 @@ const SELECTORS = {
   // Unconfirmed: no picker search here ever returned a result to click (see the exploration's own
   // "Finding" — the picker's creator-API call resolves to the wrong channel on this profile).
   endscreenPickerRow: 'ytcp-video-pick-dialog ytcp-video-row, ytcp-video-pick-dialog [role="option"]',
-  endscreenSaveButton: 'button:has-text("Save")',
-  endscreenDiscardButton: 'button:has-text("Discard changes")',
+  // Confirmed live 8 Oct 2026 from the raw DOM dump the 7 Oct exploration already took
+  // (`s7r-endscreen-open.json` and its two picker-state siblings): a plain `button:has-text("Save")`
+  // matches TWO elements on this page, not one — the Details page's own page-level Save (also
+  // reachable as `pageSaveButton`, `#save`) sits in the DOM *before* the end-screen editor's own,
+  // so `.first()` on that text selector would have clicked the wrong one, silently saving nothing
+  // the import had actually done. The dump's `ytcp-button` wrapper elements carry real ids the
+  // plain `<button>` elements captured alongside them do not: `#save-button`/`#discard-button` are
+  // the editor's own, distinct from the page-level `#save`/`#discard` ("Undo changes") — unique in
+  // every captured state (the editor just opened, the picker open with and without results).
+  endscreenSaveButton: "#save-button",
+  endscreenDiscardButton: "#discard-button",
   // Confirmed live 8 Oct 2026 (LUI5E7yF0zE): the A/B Testing dialog's own Close is a
   // ytcp-icon-button, not a <button> — the plain `button[aria-label="Close"]` form never matched
   // it at all, so `.first()` kept resolving to one of the other, unrelated, hidden Close buttons
@@ -232,7 +241,10 @@ export async function addEndScreenFromTemplate(
     // wait on `dialogClose` here timed out every time, editor open or not. "Discard changes" is
     // confirmed live instead (`SELECTORS.endscreenDiscardButton`, already this function's own
     // cleanup click below) — present the moment the panel opens.
-    await page.locator(SELECTORS.endscreenDiscardButton).first().waitFor({ state: "visible", timeout: 15_000 });
+    await page
+      .locator(SELECTORS.endscreenDiscardButton)
+      .first()
+      .waitFor({ state: "visible", timeout: 15_000 });
     await shot(handle, opts.matchId, "endscreen-opened");
 
     const empty = await page

@@ -4,9 +4,21 @@
  * "tc"` entries back into it (read-merge-write, atomic write-then-rename): a `between` entry, or
  * any field on the file this module does not know about, is passed through untouched — it is
  * someone else's data that happens to share this file.
+ *
+ * `updateTcExperiments` is this module's own read-merge-write entry point, and it is reached
+ * from two separate OS processes (the standalone `npm run studio -- worker`'s own cycles, and a
+ * one-off `tc-plan`/`endscreen`/`tc` CLI invocation run alongside it) — unlike every other
+ * read-merge-write file in this codebase (`.dashboard.json`, `short-<id>.status.json`, …), which
+ * this repo's own convention leans on "there is only ever one dashboard process" for. That
+ * assumption does not hold here, so a write landing between another writer's read and write
+ * would otherwise be silently lost. `withExperimentsLock` below is a plain `wx`-flag lockfile,
+ * not a true cross-platform advisory lock — ponytail: good enough for two cooperating processes
+ * on one filesystem; upgrade to a real lock (or a version/hash compare-and-swap before the
+ * rename) if a third writer that does not honour this lockfile shows up (CLAUDE.md's review
+ * note, 8 Oct 2026).
  */
 import { existsSync, mkdirSync } from "node:fs";
-import { readFile, rename, writeFile } from "node:fs/promises";
+import { open, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { config } from "../config.js";
 import { SEPARATOR } from "../pipeline/title.js";
@@ -73,21 +85,67 @@ export async function writeExperiments(file: ExperimentsFile): Promise<void> {
   await rename(tmp, target);
 }
 
+const lockPath = (): string => `${filePath()}.lock`;
+const LOCK_RETRY_MS = 50;
+const LOCK_TIMEOUT_MS = 10_000;
+/** A read-merge-write here never takes anywhere near this long; a lock still held this long is a
+ * crashed holder's leftover, not a slow one's, so it is safe to break. */
+const LOCK_STALE_MS = 30_000;
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Cross-process mutex for `.experiments.json`'s read-merge-write, so this worker process and a
+ * one-off CLI invocation run alongside it cannot interleave a read and a write and silently lose
+ * one of them (see this module's own top-of-file comment). An exclusive `wx` create is the lock;
+ * a stale one (its holder crashed mid-section, never reaching the `finally` below) is broken and
+ * retried rather than wedging every future write forever.
+ */
+async function withExperimentsLock<T>(fn: () => Promise<T>): Promise<T> {
+  mkdirSync(config.mediaDir, { recursive: true });
+  const lock = lockPath();
+  const deadline = Date.now() + LOCK_TIMEOUT_MS;
+  for (;;) {
+    try {
+      const fh = await open(lock, "wx");
+      await fh.close();
+      break;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+      const age = Date.now() - (await stat(lock).catch(() => ({ mtimeMs: Date.now() }))).mtimeMs;
+      if (age > LOCK_STALE_MS) {
+        await unlink(lock).catch(() => {});
+        continue;
+      }
+      if (Date.now() > deadline) throw new Error(`${lock}: timed out waiting for the experiments-file lock`);
+      await sleep(LOCK_RETRY_MS);
+    }
+  }
+  try {
+    return await fn();
+  } finally {
+    await unlink(lock).catch(() => {});
+  }
+}
+
 /**
  * Read-merge-write for the `tc` entries only: `mutate` sees just the current `tc` list and
  * returns the list it wants written back; every `between` entry and every other top-level field
  * the file already carries passes through unchanged, so a caller here can never drop data it did
- * not ask to touch.
+ * not ask to touch. The whole read-merge-write is one critical section (`withExperimentsLock`),
+ * so a concurrent call — in this process or another — waits rather than racing it.
  */
 export async function updateTcExperiments(
   mutate: (tc: Experiment[]) => Experiment[],
 ): Promise<ExperimentsFile> {
-  const file = await readExperiments();
-  const tc = file.experiments.filter((e) => e.kind === "tc");
-  const other = file.experiments.filter((e) => e.kind !== "tc");
-  const next: ExperimentsFile = { ...file, experiments: [...other, ...mutate(tc)] };
-  await writeExperiments(next);
-  return next;
+  return withExperimentsLock(async () => {
+    const file = await readExperiments();
+    const tc = file.experiments.filter((e) => e.kind === "tc");
+    const other = file.experiments.filter((e) => e.kind !== "tc");
+    const next: ExperimentsFile = { ...file, experiments: [...other, ...mutate(tc)] };
+    await writeExperiments(next);
+    return next;
+  });
 }
 
 export interface TcPlanThumbEntry {

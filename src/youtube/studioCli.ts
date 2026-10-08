@@ -35,7 +35,13 @@ import {
   startTestAndCompare,
   type TcTest,
 } from "./studioActions.js";
-import { probe, start, type StudioHandle } from "./studioBrowser.js";
+import {
+  probe,
+  readLastProbe,
+  start,
+  startAndProbe as startAndProbeShared,
+  type StudioHandle,
+} from "./studioBrowser.js";
 import { finishLogin, startLogin } from "../dashboard/studioLogin.js";
 import { importTcPlan, type TcPlan } from "./studioExperiments.js";
 import { END_SCREEN_TEMPLATE_VIDEO_ID, runWorker } from "./studioWorker.js";
@@ -89,16 +95,16 @@ async function resolveVideo(target: string | undefined): Promise<{ matchId: numb
   return { matchId: owner.matchId, videoId: target };
 }
 
-/** Starts Chrome and probes Studio; prints and returns null on anything but `ok` (stopping Chrome
- * first), so every single-video command below shares one "stop, don't guess" gate. */
+/** Prints and returns null on anything but `ok`; the actual start-probe-stop-on-failure shape
+ * lives in `studioBrowser.ts` (`startAndProbe`), shared with anything else that wants it, and
+ * fixed there 8 Oct 2026 to stop Chrome when `probe()` itself throws, not only on a non-`ok`
+ * result — this CLI-local wrapper used to be the leaky version; see that function's own comment. */
 async function startAndProbe(): Promise<StudioHandle | null> {
-  const handle = await start(startOpts);
-  const probed = await probe(handle);
-  if (probed.result !== "ok") {
-    console.error(`Studio ${probed.result}: ${probed.title} (${probed.url})`);
+  const handle = await startAndProbeShared(startOpts);
+  if (!handle) {
+    const last = readLastProbe();
+    console.error(last ? `Studio ${last.result}: ${last.message}` : "Studio probe failed");
     process.exitCode = 1;
-    await handle.stop();
-    return null;
   }
   return handle;
 }
@@ -125,7 +131,10 @@ async function endscreenCmd(target: string | undefined): Promise<void> {
   const handle = await startAndProbe();
   if (!handle) return;
   try {
-    const outcome = await addEndScreenFromTemplate(handle, videoId, END_SCREEN_TEMPLATE_VIDEO_ID, { matchId, dryRun });
+    const outcome = await addEndScreenFromTemplate(handle, videoId, END_SCREEN_TEMPLATE_VIDEO_ID, {
+      matchId,
+      dryRun,
+    });
     if (typeof outcome === "object") {
       console.error(`error: ${outcome.error}`);
       process.exitCode = 1;
@@ -137,10 +146,15 @@ async function endscreenCmd(target: string | undefined): Promise<void> {
   }
 }
 
-async function tcCmd(target: string | undefined, kind: string | undefined, variants: string[]): Promise<void> {
+async function tcCmd(
+  target: string | undefined,
+  kind: string | undefined,
+  variants: string[],
+): Promise<void> {
   if (kind !== "title" && kind !== "thumbnail") usage();
   const { matchId, videoId } = await resolveVideo(target);
-  const test: TcTest = kind === "title" ? { kind: "title", titles: variants } : { kind: "thumbnail", files: variants };
+  const test: TcTest =
+    kind === "title" ? { kind: "title", titles: variants } : { kind: "thumbnail", files: variants };
   const handle = await startAndProbe();
   if (!handle) return;
   try {

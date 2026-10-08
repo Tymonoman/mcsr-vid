@@ -13,6 +13,7 @@ import type { Experiment } from "./studioExperiments.js";
 import {
   inBlackoutWindow,
   markEndScreenDone,
+  markPickerEmptySeen,
   planCycle,
   playersFor,
   readHeartbeat,
@@ -37,15 +38,31 @@ config.mediaDir = media;
     { videoId: "e", matchId: 5, uploadedAt: "2026-10-09T01:00:00.000Z", privacyStatus: "private" },
     { videoId: "f", matchId: 6, uploadedAt: "2026-10-10T01:00:00.000Z", privacyStatus: "private" },
   ];
-  const ledger: StudioLedger = { endScreens: { a: { at: "x", matchId: 1 } } };
+  const ledger: StudioLedger = {
+    endScreens: { a: { at: "x", matchId: 1 } },
+    pickerEmptySeen: { b: "2026-10-11T00:00:01.000Z" },
+  };
   const plan = planCycle(new Date("2026-10-11T12:00:00.000Z"), longForms, ledger, []);
   const ids = plan.endScreenTargets.map((t) => t.videoId);
   assert.ok(!ids.includes("a"), "already in the ledger — must not be offered again");
   assert.ok(!ids.includes("d"), "old and private — neither condition holds");
-  assert.ok(ids.includes("b"), "uploaded on/after the cutoff, even while private");
+  assert.ok(!ids.includes("b"), "already hit the picker-empty bug earlier today — not retried this same day");
   assert.ok(ids.includes("c"), "old but public");
+  assert.ok(
+    ids.includes("e"),
+    "uploaded on/after the cutoff — b's exclusion must not shrink the cap below 3",
+  );
   assert.equal(plan.endScreenTargets.length, 3, `capped at 3 per cycle, got ${ids.join(",")}`);
   console.log("OK: end-screen candidates are ledger-filtered, cutoff-or-public, capped at 3");
+
+  // A picker-empty seen on an earlier UTC day is offered again — the bug may be fixed by then.
+  const yesterday: StudioLedger = { endScreens: {}, pickerEmptySeen: { b: "2026-10-10T00:00:01.000Z" } };
+  const plan2 = planCycle(new Date("2026-10-11T12:00:00.000Z"), longForms, yesterday, []);
+  assert.ok(
+    plan2.endScreenTargets.map((t) => t.videoId).includes("b"),
+    "a picker-empty from a previous UTC day is retried",
+  );
+  console.log("OK: a picker-empty candidate is retried on a later UTC day, not blocked forever");
 }
 
 // --- planCycle: Test & Compare starts and daily checks ----------------------------------------
@@ -82,7 +99,7 @@ config.mediaDir = media;
     running("r3"), // never checked — due
     between,
   ];
-  const plan = planCycle(now, [], { endScreens: {} }, experiments);
+  const plan = planCycle(now, [], { endScreens: {}, pickerEmptySeen: {} }, experiments);
   assert.deepEqual(
     plan.tcToStart.map((e) => e.id),
     ["p1", "p2"],
@@ -99,13 +116,34 @@ config.mediaDir = media;
   );
 }
 
-// --- inBlackoutWindow ------------------------------------------------------------------------
+// --- inBlackoutWindow --------------------------------------------------------------------------
 {
-  assert.equal(inBlackoutWindow(new Date("2026-10-11T02:49:00.000Z")), false);
-  assert.equal(inBlackoutWindow(new Date("2026-10-11T02:50:00.000Z")), true);
-  assert.equal(inBlackoutWindow(new Date("2026-10-11T04:30:00.000Z")), true);
-  assert.equal(inBlackoutWindow(new Date("2026-10-11T04:31:00.000Z")), false);
-  console.log("OK: the 02:50-04:30 UTC blackout window's edges are inclusive/exclusive as expected");
+  // Default hour (3 UTC): 10 min lead-in, through the 4h chain window plus a 30 min finish
+  // buffer — 02:50 through 07:30 UTC inclusive.
+  assert.equal(inBlackoutWindow(new Date("2026-10-11T02:49:00.000Z"), 3), false);
+  assert.equal(inBlackoutWindow(new Date("2026-10-11T02:50:00.000Z"), 3), true);
+  assert.equal(inBlackoutWindow(new Date("2026-10-11T07:30:00.000Z"), 3), true);
+  assert.equal(inBlackoutWindow(new Date("2026-10-11T07:31:00.000Z"), 3), false);
+  console.log("OK: the default hour's blackout window (02:50-07:30 UTC) edges are inclusive/exclusive");
+}
+{
+  // The window follows a different configured hour rather than a hardcoded 3 — the regression
+  // this fixes: the operator moving nightlyRenderHourUtc in Settings (no restart) must move the
+  // worker's own blackout with it.
+  assert.equal(inBlackoutWindow(new Date("2026-10-11T19:49:00.000Z"), 20), false);
+  assert.equal(inBlackoutWindow(new Date("2026-10-11T19:50:00.000Z"), 20), true);
+  console.log("OK: the window tracks nightlyRenderHourUtc, not a hardcoded hour");
+}
+{
+  // Wraps past midnight UTC without a word.
+  assert.equal(inBlackoutWindow(new Date("2026-10-12T00:30:00.000Z"), 23), true);
+  assert.equal(inBlackoutWindow(new Date("2026-10-12T03:31:00.000Z"), 23), false);
+  console.log("OK: the window wraps across UTC midnight");
+}
+{
+  // null (nightly disabled) turns the blackout off entirely — nothing to avoid colliding with.
+  assert.equal(inBlackoutWindow(new Date("2026-10-11T03:00:00.000Z"), null), false);
+  console.log("OK: a null nightlyRenderHourUtc disables the blackout");
 }
 
 // --- testFor / playersFor --------------------------------------------------------------------
@@ -195,19 +233,26 @@ config.mediaDir = media;
 // --- ledger / heartbeat: atomic write-then-rename, corrupt file degrades safely ----------------
 {
   await markEndScreenDone("vidZ", 99);
+  await markPickerEmptySeen("vidY", new Date("2026-10-11T00:00:00.000Z"));
   const ledger = await readLedger();
   assert.equal(ledger.endScreens.vidZ?.matchId, 99);
+  assert.equal(ledger.pickerEmptySeen.vidY, "2026-10-11T00:00:00.000Z");
   const files = await readdir(media);
   assert.ok(!files.includes(".studio-ledger.json.tmp"), "no leftover .tmp after a write");
   assert.ok(existsSync(path.join(media, ".studio-ledger.json")));
 
   writeFileSync(path.join(media, ".studio-ledger.json"), "{not json");
   const recovered = await readLedger();
-  assert.deepEqual(recovered, { endScreens: {} }, "a corrupt ledger degrades to empty, never throws");
+  assert.deepEqual(
+    recovered,
+    { endScreens: {}, pickerEmptySeen: {} },
+    "a corrupt ledger degrades to empty, never throws",
+  );
 
-  await writeHeartbeat({ pid: 123, at: "t", lastCycle: null, lastError: null });
+  await writeHeartbeat({ pid: 123, at: "t", lastCycle: null, lastError: "a", lastErrors: ["a", "b"] });
   const hb = await readHeartbeat();
   assert.equal(hb?.pid, 123);
+  assert.deepEqual(hb?.lastErrors, ["a", "b"], "every error of the cycle, not just the first");
   console.log("OK: ledger and heartbeat round-trip atomically and a corrupt ledger degrades to empty");
 }
 
