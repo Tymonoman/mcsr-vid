@@ -50,7 +50,15 @@ const SELECTORS = {
   endscreenPickerRow: 'ytcp-video-pick-dialog ytcp-video-row, ytcp-video-pick-dialog [role="option"]',
   endscreenSaveButton: 'button:has-text("Save")',
   endscreenDiscardButton: 'button:has-text("Discard changes")',
-  dialogClose: 'button[aria-label="Close"]',
+  // Confirmed live 8 Oct 2026 (LUI5E7yF0zE): the A/B Testing dialog's own Close is a
+  // ytcp-icon-button, not a <button> — the plain `button[aria-label="Close"]` form never matched
+  // it at all, so `.first()` kept resolving to one of the other, unrelated, hidden Close buttons
+  // elsewhere in Studio's SPA (there is always at least one on a Details page) and waiting on it
+  // forever. Both forms are listed so either real Studio dialog is found.
+  // :visible rather than relying on .first()'s DOM order: a Details page always carries at least
+  // one other, unrelated, hidden Close element (confirmed), so the first DOM match is not
+  // reliably the real open dialog's own.
+  dialogClose: 'button[aria-label="Close"]:visible, ytcp-icon-button[aria-label="Close"]:visible',
   // A/B Testing ("Test & Compare" in the plan) — confirmed live 7 Oct 2026.
   abTestButton: "#ab-test-button",
   abTestChipTitle: "#chip-0",
