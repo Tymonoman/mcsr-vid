@@ -196,16 +196,22 @@ try {
           ? '<div role="option" onclick="document.querySelector(\\'ytcp-video-pick-dialog\\').remove()">POQrpE0-5d8</div>'
           : '<div>No matching results. Please try again.</div>';
       }
+      // Live run, 8 Oct 2026 (LUI5E7yF0zE): the dialog's own element is
+      // ytcp-creator-experiment-create-dialog (ytcp-ab-test-dialog does not exist at all — the
+      // original fixture matched its own wrong guess, not reality); title fields are
+      // contenteditable divs by aria-label ("Add title N"), not <input>, with slot 1 holding the
+      // live title already; thumbnail fields are real <input type="file"> (slot 1 pre-filled from
+      // the live thumbnail, no upload needed — confirmed by the UI, not exercised by this fixture).
       function renderAbTest() {
         const s = window.__state.abTest;
         const root = document.getElementById("dialog-root");
         if (s === "none") {
           root.innerHTML =
-            '<div><span>A/B Testing</span><button aria-label="Close" onclick="closeDialog()">Close</button>' +
+            '<ytcp-creator-experiment-create-dialog><span>A/B Testing</span><button aria-label="Close" onclick="closeDialog()">Close</button>' +
             '<button id="chip-0" onclick="selectChip(\\'title\\')">Title only</button>' +
             '<button id="chip-1" onclick="selectChip(\\'thumbnail\\')">Thumbnail only</button>' +
             '<div id="chip-body"></div>' +
-            '<button id="set-test-button" onclick="window.__tcStarted={kind:window.__chipKind,title2:window.__title2};closeDialog()">Set test</button></div>';
+            '<button id="set-test-button" onclick="window.__tcStarted={kind:window.__chipKind,title2:window.__title2};closeDialog()">Set test</button></ytcp-creator-experiment-create-dialog>';
         } else if (s === "running") {
           root.innerHTML = '<div><span>A/B Testing</span><button aria-label="Close" onclick="closeDialog()">Close</button><p>Your test is live. Check back later.</p></div>';
         } else {
@@ -215,8 +221,9 @@ try {
       function selectChip(kind) {
         window.__chipKind = kind;
         document.getElementById("chip-body").innerHTML = kind === "title"
-          ? '<ytcp-ab-test-dialog><input type="text" value="live title" disabled /><input type="text" oninput="window.__title2=this.value" /></ytcp-ab-test-dialog>'
-          : '<ytcp-ab-test-dialog><input type="file" /><input type="file" /></ytcp-ab-test-dialog>';
+          ? '<div contenteditable="true" aria-label="Add title 1">live title</div>' +
+            '<div contenteditable="true" aria-label="Add title 2" oninput="window.__title2=this.textContent"></div>'
+          : '<input type="file" /><input type="file" />';
       }
       document.getElementById("endscreen-editor-link").addEventListener("click", renderEndScreen);
       document.getElementById("ab-test-button").addEventListener("click", renderAbTest);

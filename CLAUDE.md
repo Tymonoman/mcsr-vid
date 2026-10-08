@@ -1013,25 +1013,42 @@ every check above is a fixture page or pure logic; see "What is verified live vs
   `readTestAndCompare` could not get past (a refused title, an unreadable page), and the worker
   never guesses past an ambiguous state on its own.
 
-**What is verified live vs only on fixtures.** Confirmed against the real Studio UI, 7 Oct 2026
-(read-only — no Save/Start/Publish pressed): `#endscreen-editor-link`, the "Import from video"
-button, `ytcp-video-pick-dialog` and its search-then-"No matching results" behaviour (a confirmed
-*bug* on this profile — the picker's own search call resolves against the operator's personal
-channel, not the brand one, so it returns zero results for every query tried, including the raw
-template id; `addEndScreenFromTemplate` reports this as its own `"picker-empty"` outcome rather
-than guessing past it), `#ab-test-button`, the "A/B Testing" dialog, its three mode chips
-(`#chip-0`/`#chip-1`/`#chip-2`), `#set-test-button`, and that a dialog's `Close` button (not
-Escape) is the reliable way to leave one open. **Unverified, built against synthetic fixture
-pages instead** (`studioActions.test.ts`, excluded from `test:unit`, run by `npm test`): which row
-to click once the picker actually returns a result (no query ever did), the A/B Testing dialog's
-own title/thumbnail input fields (neither sample video ever reached that far — both open on a
-blank "set up a new test" form), and the look of a *running* or *finished* test (neither sample
-video had one). `readTestAndCompare`'s `"none"` is read with confidence (the same chips/button
-`startTestAndCompare` itself checks for); `"running"` is "not none", and `"done"` is a best-effort
-guess at the word "winner" appearing once those chips are gone — both need confirming against a
-real test before anyone trusts them in production. Confirm those four unverified spots (the
-picker's result row, the dialog's input fields, and the running/done read) the first time a real
-end screen or a real Test & Compare actually runs, and tighten the selectors/heuristic from what
+**What is verified live vs only on fixtures.** Confirmed against the real Studio UI, 7–8 Oct 2026:
+`#endscreen-editor-link`, the "Import from video" button, `ytcp-video-pick-dialog` and its
+search-then-"No matching results" behaviour (a confirmed *bug* on this profile — the picker's own
+search call resolves against the operator's personal channel, not the brand one, so it returns
+zero results for every query tried, including the raw template id, an empty query and the
+template's exact title; `addEndScreenFromTemplate` reports this as its own `"picker-empty"`
+outcome rather than guessing past it — **every attempt at a real end screen hits this today**,
+operator-side account/permission fix needed before phase 2's end-screen half can do anything),
+`#ab-test-button`, the "A/B Testing" dialog, its three mode chips (`#chip-0`/`#chip-1`/`#chip-2`),
+`#set-test-button`. **Two live corrections, 8 Oct 2026** (both were guesses the first live run
+proved wrong, not corner cases — both are fixed in code and in the fixture, which was wrong the
+same way): the End Screens editor is a full panel with **no `aria-label="Close"` element at all**
+(the two such elements anywhere on the page are hidden and belong to unrelated Studio dialogs) —
+`addEndScreenFromTemplate` now waits on the confirmed "Discard changes" button instead, its own
+real open/cleanup signal; and the A/B Testing dialog's own element is
+`ytcp-creator-experiment-create-dialog`, not `ytcp-ab-test-dialog` (that tag does not exist on the
+page — the original selectors for its title/thumbnail fields matched **zero** elements, so a real
+run would have clicked Set test with nothing filled in). Confirmed live instead: title fields are
+`[contenteditable="true"]` divs by `aria-label="Add title N"` (`Locator.fill()` does work on them,
+verified), not `<input>`; thumbnail fields are real `<input type="file">` (3, `accept="image/jpeg,
+image/png"`, under `ytcp-thumbnail-uploader`, scoped to the dialog root so this can never reach the
+Details page's own separate thumbnail input sitting just outside it); slot 1 of both is pre-filled
+from the video's live title/thumbnail already, so only the challenger slot(s) strictly need
+filling (`startTestAndCompare`'s title path already only fills from slot 2 on; its thumbnail path
+also fills slot 1 with the caller's own control file, redundant but harmless — same bytes already
+showing). The A/B Testing dialog's `Close` button (not Escape) is confirmed the reliable way to
+leave it. **Still unverified, built against synthetic fixture pages instead**
+(`studioActions.test.ts`, excluded from `test:unit`, run by `npm test`): which row to click once
+the picker actually returns a result (no query ever has, on this profile — see above), whether
+`abTestSetButton`'s mere visibility (true even before a chip is chosen, confirmed 8 Oct) is
+actually a reliable "no test already running" signal, and the look of a *running* or *finished*
+test (no sample video has had one yet). `readTestAndCompare`'s `"none"` is read with confidence
+(the same chips/button `startTestAndCompare` itself checks for); `"running"` is "not none", and
+`"done"` is a best-effort guess at the word "winner" appearing once those chips are gone — both
+need confirming against a real test before anyone trusts them in production. Confirm those once a
+real Test & Compare has run long enough to read either state, and tighten the heuristic from what
 is actually seen rather than from this guess.
 
 ## Clips (prototype)

@@ -56,10 +56,18 @@ const SELECTORS = {
   abTestChipTitle: "#chip-0",
   abTestChipThumbnail: "#chip-1",
   abTestSetButton: "#set-test-button",
-  // Unconfirmed: the dialog never got far enough in this exploration to see its own input/upload
-  // fields, or either a running or a finished test's layout.
-  abTestTitleInputs: 'ytcp-ab-test-dialog input[type="text"], ytcp-ab-test-dialog textarea',
-  abTestFileInputs: 'ytcp-ab-test-dialog input[type="file"]',
+  // Confirmed live 8 Oct 2026 (LUI5E7yF0zE, dry-run): the dialog's own element is
+  // ytcp-creator-experiment-create-dialog, not ytcp-ab-test-dialog (that tag does not exist on
+  // the page at all — the earlier selectors matched zero elements, title or thumbnail, so a real
+  // run would have clicked Set test with nothing actually filled in). Title fields are
+  // contenteditable divs, not <input>/<textarea> — "Add title 1"/"2"/"3" by aria-label, slot 1
+  // holding the live title already. Thumbnail fields are real <input type="file"> (3, accepting
+  // image/jpeg,image/png), slot 1 pre-filled from the live thumbnail, nested under
+  // ytcp-thumbnail-uploader — scoped to the dialog root so this can never touch the Details page's
+  // own thumbnail input sitting just outside it (confirmed 4 file inputs exist on the page
+  // unscoped, only 3 of them inside this dialog).
+  abTestTitleInputs: 'ytcp-creator-experiment-create-dialog [aria-label^="Add title"]',
+  abTestFileInputs: 'ytcp-creator-experiment-create-dialog input[type="file"]',
 };
 
 export type PinOutcome = "pinned" | "already-pinned" | "no-channel-comment" | "skipped-private";
