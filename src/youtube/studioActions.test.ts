@@ -177,10 +177,18 @@ try {
     <button id="ab-test-button" aria-label="A/B Testing">A/B Testing</button>
     <!-- Confirmed live 8 Oct 2026 (tmp/studio3/): clicking this opens the exact same
          ytcp-video-pick-dialog the end-screen "Import from video" fallback below already does —
-         this fixture reuses that same dialog markup/selectors rather than inventing new ones. -->
-    <ytcp-text-dropdown-trigger id="linked-video-editor-link" onclick="openRelatedPicker()">${
-      uiState.relatedVideoLinked ? "Some Other Video" : "None"
-    }</ytcp-text-dropdown-trigger>
+         this fixture reuses that same dialog markup/selectors rather than inventing new ones.
+         The label-plus-value shape (two children, not one bare text node) is the real page's own
+         (outerHTML dump, 8 Oct 2026): a first live run read the trigger's whole innerText
+         ("Related video\nNone") against /^none$/i and misreported a never-linked Short
+         "already-linked" — a fixture with only the bare value text, as this one used to have,
+         could not have caught that. -->
+    <ytcp-text-dropdown-trigger id="linked-video-editor-link" onclick="openRelatedPicker()">
+      <div class="label-text">Related video</div>
+      <span class="dropdown-trigger-text">
+        ${uiState.relatedVideoLinked ? "Some Other Video" : "None"}
+      </span>
+    </ytcp-text-dropdown-trigger>
     <!-- Page-level Save placed BEFORE dialog-root, same DOM order as the real page
          (s7r-endscreen-open.json: the page's own #save sits before the editor's own #save-button) —
          a reversion to a plain text-based Save selector plus .first() would click this one, not

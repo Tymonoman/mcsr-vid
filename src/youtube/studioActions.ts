@@ -102,6 +102,12 @@ const SELECTORS = {
   // confirmed account-scoping bug. `dialogClose` (above) is also confirmed live for this one:
   // unlike the end-screen panel, this dialog closes clean on it, no discard prompt.
   relatedVideoTrigger: "ytcp-text-dropdown-trigger#linked-video-editor-link",
+  // The trigger's own `innerText()` is "Related video\nNone" on a real page — a `label-text` div
+  // ("Related video") sits alongside the value — confirmed live 8 Oct 2026 via `outerHTML`
+  // (`tmp/studio3/`) after a first live run misread that whole string against `/^none$/i` and
+  // reported a never-linked Short "already-linked". The value alone lives in its own child,
+  // `span.dropdown-trigger-text`; read that, not the trigger's whole text.
+  relatedVideoValue: "ytcp-text-dropdown-trigger#linked-video-editor-link .dropdown-trigger-text",
 };
 
 /**
@@ -441,6 +447,14 @@ export type RelatedVideoOutcome = "already-linked" | "picker-empty";
  * Already linked to *anything* (not just `longFormVideoId`) is left alone and reported
  * `"already-linked"` without ever opening the dialog — the same "never replace what's already
  * set" rail `pinComment`/`addEndScreenFromTemplate` already keep.
+ *
+ * Bug fixed 8 Oct 2026, caught by a second live re-run (not the fixture — see
+ * `studioActions.test.ts`'s own note): reading `trigger.innerText()` for this check picks up the
+ * control's own "Related video" label alongside the value ("Related video\nNone" on a real,
+ * never-linked Short, confirmed live via `outerHTML`), so `/^none$/i` never matched and a Short
+ * nothing had ever linked came back `"already-linked"`. The value alone lives in its own child,
+ * `span.dropdown-trigger-text` (`SELECTORS.relatedVideoValue`) — read that, not the trigger's
+ * whole text.
  */
 export async function checkRelatedVideoPicker(
   handle: StudioHandle,
@@ -457,7 +471,11 @@ export async function checkRelatedVideoPicker(
     await randomPause();
 
     const trigger = page.locator(SELECTORS.relatedVideoTrigger).first();
-    const current = await trigger.innerText().catch(() => "");
+    const current = await page
+      .locator(SELECTORS.relatedVideoValue)
+      .first()
+      .innerText()
+      .catch(() => "");
     if (current.trim() && !/^none$/i.test(current.trim())) return "already-linked";
 
     await trigger.click();

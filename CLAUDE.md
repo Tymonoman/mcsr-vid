@@ -1317,6 +1317,21 @@ Build the real click-and-save the day a search anywhere in Studio actually retur
 confirm against — the account-scoping fix, or signing in as an account whose default channel
 already is the brand one.
 
+**Independently reconfirmed on a second, different video pair, same day**: match 13830612's Short
+(`ylXZwXIlRlY`) searched for its own long-form (`8ddRytlH1xw`, "A SUB-9 RACE TO THE END | v_strid
+vs doogile") — both independently confirmed genuinely public via oembed — and hit the identical
+"No matching results" empty state, screenshot on disk
+(`media/13830612/studio-related-video-search-*.png`). The same re-run caught a real bug in
+`checkRelatedVideoPicker` itself, not in Studio: its "already-linked" check read the whole
+trigger's `innerText()` (`"Related video\nNone"` — the control's own label text sits alongside the
+value), which never matches `/^none$/i`, so a Short *nothing had ever linked* came back
+`"already-linked"` and the check returned before ever opening the dialog. Confirmed live via the
+element's `outerHTML`: the value alone lives in its own child, `span.dropdown-trigger-text`
+(`SELECTORS.relatedVideoValue`) — reading that instead fixed it, re-verified live on the same
+Short (now correctly `"picker-empty"`). The test fixture had the same blind spot (a bare value
+text node, no label sibling) and could not have caught this; it now carries the real label+value
+shape.
+
 **Review fixes, 8 Oct 2026** (branch `studio-p23`): `studioCli.ts`'s own `startAndProbe` used to
 call `start()` then `probe(handle)` with no try/catch of its own, trusting a caller's later
 `try { ... } finally { await handle.stop(); }` around the handle it would *return* — but a `goto`
