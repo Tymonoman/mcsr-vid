@@ -250,7 +250,7 @@ async function clickStarterLayout(page: import("playwright").Page): Promise<bool
   for (const label of STARTER_LAYOUT_PREFERENCE) {
     if (
       await page
-        .getByText(label, { exact: true })
+        .getByRole("gridcell", { name: label, exact: true })
         .first()
         .isVisible()
         .catch(() => false)
@@ -259,7 +259,13 @@ async function clickStarterLayout(page: import("playwright").Page): Promise<bool
   }
   const chosen = pickStarterLayoutLabel(visible);
   if (!chosen) return false;
-  await page.getByText(chosen, { exact: true }).first().click();
+  // Confirmed live 8 Oct 2026 (s7R5FUKU0KQ): a plain `getByText(...)` resolves to the card's own
+  // inner `.title` text node, which the card's own `role="gridcell"` ancestor then intercepts
+  // every click on — Playwright retried for 30s and timed out, never picking a layout at all. The
+  // gridcell is the real clickable element (it carries the card's own click handler and its own
+  // `aria-label` mirrors the title text exactly), so this targets it directly instead of a
+  // descendant it covers.
+  await page.getByRole("gridcell", { name: chosen, exact: true }).first().click();
   return true;
 }
 

@@ -200,7 +200,13 @@ try {
           '<div><span>End Screens</span>' +
           (hasElements
             ? '<div>existing elements</div>'
-            : '<div onclick="window.__starterPicked=true" style="cursor:pointer">1 video, 1 subscribe</div>' +
+            : // Live run, 8 Oct 2026 (s7R5FUKU0KQ): the real card is a role=gridcell with its
+              // own aria-label holding the click handler — its inner .title text node sits
+              // underneath it and intercepts nothing, so a plain text click there times out
+              // forever (the regression this fixture now guards; pointer-events: none on the
+              // title is what reproduces the real "intercepts pointer events" failure here).
+              '<div role="gridcell" aria-label="1 video, 1 subscribe" tabindex="0" style="cursor:pointer" onclick="window.__starterPicked=true">' +
+              '<div class="title" style="pointer-events:none">1 video, 1 subscribe</div></div>' +
               '<button onclick="window.__pickerOpened=true;openPicker()">Import from video</button>') +
           '<button id="discard-button" onclick="closeDialog()">Discard changes</button>' +
           // Shows the same "Changes saved" toast the page-level Save does (#saved-msg above) —
