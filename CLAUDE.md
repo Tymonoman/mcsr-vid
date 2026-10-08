@@ -1409,6 +1409,17 @@ login." Six fixes/features on top of phase 2/3, all in `studioWorker.ts`/`studio
   variant path, from a human judge's plan or the worker's own `tc-thumbs` render, is used exactly
   as given.
 
+**Review fix, 8 Oct 2026**: `renderTcThumbSet`'s `npm run --silent tc-thumbs -- <id>` is really
+`npm run build-overlay-css && tsx src/thumbnails/tcThumbs.ts`, and `build-overlay-css.mjs`'s own
+`console.log("remotion/overlay.css written (…)")` landed on stdout *ahead of* tc-thumbs' own final
+JSON line — every single time, not a corner case — so `renderTcThumbSet`'s `JSON.parse` of the
+whole captured stdout threw on every real invocation, silently breaking the headline
+auto-planned-thumbnail-test feature (it still failed safe, reaching `errors`/the heartbeat, just
+never actually planning anything). A human running `npm run tc-thumbs` by hand never noticed,
+since a terminal shows the extra line fine. Fixed at the root: that status line now goes to
+`console.error` — every other `npm run build-overlay-css && …` script in `package.json` only ever
+shows it to a human, nobody else parses its stdout as data.
+
 ## Clips (prototype)
 
 For a video that is not a match — a stream statement, a reaction, something worth posting on the

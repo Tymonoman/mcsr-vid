@@ -439,4 +439,27 @@ config.mediaDir = media;
   );
 }
 
+// --- renderTcThumbSet's own real command must put nothing but data on stdout (review fix, 8 Oct
+// 2026): `npm run --silent tc-thumbs -- <id>` is `npm run build-overlay-css && tsx
+// src/thumbnails/tcThumbs.ts`, and `renderTcThumbSet` (studioWorker.ts) `JSON.parse`s the whole
+// of stdout. `build-overlay-css.mjs` used to `console.log` its own "written (N bytes)" status
+// line — on stdout, ahead of tc-thumbs' own JSON, every single time — which made that parse
+// throw on every real invocation; this never surfaced in a plain-terminal run because a human
+// reads past an extra line a JSON parser cannot skip past. Spawning the exact nested command
+// `tc-thumbs` runs first, rather than the full tc-thumbs pipeline (which needs a rendered match
+// on disk and Remotion/ffmpeg), is the cheap way to pin that stdout carries nothing to confuse a
+// JSON parser.
+{
+  const { spawnSync } = await import("node:child_process");
+  const root = path.resolve(new URL("../..", import.meta.url).pathname);
+  const result = spawnSync("npm", ["run", "--silent", "build-overlay-css"], { cwd: root, encoding: "utf8" });
+  assert.equal(result.status, 0, `build-overlay-css failed: ${result.stderr}`);
+  assert.equal(
+    result.stdout.trim(),
+    "",
+    `build-overlay-css's own status line must go to stderr, not stdout a JSON-parsing caller reads: got ${JSON.stringify(result.stdout)}`,
+  );
+  console.log("OK: build-overlay-css's status line no longer leaks onto stdout");
+}
+
 console.log("studioWorker: all checks passed");
