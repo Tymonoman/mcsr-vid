@@ -70,6 +70,10 @@ live). Set live: autoHooksAfterHours 6, thumbnailRotatePoses true. First auto-sa
 SWING" (verified true on the panel: ANJOUU +27.5 s at blind → Pinne +47.9 s at stronghold) / Short "ANJOUU'S 33-SECOND
 FORTRESS" (model's); 13765754 due 10:14 (expect "A SUB-7 TO WIN IT", dragon 6:49 — true). experiment-arm.json written by
 hand for both (x2 arm "on", 8 Oct). Later deploys: POST /api/restart-when-idle (fc36480 → main has worker-only changes).
+8 Oct 18:50 UTC evening check: slots filled to 10 Oct 19:00 (8 Oct 19/23, 9 Oct 19/23, 10 Oct 19); no failed chain step;
+25 A/B tests running; worker fix 2335b1d (a failed A/B read = that day's check; needsHuman only 2 days running — la_h's
+title test unreadable while scheduled, streak 20) — worker restarted by the supervisor on it; dashboard self-restart proven
+12:30 (fc36480 → e30417e via POST /api/restart-when-idle).
 Dashboard boot fd47b32 (he restarted it 7 Oct evening). /media 70 GB free. Live: introSec 3, countdownTeaser on,
 explainMovesSec 8 (on), suggestKnownSlots 10.
 
