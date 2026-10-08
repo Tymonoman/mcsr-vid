@@ -16,6 +16,7 @@ import type {
   StatsFacts,
   TodoFacts,
 } from "./facts.js";
+import type { TestsSummary } from "../dashboard/experiments.js";
 import { netSubscribers, subsPer1kEngaged, type WindowDays } from "./windowStats.js";
 import type { NightlyFacts, UpcomingRow } from "./facts.js";
 import type { NightlyLastRun } from "../dashboard/nightly.js";
@@ -449,6 +450,22 @@ export function renderYpp(ypp: ReportFacts["ypp"], nowMs = Date.now()): string {
   ].join("\n");
 }
 
+/**
+ * The channel message's one deterministic line on the experiment engine (src/dashboard/
+ * experiments.ts): how many between-video tests are running, which arm renders today, and any
+ * verdict or decision since the last report. Always one line, even with nothing running, the same
+ * way `renderHealth`'s compact form always says something rather than going silent on a quiet day.
+ */
+export function renderTestsLine(tests: TestsSummary | undefined): string {
+  const t = tests ?? { runningCount: 0, scheduleToday: [], since: [] };
+  const bits = [`${t.runningCount} running`];
+  if (t.scheduleToday.length)
+    bits.push(`today: ${t.scheduleToday.map((s) => `${s.experimentId}/${s.arm}`).join(", ")}`);
+  for (const s of t.since)
+    bits.push(s.decision ? `${s.experimentId} decided — ${s.decision}` : `${s.experimentId}: ${s.verdict}`);
+  return `${b("🧪 Tests")} · ${escapeHtml(bits.join(" · "))}`;
+}
+
 /* --- Message 3: comments ------------------------------------------------------------------------ */
 
 /** "THE DUALITY OF MAN · Infume vs Feinberg": our titles are `<hook> | <players> | <genre tail>`,
@@ -637,6 +654,10 @@ export function renderMorningReport(
     renderOvernight(facts.overnight, facts.dashboardBaseUrl, true),
     renderHealth(facts.health, true),
   ];
-  const channel = [renderStats(facts.stats, prevSnapshot), renderYppShort(facts.ypp, nowMs)];
+  const channel = [
+    renderStats(facts.stats, prevSnapshot),
+    renderYppShort(facts.ypp, nowMs),
+    renderTestsLine(facts.tests),
+  ];
   return [day.filter(Boolean).join("\n\n"), channel.join("\n\n"), renderComments(facts.comments, channelId)];
 }

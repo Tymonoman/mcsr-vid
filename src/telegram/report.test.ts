@@ -543,6 +543,11 @@ const worthMatch = (i: number, over: Partial<WorthMatch> = {}): WorthMatch => ({
     ypp: { ok: false, error: "no token" },
     worthRendering: { ok: true, data: { matches: [worthMatch(1)], notes: [] } },
     dashboardBaseUrl: "http://actimel:8080",
+    tests: {
+      runningCount: 1,
+      scheduleToday: [{ experimentId: "publish-hour", arm: "19" }],
+      since: [{ experimentId: "short-delay", decision: "kept control: numbers only" }],
+    },
   } as unknown as ReportFacts;
   const autoHooksRow: AutoHooksRow = {
     matchId: 3,
@@ -587,6 +592,11 @@ const worthMatch = (i: number, over: Partial<WorthMatch> = {}): WorthMatch => ({
   // The channel message leads with net subscribers (a table row before views) and, with YPP data,
   // carries the countdown's range in its one line.
   assert.ok(msgs[1]!.indexOf("\nnet subs") < msgs[1]!.indexOf("\nviews"), msgs[1]);
+  // The Tests line: running count, today's schedule entry, and the decision since the last report.
+  assert.ok(msgs[1]!.includes("🧪"), msgs[1]);
+  assert.ok(msgs[1]!.includes("1 running"), msgs[1]);
+  assert.ok(msgs[1]!.includes("publish-hour/19"), msgs[1]);
+  assert.ok(msgs[1]!.includes("short-delay decided"), msgs[1]);
   const withYpp = renderMorningReport(
     { ...facts, ypp: { ok: true, data: postMortemYpp() } },
     { source: "claude", answer: { headline: "Covered through Thursday", todo: ["Save hooks for a vs b"] } },

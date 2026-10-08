@@ -78,6 +78,8 @@ import {
 } from "./shortFlow.js";
 import { armRestart, disarmRestart, restartState } from "./restartWhenIdle.js";
 import { saveSettings, settingsPayload } from "./settings.js";
+import { applyScheduledRenderArm } from "./experiments.js";
+import { evaluateExperiments } from "./experimentsEvaluator.js";
 import { handleYoutubeRoute, uploadRunning } from "./youtubeRoutes.js";
 import { handleSyncRoute } from "./syncRoutes.js";
 import { readMeta } from "./matchMeta.js";
@@ -904,10 +906,23 @@ server.listen(PORT, "0.0.0.0", () => {
   // comment within minutes rather than waiting for the nightly's tick hours later. With
   // autoHooksAfterHours set (off by default — the operator's own grant), it also saves hooks by
   // itself for a match nobody has looked at in that long.
+  // And the experiment engine's own two ticks (src/dashboard/experiments.ts): a render arm close
+  // to tonight's hour, and a once-a-day evaluation of every running test. Neither needs its own
+  // timer — the 15-minute cadence is well inside both windows (30 min, a whole day).
   const tick = () => {
     void shortTick().catch((err: unknown) => console.error(`shorts: ${describeError(err)}`));
     void commentSoonTick().catch((err: unknown) => console.error(`comments: ${describeError(err)}`));
     void autoHooksTick().catch((err: unknown) => console.error(`auto-hooks: ${describeError(err)}`));
+    try {
+      // The nightly's own pending timer was armed for the old hour: rearm it, the same signal
+      // `/api/settings`' PUT handler acts on above.
+      if (applyScheduledRenderArm()) scheduleNightly({ notifyUrl: config.nightlyNotifyUrl });
+    } catch (err) {
+      console.error(`experiments: render arm tick failed — ${describeError(err)}`);
+    }
+    void evaluateExperiments().catch((err: unknown) =>
+      console.error(`experiments: evaluation tick failed — ${describeError(err)}`),
+    );
   };
   tick();
   setInterval(tick, 15 * 60_000).unref();

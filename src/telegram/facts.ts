@@ -28,6 +28,7 @@ import { restartState } from "../dashboard/restartWhenIdle.js";
 import { hiddenMatchIds, isExported, nightlyQueue, nightlySkip } from "../dashboard/matchShelf.js";
 import { listProcessedMatchIds, matchStatusFor } from "../dashboard/matchStatus.js";
 import { nightlyShortSummary, readStatus } from "../dashboard/shortFlow.js";
+import { needsHumanExperiments, testsSummary, type TestsSummary } from "../dashboard/experiments.js";
 import { pickErrorFile } from "../shorts/videoPick.js";
 import { playoffBoard } from "../playoffs/playoffs.js";
 import { describeFailure, runClaude } from "./claude.js";
@@ -371,6 +372,10 @@ async function gatherAlerts(nowMs: number, health: HealthCheck[]): Promise<Alert
     }
   }
 
+  for (const exp of needsHumanExperiments()) {
+    out.push({ source: `experiment ${exp.id}`, message: exp.needsHuman! });
+  }
+
   for (const h of health) {
     if (!h.ok) out.push({ source: "health", message: `${h.name}: ${h.detail ?? "not reachable"}` });
   }
@@ -669,6 +674,9 @@ export interface ReportFacts {
   ypp: Section<YppProgress>;
   worthRendering: Section<WorthFacts>;
   dashboardBaseUrl: string;
+  /** The experiment engine's own ledger (src/dashboard/experiments.ts) — a local file read, no
+   *  API call, so it is never gated behind `only` the way the sections above are. */
+  tests: TestsSummary;
 }
 
 /** Which of `ReportFacts`' sections `gatherFacts` actually computes — a narrow slash command
@@ -759,6 +767,7 @@ export async function gatherFacts(
     ypp,
     worthRendering,
     dashboardBaseUrl: dashboardMatchUrl(),
+    tests: testsSummary(nowMs, sinceMs),
   };
 }
 

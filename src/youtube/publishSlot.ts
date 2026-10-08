@@ -17,9 +17,9 @@ import path from "node:path";
 import { config, matchDir } from "../config.js";
 import { getMatch } from "../api/mcsrApi.js";
 import { channelUploadsSnapshot, describesMatch, SHORT_MAX_SEC } from "./channelUploads.js";
-import { msUntilNextRun } from "../dashboard/nightly.js";
 import { listProcessedMatchIds } from "../dashboard/matchStatus.js";
 import { hiddenMatchIds } from "../dashboard/matchShelf.js";
+import { rankedHoursForDate } from "../dashboard/experiments.js";
 import { playoffContextForId } from "../playoffs/playoffs.js";
 import { allUploads, readUpload } from "./youtubeStore.js";
 
@@ -44,6 +44,13 @@ export function nextPublishSlot(
   /** Times (ms) this video keeps `gapDays` UTC calendar days away from — see `pairGapTimes`. */
   keepApart: readonly number[] = [],
   gapDays = 0,
+  /**
+   * The ranked-video (never series) publish-hour experiment arm (src/dashboard/experiments.ts):
+   * sorted candidate hours UTC for a given date, tried in order before moving to the next day.
+   * Undefined for every date — a series video never passes this, and so does a date with no
+   * schedule entry — falls back to `hourUtc` alone, byte-identical to before this existed.
+   */
+  hoursForDate?: (dateUtc: string) => number[] | undefined,
 ): Date {
   const taken = new Set(
     claimedAt
@@ -53,11 +60,26 @@ export function nextPublishSlot(
       .filter((ms) => Number.isFinite(ms) && ms > nowMs)
       .map(slotOf),
   );
-  let at = nowMs + msUntilNextRun(nowMs, hourUtc);
-  if (at - nowMs < minLeadMs) at += DAY_MS;
-  while (taken.has(slotOf(at)) || keepApart.some((ms) => Math.abs(dayOf(at) - dayOf(ms)) < gapDays))
-    at += DAY_MS;
-  return new Date(at);
+  const hoursOn = (dayStartMs: number): number[] => {
+    const hours = hoursForDate?.(new Date(dayStartMs).toISOString().slice(0, 10));
+    return hours && hours.length > 0 ? [...hours].sort((a, b) => a - b) : [hourUtc];
+  };
+  // Walk forward a day at a time from today, trying every candidate hour of each day in order —
+  // with no override this is exactly the old single-hour walk (`msUntilNextRun`'s "next
+  // occurrence, else tomorrow" is what the `>= minLeadMs` check below reproduces for one hour).
+  let dayStart = Math.floor(nowMs / DAY_MS) * DAY_MS;
+  for (;;) {
+    for (const h of hoursOn(dayStart)) {
+      const at = dayStart + h * 3600_000;
+      if (
+        at - nowMs >= minLeadMs &&
+        !taken.has(slotOf(at)) &&
+        !keepApart.some((ms) => Math.abs(dayOf(at) - dayOf(ms)) < gapDays)
+      )
+        return new Date(at);
+    }
+    dayStart += DAY_MS;
+  }
 }
 
 export interface PublishSlot {
@@ -68,16 +90,18 @@ export interface PublishSlot {
 
 /** The slot the kit shows and the chain schedules: the first free one, kept off this pair's other kind. */
 export async function publishSlotFor(matchId: number, nowMs: number): Promise<PublishSlot> {
+  const seriesVideo = isSeries(matchId);
   // A playoff game 1 not joined yet goes out as its series, at the series' hour.
+  const gameOneAsSeries = !seriesVideo && (await playoffContextForId(matchId))?.gameNo === 1;
   const hour =
-    !isSeries(matchId) && (await playoffContextForId(matchId))?.gameNo === 1
-      ? config.seriesPublishHourUtc
-      : publishHourFor(matchDir(matchId));
+    seriesVideo || gameOneAsSeries ? config.seriesPublishHourUtc : publishHourFor(matchDir(matchId));
+  // The publish-hour experiment arm only ever touches a ranked video's own slot, never a series'.
+  const hoursForDate = seriesVideo || gameOneAsSeries ? undefined : rankedHoursForDate;
   const claimed = await claimedPublishTimes(matchId);
-  const free = nextPublishSlot(nowMs, hour, claimed);
+  const free = nextPublishSlot(nowMs, hour, claimed, undefined, undefined, undefined, hoursForDate);
   const gap = config.seriesPairGapDays;
   const apart = gap > 0 ? await pairGapTimes(matchId, nowMs - (gap + 1) * DAY_MS) : [];
-  const at = nextPublishSlot(nowMs, hour, claimed, undefined, apart, gap);
+  const at = nextPublishSlot(nowMs, hour, claimed, undefined, apart, gap, hoursForDate);
   if (at.getTime() === free.getTime()) return { at, why: null };
   // Only the videos that pushed it: one of the pair's scheduled a month out did not.
   const days = apart

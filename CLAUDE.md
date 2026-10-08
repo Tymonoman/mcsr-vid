@@ -776,6 +776,57 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   `getSuggestions()`'s own cards, never the full pool, so the known bucket's per-player cap
   (7 Oct 2026, above) reaches it for free — fixing the shared selection once, in `suggest.ts`,
   rather than patching `nightly.ts` too.
+- **The experiment engine runs between-video A/B tests unattended** (`src/dashboard/experiments.ts`
+  + `experimentsEvaluator.ts`, 8 Oct 2026 — the operator's week goal: "get the YPP ETA back to last
+  week's pace … the channel runs itself; I act only on what the 07:00 Warsaw Telegram report lists
+  under 'Needs you'"). The data is `<mediaDir>/.experiments.json` (hypothesis, arms, a day-by-day
+  `schedule`, and each experiment's `result`/`verdict`/`decision` once evaluated) — written
+  atomically like `short-<id>.status.json`, read defensively like every other state file here;
+  "tc" experiments (Studio's own Test & Compare, another branch) are carried through untouched.
+  A tick inside the 15-minute cadence (`server.ts`), 30 minutes before `nightlyRenderHourUtc`,
+  applies that night's schedule entry's `render` patch through `saveSettings` — the only way this
+  ever changes a setting, and only real `SETTINGS` keys, an unknown one refused with one log
+  line — and records `appliedOn` so a restart or the next tick does not re-apply the same day.
+  `nextPublishSlot` (`src/youtube/publishSlot.ts`) takes a day's `slot.rankedHoursUtc` instead of
+  the bare `publishHourUtc` for a **ranked** video only, never a series: sorted, first free hour
+  wins, so a two-a-day cadence day is just `rankedHoursUtc: [15, 19]` plus a render entry
+  `{ nightlyMaxRenders: 2 }`; no entry is the old single-hour behaviour, byte for byte.
+  `shortPublishAt` (`src/dashboard/shortFlow.ts`) takes the long-form's publish day's
+  `slot.shortDelayHours` (1–48) in place of the standing 18 h (`SHORT_DELAY_MS`,
+  `src/youtube/youtubeUpload.ts`). A separate daily tick, same 15-minute cadence, evaluates every
+  running "between" experiment once a UTC day (`evaluatedOn`): any arm under 1,000 impressions is
+  "inconclusive", never a guess; CTR is a two-proportion z-test (`|z| ≥ 1.96`); a retention metric
+  (average view %) reports the per-arm view-weighted mean and is "numbers only" unless every video
+  of one arm beats every video of the other, 3+ a side. At the experiment's `end`, a winner with
+  `adoptWinner` becomes the new default (`saveSettings`) and the decision is written with its
+  numbers; otherwise the control arm's settings are reapplied, in case a render arm left something
+  else live mid-run. Two evaluation failures in a row (a Reporting or Analytics API error) sets
+  `needsHuman` rather than retrying silently forever. `/ask`'s knowledge (`src/telegram/
+  knowledge.ts`) gets a generated "experiments-live" doc alongside `handbook/knowledge/*.md`, and
+  the morning report's channel message gets one deterministic "🧪 Tests" line (running count,
+  today's schedule, any verdict or decision since the last report) — see
+  `handbook/knowledge/experiments.md` for the week's baseline and ledger.
+  **Review fix, 8 Oct 2026**: `settle()` no longer marks an experiment `done`, or writes a
+  `decision` claiming a setting took effect, when its own `saveSettings` throws (a typo'd key, a
+  value `validateOverrides` rejects) — the failure now falls into the same `lastEvalFailure`/
+  `needsHuman` retry path a Reporting/Analytics read failure already does, so the experiment stays
+  `running` and tries again tomorrow instead of being frozen "done" on a change that never
+  happened. `evaluateExperiments` is guarded against itself (`evaluating`, the same shape as
+  `shortTick`'s `ticking`, `src/dashboard/shortFlow.ts`) since several experiments' worth of serial
+  network reads can outlast one 15-minute tick; its final write also re-reads the file fresh and
+  overlays only the experiments it touched, so a slow evaluation cannot clobber an `appliedOn` (or
+  anything else) `applyScheduledRenderArm` wrote while it was still awaiting a response.
+  `applyScheduledRenderArm` itself now returns whether `nightlyRenderHourUtc` was the key that
+  moved (`SaveResult.rearmNightly`), and the 15-minute tick (`server.ts`) calls `scheduleNightly`
+  when it does — the same signal `/api/settings`'s own PUT handler already acts on, since the
+  nightly's pending timer computes its delay once at arm time and would otherwise keep firing at
+  the stale hour for a night. `writeExperimentArmFile` files a chained render (`nightlyMaxRenders`
+  > 1) that starts after UTC midnight under the night's own date — `appliedOn`, when it is within
+  a day of now — rather than the wall-clock date it happens to start on, which can already be a
+  different (or missing) schedule entry than the one actually applied. And `needsHuman` now
+  reaches `gatherAlerts` (`needsHumanExperiments`, read from `src/telegram/facts.ts`) — the morning
+  report's "⚠️ Problems" and Claude's own prompt — not just the on-demand `/ask` doc, since the
+  operator said he acts only on what that report lists under "Needs you".
 - **Playoffs** (`src/playoffs/playoffs.ts`): the bracket (`/playoffs`) knows the series, not the games;
   the games are private-room matches (type 3) found in each seed's history, and the API stamps
   them with the season *after* the bracket's (a Season 11 bracket's games are season 12). **No
