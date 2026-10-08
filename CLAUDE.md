@@ -1317,8 +1317,108 @@ outright (`writeExperiments`'s shared `.experiments.json.tmp` name means the sec
 `studioExperiments.test.ts`'s new concurrency check). `updateTcExperiments` now serializes through
 a `wx`-flag lockfile (`withExperimentsLock`, `.experiments.json.lock`, stale after 30 s) — a plain
 mutex, not a true cross-platform advisory lock (ponytail: good enough for two cooperating
-processes on one filesystem; `src/dashboard/experiments.ts`, merged into `main` since this branch
-split off it but not onto this branch, would need to honour the same lockfile to be covered too).
+processes on one filesystem; it only ever guards callers that go through *this* module.
+`src/dashboard/experiments.ts` — merged into `main` 8 Oct 2026, its own sync `readExperiments`/
+`writeExperiments`, running in the dashboard's own container against the same bind-mounted
+`/media` — does not take this lockfile at all, so a dashboard tick and a worker cycle writing
+`.experiments.json` in the same instant can still race each other; upgrade both sides to a real
+lock, or have the dashboard honour this one too, if that ever actually bites).
+
+### Phase 4: the worker drives itself (8 Oct 2026)
+
+From the operator's own /goal that day: "the automation lives in the dashboard code, not this
+session: when the usage limit hits, the channel keeps running" and "Studio: one browser session,
+human-paced. On any sign-in or verification prompt, stop and add it to 'Needs you'. Never retry a
+login." Six fixes/features on top of phase 2/3, all in `studioWorker.ts`/`studioActions.ts`/
+`studioExperiments.ts` unless named otherwise:
+
+- **`.experiments.json`'s read-merge-write no longer drops data** (`studioExperiments.ts`'s own
+  `readExperiments`/`writeExperiments`): they used to reconstruct the file as `{ experiments,
+  schedule }` only, silently losing `baseline`, `appliedOn` and `evaluatedOn` — the experiment
+  engine's own once-a-day guards (`src/dashboard/experiments.ts`, merged into `main` 8 Oct 2026) —
+  on every single `tc`-plan or worker write. They now carry the whole parsed object through
+  (spread, with `experiments`/`schedule` validated as real arrays), rather than importing the
+  engine's own stricter `ExperimentsFile`/`Experiment` types directly: those require
+  `hypothesis`/`metric`/`start`/`end` on every `Experiment`, which a `tc` entry never sets, so
+  importing them here would stop `planTcExperiments` from type-checking at all. Pinned by a direct
+  round-trip test and a read-merge-write test asserting a `between` entry survives byte-for-byte.
+- **The worker's own gate is no longer `config.studioAutomation` alone.** That flag also switches
+  on the *dashboard's* own Studio paths (`retryPendingStudio`), and the dashboard container has no
+  Chrome at all — it must stay `false` there. The worker (`runCycle`/`runWorker`) now gates on
+  `opts.enable` — the CLI's own `--enable`, or env `STUDIO_WORKER=1` for a `nohup`'d session that
+  cannot pass a flag after the fact — OR'd with `config.studioAutomation`: `npm run studio --
+  worker --enable &` (or `STUDIO_WORKER=1 nohup npm run studio -- worker &`) is the operator's own
+  browser-automation grant exercised directly, by a session in *this* container, not a second,
+  ungated path to the same browser the dashboard's flag was built to gate. Without either, a cycle
+  is still a no-op recorded as `"skipped"`, same as before.
+- **End screens apply the starter layout instead of importing** (`addEndScreenFromTemplate`,
+  `clickStarterLayout`/`pickStarterLayoutLabel`, `STARTER_LAYOUT_PREFERENCE`): the empty editor's
+  own gallery (`lui-endscreen-text.txt`, read live 8 Oct 2026) is tried first — the card closest to
+  the operator's own template (2 VIDEO + 1 CHANNEL/subscribe elements), "2 videos, 1 subscribe",
+  else "1 video, 1 subscribe" — clicked, saved (`saveEndScreenChange`, waiting for the same
+  "Changes saved" confirmation `startTestAndCompare` already waits for), confirmed saved. "Import
+  from video" is kept only as a fallback for the day the picker's own account-scoping bug (phase
+  2/3's own finding) is fixed and a search actually returns rows — on the real gallery read live,
+  no card reads "2 videos, 1 subscribe" outright (the two "2 videos" cards there carry no
+  subscribe element at all) but three read exactly "1 video, 1 subscribe", so every real attempt
+  today takes that second preference and the Import fallback is not reachable in practice: the
+  same exact text is both the "editor is empty" signal (`endscreenEmptyGallery`) and a valid,
+  clickable starter card, so an empty editor always has *something* for `clickStarterLayout` to
+  find. Kept anyway — a channel or locale where that is not true picks up the fallback with no
+  code change.
+- **Title tests use exactly one challenger** (`planTcExperiments`'s title branch): Title-only
+  mode's own dialog has only one challenger slot (live + 1, confirmed live in phase 2/3), so a plan
+  whose variants had more than one survive `titleTestProblem` used to be planned with an arm
+  `startTestAndCompare` has no slot to fill. Now only the *first* variant to pass becomes the
+  challenger; every variant is still checked and a failing one still logged as skipped, but a
+  passing one past the first is simply not used (and not logged — there is nothing wrong with it,
+  it just was not needed).
+- **The worker plans a thumbnail Test & Compare on every new long-form by itself**
+  (`planCycle`'s `thumbnailTcTargets`, `renderTcThumbSet`, `AUTO_CAPTION_MAX_CHARS`): a dashboard
+  upload (`UploadRecord.source === "dashboard"`, never a Studio upload or a Short), uploaded on or
+  after 8 Oct 2026, not blocked (`blockedIn(povNicknamesOnDisk(matchDir(matchId)))`, the same
+  disk-only check every other Studio action already uses), with no `tc` experiment of its own yet
+  of either kind — capped at `MAX_THUMBNAIL_PLANS_PER_CYCLE` (2) a cycle. For each one the worker
+  shells out to the existing `npm run tc-thumbs` (reused, not reimplemented, the same way
+  `startFastExport` shells out to `export:fast`) to render control + the most-different
+  non-result-looking pose + a caption when `tcCaption.ts`'s own checks pass it, then keeps the
+  caption arm only when it is `AUTO_CAPTION_MAX_CHARS` (6) characters or fewer — tighter than
+  `tcCaption.ts`'s own 9-character ceiling, since nobody judges this one before it goes live, unlike
+  the manual `tc-plan.json` flow a human approves first. The render touches no Studio page, so it
+  needs no browser session, but still runs only inside the same cycle the worker's own blackout
+  window (`inBlackoutWindow`) already excludes, and is skipped entirely under `--dry-run` since
+  the render and the `.experiments.json` write are the whole action, with no later "stop before
+  the final click" point to fall back to. Planning a `tc` experiment never starts it in the same
+  cycle — the next cycle's own `tcToStart` picks it up, same as any manually-planned one.
+- **A video already running a test in Studio is reconciled, never started twice**
+  (`setExperimentChecked`, now also called from the `tcToStart` loop before ever calling
+  `startTestAndCompare`): `LUI5E7yF0zE` itself is the reason this exists — its live thumbnail
+  Test & Compare was started 8 Oct 2026 by a direct `npm run studio -- tc` CLI press, before any of
+  this bookkeeping existed, so `.experiments.json` has no record of it at all. If a future cycle's
+  own auto-thumbnail planner (or a hand-written `tc-plan.json`) ever names that same video,
+  `readTestAndCompare` is checked first; a `"running"` or `"done"` answer promotes the
+  experiment straight to that status (with a `start` timestamp if it did not have one yet) instead
+  of calling `startTestAndCompare`, which Studio would refuse anyway ("a test may already be set
+  up"). `setExperimentChecked` itself was the fix: it used to leave a `"planned"` experiment's
+  `status` untouched on anything short of `"done"`, so this reconciliation path would have silently
+  stuck at `"planned"` forever rather than ever being picked up by `tcToCheck`'s own
+  `status === "running"` filter.
+- The tc-plan importer's `tc/` files are now treated as final, judged renders in every case — the
+  one-off `tc-pose.png`→strip-file rewrite `planTcExperiments` used to do for a single night's plan
+  (whose `tc/` files were about to be re-rendered out from under it) is gone; every thumbnail
+  variant path, from a human judge's plan or the worker's own `tc-thumbs` render, is used exactly
+  as given.
+
+**Review fix, 8 Oct 2026**: `renderTcThumbSet`'s `npm run --silent tc-thumbs -- <id>` is really
+`npm run build-overlay-css && tsx src/thumbnails/tcThumbs.ts`, and `build-overlay-css.mjs`'s own
+`console.log("remotion/overlay.css written (…)")` landed on stdout *ahead of* tc-thumbs' own final
+JSON line — every single time, not a corner case — so `renderTcThumbSet`'s `JSON.parse` of the
+whole captured stdout threw on every real invocation, silently breaking the headline
+auto-planned-thumbnail-test feature (it still failed safe, reaching `errors`/the heartbeat, just
+never actually planning anything). A human running `npm run tc-thumbs` by hand never noticed,
+since a terminal shows the extra line fine. Fixed at the root: that status line now goes to
+`console.error` — every other `npm run build-overlay-css && …` script in `package.json` only ever
+shows it to a human, nobody else parses its stdout as data.
 
 ## Clips (prototype)
 

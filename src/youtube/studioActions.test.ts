@@ -178,6 +178,8 @@ try {
       window.__endscreenSaved = false;
       window.__tcStarted = null;
       window.__tcSaved = false;
+      window.__starterPicked = false;
+      window.__pickerOpened = false;
       function closeDialog() { document.getElementById("dialog-root").innerHTML = ""; }
       function renderEndScreen() {
         // Live run, 8 Oct 2026: the real End Screens editor has no aria-label="Close" element
@@ -187,13 +189,30 @@ try {
         // (s7r-endscreen-open.json) — distinct from the page-level #save button below, which a
         // plain text match alone cannot tell apart (the regression this fixture now guards).
         const hasElements = window.__state.endScreenHasElements;
+        // The real gallery's own text (lui-endscreen-text.txt, 8 Oct 2026) always offers a "1
+        // video, 1 subscribe" card alongside "Import from video" whenever the editor is empty —
+        // the same exact text endscreenEmptyGallery already reads as "empty" at all, so a real
+        // empty editor always gives clickStarterLayout something to find; this fixture mirrors
+        // that rather than a hypothetical gallery with no cards at all (see
+        // addEndScreenFromTemplate's own doc comment on why the Import path is a fallback nothing
+        // here can actually drive into).
         document.getElementById("dialog-root").innerHTML =
           '<div><span>End Screens</span>' +
           (hasElements
             ? '<div>existing elements</div>'
-            : '<div>1 video, 1 subscribe</div><button onclick="openPicker()">Import from video</button>') +
+            : // Live run, 8 Oct 2026 (s7R5FUKU0KQ): the real card is a role=gridcell with its
+              // own aria-label holding the click handler — its inner .title text node sits
+              // underneath it and intercepts nothing, so a plain text click there times out
+              // forever (the regression this fixture now guards; pointer-events: none on the
+              // title is what reproduces the real "intercepts pointer events" failure here).
+              '<div role="gridcell" aria-label="1 video, 1 subscribe" tabindex="0" style="cursor:pointer" onclick="window.__starterPicked=true">' +
+              '<div class="title" style="pointer-events:none">1 video, 1 subscribe</div></div>' +
+              '<button onclick="window.__pickerOpened=true;openPicker()">Import from video</button>') +
           '<button id="discard-button" onclick="closeDialog()">Discard changes</button>' +
-          '<button id="save-button" onclick="window.__endscreenSaved=true;closeDialog()">Save</button></div>';
+          // Shows the same "Changes saved" toast the page-level Save does (#saved-msg above) —
+          // saveEndScreenChange (studioActions.ts) waits on it the same way startTestAndCompare
+          // already waits on it for its own page Save.
+          '<button id="save-button" onclick="window.__endscreenSaved=true;document.getElementById(\\'saved-msg\\').style.display=\\'block\\';closeDialog()">Save</button></div>';
       }
       function openPicker() {
         document.getElementById("dialog-root").innerHTML +=
@@ -252,24 +271,34 @@ try {
   assert.equal(already, "already-has-endscreen");
   console.log('OK: addEndScreenFromTemplate leaves a video with elements alone ("already-has-endscreen")');
 
-  // Empty + the picker's own confirmed bug (no results for any query, 7 Oct 2026): reported as
-  // its own outcome, not a crash.
+  // Empty: the starter-layout gallery is the primary path now (phase 4, 8 Oct 2026) — dry run
+  // picks the card but never saves; a real run does, and neither ever opens the Import picker.
   uiState.endScreenHasElements = false;
-  uiState.pickerHasResults = false;
-  const empty = await addEndScreenFromTemplate(handle, "vidE2", "POQrpE0-5d8", { matchId });
-  assert.equal(empty, "picker-empty");
-  console.log('OK: a picker with no results is reported as "picker-empty", not a crash');
-
-  // Empty + a result: dry run picks the template but never saves; a real run does.
-  uiState.pickerHasResults = true;
-  const dryImport = await addEndScreenFromTemplate(handle, "vidE3", "POQrpE0-5d8", { matchId, dryRun: true });
-  assert.equal(dryImport, "imported");
+  const dryStarter = await addEndScreenFromTemplate(handle, "vidE2", "POQrpE0-5d8", {
+    matchId,
+    dryRun: true,
+  });
+  assert.equal(dryStarter, "imported");
+  assert.equal(await page.evaluate("window.__starterPicked"), true, "the starter card was clicked");
   assert.equal(await page.evaluate("window.__endscreenSaved"), false, "a dry run must never actually save");
-  console.log("OK: addEndScreenFromTemplate's dry run picks the template and stops before Save");
+  assert.equal(
+    await page.evaluate("window.__pickerOpened"),
+    false,
+    "the starter layout path never opens Import",
+  );
+  console.log(
+    "OK: addEndScreenFromTemplate's dry run picks the closest starter layout and stops before Save",
+  );
 
   const realImport = await addEndScreenFromTemplate(handle, "vidE4", "POQrpE0-5d8", { matchId });
   assert.equal(realImport, "imported");
+  assert.equal(await page.evaluate("window.__starterPicked"), true);
   assert.equal(await page.evaluate("window.__endscreenSaved"), true);
+  assert.equal(
+    await page.evaluate("window.__pickerOpened"),
+    false,
+    "the starter layout path never opens Import",
+  );
   // The regression this guards: the page-level #save (DOM-first, same order as the real page)
   // must be left untouched — an id-scoped click, not a `.first()` guess across two same-text
   // buttons.

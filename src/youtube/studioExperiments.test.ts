@@ -28,9 +28,8 @@ function thumbPlan(): TcPlan {
       {
         matchId: 111,
         videoId: "vid111",
-        variants: [`${dir}/tc/tc-control.png`, `${dir}/tc/tc-pose.png`],
+        variants: [`${dir}/tc/tc-control.png`, `${dir}/tc/tc-pose.png`, `${dir}/tc/tc-caption.png`],
         approved: true,
-        note: "Pose challenger is walking-crossed: no celebration.",
       },
       // Not approved: must be skipped, never planned.
       {
@@ -39,22 +38,21 @@ function thumbPlan(): TcPlan {
         variants: [`${dir}/tc/tc-control.png`, `${dir}/tc/tc-caption.png`],
         approved: false,
       },
-      // A pose challenger whose note names no known pose: the whole entry is skipped, not
-      // half-imported with a guessed file.
+      // Fewer than 2 variants: skipped, never planned with a single arm.
       {
         matchId: 333,
         videoId: "vid333",
-        variants: [`${dir}/tc/tc-control.png`, `${dir}/tc/tc-pose.png`],
+        variants: [`${dir}/tc/tc-control.png`],
         approved: true,
-        note: "no pose named here",
       },
     ],
   };
 }
 
-// 1. Approved thumbnail entry: the pose challenger is rewritten off tc/ to the strip file, the
-// control (not a pose challenger) passes through unchanged, and the non-approved / unresolvable
-// entries are skipped with a reason rather than silently dropped.
+// 1. Approved thumbnail entry: every variant file is used exactly as given (8 Oct 2026 — the plan's
+// own tc/ files are already final, judged renders, never rewritten to some other file on disk),
+// and the non-approved / too-few-variants entries are skipped with a reason rather than silently
+// dropped.
 {
   const { added, skipped } = planTcExperiments(thumbPlan(), new Set());
   assert.equal(added.length, 1, `expected exactly one planned thumbnail experiment, got ${added.length}`);
@@ -63,16 +61,19 @@ function thumbPlan(): TcPlan {
   assert.equal(exp.kind, "tc");
   assert.equal(exp.variable, "thumbnail");
   const files = exp.arms.map((a) => (a.settings as { file: string }).file);
-  assert.equal(files[0], path.join(media, "111", "tc", "tc-control.png"), "control path untouched");
-  assert.equal(
-    files[1],
-    path.join(media, "111", "thumbnail.walking-crossed.png"),
-    "pose challenger rewritten off tc/ to the strip file",
+  assert.deepEqual(
+    files,
+    [
+      path.join(media, "111", "tc", "tc-control.png"),
+      path.join(media, "111", "tc", "tc-pose.png"),
+      path.join(media, "111", "tc", "tc-caption.png"),
+    ],
+    "every variant path used exactly as given, no rewrite",
   );
   assert.equal(skipped.length, 2, `expected 2 skips, got ${JSON.stringify(skipped)}`);
   assert.ok(skipped.some((s) => s.videoId === "vid222" && s.reason === "not approved"));
-  assert.ok(skipped.some((s) => s.videoId === "vid333" && /no known pose/.test(s.reason)));
-  console.log("OK: thumbnail import rewrites only the pose challenger, skips the rest with a reason");
+  assert.ok(skipped.some((s) => s.videoId === "vid333" && /fewer than 2 variants/.test(s.reason)));
+  console.log("OK: thumbnail import uses every variant file as given, skips the rest with a reason");
 }
 
 // 2. Idempotent: an id already in the file is never re-added.
@@ -86,7 +87,8 @@ function thumbPlan(): TcPlan {
 
 // 3. Title entries: a hook that fails the same checks `startTestAndCompare` runs later is
 // skipped per-variant; an entry where every variant fails is dropped entirely (never planned
-// with zero challengers), and the surviving variant becomes a real challenger arm.
+// with zero challengers); exactly one challenger arm is ever planned (8 Oct 2026 — Title-only
+// mode's own dialog has only one challenger slot), even when more than one variant would pass.
 {
   const titlePlan: TcPlan = {
     titles: [
@@ -94,7 +96,9 @@ function thumbPlan(): TcPlan {
         videoId: "vidT1",
         matchId: 444,
         live: "TEN SECONDS SHRANK TO ONE | edcr vs doogile | MCSR Ranked 1v1 | Minecraft Speedrun",
-        variants: ["DECIDED BY 1 SECOND", "DOOGILE WINS IT"], // the second names the result
+        // The first fails (names the result), the second and third both pass: only the second —
+        // the first to pass — becomes the challenger; the third is neither used nor logged.
+        variants: ["DOOGILE WINS IT", "DECIDED BY 1 SECOND", "A SUB-9 TO WIN IT"],
         approved: true,
       },
       {
@@ -110,33 +114,55 @@ function thumbPlan(): TcPlan {
   assert.equal(added.length, 1, `expected one planned title experiment, got ${added.length}`);
   const exp = added[0]!;
   assert.equal(exp.id, "tc-title-vidT1");
-  assert.equal(exp.arms.length, 2, "control + exactly the one surviving challenger");
+  assert.equal(exp.arms.length, 2, "control + exactly one challenger, never more");
   assert.equal((exp.arms[0]!.settings as { title: string }).title, titlePlan.titles![0]!.live);
   assert.equal(
     (exp.arms[1]!.settings as { title: string }).title,
     "DECIDED BY 1 SECOND | edcr vs doogile | MCSR Ranked 1v1 | Minecraft Speedrun",
+    "the first variant to pass, not the last",
   );
   assert.ok(skipped.some((s) => s.videoId === "vidT1" && /gives the result away/.test(s.reason)));
+  assert.ok(
+    !skipped.some((s) => s.videoId === "vidT1" && /SUB-9/.test(s.reason)),
+    "a passing variant past the first is silently unused, not logged as skipped",
+  );
   assert.ok(skipped.some((s) => s.videoId === "vidT2" && /no "<a> vs <b>"/.test(s.reason)));
-  console.log("OK: a spoiler variant is dropped, a title with no parseable names is skipped entirely");
+  console.log(
+    "OK: a spoiler variant is dropped, only the first passing variant becomes the challenger, a title with no parseable names is skipped entirely",
+  );
 }
 
-// 4. IO: importTcPlan never drops a `between` entry or an unrelated top-level field already in
-// the file — read-merge-write, not overwrite.
+// 4. IO: importTcPlan never drops a `between` entry, the engine's own top-level fields
+// (`baseline`/`appliedOn`/`evaluatedOn`), or any other field already in the file — read-merge-write,
+// not overwrite (review fix, 8 Oct 2026: the old `readExperiments`/`writeExperiments` reconstructed
+// `{ experiments, schedule }` only and silently dropped everything else on every write).
 {
-  const existing: ExperimentsFile = {
-    experiments: [
-      {
-        id: "between-publish-hour",
-        kind: "between",
-        arms: [{ name: "19utc" }, { name: "21utc" }],
-        videos: [],
-        status: "running",
-      },
+  const betweenExperiment = {
+    id: "between-publish-hour",
+    kind: "between",
+    hypothesis: "a later publish hour gets more engaged views",
+    variable: "publishHourUtc",
+    metric: "engagedViews",
+    controlArm: "19utc",
+    arms: [
+      { name: "19utc", settings: { publishHourUtc: 19 } },
+      { name: "21utc", settings: { publishHourUtc: 21 } },
     ],
+    videos: [{ videoId: "abc123", matchId: 999, arm: "19utc" }],
+    start: "2026-10-01",
+    end: "2026-10-15",
+    status: "running",
+    needsHumanAck: false,
+  };
+  const existing: ExperimentsFile = {
+    baseline: { publishHourUtc: 19, introSec: 7 },
+    experiments: [betweenExperiment as unknown as Experiment],
     schedule: [{ note: "untouched" }],
+    appliedOn: "2026-10-07",
+    evaluatedOn: "2026-10-07",
   };
   await writeExperiments(existing);
+  const betweenBefore = JSON.stringify(betweenExperiment);
 
   const { added } = await importTcPlan({
     titles: [
@@ -153,9 +179,16 @@ function thumbPlan(): TcPlan {
 
   const onDisk = JSON.parse(await readFile(path.join(media, ".experiments.json"), "utf8")) as ExperimentsFile;
   assert.equal(onDisk.experiments.length, 2, "the between entry must survive the tc import");
-  assert.ok(onDisk.experiments.some((e) => e.id === "between-publish-hour" && e.status === "running"));
-  assert.deepEqual(onDisk.schedule, [{ note: "untouched" }]);
-  console.log("OK: importing tc experiments leaves between entries and schedule untouched");
+  const betweenAfter = onDisk.experiments.find((e) => e.id === "between-publish-hour");
+  assert.ok(betweenAfter, "the between entry must survive the tc import");
+  assert.equal(JSON.stringify(betweenAfter), betweenBefore, "the between entry survives byte-for-byte");
+  assert.deepEqual(onDisk.schedule, [{ note: "untouched" }], "schedule untouched");
+  assert.deepEqual(onDisk.baseline, { publishHourUtc: 19, introSec: 7 }, "baseline untouched");
+  assert.equal(onDisk.appliedOn, "2026-10-07", "appliedOn untouched — the engine's once-a-day guard");
+  assert.equal(onDisk.evaluatedOn, "2026-10-07", "evaluatedOn untouched — the engine's once-a-day guard");
+  console.log(
+    "OK: importing tc experiments leaves between entries, schedule, baseline, appliedOn and evaluatedOn untouched",
+  );
 
   // A second import of the same plan is a no-op on disk, confirming the file-level idempotency.
   const again = await importTcPlan({
@@ -172,7 +205,27 @@ function thumbPlan(): TcPlan {
   assert.equal(again.added.length, 0);
   const stillTwo = await readExperiments();
   assert.equal(stillTwo.experiments.length, 2);
+  assert.equal(stillTwo.appliedOn, "2026-10-07", "appliedOn still untouched after a second import");
   console.log("OK: re-importing the same plan writes nothing new to disk");
+}
+
+// 4b. readExperiments/writeExperiments round-trip every unknown top-level field directly, even
+// with no `tc` entries involved at all — the exact shape `applyScheduledRenderArm`
+// (`src/dashboard/experiments.ts`) itself writes and rereads nightly.
+{
+  const full: ExperimentsFile = {
+    baseline: { introSec: 7, explainMovesSec: null },
+    experiments: [],
+    schedule: [{ date: "2026-10-09", experimentId: "between-x", arm: "a" }],
+    appliedOn: "2026-10-08",
+    evaluatedOn: "2026-10-08",
+  };
+  await writeExperiments(full);
+  const read = await readExperiments();
+  assert.deepEqual(read, full, "every top-level field round-trips exactly, nothing dropped");
+  console.log(
+    "OK: readExperiments/writeExperiments round-trip baseline/appliedOn/evaluatedOn with zero tc traffic",
+  );
 }
 
 // 5. updateTcExperiments is a cross-process-safe critical section: two concurrent callers (the

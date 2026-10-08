@@ -17,7 +17,10 @@
  * worker: the phase 2/3 loop (src/youtube/studioWorker.ts) — end screens, then Test & Compare
  *      starts and daily checks, one browser session per cycle, ~20 min apart. `--once` runs a
  *      single cycle and exits (what this is tested with); without it the process runs forever,
- *      meant for `nohup`. A no-op, reported as `"skipped"`, while `config.studioAutomation` is off.
+ *      meant for `nohup`. A no-op, reported as `"skipped"`, unless `--enable` (or env
+ *      `STUDIO_WORKER=1`) is given or `config.studioAutomation` is on (see studioWorker.ts's own
+ *      top comment) — this loop runs in the Claude container, not the dashboard's, so the
+ *      dashboard's own flag staying `false` does not have to stop it.
  * tc-plan: turns an approved judge's plan (tc-plan.json's own shape) into planned "tc" experiments
  *      in `<mediaDir>/.experiments.json` — idempotent, prints what it added and what it skipped
  *      and why. Opens no browser.
@@ -57,7 +60,7 @@ function usage(): never {
     "usage: npm run studio -- probe | pin <matchId|videoId> [--dry-run] | login [--profile-dir=<path>]" +
       " | endscreen <matchId|videoId> [--dry-run]" +
       " | tc <matchId|videoId> title|thumbnail <variant…> [--dry-run] | tc-read <matchId|videoId>" +
-      " | worker [--once] [--dry-run] | tc-plan <plan.json>",
+      " | worker [--once] [--dry-run] [--enable] | tc-plan <plan.json>",
   );
   process.exit(2);
 }
@@ -210,7 +213,13 @@ async function loginCmd(): Promise<void> {
 
 async function workerCmd(): Promise<void> {
   const once = rest.includes("--once");
-  await runWorker({ once, dryRun, startOpts });
+  // See studioWorker.ts's own top-of-file comment: `config.studioAutomation` alone must not start
+  // a real Chrome here — that flag is the dashboard's own switch, and the dashboard container has
+  // no Chrome at all. Starting this loop for real needs the operator's own browser-automation
+  // grant exercised directly, by whoever runs this command passing `--enable` (or setting
+  // `STUDIO_WORKER=1` for a `nohup`'d session that cannot pass a flag after the fact).
+  const enable = rest.includes("--enable") || process.env.STUDIO_WORKER === "1";
+  await runWorker({ once, dryRun, startOpts, enable });
 }
 
 async function tcPlanCmd(file: string | undefined): Promise<void> {

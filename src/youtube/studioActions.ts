@@ -41,7 +41,11 @@ const SELECTORS = {
   // for "empty". Its absence is read as "has elements", the safe direction to be wrong in: never
   // import over something someone set by hand (rail 2).
   endscreenEmptyGallery: 'text="1 video, 1 subscribe"',
-  endscreenImportButton: 'button:has-text("Import from video")',
+  // Confirmed live 8 Oct 2026, same raw dump as Save/Discard above (`s7r-endscreen-open.json`):
+  // the real clickable id is the `ytcp-button` wrapper's own, not the plain-text selector this
+  // used before — the same nested-wrapper double-match risk that comment already explains for
+  // Save/Discard applies here too, so this is the confirmed id alone, no text fallback.
+  endscreenImportButton: "#import-endscreen-from-video-button",
   endscreenPickerDialog: "ytcp-video-pick-dialog",
   endscreenPickerInput: "ytcp-video-pick-dialog input",
   endscreenPickerNoResults: "text=/No matching results/i",
@@ -92,6 +96,36 @@ const SELECTORS = {
   abTestTitleInputs: 'ytcp-creator-experiment-create-dialog [aria-label^="Add title"]',
   abTestFileInputs: 'ytcp-creator-experiment-create-dialog input[type="file"]',
 };
+
+/**
+ * Starter-layout gallery card labels, closest to the operator's own template first (CHANNEL/
+ * subscribe + 2 VIDEO — "2 videos, 1 subscribe", the task's own phrasing); read live off the real
+ * gallery's own on-page text 8 Oct 2026 (`lui-endscreen-text.txt`, LUI5E7yF0zE's End Screens
+ * panel): the six cards there read exactly `"1 video, 1 subscribe"` (three of them — apparently
+ * different arrangements of the same three elements), `"2 videos"` (two, no subscribe element),
+ * and `"1 video, 1 playlist, 1 subscribe"` (one). No card on this channel's gallery reads "2
+ * videos, 1 subscribe" outright, so every real attempt today falls through to the second
+ * preference. The first preference is kept anyway — a channel or locale where that exact card
+ * does exist picks it with no code change — and a plain "2 videos" card (no subscribe element at
+ * all) is deliberately not treated as good enough: it is a different composition from the
+ * template, not a close match of it.
+ *
+ * No DOM dump of the gallery's own tag/class exists (the exploration never clicked a card — see
+ * `addEndScreenFromTemplate`'s own comment), so this matches by the card's exact, highly specific
+ * caption text rather than a confirmed selector — the same honesty `endscreenPickerRow` below is
+ * already given. `addEndScreenFromTemplate` only ever reaches this while the empty-state gallery
+ * is already confirmed visible, so which panel is open is never in doubt even without a container
+ * selector to scope a locator to.
+ */
+export const STARTER_LAYOUT_PREFERENCE = ["2 videos, 1 subscribe", "1 video, 1 subscribe"] as const;
+
+/** Pure: which of `STARTER_LAYOUT_PREFERENCE` to use, given which of them are actually visible on
+ * the page right now — exported so the preference order itself has a plain unit test with no
+ * browser (`studioWorker.test.ts`); `clickStarterLayout` below is the thin IO wrapper that answers
+ * "visible" from the real page and does the actual click. */
+export function pickStarterLayoutLabel(visibleLabels: ReadonlySet<string>): string | null {
+  return STARTER_LAYOUT_PREFERENCE.find((label) => visibleLabels.has(label)) ?? null;
+}
 
 export type PinOutcome = "pinned" | "already-pinned" | "no-channel-comment" | "skipped-private";
 
@@ -206,13 +240,65 @@ export async function pinComment(
 
 export type EndScreenOutcome = "imported" | "already-has-endscreen" | "picker-empty";
 
+/** Checks each `STARTER_LAYOUT_PREFERENCE` label's visibility, picks one with
+ * `pickStarterLayoutLabel`, and clicks it — see that list's own comment for what is and is not
+ * confirmed about these cards. Returns whether one was found and clicked (never throws on a miss;
+ * no matching card is exactly the expected "none of these labels exist on this gallery" case, not
+ * a failure). */
+async function clickStarterLayout(page: import("playwright").Page): Promise<boolean> {
+  const visible = new Set<string>();
+  for (const label of STARTER_LAYOUT_PREFERENCE) {
+    if (
+      await page
+        .getByRole("gridcell", { name: label, exact: true })
+        .first()
+        .isVisible()
+        .catch(() => false)
+    )
+      visible.add(label);
+  }
+  const chosen = pickStarterLayoutLabel(visible);
+  if (!chosen) return false;
+  // Confirmed live 8 Oct 2026 (s7R5FUKU0KQ): a plain `getByText(...)` resolves to the card's own
+  // inner `.title` text node, which the card's own `role="gridcell"` ancestor then intercepts
+  // every click on — Playwright retried for 30s and timed out, never picking a layout at all. The
+  // gridcell is the real clickable element (it carries the card's own click handler and its own
+  // `aria-label` mirrors the title text exactly), so this targets it directly instead of a
+  // descendant it covers.
+  await page.getByRole("gridcell", { name: chosen, exact: true }).first().click();
+  return true;
+}
+
+/** Clicks the editor's own Save and waits for the same "Changes saved" confirmation
+ * `startTestAndCompare` already waits for elsewhere in this file — shared by the starter-layout
+ * and "Import from video" paths below, both of which finish the same way once something has
+ * actually been picked. */
+async function saveEndScreenChange(
+  page: import("playwright").Page,
+  handle: StudioHandle,
+  matchId: number,
+): Promise<void> {
+  await page.locator(SELECTORS.endscreenSaveButton).first().click();
+  await page
+    .locator('text="Changes saved"')
+    .first()
+    .waitFor({ state: "visible", timeout: 15_000 })
+    .catch(() => {});
+  await shot(handle, matchId, "endscreen-after");
+}
+
 /**
- * Imports the operator's own end-screen template (one video set up by hand, named by id) onto
- * `videoId` — skipped if the editor already shows elements (rail 2: never replaces one someone
- * set by hand; when the empty-state gallery cannot be confirmed either way, this treats the
- * video as already configured, the safe direction to be wrong in). `dryRun` stops right after
- * picking the template in "Import from video", before the save click that would actually apply
- * it — mirroring `pinComment`'s own dry run.
+ * Gives `videoId` an end screen — skipped if the editor already shows elements (rail 2: never
+ * replaces one someone set by hand; when the empty-state gallery cannot be confirmed either way,
+ * this treats the video as already configured, the safe direction to be wrong in). The empty
+ * state's own starter-layout gallery (phase 4, 8 Oct 2026) is the primary path: apply the card
+ * closest to the operator's own template, save, confirm saved (`clickStarterLayout`,
+ * `saveEndScreenChange`) — "Import from video" (the operator's own template, named by id) is now
+ * only a fallback for the day the picker's own account-scoping bug (below) is fixed and a search
+ * actually returns rows to click; until then it still ends in `"picker-empty"` every time, same
+ * as before the starter-layout path existed. `dryRun` stops right after picking a card or a
+ * picker row, before the save click that would actually apply it — mirroring `pinComment`'s own
+ * dry run.
  *
  * `templateQuery` (default `templateId`) is unverified to find anything at all on this profile
  * right now: the exploration's own test run got "No matching results" for every query it tried,
@@ -261,6 +347,23 @@ export async function addEndScreenFromTemplate(
       return "already-has-endscreen";
     }
 
+    if (await clickStarterLayout(page)) {
+      await randomPause();
+      await shot(handle, opts.matchId, "endscreen-starter-picked");
+      if (opts.dryRun) {
+        await shot(handle, opts.matchId, "endscreen-dry-run");
+        await page
+          .locator(SELECTORS.endscreenDiscardButton)
+          .first()
+          .click()
+          .catch(() => {});
+        return "imported";
+      }
+      await saveEndScreenChange(page, handle, opts.matchId);
+      return "imported";
+    }
+
+    // Fallback — see this function's own doc comment above.
     await page.locator(SELECTORS.endscreenImportButton).click();
     await page.locator(SELECTORS.endscreenPickerDialog).waitFor({ state: "visible", timeout: 15_000 });
     await page
@@ -299,8 +402,7 @@ export async function addEndScreenFromTemplate(
       return "imported";
     }
 
-    await page.locator(SELECTORS.endscreenSaveButton).first().click();
-    await shot(handle, opts.matchId, "endscreen-after");
+    await saveEndScreenChange(page, handle, opts.matchId);
     return "imported";
   } catch (err) {
     return { error: describeError(err) };
