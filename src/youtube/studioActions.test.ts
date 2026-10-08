@@ -87,8 +87,13 @@ const mediaDir = config.mediaDir;
 config.mediaDir = media;
 
 const { isRunning, page: pageOf, start } = await import("./studioBrowser.js");
-const { pinComment, addEndScreenFromTemplate, startTestAndCompare, readTestAndCompare } =
-  await import("./studioActions.js");
+const {
+  pinComment,
+  addEndScreenFromTemplate,
+  startTestAndCompare,
+  readTestAndCompare,
+  checkRelatedVideoPicker,
+} = await import("./studioActions.js");
 
 const matchId = 1;
 mkdirSync(path.join(media, String(matchId)), { recursive: true });
@@ -160,12 +165,30 @@ try {
     endScreenHasElements: false,
     pickerHasResults: true,
     abTest: "none" as "none" | "running" | "done",
+    // Related video (phase 2's own second half, 8 Oct 2026 — tmp/studio3/, read-only, no Save
+    // ever pressed live): the Short's Details-page sidebar control, "None" until something is
+    // linked.
+    relatedVideoLinked: false,
   };
   function editPageHtml(): string {
     return `<!doctype html><html><body>
-    <style>button,div,input,ytcp-ab-test-dialog,ytcp-video-pick-dialog{display:block;padding:2px;}</style>
+    <style>button,div,input,ytcp-ab-test-dialog,ytcp-video-pick-dialog,ytcp-text-dropdown-trigger{display:block;padding:2px;}</style>
     <button id="endscreen-editor-link" role="button">End screen</button>
     <button id="ab-test-button" aria-label="A/B Testing">A/B Testing</button>
+    <!-- Confirmed live 8 Oct 2026 (tmp/studio3/): clicking this opens the exact same
+         ytcp-video-pick-dialog the end-screen "Import from video" fallback below already does —
+         this fixture reuses that same dialog markup/selectors rather than inventing new ones.
+         The label-plus-value shape (two children, not one bare text node) is the real page's own
+         (outerHTML dump, 8 Oct 2026): a first live run read the trigger's whole innerText
+         ("Related video\nNone") against /^none$/i and misreported a never-linked Short
+         "already-linked" — a fixture with only the bare value text, as this one used to have,
+         could not have caught that. -->
+    <ytcp-text-dropdown-trigger id="linked-video-editor-link" onclick="openRelatedPicker()">
+      <div class="label-text">Related video</div>
+      <span class="dropdown-trigger-text">
+        ${uiState.relatedVideoLinked ? "Some Other Video" : "None"}
+      </span>
+    </ytcp-text-dropdown-trigger>
     <!-- Page-level Save placed BEFORE dialog-root, same DOM order as the real page
          (s7r-endscreen-open.json: the page's own #save sits before the editor's own #save-button) —
          a reversion to a plain text-based Save selector plus .first() would click this one, not
@@ -217,6 +240,17 @@ try {
       function openPicker() {
         document.getElementById("dialog-root").innerHTML +=
           '<ytcp-video-pick-dialog><input oninput="onPickerInput(this.value)" /><div id="picker-results"></div></ytcp-video-pick-dialog>';
+      }
+      // The related-video control's own picker — same dialog tag/input/no-results text as
+      // openPicker() above (confirmed live, tmp/studio3/), but replaces dialog-root outright
+      // rather than appending into an End Screens panel that was never opened on this page.
+      // Carries its own Close button (confirmed live: this dialog closes clean, no discard
+      // prompt, unlike the End Screens editor).
+      function openRelatedPicker() {
+        document.getElementById("dialog-root").innerHTML =
+          '<ytcp-video-pick-dialog><input oninput="onPickerInput(this.value)" />' +
+          '<button aria-label="Close" onclick="document.getElementById(\\'dialog-root\\').innerHTML=\\'\\'">Close</button>' +
+          '<div id="picker-results"></div></ytcp-video-pick-dialog>';
       }
       function onPickerInput(value) {
         const results = document.getElementById("picker-results");
@@ -308,6 +342,42 @@ try {
     "must click the end-screen editor's own Save (#save-button), not the page-level #save",
   );
   console.log("OK: a real run clicks the editor's own Save, scoped by id, not the page-level Save");
+
+  // --- Related video (phase 2's own second half, 8 Oct 2026) ---------------------------------
+  // checkRelatedVideoPicker only ever checks and reports — confirmed live (tmp/studio3/) that a
+  // real search here hits the exact same account-scoping bug the end-screen picker above does,
+  // so this never guesses past "picker-empty".
+  uiState.relatedVideoLinked = false;
+  uiState.pickerHasResults = false;
+  const emptyRelated = await checkRelatedVideoPicker(handle, "vidShort1", "vASY6MzFRNM", { matchId });
+  assert.equal(emptyRelated, "picker-empty");
+  assert.equal(
+    await page.locator("ytcp-video-pick-dialog").count(),
+    0,
+    "the picker is closed again once checked, nothing left open",
+  );
+  console.log('OK: checkRelatedVideoPicker reports "picker-empty" when the search finds nothing');
+
+  uiState.relatedVideoLinked = true;
+  const alreadyLinked = await checkRelatedVideoPicker(handle, "vidShort1", "vASY6MzFRNM", { matchId });
+  assert.equal(alreadyLinked, "already-linked");
+  assert.equal(
+    await page.locator("ytcp-video-pick-dialog").count(),
+    0,
+    "an already-linked Short's picker is never even opened",
+  );
+  console.log('OK: checkRelatedVideoPicker leaves an already-linked Short alone ("already-linked")');
+
+  // The day the account-scoping bug is fixed and a search actually returns a row: this must
+  // report it rather than guess at which row is right or how the dialog's own Save behaves.
+  uiState.relatedVideoLinked = false;
+  uiState.pickerHasResults = true;
+  const foundRelated = await checkRelatedVideoPicker(handle, "vidShort1", "vASY6MzFRNM", { matchId });
+  assert.ok(typeof foundRelated === "object" && "error" in foundRelated);
+  assert.match((foundRelated as { error: string }).error, /not yet built/);
+  console.log(
+    "OK: checkRelatedVideoPicker reports, rather than guesses, once a search actually returns a row",
+  );
 
   // startTestAndCompare: refuses before this point are covered by studioWorker.test.ts (a poisoned
   // handle that never reaches a page at all); here the dialog is real, so this is the rest of the

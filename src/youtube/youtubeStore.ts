@@ -525,6 +525,33 @@ export async function videoIdOwner(videoId: string): Promise<{ matchId: number; 
   return null;
 }
 
+/**
+ * Resolves a CLI target that must name a Short — by match id (reads its `youtube-short.json`) or
+ * by video id directly, refusing one on record as that match's *long-form* instead of its Short.
+ *
+ * `videoIdOwner`'s own doc already names the mistake this guards: "the Short of a match is
+ * exactly the id an operator is most likely to paste by mistake, since both sit next to each
+ * other in Studio" — true the other way too. Resolving by raw id used to trust whatever kind
+ * `videoIdOwner` actually found, so a long-form id pasted where a Short's was expected (or the
+ * two swapped on a command line) silently carried on labelled `shortId` rather than being refused
+ * — the root the "related video" picker (`studioCli.ts`'s own `resolveShort`) builds on.
+ */
+export async function resolveShortVideoId(
+  target: string,
+): Promise<{ matchId: number; shortId: string } | { error: string }> {
+  if (/^\d+$/.test(target)) {
+    const matchId = Number(target);
+    const record = await readUpload(matchId, "short");
+    if (!record) return { error: `match ${matchId} has no recorded Short upload (youtube-short.json)` };
+    return { matchId, shortId: record.videoId };
+  }
+  const owner = await videoIdOwner(target);
+  if (!owner) return { error: `${target} is not a known video id (no match records it in youtube.json/youtube-short.json)` };
+  if (owner.kind !== "short")
+    return { error: `${target} is recorded as match ${owner.matchId}'s long-form video, not its Short` };
+  return { matchId: owner.matchId, shortId: target };
+}
+
 /** Every match that has been uploaded, for the stats table. */
 export async function allUploads(): Promise<Array<{ matchId: number; record: UploadRecord }>> {
   const entries = await Promise.all(

@@ -19,6 +19,7 @@ import {
   nicknameWarnings,
   refreshDescription,
   refreshTitle,
+  resolveShortVideoId,
   uploadTextFor,
   type UploadRecord,
 } from "./youtubeStore.js";
@@ -533,5 +534,33 @@ const hookTitle = (hook: string, pair: string) => `${hook} | ${pair} | ${TAIL}`;
   assert.ok(text700Off.includes(SUBSCRIBE_LINE));
   assert.equal(text700Off.split(SUBSCRIBE_LINE).length, 2);
 }
+
+// --- resolveShortVideoId (8 Oct 2026, studio "related video" review): refuses a long-form id
+// pasted or swapped in where a Short's was expected, instead of silently resolving it as one —
+// the mistake `videoIdOwner`'s own doc already names ("the id most likely to be pasted by
+// mistake"), the other way round.
+{
+  const matchId = 900;
+  write(matchId, {
+    "youtube.json": JSON.stringify({ videoId: "longform900" }),
+    "youtube-short.json": JSON.stringify({ videoId: "short900" }),
+  });
+
+  assert.deepEqual(await resolveShortVideoId(String(matchId)), { matchId, shortId: "short900" });
+  assert.deepEqual(await resolveShortVideoId("short900"), { matchId, shortId: "short900" });
+
+  const wrongKind = await resolveShortVideoId("longform900");
+  assert.ok("error" in wrongKind, "a long-form id must not resolve as a Short");
+  assert.match((wrongKind as { error: string }).error, /long-form video, not its Short/);
+
+  const unknown = await resolveShortVideoId("not-a-real-id");
+  assert.ok("error" in unknown, "an id on no record is an error, not a silent pass-through");
+
+  const noShortYet = 901;
+  write(noShortYet, { "youtube.json": JSON.stringify({ videoId: "longform901" }) });
+  const missing = await resolveShortVideoId(String(noShortYet));
+  assert.ok("error" in missing, "a match id with no Short record yet is an error, not undefined behaviour");
+}
+console.log("OK: resolveShortVideoId refuses a long-form id where a Short's was expected");
 
 console.log("youtubeStore.test: ok");
