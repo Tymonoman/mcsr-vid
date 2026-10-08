@@ -44,6 +44,13 @@ in this container: `STUDIO_PROFILE_DIR=/app/.studio-profile setsid nohup npm run
 UTC; ≤2 tc starts + ≤3 end screens per 20-min cycle; also auto-plans a thumbnail test per new upload from 8 Oct). If this
 container restarts, start it again with that line. Nightly 8 Oct: 13754336 Pinne–ANJOUU done (waiting for hook), 13765754
 dandannyboy–silverrruns rendering.
+8 Oct ~07:55 UTC — the operator: "chill on the token usage now" (after "burn usage" at ~06:50). Stopped bug-sweep,
+coverage-push, docs-truth, security-review, tests-tab, competitor-refresh, thumb-concepts-r2 (resumable: their scripts
+and run ids are in the session's workflows/scripts dir). Kept: worker-harden (supervisor + pin in the worker) and
+shorts-related (Short → its long-form "Related video"). Keep further work lean: no new fan-outs without a reason.
+Report published: https://claude.ai/artifact/78UWHqTnJityMtpiLS9Yw9 (sent to Telegram). Telegram links → Studio: 3465c6f.
+An agent re-downloaded POV clips into /media/{13673240,13704828,13473906} and re-rendered 13673240's overlay-timer.mp4
+(~9 GB, harmless to the channel) — free them later if disk gets tight.
 Dashboard boot fd47b32 (he restarted it 7 Oct evening). /media 70 GB free. Live: introSec 3, countdownTeaser on,
 explainMovesSec 8 (on), suggestKnownSlots 10.
 
