@@ -55,6 +55,10 @@ An agent re-downloaded POV clips into /media/{13673240,13704828,13473906} and re
 thumbnails uploading); fixed fbbbf66 (wait for Set test enabled + dialog closed); worker restarted on it (new pid, same
 start line) → 08:00 cycle started 2 tests (vASY6MzFRNM, f4Z2Dvg9ihc; "Changes saved" verified), 2 more end screens. Running:
 3 A/B tests; 21 planned left (2 per cycle). End screens so far: 7.
+8 Oct 08:33 UTC: worker-harden MERGED; the worker now runs under the supervisor:
+`setsid nohup bash /app/scripts/studio-worker.sh >/dev/null 2>&1 &` (pidfile ~/.claude/studio-worker-supervisor.pid;
+restarts the worker 60 s after any exit; the worker exits itself at the nightly blackout when HEAD moved, so merges reach
+it without a hand restart; it also pins our own comment on public videos now). 5 A/B tests running at 08:19.
 Dashboard boot fd47b32 (he restarted it 7 Oct evening). /media 70 GB free. Live: introSec 3, countdownTeaser on,
 explainMovesSec 8 (on), suggestKnownSlots 10.
 
