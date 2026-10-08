@@ -136,6 +136,11 @@ export interface WorkerHeartbeat {
    * contribute one independently of an end-screen error, and truncating to `errors[0]` silently
    * dropped the rest (fixed 8 Oct 2026). */
   lastErrors: string[];
+  /** How many consecutive cycles have now ended with this exact `lastError` (0 when this cycle
+   * had none) — computed read-before-write in `runWorker` so a caller (the morning report's
+   * "Needs you") can notice a standing problem without keeping its own history. Optional only
+   * for a heartbeat file written before this field existed. */
+  sameErrorStreak?: number;
 }
 
 const heartbeatPath = (): string => path.join(config.mediaDir, ".studio-worker.json");
@@ -570,6 +575,15 @@ function jitteredDelayMs(): number {
   return CYCLE_MS + Math.round((Math.random() * 2 - 1) * JITTER_MS);
 }
 
+/** 1 for a fresh error, one more than the previous cycle's own streak when it is the exact same
+ * message again, 0 when this cycle had none — read-before-write against the heartbeat this same
+ * cycle is about to overwrite. */
+export async function nextSameErrorStreak(currentError: string | null): Promise<number> {
+  if (!currentError) return 0;
+  const prev = await readHeartbeat();
+  return prev?.lastError === currentError ? (prev.sameErrorStreak ?? 0) + 1 : 1;
+}
+
 /**
  * Runs cycles forever (or once, with `--once`), human-paced between videos within a cycle
  * (`randomPause` in `studioActions.ts`) and ~20 min ± 3 min between cycles. Never runs inside
@@ -591,6 +605,7 @@ export async function runWorker(
         result = { ...SKIPPED_RESULT, probe: "error", errors: [describeError(err)] };
       }
     }
+    const currentError = result.errors[0] ?? null;
     await writeHeartbeat({
       pid: process.pid,
       at: new Date().toISOString(),
@@ -603,8 +618,9 @@ export async function runWorker(
         tcChecked: result.tcChecked,
         thumbnailTestsPlanned: result.thumbnailTestsPlanned,
       },
-      lastError: result.errors[0] ?? null,
+      lastError: currentError,
       lastErrors: result.errors,
+      sameErrorStreak: await nextSameErrorStreak(currentError),
     });
     if (opts.once) return;
     await sleep(jitteredDelayMs());

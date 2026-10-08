@@ -13,6 +13,7 @@ import {
   gatherFacts,
   gatherWorthSection,
   restartIdleHealth,
+  studioWorkerHealth,
   WORTH_DEADLINE_MS,
   withDeadline,
 } from "./facts.js";
@@ -119,6 +120,28 @@ try {
   });
   disarmRestart();
   assert.equal(restartIdleHealth(), null, "disarming clears the health line too");
+
+  // The Studio worker's heartbeat folded into one gatherHealth line: no file (never started) is
+  // no line; fresh is ok; stale (over 90 min) is down — same file "Needs you" above reads.
+  const workerHeartbeat = path.join(media, ".studio-worker.json");
+  assert.equal(studioWorkerHealth(), null, "no heartbeat file: no health line");
+  writeFileSync(
+    workerHeartbeat,
+    JSON.stringify({ at: new Date(Date.now() - 5 * 60_000).toISOString(), lastError: null }),
+  );
+  let workerHealth = studioWorkerHealth();
+  assert.equal(workerHealth?.name, "studio worker");
+  assert.equal(workerHealth?.ok, true, "a 5 min old heartbeat is ok");
+  writeFileSync(
+    workerHeartbeat,
+    JSON.stringify({ at: new Date(Date.now() - 91 * 60_000).toISOString(), lastError: null }),
+  );
+  workerHealth = studioWorkerHealth();
+  assert.equal(workerHealth?.ok, false, "a 91 min old heartbeat is down");
+  assert.match(workerHealth!.detail ?? "", /down/);
+  rmSync(workerHeartbeat);
+  console.log("OK: studioWorkerHealth is absent, ok or down off the same heartbeat file");
+
   /* --- Needs you: every kind, the empty case, and the 4096-char budget ------------------------- */
   {
     const dir = (id: number) => path.join(media, String(id));
@@ -210,6 +233,64 @@ try {
       assert.ok(!items.some((i) => /studio/i.test(i.text)));
       rmSync(probe);
       console.log("OK: Studio is an item for anything but ok, absent or garbage is none");
+
+      // 2b. The Studio worker's own heartbeat: no file (never started) is no item; a stale `at`
+      //     and a standing repeated error are independent items; garbage is read defensively.
+      const heartbeat = path.join(media, ".studio-worker.json");
+      assert.ok(!items.some((i) => /studio worker/i.test(i.text)), "no heartbeat file yet: no item");
+      writeFileSync(
+        heartbeat,
+        JSON.stringify({ at: new Date(NOW - 10 * 60_000).toISOString(), lastError: null }),
+      );
+      items = await needsYouOf();
+      assert.ok(
+        !items.some((i) => /studio worker/i.test(i.text)),
+        "a fresh heartbeat (10 min old) is no item",
+      );
+      writeFileSync(
+        heartbeat,
+        JSON.stringify({ at: new Date(NOW - 91 * 60_000).toISOString(), lastError: null }),
+      );
+      items = await needsYouOf();
+      const stale = items.find((i) => /has stopped/.test(i.text));
+      assert.ok(stale, "a heartbeat over 90 min old is an item");
+      assert.match(stale!.text, /npm run -s studio -- worker --enable/, "names the restart command");
+      writeFileSync(
+        heartbeat,
+        JSON.stringify({
+          at: new Date(NOW - 5 * 60_000).toISOString(),
+          lastError: "picker-empty: no rows\nmore detail",
+          sameErrorStreak: 2,
+        }),
+      );
+      items = await needsYouOf();
+      assert.ok(
+        !items.some((i) => /3 cycles running/.test(i.text)),
+        "a streak of 2 is not yet worth an item",
+      );
+      writeFileSync(
+        heartbeat,
+        JSON.stringify({
+          at: new Date(NOW - 5 * 60_000).toISOString(),
+          lastError: "picker-empty: no rows\nmore detail",
+          sameErrorStreak: 3,
+        }),
+      );
+      items = await needsYouOf();
+      const repeated = items.find((i) => /3 cycles running/.test(i.text));
+      assert.ok(repeated, "the same error 3 cycles running is its own item");
+      assert.equal(
+        repeated!.text,
+        "the Studio worker has hit the same error 3 cycles running: picker-empty: no rows",
+        "first line of the error only",
+      );
+      writeFileSync(heartbeat, "not json");
+      items = await needsYouOf(); // garbage: no item, no throw
+      assert.ok(!items.some((i) => /studio worker/i.test(i.text)));
+      rmSync(heartbeat);
+      console.log(
+        "OK: the Studio worker's heartbeat is a stale-item, a repeated-error item, or none, garbage included",
+      );
 
       // 3. No upload in the next 48 h: both days named, by their bare UTC date.
       await writeUpload(
