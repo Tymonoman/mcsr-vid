@@ -8,6 +8,7 @@ import {
   deathKind,
   DEFAULT_WEIGHTS,
   formatMetrics,
+  onScreenDeaths,
   phaseAt,
   speedBonus,
   TOTAL_SPLITS,
@@ -195,5 +196,35 @@ assert.match(text, /Splits <3s {4}: 4\/9/);
 assert.match(text, /Deaths {8}: 0 \(edcr 0, doogile 0\)/, "five hunger resets, no real death");
 assert.match(formatMetrics(dnf), /Finish margin : DNF/);
 assert.match(formatMetrics(estimatedFinish), /Finish margin : 14\.394s \(estimated\)/);
+
+// --- panelLeadChanges and onScreenDeaths: the chip-truth fixes (8 Oct 2026), pinned against real
+// match data so a hook chip that reads them stays true of what the overlay panel and the POV
+// actually show (handbook write-up: hooks-2026-10-06.md's follow-up).
+
+// 13560037 (v_strid vs doogile): the panel shows only one real flip (doogile leads Nether enter
+// through Blind travel, v_strid takes it at Stronghold) — the shared `leadChanges` additionally
+// counts "Blaze rod" (v_strid, briefly) and so reads 3, which would wrongly clear the "Does the
+// lead ever settle?" chip's >=3 threshold.
+const vstridDoogile = computeMetrics(load(13560037));
+assert.equal(vstridDoogile.leadChanges, 3, "the shared metric still counts every split, unchanged");
+assert.equal(vstridDoogile.panelLeadChanges, 1, "the panel shows one flip, not three");
+
+// 13782182 (silverrruns vs ANJOUU): silverrruns leads wire to wire on every panel-visible split;
+// the only "flip" the shared metric counts is at "Bastion loot", a split the panel never shows.
+const silverANJOUU = computeMetrics(load(13782182));
+assert.equal(silverANJOUU.leadChanges, 2, "the shared metric still counts the off-panel flip");
+assert.equal(silverANJOUU.panelLeadChanges, 0, "the panel shows a wire-to-wire lead, not a flip");
+
+// 12730175 (the benchmark): five death_spawnpoint events, every one a hunger reset outside the
+// End — `deaths` (real deaths) is correctly 0, but the POV shows five death screens, so a "not a
+// single death" chip reading `onScreenDeaths` must not fire on this match.
+assert.equal(benchmark.deaths, 0, "real deaths only, unchanged");
+assert.equal(onScreenDeaths(load(12730175)), 5, "five hunger resets, each its own death screen");
+
+// 13766294 (silverrruns vs dandannyboy): the same shape at a smaller scale — one on-screen reset,
+// zero real deaths.
+const silverDandy = computeMetrics(load(13766294));
+assert.equal(silverDandy.deaths, 0);
+assert.equal(onScreenDeaths(load(13766294)), 1, "one hunger reset still shows a death screen");
 
 console.log("matchScore: ok");

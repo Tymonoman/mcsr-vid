@@ -1040,21 +1040,21 @@
   transform: translate(-50%, -50%);
   z-index: 4;
   font-weight: 700;
-  font-size: 56px;
+  font-size: 76px;
   line-height: 1;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   white-space: nowrap;
   color: var(--quartz);
   text-shadow:
-    4px 0 0 var(--panel-edge),
-    -4px 0 0 var(--panel-edge),
-    0 4px 0 var(--panel-edge),
-    0 -4px 0 var(--panel-edge),
-    4px 4px 0 var(--panel-edge),
-    -4px -4px 0 var(--panel-edge),
-    4px -4px 0 var(--panel-edge),
-    -4px 4px 0 var(--panel-edge);
+    5px 0 0 var(--panel-edge),
+    -5px 0 0 var(--panel-edge),
+    0 5px 0 var(--panel-edge),
+    0 -5px 0 var(--panel-edge),
+    5px 5px 0 var(--panel-edge),
+    -5px -5px 0 var(--panel-edge),
+    5px -5px 0 var(--panel-edge),
+    -5px 5px 0 var(--panel-edge);
 }
 .thumb-logo {
   position: absolute;

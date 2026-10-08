@@ -11,28 +11,49 @@
  * module only shortens whichever one comes out on top (trying the next if a template is somehow
  * unrecognised or the shortened text would run over the limit).
  */
-import { buildHookSuggestions, hookLabelProblem, spoilsTheResult, type HookInput } from "../pipeline/hooks.js";
+import {
+  buildHookSuggestions,
+  hookLabelProblem,
+  spoilsTheResult,
+  type HookInput,
+} from "../pipeline/hooks.js";
 import { hookProblem } from "../shorts/videoPick.js";
 
-/** The caption's own hard cap — well under a nameplate's 56px budget at 14 uppercase characters. */
-export const CAPTION_MAX_CHARS = 14;
+/**
+ * The caption's own hard cap. Tightened from 14 to 9 on 8 Oct 2026 (chip-truth): the caption now
+ * renders bigger (`.thumb-caption`, `remotion/overlay.source.css`, 56px to 76px) so it is actually
+ * readable at YouTube's 168x94 thumbnail size, and a bigger glyph needs more room per character —
+ * verified by rendering stills and reading the PNGs at that size. 9 is the longest of the task's
+ * own approved tokens ("1:36 LEAD"); everything shorter ("58 MS", "SUB-9") clears it with room to
+ * spare, and a template whose output would run longer (the rematch chip, the dragon-kill one) is
+ * simply skipped by `pickCaption` rather than crammed down further.
+ */
+export const CAPTION_MAX_CHARS = 9;
 
 /**
  * Compresses one `hooks.ts` chip to the caption's shape, or null when the text does not match a
  * known template (a future hooks.ts addition, or a carried/typed hook this module was never meant
- * to take). Every branch here is a literal `candidates()` template in `src/pipeline/hooks.ts` —
- * add one there, add its shortening here.
+ * to take) — null also for a template with no clean short form (8 Oct 2026 chip-truth): a caption
+ * is a clean token or nothing, never a broken-English squeeze. Every branch here is a literal
+ * `candidates()` template in `src/pipeline/hooks.ts` — add one there, add its shortening here.
  */
 export function shortenHookChip(hook: string): string | null {
   const h = hook.trim();
   let m: RegExpMatchArray | null;
 
   if ((m = h.match(/^Decided by (\d+) milliseconds$/i))) return `${m[1]} MS`;
-  if ((m = h.match(/^Decided by (\d+(?:\.\d)?) seconds?$/i))) return `${m[1]}S DECIDED`;
+  // A decimal margin ("Decided by 1.3 seconds") has no clean token at this budget: "1.3 SEC" is
+  // ten characters, and gluing the unit onto the digit ("1.3S") is exactly the misread this fix
+  // exists to stop (Monocraft's S reads as a 5 right after a digit) — dropped, not abbreviated.
+  // A whole number of seconds keeps a space before its unit, so there is nothing to misread.
+  if ((m = h.match(/^Decided by (\d+) seconds?$/i))) return `${m[1]} SEC`;
   if ((m = h.match(/^A sub-(\d+) to win it$/i))) return `SUB-${m[1]}`;
-  if (/^Does the lead ever settle\?$/i.test(h)) return "LEAD SETTLE?";
-  if ((m = h.match(/^Can a (\d+):(\d+) lead survive\?$/i))) return `${m[1]}:${m[2]} LEAD?`;
-  if ((m = h.match(/^Can a (\d+)-second lead survive\?$/i))) return `${m[1]}S LEAD?`;
+  // "Does the lead ever settle?" has no short form that still reads as English ("LEAD SETTLE?"
+  // was backwards grammar) and no number to turn into a token, so it is dropped outright.
+  if ((m = h.match(/^Can a (\d+):(\d+) lead survive\?$/i))) return `${m[1]}:${m[2]} LEAD`;
+  // Same fix as the margin above: no "S" glued onto the digit, and no "?" either — "48 LEAD" reads
+  // clean and matches the M:SS form's own "LEAD" word.
+  if ((m = h.match(/^Can a (\d+)-second lead survive\?$/i))) return `${m[1]} LEAD`;
   if ((m = h.match(/^(\d+) deaths and still this close$/i))) return `${m[1]} DEATHS`;
   if (/^Not a single death between them$/i.test(h)) return "0 DEATHS";
   if ((m = h.match(/^Rematch: .+ leads (\d+)-(\d+)$/i))) return `${m[1]}-${m[2]} REMATCH`;
@@ -58,7 +79,10 @@ export interface CaptionResult {
  * individually (the task's own checklist) even though `hookProblem === null` implies all three.
  * Null only when nothing in the candidate list shortens and passes, which no real match has hit.
  */
-export function pickCaption(input: HookInput, players: readonly { nickname: string }[]): CaptionResult | null {
+export function pickCaption(
+  input: HookInput,
+  players: readonly { nickname: string }[],
+): CaptionResult | null {
   for (const chip of buildHookSuggestions(input, 8)) {
     const short = shortenHookChip(chip);
     if (!short || short.length > CAPTION_MAX_CHARS) continue;

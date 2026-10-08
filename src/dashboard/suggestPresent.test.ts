@@ -30,6 +30,7 @@ function suggestion(over: Partial<Suggestion> = {}, metricsOver: Partial<MatchMe
     comparedSplits: 9,
     maxLeadMs: 10_086,
     leadChanges: 4,
+    panelLeadChanges: 4,
     maxSwingMs: 0,
     deaths: 3,
     deathsByPlayer: { edcr: 3 },

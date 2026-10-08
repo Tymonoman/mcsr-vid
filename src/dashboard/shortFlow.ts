@@ -33,6 +33,7 @@ import { buildTitle, HOOK_PLACEHOLDER, metaPaths, SEPARATOR, withHook } from "..
 import { playoffContextFor, playoffSeriesTail, playoffTitleTail } from "../playoffs/playoffs.js";
 import {
   gameMatchStarts,
+  hookFactsMatchId,
   readSeriesRecord,
   seriesOutputPath,
   type SeriesRecord,
@@ -521,7 +522,12 @@ async function suggestionsFor(
   const [userLeft, userRight] = await Promise.all([getUser(left.uuid), getUser(right.uuid)]);
   const playoff = await playoffContextFor(match);
   const budget = titleFor(match, f.series, playoff);
-  const facts = { metrics: computeMetrics(match), match, userLeft, userRight, playoff };
+  // A joined series' hook chips must read the game that actually decided it, not game 1's own
+  // numbers (`hookFactsMatchId`, 8 Oct 2026 chip-truth) — a margin, a pace or a lead-change chip
+  // quoting game 1 can be checkably false of the video once another game decided it instead.
+  const factsId = hookFactsMatchId(matchId, f.series);
+  const factsMatch = factsId === matchId ? match : await getMatch(factsId).catch(() => match);
+  const facts = { metrics: computeMetrics(factsMatch), match: factsMatch, userLeft, userRight, playoff };
   const committed = (await readManifest(f.dir))?.hookText ?? null;
   const title = await hookSuggestions({ ...facts, maxChars: budget.hookMax, minChars: budget.hookMin });
   const short = await hookSuggestions({ ...facts, maxChars: HOOK_MAX_CHARS, minChars: 0 });

@@ -28,6 +28,18 @@ const SPLITS: ReadonlyArray<{ label: string; type: string }> = [
 /** Every split above, plus the dragon. The denominator for "how close was this overall". */
 export const TOTAL_SPLITS = SPLITS.length + 1;
 
+/**
+ * The two SPLITS entries above the overlay's own panel never shows (`SPLIT_EVENTS`,
+ * overlayProps.ts — six rows: Nether enter, Bastion enter, Fortress, Blind travel, Stronghold,
+ * End enter). The dragon is excluded the same way wherever this is used for a panel-visible
+ * count (its own label, "Dragon", is never in this set, so a caller must drop it separately) —
+ * it is not a split row on screen either, and it almost always "flips" to the winner, which would
+ * let a viewer read the result off the last flip by parity. Exported so a hook chip that quotes a
+ * split (the swing chip, `hooks.ts`) or counts them (`panelLeadChanges` below) reads only what a
+ * viewer can check on screen, not matchScore.ts's own extra two (6 Oct 2026 panel).
+ */
+export const OFF_PANEL_SPLITS = new Set(["Bastion loot", "Blaze rod"]);
+
 const DRAGON_DEATH = "projectelo.timeline.dragon_death";
 const KILL_DRAGON = "end.kill_dragon";
 /**
@@ -84,6 +96,20 @@ export function deathKind(match: MatchInfo, e: TimelineEntry): DeathKind | null 
 }
 
 /**
+ * Every death the POV actually shows on screen — a hunger reset included, since starving to 0
+ * sends the player to the same death screen a real death does; `deathKind`'s point is that a
+ * hunger reset is routine, not that it is invisible. `metrics.deaths` deliberately counts real
+ * deaths only (the chaos score's own term, the operator's call, 26 Sept 2026) and stays that way
+ * here; this is the separate count a hook chip that claims "not a single death" needs, so it is
+ * true of what the viewer watched, not just of `deathKind`'s "routine" label (6 Oct 2026 panel
+ * follow-up: 8 of 10 proposals had the old chip fire over hunger resets — 12730175's five, a
+ * single one on 13766294).
+ */
+export function onScreenDeaths(match: MatchInfo): number {
+  return match.timelines.filter((e) => DEATH_TYPES.has(e.type)).length;
+}
+
+/**
  * `end.kill_dragon` fires on the killing blow; `dragon_death` fires when the ~10s death
  * animation finishes. Measured across four real matches the offset was 10.27-10.36s
  * (one outlier at 11.09s), so 10.3s converts a kill into a comparable death time.
@@ -126,6 +152,17 @@ export interface MatchMetrics {
   comparedSplits: number;
   maxLeadMs: number;
   leadChanges: number;
+  /**
+   * Lead changes across only the splits the overlay panel actually shows (`OFF_PANEL_SPLITS` and
+   * the dragon excluded) — what a viewer can count on screen. `leadChanges` above additionally
+   * counts "Bastion loot", "Blaze rod" and the dragon, so a chip that claims "the lead changes"
+   * must read this field, not that one (6 Oct 2026 panel follow-up: live-verified wrong on
+   * 13560037 — panel shows 1 change, `leadChanges` counted 3 — and 13782182, panel 0 vs 2). Kept
+   * as its own field rather than redefining `leadChanges`: that one also drives
+   * closenessScore/chaosScore (the suggestion cache), and changing its meaning would need
+   * `CACHE_VERSION` bumped and every cached match re-scored for a change only this chip needs.
+   */
+  panelLeadChanges: number;
   /** Largest swing in the lead between consecutive splits - catches big collapses. */
   maxSwingMs: number;
   /** Every death, hunger resets included: the chaos score's term (the operator's call). */
@@ -232,6 +269,11 @@ export function computeMetrics(match: MatchInfo): MatchMetrics {
   let comparedSplits = 0;
   let previousSigned: number | null = null;
   let previousLeader: string | null = null;
+  // The panel-visible count walks the same splits, independently, skipping the two
+  // OFF_PANEL_SPLITS and the dragon rather than resetting on them, so a flip either side of a
+  // skipped split still counts.
+  let panelLeadChanges = 0;
+  let previousPanelLeader: string | null = null;
 
   for (const split of splits) {
     if (split.aMs === null || split.bMs === null || split.gapMs === null) continue;
@@ -244,6 +286,11 @@ export function computeMetrics(match: MatchInfo): MatchMetrics {
     if (previousLeader !== null && previousLeader !== split.leader) leadChanges += 1;
     previousSigned = signed;
     previousLeader = split.leader;
+
+    if (split.label !== "Dragon" && !OFF_PANEL_SPLITS.has(split.label)) {
+      if (previousPanelLeader !== null && previousPanelLeader !== split.leader) panelLeadChanges += 1;
+      previousPanelLeader = split.leader;
+    }
   }
 
   const deathsByPlayer: Record<string, number> = { [playerA.nickname]: 0, [playerB.nickname]: 0 };
@@ -267,6 +314,7 @@ export function computeMetrics(match: MatchInfo): MatchMetrics {
     comparedSplits,
     maxLeadMs,
     leadChanges,
+    panelLeadChanges,
     maxSwingMs,
     deaths: deathsByPlayer[playerA.nickname]! + deathsByPlayer[playerB.nickname]!,
     deathsByPlayer,

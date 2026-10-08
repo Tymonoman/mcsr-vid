@@ -30,7 +30,7 @@ import { computeMetrics } from "../pipeline/matchScore.js";
 import type { HookInput } from "../pipeline/hooks.js";
 import { HOOK_MAX_CHARS } from "../shorts/videoPick.js";
 import { playoffContextFor } from "../playoffs/playoffs.js";
-import { readManifest, type VariantRecord } from "./thumbnailVariants.js";
+import { readManifest, RESULT_LOOKING_POSE_KEY, type VariantRecord } from "./thumbnailVariants.js";
 import { computeThumbnailProps } from "./thumbnailProps.js";
 import { pickCaption, type CaptionResult } from "./tcCaption.js";
 
@@ -50,7 +50,10 @@ function ssimAll(a: string, b: string): Promise<number> {
     proc.on("error", reject);
     proc.on("close", (code) => {
       const m = err.match(/All:([\d.]+)/);
-      if (!m) return reject(new Error(`ssim(${path.basename(a)}, ${path.basename(b)}) exit ${code}: ${err.slice(-300)}`));
+      if (!m)
+        return reject(
+          new Error(`ssim(${path.basename(a)}, ${path.basename(b)}) exit ${code}: ${err.slice(-300)}`),
+        );
       resolve(Number(m[1]));
     });
   });
@@ -90,11 +93,22 @@ interface MatchResult {
 async function run(matchId: number, serveUrl: () => Promise<string>): Promise<MatchResult> {
   const dir = matchDir(matchId);
   const manifest = await readManifest(dir);
-  if (!manifest) throw new Error(`${matchId}: no thumbnail.json in ${dir} — render the thumbnail variants first`);
+  if (!manifest)
+    throw new Error(`${matchId}: no thumbnail.json in ${dir} — render the thumbnail variants first`);
   const chosen = manifest.variants.find((v) => v.key === manifest.chosen);
-  if (!chosen) throw new Error(`${matchId}: manifest's chosen key "${manifest.chosen}" is not among its own variants`);
-  const others = manifest.variants.filter((v) => v.key !== manifest.chosen);
-  if (others.length === 0) throw new Error(`${matchId}: only one pose variant on disk — nothing to compare it to`);
+  if (!chosen)
+    throw new Error(`${matchId}: manifest's chosen key "${manifest.chosen}" is not among its own variants`);
+  // The result-looking pose never gets an automatic pick (`autoDefaultKey`'s own exclusion,
+  // 8 Oct 2026 chip-truth) — this SSIM "most different" pick is exactly that kind of automatic
+  // pick, and it is what chose it 7 of the first 10 Test & Compare sets. The operator's own
+  // `chosen` control is untouched by this filter even when it is that pose.
+  const others = manifest.variants.filter(
+    (v) => v.key !== manifest.chosen && v.key !== RESULT_LOOKING_POSE_KEY,
+  );
+  if (others.length === 0)
+    throw new Error(
+      `${matchId}: no pose variant other than the result-looking one to compare against — render another pose, or pick tc-pose by hand`,
+    );
 
   const match = await getMatch(matchId);
   const [left, right] = match.players;
@@ -121,7 +135,9 @@ async function run(matchId: number, serveUrl: () => Promise<string>): Promise<Ma
   };
   const captionResult = pickCaption(hookInput, [userLeft, userRight]);
   if (!captionResult) {
-    throw new Error(`${matchId}: no hooks.ts candidate shortens to <=${14} characters and passes every check`);
+    throw new Error(
+      `${matchId}: no hooks.ts candidate shortens to <=${14} characters and passes every check`,
+    );
   }
 
   const tcDir = path.join(dir, "tc");
@@ -164,7 +180,10 @@ async function run(matchId: number, serveUrl: () => Promise<string>): Promise<Ma
   };
 }
 
-const ids = process.argv.slice(2).filter((a) => !a.startsWith("--")).map(parseMatchId);
+const ids = process.argv
+  .slice(2)
+  .filter((a) => !a.startsWith("--"))
+  .map(parseMatchId);
 if (ids.length === 0) {
   console.error("usage: npm run tc-thumbs -- <matchId...>");
   process.exit(2);
@@ -178,7 +197,9 @@ for (const matchId of ids) {
   console.error(`--- ${matchId}`);
   const result = await run(matchId, serveUrl);
   console.error(`  caption "${result.caption}" (from "${result.captionSource}")`);
-  console.error(`  control ${result.poseControl} · pose ${result.poseAlt} (ssim ${result.poseAltSsim.toFixed(3)})`);
+  console.error(
+    `  control ${result.poseControl} · pose ${result.poseAlt} (ssim ${result.poseAltSsim.toFixed(3)})`,
+  );
   results.push(result);
 }
 console.log(JSON.stringify(results, null, 2));
