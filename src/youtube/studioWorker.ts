@@ -389,6 +389,29 @@ async function setExperimentRunning(id: string): Promise<void> {
  * rather than left `"planned"` with no indication Studio has already started it, which would
  * otherwise never again be picked up by `tcToCheck`'s own `status === "running"` filter.
  */
+/**
+ * A daily read that failed still counts as that day's check (`result.checkedAt`), so the next try is
+ * tomorrow, not every ~20 min cycle — 8 Oct 2026: a title test on a still-scheduled video
+ * (la_h_HmMuF8) has no readable A/B dialog until it goes public, and the retry-every-cycle ran the
+ * same error 20 times. Only a second day's failure in a row asks for a human.
+ */
+export async function setExperimentReadFailed(id: string, error: string): Promise<void> {
+  const checkedAt = new Date().toISOString();
+  await updateTcExperiments((tc) =>
+    tc.map((e) => {
+      if (e.id !== id) return e;
+      const before = (e.result as { readError?: string } | undefined)?.readError;
+      return {
+        ...e,
+        result: { ...(e.result as object), checkedAt, readError: error },
+        ...(before
+          ? { needsHuman: `A/B test could not be read two days running: ${error.split("\n")[0]}` }
+          : {}),
+      };
+    }),
+  );
+}
+
 export async function setExperimentChecked(id: string, read: TcReadResult): Promise<void> {
   const checkedAt = new Date().toISOString();
   await updateTcExperiments((tc) =>
@@ -590,7 +613,7 @@ export async function runCycle(
       const read = await readTestAndCompare(handle, video.videoId);
       if ("error" in read) {
         errors.push(`${exp.id}: ${read.error}`);
-        await setNeedsHuman(exp.id, read.error);
+        await setExperimentReadFailed(exp.id, read.error);
         continue;
       }
       await setExperimentChecked(exp.id, read);

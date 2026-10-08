@@ -23,6 +23,7 @@ import {
   runCycle,
   runWorker,
   setExperimentChecked,
+  setExperimentReadFailed,
   testFor,
   writeHeartbeat,
   writeLedger,
@@ -494,7 +495,14 @@ config.mediaDir = media;
 {
   const longForms: LongFormRef[] = [
     // Game 1's own copy: already pinned (a previous cycle marked this one done).
-    { videoId: "a", matchId: 1, uploadedAt: "x", privacyStatus: "public", finishedComment: null, finishedPin: null },
+    {
+      videoId: "a",
+      matchId: 1,
+      uploadedAt: "x",
+      privacyStatus: "public",
+      finishedComment: null,
+      finishedPin: null,
+    },
     // Game 2's copy of the SAME video: never itself marked done — would pass the per-entry filter
     // on its own, and must still be excluded because the video it points at is already pinned.
     { videoId: "a", matchId: 2, uploadedAt: "x", privacyStatus: "public", finishedComment: null },
@@ -508,7 +516,10 @@ config.mediaDir = media;
     [],
   );
   const ids = plan.pinTargets.map((t) => t.videoId);
-  assert.ok(!ids.includes("a"), "a videoId already pinned through one series copy is never re-offered via another");
+  assert.ok(
+    !ids.includes("a"),
+    "a videoId already pinned through one series copy is never re-offered via another",
+  );
   assert.ok(ids.includes("h"), "a genuinely pending, unrelated video is still offered");
   console.log("OK: pinTargets excludes a videoId already marked done through a different series copy");
 }
@@ -628,6 +639,46 @@ config.mediaDir = media;
     `build-overlay-css's own status line must go to stderr, not stdout a JSON-parsing caller reads: got ${JSON.stringify(result.stdout)}`,
   );
   console.log("OK: build-overlay-css's status line no longer leaks onto stdout");
+}
+
+/* --- a failed daily read is that day's check, and only a second day's failure asks for a human --- */
+{
+  await updateTcExperiments((tc) => [
+    ...tc.filter((e) => e.id !== "tc-title-readfail"),
+    {
+      id: "tc-title-readfail",
+      kind: "tc",
+      status: "running",
+      arms: [],
+      videos: [{ matchId: 1, videoId: "readfailvid", arm: "live" }],
+    } as unknown as Experiment,
+  ]);
+  await setExperimentReadFailed(
+    "tc-title-readfail",
+    "locator.waitFor: Timeout 15000ms exceeded.\nCall log: …",
+  );
+  let exp = (await readExperiments()).experiments.find((e) => e.id === "tc-title-readfail")!;
+  const result = exp.result as { checkedAt?: string; readError?: string };
+  assert.ok(result.checkedAt, "a failed read still counts as today's check");
+  assert.equal(exp.needsHuman, undefined, "one failed read is not a human call");
+  assert.equal(
+    planCycle(
+      new Date(),
+      [],
+      { endScreensDone: {} } as unknown as StudioLedger,
+      (await readExperiments()).experiments,
+    ).tcToCheck.some((e) => e.id === exp.id),
+    false,
+    "not re-read the same day",
+  );
+  await setExperimentReadFailed("tc-title-readfail", "locator.waitFor: Timeout 15000ms exceeded.");
+  exp = (await readExperiments()).experiments.find((e) => e.id === "tc-title-readfail")!;
+  assert.match(
+    String(exp.needsHuman),
+    /two days running: locator\.waitFor/,
+    "a second failure in a row asks, first line only",
+  );
+  console.log("OK: a failed A/B read is retried tomorrow, not every cycle; two in a row ask for a human");
 }
 
 console.log("studioWorker: all checks passed");
