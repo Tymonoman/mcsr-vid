@@ -204,9 +204,13 @@ export async function addEndScreenFromTemplate(
     await randomPause();
 
     await page.locator(SELECTORS.endscreenEditorLink).click();
-    // The dialog's own heading text ("End Screens") also names the trigger's aria-label in real
-    // Studio, so this waits for its Close affordance instead — present only once a dialog is open.
-    await page.locator(SELECTORS.dialogClose).first().waitFor({ state: "visible", timeout: 15_000 });
+    // Live run, 8 Oct 2026: the End Screens editor is a full panel, not a dialog with its own
+    // `aria-label="Close"` — the only two such elements on the page belong to other, unrelated,
+    // hidden dialogs elsewhere in Studio's SPA (confirmed by DOM inspection, not a guess), so a
+    // wait on `dialogClose` here timed out every time, editor open or not. "Discard changes" is
+    // confirmed live instead (`SELECTORS.endscreenDiscardButton`, already this function's own
+    // cleanup click below) — present the moment the panel opens.
+    await page.locator(SELECTORS.endscreenDiscardButton).first().waitFor({ state: "visible", timeout: 15_000 });
     await shot(handle, opts.matchId, "endscreen-opened");
 
     const empty = await page
@@ -216,7 +220,7 @@ export async function addEndScreenFromTemplate(
       .catch(() => false);
     if (!empty) {
       await page
-        .locator(SELECTORS.dialogClose)
+        .locator(SELECTORS.endscreenDiscardButton)
         .first()
         .click()
         .catch(() => {});
@@ -238,12 +242,8 @@ export async function addEndScreenFromTemplate(
       .catch(() => false);
     if (noResults) {
       await shot(handle, opts.matchId, "endscreen-picker-empty");
-      // Best effort: leave nothing open behind us, whichever dialog is still up.
-      await page
-        .locator(SELECTORS.dialogClose)
-        .first()
-        .click()
-        .catch(() => {});
+      // Best effort: leave nothing open behind us. The picker dialog sits over the editor panel,
+      // neither with a real Close button (above) — "Discard changes" dismisses both at once.
       await page
         .locator(SELECTORS.endscreenDiscardButton)
         .first()

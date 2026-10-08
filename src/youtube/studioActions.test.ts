@@ -173,10 +173,12 @@ try {
       window.__tcStarted = null;
       function closeDialog() { document.getElementById("dialog-root").innerHTML = ""; }
       function renderEndScreen() {
+        // Live run, 8 Oct 2026: the real End Screens editor has no aria-label="Close" element
+        // at all (DOM-inspected, not a guess) — "Discard changes" is the confirmed "panel is
+        // open" signal addEndScreenFromTemplate now waits on, so this fixture leaves Close out.
         const hasElements = window.__state.endScreenHasElements;
         document.getElementById("dialog-root").innerHTML =
           '<div><span>End Screens</span>' +
-          '<button aria-label="Close" onclick="closeDialog()">Close</button>' +
           (hasElements
             ? '<div>existing elements</div>'
             : '<div>1 video, 1 subscribe</div><button onclick="openPicker()">Import from video</button>') +
