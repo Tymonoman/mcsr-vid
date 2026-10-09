@@ -1,5 +1,23 @@
 # TASKS — resume point (updated 24 Sept 2026 08:15 UTC)
 
+## ▶ RESUME HERE (9 Oct 2026 ~11:35 UTC, before a /compact) — THE WEEK GOAL IS ACTIVE (/goal, ends 14 Oct)
+/goal: "By 14 Oct: every day's uploads scheduled without the operator; Test & Compare on ≥10 videos with verdicts in the
+ledger; final report shows the YPP ETA vs the 30 Sept–6 Oct baseline; all merged to main with tests green".
+The operator: "chill on the token usage now" (8 Oct) — lean: no fan-outs, check-ins at the daily crons only.
+LIVE STATE: dashboard on 4901654+ (deploys itself: POST /api/restart-when-idle, proven twice); auto-hooks 6 h ON;
+two-a-day 19:00+23:00 UTC from 9 Oct (x1); x2 explain-moves on/off by render night; x3 countdown teaser 13–16 Oct;
+uploads scheduled through 10 Oct 19:00 at 05:30 9 Oct + tonight's renders; 25 A/B tests RUNNING (Studio worker, verdicts
+take ≤14 days; title tests read from the inline title box); end screens on the back catalogue; Telegram bot's Claude token
+FIXED 11:23 9 Oct (108 chars, verified) and loaded (restart 11:24).
+STUDIO WORKER: supervised — `setsid nohup bash /app/scripts/studio-worker.sh >/dev/null 2>&1 &` (pidfile
+~/.claude/studio-worker-supervisor.pid; log ~/.claude/studio-worker.log; heartbeat /media/.studio-worker.json). Restart
+after a code change: kill the worker's node (pgrep -f "node --require.*studioCli.ts worker"); the supervisor relaunches.
+DAILY CRONS (session-only, recreate if the session restarted): 05:23 UTC morning cycle, 18:17 UTC evening check (on 14 Oct:
+the final branded report — artifact + npm run tg -- send --md: what ran, what won, YPP ETA vs baseline 4.0 subs/day →
+500 by 9 Jan). Baseline + ledger: handbook/knowledge/experiments.md; data /media/.experiments.json.
+Reports so far: night 1 https://claude.ai/artifact/78UWHqTnJityMtpiLS9Yw9. Known limits: Shorts "Related video" +
+end-screen "Import" pickers search his personal channel (optional fix: he switches the Studio browser's channel).
+
 ## ▶ RESUME HERE — THE WEEK GOAL (set 7 Oct 2026 ~21:40 UTC, runs 8–14 Oct) — the operator's /goal "mega prompt"
 Goal: YPP ETA back to last week's pace (subs are the only gate: 123/500 on 7 Oct, 4.0/day last week, 2.93/day 28d →
 500 ~13 Feb, ~10 Jan at last week's pace). The channel runs itself; he acts only on the 07:00 Warsaw report's "Needs you".
