@@ -19,6 +19,8 @@ VERDICT RISK: tests started 8–9 Oct may still be running on 14 Oct (Studio end
 In the 13 Oct morning cycle, read every test's state; the ledger records a finished test's winner and marks an unfinished one
 "running at the deadline", with Studio's interim numbers if the page shows them. Never mark a guess as a verdict.
 9 Oct 14:12: 13884349 + 14015062 auto-hooked (09:52/10:37), all three chain steps done; worker beat 13:51, no error.
+9 Oct 18:47 evening check: 9 Oct 19:00 + 23:00 and 10 Oct 19:00 + 23:00 all scheduled (13782182, 13754336, 13765754,
+14015062); no failed steps; worker beat 18:41, no error; tonight's nightly candidate 14035423 (ulsahinn–lowk3y_).
 Reports so far: night 1 https://claude.ai/artifact/78UWHqTnJityMtpiLS9Yw9. Known limits: Shorts "Related video" +
 end-screen "Import" pickers search his personal channel (optional fix: he switches the Studio browser's channel).
 
