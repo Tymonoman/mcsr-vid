@@ -74,6 +74,11 @@ hand for both (x2 arm "on", 8 Oct). Later deploys: POST /api/restart-when-idle (
 25 A/B tests running; worker fix 2335b1d (a failed A/B read = that day's check; needsHuman only 2 days running — la_h's
 title test unreadable while scheduled, streak 20) — worker restarted by the supervisor on it; dashboard self-restart proven
 12:30 (fc36480 → e30417e via POST /api/restart-when-idle).
+9 Oct 05:30 UTC morning cycle: the 05:00 report's Needs you was all false alarms (8 pre-block blocked-runner upload
+records; 5 "A/B could not be read" — scheduled videos + title tests) → fixed 02eb955 (only NEW uploads; read A/B only when
+public; escalate after 20 h) + 2ac31e4 (title tests read from the inline title box — live: la_h "running"); flags cleared,
+dashboard self-redeployed (02eb955), worker restarted; correction sent to Telegram. Nightly 9 Oct: 13884349 Pinne–Czelco +
+14015062 rendered, auto-hooks due ~09:40/10:20.
 Dashboard boot fd47b32 (he restarted it 7 Oct evening). /media 70 GB free. Live: introSec 3, countdownTeaser on,
 explainMovesSec 8 (on), suggestKnownSlots 10.
 
