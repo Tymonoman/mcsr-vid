@@ -400,11 +400,15 @@ export async function setExperimentReadFailed(id: string, error: string): Promis
   await updateTcExperiments((tc) =>
     tc.map((e) => {
       if (e.id !== id) return e;
-      const before = (e.result as { readError?: string } | undefined)?.readError;
+      const prev = e.result as { readError?: string; readErrorSince?: string } | undefined;
+      // "Two days running" means two failures at least 20 h apart — a read just before and just
+      // after UTC midnight is one bad evening, not two days (9 Oct 2026: 00:10 after 18:30).
+      const since = prev?.readError ? (prev.readErrorSince ?? checkedAt) : checkedAt;
+      const longStanding = Date.parse(checkedAt) - Date.parse(since) >= 20 * 3600_000;
       return {
         ...e,
-        result: { ...(e.result as object), checkedAt, readError: error },
-        ...(before
+        result: { ...(e.result as object), checkedAt, readError: error, readErrorSince: since },
+        ...(longStanding
           ? { needsHuman: `A/B test could not be read two days running: ${error.split("\n")[0]}` }
           : {}),
       };
@@ -607,9 +611,14 @@ export async function runCycle(
       }
     }
 
+    // A scheduled/private video has no readable A/B result yet (9 Oct 2026: four of the five
+    // "could not be read" items were videos still scheduled) — wait until it is public.
+    const checkIds = plan.tcToCheck.map((e) => e.videos[0]?.videoId).filter((v): v is string => !!v);
+    const checkStats = checkIds.length ? await videoStats(checkIds).catch(() => []) : [];
     for (const exp of plan.tcToCheck) {
       const video = exp.videos[0];
       if (!video?.videoId) continue;
+      if (checkStats.find((s) => s.videoId === video.videoId)?.privacyStatus !== "public") continue;
       const read = await readTestAndCompare(handle, video.videoId);
       if ("error" in read) {
         errors.push(`${exp.id}: ${read.error}`);

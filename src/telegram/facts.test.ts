@@ -377,6 +377,30 @@ try {
         "has an upload record",
       );
 
+      // 9 Oct 2026: the pre-block history (uploaded, then set private) listed every morning.
+      const OLD_REC = 6;
+      mkdirSync(dir(OLD_REC), { recursive: true });
+      writeFileSync(path.join(dir(OLD_REC), "Aquacorde.mp4"), "x");
+      writeFileSync(path.join(dir(OLD_REC), "someoneElse.mp4"), "x");
+      await writeUpload(
+        OLD_REC,
+        {
+          videoId: "v-old",
+          uploadedAt: new Date(SINCE - 5 * 24 * 3600_000).toISOString(),
+          publishAt: null,
+          privacyStatus: "private",
+          thumbnailVariant: null,
+          title: "t",
+        },
+        "video",
+      );
+      setHidden(OLD_REC, true);
+      items = await needsYouOf();
+      assert.ok(
+        !items.some((i) => i.matchId === OLD_REC),
+        "an upload from before the last report is history",
+      );
+
       videoTitles.set("v3", "A clean match");
       commentThreads = [
         {

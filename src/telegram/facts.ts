@@ -261,9 +261,14 @@ async function blockedRunnerItems(sinceMs: number): Promise<NeedsYouItem[]> {
   for (const matchId of listProcessedMatchIds()) {
     if (!hidden.has(matchId) && isExported(matchId)) await addMatch(matchId, "rendered on disk");
   }
+  // Only an upload NEWER than the previous report is a runner "appearing": the records from before
+  // a block (Aquacorde's seven, BeefSalad's, set private on 2 and 4 Oct 2026) are history, and
+  // listing them every morning (9 Oct 2026: eight lines) buried the one kind of item that matters.
   for (const matchId of listProcessedMatchIds()) {
-    if ((await readUpload(matchId, "video")) || (await readUpload(matchId, "short")))
-      await addMatch(matchId, "has an upload record");
+    for (const kind of ["video", "short"] as const) {
+      const rec = await readUpload(matchId, kind);
+      if (rec && Date.parse(rec.uploadedAt) >= sinceMs) await addMatch(matchId, "has a new upload");
+    }
   }
   try {
     const threads = await channelCommentThreads(config.youtubeChannelId, 50);

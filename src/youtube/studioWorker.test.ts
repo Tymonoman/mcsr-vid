@@ -673,10 +673,26 @@ config.mediaDir = media;
   );
   await setExperimentReadFailed("tc-title-readfail", "locator.waitFor: Timeout 15000ms exceeded.");
   exp = (await readExperiments()).experiments.find((e) => e.id === "tc-title-readfail")!;
+  assert.equal(exp.needsHuman, undefined, "two failures an evening apart are not two days running");
+  await updateTcExperiments((tc) =>
+    tc.map((e) =>
+      e.id === "tc-title-readfail"
+        ? {
+            ...e,
+            result: {
+              ...(e.result as object),
+              readErrorSince: new Date(Date.now() - 21 * 3600_000).toISOString(),
+            },
+          }
+        : e,
+    ),
+  );
+  await setExperimentReadFailed("tc-title-readfail", "locator.waitFor: Timeout 15000ms exceeded.");
+  exp = (await readExperiments()).experiments.find((e) => e.id === "tc-title-readfail")!;
   assert.match(
     String(exp.needsHuman),
     /two days running: locator\.waitFor/,
-    "a second failure in a row asks, first line only",
+    "failing 20 h+ asks, first line only",
   );
   console.log("OK: a failed A/B read is retried tomorrow, not every cycle; two in a row ask for a human");
 }
