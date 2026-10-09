@@ -15,6 +15,10 @@ after a code change: kill the worker's node (pgrep -f "node --require.*studioCli
 DAILY CRONS (session-only, recreate if the session restarted): 05:23 UTC morning cycle, 18:17 UTC evening check (on 14 Oct:
 the final branded report — artifact + npm run tg -- send --md: what ran, what won, YPP ETA vs baseline 4.0 subs/day →
 500 by 9 Jan). Baseline + ledger: handbook/knowledge/experiments.md; data /media/.experiments.json.
+VERDICT RISK: tests started 8–9 Oct may still be running on 14 Oct (Studio ends a test once it is sure, or at 14 days).
+In the 13 Oct morning cycle, read every test's state; the ledger records a finished test's winner and marks an unfinished one
+"running at the deadline", with Studio's interim numbers if the page shows them. Never mark a guess as a verdict.
+9 Oct 14:12: 13884349 + 14015062 auto-hooked (09:52/10:37), all three chain steps done; worker beat 13:51, no error.
 Reports so far: night 1 https://claude.ai/artifact/78UWHqTnJityMtpiLS9Yw9. Known limits: Shorts "Related video" +
 end-screen "Import" pickers search his personal channel (optional fix: he switches the Studio browser's channel).
 
