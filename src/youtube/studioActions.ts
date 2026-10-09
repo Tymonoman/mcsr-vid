@@ -698,6 +698,22 @@ export async function readTestAndCompare(
     });
     await randomPause();
 
+    // A TITLE test shows its state inline in the title box ("A/B Testing titles · Running… · <both
+    // titles>", confirmed live 9 Oct 2026 on la_h_HmMuF8) and its A/B button opens no dialog, so
+    // the dialog path below timed out on every title test. Read the inline box first.
+    const titleBox = await page
+      .locator("ytcp-video-title")
+      .first()
+      .innerText({ timeout: 10_000 })
+      .catch(() => "");
+    if (/A\/B Testing titles/i.test(titleBox)) {
+      const winnerMatch = /winner[^.\n]*/i.exec(titleBox);
+      if (winnerMatch) return { state: "done", winner: winnerMatch[0].trim(), raw: titleBox };
+      // Anything else — "Running…" or a finished form never seen yet — stays "running" and is read
+      // again tomorrow, with the raw text kept, rather than closing a test on a guess.
+      return { state: "running", raw: titleBox };
+    }
+
     await page.locator(SELECTORS.abTestButton).click();
     await page.locator(SELECTORS.dialogClose).first().waitFor({ state: "visible", timeout: 15_000 });
     const raw = await page
