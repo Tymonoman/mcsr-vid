@@ -93,3 +93,17 @@ Asked 29 Sept 2026 (07:37 UTC), answered 29 Sept 2026 (07:39 UTC). The operator 
 **The video made:** the clip frame (`npm run clip`, merged into main) put 7 min 53 s of Feinberg's stream, 23:50 to 31:43, under our title band "FEINBERG ON THE EDCR SITUATION" with a name plate "FEINBERG · 15 Sept 2026 · before the final decision", a Twitch credit and the MC/SR badge (1080p). It ends on his own joke, "All right, who's got the lodestone link?" (the operator's ask: "the vid should end at okay who has the lodesteal link so it's funny you can also edit it and maybe add some vfx or sfx"): the picture freezes on the last word with a slow push-in, a white flash and a low boom, then fades out, about 473 s in all. Nothing before that line is touched. The description credits his Twitch broadcast and MCSR Ranked's statement and says the chat on the left is his stream's own Twitch chat (viewer names are visible; the thumbnail blurs them). Uploaded 29 Sept 2026 as private, title "Feinberg on the edcr Situation | MCSR Ranked Season 11 Playoffs", scheduled to go public 21:00 UTC that day (video id ZbP3WTzJPOE; 23:00 in Poland), thumbnail set. An earlier cut that stopped before the joke (NV-K03ezVqE) was de-scheduled and is to be deleted in Studio. The operator's own words: "upload the video today. think of an appropriate time for it and post."
 
 **Still the operator's:** turn on comment holding for this video (and for the lauveer vs edcr one) in Studio; expect music copyright claims (not strikes), since songs play under his statement; whether edcr stays on the recognisable-players list.
+
+## Do competitors' subscribers grow exponentially? (9 Oct 2026)
+
+No. Every MCSR replay channel grew in bursts tied to heavy posting plus an outside moment, then flattened, with no
+compounding. Counts are from the Data API on 9 Oct; the history comes from the 28 Sept research (Wayback captures, `research/competitors-2026-09-28/`).
+- **MCSR Vault** (9,310): ~50/day Nov 2025–Apr 2026, peak 109/day during Ludwig's MCSR arc (27 Dec–4 Jan); 3–15/day
+  since mid-April as posting dropped; +~20 in 28 Sept–9 Oct.
+- **MCSR Replays** (3,060): most of its subs in Jan–Feb 2026 (peak 46.5/day); silent since 18 Apr; flat since (3,060 on
+  28 Sept and today).
+- **mcsrmatches** (1,670, 139 videos): nearly all of its first ~1,060 in the Ludwig window; ~1.1/day after a 4-month
+  break; 1,640 → 1,670 in 11 days (~2.7/day) now.
+- **Us** (129 on 9 Oct, 123 on 7 Oct): ~3–4/day, already level with mcsrmatches in absolute terms.
+What drives the curve: posting volume (growth stops when posting stops) and catching an outside attention moment
+(a big streamer's arc, a viral match), never official events covered late.
