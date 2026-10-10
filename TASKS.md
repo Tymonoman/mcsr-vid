@@ -25,6 +25,9 @@ In the 13 Oct morning cycle, read every test's state; the ledger records a finis
 ~6 h, they take 11 Oct 23:00 + the next slot); 10 Oct 19:00/23:00 + 11 Oct 19:00 scheduled; no failed steps; worker beat
 05:07, no error; 27 A/B tests + 3 between running, no flags. Needs you lists one item, the operator's call: 13803834
 doogile–BeefSalad (rendered 1 Oct, before the 4 Oct block) is still exported and not hidden on disk.
+Between experiments 10 Oct: x1 5 videos, x2 6, x3 0 (starts 13 Oct), all "inconclusive (0 impressions)" — expected, the
+first arm video went public 9 Oct 19:00 and Analytics/Reporting lag 1–3 days. Check on 12 Oct: still 0 for a video public
+2+ days means the evaluator's read is broken.
 Reports so far: night 1 https://claude.ai/artifact/78UWHqTnJityMtpiLS9Yw9. Known limits: Shorts "Related video" +
 end-screen "Import" pickers search his personal channel (optional fix: he switches the Studio browser's channel).
 
