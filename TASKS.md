@@ -21,6 +21,10 @@ In the 13 Oct morning cycle, read every test's state; the ledger records a finis
 9 Oct 14:12: 13884349 + 14015062 auto-hooked (09:52/10:37), all three chain steps done; worker beat 13:51, no error.
 9 Oct 18:47 evening check: 9 Oct 19:00 + 23:00 and 10 Oct 19:00 + 23:00 all scheduled (13782182, 13754336, 13765754,
 14015062); no failed steps; worker beat 18:41, no error; tonight's nightly candidate 14035423 (ulsahinn–lowk3y_).
+10 Oct 05:22 morning: nightly rendered 14039001 (fuzzychloe–lowk3y_) + 14039374, both waiting for hooks (auto-hooks
+~6 h, they take 11 Oct 23:00 + the next slot); 10 Oct 19:00/23:00 + 11 Oct 19:00 scheduled; no failed steps; worker beat
+05:07, no error; 27 A/B tests + 3 between running, no flags. Needs you lists one item, the operator's call: 13803834
+doogile–BeefSalad (rendered 1 Oct, before the 4 Oct block) is still exported and not hidden on disk.
 Reports so far: night 1 https://claude.ai/artifact/78UWHqTnJityMtpiLS9Yw9. Known limits: Shorts "Related video" +
 end-screen "Import" pickers search his personal channel (optional fix: he switches the Studio browser's channel).
 
