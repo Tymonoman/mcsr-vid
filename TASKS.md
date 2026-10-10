@@ -30,6 +30,10 @@ first arm video went public 9 Oct 19:00 and Analytics/Reporting lag 1–3 days. 
 2+ days means the evaluator's read is broken.
 10 Oct ~05:50: the operator: "delete the beef salad vid" → /media/13803834 (doogile–BeefSalad) deleted via DELETE
 /api/match (2.5 GB). Still exists, asked him: the NAS copy /archive/13803834 and two PRIVATE videos WtP6sDsdBvA + ALjLwcH8qoM.
+10 Oct 11:11: 14039001 auto-hooked 10:24 (model's "A 32-SECOND FORTRESS LEAD" / Short "LOWK3Y_ ON 1 HEART IN THE
+FORTRESS"), chain done. Spot-check of the Short hook against the footage: lowest health seen at 1 s sampling is 1.5 hearts
+(4:51–4:52), so "1 heart" overstates by half a heart. Left as is (the Short is uploaded and the hook is burned in); for the
+final report: the model's numeric hooks are unverified when auto-saved.
 Reports so far: night 1 https://claude.ai/artifact/78UWHqTnJityMtpiLS9Yw9. Known limits: Shorts "Related video" +
 end-screen "Import" pickers search his personal channel (optional fix: he switches the Studio browser's channel).
 
