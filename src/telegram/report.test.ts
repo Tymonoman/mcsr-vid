@@ -608,7 +608,7 @@ const worthMatch = (i: number, over: Partial<WorthMatch> = {}): WorthMatch => ({
   );
   assert.equal(withYpp.length, 3);
   assert.ok(
-    withYpp[1]!.includes("full tier ~400 days (3 Nov 2027; 21 May at the last week's pace)"),
+    withYpp[1]!.includes("full tier <b>~400 days</b> (3 Nov 2027; 21 May at the last week's pace)"),
     withYpp[1],
   );
   assert.ok(visibleLength(withYpp[1]!) <= MESSAGE_MAX_CHARS);
@@ -853,7 +853,7 @@ const worthMatch = (i: number, over: Partial<WorthMatch> = {}): WorthMatch => ({
   const full = renderYpp({ ok: true, data: ypp }, postMortemAt);
   assert.ok(
     full.includes(
-      "expanded tier <b>~177 days</b> (26 Mar; 11 Jan at the last week's pace) — subscribers hold it back",
+      "<b>Expanded tier</b> — <b>~177 days</b> (26 Mar; 11 Jan at the last week's pace) — subscribers hold it back",
     ),
     full,
   );
@@ -871,15 +871,18 @@ const worthMatch = (i: number, over: Partial<WorthMatch> = {}): WorthMatch => ({
     "hours keep their own date, no range",
   );
   assert.ok(full.includes("at 2.25 subs/day over 28 days (3.86 in the last week)"), full);
+  // The full tier leads, judged by the 2027 thresholds since it lands after 1 Feb 2027.
+  assert.ok(full.startsWith("<b>🎯 YPP</b> · full tier <b>~400 days</b>"), full);
+  assert.ok(full.includes("<b>Full tier (ads)</b> — 1,000 subs, and 8,000 h or 20M Shorts views"), full);
 
   const [head, subs] = renderYppShort({ ok: true, data: ypp }, postMortemAt).split("\n");
   assert.equal(
     head,
-    "<b>🎯 YPP</b> · expanded tier <b>~177 days</b> (26 Mar; 11 Jan at the last week's pace) · full tier ~400 days (3 Nov 2027; 21 May at the last week's pace)",
+    "<b>🎯 YPP</b> · full tier <b>~400 days</b> (3 Nov 2027; 21 May at the last week's pace) · expanded tier ~177 days (26 Mar; 11 Jan at the last week's pace)",
   );
   assert.equal(
     subs,
-    "Subscribers 102/500 (~177 d) at 2.3/day over 28 days · watch hours 1,456/3,000 (~33 d)",
+    "Subscribers 102/1,000 (~400 d) at 2.3/day over 28 days · watch hours 1,456/8,000 (~140 d)",
   );
 
   // A week no faster than the month adds nothing: the date alone, and no last-week rate.

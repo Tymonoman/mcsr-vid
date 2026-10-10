@@ -155,11 +155,18 @@ export function projectYpp(s: YppSnapshot, nowMs: number = Date.now()): YppProgr
     shortsViews: gate(s.shortsViews90d, need.shortsViews, s.shortsViewsPer28d, s.shortsViewsDays ?? 28, 90),
   });
   const expanded = { ...tier(t.expanded), uploads90d: { have: s.uploads90d, need: t.expanded.uploads90d } };
+  // The full tier is judged by the thresholds in force on the day it would land, not today's: at
+  // 3 subs/day that day is mid-2027, after 1 Feb, when new applicants need 8,000 h (10 Oct 2026, the
+  // operator: "we only focus on hitting the full ypp"). Landing = subscribers AND (hours OR Shorts).
+  let full = tier(t.full);
+  const at = (g: YppGate) => (g.eta ? Date.parse(g.eta) : Infinity);
+  const landsAt = Math.max(at(full.subscribers), Math.min(at(full.watchHours), at(full.shortsViews)));
+  if (landsAt >= FULL_TIER_2027_MS) full = tier(yppThresholds(landsAt).full);
   return {
     fetchedAt: s.fetchedAt,
     shortsRawViews90d: s.shortsRawViews90d,
     ...tier(t.expanded),
-    tiers: { expanded, full: tier(t.full) },
+    tiers: { expanded, full },
   };
 }
 

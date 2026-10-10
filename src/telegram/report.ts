@@ -426,9 +426,11 @@ export function renderYppShort(ypp: ReportFacts["ypp"], nowMs = Date.now()): str
       : unreachable(x) || !x.eta
         ? " (out of reach)"
         : ` (~${daysUntil(x.eta, nowMs)} d)`);
+  // The full tier (ads) leads: the operator, 10 Oct 2026, "we only focus on hitting the full ypp".
+  const f = p.tiers.full;
   return [
-    `${b("🎯 YPP")} · expanded tier ${when(p)} · full tier ${when(p.tiers.full).replace(/<\/?b>/g, "")}`,
-    `${g("Subscribers", p.subscribers)} at ${p.subscribers.ratePerDay.toFixed(1)}/day over 28 days · ${g("watch hours", p.watchHours)}`,
+    `${b("🎯 YPP")} · full tier ${when(f)} · expanded tier ${when(p).replace(/<\/?b>/g, "")}`,
+    `${g("Subscribers", f.subscribers)} at ${f.subscribers.ratePerDay.toFixed(1)}/day over 28 days · ${g("watch hours", f.watchHours)}`,
   ].join("\n");
 }
 
@@ -436,20 +438,21 @@ export function renderYppShort(ypp: ReportFacts["ypp"], nowMs = Date.now()): str
 export function renderYpp(ypp: ReportFacts["ypp"], nowMs = Date.now()): string {
   if (!ypp.ok) return sectionError("🎯 YPP", ypp.error);
   const p = ypp.data;
+  const f = p.tiers.full;
   return [
-    `${b("🎯 YPP")} · expanded tier ${tierCountdown(p, nowMs)}`,
+    `${b("🎯 YPP")} · full tier ${tierCountdown(f, nowMs)}`,
     `<i>at ${p.subscribers.ratePerDay.toFixed(2)} subs/day over 28 days${p.subscribers.recent ? ` (${p.subscribers.recent.ratePerDay.toFixed(2)} in the last week)` : ""} · ${p.watchHours.ratePerDay.toFixed(1)} h/day · ${fmtInt(p.shortsViews.ratePerDay)} engaged Shorts views/day</i>`,
     "",
-    "<b>Expanded tier</b> — 500 subs, 3 uploads in 90 days, and 3,000 h or 3M Shorts views",
+    `<b>Full tier (ads)</b> — 1,000 subs, and ${fmtInt(f.watchHours.need)} h or ${fmtInt(f.shortsViews.need / 1e6)}M Shorts views`,
+    gateLine("subs", f.subscribers, nowMs),
+    gateLine("watch hours", f.watchHours, nowMs),
+    gateLine("Shorts views", f.shortsViews, nowMs),
+    "",
+    `<b>Expanded tier</b> — ${tierCountdown(p, nowMs)}`,
     gateLine("subs", p.subscribers, nowMs),
     gateLine("watch hours", p.watchHours, nowMs),
     gateLine("Shorts views", p.shortsViews, nowMs),
     `uploads (90 days): ${p.tiers.expanded.uploads90d.have ?? "?"}/${p.tiers.expanded.uploads90d.need}`,
-    "",
-    `<b>Full tier</b> — ${tierCountdown(p.tiers.full, nowMs)}`,
-    gateLine("subs", p.tiers.full.subscribers, nowMs),
-    gateLine("watch hours", p.tiers.full.watchHours, nowMs),
-    gateLine("Shorts views", p.tiers.full.shortsViews, nowMs),
   ].join("\n");
 }
 

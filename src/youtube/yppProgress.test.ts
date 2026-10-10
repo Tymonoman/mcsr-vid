@@ -86,8 +86,24 @@ assert.equal(projectYpp({ ...base, subscribers: 600 }, now).subscribers.eta!.sli
 // Both tiers ride along: the full tier's hours double for new applicants on 1 Feb 2027
 // (YouTube Help 12843009), the expanded tier does not change.
 assert.equal(p.tiers.full.subscribers.need, 1000);
-assert.equal(p.tiers.full.watchHours.need, 4000);
-assert.equal(p.tiers.full.shortsViews.need, 10_000_000);
+// 925 to go at 2 a day lands in 2027-12, after 1 Feb 2027: judged by the thresholds in force then.
+assert.equal(p.tiers.full.watchHours.need, 8000);
+assert.equal(p.tiers.full.shortsViews.need, 20_000_000);
+// A full tier that lands before 1 Feb 2027 keeps today's: 990 subs at 2 a day, 3,900 h at 15 h a day.
+{
+  const soon = projectYpp({ ...base, subscribers: 990, watchHours365d: 3900, watchHoursPer28d: 28 * 15 }, now)
+    .tiers.full;
+  assert.equal(soon.watchHours.need, 4000);
+  assert.equal(soon.shortsViews.need, 10_000_000);
+}
+// Subscribers in time, but 4,000 h only after 1 Feb (3,900 to go at 24 a day, 162 days): the later
+// threshold applies, and its later date (7,900 to go, ~329 days).
+{
+  const late = projectYpp({ ...base, subscribers: 990, watchHours365d: 100, watchHoursPer28d: 28 * 24 }, now)
+    .tiers.full.watchHours;
+  assert.equal(late.need, 8000);
+  assert.equal(late.eta!.slice(0, 10), new Date(now + (7900 / 24) * 86_400_000).toISOString().slice(0, 10));
+}
 assert.equal(p.tiers.expanded.shortsViews.need, 3_000_000);
 assert.deepEqual(p.tiers.expanded.uploads90d, { have: 20, need: 3 });
 const in2027 = projectYpp(base, Date.UTC(2027, 1, 1));
