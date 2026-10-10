@@ -28,6 +28,8 @@ doogile–BeefSalad (rendered 1 Oct, before the 4 Oct block) is still exported a
 Between experiments 10 Oct: x1 5 videos, x2 6, x3 0 (starts 13 Oct), all "inconclusive (0 impressions)" — expected, the
 first arm video went public 9 Oct 19:00 and Analytics/Reporting lag 1–3 days. Check on 12 Oct: still 0 for a video public
 2+ days means the evaluator's read is broken.
+10 Oct ~05:50: the operator: "delete the beef salad vid" → /media/13803834 (doogile–BeefSalad) deleted via DELETE
+/api/match (2.5 GB). Still exists, asked him: the NAS copy /archive/13803834 and two PRIVATE videos WtP6sDsdBvA + ALjLwcH8qoM.
 Reports so far: night 1 https://claude.ai/artifact/78UWHqTnJityMtpiLS9Yw9. Known limits: Shorts "Related video" +
 end-screen "Import" pickers search his personal channel (optional fix: he switches the Studio browser's channel).
 
