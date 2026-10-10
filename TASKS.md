@@ -13,8 +13,13 @@ STUDIO WORKER: supervised — `setsid nohup bash /app/scripts/studio-worker.sh >
 ~/.claude/studio-worker-supervisor.pid; log ~/.claude/studio-worker.log; heartbeat /media/.studio-worker.json). Restart
 after a code change: kill the worker's node (pgrep -f "node --require.*studioCli.ts worker"); the supervisor relaunches.
 DAILY CRONS (session-only, recreate if the session restarted): 05:23 UTC morning cycle, 18:17 UTC evening check (on 14 Oct:
-the final branded report — artifact + npm run tg -- send --md: what ran, what won, YPP ETA vs baseline 4.0 subs/day →
-500 by 9 Jan). Baseline + ledger: handbook/knowledge/experiments.md; data /media/.experiments.json.
+the final branded report — artifact + npm run tg -- send --md: what ran, what won, the FULL-TIER ETA (1,000 subs) vs
+baseline 4.0 subs/day → ~14 May 2027). Baseline + ledger: handbook/knowledge/experiments.md; data /media/.experiments.json.
+TARGET = FULL YPP (the operator, 10 Oct 23:00: "we only focus on hitting the full ypp"): 1,000 subs; after 1 Feb 2027
+it needs 8,000 h (we pass it ~15 Dec at 82 h/day). The bot leads with the full tier (234b5ae, idle restart armed 22:56).
+Ranked plan (10 ideas): https://claude.ai/artifact/ADK2WTTzP732w87GgpwXzC — waiting on his go for idea 1 (self-updating
+draw, as a test) and 2 (big-creator watch, alerts first); his: Studio channel switch, channel-page shelves, consent
+round yes/no, keep explain-moves on for the review?
 VERDICT RISK: tests started 8–9 Oct may still be running on 14 Oct (Studio ends a test once it is sure, or at 14 days).
 In the 13 Oct morning cycle, read every test's state; the ledger records a finished test's winner and marks an unfinished one
 "running at the deadline", with Studio's interim numbers if the page shows them. Never mark a guess as a verdict.

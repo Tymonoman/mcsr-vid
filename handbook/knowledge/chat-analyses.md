@@ -108,7 +108,7 @@ compounding. Counts are from the Data API on 9 Oct; the history comes from the 2
 What drives the curve: posting volume (growth stops when posting stops) and catching an outside attention moment
 (a big streamer's arc, a viral match), never official events covered late.
 
-## Ten ideas to reach 500 subscribers sooner (10 Oct 2026)
+## Ten ideas to reach the YPP subscriber goal sooner (10 Oct 2026; re-ranked for the full tier, 1,000)
 
 Asked: "brainstorm 10 new ideas that will actually help us hit the ypp sub goal faster. analyze the mcsr community and
 what our avg user watches." 4 researchers, 3 ideators, 2 judges; page https://claude.ai/artifact/ADK2WTTzP732w87GgpwXzC.
@@ -128,3 +128,7 @@ what our avg user watches." 4 researchers, 3 ideators, 2 judges; page https://cl
   (7) switch the Studio browser's active channel; (8) a record-pace lane; (9) one Discord post after consent; (10) rivalry
   shelves on the channel page. Infume–Feinberg: 26 ranked meetings, 3–5 a session; their videos convert at ~1 sub/1k
   like the channel — they win on views.
+- Re-ranked the same night for the full tier (the operator: "we only focus on hitting the full ypp"): 1,000 subs at
+  3.07/day → ~19 Jul 2027; the 1 Feb 2027 rule (8,000 h) does not bind, ~82 h/day passes it ~15 Dec. New order:
+  draw, creator watch, review readiness (explainers + explain-moves on + About), consent round, Studio channel switch,
+  channel-page shelves, record-pace lane, Discord post, Short delay, cliffhanger Shorts.

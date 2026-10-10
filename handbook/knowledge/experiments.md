@@ -30,6 +30,13 @@ Subscribers are the only thing holding up YPP:
 **The week's bar: ≥ 4.0 net subscribers a day across 8–14 Oct** (≥ 28 for the week), which keeps the 500 ETA on or
 before 9 Jan. Watch hours are on course either way.
 
+**10 Oct 2026, the target moved to the full tier.** The operator: "we only focus on hitting the full ypp." The goal
+is 1,000 subscribers; the final report compares the full-tier ETA with the baseline's **~14 May 2027** (4.0 a day from
+123 on 7 Oct). Applying on or after 1 Feb 2027 needs 8,000 public watch hours (or 20M Shorts views) instead of 4,000;
+at ~82 h a day the channel passes 8,000 around 15 Dec 2026, so subscribers stay the only gate. On 10 Oct: 136
+subscribers at 3.07 a day over 28 days → ~19 Jul 2027. The ranked plan:
+https://claude.ai/artifact/ADK2WTTzP732w87GgpwXzC.
+
 ## How tests are run
 
 - **Test & Compare** (Studio, driven by the browser automation): thumbnails and titles, up to 3 variants. YouTube's own
