@@ -107,3 +107,24 @@ compounding. Counts are from the Data API on 9 Oct; the history comes from the 2
 - **Us** (129 on 9 Oct, 123 on 7 Oct): ~3–4/day, already level with mcsrmatches in absolute terms.
 What drives the curve: posting volume (growth stops when posting stops) and catching an outside attention moment
 (a big streamer's arc, a viral match), never official events covered late.
+
+## Ten ideas to reach 500 subscribers sooner (10 Oct 2026)
+
+Asked: "brainstorm 10 new ideas that will actually help us hit the ypp sub goal faster. analyze the mcsr community and
+what our avg user watches." 4 researchers, 3 ideators, 2 judges; page https://claude.ai/artifact/ADK2WTTzP732w87GgpwXzC.
+- Pace (bot /ypp, 10 Oct): 136/500 at 3.07 subs/day over 28 days → ~6 Feb 2027; watch hours reach 3,000 ~16 Oct.
+- Our viewer (Analytics 28/90 d to 7 Oct; Studio Content tab 10 Oct): 98% non-subscribers; Browse 62.6%, Shorts feed
+  25.0%, Suggested 4.8% (11.6% in Sept), search 3.6%. Suggested traffic is 90–94% our own catalogue, 6–10% mcsrmatches,
+  0% any bigger channel. 61% of search views name a player/matchup/the edcr situation. Mobile 53% (45% on 24 Sept).
+  Long-form 1.02 subs/1k views vs Shorts 0.29 (90 d: 91 vs 9). A third of subs have no video attached. 47% of returning
+  viewers watch both formats. The Studio Audience tab did not render.
+- Scene (agent reads, 10 Oct): Season 12 runs 10 Oct–30 Dec. Pinne holds the Any% Glitchless WR (6:39.813, 27 July),
+  lowk3y_ held it before (6:50.359); lowk3y_'s channel: 10 videos, 9.68M views. Feinberg 282.6K Twitch / 254K YouTube.
+  Official Discord 71,167 members. Top MCSR videos of the last 60 days are reactions, raw VOD reuploads, commentary and
+  record clips, not two-POV replays.
+- The ten, ranked: (1) a weekly self-updating draw (DEFAULT_DRAW is a 1 Oct constant), rivals skip the repeat penalty;
+  (2) a same-day big-creator watch; (3) consent round then a share ask, Feinberg first; (4) a monthly original explainer
+  (also YPP reused-content insurance); (5) Short 3 h after the long-form; (6) Shorts that stop before the finish;
+  (7) switch the Studio browser's active channel; (8) a record-pace lane; (9) one Discord post after consent; (10) rivalry
+  shelves on the channel page. Infume–Feinberg: 26 ranked meetings, 3–5 a session; their videos convert at ~1 sub/1k
+  like the channel — they win on views.
