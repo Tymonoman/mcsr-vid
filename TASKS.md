@@ -20,6 +20,9 @@ it needs 8,000 h (we pass it ~15 Dec at 82 h/day). The bot leads with the full t
 Ranked plan (10 ideas): https://claude.ai/artifact/ADK2WTTzP732w87GgpwXzC — waiting on his go for idea 1 (self-updating
 draw, as a test) and 2 (big-creator watch, alerts first); his: Studio channel switch, channel-page shelves, consent
 round yes/no, keep explain-moves on for the review?
+11 Oct 05:25 morning: nightly rendered 14074004 (silverrruns–thecamo6) + 14074713, both waiting for hooks (they take
+12 Oct 23:00 + 13 Oct 19:00); 11 Oct 19:00/23:00 + 12 Oct 19:00 scheduled; no failed steps; worker 05:07 no error;
+29 A/B + 3 between running, between still 0 impressions (recheck 12 Oct); Needs you: nothing; full tier ~18 Jul 2027.
 VERDICT RISK: tests started 8–9 Oct may still be running on 14 Oct (Studio ends a test once it is sure, or at 14 days).
 In the 13 Oct morning cycle, read every test's state; the ledger records a finished test's winner and marks an unfinished one
 "running at the deadline", with Studio's interim numbers if the page shows them. Never mark a guess as a verdict.
