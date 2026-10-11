@@ -83,6 +83,7 @@ Use the script, don't reconstruct the shell line. Extra arguments go after `--`.
 | `bash scripts/agy-task.sh <name> <prompt-file> [model]` | Hand an easy task to agy (Gemini) in a worktree; review the diff and commit yourself. |
 | `python3 scripts/reap.py <command…>` | Subreaper wrapper if zombies climb. |
 | `bash scripts/browser-checks/run-all.sh <url>` | Drives the dashboard in a real browser (26 Playwright checks). Point at the real dashboard. |
+| `npm run tc-thumbs -- <matchId…>` | A Test & Compare thumbnail set per match in `<id>/tc/` (control, most-different pose, a caption). |
 | `npm run studio -- probe \| pin <id> [--dry-run] \| login \| worker [--once] [--dry-run] [--enable] \| tc-plan <plan.json> \| related <id> <id> \| link-related <shortId> <longFormId> [--dry-run]` | Studio browser automation CLI. |
 
 Lab timings for a 10-minute match: overlay render ~9 min, `export:fast` ~10 min, a Short in
@@ -165,9 +166,9 @@ underperforms — the model picks a real moment instead.
 
 ## Dashboard
 
-`src/` is read at boot; `public/` served from disk per request. After pulling server changes run
-`docker restart mcsr-dashboard` — but **never while a chain uploads** (see below). Client-only
-changes need just a reload.
+`src/` is read at boot; `public/` served from disk per request. After merging server changes,
+`POST /api/restart-when-idle` (below) — a hand `docker restart mcsr-dashboard` only when nothing
+uploads. Client-only changes need just a reload.
 
 - **Restart only when idle** (`src/dashboard/restartWhenIdle.ts`): `POST /api/restart-when-idle`
   arms, `DELETE` cancels, `GET` reports. `idle()` checks a pipeline render, an export, a Short
@@ -186,7 +187,7 @@ changes need just a reload.
   4), rescanned periodically; one card per pair across close/chaos/`known` buckets, capped one
   slot per player too, not just per pair (`suggestKnownSlots`, default 4).
 - **Favourite players, then known** (`tierFor`; `favouritePlayers` Settings tab, default
-  doogile/Feinberg/Infume/Pinne/lowk3y_/silverrruns/edcr). Order: favourite → known → neither,
+  doogile/Feinberg/Infume/Pinne/lowk3y_/silverrruns; edcr is the operator's call). Order: favourite → known → neither,
   then expiring → audience → popularity. Known: a favourite, a measured draw ≥ `KNOWN_DRAW_MIN`
   (0.6), or Twitch followers (`knownFollowerThreshold` 10,000). **No chaos/closeness, seed, rank
   or elo term — only tier, audience and recency decide the order.** `learnedDraw`/
@@ -370,6 +371,13 @@ anything Google's anti-abuse systems do to a container-run browser.
   a one-off CLI write it from separate processes; unguarded, concurrent writers crashed outright.
   The dashboard's own `src/dashboard/experiments.ts` doesn't take this lock, so a race there is
   still possible.
+- **The worker plans a thumbnail Test & Compare on every new dashboard long-form itself**
+  (`thumbnailTcTargets`, ≤2 a cycle): `npm run tc-thumbs` renders control + the most different
+  non-result-looking pose (+ a caption of ≤6 chars when `tcCaption.ts` passes one); it starts on a
+  later cycle. A running test is read once a UTC day; **Studio's "Results ready"/"Test finished"
+  means done** (`readTestAndCompare` + `parseTcReport` read the report's watch-time shares and
+  winner; `setExperimentChecked` records `watchTimeShare` per arm and "<arm> wins: a% vs b%").
+  End screens get the editor's starter layout ("1 video, 1 subscribe") when the video has none.
 - **The worker never sets a Test & Compare winner itself** — `"done"` only records what Studio's
   own page already shows; `"needsHuman"` lands on anything it couldn't get past. Every title is
   checked before any page opens (`titleTestProblem`: `hookProblem` incl. `hookLabelProblem`,
