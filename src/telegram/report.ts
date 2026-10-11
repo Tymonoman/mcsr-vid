@@ -17,6 +17,7 @@ import type {
   TodoFacts,
 } from "./facts.js";
 import type { TestsSummary } from "../dashboard/experiments.js";
+import type { CreatorWatchHit } from "../dashboard/creatorWatch.js";
 import { netSubscribers, subsPer1kEngaged, type WindowDays } from "./windowStats.js";
 import type { NightlyFacts, UpcomingRow } from "./facts.js";
 import type { NightlyLastRun } from "../dashboard/nightly.js";
@@ -252,6 +253,21 @@ export function renderWorth(worth: ReportFacts["worthRendering"], dashboardBaseU
   if (matches.length > shown.length) lines.push(`+ ${matches.length - shown.length} more — /worth`);
   for (const n of notes) lines.push(`<i>${escapeHtml(n)}</i>`);
   return lines.join("\n");
+}
+
+/**
+ * Creator watch's own hits since the previous report (src/dashboard/creatorWatch.ts) — nothing
+ * for the operator to do, so this is its own line, not part of Needs you. Omitted entirely when
+ * there were none, the same convention as `renderAutoHooks`.
+ */
+export function renderCreatorWatch(hits: readonly CreatorWatchHit[] | undefined): string {
+  if (!hits || hits.length === 0) return "";
+  return hits
+    .map(
+      (h) =>
+        `${b("👀 Creator watch")} · ${escapeHtml(h.nick)} played ${escapeHtml(h.players)} — ${h.queued ? "queued for tonight" : escapeHtml(h.reason ?? "not queued")}`,
+    )
+    .join("\n");
 }
 
 /* --- Message 2: the channel (stats table, YPP) -------------------------------------------------- */
@@ -656,6 +672,7 @@ export function renderMorningReport(
     renderAutoHooks(autoHooks, facts.dashboardBaseUrl),
     renderToday(facts.todo, claude, facts.dashboardBaseUrl),
     renderWorth(facts.worthRendering, facts.dashboardBaseUrl),
+    renderCreatorWatch(facts.creatorWatch),
     renderAlerts(facts.alerts, true),
     renderOvernight(facts.overnight, facts.dashboardBaseUrl, true),
     renderHealth(facts.health, true),

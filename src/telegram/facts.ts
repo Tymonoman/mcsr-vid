@@ -29,6 +29,7 @@ import { hiddenMatchIds, isExported, nightlyQueue, nightlySkip } from "../dashbo
 import { listProcessedMatchIds, matchStatusFor } from "../dashboard/matchStatus.js";
 import { nightlyShortSummary, readStatus } from "../dashboard/shortFlow.js";
 import { needsHumanExperiments, testsSummary, type TestsSummary } from "../dashboard/experiments.js";
+import { creatorWatchSince, type CreatorWatchHit } from "../dashboard/creatorWatch.js";
 import { pickErrorFile } from "../shorts/videoPick.js";
 import { playoffBoard } from "../playoffs/playoffs.js";
 import { describeFailure, runClaude } from "./claude.js";
@@ -760,6 +761,9 @@ export interface ReportFacts {
   /** The experiment engine's own ledger (src/dashboard/experiments.ts) — a local file read, no
    *  API call, so it is never gated behind `only` the way the sections above are. */
   tests: TestsSummary;
+  /** Creator watch's own hit log (src/dashboard/creatorWatch.ts) since the previous report — a
+   *  local file read, ungated for the same reason `tests` is. */
+  creatorWatch: CreatorWatchHit[];
 }
 
 /** Which of `ReportFacts`' sections `gatherFacts` actually computes — a narrow slash command
@@ -851,6 +855,7 @@ export async function gatherFacts(
     worthRendering,
     dashboardBaseUrl: dashboardMatchUrl(),
     tests: testsSummary(nowMs, sinceMs),
+    creatorWatch: creatorWatchSince(sinceMs),
   };
 }
 

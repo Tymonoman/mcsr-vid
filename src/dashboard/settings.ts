@@ -245,6 +245,22 @@ export const SETTINGS: readonly SettingField[] = [
     unattended: true,
   },
   {
+    key: "creatorWatch",
+    label: "Creator watch",
+    help: "Watch the nicknames below for a new ranked match; a hit with both Twitch VODs found goes to the front of tonight's queue (at most one a night). Off leaves the list and the nightly tick alone.",
+    kind: "boolean",
+    group: "Suggestions",
+    unattended: true,
+  },
+  {
+    key: "creatorWatchlist",
+    label: "Creator watchlist",
+    help: "MCSR nicknames of outside creators (Ludwig, a big streamer's one-off) separated by commas, case ignored. Checked on the 15-minute tick while Creator watch is on; empty watches nobody.",
+    kind: "list",
+    group: "Suggestions",
+    unattended: true,
+  },
+  {
     key: "favouritePlayers",
     label: "Favourite players",
     help: "MCSR nicknames separated by commas (Pinne is Skycrab, lowk3y_ is lowkey); case is ignored, spelling is not. The list sorts across the close and chaos cards, and a match with one of these players always comes before one with none, however popular that one is; among matches with a favourite, one counts half again as popular, two twice. The order changes at once and is what the nightly's first pick follows; which matches reach the list changes at the next scan (every 30 minutes or the rescan link), which gives its slots to such matches first. A match about to expire still comes first and one the rival already posted still comes last. Empty means no tier and no bonus: popularity across both buckets.",

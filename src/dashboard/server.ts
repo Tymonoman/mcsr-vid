@@ -78,6 +78,7 @@ import {
   shortTick,
 } from "./shortFlow.js";
 import { armRestart, disarmRestart, restartState } from "./restartWhenIdle.js";
+import { creatorWatchTick } from "./creatorWatch.js";
 import { saveSettings, settingsPayload } from "./settings.js";
 import { applyScheduledRenderArm } from "./experiments.js";
 import { evaluateExperiments } from "./experimentsEvaluator.js";
@@ -918,6 +919,9 @@ server.listen(PORT, "0.0.0.0", () => {
     // then at most once a day — drawLearnTick never throws, but the catch matches every other
     // call on this tick.
     void drawLearnTick().catch((err: unknown) => console.error(`draw: ${describeError(err)}`));
+    // Creator watch (off by default, config.creatorWatch): a watched outside creator's new ranked
+    // match, both VODs found, goes to the front of tonight's queue — see src/dashboard/creatorWatch.ts.
+    void creatorWatchTick().catch((err: unknown) => console.error(`creator watch: ${describeError(err)}`));
     try {
       // The nightly's own pending timer was armed for the old hour: rearm it, the same signal
       // `/api/settings`' PUT handler acts on above.
