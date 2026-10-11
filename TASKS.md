@@ -1,6 +1,6 @@
 # TASKS — resume point (updated 24 Sept 2026 08:15 UTC)
 
-## ▶ RESUME HERE (11 Oct 2026 ~11:50 UTC, before a /compact) — WEEK GOAL ACTIVE (ends 14 Oct), TARGET = FULL YPP
+## ▶ RESUME HERE (11 Oct 2026, updated ~13:10 UTC) — WEEK GOAL ACTIVE (ends 14 Oct), TARGET = FULL YPP
 TARGET: the full tier, 1,000 subs (the operator, 10 Oct: "we only focus on hitting the full ypp"); 136 subs at ~3.1/day →
 ~18 Jul 2027; baseline 4.0/day → ~14 May 2027 (the 14 Oct final report compares these). After 1 Feb 2027 it needs 8,000 h
 (passed ~16 Dec at ~82 h/day). Bot /ypp + morning line lead with the full tier (234b5ae).
@@ -14,18 +14,24 @@ tool scripts/hand-short/build.py (spec JSON → branded Short; --words for capti
 tmp/shorts/specs/14074004.json; v4 = tmp/shorts/14074004/hand-short-v4.mp4, sent to him); first A/B verdict: GF title test
 _2EOkOOX0PQ control 62.1% vs "A SUB-9 TO WIN IT" 37.9% → report https://claude.ai/artifact/JvmQuiz5RX4bhRAE1599Tn, ledger
 done, experiments.md Decisions.
-IN FLIGHT: workflow wxk5zgat1 (wf_d7ab5252-9b0) — branches hand-shorts (shortsByHand setting + `npm run short:hand --
-<id> <mp4> --hook … --from … --to … --pov …` + chain waits for the hand Short without delaying the long-form) and
-related-link (linkRelatedVideo + worker loop + `npm run studio -- link-related`). WHEN IT LANDS: review the fix notes, merge
-both (expect conflicts in CLAUDE.md/config/settings/studioActions), npm run test:unit + tsc, POST /api/restart-when-idle,
-then PUT /api/settings {"shortsByHand": true}; then FIX readTestAndCompare: "Results ready" in the title box = done (and
-parse the report's watch-time shares); then update the 05:23 morning cron to make the night's 2 Shorts by hand (watch:
-11 contact sheets of final-<id>.mp4 at 1 frame/5 s + short-watch-*/report.md transcripts + the model's pick as a hint;
-measure the face cam on a full-res frame; spec → build.py → check beats → short:hand).
+LANDED ~13:00 UTC: hand-shorts + related-link merged (2c199a3), tests/tsc green, dashboard self-restarted; shortsByHand ON
+(live). readTestAndCompare fixed (a195224): "Results ready" = done, the report's watch-time shares + winner recorded per arm
+("<arm> wins: a% vs b%"). Hand-mode bug caught before the first night (a4028da): the first build stopped the after-export
+pick, and auto-hooks waits on a 6 h-old pick — no long-form would have uploaded; the pick runs again (title hooks + my hint),
+the chain still skips its pick/render. Worker gets related-link at tonight's blackout (newCodeWaiting). Worktrees removed.
+HAND SHORTS: tmp/week/needshort.cjs lists matches needing one (ALL=1 = include ones already on YouTube); the 05:23 cron
+(376be942) makes them: watch → spec → build.py → beats → `npm run short:hand`. None due today (all on YouTube already).
+COPYRIGHT CLAIM (his screenshot, 11 Oct): F8qXq5Eq2XA (14039001 fuzzychloe vs lowkey, scheduled 12 Oct 19:00 UTC) —
+Content ID, "Andrew in Drag" (The Magnetic Fields; Merlin/Secretly Distribution, UMG for Merge Records), 0:00–1:51, Copyright
+- Audio, "Potential earning limitation" only (no block, no strike). The song is in FUZZYCHLOE's stream audio (Groq
+transcript: the chorus, then her own talk); lowk3y_'s side is clean. Studio Content list read 11 Oct 12:5x: 1 of 55 videos
+has any restriction — this one. ASKED HIM: mute the song in Studio before it goes public (his call — an edit on the
+channel), or leave it; and whether the worker should flag claims on scheduled uploads in Needs you.
 WAITING ON HIM: replace this morning's two automatic old-layout Shorts (mwejhZG5t1c 14074713 → 13 Oct 17:00 UTC;
-KMN8pCKWNVY 14074004 → 14 Oct 13:00 UTC) with hand-made ones? = deleting two scheduled privates (his call).
-CRONS (session-only; recreate if gone): 05:23 UTC morning cycle (job aeb777cf — uses /needs + /ypp, NEVER report --dry-run:
-it carries viewer comment text), 18:17 UTC evening check (bbbb9a98). On 14 Oct evening: the final branded report.
+KMN8pCKWNVY 14074004 → 14 Oct 13:00 UTC) with hand-made ones? = deleting two scheduled privates (his call). The claim above.
+CRONS (session-only; recreate if gone): 05:23 UTC morning cycle (job 376be942 — /needs + /ypp, NEVER report --dry-run: it
+carries viewer comment text; then the hand Shorts), 18:17 UTC evening check (bbbb9a98). On 14 Oct evening: the final
+branded report.
 
 ## ▶ RESUME HERE (9 Oct 2026 ~11:35 UTC, before a /compact) — THE WEEK GOAL IS ACTIVE (/goal, ends 14 Oct)
 /goal: "By 14 Oct: every day's uploads scheduled without the operator; Test & Compare on ≥10 videos with verdicts in the
