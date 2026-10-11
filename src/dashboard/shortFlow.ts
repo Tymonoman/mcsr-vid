@@ -273,9 +273,10 @@ export const picksRunning = (): boolean => pickingNow !== null || queued.size > 
  * does not move the match clock the window is in).
  */
 export function ensurePick(matchId: number): Promise<void> | null {
-  // Hand mode: the session cuts the Short itself, outside the pipeline — a model watch would be
-  // 80–140k tokens spent on a window nothing ever renders.
-  if (config.shortsByHand) return null;
+  // Hand mode still picks after the export: auto-hooks (`autoHooksTick`) is due only once a pick
+  // is 6 h old, and the pick carries the model's title hooks — gated off here (11 Oct 2026, first
+  // build) no long-form would ever have had its hooks saved, so none would have uploaded. The
+  // pick's window renders nothing in hand mode; it is the session's hint for where the Short is.
   const dir = matchDir(matchId);
   if (existsSync(pickFile(dir, matchId)) || pickActivity(matchId) || readStatus(matchId).noShort) return null;
   if (existsSync(path.join(dir, "youtube-short.json"))) return null;

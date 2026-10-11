@@ -142,10 +142,13 @@ views brought 0 subscribers.
 
 - **The session cuts every Short by hand instead of the pipeline's own pick-and-render**
   (`shortsByHand`, Settings → Publishing, default **off**; 11 Oct 2026, the operator, verbatim:
-  "you're gonna make the shorts from now on"). On, a match whose Short is not yet on YouTube
-  neither queues a model pick nor renders its own Short — the long-form uploads at its slot
-  without waiting on either (today's chain renders the Short before the long-form upload; this
-  mode skips straight to it). `npm run short:hand -- <matchId> <file.mp4> --hook "<hook>" --from
+  "you're gonna make the shorts from now on"). On, the chain never runs its own pick or render
+  step for the Short — the long-form uploads at its slot without waiting on either (today's chain
+  renders the Short before the long-form upload; this mode skips straight to it). **The pick after
+  the export still runs** (`ensurePick`): auto-hooks is due only 6 h after a pick and takes the
+  model's title hooks first — the first build gated that pick off too, which would have left
+  every new long-form unhooked and unuploaded (caught before the first night, 11 Oct 2026); the
+  pick's window is now only the session's hint for where the Short is. `npm run short:hand -- <matchId> <file.mp4> --hook "<hook>" --from
   <sec> --to <sec> --pov left|right [--note "<text>"]` (`src/shorts/handShort.ts`, the CLI's thin
   wrapper `handShortCli.ts`) turns a Short cut outside the pipeline into the pair the chain reads:
   `short-<id>.mp4` + `short-<id>.hand.json` (`{ hook, builtAt, windowMatchSec, pov, note? }`), plus
