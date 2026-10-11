@@ -8,8 +8,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { config, DEFAULTS } from "../config.js";
 import { DEFAULT_WEIGHTS, type MatchMetrics } from "../pipeline/matchScore.js";
+import type { DrawLearned } from "./drawLearn.js";
 import {
   DEFAULT_DRAW,
+  RECORD_PACE_BOOST,
+  audienceFor,
   dismissSuggestion,
   drawOf,
   expectedDrawFor,
@@ -19,6 +22,7 @@ import {
   STRONG_DRAWS,
   knownPlayerFor,
   knownTierFor,
+  recordPaceFactor,
   tierFor,
 } from "./suggest.js";
 
@@ -77,6 +81,69 @@ assert.equal(favouriteFactorFor([])(["doogile", "Feinberg"]), 1, "an empty list 
     [2, 1, 0],
   );
   console.log("OK: knownPlayerFor/knownTierFor/tierFor/drawOf — a measured draw overrides followers");
+}
+
+// --- The learned draw (config.learnedDraw, 11 Oct 2026): undefined/null is today's fallback
+// untouched; present, it replaces DEFAULT_DRAW for a taught name, and a proven pair skips the
+// repeat halving. -----------------------------------------------------------------------------
+{
+  const noFollowers = () => null;
+  const learned: DrawLearned["players"] = { freshname: { draw: 2.5, n: 5 } };
+  // A name DEFAULT_DRAW also knows: the learned value wins, not the hand-seeded one.
+  assert.equal(drawOf("hackingnoises", noFollowers, { hackingnoises: { draw: 0.9, n: 4 } }), 0.9);
+  // A name nobody hand-seeded: the learned value stands in for the UNMEASURED_DRAW band.
+  assert.equal(drawOf("freshname", noFollowers, learned), 2.5);
+  assert.equal(drawOf("freshname", noFollowers, null), 0.5, "no learned table: the old fallback");
+  assert.equal(drawOf("freshname", noFollowers, undefined), 0.5, "undefined is the same as absent");
+  assert.equal(
+    expectedDrawFor(["freshname", "hackingnoises"], noFollowers, learned),
+    2.5 + 0.5 * 2.08,
+    "a learned draw and a measured one combine the same way two measured ones do",
+  );
+
+  // audienceFor: a proven pair (its last measured meeting beat the channel median, lastRatio > 1)
+  // is not halved for being a repeat; an unproven one still is.
+  const posted = [{ players: ["aaa", "bbb"] as [string, string], atMs: Date.now() }];
+  const learnedFile: DrawLearned = {
+    computedAt: Date.now(),
+    channelMedian: 100,
+    players: {},
+    pairs: { "aaa|bbb": { lastRatio: 1.4, lastVideoId: "v1" } },
+    videoViews: {},
+  };
+  const withLearned = audienceFor([], noFollowers, posted, learnedFile);
+  const withoutLearned = audienceFor([], noFollowers, posted, null);
+  assert.ok(withLearned(["aaa", "bbb"]) > withoutLearned(["aaa", "bbb"]), "a proven pair skips the halving");
+  assert.equal(
+    withLearned(["aaa", "bbb"]),
+    expectedDrawFor(["aaa", "bbb"], noFollowers, undefined),
+    "proven: the repeat factor is 1, not REPEAT_FACTOR",
+  );
+  // A pair whose last measured ratio did not beat the median (<=1) is not proven: still halved.
+  const notProven: DrawLearned = { ...learnedFile, pairs: { "aaa|bbb": { lastRatio: 0.9, lastVideoId: "v1" } } };
+  assert.equal(
+    audienceFor([], noFollowers, posted, notProven)(["aaa", "bbb"]),
+    withoutLearned(["aaa", "bbb"]),
+    "lastRatio <= 1 is not proven",
+  );
+  // Undefined/null `learned` throughout: byte for byte the no-argument call.
+  assert.equal(
+    audienceFor([], noFollowers, posted)(["aaa", "bbb"]),
+    withoutLearned(["aaa", "bbb"]),
+    "the fourth argument defaults to off",
+  );
+  console.log("OK: a learned draw replaces the hand-seeded one; a proven pair skips the repeat halving");
+}
+
+// --- recordPaceBoostSec's own factor: null is off, at/under the threshold boosts by exactly
+// RECORD_PACE_BOOST, over it does nothing. ------------------------------------------------------
+{
+  assert.equal(RECORD_PACE_BOOST, 1.5);
+  assert.equal(recordPaceFactor(500_000, null), 1, "off");
+  assert.equal(recordPaceFactor(500_000, 420), 1, "8:20 is slower than the 7:00 threshold");
+  assert.equal(recordPaceFactor(420_000, 420), RECORD_PACE_BOOST, "exactly at the threshold boosts");
+  assert.equal(recordPaceFactor(419_999, 420), RECORD_PACE_BOOST, "under it too");
+  console.log("OK: recordPaceFactor — null is off, at or under the threshold boosts, never past it");
 }
 
 // --- The scan: no network, no Twitch; the pool is in the cache -----------------------------------

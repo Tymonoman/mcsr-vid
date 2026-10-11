@@ -61,6 +61,22 @@ export interface PairPostDeps {
 /** Who played a match never changes, so each is asked for once per process. */
 const names = new Map<number, [string, string]>();
 
+/**
+ * A match's two nicknames (API spelling), cached forever once read — one `matchStatusFor` call
+ * (so one MCSR request) the first time, free after. Exported for `src/dashboard/drawLearn.ts`,
+ * which needs the same "who played this" lookup to attribute a video's views to its players.
+ */
+export async function cachedMatchPlayers(matchId: number): Promise<[string, string] | null> {
+  const known = names.get(matchId);
+  if (known) return known;
+  const { leftNickname, rightNickname } = await matchStatusFor(matchId);
+  // "?" is a match whose players could not be read at all: not an answer, asked again next time.
+  if (leftNickname === "?" || rightNickname === "?") return null;
+  const pair: [string, string] = [leftNickname, rightNickname];
+  names.set(matchId, pair);
+  return pair;
+}
+
 const liveDeps: PairPostDeps = {
   uploads: allUploads,
   rendered: () => {
@@ -74,16 +90,7 @@ const liveDeps: PairPostDeps = {
       }
     });
   },
-  async namesOf(matchId) {
-    const known = names.get(matchId);
-    if (known) return known;
-    const { leftNickname, rightNickname } = await matchStatusFor(matchId);
-    // "?" is a match whose players could not be read at all: not an answer, asked again next time.
-    if (leftNickname === "?" || rightNickname === "?") return null;
-    const pair: [string, string] = [leftNickname, rightNickname];
-    names.set(matchId, pair);
-    return pair;
-  },
+  namesOf: cachedMatchPlayers,
 };
 
 /**

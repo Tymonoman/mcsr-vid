@@ -393,6 +393,25 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   (`pairPosts.ts`) refreshes in the background; the nightly waits for it at most 15 s. The operator,
   30 Sept 2026: "no name players no one will click on that"; 1 Oct: "the suggestion system is shit
   it recommends and schedules matches that no one will watch".
+- **A self-updating draw** (`learnedDraw`, Settings tab, default **off**; `src/dashboard/drawLearn.ts`,
+  11 Oct 2026 — `DEFAULT_DRAW`'s own comment: "refresh by hand … there is no job that re-seeds
+  it"): re-seeds the audience lookup from the channel's own numbers instead of the constant
+  measured once on 1 Oct 2026. For every long-form upload (`youtube.json`, never a Short) that is
+  public — or scheduled and past its time, the same test `lastMeetingFor`/`recentPairPosts` use —
+  and 7 to 90 days old, the Analytics API gives its first 7 days' views (cached per video id
+  forever: a video's first week never changes). A player with 3+ such videos gets a learned draw
+  (the median of each video's ratio to the channel median), which `drawOf`/`expectedDrawFor`
+  prefer over `DEFAULT_DRAW`/`UNMEASURED_DRAW`; a pair whose most recent measured meeting beat
+  the channel median is "proven" and skips the `pairRepeatDays` halving in `audienceFor`. Written
+  atomically to `<mediaDir>/.draw-learned.json`, recomputed on the existing 15-minute tick
+  (`server.ts`) at most once a day — never on every request, and never when the setting is off.
+  Off is byte-for-byte today's ordering (pinned by a test); missing or corrupt reads the same way.
+- **A record-pace lane** (`recordPaceBoostSec`, Settings tab, default **off** = null;
+  `RECORD_PACE_BOOST`/`recordPaceFactor`, `src/dashboard/suggest.ts`, 11 Oct 2026): a candidate
+  whose finish (`MatchMetrics.resultMs`) is at or under this many seconds gets its audience ×1.5,
+  so a near-record race ranks up inside its tier — it never names or implies who won, only
+  reorders, same as the favourites bonus and the repeat demotion already do. Null is today's
+  ordering exactly.
 - **Blocked players** (`blockedPlayers`, Settings tab, default `["Aquacorde", "BeefSalad"]`;
   `isBlockedPlayer`/`blockedIn` in `src/config.ts`, compared whole and ignoring case): a runner who
   has withdrawn permission for their footage. A match with one is dropped before the suggestion scan scores it

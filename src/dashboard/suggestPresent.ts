@@ -8,11 +8,13 @@
  */
 import { formatShortTime } from "../../remotion/format.js";
 import { blockedIn, config } from "../config.js";
+import { readDrawLearned, type DrawLearned } from "./drawLearn.js";
 import { recentPairPostsSnapshot, type PairPost } from "./pairPosts.js";
 import { rivalMatchFor, rivalPostsSnapshot, type RivalPost } from "./rivalPosts.js";
 import type { SplitGap } from "../pipeline/matchScore.js";
 import {
   audienceFor,
+  recordPaceFactor,
   tierFor,
   POOL_MAX_AGE_DAYS,
   type Bucket,
@@ -38,6 +40,8 @@ export interface SuggestionCard {
   expiryLabel: string;
   /** Ranking signal, kept for the caller's own ordering; not shown on the card. */
   popularity: number;
+  /** Ranking signal too (the record-pace boost, `recordPaceBoostSec`): not shown on the card. */
+  resultMs: number;
   splits: SplitGap[];
   vodUrls: string[];
   /** The rival channel's post of this matchup, when it has one (src/dashboard/rivalPosts.ts). */
@@ -113,6 +117,7 @@ function toCard(s: Suggestion, nowMs: number, rival: readonly RivalPost[]): Sugg
     expiring,
     expiryLabel: expiresInDays === 0 ? "VODs expire today" : `VODs expire in ${expiresInDays}d`,
     popularity: s.popularity,
+    resultMs: s.metrics.resultMs,
     splits: s.metrics.splits,
     vodUrls: s.vodUrls,
   };
@@ -136,6 +141,10 @@ const BUCKET_RANK: Record<Bucket, number> = { close: 0, chaos: 1, known: 2 };
  * Everything here is read on every call and kept out of the scan's cache, so a change to either
  * setting re-orders the next read. (The tier and the audience also decide when a scan chooses the
  * slots, `take` in suggest.ts: which matches are in the list follows at the next scan.)
+ *
+ * `learned` (`config.learnedDraw`) and `recordPaceBoostSec` (`config.recordPaceBoostSec`) are two
+ * more such live settings, both defaulted from `config` so a test can pin either without the live
+ * object: off (null) is byte-for-byte today's `audience(y.players) - audience(x.players)` order.
  */
 export function presentSuggestions(
   suggestions: readonly Suggestion[],
@@ -144,6 +153,8 @@ export function presentSuggestions(
   favourites: readonly string[] = config.favouritePlayers,
   posted: readonly PairPost[] = recentPairPostsSnapshot(nowMs),
   knownFollowerThreshold: number = config.knownFollowerThreshold,
+  learned: DrawLearned | null = config.learnedDraw ? readDrawLearned() : null,
+  recordPaceBoostSec: number | null = config.recordPaceBoostSec,
 ): SuggestionCard[] {
   // Dropped outright, not just reordered: a stale cached list scanned before a player was
   // blocked (config.blockedPlayers) must not show their match until the next rescan catches up.
@@ -155,13 +166,15 @@ export function presentSuggestions(
     for (const p of s.profiles) followersByName.set(p.nickname.toLowerCase(), p.followers);
   const followersOf = (name: string) => followersByName.get(name.toLowerCase()) ?? null;
   const tier = tierFor(favourites, followersOf, knownFollowerThreshold);
-  const audience = audienceFor(favourites, followersOf, posted);
+  const audience = audienceFor(favourites, followersOf, posted, learned);
+  const paced = (card: SuggestionCard): number =>
+    audience(card.players) * recordPaceFactor(card.resultMs, recordPaceBoostSec);
   return cards.sort(
     (x, y) =>
       tier(y.players) - tier(x.players) ||
       Number(y.expiring) - Number(x.expiring) ||
       Number(x.rivalPosted !== null) - Number(y.rivalPosted !== null) ||
-      audience(y.players) - audience(x.players) ||
+      paced(y) - paced(x) ||
       BUCKET_RANK[x.bucket] - BUCKET_RANK[y.bucket] ||
       y.popularity - x.popularity,
   );
@@ -178,11 +191,20 @@ export function orderForDisplay(
   favourites: readonly string[] = config.favouritePlayers,
   posted: readonly PairPost[] = recentPairPostsSnapshot(nowMs),
   knownFollowerThreshold: number = config.knownFollowerThreshold,
+  learned: DrawLearned | null = config.learnedDraw ? readDrawLearned() : null,
+  recordPaceBoostSec: number | null = config.recordPaceBoostSec,
 ): Suggestion[] {
   const rank = new Map(
-    presentSuggestions(suggestions, nowMs, rival, favourites, posted, knownFollowerThreshold).map(
-      (card, i) => [card.matchId, i],
-    ),
+    presentSuggestions(
+      suggestions,
+      nowMs,
+      rival,
+      favourites,
+      posted,
+      knownFollowerThreshold,
+      learned,
+      recordPaceBoostSec,
+    ).map((card, i) => [card.matchId, i]),
   );
   return [...suggestions].sort(
     (a, b) => (rank.get(a.metrics.matchId) ?? Infinity) - (rank.get(b.metrics.matchId) ?? Infinity),

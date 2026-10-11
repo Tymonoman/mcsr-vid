@@ -42,6 +42,8 @@
   ],
   "pairRepeatDays": 3,
   "knownFollowerThreshold": 10000,
+  "learnedDraw": false,
+  "recordPaceBoostSec": null,
   "supportUrl": "",
   "copyVariety": false,
   "pullSource": "",

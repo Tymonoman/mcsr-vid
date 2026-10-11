@@ -44,6 +44,7 @@ import { playoffBoard } from "../playoffs/playoffs.js";
 import { renderSeries, seriesState, type SeriesRunners } from "../playoffs/series.js";
 import { refreshRivalPostsIfStale, rivalPostsSnapshot, rivalRecentPostFor } from "./rivalPosts.js";
 import { refreshPairPosts } from "./pairPosts.js";
+import { drawLearnTick } from "./drawLearn.js";
 import { chooseVariant, readManifest } from "../thumbnails/thumbnailVariants.js";
 import { metaPaths } from "../pipeline/title.js";
 import { typedSpoiler } from "../pipeline/hooks.js";
@@ -913,6 +914,10 @@ server.listen(PORT, "0.0.0.0", () => {
     void shortTick().catch((err: unknown) => console.error(`shorts: ${describeError(err)}`));
     void commentSoonTick().catch((err: unknown) => console.error(`comments: ${describeError(err)}`));
     void autoHooksTick().catch((err: unknown) => console.error(`auto-hooks: ${describeError(err)}`));
+    // config.learnedDraw's own re-seed (src/dashboard/drawLearn.ts): a no-op unless it is on, and
+    // then at most once a day — drawLearnTick never throws, but the catch matches every other
+    // call on this tick.
+    void drawLearnTick().catch((err: unknown) => console.error(`draw: ${describeError(err)}`));
     try {
       // The nightly's own pending timer was armed for the old hour: rearm it, the same signal
       // `/api/settings`' PUT handler acts on above.

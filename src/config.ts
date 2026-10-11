@@ -133,6 +133,25 @@ export interface Config {
    */
   knownFollowerThreshold: number;
   /**
+   * Re-seed `DEFAULT_DRAW`/`UNMEASURED_DRAW` from the channel's own numbers instead of the
+   * constant measured once on 1 Oct 2026 (11 Oct 2026, `src/dashboard/drawLearn.ts`): a player
+   * with 3+ measured long-form videos gets a learned draw (the median of each video's first-7-day
+   * views ÷ the channel median), and a pair whose most recent measured meeting beat that median
+   * skips the `pairRepeatDays` halving. Off (default): `audienceFor` falls back to
+   * `DEFAULT_DRAW`/`UNMEASURED_DRAW` exactly as before this existed — byte-for-byte today's
+   * ordering, pinned by a test. On, the 15-minute tick (`src/dashboard/server.ts`) recomputes
+   * `<mediaDir>/.draw-learned.json` at most once a day; a fresh pool that has not computed yet
+   * (or a corrupt file) is the same as off until it has.
+   */
+  learnedDraw: boolean;
+  /**
+   * A candidate whose finish (`MatchMetrics.resultMs`) is at or under this many seconds gets its
+   * audience multiplied by `RECORD_PACE_BOOST` (`src/dashboard/suggest.ts`), so a near-record race
+   * ranks up inside its tier — it never names or implies who won, only reorders. Null (default):
+   * today's ordering exactly. 11 Oct 2026.
+   */
+  recordPaceBoostSec: number | null;
+  /**
    * A tip-jar URL (Ko-fi, PayPal.me) for the description's "Tip jar" line. The
    * audit named it the one revenue stream not gated at 41 subscribers, and the active
    * competitor runs a PayPal.me link in every description. Empty: no line.
@@ -502,6 +521,8 @@ export const DEFAULTS: Config = {
   favouritePlayers: ["doogile", "Feinberg", "Infume", "Pinne", "lowk3y_", "silverrruns"],
   pairRepeatDays: 3,
   knownFollowerThreshold: 10_000,
+  learnedDraw: false,
+  recordPaceBoostSec: null,
   supportUrl: "",
   copyVariety: false,
   pullSource: "",

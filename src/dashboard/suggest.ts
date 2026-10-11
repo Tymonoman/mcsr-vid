@@ -3,6 +3,7 @@ import path from "node:path";
 import { blockedIn, config } from "../config.js";
 import { describeError } from "../errorText.js";
 import { chaosScore, closenessScore, computeMetrics, type MatchMetrics } from "../pipeline/matchScore.js";
+import { readDrawLearned, type DrawLearned } from "./drawLearn.js";
 import { listProcessedMatchIds } from "./matchStatus.js";
 import { pairKey, recentPairPostsSnapshot, type PairPost } from "./pairPosts.js";
 import {
@@ -130,9 +131,23 @@ export const UNMEASURED_DRAW: readonly { minFollowers: number; draw: number }[] 
   { minFollowers: 0, draw: 0.5 },
 ];
 
-/** `draw(name)`: `DEFAULT_DRAW`'s entry, lowercased, else `UNMEASURED_DRAW` by `followersOf`. */
-export function drawOf(name: string, followersOf: (name: string) => number | null): number {
-  const measured = DEFAULT_DRAW[name.toLowerCase()];
+/**
+ * `draw(name)`: a learned value (`learned`, `src/dashboard/drawLearn.ts` — only when
+ * `config.learnedDraw` is on and the player has `n >= 3` measured videos) first, else
+ * `DEFAULT_DRAW`'s entry, lowercased, else `UNMEASURED_DRAW` by `followersOf`. `learned` is
+ * undefined/null on every call this codebase made before 11 Oct 2026, which is what keeps the
+ * setting off byte-for-byte: a learned draw only ever *replaces* a step of this fallback, never
+ * adds a new one.
+ */
+export function drawOf(
+  name: string,
+  followersOf: (name: string) => number | null,
+  learned?: DrawLearned["players"] | null,
+): number {
+  const lower = name.toLowerCase();
+  const taught = learned?.[lower];
+  if (taught) return taught.draw;
+  const measured = DEFAULT_DRAW[lower];
   if (measured !== undefined) return measured;
   const followers = followersOf(name) ?? 0;
   return UNMEASURED_DRAW.find((band) => followers >= band.minFollowers)!.draw;
@@ -145,9 +160,10 @@ export function drawOf(name: string, followersOf: (name: string) => number | nul
 export function expectedDrawFor(
   players: readonly [string, string],
   followersOf: (name: string) => number | null,
+  learned?: DrawLearned["players"] | null,
 ): number {
-  const a = drawOf(players[0], followersOf);
-  const b = drawOf(players[1], followersOf);
+  const a = drawOf(players[0], followersOf, learned);
+  const b = drawOf(players[1], followersOf, learned);
   return Math.max(a, b) + 0.5 * Math.min(a, b);
 }
 
@@ -160,18 +176,41 @@ export const REPEAT_FACTOR = 0.5;
  * often someone plays — gothy666's 241 appearances to Infume's 91 put a grinder and one favourite
  * above two favourites — so it only breaks the last tie. `take()` and `presentSuggestions` both rank
  * on it.
+ *
+ * `learned` (`config.learnedDraw`, off by default — the caller decides, passing null when the
+ * setting is off) feeds `expectedDrawFor`'s draw lookup, and a "proven" pair of `learned.pairs`
+ * (its last measured meeting beat the channel median, `lastRatio > 1`) skips the repeat halving:
+ * a pair the channel's own numbers say still draws on a repeat is not demoted for being one.
  */
 export function audienceFor(
   favourites: readonly string[],
   followersOf: (name: string) => number | null,
   posted: readonly PairPost[],
+  learned?: DrawLearned | null,
 ): (players: readonly [string, string]) => number {
   const favoured = favouriteFactorFor(favourites);
   const repeats = new Set(posted.map((post) => pairKey(post.players)));
+  const proven = new Set(
+    Object.entries(learned?.pairs ?? {})
+      .filter(([, pair]) => pair.lastRatio > 1)
+      .map(([key]) => key),
+  );
   return (players) =>
-    expectedDrawFor(players, followersOf) *
+    expectedDrawFor(players, followersOf, learned?.players) *
     favoured(players) *
-    (repeats.has(pairKey(players)) ? REPEAT_FACTOR : 1);
+    (repeats.has(pairKey(players)) && !proven.has(pairKey(players)) ? REPEAT_FACTOR : 1);
+}
+
+/**
+ * `recordPaceBoostSec` (`config`, default null = off): a candidate whose finish (`resultMs`) is at
+ * or under that many seconds earns this multiplier on its audience, so a near-record race ranks up
+ * inside its tier without naming or implying who won — it only ever reorders. A named constant, not
+ * a setting: only the threshold needs tuning, the boost itself is a fixed amount.
+ */
+export const RECORD_PACE_BOOST = 1.5;
+
+export function recordPaceFactor(resultMs: number, boostSec: number | null): number {
+  return boostSec !== null && resultMs <= boostSec * 1000 ? RECORD_PACE_BOOST : 1;
 }
 
 /**
@@ -832,7 +871,12 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
   // the rest — inside a tier by `audienceFor` (the pairs put out lately as the scan finds them), then
   // the bucket's score, then popularity; the `score` kept on the card stays the bucket's own. One card
   // per pair across all three buckets (`pairs`): the best of a pair's matches, never two of them.
-  const audience = audienceFor(config.favouritePlayers, followersOf, recentPairPostsSnapshot());
+  const learned = config.learnedDraw ? readDrawLearned() : null;
+  const audience = audienceFor(config.favouritePlayers, followersOf, recentPairPostsSnapshot(), learned);
+  // `recordPaceBoostSec` (off = null): folded in here rather than into `audience` itself, since
+  // the boost is a property of the match (its finish), not of the pair.
+  const paced = (entry: (typeof selectable)[number]): number =>
+    audience(entry.metrics.players) * recordPaceFactor(entry.metrics.resultMs, config.recordPaceBoostSec);
   const pairs = new Set<string>();
   const take = (
     pool: typeof selectable,
@@ -846,7 +890,7 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
       .sort(
         (a, b) =>
           tier(b.metrics.players) - tier(a.metrics.players) ||
-          audience(b.metrics.players) - audience(a.metrics.players) ||
+          paced(b) - paced(a) ||
           b.score - a.score ||
           b.popularity - a.popularity,
       );
