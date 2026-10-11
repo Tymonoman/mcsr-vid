@@ -32,10 +32,16 @@ REPLACED (the operator, 11 Oct: "yeah you can replace the automatic shorts"): de
 replacements registered with short:hand — 14074713 "UNDER 4 HEARTS..." (silverrruns' blaze spawner on 3.5 hearts, rods 0→7,
 match 363–389, spec tmp/shorts/specs/14074713.json) and 14074004 "LEADING THE RACE..." (the v5 the operator liked, with the
 pronoun-free hook/end question "CAN THIS RUN BE SAVED?"). The chain uploads each 18 h after its long-form.
-LINKING ALL SHORTS (the operator, 11 Oct: "link all shorts to its appropriate videos"): worker supervisor stopped, one
-paced Studio session (tmp/related/linkall.mts, log linkall.log) links all 38 existing Shorts with the worker's own
-linkRelatedVideo + ledger; restart the supervisor after it (`setsid nohup bash /app/scripts/studio-worker.sh >/dev/null 2>&1 &`)
-— that also loads the related-link + A/B-reader code; the worker links the two new Shorts itself.
+LINKED ALL SHORTS (the operator, 11 Oct: "link all shorts to its appropriate videos"), 13:08–13:52 UTC, one paced session
+(tmp/related/linkall.mts; logs linkall.log/linkall2.out): 29 linked + 1 already linked. Not linkable (the picker finds only
+public long-forms): 4 blocked runners' matches, Short and long-form both private — 13257079/13549300 BeefSalad,
+13299712/13559245 Aquacorde (the clip-only blocked check missed them once the clips were archived → fixed cd456bb,
+blockedOnDisk reads chats + title too); 3 whose long-form is still scheduled (AF53GSnJoac tonight 19:00, W2bVnDFYSQ0
+tonight 23:00, F8qXq5Eq2XA 12 Oct 19:00) — the worker retries daily and links them once public; Lt8nkWN1Niw (13845421
+lowkey vs takachaaaaaaan) private with no schedule since 4 Oct, its Short DGFdGfem9Ug private too — left alone. FOUND:
+Short TN0_s3y0HH8 (Infume vs bbiddd) is PUBLIC but its long-form Edj_-c7lK38 no longer exists — dead "whole match" link
+(told the operator). Worker supervisor restarted 13:51 on cd456bb (related-link + A/B reader live); it links the two new
+hand-made Shorts (mumhR7l_E-I → 13 Oct 17:00, x-N2Ssg5jEI → 14 Oct 13:00 UTC, both uploaded 13:48) itself.
 WAITING ON THE OPERATOR: the claim above.
 CRONS (session-only; recreate if gone): 05:23 UTC morning cycle (job 376be942 — /needs + /ypp, NEVER report --dry-run: it
 carries viewer comment text; then the hand Shorts), 18:17 UTC evening check (bbbb9a98). On 14 Oct evening: the final
