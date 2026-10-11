@@ -25,11 +25,12 @@
  * tc-plan: turns an approved judge's plan (tc-plan.json's own shape) into planned "tc" experiments
  *      in `<mediaDir>/.experiments.json` — idempotent, prints what it added and what it skipped
  *      and why. Opens no browser.
- * related: checks a Short's "Related video" field against its own long-form — confirmed-empty
- *      on this profile today (CLAUDE.md's "Studio automation" → "Related video"), so this only
- *      ever opens the picker, searches, and reports `"already-linked"`/`"picker-empty"`/an error;
- *      it never selects or saves anything. No `--dry-run`: there is nothing destructive to stop
- *      short of yet.
+ * related: checks a Short's "Related video" field against its own long-form — only ever opens
+ *      the picker, searches, and reports `"already-linked"`/`"picker-empty"`/an error; never
+ *      selects or saves anything. No `--dry-run`: there is nothing destructive to stop short of.
+ * link-related: sets it for real (`linkRelatedVideo`) — `"linked"`/`"already-linked"`/
+ *      `"picker-empty"`/`"not-found"`/an error. `--dry-run` picks the row, screenshots it, and
+ *      stops before the page Save that would actually apply it.
  *
  * `--profile-dir=<path>` overrides the real `/home/node/.studio-profile` on probe/pin/login/worker
  * — ad hoc testing against a throwaway profile without ever touching the operator's actual login.
@@ -40,6 +41,7 @@ import { readUpload, resolveShortVideoId, videoIdOwner } from "./youtubeStore.js
 import {
   addEndScreenFromTemplate,
   checkRelatedVideoPicker,
+  linkRelatedVideo,
   pinComment,
   readTestAndCompare,
   startTestAndCompare,
@@ -68,7 +70,8 @@ function usage(): never {
       " | endscreen <matchId|videoId> [--dry-run]" +
       " | tc <matchId|videoId> title|thumbnail <variant…> [--dry-run] | tc-read <matchId|videoId>" +
       " | worker [--once] [--dry-run] [--enable] | tc-plan <plan.json>" +
-      " | related <shortId|matchId> <longFormVideoId>",
+      " | related <shortId|matchId> <longFormVideoId>" +
+      " | link-related <shortId|matchId> <longFormVideoId> [--dry-run]",
   );
   process.exit(2);
 }
@@ -264,6 +267,27 @@ async function relatedCmd(shortTarget: string | undefined, longFormId: string | 
   }
 }
 
+async function linkRelatedCmd(
+  shortTarget: string | undefined,
+  longFormId: string | undefined,
+): Promise<void> {
+  if (!longFormId) usage();
+  const { matchId, shortId } = await resolveShort(shortTarget);
+  const handle = await startAndProbe();
+  if (!handle) return;
+  try {
+    const outcome = await linkRelatedVideo(handle, shortId, longFormId, { matchId, dryRun });
+    if (typeof outcome === "object") {
+      console.error(`error: ${outcome.error}`);
+      process.exitCode = 1;
+      return;
+    }
+    console.log(`${outcome}${dryRun ? " (dry run — stopped before the save click)" : ""}`);
+  } finally {
+    await handle.stop();
+  }
+}
+
 async function tcPlanCmd(file: string | undefined): Promise<void> {
   if (!file) usage();
   const plan = JSON.parse(await readFile(file, "utf8")) as TcPlan;
@@ -300,6 +324,9 @@ switch (command) {
     break;
   case "related":
     await relatedCmd(args[0], args[1]);
+    break;
+  case "link-related":
+    await linkRelatedCmd(args[0], args[1]);
     break;
   default:
     usage();

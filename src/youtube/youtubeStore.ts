@@ -546,7 +546,10 @@ export async function resolveShortVideoId(
     return { matchId, shortId: record.videoId };
   }
   const owner = await videoIdOwner(target);
-  if (!owner) return { error: `${target} is not a known video id (no match records it in youtube.json/youtube-short.json)` };
+  if (!owner)
+    return {
+      error: `${target} is not a known video id (no match records it in youtube.json/youtube-short.json)`,
+    };
   if (owner.kind !== "short")
     return { error: `${target} is recorded as match ${owner.matchId}'s long-form video, not its Short` };
   return { matchId: owner.matchId, shortId: target };
@@ -556,6 +559,15 @@ export async function resolveShortVideoId(
 export async function allUploads(): Promise<Array<{ matchId: number; record: UploadRecord }>> {
   const entries = await Promise.all(
     listProcessedMatchIds().map(async (matchId) => ({ matchId, record: await readUpload(matchId) })),
+  );
+  return entries.filter((e): e is { matchId: number; record: UploadRecord } => e.record !== null);
+}
+
+/** Every match that has a Short upload — `allUploads`'s own shape with `kind: "short"`, for the
+ *  Studio worker's related-video linking (11 Oct 2026). */
+export async function allShortUploads(): Promise<Array<{ matchId: number; record: UploadRecord }>> {
+  const entries = await Promise.all(
+    listProcessedMatchIds().map(async (matchId) => ({ matchId, record: await readUpload(matchId, "short") })),
   );
   return entries.filter((e): e is { matchId: number; record: UploadRecord } => e.record !== null);
 }
