@@ -14,7 +14,7 @@ import type { ChannelVideo } from "./channelUploads.js";
 import { blockedIn, config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { getMatch } from "../api/mcsrApi.js";
-import { listProcessedMatchIds, matchStatusFor, povNicknamesOnDisk } from "../dashboard/matchStatus.js";
+import { blockedOnDisk, listProcessedMatchIds, matchStatusFor } from "../dashboard/matchStatus.js";
 import { playoffContextForId } from "../playoffs/playoffs.js";
 import { exportStale, staleExportMessage } from "../pipeline/syncFile.js";
 import { readManifest } from "../thumbnails/thumbnailVariants.js";
@@ -116,14 +116,16 @@ type Begun =
   { status: number; error: string } | { progress: UploadProgress; finished: Promise<UploadProgress> };
 
 /**
- * Whether this match's own POV clips (`povNicknamesOnDisk`, src/dashboard/matchStatus.ts) name a
+ * Whether this match's own files (`blockedOnDisk`, src/dashboard/matchStatus.ts: POV clips, chats, title) name a
  * blocked player (config.blockedPlayers) — disk only, no network: the clips are on disk by the
  * time anything is ever uploaded, and this must never be slower or less available than the
  * upload it gates. The same reader `matchStatusFor` uses, so a generated MP4
  * (`overlay-timer.mp4`, `final-<id>.mp4`, …) is never mistaken for a player.
  */
 function hasBlockedPlayer(dir: string): boolean {
-  return blockedIn(povNicknamesOnDisk(dir));
+  // The chats and the title too (`blockedOnDisk`): finishOnYouTube's retry ticks reach matches
+  // whose clips are already archived.
+  return blockedOnDisk(dir);
 }
 
 /** Why a blocked match's still-pending finish steps are left undone — `finishOnYouTube`'s own note. */

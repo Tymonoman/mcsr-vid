@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { blockedIn, config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
@@ -69,6 +69,27 @@ export function povNicknamesOnDisk(dir: string): string[] {
         .map((entry) => entry.name.slice(0, -".mp4".length))
         .sort()
     : [];
+}
+
+/**
+ * Whether a match directory names a blocked player anywhere it still can: the POV clips, and —
+ * once those are archived to the NAS — the saved chats (`chat-<nick>.json`) and the pair in its own
+ * title files (`… | A vs B | MCSR …`). 11 Oct 2026: four BeefSalad/Aquacorde matches had no clips
+ * left, so the clip-only check let the Studio worker open their Shorts. Disk only, no API call.
+ */
+export function blockedOnDisk(dir: string): boolean {
+  const names = povNicknamesOnDisk(dir);
+  if (existsSync(dir))
+    for (const f of readdirSync(dir)) {
+      const chat = /^chat-(.+)\.json$/.exec(f);
+      if (chat) names.push(chat[1]!);
+      if (!/^match-\d+\.title(\.edited)?\.txt$/.test(f)) continue;
+      const pair = /(?:^|\|)\s*([^|]+?)\s+vs\.?\s+([^|]+?)\s*\|\s*MCSR/i.exec(
+        readFileSync(path.join(dir, f), "utf8"),
+      );
+      if (pair) names.push(pair[1]!, pair[2]!);
+    }
+  return blockedIn(names);
 }
 
 export async function matchStatusFor(matchId: number): Promise<MatchStatusEntry> {

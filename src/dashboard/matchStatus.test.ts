@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { config } from "../config.js";
-import { matchIsBlocked, povNicknamesOnDisk } from "./matchStatus.js";
+import { blockedOnDisk, matchIsBlocked, povNicknamesOnDisk } from "./matchStatus.js";
 
 const dir = mkdtempSync(path.join(tmpdir(), "matchstatus-"));
 
@@ -36,6 +36,39 @@ assert.deepEqual(
   "the two POV clips, sorted — every generated MP4 and non-MP4 file left out",
 );
 console.log("OK: povNicknamesOnDisk reads the POV clips, never the pipeline's own generated MP4s");
+
+// --- blockedOnDisk: clips archived, the chats and the title still name the players (11 Oct 2026) --
+{
+  const only = (name: string, files: Record<string, string>) => {
+    const d = path.join(dir, name);
+    mkdirSync(d, { recursive: true });
+    for (const [f, text] of Object.entries(files)) writeFileSync(path.join(d, f), text);
+    return d;
+  };
+  assert.equal(
+    blockedOnDisk(only("chat", { "chat-BeefSalad.json": "[]", "chat-silverrruns.json": "[]" })),
+    true,
+  );
+  assert.equal(
+    blockedOnDisk(
+      only("title", {
+        "match-2.title.txt": "Rematch: doogile leads 4-1 | doogile vs Aquacorde | MCSR Ranked 1v1",
+      }),
+    ),
+    true,
+  );
+  assert.equal(
+    blockedOnDisk(
+      only("clean", {
+        "chat-edcr.json": "[]",
+        "match-3.title.txt": "A HOOK | edcr vs doogile | MCSR Ranked 1v1",
+      }),
+    ),
+    false,
+  );
+  assert.equal(blockedOnDisk(matchPath), true, "the POV clips still count (Aquacorde.mp4 above)");
+  console.log("OK: blockedOnDisk reads the clips, the saved chats and the title");
+}
 
 // --- matchIsBlocked: the gate for a brand-new render, before its working directory exists --------
 config.mediaDir = dir;

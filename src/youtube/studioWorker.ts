@@ -28,7 +28,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { blockedIn, config, matchDir } from "../config.js";
-import { povNicknamesOnDisk } from "../dashboard/matchStatus.js";
+import { blockedOnDisk } from "../dashboard/matchStatus.js";
 import { repoHead } from "../dashboard/repoHead.js";
 import { describeError } from "../errorText.js";
 import {
@@ -301,7 +301,7 @@ function relatedRetryToday(shortVideoId: string, ledger: StudioLedger, now: Date
 /** The real "is this match's own POV footage a blocked runner's" check (CLAUDE.md's "Blocked
  * players") — `planCycle`'s own default, overridable by a test with a plain stub so the rest of
  * its logic stays a pure, filesystem-free unit test. */
-const realIsBlocked = (matchId: number): boolean => blockedIn(povNicknamesOnDisk(matchDir(matchId)));
+const realIsBlocked = (matchId: number): boolean => blockedOnDisk(matchDir(matchId));
 
 export function planCycle(
   now: Date,
