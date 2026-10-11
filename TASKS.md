@@ -23,6 +23,12 @@ round yes/no, keep explain-moves on for the review?
 11 Oct 05:25 morning: nightly rendered 14074004 (silverrruns–thecamo6) + 14074713, both waiting for hooks (they take
 12 Oct 23:00 + 13 Oct 19:00); 11 Oct 19:00/23:00 + 12 Oct 19:00 scheduled; no failed steps; worker 05:07 no error;
 29 A/B + 3 between running, between still 0 impressions (recheck 12 Oct); Needs you: nothing; full tier ~18 Jul 2027.
+11 Oct ~08:50 SHORTS RETHINK (the operator: "shorts are terrible… do it yourself… don't try to automate it right away. just
+small steps"): watched 14074004 whole, hand-cut a Short (face cam on top, one POV, his voice, plain hook, captions, ends on
+a question) → job tmp/shorts/14074004/hand-short-v2.mp4, sent to him, NOT uploaded. Baseline: 29 Shorts, median 1,217
+views. Write-up: handbook/knowledge/shorts-rethink-2026-10-11.md. Next: his feedback, then 3 more by hand; no automation.
+Ideas 9/10 of the plan (Short delay, cliffhanger Shorts) are ON HOLD behind the rethink. Building ideas 1+7 and 2 now
+(workflow full-ypp-build: branches learned-draw, creator-watch) — merge, test, restart-when-idle, then schedule as tests.
 VERDICT RISK: tests started 8–9 Oct may still be running on 14 Oct (Studio ends a test once it is sure, or at 14 days).
 In the 13 Oct morning cycle, read every test's state; the ledger records a finished test's winner and marks an unfinished one
 "running at the deadline", with Studio's interim numbers if the page shows them. Never mark a guess as a verdict.
