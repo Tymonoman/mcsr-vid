@@ -14,6 +14,7 @@ import {
   inBlackoutWindow,
   markEndScreenDone,
   markPickerEmptySeen,
+  MAX_RELATED_LINKS_PER_CYCLE,
   newCodeWaiting,
   planCycle,
   playersFor,
@@ -48,6 +49,8 @@ config.mediaDir = media;
   const ledger: StudioLedger = {
     endScreens: { a: { at: "x", matchId: 1 } },
     pickerEmptySeen: { b: "2026-10-11T00:00:01.000Z" },
+    relatedLinks: {},
+    relatedRetrySeen: {},
   };
   const plan = planCycle(new Date("2026-10-11T12:00:00.000Z"), longForms, ledger, []);
   const ids = plan.endScreenTargets.map((t) => t.videoId);
@@ -63,13 +66,76 @@ config.mediaDir = media;
   console.log("OK: end-screen candidates are ledger-filtered, cutoff-or-public, capped at 3");
 
   // A picker-empty seen on an earlier UTC day is offered again — the bug may be fixed by then.
-  const yesterday: StudioLedger = { endScreens: {}, pickerEmptySeen: { b: "2026-10-10T00:00:01.000Z" } };
+  const yesterday: StudioLedger = {
+    endScreens: {},
+    pickerEmptySeen: { b: "2026-10-10T00:00:01.000Z" },
+    relatedLinks: {},
+    relatedRetrySeen: {},
+  };
   const plan2 = planCycle(new Date("2026-10-11T12:00:00.000Z"), longForms, yesterday, []);
   assert.ok(
     plan2.endScreenTargets.map((t) => t.videoId).includes("b"),
     "a picker-empty from a previous UTC day is retried",
   );
   console.log("OK: a picker-empty candidate is retried on a later UTC day, not blocked forever");
+}
+
+// --- planCycle: related-video link targets (11 Oct 2026) --------------------------------------
+{
+  const longForms: LongFormRef[] = [
+    { videoId: "lf1", matchId: 1, uploadedAt: "2026-10-07T01:00:00.000Z", privacyStatus: "private" },
+    { videoId: "lf2", matchId: 2, uploadedAt: "2026-10-07T01:00:00.000Z", privacyStatus: "public" },
+    { videoId: "lf3", matchId: 3, uploadedAt: "2026-10-07T01:00:00.000Z", privacyStatus: "private" },
+    { videoId: "lf4", matchId: 4, uploadedAt: "2026-10-07T01:00:00.000Z", privacyStatus: "private" },
+    { videoId: "lf5", matchId: 5, uploadedAt: "2026-10-07T01:00:00.000Z", privacyStatus: "private" },
+  ];
+  const shorts = [
+    { matchId: 1, videoId: "s1" }, // already linked — never reopened
+    { matchId: 2, videoId: "s2" }, // picker-empty/not-found seen today — retried tomorrow
+    { matchId: 3, videoId: "s3" }, // seen yesterday — offered again
+    { matchId: 4, videoId: "s4" }, // blocked player's match — never a target
+    { matchId: 5, videoId: "s5" }, // a plain candidate, long-form still private — no privacy filter
+    { matchId: 6, videoId: "s6" }, // no long-form recorded for match 6 yet
+  ];
+  const now = new Date("2026-10-11T12:00:00.000Z");
+  const ledger: StudioLedger = {
+    endScreens: {},
+    pickerEmptySeen: {},
+    relatedLinks: { s1: { at: "x", matchId: 1, longFormVideoId: "lf1" } },
+    relatedRetrySeen: { s2: "2026-10-11T00:00:01.000Z", s3: "2026-10-10T00:00:01.000Z" },
+  };
+  const isBlocked = (matchId: number): boolean => matchId === 4;
+  const plan = planCycle(now, longForms, ledger, [], isBlocked, shorts);
+  const ids = plan.relatedLinkTargets.map((t) => t.shortVideoId);
+  assert.ok(!ids.includes("s1"), "already linked — never reopened");
+  assert.ok(!ids.includes("s2"), "seen today — retried tomorrow, not this cycle");
+  assert.ok(ids.includes("s3"), "seen on an earlier UTC day — offered again");
+  assert.ok(!ids.includes("s4"), "blocked player's match — never a target");
+  assert.ok(ids.includes("s5"), "a plain candidate, offered despite its long-form still being private");
+  assert.ok(!ids.includes("s6"), "no long-form recorded for this match yet");
+  const s5 = plan.relatedLinkTargets.find((t) => t.shortVideoId === "s5");
+  assert.equal(s5?.longFormVideoId, "lf5", "paired with its own match's long-form, not any other's");
+  console.log(
+    "OK: related-link candidates are ledger-filtered, long-form-paired, blocked-excluded, no privacy filter",
+  );
+
+  const manyShorts = [1, 2, 3, 4, 5].map((n) => ({ matchId: n, videoId: `m${n}` }));
+  const manyLongForms: LongFormRef[] = [1, 2, 3, 4, 5].map((n) => ({
+    videoId: `lf${n}`,
+    matchId: n,
+    uploadedAt: "2026-10-07T01:00:00.000Z",
+    privacyStatus: "private",
+  }));
+  const capped = planCycle(
+    now,
+    manyLongForms,
+    { endScreens: {}, pickerEmptySeen: {}, relatedLinks: {}, relatedRetrySeen: {} },
+    [],
+    () => false,
+    manyShorts,
+  );
+  assert.equal(capped.relatedLinkTargets.length, MAX_RELATED_LINKS_PER_CYCLE, "capped per cycle");
+  console.log(`OK: related-link targets capped at ${MAX_RELATED_LINKS_PER_CYCLE} a cycle`);
 }
 
 // --- planCycle: Test & Compare starts and daily checks ----------------------------------------
@@ -106,7 +172,12 @@ config.mediaDir = media;
     running("r3"), // never checked — due
     between,
   ];
-  const plan = planCycle(now, [], { endScreens: {}, pickerEmptySeen: {} }, experiments);
+  const plan = planCycle(
+    now,
+    [],
+    { endScreens: {}, pickerEmptySeen: {}, relatedLinks: {}, relatedRetrySeen: {} },
+    experiments,
+  );
   assert.deepEqual(
     plan.tcToStart.map((e) => e.id),
     ["p1", "p2"],
@@ -317,7 +388,7 @@ config.mediaDir = media;
   const recovered = await readLedger();
   assert.deepEqual(
     recovered,
-    { endScreens: {}, pickerEmptySeen: {} },
+    { endScreens: {}, pickerEmptySeen: {}, relatedLinks: {}, relatedRetrySeen: {} },
     "a corrupt ledger degrades to empty, never throws",
   );
 
@@ -421,7 +492,13 @@ config.mediaDir = media;
   ];
   const now = new Date("2026-10-09T12:00:00.000Z");
   const isBlocked = (matchId: number): boolean => matchId === 13;
-  const plan = planCycle(now, longForms, { endScreens: {}, pickerEmptySeen: {} }, experiments, isBlocked);
+  const plan = planCycle(
+    now,
+    longForms,
+    { endScreens: {}, pickerEmptySeen: {}, relatedLinks: {}, relatedRetrySeen: {} },
+    experiments,
+    isBlocked,
+  );
   const ids = plan.thumbnailTcTargets.map((t) => t.videoId);
   assert.ok(!ids.includes("studio1"), "a Studio-recorded upload is never auto-tested");
   assert.ok(!ids.includes("old1"), "uploaded before the cutoff — never retroactive");
@@ -473,7 +550,7 @@ config.mediaDir = media;
   const plan = planCycle(
     new Date("2026-10-11T12:00:00.000Z"),
     longForms,
-    { endScreens: {}, pickerEmptySeen: {} },
+    { endScreens: {}, pickerEmptySeen: {}, relatedLinks: {}, relatedRetrySeen: {} },
     [],
   );
   const ids = plan.pinTargets.map((t) => t.videoId);
@@ -512,7 +589,7 @@ config.mediaDir = media;
   const plan = planCycle(
     new Date("2026-10-11T12:00:00.000Z"),
     longForms,
-    { endScreens: {}, pickerEmptySeen: {} },
+    { endScreens: {}, pickerEmptySeen: {}, relatedLinks: {}, relatedRetrySeen: {} },
     [],
   );
   const ids = plan.pinTargets.map((t) => t.videoId);
@@ -609,6 +686,7 @@ config.mediaDir = media;
       tcChecked: 0,
       thumbnailTestsPlanned: 0,
       pinsAdded: 0,
+      relatedLinksAdded: 0,
       errors: [],
     },
     "neither --enable/STUDIO_WORKER=1 nor config.studioAutomation set",

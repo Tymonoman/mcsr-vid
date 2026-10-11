@@ -108,7 +108,29 @@ const SELECTORS = {
   // reported a never-linked Short "already-linked". The value alone lives in its own child,
   // `span.dropdown-trigger-text`; read that, not the trigger's whole text.
   relatedVideoValue: "ytcp-text-dropdown-trigger#linked-video-editor-link .dropdown-trigger-text",
+  // Confirmed live 11 Oct 2026 (job 8d7d95a1, read-only: open, search, dump, close — no row ever
+  // clicked), once the channel-switch fix above made the picker actually return a row: each result
+  // is a `ytcp-entity-card[role="option"]` inside `#videos .videos[role="listbox"]`, scoped to the
+  // dialog root so this can never match a row from some other picker instance. There is no plain
+  // `<a href>` naming the video — the one place its id appears on the card at all is its own
+  // thumbnail's `background-image: url(".../vi/<id>/...")`, which `relatedVideoPickerRowFor` below
+  // filters on; `aria-label` carries the title plus ", Not selected"/", Selected" but never the id.
+  // The dialog's own `<div class="footer">` is empty — no "Select"/"Insert" button exists at all —
+  // so picking a row is the dialog's only confirm step; whether it also closes the dialog on its
+  // own is what `linkRelatedVideo` below checks for itself rather than assume.
+  relatedVideoPickerRows: 'ytcp-video-pick-dialog ytcp-entity-card[role="option"]',
 };
+
+/** The one result row whose own thumbnail names `videoId` — never "the first row" (a search can
+ * return more than one video). YouTube's thumbnail URLs are always `.../vi/<id>/<size>.jpg`, so a
+ * delimited match on that path segment is exact; nothing on the card names the video any other
+ * way (see `SELECTORS.relatedVideoPickerRows`'s own comment). Exported so `linkRelatedVideo`'s
+ * "which row" logic has a plain, browser-free unit test of its own selector string. */
+export function relatedVideoPickerRowFor(page: import("playwright").Page, videoId: string) {
+  return page
+    .locator(SELECTORS.relatedVideoPickerRows)
+    .filter({ has: page.locator(`.thumbnail[style*="/vi/${videoId}/"]`) });
+}
 
 /**
  * Starter-layout gallery card labels, closest to the operator's own template first (CHANNEL/
@@ -456,15 +478,11 @@ export type RelatedVideoOutcome = "already-linked" | "picker-empty";
  * exact video id alike: the picker's own search call resolves against the operator's personal
  * channel, not the brand one.
  *
- * This only ever checks and reports, by design. It never clicks a returned row or presses the
- * page's own Save: the exploration never got that far (nothing ever came back to click), so
- * which row is the real long-form and whether this dialog even needs the page-level Save after
- * — unlike the end-screen editor, confirmed to need it, this dialog may not — are both unverified
- * guesses, not confirmed behaviour. Guessing at either now, with nothing live to check it
- * against, is exactly the thing `endscreenPickerRow`'s own doc comment already warns against
- * doing twice; build the real `addRelatedVideo` click-and-save the day a search here actually
- * returns a row to confirm those selectors against (the account-scoping bug is fixed, or
- * worked around by switching the signed-in account before Studio opens).
+ * This only ever checks and reports, by design — it never clicks a returned row or presses the
+ * page's own Save. `linkRelatedVideo` below is the mutating version, built 11 Oct 2026 once the
+ * channel switch (this file's own top comment) made the picker actually return a row to confirm
+ * those selectors against; this function stays as the read-only probe `npm run studio --
+ * related` uses from the terminal.
  *
  * Already linked to *anything* (not just `longFormVideoId`) is left alone and reported
  * `"already-linked"` without ever opening the dialog — the same "never replace what's already
@@ -518,9 +536,134 @@ export async function checkRelatedVideoPicker(
       .catch(() => {});
     if (noResults) return "picker-empty";
 
-    // A row actually came back — the day the account-scoping bug above is fixed. Report it
-    // rather than guess at which row is right or how this dialog's own Save behaves.
-    return { error: "the picker returned a result — selecting/saving it is not yet built" };
+    // A row actually came back. This function only ever checks — `linkRelatedVideo` below is
+    // the one that clicks it.
+    return { error: "the picker returned a result — use linkRelatedVideo/`link-related` to set it" };
+  } catch (err) {
+    return { error: describeError(err) };
+  }
+}
+
+export type RelatedLinkOutcome = "linked" | "already-linked" | "picker-empty" | "not-found";
+
+/**
+ * Sets a Short's "Related video" to `longFormVideoId` — the mutating half of
+ * `checkRelatedVideoPicker` above, built 11 Oct 2026 from a live, read-only dry run against this
+ * exact pair (job 8d7d95a1, `tmp/related/`, outerHTML dumps + screenshots, no row ever clicked)
+ * once the channel-switch fix made the picker return a result at all.
+ *
+ * Never replaces an existing link, to anything — the same rail `pinComment`/
+ * `addEndScreenFromTemplate`/`checkRelatedVideoPicker` already keep, checked the same way
+ * (`SELECTORS.relatedVideoValue`, not the trigger's own text, for the bug that comment explains).
+ *
+ * The picker's result row has no id/href of its own anywhere in its markup — only its thumbnail's
+ * `background-image` names the video (`relatedVideoPickerRowFor`), so this never clicks "the
+ * first row": a search that returns results but none naming `longFormVideoId` is `"not-found"`,
+ * distinct from `"picker-empty"` (the search found nothing at all).
+ *
+ * The dialog's own footer is empty (confirmed live, same dry run) — no "Select"/"Insert" button
+ * exists, so clicking the row is the only in-dialog confirm step there is. Whether that alone
+ * closes the dialog is checked rather than assumed: if it is still open after the click, this
+ * closes it by hand the same way `checkRelatedVideoPicker` always does (confirmed live: unlike
+ * the End Screens editor, this dialog closes clean, no discard prompt). Either way, nothing is
+ * saved to the video until the page's own Save is pressed — confirmed disabled
+ * (`aria-disabled="true"`) before any pick, the same `waitForEnabled` wait `startTestAndCompare`
+ * already uses for the same button, and the same "Changes saved" toast it waits on after.
+ *
+ * `dryRun` clicks the row (so a screenshot shows the real pick, same as
+ * `addEndScreenFromTemplate`'s own starter-layout dry run) but stops before the page Save that
+ * would actually apply it — never reaching Studio's own save means nothing persists, the same
+ * guarantee `startTestAndCompare`'s "Set test alone does not start anything" dry run already
+ * relies on.
+ */
+export async function linkRelatedVideo(
+  handle: StudioHandle,
+  shortVideoId: string,
+  longFormVideoId: string,
+  opts: { matchId: number; dryRun?: boolean },
+): Promise<RelatedLinkOutcome | { error: string }> {
+  try {
+    const page = await pageOf(handle);
+    await page.goto(`https://studio.youtube.com/video/${shortVideoId}/edit?hl=en`, {
+      waitUntil: "domcontentloaded",
+      timeout: 30_000,
+    });
+    await randomPause();
+
+    // No `.catch(() => "")` here on purpose (silent-failure review, 11 Oct 2026): a failed read
+    // of this field must never be treated as "nothing linked yet" — that would fall through to
+    // opening the picker and pressing the real page Save below, overwriting whatever was actually
+    // set. A genuine read failure throws and the outer try/catch turns it into `{error: ...}`, so
+    // the worker logs it and retries a later cycle instead of silently clicking past it.
+    const current = (await page.locator(SELECTORS.relatedVideoValue).first().innerText()).trim();
+    if (current && !/^none$/i.test(current)) return "already-linked";
+
+    await page.locator(SELECTORS.relatedVideoTrigger).click();
+    await page.locator(SELECTORS.endscreenPickerDialog).waitFor({ state: "visible", timeout: 15_000 });
+    await page.locator(SELECTORS.endscreenPickerInput).first().fill(longFormVideoId);
+    await randomPause();
+    await shot(handle, opts.matchId, "related-search");
+
+    const noResults = await page
+      .locator(SELECTORS.endscreenPickerNoResults)
+      .first()
+      .isVisible()
+      .catch(() => false);
+    if (noResults) {
+      await page
+        .locator(SELECTORS.dialogClose)
+        .first()
+        .click()
+        .catch(() => {});
+      return "picker-empty";
+    }
+
+    const row = relatedVideoPickerRowFor(page, longFormVideoId);
+    if ((await row.count()) === 0) {
+      await page
+        .locator(SELECTORS.dialogClose)
+        .first()
+        .click()
+        .catch(() => {});
+      return "not-found";
+    }
+
+    await row.first().click();
+    await randomPause();
+    await shot(handle, opts.matchId, "related-picked");
+
+    // No confirmed "Select"/"Insert" button exists (the dialog's own footer is empty) — the row
+    // click may or may not close the dialog on its own; check rather than assume, same as every
+    // other cleanup in this file.
+    if (
+      await page
+        .locator(SELECTORS.endscreenPickerDialog)
+        .first()
+        .isVisible()
+        .catch(() => false)
+    ) {
+      await page
+        .locator(SELECTORS.dialogClose)
+        .first()
+        .click()
+        .catch(() => {});
+    }
+
+    if (opts.dryRun) {
+      await shot(handle, opts.matchId, "related-dry-run");
+      return "linked";
+    }
+
+    await waitForEnabled(page, SELECTORS.pageSaveButton, 15_000);
+    await randomPause();
+    await page.locator(SELECTORS.pageSaveButton).click();
+    await page
+      .locator('text="Changes saved"')
+      .first()
+      .waitFor({ state: "visible", timeout: 15_000 })
+      .catch(() => {});
+    await shot(handle, opts.matchId, "related-after");
+    return "linked";
   } catch (err) {
     return { error: describeError(err) };
   }

@@ -93,6 +93,7 @@ const {
   startTestAndCompare,
   readTestAndCompare,
   checkRelatedVideoPicker,
+  linkRelatedVideo,
 } = await import("./studioActions.js");
 
 const matchId = 1;
@@ -169,6 +170,13 @@ try {
     // ever pressed live): the Short's Details-page sidebar control, "None" until something is
     // linked.
     relatedVideoLinked: false,
+    // linkRelatedVideo's own picker results (11 Oct 2026, job 8d7d95a1 — real shape, confirmed
+    // live): "none" is "No matching results", "match" renders a decoy card plus one whose
+    // thumbnail actually names `relatedTargetId` (DOM order: decoy first, so a test that only
+    // ever clicked "the first row" would click the wrong video), "miss" renders two cards, neither
+    // naming `relatedTargetId` — results came back, just not the one asked for.
+    relatedResults: "none" as "none" | "match" | "miss",
+    relatedTargetId: "",
   };
   function editPageHtml(): string {
     return `<!doctype html><html><body>
@@ -248,9 +256,31 @@ try {
       // prompt, unlike the End Screens editor).
       function openRelatedPicker() {
         document.getElementById("dialog-root").innerHTML =
-          '<ytcp-video-pick-dialog><input oninput="onPickerInput(this.value)" />' +
+          '<ytcp-video-pick-dialog><input oninput="onRelatedPickerInput(this.value)" />' +
           '<button aria-label="Close" onclick="document.getElementById(\\'dialog-root\\').innerHTML=\\'\\'">Close</button>' +
           '<div id="picker-results"></div></ytcp-video-pick-dialog>';
+      }
+      // A result card's real shape (confirmed live, job 8d7d95a1): no href/id anywhere on it —
+      // only its thumbnail's background-image names the video, which is what
+      // relatedVideoPickerRowFor filters on. Its own footer has no "Select" button at all, so a
+      // click is the whole confirm step — here it also removes the dialog outright, mirroring the
+      // real page's own auto-close (confirmed live: reopening a Short just linked shows no
+      // leftover dialog).
+      function relatedCard(id) {
+        return '<ytcp-entity-card role="option" onclick="window.__relatedRowClicked=\\'' + id + '\\';' +
+          'document.querySelector(\\'ytcp-video-pick-dialog\\')?.remove();">' +
+          '<div class="thumbnail" style="background-image:url(&quot;https://i9.ytimg.com/vi/' + id +
+          '/mqdefault.jpg&quot;)"></div></ytcp-entity-card>';
+      }
+      function onRelatedPickerInput(value) {
+        const results = document.getElementById("picker-results");
+        if (!value) { results.innerHTML = ""; return; }
+        const mode = window.__state.relatedResults;
+        if (mode === "none") { results.innerHTML = '<div>No matching results. Please try again.</div>'; return; }
+        // A decoy row always comes first in DOM order — relatedVideoPickerRowFor must still find
+        // the right one by its own thumbnail id, never just the first result.
+        results.innerHTML = relatedCard("decoyAbc1234") +
+          (mode === "match" ? relatedCard(window.__state.relatedTargetId) : relatedCard("wrongId5678"));
       }
       function onPickerInput(value) {
         const results = document.getElementById("picker-results");
@@ -344,11 +374,9 @@ try {
   console.log("OK: a real run clicks the editor's own Save, scoped by id, not the page-level Save");
 
   // --- Related video (phase 2's own second half, 8 Oct 2026) ---------------------------------
-  // checkRelatedVideoPicker only ever checks and reports — confirmed live (tmp/studio3/) that a
-  // real search here hits the exact same account-scoping bug the end-screen picker above does,
-  // so this never guesses past "picker-empty".
+  // checkRelatedVideoPicker only ever checks and reports.
   uiState.relatedVideoLinked = false;
-  uiState.pickerHasResults = false;
+  uiState.relatedResults = "none";
   const emptyRelated = await checkRelatedVideoPicker(handle, "vidShort1", "vASY6MzFRNM", { matchId });
   assert.equal(emptyRelated, "picker-empty");
   assert.equal(
@@ -368,16 +396,72 @@ try {
   );
   console.log('OK: checkRelatedVideoPicker leaves an already-linked Short alone ("already-linked")');
 
-  // The day the account-scoping bug is fixed and a search actually returns a row: this must
-  // report it rather than guess at which row is right or how the dialog's own Save behaves.
+  // A search actually returning a row: checkRelatedVideoPicker still only ever reports, never
+  // picks — linkRelatedVideo below is the one that does.
   uiState.relatedVideoLinked = false;
-  uiState.pickerHasResults = true;
+  uiState.relatedResults = "match";
+  uiState.relatedTargetId = "vASY6MzFRNM";
   const foundRelated = await checkRelatedVideoPicker(handle, "vidShort1", "vASY6MzFRNM", { matchId });
   assert.ok(typeof foundRelated === "object" && "error" in foundRelated);
-  assert.match((foundRelated as { error: string }).error, /not yet built/);
+  assert.match((foundRelated as { error: string }).error, /linkRelatedVideo/);
   console.log(
     "OK: checkRelatedVideoPicker reports, rather than guesses, once a search actually returns a row",
   );
+
+  // --- linkRelatedVideo: the mutating half (11 Oct 2026, job 8d7d95a1 — real shape confirmed
+  // live against match 13830612's own Short/long-form pair) ----------------------------------
+  uiState.relatedVideoLinked = false;
+  uiState.relatedResults = "none";
+  const linkEmpty = await linkRelatedVideo(handle, "vidShort1", "longformABC12", { matchId });
+  assert.equal(linkEmpty, "picker-empty");
+  assert.equal(await page.locator("ytcp-video-pick-dialog").count(), 0, "closed again, nothing left open");
+  console.log('OK: linkRelatedVideo reports "picker-empty" when the search finds nothing');
+
+  // Results came back, but neither card's thumbnail names the long-form we actually want — never
+  // guess at "the first row".
+  uiState.relatedResults = "miss";
+  const linkMiss = await linkRelatedVideo(handle, "vidShort1", "longformABC12", { matchId });
+  assert.equal(linkMiss, "not-found");
+  assert.equal(await page.locator("ytcp-video-pick-dialog").count(), 0);
+  console.log(
+    'OK: linkRelatedVideo reports "not-found" rather than click a row that isn\'t the one asked for',
+  );
+
+  uiState.relatedVideoLinked = true;
+  const linkAlready = await linkRelatedVideo(handle, "vidShort1", "longformABC12", { matchId });
+  assert.equal(linkAlready, "already-linked");
+  assert.equal(
+    await page.locator("ytcp-video-pick-dialog").count(),
+    0,
+    "an already-linked Short's picker is never even opened",
+  );
+  console.log('OK: linkRelatedVideo leaves an already-linked Short alone ("already-linked")');
+
+  // The real pick: a decoy card sits before the right one in DOM order (see relatedCard's own
+  // comment) — this must click the one whose thumbnail actually names longformABC12, not the
+  // decoy, and must not press the page Save on a dry run.
+  uiState.relatedVideoLinked = false;
+  uiState.relatedResults = "match";
+  uiState.relatedTargetId = "longformABC12";
+  const linkDry = await linkRelatedVideo(handle, "vidShort1", "longformABC12", { matchId, dryRun: true });
+  assert.equal(linkDry, "linked");
+  assert.equal(
+    await page.evaluate("window.__relatedRowClicked"),
+    "longformABC12",
+    "clicked the real row, not the decoy",
+  );
+  assert.equal(await page.evaluate("window.__tcSaved"), false, "a dry run must never press the page Save");
+  console.log("OK: linkRelatedVideo's dry run picks the right row and stops before the page Save");
+
+  const linkReal = await linkRelatedVideo(handle, "vidShort1", "longformABC12", { matchId });
+  assert.equal(linkReal, "linked");
+  assert.equal(await page.evaluate("window.__relatedRowClicked"), "longformABC12");
+  assert.equal(await page.evaluate("window.__tcSaved"), true, "a real run must press the page Save");
+  const linkShots = readdirSync(path.join(media, String(matchId))).filter((f) =>
+    f.startsWith("studio-related-"),
+  );
+  assert.ok(linkShots.length >= 2, `expected search/picked/after screenshots, got: ${linkShots.join(", ")}`);
+  console.log("OK: a real run clicks the matching row and presses the page Save");
 
   // startTestAndCompare: refuses before this point are covered by studioWorker.test.ts (a poisoned
   // handle that never reaches a page at all); here the dialog is real, so this is the rest of the

@@ -566,6 +566,15 @@ export async function allUploads(): Promise<Array<{ matchId: number; record: Upl
   return entries.filter((e): e is { matchId: number; record: UploadRecord } => e.record !== null);
 }
 
+/** Every match that has a Short upload — `allUploads`'s own shape with `kind: "short"`, for the
+ *  Studio worker's related-video linking (11 Oct 2026). */
+export async function allShortUploads(): Promise<Array<{ matchId: number; record: UploadRecord }>> {
+  const entries = await Promise.all(
+    listProcessedMatchIds().map(async (matchId) => ({ matchId, record: await readUpload(matchId, "short") })),
+  );
+  return entries.filter((e): e is { matchId: number; record: UploadRecord } => e.record !== null);
+}
+
 /**
  * The finished video to upload, or null.
  *

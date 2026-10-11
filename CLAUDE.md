@@ -1376,6 +1376,37 @@ clicked the entry and reloaded without pressing it. Pressed (job tmp/studio5/swi
 Chrome restart, and `npm run studio -- related ylXZwXIlRlY 8ddRytlH1xw` now ends on "the picker returned a result —
 selecting/saving it is not yet built": the Related-video and end-screen Import pickers work; the click-and-save is next.
 
+**Related video — linked for real, 11 Oct 2026** (`linkRelatedVideo`, `src/youtube/studioActions.ts`;
+`npm run studio -- link-related <shortId|matchId> <longFormVideoId> [--dry-run]`): the click-and-save the
+paragraph above left for next, so a Shorts viewer can tap through to the full match. Built from a live,
+read-only dry run against match 13830612's own pair first (job 8d7d95a1, `tmp/related/` — open, search,
+dump the DOM, close, nothing clicked), confirming the picker's real shape once the channel switch let it
+return a row: each result is a `ytcp-entity-card[role="option"]` with no id/href anywhere on it — only its
+thumbnail's `background-image` names the video (`.../vi/<id>/...`), which `relatedVideoPickerRowFor` filters
+on, never "the first row" (`"not-found"` when results come back but none names the long-form asked for,
+distinct from `"picker-empty"`, nothing at all). The dialog's own footer is empty — no "Select" button
+exists — so the row click is confirmed live to be the whole pick, and confirmed to close the dialog on its
+own; nothing is saved until the page's own Save is pressed too (`SELECTORS.pageSaveButton`, the same
+`waitForEnabled`/"Changes saved" wait `startTestAndCompare` already uses), so a `dryRun` that clicks the row
+but stops there saves nothing. Same rail everywhere else in this file: already linked to *anything* is left
+alone (`"already-linked"`, checked via `SELECTORS.relatedVideoValue`, never the trigger's own text). No new
+setting — the worker's own existing gate (`studioAutomation`/`--enable`) covers it, the same way pinning and
+end screens never got one of their own; `MAX_RELATED_LINKS_PER_CYCLE` (3) is the only new knob, same shape as
+every other Studio action's per-cycle cap. Each cycle links every Short (`youtube-short.json`) whose match
+also has a long-form (`youtube.json`, not blocked) and that `.studio-ledger.json`'s own `relatedLinks` has not
+already settled; `"picker-empty"`/`"not-found"` are retried once a UTC day (`relatedRetrySeen`, same shape as
+`pickerEmptySeen`), `"linked"`/`"already-linked"` are done forever. **No privacy filter on either side on
+purpose** — the operator's own instruction: a scheduled private Short can be linked before it goes public, the
+same as its long-form can still be private too (both were, live, on 13830612). The heartbeat's `lastCycle`
+gained `relatedLinksAdded`, same place `endScreensAdded`/`pinsAdded` already live.
+**Proved live, once, the same day**: `ylXZwXIlRlY` (match 13830612's Short) → `8ddRytlH1xw` (its own
+long-form, "A SUB-9 RACE TO THE END | v_strid vs doogile …") — a dry run first (screenshots show the row
+picked, the page Save left unpressed), then the real link, then a fresh, independent re-open
+(`npm run studio -- related`, the read-only check) confirming `"already-linked"` — the field actually names
+the long-form after a brand new page load, not just in the same browser tab that set it. Screenshots on disk
+in `media/13830612/` (`studio-related-picked-*.png`, `studio-related-after-*.png`, the "Changes saved" toast
+visible in the latter).
+
 **Related video — the plan's own second half of phase 2, confirmed dead-end today, 8 Oct 2026**
 (read-only exploration, `tmp/studio3/`, no Save ever pressed — see the plan's section "Phase 2:
 the Short's related video and end screens"): a Short's Details page carries its own "Related

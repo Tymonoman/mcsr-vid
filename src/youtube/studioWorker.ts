@@ -33,6 +33,7 @@ import { repoHead } from "../dashboard/repoHead.js";
 import { describeError } from "../errorText.js";
 import {
   addEndScreenFromTemplate,
+  linkRelatedVideo,
   pinComment,
   readTestAndCompare,
   startTestAndCompare,
@@ -48,7 +49,7 @@ import {
   type TcPlanThumbEntry,
 } from "./studioExperiments.js";
 import { videoStats } from "./youtube.js";
-import { allUploads, readUpload, splitTitle, writeUpload } from "./youtubeStore.js";
+import { allShortUploads, allUploads, readUpload, splitTitle, writeUpload } from "./youtubeStore.js";
 
 /** The operator's own end-screen template, set up by hand once (CLAUDE.md, the task's own FACTS). */
 export const END_SCREEN_TEMPLATE_VIDEO_ID = "POQrpE0-5d8";
@@ -66,6 +67,9 @@ export const MAX_THUMBNAIL_PLANS_PER_CYCLE = 2;
  * same reason the other Studio actions are: a cold start with many unpinned videos must not spend
  * a whole cycle here. */
 export const MAX_PINS_PER_CYCLE = 3;
+/** The task's own cap (11 Oct 2026): at most this many related-video links a cycle, same shape as
+ *  every other Studio action's own per-cycle ceiling. */
+export const MAX_RELATED_LINKS_PER_CYCLE = 3;
 /** The caption arm only ships in this fully-automated flow when it is this short. A judge reads
  * every caption in the manual tc-plan.json flow (CLAUDE.md's "Phase 2/3"); nobody reviews this
  * one before it goes live on real viewers' thumbnails, so the ceiling here is tighter than
@@ -89,21 +93,47 @@ export interface StudioLedger {
    * standing `picker-empty` candidate re-opened the editor, and its two screenshots, on every
    * single cycle for as long as the bug lasts). */
   pickerEmptySeen: Record<string, string>;
+  /** Short video id -> what it was linked to and when (11 Oct 2026) — `"already-linked"` marks
+   *  this done too, the same "a fact true on the server is done regardless of who set it" rule
+   *  `endScreens` already keeps, so a Short linked by hand is never re-opened to check.
+   *  `longFormVideoId` is only ever the real target when *this* worker did the linking
+   *  (`"linked"`): `"already-linked"` only confirms the field is non-empty, never that it names
+   *  our own match's long-form, so that branch records `null` rather than assert an unverified
+   *  value (silent-failure review, 11 Oct 2026). */
+  relatedLinks: Record<string, { at: string; matchId: number; longFormVideoId: string | null }>;
+  /** Same "once a UTC day" shape as `pickerEmptySeen`, for a Short whose search came back
+   *  `"picker-empty"` or `"not-found"` this day. */
+  relatedRetrySeen: Record<string, string>;
 }
 
 const ledgerPath = (): string => path.join(config.mediaDir, ".studio-ledger.json");
 
+// A fresh literal every call — callers (markEndScreenDone and friends) mutate the object they get
+// back in place before writing it, so a shared singleton here would leak one call's mutation into
+// the next "file doesn't exist yet" read.
+const emptyLedger = (): StudioLedger => ({
+  endScreens: {},
+  pickerEmptySeen: {},
+  relatedLinks: {},
+  relatedRetrySeen: {},
+});
+
 export async function readLedger(): Promise<StudioLedger> {
   const file = ledgerPath();
-  if (!existsSync(file)) return { endScreens: {}, pickerEmptySeen: {} };
+  if (!existsSync(file)) return emptyLedger();
   try {
     const parsed = JSON.parse(await readFile(file, "utf8")) as Partial<StudioLedger>;
-    return { endScreens: parsed.endScreens ?? {}, pickerEmptySeen: parsed.pickerEmptySeen ?? {} };
+    return {
+      endScreens: parsed.endScreens ?? {},
+      pickerEmptySeen: parsed.pickerEmptySeen ?? {},
+      relatedLinks: parsed.relatedLinks ?? {},
+      relatedRetrySeen: parsed.relatedRetrySeen ?? {},
+    };
   } catch {
     // ponytail: a corrupt ledger just means "nothing recorded yet" — `addEndScreenFromTemplate`
     // checks the live editor for an existing end screen itself, so losing this file risks one
     // redundant (and safe) check per video, never a duplicate import.
-    return { endScreens: {}, pickerEmptySeen: {} };
+    return emptyLedger();
   }
 }
 
@@ -124,6 +154,22 @@ export async function markEndScreenDone(videoId: string, matchId: number): Promi
 export async function markPickerEmptySeen(videoId: string, now: Date = new Date()): Promise<void> {
   const ledger = await readLedger();
   ledger.pickerEmptySeen[videoId] = now.toISOString();
+  await writeLedger(ledger);
+}
+
+export async function markRelatedLinkDone(
+  shortVideoId: string,
+  matchId: number,
+  longFormVideoId: string | null,
+): Promise<void> {
+  const ledger = await readLedger();
+  ledger.relatedLinks[shortVideoId] = { at: new Date().toISOString(), matchId, longFormVideoId };
+  await writeLedger(ledger);
+}
+
+export async function markRelatedRetrySeen(shortVideoId: string, now: Date = new Date()): Promise<void> {
+  const ledger = await readLedger();
+  ledger.relatedRetrySeen[shortVideoId] = now.toISOString();
   await writeLedger(ledger);
 }
 
@@ -148,6 +194,8 @@ export interface WorkerHeartbeat {
     thumbnailTestsPlanned: number;
     /** PUBLIC long-forms whose channel comment was pinned this cycle (phase 5, 8 Oct 2026). */
     pinsAdded: number;
+    /** Shorts whose "Related video" was linked (new or already there) this cycle (11 Oct 2026). */
+    relatedLinksAdded: number;
   } | null;
   /** The first error of the cycle, kept for anything that only ever read this one field. */
   lastError: string | null;
@@ -214,6 +262,16 @@ export interface CyclePlan {
    *  own pin step re-checks live), so filtering on it here would leave a scheduled upload that
    *  only went public after the fact permanently unpinned. */
   pinTargets: LongFormRef[];
+  /** Shorts to link to their own match's long-form (11 Oct 2026), capped at
+   *  `MAX_RELATED_LINKS_PER_CYCLE`. No privacy filter on either side on purpose — the operator's
+   *  own instruction: a scheduled private Short can be linked before it goes public. */
+  relatedLinkTargets: RelatedLinkTarget[];
+}
+
+export interface RelatedLinkTarget {
+  matchId: number;
+  shortVideoId: string;
+  longFormVideoId: string;
 }
 
 const utcDate = (d: Date): string => d.toISOString().slice(0, 10);
@@ -233,6 +291,13 @@ function pickerEmptyToday(videoId: string, ledger: StudioLedger, now: Date): boo
   return !!seenAt && utcDate(new Date(seenAt)) === utcDate(now);
 }
 
+/** Same shape as `pickerEmptyToday`, for a Short whose related-video search already came back
+ * `"picker-empty"` or `"not-found"` this UTC day. */
+function relatedRetryToday(shortVideoId: string, ledger: StudioLedger, now: Date): boolean {
+  const seenAt = ledger.relatedRetrySeen[shortVideoId];
+  return !!seenAt && utcDate(new Date(seenAt)) === utcDate(now);
+}
+
 /** The real "is this match's own POV footage a blocked runner's" check (CLAUDE.md's "Blocked
  * players") — `planCycle`'s own default, overridable by a test with a plain stub so the rest of
  * its logic stays a pure, filesystem-free unit test. */
@@ -244,6 +309,7 @@ export function planCycle(
   ledger: StudioLedger,
   experiments: readonly Experiment[],
   isBlocked: (matchId: number) => boolean = realIsBlocked,
+  shorts: readonly { matchId: number; videoId: string }[] = [],
 ): CyclePlan {
   const endScreenTargets = longForms
     .filter((v) => !ledger.endScreens[v.videoId])
@@ -293,7 +359,32 @@ export function planCycle(
     })
     .slice(0, MAX_PINS_PER_CYCLE);
 
-  return { endScreenTargets, tcToStart, tcToCheck, thumbnailTcTargets, pinTargets };
+  // Every Short whose own match also has a long-form, not yet linked (either for real or
+  // already, by hand) or seen empty/not-found today, not blocked — the task's own words (11 Oct
+  // 2026): no privacy filter on either side, a scheduled private Short can be linked before it
+  // goes public. De-duped by Short video id the same defensive way `pinTargets` is, in case a
+  // Short record is ever copied across more than one match directory the way a series' own
+  // `youtube.json` already is.
+  const longFormByMatch = new Map(longForms.map((v) => [v.matchId, v]));
+  const seenShortVideos = new Set<string>();
+  const relatedLinkTargets: RelatedLinkTarget[] = shorts
+    .filter((s) => !ledger.relatedLinks[s.videoId])
+    .filter((s) => !relatedRetryToday(s.videoId, ledger, now))
+    .filter((s) => longFormByMatch.has(s.matchId))
+    .filter((s) => !isBlocked(s.matchId))
+    .filter((s) => {
+      if (seenShortVideos.has(s.videoId)) return false;
+      seenShortVideos.add(s.videoId);
+      return true;
+    })
+    .map((s) => ({
+      matchId: s.matchId,
+      shortVideoId: s.videoId,
+      longFormVideoId: longFormByMatch.get(s.matchId)!.videoId,
+    }))
+    .slice(0, MAX_RELATED_LINKS_PER_CYCLE);
+
+  return { endScreenTargets, tcToStart, tcToCheck, thumbnailTcTargets, pinTargets, relatedLinkTargets };
 }
 
 const MINUTES_PER_DAY = 24 * 60;
@@ -491,6 +582,8 @@ export interface CycleResult {
   thumbnailTestsPlanned: number;
   /** PUBLIC long-forms whose channel comment was pinned this cycle (phase 5, 8 Oct 2026). */
   pinsAdded: number;
+  /** Shorts whose "Related video" was linked (new or already there) this cycle (11 Oct 2026). */
+  relatedLinksAdded: number;
   errors: string[];
 }
 
@@ -502,6 +595,7 @@ const SKIPPED_RESULT: CycleResult = {
   tcChecked: 0,
   thumbnailTestsPlanned: 0,
   pinsAdded: 0,
+  relatedLinksAdded: 0,
   errors: [],
 };
 
@@ -538,9 +632,13 @@ export async function runCycle(
       finishedComment: record.finished?.comment,
       finishedPin: record.finished?.pin,
     }));
+    const shorts = (await allShortUploads()).map(({ matchId, record }) => ({
+      matchId,
+      videoId: record.videoId,
+    }));
     const ledger = await readLedger();
     const experimentsFile = await readExperiments();
-    const plan = planCycle(new Date(), longForms, ledger, experimentsFile.experiments);
+    const plan = planCycle(new Date(), longForms, ledger, experimentsFile.experiments, undefined, shorts);
 
     let endScreensAdded = 0;
     let endScreenPickerEmpty = 0;
@@ -697,6 +795,33 @@ export async function runCycle(
       }
     }
 
+    // Link each Short to its own match's long-form (11 Oct 2026, `plan.relatedLinkTargets`'s own
+    // comment covers the filters). "already-linked" marks the ledger done the same as a real
+    // "linked" would, since it is a fact true on the server regardless of who set it or when —
+    // the same rule `endScreenTargets`' own "already-has-endscreen" branch above already keeps.
+    let relatedLinksAdded = 0;
+    for (const target of plan.relatedLinkTargets) {
+      const outcome = await linkRelatedVideo(handle, target.shortVideoId, target.longFormVideoId, {
+        matchId: target.matchId,
+        dryRun: opts.dryRun,
+      });
+      if (typeof outcome === "object") {
+        errors.push(`related ${target.shortVideoId}: ${outcome.error}`);
+        continue;
+      }
+      if (outcome === "already-linked") {
+        // `linkRelatedVideo` only confirmed the field is non-empty, never that it names this
+        // match's own long-form — don't assert an unverified id (silent-failure review, 11 Oct
+        // 2026). It still never re-opens the picker for this Short (same rule as `endScreens`).
+        await markRelatedLinkDone(target.shortVideoId, target.matchId, null);
+      } else if (outcome === "linked" && !opts.dryRun) {
+        await markRelatedLinkDone(target.shortVideoId, target.matchId, target.longFormVideoId);
+        relatedLinksAdded++;
+      } else if ((outcome === "picker-empty" || outcome === "not-found") && !opts.dryRun) {
+        await markRelatedRetrySeen(target.shortVideoId);
+      }
+    }
+
     return {
       probe: probed.result,
       endScreensAdded,
@@ -705,6 +830,7 @@ export async function runCycle(
       tcChecked,
       thumbnailTestsPlanned,
       pinsAdded,
+      relatedLinksAdded,
       errors,
     };
   } finally {
@@ -803,6 +929,7 @@ export async function runWorker(
         tcChecked: result.tcChecked,
         thumbnailTestsPlanned: result.thumbnailTestsPlanned,
         pinsAdded: result.pinsAdded,
+        relatedLinksAdded: result.relatedLinksAdded,
       },
       lastError: currentError,
       lastErrors: result.errors,
