@@ -174,6 +174,43 @@ const silence = async (fn: () => Promise<void>): Promise<string[]> => {
   console.log("OK: with no YouTube token, recomputeDrawLearned returns the prior answer untouched");
 }
 
+// --- recomputeDrawLearned: a systemic (e.g. token) failure is discovered once, not retried once
+// per uncached video behind it (review fix, 11 Oct 2026 — the doc comment on drawLearnTick already
+// claimed this, but the loop kept calling firstWeekViews again for every video after the first). -
+{
+  const uploads = [301, 302, 303].map((matchId) => ({
+    matchId,
+    record: {
+      videoId: `v${matchId}`,
+      publishAt: null,
+      privacyStatus: "public",
+      uploadedAt: iso(daysAgo(10)),
+    },
+  }));
+  const playersByMatch = new Map<number, [string, string]>([
+    [301, ["hhh", "iii"]],
+    [302, ["jjj", "kkk"]],
+    [303, ["lll", "mmm"]],
+  ]);
+  let firstWeekCalls = 0;
+  const deps: DrawLearnDeps = {
+    uploads: async () => uploads,
+    playersOf: async (matchId) => playersByMatch.get(matchId) ?? null,
+    firstWeekViews: async () => {
+      firstWeekCalls++;
+      throw new Error("token refresh failed: invalid_grant");
+    },
+  };
+  const before = readDrawLearned();
+  const lines = await silence(async () => {
+    const result = await recomputeDrawLearned(NOW, deps);
+    assert.deepEqual(result, before, "every video fails the same way: the prior answer stands untouched");
+  });
+  assert.equal(firstWeekCalls, 1, "three uncached videos behind a broken token: only the first is tried");
+  assert.equal(lines.length, 1, "one failure logs once even with more uncached videos behind it");
+  console.log("OK: a systemic Analytics failure is discovered once, not retried once per video");
+}
+
 // --- channelMedian 0 (every eligible video scored zero views so far): no division by zero, and
 // the written file has empty players/pairs rather than NaN. --------------------------------------
 {
@@ -241,6 +278,30 @@ const silence = async (fn: () => Promise<void>): Promise<string[]> => {
   );
   assert.equal(lines.length, 1);
   assert.ok(lines[0]!.includes("boom"));
+
+  // Re-entrancy guard (review fix, 11 Oct 2026): a second tick firing while the first `recompute`
+  // is still in flight must be a no-op, not a second overlapping recompute racing the first's own
+  // write — the same bug class `shortTick`'s `ticking` and `.experiments.json`'s lock both guard
+  // against elsewhere in this codebase. No file is on disk at this point (removed above), so the
+  // "once a day" gate alone would not have stopped a second call either.
+  let inFlight = 0;
+  let resolveFirst: (() => void) | undefined;
+  const first = drawLearnTick(NOW, async () => {
+    inFlight++;
+    await new Promise<void>((resolve) => {
+      resolveFirst = resolve;
+    });
+    return null;
+  });
+  const second = drawLearnTick(NOW, async () => {
+    inFlight++;
+    return null;
+  });
+  await second;
+  assert.equal(inFlight, 1, "a second tick while the first is still running starts no second recompute");
+  resolveFirst?.();
+  await first;
+  console.log("OK: drawLearnTick — a second call while one is still in flight is a no-op, not a race");
 
   config.learnedDraw = saved;
   console.log("OK: drawLearnTick — off is a no-op, on recomputes at most once a day, never throws");

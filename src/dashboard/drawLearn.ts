@@ -140,6 +140,11 @@ export async function recomputeDrawLearned(
   const videoViews: Record<string, number> = { ...(prior?.videoViews ?? {}) };
   const measured: Array<{ players: [string, string]; views: number; videoId: string; publishedMs: number }> =
     [];
+  // A broken token fails the same way for every video; asking again per video would just be N
+  // copies of the same log line for N wasted round trips. The first failure is the one that
+  // tells you the token is bad, so it is the only one that calls out — everything uncached after
+  // it is skipped silently and picked up by tomorrow's tick instead.
+  let analyticsFailed = false;
   for (const { matchId, videoId, publishedMs } of eligible) {
     const players = await deps.playersOf(matchId).catch((err: unknown) => {
       console.error(`draw: match #${matchId}'s players unreadable — ${describeError(err)}`);
@@ -150,11 +155,13 @@ export async function recomputeDrawLearned(
     if (!players || blockedIn(players)) continue;
     let views = videoViews[videoId];
     if (views === undefined) {
+      if (analyticsFailed) continue;
       try {
         views = await deps.firstWeekViews(videoId, publishedMs);
         videoViews[videoId] = views;
       } catch (err) {
         console.error(`draw: ${videoId}'s first-week views unreadable — ${describeError(err)}`);
+        analyticsFailed = true;
         continue;
       }
     }
@@ -194,17 +201,30 @@ export async function recomputeDrawLearned(
  * video. Never throws: a background tick dying on this must not take the others down with it.
  * `recompute` is `recomputeDrawLearned` by default; a test overrides it to count attempts without
  * a real scan.
+ *
+ * Guarded against itself (`running`, the same shape as `shortTick`'s `ticking` in
+ * src/dashboard/shortFlow.ts and `evaluateExperiments`'s `evaluating`): `recompute` can run long
+ * enough — a first-time backlog, a slow Analytics API — to still be in flight 15 minutes later,
+ * and the "once a day" gate above reads `computedAt` from the file, which isn't written until
+ * `recompute` finishes, so a second overlapping tick would see the same stale-or-absent prior and
+ * start a second, fully overlapping recompute. No cross-process lock is needed here, unlike
+ * `.experiments.json`'s: this file has no second CLI writer.
  */
+let running = false;
+
 export async function drawLearnTick(
   nowMs: number = Date.now(),
   recompute: (nowMs: number) => Promise<DrawLearned | null> = recomputeDrawLearned,
 ): Promise<void> {
-  if (!config.learnedDraw) return;
-  const prior = readDrawLearned();
-  if (prior && nowMs - prior.computedAt < RECOMPUTE_EVERY_MS) return;
+  if (!config.learnedDraw || running) return;
+  running = true;
   try {
+    const prior = readDrawLearned();
+    if (prior && nowMs - prior.computedAt < RECOMPUTE_EVERY_MS) return;
     await recompute(nowMs);
   } catch (err) {
     console.error(`draw: learn tick failed — ${describeError(err)}`);
+  } finally {
+    running = false;
   }
 }
