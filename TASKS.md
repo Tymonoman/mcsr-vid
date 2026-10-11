@@ -43,6 +43,7 @@ Short TN0_s3y0HH8 (Infume vs bbiddd) is PUBLIC but its long-form Edj_-c7lK38 no 
 (told the operator). Worker supervisor restarted 13:51 on cd456bb (related-link + A/B reader live); it links the two new
 hand-made Shorts (mumhR7l_E-I → 13 Oct 17:00, x-N2Ssg5jEI → 14 Oct 13:00 UTC, both uploaded 13:48) itself.
 WAITING ON THE OPERATOR: the claim above.
+11 Oct 18:47 evening check: 11 Oct 19:00+23:00 and 12 Oct 19:00+23:00 scheduled (13884349, 14039374, 14039001, 14074713); no failed steps; worker beat 18:32, no error; tonight armed (14072062 first); boot cd456bb (later commits docs only).
 TOKEN DIET (11 Oct, the operator: "how to use my claude subscription efficiently"): CLAUDE.md 172→41 KB (full text:
 handbook/claude-md-reference.md, b317d4e); TASKS.md older blocks → handbook/tasks-archive-2026-09-23_10-07.md; 16
 claude-flow hooks + env flags removed and ECC_GATEGUARD=off in ~/.claude/settings.json (backup settings.json.bak-2026-10-11,
