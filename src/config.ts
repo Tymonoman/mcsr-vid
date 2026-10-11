@@ -356,6 +356,15 @@ export interface Config {
    */
   autoHooksAfterHours: number | null;
   /**
+   * The operator's own call, 11 Oct 2026 ("you're gonna make the shorts from now on"): the
+   * session cuts every match's Short by hand (`npm run short:hand`, src/shorts/handShort.ts)
+   * instead of the pipeline's own pick-and-render. On, a match whose Short is not yet on YouTube
+   * never queues a model pick and never renders its own Short; the long-form uploads at its slot
+   * without waiting on either, and the Short uploads once `short-<id>.hand.json` and its mp4
+   * exist. Off (default) is today's pick → render → upload-video → upload-short chain, unchanged.
+   */
+  shortsByHand: boolean;
+  /**
    * Suggestion slots per bucket. Close races and entertaining messes are ranked
    * separately so a run of very tight matches can't crowd the funny ones off the list.
    */
@@ -561,6 +570,7 @@ export const DEFAULTS: Config = {
   countdownTeaser: false,
   explainMovesSec: null,
   autoHooksAfterHours: null,
+  shortsByHand: false,
   nightlyRenderExport: true,
   nightlyMaxRenders: 1,
   nightlyNotifyUrl: "",

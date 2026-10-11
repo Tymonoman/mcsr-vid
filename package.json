@@ -39,6 +39,8 @@
     "youtube-auth": "tsx src/youtube/youtubeAuth.ts",
     "bench": "npm run build-overlay-css && tsx src/cli/benchRender.ts",
     "short": "npm run build-overlay-css && tsx src/shorts/generateShort.ts",
+    "//short:hand": "Turn a hand-cut Short file into the pair the chain uploads (config.shortsByHand).",
+    "short:hand": "tsx src/shorts/handShortCli.ts",
     "//series": "A playoff series as one video: every game rendered, joined into game 1's series-<id>.mp4.",
     "series": "npm run build-overlay-css && tsx src/playoffs/seriesCli.ts",
     "export:fast": "tsx src/pipeline/exportFastCli.ts",

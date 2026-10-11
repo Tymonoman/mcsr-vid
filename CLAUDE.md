@@ -140,6 +140,33 @@ Rebuilt on 23 Sept 2026 (the operator's calls; contract `src/shorts/shortPlan.ts
 that ended on the finish 80% of the time: 21–31% of feed plays became engaged views and 2,819
 views brought 0 subscribers.
 
+- **The session cuts every Short by hand instead of the pipeline's own pick-and-render**
+  (`shortsByHand`, Settings → Publishing, default **off**; 11 Oct 2026, the operator, verbatim:
+  "you're gonna make the shorts from now on"). On, a match whose Short is not yet on YouTube
+  neither queues a model pick nor renders its own Short — the long-form uploads at its slot
+  without waiting on either (today's chain renders the Short before the long-form upload; this
+  mode skips straight to it). `npm run short:hand -- <matchId> <file.mp4> --hook "<hook>" --from
+  <sec> --to <sec> --pov left|right [--note "<text>"]` (`src/shorts/handShort.ts`, the CLI's thin
+  wrapper `handShortCli.ts`) turns a Short cut outside the pipeline into the pair the chain reads:
+  `short-<id>.mp4` + `short-<id>.hand.json` (`{ hook, builtAt, windowMatchSec, pov, note? }`), plus
+  the same `.title.txt`/`.description.txt` `generateShort.ts` writes, so `uploadTextFor` cannot
+  tell a hand-cut Short from a rendered one. Validates before writing a byte (`checkHandShort`):
+  the match directory exists, the file is 1080x1920 h264+aac at 60 s or under (ffprobe, injected
+  in tests), the hook passes `hookProblem` (which is already `hookLabelProblem` and
+  `spoilsTheResult` together) — refused outright with the reason, never a warning, unlike the
+  operator's own typed hook on the dashboard — no blocked player, and the Short is not already on
+  the channel. Until the pair exists the chain ends its pass with one log line ("waiting for the
+  hand-made Short") and touches no step's state — never a failure, so it raises no Needs-you
+  noise — and `shortTick`'s own 15-minute tick notices once the long-form is up and the Short
+  still isn't (nothing on disk otherwise tells this process the files landed, unlike a pick or a
+  render, which end in a file this process wrote itself). The Short's publish time is still
+  `shortPublishAt`, unchanged: 18 h after the long-form, or the earliest allowed time if that
+  would be under an hour away. The dashboard's own `#shorthook` field still has to hold
+  *something* for `saveHooks`'s validation, same as today, but it drives nothing here — the hand
+  file's own hook is what `buildShortTitle` already burned into `title.txt`, and `uploadTextFor`
+  never rebuilds a hand-cut Short's title from the saved field. `noShort` and a blocked player are
+  untouched: both still mean no Short, hand-cut or not. Off is today's pick → render →
+  upload-video → upload-short chain, byte for byte.
 - **A model watches the whole match and picks the moment** (`src/shorts/videoPick.ts`,
   `pickShortMoment`): a 2 fps 640x360 proxy of the export (`short-proxy.mp4`, proxy time = match
   clock; 1 fps for a series), /watch's stills and transcripts per player (`src/shorts/watchPov.ts`

@@ -95,7 +95,7 @@ const flow = await import("./shortFlow.js");
 const { setHidden } = await import("./matchShelf.js");
 const { handleShortsRoute } = await import("./shortsRoutes.js");
 const { hookRefusal, recordStudioUpload } = await import("../youtube/youtubeUpload.js");
-const { readUpload, writeUpload } = await import("../youtube/youtubeStore.js");
+const { readUpload, writeUpload, uploadTextFor } = await import("../youtube/youtubeStore.js");
 const { readShortHook } = await import("../shorts/shortHook.js");
 const { nextPublishSlot } = await import("../youtube/publishSlot.js");
 
@@ -1712,6 +1712,89 @@ try {
       assert.ok(!flow.readStatus(broken).hooksSavedAt, "the broken match itself never saved");
       assert.ok(flow.readStatus(healthy).hooksSavedAt, "a later due match is still reached and saved");
       console.log("OK: one match throwing out of autoSaveHooks doesn't starve the matches due after it");
+    }
+  }
+
+  /* --- Hand mode (config.shortsByHand, 11 Oct 2026): "you're gonna make the shorts from now on" */
+  {
+    const hadHandMode = config.shortsByHand;
+    config.shortsByHand = true;
+    try {
+      const H = 13_000_100;
+      exported(H);
+      const savedHand = await save(H, { titleHook: "Hand mode hook", shortHook: "irrelevant" });
+      assert.equal(savedHand.status, 202);
+      assert.ok(!picks.some((p) => p.id === H), "hand mode never queues a model pick");
+      assert.ok(!renders.some((r) => r.id === H), "hand mode never renders its own Short");
+
+      // The long-form uploads at its slot without waiting on the Short at all.
+      const videoSent = sent.find((s) => s.id === H && s.kind === "video");
+      assert.ok(videoSent, "the long-form uploaded on its own");
+      assert.ok(!sent.some((s) => s.id === H && s.kind === "short"), "the Short has not uploaded yet");
+      const videoRecord = await readUpload(H, "video");
+      assert.ok(videoRecord, "the long-form's own upload record exists");
+
+      const waiting = await plan(H);
+      assert.equal(waiting.state, "rendering");
+      assert.match(waiting.detail ?? "", /waiting for the hand-made Short/);
+      assert.equal(
+        flow.readStatus(H).steps["upload-short"],
+        undefined,
+        "no failed/off state on upload-short while waiting — no Needs-you noise",
+      );
+
+      // npm run short:hand's own output, dropped straight into the match directory — handShort.ts
+      // is tested on its own (handShort.test.ts); only the chain's reaction matters here.
+      writeFileSync(path.join(dir(H), `short-${H}.mp4`), "hand-made-short-bytes");
+      writeFileSync(
+        path.join(dir(H), `short-${H}.hand.json`),
+        JSON.stringify({
+          hook: "Hand-cut hook",
+          builtAt: "2026-10-11T12:00:00.000Z",
+          windowMatchSec: [300, 325],
+          pov: "left",
+        }),
+      );
+      writeFileSync(
+        path.join(dir(H), `short-${H}.title.txt`),
+        "Hand-cut hook | edcr vs doogile #mcsr #minecraft\n",
+      );
+      writeFileSync(
+        path.join(dir(H), `short-${H}.description.txt`),
+        "edcr vs doogile, hand-cut short.\nmatch page: https://example.com/13000100\n#mcsr #minecraft\n",
+      );
+
+      // The saved-but-irrelevant shortHook ("irrelevant", above) must drive nothing: the title
+      // stays exactly what the hand file carries even though short-<id>.hook.txt also exists —
+      // and the "whole match" link still lands, the same as any other Short's.
+      const text = await uploadTextFor(H, "short");
+      assert.equal(text.title, "Hand-cut hook | edcr vs doogile #mcsr #minecraft");
+      assert.ok(text.description.startsWith("edcr vs doogile, hand-cut short.\n"));
+      assert.ok(text.description.includes(`the whole match: https://youtu.be/${videoRecord!.videoId}`));
+
+      // Nothing on disk tells this process the files landed — shortTick notices on its own tick.
+      await flow.shortTick(chain, NOW);
+      await flow.chainIdle(H);
+
+      const shortSent = sent.find((s) => s.id === H && s.kind === "short");
+      assert.ok(shortSent, "shortTick resumed the chain once the hand files landed");
+      const expectedShortAt = flow
+        .shortPublishAt(
+          { videoId: videoRecord!.videoId, publishAt: videoSent!.publishAt!, privacyStatus: "private" },
+          NOW,
+        )!
+        .toISOString();
+      assert.equal(shortSent!.publishAt, expectedShortAt, "the Short's publish time, as any Short's");
+
+      assert.equal((await plan(H)).state, "scheduled");
+      console.log(
+        "OK: hand mode — the long-form uploads alone, the Short waits, then goes up from the hand files",
+      );
+
+      // Off is today's chain, byte for byte: the whole suite above ran with this on only inside
+      // this block, so every earlier section already pins the default-off path unchanged.
+    } finally {
+      config.shortsByHand = hadHandMode;
     }
   }
 } finally {

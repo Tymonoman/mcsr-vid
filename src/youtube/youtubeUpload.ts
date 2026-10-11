@@ -20,6 +20,7 @@ import { exportStale, staleExportMessage } from "../pipeline/syncFile.js";
 import { readManifest } from "../thumbnails/thumbnailVariants.js";
 import { pinnedQuestion } from "../pipeline/pinnedQuestion.js";
 import { HOOK_PLACEHOLDER, metaPaths } from "../pipeline/title.js";
+import { readHandShort, WAITING_FOR_HAND_SHORT } from "../shorts/handShort.js";
 import { readShortCut, readShortHook, WAITING_FOR_HOOK } from "../shorts/shortHook.js";
 import { activityProgress, boxFailure, endActivity, shortLog, startActivity } from "../shorts/shortLog.js";
 import { pinComment } from "./studioActions.js";
@@ -158,6 +159,14 @@ export async function hookRefusal(
   }
   if (existsSync(path.join(dir, "youtube-short.json")))
     return { status: 409, error: `the Short of match ${matchId} is already on the channel` };
+  // Hand mode (config.shortsByHand): the chain's own render step never runs, so there is no
+  // cut.json to match a saved hook against — short-<id>.hand.json (npm run short:hand) is the
+  // one source of the Short's title, built straight into its title.txt (src/shorts/handShort.ts).
+  if (config.shortsByHand) {
+    if (!(await readHandShort(dir, matchId)) || !existsSync(path.join(dir, `short-${matchId}.mp4`)))
+      return { status: 409, error: `${WAITING_FOR_HAND_SHORT} — npm run short:hand` };
+    return null;
+  }
   const hook = await readShortHook(dir, matchId);
   if (hook === null) return { status: 409, error: `${WAITING_FOR_HOOK} — save the hooks first` };
   const cut = await readShortCut(dir, matchId);

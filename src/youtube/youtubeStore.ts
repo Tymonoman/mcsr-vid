@@ -135,8 +135,11 @@ export async function uploadTextFor(
     if (hook) title = title.replace(HOOK_PLACEHOLDER, hook);
   }
   // A Short with no saved hook cannot go up (`hookRefusal`): its stored title stands, unlogged —
-  // the publish kit asks for this text every time a match opens.
-  const shortHook = kind === "short" ? await readShortHook(dir, matchId) : null;
+  // the publish kit asks for this text every time a match opens. In hand mode
+  // (config.shortsByHand) the saved short-<id>.hook.txt is not what drove the title — the hand
+  // file's own hook, already baked into title.txt by `buildHandShort`, is — so it is never read
+  // here, or this rebuild would overwrite a hand-cut Short's title with an unrelated one.
+  const shortHook = kind === "short" && !config.shortsByHand ? await readShortHook(dir, matchId) : null;
   if (title !== "" && (kind === "video" || shortHook)) {
     const stored = title;
     const isSeries = existsSync(path.join(dir, "series.json"));
@@ -546,7 +549,10 @@ export async function resolveShortVideoId(
     return { matchId, shortId: record.videoId };
   }
   const owner = await videoIdOwner(target);
-  if (!owner) return { error: `${target} is not a known video id (no match records it in youtube.json/youtube-short.json)` };
+  if (!owner)
+    return {
+      error: `${target} is not a known video id (no match records it in youtube.json/youtube-short.json)`,
+    };
   if (owner.kind !== "short")
     return { error: `${target} is recorded as match ${owner.matchId}'s long-form video, not its Short` };
   return { matchId: owner.matchId, shortId: target };
