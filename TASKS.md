@@ -42,6 +42,9 @@ Feinberg–Infume 3.12. Watch: 1 hit, Grian's old forfeit 13210754 (no Twitch VO
 DROPPED; idea 9's Discord post loses its precondition (his call). The hand-made Short also sent to his Telegram. He asked how
 to switch the Studio browser's active channel: needs the remote login screen (Claude-container Chrome + noVNC + temporary
 userspace Tailscale node, tmp/studio/ts + tmp/studio/login-screen.sh) with the worker paused; offered to open it on his go.
+11 Oct 10:59 the operator: "try to change the channel yourself if it fails I'll do it" → DONE: the MCSR Replayoffs entry opens a
+confirm dialog; pressing "Got it" switched it, held across a restart, and the Related-video picker now returns results
+(click-and-save still to build). He also said: "you're gonna make the shorts from now on" and wants more branding on them.
 VERDICT RISK: tests started 8–9 Oct may still be running on 14 Oct (Studio ends a test once it is sure, or at 14 days).
 In the 13 Oct morning cycle, read every test's state; the ledger records a finished test's winner and marks an unfinished one
 "running at the deadline", with Studio's interim numbers if the page shows them. Never mark a guess as a verdict.

@@ -1341,6 +1341,14 @@ confirmed 8 Oct) is actually a reliable "no test already running" signal rather 
 dialog opened". Confirm the picker row the day the account-scoping bug is fixed, and the "already
 running" signal against a second video while LUI5E7yF0zE's own test is still live.
 
+**FIXED 11 Oct 2026 — the Studio browser's active channel is now MCSR Replayoffs.** The account-scoping "bug" below was
+the profile's active channel (youtube.com/channel_switcher had TYMONOMAN ticked). Switching is not a plain click: the
+MCSR Replayoffs entry's endpoint is an `openPopupAction` confirm dialog ("your private activity … would be attributed to
+your personal account"), and the `selectActiveIdentityEndpoint` sits on its **"Got it"** button — the 8 Oct attempts
+clicked the entry and reloaded without pressing it. Pressed (job tmp/studio5/switch5.mts), the switch held across a
+Chrome restart, and `npm run studio -- related ylXZwXIlRlY 8ddRytlH1xw` now ends on "the picker returned a result —
+selecting/saving it is not yet built": the Related-video and end-screen Import pickers work; the click-and-save is next.
+
 **Related video — the plan's own second half of phase 2, confirmed dead-end today, 8 Oct 2026**
 (read-only exploration, `tmp/studio3/`, no Save ever pressed — see the plan's section "Phase 2:
 the Short's related video and end screens"): a Short's Details page carries its own "Related
