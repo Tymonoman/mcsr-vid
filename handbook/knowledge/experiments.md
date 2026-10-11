@@ -115,6 +115,14 @@ any video that already has one (his 8 custom ones included).
 
 ## Decisions
 
+- **11 Oct 2026 — second Test & Compare verdict: no winner on the "DECIDED BY 4.2 SECONDS" title test
+  (`358mpZeBqFo`, hackingnoises vs romuxii, 10:09).** Studio's report: "They all performed well" — the live title
+  "DECIDED BY 4.2 SECONDS" **50.1%** of watch time share against "A SUB-10 TO WIN IT" **49.9%**; ran 8 Oct 11:11 AM →
+  11 Oct 6:52 PM (Studio's clock). Nothing changed on the channel. Read with the GF test: a pace-number title lost
+  62/38 on a 36-minute series and tied 50/50 against a margin title on a 10-minute match, so the pace chip is not
+  worse than a fact title in general; the GF gap was likely the "one fast game" promise on a series. Keep the chip
+  order. The reader first logged this as "control wins" (it took "Now visible to all viewers" for a win); fixed —
+  only Studio's own "Winner" mark counts, and the verdict keeps Studio's headline.
 - **11 Oct 2026 — first Test & Compare verdict: the Grand Finals title test (`_2EOkOOX0PQ`, lowkey vs Infume, 35:46).**
   Studio's report: "We have a winner!" — the live title "IT ALL COMES DOWN TO THE END | … | Grand Finals" took **62.1%**
   of watch time share against "A SUB-9 TO WIN IT | … | Grand Finals" at **37.9%**; ran 8 Oct 23:00 → 11 Oct 11:31 UTC

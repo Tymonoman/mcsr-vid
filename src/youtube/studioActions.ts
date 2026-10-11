@@ -825,18 +825,25 @@ export interface TcReadResult {
   winnerSlot?: number;
   /** A title test's variant titles, in the report's order. */
   titles?: string[];
+  /** Studio's own line under "A/B Test report": "We have a winner!", "They all performed well", … */
+  headline?: string;
 }
 
 /**
  * Reads a finished test's "A/B Test report" text (confirmed live 11 Oct 2026 on _2EOkOOX0PQ, the
  * only finished report seen yet): "We have a winner!" … per variant "<m:ss>", "<title>", the
  * channel, "Now visible to all viewers" on the live one, "62.1%", "Watch time share", "Winner"
- * after the winner's share … "Test finished. Ran from …". A winner is taken only when the "Winner"
- * line and the "Now visible" line (YouTube applies the winner) agree, or one of them is missing.
- * ponytail: one report seen, with the winner in slot 1; if a slot-2 win lays out differently the
- * two marks disagree and this returns no winnerSlot rather than a wrong one.
+ * after the winner's share … "Test finished. Ran from …". A winner is taken only from Studio's own
+ * "Winner" line, and only when "Now visible to all viewers" doesn't contradict it. "Now visible"
+ * alone is not a win: a test with no winner (headline "They all performed well", _358mpZeBqFo_
+ * 11 Oct 2026, 50.1% vs 49.9%) leaves the live variant live and marks it the same way.
+ * ponytail: two reports seen, both with slot 1 live; a slot-2 win laid out differently gives no
+ * winnerSlot rather than a wrong one.
  */
-export function parseTcReport(text: string): Pick<TcReadResult, "shares" | "winnerSlot" | "titles"> & {
+export function parseTcReport(text: string): Pick<
+  TcReadResult,
+  "shares" | "winnerSlot" | "titles" | "headline"
+> & {
   done: boolean;
 } {
   const lines = text
@@ -854,21 +861,23 @@ export function parseTcReport(text: string): Pick<TcReadResult, "shares" | "winn
     else if (/^now visible to all viewers$/i.test(lines[i])) visibleMark = shares.length + 1;
     else if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(lines[i]) && lines[i + 1]) titles.push(lines[i + 1]);
   }
-  const agree = winnerMark === undefined || visibleMark === undefined || winnerMark === visibleMark;
-  const winnerSlot = agree ? (winnerMark ?? visibleMark) : undefined;
+  const winnerSlot = visibleMark === undefined || winnerMark === visibleMark ? winnerMark : undefined;
+  const headline = lines[lines.findIndex((l) => /^a\/b test report$/i.test(l)) + 1];
   return {
-    done: /test finished|we have a winner|results ready/i.test(text),
+    done: /test finished|we have a winner|results ready|performed/i.test(text),
     shares,
     ...(winnerSlot !== undefined && winnerSlot <= shares.length ? { winnerSlot } : {}),
     ...(titles.length ? { titles } : {}),
+    ...(headline && lines.some((l) => /^a\/b test report$/i.test(l)) ? { headline } : {}),
   };
 }
 
 function doneFromReport(report: string, fallbackRaw: string): TcReadResult {
-  const { shares, winnerSlot, titles } = parseTcReport(report);
+  const { shares, winnerSlot, titles, headline } = parseTcReport(report);
   return {
     state: "done",
     raw: report || fallbackRaw,
+    ...(headline ? { headline } : {}),
     ...(shares?.length ? { shares } : {}),
     ...(winnerSlot !== undefined
       ? { winnerSlot, winner: titles?.[winnerSlot - 1] ?? `variant ${winnerSlot}` }

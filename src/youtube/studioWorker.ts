@@ -538,6 +538,7 @@ export async function setExperimentChecked(id: string, read: TcReadResult): Prom
           winner: winner ?? read.winner,
           ...(read.winnerSlot && read.titles ? { winnerTitle: read.titles[read.winnerSlot - 1] } : {}),
           ...(shares.length ? { watchTimeShare } : {}),
+          ...(read.headline ? { headline: read.headline } : {}),
           raw: read.raw,
         },
         verdict: winner
@@ -545,7 +546,7 @@ export async function setExperimentChecked(id: string, read: TcReadResult): Prom
           : read.winner
             ? `YouTube applied: ${read.winner}`
             : shares.length
-              ? `finished, no winner read: ${split} watch time share`
+              ? `no winner${read.headline ? ` (Studio: "${read.headline}")` : ""}: ${split} watch time share`
               : "done (no winner text read)",
       };
     }),

@@ -717,6 +717,54 @@ config.mediaDir = media;
   });
   assert.equal((done?.result as { winner?: string }).winner, "control");
   assert.equal(done?.verdict, "control wins: 62.1% vs 37.9% watch time share");
+
+  // No winner (358mpZeBqFo, 11 Oct 2026): the live title stays live and is marked "Now visible",
+  // but Studio's headline says no one won. That is not a control win.
+  const TIE = [
+    "Title only",
+    "A/B Test report",
+    "They all performed well",
+    "10:09",
+    "DECIDED BY 4.2 SECONDS | hackingnoises vs romuxii | MCSR Ranked 1v1 | Minecraft Speedrun",
+    "MCSR Replayoffs",
+    "Now visible to all viewers",
+    "50.1%",
+    "Watch time share",
+    "10:09",
+    "A SUB-10 TO WIN IT | hackingnoises vs romuxii | MCSR Ranked 1v1 | Minecraft Speedrun",
+    "MCSR Replayoffs",
+    "49.9%",
+    "Watch time share",
+    "Set this option",
+    "Test finished. Ran from October 8, 2026 at 11:11 AM to October 11, 2026 at 6:52 PM.",
+    "New test",
+    "Done",
+  ].join("\n");
+  const tie = parseTcReport(TIE);
+  assert.equal(tie.done, true);
+  assert.deepEqual(tie.shares, [50.1, 49.9]);
+  assert.equal(tie.winnerSlot, undefined, "Now visible alone is not a win");
+  assert.equal(tie.headline, "They all performed well");
+  assert.equal(r.headline, "We have a winner!");
+  const tieId = "tc-title-tie-shape";
+  await updateTcExperiments((tc) => [
+    ...tc,
+    {
+      id: tieId,
+      kind: "tc",
+      variable: "title",
+      arms: [{ name: "control" }, { name: "challenger1" }],
+      videos: [{ videoId: "vidTie", matchId: 2, arm: "tc" }],
+      status: "running",
+    },
+  ]);
+  await setExperimentChecked(tieId, { state: "done", raw: TIE, ...tie });
+  const tied = (await readExperiments()).experiments.find((e) => e.id === tieId);
+  assert.equal(
+    tied?.verdict,
+    'no winner (Studio: "They all performed well"): 50.1% vs 49.9% watch time share',
+  );
+  assert.equal((tied?.result as { winner?: string }).winner, undefined);
   console.log("OK: a finished test's report is read for its shares and its winning arm, by title");
 }
 
