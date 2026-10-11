@@ -27,8 +27,16 @@ Content ID, "Andrew in Drag" (The Magnetic Fields; Merlin/Secretly Distribution,
 transcript: the chorus, then their own talk); lowk3y_'s side is clean. Studio Content list read 11 Oct 12:5x: 1 of 55 videos
 has any restriction — this one. ASKED THE OPERATOR: mute the song in Studio before it goes public (the operator's call — an edit on the
 channel), or leave it; and whether the worker should flag claims on scheduled uploads in Needs you.
-WAITING ON THE OPERATOR: replace this morning's two automatic old-layout Shorts (mwejhZG5t1c 14074713 → 13 Oct 17:00 UTC;
-KMN8pCKWNVY 14074004 → 14 Oct 13:00 UTC) with hand-made ones? = deleting two scheduled privates (the operator's call). The claim above.
+REPLACED (the operator, 11 Oct: "yeah you can replace the automatic shorts"): deleted the scheduled privates mwejhZG5t1c
+(14074713) and KMN8pCKWNVY (14074004) via videos.delete (records kept as youtube-short.replaced-<id>.json); hand-made
+replacements registered with short:hand — 14074713 "UNDER 4 HEARTS..." (silverrruns' blaze spawner on 3.5 hearts, rods 0→7,
+match 363–389, spec tmp/shorts/specs/14074713.json) and 14074004 "LEADING THE RACE..." (the v5 the operator liked, with the
+pronoun-free hook/end question "CAN THIS RUN BE SAVED?"). The chain uploads each 18 h after its long-form.
+LINKING ALL SHORTS (the operator, 11 Oct: "link all shorts to its appropriate videos"): worker supervisor stopped, one
+paced Studio session (tmp/related/linkall.mts, log linkall.log) links all 38 existing Shorts with the worker's own
+linkRelatedVideo + ledger; restart the supervisor after it (`setsid nohup bash /app/scripts/studio-worker.sh >/dev/null 2>&1 &`)
+— that also loads the related-link + A/B-reader code; the worker links the two new Shorts itself.
+WAITING ON THE OPERATOR: the claim above.
 CRONS (session-only; recreate if gone): 05:23 UTC morning cycle (job 376be942 — /needs + /ypp, NEVER report --dry-run: it
 carries viewer comment text; then the hand Shorts), 18:17 UTC evening check (bbbb9a98). On 14 Oct evening: the final
 branded report.
