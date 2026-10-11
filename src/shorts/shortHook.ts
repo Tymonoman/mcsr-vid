@@ -38,15 +38,22 @@ export interface ShortCut {
   renderedAt: string;
 }
 
-/** The last cut's record, or null (none yet, or one from before 23 Sept 2026 that carries no hook). */
-export const readShortCut = (dir: string, matchId: number): Promise<ShortCut | null> =>
-  readFile(path.join(dir, `short-${matchId}.cut.json`), "utf8").then(
-    (text) => {
-      const cut = JSON.parse(text) as Partial<ShortCut>;
-      return typeof cut.hook === "string" ? (cut as ShortCut) : null;
-    },
-    () => null,
-  );
+/**
+ * The last cut's record, or null (none yet, one from before 23 Sept 2026 that carries no hook, or
+ * a corrupt file — read defensively: `.then`'s second argument only catches readFile's own
+ * rejection, never a throw from JSON.parse inside the fulfillment handler, same shape as the
+ * hand-mode review's readHandShort finding).
+ */
+export async function readShortCut(dir: string, matchId: number): Promise<ShortCut | null> {
+  try {
+    const cut = JSON.parse(
+      await readFile(path.join(dir, `short-${matchId}.cut.json`), "utf8"),
+    ) as Partial<ShortCut>;
+    return typeof cut.hook === "string" ? (cut as ShortCut) : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * The closing card (decision 13): a window that stops before the match is decided asks who took

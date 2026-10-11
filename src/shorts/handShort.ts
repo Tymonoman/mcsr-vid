@@ -39,11 +39,13 @@ export const handShortFile = (dir: string, matchId: number): string =>
   path.join(dir, `short-${matchId}.hand.json`);
 
 /** The hand file, or null (none yet, or unreadable) — read defensively like every other state file here. */
-export const readHandShort = (dir: string, matchId: number): Promise<HandShort | null> =>
-  readFile(handShortFile(dir, matchId), "utf8").then(
-    (text) => JSON.parse(text) as HandShort,
-    () => null,
-  );
+export async function readHandShort(dir: string, matchId: number): Promise<HandShort | null> {
+  try {
+    return JSON.parse(await readFile(handShortFile(dir, matchId), "utf8")) as HandShort;
+  } catch {
+    return null;
+  }
+}
 
 export interface VideoSpec {
   width: number;
@@ -230,7 +232,12 @@ export async function buildHandShort(
     pov: opts.pov,
     ...(opts.note?.trim() ? { note: opts.note.trim() } : {}),
   };
-  await writeFile(handShortFile(dir, matchId), JSON.stringify(hand, null, 2), "utf8");
+  // Atomic, like every other state file here (updateStatus, short-<id>.status.json): a kill
+  // mid-write must never leave a truncated file for readHandShort to trip over.
+  const handFile = handShortFile(dir, matchId);
+  const handTmp = `${handFile}.tmp`;
+  await writeFile(handTmp, JSON.stringify(hand, null, 2), "utf8");
+  await rename(handTmp, handFile);
 
   shortLog(matchId, "render", `hand-made Short built, ${opts.pov}: ${JSON.stringify(hook)}`, {
     detail: `window ${opts.fromSec}s–${opts.toSec}s of the match clock; source ${opts.mp4Path}`,

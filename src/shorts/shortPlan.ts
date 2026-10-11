@@ -134,6 +134,8 @@ export interface ShortPlanResponse {
   titleHook: string | null;
   /** The operator chose no Short for this match. */
   noShort?: boolean;
+  /** `config.shortsByHand`: the session cuts this Short itself — the panel offers no model pick. */
+  shortsByHand?: boolean;
   /** The sync detector was not sure: the panel opens the sync frames and the save button says so. */
   syncWeak?: boolean;
   suggestions: { short: string[]; title: string[] };

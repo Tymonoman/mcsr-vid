@@ -10,8 +10,10 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
+import { config } from "../config.js";
 import { describeError } from "../errorText.js";
 import type { ExportRouteContext } from "./exportRoutes.js";
+import { WAITING_FOR_HAND_SHORT } from "../shorts/handShort.js";
 import { readShortHook, WAITING_FOR_HOOK } from "../shorts/shortHook.js";
 import { activityProgress, boxFailure, endActivity, shortLog, startActivity } from "../shorts/shortLog.js";
 import { sendVideo } from "./rangeStream.js";
@@ -238,6 +240,12 @@ export async function handleShortsRoute(
   // "Pick again": the model watches the match afresh. Its pick is the cut; with the hooks saved,
   // the chain re-cuts behind the same hook once it lands.
   if (action === "pick" && req.method === "POST") {
+    // Hand mode: the session cuts the Short itself — same reasoning as ensurePick's own gate, so
+    // this route can never spend a model watch (80-140k tokens) on a window nothing will render.
+    if (config.shortsByHand) {
+      ctx.json(res, 409, { error: `${WAITING_FOR_HAND_SHORT} — no model pick is spent in this mode` });
+      return true;
+    }
     if (!isExported(matchId)) {
       ctx.json(res, 409, { error: "not exported yet — the model watches the finished video" });
       return true;
@@ -270,6 +278,12 @@ export async function handleShortsRoute(
   // `seconds`). Refused here without the saved hook, as the CLI itself refuses — and, with the
   // hooks saved, the chain carries on to the uploads once it lands.
   if (action === "render" && req.method === "POST") {
+    // Hand mode: there is no model pick and no pipeline render to run — `npm run short:hand` is
+    // the only way a Short's mp4 lands, and this route must never overwrite it with a model cut.
+    if (config.shortsByHand) {
+      ctx.json(res, 409, { error: `${WAITING_FOR_HAND_SHORT} — npm run short:hand` });
+      return true;
+    }
     if ((await readShortHook(dir, matchId)) === null) {
       ctx.json(res, 409, { error: `${WAITING_FOR_HOOK} — save the hooks first` });
       return true;

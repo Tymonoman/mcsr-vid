@@ -219,6 +219,10 @@ console.log("OK: the refusals — bad hook, wrong file shape, already on the cha
     pov: "left",
     note: "a stand-in for the real cut",
   });
+  assert.ok(
+    !existsSync(`${handShortFile(dir(id), id)}.tmp`),
+    "the hand.json .tmp is gone — a rename, not a leftover",
+  );
 
   const log = readShortLog(id);
   assert.ok(
@@ -237,5 +241,18 @@ console.log("OK: the refusals — bad hook, wrong file shape, already on the cha
   );
 }
 console.log("OK: a clean build writes the mp4, title, description and hand.json the chain reads");
+
+// readHandShort must read defensively against a truncated/corrupt file too, not just a missing
+// one — a `.then`'s second argument only ever catches readFile's own rejection, never a throw
+// from the fulfillment handler's JSON.parse (silent-failure review, 11 Oct 2026). A corrupt
+// hand.json must come back null, the same as none at all, or every consumer (factsOf,
+// GET /api/matches's row-building Promise.all) throws for every match ordered after it.
+{
+  const id = 900009;
+  mkdirSync(dir(id), { recursive: true });
+  writeFileSync(handShortFile(dir(id), id), '{"hook": "truncated mid-wri');
+  assert.equal(await readHandShort(dir(id), id), null, "a corrupt file reads as none, not a throw");
+  console.log("OK: readHandShort reads a corrupt file defensively, same as a missing one");
+}
 
 console.log("handShort: all checks passed");

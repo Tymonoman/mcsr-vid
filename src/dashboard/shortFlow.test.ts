@@ -642,6 +642,37 @@ try {
   assert.deepEqual((await flow.nightlyShortSummary()).picker, { ok: true });
   console.log("OK: the tick resumes an interrupted chain and retries heuristic picks once a day");
 
+  /* --- 11a-bis. A corrupt state file must not starve every match ordered after it --------------- */
+  {
+    const BROKEN = 13_000_091;
+    const AFTER = 13_000_092;
+    exported(BROKEN);
+    writePick(BROKEN, "heuristic");
+    // A truncated pick-error.json (a kill mid-write): readJson now reads this defensively (the
+    // same fix as readHandShort's own finding) and returns null rather than throwing, so this
+    // match is simply "no recorded error" — not crashed, not stuck. shortTick's per-match
+    // try/catch is the second line of defence, for anything else this loop might ever throw on.
+    writeFileSync(path.join(dir(BROKEN), `short-${BROKEN}.pick-error.json`), "{not valid json");
+    exported(AFTER);
+    writePick(AFTER, "heuristic");
+    writeFileSync(
+      path.join(dir(AFTER), `short-${AFTER}.pick-error.json`),
+      JSON.stringify({ at: new Date(Date.now() + 60_000).toISOString(), message: "stand-in failure" }),
+    );
+    modelUp = true;
+    picks.length = 0;
+    await flow.shortTick(chain, NOW + 48 * 3600_000);
+    assert.ok(
+      picks.some((p) => p.id === BROKEN),
+      "the corrupt-file match is retried rather than left stuck",
+    );
+    assert.ok(
+      picks.some((p) => p.id === AFTER),
+      "the match after it was still retried in the same tick",
+    );
+    console.log("OK: a corrupt pick-error.json no longer crashes the tick, for either match");
+  }
+
   /* --- 11b. A restart cut short an UPLOAD step: resumed through its own session, never re-sent -- */
   // The real resumeUpload is unit-tested in youtube(Upload).test.ts; this pins the wiring —
   // `advance` must settle a "running" upload step through `deps.resumeUpload`, not the record a
@@ -1790,6 +1821,21 @@ try {
       console.log(
         "OK: hand mode — the long-form uploads alone, the Short waits, then goes up from the hand files",
       );
+
+      // A leftover short-<id>.pick-error.json from before hand mode was switched on (or from
+      // shortsRoutes.ts's own now-gated "pick" route) must never feed the daily retry: that
+      // would force a full model watch on a window nothing here ever renders.
+      const HR = 13_000_102;
+      exported(HR);
+      writePick(HR, "heuristic");
+      writeFileSync(
+        path.join(dir(HR), `short-${HR}.pick-error.json`),
+        JSON.stringify({ at: new Date(Date.now() + 60_000).toISOString(), message: "stand-in failure" }),
+      );
+      picks.length = 0;
+      await flow.shortTick(chain, NOW + 72 * 3600_000);
+      assert.ok(!picks.some((p) => p.id === HR), "hand mode never retries a leftover pick-error");
+      console.log("OK: hand mode — shortTick's daily pick-retry never spends a model watch");
 
       // Off is today's chain, byte for byte: the whole suite above ran with this on only inside
       // this block, so every earlier section already pins the default-off path unchanged.

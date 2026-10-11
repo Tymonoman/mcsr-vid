@@ -1513,9 +1513,11 @@ function nowSteps(plan, meta) {
           // simply not picked yet (the server does not spend a model watch on opening it).
           status: "todo",
           name: "Pick",
-          sum: "no pick yet",
+          sum: plan.shortsByHand ? "cut by hand, outside the pipeline" : "no pick yet",
           open: true,
-          body: `${shortLocked ? againBtn : button("pick-again", "Ask the model", "it watches the match, 1.5&ndash;5 min")}<div class="muted small">Or tick &ldquo;No Short for this one&rdquo; under Hooks: the video then goes out alone.</div>`,
+          body: plan.shortsByHand
+            ? '<div class="muted small">The session cuts this Short by hand (<code>npm run short:hand</code>) &mdash; no model pick is spent here.</div>'
+            : `${shortLocked ? againBtn : button("pick-again", "Ask the model", "it watches the match, 1.5&ndash;5 min")}<div class="muted small">Or tick &ldquo;No Short for this one&rdquo; under Hooks: the video then goes out alone.</div>`,
         },
         "The picker failed",
         "An earlier pick failed",
