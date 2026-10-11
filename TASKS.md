@@ -21,14 +21,14 @@ pick, and auto-hooks waits on a 6 h-old pick — no long-form would have uploade
 the chain still skips its pick/render. Worker gets related-link at tonight's blackout (newCodeWaiting). Worktrees removed.
 HAND SHORTS: tmp/week/needshort.cjs lists matches needing one (ALL=1 = include ones already on YouTube); the 05:23 cron
 (376be942) makes them: watch → spec → build.py → beats → `npm run short:hand`. None due today (all on YouTube already).
-COPYRIGHT CLAIM (his screenshot, 11 Oct): F8qXq5Eq2XA (14039001 fuzzychloe vs lowkey, scheduled 12 Oct 19:00 UTC) —
+COPYRIGHT CLAIM (the operator's screenshot, 11 Oct): F8qXq5Eq2XA (14039001 fuzzychloe vs lowkey, scheduled 12 Oct 19:00 UTC) —
 Content ID, "Andrew in Drag" (The Magnetic Fields; Merlin/Secretly Distribution, UMG for Merge Records), 0:00–1:51, Copyright
 - Audio, "Potential earning limitation" only (no block, no strike). The song is in FUZZYCHLOE's stream audio (Groq
-transcript: the chorus, then her own talk); lowk3y_'s side is clean. Studio Content list read 11 Oct 12:5x: 1 of 55 videos
-has any restriction — this one. ASKED HIM: mute the song in Studio before it goes public (his call — an edit on the
+transcript: the chorus, then their own talk); lowk3y_'s side is clean. Studio Content list read 11 Oct 12:5x: 1 of 55 videos
+has any restriction — this one. ASKED THE OPERATOR: mute the song in Studio before it goes public (the operator's call — an edit on the
 channel), or leave it; and whether the worker should flag claims on scheduled uploads in Needs you.
-WAITING ON HIM: replace this morning's two automatic old-layout Shorts (mwejhZG5t1c 14074713 → 13 Oct 17:00 UTC;
-KMN8pCKWNVY 14074004 → 14 Oct 13:00 UTC) with hand-made ones? = deleting two scheduled privates (his call). The claim above.
+WAITING ON THE OPERATOR: replace this morning's two automatic old-layout Shorts (mwejhZG5t1c 14074713 → 13 Oct 17:00 UTC;
+KMN8pCKWNVY 14074004 → 14 Oct 13:00 UTC) with hand-made ones? = deleting two scheduled privates (the operator's call). The claim above.
 CRONS (session-only; recreate if gone): 05:23 UTC morning cycle (job 376be942 — /needs + /ypp, NEVER report --dry-run: it
 carries viewer comment text; then the hand Shorts), 18:17 UTC evening check (bbbb9a98). On 14 Oct evening: the final
 branded report.
