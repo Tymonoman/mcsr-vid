@@ -34,6 +34,10 @@ green, tsc clean, restart-when-idle armed (waiting on 14074713's upload). Creato
 private-room practice, no ranked; only Grian has a ranked match (forfeited). After boot: PUT learnedDraw=true, creatorWatch=true
 + watchlist. .experiments.json: cadence-two-a-day slot entries [19,23] 16 Oct–15 Nov (x1's ended 15 Oct → would have
 dropped to 1/day); x4-record-pace render arms 17–24 Oct. Drafts: handbook/review-readiness-drafts.md.
+11 Oct 10:05: dashboard booted e76a3cb (09:46). LIVE: learnedDraw=true, creatorWatch=true, watchlist Grian/ludwigahgren/
+Couriway/rekrap2/Dream/xQcOW. First draw table (25 videos, median 1,950 first-week views): lowk3y_ 1.55, woofdoggo_ 1.55,
+Feinberg 1.39, silverrruns 1.31, doogile 1.11, Infume 1.00, v_strid 0.78, Pinne 0.33, bbiddd 0.15; proven pairs incl.
+Feinberg–Infume 3.12. Watch: 1 hit, Grian's old forfeit 13210754 (no Twitch VOD, not queued, no stray dir).
 VERDICT RISK: tests started 8–9 Oct may still be running on 14 Oct (Studio ends a test once it is sure, or at 14 days).
 In the 13 Oct morning cycle, read every test's state; the ledger records a finished test's winner and marks an unfinished one
 "running at the deadline", with Studio's interim numbers if the page shows them. Never mark a guess as a verdict.
