@@ -95,8 +95,12 @@ export interface StudioLedger {
   pickerEmptySeen: Record<string, string>;
   /** Short video id -> what it was linked to and when (11 Oct 2026) — `"already-linked"` marks
    *  this done too, the same "a fact true on the server is done regardless of who set it" rule
-   *  `endScreens` already keeps, so a Short linked by hand is never re-opened to check. */
-  relatedLinks: Record<string, { at: string; matchId: number; longFormVideoId: string }>;
+   *  `endScreens` already keeps, so a Short linked by hand is never re-opened to check.
+   *  `longFormVideoId` is only ever the real target when *this* worker did the linking
+   *  (`"linked"`): `"already-linked"` only confirms the field is non-empty, never that it names
+   *  our own match's long-form, so that branch records `null` rather than assert an unverified
+   *  value (silent-failure review, 11 Oct 2026). */
+  relatedLinks: Record<string, { at: string; matchId: number; longFormVideoId: string | null }>;
   /** Same "once a UTC day" shape as `pickerEmptySeen`, for a Short whose search came back
    *  `"picker-empty"` or `"not-found"` this day. */
   relatedRetrySeen: Record<string, string>;
@@ -156,7 +160,7 @@ export async function markPickerEmptySeen(videoId: string, now: Date = new Date(
 export async function markRelatedLinkDone(
   shortVideoId: string,
   matchId: number,
-  longFormVideoId: string,
+  longFormVideoId: string | null,
 ): Promise<void> {
   const ledger = await readLedger();
   ledger.relatedLinks[shortVideoId] = { at: new Date().toISOString(), matchId, longFormVideoId };
@@ -806,7 +810,10 @@ export async function runCycle(
         continue;
       }
       if (outcome === "already-linked") {
-        await markRelatedLinkDone(target.shortVideoId, target.matchId, target.longFormVideoId);
+        // `linkRelatedVideo` only confirmed the field is non-empty, never that it names this
+        // match's own long-form — don't assert an unverified id (silent-failure review, 11 Oct
+        // 2026). It still never re-opens the picker for this Short (same rule as `endScreens`).
+        await markRelatedLinkDone(target.shortVideoId, target.matchId, null);
       } else if (outcome === "linked" && !opts.dryRun) {
         await markRelatedLinkDone(target.shortVideoId, target.matchId, target.longFormVideoId);
         relatedLinksAdded++;

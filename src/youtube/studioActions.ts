@@ -590,12 +590,13 @@ export async function linkRelatedVideo(
     });
     await randomPause();
 
-    const current = await page
-      .locator(SELECTORS.relatedVideoValue)
-      .first()
-      .innerText()
-      .catch(() => "");
-    if (current.trim() && !/^none$/i.test(current.trim())) return "already-linked";
+    // No `.catch(() => "")` here on purpose (silent-failure review, 11 Oct 2026): a failed read
+    // of this field must never be treated as "nothing linked yet" — that would fall through to
+    // opening the picker and pressing the real page Save below, overwriting whatever was actually
+    // set. A genuine read failure throws and the outer try/catch turns it into `{error: ...}`, so
+    // the worker logs it and retries a later cycle instead of silently clicking past it.
+    const current = (await page.locator(SELECTORS.relatedVideoValue).first().innerText()).trim();
+    if (current && !/^none$/i.test(current)) return "already-linked";
 
     await page.locator(SELECTORS.relatedVideoTrigger).click();
     await page.locator(SELECTORS.endscreenPickerDialog).waitFor({ state: "visible", timeout: 15_000 });
