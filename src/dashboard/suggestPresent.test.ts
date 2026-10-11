@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { config, DEFAULTS } from "../config.js";
 import type { MatchMetrics } from "../pipeline/matchScore.js";
+import type { DrawLearned } from "./drawLearn.js";
 import { nightlyEligible, pickNightlyCandidate } from "./nightly.js";
 import { refreshPairPosts, type PairPost } from "./pairPosts.js";
 import { factsLine, orderForDisplay, presentSuggestions, storyLine } from "./suggestPresent.js";
@@ -674,4 +675,73 @@ const order = (
   config.pairRepeatDays = 3;
 
   console.log("OK: a pair the channel just put out counts for half, softly");
+}
+
+// --- learnedDraw and recordPaceBoostSec (11 Oct 2026): both off by default, so every assertion
+// above already pins "undefined learned/null boost is byte for byte" by never passing them. Here,
+// on: a learned draw and a near-record finish each reorder inside a tier, same as the favourites
+// bonus and the repeat demotion already do, and `orderForDisplay` agrees with the cards either
+// way. `favourites`/`posted` are passed explicitly as `[]` throughout, rather than left at their
+// live-snapshot defaults: an earlier block above left `ccc`+`ddd` in the real pairPosts snapshot
+// as a posted pair, which would otherwise halve one of these fixtures by surprise.
+{
+  // Two unmeasured, unfollowed pairs tie on audience (both the UNMEASURED_DRAW floor) and fall to
+  // popularity: the more popular one wins without either setting.
+  const quieter = suggestion({ popularity: 10, dateSec: daysAgo(2) }, { matchId: 601, players: ["aaa", "bbb"] });
+  const louder = suggestion({ popularity: 50, dateSec: daysAgo(2) }, { matchId: 602, players: ["ccc", "ddd"] });
+  assert.deepEqual(
+    presentSuggestions([quieter, louder], NOW, [], [], []).map((c) => c.matchId),
+    [602, 601],
+    "off: the tie falls to popularity",
+  );
+
+  // A learned draw for "aaa" (no DEFAULT_DRAW entry, no followers) outweighs the popularity gap.
+  const learned: DrawLearned = {
+    computedAt: NOW,
+    channelMedian: 100,
+    players: { aaa: { draw: 3, n: 5 } },
+    pairs: {},
+    videoViews: {},
+  };
+  assert.deepEqual(
+    presentSuggestions([quieter, louder], NOW, [], [], [], undefined, learned).map((c) => c.matchId),
+    [601, 602],
+    "on: the learned draw outranks the quieter pair's own popularity",
+  );
+  assert.deepEqual(
+    orderForDisplay([quieter, louder], NOW, [], [], [], undefined, learned).map((s) => s.metrics.matchId),
+    [601, 602],
+    "orderForDisplay agrees",
+  );
+
+  // Same shape, for the record-pace boost: a fast finish beats a slower, more popular match once
+  // the boost is on, and does nothing while it is off (null, the default).
+  const fastFinish = suggestion(
+    { popularity: 10, dateSec: daysAgo(2) },
+    { matchId: 603, players: ["eee", "fff"], resultMs: 400_000 },
+  );
+  const slowerBigger = suggestion(
+    { popularity: 50, dateSec: daysAgo(2) },
+    { matchId: 604, players: ["ggg", "hhh"], resultMs: 700_000 },
+  );
+  assert.deepEqual(
+    presentSuggestions([fastFinish, slowerBigger], NOW, [], [], []).map((c) => c.matchId),
+    [604, 603],
+    "off (null): the tie still falls to popularity",
+  );
+  assert.deepEqual(
+    presentSuggestions([fastFinish, slowerBigger], NOW, [], [], [], undefined, null, 420).map(
+      (c) => c.matchId,
+    ),
+    [603, 604],
+    "on: the sub-7:00 finish outranks the slower, more popular match",
+  );
+  assert.deepEqual(
+    orderForDisplay([fastFinish, slowerBigger], NOW, [], [], [], undefined, null, 420).map(
+      (s) => s.metrics.matchId,
+    ),
+    [603, 604],
+    "orderForDisplay agrees",
+  );
+  console.log("OK: a learned draw and a near-record finish each reorder inside a tier, off by default");
 }
