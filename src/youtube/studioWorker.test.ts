@@ -8,7 +8,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { config } from "../config.js";
 import type { StudioHandle } from "./studioBrowser.js";
-import { pickStarterLayoutLabel, startTestAndCompare, STARTER_LAYOUT_PREFERENCE } from "./studioActions.js";
+import {
+  parseTcReport,
+  pickStarterLayoutLabel,
+  startTestAndCompare,
+  STARTER_LAYOUT_PREFERENCE,
+} from "./studioActions.js";
 import type { Experiment } from "./studioExperiments.js";
 import {
   inBlackoutWindow,
@@ -641,6 +646,78 @@ config.mediaDir = media;
   console.log(
     "OK: setExperimentChecked promotes planned->running on first sight of a live test, keeps start stable, and still reaches done",
   );
+}
+
+// --- parseTcReport + setExperimentChecked on a finished test (11 Oct 2026) ----------------------
+// The real report text of the first finished test (_2EOkOOX0PQ, the Grand Finals title test): the
+// first build looked for "winner" in the title box, which says "Results ready", and never saw it end.
+{
+  const GF = [
+    "Title only",
+    "A/B Test report",
+    "We have a winner!",
+    "35:46",
+    "IT ALL COMES DOWN TO THE END | lowkey vs Infume | MCSR Ranked Season 11 Playoffs | Grand Finals",
+    "MCSR Replayoffs",
+    "Now visible to all viewers",
+    "62.1%",
+    "Watch time share",
+    "Winner",
+    "35:46",
+    "A SUB-9 TO WIN IT | lowkey vs Infume | MCSR Ranked Season 11 Playoffs | Grand Finals",
+    "MCSR Replayoffs",
+    "37.9%",
+    "Watch time share",
+    "Set this option",
+    "Test finished. Ran from October 8, 2026 at 11:00 PM to October 11, 2026 at 11:31 AM.",
+    "New test",
+    "Done",
+  ].join("\n");
+  const r = parseTcReport(GF);
+  assert.equal(r.done, true);
+  assert.deepEqual(r.shares, [62.1, 37.9]);
+  assert.equal(r.winnerSlot, 1);
+  assert.match(r.titles?.[1] ?? "", /^A SUB-9 TO WIN IT/);
+  assert.equal(parseTcReport("A/B Testing titles\nResults ready\nView test report").done, true);
+  assert.equal(parseTcReport("A/B Testing titles\nRunning…\nView test report").done, false);
+  assert.equal(parseTcReport("A/B Test report\nTest running…\n29.2%\nWatch time share").done, false);
+  // The two winner marks disagreeing (a layout never seen) gives no winner rather than a wrong one.
+  assert.equal(
+    parseTcReport(
+      GF.replace("Now visible to all viewers\n62.1%", "62.1%").replace(
+        "37.9%",
+        "Now visible to all viewers\n37.9%",
+      ),
+    ).winnerSlot,
+    undefined,
+  );
+
+  const expId = "tc-title-gf-shape";
+  await updateTcExperiments((tc) => [
+    ...tc,
+    {
+      id: expId,
+      kind: "tc",
+      variable: "title",
+      // Arms deliberately in the opposite order to the report: the titles must name the arm.
+      arms: [
+        { name: "challenger1", settings: { title: r.titles![1] } },
+        { name: "control", settings: { title: r.titles![0] } },
+      ],
+      videos: [{ videoId: "vidGF", matchId: 1, arm: "tc" }],
+      status: "running",
+    },
+  ]);
+  await setExperimentChecked(expId, { state: "done", raw: GF, ...r });
+  const done = (await readExperiments()).experiments.find((e) => e.id === expId);
+  assert.equal(done?.status, "done");
+  assert.deepEqual((done?.result as { watchTimeShare?: object }).watchTimeShare, {
+    control: 62.1,
+    challenger1: 37.9,
+  });
+  assert.equal((done?.result as { winner?: string }).winner, "control");
+  assert.equal(done?.verdict, "control wins: 62.1% vs 37.9% watch time share");
+  console.log("OK: a finished test's report is read for its shares and its winning arm, by title");
 }
 
 // --- pickStarterLayoutLabel: end-screen starter-layout preference (phase 4, 8 Oct 2026) --------

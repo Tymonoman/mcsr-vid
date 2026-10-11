@@ -819,15 +819,71 @@ export interface TcReadResult {
   state: "running" | "done" | "none";
   winner?: string;
   raw: string;
+  /** Watch time share per variant, in the report's order (slot 1 = the live one before the test). */
+  shares?: number[];
+  /** 1-based slot of the variant Studio marked the winner, when the report says so unambiguously. */
+  winnerSlot?: number;
+  /** A title test's variant titles, in the report's order. */
+  titles?: string[];
 }
 
 /**
- * Reads a video's A/B Testing dialog. Only `"none"` (the plain "set up a new test" form, the one
- * state this exploration actually saw live) is confident; `"running"` is everything else, and
- * `"done"` is a best-effort guess at the word "winner" showing up once the set-up chips are gone
- * — unconfirmed, because no test ever ran long enough here to see either layout. `raw` is always
- * the dialog's own text, so a human can read what the heuristic could not classify. Never sets a
- * winner itself: the worker that calls this only ever records YouTube's own (`src/youtube/studioWorker.ts`).
+ * Reads a finished test's "A/B Test report" text (confirmed live 11 Oct 2026 on _2EOkOOX0PQ, the
+ * only finished report seen yet): "We have a winner!" … per variant "<m:ss>", "<title>", the
+ * channel, "Now visible to all viewers" on the live one, "62.1%", "Watch time share", "Winner"
+ * after the winner's share … "Test finished. Ran from …". A winner is taken only when the "Winner"
+ * line and the "Now visible" line (YouTube applies the winner) agree, or one of them is missing.
+ * ponytail: one report seen, with the winner in slot 1; if a slot-2 win lays out differently the
+ * two marks disagree and this returns no winnerSlot rather than a wrong one.
+ */
+export function parseTcReport(text: string): Pick<TcReadResult, "shares" | "winnerSlot" | "titles"> & {
+  done: boolean;
+} {
+  const lines = text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const shares: number[] = [];
+  const titles: string[] = [];
+  let winnerMark: number | undefined;
+  let visibleMark: number | undefined;
+  for (let i = 0; i < lines.length; i++) {
+    const share = /^(\d+(?:\.\d+)?)%$/.exec(lines[i]);
+    if (share && /^watch time share$/i.test(lines[i + 1] ?? "")) shares.push(Number(share[1]));
+    else if (/^winner$/i.test(lines[i]) && shares.length) winnerMark = shares.length;
+    else if (/^now visible to all viewers$/i.test(lines[i])) visibleMark = shares.length + 1;
+    else if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(lines[i]) && lines[i + 1]) titles.push(lines[i + 1]);
+  }
+  const agree = winnerMark === undefined || visibleMark === undefined || winnerMark === visibleMark;
+  const winnerSlot = agree ? (winnerMark ?? visibleMark) : undefined;
+  return {
+    done: /test finished|we have a winner|results ready/i.test(text),
+    shares,
+    ...(winnerSlot !== undefined && winnerSlot <= shares.length ? { winnerSlot } : {}),
+    ...(titles.length ? { titles } : {}),
+  };
+}
+
+function doneFromReport(report: string, fallbackRaw: string): TcReadResult {
+  const { shares, winnerSlot, titles } = parseTcReport(report);
+  return {
+    state: "done",
+    raw: report || fallbackRaw,
+    ...(shares?.length ? { shares } : {}),
+    ...(winnerSlot !== undefined
+      ? { winnerSlot, winner: titles?.[winnerSlot - 1] ?? `variant ${winnerSlot}` }
+      : {}),
+    ...(titles ? { titles } : {}),
+  };
+}
+
+/**
+ * Reads a video's A/B Testing state. `"none"` is the plain "set up a new test" form; `"done"` is
+ * Studio's own "Results ready"/"Test finished" (confirmed live 11 Oct 2026 — the first build guessed
+ * at the word "winner" in the title box and never saw the GF title test finish), read with the
+ * report's watch-time shares; `"running"` is everything else. `raw` is always the text read, so a
+ * human can check what was classified. Never sets a winner itself: YouTube applies its own, and the
+ * worker that calls this only records it (`src/youtube/studioWorker.ts`).
  */
 export async function readTestAndCompare(
   handle: StudioHandle,
@@ -850,11 +906,22 @@ export async function readTestAndCompare(
       .innerText({ timeout: 10_000 })
       .catch(() => "");
     if (/A\/B Testing titles/i.test(titleBox)) {
-      const winnerMatch = /winner[^.\n]*/i.exec(titleBox);
-      if (winnerMatch) return { state: "done", winner: winnerMatch[0].trim(), raw: titleBox };
-      // Anything else — "Running…" or a finished form never seen yet — stays "running" and is read
-      // again tomorrow, with the raw text kept, rather than closing a test on a guess.
-      return { state: "running", raw: titleBox };
+      if (!parseTcReport(titleBox).done) return { state: "running", raw: titleBox };
+      // Finished: "A/B Testing titles · Results ready · View test report". The numbers are in the
+      // report dialog that link opens. Unreadable, it is still done — the shares are just missing.
+      const report = await (async () => {
+        await page
+          .locator("ytcp-video-title a, ytcp-video-title button, ytcp-video-title [role=button]", {
+            hasText: /test report/i,
+          })
+          .first()
+          .click({ timeout: 10_000 });
+        const dialog = page.locator("tp-yt-paper-dialog", { hasText: /watch time share/i }).first();
+        const text = await dialog.innerText({ timeout: 15_000 });
+        await page.keyboard.press("Escape").catch(() => {});
+        return text;
+      })().catch(() => "");
+      return doneFromReport(report, titleBox);
     }
 
     await page.locator(SELECTORS.abTestButton).click();
@@ -876,8 +943,7 @@ export async function readTestAndCompare(
       .catch(() => {});
 
     if (hasChips) return { state: "none", raw };
-    const winnerMatch = /winner[^.\n]*/i.exec(raw);
-    if (winnerMatch) return { state: "done", winner: winnerMatch[0].trim(), raw };
+    if (parseTcReport(raw).done) return doneFromReport(raw, raw);
     return { state: "running", raw };
   } catch (err) {
     return { error: describeError(err) };

@@ -308,7 +308,10 @@ try {
         } else if (s === "running") {
           root.innerHTML = '<div><span>A/B Testing</span><button aria-label="Close" onclick="closeDialog()">Close</button><p>Your test is live. Check back later.</p></div>';
         } else {
-          root.innerHTML = '<div><span>A/B Testing</span><button aria-label="Close" onclick="closeDialog()">Close</button><p>Winner: Thumbnail 2 was applied automatically.</p></div>';
+          // The finished report's shape, as read live on _2EOkOOX0PQ (11 Oct 2026), for a thumbnail test.
+          root.innerHTML = '<div><span>A/B Test report</span><button aria-label="Close" onclick="closeDialog()">Close</button>' +
+            '<p>We have a winner!</p><p>41.5%</p><p>Watch time share</p><p>Now visible to all viewers</p><p>58.5%</p><p>Watch time share</p><p>Winner</p>' +
+            '<p>Test finished. Ran from October 8, 2026 to October 11, 2026.</p></div>';
         }
       }
       function selectChip(kind) {
@@ -539,7 +542,8 @@ try {
   uiState.abTest = "done";
   const readDone = await readTestAndCompare(handle, "vidT1");
   assert.equal((readDone as { state: string }).state, "done");
-  assert.match((readDone as { winner?: string }).winner ?? "", /Thumbnail 2/);
+  assert.deepEqual((readDone as { shares?: number[] }).shares, [41.5, 58.5]);
+  assert.equal((readDone as { winnerSlot?: number }).winnerSlot, 2);
   console.log(
     'OK: readTestAndCompare reads "none" confidently and "running"/"done" as its documented best effort',
   );

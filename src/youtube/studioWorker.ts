@@ -514,14 +514,39 @@ export async function setExperimentChecked(id: string, read: TcReadResult): Prom
       if (e.id !== id) return e;
       if (read.state !== "done")
         return { ...e, status: "running", start: e.start ?? checkedAt, result: { checkedAt, raw: read.raw } };
+      // The report lists variants in slot order (slot 1 = control); a title test's own titles
+      // name the arm outright when they match, so a reordered report cannot credit the wrong arm.
+      const armOf = (slot: number) =>
+        e.arms.find((a) => {
+          const title = (a.settings as { title?: string } | undefined)?.title;
+          return title !== undefined && title === read.titles?.[slot - 1];
+        })?.name ??
+        e.arms[slot - 1]?.name ??
+        `variant ${slot}`;
+      const shares = read.shares ?? [];
+      const watchTimeShare = Object.fromEntries(shares.map((s, i) => [armOf(i + 1), s]));
+      const winner = read.winnerSlot ? armOf(read.winnerSlot) : undefined;
+      const split = shares.map((s) => `${s}%`).join(" vs ");
       return {
         ...e,
         status: "done",
         end: checkedAt,
         // YouTube's own winner is the live title/thumbnail it already applied — this never sets
         // one by hand, only records what `readTestAndCompare` read off the real page.
-        result: { checkedAt, winner: read.winner, raw: read.raw },
-        verdict: read.winner ? `YouTube applied: ${read.winner}` : "done (no winner text read)",
+        result: {
+          checkedAt,
+          winner: winner ?? read.winner,
+          ...(read.winnerSlot && read.titles ? { winnerTitle: read.titles[read.winnerSlot - 1] } : {}),
+          ...(shares.length ? { watchTimeShare } : {}),
+          raw: read.raw,
+        },
+        verdict: winner
+          ? `${winner} wins: ${split} watch time share`
+          : read.winner
+            ? `YouTube applied: ${read.winner}`
+            : shares.length
+              ? `finished, no winner read: ${split} watch time share`
+              : "done (no winner text read)",
       };
     }),
   );
