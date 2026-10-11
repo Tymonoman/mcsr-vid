@@ -29,6 +29,11 @@ a question) → job tmp/shorts/14074004/hand-short-v2.mp4, sent to him, NOT uplo
 views. Write-up: handbook/knowledge/shorts-rethink-2026-10-11.md. Next: his feedback, then 3 more by hand; no automation.
 Ideas 9/10 of the plan (Short delay, cliffhanger Shorts) are ON HOLD behind the rethink. Building ideas 1+7 and 2 now
 (workflow full-ypp-build: branches learned-draw, creator-watch) — merge, test, restart-when-idle, then schedule as tests.
+11 Oct 09:45: MERGED 9da0e68 (learned-draw: drawLearn.ts + recordPaceBoostSec; creator-watch: creatorWatch.ts), unit 99/99
+green, tsc clean, restart-when-idle armed (waiting on 14074713's upload). Creator check: Ludwig/Couriway/Rekrap2 have only
+private-room practice, no ranked; only Grian has a ranked match (forfeited). After boot: PUT learnedDraw=true, creatorWatch=true
++ watchlist. .experiments.json: cadence-two-a-day slot entries [19,23] 16 Oct–15 Nov (x1's ended 15 Oct → would have
+dropped to 1/day); x4-record-pace render arms 17–24 Oct. Drafts: handbook/review-readiness-drafts.md.
 VERDICT RISK: tests started 8–9 Oct may still be running on 14 Oct (Studio ends a test once it is sure, or at 14 days).
 In the 13 Oct morning cycle, read every test's state; the ledger records a finished test's winner and marks an unfinished one
 "running at the deadline", with Studio's interim numbers if the page shows them. Never mark a guess as a verdict.

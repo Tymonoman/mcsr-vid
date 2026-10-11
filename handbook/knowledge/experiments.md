@@ -115,7 +115,14 @@ any video that already has one (his 8 custom ones included).
 
 ## Decisions
 
-(none yet)
+- **11 Oct 2026 — two long-forms a day continue after x1 (16 Oct–15 Nov).** x1's slot entries ended on 15 Oct, and
+  with no slot entry a date falls back to the single `publishHourUtc` slot while `nightlyMaxRenders` 2 keeps
+  rendering two a night — a backlog of one video a day. The plan for the full tier says to keep two a day (it also
+  carries the watch hours past 8,000 by mid-December), so `.experiments.json` now has a `cadence-two-a-day` slot
+  entry (`rankedHoursUtc: [19, 23]`) for every date 16 Oct–15 Nov. It is data, not an experiment: no experiment has
+  that id, so nothing enrols into it. Revisit by 15 Nov.
+- **11 Oct 2026 — x4-record-pace scheduled** (render arms 17–24 Oct, `recordPaceBoostSec` 480 vs null, metric CTR,
+  `adoptWinner: false`): idea 7 of the full-tier plan, merged default-off in `9da0e68`.
 
 ## Earlier reads this builds on
 
