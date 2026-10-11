@@ -43,6 +43,12 @@ Short TN0_s3y0HH8 (Infume vs bbiddd) is PUBLIC but its long-form Edj_-c7lK38 no 
 (told the operator). Worker supervisor restarted 13:51 on cd456bb (related-link + A/B reader live); it links the two new
 hand-made Shorts (mumhR7l_E-I → 13 Oct 17:00, x-N2Ssg5jEI → 14 Oct 13:00 UTC, both uploaded 13:48) itself.
 WAITING ON THE OPERATOR: the claim above.
+FINAL REPORT PREP (11 Oct 14:22): `npx tsx /home/node/.claude/jobs/8d7d95a1/tmp/final/week.mts` writes tmp/final/week.json —
+baseline 30 Sept–6 Oct vs the goal week 8 Oct→last Analytics day (net subs/day, views, hours), live subs, ETAs, tc counts +
+verdicts, between experiments. NOTE: with all 7 days in, the baseline week reads 25 net = 3.57/day (the goal's 4.0/day was
+6 of 7 days on 7 Oct) — the report shows both and keeps 14 May 2027 as the goal's baseline date. Today: 141 subs, 3.08/day
+over 28 days → ~17 Jul 2027; 7-day net +19 through 8 Oct (−42% vs the week before). Owner of the operator's checklist page:
+https://claude.ai/artifact/PGJbLBr9NmuyV1KyjypVYM (what only he can do; 5 calls waiting).
 CRONS (session-only; recreate if gone): 05:23 UTC morning cycle (job 376be942 — /needs + /ypp, NEVER report --dry-run: it
 carries viewer comment text; then the hand Shorts), 18:17 UTC evening check (bbbb9a98). On 14 Oct evening: the final
 branded report.
