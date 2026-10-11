@@ -1,5 +1,32 @@
 # TASKS — resume point (updated 24 Sept 2026 08:15 UTC)
 
+## ▶ RESUME HERE (11 Oct 2026 ~11:50 UTC, before a /compact) — WEEK GOAL ACTIVE (ends 14 Oct), TARGET = FULL YPP
+TARGET: the full tier, 1,000 subs (the operator, 10 Oct: "we only focus on hitting the full ypp"); 136 subs at ~3.1/day →
+~18 Jul 2027; baseline 4.0/day → ~14 May 2027 (the 14 Oct final report compares these). After 1 Feb 2027 it needs 8,000 h
+(passed ~16 Dec at ~82 h/day). Bot /ypp + morning line lead with the full tier (234b5ae).
+HIS DECISIONS TODAY: NO runner DMs, ever (no consent round). "you're gonna make the shorts from now on" + "we need more of
+our branding on it". He liked the hand-made Short ("the short is amazing").
+DONE TODAY: ideas page https://claude.ai/artifact/ADK2WTTzP732w87GgpwXzC (v3: no DMs); LIVE learnedDraw + creatorWatch
+(watchlist Grian/ludwigahgren/Couriway/rekrap2/Dream/xQcOW; only Grian has ranked); x4-record-pace render arms 17–24 Oct;
+cadence-two-a-day slot entries 16 Oct–15 Nov (x1's ended 15 Oct); Studio browser switched to MCSR Replayoffs (the switcher
+entry opens a confirm dialog — press "Got it"; held across restart; Related-video picker now returns rows); hand-made Short
+tool scripts/hand-short/build.py (spec JSON → branded Short; --words for caption timings; spec example
+tmp/shorts/specs/14074004.json; v4 = tmp/shorts/14074004/hand-short-v4.mp4, sent to him); first A/B verdict: GF title test
+_2EOkOOX0PQ control 62.1% vs "A SUB-9 TO WIN IT" 37.9% → report https://claude.ai/artifact/JvmQuiz5RX4bhRAE1599Tn, ledger
+done, experiments.md Decisions.
+IN FLIGHT: workflow wxk5zgat1 (wf_d7ab5252-9b0) — branches hand-shorts (shortsByHand setting + `npm run short:hand --
+<id> <mp4> --hook … --from … --to … --pov …` + chain waits for the hand Short without delaying the long-form) and
+related-link (linkRelatedVideo + worker loop + `npm run studio -- link-related`). WHEN IT LANDS: review the fix notes, merge
+both (expect conflicts in CLAUDE.md/config/settings/studioActions), npm run test:unit + tsc, POST /api/restart-when-idle,
+then PUT /api/settings {"shortsByHand": true}; then FIX readTestAndCompare: "Results ready" in the title box = done (and
+parse the report's watch-time shares); then update the 05:23 morning cron to make the night's 2 Shorts by hand (watch:
+11 contact sheets of final-<id>.mp4 at 1 frame/5 s + short-watch-*/report.md transcripts + the model's pick as a hint;
+measure the face cam on a full-res frame; spec → build.py → check beats → short:hand).
+WAITING ON HIM: replace this morning's two automatic old-layout Shorts (mwejhZG5t1c 14074713 → 13 Oct 17:00 UTC;
+KMN8pCKWNVY 14074004 → 14 Oct 13:00 UTC) with hand-made ones? = deleting two scheduled privates (his call).
+CRONS (session-only; recreate if gone): 05:23 UTC morning cycle (job aeb777cf — uses /needs + /ypp, NEVER report --dry-run:
+it carries viewer comment text), 18:17 UTC evening check (bbbb9a98). On 14 Oct evening: the final branded report.
+
 ## ▶ RESUME HERE (9 Oct 2026 ~11:35 UTC, before a /compact) — THE WEEK GOAL IS ACTIVE (/goal, ends 14 Oct)
 /goal: "By 14 Oct: every day's uploads scheduled without the operator; Test & Compare on ≥10 videos with verdicts in the
 ledger; final report shows the YPP ETA vs the 30 Sept–6 Oct baseline; all merged to main with tests green".
