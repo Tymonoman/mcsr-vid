@@ -191,7 +191,11 @@ export async function creatorWatchTick(
     const queued = new Set(nightlyQueue());
     for (const m of feed) {
       if (!isWatchCandidate(m, { seen, processed, hidden, queued })) continue;
-      seen.add(m.id); // resolved below, once — never re-evaluated by a later tick
+      // ponytail: resolved below, once, however it comes out — a VOD-less or cap-missed match is
+      // never retried by a later tick. Good enough while hits are rare; if a real miss (a VOD that
+      // shows up late, or the cap freeing up the same night) ever needs a second look, read this
+      // against a short TTL instead of "ever".
+      seen.add(m.id);
       changed = true;
       const players = m.players.map((p) => p.nickname).join(" vs ");
 
