@@ -38,6 +38,7 @@ import {
   seriesOutputPath,
   type SeriesRecord,
 } from "../playoffs/series.js";
+import { readHandShort, WAITING_FOR_HAND_SHORT, type HandShort } from "../shorts/handShort.js";
 import { reasonerConfigured } from "../shorts/reasoner.js";
 import {
   buildShortHook,
@@ -272,6 +273,9 @@ export const picksRunning = (): boolean => pickingNow !== null || queued.size > 
  * does not move the match clock the window is in).
  */
 export function ensurePick(matchId: number): Promise<void> | null {
+  // Hand mode: the session cuts the Short itself, outside the pipeline — a model watch would be
+  // 80–140k tokens spent on a window nothing ever renders.
+  if (config.shortsByHand) return null;
   const dir = matchDir(matchId);
   if (existsSync(pickFile(dir, matchId)) || pickActivity(matchId) || readStatus(matchId).noShort) return null;
   if (existsSync(path.join(dir, "youtube-short.json"))) return null;
@@ -298,11 +302,19 @@ async function onChannel(matchId: number, kind: UploadKind): Promise<OnChannel |
   return ticked ? { videoId: null, publishAt: null, privacyStatus: null } : null;
 }
 
-const readJson = <T>(file: string): Promise<T | null> =>
-  readFile(file, "utf8").then(
-    (text) => JSON.parse(text) as T,
-    () => null,
-  );
+// `.then`'s second argument only catches readFile's own rejection (missing file, no permission) —
+// never a throw from JSON.parse inside the fulfillment handler, which rejects the returned
+// promise same as any other uncaught throw. A truncated pick.json/pick-error.json (a kill
+// mid-write, same shape as the hand-mode review's readHandShort finding) would otherwise throw
+// out of factsOf and, through it, every Promise.all over every match — GET /api/matches,
+// nightlyShortSummary, shortTick's own loop.
+async function readJson<T>(file: string): Promise<T | null> {
+  try {
+    return JSON.parse(await readFile(file, "utf8")) as T;
+  } catch {
+    return null;
+  }
+}
 
 /** The hook half of a title line: everything before the first separator, or null for a placeholder. */
 const hookOf = (line: string | undefined): string | null => {
@@ -321,6 +333,9 @@ interface Facts {
   shortHook: string | null;
   noShort: boolean;
   cut: ShortCut | null;
+  /** `short-<id>.hand.json` (`config.shortsByHand`) — read regardless of the setting, so a hand
+   *  Short built while it was on survives it being switched off again. */
+  hand: HandShort | null;
   shortFile: boolean;
   video: OnChannel | null;
   short: OnChannel | null;
@@ -345,6 +360,7 @@ async function factsOf(matchId: number): Promise<Facts> {
     shortHook: await readShortHook(dir, matchId),
     noShort: status.noShort === true,
     cut: await readShortCut(dir, matchId),
+    hand: await readHandShort(dir, matchId),
     shortFile: existsSync(path.join(dir, `short-${matchId}.mp4`)),
     video,
     short: await onChannel(matchId, "short"),
@@ -362,6 +378,14 @@ const shortCurrent = (f: Facts): boolean =>
   f.cut.hook === f.shortHook &&
   f.pick !== null &&
   f.cut.pickCreatedAt === f.pick.createdAt;
+
+/**
+ * Whether the Short on disk is the one to upload: in hand mode (`config.shortsByHand`) the hand
+ * file and its mp4 are the whole bookkeeping — no pick or hook to match, since nothing here cut
+ * it — so the chain must never try to "render" (re-cut) over a hand-made Short.
+ */
+const shortIsReady = (f: Facts): boolean =>
+  config.shortsByHand ? f.shortFile && f.hand !== null : shortCurrent(f);
 
 const uploadsOn = (): boolean => config.youtubeUploadEnabled && config.nightlyUpload !== "off";
 
@@ -434,9 +458,14 @@ function stateOf(matchId: number, f: Facts, nowMs = Date.now()): { state: ShortS
     };
   }
   // Saved, nothing running, not all up: between steps, or a step a restart cut short.
-  return f.noShort || f.short || shortCurrent(f)
+  return f.noShort || f.short || shortIsReady(f)
     ? { state: "uploading", detail: "waiting to upload" }
-    : { state: "rendering", detail: "waiting to cut the Short" };
+    : {
+        state: "rendering",
+        detail: config.shortsByHand
+          ? `${WAITING_FOR_HAND_SHORT} — npm run short:hand`
+          : "waiting to cut the Short",
+      };
 }
 
 /** What `GET /api/matches` adds to a row. Disk only — no API call per row. */
@@ -648,6 +677,7 @@ export async function shortPlan(
   const seriesGame = match !== null && (await seriesGameUnjoined(match, f.series));
   if (
     opts.queue &&
+    !config.shortsByHand &&
     f.exported &&
     !f.pick &&
     !f.noShort &&
@@ -687,6 +717,7 @@ export async function shortPlan(
     shortHook: f.shortHook,
     titleHook: f.titleHook,
     ...(f.noShort ? { noShort: true } : {}),
+    ...(config.shortsByHand ? { shortsByHand: true } : {}),
     ...(syncWeak(matchId, f) ? { syncWeak: true } : {}),
     suggestions,
     state,
@@ -1337,35 +1368,40 @@ async function advance(matchId: number, deps: ChainDeps): Promise<void> {
     const f = await factsOf(matchId);
     if (!hooksSaved(f)) return;
     const wantsShort = !f.noShort && f.short === null;
-    if (wantsShort && !f.pick) {
-      did = true;
-      const ok = await runStep(matchId, "pick", async () => {
-        // The model watches the finished video: picking without one would pin the heuristic's
-        // window under the saved hook, where the daily retry never replaces it.
-        if (!f.exported) return NOT_EXPORTED;
-        await deps.pick(matchId);
-        if (existsSync(pickFile(f.dir, matchId))) return null;
-        const error =
-          (await readJson<{ message: string }>(pickErrorFile(f.dir, matchId)))?.message ??
-          "no pick came back — press Pick again";
-        shortLog(matchId, "chain", `no pick to cut: ${error}`, { level: "error" });
-        return error;
-      });
-      if (!ok) return;
-      continue;
-    }
-    if (wantsShort && !shortCurrent(f)) {
-      did = true;
-      if (f.shortFile && f.cut && f.cut.hook !== f.shortHook)
-        shortLog(
-          matchId,
-          "chain",
-          `the Short hook changed since the cut — cutting it again behind ${JSON.stringify(f.shortHook)}`,
-        );
-      else if (f.shortFile && f.cut && f.pick && f.cut.pickCreatedAt !== f.pick.createdAt)
-        shortLog(matchId, "chain", "a new pick came in since the cut — cutting the Short again");
-      if (!(await runStep(matchId, "render", () => deps.render(matchId)))) return;
-      continue;
+    // Hand mode (config.shortsByHand): the session cuts the Short itself, outside the pipeline —
+    // this chain never queues a pick or a render for it, and the long-form upload below runs
+    // without waiting on either (pick and render are the two steps skipped here).
+    if (!config.shortsByHand) {
+      if (wantsShort && !f.pick) {
+        did = true;
+        const ok = await runStep(matchId, "pick", async () => {
+          // The model watches the finished video: picking without one would pin the heuristic's
+          // window under the saved hook, where the daily retry never replaces it.
+          if (!f.exported) return NOT_EXPORTED;
+          await deps.pick(matchId);
+          if (existsSync(pickFile(f.dir, matchId))) return null;
+          const error =
+            (await readJson<{ message: string }>(pickErrorFile(f.dir, matchId)))?.message ??
+            "no pick came back — press Pick again";
+          shortLog(matchId, "chain", `no pick to cut: ${error}`, { level: "error" });
+          return error;
+        });
+        if (!ok) return;
+        continue;
+      }
+      if (wantsShort && !shortCurrent(f)) {
+        did = true;
+        if (f.shortFile && f.cut && f.cut.hook !== f.shortHook)
+          shortLog(
+            matchId,
+            "chain",
+            `the Short hook changed since the cut — cutting it again behind ${JSON.stringify(f.shortHook)}`,
+          );
+        else if (f.shortFile && f.cut && f.pick && f.cut.pickCreatedAt !== f.pick.createdAt)
+          shortLog(matchId, "chain", "a new pick came in since the cut — cutting the Short again");
+        if (!(await runStep(matchId, "render", () => deps.render(matchId)))) return;
+        continue;
+      }
     }
     if (!uploadsOn()) {
       shortLog(matchId, "chain", UPLOADS_OFF, { level: "warn" });
@@ -1380,6 +1416,14 @@ async function advance(matchId: number, deps: ChainDeps): Promise<void> {
       continue;
     }
     if (wantsShort) {
+      // Hand mode: nothing on disk tells this process the files have landed once this pass ends,
+      // so it is not a failure — a non-failed state on the upload-short step, no Needs-you noise
+      // — just a wait. `shortTick` nudges the chain again once the long-form is up and the Short
+      // still isn't, which is what notices the files once `npm run short:hand` writes them.
+      if (config.shortsByHand && !shortIsReady(f)) {
+        shortLog(matchId, "chain", `${WAITING_FOR_HAND_SHORT} — npm run short:hand`);
+        return;
+      }
       did = true;
       if (!(await runStep(matchId, "upload-short", () => uploadOne(matchId, "short", deps)))) return;
       continue;
@@ -1446,19 +1490,50 @@ export async function shortTick(deps: Partial<ChainDeps> = {}, nowMs = Date.now(
     const hidden = hiddenMatchIds();
     const retry: number[] = [];
     for (const id of listProcessedMatchIds()) {
-      const s = readStatus(id);
-      // A step recorded as running with no chain in this process: the process that ran it is gone.
-      const cut = Object.entries(s.steps).find(([, st]) => st?.state === "running")?.[0];
-      if (s.hooksSavedAt && !chains.has(id) && cut) {
-        shortLog(id, "chain", `resumed after a restart — the ${cut} step was cut short`, { level: "warn" });
-        void startChain(id, deps);
+      // One match's broken state (a corrupt JSON file, anything else factsOf can throw on) must
+      // not starve every match ordered after it — same treatment autoHooksTick's own loop got.
+      try {
+        const s = readStatus(id);
+        // A step recorded as running with no chain in this process: the process that ran it is gone.
+        const cut = Object.entries(s.steps).find(([, st]) => st?.state === "running")?.[0];
+        if (s.hooksSavedAt && !chains.has(id) && cut) {
+          shortLog(id, "chain", `resumed after a restart — the ${cut} step was cut short`, { level: "warn" });
+          void startChain(id, deps);
+        }
+        // Hand mode: a chain that stopped only because `npm run short:hand`'s files were not on
+        // disk yet has nothing to tell this process when they land — unlike a render or a pick,
+        // which end in a file this process itself just wrote. Nudge it every tick once the
+        // long-form is up, the Short still isn't, nothing has failed and no chain or save is
+        // already touching it; `advance()` is a cheap no-op when the files still aren't there.
+        if (
+          config.shortsByHand &&
+          s.hooksSavedAt &&
+          !s.noShort &&
+          !chains.has(id) &&
+          !saving.has(id) &&
+          !hidden.has(id)
+        ) {
+          const failed = Object.values(s.steps).some((st) => st?.state === "failed");
+          if (!failed) {
+            const f = await factsOf(id);
+            if (f.video && f.short === null) void startChain(id, deps);
+          }
+        }
+        const dir = matchDir(id);
+        // Hand mode never spends a model watch on a pick-retry — same reasoning as ensurePick.
+        if (
+          config.shortsByHand ||
+          hidden.has(id) ||
+          s.pickRetriedOn === utcDay(nowMs) ||
+          !existsSync(pickErrorFile(dir, id))
+        )
+          continue;
+        const f = await factsOf(id);
+        // A pick under a saved hook is the operator's: never replaced behind their back.
+        if (f.pick && !hooksSaved(f) && f.short === null && !pickActivity(id)) retry.push(id);
+      } catch (err) {
+        console.error(`shortTick #${id}: ${describeError(err)}`);
       }
-      const dir = matchDir(id);
-      if (hidden.has(id) || s.pickRetriedOn === utcDay(nowMs) || !existsSync(pickErrorFile(dir, id)))
-        continue;
-      const f = await factsOf(id);
-      // A pick under a saved hook is the operator's: never replaced behind their back.
-      if (f.pick && !hooksSaved(f) && f.short === null && !pickActivity(id)) retry.push(id);
     }
     for (const id of retry) {
       updateStatus(id, (s) => {

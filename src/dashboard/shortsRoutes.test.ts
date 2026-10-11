@@ -136,6 +136,32 @@ try {
     assert.equal(calls[0]!.status, 409);
   }
 
+  // Hand mode (config.shortsByHand, silent-failure review 11 Oct 2026): neither route was taught
+  // about it — "pick" would spend a model watch on a window nothing renders, and "render" would
+  // overwrite a hand-cut Short with a model one. Both refuse before doing anything, even with a
+  // saved hook and a pick already on disk (515151 has both, from the earlier block above).
+  {
+    config.shortsByHand = true;
+    try {
+      const before = spawned.length;
+      const { ctx: pickCtx, calls: pickCalls } = context();
+      // Refused before isExported is even checked: the gate above it would otherwise still let
+      // an already-exported match through to queuePick's real model watch.
+      await handleShortsRoute(req("POST"), res, ["", "shorts", "pick", "515151"], pickCtx);
+      assert.equal(pickCalls[0]!.status, 409);
+      assert.match((pickCalls[0]!.payload as { error: string }).error, /hand-made Short/);
+
+      const { ctx: renderCtx, calls: renderCalls } = context("{}");
+      await handleShortsRoute(req("POST"), res, ["", "shorts", "render", "515151"], renderCtx, { run });
+      assert.equal(renderCalls[0]!.status, 409);
+      assert.match((renderCalls[0]!.payload as { error: string }).error, /hand-made Short/);
+      assert.equal(spawned.length, before, "nothing spawned over a hand-cut Short");
+    } finally {
+      config.shortsByHand = false;
+    }
+    console.log("OK: hand mode refuses the pick and render routes outright");
+  }
+
   // The render's story in the Short log and its live line: what generateShort prints becomes the
   // activity's line and percent; the end is a line, a failure its words with the output as detail.
   {

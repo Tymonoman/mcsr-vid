@@ -168,6 +168,14 @@ export const SETTINGS: readonly SettingField[] = [
     unattended: true,
   },
   {
+    key: "shortsByHand",
+    label: "Cut Shorts by hand",
+    help: "The operator's own call, 11 Oct 2026: \"you're gonna make the shorts from now on.\" On, a match's Short never queues a model pick or a pipeline render — the long-form uploads at its slot on its own, and the Short uploads once `npm run short:hand` has written short-<id>.mp4 and short-<id>.hand.json. Off is today's pick → render → upload chain.",
+    kind: "boolean",
+    group: "Publishing",
+    unattended: true,
+  },
+  {
     key: "seriesPublishHourUtc",
     label: "Series publish hour (UTC)",
     help: "The slot a playoff series video takes, its own so it and the day's ranked match do not compete. 23:00 UTC is 19:00 on the US east coast.",

@@ -65,6 +65,7 @@
   "countdownTeaser": false,
   "explainMovesSec": null,
   "autoHooksAfterHours": null,
+  "shortsByHand": false,
   "nightlyRenderExport": true,
   "nightlyMaxRenders": 1,
   "nightlyNotifyUrl": "",
