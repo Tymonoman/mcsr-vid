@@ -4,7 +4,7 @@
 // fakes; the media directory is a scratch one.
 // Run: npx tsx src/dashboard/creatorWatch.test.ts
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { config } from "../config.js";
@@ -231,6 +231,126 @@ try {
   );
   assert.ok(!since.some((h) => h.matchId === 100), "the first day's hit is before the window");
   console.log("OK: creatorWatchSince filters to hits at or after the given instant");
+
+  /* --- Review fixes, 11 Oct 2026 ----------------------------------------------------------------- */
+
+  // #4 dueNicknames: a corrupted stored timestamp (not a parseable date) must count as due, not
+  // "not due forever" — NaN comparisons are always false, so this silently froze a nickname.
+  assert.deepEqual(
+    dueNicknames(["bad"], { bad: "not-a-date" }, now),
+    ["bad"],
+    "an unparseable stored timestamp must count as due",
+  );
+  console.log("OK: dueNicknames treats a corrupt stored timestamp as due, not stuck forever");
+
+  // #3 An unexpected feed shape inside the per-match loop (isWatchCandidate / the player-name
+  // mapping throwing) must not abort the whole tick — an earlier nickname's progress already
+  // made this same tick must still reach disk, and the bad entry is recorded with why rather than
+  // silently dropped or retried forever.
+  const shapeTime = Date.parse("2026-11-01T00:00:00Z");
+  config.creatorWatchlist = ["ShapeOk", "ShapeBad"];
+  feeds.ShapeOk = [feedMatch(810, "ShapeOk", "Whoever")];
+  vods[810] = true;
+  // Malformed on purpose — a shape no real FeedMatch has, simulating an API response this code
+  // did not expect; isWatchCandidate's own `m.players.map` throws on it.
+  feeds.ShapeBad = [{ ...feedMatch(811, "ShapeBad", "Whoever"), players: null } as unknown as FeedMatch];
+  await creatorWatchTick(shapeTime, deps);
+  const afterShape = readCreatorWatchState();
+  assert.equal(
+    afterShape.checked.ShapeOk,
+    new Date(shapeTime).toISOString(),
+    "ShapeOk's own checked timestamp landed despite ShapeBad throwing later in the same tick",
+  );
+  assert.ok(
+    afterShape.hits.some((h) => h.matchId === 810),
+    "ShapeOk's own hit (resolved before the bad one) survived — the tick's progress was written",
+  );
+  assert.ok(
+    afterShape.hits.some((h) => h.matchId === 811 && /could not evaluate/.test(h.reason ?? "")),
+    "the malformed entry is recorded with why, not silently dropped",
+  );
+  // And it does not recur: resolved once, ever, like every other miss.
+  await creatorWatchTick(shapeTime + CHECK_INTERVAL_MS, deps);
+  assert.equal(
+    readCreatorWatchState().hits.filter((h) => h.matchId === 811).length,
+    1,
+    "a malformed entry already resolved is not re-evaluated on a later tick",
+  );
+  console.log("OK: a malformed feed entry logs its own miss and does not lose the tick's other progress");
+
+  /* --- #1 Phantom match directories: a VOD probe must never leave a directory behind unless the
+     match is actually going to be queued -------------------------------------------------------- */
+  const dirFor = (id: number) => path.join(media, String(id));
+  const dirVods: Record<number, boolean | Error> = {};
+  const dirFeeds: Record<string, FeedMatch[]> = {};
+  const dirDeps: CreatorWatchDeps = {
+    listMatches: async (nick) => dirFeeds[nick] ?? [],
+    checkVods: async (id) => {
+      // withDiscoveredVods's real side effect: a directory + vods.json appear the moment ANY vod
+      // is found, regardless of whether both are — simulated here to pin the cleanup against it.
+      mkdirSync(dirFor(id), { recursive: true });
+      writeFileSync(path.join(dirFor(id), "vods.json"), "[]");
+      const v = dirVods[id] ?? false;
+      if (v instanceof Error) throw v;
+      return v;
+    },
+  };
+  config.creatorWatchlist = ["DirTest"];
+  let dirT = Date.parse("2026-11-02T00:00:00Z");
+
+  dirFeeds.DirTest = [feedMatch(820, "DirTest", "x")];
+  dirVods[820] = new Error("boom");
+  await creatorWatchTick(dirT, dirDeps);
+  assert.equal(existsSync(dirFor(820)), false, "a thrown VOD check leaves no directory behind");
+
+  dirT += CHECK_INTERVAL_MS;
+  dirFeeds.DirTest = [feedMatch(821, "DirTest", "x")];
+  dirVods[821] = false;
+  await creatorWatchTick(dirT, dirDeps);
+  assert.equal(existsSync(dirFor(821)), false, "a one-VOD miss leaves no directory behind");
+
+  dirT += CHECK_INTERVAL_MS;
+  dirFeeds.DirTest = [feedMatch(822, "DirTest", "x")];
+  dirVods[822] = true;
+  await creatorWatchTick(dirT, dirDeps);
+  assert.deepEqual(
+    readdirSync(dirFor(822)),
+    ["vods.json"],
+    "the match that actually claims tonight's slot keeps the vods.json the render will reuse",
+  );
+
+  dirT += CHECK_INTERVAL_MS;
+  dirFeeds.DirTest = [feedMatch(823, "DirTest", "x")];
+  dirVods[823] = true;
+  await creatorWatchTick(dirT, dirDeps);
+  assert.equal(
+    existsSync(dirFor(823)),
+    false,
+    "both VODs found but the night's one slot is already taken — still no directory",
+  );
+  console.log("OK: a VOD-probe directory is removed unless the match is actually queued");
+
+  /* --- #2 Reentrancy guard ------------------------------------------------------------------------ */
+  const reentryTime = Date.parse("2026-11-03T00:00:00Z");
+  const reentry = { list: [] as string[] };
+  let triggered = false;
+  const reentryDeps: CreatorWatchDeps = {
+    listMatches: async (nick) => {
+      reentry.list.push(nick);
+      if (!triggered) {
+        triggered = true;
+        // The overlap a stalled yt-dlp/API round trip can cause in production: a second tick
+        // starts while this one is still awaiting its own listMatches call.
+        await creatorWatchTick(reentryTime, reentryDeps);
+      }
+      return [];
+    },
+    checkVods: async () => false,
+  };
+  config.creatorWatchlist = ["ReA", "ReB"];
+  await creatorWatchTick(reentryTime, reentryDeps);
+  assert.deepEqual(reentry.list, ["ReA", "ReB"], "an overlapping call while one is in flight is a no-op");
+  console.log("OK: creatorWatchTick guards against overlapping calls, same shape as shortFlow.ts's ticking");
 
   console.log("creatorWatch: all checks passed");
 } finally {

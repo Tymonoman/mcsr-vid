@@ -18,9 +18,9 @@
  * so a persistent miss (no Twitch VOD, the night's one slot already taken) costs nothing on a
  * later tick rather than re-running VOD discovery on it forever.
  */
-import { readFileSync, renameSync, writeFileSync } from "node:fs";
+import { readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { blockedIn, config } from "../config.js";
+import { blockedIn, config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { getMatch, getUserMatches } from "../api/mcsrApi.js";
 import type { FeedMatch } from "../api/types.js";
@@ -103,8 +103,10 @@ export function dueNicknames(
   nowMs: number,
 ): string[] {
   return nicknames.filter((n) => {
-    const last = checked[n];
-    return last === undefined || nowMs - Date.parse(last) >= CHECK_INTERVAL_MS;
+    // Date.parse of a missing or corrupt value is NaN, which (unlike undefined on its own) must
+    // still count as due — not silently "not due forever", the one difference from before.
+    const last = Date.parse(checked[n] ?? "");
+    return Number.isNaN(last) || nowMs - last >= CHECK_INTERVAL_MS;
   });
 }
 
@@ -154,87 +156,156 @@ export function liveDeps(): CreatorWatchDeps {
 }
 
 /**
+ * Removes a match directory iff this tick's own VOD probe is the only thing that could have
+ * created it, and nothing else has touched it since: `withDiscoveredVods`'s only possible write
+ * for a brand-new directory is `vods.json` (`src/pipeline/vodDiscovery.ts`), so any other entry
+ * means a real working directory got started here — by the render pipeline, in the same
+ * process — and must never be touched. Every match that reaches this feature's VOD check has
+ * already passed `isWatchCandidate`, which requires `ctx.processed.has(m.id)` to be false, so it
+ * provably had no directory at all when this tick began; a `checkVods` call that finds under two
+ * VODs, or throws, or finds both but loses the one-a-night race to `queuedTonight`, must not leave
+ * that directory behind — doing
+ * so poisons `listProcessedMatchIds()` forever (every later scan, suggestion and nightly run sees
+ * "already has a working directory" and skips the match for good, with no VOD ever on disk to
+ * show why).
+ */
+function removeStrayVodsDir(matchId: number): void {
+  try {
+    const dir = matchDir(matchId);
+    const entries = readdirSync(dir);
+    if (entries.every((e) => e === "vods.json")) rmSync(dir, { recursive: true, force: true });
+  } catch {
+    // Not there, or not readable — nothing to clean up.
+  }
+}
+
+/** Guards against a second overlapping call — a slow `yt-dlp`/API round trip can outlast the
+ *  15-minute cadence `server.ts` calls this on, same shape as `shortFlow.ts`'s `ticking` and
+ *  `experimentsEvaluator.ts`'s `evaluating`. Without it, two concurrent runs each see their own
+ *  stale `queuedOn` snapshot (breaking the one-a-night cap) and the one whose
+ *  `writeCreatorWatchState` lands last silently overwrites the other's recorded hits/checks. */
+let ticking = false;
+
+/**
  * The 15-minute tick's own call (`server.ts`). A no-op when the feature is off or watches
- * nobody. A failing nickname (a typo, a dead account) logs one line and costs the rest of the
- * tick nothing; a failing VOD check is recorded as its own reason rather than retried forever.
+ * nobody, or when a previous call is still running. A failing nickname (a typo, a dead account)
+ * logs one line and costs the rest of the tick nothing; a failing VOD check, or anything
+ * unexpected about one feed entry (an API shape this code did not expect), is recorded as its own
+ * reason rather than retried forever or allowed to discard the whole tick's progress.
  */
 export async function creatorWatchTick(
   nowMs: number = Date.now(),
   deps: CreatorWatchDeps = liveDeps(),
 ): Promise<void> {
   if (!config.creatorWatch || config.creatorWatchlist.length === 0) return;
+  if (ticking) return;
+  ticking = true;
+  try {
+    const state = readCreatorWatchState();
+    const due = dueNicknames(config.creatorWatchlist, state.checked, nowMs);
+    if (due.length === 0) return;
 
-  const state = readCreatorWatchState();
-  const due = dueNicknames(config.creatorWatchlist, state.checked, nowMs);
-  if (due.length === 0) return;
+    const seen = new Set(state.hits.map((h) => h.matchId));
+    const processed = new Set(listProcessedMatchIds());
+    const hidden = hiddenMatchIds();
+    let queuedTonight = state.queuedOn === utcDate(nowMs);
+    let changed = false;
+    const nowIso = new Date(nowMs).toISOString();
 
-  const seen = new Set(state.hits.map((h) => h.matchId));
-  const processed = new Set(listProcessedMatchIds());
-  const hidden = hiddenMatchIds();
-  let queuedTonight = state.queuedOn === utcDate(nowMs);
-  let changed = false;
-  const nowIso = new Date(nowMs).toISOString();
-
-  for (const nick of due) {
-    state.checked[nick] = nowIso;
-    changed = true;
-
-    let feed: FeedMatch[];
-    try {
-      feed = await deps.listMatches(nick);
-    } catch (err) {
-      console.error(`creator watch: ${nick}'s matches could not be read — ${describeError(err)}`);
-      continue;
-    }
-
-    // Read fresh per nickname: an earlier name this same tick may just have claimed the queue.
-    const queued = new Set(nightlyQueue());
-    for (const m of feed) {
-      if (!isWatchCandidate(m, { seen, processed, hidden, queued })) continue;
-      // ponytail: resolved below, once, however it comes out — a VOD-less or cap-missed match is
-      // never retried by a later tick. Good enough while hits are rare; if a real miss (a VOD that
-      // shows up late, or the cap freeing up the same night) ever needs a second look, read this
-      // against a short TTL instead of "ever".
-      seen.add(m.id);
+    for (const nick of due) {
+      state.checked[nick] = nowIso;
       changed = true;
-      const players = m.players.map((p) => p.nickname).join(" vs ");
 
-      let bothVods: boolean;
+      let feed: FeedMatch[];
       try {
-        bothVods = await deps.checkVods(m.id);
+        feed = await deps.listMatches(nick);
       } catch (err) {
-        state.hits.push({
-          matchId: m.id,
-          nick,
-          players,
-          at: nowIso,
-          queued: false,
-          reason: `could not check Twitch VODs (${describeError(err)})`,
-        });
-        continue;
-      }
-      if (!bothVods) {
-        state.hits.push({ matchId: m.id, nick, players, at: nowIso, queued: false, reason: "no Twitch VOD" });
-        continue;
-      }
-      if (queuedTonight) {
-        state.hits.push({
-          matchId: m.id,
-          nick,
-          players,
-          at: nowIso,
-          queued: false,
-          reason: "a creator match is already queued for tonight",
-        });
+        console.error(`creator watch: ${nick}'s matches could not be read — ${describeError(err)}`);
         continue;
       }
 
-      setNightlyQueue([m.id, ...nightlyQueue().filter((id) => id !== m.id)]);
-      queuedTonight = true;
-      state.queuedOn = utcDate(nowMs);
-      state.hits.push({ matchId: m.id, nick, players, at: nowIso, queued: true });
+      // Read fresh per nickname: an earlier name this same tick may just have claimed the queue.
+      const queued = new Set(nightlyQueue());
+      for (const m of feed) {
+        try {
+          if (!isWatchCandidate(m, { seen, processed, hidden, queued })) continue;
+          // ponytail: resolved below, once, however it comes out — a VOD-less or cap-missed match
+          // is never retried by a later tick. Good enough while hits are rare; if a real miss (a
+          // VOD that shows up late, or the cap freeing up the same night) ever needs a second
+          // look, read this against a short TTL instead of "ever".
+          seen.add(m.id);
+          changed = true;
+          const players = m.players.map((p) => p.nickname).join(" vs ");
+
+          let bothVods: boolean;
+          try {
+            bothVods = await deps.checkVods(m.id);
+          } catch (err) {
+            state.hits.push({
+              matchId: m.id,
+              nick,
+              players,
+              at: nowIso,
+              queued: false,
+              reason: `could not check Twitch VODs (${describeError(err)})`,
+            });
+            removeStrayVodsDir(m.id);
+            continue;
+          }
+          if (!bothVods) {
+            state.hits.push({
+              matchId: m.id,
+              nick,
+              players,
+              at: nowIso,
+              queued: false,
+              reason: "no Twitch VOD",
+            });
+            removeStrayVodsDir(m.id);
+            continue;
+          }
+          if (queuedTonight) {
+            state.hits.push({
+              matchId: m.id,
+              nick,
+              players,
+              at: nowIso,
+              queued: false,
+              reason: "a creator match is already queued for tonight",
+            });
+            removeStrayVodsDir(m.id);
+            continue;
+          }
+
+          setNightlyQueue([m.id, ...nightlyQueue().filter((id) => id !== m.id)]);
+          queuedTonight = true;
+          state.queuedOn = utcDate(nowMs);
+          state.hits.push({ matchId: m.id, nick, players, at: nowIso, queued: true });
+        } catch (err) {
+          // Anything else — isWatchCandidate or the player-name mapping, on a feed shape this
+          // code did not expect — must not propagate: that would abort the whole tick and lose
+          // every checked/hits update already made for every nickname before this one. Resolved
+          // once, ever, like every other miss, rather than relitigating the same bad entry every
+          // 15 minutes.
+          seen.add(m.id);
+          changed = true;
+          state.hits.push({
+            matchId: m.id,
+            nick,
+            players: "",
+            at: nowIso,
+            queued: false,
+            reason: `could not evaluate the feed entry (${describeError(err)})`,
+          });
+          console.error(
+            `creator watch: match ${m.id} from ${nick}'s feed could not be evaluated — ${describeError(err)}`,
+          );
+        }
+      }
     }
-  }
 
-  if (changed) writeCreatorWatchState(state);
+    if (changed) writeCreatorWatchState(state);
+  } finally {
+    ticking = false;
+  }
 }
