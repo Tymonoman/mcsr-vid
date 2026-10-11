@@ -925,6 +925,38 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   the scan's pool or one `getMatch` first; the preview from the pool only, see Nightly). Queueing a match removes it from `nightlySkip` so an
   explicit queue always wins over a card's "not at night" toggle — and over the known-player gate:
   the operator's own pick is never second-guessed by a gate meant for the ranked list.
+- **Creator watch** (`creatorWatch`/`creatorWatchlist`, Settings tab → Suggestions, both off/empty
+  by default; `src/dashboard/creatorWatch.ts`, 11 Oct 2026 — idea 2 of the YPP growth plan: every
+  subscriber burst at the rival replay channels followed an outside creator's MCSR moment —
+  Ludwig's arc, Dec 2025 to Feb 2026 — and this channel's Suggested traffic gets 0% from a bigger
+  channel). On the 15-minute tick, each watched MCSR Ranked nickname not checked in the last
+  15 minutes gets one `getUserMatches` call for its few most recent ranked matches (one list call
+  per name per tick at most); a match new to the watch, not processed/hidden/already queued and
+  with no blocked player is checked for both players' Twitch VODs through the pipeline's own
+  discovery (`withDiscoveredVods`, the same call `nightly.ts`'s `playoffVodsReady` already makes
+  for a playoff candidate) — found, it goes to the **front** of tonight's nightly queue (at most
+  one creator match a night; the block list still wins over it, same as every other queue entry);
+  not found, it is recorded as "no Twitch VOD" and left unqueued (a creator who streams on
+  YouTube rather than Twitch never queues this way). Every outcome is resolved once, ever, into
+  `<mediaDir>/.creator-watch.json` (`{ checked: {nick: iso}, hits: [{matchId, nick, players, at,
+  queued, reason?}], queuedOn }`, atomic write, defensive read) — a persistent miss costs nothing
+  on a later tick. The morning report's day message gets one deterministic line per hit since the
+  previous report ("👀 Creator watch · Grian played Grian vs Modrik — no Twitch VOD"), omitted
+  when there were none; it is not in "Needs you" since there is nothing for the operator to do.
+  **Verified live against `api.mcsrranked.com`, 11 Oct 2026** (not a guess): of Ludwig
+  (`ludwigahgren`), Couriway, forsen, xQc (`xQcOW`), Grian, Dream and Rekrap2 — the handbook's own
+  `competitors-report.md` names a 2.57M-subscriber "Rekrap2" playing ranked "every week", a
+  repeatable draw — every name but forsen and plain "xQc"/"Ludwig" resolves to a real account,
+  but almost none has actual *ranked* (type 2) activity: `ludwigahgren` and Couriway each show
+  only private-room (type 3) solo practice in the last 180 days (Couriway's account: eight such
+  rooms, 31 Aug-4 Sept 2026), `rekrap2` a single such room (9 Sept) and no games at all against
+  silverrruns or anyone else the write-up names, and `xQcOW`/`Dream` have no match of any type on
+  record. **Grian is the one live hit**: one real ranked match, forfeited, no VOD attached,
+  9 Sept 2026 (13210754, vs Modrik), plus two solo private-room sessions as recently as 7 Oct
+  2026 — the account is active now. `creatorWatchlist` stays empty by default on purpose (a
+  verified name is the operator's own addition); "Grian" is the obvious first candidate, with the
+  caveat that this one match on record would not itself have queued (forfeited, no VOD) — the
+  watch is for his *next* one.
 - **The NAS** (`//192.168.0.240/homelab`, CIFS, ~33 MB/s; 562 GB free on 1 Oct 2026): `/archive` is
   `tymek/mcsr-archive`, where `src/dashboard/archive.ts` copies published matches (a delete there
   is recoverable, `isArchived`); `/home-media` is the whole share (the operator's movies, music,

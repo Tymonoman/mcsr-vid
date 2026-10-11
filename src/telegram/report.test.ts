@@ -550,6 +550,7 @@ const worthMatch = (i: number, over: Partial<WorthMatch> = {}): WorthMatch => ({
       scheduleToday: [{ experimentId: "publish-hour", arm: "19" }],
       since: [{ experimentId: "short-delay", decision: "kept control: numbers only" }],
     },
+    creatorWatch: [],
   } as unknown as ReportFacts;
   const autoHooksRow: AutoHooksRow = {
     matchId: 3,

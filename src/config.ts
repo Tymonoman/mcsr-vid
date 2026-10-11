@@ -447,6 +447,23 @@ export interface Config {
    * blocked.
    */
   blockedPlayers: string[];
+  /**
+   * MCSR Ranked nicknames of outside creators whose ranked matches are worth racing to render
+   * (the YPP growth plan's "creator watch" idea, 11 Oct 2026: every subscriber burst at the rival
+   * replay channels followed an outside creator's MCSR moment — Ludwig's arc, Dec 2025-Feb 2026 —
+   * and this channel's Suggested traffic gets 0% from a bigger channel). Read by the 15-minute
+   * tick (`src/dashboard/creatorWatch.ts`) when `creatorWatch` is on. Empty by default: a verified
+   * name (CLAUDE.md's Dashboard section names who actually had ranked-match activity, checked live
+   * 11 Oct 2026) is the operator's own addition, not a guess baked into the default.
+   */
+  creatorWatchlist: string[];
+  /**
+   * Off by default. On: the tick above reads each watched nickname's few most recent ranked
+   * matches; a new one with no blocked player and both players' Twitch VODs found goes to the
+   * front of tonight's nightly queue (at most one such match a night) — the block list still wins
+   * over it, the same as it wins over every other queue entry.
+   */
+  creatorWatch: boolean;
 }
 
 /**
@@ -555,6 +572,8 @@ export const DEFAULTS: Config = {
   // him." His 7 videos and 4 playlists were set private on the channel the same day. BeefSalad
   // joined 4 Oct 2026 after commenting "do not use my footage again" on the channel.
   blockedPlayers: ["Aquacorde", "BeefSalad"],
+  creatorWatchlist: [],
+  creatorWatch: false,
 };
 
 /** The overrides file. Exported so the settings panel writes the same one the loader reads. */
@@ -665,9 +684,9 @@ export function validateOverrides(raw: Record<string, unknown>): void {
       }
       continue;
     }
-    if (key === "blockedPlayers") {
+    if (key === "blockedPlayers" || key === "creatorWatchlist") {
       if (!Array.isArray(value) || !value.every((n) => typeof n === "string" && n.trim() !== "")) {
-        throw new Error(`${CONFIG_PATH}: "blockedPlayers" must be an array of nicknames ([] for none).`);
+        throw new Error(`${CONFIG_PATH}: "${key}" must be an array of nicknames ([] for none).`);
       }
       continue;
     }

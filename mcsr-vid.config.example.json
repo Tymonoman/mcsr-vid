@@ -121,5 +121,7 @@
   "blockedPlayers": [
     "Aquacorde",
     "BeefSalad"
-  ]
+  ],
+  "creatorWatchlist": [],
+  "creatorWatch": false
 }
