@@ -43,6 +43,12 @@ Short TN0_s3y0HH8 (Infume vs bbiddd) is PUBLIC but its long-form Edj_-c7lK38 no 
 (told the operator). Worker supervisor restarted 13:51 on cd456bb (related-link + A/B reader live); it links the two new
 hand-made Shorts (mumhR7l_E-I → 13 Oct 17:00, x-N2Ssg5jEI → 14 Oct 13:00 UTC, both uploaded 13:48) itself.
 WAITING ON THE OPERATOR: the claim above.
+TOKEN DIET (11 Oct, the operator: "how to use my claude subscription efficiently"): CLAUDE.md 172→41 KB (full text:
+handbook/claude-md-reference.md, b317d4e); TASKS.md older blocks → handbook/tasks-archive-2026-09-23_10-07.md; 16
+claude-flow hooks + env flags removed and ECC_GATEGUARD=off in ~/.claude/settings.json (backup settings.json.bak-2026-10-11,
+takes effect next session); 8 stale memories → memory-archive/; 15 merged clean worktrees removed. Page:
+https://claude.ai/artifact/HCk85S5kpBAEE8z8ACTyEv. Rules: one job per session, Sonnet fresh session for the daily checks
+after 14 Oct, pause date-gated goals, workflows only for real builds.
 FINAL REPORT PREP (11 Oct 14:22): `npx tsx /home/node/.claude/jobs/8d7d95a1/tmp/final/week.mts` writes tmp/final/week.json —
 baseline 30 Sept–6 Oct vs the goal week 8 Oct→last Analytics day (net subs/day, views, hours), live subs, ETAs, tc counts +
 verdicts, between experiments. NOTE: with all 7 days in, the baseline week reads 25 net = 3.57/day (the goal's 4.0/day was
