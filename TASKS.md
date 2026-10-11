@@ -38,6 +38,10 @@ dropped to 1/day); x4-record-pace render arms 17–24 Oct. Drafts: handbook/revi
 Couriway/rekrap2/Dream/xQcOW. First draw table (25 videos, median 1,950 first-week views): lowk3y_ 1.55, woofdoggo_ 1.55,
 Feinberg 1.39, silverrruns 1.31, doogile 1.11, Infume 1.00, v_strid 0.78, Pinne 0.33, bbiddd 0.15; proven pairs incl.
 Feinberg–Infume 3.12. Watch: 1 hit, Grian's old forfeit 13210754 (no Twitch VOD, not queued, no stray dir).
+11 Oct ~10:20 the operator: "okay we don't send runner dms I decided that." → idea 4 (consent round) and the share ask are
+DROPPED; idea 9's Discord post loses its precondition (his call). The hand-made Short also sent to his Telegram. He asked how
+to switch the Studio browser's active channel: needs the remote login screen (Claude-container Chrome + noVNC + temporary
+userspace Tailscale node, tmp/studio/ts + tmp/studio/login-screen.sh) with the worker paused; offered to open it on his go.
 VERDICT RISK: tests started 8–9 Oct may still be running on 14 Oct (Studio ends a test once it is sure, or at 14 days).
 In the 13 Oct morning cycle, read every test's state; the ledger records a finished test's winner and marks an unfinished one
 "running at the deadline", with Studio's interim numbers if the page shows them. Never mark a guess as a verdict.
