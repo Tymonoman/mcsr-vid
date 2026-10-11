@@ -45,6 +45,10 @@ userspace Tailscale node, tmp/studio/ts + tmp/studio/login-screen.sh) with the w
 11 Oct 10:59 the operator: "try to change the channel yourself if it fails I'll do it" → DONE: the MCSR Replayoffs entry opens a
 confirm dialog; pressing "Got it" switched it, held across a restart, and the Related-video picker now returns results
 (click-and-save still to build). He also said: "you're gonna make the shorts from now on" and wants more branding on them.
+11 Oct ~11:45: FIRST A/B VERDICT (the operator: "one ab test came back write me a report on it"): GF title test _2EOkOOX0PQ —
+control "IT ALL COMES DOWN TO THE END" 62.1% vs "A SUB-9 TO WIN IT" 37.9% watch time share; recorded done in
+.experiments.json + experiments.md Decisions. BUG: readTestAndCompare treats only "winner" as done; Studio's title box says
+"Results ready" → fix after the related-link branch merges (it edits studioActions.ts too). Tools: tmp/abtest/*.mts.
 VERDICT RISK: tests started 8–9 Oct may still be running on 14 Oct (Studio ends a test once it is sure, or at 14 days).
 In the 13 Oct morning cycle, read every test's state; the ledger records a finished test's winner and marks an unfinished one
 "running at the deadline", with Studio's interim numbers if the page shows them. Never mark a guess as a verdict.

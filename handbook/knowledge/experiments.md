@@ -115,6 +115,14 @@ any video that already has one (his 8 custom ones included).
 
 ## Decisions
 
+- **11 Oct 2026 — first Test & Compare verdict: the Grand Finals title test (`_2EOkOOX0PQ`, lowkey vs Infume, 35:46).**
+  Studio's report: "We have a winner!" — the live title "IT ALL COMES DOWN TO THE END | … | Grand Finals" took **62.1%**
+  of watch time share against "A SUB-9 TO WIN IT | … | Grand Finals" at **37.9%**; ran 8 Oct 23:00 → 11 Oct 11:31 UTC
+  (~60 h from going public; 1,765 views to date). Studio keeps the winner, which was already live — nothing changed.
+  Read: a story/stakes title beat a pace-number title on the same video, same thumbnail, same hours. One video, and a
+  series: a "sub-9" promise describes one fast game, and the video is a 36-minute series, so part of the gap may be
+  that mismatch. Hold the auto-hooks chip order until 2–3 more title tests agree (12 still running). The worker's
+  reader missed it: Studio says "Results ready", not "winner", in the title box — fix `readTestAndCompare`.
 - **11 Oct 2026 — two long-forms a day continue after x1 (16 Oct–15 Nov).** x1's slot entries ended on 15 Oct, and
   with no slot entry a date falls back to the single `publishHourUtc` slot while `nightlyMaxRenders` 2 keeps
   rendering two a night — a backlog of one video a day. The plan for the full tier says to keep two a day (it also
