@@ -115,6 +115,9 @@ any video that already has one (his 8 custom ones included).
 
 ## Decisions
 
+- **12 Oct 2026 — x1 interim (not the decision):** 23:00 UTC leads 19:00 UTC on impressions CTR, 8.27% vs 5.98%
+  (z = 2.49, 9 videos enrolled). The experiment ends 15 Oct; the evaluator writes the decision then. Two-a-day
+  continues past it either way (`cadence-two-a-day`, 16 Oct–15 Nov), so the reading only decides which hour leads.
 - **11 Oct 2026 — second Test & Compare verdict: no winner on the "DECIDED BY 4.2 SECONDS" title test
   (`358mpZeBqFo`, hackingnoises vs romuxii, 10:09).** Studio's report: "They all performed well" — the live title
   "DECIDED BY 4.2 SECONDS" **50.1%** of watch time share against "A SUB-10 TO WIN IT" **49.9%**; ran 8 Oct 11:11 AM →

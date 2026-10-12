@@ -64,6 +64,13 @@ Worktrees: 27 more removed (merged; leftover uncommitted edits saved as patches 
 superseded claude-md-trim. 7 unmerged remain: cov-0, cov-1 (test-only, 8 Oct), thumbs-rerender (26 Sept feature, 7 commits),
 worktree-wf_dd7edb2e-baf-1..4 (24 Sept workflow, likely superseded). The operator cleared the /goal (12 Oct); the daily
 checks and the 14 Oct final report still run.
+12 Oct 05:53 morning: Needs-you empty; YPP ~13 Jul 2027 at 3.12/day; worker ok; tc 29 running / 2 done; slots filled
+through 13 Oct 23:00 (14035423 auto-hooked 05:31). x1 interim: 23:00 UTC beats 19:00 on CTR 8.27% vs 5.98% (z=2.49, 9 videos;
+settles 15 Oct). Hand Short made: 14035423 "TWO RUNNERS. ONE DRAGON." — new DUAL layout in build.py (6767bbf, both POVs
+stacked; neither runner has a face cam), match 430–455, ends 2 s before the kill; short:hand done, uploads 14 Oct 17:00 UTC;
+preview sent. ONLY ONE render last night (14035423, 03:39) though nightlyMaxRenders=2 and 14072062 was the preview pick
+(no dir): the chain's reason is only in the dashboard's stdout (no docker access here). Tonight's queue: 14037392. EVENING
+CHECK: confirm two renders tonight; if one again, ask the operator for `docker logs mcsr-dashboard | grep nightly`.
 CRONS (session-only; recreate if gone): 05:23 UTC morning cycle (job 376be942 — /needs + /ypp, NEVER report --dry-run: it
 carries viewer comment text; then the hand Shorts), 18:17 UTC evening check (bbbb9a98). On 14 Oct evening: the final
 branded report.
