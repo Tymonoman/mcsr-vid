@@ -105,6 +105,8 @@ try {
       uploadSessionFile: () => false,
       archiveRunning: () => false,
       nightlyChainRunning: () => false,
+      thumbnailRunning: () => false,
+      videoWriting: () => false,
       nightlyHourUtc: null,
     }),
     bootCheck: async () => "src/foo.ts(1,1): error TS1: bogus\nmore detail",

@@ -455,7 +455,7 @@ function stateOf(matchId: number, f: Facts, nowMs = Date.now()): { state: ShortS
     if (!f.pick) return { state: "waiting-for-hook", detail: "not picked yet" };
     return {
       state: "waiting-for-hook",
-      detail: `${windowLine(f.pick, f.series)}${f.pickError ? " · model failed, heuristic pick" : ""}`,
+      detail: `${windowLine(f.pick, f.series)}${!f.pickError ? "" : f.pick.source === "agy" ? " · Pick again failed, the model's earlier pick stands" : " · model failed, heuristic pick"}`,
     };
   }
   // Saved, nothing running, not all up: between steps, or a step a restart cut short.
@@ -480,7 +480,7 @@ export async function matchRowShort(matchId: number): Promise<MatchRowShort> {
  * the words of `modelFailure` (videoPick.ts) and the reasoner's own.
  */
 const UNREACHABLE =
-  /not signed in|sign-in has expired|quota or rate limit|is not installed|not configured|is not set|ENOENT|spawn failed|timed out|did not answer in time/i;
+  /not signed in|sign-in has expired|quota or rate limit|is not installed|cannot be run|not configured|is not set|ENOENT|spawn failed|timed out|did not answer in time/i;
 
 /** The picker's health across the box: the newest thing that happened to any pick decides. */
 async function pickerHealth(ids: readonly number[]): Promise<NightlyShortSummary["picker"]> {
@@ -529,7 +529,7 @@ export async function nightlyShortSummary(): Promise<NightlyShortSummary> {
  * a single match would let the window run past the game's result.
  */
 const SERIES_GAME =
-  "a playoff game — the series is picked, cut and uploaded as one video from game 1 once every game is joined";
+  "a playoff game — the series is picked, cut and uploaded as one video from game 1 once every game is joined: Render the series on the Playoffs board (npm run series -- <game 1>), then save the hooks on game 1";
 async function seriesGameUnjoined(match: MatchInfo, series: SeriesRecord | null): Promise<boolean> {
   return series === null && (await playoffContextFor(match)) !== null;
 }
@@ -1530,8 +1530,11 @@ export async function shortTick(deps: Partial<ChainDeps> = {}, nowMs = Date.now(
         )
           continue;
         const f = await factsOf(id);
-        // A pick under a saved hook is the operator's: never replaced behind their back.
-        if (f.pick && !hooksSaved(f) && f.short === null && !pickActivity(id)) retry.push(id);
+        // A pick under a saved hook is the operator's: never replaced behind their back. Only a
+        // heuristic fallback is retried — a failed Pick again that kept the model's earlier
+        // window (source "agy") is left alone; the daily retry is only for a heuristic stand-in.
+        if (f.pick?.source === "heuristic" && !hooksSaved(f) && f.short === null && !pickActivity(id))
+          retry.push(id);
       } catch (err) {
         console.error(`shortTick #${id}: ${describeError(err)}`);
       }

@@ -26,6 +26,8 @@ const allClear = (): IdleDeps => ({
   uploadSessionFile: () => false,
   archiveRunning: () => false,
   nightlyChainRunning: () => false,
+  thumbnailRunning: () => false,
+  videoWriting: () => false,
   nightlyHourUtc: null,
 });
 
@@ -43,6 +45,8 @@ const SIGNALS: [Exclude<keyof IdleDeps, "nightlyHourUtc">, string][] = [
   ["uploadSessionFile", "an upload session is still on disk"],
   ["archiveRunning", "an archive copy to the NAS is running"],
   ["nightlyChainRunning", "a nightly chain is between renders"],
+  ["thumbnailRunning", "a thumbnail re-render is running"],
+  ["videoWriting", "a Finish or Put on YouTube is writing"],
 ];
 for (const [key, reason] of SIGNALS) {
   const deps = { ...allClear(), [key]: () => true };

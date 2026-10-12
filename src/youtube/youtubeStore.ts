@@ -57,6 +57,11 @@ export interface UploadRecord {
   source?: "dashboard" | "studio";
   /** What `finishOnYouTube` did to it, once it has run. */
   finished?: FinishedSteps;
+  /**
+   * The last "Put on YouTube" / "Undo on YouTube" (src/youtube/thumbnailSwap.ts): the tile put on
+   * and the folder it came from, or variant null for the image it wore before the first put; and when.
+   */
+  thumbnailSet?: { variant: string | null; at: string; from?: string };
 }
 
 const recordPath = (matchId: number, kind: UploadKind): string =>
@@ -574,6 +579,39 @@ export async function allShortUploads(): Promise<Array<{ matchId: number; record
   );
   return entries.filter((e): e is { matchId: number; record: UploadRecord } => e.record !== null);
 }
+
+/**
+ * This match's long-form record, when the video's thumbnail is this folder's to set. A series'
+ * games 2..n may carry game 1's video id, and the series' thumbnail is game 1's: the lowest match
+ * id holding the id owns it. A Short is never here — `youtube.json` is the long-form's record.
+ */
+export async function longFormRecord(matchId: number): Promise<UploadRecord | null> {
+  const record = await readUpload(matchId);
+  if (!record) return null;
+  const holders = (await allUploads()).filter((u) => u.record.videoId === record.videoId);
+  return Math.min(matchId, ...holders.map((u) => u.matchId)) < matchId ? null : record;
+}
+
+/**
+ * Finish on YouTube and Put/Undo on YouTube each read the record, write to the video and write the
+ * record back: one at a time per match, or one sets its image over the other's or drops its ledger.
+ */
+const writing = new Map<number, Promise<void>>();
+export function onVideo<T>(matchId: number, write: () => Promise<T>): Promise<T> {
+  const run = (writing.get(matchId) ?? Promise.resolve()).then(write).finally(() => {
+    if (writing.get(matchId) === settled) writing.delete(matchId);
+  });
+  const settled = run.then(
+    () => {},
+    () => {},
+  );
+  writing.set(matchId, settled);
+  return run;
+}
+/** A Finish or a Put on this match's video in flight (or waiting its turn). */
+export const videoWriting = (matchId: number): boolean => writing.has(matchId);
+/** Any match's Finish or Put/Undo in flight — restartWhenIdle.ts's gate. */
+export const anyVideoWriting = (): boolean => writing.size > 0;
 
 /**
  * The finished video to upload, or null.

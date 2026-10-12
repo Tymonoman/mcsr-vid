@@ -18,6 +18,7 @@ import { blockedOnDisk, listProcessedMatchIds, matchStatusFor } from "../dashboa
 import { playoffContextForId } from "../playoffs/playoffs.js";
 import { exportStale, staleExportMessage } from "../pipeline/syncFile.js";
 import { readManifest } from "../thumbnails/thumbnailVariants.js";
+import { thumbnailRunning } from "../thumbnails/rerender.js";
 import { pinnedQuestion } from "../pipeline/pinnedQuestion.js";
 import { HOOK_PLACEHOLDER, metaPaths } from "../pipeline/title.js";
 import { readHandShort, WAITING_FOR_HAND_SHORT } from "../shorts/handShort.js";
@@ -52,6 +53,8 @@ import {
   findExportedVideo,
   pinnedComment,
   allUploads,
+  longFormRecord,
+  onVideo,
   readUpload,
   uploadTextFor,
   writeUpload,
@@ -160,7 +163,10 @@ export async function hookRefusal(
     return null;
   }
   if (existsSync(path.join(dir, "youtube-short.json")))
-    return { status: 409, error: `the Short of match ${matchId} is already on the channel` };
+    return {
+      status: 409,
+      error: `the Short of match ${matchId} is already on the channel (youtube-short.json) — it goes up once; a second copy is a duplicate only Studio removes`,
+    };
   // Hand mode (config.shortsByHand): the chain's own render step never runs, so there is no
   // cut.json to match a saved hook against — short-<id>.hand.json (npm run short:hand) is the
   // one source of the Short's title, built straight into its title.txt (src/shorts/handShort.ts).
@@ -175,7 +181,8 @@ export async function hookRefusal(
   if (cut?.hook !== hook)
     return {
       status: 409,
-      error: "the Short on disk was cut behind another hook — it re-renders before it uploads",
+      error:
+        "the Short on disk was cut behind another hook — save the hooks and the chain re-cuts it before it uploads",
     };
   return null;
 }
@@ -189,6 +196,21 @@ export async function hookRefusal(
  * the dashboard's title editor already writes the `.edited.txt` the publish kit pastes from, and
  * a second copy of the text in a form was how a title picked up a stray newline.
  */
+/**
+ * A re-render or a new tile's Use this in flight (src/thumbnails/rerender.ts): the long-form's
+ * thumbnail and manifest could move under it. Use this refuses an upload in flight in turn.
+ */
+export const thumbnailRefusal = (
+  matchId: number,
+  kind: UploadKind,
+): { status: number; error: string } | null =>
+  kind === "video" && thumbnailRunning(matchId)
+    ? {
+        status: 409,
+        error: `the thumbnails of match ${matchId} are being re-rendered or put in place — try again once they are done`,
+      }
+    : null;
+
 export async function beginUpload(
   matchId: number,
   req: UploadRequest,
@@ -281,7 +303,12 @@ async function startUpload(matchId: number, req: UploadRequest, send: typeof upl
     if ("error" in located) return bad(located.error);
     filePath = located.path;
   }
-  if (!existsSync(filePath)) return bad(`No such video file: ${filePath}`);
+  if (!existsSync(filePath))
+    return bad(
+      req.kind === "short" && !req.videoPath
+        ? `the Short is not cut yet (no short-${matchId}.mp4) — save the hooks and the chain cuts it`
+        : `No such video file: ${filePath}`,
+    );
   // A sync.json newer than the export means the clips were re-placed after this file was
   // encoded, so it carries the misalignment the correction was for. The Short is cut from the
   // VODs with sync.json directly, so only the long-form can be stale. `videoPath` too: a
@@ -298,7 +325,9 @@ async function startUpload(matchId: number, req: UploadRequest, send: typeof upl
       `the publish time ${req.publishAt} has already passed — pick a later one (the chain takes the next free slot)`,
     );
 
-  const manifest = await readManifest(dir);
+  // In the tick that marks the upload running, so nothing starts between the two.
+  const held = thumbnailRefusal(matchId, req.kind);
+  if (held) return held;
   const progress = idle(matchId, req.kind);
   uploads.set(key, progress);
   const step = logStep(req.kind);
@@ -311,6 +340,7 @@ async function startUpload(matchId: number, req: UploadRequest, send: typeof upl
   const finished = (async () => {
     let recorded = false;
     try {
+      const manifest = await readManifest(dir);
       const result = await send({
         filePath,
         title: text.title,
@@ -521,12 +551,22 @@ export async function pinnedCommentFor(matchId: number, playlistWaitMs?: number)
  * `videos.insert` had returned seconds earlier. The button is on every published match and the
  * scan can auto-finish, so pressing it twice must be free.
  */
-export async function finishOnYouTube(
+export function finishOnYouTube(
   matchId: number,
   videoId: string,
   kind: UploadKind = "video",
   /** The Studio pin itself — a real browser, so this is the one seam tests replace. */
   pinAction: typeof attemptStudioPin = attemptStudioPin,
+): Promise<FinishedSteps> {
+  // Waits out a "Put on YouTube" on this match, whose image and ledger it would otherwise undo.
+  return onVideo(matchId, () => finishSteps(matchId, videoId, kind, pinAction));
+}
+
+async function finishSteps(
+  matchId: number,
+  videoId: string,
+  kind: UploadKind,
+  pinAction: typeof attemptStudioPin,
 ): Promise<FinishedSteps> {
   const attempt = async (step: () => Promise<void>): Promise<string | null> => {
     try {
@@ -599,14 +639,20 @@ export async function finishOnYouTube(
     // rather than a fallback — the same test the publish checklist uses.
     const wasUploadedElsewhere = (record?.source ?? "dashboard") !== "dashboard";
     const variantConfirmed = manifest?.chosenBy === "operator";
+    // And only the folder that owns the video sets its image: a series' games 2..n carry game 1's
+    // video id (a copied record, or none — the channel scan records none for them, while the panel
+    // still pairs them from the description and offers Finish), and would put their own pick over
+    // the series' — over a "Put on YouTube" from game 1 too — with no ledger to stop the next press.
     finished.thumbnail =
       kind === "short"
         ? null
-        : wasUploadedElsewhere && !variantConfirmed
-          ? "left alone — this video was uploaded elsewhere and no variant was confirmed here"
-          : existsSync(thumb)
-            ? await attempt(() => setThumbnail(videoId, thumb))
-            : `no thumbnail at ${thumb}`;
+        : !(await longFormRecord(matchId))
+          ? "left alone — this folder holds no upload record of its own for the video (a series' games 2..n: game 1's folder sets its image)"
+          : wasUploadedElsewhere && !variantConfirmed
+            ? "left alone — this video was uploaded elsewhere and no variant was confirmed here"
+            : existsSync(thumb)
+              ? await attempt(() => setThumbnail(videoId, thumb))
+              : `no thumbnail at ${thumb}`;
   }
   if (todo("comment")) {
     // A Short gets no comment. On the long-form, YouTube refuses comments while the video is

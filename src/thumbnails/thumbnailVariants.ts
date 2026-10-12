@@ -89,6 +89,8 @@ export interface RenderVariantsArgs {
   poses: PosePair[];
   onProgress?: (p: ThumbnailProgress) => void;
   signal?: AbortSignal;
+  /** "Re-render thumbnails" (src/thumbnails/rerender.ts): every still drawn again, even one on disk. */
+  fresh?: boolean;
 }
 
 export const variantKey = (poses: PosePair): string => `${poses.left}-${poses.right}`;
@@ -142,10 +144,16 @@ export async function chooseVariant(outDir: string, key: string): Promise<Varian
  * Whether a variant's PNG already on disk can stand for this render. A plain still is good —
  * unless the previous manifest recorded its key as hooked, which is the layout from before the
  * twins, where the un-suffixed file *was* the headline render. No manifest at all is an aborted
- * batch — resume it.
+ * batch — resume it. A re-render (`fresh`) keeps none.
  */
-export function variantStillReusable(previous: VariantsManifest | null, poses: PosePair): boolean {
-  return previous === null || previous.variants.find((v) => v.key === variantKey(poses))?.hook !== true;
+export function variantStillReusable(
+  previous: VariantsManifest | null,
+  poses: PosePair,
+  fresh = false,
+): boolean {
+  return (
+    !fresh && (previous === null || previous.variants.find((v) => v.key === variantKey(poses))?.hook !== true)
+  );
 }
 
 /**
@@ -259,7 +267,7 @@ export async function renderThumbnailVariants(args: RenderVariantsArgs): Promise
       // the fourth, and a re-run after an aborted batch should not redo the ones that landed.
       // The manifest must still list it, which is why the record is pushed before the skip. A
       // reused still is the render the old manifest recorded, not what today's cameras draw.
-      const reuse = existsSync(outPath) && variantStillReusable(previous, poses);
+      const reuse = existsSync(outPath) && variantStillReusable(previous, poses, args.fresh);
       const was = reuse ? previous?.variants.find((v) => v.key === variantKey(poses)) : undefined;
       records.push({
         key: variantKey(poses),

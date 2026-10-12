@@ -21,6 +21,7 @@ import {
 } from "./youtubeUpload.js";
 import { readShortLog, stepActivity } from "../shorts/shortLog.js";
 import { staleExportMessage, writeSyncOffsets } from "../pipeline/syncFile.js";
+import { startRerender, thumbJob } from "../thumbnails/rerender.js";
 
 const media = await mkdtemp(path.join(tmpdir(), "mcsr-upload-test-"));
 /** A publish time always ahead of the clock: 2 January next year, 13:00 UTC. */
@@ -232,6 +233,22 @@ try {
 
   // Re-exported: the file is newer than the correction, and the guard steps aside.
   await stamp(exportFile, "2026-09-10T14:00:00Z");
+  // ...but not while the thumbnails are re-rendering or a new tile's Use this is moving them: the
+  // long-form would send a thumbnail and a manifest that change under it. The Short carries none.
+  {
+    let drawn!: () => void;
+    startRerender(matchId, (() => new Promise((r) => (drawn = () => r({} as never)))) as never);
+    const held = await beginUpload(matchId, {
+      kind: "video",
+      privacyStatus: "private",
+      videoPath: exportFile,
+    });
+    assert.ok("error" in held && held.status === 409, JSON.stringify(held));
+    assert.match(held.error, /thumbnails of match \d+ are being re-rendered or put in place/);
+    assert.ok(!("error" in (await beginUpload(matchId, { kind: "short", privacyStatus: "private" }))));
+    drawn();
+    await thumbJob(matchId)!.finished;
+  }
   const freshVideo = await beginUpload(matchId, {
     kind: "video",
     privacyStatus: "private",
@@ -382,7 +399,10 @@ try {
     assert.ok("error" in twice);
     assert.deepEqual(
       [log().at(-1)!.level, log().at(-1)!.text],
-      ["error", `upload refused: the Short of match ${matchId} is already on the channel`],
+      [
+        "error",
+        `upload refused: the Short of match ${matchId} is already on the channel (youtube-short.json) — it goes up once; a second copy is a duplicate only Studio removes`,
+      ],
     );
     await rm(path.join(dir, "youtube-short.json"));
 
@@ -570,6 +590,91 @@ try {
   assert.match(String(studio.thumbnail), /left alone/, "the thumbnail step declines");
   assert.ok(!hits.some((h) => h.includes("/thumbnails/set")), "and no thumbnails.set request was made");
   assert.equal(studio.playlists, null, "while the playlists it came for still happen");
+
+  // The folder that owns the video sets its image, and no other: a series' game 2 with no record
+  // (the channel scan records none for it, the panel still pairs it and offers Finish) or with
+  // game 1's record copied in never puts its own pick on the series video — over a "Put on
+  // YouTube" from game 1, with no undo copy, on every press.
+  {
+    const variant = { key: "walking-crossed", file: "thumbnail.walking-crossed.png" };
+    const game2 = matchId + 1;
+    const dir2 = path.join(media, String(game2));
+    await mkdir(dir2, { recursive: true });
+    await writeFile(path.join(dir2, variant.file), "game 2's pick");
+    await writeFile(
+      path.join(dir2, "thumbnail.json"),
+      JSON.stringify({ chosen: variant.key, chosenBy: "operator", hookText: null, variants: [variant] }),
+    );
+    await writeUpload(matchId, { ...record, finished: { thumbnail: null } });
+    for (const copied of [false, true]) {
+      if (copied) await writeUpload(game2, { ...record, finished: {} });
+      hits.length = 0;
+      const steps = await finishOnYouTube(game2, "vidX");
+      assert.match(String(steps.thumbnail), /left alone — this folder holds no upload record of its own/);
+      assert.ok(
+        !hits.some((h) => h.includes("/thumbnails/set")),
+        `copied record ${copied}: no thumbnails.set`,
+      );
+    }
+    await rm(dir2, { recursive: true });
+    console.log("OK: only the folder that owns the video sets its thumbnail");
+  }
+
+  // Finish holds the match's turn at the video (a "Put on YouTube" waits for it) while it runs.
+  {
+    const { videoWriting } = await import("./youtubeStore.js");
+    const running = finishOnYouTube(matchId, "vidX");
+    assert.equal(videoWriting(matchId), true);
+    await running;
+    assert.equal(videoWriting(matchId), false);
+  }
+
+  // A thumbnail put on from the Thumbnail panel: the A/B tab files the video under a row of its
+  // own (it wore two images), and Adopt of the same video keeps it — the "on YouTube since" line,
+  // Undo and that row with it. Another video starts afresh.
+  {
+    const { handleYoutubeRoute } = await import("../dashboard/youtubeRoutes.js");
+    const route = async (method: string, parts: string[], reqBody = "") => {
+      const answers: Array<{ status: number; body: { rows?: Array<{ variant: string }> } }> = [];
+      await handleYoutubeRoute({ method, headers: {} } as never, {} as never, ["", "youtube", ...parts], {
+        json: (_r, status, body) => void answers.push({ status, body: body as never }),
+        readBody: async () => reqBody,
+        matchDir: (id) => path.join(media, String(id)),
+        parseId: (raw) => (raw && /^\d+$/.test(raw) ? Number(raw) : null),
+      });
+      return answers[0]!;
+    };
+    await writeFile(path.join(dir, `match-${matchId}.description.txt`), `x /matches/${matchId} y\n`);
+    await writeFile(
+      path.join(dir, "thumbnail.json"),
+      JSON.stringify({ chosen: "walking-crossed", chosenBy: "operator", hookText: null, variants: [] }),
+    );
+    const swapped = { variant: "cheering-relaxing", at: "2026-09-26T10:00:00Z", from: "thumbnail-new" };
+    const done = { thumbnail: null, playlists: null, comment: null, tags: null };
+    await writeUpload(matchId, { ...record, videoId: "vidXXXXXXXX", thumbnailSet: swapped, finished: done });
+    const rows = (await route("GET", ["abtest"])).body.rows ?? [];
+    assert.ok(
+      rows.some((r) => r.variant === "(swapped)"),
+      JSON.stringify(rows),
+    );
+    const readopt = { videoId: "vidXXXXXXXX" };
+    // Adopt's finish sets the live thumbnail.png: refused while a re-render or its Use this runs.
+    let drawn!: () => void;
+    startRerender(matchId, (() => new Promise((r) => (drawn = () => r({} as never)))) as never);
+    const held = await route("POST", ["adopt", String(matchId)], JSON.stringify(readopt));
+    assert.equal(held.status, 409);
+    assert.match(String((held.body as { error?: string }).error), /re-rendered or put in place/);
+    drawn();
+    await thumbJob(matchId)!.finished;
+    const same = await route("POST", ["adopt", String(matchId)], JSON.stringify(readopt));
+    assert.equal(same.status, 200, JSON.stringify(same.body));
+    assert.deepEqual((await readUpload(matchId))?.thumbnailSet, swapped, "re-adopting keeps it");
+    const other = await route("POST", ["adopt", String(matchId)], JSON.stringify({ videoId: "vidYYYYYYYY" }));
+    assert.equal(other.status, 200, JSON.stringify(other.body));
+    assert.equal((await readUpload(matchId))?.thumbnailSet, undefined, "another video starts afresh");
+    await rm(path.join(dir, "thumbnail.json"));
+    console.log("OK: a swapped thumbnail is its own A/B row, and survives re-adopting the same video");
+  }
 
   // --- Tags: the manual paste that silently never happens ------------------------------------
   // Every video on the channel is missing tags, both nicknames included, because pasting them is

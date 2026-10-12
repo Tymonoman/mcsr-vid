@@ -32,9 +32,10 @@ import {
   requestExport,
   runNightlyOnce,
   nightlyArmedAtMs,
+  nightlyStarting,
   scheduleNightly,
 } from "./nightly.js";
-import { abortJob, getJob, startJob, streamProgress, type Job } from "./jobs.js";
+import { abortJob, anyJobRunning, getJob, startJob, streamProgress, type Job } from "./jobs.js";
 import { STAGE_LABELS, STAGE_ORDER, STAGE_SHORT_LABELS } from "../pipeline/pipeline.js";
 import { presentSuggestions } from "./suggestPresent.js";
 import { dismiss, restore, snapshot, startScan } from "./suggestScan.js";
@@ -46,10 +47,13 @@ import { refreshRivalPostsIfStale, rivalPostsSnapshot, rivalRecentPostFor } from
 import { refreshPairPosts } from "./pairPosts.js";
 import { drawLearnTick } from "./drawLearn.js";
 import { chooseVariant, readManifest } from "../thumbnails/thumbnailVariants.js";
+import { handleThumbnailRoute, thumbnailActivities } from "./thumbnailRoutes.js";
+import { NEW_DIR, thumbnailRunning } from "../thumbnails/rerender.js";
+import { undoFile } from "../youtube/thumbnailSwap.js";
 import { metaPaths } from "../pipeline/title.js";
 import { typedSpoiler } from "../pipeline/hooks.js";
 import { allArchiveStates, capacity, isArchived } from "./archive.js";
-import { exportRunning, handleExportRoute, startFastExport } from "./exportRoutes.js";
+import { handleExportRoute, startFastExport } from "./exportRoutes.js";
 import {
   MANUAL_PUBLISH_KEYS,
   deleteMatch,
@@ -67,13 +71,12 @@ import {
   setHidden,
   setPublishFlag,
 } from "./matchShelf.js";
-import { handleShortsRoute, shortRunning } from "./shortsRoutes.js";
+import { handleShortsRoute } from "./shortsRoutes.js";
 import {
   autoHooksTick,
   ensurePick,
   matchRowShort,
   nightlyShortSummary,
-  pickActivity,
   publishTimeView,
   shortTick,
 } from "./shortFlow.js";
@@ -82,11 +85,12 @@ import { creatorWatchTick } from "./creatorWatch.js";
 import { saveSettings, settingsPayload } from "./settings.js";
 import { applyScheduledRenderArm } from "./experiments.js";
 import { evaluateExperiments } from "./experimentsEvaluator.js";
-import { handleYoutubeRoute, uploadRunning } from "./youtubeRoutes.js";
+import { handleYoutubeRoute } from "./youtubeRoutes.js";
+import { busyIn } from "./busy.js";
 import { handleSyncRoute } from "./syncRoutes.js";
 import { readMeta } from "./matchMeta.js";
 import { commentSoonTick, pinnedCommentFor } from "../youtube/youtubeUpload.js";
-import { readIfPresent, readUpload, uploadTextFor } from "../youtube/youtubeStore.js";
+import { longFormRecord, readIfPresent, readUpload, uploadTextFor } from "../youtube/youtubeStore.js";
 import { startTelegramBot } from "../telegram/index.js";
 import { readLastProbe } from "../youtube/studioBrowser.js";
 import {
@@ -248,6 +252,19 @@ const server = createServer(async (req, res) => {
     if (await handleExportRoute(req, res, segments, { json, readBody, matchDir, parseId })) return;
 
     if (await handleShortsRoute(req, res, segments, { json, readBody, matchDir, parseId })) return;
+
+    // The Thumbnail panel: variants, the choice, the re-render and the swap on YouTube.
+    if (
+      await handleThumbnailRoute(req, res, segments, {
+        json,
+        readBody,
+        matchDir,
+        parseId,
+        busy: busyIn,
+        pipelineRunning: () => anyJobRunning() || nightlyStarting(),
+      })
+    )
+      return;
 
     const [, resource, idRaw] = segments;
 
@@ -510,6 +527,7 @@ const server = createServer(async (req, res) => {
       const nextRunDate = nextRunMs === null ? null : new Date(nextRunMs).toISOString().slice(0, 10);
       const storedSkipNight = skipNightOf();
       const skipTonight = hourUtc !== null && storedSkipNight !== null && storedSkipNight === nextRunDate;
+      const summary = await nightlyShortSummary();
       json(res, 200, {
         // Boot commit vs checked-out commit: the strip says "restart" when they differ.
         code: codeVersions(),
@@ -531,7 +549,9 @@ const server = createServer(async (req, res) => {
         skipTonight,
         lastRun: readNightlyState(),
         // "3 waiting for a hook ›", "1 failed ›", and whether the model can be reached at all.
-        ...(await nightlyShortSummary()),
+        ...summary,
+        // The strip's activity line carries the thumbnail re-renders beside the Short chain's steps.
+        activity: { ...summary.activity, running: [...summary.activity.running, ...thumbnailActivities()] },
         // Only when the operator has turned it on: the strip reads nothing from a feature that
         // launches nothing (config.studioAutomation, src/youtube/studioBrowser.ts).
         studio: config.studioAutomation ? { lastProbe: readLastProbe() } : undefined,
@@ -745,20 +765,7 @@ const server = createServer(async (req, res) => {
     // so it refuses while anything is still writing into that directory, and reports whether an
     // archived copy survived it. See src/dashboard/matchShelf.ts for why this exists at all.
     if (resource === "match" && req.method === "DELETE") {
-      const busy =
-        getJob(matchId)?.done === false
-          ? "a pipeline run"
-          : exportRunning(matchId)
-            ? "an export"
-            : shortRunning(matchId)
-              ? "a Short render"
-              : pickActivity(matchId) === "running"
-                ? "the model's pick (it writes the proxy there)"
-                : uploadRunning(matchId)
-                  ? "an upload"
-                  : allArchiveStates().some((a) => a.matchId === matchId && a.running)
-                    ? "an archive copy"
-                    : null;
+      const busy = busyIn(matchId);
       if (busy) {
         json(res, 409, { error: `Match ${matchId} has ${busy} in flight — stop it first` });
         return;
@@ -772,29 +779,28 @@ const server = createServer(async (req, res) => {
     }
 
     if (resource === "thumbnail" && req.method === "GET") {
-      // `?v=<key>` serves one variant. The key indexes the manifest rather than being joined
-      // into a path, so it cannot walk out of the match directory.
+      // `?v=<key>` serves one variant, `&new=1` one of the re-rendered set (src/thumbnails/rerender.ts).
+      // The key indexes the manifest rather than being joined into a path, so it cannot walk out
+      // of the match directory.
       const key = url.searchParams.get("v");
+      // `?kept=1`: the image the video wore before the first Put on YouTube (src/youtube/thumbnailSwap.ts).
+      if (url.searchParams.has("kept")) {
+        const record = await longFormRecord(matchId);
+        if (record) sendFile(res, path.join(matchDir(matchId), undoFile(record.videoId)), "image/jpeg");
+        else json(res, 404, { error: `match ${matchId} has no long-form of its own on the channel` });
+        return;
+      }
       if (key === null) {
         sendFile(res, path.join(matchDir(matchId), "thumbnail.png"), "image/png");
         return;
       }
-      const manifest = await readManifest(matchDir(matchId));
-      const variant = manifest?.variants.find((v) => v.key === key);
+      const dir = path.join(matchDir(matchId), url.searchParams.has("new") ? NEW_DIR : "");
+      const variant = (await readManifest(dir))?.variants.find((v) => v.key === key);
       if (!variant) {
         json(res, 404, { error: `no thumbnail variant "${key}" for match ${matchId}` });
         return;
       }
-      sendFile(res, path.join(matchDir(matchId), variant.file), "image/png");
-      return;
-    }
-
-    if (resource === "thumbnails" && req.method === "GET") {
-      json(
-        res,
-        200,
-        (await readManifest(matchDir(matchId))) ?? { chosen: null, hookText: null, variants: [] },
-      );
+      sendFile(res, path.join(dir, variant.file), "image/png");
       return;
     }
 
@@ -803,6 +809,13 @@ const server = createServer(async (req, res) => {
       const body = JSON.parse(await readBody(req)) as { chosen?: unknown };
       if (typeof body.chosen !== "string") {
         json(res, 400, { error: 'expected { chosen: "<variant key>" }' });
+        return;
+      }
+      // The new set moving over the live one ("Use this" on a new tile) writes the same two files.
+      if (thumbnailRunning(matchId)) {
+        json(res, 409, {
+          error: "The thumbnails are being re-rendered or put in place — try again once they are done",
+        });
         return;
       }
       try {

@@ -41,6 +41,21 @@ import { readExperiments, updateTcExperiments } from "./studioExperiments.js";
 const media = mkdtempSync(path.join(tmpdir(), "mcsr-studioworker-"));
 config.mediaDir = media;
 
+// --- readLedger / readHeartbeat: no file at all yet (before any write in this run) -------------
+{
+  assert.deepEqual(
+    await readLedger(),
+    { endScreens: {}, pickerEmptySeen: {}, relatedLinks: {}, relatedRetrySeen: {} },
+    "a fresh mediaDir with no .studio-ledger.json reads as the empty default, not a throw",
+  );
+  assert.equal(
+    await readHeartbeat(),
+    null,
+    "a fresh mediaDir with no .studio-worker.json reads as null, not a throw",
+  );
+  console.log("OK: readLedger/readHeartbeat default safely when neither file exists yet");
+}
+
 // --- planCycle: end screens -------------------------------------------------------------------
 {
   const longForms: LongFormRef[] = [
@@ -331,6 +346,44 @@ config.mediaDir = media;
   console.log("OK: testFor/playersFor read an experiment's arms correctly for both kinds");
 }
 
+// --- testFor / playersFor: edge cases with no usable arms at all --------------------------------
+{
+  // Thumbnail: only the control arm has a usable file (one left after filtering) — below the
+  // 2-file floor `testFor` itself enforces, same as `planTcExperiments` does at plan time.
+  const oneFileThumb: Experiment = {
+    id: "tc-thumbnail-lonely",
+    kind: "tc",
+    variable: "thumbnail",
+    controlArm: "control",
+    arms: [
+      { name: "control", settings: { file: "/a/control.png" } },
+      { name: "challenger1", settings: {} }, // no file at all
+    ],
+    videos: [{ videoId: "z", matchId: 1, arm: "tc" }],
+    status: "planned",
+  };
+  assert.equal(testFor(oneFileThumb), null, "fewer than 2 usable thumbnail files — no test");
+
+  // Title: every non-control arm lacks a title — no challenger to offer.
+  const noChallengerTitle: Experiment = {
+    id: "tc-title-lonely",
+    kind: "tc",
+    variable: "title",
+    controlArm: "control",
+    arms: [{ name: "control", settings: { title: "LIVE | edcr vs doogile" } }, { name: "challenger1" }],
+    videos: [{ videoId: "w", matchId: 1, arm: "tc" }],
+    status: "planned",
+  };
+  assert.equal(testFor(noChallengerTitle), null, "no arm but control carries a title — no test");
+
+  // playersFor: no arm matches controlArm's name at all — nothing to split, so no players named.
+  const noControlArm: Experiment = { ...noChallengerTitle, controlArm: "missing" };
+  assert.deepEqual(playersFor(noControlArm), [], "control arm not found — names nobody");
+  console.log(
+    "OK: testFor returns null with no usable challenger, playersFor returns [] with no control arm",
+  );
+}
+
 // --- startTestAndCompare refuses a bad title before touching the browser ----------------------
 {
   // Any access to `.browser` fails the test rather than the function: proof the refusal happened
@@ -401,7 +454,10 @@ config.mediaDir = media;
   const hb = await readHeartbeat();
   assert.equal(hb?.pid, 123);
   assert.deepEqual(hb?.lastErrors, ["a", "b"], "every error of the cycle, not just the first");
-  console.log("OK: ledger and heartbeat round-trip atomically and a corrupt ledger degrades to empty");
+
+  writeFileSync(path.join(media, ".studio-worker.json"), "{not json either");
+  assert.equal(await readHeartbeat(), null, "a corrupt heartbeat degrades to null, never throws");
+  console.log("OK: ledger and heartbeat round-trip atomically and a corrupt file degrades safely");
 }
 
 // --- nextSameErrorStreak: read-before-write streak the morning report leans on ------------------
@@ -768,6 +824,31 @@ config.mediaDir = media;
   console.log("OK: a finished test's report is read for its shares and its winning arm, by title");
 }
 
+// --- setExperimentChecked: a "planned" experiment read as already "done" (never seen running) --
+// (the `tcToStart` loop's own reconcile branch skips straight from `readTestAndCompare` to this
+// function without ever calling setExperimentRunning first — a test that both started and
+// finished between cycles, or was never caught mid-run).
+{
+  const expId2 = "tc-title-skip-to-done";
+  await updateTcExperiments((tc) => [
+    ...tc,
+    {
+      id: expId2,
+      kind: "tc",
+      variable: "title",
+      arms: [{ name: "control" }],
+      videos: [{ videoId: "vidSkip", matchId: 2, arm: "tc" }],
+      status: "planned",
+    },
+  ]);
+  await setExperimentChecked(expId2, { state: "done", winner: "Title B", raw: "Winner: Title B" });
+  const afterSkip = (await readExperiments()).experiments.find((e) => e.id === expId2);
+  assert.equal(afterSkip?.status, "done", "planned promotes straight to done when that's what Studio shows");
+  assert.equal(afterSkip?.start, undefined, "the done branch never backfills a start it never saw");
+  assert.match(afterSkip?.verdict ?? "", /Title B/);
+  console.log("OK: setExperimentChecked can promote planned straight to done, with no start ever recorded");
+}
+
 // --- pickStarterLayoutLabel: end-screen starter-layout preference (phase 4, 8 Oct 2026) --------
 {
   assert.equal(
@@ -819,6 +900,20 @@ config.mediaDir = media;
   console.log(
     "OK: runCycle no-ops without config.studioAutomation or an explicit enable, no browser touched",
   );
+}
+
+// --- runWorker: one `--once` pass through the real loop, gate still off -----------------------
+// (nothing above calls `runWorker` directly — only its inner `runCycle` — so the loop's own
+// heartbeat-writing side effect, and that `--once` actually returns instead of looping forever,
+// were both unpinned.)
+{
+  await runWorker({ once: true, enable: false });
+  const hb = await readHeartbeat();
+  assert.equal(hb?.pid, process.pid, "the loop's own heartbeat names this process");
+  assert.equal(hb?.lastCycle?.probe, "skipped", "gate still off — this cycle did nothing");
+  assert.equal(hb?.lastError, null, "a clean skip is not an error");
+  assert.equal(hb?.sameErrorStreak, 0, "no error this cycle — no streak");
+  console.log("OK: runWorker({ once: true }) runs exactly one cycle, writes the heartbeat, and returns");
 }
 
 // --- renderTcThumbSet's own real command must put nothing but data on stdout (review fix, 8 Oct

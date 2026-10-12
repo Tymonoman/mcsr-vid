@@ -47,6 +47,7 @@ import { orderForDisplay } from "./suggestPresent.js";
 import { playoffBoard, type PlayoffBoard } from "../playoffs/playoffs.js";
 import { listProcessedMatchIds } from "./matchStatus.js";
 import { shortRunning } from "./shortsRoutes.js";
+import { anyThumbnailRunning, thumbnailRunning } from "../thumbnails/rerender.js";
 import { nightlyShortSummary, picksIdle, shortTick } from "./shortFlow.js";
 import { snapshot, startScan } from "./suggestScan.js";
 import { knownTierFor, pooledMatchPlayers, scanKnowledge } from "./suggest.js";
@@ -396,8 +397,19 @@ let lastStartedId: number | null = null;
 let chainActive = false;
 export const nightlyChainRunning = (): boolean => chainActive;
 
-/** A pipeline, an encode or a Short on this match: the same three the delete guard refuses for. */
-const busyWith = (id: number): boolean => getJob(id)?.done === false || exportRunning(id) || shortRunning(id);
+/** A pipeline, an encode, a Short or a thumbnail re-render on this match: the same four the delete guard refuses for. */
+const busyWith = (id: number): boolean =>
+  getJob(id)?.done === false || exportRunning(id) || shortRunning(id) || thumbnailRunning(id);
+
+/**
+ * True while a scheduled run is on its way to `startJob`. The thumbnails' bulk re-render
+ * (thumbnailRoutes.ts) holds its next match while this is set, and the run waits out the
+ * re-render in flight rather than skipping the night for a job of a minute or two.
+ */
+let starting = false;
+export const nightlyStarting = (): boolean => starting;
+/** One match's four stills take a minute or two; the scheduled run waits this long at most. */
+const THUMBNAIL_WAIT_MS = 20 * 60_000;
 
 const renderInFlight = (): boolean =>
   (lastStartedId !== null && busyWith(lastStartedId)) || listProcessedMatchIds().some(busyWith);
@@ -549,6 +561,8 @@ export interface NightlyDeps {
   now: () => number;
   /** A queued id missing from the ranked list: `resolveQueuedPick` by default, a real `getMatch` away. */
   resolveQueued: (id: number) => Promise<NightlyPick | null>;
+  /** How long a scheduled run waits out a thumbnail re-render. Default 20 min. */
+  thumbnailWaitMs: number;
 }
 
 /** How long the nightly waits for the pairs the channel put out lately before it picks without them. */
@@ -678,6 +692,24 @@ export async function runNightlyOnce(
   /** Which render of the night this is; `nightlyMaxRenders` is the last one. */
   started = 1,
 ): Promise<NightlyRunResult> {
+  if (!deps.scheduled) return runOnce(notifyUrl, deps, started);
+  starting = true;
+  try {
+    // Bounded: a re-render still running past this is a recorded, notified skip below, and the
+    // timer re-arms for tomorrow rather than waiting on it for ever.
+    const until = Date.now() + (deps.thumbnailWaitMs ?? THUMBNAIL_WAIT_MS);
+    while (anyThumbnailRunning() && Date.now() < until) await new Promise((r) => setTimeout(r, 1_000));
+    return await runOnce(notifyUrl, deps, started);
+  } finally {
+    starting = false;
+  }
+}
+
+async function runOnce(
+  notifyUrl: string,
+  deps: Partial<NightlyDeps>,
+  started: number,
+): Promise<NightlyRunResult> {
   const {
     renderInFlight: busy = renderInFlight,
     ranked = liveRanked,
@@ -749,7 +781,13 @@ export async function runNightlyOnce(
       return { skipped: reason, ...(conflict ? { busy: true } : {}) };
     };
 
-    if (busy()) return skip("a render is already in flight", true);
+    // The scheduled run has already waited this out (runNightlyOnce). Still running, it is hung, and
+    // the night it costs is an outcome to record and push — not the conflict below, which says
+    // nothing to anyone because a render in flight is the night's work.
+    if (scheduled && anyThumbnailRunning()) return skip("a thumbnail re-render is still running");
+    const inFlight = () =>
+      anyThumbnailRunning() ? "a thumbnail re-render is running" : "a render is already in flight";
+    if (busy()) return skip(inFlight(), true);
 
     const suggestions = await ranked();
     if (!suggestions) return skip("no suggestions available");
@@ -772,7 +810,7 @@ export async function runNightlyOnce(
     }
     // Checked again after the awaits above: a render clicked while the list was being ranked
     // must not get a second one started on top of it.
-    if (busy()) return skip("a render is already in flight", true);
+    if (busy()) return skip(inFlight(), true);
 
     const { matchId, players } = pick.metrics;
     const label = `${players[0]} vs ${players[1]}`;
