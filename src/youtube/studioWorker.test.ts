@@ -45,7 +45,7 @@ config.mediaDir = media;
 {
   assert.deepEqual(
     await readLedger(),
-    { endScreens: {}, pickerEmptySeen: {} },
+    { endScreens: {}, pickerEmptySeen: {}, relatedLinks: {}, relatedRetrySeen: {} },
     "a fresh mediaDir with no .studio-ledger.json reads as the empty default, not a throw",
   );
   assert.equal(
