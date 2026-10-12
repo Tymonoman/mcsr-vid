@@ -620,4 +620,142 @@ assert.equal(twoProportionZ(0, 0, 10, 100), 0, "nothing to divide by on one side
   );
 }
 
+// --- twoProportionZ: zero clicks on both sides is a zero pooled variance, not a divide-by-zero --
+// (nA, nB > 0 here, unlike the "nothing to divide by" case above, which is nA<=0/nB<=0).
+assert.equal(twoProportionZ(0, 1000, 0, 1000), 0, "pooled proportion 0 — se is 0, returns 0 not NaN");
+
+// --- verdictFor: MIN_IMPRESSIONS's own edge is "enough", not "under" -----------------------------
+{
+  const v = verdictFor(baseExperiment(), [arm("control", 1000, 20), arm("variant", 1000, 20)]);
+  assert.notEqual(v.text, "inconclusive (1000 impressions in arm control)", "exactly 1,000 is enough");
+}
+
+// --- ctrVerdict: three arms — the most significant non-control arm wins, not just the first -----
+{
+  const v = verdictFor(baseExperiment({ arms: [{ name: "control" }, { name: "a" }, { name: "b" }] }), [
+    arm("control", 5000, 100),
+    arm("a", 5000, 115), // z just over 1.96 — significant, but not the strongest
+    arm("b", 5000, 250), // clearly the biggest gap
+  ]);
+  assert.ok(v.text.startsWith("b wins on CTR"), `expected b to win, got "${v.text}"`);
+  assert.equal(v.winnerArm, "b");
+}
+
+// --- settle(): a winning arm whose lever is `slot`, not `settings`, is still a decision ----------
+// with nothing for saveSettings to apply — the doc comment's own "nothing to apply" case.
+{
+  const metrics = new Map<string, VideoMetrics>([
+    [
+      "sc1",
+      {
+        impressions: 5000,
+        clicks: 100,
+        views: 1000,
+        engagedViews: 400,
+        averageViewPercentage: 40,
+        subscribersGained: 1,
+      },
+    ],
+    [
+      "sv1",
+      {
+        impressions: 5000,
+        clicks: 250,
+        views: 1000,
+        engagedViews: 400,
+        averageViewPercentage: 42,
+        subscribersGained: 2,
+      },
+    ],
+  ]);
+  const exp = baseExperiment({
+    id: "slot-only-winner",
+    end: "2026-10-08",
+    adoptWinner: true,
+    arms: [
+      { name: "control", slot: { rankedHoursUtc: [19] } },
+      { name: "variant", slot: { rankedHoursUtc: [21] } },
+    ],
+    videos: [
+      { matchId: 80, arm: "control", videoId: "sc1" },
+      { matchId: 81, arm: "variant", videoId: "sv1" },
+    ],
+  });
+  writeExperiments({ experiments: [exp], schedule: [] });
+  const sentinel = config.introSec;
+  await evaluateExperiments({
+    fetch: async (_m, videoId) => (videoId ? (metrics.get(videoId) ?? null) : null),
+    now: () => Date.parse("2026-10-08T04:15:00Z"),
+  });
+  assert.equal(config.introSec, sentinel, "a slot-only arm has no settings — saveSettings is never called");
+  const after = readExperiments().experiments.find((e) => e.id === "slot-only-winner")!;
+  assert.equal(after.status, "done");
+  assert.ok(after.decision?.startsWith("adopted variant:"), after.decision);
+}
+
+// --- enrolVideos: a corrupt experiment-arm.json is logged and skipped, not a crash --------------
+// — other match directories, including ones after it in the scan, are still enrolled.
+{
+  mkdirSync(matchDir(930001), { recursive: true });
+  writeFileSync(path.join(matchDir(930001), "experiment-arm.json"), "{ not json");
+  fixtureArmFile(930002, "corrupt-skip", "control");
+
+  const exp = baseExperiment({ id: "corrupt-skip", end: "2026-10-20", videos: [] });
+  writeExperiments({ experiments: [exp], schedule: [] });
+  const logged: unknown[][] = [];
+  const realError = console.error;
+  console.error = (...args: unknown[]) => logged.push(args);
+  try {
+    await evaluateExperiments({
+      fetch: async () => null,
+      now: () => Date.parse("2026-10-08T04:15:00Z"),
+    });
+  } finally {
+    console.error = realError;
+  }
+  const after = readExperiments().experiments.find((e) => e.id === "corrupt-skip")!;
+  assert.deepEqual(
+    after.videos.map((v) => v.matchId),
+    [930002],
+    "the corrupt directory contributed nothing, the next one was still enrolled",
+  );
+  assert.ok(
+    logged.some((l) => String(l[0]).includes("experiment-arm.json") && String(l[0]).includes("unreadable")),
+    `the corrupt file was logged (got ${JSON.stringify(logged)})`,
+  );
+}
+
+// --- enrolVideos: a slot experiment falls back to uploadedAt when publishAt is null -------------
+{
+  await fixtureUpload(940001, { videoId: "sv5", publishAt: null, uploadedAt: "2026-10-08T19:30:00Z" });
+  const exp = baseExperiment({
+    id: "slot-no-publishat",
+    end: "2026-10-20",
+    controlArm: "only-arm",
+    arms: [{ name: "only-arm" }],
+    videos: [],
+  });
+  writeExperiments({
+    experiments: [exp],
+    schedule: [{ date: "2026-10-08", experimentId: "slot-no-publishat", arm: "only-arm" }],
+  });
+  await evaluateExperiments({
+    fetch: async () => ({
+      impressions: 10,
+      clicks: 1,
+      views: 10,
+      engagedViews: 4,
+      averageViewPercentage: 40,
+      subscribersGained: 0,
+    }),
+    now: () => Date.parse("2026-10-08T04:15:00Z"),
+  });
+  const after = readExperiments().experiments.find((e) => e.id === "slot-no-publishat")!;
+  assert.equal(
+    after.videos.find((v) => v.matchId === 940001)?.arm,
+    "only-arm",
+    "uploadedAt's own date was used since publishAt was null",
+  );
+}
+
 console.log("experimentsEvaluator: all checks passed");
