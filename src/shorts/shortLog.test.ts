@@ -152,6 +152,19 @@ try {
       /python3 is not installed/,
     );
     assert.match(boxFailure("x", "sh: 1: ffprobe: not found")!, /ffprobe is not installed/);
+    assert.match(
+      boxFailure("the model's command", "/app/.tools/bin/agy: spawn /app/.tools/bin/agy EACCES")!,
+      /^the model's command failed: \/app\/.tools\/bin\/agy cannot be run \(permission denied\) — chmod \+x it/,
+    );
+    // The lab runs agy through `env HOME=…`: env's own words for the same two.
+    assert.match(
+      boxFailure("x", "env exited 127: env: '/app/.tools/bin/agy': No such file or directory")!,
+      /^x failed: agy is not installed/,
+    );
+    assert.match(
+      boxFailure("x", "env exited 126: env: '/app/.tools/bin/agy': Permission denied")!,
+      /cannot be run \(permission denied\)/,
+    );
     assert.equal(
       boxFailure("x", "/media/1/final.mp4: No such file or directory"),
       null,

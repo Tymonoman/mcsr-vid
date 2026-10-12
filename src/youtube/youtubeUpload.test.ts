@@ -382,7 +382,10 @@ try {
     assert.ok("error" in twice);
     assert.deepEqual(
       [log().at(-1)!.level, log().at(-1)!.text],
-      ["error", `upload refused: the Short of match ${matchId} is already on the channel`],
+      [
+        "error",
+        `upload refused: the Short of match ${matchId} is already on the channel (youtube-short.json) — it goes up once; a second copy is a duplicate only Studio removes`,
+      ],
     );
     await rm(path.join(dir, "youtube-short.json"));
 

@@ -350,7 +350,7 @@ export function modelFailure(error: string, raw = ""): { message: string; again:
   if (error === NOT_SIGNED_IN || /not signed in/i.test(error)) return { message: error, again: false };
   if (/timed out after/.test(error))
     return {
-      message: `the model did not answer in time (${error}) and was stopped — Pick again, or leave it to the nightly's tick tomorrow`,
+      message: `the model did not answer in time (${error}) and was stopped — Pick again`,
       again: false,
     };
   const box = boxFailure("the model's command", text);
@@ -366,7 +366,7 @@ export function modelFailure(error: string, raw = ""): { message: string; again:
     };
   if (/RESOURCE_EXHAUSTED|quota|rate[ -]?limit|too many requests|usage limit/i.test(text))
     return {
-      message: `the Gemini subscription's quota or rate limit is used up (${error}) — the nightly's tick asks again tomorrow; Pick again once it has reset`,
+      message: `the Gemini subscription's quota or rate limit is used up (${error}) — Pick again once it has reset`,
       again: false,
     };
   if (/denied|no JSON/i.test(error))
@@ -691,11 +691,12 @@ function checkAnswer(answer: unknown, spans: readonly GameSpan[], series: boolea
       problem: `rtaAtStart ${String(a.rtaAtStart)} is ${Math.abs(rta - s).toFixed(1)} s from the window's start, RTA ${clock(s)} — not read off the footage`,
     };
   if (a.pov !== "both" && a.pov !== "left" && a.pov !== "right")
-    return { problem: `pov ${JSON.stringify(a.pov)}` };
-  if (a.kind !== "play" && a.kind !== "race") return { problem: `kind ${JSON.stringify(a.kind)}` };
+    return { problem: `pov ${JSON.stringify(a.pov)} is not "both", "left" or "right"` };
+  if (a.kind !== "play" && a.kind !== "race")
+    return { problem: `kind ${JSON.stringify(a.kind)} is not "play" or "race"` };
   const focus = a.focus === "left" || a.focus === "right" ? a.focus : undefined;
   if (a.focus !== undefined && a.focus !== null && a.focus !== "" && !focus)
-    return { problem: `focus ${JSON.stringify(a.focus)}` };
+    return { problem: `focus ${JSON.stringify(a.focus)} is not "left" or "right"` };
   return {
     gameMatchId: span.match.id,
     startMs: Math.round(s * 1000),
@@ -924,7 +925,7 @@ async function askModel(
         detail: `${checked.problem}\n\nthe answer: ${JSON.stringify(reply.answer, null, 2)}`,
       });
       return {
-        failure: `the model's window was rejected: ${checked.problem} — the heuristic's window stands; Pick again asks afresh`,
+        failure: `the model's window was rejected: ${checked.problem} — Pick again asks afresh`,
       };
     }
     const { hook, ...window } = checked;
@@ -1064,6 +1065,22 @@ export async function pickShortMoment(matchId: number, opts: PickOptions = {}): 
         return asked.pick;
       }
       failure = asked.failure;
+    }
+    // Pick again that fails (a quota, a stuck ask) keeps the model's earlier window rather than
+    // trading it for the heuristic's: the error says so, and the next Pick again asks afresh. A
+    // dry run never does this — it asks afresh and reports what a real run would find, same as
+    // it never reuses the cached pick on the happy path either.
+    const earlier = write
+      ? await readFile(file, "utf8").then(
+          (text) => JSON.parse(text) as ShortPick,
+          () => null,
+        )
+      : null;
+    if (earlier?.source === "agy") {
+      const message = `${failure} — the model's earlier pick stands: ${windowText(earlier, matchId)}`;
+      note(`asking again failed: ${message}`, { level: "warn" });
+      await fail(message);
+      return earlier;
     }
     note(`the heuristic stands in: ${failure}`, { level: "warn" });
     const pick = await heuristicPick(spans, failure);
