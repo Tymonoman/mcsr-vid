@@ -16,6 +16,9 @@ wall, badge at its top right; captions at y 1340 (or 1650 when a dialog fills th
 YouTube's own Shorts UI covers the top-right corner, a column on the right and the bottom ~20%,
 so nothing important is placed there.
 
+Two POVs stacked instead (runners with no face cam): "dual": true, "nicknames": [left, right], "side" = the POV
+the Short is about (the other plays at -12 dB); no faceCrop/gameX/gameW. --words reads "nickname" if given.
+
 Spec (JSON):
   { "matchId": 14074004, "nickname": "silverrruns", "side": "left",
     "fromSec": 104, "toSec": 126,                 # match time
@@ -66,8 +69,11 @@ def plate(text, size, fg, border, path, pad=(30, 18), shadow=8, bw=6, max_w=1000
 
 def brand(spec, mdir, tmp):
     top = Image.open(os.path.join(mdir, "overlay-top.png")).convert("RGBA")  # 1920x194
-    half = (0, 0, 870, 92) if spec["side"] == "left" else (1050, 0, 1920, 92)
-    top.crop(half).resize((W, round(92 * W / 870)), Image.NEAREST).save(f"{tmp}/band.png")
+    if spec.get("dual"):  # both nameplates and the badge: the whole band
+        top.resize((W, round(top.height * W / top.width)), Image.NEAREST).save(f"{tmp}/band.png")
+    else:
+        half = (0, 0, 870, 92) if spec["side"] == "left" else (1050, 0, 1920, 92)
+        top.crop(half).resize((W, round(92 * W / 870)), Image.NEAREST).save(f"{tmp}/band.png")
     top.crop((878, 6, 1042, 168)).resize((150, 148), Image.NEAREST).save(f"{tmp}/badge.png")
     plate(spec["hook"], 70, QUARTZ, CRIMSON, f"{tmp}/hook.png")
     if spec.get("turn"):
@@ -122,32 +128,57 @@ def words(spec):
             print(f"{w['start']:6.2f} {w['end']:6.2f} {w['word']}")
 
 
-def build(spec):
-    mdir = f"/media/{spec['matchId']}"
-    dur = spec["toSec"] - spec["fromSec"]
+def base(spec, mdir, tmp, dur):
+    """Inputs and the filter lines up to [l4], for one POV with its face cam, or both POVs stacked."""
+    timer = ["-ss", str(spec["fromSec"] + ANCHOR_SEC), "-t", str(dur), "-i", os.path.join(mdir, "overlay-timer.mp4")]
+    bg = f"color=c=0x221F27:s={W}x{H}:r=60:d={dur}[bg]"
+    if spec.get("dual"):
+        # Both POVs (11 Oct 2026, for runners with no face cam): the left player on top, the right below, each a
+        # centre crop that keeps the crosshair; the clock on the seam; the POV the Short isn't about at -12 dB.
+        sync = json.load(open(os.path.join(mdir, "sync.json")))
+        inputs = []
+        for side, nick in zip(("left", "right"), spec["nicknames"]):
+            inputs += ["-ss", str(float(sync[side]) + spec["fromSec"]), "-t", str(dur), "-i", os.path.join(mdir, f"{nick}.mp4")]
+        inputs += timer + ["-i", f"{tmp}/band.png", "-i", f"{tmp}/hook.png"]
+        cw = round(1080 * 1080 / 780)
+        g = [bg,
+             f"[0:v]crop={cw}:1080:{(1920 - cw) // 2}:0,scale=1080:780:flags=lanczos[top]",
+             f"[1:v]crop={cw}:1080:{(1920 - cw) // 2}:0,scale=1080:780:flags=lanczos[bot]",
+             "[bg][3:v]overlay=0:0[l0]", "[l0][top]overlay=0:112[l1]", "[l1][bot]overlay=0:900[l2]",
+             "[2:v]fps=60,scale=280:202:flags=area[clock]", "[l2][clock]overlay=14:795:eof_action=pass[l4]"]
+        quiet = 0 if spec["side"] == "right" else 1
+        audio = (f"[{quiet}:a]volume=0.25[q];[{1 - quiet}:a][q]amix=inputs=2:normalize=0:duration=first,")
+        return inputs, g, 4, 5, audio
     fx, fy, fw, fh = spec["faceCrop"]
     gx, gw = spec["gameX"], spec["gameW"]
     gh = round(gw * 1320 / 1080)
+    inputs = ["-ss", str(clip_start(spec, mdir)), "-t", str(dur), "-i", os.path.join(mdir, f"{spec['nickname']}.mp4"),
+              *timer, "-i", f"{tmp}/band.png", "-i", f"{tmp}/badge.png", "-i", f"{tmp}/hook.png"]
+    g = [
+        "[0:v]split=2[a][b]",
+        f"[a]crop={fw}:{fh}:{fx}:{fy},scale=1080:486:flags=lanczos[face]",
+        f"[b]crop={gw}:{min(gh, 1080)}:{gx}:{max(0, (1080 - gh) // 2)},scale=1080:1320:flags=lanczos[game]",
+        bg,
+        "[bg][2:v]overlay=0:0[l0]", "[l0][face]overlay=0:114[l1]", "[l1][game]overlay=0:600[l2]",
+        "[1:v]fps=60,scale=336:242:flags=area[clock]", "[l2][clock]overlay=14:340:eof_action=pass[l3]",
+        "[l3][3:v]overlay=914:128[l4]",
+    ]
+    return inputs, g, 4, 5, "[0:a]"
+
+
+def build(spec):
+    mdir = f"/media/{spec['matchId']}"
+    dur = spec["toSec"] - spec["fromSec"]
     with tempfile.TemporaryDirectory() as tmp:
         brand(spec, mdir, tmp)
-        inputs = ["-ss", str(clip_start(spec, mdir)), "-t", str(dur), "-i", os.path.join(mdir, f"{spec['nickname']}.mp4"),
-                  "-ss", str(spec["fromSec"] + ANCHOR_SEC), "-t", str(dur), "-i", os.path.join(mdir, "overlay-timer.mp4"),
-                  "-i", f"{tmp}/band.png", "-i", f"{tmp}/badge.png", "-i", f"{tmp}/hook.png"]
-        g = [
-            "[0:v]split=2[a][b]",
-            f"[a]crop={fw}:{fh}:{fx}:{fy},scale=1080:486:flags=lanczos[face]",
-            f"[b]crop={gw}:{min(gh, 1080)}:{gx}:{max(0, (1080 - gh) // 2)},scale=1080:1320:flags=lanczos[game]",
-            f"color=c=0x221F27:s={W}x{H}:r=60:d={dur}[bg]",
-            "[bg][2:v]overlay=0:0[l0]", "[l0][face]overlay=0:114[l1]", "[l1][game]overlay=0:600[l2]",
-            "[1:v]fps=60,scale=336:242:flags=area[clock]", "[l2][clock]overlay=14:340:eof_action=pass[l3]",
-            "[l3][3:v]overlay=914:128[l4]",
-            f"[l4][4:v]overlay=(W-w)/2:700:enable='between(t,0,{spec.get('hookTo', 3.2)})'[s0]",
-        ]
-        n, last = 5, "s0"
+        inputs, g, hook_in, n, audio = base(spec, mdir, tmp, dur)
+        hy, ty = (560, 640) if spec.get("dual") else (700, 760)  # dual: clear of the clock on the seam
+        g.append(f"[l4][{hook_in}:v]overlay=(W-w)/2:{hy}:enable='between(t,0,{spec.get('hookTo', 3.2)})'[s0]")
+        last = "s0"
         if spec.get("turn"):
             inputs += ["-i", f"{tmp}/turn.png"]
             t = spec["turn"]
-            g.append(f"[{last}][{n}:v]overlay=(W-w)/2:760:enable='between(t,{t['from']},{t['to']})'[s{n}]")
+            g.append(f"[{last}][{n}:v]overlay=(W-w)/2:{ty}:enable='between(t,{t['from']},{t['to']})'[s{n}]")
             last, n = f"s{n}", n + 1
         for i, c in enumerate(spec.get("captions", [])):
             inputs += ["-i", f"{tmp}/cap{i}.png"]
@@ -159,7 +190,7 @@ def build(spec):
         g.append(f"[{n}:v]format=rgba,fade=t=in:st={ef}:d=0.35:alpha=1[endf]")
         g.append(f"[{last}][endf]overlay=0:0:enable='gte(t,{ef})'[v]")
         mutes = "".join(f"volume=0:enable='between(t,{a},{b})'," for a, b in spec.get("mute", []))
-        g.append(f"[0:a]{mutes}loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000,aformat=channel_layouts=stereo[au]")
+        g.append(f"{audio}{mutes}loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000,aformat=channel_layouts=stereo[au]")
         with open(f"{tmp}/graph.txt", "w") as fh_:
             fh_.write(";\n".join(g))
         out = spec["out"]
@@ -175,7 +206,8 @@ def build(spec):
 
 if __name__ == "__main__":
     spec = json.load(open(sys.argv[1]))
-    for k in ("matchId", "nickname", "side", "fromSec", "toSec", "faceCrop", "gameX", "gameW", "hook", "out"):
+    need = ("nicknames",) if spec.get("dual") else ("nickname", "faceCrop", "gameX", "gameW")
+    for k in ("matchId", "side", "fromSec", "toSec", "hook", "out", *need):
         assert k in spec, f"spec is missing {k}"
     assert spec["side"] in ("left", "right") and 12 <= spec["toSec"] - spec["fromSec"] <= 60, "side left|right, 12-60 s"
     words(spec) if "--words" in sys.argv else build(spec)
