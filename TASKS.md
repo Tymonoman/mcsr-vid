@@ -4,14 +4,14 @@
 TARGET: the full tier, 1,000 subs (the operator, 10 Oct: "we only focus on hitting the full ypp"); 136 subs at ~3.1/day →
 ~18 Jul 2027; baseline 4.0/day → ~14 May 2027 (the 14 Oct final report compares these). After 1 Feb 2027 it needs 8,000 h
 (passed ~16 Dec at ~82 h/day). Bot /ypp + morning line lead with the full tier (234b5ae).
-HIS DECISIONS TODAY: NO runner DMs, ever (no consent round). "you're gonna make the shorts from now on" + "we need more of
-our branding on it". He liked the hand-made Short ("the short is amazing").
+THE OPERATOR'S DECISIONS (11 Oct): NO runner DMs, ever (no consent round). "you're gonna make the shorts from now on" + "we need more of
+our branding on it". The operator liked the hand-made Short ("the short is amazing").
 DONE TODAY: ideas page https://claude.ai/artifact/ADK2WTTzP732w87GgpwXzC (v3: no DMs); LIVE learnedDraw + creatorWatch
 (watchlist Grian/ludwigahgren/Couriway/rekrap2/Dream/xQcOW; only Grian has ranked); x4-record-pace render arms 17–24 Oct;
 cadence-two-a-day slot entries 16 Oct–15 Nov (x1's ended 15 Oct); Studio browser switched to MCSR Replayoffs (the switcher
 entry opens a confirm dialog — press "Got it"; held across restart; Related-video picker now returns rows); hand-made Short
 tool scripts/hand-short/build.py (spec JSON → branded Short; --words for caption timings; spec example
-tmp/shorts/specs/14074004.json; v4 = tmp/shorts/14074004/hand-short-v4.mp4, sent to him); first A/B verdict: GF title test
+tmp/shorts/specs/14074004.json; v4 = tmp/shorts/14074004/hand-short-v4.mp4, sent to the operator); first A/B verdict: GF title test
 _2EOkOOX0PQ control 62.1% vs "A SUB-9 TO WIN IT" 37.9% → report https://claude.ai/artifact/JvmQuiz5RX4bhRAE1599Tn, ledger
 done, experiments.md Decisions.
 LANDED ~13:00 UTC: hand-shorts + related-link merged (2c199a3), tests/tsc green, dashboard self-restarted; shortsByHand ON
@@ -56,6 +56,14 @@ verdicts, between experiments. NOTE: with all 7 days in, the baseline week reads
 6 of 7 days on 7 Oct) — the report shows both and keeps 14 May 2027 as the goal's baseline date. Today: 141 subs, 3.08/day
 over 28 days → ~17 Jul 2027; 7-day net +19 through 8 Oct (−42% vs the week before). The operator's checklist page:
 https://claude.ai/artifact/PGJbLBr9NmuyV1KyjypVYM (what only the operator can do; 5 calls waiting).
+12 OCT 00:xx UTC: second A/B verdict — tc-title-358mpZeBqFo "DECIDED BY 4.2 SECONDS" 50.1% vs "A SUB-10 TO WIN IT"
+49.9%, Studio: "They all performed well" = NO winner (2 verdicts of the goal's 10; 29 running). Reader bug fixed (ee81ac1:
+"Now visible" alone is not a win; verdict keeps Studio's headline); worker restarted 19:17 UTC on it. i-have-adhd plugin
+installed by the operator's ask (always-on OFF: `touch ~/.claude/.i-have-adhd-always` to opt in; /i-have-adhd per session).
+Worktrees: 27 more removed (merged; leftover uncommitted edits saved as patches in tmp/worktree-leftovers/), plus the
+superseded claude-md-trim. 7 unmerged remain: cov-0, cov-1 (test-only, 8 Oct), thumbs-rerender (26 Sept feature, 7 commits),
+worktree-wf_dd7edb2e-baf-1..4 (24 Sept workflow, likely superseded). The operator cleared the /goal (12 Oct); the daily
+checks and the 14 Oct final report still run.
 CRONS (session-only; recreate if gone): 05:23 UTC morning cycle (job 376be942 — /needs + /ypp, NEVER report --dry-run: it
 carries viewer comment text; then the hand Shorts), 18:17 UTC evening check (bbbb9a98). On 14 Oct evening: the final
 branded report.
