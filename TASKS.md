@@ -71,6 +71,12 @@ stacked; neither runner has a face cam), match 430–455, ends 2 s before the ki
 preview sent. ONLY ONE render last night (14035423, 03:39) though nightlyMaxRenders=2 and 14072062 was the preview pick
 (no dir): the chain's reason is only in the dashboard's stdout (no docker access here). Tonight's queue: 14037392. EVENING
 CHECK: confirm two renders tonight; if one again, ask the operator for `docker logs mcsr-dashboard | grep nightly`.
+12 Oct 08:2x (the operator: "merge everything and delete the workflows"): merged all 7 old branches via merge-all
+(f5dd2c8): thumbs-rerender (re-render + operator-press-only "Put on YouTube" + undo; blockedOnDisk gates added; counts as
+busy for restart-when-idle and the nightly), baf-1 (Short-chain error clarity; failed "Pick again" keeps the agy pick;
+dry-run fix), cov-0/cov-1 tests, baf-2/3/4 (already in main, history only). tsc + 103 unit files green; dashboard
+self-restarted onto f5dd2c8. ALL worktrees removed; 58 branches deleted. Kept unmerged on purpose: overlay-skin-b/-c
+(rejected overlay designs), agy/kit-videourl + agy/thumb-redesign (rejected/abandoned), idea-cold-trailer (draft doc).
 CRONS (session-only; recreate if gone): 05:23 UTC morning cycle (job 376be942 — /needs + /ypp, NEVER report --dry-run: it
 carries viewer comment text; then the hand Shorts), 18:17 UTC evening check (bbbb9a98). On 14 Oct evening: the final
 branded report.
