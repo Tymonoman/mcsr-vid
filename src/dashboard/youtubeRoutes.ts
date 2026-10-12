@@ -43,6 +43,7 @@ import {
 import { beginUpload, finishOnYouTube, uploadProgress } from "../youtube/youtubeUpload.js";
 import { MIN_LEAD_MS } from "../youtube/publishSlot.js";
 import { HOOK_PLACEHOLDER } from "../pipeline/title.js";
+import { thumbnailRunning } from "../thumbnails/rerender.js";
 import { videoEngagement, yppProgress } from "../youtube/yppProgress.js";
 
 export { uploadRunning } from "../youtube/youtubeUpload.js";
@@ -165,6 +166,13 @@ export async function handleYoutubeRoute(
       });
       return true;
     }
+    // The finish below sets the live thumbnail.png: not while a re-render or its Use this runs.
+    if (thumbnailRunning(matchId)) {
+      ctx.json(res, 409, {
+        error: `The thumbnails of match ${matchId} are being re-rendered or put in place — try again once they are done`,
+      });
+      return true;
+    }
     // Across both kinds: the id most likely to be pasted by mistake is this match's own Short,
     // which sits beside the long-form in Studio and which `allUploads` cannot see.
     const owner = await videoIdOwner(videoId);
@@ -229,10 +237,11 @@ export async function handleYoutubeRoute(
       }
       const applied = await applyMetadata(videoId, { title, description, tags }, config.youtubeChannelId);
       // Re-adopting the SAME video keeps the finish ledger: it is the only thing between a second
-      // press and a second pinned comment, which `postComment` de-duplicates not at all. A
-      // different video for this match is a different video, and starts a fresh ledger.
+      // press and a second pinned comment, which `postComment` de-duplicates not at all. And the
+      // thumbnail put on from the Thumbnail panel, with its Undo. A different video for this match
+      // is a different video, and starts afresh.
       const previous = await readUpload(matchId);
-      const carried = previous?.videoId === videoId ? (previous.finished ?? {}) : {};
+      const same = previous?.videoId === videoId ? previous : null;
       await writeUpload(matchId, {
         videoId,
         uploadedAt: live.publishedAt,
@@ -241,7 +250,8 @@ export async function handleYoutubeRoute(
         thumbnailVariant: null,
         title,
         source: "studio",
-        finished: carried,
+        finished: same?.finished ?? {},
+        thumbnailSet: same?.thumbnailSet,
       });
       const finished = await finishOnYouTube(matchId, videoId);
       // The A/B tab reads `thumbnailVariant` for a local record and falls back to the manifest
@@ -603,7 +613,13 @@ async function abTestPayload() {
     // manifest's `chosen` is the one the dashboard handed over to be uploaded.
     const variantKey = u.source === "channel" ? (manifest?.chosen ?? undefined) : u.thumbnailVariant;
     const variant = manifest?.variants.find((v) => v.key === variantKey);
-    const key = variantKey ? abTestKey(variantKey, variant) : "(unknown)";
+    // A video whose thumbnail was changed from the Thumbnail panel wore two images: a row of its own.
+    const key =
+      "thumbnailSet" in u && u.thumbnailSet
+        ? "(swapped)"
+        : variantKey
+          ? abTestKey(variantKey, variant)
+          : "(unknown)";
     const fellBack = variant ? variantFellBack(variant) : false;
 
     hookEntries.push({ hook: variant?.hook ?? null, reach: byVideo.get(u.videoId) ?? null });

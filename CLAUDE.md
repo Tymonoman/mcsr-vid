@@ -236,6 +236,13 @@ uploads. Client-only changes need just a reload.
   rotates by match id. **"cheering-relaxing" is excluded from every automatic pick**
   (`RESULT_LOOKING_POSE_KEY`, reads as the result) — operator pick only. `playoffThumbnailStyle`
   is **not wired** into any render yet.
+- **Re-render a match's thumbnails beside the live set, never over it**
+  (`src/thumbnails/rerender.ts`, `src/youtube/thumbnailSwap.ts`, `src/dashboard/thumbnailRoutes.ts`,
+  `src/dashboard/busy.ts`): every variant drawn again into `thumbnail-new/`; live files
+  (`thumbnail.png`, the manifest) change only on an operator press — "Use this" for a match not
+  on the channel, "Put on YouTube" / "Undo on YouTube" for one that is. Blocked players and the
+  cheering-relaxing exclusion apply the same as everywhere else. A re-render or a pending put
+  counts as busy for `restart-when-idle` and the nightly, same as a render or an export.
 - **`videos.insert` is the only call the audit gated.** `playlistItems.insert`, `thumbnails.set`,
   `commentThreads.insert`, `videos.update` are all inside `force-ssl` scope, so **Finish on
   YouTube** repairs a Studio upload too — but leaves the thumbnail alone on a video whose variant

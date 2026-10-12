@@ -32,7 +32,9 @@ import { msUntilNextRun, nightlyChainRunning } from "./nightly.js";
 import { repoHead } from "./repoHead.js";
 import { anyShortRunning } from "./shortsRoutes.js";
 import { chainsRunning, picksRunning } from "./shortFlow.js";
+import { anyThumbnailRunning } from "../thumbnails/rerender.js";
 import { anyUploadRunning } from "../youtube/youtubeUpload.js";
+import { anyVideoWriting } from "../youtube/youtubeStore.js";
 
 /** How often `idle()` is re-checked while a restart is armed. */
 const CHECK_INTERVAL_MS = 30_000;
@@ -82,6 +84,10 @@ export interface IdleDeps {
   /** nightly.ts — between a chained render's job settling and the next one's `startJob`, where a
    *  live suggestion scan/pickContext can run with no job and no export yet in flight. */
   nightlyChainRunning: () => boolean;
+  /** rerender.ts — a thumbnail re-render or a new tile's "Use this", any match. */
+  thumbnailRunning: () => boolean;
+  /** youtubeStore.ts — a Finish or a Put/Undo on YouTube writing the video, any match. */
+  videoWriting: () => boolean;
   /** `config.nightlyRenderHourUtc`, read fresh since the Settings tab can move it without a restart. */
   nightlyHourUtc: number | null;
 }
@@ -96,6 +102,8 @@ const liveDeps = (): IdleDeps => ({
   uploadSessionFile: anyUploadSessionFile,
   archiveRunning: () => allArchiveStates().some((a) => a.running),
   nightlyChainRunning,
+  thumbnailRunning: anyThumbnailRunning,
+  videoWriting: anyVideoWriting,
   nightlyHourUtc: config.nightlyRenderHourUtc,
 });
 
@@ -114,6 +122,8 @@ export function blockedBy(deps: IdleDeps, nowMs: number = Date.now()): string[] 
   if (deps.uploadSessionFile()) blockers.push("an upload session is still on disk");
   if (deps.archiveRunning()) blockers.push("an archive copy to the NAS is running");
   if (deps.nightlyChainRunning()) blockers.push("a nightly chain is between renders");
+  if (deps.thumbnailRunning()) blockers.push("a thumbnail re-render is running");
+  if (deps.videoWriting()) blockers.push("a Finish or Put on YouTube is writing");
   if (deps.nightlyHourUtc !== null && msUntilNextRun(nowMs, deps.nightlyHourUtc) <= NIGHTLY_GUARD_MS) {
     blockers.push("within 20 min of the nightly render");
   }

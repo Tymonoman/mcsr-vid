@@ -362,7 +362,11 @@ export async function setThumbnail(
   const accessToken = await getAccessToken();
   const res = await fetchImpl(`${UPLOAD_API}/thumbnails/set?videoId=${encodeURIComponent(videoId)}`, {
     method: "POST",
-    headers: { authorization: `Bearer ${accessToken}`, "content-type": "image/png" },
+    // PNG from the renderer; JPEG for the image kept from YouTube for an undo (thumbnailSwap.ts).
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+      "content-type": /\.jpe?g$/i.test(pngPath) ? "image/jpeg" : "image/png",
+    },
     body: new Uint8Array(await readFile(pngPath)),
   });
   if (!res.ok) throw new Error(await describeApiFailure(res, "thumbnails.set"));
@@ -726,6 +730,8 @@ interface VideoSnippet {
   tags?: string[];
   defaultLanguage?: string;
   defaultAudioLanguage?: string;
+  /** Read only, never written back (`writeSnippet` names its fields). */
+  thumbnails?: Record<string, { url: string; width?: number }>;
 }
 
 /**
@@ -903,6 +909,24 @@ export async function reschedule(
     fetchImpl,
   );
   return { publishAt: answer.status?.publishAt ?? publishAt, was };
+}
+
+/**
+ * The video's title and the URL of the largest thumbnail YouTube serves for it now, for the
+ * thumbnail swap's undo copy. One `videos.list` read (1 unit), and the same own-channel refusal
+ * as `applyMetadata`: a video on another channel is never written to.
+ */
+export async function liveThumbnail(
+  videoId: string,
+  channelId: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ title: string; url: string | null; width: number }> {
+  const snippet = await readSnippet(videoId, fetchImpl);
+  if (channelId && snippet.channelId && snippet.channelId !== channelId) {
+    throw new Error(`Video ${videoId} belongs to channel ${snippet.channelId}, not yours — nothing written.`);
+  }
+  const largest = Object.values(snippet.thumbnails ?? {}).sort((a, b) => (b.width ?? 0) - (a.width ?? 0))[0];
+  return { title: snippet.title, url: largest?.url ?? null, width: largest?.width ?? 0 };
 }
 
 /** Needs `youtube.force-ssl`; the read scopes alone cannot post. */
