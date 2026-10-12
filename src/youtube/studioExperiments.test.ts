@@ -1,7 +1,7 @@
 // Pure-logic + file-IO self-check for the tc-plan importer (src/youtube/studioExperiments.ts).
 // No browser, no network. Run: npx tsx src/youtube/studioExperiments.test.ts
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, utimesSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -19,6 +19,27 @@ import {
 
 const media = mkdtempSync(path.join(tmpdir(), "mcsr-experiments-"));
 config.mediaDir = media;
+
+// 0. readExperiments before any file exists at all defaults to empty, and a corrupt file is a
+// throw, not a silent "no experiments" — a corrupt file from another writer mid-save must not be
+// read as "nothing to re-plan/re-start" (both untested until now; every later test in this file
+// writes `.experiments.json` before reading it).
+{
+  assert.ok(!existsSync(path.join(media, ".experiments.json")), "precondition: no file written yet");
+  assert.deepEqual(
+    await readExperiments(),
+    { experiments: [], schedule: [] },
+    "no file at all defaults to an empty experiments file",
+  );
+
+  writeFileSync(path.join(media, ".experiments.json"), "{not valid json");
+  await assert.rejects(
+    () => readExperiments(),
+    /did not parse as JSON/,
+    "a corrupt file throws rather than silently reading as empty",
+  );
+  console.log("OK: readExperiments defaults to empty with no file, and throws on a corrupt one");
+}
 
 function thumbPlan(): TcPlan {
   const dir = path.join(media, "111");
@@ -130,6 +151,31 @@ function thumbPlan(): TcPlan {
   console.log(
     "OK: a spoiler variant is dropped, only the first passing variant becomes the challenger, a title with no parseable names is skipped entirely",
   );
+}
+
+// 3b. A live title with no hook segment at all (splitTitle's `hook` is "") — `rest` must be the
+// whole live line, not off by the separator's length, so the challenger title is the new hook
+// plus the live line unchanged rather than a duplicated or truncated tail.
+{
+  const noHookPlan: TcPlan = {
+    titles: [
+      {
+        videoId: "vidNoHook",
+        matchId: 777,
+        live: "edcr vs doogile | MCSR Ranked 1v1 | Minecraft Speedrun",
+        variants: ["A SUB-9 TO WIN IT"],
+        approved: true,
+      },
+    ],
+  };
+  const { added } = planTcExperiments(noHookPlan, new Set());
+  assert.equal(added.length, 1);
+  assert.equal(
+    (added[0]!.arms[1]!.settings as { title: string }).title,
+    "A SUB-9 TO WIN IT | edcr vs doogile | MCSR Ranked 1v1 | Minecraft Speedrun",
+    "a hookless live title gets the new hook prefixed onto the unchanged line, not duplicated or offset",
+  );
+  console.log("OK: planTcExperiments handles a live title with no existing hook segment");
 }
 
 // 4. IO: importTcPlan never drops a `between` entry, the engine's own top-level fields
@@ -250,6 +296,49 @@ function thumbPlan(): TcPlan {
   assert.ok(ids.includes("race-a") && ids.includes("race-b"), `both concurrent writes must land, got ${ids}`);
   assert.equal(after.experiments.length, 2, "neither write may be lost to the other");
   console.log("OK: two concurrent updateTcExperiments calls serialize — neither one's write is lost");
+}
+
+// 6. updateTcExperiments's own contract, directly: `mutate` sees only `kind: "tc"` entries, never
+// a `between` one mixed in — test 4 only ever checked this indirectly, through importTcPlan.
+{
+  await writeExperiments({
+    experiments: [
+      { id: "between-only", kind: "between", arms: [], videos: [], status: "running" } as unknown as Experiment,
+    ],
+    schedule: [],
+  });
+  let sawKinds: string[] = [];
+  await updateTcExperiments((tc) => {
+    sawKinds = tc.map((e) => e.kind);
+    return tc;
+  });
+  assert.deepEqual(sawKinds, [], "mutate's own tc list excludes the between entry entirely");
+  const after6 = await readExperiments();
+  assert.equal(after6.experiments.length, 1, "the between entry is untouched and still there");
+  console.log("OK: updateTcExperiments hands mutate only the tc-kind entries");
+}
+
+// 7. withExperimentsLock recovers from a stale lock left by a crashed holder (its own process
+// died between creating the lockfile and reaching the `finally` that removes it) — the crash
+// path a cooperating-process lock exists for, untested until now. Age is computed from the
+// lockfile's own mtime, so this needs no real 30s wait.
+{
+  await writeExperiments({ experiments: [], schedule: [] });
+  const lockFile = path.join(media, ".experiments.json.lock");
+  writeFileSync(lockFile, "");
+  const longAgo = new Date(Date.now() - 40_000);
+  utimesSync(lockFile, longAgo, longAgo);
+
+  const result = await updateTcExperiments((tc) => [
+    ...tc,
+    { id: "after-stale-lock", kind: "tc", arms: [{ name: "control" }], videos: [], status: "planned" },
+  ]);
+  assert.ok(
+    result.experiments.some((e) => e.id === "after-stale-lock"),
+    "the write succeeds once the stale (30s+) lock is broken, not wedged forever",
+  );
+  assert.ok(!existsSync(lockFile), "the lock file is removed again after this write's own critical section");
+  console.log("OK: a stale lock from a crashed holder is broken and retried, not a permanent wedge");
 }
 
 console.log("studioExperiments: all checks passed");
