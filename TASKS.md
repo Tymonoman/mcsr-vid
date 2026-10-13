@@ -86,6 +86,7 @@ report is built, so it completes at once:
   baseline (both 4.0/day and the full-week 3.57/day), every Test & Compare test listed with its verdict or "running at
   the deadline", uploads scheduled through 14 Oct, main green.
 13 Oct morning cycle also does the full A/B read (verdict-at-deadline plan).
+13 Oct 05:40 (the operator: "new ab test just finished"): night = 2 renders. 14037392 BadGamer vs lowk3y_ done 03:35 (pick agy, auto-hooks ~09:35 → 14 Oct 19:00); hand Short "46 SECONDS BEHIND" registered (dual, 447–482). 13884982 ANJOUU vs Pinne failed 03:4x (NMSR avatar timeout in thumbnails) → re-run 05:39 via POST /api/render?export=1 (overlay reused) → pick → auto-hooks ~12:xx → 14 Oct 23:00; its hand Short still to make. A/B: 28 running tests re-queued (checkedAt → 10 Oct) so the first worker cycle after the 07:30 UTC blackout reads them. x1 flipped: 19:00 leads CTR 5.27% vs 4.19%, 23:00 has 2.25x impressions.
 CRONS (session-only; recreate if gone): 05:23 UTC morning cycle (job 376be942 — /needs + /ypp, NEVER report --dry-run: it
 carries viewer comment text; then the hand Shorts), 18:17 UTC evening check (bbbb9a98). On 14 Oct evening: the final
 branded report.

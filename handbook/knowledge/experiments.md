@@ -115,6 +115,9 @@ any video that already has one (his 8 custom ones included).
 
 ## Decisions
 
+- **13 Oct 2026 — x1 interim flipped (still not the decision):** with 10 videos, 19:00 UTC now leads on impressions CTR,
+  5.27% vs 4.19% (z = -3.49), but 23:00 drew 2.25x the impressions (14,672 vs 6,508) and more views (2,997 vs 1,768),
+  subs 3 vs 2. The 12 Oct reading below was early noise; the evaluator decides on 15 Oct.
 - **12 Oct 2026 — x1 interim (not the decision):** 23:00 UTC leads 19:00 UTC on impressions CTR, 8.27% vs 5.98%
   (z = 2.49, 9 videos enrolled). The experiment ends 15 Oct; the evaluator writes the decision then. Two-a-day
   continues past it either way (`cadence-two-a-day`, 16 Oct–15 Nov), so the reading only decides which hour leads.
