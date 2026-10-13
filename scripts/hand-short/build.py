@@ -110,13 +110,18 @@ def clip_start(spec, mdir):
     return float(sync[spec["side"]]) + spec["fromSec"]  # clip time of fromSec (clipTimeFor at match time)
 
 
+def focus_nick(spec):
+    """The POV whose audio leads: the single POV, or in dual mode the `side` one."""
+    return spec["nicknames"][spec["side"] == "right"] if spec.get("dual") else spec["nickname"]
+
+
 def words(spec):
     mdir = f"/media/{spec['matchId']}"
     dur = spec["toSec"] - spec["fromSec"]
     with tempfile.TemporaryDirectory() as tmp:
         mp3 = f"{tmp}/win.mp3"
         run(["ffmpeg", "-v", "error", "-y", "-ss", str(clip_start(spec, mdir)), "-t", str(dur),
-             "-i", os.path.join(mdir, f"{spec['nickname']}.mp4"), "-vn", "-ac", "1", "-ar", "16000", mp3])
+             "-i", os.path.join(mdir, f"{focus_nick(spec)}.mp4"), "-vn", "-ac", "1", "-ar", "16000", mp3])
         key = next(l.split("=", 1)[1].strip().strip('"\'') for l in open("/app/.env") if l.startswith("GROQ_API_KEY="))
         out = subprocess.run(["curl", "-s", "--max-time", "60", "https://api.groq.com/openai/v1/audio/transcriptions",
                               "-H", f"Authorization: Bearer {key}", "-F", f"file=@{mp3}", "-F", "model=whisper-large-v3",
