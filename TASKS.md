@@ -78,6 +78,14 @@ dry-run fix), cov-0/cov-1 tests, baf-2/3/4 (already in main, history only). tsc 
 self-restarted onto f5dd2c8. ALL worktrees removed; 58 branches deleted. Kept unmerged on purpose: overlay-skin-b/-c
 (rejected overlay designs), agy/kit-videourl + agy/thumb-redesign (rejected/abandoned), idea-cold-trailer (draft doc).
 12 Oct 18:47 evening check: 12 Oct 19:00+23:00 and 13 Oct 19:00+23:00 scheduled (14039001, 14074713, 14074004, 14035423); no failed steps; worker beat 18:27, no error; tonight queued 14037392 (14 Oct slots fill tonight); boot f5dd2c8 (later commits docs only). F8qXq5Eq2XA goes public at 19:00 with its claim (no call from the operator).
+GOAL HANDLING (13 Oct, the operator: "optimize the goal cuz it's eating context"): the /goal evaluator re-prompts on
+every stop while any part is unmet, and two parts are date-gated, so it loops. Plan: the operator runs `/goal clear`
+(on its own line) now; the crons carry 13–14 Oct; on 14 Oct evening, set the narrowed goal below in the same turn the
+report is built, so it completes at once:
+  /goal Final week report published as an artifact and sent to Telegram: full-tier YPP ETA vs the 30 Sept–6 Oct
+  baseline (both 4.0/day and the full-week 3.57/day), every Test & Compare test listed with its verdict or "running at
+  the deadline", uploads scheduled through 14 Oct, main green.
+13 Oct morning cycle also does the full A/B read (verdict-at-deadline plan).
 CRONS (session-only; recreate if gone): 05:23 UTC morning cycle (job 376be942 — /needs + /ypp, NEVER report --dry-run: it
 carries viewer comment text; then the hand Shorts), 18:17 UTC evening check (bbbb9a98). On 14 Oct evening: the final
 branded report.
