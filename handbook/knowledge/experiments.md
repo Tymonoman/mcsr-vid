@@ -115,6 +115,9 @@ any video that already has one (his 8 custom ones included).
 
 ## Decisions
 
+- **13 Oct 2026 — fourth Test & Compare verdict, the first thumbnail test: no winner on vAAYzPblWBw**
+  (dandannyboy vs silverrruns). Control 33.8%, most-different pose 35.1%, caption 31.2% watch time share; Studio "They
+  all performed well". The live thumbnail stays; pose and caption variants are neither better nor worse so far.
 - **13 Oct 2026 — third Test & Compare verdict: no winner on la_h_HmMuF8** (v_strid vs silverrruns). Control
   "CAN A 1:36 LEAD SURVIVE?" vs challenger "DECIDED BY 9.4 SECONDS": 52.2% vs 47.8% watch time share, Studio "They all
   performed well". Both "DECIDED BY N SECONDS" challengers so far landed level with the question title (50.1/49.9 here
