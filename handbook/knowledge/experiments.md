@@ -115,6 +115,10 @@ any video that already has one (his 8 custom ones included).
 
 ## Decisions
 
+- **13 Oct 2026 — third Test & Compare verdict: no winner on la_h_HmMuF8** (v_strid vs silverrruns). Control
+  "CAN A 1:36 LEAD SURVIVE?" vs challenger "DECIDED BY 9.4 SECONDS": 52.2% vs 47.8% watch time share, Studio "They all
+  performed well". Both "DECIDED BY N SECONDS" challengers so far landed level with the question title (50.1/49.9 here
+  and on 358mpZeBqFo), so the margin hook is no better and no worse than the question; the original title stays.
 - **13 Oct 2026 — x1 interim flipped (still not the decision):** with 10 videos, 19:00 UTC now leads on impressions CTR,
   5.27% vs 4.19% (z = -3.49), but 23:00 drew 2.25x the impressions (14,672 vs 6,508) and more views (2,997 vs 1,768),
   subs 3 vs 2. The 12 Oct reading below was early noise; the evaluator decides on 15 Oct.
