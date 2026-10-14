@@ -787,7 +787,10 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   `videoEngagement` (`src/youtube/yppProgress.ts`, one top-videos Analytics request cached an hour)
   sits beside the Data API's views, "engaged n/a" when Analytics has no row or no answer, and the
   YPP Shorts gate counts engaged views, which is what YouTube counts; the A/B tab shows
-  impressions and CTR, no views.
+  impressions and CTR, no views. **The YPP watch hours are public videos' only** (`fetchYppSnapshot`,
+  14 Oct 2026: /ypp read 3,135 h with 505 on the nine long-forms made private in October, and called
+  the expanded tier's 3,000 h done at 2,630): per-video long-form minutes for the same windows, minus
+  every id videos.list does not call public (private, unlisted, scheduled, deleted).
 - **Settings tab** (`src/dashboard/settings.ts`, `GET`/`PUT /api/settings`): the handful of config keys worth
   changing without an ssh session. It writes `mcsr-vid.config.json` atomically and applies to the
   live `config` object, so nothing needs a restart — `scheduleNightly` reads the hour from `config`
