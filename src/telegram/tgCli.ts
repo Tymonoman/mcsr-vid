@@ -1,10 +1,11 @@
 /**
- * npm run tg -- <report|cmd "<text>"|send <text>|send --file <path>|whoami> [--dry-run]
+ * npm run tg -- <report|cmd "<text>"|send <text>|send --file <path>|inbox [--since <ISO>] [--clear]|whoami> [--dry-run]
  *
  * `report`/`cmd --dry-run` print the exact message text to stdout and send nothing — no
  * `TELEGRAM_BOT_TOKEN` needed, since they never call the Bot API. `whoami` is the pairing step:
  * it prints the chat ids that recently messaged the bot (from `getUpdates`), for the operator to
- * put in `TELEGRAM_CHAT_ID`.
+ * put in `TELEGRAM_CHAT_ID`. `inbox` prints the operator's plain replies the poller saved
+ * (`.telegram-inbox.jsonl`), oldest first; `--clear` empties it after.
  */
 import { describeError } from "../errorText.js";
 import * as bot from "./bot.js";
@@ -12,7 +13,7 @@ import { parseCommand } from "./commands.js";
 import { readFileSync } from "node:fs";
 import { buildMorningReport, dispatchCommand } from "./index.js";
 import { chunkMarkdown, mdToTelegramHtml } from "./markdown.js";
-import { setStateDryRun } from "./state.js";
+import { readInbox, setStateDryRun } from "./state.js";
 
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
@@ -21,7 +22,7 @@ const [sub, ...subArgs] = rest;
 if (dryRun) setStateDryRun(); // a dry run leaves /media as it found it: no cache, no dedupe record
 
 const usage =
-  'usage: npm run tg -- <report|cmd "<text>"|send <text>|send --md <report.md>|send --file <path>|whoami> [--dry-run]';
+  'usage: npm run tg -- <report|cmd "<text>"|send <text>|send --md <report.md>|send --file <path>|inbox [--since <ISO>] [--clear]|whoami> [--dry-run]';
 
 /** Where one Telegram message ends and the next begins, in a dry run. */
 const DRY_RUN_BREAK = "\n\n──────── next message ────────\n\n";
@@ -96,6 +97,17 @@ async function main(): Promise<void> {
       }
       await bot.sendMessage(text);
       console.error("sent");
+      return;
+    }
+    case "inbox": {
+      const sinceFlag = subArgs.indexOf("--since");
+      const sinceMs = sinceFlag >= 0 ? Date.parse(subArgs[sinceFlag + 1] ?? "") : -Infinity;
+      if (Number.isNaN(sinceMs)) {
+        console.error(usage);
+        process.exit(2);
+      }
+      for (const e of readInbox(subArgs.includes("--clear")))
+        if (Date.parse(e.at) >= sinceMs) console.log(`${e.at}  ${e.text}`);
       return;
     }
     case "whoami": {

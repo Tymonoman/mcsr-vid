@@ -139,6 +139,7 @@ export async function sendDocument(filePath: string, caption?: string): Promise<
 }
 
 export interface TgMessage {
+  message_id: number;
   chat: { id: number };
   text?: string;
   date: number;
