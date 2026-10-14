@@ -61,16 +61,6 @@ import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-/** A doc clause the code does not keep: printed, not thrown, so the suite stays green until triage. */
-function deviation(clause: string, check: () => void): void {
-  try {
-    check();
-  } catch (err) {
-    if (!(err instanceof assert.AssertionError)) throw err;
-    console.log(`DEVIATION: ${clause} — ${err.message.split("\n")[0]}`);
-  }
-}
-
 /* --- The world: temp dirs, a fake `claude`, secrets that must never leak --------------------------- */
 const root = mkdtempSync(path.join(tmpdir(), "tg-index-contract-"));
 const media = path.join(root, "media");
@@ -599,14 +589,9 @@ try {
         reply.messages.length > 0 && reply.messages.every((m) => m.length > 0),
         `/${command} answered`,
       );
-      // Nothing on disk the dashboard reads changed — the bot's own state file aside.
-      deviation(
-        "Every bot command is read-only — no command writes anything the dashboard would show as changed",
-        () => {
-          const diff = changed(before, snapshot()).filter((f) => f !== ".telegram.json");
-          assert.deepEqual(diff, [], `/${command} changed ${diff.join(", ")}`);
-        },
-      );
+      // Every bot command is read-only: nothing on disk the dashboard reads changed — the bot's own state file aside.
+      const diff = changed(before, snapshot()).filter((f) => f !== ".telegram.json");
+      assert.deepEqual(diff, [], `/${command} changed ${diff.join(", ")}`);
       // No YouTube write of any kind: every Data/Analytics/upload call is a GET.
       const writes = calls
         .slice(callsBefore)

@@ -22,7 +22,6 @@ import {
 } from "./schedule.js";
 
 const HOUR = 3_600_000;
-const DAY = 24 * HOUR;
 const iso = (ms: number) => new Date(ms).toISOString();
 
 /** The EU rule, computed independently of Intl: summer time runs from 01:00 UTC on the last Sunday
@@ -153,6 +152,5 @@ assert.equal(
   "00:00 CEST is the 15th, while UTC says 14th",
 );
 assert.equal(warsawDateStr(Date.UTC(2026, 11, 31, 23, 0)), "2027-01-01", "00:00 CET on New Year");
-assert.equal(DAY, 86_400_000);
 
 console.log("schedule.contract: all checks passed");
