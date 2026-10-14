@@ -31,6 +31,20 @@ assert.deepEqual(splitMessage("x".repeat(4096)), ["x".repeat(4096)]);
   assert.equal(parts.join(""), text);
 }
 
+// A hard cut never halves an emoji's surrogate pair or an HTML entity.
+{
+  const text = "a".repeat(4095) + "😀" + "b".repeat(100);
+  const parts = splitMessage(text);
+  assert.equal(parts[0]!.length, 4095);
+  assert.equal(parts.join(""), text);
+}
+{
+  const text = "a".repeat(4094) + "&amp;" + "b".repeat(100);
+  const parts = splitMessage(text);
+  assert.equal(parts[0]!.length, 4094, "the cut lands before the entity, not inside it");
+  assert.equal(parts.join(""), text);
+}
+
 assert.equal(MESSAGE_MAX_CHARS, 4096);
 
 // Telegram counts an HTML message after parsing: one whose markup alone passes the limit goes

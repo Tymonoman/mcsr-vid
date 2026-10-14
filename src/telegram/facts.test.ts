@@ -370,6 +370,12 @@ try {
         items.some((i) => i.matchId === QUEUED && /blocked player/.test(i.text)),
         "a blocked player queued for tonight",
       );
+      // Needs you's 1500-char cap keeps this order: a blocked runner comes before a failed step.
+      assert.ok(
+        items.findIndex((i) => /blocked player/.test(i.text)) <
+          items.findIndex((i) => / failed: /.test(i.text)),
+        "a blocked runner leads, ahead of the failed step",
+      );
       setNightlyQueue([]);
 
       const RENDERED = 4;
@@ -459,9 +465,48 @@ try {
         !JSON.stringify(items).includes("do not use my footage"),
         "the comment's own text never appears",
       );
+
+      // A reply under the channel's own (older) pinned comment, by a handle-era author ("@…").
+      const pinnedWithReply = (replyAt: number) => ({
+        id: "c2",
+        snippet: {
+          videoId: "v3",
+          totalReplyCount: 1,
+          topLevelComment: {
+            snippet: {
+              authorDisplayName: "MCSR Replayoffs",
+              authorChannelId: { value: config.youtubeChannelId },
+              textOriginal: "pinned",
+              publishedAt: new Date(SINCE - 3 * 24 * 3600_000).toISOString(),
+            },
+          },
+        },
+        replies: {
+          comments: [
+            {
+              snippet: {
+                authorDisplayName: "@Aquacorde",
+                authorChannelId: { value: "UCaqua" },
+                textOriginal: "take this down",
+                publishedAt: new Date(replyAt).toISOString(),
+              },
+            },
+          ],
+        },
+      });
+      commentThreads = [pinnedWithReply(NOW - 600_000)];
+      items = await needsYouOf();
+      assert.ok(
+        items.some((i) => i.text === "a blocked runner commented on A clean match"),
+        "a blocked runner's reply, under a handle, is an item",
+      );
+      assert.ok(!JSON.stringify(items).includes("take this down"), "the reply's own text never appears");
+      commentThreads = [pinnedWithReply(SINCE - 600_000)];
+      items = await needsYouOf();
+      assert.ok(!items.some((i) => /commented on/.test(i.text)), "a reply from before the last report is history");
       commentThreads = [];
       console.log(
-        "OK: a blocked runner is named in the queue, on disk, in an upload record and in a comment",
+        "OK: a blocked runner is named in the queue, on disk, in an upload record, in a comment and in a reply",
       );
 
       // 5. A test result needing a human call: `needsHuman` only when not acknowledged; garbage is

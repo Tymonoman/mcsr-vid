@@ -344,8 +344,12 @@ async function blockedRunnerItems(sinceMs: number): Promise<NeedsYouItem[]> {
   }
   try {
     const threads = await channelCommentThreads(config.youtubeChannelId, 50);
-    const byBlocked = threads.filter(
-      (t) => Date.parse(t.publishedAt) >= sinceMs && isBlockedPlayer(t.author),
+    // A reply counts as much as a thread of its own (under the channel's pinned comment, say), and
+    // the Data API gives a handle-era author as "@Aquacorde" — the block list holds the bare name.
+    const byBlocked = threads.filter((t) =>
+      [{ author: t.author, publishedAt: t.publishedAt }, ...t.replies].some(
+        (c) => Date.parse(c.publishedAt) >= sinceMs && isBlockedPlayer(c.author.trim().replace(/^@/, "")),
+      ),
     );
     if (byBlocked.length > 0) {
       const titles = await videoTitlesFor([...new Set(byBlocked.map((t) => t.videoId))]);
@@ -451,13 +455,15 @@ async function gatherNeedsYou(nowMs: number, sinceMs: number): Promise<NeedsYouF
     liveTitleItems(),
     blockedRunnerItems(sinceMs),
   ]);
+  // Blocked runners first: renderNeedsYou's cap keeps items in this order, and "a blocked runner
+  // commented" is listed on no dashboard screen, so its "+ N more" would hide it for good.
   const items = [
+    ...blocked,
     ...failed,
     ...(studio ? [studio] : []),
     ...(noUpload ? [noUpload] : []),
     ...handShort,
     ...liveTitles,
-    ...blocked,
     ...needsHumanItems(),
     ...studioWorkerItems(nowMs),
   ];
