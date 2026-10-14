@@ -1,5 +1,13 @@
 # TASKS — resume point (the newest block is first; older blocks: handbook/tasks-archive-2026-09-23_10-07.md)
 
+## ▶ RESUME HERE (14 Oct 2026, 16:3x UTC) — ULTRACODE DAY WRAP-UP; FINAL WEEK REPORT DUE TODAY
+NOW (the operator 16:2x: "another ab test finished. why did stuff stop? where's the report should we strategic compact now?"):
+1. A/B re-read queued 16:25 (28 tests) → the worker's next cycle records the new verdict (worker heartbeat in /media/.studio-worker.json; supervisor must run WITHOUT MCSR_CONFIG — restart with `env -u MCSR_CONFIG -u MCSR_ARCHIVE_DIR -u MEDIA_DIR nohup bash /app/scripts/studio-worker.sh >/dev/null 2>&1 &`).
+2. fix/reconcile (worktree tmp/finish/wt/reconcile): post-merge contract-test fixes (series "undecided", studioWorker configFile seam, report replies, api-client elo test) committed + main merged; full suite running → log tmp/finish/unit-recon.log. If EXIT 0: merge fix/reconcile into main, `POST /api/restart-when-idle` (it is DISARMED until then), remove worktree tests/api-client + reconcile.
+3. FINAL REPORT: agent week-report writes tmp/final/report/build.py → week-report.html (placeholder {{MAIN_STATUS}}). Then: fill MAIN_STATUS (commit hash + test count), publish as an artifact, `npm run tg -- send --md` a short note with the link, TASKS.md line, commit. The one-shot cron baf2888a (18:47 UTC) would build it again — skip if already sent. The goal (/goal) closes when the report is sent.
+4. Crons (session-only): e47c5e33 05:23 morning (F–I backlog queue + hand Shorts), abcdc78f 18:17 evening, baf2888a 18:47 one-shot report; 18:05 A/B timer. Recreate after a restart.
+DONE TODAY (details in the 14 Oct lines below): ~60 branches merged — 16 scout bug fixes, 9 low findings, 11 edge-case areas, 24 contract-test features (~2,600 assertions; deviations judged by 2 refuters → code fixes or doc fixes), Telegram inbox, pin locator, title audit, UI checks (videoStats batches of 50), CLAUDE.md slim (now ~40.3 KB again), README hero; Studio Home tab + watermark + featured video; 2 live retitles; MIT LICENSE; F–I backlog queued; growth page WZBzdZZfPxbyte6RHBKZzY. GitHub push is the operator's (no credential here; ~400 commits ahead).
+
 ## ▶ RESUME HERE (11 Oct 2026, updated ~13:10 UTC) — WEEK GOAL ACTIVE (ends 14 Oct), TARGET = FULL YPP
 TARGET: the full tier, 1,000 subs (the operator, 10 Oct: "we only focus on hitting the full ypp"); 136 subs at ~3.1/day →
 ~18 Jul 2027; baseline 4.0/day → ~14 May 2027 (the 14 Oct final report compares these). After 1 Feb 2027 it needs 8,000 h
