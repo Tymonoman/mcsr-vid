@@ -1816,8 +1816,8 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
   detector now covers** (22 Sept 2026, replayed on the 13 ranked matches with clips on disk:
   26 of 26 clips read, 25 of them to the frame the "1" vanishes): the API's estimate can be a
   minute off (a VOD that lost a segment runs ahead of the API's clock; Aquacorde, 13559245:
-  53 s, and `1 - off / 20` scored the countdown it found to zero), so an empty ±25 s window is
-  followed by one ±150 s pass and the distance term is soft; and a world that loads late has
+  53 s, and `1 - off / 20` scored the countdown it found to zero), so an empty or untrusted ±25 s
+  window (a countdown cut by its edge) is followed by one ±150 s pass and the distance term is soft; and a world that loads late has
   the loading screen over the "10" (BeefSalad, 13549300), so a countdown is also read from its
   end — the drop out of the last digit with stepping seconds before it — and an onset has to be
   a real "10", half again the fattest digit after it, or the "6" after a waiting screen becomes
