@@ -17,6 +17,10 @@
 //
 // Already pinned by chapters.test.ts and not repeated here: first-arrival (min) timing, a lone
 // side still counting, the greedy 10 s filter's own edge cases, a 3 s card being 4 s earlier.
+//
+// Limit: `leadInFor` rebuilds pipeline.ts's lead-in (`overlayLeadInSec - headTrimSec(introSec)`)
+// rather than run the pipeline, so the `introSec + 3` assert pins the constants and headTrimSec,
+// not that runPipeline really hands this lead-in to buildChapters.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { buildChapters, formatChapters, formatChapterTime } from "./chapters.js";

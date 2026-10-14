@@ -29,7 +29,7 @@
 // seed", the old closer, the tip jar's place, the subscribe paragraph), series chapter relabels,
 // "last time they met", nickname warnings, copyVariety, an edited description kept verbatim.
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { config } from "../config.js";
@@ -43,6 +43,8 @@ import { uploadTextFor } from "./youtubeStore.js";
 import type { MatchInfo, UserDetails } from "../api/types.js";
 
 const media = mkdtempSync(path.join(tmpdir(), "mcsr-uploadtext-contract-"));
+// On every exit, a failed assert included (the 'exit' event fires for an uncaught throw too).
+process.on("exit", () => rmSync(media, { recursive: true, force: true }));
 config.mediaDir = media;
 config.supportUrl = "https://ko-fi.com/example";
 globalThis.fetch = (async (input: string | URL | Request) => {
@@ -51,7 +53,11 @@ globalThis.fetch = (async (input: string | URL | Request) => {
 const warnings: string[] = [];
 console.warn = (...args: unknown[]) => void warnings.push(args.join(" "));
 
-/** A doc promise the code does not keep yet: reported, not bent to the code, and not fatal. */
+/**
+ * A doc promise the code does not keep yet (tracked in TASKS.md): reported, not bent to the code,
+ * and not fatal while it stays broken. Once the code keeps it, this fails instead, so the check
+ * is promoted to a plain assert and a later regression fails the run rather than passing quietly.
+ */
 const deviations: string[] = [];
 async function deviation(clause: string, check: () => unknown): Promise<void> {
   try {
@@ -60,7 +66,9 @@ async function deviation(clause: string, check: () => unknown): Promise<void> {
     if (!(err instanceof assert.AssertionError)) throw err;
     deviations.push(clause);
     console.log(`DEVIATION: ${clause} — ${err.message.split("\n")[0]}`);
+    return;
   }
+  assert.fail(`fixed, now a promise the code keeps: make this a plain assert — ${clause}`);
 }
 
 const write = (matchId: number, files: Record<string, string>) => {
@@ -385,12 +393,14 @@ const renderFor = (match: MatchInfo, leftName?: string, rightName?: string) => {
   write(561, { "match-561.title.edited.txt": "Wow | __proto__ vs Bb | MCSR Ranked 1v1\n" });
   const a = (await uploadTextFor(560, "video")).title;
   const b = (await uploadTextFor(561, "video")).title;
-  await deviation(
-    "CLAUDE.md titleNames: spells two players the broadcast's way, title only — every other nickname keeps the API spelling",
-    () => {
-      assert.equal(a, `Wow | constructor vs Bb | ${TAIL}`, `uploadTextFor's title is "${a}"`);
-      assert.equal(b, `Wow | __proto__ vs Bb | ${TAIL}`, `uploadTextFor's title is "${b}"`);
-    },
+  // One call each, so the second case is checked even while the first one fails.
+  const clause =
+    "CLAUDE.md titleNames: spells two players the broadcast's way, title only — every other nickname keeps the API spelling";
+  await deviation(`${clause} (constructor)`, () =>
+    assert.equal(a, `Wow | constructor vs Bb | ${TAIL}`, `uploadTextFor's title is "${a}"`),
+  );
+  await deviation(`${clause} (__proto__)`, () =>
+    assert.equal(b, `Wow | __proto__ vs Bb | ${TAIL}`, `uploadTextFor's title is "${b}"`),
   );
 }
 

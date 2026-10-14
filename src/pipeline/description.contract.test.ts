@@ -28,6 +28,13 @@
 // Already pinned by description.test.ts and not repeated: the exact opening, Show-more length,
 // link order, deep-link rounding, the closer, copyVariety, withLastMeeting, the 10 s merge filter
 // on synthetic series chapters, tag dedupe and the 30/450 guards on synthetic names.
+//
+// Limits (no source change to reach further): the series games (7-9) copy writeSeriesText's game
+// assembly from src/playoffs/series.ts, `seed: seedPhrase(m)` included, because that function is
+// unexported and reads the API (getMatch). So "the world, never the bracket seed" is checked at
+// buildSeriesDescription only; series.ts passing the bracket label as `seed` would not fail here.
+// Likewise the single-match chapters rebuild pipeline.ts's lead-in
+// (`overlayLeadInSec - headTrimSec(introSec)`) rather than run the pipeline.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
