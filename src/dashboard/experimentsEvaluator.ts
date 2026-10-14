@@ -19,7 +19,7 @@ import { analytics } from "../youtube/yppProgress.js";
 import { readUpload } from "../youtube/youtubeStore.js";
 import { totalReach } from "./youtubeRoutes.js";
 import {
-  readExperiments,
+  readExperimentsOrNull,
   slotEntryFor,
   writeExperiments,
   type Experiment,
@@ -32,7 +32,7 @@ import { saveSettings } from "./settings.js";
  *  (2.77% vs 2.59%). Below this, "inconclusive" is the only honest verdict. */
 const MIN_IMPRESSIONS = 1000;
 const Z_THRESHOLD = 1.96;
-/** The retention rule only fires with at least this many videos on each side of the comparison. */
+/** The retention rule only fires with at least this many videos with views on each side. */
 const MIN_RETENTION_VIDEOS = 3;
 
 export interface VideoMetrics {
@@ -93,7 +93,8 @@ export interface ArmTotals {
   views: number;
   engagedViews: number;
   subscribersGained: number;
-  /** View-weighted mean, and the per-video values the dominance check in `retentionVerdict` reads. */
+  /** View-weighted mean, and the per-video values the dominance check in `retentionVerdict` reads
+   *  (only videos with views — `videos` counts every one, for CTR). */
   avgViewPercentage: number;
   avgViewPercentages: number[];
 }
@@ -132,7 +133,9 @@ export async function armTotalsFor(
       totals.views += m.views;
       totals.engagedViews += m.engagedViews;
       totals.subscribersGained += m.subscribersGained;
-      totals.avgViewPercentages.push(m.averageViewPercentage);
+      // A video with no views yet (scheduled, or inside Analytics' 2–3 day lag) has no retention
+      // to measure — its 0% would block dominance and still count toward the 3-video floor.
+      if (m.views > 0) totals.avgViewPercentages.push(m.averageViewPercentage);
       weightedPctSum += m.averageViewPercentage * m.views;
     }
     totals.avgViewPercentage = totals.views > 0 ? weightedPctSum / totals.views : 0;
@@ -191,7 +194,8 @@ function ctrVerdict(arms: ArmTotals[], controlArm: string): Verdict {
  */
 function retentionVerdict(arms: ArmTotals[], controlArm: string): Verdict {
   const control = arms.find((a) => a.arm === controlArm) ?? arms[0]!;
-  if (arms.some((a) => a.videos < MIN_RETENTION_VIDEOS)) return { text: "numbers only", winnerArm: null };
+  if (arms.some((a) => a.avgViewPercentages.length < MIN_RETENTION_VIDEOS))
+    return { text: "numbers only", winnerArm: null };
   for (const a of arms) {
     if (a.arm === control.arm) continue;
     const aMin = Math.min(...a.avgViewPercentages);
@@ -344,8 +348,10 @@ export async function evaluateExperiments(deps: Partial<EvaluatorDeps> = {}): Pr
     const { fetch = liveMetricsFor, now = Date.now } = deps;
     const nowMs = now();
     const today = new Date(nowMs).toISOString().slice(0, 10);
-    const data: ExperimentsFile = readExperiments();
-    if (data.evaluatedOn === today) return;
+    // A corrupt file (a hand-edit's trailing comma) is left exactly as it is — never rewritten as
+    // empty — and with no `evaluatedOn`, so the first tick after it is fixed evaluates the day.
+    const data = readExperimentsOrNull();
+    if (!data || data.evaluatedOn === today) return;
 
     // Only a between experiment `enrolVideos` actually added a video to goes into `touched` here
     // — not every between experiment regardless of whether anything changed. `touched` is what the
@@ -383,7 +389,8 @@ export async function evaluateExperiments(deps: Partial<EvaluatorDeps> = {}): Pr
       touched.set(exp.id, exp);
     }
 
-    const fresh = readExperiments();
+    const fresh = readExperimentsOrNull();
+    if (!fresh) return;
     writeExperiments({
       ...fresh,
       experiments: fresh.experiments.map((e) => touched.get(e.id) ?? e),

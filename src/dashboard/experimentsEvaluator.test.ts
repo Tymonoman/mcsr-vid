@@ -1,6 +1,6 @@
 // Self-check for experimentsEvaluator.ts. Run: npx tsx src/dashboard/experimentsEvaluator.test.ts
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { Experiment } from "./experiments.js";
@@ -163,6 +163,79 @@ assert.equal(twoProportionZ(0, 0, 10, 100), 0, "nothing to divide by on one side
   // View-weighted mean: (40*100 + 60*200) / 300 = 53.33...
   assert.ok(Math.abs(control.avgViewPercentage - (40 * 100 + 60 * 200) / 300) < 1e-9);
   assert.equal(totals.find((a) => a.arm === "variant")!.videos, 0);
+}
+
+// --- armTotalsFor: a video with no views yet has no retention to count ------------------------
+// (scheduled, or inside Analytics' lag) — its 0% neither blocks dominance nor meets the floor.
+{
+  const m = (pct: number, views: number): VideoMetrics => ({
+    impressions: 1000,
+    clicks: 30,
+    views,
+    engagedViews: 0,
+    averageViewPercentage: pct,
+    subscribersGained: 0,
+  });
+  const pcts = new Map<number, VideoMetrics>([
+    [1, m(40, 100)],
+    [2, m(42, 100)],
+    [3, m(0, 0)],
+    [4, m(0, 0)],
+    [5, m(50, 100)],
+    [6, m(52, 100)],
+    [7, m(55, 100)],
+    [8, m(45, 100)],
+  ]);
+  const fetch = async (matchId: number) => pcts.get(matchId) ?? null;
+  const metric = { metric: "average view %" };
+
+  // Control: 2 real videos + 2 at zero views. Every variant video is ahead, but 2 is under the floor.
+  const thin = baseExperiment({
+    ...metric,
+    videos: [1, 2, 3, 4].map((matchId) => ({ matchId, arm: "control" }))
+      .concat([5, 6, 7].map((matchId) => ({ matchId, arm: "variant" }))),
+  });
+  const thinTotals = await armTotalsFor(thin, fetch);
+  assert.deepEqual(thinTotals.find((a) => a.arm === "control")!.avgViewPercentages, [40, 42]);
+  assert.equal(thinTotals.find((a) => a.arm === "control")!.videos, 4, "CTR still counts every video");
+  assert.equal(verdictFor(thin, thinTotals).text, "numbers only");
+
+  // 3 real a side, plus a zero-view video in the leading arm: it still wins.
+  const lead = baseExperiment({
+    ...metric,
+    videos: [1, 2, 8].map((matchId) => ({ matchId, arm: "control" }))
+      .concat([5, 6, 7, 3].map((matchId) => ({ matchId, arm: "variant" }))),
+  });
+  const v = verdictFor(lead, await armTotalsFor(lead, fetch));
+  assert.equal(v.winnerArm, "variant", v.text);
+}
+
+// --- evaluateExperiments: a corrupt .experiments.json is never overwritten ----------------------
+// — not with an empty file, not with an `evaluatedOn` stamp; the first tick after the fix runs.
+{
+  const file = path.join(media, ".experiments.json");
+  const exp = baseExperiment({ id: "corrupt-file", videos: [{ matchId: 1, arm: "control" }] });
+  const corrupt = JSON.stringify({ experiments: [exp], schedule: [] }).replace(/}$/, ",}");
+  writeFileSync(file, corrupt);
+  const realError = console.error;
+  console.error = () => {};
+  try {
+    await evaluateExperiments({ fetch: async () => null, now: () => Date.parse("2026-10-09T04:15:00Z") });
+    assert.equal(readFileSync(file, "utf8"), corrupt, "corrupt at the first read: left byte-for-byte");
+
+    // Valid at the first read, corrupted while the metrics were being fetched: the write is skipped.
+    writeExperiments({ experiments: [exp], schedule: [] });
+    await evaluateExperiments({
+      fetch: async () => {
+        writeFileSync(file, corrupt);
+        return null;
+      },
+      now: () => Date.parse("2026-10-09T04:15:00Z"),
+    });
+    assert.equal(readFileSync(file, "utf8"), corrupt, "corrupt at the final read: left byte-for-byte");
+  } finally {
+    console.error = realError;
+  }
 }
 
 // --- evaluateExperiments: tc experiments are never touched -------------------------------------

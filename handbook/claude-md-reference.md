@@ -853,15 +853,15 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   running "between" experiment once a UTC day (`evaluatedOn`): any arm under 1,000 impressions is
   "inconclusive", never a guess; CTR is a two-proportion z-test (`|z| ≥ 1.96`); a retention metric
   (average view %) reports the per-arm view-weighted mean and is "numbers only" unless every video
-  of one arm beats every video of the other, 3+ a side. At the experiment's `end`, a winner with
-  `adoptWinner` becomes the new default (`saveSettings`) and the decision is written with its
-  numbers; otherwise the control arm's settings are reapplied, in case a render arm left something
-  else live mid-run. Two evaluation failures in a row (a Reporting or Analytics API error) sets
-  `needsHuman` rather than retrying silently forever. `/ask`'s knowledge (`src/telegram/
-  knowledge.ts`) gets a generated "experiments-live" doc alongside `handbook/knowledge/*.md`, and
-  the morning report's channel message gets one deterministic "🧪 Tests" line (running count,
-  today's schedule, any verdict or decision since the last report) — see
-  `handbook/knowledge/experiments.md` for the week's baseline and ledger.
+  of one arm beats every video of the other, 3+ a side (counting only videos with views). At the
+  experiment's `end`, a winner with `adoptWinner` becomes the new default (`saveSettings`) and the
+  decision is written with its numbers; otherwise the control arm's settings are reapplied, in case
+  a render arm left something else live mid-run. Two evaluation failures in a row (a Reporting or
+  Analytics API error) sets `needsHuman` rather than retrying silently forever. `/ask`'s knowledge
+  (`src/telegram/knowledge.ts`) gets a generated "experiments-live" doc alongside
+  `handbook/knowledge/*.md`, and the morning report's channel message gets one deterministic
+  "🧪 Tests" line (running count, today's schedule, any verdict or decision since the last
+  report) — see `handbook/knowledge/experiments.md` for the week's baseline and ledger.
   **Review fix, 8 Oct 2026**: `settle()` no longer marks an experiment `done`, or writes a
   `decision` claiming a setting took effect, when its own `saveSettings` throws (a typo'd key, a
   value `validateOverrides` rejects) — the failure now falls into the same `lastEvalFailure`/
@@ -915,6 +915,18 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   from which between experiments' `videos.length` actually changed (plus whatever the running-loop
   itself touches, as before) — a "done"/"planned" experiment `enrolVideos` finds nothing new for
   is left to whatever the final fresh read holds for it.
+  **Review fix, 14 Oct 2026**: a video with no views yet (scheduled, or inside Analytics' 2–3 day
+  lag) read as 0% average view and still counted toward the 3-video floor — the live x1/x2
+  experiments carried several, so a zero blocked any real dominance and an arm of 2 real videos
+  plus 2 zeros let its opponent win (and, with `adoptWinner`, be written into the nightly's
+  settings) on an undersized sample. Retention now counts only videos with views
+  (`avgViewPercentages`, the floor); `videos`, impressions and clicks still count every one, so
+  CTR experiments are unchanged. And the evaluator no longer turns a corrupt `.experiments.json`
+  (a hand-edit's trailing comma) into an empty one: `readExperiments` reads corrupt as EMPTY,
+  which the evaluator then wrote back whole — every experiment, the schedule and the Studio "tc"
+  records gone. It reads through `readExperimentsOrNull` (corrupt → `null`) at both its reads and
+  returns without writing or stamping `evaluatedOn`, so the first tick after the fix evaluates
+  the day; every other caller keeps the lenient read.
 - **Playoffs** (`src/playoffs/playoffs.ts`): the bracket (`/playoffs`) knows the series, not the games;
   the games are private-room matches (type 3) found in each seed's history, and the API stamps
   them with the season *after* the bracket's (a Season 11 bracket's games are season 12). **No

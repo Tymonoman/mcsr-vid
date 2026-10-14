@@ -279,15 +279,15 @@ uploads. Client-only changes need just a reload.
   tick (chain resume, auto-hooks, creator watch, experiments) runs only on 8080.
 - **The experiment engine runs between-video A/B tests unattended** (`src/dashboard/experiments.ts`
   + `experimentsEvaluator.ts`): `.experiments.json` (hypothesis, arms, a day-by-day `schedule`,
-  `result`/`verdict`/`decision`, atomic write, defensive read; `"tc"` = Studio's Test & Compare,
-  untouched). A tick before `nightlyRenderHourUtc` applies the day's `render`-tagged entry through
-  `saveSettings` (real `SETTINGS` keys only); a `slot`-tagged entry coexists for a different
-  experiment. A daily tick evaluates each running one (CTR: two-proportion z-test `|z| ≥ 1.96`;
-  retention needs every video of one arm beating the other, 3+ a side; under 1,000 impressions is
-  "inconclusive"); at `end` a winner with `adoptWinner` becomes the default, else the control arm
-  is reapplied; two failed evaluations in a row sets `needsHuman`. `enrolVideos` (idempotent by
-  `matchId`) fills `exp.videos` from each match's `experiment-arm.json` and matching
-  `youtube.json` uploads.
+  `result`/`verdict`/`decision`, atomic write, defensive read, never rewritten while corrupt; `"tc"`
+  = Studio's Test & Compare, untouched). A tick before `nightlyRenderHourUtc` applies the day's
+  `render`-tagged entry through `saveSettings` (real `SETTINGS` keys only); a `slot`-tagged entry
+  coexists for a different experiment. A daily tick evaluates each running one (CTR: two-proportion
+  z-test `|z| ≥ 1.96`; retention needs every video of one arm beating the other, 3+ with views a
+  side; under 1,000 impressions is "inconclusive"); at `end` a winner with `adoptWinner` becomes the
+  default, else the control arm is reapplied; two failed evaluations in a row sets `needsHuman`.
+  `enrolVideos` (idempotent by `matchId`) fills `exp.videos` from each match's `experiment-arm.json`
+  and matching `youtube.json` uploads.
 - **Playoffs** (`src/playoffs/playoffs.ts`): bracket knows the series, not the games. **No
   surface prints a series score** — round/game number only, as much a spoiler as the result.
   `playoffsFirst` (default **false**) puts detected games ahead of suggestions. **A series is one
