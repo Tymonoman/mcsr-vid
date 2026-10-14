@@ -17,13 +17,12 @@ thumbnails and a Short, published to **MCSR Replayoffs**.
   The upset hook is a question.
 - **Never a runner nickname, label or epithet, "vs" or not** (`hookLabelProblem`,
   `src/pipeline/hooks.ts`; `hookProblem`'s `players` arg, `src/shorts/videoPick.ts`; `withHook`,
-  `src/pipeline/title.ts`). A word on the short denied list (`HOOK_DENIED_LABELS`: a handful of
-  ethnicity/nationality terms and a slur-adjacent abbreviation, deliberately not exhaustive) is
-  refused outright; a fresh "X vs Y" must name the match's own two players (API or `titleNames`
-  spelling) or it is a label too. A model's proposal and a carried `hookText` fail closed on a
-  label the same way `hookProblem` does (a carried value is checked for labels only). Only the
-  operator's own **typed** hook always saves: the problem lands as a warning in `saveWarnings`,
-  never a refusal.
+  `src/pipeline/title.ts`). A word on the short denied list (`HOOK_DENIED_LABELS`, deliberately
+  not exhaustive) is refused outright; a fresh "X vs Y" must name the match's own two players
+  (API or `titleNames` spelling) or it is a label too. A model's proposal and a carried `hookText`
+  fail closed on a label the same way `hookProblem` does (a carried value is checked for labels
+  only). Only the operator's own **typed** hook always saves: the problem lands as a warning in
+  `saveWarnings`, never a refusal.
 - **No seed, rank or elo in hooks or hook suggestions, and none in what orders the match
   suggestions** (a suggestion card's story line may still show rank/elo to the operator).
 - **The YouTube API compliance audit has cleared** (`handbook/api-review/`); it gates only
@@ -36,8 +35,6 @@ thumbnails and a Short, published to **MCSR Replayoffs**.
 
 ## Layout
 
-`src/` is grouped by what the code is for.
-
 | Folder | What lives there |
 | --- | --- |
 | `src/api/` | MCSR Ranked (`mcsrApi.ts`, `types.ts`), Twitch (`twitch.ts`, `twitchChat.ts`), avatar renders. |
@@ -47,7 +44,7 @@ thumbnails and a Short, published to **MCSR Replayoffs**.
 | `src/playoffs/` | Bracket and games (`playoffs.ts`), a series as one video (`series.ts`, `seriesCli.ts`). |
 | `src/youtube/` | Data API client and auth, upload records and upload, channel pairing, publish slot, Studio automation (`studioBrowser.ts`, `studioActions.ts`, `studioWorker.ts`). |
 | `src/dashboard/` | Web server (`server.ts`), route groups (`youtubeRoutes`, `exportRoutes`, `shortsRoutes`, `syncRoutes`), match screen payload (`matchMeta.ts`), jobs, nightly, suggestions, the shelf (hidden/queue/checklist), publish set, experiments. |
-| `src/telegram/` | `bot.ts`, report (`facts.ts`, `report.ts`), Claude CLI adapter (`claude.ts`), `/ask` (`knowledge.ts`), 07:00 Warsaw schedule (`schedule.ts`), `commands.ts`, dedupe state (`state.ts`), `index.ts`, `tgCli.ts`. |
+| `src/telegram/` | `bot.ts`, report (`facts.ts`, `report.ts`), Claude CLI adapter (`claude.ts`), `/ask` (`knowledge.ts`), schedule (`schedule.ts`), `commands.ts`, dedupe state (`state.ts`), `index.ts`, `tgCli.ts`. |
 | `src/clips/` | Standalone clips: `clipCli.ts` (+ `clipArgs.ts`) behind `npm run clip`. |
 | `src/cli/` | Entry points nothing imports: batch, status, score, chat, bench, retention, the TUI. |
 | `src/` root | `config.ts`, `cliArgs.ts`, `errorText.ts`, cross-folder tests. |
@@ -102,9 +99,8 @@ Almost nothing moves, so the render is stills plus one strip (`src/pipeline/over
   ≤24 plain-ASCII chars, empty = bare card) shows above SUBSCRIBE.
   `renderOverlay({ only: ["splits"] })` redoes just these in seconds.
 - **COMING UP card** (`teaserFramesOf`): from `teaserAtSec` (default 10, Settings → Publishing,
-  empty = none) for `teaserSec` (5). Moment from `src/pipeline/teaser.ts`, `match.timelines` only:
-  an unplanned death, else the biggest-deficit lead change, else a split under 2s; never in the
-  first/last minute, names nobody, reads `death` only (never promises a hunger reset).
+  empty = none) for `teaserSec` (5). Moment from `src/pipeline/teaser.ts`, `match.timelines`
+  only; never in the first/last minute, names nobody, reads `death` only (never a hunger reset).
 - **Explain the moves** (`explainMovesSec`, Settings → Publishing, default **null = off**; on
   changes what the nightly renders): the first time either player reaches one of six `MILESTONES`
   splits, the meta column shows the split and why (`MOVE_LINES`, `src/pipeline/explainMoves.ts`);
@@ -129,11 +125,10 @@ finish spoils and underperforms.
   hooks); its window is only a hint. `npm run short:hand` (`src/shorts/handShort.ts`) validates
   first (`checkHandShort`: 1080x1920 h264+aac ≤60s; hook passes `hookProblem`, refused outright,
   never a warning, unlike a typed dashboard hook; no blocked player; not already uploaded from
-  here — `youtube-short.json`; a hand tick or scan pairing isn't checked, but the chain then never
-  uploads the re-cut), then writes `short-<id>.mp4` + `.title.txt`/`.description.txt` +
+  here — `youtube-short.json`), then writes `short-<id>.mp4` + `.title.txt`/`.description.txt` +
   `short-<id>.hand.json`, which `uploadTextFor` reads like a rendered Short. Until then the chain
-  logs "waiting for the hand-made Short" (never a failure). `noShort`/a blocked player still mean no Short. Off, the
-  pick→render→upload chain is unchanged.
+  logs "waiting for the hand-made Short" (never a failure). `noShort`/a blocked player still mean
+  no Short.
 - **A model watches the whole match and picks the moment** (`src/shorts/videoPick.ts`,
   `pickShortMoment`): a 2fps proxy, /watch's stills/transcripts per player (needs `GROQ_API_KEY`),
   then Antigravity (`agy`, `gemini-3.8-flash-high`, `--sandbox`, never
@@ -157,28 +152,26 @@ finish spoils and underperforms.
   `<hook> | <left> vs <right>` with `titleName` (Skycrab, lowkey) + `#mcsr #minecraft`.
 - **`deathKind`** (`src/pipeline/matchScore.ts`) is the one reading of `death_spawnpoint`: a hunger
   reset in every phase but the End, a real death in the End. `metrics.deaths` counts real deaths
-  only; the prompt, captions/hook, heuristic, title chips and "N deaths" follow it. `teaser.ts`
-  keeps its stricter reading (`death` only, never a reset).
+  only; the prompt, captions/hook, heuristic, title chips and "N deaths" follow it (`teaser.ts`
+  stays stricter, above).
 - **A playoff game's nameplates show the seed, not the ladder rank.** A series is picked/cut from
   game 1's directory, clips from the picked game's. Auto-crop usually declines, and should.
 
 ## Dashboard
 
 `src/` is read at boot; `public/` is served from disk per request (client-only changes need just a
-reload). After merging server changes, `POST /api/restart-when-idle`; a hand
-`docker restart mcsr-dashboard` only when nothing uploads.
+reload). After merging server changes, `POST /api/restart-when-idle`.
 
 - **Restart only when idle** (`src/dashboard/restartWhenIdle.ts`): `POST /api/restart-when-idle`
   arms, `DELETE` cancels, `GET` reports. `idle()` checks a render (pipeline or Short), an export,
   the pick queue, the publish chain, an upload, a `.upload-session-*.json` under a day old, an NAS
-  copy and the time before `nightlyRenderHourUtc`; idle, it runs `npx tsc --noEmit`, then
-  `process.exit(0)`, and tini brings it back on the new code. **A docker restart must never be
+  copy and the time before `nightlyRenderHourUtc`; idle, it runs `npx tsc --noEmit`, then exits
+  and tini brings it back on the new code. **A hand `docker restart mcsr-dashboard` must never be
   issued while a chain uploads.**
 - **Two screens, one bar**: list and match; four list tabs are the only navigation. The match
   screen groups **Now**, **Check**, **Package**, **Publish** in pipeline order. Now's steps
   (`GET /api/shorts/plan/:id`): Video, Pick, Hooks (locked once uploaded), Short (skipped if
-  `noShort`), Video up, Short up. Rows show one state line (`waiting for hook`, `scheduled`,
-  `published`, `in progress · <stage>`, `failed`).
+  `noShort`), Video up, Short up. Rows show one state line.
 - **Suggestions** (`src/dashboard/suggest.ts`): cached in `.suggest-cache.json` (`CACHE_VERSION`
   5), rescanned periodically; one card per pair across close/chaos/`known` buckets, and the known
   bucket caps one slot per player too (`suggestKnownSlots`, default 4).
@@ -194,7 +187,7 @@ reload). After merging server changes, `POST /api/restart-when-idle`; a hand
   withdrew permission for their footage. `blockedOnDisk`/`hasBlockedPlayer`
   (`src/dashboard/matchStatus.ts`, `src/youtube/youtubeUpload.ts`) check the POV clips, saved chats
   (`chat-<nick>.json`) **and** the title's "A vs B" pair, so a match archived off disk is still
-  caught (the Studio worker's `realIsBlocked` and `finishOnYouTube`'s retry ticks share this check).
+  caught (the Studio worker's `realIsBlocked` shares this check).
   A blocked match leaves the suggestion pool even if already in it, never shown however stale the
   cache; **never rendered by the nightly even if queued (the block is the only gate that
   outranks the queue)**; never "worth rendering today", never uploaded (long-form or Short), never
@@ -204,17 +197,16 @@ reload). After merging server changes, `POST /api/restart-when-idle`; a hand
   before the run starts; `runPipeline` refuses right after the match fetch, so
   `npm run batch`/`generate-project` and the TUI do too.
 - **Rival posts** (`rivalChannelHandle` default `mcsrmatches`): its public feed, never our token;
-  matched to cards by pair/date (a rival spelling unlike the API's, "Lowkey" for lowk3y_, does not
-  match); a posted match sorts after fresh ones.
+  matched to cards by pair/date; a posted match sorts after fresh ones.
 - **Hook chips** (`src/pipeline/hooks.ts`) lead with the match's stake (margin, lead change,
-  death), nickname/rematch chips after. A typed hook always saves: reusing another player's
-  nickname, or any other check, is a warning, never a refusal. Chip truth, pinned by fixtures:
+  death), nickname/rematch chips after. Chip truth, pinned by fixtures:
   swing needs a lead actually held and lost (`metrics.splits`), not a widening one; lead-change is
   the numberless "Does the lead ever settle?" (no off-panel splits, no dragon); "not a single
   death" counts every death-screen entry; the DNF fallback says **killed** the dragon, never
   "reached"; no "sub-N to win it" on a forfeit; "N deaths and still this close" only under a 10s
-  margin. A joined series' chips read the game that decided it, not game 1's. `midRollCtaAtSec` (Settings → Publishing, default 90, null = none)
-  shows SUBSCRIBE for `midRollCtaSec` (4)s at the first split. `titleNames` (default
+  margin. A joined series' chips read the game that decided it, not game 1's. `midRollCtaAtSec`
+  (Settings → Publishing, default 90, null = none) shows SUBSCRIBE for `midRollCtaSec` (4)s at the
+  first split. `titleNames` (default
   `{ Pinne: "Skycrab", lowk3y_: "lowkey" }`) spells two players the broadcast's way, title only.
 - **`nightlyUpload`** is `"scheduled"` (**not writable from Settings**): once hooks are saved the
   chain uploads private, scheduled for the next free slot (19:00 UTC ranked / 23:00 series) or the
@@ -233,7 +225,7 @@ reload). After merging server changes, `POST /api/restart-when-idle`; a hand
   VS, no rating/seed/placement text. Four pose pairs; `thumbnailRotatePoses` (default off) rotates
   by match id. **"cheering-relaxing" is excluded from every fresh automatic pick**
   (`RESULT_LOOKING_POSE_KEY`, reads as the result); operator pick only. A choice carried from an
-  earlier manifest keeps itself (only a 7 Oct rotation-on render could have carried it as "auto").
+  earlier manifest keeps itself.
   `playoffThumbnailStyle` is **not wired** into any render yet.
 - **Re-render a match's thumbnails beside the live set, never over it**
   (`src/thumbnails/rerender.ts`, `src/youtube/thumbnailSwap.ts`, `src/dashboard/thumbnailRoutes.ts`,
@@ -277,15 +269,13 @@ reload). After merging server changes, `POST /api/restart-when-idle`; a hand
   `/media`; kill it before the hour, or set `nightlyRenderHourUtc: null` for it. The 15-minute tick
   (chain resume, auto-hooks, creator watch, experiments) runs only on 8080.
 - **The experiment engine runs between-video A/B tests unattended** (`src/dashboard/experiments.ts`
-  + `experimentsEvaluator.ts`) from `.experiments.json` (arms, a day-by-day `schedule`,
-  `result`/`verdict`/`decision`; atomic write, defensive read, never rewritten while corrupt;
-  `"tc"` = Studio's Test & Compare, untouched). A tick before `nightlyRenderHourUtc` applies the
-  day's `render`-tagged entry through `saveSettings` (real `SETTINGS` keys only; a `slot`-tagged
-  entry can coexist). A daily tick evaluates each (thresholds in the handbook); at `end` a winner
-  with `adoptWinner` becomes the default, else the control arm is reapplied; failed evaluations
-  on two consecutive UTC days set `needsHuman` (a day with no evaluation restarts the count).
-  `enrolVideos` (idempotent by `matchId`) fills `exp.videos` from each match's
-  `experiment-arm.json` and `youtube.json`.
+  + `experimentsEvaluator.ts`) from `.experiments.json` (atomic write, never rewritten while
+  corrupt; `"tc"` = Studio's Test & Compare, untouched). A tick before `nightlyRenderHourUtc`
+  applies the day's `render`-tagged entry through `saveSettings` (real `SETTINGS` keys only; a
+  `slot`-tagged entry can coexist). A daily tick evaluates each (thresholds in the handbook); at
+  `end` a winner with `adoptWinner` becomes the default, else the control arm is reapplied; failed
+  evaluations on two consecutive UTC days set `needsHuman` (a day with no evaluation restarts the
+  count).
 - **Playoffs** (`src/playoffs/playoffs.ts`): the bracket knows the series, not the games. **No
   surface prints a series score**: round/game number only. `playoffsFirst` (default **false**) puts
   detected games ahead of suggestions. **A series is one video; game 1's directory is the series**
@@ -308,8 +298,7 @@ reload). After merging server changes, `POST /api/restart-when-idle`; a hand
 
 One morning report at `telegramReportHourWarsaw` (config-file edit only, like `nightlyUpload`),
 Europe/Warsaw, DST-correct; every slash command answers fresh. Runs inside the dashboard process
-(`server.ts` → `startTelegramBot()`) over the Bot API's `fetch` (`src/telegram/bot.ts`),
-long-polling, no webhook.
+(`startTelegramBot()`, `src/telegram/bot.ts`), long-polling, no webhook.
 
 - **Secrets**: `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` in `/app/.env`. No token: nothing runs; no
   chat id: `/start` reports it. **Only one poller**: a test server
@@ -319,7 +308,7 @@ long-polling, no webhook.
   deterministically; only TODAY's headline+to-do and `/ask`'s answer come from Claude via
   `src/telegram/claude.ts` (`runClaude`): `claude -p` on Haiku with no tools, MCP, slash commands,
   session persistence or setting sources (exact argv in the handbook), prompt on stdin, plain argv
-  (never a shell). No project CLAUDE.md/hooks/plugins/user settings load. Env allow-list: `PATH`,
+  (never a shell). Env allow-list: `PATH`,
   `HOME`, `LANG`, `TMPDIR`, plus `CLAUDE_CODE_OAUTH_TOKEN`/`ANTHROPIC_API_KEY` if set; **never the
   Telegram token or any other secret**. **No viewer comment text or author name is ever put in a
   Claude prompt** (`/ask` included, and the `handbook/knowledge/*.md` it reads); only counts,
@@ -350,35 +339,30 @@ long-polling, no webhook.
 
 Does what Studio has no API for: pinning, end screens, Test & Compare, related-video linking. Gated
 by `studioAutomation` (not writable from Settings; a deliberate edit on the box, like
-`nightlyUpload`/`youtubeUploadEnabled`). Recommended: a separate Google account as channel
-**Editor** (not owner), 2FA on.
+`nightlyUpload`/`youtubeUploadEnabled`).
 
 - **How it works** (`src/youtube/studioBrowser.ts`): a real, headed `google-chrome-stable` on Xvfb,
   login profile in the `studio-profile` volume. Playwright attaches with
-  **`chromium.connectOverCDP`**, **never `chromium.launch()`** (it stamps automation markers).
-  **Nothing here ever types a password, answers 2FA, solves a CAPTCHA, or opens
-  accounts.google.com on its own**; the operator signs in by hand whenever Google asks. `probe()` classifies the session (`ok`/`signed-out`/`verify`/`wrong-channel`) at the
-  start of every job; **a `verify` or `signed-out` result is that attempt's error, chased no
-  further until the operator logs in again, never retried in a loop.** The active channel
-  is MCSR Replayoffs; switching is not a plain click but the confirm dialog's **"Got it"** button.
+  **`chromium.connectOverCDP`**, **never `chromium.launch()`**. **Nothing here ever types a password, answers 2FA, solves a CAPTCHA, or opens
+  accounts.google.com on its own**; the operator signs in by hand whenever Google asks. `probe()`
+  classifies the session (`ok`/`signed-out`/`verify`/`wrong-channel`) at the start of every job;
+  **a `verify` or `signed-out` result is that attempt's error, chased no further until the
+  operator logs in again, never retried in a loop.** The active channel is MCSR Replayoffs.
 - **Safety rails**: **never unpins, replaces, or removes a pin, end screen, related-video link or
-  running Test & Compare set by hand** (each action checks for an existing one first, e.g.
-  `pinComment` returns `"already-pinned"`). **One browser session at a time** (in-process lock plus
-  the profile's own `SingletonLock`; `killOnExit` kills `start()`'s own Chrome/Xvfb on an uncaught
-  exit, not a SIGKILL). **Human-paced**: random 2–6s pauses, ~20 min ± 3 min between
-  worker cycles. **Never runs 02:50–07:30 UTC by default** (`inBlackoutWindow`, derived live from
-  `nightlyRenderHourUtc`). Per-cycle caps: ≤3 end screens, ≤2 Test & Compare starts, ≤3 related
-  links, ≤3 pins.
+  running Test & Compare set by hand** (each action checks for an existing one first). **One browser
+  session at a time** (in-process lock plus the profile's own `SingletonLock`; `killOnExit` kills
+  `start()`'s own Chrome/Xvfb on an uncaught exit, not a SIGKILL). **Human-paced**: random 2–6s
+  pauses, ~20 min ± 3 min between worker cycles. **Never runs 02:50–07:30 UTC by default**
+  (`inBlackoutWindow`, derived live from `nightlyRenderHourUtc`). Per-cycle caps: ≤3 end screens,
+  ≤2 Test & Compare starts, ≤3 related links, ≤3 pins.
 - **`.experiments.json`'s read-merge-write is serialized through a lockfile**
-  (`withExperimentsLock`, `.experiments.json.lock`, stale after 30s): the worker's cycles and a
-  one-off CLI write it from separate processes. The dashboard's `src/dashboard/experiments.ts`
-  doesn't take it, so a race there is still possible.
+  (`withExperimentsLock`, `.experiments.json.lock`, stale after 30s). The dashboard's
+  `src/dashboard/experiments.ts` doesn't take it, so a race there is still possible.
 - **The worker plans a thumbnail Test & Compare on every new dashboard long-form**
   (`thumbnailTcTargets`, ≤2 a cycle; `npm run tc-thumbs` renders control + the most different
   non-result-looking pose + a ≤6-char caption if `tcCaption.ts` passes one) and starts it on a
   later cycle. A running test is read once a UTC day; **Studio's "Results ready"/"Test finished"
-  means done** (`readTestAndCompare`, `parseTcReport`; `setExperimentChecked` records
-  `watchTimeShare` per arm and "<arm> wins: a% vs b%"). End screens get the editor's starter
+  means done** (`readTestAndCompare`, `parseTcReport`). End screens get the editor's starter
   layout ("1 video, 1 subscribe") when the video has none.
 - **The worker never sets a Test & Compare winner itself**: `"done"` only records what Studio's own
   page already shows; `"needsHuman"` lands on anything it couldn't get past (a Save with no
@@ -386,16 +370,16 @@ by `studioAutomation` (not writable from Settings; a deliberate edit on the box,
   checked before any page opens (`titleTestProblem`: `hookProblem` incl. `hookLabelProblem`,
   `spoilsTheResult`, 100-char ceiling).
 - **The worker's own gate is `opts.enable` (CLI `--enable`, or env `STUDIO_WORKER=1`) OR'd with
-  `config.studioAutomation`**, not the dashboard flag alone (the dashboard container has no
-  Chrome). A supervisor (`scripts/studio-worker.sh`) restarts `npm run -s studio -- worker --enable`
-  60s after any exit; its pidfile refuses a second start:
+  `config.studioAutomation`**, not the dashboard flag alone. A supervisor
+  (`scripts/studio-worker.sh`) restarts `npm run -s studio -- worker --enable` 60s after any exit;
+  its pidfile refuses a second start:
   `nohup bash /app/scripts/studio-worker.sh >/dev/null 2>&1 &`
 - **Related video linking** (`linkRelatedVideo`) links a Short to its long-form, no privacy filter
   either side. **The worker also pins** (`pinTargets`): every PUBLIC, unblocked long-form whose
   channel comment has posted and whose pin isn't done, capped at `MAX_PINS_PER_CYCLE` (3) after the
   day's skips (`pinsThisCycle`); end screens skip a blocked match too, and for the day a video
-  whose page shows no editor (gone from the channel), before their cap (`endScreensThisCycle`).
-  Shares the one `finished.pin` ledger field with the dashboard's own gated pin path.
+  with no editor (`endScreensThisCycle`). Shares one `finished.pin` field with the dashboard's pin
+  path.
 
 ## Clips (prototype)
 
@@ -408,7 +392,7 @@ non-numeric, so every `mediaDir` scan (`/^\d+$/`) skips it.
 ## Chat replay (prototype)
 
 `src/api/twitchChat.ts` fetches a VOD's chat via Twitch's web GQL persisted query, paging by
-**offset** (the cursor needs a browser token). Saved after
+**offset**. Saved after
 `download-vods`; the Short scorer reads it. `remotion/ChatPanel.tsx` renders it, not yet wired
 into `src/pipeline/pipeline.ts`.
 
@@ -434,8 +418,8 @@ anything it flags (no GitHub credentials, a read-only PAT, an expiring token) fi
   cuts `headTrimSec` off the front): read `exportMatchStartSec(dir, id)` (10 without a record) or a
   series' `series.json` (`matchStartSec`/`gameMatchStarts`), never assume 10s on the export. The
   sync editor and stills are timed on the timeline, pre-cut.
-- **`exportUpscale1440`** (default off): scales the composited 1080p frame to 2560x1440 right
-  before encoding; off keeps the filter graph byte-for-byte unchanged. `assembleSeries` refuses to mix
+- **`exportUpscale1440`** (default off): scales the composited frame to 2560x1440 just before
+  encoding; off keeps the filter graph byte-for-byte unchanged. `assembleSeries` refuses to mix
   resolutions across a series.
 - **When the detector is unsure, a human settles it** (`GET/PUT /api/sync/:id`,
   `src/pipeline/syncEdit.ts`): saving stamps `source: "manual"`, `confidence: 1`, so a re-render
@@ -443,18 +427,16 @@ anything it flags (no GitHub credentials, a read-only PAT, an expiring token) fi
   re-render, and **not optional**: a sync.json correction after export leaves the published video
   out of sync until re-exported. `exportStale` refuses Upload/nightly/adopt until re-encoded.
 - **A Twitch archive outlives the stream by 14 days** (60 for partners), chat too;
-  `withDiscoveredVods` caches finds in `vods.json`; `npm run download-vods -- <id>` secures
-  a match ahead of render. **Every consumer places clips from `sync.json`**
-  (`src/pipeline/syncFile.ts`); without it, `export:fast`/the Short fall back to
-  `config.preRollSec` and run early; `npm run sync-status` backfills.
+  `npm run download-vods -- <id>` secures a match ahead of render. **Every consumer places clips
+  from `sync.json`** (`src/pipeline/syncFile.ts`); without it, `export:fast`/the Short fall back
+  to `config.preRollSec` and run early; `npm run sync-status` backfills.
 - **Sync reads the picture, and only the picture** (`src/pipeline/countdownDetect.ts`,
   `detectMatchStartAny`): the countdown digit (works in a private room) and the 10s camera freeze;
   no audio fallback. Prefer the detector's reading when confident; the hand editor is for a clip it
   cannot read (its anchor is ±1s).
 - **The intro card is a versus screen** (`remotion/Intro.tsx`): animated elements position via
-  left/top, never a CSS `transform`. No head-to-head on a playoff game; country flags
-  render as tofu (cosmetic). **tini is PID 1**; if `ps -eo stat | grep -c ^Z` climbs, wrap in
-  `python3 scripts/reap.py`.
+  left/top, never a CSS `transform`. No head-to-head on a playoff game. **tini is PID 1**; if
+  `ps -eo stat | grep -c ^Z` climbs, wrap in `python3 scripts/reap.py`.
 - **`ss` is there; `lsof`/`fuser` are not**: `ss -tlnp | grep <port>` names the real listener,
   which a `ps`-found PID is not always. **The playoffs board lives inside `#suggestions`, rows
   carry `.sugg`**: match `#suggestions > .sugg`, or a check waits forever on a hidden fold.
@@ -465,7 +447,7 @@ anything it flags (no GitHub credentials, a read-only PAT, an expiring token) fi
 - **A cut-short upload resumes its own session, never trusts a record.** A restart mid-upload is
   settled through `resumeUpload`'s `resumeOnly` (never falls through to a second upload); no
   session + a `source: "dashboard"` record is trusted done; anything else fails the step, naming
-  Studio — so does any failed resume (a 503 too) with a Studio record on file; the session file
+  Studio — so does any failed resume with a Studio record on file; the session file
   stays for the next Retry. A blocked match's session is never resumed.
 - **Verify visual changes by rendering** (`npm run still`, then read the PNG). Run
   `npm run test:unit` after any edit, `npm test` (Chromium+ffmpeg) after touching rendering or
