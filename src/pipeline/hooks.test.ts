@@ -20,8 +20,8 @@ const MIN = 34;
 /** Elo `changes` that put edcr at 1850 and doogile at 2050 going in. */
 const ELO_GAP = {
   changes: [
-    { uuid: "uuid-l", eloRate: 1870, change: 20 },
-    { uuid: "uuid-r", eloRate: 2030, change: -20 },
+    { uuid: "uuid-l", eloRate: 1850, change: 20 },
+    { uuid: "uuid-r", eloRate: 2050, change: -20 },
   ],
 } as unknown as Partial<MatchInfo>;
 
@@ -459,6 +459,15 @@ const rivalryFacts = hookFacts(
 assert.deepEqual(rivalryFacts.rank, { left: 4, right: 11 });
 assert.deepEqual(rivalryFacts.h2h, { left: 1, right: 2 });
 assert.equal(hookFacts(input()).h2h, null);
+
+// The API's record is read after the match and already counts it: a ranked first meeting the
+// right player won comes back 0-1. Both the generator's facts and the chips must read it as the
+// first 1v1, not a one-sided record that tells the generator who won (14125831).
+{
+  const wonByRight = input({}, { type: 2, result: { uuid: "uuid-r", time: 700_000 } }, { versus: versus(0, 1) });
+  assert.deepEqual(hookFacts(wonByRight).h2h, { left: 0, right: 0 });
+  assert.ok(buildHookSuggestions(wonByRight, 10).includes("Their first 1v1"));
+}
 
 // A forfeit is stated plainly rather than dressed up as a close finish.
 assert.ok(

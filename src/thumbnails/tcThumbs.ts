@@ -118,7 +118,7 @@ async function run(matchId: number, serveUrl: () => Promise<string>): Promise<Ma
   const [userLeft, userRight, versus] = await Promise.all([
     getUser(left.uuid),
     getUser(right.uuid),
-    getVersus(left.uuid, right.uuid).catch(() => undefined),
+    getVersus(left.uuid, right.uuid, match.season).catch(() => undefined),
   ]);
 
   // A generous, fixed budget — not the title's own `hookMax` (buildTitle), which shrinks with

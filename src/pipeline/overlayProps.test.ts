@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { pickStats, eloAtMatchStart, computeSplits } from "./overlayProps.js";
+import { pickStats, eloAtMatchStart, computeSplits, h2hWinsBefore } from "./overlayProps.js";
 import { formatConstantLabel } from "../../remotion/format.js";
 import type { MatchInfo, UserDetails } from "../api/types.js";
 
@@ -52,8 +52,9 @@ const user = (season: ReturnType<typeof bucket>) =>
   assert.equal(scope, "CAREER");
 }
 
-// Real numbers from match 12730175 (edcr vs doogile). The API reports each player's POST-match
-// rating plus the delta, so the rating carried into the match is eloRate - change.
+// Real numbers from match 12730175 (edcr vs doogile). The API reports each player's rating going
+// INTO the match plus the delta: edcr's previous match (12729865) has eloRate 2590, change -29,
+// and 2590 - 29 = 2561 is exactly this match's eloRate. So eloRate is the rating carried in, as is.
 const match = {
   changes: [
     { uuid: "edcr", change: 15, eloRate: 2561 },
@@ -61,10 +62,10 @@ const match = {
   ],
 } as unknown as MatchInfo;
 
-assert.equal(eloAtMatchStart(match, "edcr", 2615), 2546);
-assert.equal(eloAtMatchStart(match, "doogile", 2370), 2440);
-// The gap the overlay shows must be the real one (106), not the render-time one (245).
-assert.equal(eloAtMatchStart(match, "edcr", 2615) - eloAtMatchStart(match, "doogile", 2370), 106);
+assert.equal(eloAtMatchStart(match, "edcr", 2615), 2561);
+assert.equal(eloAtMatchStart(match, "doogile", 2370), 2425);
+// The gap the overlay shows must be the real one (136), not the render-time one (245).
+assert.equal(eloAtMatchStart(match, "edcr", 2615) - eloAtMatchStart(match, "doogile", 2370), 136);
 
 // Unknown player, or a match with no rating attached, falls back to the live value...
 assert.equal(eloAtMatchStart(match, "nobody", 1234), 1234);
@@ -186,3 +187,20 @@ const splitTimeline = [
 }
 
 console.log("overlayProps: all checks passed");
+
+// The head-to-head is read after the match, so the API's record already counts it: a first
+// meeting the right player won comes back {left 0, right 1}, and must render as "First meeting",
+// not as a 0-1 that highlights the winner (14125831, nolw vs doogile).
+{
+  const versus = { results: { ranked: { a: 0, b: 1 } } } as never;
+  const ranked = { type: 2, result: { uuid: "b" } } as unknown as MatchInfo;
+  assert.equal(h2hWinsBefore(versus, ranked, "a"), 0);
+  assert.equal(h2hWinsBefore(versus, ranked, "b"), 0);
+  // A draw takes nothing off; neither does a private-room game, which is never in the ranked count.
+  const draw = { type: 2, result: { uuid: null } } as unknown as MatchInfo;
+  assert.equal(h2hWinsBefore(versus, draw, "b"), 1);
+  const room = { type: 3, result: { uuid: "b" } } as unknown as MatchInfo;
+  assert.equal(h2hWinsBefore(versus, room, "b"), 1);
+  // A record that somehow lacks the match never goes negative.
+  assert.equal(h2hWinsBefore({ results: { ranked: {} } } as never, ranked, "b"), 0);
+}

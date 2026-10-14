@@ -224,16 +224,22 @@ function SplitsPanel({
               </span>
             </span>
           )}
-          <span className="h2h-label">Head-to-Head (Season)</span>
-          <span className="h2h-value">
-            <span className="l">
-              {props.left.nickname} {props.h2hLeftWins}
-            </span>
-            <span className="sep"> — </span>
-            <span className="r">
-              {props.h2hRightWins} {props.right.nickname}
-            </span>
-          </span>
+          {/* Not on a playoff game, as on the intro card: next to the series dots it reads as
+            the series score. */}
+          {props.playoffLabel === undefined && (
+            <>
+              <span className="h2h-label">Head-to-Head (Season)</span>
+              <span className="h2h-value">
+                <span className="l">
+                  {props.left.nickname} {props.h2hLeftWins}
+                </span>
+                <span className="sep"> — </span>
+                <span className="r">
+                  {props.h2hRightWins} {props.right.nickname}
+                </span>
+              </span>
+            </>
+          )}
           {ctaFrame !== null && frame >= ctaFrame ? (
             // The post-roll: the run is over, the achievements have been on screen for the whole
             // match, and this is the one moment the band can ask for the next one.

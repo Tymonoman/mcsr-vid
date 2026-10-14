@@ -18,7 +18,7 @@ import { spawn } from "node:child_process";
 import { formatShortTime } from "../../remotion/format.js";
 import { describeError } from "../errorText.js";
 import { OFF_PANEL_SPLITS, onScreenDeaths, type MatchMetrics } from "./matchScore.js";
-import { eloAtMatchStart } from "./overlayProps.js";
+import { eloAtMatchStart, h2hWinsBefore } from "./overlayProps.js";
 import { titleName } from "./title.js";
 import type { PlayoffContext } from "../playoffs/playoffs.js";
 import type { MatchInfo, UserDetails, VersusStats } from "../api/types.js";
@@ -150,8 +150,8 @@ function candidates(input: HookInput): Candidate[] {
 
   // --- Rivalry framing (30-35): under every stake chip, over the dull fallback -------------
   if (versus) {
-    const leftWins = versus.results.ranked[userLeft.uuid] ?? 0;
-    const rightWins = versus.results.ranked[userRight.uuid] ?? 0;
+    const leftWins = h2hWinsBefore(versus, match, userLeft.uuid);
+    const rightWins = h2hWinsBefore(versus, match, userRight.uuid);
     // Both sides have to have won one for this to read as a rivalry. A one-sided record gets
     // no chip; a first meeting gets a descriptive one — a reason to click, if a weaker one than
     // a close finish.
@@ -295,8 +295,8 @@ export function hookFacts(input: HookInput) {
     /** Ranked wins between these two, or null when the caller did not fetch them. */
     h2h: input.versus
       ? {
-          left: input.versus.results.ranked[userLeft.uuid] ?? 0,
-          right: input.versus.results.ranked[userRight.uuid] ?? 0,
+          left: h2hWinsBefore(input.versus, match, userLeft.uuid),
+          right: h2hWinsBefore(input.versus, match, userRight.uuid),
         }
       : null,
     maxChars: input.maxChars,
