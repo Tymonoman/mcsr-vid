@@ -2,11 +2,15 @@
 # Drive the dashboard in a real browser the way the operator does. Usage:
 #   bash scripts/browser-checks/run-all.sh http://127.0.0.1:8093
 # Needs `npx playwright install chromium firefox` once, and a server on that URL with real match data.
-# One check changes state and restores it (round1-fixes dismisses and restores a suggestion).
 # hook-flow and now-flow press Save, which schedules real uploads now: both answer the Short
 # routes in the browser, so nothing reaches the server. publish-at lets only GETs through at all.
+# Four checks write on the server itself: round1-fixes (dismisses and restores a suggestion),
+# settings-check (saves a setting, puts it back), inline-errors and sync-edit (send writes the
+# server must refuse). They run only with SCRATCH=1, which says the URL is the stub
+# (stub-server.cjs) or a test dashboard on a scratch MCSR_CONFIG -- never mcsr-dashboard:8080.
 set -u
-BASE="${1:?usage: run-all.sh <dashboard url>}"
+BASE="${1:?usage: [SCRATCH=1] run-all.sh <dashboard url>}"
+case "$BASE" in *:8080*) [ "${SCRATCH:-0}" = 1 ] && { echo "SCRATCH=1 is for a stub or test server, not $BASE"; exit 2; } ;; esac
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # `published` is a Studio upload -- one the channel scan paired by its description, with no
 # youtube.json -- because studio-upload-check is about exactly that; since the dashboard's own
@@ -32,6 +36,7 @@ READY="$(pick ready)"; READY2="$(pick ready2)"; PUBLISHED="$(pick published)"; U
 SCHEDULED="$(pick scheduled)"
 echo "ready=$READY ready2=$READY2 published=$PUBLISHED unexported=$UNEXPORTED scheduled=$SCHEDULED"
 fail=0
+scratch() { if [ "${SCRATCH:-0}" = 1 ]; then run "$@"; else echo "SKIP $1 (writes on the server: SCRATCH=1 on a stub or test server)"; fi; }
 run() { local name="$1"; shift; if node "$HERE/$name.cjs" "$@" >/tmp/bc-$name.log 2>&1; then echo "PASS $name"; else echo "FAIL $name (see /tmp/bc-$name.log)"; fail=1; fi; }
 run smoke "$BASE"
 run version-check "$BASE"
@@ -39,17 +44,17 @@ run matches-fail-check "$BASE"
 run runnow-fail-check "$BASE"
 run sugg-fail-check "$BASE"
 run kit-scan-check "$BASE" "$READY"
-run round1-fixes-check "$BASE"
-run round3-check "$BASE"
+scratch round1-fixes-check "$BASE" "$READY"
+run round3-check "$BASE" "$READY"
 run round4-check "$BASE" "$READY"
 run pinned-check "$BASE" "$READY"
 run pull-kit-check "$BASE" "$READY"
 run abtab-check "$BASE"
 run playoffs-fold-check "$BASE"
 run post-audit-check "$BASE" "$READY" "$PUBLISHED"
-run settings-check "$BASE"
-run inline-errors-check "$BASE"
-run sync-edit-check "$BASE" "$READY"
+scratch settings-check "$BASE"
+scratch inline-errors-check "$BASE"
+scratch sync-edit-check "$BASE" "$READY"
 run phone-rows-check "$BASE"
 run deep-link-check "$BASE"
 run hook-flow-check "$BASE" "$READY2"

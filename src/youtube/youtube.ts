@@ -585,7 +585,15 @@ export interface VideoStats {
 }
 
 export async function videoStats(videoIds: string[]): Promise<VideoStats[]> {
-  if (videoIds.length === 0) return [];
+  // videos.list takes at most fifty ids and answers 400 invalidFilters past that, and a series'
+  // games all share one video id: deduped and batched, or the shelf's every stat fails at once.
+  const ids = [...new Set(videoIds)];
+  const out: VideoStats[] = [];
+  for (let i = 0; i < ids.length; i += 50) out.push(...(await videoStatsBatch(ids.slice(i, i + 50))));
+  return out;
+}
+
+async function videoStatsBatch(videoIds: string[]): Promise<VideoStats[]> {
   const body = await apiCall<{
     items: Array<{
       id: string;

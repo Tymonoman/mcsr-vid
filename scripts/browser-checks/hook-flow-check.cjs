@@ -46,12 +46,20 @@ const { launchFor } = require("./launch.cjs");
     // The YouTube panel used to hold its own copy of the title; the upload reads the match's
     // title file server-side now, so the panel is waited on by something that still exists.
     await page.waitForSelector("#youtube", { timeout: 30000 });
+    // A match can have no chip at all: long names leave a hook budget (meta.hook.max) every
+    // suggestion overruns, which is auto-hooks' "save one by hand". The rest is typed then.
     const chip = await page.$('#now .chips[data-for="hook"] .chip');
-    check("a title hook chip exists", !!chip);
-    const chipText = (await chip.textContent()).trim();
-    await chip.click();
-    await page.waitForTimeout(150);
-    check("the chip fills the title hook", (await page.inputValue("#hook")) === chipText);
+    let chipText = "TYPED HOOK";
+    if (chip) {
+      chipText = (await chip.textContent()).trim();
+      await chip.click();
+      await page.waitForTimeout(150);
+      check("the chip fills the title hook", (await page.inputValue("#hook")) === chipText);
+    } else {
+      console.log("SKIP chip: no title chip on this match, the hook is typed instead");
+      await page.fill("#hook", chipText);
+      await page.waitForTimeout(150);
+    }
     const ytTitleInputs = await page.$$("#youtube textarea, #youtube input[type=text]:not(#ytAdoptId)");
     // Not "no inputs": the adopt control's video-id box is exempt by id. What must never come
     // back is a second title, which would drift from the hook field's.
