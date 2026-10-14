@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
-import { suggestTailSec } from "./postRoll.js";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { measureTail, parseLoudness, suggestTailSec } from "./postRoll.js";
 
 const opts = { minSec: 15, maxSec: 60 };
 const flat = (value: number, n: number) => Array<number>(n).fill(value);
@@ -51,6 +55,35 @@ const flat = (value: number, n: number) => Array<number>(n).fill(value);
   // No measurements at all (audio-less clip, probe failed): keep the configured maximum rather
   // than silently truncating someone's video.
   assert.equal(suggestTailSec({ loudness: [], motion: [] }, opts), 60);
+}
+
+{
+  // A silent second prints "-inf"; it must stay in the series, not drop out and shift every later second.
+  const log = "RMS_level=-24.03\nRMS_level=-inf\nRMS_level=-95.19\n";
+  assert.deepEqual(parseLoudness(log), [-24.03, -90, -95.19]);
+}
+{
+  // One loudness reading per second, not per ~21ms AAC frame: 3s of tone then 7s of silence over a
+  // black frame is cut at 3s. Per-frame readings put all of the first 0.2s in "seconds" 0-9 and kept 9.
+  const dir = mkdtempSync(path.join(tmpdir(), "postroll-"));
+  const clip = path.join(dir, "tail.mp4");
+  try {
+    execFileSync("ffmpeg", [
+      "-v", "error", "-y",
+      "-f", "lavfi", "-i", "color=black:size=64x36:rate=10:duration=10",
+      "-f", "lavfi", "-i", "sine=frequency=440:duration=3",
+      "-f", "lavfi", "-i", "anullsrc=r=48000:cl=mono:duration=7",
+      "-filter_complex", "[1:a]aresample=48000[t];[t][2:a]concat=n=2:v=0:a=1[a]",
+      "-map", "0:v", "-map", "[a]", "-c:v", "libx264", "-c:a", "aac", clip,
+    ]); // prettier-ignore
+    const w = await measureTail(clip, 0, 10);
+    assert.ok(Math.abs(w.loudness.length - 10) <= 1, `one reading a second, got ${w.loudness.length}`);
+    assert.ok(w.loudness[1]! > -45, "the tone is audible");
+    assert.ok(w.loudness[6]! <= -45, "the silence is silent");
+    assert.equal(suggestTailSec(w, { minSec: 1, maxSec: 10, quietRunSec: 3 }), 3);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 console.log("postRoll: all checks passed");
