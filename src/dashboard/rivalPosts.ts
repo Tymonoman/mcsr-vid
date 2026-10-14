@@ -43,7 +43,10 @@ export interface RivalMatch {
   publishedAtMs: number;
 }
 
-/** Nicknames as the rival types them ("Nahhann", "Lowk3y") against ours ("nahhann", "lowk3y_"). */
+/**
+ * Nicknames as the rival types them ("Nahhann", "Darvy  x1") against ours ("nahhann", "DARVY__X1"):
+ * case and punctuation only. A different spelling ("Lowkey" for lowk3y_) does not match.
+ */
 export const normaliseNick = (nick: string): string => nick.toLowerCase().replace(/[^a-z0-9]/g, "");
 
 /**

@@ -414,7 +414,7 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   silverrruns' matches held 3 of 4 live "known" slots every scan, and a sample of the last 4
   days' 15 pooled, known-player, dual-VOD matches from doogile, hackingnoises and Pinne got zero
   of them (read-only investigation, 6 Oct 2026). A first pass skips a candidate if either player
-  already filled a slot this scan (same shape as the pair-level `pairs` Set, one level up); a
+  already filled a *known* slot this scan (close/chaos cards do not count against it; same shape as the pair-level `pairs` Set, one level up); a
   second, unconstrained pass backfills any slot the cap leaves empty, so the bucket is never
   emptier than before. No scoring input changed — `CACHE_VERSION` stays 4. A scan that stumbles —
   a corrupt `.suggest-cache.json`, a match whose detail fetch keeps failing, a Twitch login lookup
@@ -503,7 +503,9 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   (`feeds/videos.xml?channel_id=`, the handle resolved once off the public channel page) with no
   token — the API audit told Google the OAuth token reads only our own channel, and the old
   channels/playlistItems/videos.list read of another channel broke that. Matched to cards by
-  nickname pair and date. The feed has no lengths, so the run-length check (a post of the wrong
+  nickname pair and date, the API nickname normalised (lowercase, alphanumerics only); a rival
+  spelling that differs from the API's (it writes "Lowkey" for lowk3y_) does not match, so those
+  posts are not flagged. The feed has no lengths, so the run-length check (a post of the wrong
   length is another match of the same pair) is idle and two matches of one pair in a night both
   read as posted. A posted match sorts after the fresh ones, in the nightly's order too. `playersFromTitle`
   takes the pair right before the MCSR tag, so the rival's hook-less "A vs B | MCSR Ranked" titles
@@ -518,7 +520,7 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   warning in `saveWarnings` — one nickname per player; the post-mortem of 30 Sept 2026 found "TAS" on
   four players across seven titles. The description's links block gains "last time they met:
   https://youtu.be/<id>" at upload when the same pair has an earlier long-form on the channel
-  (`lastMeetingFor`, `src/youtube/youtubeStore.ts`; once, unedited descriptions only). Suggestions never use seeds, ranks or elo (the operator's
+  (`lastMeetingFor`, `src/youtube/youtubeStore.ts`; once, unedited descriptions only). Hook suggestions never use seeds, ranks or elo, and neither does the suggestion order (the operator's
   call, 24 Sept 2026: "no one cares about that" — and they change daily). "SWEPT"/"sweep" is a result word in
   `spoilsTheResult` (a best of 5 titled "PLAYOFFS | SWEPT vs TAS" told how it went). A typed hook always
   saves — any check on it (result words, length) comes back as a warning beside the field, never a refusal
