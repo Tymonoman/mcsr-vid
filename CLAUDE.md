@@ -333,7 +333,8 @@ long-polling, no webhook.
   dynamic string through `escapeHtml`.
 - **"Needs you"** (`gatherNeedsYou`, deterministic, "Nothing today." when empty): a failed
   `short-<id>.status.json` step; Studio signed-out/verify/wrong-channel; no long-form scheduled in
-  48h; a blocked runner in tonight's queue or as a recent comment's author; an `.experiments.json`
+  48h; with `shortsByHand` on, a long-form due in 36h or public ≤3 days with no hand-cut Short; a
+  blocked runner in tonight's queue or as a recent comment's author; an `.experiments.json`
   `needsHuman` entry; the Studio worker's heartbeat over 90 min old or `sameErrorStreak` ≥3.
   `/needs` answers this section alone, fresh.
 - **A link about one match opens that match** (`#match=<id>` in `public/app.js`). Dedupe is
