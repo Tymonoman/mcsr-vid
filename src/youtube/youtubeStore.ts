@@ -593,8 +593,9 @@ export async function longFormRecord(matchId: number): Promise<UploadRecord | nu
 }
 
 /**
- * Finish on YouTube and Put/Undo on YouTube each read the record, write to the video and write the
- * record back: one at a time per match, or one sets its image over the other's or drops its ledger.
+ * Finish on YouTube, Put/Undo on YouTube and Move on YouTube each read the record, write to the
+ * video and write the record back: one at a time per match, or one sets its image over the other's,
+ * drops its ledger or puts back the old publish time.
  */
 const writing = new Map<number, Promise<void>>();
 export function onVideo<T>(matchId: number, write: () => Promise<T>): Promise<T> {
