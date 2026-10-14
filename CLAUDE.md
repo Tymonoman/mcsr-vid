@@ -398,10 +398,11 @@ anything Google's anti-abuse systems do to a container-run browser.
   --enable` 60s after any exit, pidfile refuses a second start: `nohup bash
   /app/scripts/studio-worker.sh >/dev/null 2>&1 &`
 - **Related video linking** (`linkRelatedVideo`) links a Short to its long-form, no privacy
-  filter either side. **The worker also pins** (`pinTargets`): every PUBLIC long-form whose
-  channel comment has posted and whose pin isn't done, capped at `MAX_PINS_PER_CYCLE` (3),
-  sharing the one `finished.pin` ledger field with the dashboard's own gated pin path. Drive all
-  of this with `npm run studio --` (see Commands).
+  filter either side. **The worker also pins** (`pinTargets`): every PUBLIC, unblocked long-form
+  whose channel comment has posted and whose pin isn't done, capped at `MAX_PINS_PER_CYCLE` (3)
+  after the day's skips (`pinsThisCycle`); end screens skip a blocked match too. Shares the one
+  `finished.pin` ledger field with the dashboard's own gated pin path. Drive all of this with
+  `npm run studio --` (see Commands).
 
 ## Clips (prototype)
 
