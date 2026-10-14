@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { blockedIn, config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
@@ -86,7 +86,9 @@ export function blockedOnDisk(dir: string): boolean {
     for (const f of readdirSync(dir)) {
       const chat = /^chat-(.+)\.json$/.exec(f);
       if (chat) names.push(chat[1]!);
-      if (!/^match-\d+\.title(\.edited)?\.txt$/.test(f)) continue;
+      // Only a real file: a corrupted directory must not throw out of every caller's gate (the
+      // auto-hooks tick would stop for every match after it).
+      if (!/^match-\d+\.title(\.edited)?\.txt$/.test(f) || !statSync(path.join(dir, f)).isFile()) continue;
       const pair = /(?:^|\|)\s*([^|]+?)\s+vs\.?\s+([^|]+?)\s*\|\s*MCSR/i.exec(
         readFileSync(path.join(dir, f), "utf8"),
       );

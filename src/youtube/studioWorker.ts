@@ -331,7 +331,10 @@ export function planCycle(
     .slice(0, MAX_ENDSCREENS_PER_CYCLE);
 
   const tc = experiments.filter((e) => e.kind === "tc");
-  const tcToStart = tc.filter((e) => e.status === "planned").slice(0, MAX_TC_STARTS_PER_CYCLE);
+  // A test planned before its runner was blocked (or by hand with `tc-plan`) never starts.
+  const tcToStart = tc
+    .filter((e) => e.status === "planned" && !e.videos.some((v) => isBlocked(v.matchId)))
+    .slice(0, MAX_TC_STARTS_PER_CYCLE);
   const tcToCheck = tc.filter((e) => e.status === "running" && needsDailyCheck(e, now));
 
   // "no tc experiment yet" (the task's own words) means any kind — Studio only ever runs one

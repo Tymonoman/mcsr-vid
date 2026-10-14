@@ -17,6 +17,7 @@ import { blockedIn, config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { playoffContextFor, playoffPhrase } from "../playoffs/playoffs.js";
 import { readSeriesRecord } from "../playoffs/series.js";
+import { blockedOnDisk } from "../dashboard/matchStatus.js";
 import { hookProblem, HOOK_MAX_CHARS } from "./videoPick.js";
 import { buildShortDescription, buildShortTitle, TITLE_MAX_CHARS } from "./shortHook.js";
 import { shortLog } from "./shortLog.js";
@@ -145,7 +146,8 @@ export async function checkHandShort(
   }
   const [left, right] = match.players;
   if (!left || !right) return no(`match ${matchId} does not have two players`);
-  if (blockedIn([left.nickname, right.nickname]))
+  // The API's pair, and the match's own files (POV clips, chats, title — a renamed runner).
+  if (blockedIn([left.nickname, right.nickname]) || blockedOnDisk(dir))
     return no(`match ${matchId} has a blocked player — the Short is not cut`);
   // A series is one video and game 1's directory is the series: the chain and hookRefusal read
   // only that one, so a later game's own directory would wait forever (14 Oct 2026 edge pass).

@@ -260,6 +260,7 @@ config.mediaDir = media;
     [],
     { endScreens: {}, pickerEmptySeen: {}, relatedLinks: {}, relatedRetrySeen: {} },
     experiments,
+    () => false,
   );
   assert.deepEqual(
     plan.tcToStart.map((e) => e.id),
