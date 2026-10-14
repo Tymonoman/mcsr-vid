@@ -137,7 +137,7 @@ commands (`dashboard`, `export:fast`, `short`, `short:hand`, `pick`, `series`, `
 | `remotion:studio` | Remotion Studio, for previewing the compositions. |
 | `build-overlay-css` | Rebuild `remotion/overlay.css`. The render scripts run it themselves. |
 | `youtube-auth` | One-time OAuth consent. Writes `youtube-token.json`. |
-| `archive -- <id>` | Copy a finished match to the NAS with rsync. Nothing is deleted. |
+| `archive -- <id>` | Copy a finished match to the NAS with rsync, at once (no 03:00–08:00 window check, so run it in the window). Nothing is deleted. |
 | `typecheck` / `format` | `tsc --noEmit` / prettier. |
 | `test:unit` / `test` | Every `*.test.ts` except the four that drive Chromium and ffmpeg / all of them. |
 
