@@ -43,6 +43,7 @@ import { fileURLToPath } from "node:url";
 import { config, matchDir } from "../config.js";
 import { capacity } from "./archive.js";
 import { abortJob } from "./jobs.js";
+import { CACHE_VERSION } from "./suggest.js";
 import {
   nightlyQueue,
   setHidden,
@@ -206,7 +207,7 @@ try {
     writeFileSync(
       path.join(media, ".suggest-cache.json"),
       JSON.stringify({
-        version: 4,
+        version: CACHE_VERSION,
         twitchLogins: { StreamerTenK: "streamer_tenk", StreamerUnder: "streamer_under", romuxii: "romuxii" },
         twitchFollowers: {
           streamer_tenk: { count: 10_000, fetchedAt: 0 },
@@ -344,7 +345,7 @@ try {
     writeFileSync(
       path.join(media, ".suggest-cache.json"),
       JSON.stringify({
-        version: 4,
+        version: CACHE_VERSION,
         pool: {
           "9101": { metrics: { matchId: 9101, players: ["BeefSalad", "Feinberg"] } },
           "9102": { metrics: { matchId: 9102, players: ["PoolOne", "PoolTwo"] } },
