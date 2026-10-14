@@ -54,6 +54,12 @@ assert.throws(
   "the publish hour is not optional",
 );
 assert.doesNotThrow(() => validateOverrides({ publishHourUtc: 19 }));
+// Its sibling: a hand-edited 25 would schedule every series off the clock without a word.
+assert.throws(() => validateOverrides({ seriesPublishHourUtc: 24 }), /seriesPublishHourUtc.*0-23/);
+assert.throws(() => validateOverrides({ seriesPublishHourUtc: 19.5 }), /seriesPublishHourUtc/);
+assert.throws(() => validateOverrides({ seriesPublishHourUtc: -1 }), /seriesPublishHourUtc/);
+assert.throws(() => validateOverrides({ seriesPublishHourUtc: null }), /seriesPublishHourUtc/);
+assert.doesNotThrow(() => validateOverrides({ seriesPublishHourUtc: 23 }));
 assert.doesNotThrow(() => validateOverrides({ mediaDir: "/tmp/media", overlayFps: 60 }));
 assert.doesNotThrow(() =>
   validateOverrides({ pullSource: "homelab@actimel:/home/homelab/mcsr-media", pullDest: "~/Replayoffs" }),

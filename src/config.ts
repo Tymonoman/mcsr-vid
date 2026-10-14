@@ -648,7 +648,12 @@ export function validateOverrides(raw: Record<string, unknown>): void {
     // Its default is an hour, but null is the documented "no nightly render", and a number
     // outside the clock would pass a type check: `setUTCHours(25)` rolls into the next day
     // without a word, so a mistyped hour would fire at 01:00 and look scheduled.
-    if (key === "nightlyRenderHourUtc" || key === "publishHourUtc" || key === "telegramReportHourWarsaw") {
+    if (
+      key === "nightlyRenderHourUtc" ||
+      key === "publishHourUtc" ||
+      key === "seriesPublishHourUtc" ||
+      key === "telegramReportHourWarsaw"
+    ) {
       const nullable = key === "nightlyRenderHourUtc" || key === "telegramReportHourWarsaw";
       if (
         (value === null && !nullable) ||

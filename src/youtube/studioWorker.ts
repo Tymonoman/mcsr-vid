@@ -24,10 +24,10 @@
  * the dashboard (`newCodeWaiting`, `BOOT_HEAD` below).
  */
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { blockedIn, config, matchDir } from "../config.js";
+import { blockedIn, config, CONFIG_PATH, DEFAULTS, matchDir } from "../config.js";
 import { blockedOnDisk } from "../dashboard/matchStatus.js";
 import { repoHead } from "../dashboard/repoHead.js";
 import { describeError } from "../errorText.js";
@@ -433,6 +433,29 @@ export function inBlackoutWindow(now: Date, hourUtc: number | null = config.nigh
   const start = (((hourUtc * 60 - 10) % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY;
   const sinceStart = (((minutes - start) % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY;
   return sinceStart <= BLACKOUT_WINDOW_MIN;
+}
+
+/**
+ * The nightly hour as mcsr-vid.config.json says right now, for `runWorker`'s blackout. The worker
+ * is its own long-lived process, and a Settings-tab or experiment move of the hour (`saveSettings`)
+ * rewrites the file but updates only the dashboard's in-memory `config` — read at boot, this kept
+ * blacking out the old hours and opened Chrome during the moved render. A missing file or key is
+ * `DEFAULTS` (what `loadConfig` does); an unreadable file (mid-write) or a bad value keeps the
+ * hour this process booted with.
+ */
+export function liveNightlyHour(file: string = CONFIG_PATH): number | null {
+  try {
+    const raw = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
+    if (!("nightlyRenderHourUtc" in raw)) return DEFAULTS.nightlyRenderHourUtc;
+    const h = raw.nightlyRenderHourUtc;
+    return h === null || (Number.isInteger(h) && (h as number) >= 0 && (h as number) <= 23)
+      ? (h as number | null)
+      : config.nightlyRenderHourUtc;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "ENOENT"
+      ? DEFAULTS.nightlyRenderHourUtc
+      : config.nightlyRenderHourUtc;
+  }
 }
 
 /** The two single-variable `TcTest`s `startTestAndCompare` accepts, built from an experiment's
@@ -968,7 +991,7 @@ export async function runWorker(
   for (;;) {
     const now = clock();
     let result: CycleResult;
-    const blackout = inBlackoutWindow(now);
+    const blackout = inBlackoutWindow(now, liveNightlyHour());
     if (blackout) {
       result = SKIPPED_RESULT;
       if (!opts.once && newCodeWaiting(bootHead, headNow())) {
