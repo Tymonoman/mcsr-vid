@@ -457,7 +457,7 @@ export function renderYpp(ypp: ReportFacts["ypp"], nowMs = Date.now()): string {
   const f = p.tiers.full;
   return [
     `${b("🎯 YPP")} · full tier ${tierCountdown(f, nowMs)}`,
-    `<i>at ${p.subscribers.ratePerDay.toFixed(2)} subs/day over 28 days${p.subscribers.recent ? ` (${p.subscribers.recent.ratePerDay.toFixed(2)} in the last week)` : ""} · ${p.watchHours.ratePerDay.toFixed(1)} h/day · ${fmtInt(p.shortsViews.ratePerDay)} engaged Shorts views/day</i>`,
+    `<i>at ${p.subscribers.ratePerDay.toFixed(2)} subs/day over 28 days${p.subscribers.recent ? ` (${p.subscribers.recent.ratePerDay.toFixed(2)} in the last week)` : ""} · ${p.watchHours.ratePerDay.toFixed(1)} h/day (public videos only) · ${fmtInt(p.shortsViews.ratePerDay)} engaged Shorts views/day</i>`,
     "",
     `<b>Full tier (ads)</b> — 1,000 subs, and ${fmtInt(f.watchHours.need)} h or ${fmtInt(f.shortsViews.need / 1e6)}M Shorts views`,
     gateLine("subs", f.subscribers, nowMs),

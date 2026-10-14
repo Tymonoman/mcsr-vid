@@ -19,7 +19,7 @@
  * `engagedViews`) for eligibility. Raw views ride along for the label, 3–5x the engaged number.
  */
 import { describeError } from "../errorText.js";
-import { dataApiGet, getAccessToken, isConfigured } from "./youtube.js";
+import { dataApiGet, getAccessToken, isConfigured, videoStats } from "./youtube.js";
 
 /** The day the full tier's thresholds double for new applicants. */
 export const FULL_TIER_2027_MS = Date.UTC(2027, 1, 1);
@@ -192,8 +192,9 @@ export async function analytics(
 const sum = (rows: (string | number)[][], col = 0) => rows.reduce((a, r) => a + Number(r[col] ?? 0), 0);
 
 /**
- * Five requests: channel subscribers (net over 28 days, the last 7 split out of the same rows),
- * hours over 365 and 28 days, Shorts views over 90 and 28 days.
+ * Seven Analytics requests: channel subscribers (net over 28 days, the last 7 split out of the
+ * same rows), hours over 365 and 28 days in total and per video, Shorts views over 90 and 28 days;
+ * plus a videos.list per 50 watched videos (1 quota unit each) for which of them are public.
  */
 export async function fetchYppSnapshot(nowMs: number = Date.now()): Promise<YppSnapshot> {
   const token = await getAccessToken();
@@ -240,6 +241,36 @@ export async function fetchYppSnapshot(nowMs: number = Date.now()): Promise<YppS
   const h28Days = new Set(h28Rows.map((r) => String(r[0]))).size;
   const h28 = typed(h28Rows, longForm, 2, 1);
 
+  // The gate counts public watch hours only (YouTube Help 72851): a video made private, unlisted or
+  // deleted takes its hours with it, and they come back if it goes public again. 14 Oct 2026: 505 of
+  // the 2,998 h shown sat on the nine long-forms withdrawn in October. So the non-public videos'
+  // minutes come off the totals. The API refuses "video,creatorContentType" and a two-value
+  // creatorContentType filter, hence videoOnDemand alone.
+  // ponytail: a private live stream's hours would stay counted; the channel streams none.
+  const perVideo = (days: number) =>
+    analytics(token, {
+      startDate: daysAgo(days),
+      endDate: ymd(now),
+      dimensions: "video",
+      metrics: "estimatedMinutesWatched",
+      filters: "creatorContentType==videoOnDemand",
+      sort: "-estimatedMinutesWatched",
+      maxResults: "200",
+    });
+  const v365 = await perVideo(365);
+  const v28 = await perVideo(28);
+  // videos.list answers nothing for a deleted id, so it never reads as public.
+  const publicIds = new Set(
+    (await videoStats([...v365, ...v28].map((r) => String(r[0]))))
+      .filter((v) => v.privacyStatus === "public")
+      .map((v) => v.videoId),
+  );
+  const notPublic = (rows: (string | number)[][]) =>
+    sum(
+      rows.filter((r) => !publicIds.has(String(r[0]))),
+      1,
+    );
+
   const shorts90 = await byType(90, "engagedViews,views");
   const shorts28Rows = await byType(28, "engagedViews", "day,creatorContentType");
   const shorts28Days = new Set(shorts28Rows.map((r) => String(r[0]))).size;
@@ -252,8 +283,8 @@ export async function fetchYppSnapshot(nowMs: number = Date.now()): Promise<YppS
     subscribersDays: datesIn(subsWeek),
     subscribersPer28d: netOf(subs),
     subscribersDays28: datesIn(subs),
-    watchHours365d: h365 / 60,
-    watchHoursPer28d: h28 / 60,
+    watchHours365d: Math.max(0, h365 - notPublic(v365)) / 60,
+    watchHoursPer28d: Math.max(0, h28 - notPublic(v28)) / 60,
     watchHoursDays: h28Days,
     shortsViews90d: typed(shorts90, isShort),
     shortsViewsPer28d: shorts28,

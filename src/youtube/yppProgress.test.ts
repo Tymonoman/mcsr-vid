@@ -460,6 +460,8 @@ assert.equal(p.shortsViews.have, 0);
           }),
         );
       }
+      // Per-video minutes: none here, so nothing is asked of videos.list (the next block covers it).
+      if (dimensions === "video") return new Response(JSON.stringify({ rows: [] }));
       if (metrics.includes("estimatedMinutesWatched") && dimensions.includes("day")) {
         return new Response(
           JSON.stringify({
@@ -514,6 +516,138 @@ assert.equal(p.shortsViews.have, 0);
       "the date's rate is the 28 days': 11 / 6 returned days",
     );
     assert.equal(projected.subscribers.recent!.ratePerDay, 2.5, "the week's rate is 10 / 4 = 2.5 / day");
+  } finally {
+    globalThis.fetch = realFetch;
+    if (realToken === undefined) delete process.env.YOUTUBE_TOKEN_FILE;
+    else process.env.YOUTUBE_TOKEN_FILE = realToken;
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+// Public watch hours only (YouTube Help 72851). 14 Oct 2026: /ypp read 2,998 h, 505 of them on the
+// nine long-forms made private in October. Three watched long-forms, one private, plus one deleted
+// (videos.list answers nothing for it): only the two public ones count, in the year and in the rate,
+// and the private one counts again once it is public.
+{
+  const realFetch = globalThis.fetch;
+  const realToken = process.env.YOUTUBE_TOKEN_FILE;
+  const dir = await mkdtemp(path.join(tmpdir(), "mcsr-ypp-public-"));
+  process.env.YOUTUBE_TOKEN_FILE = path.join(dir, "token.json");
+  await writeFile(
+    process.env.YOUTUBE_TOKEN_FILE,
+    JSON.stringify({ client_id: "c", client_secret: "s", refresh_token: "r" }),
+  );
+  const privacy: Record<string, string> = { pubA: "public", privB: "private", pubC: "public" };
+  const perVideoAsked: URLSearchParams[] = [];
+  const videosAsked: string[][] = [];
+  const json = (b: unknown) => new Response(JSON.stringify(b));
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = String(input);
+    if (url.includes("oauth2.googleapis.com/token")) return json({ access_token: "tok", expires_in: 3600 });
+    if (url.includes("/channels?part=statistics"))
+      return json({ items: [{ statistics: { subscriberCount: "75" } }] });
+    if (url.includes("/channels?part=contentDetails"))
+      return json({ items: [{ contentDetails: { relatedPlaylists: { uploads: "UU_TEST" } } }] });
+    if (url.includes("/playlistItems")) return json({ items: [] });
+    if (url.includes("/videos?")) {
+      const ids = new URL(url).searchParams.get("id")!.split(",");
+      videosAsked.push(ids);
+      return json({
+        items: ids
+          .filter((id) => privacy[id])
+          .map((id) => ({
+            id,
+            snippet: { title: id, publishedAt: "" },
+            status: { privacyStatus: privacy[id] },
+            statistics: {},
+          })),
+      });
+    }
+    const q = new URL(url).searchParams;
+    const dims = q.get("dimensions");
+    const days28 = q.get("startDate") === "2026-08-11";
+    if (q.get("metrics")!.includes("subscribersGained")) return json({ rows: [] });
+    if (dims === "video") {
+      perVideoAsked.push(q);
+      // 6,000 min over the year, 2,400 over 28 days: the same totals the type reports give.
+      return json({
+        rows: days28
+          ? [
+              ["pubA", 1200],
+              ["privB", 800],
+              ["pubC", 240],
+              ["goneD", 160],
+            ]
+          : [
+              ["pubA", 3000],
+              ["privB", 2000],
+              ["pubC", 600],
+              ["goneD", 400],
+            ],
+      });
+    }
+    if (q.get("metrics") === "estimatedMinutesWatched" && dims === "creatorContentType")
+      return json({
+        rows: [
+          ["videoOnDemand", 6000],
+          ["shorts", 900],
+        ],
+      });
+    if (q.get("metrics") === "estimatedMinutesWatched" && dims === "day,creatorContentType")
+      return json({
+        rows: [
+          ["2026-09-04", "videoOnDemand", 1000],
+          ["2026-09-04", "shorts", 50],
+          ["2026-09-05", "videoOnDemand", 1400],
+        ],
+      });
+    return json({ rows: [] });
+  }) as typeof fetch;
+
+  try {
+    const snap = await fetchYppSnapshot(now);
+    // Public: pubA + pubC = 3,600 min = 60 h a year; 1,440 min = 24 h over 28 days, 2 days returned.
+    assert.equal(snap.watchHours365d, 60, "the private and the deleted video's hours are out of the year");
+    assert.equal(snap.watchHoursPer28d, 24, "...and out of the rate");
+    assert.equal(snap.watchHoursDays, 2, "the days the rate divides by are unchanged");
+    console.log(
+      "OK: private (and deleted) videos' hours excluded from the 365-day total and the 28-day rate",
+    );
+
+    assert.equal(perVideoAsked.length, 2, "one per-video report per window");
+    for (const q of perVideoAsked) {
+      assert.equal(q.get("filters"), "creatorContentType==videoOnDemand", "long-form only, as the totals");
+      assert.equal(q.get("metrics"), "estimatedMinutesWatched");
+      assert.equal(q.get("sort"), "-estimatedMinutesWatched");
+      assert.equal(q.get("maxResults"), "200");
+    }
+    assert.deepEqual(
+      perVideoAsked.map((q) => q.get("startDate")),
+      ["2025-09-08", "2026-08-11"],
+      "the same 365- and 28-day windows",
+    );
+    assert.equal(videosAsked.length, 1, "four ids, one videos.list call: one quota unit");
+    assert.deepEqual(videosAsked[0].sort(), ["goneD", "privB", "pubA", "pubC"], "each id asked once");
+    console.log("OK: one per-video report per window, one videos.list for the ids");
+
+    // The thresholds and the date read the corrected numbers the same way: 12 h a day, 2,940 to go.
+    const projected = projectYpp(snap, now).watchHours;
+    assert.equal(projected.need, 3000);
+    assert.equal(projected.ratePerDay, 12);
+    assert.equal(projected.ceiling, 12 * 365);
+    assert.equal(projected.eta, new Date(now + (2940 / 12) * 86_400_000).toISOString());
+    assert.deepEqual(
+      projectYpp(snap, now),
+      projectYpp({ ...snap, watchHours365d: 60, watchHoursPer28d: 24 }, now),
+    );
+    console.log("OK: thresholds and ETA logic unchanged on the public-only numbers");
+
+    // Made public again: its hours count again, nothing to re-enable.
+    privacy.privB = "public";
+    const back = await fetchYppSnapshot(now);
+    assert.equal(back.watchHours365d, 5600 / 60);
+    assert.equal(back.watchHoursPer28d, 2240 / 60);
+    console.log("OK: a video flipped back to public counts again");
   } finally {
     globalThis.fetch = realFetch;
     if (realToken === undefined) delete process.env.YOUTUBE_TOKEN_FILE;
