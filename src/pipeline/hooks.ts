@@ -26,12 +26,14 @@ import type { MatchInfo, UserDetails, VersusStats } from "../api/types.js";
 /**
  * Shapes a hook suggestion may not carry:
  * - a bracket seed ("#7 seed", "7th seed", "the LCQ" as a seed pairing)
- * - a ladder rank ("#31 vs #14", "#1 WORLD")
- * - an elo pairing ("2427 vs 2293", "Can the 1789 take down the 2080?")
+ * - a ladder rank ("#31 vs #14", "#1 WORLD", "RANK 1", "TOP 10", "WORLD NUMBER ONE")
+ * - an elo pairing ("2427 vs 2293", "Can the 1789 take down the 2080?"), or any elo at all
+ *   ("THE 2100 ELO RUNNER?", "HIGH ELO CLASH" — the model's prompt carries each player's elo)
  */
-// A bracket seed only ("7th seed", "#7 seed", "the LCQ"): the world's seed type ("village seed",
-// "same seed") is fair game for a hook.
-export const HOOK_SEED_RANK_ELO = /#\d+|\b\d+(?:st|nd|rd|th) seed\b|\blcq\b|\b\d{3,4}\b[^\d]+\b\d{3,4}\b/i;
+// A bracket seed only ("7th seed", "#7 seed", "top seed", "the LCQ"): the world's seed type
+// ("village seed", "same seed") is fair game for a hook.
+export const HOOK_SEED_RANK_ELO =
+  /#\d+|\b\d+(?:st|nd|rd|th) seed\b|\blcq\b|\b\d{3,4}\b[^\d]+\b\d{3,4}\b|\belo\b|\brank(?:ed)?\s*#?\d+\b|\btop\s+\d+\b|\btop seed\b|\bnumber one\b/i;
 
 /**
  * Words that name a runner by race, ethnicity or nationality, or a slur-adjacent abbreviation of
@@ -301,13 +303,15 @@ export function hookFacts(input: HookInput) {
 /**
  * The one shape allowed to carry "win": the pace stake itself ("A sub-8 to win it", `candidates`'
  * own highest-weighted suggestion under 8 minutes) states what winning takes, not who did.
- * Anchored to "sub-N ... to win" rather than a blanket `\bto win\b` strip (6 Oct 2026 panel bug,
+ * Anchored to the start of the line (14 Oct 2026: unanchored, "EDCR GOES SUB-8 TO WIN IT" lost its
+ * only spoiler words and kept the name; a full title still leads with its hook, so the chip in a
+ * title passes) and to "sub-N ... to win" rather than a blanket `\bto win\b` strip (6 Oct 2026 panel bug,
  * fixed everywhere this is used): a blanket strip also erases the only spoiler word from a hook
  * that names a real player next to "win" language ("doogile battles back to win it"), which must
  * stay rejected. Exported so `hookProblem` (videoPick.ts) strips the identical shape before its
  * own spoiler regex runs, rather than drifting from this one again.
  */
-export const PACE_TO_WIN = /\bsub-?\d+(?:\.\d+)?\s+to win(?:\s+it)?\b/i;
+export const PACE_TO_WIN = /^\s*(?:a\s+)?sub-?\d+(?:\.\d+)?\s+to win(?:\s+it)?\b/i;
 
 /**
  * Whether a line gives the result away.
@@ -327,7 +331,9 @@ export function spoilsTheResult(text: string): boolean {
   // PLACE", 23 Sept 2026) told the Season 11 bracket's outcome while its series were still
   // going out from the Round of 16. A sweep is a series result: "PLAYOFFS | SWEPT vs TAS" on a
   // best of 5 told how it went (24 Sept 2026 audit), whoever the nickname meant.
-  return /\b(swept|sweeps?|wins?|won|winner|beats?|beaten|destroys?|crushes|takes? (?:it|down|the win)|took (?:it|the win)|loses?|lost|loser|chokes?|choked|throws?|threw|clutch(?:es|ed)?|comeback complete|survives?|eliminat(?:es|ed)|(?:1st|2nd|3rd|4th|first|second|third|fourth) place|runners?[- ]up|(?:semi-?)?finalists?|champions?|podium)\b/i.test(
+  // A name next to a finishing verb is a result as much as "wins" is ("EDCR SEALS IT", "DOOGILE
+  // FALLS SHORT", "EDCR ADVANCES"); a bare "upset" is too — the upset hook is a question.
+  return /\b(swept|sweeps?|wins?|won|winner|beats?|beaten|destroys?|crushes|takes? (?:it|down|the win)|took (?:it|the win)|loses?|lost|loser|chokes?|choked|throws?|threw|clutch(?:es|ed)?|comeback complete|survives?|eliminat(?:es|ed)|(?:1st|2nd|3rd|4th|first|second|third|fourth) place|runners?[- ]up|(?:semi-?)?finalists?|champions?|podium|takes? the (?:match|game|series|lead for good)|takes? game \d+|finish(?:es|ed)? first|seals? it|steals? it|closes? it out|falls? short|advance[sd]?|upset)\b/i.test(
     line,
   );
 }

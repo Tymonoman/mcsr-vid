@@ -666,10 +666,12 @@ function checkAnswer(answer: unknown, spans: readonly GameSpan[], series: boolea
   const start = num(a.startSec);
   const end = num(a.endSec);
   if (start === null || end === null) return { problem: "startSec and endSec must be numbers" };
-  const len = end - start;
-  if (len < SHORT_MIN_MS / 1000 || len > SHORT_MAX_MS / 1000)
+  // Whole milliseconds, not raw seconds: 512.3 - 500.3 is 11.999999999999998, which rejected a
+  // 12.0 s window as "12.0 s long, outside 12–60 s" (14 Oct 2026 edge pass).
+  const lenMs = Math.round((end - start) * 1000);
+  if (lenMs < SHORT_MIN_MS || lenMs > SHORT_MAX_MS)
     return {
-      problem: `the window is ${len.toFixed(1)} s long, outside ${SHORT_MIN_MS / 1000}–${SHORT_MAX_MS / 1000} s`,
+      problem: `the window is ${(lenMs / 1000).toFixed(1)} s long, outside ${SHORT_MIN_MS / 1000}–${SHORT_MAX_MS / 1000} s`,
     };
   const span = [...spans].reverse().find((s) => start >= s.offsetSec);
   if (!span) return { problem: `the window starts at ${start} s, before the match` };

@@ -20,6 +20,7 @@ import {
   readHandShort,
   type VideoSpec,
 } from "./handShort.js";
+import { _setPlayoffContextForTest, type PlayoffContext } from "../playoffs/playoffs.js";
 import { buildShortDescription, buildShortTitle } from "./shortHook.js";
 import { readShortLog } from "./shortLog.js";
 
@@ -147,6 +148,46 @@ async function refusedCheck(
   assert.match(await refusedCheck(id, { ...baseOpts(), hook: "ASIAN VS CARNIVORE" }), /label/);
 }
 
+// < > or a line break: YouTube refuses < > in a title, and title.txt is one line (writeHooks
+// strips both from the dashboard's own Short hook; 14 Oct 2026 edge pass). Refused before ffprobe.
+{
+  const id = freshId();
+  mkdirSync(dir(id), { recursive: true });
+  const unreached = async (): Promise<VideoSpec | null> => {
+    throw new Error("probed a hook that should have been refused first");
+  };
+  for (const hook of ["7 HEARTS -> HALF A HEART", "WAIT\nWHAT"])
+    assert.match(await refusedCheck(id, { ...baseOpts(), hook }, unreached), /< > or a line break/);
+}
+
+// A later game of a series: the chain reads only game 1's directory (the series' video), so a
+// Short registered under game 2's id would wait there forever (14 Oct 2026 edge pass). Game 1 is
+// fine before the join too: the join writes series.json into that same directory.
+{
+  const ctx = (gameNo: number): PlayoffContext => ({
+    season: 11,
+    round: "Round of 16",
+    gameNo,
+    bestOf: 5,
+    firstTo: 3,
+    seeds: [
+      { uuid: "a", nickname: "edcr", label: "#1 seed", seasonEloRate: 2000 },
+      { uuid: "b", nickname: "doogile", label: "#16 seed", seasonEloRate: 1900 },
+    ],
+    score: [0, 0],
+  });
+  const g2 = freshId();
+  mkdirSync(dir(g2), { recursive: true });
+  _setPlayoffContextForTest(g2, ctx(2));
+  assert.match(await refusedCheck(g2, baseOpts()), /game 2 of a playoff series.*game 1's id/);
+  await assert.rejects(buildHandShort(g2, baseOpts(), { probe: probeOf(GOOD) }), HandShortRefusal);
+  assert.ok(!existsSync(path.join(dir(g2), `short-${g2}.mp4`)) && !existsSync(handShortFile(dir(g2), g2)));
+  const g1 = freshId();
+  mkdirSync(dir(g1), { recursive: true });
+  _setPlayoffContextForTest(g1, ctx(1));
+  assert.equal((await checkHandShort(g1, baseOpts(), probeOf(GOOD))).ok, true, "game 1 passes");
+}
+
 // The file itself is the wrong shape: unreadable, the wrong pixel size, the wrong codecs, too long.
 {
   const id = freshId();
@@ -175,7 +216,9 @@ async function refusedCheck(
   assert.ok(!existsSync(path.join(dir(id), `short-${id}.mp4`)));
   assert.ok(!existsSync(handShortFile(dir(id), id)));
 }
-console.log("OK: the refusals — bad hook, wrong file shape, already on the channel, a blocked player");
+console.log(
+  "OK: the refusals — bad hook, < > or a line break, a later game of a series, wrong file shape, already on the channel, a blocked player",
+);
 
 /* --- A clean build: the pair the chain reads, text identical to generateShort.ts's own builders */
 {

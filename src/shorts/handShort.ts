@@ -147,8 +147,19 @@ export async function checkHandShort(
   if (!left || !right) return no(`match ${matchId} does not have two players`);
   if (blockedIn([left.nickname, right.nickname]))
     return no(`match ${matchId} has a blocked player — the Short is not cut`);
+  // A series is one video and game 1's directory is the series: the chain and hookRefusal read
+  // only that one, so a later game's own directory would wait forever (14 Oct 2026 edge pass).
+  const ctx = (await readSeriesRecord(dir)) ? null : await playoffContextFor(match);
+  if (ctx && ctx.gameNo > 1)
+    return no(
+      `match ${matchId} is game ${ctx.gameNo} of a playoff series — register the Short under game 1's id (cutting from this game's footage is fine)`,
+    );
 
   const hook = opts.hook.trim();
+  // writeHooks strips these from the dashboard's own Short hook: YouTube refuses < > in a title,
+  // and title.txt is one line, so a line break would cut the upload's title at the hook.
+  if (/[<>\r\n]/.test(hook))
+    return no(`"${opts.hook}" has < > or a line break — YouTube refuses < > in a title, and title.txt is one line`);
   const problem = hookProblem(hook, HOOK_MAX_CHARS, match.players);
   if (problem) return no(`"${opts.hook}" ${problem}`);
 
@@ -201,8 +212,8 @@ export async function buildHandShort(
 
   // The same description builder generateShort.ts uses, so "the whole match" link etc. are
   // identical — a series' Short points at the whole series, a playoff game's names the round.
-  // `matchId` is always game 1 here (there is no separate game-footage selection, unlike the
-  // model's own pick): `match` already is its own nickname spelling, nothing further to fetch.
+  // `matchId` is always game 1 here (`checkHandShort` refuses a later game's id, wherever the
+  // footage came from): `match` already is its own nickname spelling, nothing further to fetch.
   const series = await readSeriesRecord(dir);
   const playoff = series ? null : await playoffContextFor(match);
   await writeFile(

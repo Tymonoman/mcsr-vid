@@ -243,6 +243,11 @@ assert.ok(
     assert.ok(!spoilsTheResult(text), `"${text}" gives the result away`);
     assert.ok(!HOOK_SEED_RANK_ELO.test(text), `"${text}" uses a seed, rank or elo`);
   }
+  // The plain ladder-rank and elo shapes (14 Oct 2026 edge pass); the world's seed type stays fair.
+  for (const text of ["CAN RANK 1 HOLD ON?", "TOP 10 PLAYER IN TROUBLE?", "THE 2100 ELO RUNNER?", "WORLD NUMBER ONE?", "A TOP SEED FALLS?"])
+    assert.ok(HOOK_SEED_RANK_ELO.test(text), `"${text}" should read as a seed, rank or elo`);
+  for (const text of ["Village seed, no mercy", "Same seed, two routes", "Top of the nether"])
+    assert.ok(!HOOK_SEED_RANK_ELO.test(text), `"${text}" is not a seed, rank or elo`);
   // A first meeting is in the same band: under the stakes, over the fallback.
   assert.deepEqual(
     buildHookSuggestions(input({ finishMarginMs: 2_400, deaths: 0 }, {}, { versus: versus(0, 0) }), 10),
@@ -534,6 +539,17 @@ console.log("hooks: all checks passed");
     // Not the sanctioned pace idiom ("A sub-N to win it") — a real nickname next to "to win"
     // language, which a blanket `\bto win\b` strip briefly let through (6 Oct 2026).
     "doogile battles back to win it",
+    // A name next to a finishing verb, none of them "win" (14 Oct 2026 edge pass). The last one
+    // carries the pace idiom mid-line: only a leading "A sub-N to win it" is the stake.
+    "EDCR TAKES THE MATCH",
+    "EDCR TAKES GAME 3",
+    "EDCR FINISHES FIRST",
+    "EDCR SEALS IT",
+    "EDCR STEALS IT AT THE END",
+    "DOOGILE FALLS SHORT",
+    "EDCR ADVANCES",
+    "THE UPSET NOBODY SAW COMING",
+    "EDCR GOES SUB-8 TO WIN IT",
   ]) {
     assert.ok(spoilsTheResult(spoiler), `should be rejected: ${spoiler}`);
   }
@@ -547,6 +563,13 @@ console.log("hooks: all checks passed");
     "The lead changed 3 times",
     "Who wins this one?",
     "Can the 3rd place take down the champion?",
+    "A sub-7 to win it",
+    // The full title Test & Compare checks still leads with the stake.
+    "A SUB-8 TO WIN IT | doogile vs edcr #mcsr #minecraft",
+    "A SUB-9 TO WIN IT | lowkey vs Infume | MCSR Ranked Season 11 Playoffs | Grand Finals",
+    // The upset hook is a question.
+    "THE UPSET NOBODY SAW COMING?",
+    "An upset in the making?",
   ]) {
     assert.ok(!spoilsTheResult(safe), `should be allowed: ${safe}`);
   }

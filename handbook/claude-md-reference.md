@@ -993,8 +993,9 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   extracted rather than re-encoded. Games 2..n are hidden once joined; the series' head lists
   them (each has its own sync check). The Short
   is the best-scoring game's, copied in as `short-<g1>.*` with a description that links the
-  series (`shortFromMatchId`); cut another game's by hand and `adoptSeriesShort` makes it the
-  series'. The board's slot row shows what is exported / the run in flight / the joined video,
+  series (`shortFromMatchId`); a Short cut by hand from another game's footage is registered
+  under game 1's id — `short:hand` refuses a later game's (14 Oct 2026: written into game 2's own
+  directory, the chain never read it). The board's slot row shows what is exported / the run in flight / the joined video,
   and "Render the series" (`POST /api/series/:id/render`) runs the lot in the server; every
   export settles through `startFastExport` (the nightly's chain, Re-encode, a series run), and
   that is where a series joins itself once its last game's export lands. `PlayoffContext.score`
