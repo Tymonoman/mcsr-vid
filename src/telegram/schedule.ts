@@ -83,17 +83,21 @@ export function nextWarsawRun(nowMs: number, hourLocal: number): number {
 }
 
 /**
- * Whether a restart that missed the scheduled hour should still send today's report: not sent yet
- * today (`lastReportWarsawDate` is not today's Warsaw date) and it is still before
- * `catchUpUntilHourLocal` (10, the spec's number) Warsaw time.
+ * Whether a restart that missed the scheduled hour should still send today's report: the report is
+ * on (`reportHourLocal` not null), not sent yet today (`lastReportWarsawDate` is not today's Warsaw
+ * date) and it is between `reportHourLocal` and `catchUpUntilHourLocal` (10, the spec's number)
+ * Warsaw time. Before the report hour nothing was missed — the timer `scheduleReport` arms sends
+ * it, and a catch-up then would send it twice.
  */
 export function shouldCatchUp(
   nowMs: number,
   lastReportWarsawDate: string | null,
+  reportHourLocal: number | null,
   catchUpUntilHourLocal = 10,
 ): boolean {
-  if (lastReportWarsawDate === warsawDateStr(nowMs)) return false;
-  return warsawParts(nowMs).h < catchUpUntilHourLocal;
+  if (reportHourLocal === null || lastReportWarsawDate === warsawDateStr(nowMs)) return false;
+  const h = warsawParts(nowMs).h;
+  return h >= reportHourLocal && h < catchUpUntilHourLocal;
 }
 
 /** Milliseconds until the next scheduled run — the re-arm delay, same shape as nightly.ts's. */
