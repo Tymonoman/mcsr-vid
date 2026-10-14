@@ -1337,7 +1337,9 @@ every check above is a fixture page or pure logic; see "What is verified live vs
   (read-before-write in `runWorker`, 8 Oct 2026) counts how many cycles running have now ended
   with this exact `lastError` — so the morning report's "Needs you" can notice both a dead process
   (`at` over 90 min old) and a standing error (the streak at 3+) without keeping its own history
-  (`studioWorkerItems`/`studioWorkerHealth`, `src/telegram/facts.ts`).
+  (`studioWorkerItems`/`studioWorkerHealth`, `src/telegram/facts.ts`). A blackout cycle refreshes
+  `at` but carries `lastError`/`lastErrors`/`sameErrorStreak` through unchanged (14 Oct 2026): the
+  07:00 Warsaw report always lands inside the blackout, and resetting the streak there hid it.
 - **Every Test & Compare title is checked before any page opens** (`titleTestProblem`, exported
   from `studioActions.ts`, reused by the plan importer so a title that could never start is never
   even planned): `hookProblem` (which already finishes with its own `hookLabelProblem` call),

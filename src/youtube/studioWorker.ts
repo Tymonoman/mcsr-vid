@@ -968,7 +968,8 @@ export async function runWorker(
   for (;;) {
     const now = clock();
     let result: CycleResult;
-    if (inBlackoutWindow(now)) {
+    const blackout = inBlackoutWindow(now);
+    if (blackout) {
       result = SKIPPED_RESULT;
       if (!opts.once && newCodeWaiting(bootHead, headNow())) {
         console.log(
@@ -985,6 +986,11 @@ export async function runWorker(
       }
     }
     const currentError = result.errors[0] ?? null;
+    // A blackout cycle never ran, so it carries the last real cycle's error and streak through
+    // unchanged: the morning report always lands inside the blackout, and a reset here hid a
+    // standing error from its "Needs you" (14 Oct 2026). Branches on `blackout`, not on
+    // SKIPPED_RESULT — a disabled gate returns that same object and is a real, clean cycle.
+    const prev = blackout ? await readHeartbeat() : null;
     await writeHeartbeat({
       pid: process.pid,
       at: new Date().toISOString(),
@@ -999,9 +1005,9 @@ export async function runWorker(
         pinsAdded: result.pinsAdded,
         relatedLinksAdded: result.relatedLinksAdded,
       },
-      lastError: currentError,
-      lastErrors: result.errors,
-      sameErrorStreak: await nextSameErrorStreak(currentError),
+      lastError: blackout ? (prev?.lastError ?? null) : currentError,
+      lastErrors: blackout ? (prev?.lastErrors ?? []) : result.errors,
+      sameErrorStreak: blackout ? (prev?.sameErrorStreak ?? 0) : await nextSameErrorStreak(currentError),
     });
     if (opts.once) return;
     await sleep(jitteredDelayMs());
