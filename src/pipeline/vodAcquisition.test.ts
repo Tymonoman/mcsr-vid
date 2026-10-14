@@ -24,3 +24,19 @@ console.log("all checks passed");
   );
   console.log("OK: matchStartIntoVodSec");
 }
+
+// postRollSec is a Settings key and the dashboard renders in-process, so it is read per call. A
+// module-level copy kept the boot-time value in the VOD window and the overlay's length until a restart.
+{
+  const { readFileSync } = await import("node:fs");
+  assert.ok(!("POST_ROLL_SEC" in (await import("./vodAcquisition.js"))), "no captured post-roll export");
+  for (const file of ["vodAcquisition.ts", "overlayRender.ts"]) {
+    const src = readFileSync(new URL(file, import.meta.url), "utf8");
+    assert.ok(src.includes("config.postRollSec"), `${file} reads the live setting`);
+    assert.ok(
+      !/^(export )?const \w+\s*=\s*config\.postRollSec\b/m.test(src),
+      `${file} must not capture it at import`,
+    );
+  }
+  console.log("OK: postRollSec read per call");
+}

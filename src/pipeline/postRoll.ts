@@ -119,6 +119,9 @@ export async function measureTail(
 
   const W = 64;
   const H = 36;
+  // One second more than the allowance: differencing every second frame yields one value fewer
+  // than seconds decoded, so maxSec in gave maxSec - 1 out and a tail active to the end lost its
+  // last second. suggestTailSec clamps to maxSec, so the extra second never lengthens a cut.
   const frames = await new Promise<Uint8Array[]>((resolve, reject) => {
     const proc = spawn(
       "ffmpeg",
@@ -128,7 +131,7 @@ export async function measureTail(
         "-ss",
         String(runEndSec),
         "-t",
-        String(maxSec),
+        String(maxSec + 1),
         "-i",
         clipPath,
         "-vf",

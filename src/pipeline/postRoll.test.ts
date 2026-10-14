@@ -85,5 +85,24 @@ const flat = (value: number, n: number) => Array<number>(n).fill(value);
     rmSync(dir, { recursive: true, force: true });
   }
 }
+{
+  // A reaction that never quiets down keeps the whole allowance. The motion pass differences every
+  // second frame, so decoding exactly maxSec gave maxSec - 1 values and cut its last second.
+  const dir = mkdtempSync(path.join(tmpdir(), "postroll-"));
+  const clip = path.join(dir, "loud.mp4");
+  try {
+    execFileSync("ffmpeg", [
+      "-v", "error", "-y",
+      "-f", "lavfi", "-i", "testsrc=size=64x36:rate=10:duration=12",
+      "-f", "lavfi", "-i", "sine=frequency=440:duration=12",
+      "-c:v", "libx264", "-c:a", "aac", clip,
+    ]); // prettier-ignore
+    const w = await measureTail(clip, 0, 10);
+    assert.equal(w.motion.length, 10, "one motion reading per second of the allowance");
+    assert.equal(suggestTailSec(w, { minSec: 5, maxSec: 10 }), 10);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 console.log("postRoll: all checks passed");
