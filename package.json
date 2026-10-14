@@ -2,6 +2,7 @@
   "name": "mcsr-vid",
   "version": "0.0.1",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "Turns an MCSR Ranked match into a synced dual-POV video with a split-timer overlay: VOD download, countdown sync, Remotion overlay, Kdenlive project or headless MP4.",
   "scripts": {
