@@ -45,8 +45,12 @@ export interface BuiltTitle {
  *
  * The hook is left as a placeholder, because that judgement is not derivable.
  */
-/** The name the title shows for a nickname: the API's spelling unless `config.titleNames` says otherwise. */
-export const titleName = (nickname: string): string => config.titleNames[nickname] ?? nickname;
+/**
+ * The name the title shows for a nickname: the API's spelling unless `config.titleNames` says
+ * otherwise. Own keys only — "constructor" and "__proto__" are legal nicknames, not Object's.
+ */
+export const titleName = (nickname: string): string =>
+  Object.hasOwn(config.titleNames, nickname) ? config.titleNames[nickname]! : nickname;
 
 export function buildTitle({
   leftNickname: left,

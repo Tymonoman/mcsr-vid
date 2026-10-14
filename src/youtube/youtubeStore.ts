@@ -8,7 +8,14 @@ import path from "node:path";
 import { config, matchDir } from "../config.js";
 import { listProcessedMatchIds } from "../dashboard/matchStatus.js";
 import { carriedHookText, readManifest } from "../thumbnails/thumbnailVariants.js";
-import { buildTitle, HOOK_PLACEHOLDER, metaPaths, MOBILE_CUTOFF, SEPARATOR } from "../pipeline/title.js";
+import {
+  buildTitle,
+  HOOK_PLACEHOLDER,
+  metaPaths,
+  MOBILE_CUTOFF,
+  SEPARATOR,
+  titleName,
+} from "../pipeline/title.js";
 import {
   closerFor,
   seedPhrase,
@@ -137,14 +144,16 @@ export async function uploadTextFor(
   let title = titleText.split("\n")[0]!.trim();
   if (title.includes(HOOK_PLACEHOLDER)) {
     // The placeholder is often there because the pipeline refused this very headline as a runner
-    // label ("YN vs TAS", 2 Oct 2026): judged the same way here, or Adopt writes it onto the video.
-    const names = splitTitle(title);
-    const hook = carriedHookText(
-      await readManifest(dir),
-      undefined,
-      names ? [{ nickname: names.left }, { nickname: names.right }] : undefined,
-    )?.trim();
-    if (hook) title = title.replace(HOOK_PLACEHOLDER, hook);
+    // label ("YN vs TAS", 2 Oct 2026): judged against the title's own pair — none readable fails
+    // closed — and kept under 100 characters, or <HOOK> stays, which Upload and Adopt refuse.
+    const parts = splitTitle(title);
+    // Each side as shown and as the API spells it (Skycrab is Pinne), the two `withHook` accepts.
+    const players = parts
+      ? [parts.left, parts.right].flatMap((shown) => [{ nickname: shown }, { nickname: canonName(shown) }])
+      : [];
+    const hook = carriedHookText(await readManifest(dir), undefined, players)?.trim();
+    const filled = hook ? title.replace(HOOK_PLACEHOLDER, hook) : title;
+    if (filled.length <= TITLE_MAX_CHARS) title = filled;
   }
   // A Short with no saved hook cannot go up (`hookRefusal`): its stored title stands, unlogged —
   // the publish kit asks for this text every time a match opens. In hand mode
@@ -467,8 +476,8 @@ export function refreshTags(tags: string[]): string[] {
   const have = new Set(tags.map((t) => t.toLowerCase()));
   const extra = tags
     .slice(0, 2)
-    .map((t) => config.titleNames[t])
-    .filter((n): n is string => !!n && !have.has(n.toLowerCase()));
+    .map(titleName)
+    .filter((n) => !have.has(n.toLowerCase()));
   const out = [...tags.slice(0, 2), ...extra, ...tags.slice(2)];
   return out.join(",").length <= 450 ? out : tags;
 }
