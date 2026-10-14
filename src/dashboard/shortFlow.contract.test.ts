@@ -4,8 +4,9 @@
 // a refusal"; "Hook chips": "any check on a typed hook is a warning, never a refusal") before
 // reading the code. shortFlow.test.ts pins the spoiler and plain "X vs Y" warnings; this file
 // covers the label shapes added since (v., versus, a denied word with no pair) and the
-// seed/rank/elo rule, on a real match (src/fixtures) served through a stubbed fetch. Temp media
-// dir, no render, no upload, no model: the chain's steps are stand-ins and the match has no export.
+// seed/rank/elo rule, on a real match (src/fixtures, nicknames invented) served through a stubbed
+// fetch. Temp media dir, no render, no upload, no model: the chain's steps are stand-ins and the
+// match has no export.
 //
 // The promises (full list and numbering in src/pipeline/hooks.contract.test.ts; checked here):
 //  P6  A typed hook always saves — the edited title and the Short hook land on disk — and each
@@ -36,11 +37,16 @@ function deviation(clause: string, check: () => void): void {
   }
 }
 
-// A real ranked match (both players unblocked), under an id no real match has.
+// A real ranked match's timeline, under an id no real match has and with invented nicknames: the
+// probes below save results, labels and seed/elo text into this title, never beside a real runner.
 const ID = 13_990_001;
-const fixture = JSON.parse(
+const real = JSON.parse(
   readFileSync(new URL("../fixtures/match-13782182.json", import.meta.url), "utf8"),
 ) as MatchInfo;
+const fixture: MatchInfo = {
+  ...real,
+  players: real.players.map((p, i) => ({ ...p, nickname: i === 0 ? "alpha_run" : "beta_run" })),
+};
 const [left, right] = fixture.players.map((p) => p.nickname) as [string, string];
 const calls: string[] = [];
 globalThis.fetch = (async (input: string | URL | Request) => {

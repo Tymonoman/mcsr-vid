@@ -7,8 +7,10 @@
 // The promises (full list and numbering in hooks.contract.test.ts; the ones checked here):
 //  P4  A fresh "X vs Y" is checked against the match's own two players (API or titleNames
 //      spelling); a mismatch is a label — "v", "v.", "versus" and a third side included.
-//  P5  A carried hookText (withHook) fails closed the same way hookProblem does: a label, a
-//      denied word, a result or a seed/rank/elo leaves the <HOOK> placeholder.
+//  P5  A carried hookText (withHook) fails closed on a label the same way hookProblem does: a
+//      label or a denied word leaves the <HOOK> placeholder.
+//  P1/P7 Nothing names the winner; no seed, rank or elo in hooks — a carried result or seed/elo
+//      hook landing in the title file is reported against the House rules, not P5.
 //  P3  A denied word is refused outright, "vs" or not, with or without the match at hand.
 //  P14 titleNames (default Pinne→Skycrab, lowk3y_→lowkey) is the title's spelling of a player,
 //      and the Settings tab applies it live.
@@ -109,16 +111,19 @@ assert.equal(titleName(left), left, "restored");
 console.log("OK: titleNames spells the title, by default and live");
 
 /* --- P4/P5: a carried hook that labels a runner leaves the placeholder ------------------------ */
-// Every shape the docs list as a label, against this match's own players.
+// Every shape the docs list as a label, against an invented pair: a label probe never sits beside
+// a real runner's name. The real pair is only needed for the positive cases below.
+const invented = [{ nickname: "alpha_run" }, { nickname: "beta_run" }];
+const inventedTitle = buildTitle({ leftNickname: "alpha_run", rightNickname: "beta_run" });
 for (const label of [
-  `${left} vs THE GRINDER`,
+  "alpha_run vs THE GRINDER",
   "SPEEDY v. SLOWPOKE",
   "SPEEDY versus SLOWPOKE",
   "SPEEDY v SLOWPOKE",
-  `${left} vs ${right} vs THE CLOCK`,
+  "alpha_run vs beta_run vs THE CLOCK",
   "THE KOREAN GRINDER",
 ]) {
-  assert.equal(withHook(built, label, real.players).title, built.title, `carried: ${label}`);
+  assert.equal(withHook(inventedTitle, label, invented).title, inventedTitle.title, `carried: ${label}`);
 }
 // The real pair, every spelling of "vs", carries.
 for (const pair of [`${left} vs ${right}`, `${right} v. ${left}`, `${left} versus ${right}`])
@@ -130,18 +135,21 @@ deviation('P3 "A denied word … is refused outright" — withHook with no playe
   // title.test.ts pins the opposite on purpose ("the historical bug, unfixed on this call shape
   // alone"); the docs say outright, and the denied-word half needs no match to run.
   assert.equal(
-    withHook(built, "THE KOREAN GRINDER").title,
-    built.title,
+    withHook(inventedTitle, "THE KOREAN GRINDER").title,
+    inventedTitle.title,
     "a denied word carried with no players",
   );
 });
 
-/* --- P5: a carried hookText fails closed "the same way hookProblem does" ---------------------- */
+/* --- P1/P7: a carried result or seed/elo hook lands in the title file -------------------------- */
+// Not P5: the handbook's "fail closed the same way hookProblem does" is about labels only (withHook
+// "refuses a carried hook that labels a player exactly as hookProblem refuses a model's"). A carried
+// result or seed/elo still breaks the House rules, so it is reported against those.
 deviation(
-  'P5 "a carried hookText value … fail[s] closed the same way hookProblem does" — result and seed/rank/elo',
+  'P1/P7 House rules "Nothing names the winner" / "No seed, rank or elo in hooks" — a carried hookText',
   () => {
     const carried = ["THE UNDERDOG WINS", "#1 SEED SHOWDOWN", "2400 vs 2100"].filter(
-      (h) => withHook(built, h, real.players).title !== built.title,
+      (h) => withHook(inventedTitle, h, invented).title !== inventedTitle.title,
     );
     assert.deepEqual(carried, [], `carried into the title file: ${JSON.stringify(carried)}`);
   },

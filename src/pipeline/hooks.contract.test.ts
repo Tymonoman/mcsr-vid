@@ -14,8 +14,8 @@
 //       outright, "vs" or not, with or without the match at hand.
 //  *P4  A fresh "X vs Y" is checked against the match's own two players (API or titleNames
 //       spelling); a mismatch is a label. "v", "v." and "versus" count as "vs"; so does a third side.
-//   P5  A model's proposal (hookProblem) and a carried hookText (withHook) both fail closed the
-//       same way hookProblem does. (title/videoPick contract files)
+//   P5  A model's proposal (hookProblem) and a carried hookText (withHook) both fail closed on a
+//       label the same way hookProblem does. (title/videoPick contract files)
 //   P6  Only the operator's typed hook always saves; any problem is a warning in saveWarnings,
 //       never a refusal. (shortFlow contract file)
 //  *P7  No seed, rank or elo in hooks or suggestions — built-in or external generator.
@@ -89,6 +89,8 @@ const load = (id: number | string): MatchInfo => {
   return { ...m, changes: m.changes ?? [] };
 };
 const clone = (m: MatchInfo): MatchInfo => structuredClone(m);
+/** Any wording of the swing chip, question or not — so a regression to a flat claim is caught. */
+const isSwing = (c: string): boolean => /lead/i.test(c) && /survive|gone|swung|lost/i.test(c);
 const users = (m: MatchInfo) => m.players as unknown as [UserDetails, UserDetails];
 
 /** The chips the dashboard would offer for a match, on its own title budget (as pipeline.ts asks). */
@@ -193,9 +195,10 @@ for (const id of ids) {
     `#${id}: ${deathScreens(match)} death screen(s), chips ${JSON.stringify(chips)}`,
   );
 
-  // P9: the swing chip only where the eventual winner really trailed at a panel split, and it
-  // quotes that biggest deficit — never a winner's own lead growing.
-  const swing = chips.find((c) => /lead survive\?$/.test(c));
+  // P9: no swing chip without a real lost lead — never a winner's own lead growing. (The 30s floor
+  // is the code's, not the docs'; no real fixture loses a lead that big, so the positive direction
+  // is the targeted 1:15 case further down.)
+  const swing = chips.find(isSwing);
   const lost = lostLeadMs(match);
   if (lost < 30_000) assert.equal(swing, undefined, `#${id}: no lead was lost, got "${swing}"`);
   // P2: and when it is there, it is a question.
@@ -259,7 +262,7 @@ console.log('OK: the DNF fallback says "killed", never "reached"');
   // "leader extending their lead" shape (5 such real matches fired the old chip).
   const wire = load(13782182);
   assert.equal(lostLeadMs(wire), 0, "the eventual winner never trailed at a panel split");
-  assert.ok(!chipsFor(wire).some((c) => /lead/i.test(c) && /survive|gone|swung/i.test(c)));
+  assert.ok(!chipsFor(wire).some(isSwing));
 
   // The same match, with the eventual winner made to arrive at the Fortress 75s after the other
   // side and to loot the bastion 150s after: a 1:15 lead really was held and lost on the panel,
@@ -277,14 +280,16 @@ console.log('OK: the DNF fallback says "killed", never "reached"');
   const chips = chipsFor(m);
   assert.ok(chips.includes("Can a 1:15 lead survive?"), JSON.stringify(chips));
   assert.ok(!chips.some((c) => c.includes("2:30")), `off-panel gap quoted: ${JSON.stringify(chips)}`);
-  // A question (P2), and the question names nobody (P1).
+  // A question (P2) — every swing wording the chips carry, not just the one looked up — and the
+  // question names nobody (P1).
+  assert.deepEqual(chips.filter(isSwing), ["Can a 1:15 lead survive?"], JSON.stringify(chips));
   assert.ok(!spoilsTheResult("Can a 1:15 lead survive?"));
 
   // The mirror: the eventual winner *ahead* by 75s at the Fortress is a lead growing, no chip.
   const ahead = clone(wire);
   for (const e of ahead.timelines)
     if (e.uuid === w && e.type === "nether.find_fortress") e.time = first(ahead, o, e.type)! - 75_000;
-  assert.ok(!chipsFor(ahead).some((c) => /survive\?$/.test(c)), "a winner's own lead is no swing");
+  assert.ok(!chipsFor(ahead).some(isSwing), "a winner's own lead is no swing");
 }
 console.log("OK: the swing chip quotes a panel lead actually lost, never one that grew");
 
@@ -374,16 +379,9 @@ console.log("OK: no pace chip on a forfeit, no closeness claim on a DNF");
     ].filter((h) => hookLabelProblem(h) === null);
     assert.deepEqual(missed, [], `plural denied terms pass: ${JSON.stringify(missed)}`);
   });
-  // Nationality terms beyond the list the code carries.
-  deviation(
-    'P3 "a denied word (an ethnicity/nationality term) is refused outright" — unlisted nationalities',
-    () => {
-      const missed = ["THE GERMAN GRINDER", "BRAZILIAN BLITZ", "THE RUSSIAN RUNNER", "CANADIAN CLASH"].filter(
-        (h) => hookLabelProblem(h) === null,
-      );
-      assert.deepEqual(missed, [], `nationality terms pass: ${JSON.stringify(missed)}`);
-    },
-  );
+  // Not a deviation, a question for the operator: the docs say "a denied word", and
+  // HOOK_DENIED_LABELS is short on purpose (hooks.ts), so "THE GERMAN GRINDER" or "BRAZILIAN BLITZ"
+  // passes unless vs-shaped. Whether more nationality terms belong on the list is the operator's call.
 }
 console.log("OK: denied words are refused with or without the match");
 
@@ -400,14 +398,16 @@ console.log("OK: denied words are refused with or without the match");
     `${l} v ${r}`,
   ])
     assert.equal(hookLabelProblem(hook, m.players), null, hook);
-  // An invented side, a third side, an abstract side: all labels for this match.
+  // An invented side, a third side, an abstract side: all labels. Probed on an invented pair, so
+  // no epithet sits beside a real runner's name in test data.
+  const invented = [{ nickname: "alpha_run" }, { nickname: "beta_run" }];
   for (const hook of [
-    `${l} vs THE GRINDER`,
-    `SPEEDY v. SLOWPOKE`,
-    `${l} vs ${r} vs THE CLOCK`,
+    "alpha_run vs THE GRINDER",
+    "SPEEDY v. SLOWPOKE",
+    "alpha_run vs beta_run vs THE CLOCK",
     "SPEED VERSUS SAFETY",
   ])
-    assert.equal(hookLabelProblem(hook, m.players), LABEL, hook);
+    assert.equal(hookLabelProblem(hook, invented), LABEL, hook);
   // "1v1" is the format, not a pair.
   assert.equal(hookLabelProblem("THEIR FIRST 1v1", m.players), null);
 
