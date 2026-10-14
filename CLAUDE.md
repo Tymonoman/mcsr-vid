@@ -22,7 +22,8 @@ thumbnails and a Short, published to **MCSR Replayoffs**.
   spelling) or it is a label too. A model's proposal and a carried `hookText` fail closed the same
   way `hookProblem` does. Only the operator's own **typed** hook always saves: the problem lands as
   a warning in `saveWarnings`, never a refusal.
-- **No seed, rank or elo in hooks or suggestions.**
+- **No seed, rank or elo in hooks or hook suggestions, and none in what orders the match
+  suggestions** (a suggestion card's story line may still show rank/elo to the operator).
 - **The YouTube API compliance audit has cleared** (`handbook/api-review/`); it gates only
   `videos.insert`. `youtubeUploadEnabled` is true, `nightlyUpload` is `"scheduled"`. Keep every
   API call inside what the recording showed: **own channel, own data, nothing shown to anyone
@@ -174,8 +175,8 @@ reload). After merging server changes, `POST /api/restart-when-idle`; a hand
   `noShort`), Video up, Short up. Rows show one state line (`waiting for hook`, `scheduled`,
   `published`, `in progress · <stage>`, `failed`).
 - **Suggestions** (`src/dashboard/suggest.ts`): cached in `.suggest-cache.json` (`CACHE_VERSION`
-  4), rescanned periodically; one card per pair across close/chaos/`known` buckets, capped one slot
-  per player too (`suggestKnownSlots`, default 4).
+  5), rescanned periodically; one card per pair across close/chaos/`known` buckets, and the known
+  bucket caps one slot per player too (`suggestKnownSlots`, default 4).
 - **Favourite players, then known** (`tierFor`; `favouritePlayers` Settings tab, default
   doogile/Feinberg/Infume/Pinne/lowk3y_/silverrruns; edcr is the operator's call). Order: favourite
   → known → neither, then expiring → audience → popularity. Known: a favourite, a measured draw ≥
@@ -198,7 +199,8 @@ reload). After merging server changes, `POST /api/restart-when-idle`; a hand
   before the run starts; `runPipeline` refuses right after the match fetch, so
   `npm run batch`/`generate-project` and the TUI do too.
 - **Rival posts** (`rivalChannelHandle` default `mcsrmatches`): its public feed, never our token;
-  matched to cards by pair/date; a posted match sorts after fresh ones.
+  matched to cards by pair/date (a rival spelling unlike the API's, "Lowkey" for lowk3y_, does not
+  match); a posted match sorts after fresh ones.
 - **Hook chips** (`src/pipeline/hooks.ts`) lead with the match's stake (margin, lead change,
   death), nickname/rematch chips after. A typed hook always saves: reusing another player's
   nickname, or any other check, is a warning, never a refusal. Chip truth, pinned by fixtures:

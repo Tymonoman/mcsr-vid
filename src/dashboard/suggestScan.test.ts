@@ -14,7 +14,11 @@ const media = await mkdtemp(path.join(tmpdir(), "mcsr-scan-"));
 assert.ok(media.startsWith(tmpdir()), "refusing to run outside tmpdir");
 config.mediaDir = media;
 const cachePath = path.join(media, ".suggest-cache.json");
-const row = { metrics: { matchId: 7 }, bucket: "close", score: 0.5 } as unknown as Suggestion;
+const row = {
+  metrics: { matchId: 7, players: ["aaa", "bbb"] },
+  bucket: "close",
+  score: 0.5,
+} as unknown as Suggestion;
 
 try {
   // A valid cache the way the app writes one, then backdate its scan to five minutes ago —

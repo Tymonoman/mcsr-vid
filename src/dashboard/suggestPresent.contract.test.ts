@@ -10,7 +10,8 @@
 //  3. Inside a tier: expiring → the rival's post after → audience → (bucket) → popularity.
 //  4. "Expiring" is two days or less of VOD life left; VODs live POOL_MAX_AGE_DAYS (10).
 //  5. No chaos/closeness, seed, rank or elo term: only tier, audience and recency decide the order.
-//  6. House rule: no seed, rank or elo in hooks or suggestions.
+//  6. House rule: no seed, rank or elo in hooks or what orders the suggestions; a card's story line
+//     may still show rank/elo to the operator.
 //  7. A blocked player's match is never shown, however stale the cache; whole names, any case;
 //     the block applies live (a Settings save, no rescan).
 //  8. The order is the same for the list and the nightly alike (orderForDisplay); a blocked match
@@ -215,14 +216,13 @@ try {
     console.log("OK: no rank, elo, score or chaos term in the order");
   }
 
-  // --- 6. House rule: no seed, rank or elo in suggestions -----------------------------------------
-  await deviation("CLAUDE.md house rules: No seed, rank or elo in hooks or suggestions", () => {
+  // --- 6. House rule: rank/elo stays out of the order (5.), but the story line shows it -----------
+  {
     const card = present([real(13446429)])[0]!;
-    // Infume is #2 at 2282 and Feinberg #33 at 1969 in this match; neither may reach the card.
-    const shown = [card.story ?? "", card.facts].join(" · ");
-    assert.ok(!/#\d+ vs #\d+/.test(shown), `a ladder rank on the card: "${shown}"`);
-    assert.ok(!/\belo\b/i.test(shown), `elo on the card: "${shown}"`);
-  });
+    // Infume is #2 at 2282 and Feinberg #33 at 1969 in this match: the operator sees both.
+    assert.match(card.story ?? "", /#2 vs #33 · 2282 v 1969 elo/, "the story line shows rank and elo");
+    console.log("OK: rank and elo reach the operator's story line, never the order");
+  }
 
   // --- 7. A blocked player's match is never shown, however stale the cache -----------------------
   {

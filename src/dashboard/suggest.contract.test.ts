@@ -3,7 +3,7 @@
 // bullets in handbook/claude-md-reference.md).
 //
 // What the docs promise about which matches become cards:
-//  1. Cached in <mediaDir>/.suggest-cache.json at CACHE_VERSION 4.
+//  1. Cached in <mediaDir>/.suggest-cache.json at CACHE_VERSION 5 (4 → 5 on 14 Oct 2026, season h2h).
 //  2. Defaults: suggestKnownSlots 4, KNOWN_DRAW_MIN 0.6, knownFollowerThreshold 10,000, the roster
 //     doogile/Feinberg/Infume/Pinne/lowk3y_/silverrruns (edcr is the operator's call, not on it).
 //  3. Known = a favourite, a measured draw ≥ 0.6 (authoritative either way), else followers ≥ 10,000;
@@ -13,7 +13,8 @@
 //  5. …and is never shown however stale the cache: a block saved after a scan applies to the cached list.
 //  6. One card per pair across close/chaos/known — never two matches of one pair, in any case.
 //  7. The known bucket is capped one slot per player too: a first pass skips a candidate if either
-//     player already filled a known slot this scan; a second pass backfills what the cap left empty.
+//     player already filled a *known* slot this scan (close/chaos cards do not count against it);
+//     a second pass backfills what the cap left empty.
 //  8. No seed, rank or elo term: a player's ladder rank or elo never decides which match gets a slot.
 //  9. Dismissed is never suggested again, from the fresh cache or a rescan.
 //
@@ -29,16 +30,6 @@ import { config, DEFAULTS } from "../config.js";
 import type { MatchMetrics } from "../pipeline/matchScore.js";
 import { presentSuggestions } from "./suggestPresent.js";
 import { dismissSuggestion, getSuggestions, KNOWN_DRAW_MIN, tierFor } from "./suggest.js";
-
-/** A documented promise the code does not keep yet: reported, not failed, until triage. */
-async function deviation(clause: string, fn: () => void | Promise<void>): Promise<void> {
-  try {
-    await fn();
-  } catch (err) {
-    if (!(err instanceof assert.AssertionError)) throw err;
-    console.log(`DEVIATION: ${clause} — ${err.message.split("\n")[0]}`);
-  }
-}
 
 delete process.env.TWITCH_CLIENT_ID;
 delete process.env.TWITCH_CLIENT_SECRET;
@@ -201,7 +192,7 @@ try {
         `#${id} is dropped before scoring: no detail fetch`,
       );
     }
-    assert.equal(readCache().version, 4, "the cache is written at CACHE_VERSION 4");
+    assert.equal(readCache().version, 5, "the cache is written at CACHE_VERSION 5");
     assert.ok(
       !asked.some((u) => !u.startsWith("https://api.mcsrranked.com/")),
       "nothing but the (fake) MCSR API",
@@ -229,13 +220,9 @@ try {
       ),
       "the dashboard's list drops it at once",
     );
-    await deviation(
-      "CLAUDE.md Blocked players: never shown however stale the cache (getSuggestions is what the TUI lists)",
-      () =>
-        assert.ok(
-          !cached.suggestions.some((s) => s.metrics.matchId === 13549300),
-          "getSuggestions serves the blocked runner's match from a fresh cache; the TUI (src/cli/tui.tsx) lists it as is",
-        ),
+    assert.ok(
+      !cached.suggestions.some((s) => s.metrics.matchId === 13549300),
+      "getSuggestions drops it from the fresh cache too (the TUI, src/cli/tui.tsx, lists it as is)",
     );
     assert.ok(!(await cardIds()).includes(13549300), "the next rescan drops it");
     assert.ok(!("13549300" in readCache().pool), "and from the pool too, though it was already in it");
@@ -283,6 +270,19 @@ try {
       await known(),
       ["known:711", "known:713", "known:712"],
       "a slot the cap left empty is backfilled",
+    );
+    // Only known slots count against the cap: silverrruns holding the close card still takes the
+    // known slot ahead of Infume.
+    withPool([
+      pooled(714, ["silverrruns", "bbb"], 1_000),
+      pooled(712, ["silverrruns", "aaa"], null),
+      pooled(713, ["Infume", "zzz"], null),
+    ]);
+    slots(1, 0, 1);
+    assert.deepEqual(
+      await known(),
+      ["close:714", "known:712"],
+      "a close/chaos card does not count against the known bucket's per-player cap",
     );
     console.log("OK: one known slot per player, and the backfill fills what the cap left");
   }

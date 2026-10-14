@@ -5,7 +5,8 @@
 //  1. The rival is `rivalChannelHandle`, default "mcsrmatches"; its last uploads are read from the
 //     public feed (feeds/videos.xml?channel_id=), the handle resolved off the public channel page,
 //     with no token and no Data API call — own channel, own data only.
-//  2. A rival post is matched to a card by nickname pair and date — either seating, any case.
+//  2. A rival post is matched to a card by nickname pair and date — either seating, any case; a
+//     rival spelling that differs from the API's ("Lowkey" for lowk3y_) does not match.
 //  3. The feed has no lengths, so two matches of one pair in a night both read as posted.
 //  4. A posted match sorts after the fresh ones, in the nightly's order too.
 //  5. No rival configured, or the feed unreachable: "nothing known", never a reason for the
@@ -87,8 +88,14 @@ try {
       null,
       "a Short names no pair and matches nothing",
     );
-    // Not promised: the rival's own spelling ("Silverrruns vs Lowkey" for lowk3y_) — titleNames
-    // spells our titles only, so that pair goes unmatched (triage note, not a contract break).
+    // A rival spelling that differs from the API's ("Silverrruns vs Lowkey" for lowk3y_, 12 Oct)
+    // does not match: titleNames spells our titles only.
+    assert.equal(
+      rivalMatchFor(posts, ["silverrruns", "lowk3y_"], sec("2026-10-12T18:00:00Z")),
+      null,
+      "Lowkey is not lowk3y_: that post is not flagged",
+    );
+    assert.ok(rivalMatchFor(posts, ["silverrruns", "Lowkey"], sec("2026-10-12T18:00:00Z")), "sanity: the spelling alone");
     console.log("OK: matched by pair and date against the saved feed");
   }
 

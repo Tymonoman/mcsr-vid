@@ -638,9 +638,12 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
   const ttlMs = config.suggestCacheTtlMin * 60_000;
   const fresh = Date.now() - cache.scannedAt < ttlMs;
   if (!options.force && fresh && cache.suggestions.length > 0) {
-    // Still filter: a match may have been rendered since the scan that produced this.
+    // Still filter: a match may have been rendered since the scan that produced this, or a
+    // runner blocked in Settings since — the block reaches the cached list too (the TUI lists it as is).
     return {
-      suggestions: cache.suggestions.filter((s) => !excluded.has(s.metrics.matchId)),
+      suggestions: cache.suggestions.filter(
+        (s) => !excluded.has(s.metrics.matchId) && !blockedIn(s.metrics.players),
+      ),
       usedTwitchFollowers: cache.usedTwitchFollowers,
       // Re-derived rather than cached: the reason popularity is frequency-only still
       // applies to a cached list, and the operator should keep seeing it.
