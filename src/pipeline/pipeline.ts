@@ -180,10 +180,13 @@ async function runStages(
   const [userLeft, userRight, versus, playoff] = await Promise.all([
     getUser(playerLeft.uuid),
     getUser(playerRight.uuid),
-    getVersus(playerLeft.uuid, playerRight.uuid),
+    getVersus(playerLeft.uuid, playerRight.uuid, match.season),
     // Resolved here, first, because every later `eloAtMatchStart` answers from it: a playoff
     // game has no elo changes, and the bracket's frozen rating is the one the broadcast shows.
-    playoffContextFor(match),
+    // Strict: a bracket read that fails (429/503) fails the stage for a retry, rather than
+    // package the game as an ordinary match into stills every later run reuses. Only a private
+    // room reaches the API here, and a season with no playoffs (404) still reads as ordinary.
+    playoffContextFor(match, true),
   ]);
   emit(done("fetch", { message: `${playerLeft.nickname} vs ${playerRight.nickname}` }));
 

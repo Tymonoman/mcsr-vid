@@ -54,7 +54,8 @@ export function pickStats(user: UserDetails): { stats: StatisticCategoryMap; sco
 /**
  * `user.eloRate` is the player's rating *now*, which diverges from the match's within days at the
  * top and goes null outright at a season rollover. The match record carries each player's
- * post-match rating plus the delta that produced it, so the rating carried in is exact.
+ * rating going into it (`changes[].eloRate`; eloRate + change is the rating after), so the
+ * rating carried in is exact.
  *
  * A playoff game has no `changes` at all (a private room), and its live rating is the new
  * season's; the bracket's frozen season-end rating is what the broadcast shows, so it wins when
@@ -63,8 +64,19 @@ export function pickStats(user: UserDetails): { stats: StatisticCategoryMap; sco
 export function eloAtMatchStart(match: MatchInfo, uuid: string, liveElo: number | null): number {
   const change = match.changes.find((c) => c.uuid === uuid);
   if (change?.eloRate == null) return playoffEloFor(match.id, uuid) ?? liveElo ?? 0;
-  return change.eloRate - (change.change ?? 0);
+  return change.eloRate;
 }
+
+/**
+ * Ranked wins between the two before this match, for the head-to-head: the API's record is read
+ * after the match, so it already counts this one. A draw and a private-room game (never in the
+ * ranked count) take nothing off.
+ */
+export const h2hWinsBefore = (versus: VersusStats, match: MatchInfo, uuid: string): number =>
+  Math.max(
+    0,
+    (versus.results.ranked[uuid] ?? 0) - (match.type === 2 && match.result?.uuid === uuid ? 1 : 0),
+  );
 
 function playerIdentity(
   user: UserDetails,
@@ -226,8 +238,8 @@ export async function computeOverlayProps(
     matchPlayedLabel,
     ...(playoff ? { playoffLabel: playoffIntroLabel(playoff) } : {}),
     ...(series ? { series } : {}),
-    h2hLeftWins: versus.results.ranked[leftUuid] ?? 0,
-    h2hRightWins: versus.results.ranked[rightUuid] ?? 0,
+    h2hLeftWins: h2hWinsBefore(versus, match, leftUuid),
+    h2hRightWins: h2hWinsBefore(versus, match, rightUuid),
     splits,
     timerStartFrame: 0,
     runResultMs: match.result.time > 0 ? match.result.time : null,
