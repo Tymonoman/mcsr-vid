@@ -115,6 +115,10 @@ any video that already has one (his 8 custom ones included).
 
 ## Decisions
 
+- **14 Oct 2026 — fifth Test & Compare verdict, the second thumbnail test: no winner on W2bVnDFYSQ0** (ANJOUU vs
+  lowkey). Control 36.0%, most-different pose 32.7%, caption 31.3% watch time share; Studio "They all performed
+  well". Two thumbnail tests, two level results: the live thumbnail stays, and the pose/caption variants have not
+  beaten it yet. 30 tests still running (end by 22–28 Oct).
 - **14 Oct 2026 — explain-the-moves stays on whatever x2 says (the operator: "keep them on").** x2's `adoptWinner`
   set to false (tmp/day/x2keep.mts), so at its 17 Oct end the control arm "on" is reapplied; the cards guard the review.
 - **14 Oct 2026 — Feinberg vs Infume backlog, one a night (the operator: "yes queue them and post").** 15 unrendered
