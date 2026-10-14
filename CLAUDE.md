@@ -140,7 +140,9 @@ finish spoils and underperforms.
   only); validated for bounds and `rtaAtStart` within ±2s. One retry on an empty answer, then the
   timeline heuristic (`shortMoment.ts`). Pick is `short-<id>.pick.json`. It also proposes up to 3
   long-form title hooks (`titleHooks`) styled on the operator's past saved hooks; each must pass
-  `hookProblem` or is dropped, and a rejected window drops its title hooks too.
+  `hookProblem` (a word-list spoiler/label/seed check: catches the usual result verbs, not every
+  paraphrase) or is dropped — the operator's Save is the real gate. A rejected window drops its
+  title hooks too.
 - **No Short renders and nothing uploads before the operator saves the hooks**
   (`generateShort.ts`, `youtubeUpload.ts` `hookRefusal`, every render path). The Short's hook is
   `short-<id>.hook.txt`; the long-form's is the edited title. Saving both
