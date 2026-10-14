@@ -239,6 +239,9 @@ export interface LongFormRef {
   matchId: number;
   uploadedAt: string;
   privacyStatus: string;
+  /** The scheduled publish time the chain uploaded with — once it has passed, a record still
+   *  reading `privacyStatus: "private"` (upload-time only, never updated) is public. */
+  publishAt?: string | null;
   /** Absent on a record written before source tracking existed (`UploadRecord.source`,
    *  youtubeStore.ts) — the auto-thumbnail-test filter below only ever matches `"dashboard"`. */
   source?: "dashboard" | "studio";
@@ -256,7 +259,9 @@ export interface CyclePlan {
    *  2026) — `runCycle` renders each one's thumbnail set and plans a "tc" experiment for it,
    *  which a *later* cycle's own `tcToStart` picks up, never this same cycle's. */
   thumbnailTcTargets: LongFormRef[];
-  /** Comment posted, pin not done, capped at `MAX_PINS_PER_CYCLE` (phase 5, 8 Oct 2026). Whether
+  /** Comment posted, pin not done, not blocked (phase 5, 8 Oct 2026). Uncapped: `pinsThisCycle`
+   *  caps at `MAX_PINS_PER_CYCLE` only after the day's skips and the live check — capping here
+   *  first let three standing skips hold every slot (8–14 Oct 2026, no pin tried past them). Whether
    *  the video is actually public *right now* is left to `runCycle`'s own live check — the stored
    *  `privacyStatus` here is upload-time only and never updated (same reason `finishOnYouTube`'s
    *  own pin step re-checks live), so filtering on it here would leave a scheduled upload that
@@ -313,8 +318,16 @@ export function planCycle(
 ): CyclePlan {
   const endScreenTargets = longForms
     .filter((v) => !ledger.endScreens[v.videoId])
-    .filter((v) => v.uploadedAt >= END_SCREEN_CUTOFF_ISO || v.privacyStatus === "public")
+    // `privacyStatus` is upload-time only and the chain always uploads private with a publishAt,
+    // so a scheduled upload whose publish time has passed counts as public too.
+    .filter(
+      (v) =>
+        v.uploadedAt >= END_SCREEN_CUTOFF_ISO ||
+        v.privacyStatus === "public" ||
+        (!!v.publishAt && Date.parse(v.publishAt) <= now.getTime()),
+    )
     .filter((v) => !pickerEmptyToday(v.videoId, ledger, now))
+    .filter((v) => !isBlocked(v.matchId))
     .slice(0, MAX_ENDSCREENS_PER_CYCLE);
 
   const tc = experiments.filter((e) => e.kind === "tc");
@@ -336,10 +349,9 @@ export function planCycle(
 
   // Same `todo()` reading `finishOnYouTube` already uses for this field: `null` is done, a
   // string is a failed attempt worth retrying, `undefined` is never attempted — either of the
-  // last two is still "to do". A blocked player's footage never reaches this list at all: nothing
-  // in `allUploads()` is itself blocked-aware, but `finishOnYouTube` already refuses every step
-  // (including `pin`) for one, so a blocked match's `finishedComment` can only ever be `undefined`
-  // or a `BLOCKED_FINISH` string — never `null` — and the first filter below already excludes it.
+  // last two is still "to do". A blocked player's match is excluded by `isBlocked` here: nothing
+  // in `allUploads()` is blocked-aware, and a comment posted before the block left its
+  // `finishedComment` at `null` (8 Oct 2026: end screens went onto four blocked runners' videos).
   // A series copies this same `youtube.json` (same videoId, same `finished`) into every game's own
   // folder, but `markPinDone` below only ever writes the one matchId it pinned through — so once
   // one copy reads back `null`, every *other* copy of that same videoId must still be excluded, not
@@ -352,12 +364,12 @@ export function planCycle(
   const seenPinVideos = new Set<string>();
   const pinTargets = longForms
     .filter((v) => v.finishedComment === null && v.finishedPin !== null && !pinnedDoneVideoIds.has(v.videoId))
+    .filter((v) => !isBlocked(v.matchId))
     .filter((v) => {
       if (seenPinVideos.has(v.videoId)) return false;
       seenPinVideos.add(v.videoId);
       return true;
-    })
-    .slice(0, MAX_PINS_PER_CYCLE);
+    });
 
   // Every Short whose own match also has a long-form, not yet linked (either for real or
   // already, by hand) or seen empty/not-found today, not blocked — the task's own words (11 Oct
@@ -385,6 +397,18 @@ export function planCycle(
     .slice(0, MAX_RELATED_LINKS_PER_CYCLE);
 
   return { endScreenTargets, tcToStart, tcToCheck, thumbnailTcTargets, pinTargets, relatedLinkTargets };
+}
+
+/** The pins one cycle actually tries: not already skipped today, live public, then capped at
+ * `MAX_PINS_PER_CYCLE` — the cap counts real `pinComment` calls, so it comes after both skips. */
+export function pinsThisCycle(
+  targets: readonly LongFormRef[],
+  isPublicNow: (videoId: string) => boolean,
+  skippedToday: (videoId: string) => boolean,
+): LongFormRef[] {
+  return targets
+    .filter((t) => !skippedToday(t.videoId) && isPublicNow(t.videoId))
+    .slice(0, MAX_PINS_PER_CYCLE);
 }
 
 const MINUTES_PER_DAY = 24 * 60;
@@ -512,6 +536,14 @@ export async function setExperimentChecked(id: string, read: TcReadResult): Prom
   await updateTcExperiments((tc) =>
     tc.map((e) => {
       if (e.id !== id) return e;
+      // A running test that reads back as the blank "set up a new test" form never took (the
+      // page Save can miss without an error) — flag it, keep the status, never re-plan it here.
+      if (read.state === "none")
+        return {
+          ...e,
+          result: { checkedAt, raw: read.raw },
+          needsHuman: "Studio shows no A/B test on this video — the start did not take",
+        };
       if (read.state !== "done")
         return { ...e, status: "running", start: e.start ?? checkedAt, result: { checkedAt, raw: read.raw } };
       // The report lists variants in slot order (slot 1 = control); a title test's own titles
@@ -654,6 +686,7 @@ export async function runCycle(
       matchId,
       uploadedAt: record.uploadedAt,
       privacyStatus: record.privacyStatus,
+      publishAt: record.publishAt,
       source: record.source,
       finishedComment: record.finished?.comment,
       finishedPin: record.finished?.pin,
@@ -786,17 +819,26 @@ export async function runCycle(
     // ledger step `finishOnYouTube` uses (off there — `config.studioAutomation` is false, the
     // dashboard has no Chrome) — so the two never both do it, and `pinComment` itself (rail 2)
     // refuses to touch a pin someone already set by hand. `plan.pinTargets` is comment-posted,
-    // pin-not-done only; whether the video is actually public *right now* is re-read live here,
-    // exactly the recheck `finishOnYouTube`'s own pin step makes, because the stored
-    // `privacyStatus` is from upload time and is never updated — a scheduled upload that only
-    // went public after the fact must not sit permanently unpinned for being read as still private.
+    // pin-not-done, uncapped (`pinsThisCycle` caps it after the skips); whether the video is
+    // actually public *right now* is re-read live here, exactly the recheck `finishOnYouTube`'s
+    // own pin step makes, because the stored `privacyStatus` is from upload time and is never
+    // updated — a scheduled upload that only went public after the fact must not sit permanently
+    // unpinned for being read as still private.
     let pinsAdded = 0;
     if (plan.pinTargets.length) {
-      const stats = await videoStats(plan.pinTargets.map((t) => t.videoId));
-      for (const target of plan.pinTargets) {
-        if (pinSkippedOn.get(target.videoId) === new Date().toISOString().slice(0, 10)) continue;
-        const live = stats.find((s) => s.videoId === target.videoId)?.privacyStatus;
-        if (live !== "public") continue; // not public yet — retried a later cycle, not an error
+      // videos.list takes at most 50 ids, and `plan.pinTargets` is uncapped.
+      const stats = [];
+      for (let i = 0; i < plan.pinTargets.length; i += 50)
+        stats.push(...(await videoStats(plan.pinTargets.slice(i, i + 50).map((t) => t.videoId))));
+      const publicNow = new Set(stats.filter((s) => s.privacyStatus === "public").map((s) => s.videoId));
+      const today = utcDate(new Date());
+      // Not public yet is retried a later cycle, not an error.
+      const pins = pinsThisCycle(
+        plan.pinTargets,
+        (id) => publicNow.has(id),
+        (id) => pinSkippedOn.get(id) === today,
+      );
+      for (const target of pins) {
         const outcome = await pinComment(handle, target.videoId, {
           matchId: target.matchId,
           dryRun: opts.dryRun,

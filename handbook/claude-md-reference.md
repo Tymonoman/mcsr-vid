@@ -1631,7 +1631,15 @@ shows it to a human, nobody else parses its stdout as data.
   Every PUBLIC long-form whose `youtube.json` says its channel comment posted (`finished.comment
   === null`) and whose pin is not yet done (`undefined` or a past error, never `null`) is a
   candidate, de-duped by video id (a series copies the same record into every game's folder) and
-  capped at `MAX_PINS_PER_CYCLE` (3). The stored `privacyStatus` is upload-time only, so the cycle
+  capped at `MAX_PINS_PER_CYCLE` (3). **14 Oct 2026 fixes**: the cap now sits in `runCycle`
+  (`pinsThisCycle`), after the day's "no-channel-comment" skips and the live public check — capped
+  in the plan first, one private and two comment-less videos held all three slots from 8 Oct on
+  and no pin was ever tried past them; a blocked match (`isBlocked`) gets neither a pin nor an end
+  screen (a comment posted before the block leaves `finished.comment` at `null`, and on 8 Oct end
+  screens went onto four blocked runners' videos); an end-screen candidate whose `publishAt` has
+  passed counts as public, since the record's `privacyStatus` stays "private"; and a running Test &
+  Compare whose daily read shows the blank "set up a new test" form gets `needsHuman`, status left
+  "running", never re-planned. The stored `privacyStatus` is upload-time only, so the cycle
   re-reads it live (`videoStats`) right before pinning — the same recheck `finishOnYouTube`'s own
   pin step makes — rather than skip a video that only went public after the record was written.
   `pinComment` itself (phase 1's own rail 2) still refuses to touch a pin someone already set by

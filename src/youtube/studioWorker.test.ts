@@ -19,8 +19,10 @@ import {
   inBlackoutWindow,
   markEndScreenDone,
   markPickerEmptySeen,
+  MAX_PINS_PER_CYCLE,
   MAX_RELATED_LINKS_PER_CYCLE,
   newCodeWaiting,
+  pinsThisCycle,
   planCycle,
   playersFor,
   nextSameErrorStreak,
@@ -98,6 +100,65 @@ config.mediaDir = media;
     "a picker-empty from a previous UTC day is retried",
   );
   console.log("OK: a picker-empty candidate is retried on a later UTC day, not blocked forever");
+}
+
+// --- planCycle: end screens — a scheduled upload whose publish time has passed (14 Oct 2026) ---
+// (the chain uploads private with a publishAt and the record's privacyStatus never changes, so 31
+// pre-cutoff long-forms that had long gone public could never qualify.)
+{
+  const longForms: LongFormRef[] = [
+    {
+      videoId: "p",
+      matchId: 1,
+      uploadedAt: "2026-10-01T00:00:00.000Z",
+      privacyStatus: "private",
+      publishAt: "2026-10-08T23:00:00.000Z",
+    },
+    {
+      videoId: "q",
+      matchId: 2,
+      uploadedAt: "2026-10-01T00:00:00.000Z",
+      privacyStatus: "private",
+      publishAt: "2026-10-20T19:00:00.000Z",
+    },
+    { videoId: "r", matchId: 3, uploadedAt: "2026-10-01T00:00:00.000Z", privacyStatus: "private", publishAt: null },
+  ];
+  const plan = planCycle(
+    new Date("2026-10-14T12:00:00.000Z"),
+    longForms,
+    { endScreens: {}, pickerEmptySeen: {}, relatedLinks: {}, relatedRetrySeen: {} },
+    [],
+    () => false,
+  );
+  assert.deepEqual(
+    plan.endScreenTargets.map((t) => t.videoId),
+    ["p"],
+    "publishAt passed counts as public; one still ahead, or none at all, does not",
+  );
+  console.log("OK: an old scheduled upload whose publish time has passed is an end-screen candidate");
+}
+
+// --- planCycle: a blocked runner's match never gets an end screen or a pin (14 Oct 2026) ------
+// (8 Oct 2026: end screens went onto four blocked runners' videos; a comment posted before the
+// block leaves `finishedComment` at null, so the pin plan reached them too.)
+{
+  const twin = (videoId: string, matchId: number): LongFormRef => ({
+    videoId,
+    matchId,
+    uploadedAt: "2026-10-08T01:00:00.000Z",
+    privacyStatus: "public",
+    finishedComment: null,
+  });
+  const plan = planCycle(
+    new Date("2026-10-14T12:00:00.000Z"),
+    [twin("blk", 13), twin("ok", 14)],
+    { endScreens: {}, pickerEmptySeen: {}, relatedLinks: {}, relatedRetrySeen: {} },
+    [],
+    (matchId) => matchId === 13,
+  );
+  assert.deepEqual(plan.endScreenTargets.map((t) => t.videoId), ["ok"], "blocked: no end screen");
+  assert.deepEqual(plan.pinTargets.map((t) => t.videoId), ["ok"], "blocked: no pin");
+  console.log("OK: a blocked runner's match is in neither endScreenTargets nor pinTargets");
 }
 
 // --- planCycle: related-video link targets (11 Oct 2026) --------------------------------------
@@ -604,7 +665,7 @@ config.mediaDir = media;
     { videoId: "e", matchId: 5, uploadedAt: "x", privacyStatus: "private", finishedComment: "left alone" },
     // A series copy of "a" in a second game folder — same videoId, different matchId.
     { videoId: "a", matchId: 6, uploadedAt: "x", privacyStatus: "public", finishedComment: null },
-    // Three more fresh candidates to prove the cap.
+    // Two more fresh candidates: the plan itself is uncapped (`pinsThisCycle` caps).
     { videoId: "f", matchId: 7, uploadedAt: "x", privacyStatus: "public", finishedComment: null },
     { videoId: "g", matchId: 8, uploadedAt: "x", privacyStatus: "public", finishedComment: null },
   ];
@@ -620,10 +681,34 @@ config.mediaDir = media;
   assert.ok(!ids.includes("d"), "comment never attempted — nothing to pin");
   assert.ok(!ids.includes("e"), "comment attempt itself failed — nothing to pin");
   assert.equal(ids.filter((id) => id === "a").length, 1, "a series copy of the same video is de-duped");
-  assert.equal(plan.pinTargets.length, 3, `capped at 3 per cycle, got ${ids.join(",")}`);
+  assert.deepEqual(ids, ["a", "b", "f", "g"], "every candidate — the cap comes after runCycle's skips");
   console.log(
-    "OK: pinTargets is comment-posted/pin-not-done, de-duped by videoId across series copies, capped at 3",
+    "OK: pinTargets is comment-posted/pin-not-done, de-duped by videoId across series copies, uncapped",
   );
+}
+
+// --- pinsThisCycle: the cap comes after the day's skips and the live check (14 Oct 2026) ------
+// (8–14 Oct 2026: the plan was capped first, so one private and two "no-channel-comment" videos
+// held all three slots every cycle and no pin was ever tried past them.)
+{
+  const targets: LongFormRef[] = ["s1", "s2", "s3", "s4", "s5", "s6", "s7"].map((videoId, i) => ({
+    videoId,
+    matchId: i + 1,
+    uploadedAt: "x",
+    privacyStatus: "private",
+    finishedComment: null,
+  }));
+  const pins = pinsThisCycle(
+    targets,
+    (id) => id !== "s2", // live private
+    (id) => id === "s1" || id === "s3", // skipped earlier today
+  );
+  assert.deepEqual(
+    pins.map((t) => t.videoId),
+    ["s4", "s5", "s6"],
+    `skips come first, then at most ${MAX_PINS_PER_CYCLE}`,
+  );
+  console.log(`OK: pinsThisCycle skips today's skips and non-public videos, then caps at ${MAX_PINS_PER_CYCLE}`);
 }
 
 // --- planCycle: pinTargets — a series copy already marked done elsewhere is never re-offered ---
@@ -702,6 +787,32 @@ config.mediaDir = media;
   console.log(
     "OK: setExperimentChecked promotes planned->running on first sight of a live test, keeps start stable, and still reaches done",
   );
+}
+
+// --- setExperimentChecked: a running test that reads back as a blank form asks a human (14 Oct) ---
+// (a Save that never landed still returned "started"; every daily read then saw the blank form and
+// rewrote "running" forever, with nothing in the report saying so.)
+{
+  const expId = "tc-thumbnail-blank-test";
+  await updateTcExperiments((tc) => [
+    ...tc,
+    {
+      id: expId,
+      kind: "tc",
+      variable: "thumbnail",
+      arms: [{ name: "control" }],
+      videos: [{ videoId: "vidBlank", matchId: 1, arm: "tc" }],
+      status: "running",
+      start: "2026-10-10T08:00:00.000Z",
+    },
+  ]);
+  await setExperimentChecked(expId, { state: "none", raw: "Set up a new test" });
+  const exp = (await readExperiments()).experiments.find((e) => e.id === expId);
+  assert.equal(exp?.status, "running", "status kept — never re-planned or restarted on its own");
+  assert.equal(exp?.start, "2026-10-10T08:00:00.000Z");
+  assert.match(String(exp?.needsHuman), /no A\/B test/, "flagged for the operator");
+  assert.ok((exp?.result as { checkedAt?: string }).checkedAt, "today's check is recorded");
+  console.log("OK: a running test read back as a blank form keeps its status and gets needsHuman");
 }
 
 // --- parseTcReport + setExperimentChecked on a finished test (11 Oct 2026) ----------------------
