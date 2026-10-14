@@ -127,10 +127,11 @@ finish spoils and underperforms.
   without waiting. **The pick after export still runs** (`ensurePick`; auto-hooks needs its title
   hooks); its window is only a hint. `npm run short:hand` (`src/shorts/handShort.ts`) validates
   first (`checkHandShort`: 1080x1920 h264+aac ≤60s; hook passes `hookProblem`, refused outright,
-  never a warning, unlike a typed dashboard hook; no blocked player; not already on the channel),
-  then writes `short-<id>.mp4` + `.title.txt`/`.description.txt` + `short-<id>.hand.json`, which
-  `uploadTextFor` reads like a rendered Short. Until then the chain logs "waiting for the hand-made
-  Short" (never a failure). `noShort`/a blocked player still mean no Short. Off, the
+  never a warning, unlike a typed dashboard hook; no blocked player; not already uploaded from
+  here — `youtube-short.json`; a hand tick or scan pairing isn't checked, but the chain then never
+  uploads the re-cut), then writes `short-<id>.mp4` + `.title.txt`/`.description.txt` +
+  `short-<id>.hand.json`, which `uploadTextFor` reads like a rendered Short. Until then the chain
+  logs "waiting for the hand-made Short" (never a failure). `noShort`/a blocked player still mean no Short. Off, the
   pick→render→upload chain is unchanged.
 - **A model watches the whole match and picks the moment** (`src/shorts/videoPick.ts`,
   `pickShortMoment`): a 2fps proxy, /watch's stills/transcripts per player (needs `GROQ_API_KEY`),

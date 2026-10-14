@@ -14,7 +14,7 @@
 //      The match's own two players, "vs", is not a label.
 //  P6  House rule: no seed, rank or elo in a hook — a hand hook is a hook.
 //  P7  No blocked player (`blockedPlayers`: whole-string, case-insensitive) — refused.
-//  P8  Not already on the channel — refused.
+//  P8  Not already uploaded from here (youtube-short.json) — refused; a hand tick is not checked.
 //  P9  A clean build writes `short-<id>.mp4` + `.title.txt`/`.description.txt` +
 //      `short-<id>.hand.json` `{ hook, builtAt, windowMatchSec, pov, note? }`.
 //  P10 The Short's title is `<hook> | <left> vs <right>` + `#mcsr #minecraft`, and
@@ -162,13 +162,12 @@ try {
     assert.equal(field.kind, "boolean");
     // The panel's own help is what the operator reads before flipping it: it must not contradict
     // the documented "the pick after export still runs (ensurePick)".
-    await deviation('CLAUDE.md Shorts/shortsByHand: "The pick after export still runs (ensurePick)"', () => {
-      assert.doesNotMatch(
-        field.help ?? "",
-        /never queues a model pick/i,
-        "Settings help says a hand-mode match never queues a model pick",
-      );
-    });
+    assert.doesNotMatch(
+      field.help ?? "",
+      /never queues a model pick/i,
+      "Settings help says a hand-mode match never queues a model pick",
+    );
+    assert.match(field.help ?? "", /pick after export still runs/i, "P1: the help keeps the pick");
     console.log("OK: P1 — shortsByHand is a Publishing switch, default off");
   }
 
@@ -214,12 +213,12 @@ try {
     // A seed with its number is caught (positive control for P6).
     assert.match((await problemOf(id, opts({ hook: "1ST SEED SHOWDOWN" }))) ?? "", /seed, rank or elo/);
     // P6: "No seed, rank or elo in hooks" — the elo number and a rank are just as much the rule.
-    await deviation('CLAUDE.md House rules: "No seed, rank or elo in hooks or suggestions"', async () => {
+    {
       const accepted: string[] = [];
       for (const hook of ["ELO 2100 SHOWDOWN", "RANK 1 ON THE ROPES", "TOP SEED ON THE ROPES"])
         if ((await problemOf(id, opts({ hook }))) === null) accepted.push(hook);
-      assert.deepEqual(accepted, [], `accepted as hand hooks: ${accepted.join(", ")}`);
-    });
+      assert.deepEqual(accepted, [], `P6: accepted as hand hooks: ${accepted.join(", ")}`);
+    }
     // Refused outright means buildHandShort throws the reason and writes nothing — not a warning
     // that saves anyway (the dashboard's typed hook is the one that only warns).
     await assert.rejects(
@@ -261,24 +260,20 @@ try {
     console.log("OK: P7 — a blocked player is refused, whole-string and case-insensitive");
   }
 
-  /* --- P8: already on the channel ---------------------------------------------------------------- */
+  /* --- P8: already uploaded from here ------------------------------------------------------------ */
   {
-    // The dashboard counts a Short as on the channel when the operator ticked "Short uploaded"
-    // (publish.json, a Studio upload by hand) — the same thing the chain reads as "up". A hand cut
-    // for it would be a second copy waiting for a press of Upload.
+    // Refused: this pipeline's own upload record (youtube-short.json) — and before writing a byte.
+    const up = freshMatch();
+    writeFileSync(path.join(dir(up), "youtube-short.json"), JSON.stringify({ videoId: "abcdefghijk" }));
+    const before = snapshot(up);
+    assert.match((await problemOf(up, opts())) ?? "", /already on the channel/, "P8: an uploaded Short");
+    assert.deepEqual(snapshot(up), before, "P3: the refusal wrote nothing");
+    // Documented: a Short only ticked by hand (publish.json shortUploaded) is not checked — the
+    // chain then reads it as up and never uploads the re-cut.
     const id = freshMatch();
     writeFileSync(path.join(dir(id), "publish.json"), JSON.stringify({ shortUploaded: true }));
-    await deviation(
-      'CLAUDE.md Shorts/shortsByHand: checkHandShort refuses a Short "not already on the channel"',
-      async () => {
-        assert.notEqual(
-          await problemOf(id, opts()),
-          null,
-          "a Short ticked as uploaded (publish.json shortUploaded) is accepted for a new hand cut",
-        );
-      },
-    );
-    console.log("OK: P8 — a ticked-by-hand Short checked (see any DEVIATION above)");
+    assert.equal(await problemOf(id, opts()), null, "P8: a hand-ticked Short is not checked");
+    console.log("OK: P8 — youtube-short.json refuses a new cut; a hand tick is not checked");
   }
 
   /* --- P3/P9: a refusal after a good build leaves the good build alone --------------------------- */
