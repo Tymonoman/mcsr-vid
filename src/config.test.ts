@@ -54,6 +54,13 @@ assert.throws(
   "the publish hour is not optional",
 );
 assert.doesNotThrow(() => validateOverrides({ publishHourUtc: 19 }));
+// The series slot is the same kind of hour: a hand-edited 25 rolled into the next day unchecked.
+assert.throws(() => validateOverrides({ seriesPublishHourUtc: 24 }), /seriesPublishHourUtc.*0-23/);
+assert.throws(() => validateOverrides({ seriesPublishHourUtc: -1 }), /seriesPublishHourUtc/);
+assert.throws(() => validateOverrides({ seriesPublishHourUtc: 3.5 }), /seriesPublishHourUtc/);
+assert.throws(() => validateOverrides({ seriesPublishHourUtc: null }), /seriesPublishHourUtc/);
+assert.doesNotThrow(() => validateOverrides({ seriesPublishHourUtc: 0 }));
+assert.doesNotThrow(() => validateOverrides({ seriesPublishHourUtc: 23 }));
 assert.doesNotThrow(() => validateOverrides({ mediaDir: "/tmp/media", overlayFps: 60 }));
 assert.doesNotThrow(() =>
   validateOverrides({ pullSource: "homelab@actimel:/home/homelab/mcsr-media", pullDest: "~/Replayoffs" }),
@@ -147,6 +154,12 @@ assert.throws(() => validateOverrides({ blockedPlayers: ["  "] }), /blockedPlaye
   assert.equal(blockedIn(["doogile", "Feinberg"]), false);
   config.blockedPlayers = [];
   assert.equal(isBlockedPlayer("Aquacorde"), false, "an empty list blocks nobody");
+  config.blockedPlayers = [" Aquacorde", "BeefSalad "];
+  assert.equal(isBlockedPlayer("BeefSalad"), true, "a hand-edited padded entry still blocks");
+  assert.equal(isBlockedPlayer("aquacorde"), true);
+  assert.equal(isBlockedPlayer(" beefsalad"), true);
+  assert.equal(isBlockedPlayer("BeefSalad2"), false, "still whole names");
+  assert.equal(isBlockedPlayer("Beef Salad"), false);
   config.blockedPlayers = saved;
   console.log(
     "OK: blockedPlayers validates like favouritePlayers; isBlockedPlayer/blockedIn are case-insensitive",

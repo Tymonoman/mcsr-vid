@@ -53,8 +53,11 @@ export async function listMatchStatuses(): Promise<MatchStatusEntry[]> {
  * One API request per call; the list variant costs one per match directory, which is a linear
  * tax on an API budgeted at 500 requests per 10 minutes.
  */
-/** MP4s the pipeline writes beside the POV clips — never a player's `<nickname>.mp4`. */
-export const GENERATED_MP4 = /^(overlay-|final-|series-|short-|smoke-)/;
+/**
+ * MP4s the pipeline writes beside the POV clips — never a player's `<nickname>.mp4`. Includes
+ * validate-sync's `sync-preview.mp4` and the retired melt export's `final.mp4`.
+ */
+export const GENERATED_MP4 = /^(overlay-|final-|series-|short-|smoke-)|^(final|sync-preview)\.mp4$/;
 
 /**
  * The POV clip nicknames already on disk for a match (`<nickname>.mp4`, never the pipeline's own
@@ -87,7 +90,15 @@ export function blockedOnDisk(dir: string): boolean {
       const pair = /(?:^|\|)\s*([^|]+?)\s+vs\.?\s+([^|]+?)\s*\|\s*MCSR/i.exec(
         readFileSync(path.join(dir, f), "utf8"),
       );
-      if (pair) names.push(pair[1]!, pair[2]!);
+      // The title spells some players the broadcast's way (`titleNames`: Skycrab is Pinne).
+      if (pair)
+        for (const shown of [pair[1]!, pair[2]!])
+          names.push(
+            shown,
+            ...Object.keys(config.titleNames).filter(
+              (k) => config.titleNames[k]!.toLowerCase() === shown.trim().toLowerCase(),
+            ),
+          );
     }
   return blockedIn(names);
 }
@@ -121,7 +132,11 @@ export async function matchStatusFor(matchId: number): Promise<MatchStatusEntry>
     // must not look like an unstarted match.
     error = describeError(err);
     vodsDownloaded = downloadedNicknames.length >= 2;
-    [leftNickname = "?", rightNickname = "?"] = downloadedNicknames;
+    // Names only from an unambiguous pair: a third MP4 (a hand-named export) read as a player
+    // named a public playlist after it, and hid a real POV clip from `findExportedVideo`'s
+    // exclusion so the raw clip became the upload. More than two stays "?", which is ambiguous there.
+    if (downloadedNicknames.length === 2)
+      [leftNickname, rightNickname] = downloadedNicknames as [string, string];
   }
 
   const projectFilePath = path.join(outDir, `match-${matchId}.kdenlive`);

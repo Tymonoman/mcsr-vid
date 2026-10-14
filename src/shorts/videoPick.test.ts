@@ -59,7 +59,14 @@ delete process.env.HOOK_SUGGEST_CMD;
   };
   write(1, "A clean hook | doogile vs Feinberg | MCSR Ranked 1v1");
   write(2, "A blocked hook | doogile vs Aquacorde | MCSR Ranked 1v1");
-  config.blockedPlayers = ["aquacorde"]; // any case
+  // An operator-edited pair spelled "VS" or "vs." is still that pair.
+  write(3, "Another hook | doogile VS Aquacorde | MCSR Ranked 1v1");
+  write(4, "Third hook | BeefSalad vs. Feinberg | MCSR Ranked 1v1");
+  // A blocked player's titleNames spelling (Pinne is Skycrab), and one whose clip alone names him.
+  write(5, "Fourth hook | Skycrab vs doogile | MCSR Ranked 1v1");
+  write(6, "Fifth hook | edcr vs doogile | MCSR Ranked 1v1");
+  writeFileSync(path.join(pastDir, "6", "Aquacorde.mp4"), "x");
+  config.blockedPlayers = ["aquacorde", "beefsalad", "Pinne"]; // any case
   assert.deepEqual(
     pastTitleHooks().map((h) => h.hook),
     ["A clean hook"],
@@ -70,7 +77,7 @@ delete process.env.HOOK_SUGGEST_CMD;
     pastTitleHooks()
       .map((h) => h.hook)
       .sort(),
-    ["A blocked hook", "A clean hook"],
+    ["A blocked hook", "A clean hook", "Another hook", "Fifth hook", "Fourth hook", "Third hook"],
     "unblocked, it is back",
   );
   config.blockedPlayers = savedBlocked;

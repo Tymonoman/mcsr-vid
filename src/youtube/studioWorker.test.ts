@@ -1036,6 +1036,18 @@ config.mediaDir = media;
   console.log("OK: runWorker({ once: true }) runs exactly one cycle, writes the heartbeat, and returns");
 }
 
+// --- runWorker: each real cycle re-reads the blocklist the Settings tab saves ------------------
+// This process outlives a Settings save, so a runner blocked there after it started stayed open to
+// end screens, pins, tests and links until the next restart.
+{
+  const saved = config.blockedPlayers;
+  config.blockedPlayers = ["stale-list-sentinel"];
+  await runWorker({ once: true, enable: false, now: () => new Date("2026-10-11T12:00:00Z") });
+  assert.ok(!config.blockedPlayers.includes("stale-list-sentinel"), "the cycle ran on the file's list");
+  config.blockedPlayers = saved;
+  console.log("OK: runWorker reloads blockedPlayers before every cycle outside the blackout");
+}
+
 // --- runWorker: a blackout cycle keeps the standing error and its streak (14 Oct 2026) ---------
 // The 07:00 Warsaw report (05:00/06:00 UTC) always lands inside the 02:50–07:30 UTC blackout, so
 // resetting the streak there meant "the same error 3 cycles running" never reached it.
