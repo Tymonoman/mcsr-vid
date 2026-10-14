@@ -166,15 +166,17 @@ export async function start(opts: StudioBrowserOptions = {}): Promise<StudioHand
       { env: { ...process.env, DISPLAY: display }, stdio: "ignore" },
     );
 
+    // A connect that fails after the port answered must not leave Chrome holding the profile's
+    // SingletonLock either — every later start() would refuse with "already running".
+    let browser: Browser;
     try {
       await waitForCdp(debugPort, 20_000);
+      browser = await chromium.connectOverCDP(`http://127.0.0.1:${debugPort}`);
     } catch (err) {
       chrome.kill("SIGKILL");
       xvfb.kill("SIGTERM");
       throw err;
     }
-
-    const browser = await chromium.connectOverCDP(`http://127.0.0.1:${debugPort}`);
 
     const handle: StudioHandle = {
       browser,

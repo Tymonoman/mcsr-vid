@@ -72,6 +72,11 @@ export interface Config {
    */
   youtubeChannelId: string;
   /**
+   * The channel's `@handle`, without the "@" — a watch page's comment author link is `/@handle`,
+   * not `/channel/<id>`, so the Studio worker's pin finds our own comment by this.
+   */
+  youtubeChannelHandle: string;
+  /**
    * Standing YouTube Reporting API job producing `channel_reach_basic_a1`, the only source of
    * per-video thumbnail impressions and CTR (see src/youtube/youtube.ts).
    */
@@ -540,6 +545,7 @@ export const DEFAULTS: Config = {
   defaultRunSec: 900,
   mediaDir: "media",
   youtubeChannelId: "UCm2mAyONTHlmIxZzNmi388w",
+  youtubeChannelHandle: "MCSRReplayoffs",
   youtubeReportingJobId: "eda017ae-a539-4c79-8e2c-66d1af74264a",
   youtubePlaylistTitle: "MCSR Ranked matches",
   youtubePlaylistUrl: "",
