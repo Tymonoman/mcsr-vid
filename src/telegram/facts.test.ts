@@ -90,6 +90,36 @@ try {
   }
   assert.equal(timers(), baseline);
 
+  // A playoff bracket the MCSR API can't serve (a 503, a timeout) costs TODAY its playoffs line,
+  // never the section: waiting-for-hook, the schedule and the disk are local reads (14 Oct 2026).
+  {
+    const WAITING = 9001;
+    const waitingDir = path.join(media, String(WAITING));
+    mkdirSync(waitingDir, { recursive: true });
+    writeFileSync(path.join(waitingDir, `final-${WAITING}.mp4`), "x");
+    writeFileSync(
+      path.join(waitingDir, `short-${WAITING}.pick.json`),
+      JSON.stringify({ startMs: 60_000, endMs: 90_000, pov: "left", createdAt: new Date().toISOString() }),
+    );
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      if (String(input).startsWith("https://api.mcsrranked.com/"))
+        return new Response("down", { status: 503, statusText: "Service Unavailable" });
+      throw new Error("no network in this test");
+    }) as typeof fetch;
+    try {
+      const now = Date.parse("2026-09-30T20:00:00Z");
+      const { todo } = await gatherFacts(now, now - 86_400_000, ["todo"]);
+      assert.ok(todo.ok, `TODAY survives a dead bracket: ${JSON.stringify(todo)}`);
+      assert.equal(todo.data.playoffsSoon, null);
+      assert.deepEqual(todo.data.waitingForHook.map((w) => w.matchId), [WAITING]);
+      assert.equal(todo.data.scheduledTomorrowCount, 0);
+      console.log("OK: a dead playoff bracket nulls playoffsSoon, the rest of TODAY stays");
+    } finally {
+      globalThis.fetch = realFetch;
+      rmSync(waitingDir, { recursive: true, force: true });
+    }
+  }
+
   // A failed restart-when-idle boot check (src/dashboard/restartWhenIdle.ts) is this process'
   // own state, not a ping — it must surface in `gatherHealth`'s list the same way a down API
   // does, since that is the only way it ever reaches the Telegram report (review fix, 8 Oct 2026).

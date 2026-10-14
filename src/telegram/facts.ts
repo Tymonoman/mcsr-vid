@@ -153,10 +153,12 @@ async function gatherTodo(nowMs: number): Promise<TodoFacts> {
   const cap = await capacity();
   const diskMatchesLeft = cap.working?.matchesLeft ?? null;
 
-  const board = await playoffBoard(nowMs / 1000);
+  // A bracket the MCSR API can't serve costs only this line: the rest of TODAY is local reads, and a
+  // down API already shows under health.
+  const board = await playoffBoard(nowMs / 1000).catch(() => null);
   // The board stays up while a finished round's games may still be found; only a slot still to be
   // played in the next 14 days is news for the day.
-  const soon = board.slots.find(
+  const soon = board?.slots.find(
     (s) => s.startTime !== null && s.startTime * 1000 >= nowMs && s.startTime * 1000 <= nowMs + 14 * DAY_MS,
   );
   const playoffsSoon = soon ? { round: soon.round, startTime: soon.startTime, bestOf: soon.bestOf } : null;
