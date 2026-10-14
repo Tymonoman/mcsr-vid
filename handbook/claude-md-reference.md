@@ -712,7 +712,9 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   `thumbnails.set`, `commentThreads.insert` and `videos.update` are all inside the token's
   `force-ssl` scope, so **Finish on YouTube** repairs a Studio upload too: playlists, the pinned
   comment and the tags. It leaves the thumbnail alone on a video uploaded elsewhere whose variant nobody
-  confirmed here, so it cannot replace an image picked in Studio.
+  confirmed here, so it cannot replace an image picked in Studio. The flag gates starting an
+  insert. A resumable session begun while it was on is still finished by `resumeUpload` after a
+  restart (`resumeOnly` never starts a new one).
 - **Adopt a Studio draft** (`POST /api/youtube/adopt/:id`, the panel's "Adopt this draft"): the
   operator drops the file into Studio leaving every box empty, pastes the 11-character id, and the
   title, description and tags go on through `videos.update`, then the finish steps run. It exists
@@ -757,8 +759,9 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   A Short joins none (the 24 Sept audit found 8 in the season playlist, between the replays).
   A matchup playlist is created on a pair's *second* video, with the first added alongside
   (22 of 28 playlists held one video on 22 Sept 2026). The Season 11 playoffs playlist exists
-  (`PLBtNy46ii7uU`). A Short's description gains "the whole match: https://youtu.be/<id>" at
-  upload time, once the long-form's id is in `youtube.json`. A published long-form also queues an
+  (`PLBtNy46ii7uU`). A Short's description gains "the whole match: https://youtu.be/<id>" as its
+  second line at upload time, once the long-form's id is in `youtube.json` (inserted after the
+  first line; a one-line description edited by hand gets no link). A published long-form also queues an
   NAS copy (`archiveMatch`, same for a Studio upload the channel scan records), which now only
   actually runs 03:00–08:00 Warsaw (see The NAS).
   **YouTube caps `playlists.insert` at about a dozen per rolling 24 h** (429 RATE_LIMIT_EXCEEDED;
@@ -1940,7 +1943,9 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
   whose `sync.json` was corrected since is refused as `startUpload` refuses it (`exportStale`):
   nothing sent, the session kept, and the re-encode's new bytes start fresh. A resumed upload
   carries the title its start sent, and the record says so: a hook changed in between is logged,
-  never retitled on the channel.
+  never retitled on the channel. A blocked match's
+  session is never resumed (14 Oct 2026): the step fails naming the session file, left for the
+  operator to delete with the half-sent video in Studio.
 - **Country flags render as tofu** without a colour-emoji font (cosmetic, intro card).
 - **Verify visual changes by rendering** (`npm run still`, then read the PNG).
 - **`npm run test:unit` after any edit; `npm test` after touching rendering or asset
