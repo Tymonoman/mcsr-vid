@@ -39,7 +39,7 @@ import { computeSplits } from "../pipeline/overlayProps.js";
 import { HOOK_PLACEHOLDER } from "../pipeline/title.js";
 import { buildShortDescription } from "../shorts/shortHook.js";
 import { describesMatch, type ChannelVideo } from "./channelUploads.js";
-import { uploadTextFor } from "./youtubeStore.js";
+import { refreshTags, uploadTextFor } from "./youtubeStore.js";
 import type { MatchInfo, UserDetails } from "../api/types.js";
 
 const media = mkdtempSync(path.join(tmpdir(), "mcsr-uploadtext-contract-"));
@@ -52,24 +52,6 @@ globalThis.fetch = (async (input: string | URL | Request) => {
 }) as typeof fetch;
 const warnings: string[] = [];
 console.warn = (...args: unknown[]) => void warnings.push(args.join(" "));
-
-/**
- * A doc promise the code does not keep yet (tracked in TASKS.md): reported, not bent to the code,
- * and not fatal while it stays broken. Once the code keeps it, this fails instead, so the check
- * is promoted to a plain assert and a later regression fails the run rather than passing quietly.
- */
-const deviations: string[] = [];
-async function deviation(clause: string, check: () => unknown): Promise<void> {
-  try {
-    await check();
-  } catch (err) {
-    if (!(err instanceof assert.AssertionError)) throw err;
-    deviations.push(clause);
-    console.log(`DEVIATION: ${clause} — ${err.message.split("\n")[0]}`);
-    return;
-  }
-  assert.fail(`fixed, now a promise the code keeps: make this a plain assert — ${clause}`);
-}
 
 const write = (matchId: number, files: Record<string, string>) => {
   const dir = path.join(media, String(matchId));
@@ -380,9 +362,10 @@ const renderFor = (match: MatchInfo, leftName?: string, rightName?: string) => {
     "thumbnail.json": JSON.stringify({ chosen: null, hookText: "CHAIR vs LAMP", variants: [] }),
   });
   const title = (await uploadTextFor(550, "video")).title;
-  await deviation(
+  assert.equal(
+    title,
+    `<HOOK> | Aa vs Bb | ${TAIL}`,
     "CLAUDE.md House rules: a carried hookText value fails closed the same way hookProblem does (never a runner label)",
-    () => assert.ok(!title.includes("CHAIR vs LAMP"), `uploadTextFor's title is "${title}"`),
   );
 }
 
@@ -393,19 +376,16 @@ const renderFor = (match: MatchInfo, leftName?: string, rightName?: string) => {
   write(561, { "match-561.title.edited.txt": "Wow | __proto__ vs Bb | MCSR Ranked 1v1\n" });
   const a = (await uploadTextFor(560, "video")).title;
   const b = (await uploadTextFor(561, "video")).title;
-  // One call each, so the second case is checked even while the first one fails.
   const clause =
     "CLAUDE.md titleNames: spells two players the broadcast's way, title only — every other nickname keeps the API spelling";
-  await deviation(`${clause} (constructor)`, () =>
-    assert.equal(a, `Wow | constructor vs Bb | ${TAIL}`, `uploadTextFor's title is "${a}"`),
-  );
-  await deviation(`${clause} (__proto__)`, () =>
-    assert.equal(b, `Wow | __proto__ vs Bb | ${TAIL}`, `uploadTextFor's title is "${b}"`),
+  assert.equal(a, `Wow | constructor vs Bb | ${TAIL}`, `${clause} (constructor)`);
+  assert.equal(b, `Wow | __proto__ vs Bb | ${TAIL}`, `${clause} (__proto__)`);
+  // The tags' broadcast spelling reads the same table: such a nickname adds nothing, and never throws.
+  assert.deepEqual(
+    refreshTags(["constructor", "__proto__", "mcsr"]),
+    ["constructor", "__proto__", "mcsr"],
+    `${clause} (tags)`,
   );
 }
 
-console.log(
-  deviations.length
-    ? `youtubeStore.contract: all checks passed (${deviations.length} documented deviation(s) reported above)`
-    : "youtubeStore.contract: all checks passed",
-);
+console.log("youtubeStore.contract: all checks passed");

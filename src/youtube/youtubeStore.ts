@@ -8,7 +8,15 @@ import path from "node:path";
 import { config, matchDir } from "../config.js";
 import { listProcessedMatchIds } from "../dashboard/matchStatus.js";
 import { readManifest } from "../thumbnails/thumbnailVariants.js";
-import { buildTitle, HOOK_PLACEHOLDER, metaPaths, MOBILE_CUTOFF, SEPARATOR } from "../pipeline/title.js";
+import {
+  buildTitle,
+  HOOK_PLACEHOLDER,
+  metaPaths,
+  MOBILE_CUTOFF,
+  SEPARATOR,
+  titleName,
+} from "../pipeline/title.js";
+import { hookLabelProblem } from "../pipeline/hooks.js";
 import {
   closerFor,
   seedPhrase,
@@ -136,8 +144,14 @@ export async function uploadTextFor(
     (await edited("title")) ?? (await readIfPresent(path.join(dir, `${base}.title.txt`))) ?? "";
   let title = titleText.split("\n")[0]!.trim();
   if (title.includes(HOOK_PLACEHOLDER)) {
+    // A carried headline is as untrusted as a typed or a model one (`withHook`): one that labels
+    // a runner — judged against the title's own pair, none readable fails closed — or that would
+    // push the title past 100 characters leaves <HOOK> in place, which Upload and Adopt refuse.
     const hook = (await readManifest(dir))?.hookText?.trim();
-    if (hook) title = title.replace(HOOK_PLACEHOLDER, hook);
+    const parts = splitTitle(title);
+    const players = parts ? [{ nickname: parts.left }, { nickname: parts.right }] : [];
+    const filled = hook ? title.replace(HOOK_PLACEHOLDER, hook) : title;
+    if (hook && hookLabelProblem(hook, players) === null && filled.length <= TITLE_MAX_CHARS) title = filled;
   }
   // A Short with no saved hook cannot go up (`hookRefusal`): its stored title stands, unlogged —
   // the publish kit asks for this text every time a match opens. In hand mode
@@ -460,8 +474,8 @@ export function refreshTags(tags: string[]): string[] {
   const have = new Set(tags.map((t) => t.toLowerCase()));
   const extra = tags
     .slice(0, 2)
-    .map((t) => config.titleNames[t])
-    .filter((n): n is string => !!n && !have.has(n.toLowerCase()));
+    .map(titleName)
+    .filter((n) => !have.has(n.toLowerCase()));
   const out = [...tags.slice(0, 2), ...extra, ...tags.slice(2)];
   return out.join(",").length <= 450 ? out : tags;
 }
