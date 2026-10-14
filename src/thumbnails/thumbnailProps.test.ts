@@ -98,8 +98,8 @@ globalThis.fetch = (async (url: string) =>
     tag: null,
     seedType: "VILLAGE",
     changes: [
-      { uuid: "u-left", eloRate: 2615, change: 69 },
-      { uuid: "u-right", eloRate: 2370, change: -12 },
+      { uuid: "u-left", eloRate: 2546, change: 69 },
+      { uuid: "u-right", eloRate: 2382, change: -12 },
     ],
   } as unknown as MatchInfo;
   const user = (uuid: string, nickname: string, liveElo: number) =>
@@ -110,8 +110,8 @@ globalThis.fetch = (async (url: string) =>
     user("u-left", "edcr", 2615),
     user("u-right", "doogile", 2370),
   );
-  assert.equal(props.props.left.eloRate, 2546, "2615 post-match minus the +69 that match produced");
-  assert.equal(props.props.right.eloRate, 2382, "2370 post-match minus the -12 that match produced");
+  assert.equal(props.props.left.eloRate, 2546, "the rating carried in (changes[].eloRate), not the live 2615");
+  assert.equal(props.props.right.eloRate, 2382, "the rating carried in (changes[].eloRate), not the live 2370");
   assert.equal(props.props.headerLabel, "Minecraft · Speedrunning · Ranked", "null tag uses the default");
   assert.equal(props.props.seedType, "VILLAGE", "the centre slot shows the match's seed type");
   assert.equal(params(props.leftAvatar.url).get("yaw"), String(FACING_YAW), "left player turns right");

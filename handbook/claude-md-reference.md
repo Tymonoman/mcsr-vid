@@ -473,7 +473,8 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   `POST /api/render/:id` (`matchIsBlocked`, `src/dashboard/matchStatus.ts`: the API's pair, else
   `blockedOnDisk` on an archived directory) and `POST /api/series/:id/render` refuse before the fire-and-forget run even starts, and `renderSeries`
   itself refuses too (`{kind:"blocked"}`, `src/playoffs/series.ts`) — the one place both that route
-  and `npm run series` settle through. `runPipeline` (`src/pipeline/pipeline.ts`) refuses
+  and `npm run series` settle through; `assembleSeries` refuses the same way (14 Oct 2026), so
+  `npm run series -- --join-only` and every export's settle never join, retitle or prune one. `runPipeline` (`src/pipeline/pipeline.ts`) refuses
   too, right after the match fetch and before VOD discovery or any write, so the callers with no
   gate of their own — `npm run batch`, `npm run generate-project`, the TUI — never download a
   blocked runner's footage. `hasBlockedPlayer` (`youtubeUpload.ts`) reads
@@ -995,15 +996,21 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   land within that gap of its own header or of the next game's.
   **The join deletes the games'
   own exports** — a series is fifty minutes of 1080p60 and the disk holds one copy — and takes a
-  game back out of the series (`-c copy` at its recorded offset, exact because every game
-  starts on its own keyframe) whenever a re-join needs it. `exportStale` reads the record, so a
+  game back out of the series (`-c copy` from the keyframe that starts it to the one that starts
+  the next, found near its recorded offset plus the join's ~21 ms AAC-priming shift; a plain seek
+  at the chapter offset kept the previous game's last GOP, one more per re-join, until 14 Oct
+  2026 — `seriesExtract.test.ts` round-trips it with real ffmpeg) only when a re-join will run, never
+  for a series that is current. Nothing joins until a seed has reached `firstTo` (or the bracket's
+  own score says so) — a series still being played is `incomplete` — and a game whose export is
+  in flight (`final-<id>.part.mp4`) holds the join for its own settle. `exportStale` reads the record, so a
   sync fix on game 3 makes the series stale and names game 3; its Re-encode re-exports the game
   and the join follows (`startFastExport` settles through `assembleSeries`), the other games
   extracted rather than re-encoded. Games 2..n are hidden once joined; the series' head lists
   them (each has its own sync check). The Short
   is the best-scoring game's, copied in as `short-<g1>.*` with a description that links the
-  series (`shortFromMatchId`); cut another game's by hand and `adoptSeriesShort` makes it the
-  series'. The board's slot row shows what is exported / the run in flight / the joined video,
+  series (`shortFromMatchId`); a Short cut by hand from another game's footage is registered
+  under game 1's id — `short:hand` refuses a later game's (14 Oct 2026: written into game 2's own
+  directory, the chain never read it). The board's slot row shows what is exported / the run in flight / the joined video,
   and "Render the series" (`POST /api/series/:id/render`) runs the lot in the server; every
   export settles through `startFastExport` (the nightly's chain, Re-encode, a series run), and
   that is where a series joins itself once its last game's export lands. `PlayoffContext.score`
@@ -1175,8 +1182,9 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
   were public, since a typed hook saves with only a warning and nothing said so afterwards); the
   line is "Live title breaks a house rule: <videoId> — <problem>", never the hook, which may be the
   label; a blocked runner in tonight's queue, rendered and not hidden, with an upload record, or as a
-  comment's author newer than the last report (`isBlockedPlayer` against the display name — the
-  line names the video or the match, never the comment's own text);
+  comment's or a returned reply's author newer than the last report (`isBlockedPlayer` against the
+  display name, a leading "@" stripped — the line names the video or the match, never the comment's
+  own text), listed first so the 1500-char cap's "+ N more" never hides it;
   `<mediaDir>/.experiments.json`'s `needsHuman` entries not yet `needsHumanAck`'d (the experiment
   engine's own file, another branch — also read defensively); and the standalone Studio worker's
   own heartbeat (`<mediaDir>/.studio-worker.json`, `studioWorkerItems`/`studioWorkerHealth`,
@@ -1397,7 +1405,9 @@ every check above is a fixture page or pure logic; see "What is verified live vs
   2026 a page Save with no "Changes saved" within 15 s — an error, so the experiment stays
   `"planned"` and the next cycle reads the page before trying again, where the swallowed wait had
   returned `"started"` and left a blank form to be found a day later), and the worker never
-  guesses past an ambiguous state on its own.
+  guesses past an ambiguous state on its own. Studio's "Results ready"/"Test finished" is what
+  counts as done: `parseTcReport` reads the report's per-arm watch-time shares and Studio's own
+  winner, and `setExperimentChecked` records them (`watchTimeShare` per arm, "<arm> wins: a% vs b%").
 
 **What is verified live vs only on fixtures.** Confirmed against the real Studio UI, 7–8 Oct 2026:
 `#endscreen-editor-link`, the "Import from video" button, `ytcp-video-pick-dialog` and its

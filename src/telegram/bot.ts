@@ -74,7 +74,14 @@ export function splitMessage(text: string, max = MESSAGE_MAX_CHARS): string[] {
   let rest = text;
   while (rest.length > max) {
     const softCut = rest.lastIndexOf("\n", max);
-    const cut = softCut > max / 2 ? softCut : max;
+    let cut = softCut > max / 2 ? softCut : max;
+    if (cut === max) {
+      // A hard cut never halves an emoji's surrogate pair (a lone one is not valid UTF-8 to
+      // Telegram) or an HTML entity ("&l" | "t;").
+      if (/[\uD800-\uDBFF]/.test(rest[cut - 1]!)) cut--;
+      const amp = rest.lastIndexOf("&", cut - 1);
+      if (amp > 0 && amp > cut - 8 && !rest.slice(amp, cut).includes(";")) cut = amp;
+    }
     parts.push(rest.slice(0, cut));
     rest = rest.slice(cut).replace(/^\n/, "");
   }

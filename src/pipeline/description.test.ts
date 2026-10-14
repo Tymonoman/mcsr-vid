@@ -28,8 +28,8 @@ const window = (nickname: string, matchOffsetIntoVodSec: number): VodWindow => (
 const user = (uuid: string, nickname: string, liveElo: number): UserDetails =>
   ({ uuid, nickname, eloRate: liveElo }) as UserDetails;
 
-// Real figures from match 12730175 (edcr vs doogile): live elo 2615/2370, carried in 2546/2440.
-// src/overlayProps.test.ts pins the same numbers, so a regression to live elo fails twice.
+// edcr vs doogile: live elo 2615/2370, carried in 2546/2440 (`changes[].eloRate`, the rating going
+// into the match; src/pipeline/overlayProps.test.ts pins that reading on 12730175's real figures).
 const EDCR = "edcr-uuid";
 const DOOGILE = "doogile-uuid";
 
@@ -39,8 +39,8 @@ const match = (over: Partial<MatchInfo> = {}): MatchInfo =>
     result: { uuid: EDCR, time: 532_000 },
     forfeited: false,
     changes: [
-      { uuid: EDCR, change: 69, eloRate: 2615 },
-      { uuid: DOOGILE, change: -70, eloRate: 2370 },
+      { uuid: EDCR, change: 69, eloRate: 2546 },
+      { uuid: DOOGILE, change: -70, eloRate: 2440 },
     ],
     ...over,
   }) as MatchInfo;
@@ -77,7 +77,7 @@ assert.ok(
 );
 assert.ok(text.slice(0, 150).includes("mcsr ranked"), "the format survives the preview cut");
 
-// Elo comes from changes[].eloRate - changes[].change, never the live rating.
+// Elo comes from changes[].eloRate (the rating carried in), never the live rating.
 assert.match(
   opening,
   /edcr came in at 2546 elo, doogile at 2440\./,

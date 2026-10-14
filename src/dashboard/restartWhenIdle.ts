@@ -243,7 +243,11 @@ async function tick(): Promise<void> {
   // Idle: pause the 30 s poll rather than let a second one start on top of a boot check that can
   // run for up to five minutes.
   stopChecking();
+  const armedAt = armedAtMs;
   const error = await active.bootCheck();
+  // A DELETE (or a fresh POST) while tsc ran: this tick speaks for an arm that no longer exists —
+  // no exit, no stale error, no poll resurrected for a cancelled arm. A fresh POST runs its own.
+  if (armedAtMs !== armedAt) return;
   if (error) {
     lastError = error;
     console.error(`restart-when-idle: boot check failed, staying up — ${error.split("\n")[0]}`);

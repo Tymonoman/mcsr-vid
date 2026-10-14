@@ -90,13 +90,10 @@ export interface PublishSlot {
 
 /** The slot the kit shows and the chain schedules: the first free one, kept off this pair's other kind. */
 export async function publishSlotFor(matchId: number, nowMs: number): Promise<PublishSlot> {
-  const seriesVideo = isSeries(matchId);
-  // A playoff game 1 not joined yet goes out as its series, at the series' hour.
-  const gameOneAsSeries = !seriesVideo && (await playoffContextForId(matchId))?.gameNo === 1;
-  const hour =
-    seriesVideo || gameOneAsSeries ? config.seriesPublishHourUtc : publishHourFor(matchDir(matchId));
+  const series = await seriesKind(matchId);
+  const hour = series ? config.seriesPublishHourUtc : publishHourFor(matchDir(matchId));
   // The publish-hour experiment arm only ever touches a ranked video's own slot, never a series'.
-  const hoursForDate = seriesVideo || gameOneAsSeries ? undefined : rankedHoursForDate;
+  const hoursForDate = series ? undefined : rankedHoursForDate;
   const claimed = await claimedPublishTimes(matchId);
   const free = nextPublishSlot(nowMs, hour, claimed, undefined, undefined, undefined, hoursForDate);
   const gap = config.seriesPairGapDays;
@@ -109,7 +106,7 @@ export async function publishSlotFor(matchId: number, nowMs: number): Promise<Pu
     .sort((a, b) => a - b)
     .map((ms) => new Date(ms).toISOString().slice(0, 10))
     .join(", ");
-  const other = isSeries(matchId) ? "ranked video" : "series";
+  const other = series ? "ranked video" : "series";
   return { at, why: `pushed out to keep ${gap} days from this pair's ${other} (${days})` };
 }
 
@@ -136,7 +133,7 @@ export async function slotWarnings(matchId: number, atMs: number, nowMs: number)
       : [];
   if (near.length)
     out.push(
-      `under ${gap} days from this pair's ${isSeries(matchId) ? "ranked video" : "series"} (${near
+      `under ${gap} days from this pair's ${(await seriesKind(matchId)) ? "ranked video" : "series"} (${near
         .sort((a, b) => a - b)
         .map((ms) => new Date(ms).toISOString().slice(0, 10))
         .join(", ")})`,
@@ -145,6 +142,9 @@ export async function slotWarnings(matchId: number, atMs: number, nowMs: number)
 }
 
 const isSeries = (matchId: number): boolean => existsSync(path.join(matchDir(matchId), "series.json"));
+/** Goes out as a series: joined (`series.json`), or a playoff game 1 not joined yet, at the series' hour. */
+const seriesKind = async (matchId: number): Promise<boolean> =>
+  isSeries(matchId) || (await playoffContextForId(matchId))?.gameNo === 1;
 
 /** "uuidA+uuidB", order-free; null when the match cannot be read — no constraint, not an error. */
 async function pairOf(matchId: number): Promise<string | null> {
@@ -186,12 +186,13 @@ export async function pairGapTimes(matchId: number, sinceMs: number): Promise<nu
   ]
     .map((v) => ({ id: v.id, ms: v.at ? Date.parse(v.at) : NaN }))
     .filter((v) => Number.isInteger(v.id) && v.id !== matchId && v.ms >= sinceMs);
-  const series = isSeries(matchId);
-  const others = timed.filter((v) => isSeries(v.id) !== series);
-  const pair = others.length > 0 ? await pairOf(matchId) : null;
+  // The pair first: the kind may read the bracket, and another pair's videos never need it.
+  const pair = timed.length > 0 ? await pairOf(matchId) : null;
   if (!pair) return [];
+  const series = await seriesKind(matchId);
   const out: number[] = [];
-  for (const v of others) if ((await pairOf(v.id)) === pair) out.push(v.ms);
+  for (const v of timed)
+    if ((await pairOf(v.id)) === pair && (await seriesKind(v.id)) !== series) out.push(v.ms);
   return [...new Set(out)];
 }
 
@@ -219,6 +220,9 @@ export async function claimedPublishTimes(exceptMatchId: number): Promise<string
   return [
     ...channel
       .filter((v) => !describesMatch(exceptMatchId, v) && v.videoId !== ownVideoId)
+      // A Short rides on its long-form's day (see `pairGapTimes`); only a long-form holds a slot.
+      // An unknown length (0, still processing) counts — the cautious side.
+      .filter((v) => !(v.durationSec > 0 && v.durationSec <= SHORT_MAX_SEC))
       .map((v) => v.publishAt),
     ...uploads.filter((u) => u.matchId !== exceptMatchId).map((u) => u.record.publishAt),
     ...storedTimes(uploads)

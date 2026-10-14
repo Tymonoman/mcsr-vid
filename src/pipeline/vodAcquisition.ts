@@ -6,7 +6,6 @@ import type { MatchInfo, MatchVod } from "../api/types.js";
 
 // Shared with renderOverlay.ts so the overlay clip uses the same windowing convention as the VODs.
 export const PRE_ROLL_SEC = config.preRollSec; // buffer before the estimated match start, for the sync step to search within
-export const POST_ROLL_SEC = config.postRollSec; // buffer after the estimated match end
 const DEFAULT_RUN_SEC = config.defaultRunSec; // fallback when result.time is missing/zero (e.g. forfeits)
 
 export interface VodWindow {
@@ -111,7 +110,8 @@ async function downloadVodWindow(
   const matchStartIntoVodSec = matchStartIntoVodSecOf(match, vod);
   const matchEndIntoVodSec = matchStartIntoVodSec + runSec;
   const windowStartSec = Math.max(0, matchStartIntoVodSec - PRE_ROLL_SEC);
-  const windowEndSec = matchEndIntoVodSec + POST_ROLL_SEC;
+  // Read per call, not captured at import: a Settings change reaches the dashboard's in-process renders.
+  const windowEndSec = matchEndIntoVodSec + config.postRollSec;
 
   await mkdir(outDir, { recursive: true });
   const outputTemplate = path.join(outDir, `${playerNickname}.%(ext)s`);

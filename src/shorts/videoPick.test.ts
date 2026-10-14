@@ -59,7 +59,14 @@ delete process.env.HOOK_SUGGEST_CMD;
   };
   write(1, "A clean hook | doogile vs Feinberg | MCSR Ranked 1v1");
   write(2, "A blocked hook | doogile vs Aquacorde | MCSR Ranked 1v1");
-  config.blockedPlayers = ["aquacorde"]; // any case
+  // An operator-edited pair spelled "VS" or "vs." is still that pair.
+  write(3, "Another hook | doogile VS Aquacorde | MCSR Ranked 1v1");
+  write(4, "Third hook | BeefSalad vs. Feinberg | MCSR Ranked 1v1");
+  // A blocked player's titleNames spelling (Pinne is Skycrab), and one whose clip alone names him.
+  write(5, "Fourth hook | Skycrab vs doogile | MCSR Ranked 1v1");
+  write(6, "Fifth hook | edcr vs doogile | MCSR Ranked 1v1");
+  writeFileSync(path.join(pastDir, "6", "Aquacorde.mp4"), "x");
+  config.blockedPlayers = ["aquacorde", "beefsalad", "Pinne"]; // any case
   assert.deepEqual(
     pastTitleHooks().map((h) => h.hook),
     ["A clean hook"],
@@ -70,7 +77,7 @@ delete process.env.HOOK_SUGGEST_CMD;
     pastTitleHooks()
       .map((h) => h.hook)
       .sort(),
-    ["A blocked hook", "A clean hook"],
+    ["A blocked hook", "A clean hook", "Another hook", "Fifth hook", "Fourth hook", "Third hook"],
     "unblocked, it is back",
   );
   config.blockedPlayers = savedBlocked;
@@ -496,6 +503,18 @@ async function fallsBack(message: RegExp, timeoutMs?: number, fallback?: string)
   await fallsBack(/ends at RTA 10:40.0, past the end of the match \(10:22.4\)/);
   answer({ ...good, startSec: 500, endSec: 570, rtaAtStart: "8:20" });
   await fallsBack(/70\.0 s long, outside 12–60 s/);
+  // A window exactly at either bound from a decimal start stands, title hooks and all: on raw
+  // seconds 512.3 - 500.3 is 11.999999999999943 and 560.2 - 500.2 is 60.00000000000006 (14 Oct 2026).
+  for (const [startSec, endSec] of [
+    [500.3, 512.3],
+    [500.2, 560.2],
+  ] as const) {
+    answer({ ...good, startSec, endSec, rtaAtStart: "8:20", titleHooks: ["ICE COLD"] });
+    rmSync(pickFile(dir, single), { force: true });
+    const pick = await pickShortMoment(single, { force: true, log });
+    assert.equal(pick.source, "agy", `${startSec}–${endSec} stands`);
+    assert.deepEqual(pick.titleHooks, ["ICE COLD"]);
+  }
   answer({ ...good, rtaAtStart: "9:40" });
   await fallsBack(
     /rtaAtStart 9:40 is 20\.0 s from the window's start, RTA 9:20\.0 — not read off the footage/,
@@ -645,6 +664,11 @@ assert.equal(hookProblem("#31 vs #14"), "it uses a seed, rank or elo");
 assert.equal(hookProblem("#1 WORLD"), "it uses a seed, rank or elo");
 assert.equal(hookProblem("2427 vs 2293"), "it uses a seed, rank or elo");
 assert.equal(hookProblem("Can the 1789 take down the 2080?"), "it uses a seed, rank or elo");
+// The plain shapes (14 Oct 2026 edge pass); the world's seed type stays fair game.
+for (const h of ["CAN RANK 1 HOLD ON?", "TOP 10 PLAYER IN TROUBLE?", "THE 2100 ELO RUNNER?", "WORLD NUMBER ONE?", "A TOP SEED FALLS?"])
+  assert.equal(hookProblem(h), "it uses a seed, rank or elo", h);
+assert.equal(hookProblem("SAME SEED, 2 MINUTES APART"), null);
+assert.equal(hookProblem("A VILLAGE SEED"), null);
 // A lone elo, the word itself, a top seed or a bare rank (14 Oct 2026 edge run: all passed)...
 for (const h of [
   "A 2000 ELO SHOWDOWN",
@@ -680,6 +704,8 @@ assert.equal(hookProblem("Who wins this one?"), "it gives the result away");
     "it gives the result away",
     "a real nickname next to win-language is still a spoiler, 'to win it' or not",
   );
+  // Nor does the pace idiom mid-line: only a leading "A sub-N to win it" is the stake (14 Oct 2026).
+  assert.equal(hookProblem("EDCR GOES SUB-8 TO WIN IT", undefined, players), "it gives the result away");
 }
 console.log('OK: hookProblem allows "to win it" (a stake) while still refusing "who wins" (a result)');
 

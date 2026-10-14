@@ -690,6 +690,9 @@ export interface ChannelCommentThread {
   totalReplyCount: number;
   /** Whether each reply the API actually returned (`replies` is capped) was authored by the channel. */
   replyAuthorsAreChannel: boolean[];
+  /** Each returned reply's author and time (same cap) — Needs you's blocked-runner check reads a
+   *  reply too, e.g. one under the channel's own pinned comment. Never its text. */
+  replies: { author: string; publishedAt: string }[];
 }
 
 /**
@@ -718,7 +721,11 @@ export async function channelCommentThreads(
           };
         };
       };
-      replies?: { comments: Array<{ snippet: { authorChannelId?: { value?: string } } }> };
+      replies?: {
+        comments: Array<{
+          snippet: { authorDisplayName: string; publishedAt: string; authorChannelId?: { value?: string } };
+        }>;
+      };
     }>;
   }>(
     DATA_API,
@@ -739,6 +746,10 @@ export async function channelCommentThreads(
       replyAuthorsAreChannel: (t.replies?.comments ?? []).map(
         (c) => c.snippet.authorChannelId?.value === channelId,
       ),
+      replies: (t.replies?.comments ?? []).map((c) => ({
+        author: c.snippet.authorDisplayName,
+        publishedAt: c.snippet.publishedAt,
+      })),
     };
   });
 }

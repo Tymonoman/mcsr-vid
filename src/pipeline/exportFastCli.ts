@@ -1,7 +1,7 @@
 import path from "node:path";
 import { existsSync } from "node:fs";
 import { requireArg } from "../cliArgs.js";
-import { config, matchDir } from "../config.js";
+import { blockedIn, config, matchDir } from "../config.js";
 import { getMatch, parseMatchId } from "../api/mcsrApi.js";
 import { overlayPaths, readSplitStills } from "./overlayRender.js";
 import { readSyncOffsets } from "./syncFile.js";
@@ -37,6 +37,11 @@ const limitSec = Number(
 );
 
 const match = await getMatch(matchId);
+// A blocked runner withdrew their footage: never encoded, even from a render made before the
+// block. Every caller (Export button, nightly chainExport, series) spawns this CLI.
+if (blockedIn(match.players.map((p) => p.nickname))) {
+  throw new Error(`match ${matchId} has a blocked player — it is not exported`);
+}
 const [playerLeft, playerRight] = match.players;
 if (!playerLeft || !playerRight) throw new Error(`Match ${matchId} does not have two players.`);
 

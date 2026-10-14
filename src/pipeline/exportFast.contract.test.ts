@@ -74,7 +74,7 @@ for (const introSec of [2, 3, 4, 5, 6, 7, 3.017, 7.017]) {
     assert.equal(seekOf(withTeaser, clip), seekOf(untrimmed, clip), `${label}: ${clip} moved`);
 
   // P13: the card opens the video — it starts on the MP4's own 0, over the stage after the trim.
-  assert.ok(f.includes("setpts=N/60/TB+0/TB[INTRO]"), `${label}: the card at the MP4's 0`);
+  assert.ok(f.includes("setpts=N+0/TB[INTRO]"), `${label}: the card at the MP4's 0`);
   const stageUnderCard = trimFrames > 0 ? "[STAGET]" : "[STAGEC]";
   assert.ok(f.includes(`${stageUnderCard}[INTRO]overlay=`), `${label}: the card over ${stageUnderCard}`);
 
@@ -95,7 +95,7 @@ for (const introSec of [2, 3, 4, 5, 6, 7, 3.017, 7.017]) {
 
   // P15: in the MP4, the countdown teaser is up from the card's end to match start — no earlier
   // (over the card), no later (over the race).
-  const ct = /loop=loop=(\d+):size=1:start=0,settb=1\/60,setpts=N\/60\/TB\+(\d+)\[CT\]/.exec(f);
+  const ct = /loop=loop=(\d+):size=1:start=0,settb=1\/60,setpts=N\+(\d+)\[CT\]/.exec(f);
   assert.ok(ct, `${label}: no countdown teaser chain`);
   const [fromTimeline, frames] = [Number(ct[2]), Number(ct[1]) + 1];
   assert.ok(f.includes("[STAGE][CT]overlay="), `${label}: laid on the timeline, before the trim`);

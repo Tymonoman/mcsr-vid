@@ -200,6 +200,63 @@ console.log("OK: a signal that turns true during the boot check is caught before
 }
 console.log("OK: idle() clear on both reads with a clean boot check actually calls exit, once");
 
+// --- A DELETE (or a fresh POST) while the boot check runs: that tick speaks for no arm ---------
+{
+  let exitCalls = 0;
+  let checking = false;
+  let idleReads = 0;
+  armRestart({
+    idleDeps: () => {
+      idleReads += 1;
+      return allClear();
+    },
+    bootCheck: async () => {
+      checking = true;
+      await sleep(200);
+      return null;
+    },
+    checkIntervalMs: 10,
+    expireMs: 5_000,
+    exit: () => (exitCalls += 1),
+  });
+  while (!checking) await sleep(5);
+  assert.equal(disarmRestart(), true);
+  const reads = idleReads;
+  await sleep(400);
+  assert.equal(exitCalls, 0, "cancelled during tsc: the passing check must not exit anyway");
+  assert.equal(restartState(), null);
+  assert.equal(idleReads, reads, "and the cancelled arm's poll is not resurrected");
+}
+{
+  let exitCalls = 0;
+  let checking = false;
+  armRestart({
+    idleDeps: () => allClear(),
+    bootCheck: async () => {
+      checking = true;
+      await sleep(200);
+      return "error TS2304: the old checkout";
+    },
+    checkIntervalMs: 10,
+    expireMs: 5_000,
+    exit: () => (exitCalls += 1),
+  });
+  while (!checking) await sleep(5);
+  armRestart({
+    idleDeps: () => ({ ...allClear(), jobRunning: () => true }),
+    bootCheck: async () => null,
+    checkIntervalMs: 10,
+    expireMs: 5_000,
+    exit: () => (exitCalls += 1),
+  });
+  await sleep(400);
+  assert.equal(exitCalls, 0);
+  assert.equal(restartState()?.error, undefined, "the replaced arm's tsc error is not the new arm's");
+  assert.deepEqual(restartState()?.blockedBy, ["a render is running"], "the new arm polls on its own");
+  disarmRestart();
+}
+console.log("OK: a DELETE or a fresh POST during the boot check wins over the tick already in it");
+
 // --- Expiry: an arm that never goes idle gives up after its window, cleanly --------------------
 {
   const state = armRestart({
