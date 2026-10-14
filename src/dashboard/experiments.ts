@@ -143,21 +143,22 @@ export const scheduleEntryFor = (
  * A date's schedule entries can now number more than one — a render arm (`render`, applied
  * before that night's render) and a slot arm (`slot`, publish hours / Short delay) of *different*
  * experiments both naming the same date. These two helpers pick the entry tagged for the side
- * that's asking, falling back to the date's first entry when none carries that tag — so a date
- * with just the one entry (every shape on disk before this existed) resolves exactly as
- * `scheduleEntryFor` always did.
+ * that's asking, falling back to the date's first entry not tagged for the *other* side — so an
+ * untagged entry (every shape on disk before this existed) resolves exactly as `scheduleEntryFor`
+ * always did, but a slot-only night never labels a render (`writeExperimentArmFile`), nor a
+ * render-only date a publish (`enrolVideos`), with the other side's arm.
  */
 export function slotEntryFor(
   date: string,
   data: ExperimentsFile = readExperiments(),
 ): ScheduleEntry | undefined {
   const entries = data.schedule.filter((s) => s.date === date);
-  return entries.find((s) => s.slot) ?? entries[0];
+  return entries.find((s) => s.slot) ?? entries.find((s) => !s.render);
 }
 
 function renderEntryFor(date: string, data: ExperimentsFile): ScheduleEntry | undefined {
   const entries = data.schedule.filter((s) => s.date === date);
-  return entries.find((s) => s.render) ?? entries[0];
+  return entries.find((s) => s.render) ?? entries.find((s) => !s.slot);
 }
 
 /**
@@ -169,8 +170,13 @@ export function rankedHoursForDate(
   date: string,
   data: ExperimentsFile = readExperiments(),
 ): number[] | undefined {
-  const hours = slotEntryFor(date, data)?.slot?.rankedHoursUtc;
-  return hours && hours.length > 0 ? [...hours].sort((a, b) => a - b) : undefined;
+  const hours: unknown = slotEntryFor(date, data)?.slot?.rankedHoursUtc;
+  // Hand-edited, like shortDelayHours below: only whole UTC hours 0–23 count — a string would be
+  // spread into digits, 24 rolls into tomorrow, 19.5 publishes at 19:30.
+  const ok = Array.isArray(hours)
+    ? hours.filter((h): h is number => Number.isInteger(h) && h >= 0 && h <= 23)
+    : [];
+  return ok.length > 0 ? ok.sort((a, b) => a - b) : undefined;
 }
 
 /**

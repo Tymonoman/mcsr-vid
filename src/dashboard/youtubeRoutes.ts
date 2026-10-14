@@ -166,12 +166,11 @@ export async function handleYoutubeRoute(
       });
       return true;
     }
-    // First, before any read or write reaches YouTube (config.blockedPlayers). The API's names or
-    // the clips' (`matchStatusFor`) miss a match archived off disk with the API down, or a blocked
-    // runner since renamed; the chats and the title still name them (`blockedOnDisk`), the same
-    // pair `matchIsBlocked` checks for the render routes, without its second MCSR read.
-    const status = await matchStatusFor(matchId);
-    if (blockedIn([status.leftNickname, status.rightNickname]) || blockedOnDisk(matchDir(matchId))) {
+    // First, off the disk alone (config.blockedPlayers): the chats and the title still name a
+    // blocked runner when the clips are archived or the runner has since renamed, and this costs
+    // no network — the cheap refusals below stay offline. The API's names are checked just
+    // before the first YouTube read, the same pair `matchIsBlocked` checks for the render routes.
+    if (blockedOnDisk(matchDir(matchId))) {
       ctx.json(res, 403, { error: `match ${matchId} has a blocked player — it cannot be adopted` });
       return true;
     }
@@ -216,6 +215,11 @@ export async function handleYoutubeRoute(
     // The draft in Studio is the export on disk, and a sync.json written after that export means
     // the export places the clips by numbers the operator has since corrected. The same refusal
     // the Upload button gets (`beginUpload`); no export at all is not stale, only unverifiable.
+    const status = await matchStatusFor(matchId);
+    if (blockedIn([status.leftNickname, status.rightNickname])) {
+      ctx.json(res, 403, { error: `match ${matchId} has a blocked player — it cannot be adopted` });
+      return true;
+    }
     const located = findExportedVideo(matchId, [status.leftNickname, status.rightNickname]);
     const staleness = "error" in located ? null : exportStale(matchDir(matchId), located.path);
     if (staleness?.stale) {
