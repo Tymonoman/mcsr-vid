@@ -31,13 +31,15 @@ one.</p>
       <code>playlistItems.list</code> and <code>videos.list</code> on the channel's own videos
       and playlists, so the tool knows what is already published; <code>commentThreads.list</code>
       on the channel's own videos, so the operator sees comments that have no reply yet. Before
-      writing to a video, the tool reads it and refuses if it belongs to another channel.</li>
+      changing an existing video's details or thumbnail, the tool reads it and refuses if it is
+      on another channel.</li>
   <li><code>yt-analytics.readonly</code>: the YouTube Analytics API and one standing YouTube
       Reporting API job, both for the channel's own videos only. They supply views, watch time,
       subscribers gained, audience retention, and thumbnail impressions and click-through rate.
       These numbers are used to compare thumbnails and titles in A/B tests (including YouTube's
       own Test &amp; Compare), to choose which matches to make next, to track progress toward the
-      YouTube Partner Programme, and for the operator's daily summary.</li>
+      YouTube Partner Programme, for the operator's daily summary, and for a review of one
+      published video when the operator asks for it (see <a href="#where">Where data goes</a>).</li>
 </ul>
 
 <h2>Actions in YouTube Studio</h2>
@@ -58,16 +60,21 @@ password or answers a security check.</p>
       the author name and the first 110 characters of each comment that has no reply yet. No one
       else is in the chat.</li>
   <li><strong>Anthropic's Claude</strong> writes the report's headline and answers the operator's
-      questions in that chat. It receives counts, video titles, match ids, player names and the
-      operator's own notes about the channel. It never receives a comment's text or the name of
-      the person who wrote it.</li>
+      questions in that chat. For that it receives counts, video titles, match ids, player names
+      and the operator's own notes about the channel. When the operator presses the audit button
+      on a published video, a Claude session also watches that video and receives its
+      title, both player names, its view, like and comment counts, its engaged views and minutes
+      watched from YouTube Analytics, and its impressions and click-through rate, and writes a
+      review for the operator. Claude never receives a comment's text or the name of the person
+      who wrote it.</li>
   <li><strong>Google's Gemini</strong> (through Google's Antigravity tool) watches a small,
       low-frame-rate copy of each finished video, with sound, plus stills and a transcript of each
       runner's stream, a few lines from the stream's Twitch chat and the operator's past video
       titles as style examples, to suggest a moment for the Short and a title. It receives no data
       read from the YouTube API.</li>
-  <li><strong>Groq</strong> receives the runners' stream audio for the match's duration and
-      returns a transcript for the step above.</li>
+  <li><strong>Groq</strong> (or OpenAI, if no Groq key is set) transcribes audio: the runners'
+      stream audio for the match's duration, for the step above, and the published video's audio
+      during an audit, when YouTube has no captions for it.</li>
 </ul>
 <p>The OAuth refresh token is kept in one file on the operator's machine and is sent only to
 Google's token endpoint. There is no server operated by this project.</p>
@@ -76,7 +83,8 @@ Google's token endpoint. There is no server operated by this project.</p>
 <ul>
   <li><strong>On the operator's machine</strong>, per match: both players' Twitch VOD windows,
       their Twitch chat replays, the finished video, thumbnails, the Short and the stills and
-      transcripts made for picking it, and a record of each upload (video id, title, upload and
+      transcripts made for picking it, any audit review the operator asked for, and a record of
+      each upload (video id, title, upload and
       publish time, privacy status, the chosen thumbnail). Beside them: copies of live
       thumbnails kept so a change can be undone, A/B test results (impressions and
       click-through rate per video), each player's typical first-week views, and the last channel totals
@@ -86,9 +94,7 @@ Google's token endpoint. There is no server operated by this project.</p>
   <li><strong>Not stored</strong>: comment text and commenter names. They are fetched when the
       dashboard or the report needs them and not written to disk.</li>
 </ul>
-<p>There is no automatic expiry. Files stay until the operator deletes them, and they are
-deleted on request (see <a href="#removal">Removal and contact</a>). On request the operator
-also deletes the stored token and every per-video statistics file.</p>
+<p>There is no automatic expiry. Files stay until the operator deletes them.</p>
 
 <h2>Runners' footage and Twitch data</h2>
 <p>The pipeline reads public match data from the MCSR Ranked API, downloads the match's window
@@ -118,23 +124,17 @@ page</a>, which ends the application's access at once. Deleting the stored token
 same effect locally.</p>
 
 <h2 id="removal">Removal and contact</h2>
-<p>If you appear in a video and want it removed, or want your data deleted, any of these
-reaches the operator:</p>
+<p>If you appear in a video and want it removed, either of these reaches the operator:</p>
 <ul>
-  <li>a comment on any of the channel's videos asking for removal (unanswered comments reach the
-      operator every morning);</li>
-  <li>the email address on the
-      <a href="https://www.youtube.com/channel/UCm2mAyONTHlmIxZzNmi388w/about">channel's About
-      page</a>;</li>
+  <li>a comment on any of the channel's videos asking for removal (the operator sees the
+      channel's newest comments each morning);</li>
   <li>an issue on the <a href="https://github.com/Tymonoman/mcsr-vid/issues">project's
       GitHub</a>.</li>
 </ul>
 <p>A runner who asks is added to a block list: no match of theirs is suggested, rendered or
-uploaded again. Their existing videos are taken down, and the footage and chat saved for their
-matches are deleted.</p>
+uploaded again, and their existing videos are taken down.</p>
 
 <hr class="rule">
 <footer>Contact: a comment on any <a href="https://www.youtube.com/channel/UCm2mAyONTHlmIxZzNmi388w">MCSR Replayoffs</a> video,
-the email on the channel's <a href="https://www.youtube.com/channel/UCm2mAyONTHlmIxZzNmi388w/about">About page</a>,
 or <a href="https://github.com/Tymonoman/mcsr-vid/issues">an issue on GitHub</a>.</footer>
 </div></body></html>

@@ -204,3 +204,7 @@ Start with the doc for your role:
   pitfalls. [handbook/claude-md-reference.md](handbook/claude-md-reference.md) has the reasons.
 - **[handbook/](handbook/README.md)**: for the operator. It covers running the channel: the
   Studio fallback, the YouTube API compliance review and the domain.
+
+## Licence
+
+MIT; see [LICENSE](LICENSE).
