@@ -36,6 +36,17 @@ export function matchStartIntoVodSec(match: MatchInfo, vod: { startsAt: number }
 }
 const matchStartIntoVodSecOf = matchStartIntoVodSec;
 
+/**
+ * Seconds into the downloaded clip where the match is estimated to start: `PRE_ROLL_SEC`, less
+ * whatever the VOD's head clamped off the window — a stream that went live under 150 s before
+ * the match, or a VOD that began after it (negative). The reuse path and validate-sync read
+ * clips already on disk and must search where the download put the match, not at 150 s.
+ */
+export function matchOffsetIntoClipSec(match: MatchInfo, vod: { startsAt: number }): number {
+  const start = matchStartIntoVodSecOf(match, vod);
+  return start - Math.max(0, start - PRE_ROLL_SEC);
+}
+
 interface RunOpts {
   onProgress?: (percent: number) => void;
   signal?: AbortSignal;
@@ -101,7 +112,6 @@ async function downloadVodWindow(
   const matchEndIntoVodSec = matchStartIntoVodSec + runSec;
   const windowStartSec = Math.max(0, matchStartIntoVodSec - PRE_ROLL_SEC);
   const windowEndSec = matchEndIntoVodSec + POST_ROLL_SEC;
-  const matchOffsetIntoClipSec = matchStartIntoVodSec - windowStartSec;
 
   await mkdir(outDir, { recursive: true });
   const outputTemplate = path.join(outDir, `${playerNickname}.%(ext)s`);
@@ -129,7 +139,7 @@ async function downloadVodWindow(
     sourceUrl: vod.url,
     path: path.join(outDir, `${playerNickname}.mp4`),
     matchOffsetIntoVodSec: matchStartIntoVodSec,
-    matchOffsetIntoClipSec,
+    matchOffsetIntoClipSec: matchOffsetIntoClipSec(match, vod),
   };
 }
 
