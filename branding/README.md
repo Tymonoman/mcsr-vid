@@ -23,3 +23,7 @@ mirror them in `build_ring_cells()` here too — the two are intentionally
 kept as parallel implementations rather than one importing the other, since
 one is TypeScript (runs in the Remotion/browser render) and one is Python
 (runs at asset-generation time, offline).
+
+## Video watermark
+
+`watermark.png` (150x150, transparent corners) is the subscribe-style branding watermark YouTube shows at 40 px in the player's bottom-right corner, which on our long-forms is the empty corner of the RTA timer plate. Regenerate with `python3 branding/make_watermark.py` (the `subscribe` variant is the one in use; the badge variants do not read at 40 px). Upload: Studio → Customisation → Branding → Video watermark, display time "Entire video".
