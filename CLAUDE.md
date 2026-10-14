@@ -75,7 +75,7 @@ Use the script, don't reconstruct the shell line. Extra arguments go after `--`.
 | `npm run chat -- <matchId>` | Fetch both players' Twitch chat for a match that saved none. |
 | `npm run clip -- <twitch url \| file> [--from=HH:MM:SS --to=HH:MM:SS] --title="…" --speaker="…" --when="…" --credit="…" [--slug=…] [--seconds=N]` | A standalone clip, not a match; see Clips. |
 | `npm run tg -- report --dry-run` | Morning report printed, nothing sent. **Prints real viewer comment text**: prefer `cmd "/needs"` / `"/ypp"` / `"/stats 7d"`. `send --md <file>` sends to the operator; `whoami` prints chat ids. |
-| `npm run pick -- <matchId \| all> [--force] [--dry-run]` | Ask the model for the Short's moment. `--dry-run` writes nothing, refuses if the one on disk is current. |
+| `npm run pick -- <matchId \| all> [--force] [--dry-run]` | Ask the model for the Short's moment. `--dry-run` asks afresh and writes nothing; refuses (exit 1) only when the proxy or a /watch cache would have to be made first. |
 | `npm run bench -- <Composition> [--frames=N] [--codec=] [--pixelFormat=] [--concurrency=N]` | Render throughput; measure before claiming a render change is faster. |
 | `scripts/seed-icons/icons.sh [TYPE…]` | Re-render thumbnail seed-type icons. |
 | `npm run retention -- <videoId>… [--days=90]` | Audience retention per video, per decile. |

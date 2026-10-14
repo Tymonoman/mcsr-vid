@@ -29,12 +29,14 @@ const forceCpu = process.argv.includes("--cpu");
 /** Keep the whole configured post-roll instead of trimming to where the reaction stops. */
 const fullTail = process.argv.includes("--full-tail");
 /** Render only the first N seconds — a smoke test for the filter graph before a full run. */
-const limitSec = Number(
-  process.argv
-    .slice(2)
-    .find((a) => a.startsWith("--seconds="))
-    ?.slice("--seconds=".length) ?? NaN,
-);
+const secondsArg = process.argv.slice(2).find((a) => a === "--seconds" || a.startsWith("--seconds="));
+const limitSec = secondsArg === undefined ? NaN : Number(secondsArg.slice("--seconds=".length));
+// A smoke run asked for in any spelling it cannot read refuses — falling through to a full export
+// once wrote over a published match's final.
+if (secondsArg !== undefined && !(limitSec > 0)) {
+  console.error("export:fast: --seconds needs a positive number of seconds, written --seconds=N");
+  process.exit(1);
+}
 
 const match = await getMatch(matchId);
 // A blocked runner withdrew their footage: never encoded, even from a render made before the

@@ -120,7 +120,9 @@ cp mcsr-vid.config.example.json mcsr-vid.config.json   # optional: any subset of
 npm run dashboard                                      # http://localhost:8080
 ```
 
-Commands accept a match id or a match page URL. Extra arguments go after `--`. The everyday
+Commands accept a match id or a match page URL as the first argument, with flags after it
+(the trailing number of whatever is given is taken as the match id, so pass an MCSR Ranked
+match, not a Twitch link). Extra arguments go after `--`. The everyday
 commands (`dashboard`, `export:fast`, `short`, `short:hand`, `pick`, `series`, `sync-status`,
 `chat`, `clip`, `tg`, `studio`, `tc-thumbs` and the rest) are in the
 [Commands table in CLAUDE.md](CLAUDE.md#commands). The ones not listed there:
