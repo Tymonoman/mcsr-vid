@@ -293,19 +293,6 @@ async function assertRefused(matchId: number, videoId: unknown, status: number, 
   return from;
 }
 
-/** A documented promise the code does not keep: printed, collected, and the run carries on. */
-const deviations: string[] = [];
-async function deviation(clause: string, check: () => void | Promise<void>) {
-  try {
-    await check();
-  } catch (err) {
-    if (!(err instanceof assert.AssertionError)) throw err;
-    const line = `DEVIATION: ${clause} — ${err.message.split("\n")[0]}`;
-    deviations.push(line);
-    console.log(line);
-  }
-}
-
 try {
   /* --- 1-4, 11: the happy path, with uploads switched off -------------------------------------- */
   {
@@ -523,25 +510,16 @@ try {
 
     // A link to a different match whose id merely starts with this one's. Pairing reads the
     // `/matches/<id>` segment to its end (`describesMatch`), so this description pairs the video
-    // with nothing, or with match 135600371 — Adopt should refuse it as "would not pair".
+    // with nothing, or with match 135600371 — Adopt refuses it as "would not pair".
     const P = 13560037;
     await prepare(P, {
       description:
         "v_strid vs doogile, mcsr ranked 1v1 on the same seed.\n\nmatch page: https://mcsrranked.com/matches/135600371\n",
     });
     draft("PrefixLink1");
-    const from = calls.length;
-    const a = await adopt(P, "PrefixLink1");
-    await deviation("refuses a description that would not pair (CLAUDE.md, Adopt a Studio draft)", () => {
-      assert.equal(
-        a.status,
-        409,
-        `a description linking /matches/135600371 was adopted onto match ${P} (status ${a.status}, ${ytWrites(from).length} YouTube writes); channelVideoFor(${P}) afterwards = ${channelVideoFor(P, [asChannelVideo("PrefixLink1")])?.videoId ?? "null"}`,
-      );
-    });
-    console.log(
-      "OK: a description that would not pair is refused (the prefix case is reported above if not)",
-    );
+    await assertRefused(P, "PrefixLink1", 409, /would not pair/, "a link to /matches/135600371");
+    assert.equal(channelVideoFor(P, [asChannelVideo("PrefixLink1")]), null, "and it would not have paired");
+    console.log("OK: a description that would not pair is refused, a longer id's link included");
   }
 
   /* --- 11: no operator-confirmed thumbnail ------------------------------------------------------ */
@@ -626,11 +604,7 @@ try {
     console.log("OK: Finish on YouTube adds what is missing and never replaces the title or description");
   }
 
-  console.log(
-    deviations.length
-      ? `youtubeRoutes.adopt.contract: all checks passed (${deviations.length} documented deviation(s) reported above)`
-      : "youtubeRoutes.adopt.contract: all checks passed",
-  );
+  console.log("youtubeRoutes.adopt.contract: all checks passed");
 } finally {
   globalThis.fetch = realFetch;
   config.mediaDir = saved.mediaDir;

@@ -11,6 +11,7 @@ import path from "node:path";
 import {
   channelUploadsSnapshot,
   channelVideoFor,
+  describesMatch,
   parseIsoDuration,
   SHORT_MAX_SEC,
   refreshChannelUploadsIfStale,
@@ -195,7 +196,7 @@ export async function handleYoutubeRoute(
       ctx.json(res, 409, { error: `The title still reads ${HOOK_PLACEHOLDER} — pick a hook first` });
       return true;
     }
-    if (!description.includes(`/matches/${matchId}`)) {
+    if (!describesMatch(matchId, { description } as ChannelVideo)) {
       // Without it the video would not pair, and every later lookup would call it unpublished.
       ctx.json(res, 409, {
         error: `The description does not link /matches/${matchId}, so the video would not pair`,
