@@ -29,9 +29,12 @@ import type { MatchInfo, UserDetails, VersusStats } from "../api/types.js";
  * - a ladder rank ("#31 vs #14", "#1 WORLD")
  * - an elo pairing ("2427 vs 2293", "Can the 1789 take down the 2080?")
  */
-// A bracket seed only ("7th seed", "#7 seed", "the LCQ"): the world's seed type ("village seed",
-// "same seed") is fair game for a hook.
-export const HOOK_SEED_RANK_ELO = /#\d+|\b\d+(?:st|nd|rd|th) seed\b|\blcq\b|\b\d{3,4}\b[^\d]+\b\d{3,4}\b/i;
+// A bracket seed only ("7th seed", "#7 seed", "top seed", "the LCQ"): the world's seed type
+// ("village seed", "same seed") is fair game for a hook. Also the word "elo" and a lone rank
+// ("RANK 1", "THE NO. 1 SEED", "WORLD NUMBER ONE") — "no" needs its period, so "NO ONE SAW
+// THAT COMING" still passes.
+export const HOOK_SEED_RANK_ELO =
+  /#\d+|\b\d+(?:st|nd|rd|th) seed\b|\blcq\b|\b\d{3,4}\b[^\d]+\b\d{3,4}\b|\belo\b|\btop seed\b|\bno\.\s*\d+|\bnumber\s*(?:\d+|one)\b|\brank\s*#?\d+\b/i;
 
 /**
  * Words that name a runner by race, ethnicity or nationality, or a slur-adjacent abbreviation of
@@ -112,7 +115,10 @@ interface Candidate {
  * it rounds to a whole number, and "1 second" (singular) when that whole number is 1.
  */
 function secondsPhrase(ms: number): string {
-  if (ms < 100) return `${Math.round(ms)} milliseconds`;
+  if (ms < 100) {
+    const n = Math.round(ms);
+    return `${n} millisecond${n === 1 ? "" : "s"}`;
+  }
   const tenths = Math.round(ms / 100);
   if (tenths === 10) return "1 second";
   const whole = tenths / 10;
@@ -168,8 +174,8 @@ function candidates(input: HookInput): Candidate[] {
     // Under three seconds after eight-plus minutes is the whole story; the scorer uses the same
     // 3s window to call a split "close". 3-10s keeps the same "Decided by" subject rather than a
     // bare "N seconds apart" — every such hook in the 6 Oct 2026 panel was dropped for not saying
-    // what the number measured.
-    if (finishMarginMs < 10_000)
+    // what the number measured. A dead heat (0ms) was decided by nothing, so it gets no chip.
+    if (finishMarginMs > 0 && finishMarginMs < 10_000)
       out.push({
         text: `Decided by ${secondsPhrase(finishMarginMs)}`,
         weight: finishMarginMs < 3_000 ? 95 : 65,
@@ -326,8 +332,10 @@ export function spoilsTheResult(text: string): boolean {
   // Placements are results too: a playoff placing in a ranked video's title ("WINNER vs 3rd
   // PLACE", 23 Sept 2026) told the Season 11 bracket's outcome while its series were still
   // going out from the Round of 16. A sweep is a series result: "PLAYOFFS | SWEPT vs TAS" on a
-  // best of 5 told how it went (24 Sept 2026 audit), whoever the nickname meant.
-  return /\b(swept|sweeps?|wins?|won|winner|beats?|beaten|destroys?|crushes|takes? (?:it|down|the win)|took (?:it|the win)|loses?|lost|loser|chokes?|choked|throws?|threw|clutch(?:es|ed)?|comeback complete|survives?|eliminat(?:es|ed)|(?:1st|2nd|3rd|4th|first|second|third|fourth) place|runners?[- ]up|(?:semi-?)?finalists?|champions?|podium)\b/i.test(
+  // best of 5 told how it went (24 Sept 2026 audit), whoever the nickname meant. So do the
+  // words of how it went: "HUGE UPSET", "EDCR DOMINATES", "THE LEAD HOLDS" (14 Oct 2026 edge
+  // run) — an upset is only ever a question.
+  return /\b(swept|sweeps?|wins?|won|winner|beats?|beaten|destroys?|crushes|takes? (?:it|down|the win)|took (?:it|the win)|loses?|lost|loser|chokes?|choked|throws?|threw|clutch(?:es|ed)?|comeback complete|survives?|eliminat(?:es|ed)|(?:1st|2nd|3rd|4th|first|second|third|fourth) place|runners?[- ]up|(?:semi-?)?finalists?|champions?|podium|upset|revenge|redemption|dominat(?:es|ed)|outplay(?:s|ed)|outpac(?:es|ed)|prevail(?:s|ed)|never (?:looked back|trailed)|wire to wire|(?:lead|it) holds|held on)\b/i.test(
     line,
   );
 }
