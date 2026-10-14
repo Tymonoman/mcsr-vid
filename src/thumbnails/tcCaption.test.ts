@@ -60,6 +60,7 @@ function input(over: Partial<MatchMetrics>): HookInput {
 // right onto a digit to abbreviate ("1.3S" reads as "1.35" in Monocraft) — the margin caption only
 // survives for a whole number of seconds, where "N SEC" has a space before the unit.
 assert.equal(shortenHookChip("Decided by 58 milliseconds"), "58 MS");
+assert.equal(shortenHookChip("Decided by 1 millisecond"), "1 MS", "hooks.ts says it singular at one");
 assert.equal(shortenHookChip("Decided by 2 seconds"), "2 SEC");
 assert.equal(shortenHookChip("Decided by 1 second"), "1 SEC");
 assert.equal(shortenHookChip("Decided by 1.3 seconds"), null, "a decimal margin has no clean token, dropped");

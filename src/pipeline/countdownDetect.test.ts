@@ -1,5 +1,16 @@
 import assert from "node:assert/strict";
-import { findCountdownOnset, findMatchStartIndex, frameMotion, whiteCounts } from "./countdownDetect.js";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  detectMatchStartAny,
+  findCountdownOnset,
+  findMatchStartIndex,
+  frameMotion,
+  whiteCounts,
+} from "./countdownDetect.js";
 
 const FPS = 10;
 
@@ -141,6 +152,36 @@ const digitSeries = (spec: Array<[seconds: number, count: number]>): number[] =>
   assert.equal(found.endIndex, null);
   assert.equal(found.seconds, 8);
   assert.match(found.detail, /end not seen/);
+}
+
+{
+  // A menu opened late in the "2", or as the "1" would appear (silverrruns, 13301662): the "2"
+  // showed 0.6-1.0 s, a full "10" ten seconds back says the drop is not 0:00 — the onset is.
+  for (const at of [8.6, 8.8, 9.0]) {
+    const counts = digitSeries([
+      [13, 0],
+      [1, 407],
+      ...DIGITS.slice(0, 8).map((n): [number, number] => [1, n]),
+      [at - 8, DIGITS[8]!],
+      [2, 23],
+      [6, 0],
+    ]);
+    const found = findCountdownOnset(counts, 14 * FPS, FPS);
+    assert.equal(found.index, 14 * FPS, `menu at +${at}`);
+    assert.equal(found.endIndex, null, `menu at +${at}: the drop is not 0:00`);
+    assert.match(found.detail, /end not seen/);
+  }
+  // The same with a "10" whose first frame is dim (a moving background), so the onset pass
+  // misses it: the drop 9 s after a visible "10" is still no end, and nothing beats a wrong 0:00.
+  const counts = digitSeries([
+    [13, 0],
+    [0.1, 1184],
+    [0.9, 1532],
+    ...DIGITS.slice(1, 9).map((n): [number, number] => [1, n]),
+    [2, 23],
+    [6, 0],
+  ]);
+  assert.equal(findCountdownOnset(counts, 14 * FPS, FPS).index, null, "a drop 9 s after the 10 is not 0:00");
 }
 
 {
@@ -339,5 +380,39 @@ const digitSeries = (spec: Array<[seconds: number, count: number]>): number[] =>
 
 // whiteCounts counts what is at or over the threshold.
 assert.deepEqual(whiteCounts([new Uint8Array([0, 235, 255, 234]), new Uint8Array([255])]), [2, 1]);
+
+{
+  // An estimate ~20 s late (a VOD running ahead of the API's clock) opens the ±25 s window on the
+  // "5": that fragment is untrusted, so the ±150 s look still runs and reads the whole countdown.
+  // Before, the fragment blocked it, and the freeze had under 5 s left in the window: nothing.
+  // A 90 s clip, the "10" at 30 s, camera frozen 29-40 s, 0:00 at 40 s.
+  const dir = mkdtempSync(path.join(tmpdir(), "countdown-"));
+  const clip = path.join(dir, "edge.mp4");
+  const font = fileURLToPath(new URL("../../remotion/assets/fonts/Monocraft-Bold.ttf", import.meta.url));
+  try {
+    execFileSync("ffmpeg", [
+      "-v", "error", "-y",
+      "-f", "lavfi", "-i", "color=c=0x505050:s=320x180:r=10:d=90",
+      "-vf",
+      "format=yuv420p,geq=lum='128+90*sin(X/9+T*11)*sin(Y/7-T*8)':cb=128:cr=128:enable='lt(t,29)+gte(t,40)'," +
+        `drawtext=fontfile=${font}:fontsize=20:fontcolor=white:text='%{eif\\:ceil(40-t)\\:d}':` +
+        "x=(w-text_w)/2:y=h*0.48-text_h/2:enable='gte(t,30)*lt(t,40)'",
+      "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1", clip,
+    ]); // prettier-ignore
+    for (const estimate of [60, 61]) {
+      const r = await detectMatchStartAny(clip, estimate);
+      assert.ok(
+        r.matchStartSec !== null && Math.abs(r.matchStartSec - 40) <= 0.1,
+        `estimate ${estimate}: expected 0:00 at 40 s, got ${r.matchStartSec} (${r.detail})`,
+      );
+      assert.ok(
+        r.confidence >= 0.3,
+        `estimate ${estimate}: a full countdown is trusted, got ${r.confidence}`,
+      );
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 console.log("countdownDetect: digit checks passed");
