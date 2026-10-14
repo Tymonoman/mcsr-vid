@@ -24,3 +24,20 @@ console.log("all checks passed");
   );
   console.log("OK: matchStartIntoVodSec");
 }
+
+// --- Where the match sits inside the downloaded clip --------------------------------------------
+// The window opens PRE_ROLL_SEC before the start but never before the VOD's own head, so a clip
+// already on disk is searched where the download put the match, not at a flat 150 s.
+{
+  const { matchOffsetIntoClipSec, PRE_ROLL_SEC } = await import("./vodAcquisition.js");
+  const match = { date: 10_000, result: { time: 480_000 } } as unknown as import("../api/types.js").MatchInfo;
+  const liveFor = (sec: number) => ({ startsAt: 10_000 - 480 - sec });
+  assert.equal(matchOffsetIntoClipSec(match, liveFor(600)), PRE_ROLL_SEC, "a long stream: the full pre-roll");
+  assert.equal(
+    matchOffsetIntoClipSec(match, liveFor(60)),
+    60,
+    "live 60 s before the match: clamped at the head",
+  );
+  assert.equal(matchOffsetIntoClipSec(match, liveFor(-20)), -20, "a VOD that began after the match");
+  console.log("OK: matchOffsetIntoClipSec");
+}

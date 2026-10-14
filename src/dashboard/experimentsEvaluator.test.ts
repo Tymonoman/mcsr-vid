@@ -192,7 +192,8 @@ assert.equal(twoProportionZ(0, 0, 10, 100), 0, "nothing to divide by on one side
   // Control: 2 real videos + 2 at zero views. Every variant video is ahead, but 2 is under the floor.
   const thin = baseExperiment({
     ...metric,
-    videos: [1, 2, 3, 4].map((matchId) => ({ matchId, arm: "control" }))
+    videos: [1, 2, 3, 4]
+      .map((matchId) => ({ matchId, arm: "control" }))
       .concat([5, 6, 7].map((matchId) => ({ matchId, arm: "variant" }))),
   });
   const thinTotals = await armTotalsFor(thin, fetch);
@@ -203,7 +204,8 @@ assert.equal(twoProportionZ(0, 0, 10, 100), 0, "nothing to divide by on one side
   // 3 real a side, plus a zero-view video in the leading arm: it still wins.
   const lead = baseExperiment({
     ...metric,
-    videos: [1, 2, 8].map((matchId) => ({ matchId, arm: "control" }))
+    videos: [1, 2, 8]
+      .map((matchId) => ({ matchId, arm: "control" }))
       .concat([5, 6, 7, 3].map((matchId) => ({ matchId, arm: "variant" }))),
   });
   const v = verdictFor(lead, await armTotalsFor(lead, fetch));
@@ -422,6 +424,19 @@ assert.equal(twoProportionZ(0, 0, 10, 100), 0, "nothing to divide by on one side
     logged.some((l) => String(l[0]).includes("bad-key evaluation failed")),
     `logged the same way any other evaluation failure is (got ${JSON.stringify(logged)})`,
   );
+
+  // The next day fails the same way: two in a row reaches needsHuman, the same as any other
+  // failure (the try used to clear yesterday's failure before settle() threw).
+  console.error = () => {};
+  try {
+    await evaluateExperiments({ fetch, now: () => Date.parse("2026-10-09T04:15:00Z") });
+  } finally {
+    console.error = realError;
+  }
+  const day2 = readExperiments().experiments.find((e) => e.id === "bad-key")!;
+  assert.ok(day2.needsHuman?.includes("notARealSetting"), `needsHuman on day two (got ${day2.needsHuman})`);
+  assert.equal(day2.status, "running");
+  assert.equal(day2.lastEvalFailure?.date, "2026-10-09");
 }
 
 // --- evaluateExperiments: a second concurrent call is a no-op while the first is in flight ------
@@ -829,6 +844,91 @@ assert.equal(twoProportionZ(0, 1000, 0, 1000), 0, "pooled proportion 0 — se is
     "only-arm",
     "uploadedAt's own date was used since publishAt was null",
   );
+}
+
+// --- The live CTR read sums every daily report since publish, not the newest day alone ---------
+// channel_reach_basic_a1 writes one CSV a day; the newest (13 Oct) reverses the two days before it.
+// A row dated before the publish day (10 Oct) is dropped — "20261010" vs "2026-10-11" used to
+// compare as strings and pass. Token and every Google host faked: nothing leaves the process.
+{
+  const realFetch = globalThis.fetch;
+  const tokenFile = path.join(media, "fake-token.json");
+  writeFileSync(tokenFile, JSON.stringify({ client_id: "c", client_secret: "s", refresh_token: "r" }));
+  process.env.YOUTUBE_TOKEN_FILE = tokenFile;
+  config.youtubeReportingJobId = "fake-job";
+  const days: Record<string, string> = {
+    "20261010": "vA,5000,0.00\nvB,5000,0.50",
+    "20261011": "vA,1000,0.10\nvB,1000,0.02",
+    "20261012": "vA,1000,0.10\nvB,1000,0.02",
+    "20261013": "vA,1000,0.02\nvB,1000,0.10",
+  };
+  const json = (b: unknown): Response => new Response(JSON.stringify(b));
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = String(input);
+    if (url.startsWith("https://oauth2.googleapis.com/"))
+      return json({ access_token: "tok", expires_in: 3600 });
+    if (url.startsWith("https://youtubereporting.googleapis.com/v1/jobs/fake-job/reports?"))
+      return json({
+        reports: Object.keys(days).map((d) => ({
+          id: d,
+          downloadUrl: `https://fake.invalid/csv/${d}`,
+          endTime: `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6)}T23:59:59Z`,
+          createTime: "2026-10-14T00:00:00Z",
+        })),
+      });
+    if (url.startsWith("https://fake.invalid/csv/")) {
+      const d = url.split("/").pop()!;
+      const body = days[d]!.split("\n").map((l) => `${d},UC,${l}`);
+      return new Response(
+        [
+          "date,channel_id,video_id,video_thumbnail_impressions,video_thumbnail_impressions_ctr",
+          ...body,
+        ].join("\n"),
+      );
+    }
+    if (url.startsWith("https://youtubeanalytics.googleapis.com/")) return json({ rows: [[100, 50, 40, 1]] });
+    throw new Error(`unexpected fetch: ${url}`);
+  }) as typeof fetch;
+  try {
+    for (const [id, videoId] of [
+      [960001, "vA"],
+      [960002, "vB"],
+    ] as const)
+      await fixtureUpload(id, {
+        videoId,
+        uploadedAt: "2026-10-10T12:00:00Z",
+        publishAt: "2026-10-11T00:00:00Z",
+      });
+    writeExperiments({
+      experiments: [
+        baseExperiment({
+          id: "ctr-days",
+          start: "2026-10-11",
+          end: "2026-10-30",
+          videos: [
+            { matchId: 960001, arm: "control", videoId: "vA" },
+            { matchId: 960002, arm: "variant", videoId: "vB" },
+          ],
+        }),
+      ],
+      schedule: [],
+    });
+    await evaluateExperiments({ now: () => Date.parse("2026-10-15T04:15:00Z") });
+    const e = readExperiments().experiments.find((x) => x.id === "ctr-days")!;
+    const arms = (e.result as { arms: ArmTotals[] }).arms;
+    assert.deepEqual(
+      arms.map((a) => [a.arm, a.clicks, a.impressions]),
+      [
+        ["control", 220, 3000],
+        ["variant", 140, 3000],
+      ],
+      "11–13 Oct summed; 10 Oct, before publish, dropped",
+    );
+    assert.match(e.verdict ?? "", /^control wins on CTR/, e.verdict);
+  } finally {
+    globalThis.fetch = realFetch;
+    delete process.env.YOUTUBE_TOKEN_FILE;
+  }
 }
 
 console.log("experimentsEvaluator: all checks passed");

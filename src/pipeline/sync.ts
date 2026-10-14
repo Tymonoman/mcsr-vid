@@ -7,8 +7,9 @@
  * separate worlds with their own microphones and music: an audio cross-correlation between the
  * two was 12–32 s wrong on real footage and, kept as the fallback for a year, never once
  * answered on a match on disk ("AMBIGUOUS — kept coarse estimates" every time). It is gone; a
- * clip the picture cannot read keeps the download's coarse estimate at confidence 0, and the
- * dashboard's sync editor is where a human settles that.
+ * clip the picture cannot read keeps the download's coarse estimate, the match's confidence
+ * falls under the trust line (0 with nothing read, 0.1 with one clip read), and the dashboard's
+ * sync editor is where a human settles that.
  */
 import { detectMatchStartAny, type MatchStartDetection } from "./countdownDetect.js";
 
@@ -21,8 +22,9 @@ export interface SyncResult {
   /** Corrected time (sec) within clip B where match start falls. */
   clipBCueTimeSec: number;
   /**
-   * 0-1, and comparable between matches: both clips read, one clip read (the other left on its
-   * estimate), or nothing.
+   * 0-1, and comparable between matches: both clips read (0.68 or more), one clip read (0.1, under
+   * `config.syncConfidenceThreshold` on purpose: the other POV sits on its coarse estimate, which
+   * can be seconds off, and the sync editor settles it), or nothing (0).
    */
   confidence: number;
   /** Which evidence there was, for the sync marker the editor sees. */
@@ -81,14 +83,11 @@ export function fromVideo(
   }
   // Each clip is anchored on its own evidence, so one player tabbing out costs only that clip's
   // precision — it cannot drag the other POV out of alignment, which a purely relative sync
-  // would have done.
+  // would have done. That clip still sits on the estimate, so one read is flagged for the editor.
   return {
     clipACueTimeSec: okA ? videoA.matchStartSec! : expectedA,
     clipBCueTimeSec: okB ? videoB.matchStartSec! : expectedB,
-    confidence:
-      okA && okB
-        ? Math.min(1, 0.6 + Math.min(videoA.confidence, videoB.confidence))
-        : Math.min(0.5, 0.3 + (okA ? videoA.confidence : videoB.confidence)),
+    confidence: okA && okB ? Math.min(1, 0.6 + Math.min(videoA.confidence, videoB.confidence)) : 0.1,
     detail:
       okA && okB
         ? `video: both countdowns found — ${describe()}`
