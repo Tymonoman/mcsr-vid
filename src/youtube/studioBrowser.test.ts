@@ -3,11 +3,13 @@
 // real Chrome. start()'s own cleanup runs against stub `Xvfb`/Chrome scripts, never the real ones.
 // Run: npx tsx src/youtube/studioBrowser.test.ts
 import assert from "node:assert/strict";
+import { spawn, spawnSync } from "node:child_process";
 import { chmodSync, mkdtempSync, readFileSync, readlinkSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { classify, isRunning, start, startAndProbe, type StudioHandle } from "./studioBrowser.js";
+import { fileURLToPath } from "node:url";
+import { classify, isRunning, killOnExit, start, startAndProbe, type StudioHandle } from "./studioBrowser.js";
 
 const CHANNEL = "UCm2mAyONTHlmIxZzNmi388w";
 
@@ -205,6 +207,49 @@ server.listen(port, "127.0.0.1");
   // The leak this fixes wedged every later start() on the live SingletonLock.
   await assert.rejects(start(opts), (e: Error) => !/already running/.test(e.message));
   console.log("OK: a connectOverCDP failure kills Chrome and Xvfb, and the next start() is not refused");
+}
+
+// --- killOnExit: an uncaught throw still kills what start() spawned (14 Oct 2026) ------------
+{
+  // A child node process stands in for the worker: two `sleep 300`s stand in for Chrome and Xvfb,
+  // it arms killOnExit on them, prints their pids, then throws uncaught from the event loop the
+  // way Playwright's CRSession assertion did. Both sleeps must be gone once it has died.
+  const dir = mkdtempSync(path.join(tmpdir(), "mcsr-studio-exit-"));
+  const child = path.join(dir, "child.ts");
+  writeFileSync(
+    child,
+    `import { spawn } from "node:child_process";
+import { killOnExit } from ${JSON.stringify(fileURLToPath(new URL("./studioBrowser.ts", import.meta.url)))};
+const [chrome, xvfb] = [spawn("sleep", ["300"], { stdio: "ignore" }), spawn("sleep", ["300"], { stdio: "ignore" })];
+killOnExit(chrome, xvfb);
+console.log(chrome.pid + " " + xvfb.pid);
+setTimeout(() => { throw new Error("Assertion error"); }, 50);
+`,
+  );
+  const run = spawnSync(process.execPath, [...process.execArgv, child], { encoding: "utf8" });
+  assert.notEqual(run.status, 0, "the stand-in worker must die of its uncaught throw");
+  const pids = run.stdout.trim().split(" ").map(Number);
+  assert.equal(pids.length, 2, `child printed no pids: ${run.stderr}`);
+  // A zombie still answers kill(pid, 0); /proc's state letter tells it apart.
+  const alive = (pid: number): boolean => {
+    try {
+      return !/^\d+ \(.*\) Z/.test(readFileSync(`/proc/${pid}/stat`, "utf8"));
+    } catch {
+      return false;
+    }
+  };
+  await new Promise((r) => setTimeout(r, 300));
+  const survivors = pids.filter(alive);
+  for (const pid of survivors) process.kill(pid, "SIGKILL");
+  assert.deepEqual(survivors, [], "an uncaught throw must kill both children it spawned");
+
+  // Disarmed (a normal stop()), the hook leaves no listener behind across start/stop cycles.
+  const before = process.listenerCount("exit");
+  killOnExit(spawn("true"), spawn("true"))();
+  assert.equal(process.listenerCount("exit"), before);
+  console.log(
+    "OK: an uncaught throw kills the Chrome and Xvfb this process spawned; stop() disarms the hook",
+  );
 }
 
 console.log("studioBrowser: all checks passed");
