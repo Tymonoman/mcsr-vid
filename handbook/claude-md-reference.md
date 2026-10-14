@@ -1770,6 +1770,79 @@ shows it to a human, nobody else parses its stdout as data.
   skips that video for the UTC day, as pins already do, without counting an error, and caps end
   screens only after the day's skips (`endScreensThisCycle`).
 
+## X posts (14 Oct 2026)
+
+The operator, 14 Oct 2026: "go ahead and build the x integration I'll go ahead and create an
+account later". One post a day on the channel's own X account, through X's official API:
+`src/x/xApi.ts` (signing, upload, post), `src/x/xPost.ts` (what goes out and every refusal),
+`src/x/xCli.ts` (`npm run x`). Setup for the operator: `handbook/x-setup.md`.
+
+- **What is posted.** The hand-cut Short (`short-<id>.mp4` + `short-<id>.hand.json`, written by
+  `npm run short:hand`), which already passed `hookProblem` and ends before the result; nothing
+  else is ever a clip. Text: `<Short hook> | <left> vs <right>` (`titleName` spelling, so Pinne is
+  Skycrab), then `https://youtu.be/<videoId>` from `youtube.json`, then `#mcsr #minecraft`. X
+  counts any link as 23 characters, so the 280 check counts it that way.
+- **Refused before anything is signed** (`planXPost`, cheap disk checks first, the MCSR API last):
+  a blocked player (`blockedOnDisk` on the match directory, then `blockedIn` on the API pair, the
+  same two checks `short:hand` makes); a long-form not public yet (no `youtube.json`, a
+  `publishAt` still ahead, or private with no publish time; uploaded public with no `publishAt`
+  counts from `uploadedAt`); no hand-cut Short (hand file or mp4 missing); a hook failing
+  `hookProblem(hook, 40, players)` (spoiler, a runner label, seed/rank/elo); over 280; an `x.json`
+  already there. `spoilsTheResult` is not run again over the whole text: `hookProblem` already
+  runs it on the hook, and over the composed text a question hook ("CAN ANYONE TAKE DOWN THE
+  LEADER?") would read as a spoiler, since the text no longer ends in "?".
+- **Which match, how often.** `pickXCandidate`: public long-forms newest first (by publish time),
+  hidden ones skipped (`hiddenMatchIds`), the first `planXPost` lets through. `autoPost` posts it
+  unless any `x.json` in the media dir is dated today (UTC): at most one post a UTC day. The post
+  writes `x.json` `{ postId, at, text, mediaId }` in the match directory; its presence is "posted".
+- **Unattended.** `xAutoPost` (default **false**) is config-file only, like `nightlyUpload`: it
+  posts in public on another platform, a deliberate edit on the box, and leaving it out of the
+  Settings tab is also the smaller change. The dashboard's 15-minute tick (`src/dashboard/server.ts`,
+  PORT 8080 only) calls `xTick`: off, or without all four keys, it does nothing and logs nothing.
+  A failed attempt logs once and waits for the next UTC day (or a hand `npm run x -- post <id>`),
+  so a refusal from X never repeats every 15 minutes. Config and `.env` are read at boot: after
+  adding the keys or switching it on, `POST /api/restart-when-idle`.
+- **Keys.** `X_API_KEY`, `X_API_SECRET` (the app's consumer key/secret), `X_ACCESS_TOKEN`,
+  `X_ACCESS_SECRET` (the channel account's own OAuth 1.0a user token, Read and Write), in
+  `/app/.env`, loaded natively the way `src/api/twitch.ts` loads Twitch's (`process.loadEnvFile`).
+  `isXConfigured()` is all four set. Nothing logs a key, a token or a signature; an X error names
+  the path, the status and X's own answer.
+- **API, as docs.x.com described it on 14 Oct 2026.**
+  [Chunked Media Upload](https://docs.x.com/x-api/media/quickstart/media-upload-chunked):
+  `POST /2/media/upload/initialize` (JSON `{ media_type: "video/mp4", total_bytes,
+  media_category: "tweet_video" }` → `data.id`), `POST /2/media/upload/{id}/append` (multipart
+  `segment_index` from 0 + `media`, each segment ≤5 MB; JSON with base64 `media` is also accepted;
+  we send 4 MB multipart segments), `POST /2/media/upload/{id}/finalize`, then
+  `GET /2/media/upload?command=STATUS&media_id=…` while `processing_info.state` is
+  `pending`/`in_progress`, waiting `check_after_secs`. The docs say outright not to send
+  `command=INIT`/`APPEND`/`FINALIZE` to `POST /2/media/upload` ("the previous upload protocol"),
+  so the v1.1 `upload.twitter.com` fallback was not needed. Every media endpoint accepts
+  `UserToken` (OAuth 1.0a) beside OAuth 2.0 `media.write`. Then
+  [`POST /2/tweets`](https://docs.x.com/x-api/posts/create-post) with JSON
+  `{ text, media: { media_ids: [id] } }` → `data.id`. `tweet_video` allows 20 min / 8 GB by
+  default; [rate limits](https://docs.x.com/x-api/fundamentals/rate-limits): `POST /2/tweets`
+  100 per 15 min per user, 10,000 per 24 h per app. The signature follows
+  [Creating a signature](https://docs.x.com/fundamentals/authentication/oauth-1-0a/creating-a-signature);
+  `src/x/xApi.test.ts` reproduces its worked example exactly (`Ls93hJiZbQ3akF3HF3x1Bz8/zU4=` for
+  today's `api.x.com` page, `hCtSmYh+iHYCEqBWrE7C7hYmtUk=` for the original `api.twitter.com` one).
+- **There is no Free tier any more** ([pricing](https://docs.x.com/x-api/getting-started/pricing),
+  read 14 Oct 2026): the X API is pay-per-usage with prepaid credits, no subscription. Writes are
+  per request: "Post: Create" $0.015, **"Post: Create (with URL)" $0.200**. Every post here carries
+  the YouTube link, so each costs about $0.20, about $6 a month at one a day; the media upload is
+  not a listed line item. [Free credits](https://docs.x.com/x-api/getting-started/free-credits):
+  a one-time $20 for saving the account's first eligible card (and a match of the first
+  auto-recharge, up to $50), expiring 3 months after the grant, about 100 posts. The console takes
+  a per-cycle spending limit; requests are blocked when credits run out. Dropping the link would
+  bring a post to $0.015, but the link is the point; the operator's call.
+- **Tests.** `src/x/xApi.test.ts`: the documented signature, then the whole upload and post against
+  an in-process `node:http` stand-in for api.x.com that checks each request's shape and re-verifies
+  its signature. `src/x/xPost.test.ts`: the text, every refusal, the 280 budget at its edge, dry
+  run, `x.json`, one a day, newest first, hidden skipped, the tick's no-op, and `npm run x -- auto
+  --dry-run` exiting 0 with "not configured" when no key is set. Neither makes a real X call.
+- **ponytail:** no lock between the tick and a hand `npm run x -- post` run at the same minute
+  (both would post); `xTick`'s own in-process flag covers the tick against itself. Add a lockfile
+  if that ever bites.
+
 ## Clips (prototype)
 
 For a video that is not a match — a stream statement, a reaction, something worth posting on the

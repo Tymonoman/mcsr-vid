@@ -127,5 +127,6 @@
     "BeefSalad"
   ],
   "creatorWatchlist": [],
-  "creatorWatch": false
+  "creatorWatch": false,
+  "xAutoPost": false
 }
