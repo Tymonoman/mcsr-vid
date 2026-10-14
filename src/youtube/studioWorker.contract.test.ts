@@ -20,18 +20,6 @@ import { config, DEFAULTS, matchDir } from "../config.js";
 import type { Experiment } from "../dashboard/experiments.js";
 import { planCycle, type LongFormRef, type StudioLedger } from "./studioWorker.js";
 
-// A doc promise the code does not keep: printed and listed, never fatal (main's contract files' way).
-const deviations: string[] = [];
-function deviation(clause: string, check: () => void): void {
-  try {
-    check();
-  } catch (err) {
-    if (!(err instanceof assert.AssertionError)) throw err;
-    deviations.push(clause);
-    console.log(`DEVIATION: ${clause} — ${err.message.split("\n")[0]}`);
-  }
-}
-
 const saved = { mediaDir: config.mediaDir, blocked: config.blockedPlayers };
 const media = mkdtempSync(path.join(tmpdir(), "mcsr-studio-contract-"));
 config.mediaDir = media;
@@ -99,19 +87,12 @@ try {
   ]);
   const started = withTc.tcToStart.map((e) => e.videos[0]!.matchId);
   assert.ok(started.includes(CLEAN), "the clean match's planned test starts (the control)");
-  deviation(
-    "handbook Studio automation: 'the same disk-only check every other Studio action already uses' (Test & Compare start)",
-    () =>
-      assert.ok(
-        !started.includes(BLOCKED),
-        `tcToStart holds ${JSON.stringify(started)} — a planned Test & Compare on a blocked runner's video is still started (no isBlocked filter on tcToStart)`,
-      ),
-  );
+  assert.ok(!started.includes(BLOCKED), `a planned test on a blocked runner's video never starts: ${JSON.stringify(started)}`);
+  console.log("OK: a Test & Compare planned before the block is not started");
 } finally {
   config.mediaDir = saved.mediaDir;
   config.blockedPlayers = saved.blocked;
   rmSync(media, { recursive: true, force: true });
 }
 
-if (deviations.length) console.log(`${deviations.length} deviation(s) from the docs — see DEVIATION lines`);
 console.log("studioWorker.contract: all checks passed");

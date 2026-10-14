@@ -18,18 +18,6 @@ import path from "node:path";
 import { config, DEFAULTS } from "../config.js";
 import { pastTitleHooks } from "./videoPick.js";
 
-// A doc promise the code does not keep: printed and listed, never fatal (main's contract files' way).
-const deviations: string[] = [];
-function deviation(clause: string, check: () => void): void {
-  try {
-    check();
-  } catch (err) {
-    if (!(err instanceof assert.AssertionError)) throw err;
-    deviations.push(clause);
-    console.log(`DEVIATION: ${clause} — ${err.message.split("\n")[0]}`);
-  }
-}
-
 const saved = { mediaDir: config.mediaDir, blocked: config.blockedPlayers, titleNames: config.titleNames };
 const dirs: string[] = [];
 
@@ -64,16 +52,9 @@ try {
     4: `ONE HEART | NO BED | BlazeMind vs Aquacorde | ${TAIL}`,
     5: `WHO BLINKS FIRST? | edcr vs doogile | ${TAIL}`,
   });
-  const piped = hooks();
-  deviation(
-    "CLAUDE.md Blocked players: 'never a past-hook style example' (a saved hook containing ' | ')",
-    () =>
-      assert.deepEqual(
-        piped,
-        ["WHO BLINKS FIRST?"],
-        `examples were ${JSON.stringify(piped)} — the pair is read as the second " | " segment, so a hook with its own " | " hides the blocked pair`,
-      ),
-  );
+  // blockedOnDisk reads the pair as the segment just before "| MCSR", wherever the hook's own " | " fall.
+  assert.deepEqual(hooks(), ["WHO BLINKS FIRST?"], "a hook with its own ' | ' still hides its blocked pair");
+  console.log("OK: a saved hook containing ' | ' is still recognised as the blocked match's");
 
   // --- 4. A titleNames spelling ----------------------------------------------------------------------
   // A made-up runner the title spells another way, as titleNames does for two real ones by default.
@@ -83,16 +64,8 @@ try {
     6: `SKY HIGH STAKES | Spelled vs doogile | ${TAIL}`,
     7: `WHO BLINKS FIRST? | edcr vs doogile | ${TAIL}`,
   });
-  const spelled = hooks();
-  deviation(
-    "CLAUDE.md Blocked players: 'never a past-hook style example' (a player the title spells via titleNames)",
-    () =>
-      assert.deepEqual(
-        spelled,
-        ["WHO BLINKS FIRST?"],
-        `examples were ${JSON.stringify(spelled)} — the title's "Spelled" is never mapped back to the blocked "Runnerx"`,
-      ),
-  );
+  assert.deepEqual(hooks(), ["WHO BLINKS FIRST?"], "a titleNames spelling maps back to the blocked runner");
+  console.log("OK: a blocked player the title spells via titleNames is still caught");
 } finally {
   config.mediaDir = saved.mediaDir;
   config.blockedPlayers = saved.blocked;
@@ -100,5 +73,4 @@ try {
   for (const d of dirs) rmSync(d, { recursive: true, force: true });
 }
 
-if (deviations.length) console.log(`${deviations.length} deviation(s) from the docs — see DEVIATION lines`);
 console.log("videoPick.blocked.contract: all checks passed");
