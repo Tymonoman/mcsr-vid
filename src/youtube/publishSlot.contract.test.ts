@@ -16,8 +16,9 @@
 //      AND the hour, so a ranked video and a series never push each other a day out.
 //  P6  A time stored for a match not uploaded yet — the kit's Publish at, or a chain's `slotClaim`
 //      — is a claim, and counts for the pair gap, unless its match is hidden.
-//  P7  A playoff game 1 not joined yet goes out as its series: `seriesPublishHourUtc` (and, being
-//      the series video, the pair gap from the same pair's ranked video).
+//  P7  A playoff game 1 not joined yet goes out as its series: `seriesPublishHourUtc`. (Our
+//      inference, not a documented promise: being the series video, it should also keep the pair
+//      gap from the same pair's ranked video — reported as a deviation, not failed.)
 //  P8  The slot rules come back as warnings on an operator-picked time, never refusals (`slotWarnings`).
 //  P9  The publish-hour experiment (`slot.rankedHoursUtc`) touches a ranked video only, never a
 //      series: sorted, first free hour wins; a day with no entry is the plain `publishHourUtc`.
@@ -28,7 +29,7 @@
 //
 // Run: MCSR_CONFIG=/nonexistent npx tsx src/youtube/publishSlot.contract.test.ts
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { config } from "../config.js";
@@ -71,11 +72,14 @@ assert.equal(MIN_LEAD_MS, 3_600_000, "the chain takes a time only while it is an
 
 /* --- A temp media dir, the MCSR API stubbed at fetch -------------------------------------------- */
 config.mediaDir = mkdtempSync(path.join(tmpdir(), "mcsr-slot-contract-"));
-process.env.MCSR_ARCHIVE_DIR ??= mkdtempSync(path.join(tmpdir(), "mcsr-slot-archive-"));
+const ownArchive = process.env.MCSR_ARCHIVE_DIR
+  ? null
+  : mkdtempSync(path.join(tmpdir(), "mcsr-slot-archive-"));
+if (ownArchive) process.env.MCSR_ARCHIVE_DIR = ownArchive;
 /** The two seats of each match id the stub serves; synthetic uuids, no real runner. */
 const seats = new Map<number, [string, string]>();
 globalThis.fetch = (async (input: string | URL | Request) => {
-  const m = /\/matches\/(\d+)$/.exec(new URL(String(input)).pathname);
+  const m = /\/matches\/(\d+)$/.exec(new URL(input instanceof Request ? input.url : String(input)).pathname);
   const pair = m ? seats.get(Number(m[1])) : undefined;
   if (!m || !pair) return new Response("not found", { status: 404 });
   const data = {
@@ -136,9 +140,7 @@ assert.deepEqual(await publishSlotFor(1002, MORNING), {
   why: null,
 });
 
-/* --- P5: day AND hour — the two kinds never push each other a day out, end to end --------------- */
-// Records on disk (not the bare walk publishSlot.test.ts pins): a series already scheduled for
-// tonight's 23:00 leaves tonight's 19:00 free for a ranked video of *another* pair, and the reverse.
+/* --- P5: a taken slot is skipped; day AND hour, so the two kinds never push each other ---------- */
 match(1003, ["u-a3", "u-b3"], { ...SERIES, ...uploaded("2026-10-20T23:00:00Z") });
 match(1004, ["u-a4", "u-b4"], uploaded("2026-10-20T19:00:00Z"));
 assert.equal(
@@ -151,14 +153,25 @@ assert.equal(
   "2026-10-21T23:00:00.000Z",
   "1003's 23:00 tonight is taken — the next series slot is tomorrow's 23:00",
 );
-// …and neither kind moved the other: tonight's *other* hour was not the reason either was pushed.
 assert.deepEqual(
   (await claimedPublishTimes(1001)).sort(),
   ["2026-10-20T19:00:00Z", "2026-10-20T23:00:00Z"],
   "every recorded time but the match's own is a claim",
 );
-const rankedOnly = nextPublishSlot(MORNING, 19, ["2026-10-20T23:00:00Z"]);
-assert.equal(iso(rankedOnly), "2026-10-20T19:00:00.000Z", "a 23:00 claim leaves the same day's 19:00 free");
+// Day AND hour, end to end through records on disk (not the bare walk publishSlot.test.ts pins):
+// a day holding only the other kind's hour is still free. A day-only test would push both a day.
+match(1005, ["u-a5", "u-b5"], { ...SERIES, ...uploaded("2026-10-27T23:00:00Z") });
+assert.equal(
+  iso((await publishSlotFor(1001, at("2026-10-27T06:30:00Z"))).at),
+  "2026-10-27T19:00:00.000Z",
+  "a series at 23:00 on the 27th leaves the 27th's 19:00 to a ranked video of another pair",
+);
+match(1006, ["u-a6", "u-b6"], uploaded("2026-10-28T19:00:00Z"));
+assert.equal(
+  iso((await publishSlotFor(1002, at("2026-10-28T06:30:00Z"))).at),
+  "2026-10-28T23:00:00.000Z",
+  "a ranked video at 19:00 on the 28th leaves the 28th's 23:00 to a series of another pair",
+);
 
 /* --- P6: a chain's live slotClaim and the kit's stored time are claims; hidden ones are not ----- */
 {
@@ -242,11 +255,12 @@ assert.equal(iso(rankedOnly), "2026-10-20T19:00:00.000Z", "a 23:00 claim leaves 
     "series hour, not 19:00",
   );
 
-  // Being the series video, it is the "series" of the pair rule: the same pair's ranked video
-  // scheduled for tonight must keep it three UTC days away, like a joined series.
+  // Our inference, not a documented promise (the handbook only gives game 1 the series hour): being
+  // the series video, it should keep the pair gap from the same pair's ranked video, like a joined
+  // series — the audit case behind the gap was a series beside a ranked video.
   match(4002, ["u-j", "u-i"], uploaded("2026-11-20T19:00:00Z"));
   await deviation(
-    "a playoff game 1 not joined yet goes out as its series (seriesPublishHourUtc) — and publishSlotFor keeps a ranked video and a series of the same two players seriesPairGapDays apart",
+    "(inferred) a playoff game 1 not joined yet takes the series hour, so it should also keep the pair gap from the same pair's ranked video",
     async () => {
       const g1 = await publishSlotFor(4001, morning);
       assert.ok(
@@ -261,7 +275,7 @@ assert.equal(iso(rankedOnly), "2026-10-20T19:00:00.000Z", "a 23:00 claim leaves 
   _setPlayoffContextForTest(4003, { gameNo: 1 } as PlayoffContext);
   match(4004, ["u-l", "u-k"]);
   await deviation(
-    "a ranked video is kept seriesPairGapDays from the same pair's series — including one still in game 1's unjoined directory",
+    "(inferred) a ranked video should keep the pair gap from the same pair's series still in game 1's unjoined directory",
     async () => {
       const r = await publishSlotFor(4004, morning);
       assert.ok(
@@ -350,6 +364,8 @@ for (const day of ["2026-10-24", "2026-10-26", "2026-10-31", "2026-11-02"])
   assert.equal(iso(nextPublishSlot(at(`${day}T06:00:00Z`), 19)), `${day}T19:00:00.000Z`, day);
 
 _setChannelUploadsForTest([]);
+rmSync(config.mediaDir, { recursive: true, force: true });
+if (ownArchive) rmSync(ownArchive, { recursive: true, force: true });
 console.log(
   `publishSlot.contract: all checks passed${deviations.length ? ` (${deviations.length} deviation(s) reported above)` : ""}`,
 );
