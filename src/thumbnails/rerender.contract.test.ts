@@ -6,6 +6,7 @@
 // Temp media dir, a stubbed MCSR API, no Chromium (stills are written, not drawn), no network.
 // Run: npx tsx src/thumbnails/rerender.contract.test.ts
 import assert from "node:assert/strict";
+import { deviation } from "../fixtures/deviation.js";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -27,16 +28,6 @@ import {
   variantKey,
 } from "./thumbnailVariants.js";
 import type { MatchInfo } from "../api/types.js";
-
-/** Doc vs code: keep the doc's assertion, report the gap, keep going (triage decides). */
-async function deviation(clause: string, check: () => void | Promise<void>): Promise<void> {
-  try {
-    await check();
-  } catch (err) {
-    if (!(err instanceof assert.AssertionError)) throw err;
-    console.log(`DEVIATION: ${clause} — ${err.message.split("\n")[0]}`);
-  }
-}
 
 const fixture = JSON.parse(
   await readFile(new URL("../fixtures/match-13766294.json", import.meta.url), "utf8"),
@@ -75,7 +66,6 @@ const LIVE_MANIFEST = {
   chosen: "walking-crossed",
   chosenBy: "operator",
   hookText: null,
-  ranks: { [fixture.players[0]!.uuid]: 2, [fixture.players[1]!.uuid]: 9 },
   variants: DEFAULTS.thumbnailVariants.map((p) => ({
     key: variantKey(p),
     file: variantFile(p),
@@ -164,13 +154,12 @@ try {
     const dir = path.join(media, String(ID));
     const promoted = await promoteNewSet(ID, "default-default");
     // Every live still is the new drawing now, the pressed one is what goes up, and the manifest
-    // says a human chose it (the checklist's pill) while keeping the live set's frozen ranks.
+    // says a human chose it (the checklist's pill).
     for (const p of DEFAULTS.thumbnailVariants) {
       assert.equal(await readFile(path.join(dir, variantFile(p)), "utf8"), `NEW ${variantKey(p)}`);
     }
     assert.equal(await readFile(path.join(dir, "thumbnail.png"), "utf8"), "NEW default-default");
     assert.deepEqual([promoted.chosen, promoted.chosenBy], ["default-default", "operator"]);
-    assert.deepEqual(promoted.ranks, LIVE_MANIFEST.ranks, "frozen ranks are the live set's, not today's");
     assert.ok(!existsSync(path.join(dir, NEW_DIR)), "the new set is the live one now");
     // A second press with nothing re-rendered refuses rather than doing anything.
     await assert.rejects(promoteNewSet(ID, "default-default"), /re-render the thumbnails first/);

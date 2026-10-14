@@ -9,22 +9,13 @@
 // render, after tc-control.png and tc-pose.png are already written. Nothing reaches the network.
 // Run: npx tsx src/thumbnails/tcThumbs.contract.test.ts
 import assert from "node:assert/strict";
+import { deviation } from "../fixtures/deviation.js";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-
-/** Doc vs code: keep the doc's assertion, report the gap, keep going (triage decides). */
-async function deviation(clause: string, check: () => void | Promise<void>): Promise<void> {
-  try {
-    await check();
-  } catch (err) {
-    if (!(err instanceof assert.AssertionError)) throw err;
-    console.log(`DEVIATION: ${clause} — ${err.message.split("\n")[0]}`);
-  }
-}
 
 if (spawnSync("ffmpeg", ["-version"]).status !== 0) {
   console.log("tcThumbs.contract: ffmpeg not installed — skipped (tc-thumbs needs it for SSIM)");

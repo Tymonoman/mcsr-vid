@@ -9,6 +9,7 @@
 // Temp media dir, stubbed fetch, nothing reaches Google or the MCSR API.
 // Run: npx tsx src/dashboard/busy.contract.test.ts
 import assert from "node:assert/strict";
+import { deviation } from "../fixtures/deviation.js";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -19,16 +20,6 @@ import { idle } from "./restartWhenIdle.js";
 import { NEW_DIR, promoteNewSet, startRerender, type rerenderThumbnails } from "../thumbnails/rerender.js";
 import { swapThumbnail } from "../youtube/thumbnailSwap.js";
 import { writeUpload } from "../youtube/youtubeStore.js";
-
-/** Doc vs code: keep the doc's assertion, report the gap, keep going (triage decides). */
-async function deviation(clause: string, check: () => void | Promise<void>): Promise<void> {
-  try {
-    await check();
-  } catch (err) {
-    if (!(err instanceof assert.AssertionError)) throw err;
-    console.log(`DEVIATION: ${clause} — ${err.message.split("\n")[0]}`);
-  }
-}
 
 const media = await mkdtemp(path.join(tmpdir(), "mcsr-busy-contract-"));
 const saved = {
@@ -167,17 +158,19 @@ try {
     assert.equal(busyIn(602), "a Finish or Put on YouTube");
     assert.equal(busyIn(603), null, "only that match");
     assert.equal(idle(), false, "a pending put holds restart-when-idle (a restart would cut it)");
-    // The docs: a pending put counts as busy for the nightly too, "same as a render or an export".
+    // The docs, read literally: a pending put counts as busy for the nightly too. Doc ambiguous —
+    // a put is a network write on another match and the nightly waits on no upload either, so the
+    // sentence likely means restart-when-idle only. Reported for triage, not as a nightly bug.
     const runNow = await nightlyWentAhead();
     const scheduled = await nightlyWentAhead({ scheduled: true });
     await deviation(
-      'CLAUDE.md "Re-render a match\'s thumbnails…": a pending put counts as busy for the nightly',
+      'CLAUDE.md "Re-render a match\'s thumbnails…": a pending put counts as busy for the nightly (doc ambiguous, likely means restart-when-idle only)',
       () => {
         assert.equal(runNow, false, "Run now went ahead to its pick while a Put on YouTube was on the wire");
       },
     );
     await deviation(
-      'CLAUDE.md "Re-render a match\'s thumbnails…": a pending put counts as busy for the (scheduled) nightly',
+      'CLAUDE.md "Re-render a match\'s thumbnails…": a pending put counts as busy for the (scheduled) nightly (doc ambiguous, likely means restart-when-idle only)',
       () => {
         assert.equal(
           scheduled,

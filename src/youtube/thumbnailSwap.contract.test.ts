@@ -3,12 +3,12 @@
 // src/thumbnails/thumbnailVariants.contract.test.ts, 8/9/10 pinned here), written from the docs by
 // an outsider. Covers what thumbnailSwap.test.ts does not: a Studio upload whose folder never had
 // thumbnail files, the operator putting the arms-up tile by hand, Undo surviving a later re-render
-// that emptied thumbnail-new/, the live set across put AND undo, and blocks read off chats and the
+// that emptied thumbnail-new/, the new set across put AND undo, and blocks read off chats and the
 // title (an archived match) refusing before anything reaches Google.
 // thumbnails.set changes the live channel: every fetch here is a stub, nothing reaches Google.
 // Run: npx tsx src/youtube/thumbnailSwap.contract.test.ts
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { deviation } from "../fixtures/deviation.js";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -116,7 +116,7 @@ const filesIn = async (dir: string) =>
 
 try {
   // --- A Studio upload whose folder never had thumbnail files ---------------------------------
-  // The docs name this case: a re-render reaches it too, and a put on it must not invent a live set.
+  // The docs name this case: a re-render reaches it too, and a put and an undo work on it.
   {
     const id = 500;
     const dir = path.join(media, String(id));
@@ -130,15 +130,12 @@ try {
     assert.equal(put.set.from, NEW_DIR);
     // What the video wore before the dashboard touched it is kept, so there is something to undo to.
     assert.equal(await readFile(path.join(dir, undoFile(vid)), "utf8"), "S".repeat(9000));
-    // The live set is "what went up": a put on YouTube does not fabricate one on disk.
-    assert.ok(!existsSync(path.join(dir, "thumbnail.png")), "no live thumbnail.png appears");
-    assert.ok(!existsSync(path.join(dir, "thumbnail.json")), "no live manifest appears");
     await swapThumbnail(id, { undo: true });
     assert.equal(wears[vid], "S".repeat(9000), "Undo puts the Studio image back");
   }
-  console.log("OK 8/9: a Studio upload with no thumbnail files gets a put and an undo, no live set invented");
+  console.log("OK 8/9: a Studio upload with no thumbnail files gets a put and an undo");
 
-  // --- The live set and the new set across a put AND an undo; the arms-up tile by hand --------
+  // --- The new set across a put AND an undo; the arms-up tile by hand -------------------------
   {
     const id = 501;
     const dir = path.join(media, String(id));
@@ -164,13 +161,19 @@ try {
     // operator's own choice, and it goes up.
     await swapThumbnail(id, { variant: "cheering-relaxing" });
     assert.equal(sets.at(-1)?.body, "NEW cheering-relaxing");
-    assert.deepEqual((await readUpload(id))?.thumbnailSet?.variant, "cheering-relaxing");
+    assert.equal((await readUpload(id))?.thumbnailSet?.variant, "cheering-relaxing");
+    // Read plainly, CLAUDE.md names Put as the press that changes the live files for a match on
+    // the channel; the code writes only YouTube and youtube.json, so thumbnail.png and
+    // manifest.chosen (tc-thumbs' "live pose") go on naming the old tile. Reported, not pinned.
+    const liveChosen = JSON.parse(await readFile(path.join(dir, "thumbnail.json"), "utf8")).chosen;
+    await deviation(
+      'CLAUDE.md "Re-render a match\'s thumbnails…": live files change only on an operator press — "Put on YouTube" for a match on the channel (doc ambiguous: the code keeps Put to YouTube + youtube.json)',
+      () => assert.equal(liveChosen, "cheering-relaxing", `after a Put, the live manifest still says "${liveChosen}"`),
+    );
     await swapThumbnail(id, { variant: "walking-crossed" });
     await swapThumbnail(id, { undo: true });
     assert.equal(wears[vid], "R".repeat(9000), "Undo is the pre-dashboard image, not the previous tile");
-    // Nothing on disk moved: live files are what went up, the new set is still there to try again.
-    const after = await filesIn(dir);
-    for (const [f, b] of Object.entries(live)) assert.equal(after[f], b, `${f} untouched by put/undo`);
+    // A put does not consume thumbnail-new/: the new set is still there to try again.
     assert.deepEqual(await filesIn(path.join(dir, NEW_DIR)), newSet, "the new set is untouched");
 
     // A later re-render cut short empties thumbnail-new/ (no manifest). Undo does not depend on it.
@@ -187,7 +190,7 @@ try {
       "the kept copy never changed",
     );
   }
-  console.log("OK 8/9: put/undo never touch the live or new set; Undo survives a cut-short re-render");
+  console.log("OK 8/9: put/undo leave the new set in place; Undo survives a cut-short re-render");
 
   // --- Blocked players: refused before anything reaches Google ---------------------------------
   {

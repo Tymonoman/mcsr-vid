@@ -27,6 +27,7 @@
 // placement text" is a property of the drawn PNG (computeThumbnailProps still carries eloRate).
 // Run: npx tsx src/thumbnails/thumbnailVariants.contract.test.ts
 import assert from "node:assert/strict";
+import { deviation } from "../fixtures/deviation.js";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -42,16 +43,6 @@ import {
   type VariantsManifest,
 } from "./thumbnailVariants.js";
 import type { MatchInfo, UserDetails } from "../api/types.js";
-
-/** Doc vs code: keep the doc's assertion, report the gap, keep going (triage decides). */
-async function deviation(clause: string, check: () => void | Promise<void>): Promise<void> {
-  try {
-    await check();
-  } catch (err) {
-    if (!(err instanceof assert.AssertionError)) throw err;
-    console.log(`DEVIATION: ${clause} — ${err.message.split("\n")[0]}`);
-  }
-}
 
 // A real ranked match (type 2, so no bracket lookup). Every render below finds its stills on disk:
 // what is under test is which still the strip decides on, not Chromium drawing one.
@@ -228,9 +219,11 @@ try {
   console.log("OK 4/6: an operator's pick (even arms-up) is never rotated or re-picked away");
 
   // --- 5 (carried). A re-render that keeps an earlier AUTOMATIC choice of the arms-up pair ------
-  // A manifest can carry `chosen: "cheering-relaxing", chosenBy: "auto"`: the rotation shipped on
-  // 7 Oct 2026 and the exclusion on 8 Oct, so a strip rendered in between with rotation on could
-  // hold one. Nobody reviewed it; the docs say no automatic path lands on that pose.
+  // Hypothetical, narrow: a manifest carries `chosen: "cheering-relaxing", chosenBy: "auto"` only
+  // if rotation was switched on between d367eff (rotation, 7 Oct 2026 00:13 UTC) and 4dc9b1a (the
+  // exclusion, 7 Oct 23:58 UTC). Keeping an earlier choice is on purpose (thumbnailVariants.ts:
+  // "so re-running the pipeline does not silently swap the thumbnail"); the docs still say no
+  // automatic path lands on that pose, so the gap is reported for triage to weigh.
   {
     const dir = await strip();
     const before: VariantsManifest = {
@@ -250,7 +243,7 @@ try {
     await writeFile(manifestPath(dir), JSON.stringify(before));
     const m = await render(dir);
     await deviation(
-      'CLAUDE.md "Thumbnails": "cheering-relaxing" is excluded from every automatic pick (a carried chosenBy:"auto" choice)',
+      'CLAUDE.md "Thumbnails": "cheering-relaxing" is excluded from every automatic pick (a carried chosenBy:"auto" choice; hypothetical, needs rotation on during 7 Oct 00:13–23:58 UTC)',
       async () => {
         assert.ok(
           !(m.chosen === RESULT_LOOKING_POSE_KEY && m.chosenBy === "auto"),
