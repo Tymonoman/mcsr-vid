@@ -44,7 +44,16 @@ const plan = (id) => ({
       page.on("pageerror", (e) => errors.push(e.message));
       await page.route("**/api/shorts/plan/*", (r) => r.fulfill({ json: plan(id) }));
       await page.goto(base + "/", { waitUntil: "networkidle" });
+      // The boot already painted the first card's Now from the same routed plan, bar and all: until
+      // this match's own head is up, a wait on the bar finds that one, and select() tears it down
+      // under the measurement (a 0x0 rect, 14 Oct 2026). Same marker as deep-link-check's markOld.
+      await page.evaluate(() => document.querySelector("#detail .head")?.setAttribute("data-old", "1"));
       await page.evaluate((m) => select(m, { open: true }), id);
+      await page.waitForFunction(
+        (m) => document.querySelector("#detail .head:not([data-old]) .id")?.textContent.includes(`#${m}`),
+        id,
+        { timeout: 30000 },
+      );
       const step = '#now .step[data-step="pick"]';
       await page.waitForSelector(`${step} .bar.stepbar i`, { timeout: 30000 });
       const got = await page.$eval(step, (el) => ({

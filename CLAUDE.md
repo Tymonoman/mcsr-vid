@@ -83,7 +83,7 @@ Use the script, don't reconstruct the shell line. Extra arguments go after `--`.
 | `npm run analytics -- <videoId> [--traffic-sources] [--days N]` | YouTube Analytics via `~/.claude/skills/claude-youtube/`. |
 | `bash scripts/agy-task.sh <name> <prompt-file> [model]` | Hand an easy task to agy (Gemini) in a worktree; review the diff and commit yourself. |
 | `python3 scripts/reap.py <command…>` | Subreaper wrapper if zombies climb. |
-| `bash scripts/browser-checks/run-all.sh <url>` | Drives the dashboard in a real browser (26 Playwright checks). Point at the real dashboard. |
+| `[SCRATCH=1] bash scripts/browser-checks/run-all.sh <url>` | Drives the dashboard in a real browser (26 Playwright checks). Read-only against the real dashboard; the four that write on the server run only with `SCRATCH=1`, against the stub (`stub-server.cjs`) or a scratch test server. |
 | `npm run tc-thumbs -- <matchId…>` | A Test & Compare thumbnail set per match in `<id>/tc/` (control, most-different pose, a caption). |
 | `npm run studio -- probe \| pin <id> [--dry-run] \| login \| worker [--once] [--dry-run] [--enable] \| tc-plan <plan.json> \| related <id> <id> \| link-related <shortId> <longFormId> [--dry-run]` | Studio browser automation CLI. |
 

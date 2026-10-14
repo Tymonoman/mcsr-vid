@@ -223,11 +223,14 @@
 .ypp .small {
   font-size: 10px;
 }
+/* overflow-wrap: an API error carries its request path, one unbreakable run of ids, and a phone
+   zoomed the whole page out to fit it (14 Oct 2026: a 1,332px statsError on Publish). */
 .scanline {
   padding: 8px 12px;
   font-size: 12px;
   color: var(--muted);
   border-bottom: 1px solid var(--panel-edge);
+  overflow-wrap: anywhere;
 }
 .scanline.bad {
   color: var(--crimson);
@@ -1166,8 +1169,17 @@ input[type="text"]:disabled {
 .playoffsoon > summary {
   cursor: pointer;
   color: var(--muted);
-  /* The same side gutter as the scan line above it, or the marker sits on the panel edge. */
-  padding: 4px 12px;
+  /* The same side gutter as the scan line above it, or the marker sits on the panel edge; the
+     marker hangs in it so a wrapped line starts under the text. */
+  padding: 4px 12px 4px calc(12px + 1.2em);
+  text-indent: -1.2em;
+  /* Block, not the touch rule's flex: a phone wraps this line to three, and flex centred the
+     marker on the middle one. */
+  display: block;
+}
+/* text-indent is inherited: the inline-block marker would shift its own ">" out by the same. */
+.playoffsoon > summary::before {
+  text-indent: 0;
 }
 .playoffsoon > summary:hover {
   color: var(--fg);

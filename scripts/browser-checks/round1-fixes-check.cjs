@@ -1,6 +1,11 @@
 const { launchFor } = require("./launch.cjs");
 (async () => {
-  const [base] = process.argv.slice(2);
+  const [base, given] = process.argv.slice(2);
+  // An exported match: the Sync check below paints only when there is an export to check. The
+  // id it used to name (13172029) was archived off the disk.
+  const id =
+    Number(given) ||
+    (await (await fetch(`${base}/api/matches`)).json()).matches.find((m) => m.exported && !m.hidden)?.matchId;
   const browser = await launchFor(base);
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   const errors = [];
@@ -41,7 +46,7 @@ const { launchFor } = require("./launch.cjs");
   // section order and placeholder guard: the Check group leads with the video, the sync
   // frames right under it, and the Publish group leads with YouTube, the kit under it
   await page.click("#tab-matches");
-  await page.evaluate(() => select(13172029, { open: true }));
+  await page.evaluate((id) => select(id, { open: true }), id);
   await page.waitForSelector("#publishkit .kit", { timeout: 30000 });
   await page.waitForSelector("#synccheck h2", { timeout: 30000 });
   const order = await page.$$eval("#detail h2", (n) => n.map((h) => h.textContent.trim().split(" ")[0]));
@@ -57,11 +62,14 @@ const { launchFor } = require("./launch.cjs");
     ytTop < kitTop,
     `youtube@${Math.round(ytTop)} kit@${Math.round(kitTop)}`,
   );
-  const counter = await page.$eval("#publishkit .kit .counter", (e) => ({
+  // The Title block by its label: the kit's first block is the pull command now, and reading that
+  // made this pass on any title, <HOOK> or not.
+  const titleKit = '#publishkit .kit:has(.kitlabel:text-is("Title"))';
+  const counter = await page.$eval(`${titleKit} .counter`, (e) => ({
     t: e.textContent.trim(),
     over: e.classList.contains("over"),
   }));
-  const title = await page.$eval("#publishkit .kit textarea", (t) => t.value);
+  const title = await page.$eval(`${titleKit} textarea`, (t) => t.value);
   check(
     "placeholder title is flagged, not counted",
     title.includes("<HOOK>") ? counter.over && /pick a hook/.test(counter.t) : true,

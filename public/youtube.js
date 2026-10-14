@@ -87,7 +87,7 @@ async function loadYoutube(id, meta) {
       Or drop the file into Studio and leave every box empty &mdash; paste its id here and the
       title, description, tags, thumbnail, playlists and first comment all go on from here.
       <div class="row">
-        <input id="ytAdoptId" type="text" placeholder="video id from the Studio URL" maxlength="11" size="14" spellcheck="false">
+        <input id="ytAdoptId" type="text" placeholder="video id" title="the 11 characters after /video/ in the Studio URL" maxlength="11" size="14" spellcheck="false">
         <button id="ytAdopt" class="ghost">Adopt this draft</button>
         <span class="msg" id="ytAdoptMsg"></span>
       </div>
