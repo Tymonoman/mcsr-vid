@@ -10,7 +10,8 @@
 //  D2 In the End, where no bed sets a spawn, `death_spawnpoint` is a real death.
 //  D3 A bare `death` (no spawn point set) is a real death wherever it happens.
 //  D4 The phase is the dying player's own: the other runner being in the End changes nothing.
-//  D5 A restart (`reset`, a new world) puts the player back in the Overworld.
+//  D5 A restart (`reset`, a new world) puts the player back in the Overworld. Not in the docs:
+//     from the code's own comment (matchScore.ts, RunPhase); pinned because it is sensible.
 //  D6 Nothing that is not a player's death is a death: the dragon's included.
 //  D7 `metrics.deaths` counts real deaths only, per player in `deathsByPlayer`.
 //  D8 "Not a single death" counts every death-screen entry (`onScreenDeaths`), resets included.
@@ -85,7 +86,7 @@ const run = (extra: TimelineEntry[]): MatchInfo => ({
   console.log("OK D4: a death is read by the dying player's own phase");
 }
 
-// --- D5: a restart puts the player back in the Overworld. ---------------------------------------
+// --- D5 (from the code, not the docs): a restart puts the player back in the Overworld. ---------
 {
   const e = at(L, 460_000, SPAWN);
   const m = run([at(L, 420_000, "projectelo.timeline.reset"), e]);

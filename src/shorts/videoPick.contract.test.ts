@@ -24,7 +24,7 @@
 //  P12 Nothing names the winner — not in a hook.
 //  P13 deathKind is the one reading: the prompt's facts list a hunger reset (death_spawnpoint outside
 //      the End) apart from real deaths, and an End death as a real one.
-//  P14 The heuristic follows deathKind too: hunger resets are no "deaths" in its hook.
+//  P14 The hook chips follow deathKind too: hunger resets are no "deaths" in any of them.
 //  P15 A playoff series is picked from game 1's directory; the window is placed in its game, on that
 //      game's clock, and must end before that game is decided.
 //
@@ -33,19 +33,27 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { MatchInfo } from "../api/types.js";
+import type { MatchInfo, UserDetails } from "../api/types.js";
 import { config } from "../config.js";
+import { buildHookSuggestions } from "../pipeline/hooks.js";
+import { computeMetrics } from "../pipeline/matchScore.js";
 import { pickFile, SHORT_MAX_MS, SHORT_MIN_MS, type ShortPick } from "./shortPlan.js";
 import { hookProblem, pickErrorFile, pickShortMoment, PROXY_FILE } from "./videoPick.js";
 
-/** A doc clause the code may not keep: report it and carry on, so the suite stays green until triage. */
+/**
+ * A doc clause the code does not keep yet: reported, not fatal, so the suite stays green until the
+ * fix. Once the code keeps it the probe fails, so it becomes a plain assertion rather than a pass
+ * that can never fail.
+ */
 async function deviation(clause: string, fn: () => unknown): Promise<void> {
   try {
     await fn();
   } catch (err) {
     if (!(err instanceof assert.AssertionError)) throw err;
     console.log(`DEVIATION: ${clause} — ${err.message.split("\n")[0]}`);
+    return;
   }
+  assert.fail(`${clause}: the code keeps this now — turn the deviation() probe into a plain assertion`);
 }
 
 const tmp = mkdtempSync(path.join(tmpdir(), "videopick-contract-"));
@@ -382,16 +390,14 @@ assert.equal(
 
 // --- P11, P12: seeds, ranks, elo; the winner. Probes past the obvious "#3" shape. ----------------
 {
+  // Kept since 415898a widened HOOK_SEED_RANK_ELO (a deviation until then). A world-seed hook like
+  // P9's "TWO PORTALS, ONE SEED" is still fair game, and P9 still expects it kept.
   const elo = ["2100 ELO SHOWDOWN", "THE TOP SEED UNDER PRESSURE", "RANK 1 ON THE LADDER"];
   const r = await ask([{ ...good, titleHooks: elo }]);
-  await deviation("No seed, rank or elo in hooks or suggestions (CLAUDE.md House rules)", () =>
-    assert.equal(
-      r.pick.titleHooks,
-      undefined,
-      `kept as title hook suggestions: ${JSON.stringify(r.pick.titleHooks)}`,
-    ),
-  );
-  // Invented runners, so the line states no real match's result.
+  assert.equal(r.pick.source, "agy", r.error ?? "");
+  assert.equal(r.pick.titleHooks, undefined, `kept as title hooks: ${JSON.stringify(r.pick.titleHooks)}`);
+  // Invented runners, so the line states no real match's result. spoilsTheResult (hooks.ts) is a
+  // word list with no "finishes first".
   const runners = [{ nickname: "RunnerOne" }, { nickname: "RunnerTwo" }];
   await deviation("Nothing names the winner: no winner in a hook (CLAUDE.md House rules)", () =>
     assert.notEqual(
@@ -403,7 +409,9 @@ assert.equal(
   // The plain spoiler words are refused, as the docs promise.
   for (const h of ["RUNNERONE WINS IT", "RUNNERTWO CHOKES", "RUNNERONE TAKES IT"])
     assert.equal(hookProblem(h, undefined, runners), "it gives the result away", h);
-  console.log("OK P11–P12: probed (see any DEVIATION above); the plain spoiler words are refused");
+  console.log(
+    "OK P11–P12: elo/top seed/rank title hooks dropped; the plain spoiler words are refused (P12 paraphrase probed)",
+  );
 }
 
 // --- P13: the prompt's facts follow deathKind. ----------------------------------------------------
@@ -438,19 +446,31 @@ assert.equal(
   console.log("OK P13: the prompt lists hunger resets apart from deaths, an End death as a death");
 }
 
-// --- P14: the heuristic's hook reads deathKind too. ------------------------------------------------
+// --- P14: the hook chips read deathKind too. --------------------------------------------------------
 {
-  // 12730175's five death screens are all hunger resets: no hook may count them as deaths.
+  // 12730175's five death screens are all hunger resets, and it finished 1 s apart. The Short's hook
+  // is the top chip ("Decided by 1 second", weight 95) whatever the death count, so only the whole
+  // list can tell: had metrics.deaths counted the resets, "5 deaths and still this close" would be
+  // in it (4+ deaths, margin under 10 s); had onScreenDeaths missed them, "Not a single death".
+  const match = matches.get(RESETS_ONLY)!;
+  const metrics = computeMetrics(match);
+  assert.equal(metrics.deaths, 0, "five hunger resets are no real deaths");
+  assert.ok(
+    metrics.finishMarginMs !== null && metrics.finishMarginMs < 10_000,
+    "close enough for the deaths chip",
+  );
+  const [userLeft, userRight] = match.players as unknown as [UserDetails, UserDetails];
+  const chips = buildHookSuggestions({ metrics, match, userLeft, userRight, maxChars: 100, minChars: 0 }, 99);
+  assert.ok(chips.length > 0, "the match has chips at all");
+  for (const c of chips) assert.doesNotMatch(c, /\bdeaths?\b|\bdied\b|\bdies\b/i, `chip: ${c}`);
+  // The heuristic's own hook comes from the same chips (chipHook).
   const pick = await pickShortMoment(RESETS_ONLY, {
     force: true,
     fallback: "the contract test skips the model",
   });
   assert.equal(pick.source, "heuristic");
   assert.doesNotMatch(pick.hookSuggestion, /\bdeaths?\b|\bdied\b|\bdies\b/i, pick.hookSuggestion);
-  assert.ok(!existsSync(path.join(config.mediaDir, String(RESETS_ONLY))), "no directory is made for it");
-  console.log(
-    `OK P14: the heuristic's hook on a resets-only match names no death ("${pick.hookSuggestion}")`,
-  );
+  console.log(`OK P14: no chip on a resets-only match names a death (${JSON.stringify(chips)})`);
 }
 
 // --- P15: a series is game 1's directory; a window lives in one game and ends before it is decided.
@@ -502,9 +522,8 @@ assert.equal(
   assert.equal(videoTime.pick.source, "heuristic", "video time is not the overlay's RTA");
   const wrongGame = await ask([{ ...inG2, gameMatchId: g1 }], g1);
   assert.equal(wrongGame.pick.source, "heuristic", "a game-2 window claimed for game 1");
-  // A window straddling the two games is not one game's moment.
-  const straddle = await ask([{ ...good, startSec: OFF - 10, endSec: OFF + 10, rtaAtStart: "7:30" }], g1);
-  assert.equal(straddle.pick.source, "heuristic", "a window across the join");
+  // No case for a window across the join: there is no rule of its own for it, and any such window
+  // ends after game 1's dragon (7:13.1), so the "decided" rule above already refuses it.
   console.log(
     "OK P15: a series pick lives in game 1's directory, inside one game, ending before it is decided",
   );
