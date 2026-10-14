@@ -20,7 +20,7 @@ import {
 import { auditState, readAudit, startAudit } from "./audit.js";
 import { blockedIn, config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
-import { listProcessedMatchIds, matchStatusFor } from "./matchStatus.js";
+import { blockedOnDisk, listProcessedMatchIds, matchStatusFor } from "./matchStatus.js";
 import { exportStale, staleExportMessage } from "../pipeline/syncFile.js";
 import { abTestKey, readManifest, variantFellBack } from "../thumbnails/thumbnailVariants.js";
 import {
@@ -166,6 +166,15 @@ export async function handleYoutubeRoute(
       });
       return true;
     }
+    // First, before any read or write reaches YouTube (config.blockedPlayers). The API's names or
+    // the clips' (`matchStatusFor`) miss a match archived off disk with the API down, or a blocked
+    // runner since renamed; the chats and the title still name them (`blockedOnDisk`), the same
+    // pair `matchIsBlocked` checks for the render routes, without its second MCSR read.
+    const status = await matchStatusFor(matchId);
+    if (blockedIn([status.leftNickname, status.rightNickname]) || blockedOnDisk(matchDir(matchId))) {
+      ctx.json(res, 403, { error: `match ${matchId} has a blocked player — it cannot be adopted` });
+      return true;
+    }
     // The finish below sets the live thumbnail.png: not while a re-render or its Use this runs.
     if (thumbnailRunning(matchId)) {
       ctx.json(res, 409, {
@@ -207,12 +216,6 @@ export async function handleYoutubeRoute(
     // The draft in Studio is the export on disk, and a sync.json written after that export means
     // the export places the clips by numbers the operator has since corrected. The same refusal
     // the Upload button gets (`beginUpload`); no export at all is not stale, only unverifiable.
-    const status = await matchStatusFor(matchId);
-    // Up front, before any read or write reaches YouTube (config.blockedPlayers).
-    if (blockedIn([status.leftNickname, status.rightNickname])) {
-      ctx.json(res, 403, { error: `match ${matchId} has a blocked player — it cannot be adopted` });
-      return true;
-    }
     const located = findExportedVideo(matchId, [status.leftNickname, status.rightNickname]);
     const staleness = "error" in located ? null : exportStale(matchDir(matchId), located.path);
     if (staleness?.stale) {

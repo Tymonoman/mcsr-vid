@@ -462,7 +462,9 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   steps are left alone and nothing is persisted, so unblocking needs no repair) to every one of its
   three callers at once — Adopt, the Finish button and the nightly's `retryFailedPlaylists`/
   `retryPendingComments` ticks; **Adopt** (`POST /api/youtube/adopt/:id`) also refuses up front,
-  before `videos.update` — the write `finishOnYouTube`'s own gate does not cover. `POST /api/render`,
+  first of its checks and before `videos.update` — the write `finishOnYouTube`'s own gate does not
+  cover — on the API's pair or `blockedOnDisk` (before 14 Oct 2026 the API's pair alone, so an
+  archived match with the API down, or a renamed runner, got its title replaced before the refusal). `POST /api/render`,
   `POST /api/render/:id` (`matchIsBlocked`, `src/dashboard/matchStatus.ts`: the API's pair, else
   `blockedOnDisk` on an archived directory) and `POST /api/series/:id/render` refuse before the fire-and-forget run even starts, and `renderSeries`
   itself refuses too (`{kind:"blocked"}`, `src/playoffs/series.ts`) — the one place both that route
