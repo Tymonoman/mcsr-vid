@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { normaliseNick, playersFromTitle, rivalMatchFor, type RivalPost } from "./rivalPosts.js";
 
 // Both grammars the rival has used, and the nickname spellings that differ from the API's.
@@ -173,10 +174,6 @@ assert.equal(rivalMatchFor(posts, ["Infume", "BeefSalad"], matchAt / 1000), null
 // on the rival: 8:59 for an 8:48 run. A post of the wrong length is the other match, not this
 // one, and must not demote this one; without lengths the old pair-and-window rule stands.
 {
-  const { isoDurationSec } = await import("./rivalPosts.js");
-  assert.equal(isoDurationSec("PT8M59S"), 539);
-  assert.equal(isoDurationSec("PT1H2M3S"), 3723);
-  assert.equal(isoDurationSec("nonsense"), 0);
   const timed: RivalPost[] = [{ ...posts[0]!, durationSec: 539 }];
   assert.equal(
     rivalMatchFor(timed, ["Aquacorde", "nahhann"], matchAt / 1000, 528)?.title,
@@ -233,5 +230,57 @@ assert.equal(rivalMatchFor(posts, ["Infume", "BeefSalad"], matchAt / 1000), null
     null,
     "outside the window is nothing",
   );
+}
+// The public feed, read with no token (src/fixtures/rival-feed.xml: three entries of @mcsrmatches'
+// feed, 14 Oct 2026 — a hook-less title, an escaped quote in a hook, a Short that names no pair).
+// The audit told Google the OAuth token reads the channel's own data only.
+{
+  const { fetchRivalPosts, parseRivalFeed } = await import("./rivalPosts.js");
+  const feed = readFileSync(new URL("../fixtures/rival-feed.xml", import.meta.url), "utf8");
+  assert.deepEqual(parseRivalFeed(feed), [
+    {
+      title: "Silverrruns vs Lowkey | MCSR Ranked | Minecraft Speedrun",
+      publishedAtMs: Date.parse("2026-10-12T21:00:04+00:00"),
+      players: ["silverrruns", "lowkey"],
+    },
+    {
+      title: 'One Mistake "GG" | Doogile vs Aquacorde | MCSR Ranked | Minecraft Speedrun',
+      publishedAtMs: Date.parse("2026-10-06T21:00:09+00:00"),
+      players: ["doogile", "aquacorde"],
+    },
+    { title: "MINECRAFT SPEEDRUN CLIPS 1", publishedAtMs: Date.parse("2026-09-28T19:01:40+00:00"), players: null },
+  ]);
+  assert.deepEqual(parseRivalFeed("<html>not a feed</html>"), [], "no entries, no posts");
+
+  const asked: { url: string; headers: Record<string, string> }[] = [];
+  const stub = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    asked.push({ url, headers: { ...(init?.headers as Record<string, string> | undefined) } });
+    if (url === "https://www.youtube.com/@mcsrmatches")
+      return new Response(
+        '<html><link rel="canonical" href="https://www.youtube.com/channel/UCD4mMby1i-Lz2huxfMMWfLA">' +
+          '"channelId":"UCxxxxxxxxxxxxxxxxxxxxxx"</html>',
+      );
+    if (url === "https://www.youtube.com/feeds/videos.xml?channel_id=UCD4mMby1i-Lz2huxfMMWfLA")
+      return new Response(feed);
+    return new Response("", { status: 404 });
+  }) as typeof fetch;
+  assert.equal((await fetchRivalPosts("mcsrmatches", stub)).length, 3);
+  assert.equal((await fetchRivalPosts("@mcsrmatches", stub)).length, 3, "a leading @ is the same handle");
+  assert.equal((await fetchRivalPosts("mcsrmatches", stub)).length, 3);
+  assert.equal(
+    asked.filter((a) => a.url.startsWith("https://www.youtube.com/@")).length,
+    1,
+    "the handle is resolved once and kept",
+  );
+  for (const a of asked) {
+    assert.ok(!a.url.includes("googleapis.com"), `no Data API call: ${a.url}`);
+    assert.ok(
+      !Object.keys(a.headers).some((h) => h.toLowerCase() === "authorization"),
+      `no token: ${a.url}`,
+    );
+  }
+  await assert.rejects(fetchRivalPosts("nosuchchannel", stub), /HTTP 404/);
+  console.log("OK: the rival's public feed parses, and nothing carries the token");
 }
 console.log("rivalPosts: all checks passed");
