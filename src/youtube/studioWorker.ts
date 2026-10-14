@@ -972,8 +972,8 @@ export function newCodeWaiting(bootHead: string | null, liveHead: string | null)
  * (`newCodeWaiting`/`BOOT_HEAD`) and, if so, exits cleanly (code 0) rather than keep looping on
  * stale code: `scripts/studio-worker.sh` restarts the command 60s later, and the new process's
  * own `BOOT_HEAD` then matches, so this fires once per actual change, not every cycle the
- * blackout lasts. `opts.bootHead`/`headNow`/`exit`/`now` are test seams only — every real caller
- * (the CLI) leaves them at their defaults.
+ * blackout lasts. `opts.bootHead`/`headNow`/`exit`/`now`/`configFile` are test seams only — every
+ * real caller (the CLI) leaves them at their defaults.
  */
 export async function runWorker(
   opts: {
@@ -985,6 +985,7 @@ export async function runWorker(
     headNow?: () => string | null;
     exit?: (code: number) => void;
     now?: () => Date;
+    configFile?: string;
   } = {},
 ): Promise<void> {
   const bootHead = opts.bootHead ?? BOOT_HEAD;
@@ -994,7 +995,7 @@ export async function runWorker(
   for (;;) {
     const now = clock();
     let result: CycleResult;
-    const blackout = inBlackoutWindow(now, liveNightlyHour());
+    const blackout = inBlackoutWindow(now, liveNightlyHour(opts.configFile));
     if (blackout) {
       result = SKIPPED_RESULT;
       if (!opts.once && newCodeWaiting(bootHead, headNow())) {

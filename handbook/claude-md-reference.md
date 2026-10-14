@@ -1020,7 +1020,8 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   at the chapter offset kept the previous game's last GOP, one more per re-join, until 14 Oct
   2026 — `seriesExtract.test.ts` round-trips it with real ffmpeg) only when a re-join will run, never
   for a series that is current. Nothing joins until a seed has reached `firstTo` (or the bracket's
-  own score says so) — a series still being played is `incomplete` — and a game whose export is
+  own score says so) — a series still being played is `undecided` (14 Oct 2026; was `incomplete`
+  with nothing missing, which `renderSeries` reported as a failed join) — and a game whose export is
   in flight (`final-<id>.part.mp4`) holds the join for its own settle. `exportStale` reads the record, so a
   sync fix on game 3 makes the series stale and names game 3; its Re-encode re-exports the game
   and the join follows (`startFastExport` settles through `assembleSeries`), the other games
@@ -1575,6 +1576,9 @@ under `nightlyMaxRenders` running past 04:30, could desync the two and let Chrom
 contend for the lab's four cores after all. It now derives the window from the live config value
 (10 min lead-in through the 4h chain window `nightlyMaxRenders` can use plus a 30 min finish
 buffer — 02:50-07:30 at the default hour; `null` disables the blackout with the nightly).
+Since 14 Oct 2026 the loop reads that value from `mcsr-vid.config.json` every cycle
+(`liveNightlyHour`): the worker is its own process, and a Settings or experiment move rewrites the
+file but only the dashboard's in-memory `config` — read at boot, it blacked out the old hours.
 `endscreenSaveButton`/`endscreenDiscardButton` were a plain `button:has-text("Save")`/
 `"Discard changes")`, picked with `.first()` with nothing to say *which* "Save" that would
 resolve to on a page the end-screen editor shares with the Details page's own `#save` — rereading

@@ -15,7 +15,8 @@
 //  G3. `config.studioAutomation` alone opens the gate (the gate is enable OR config).
 //  B1. Never runs 02:50–07:30 UTC at the default nightly hour — not even with the gate open.
 //  B2. The blackout is derived live from `nightlyRenderHourUtc` (a Settings change moves it with no
-//      restart); null disables it.
+//      restart); null disables it. The worker is its own process, so "live" is the config file
+//      Settings writes, read every cycle — not this process's in-memory config (348258c).
 //  C1. Per-cycle caps: ≤3 end screens, ≤2 TC starts, ≤3 related links, ≤3 pins, ≤2 thumbnail-TC
 //      plans — all at once on a cold start with everything eligible.
 //  C2. A cap counts real candidates: what a filter drops never holds a slot.
@@ -141,8 +142,8 @@ const startOpts = {
   debugPort: 1,
 };
 /** One pass of the real loop at `now`; returns what the heartbeat says the cycle did. */
-async function loopAt(now: Date, enable?: boolean) {
-  await runWorker({ once: true, enable, startOpts, now: () => now, bootHead: null });
+async function loopAt(now: Date, enable?: boolean, configFile?: string) {
+  await runWorker({ once: true, enable, startOpts, now: () => now, bootHead: null, configFile });
   return (await readHeartbeat())?.lastCycle?.probe;
 }
 
@@ -187,7 +188,8 @@ async function loopAt(now: Date, enable?: boolean) {
   );
   assert.equal(await loopAt(new Date("2026-10-14T07:31:00.000Z"), true), "error", "07:31 runs again");
 
-  // B2: moved in Settings (no restart), the window moves with it — read at every cycle.
+  // B2: moved in Settings (no restart), the window moves with it. Settings runs in the dashboard's
+  // process and rewrites mcsr-vid.config.json; the worker reads that file at every cycle.
   config.nightlyRenderHourUtc = 20;
   try {
     assert.equal(
@@ -195,18 +197,25 @@ async function loopAt(now: Date, enable?: boolean) {
       true,
       "default arg reads config live",
     );
-    assert.equal(
-      await loopAt(new Date("2026-10-14T03:00:00.000Z"), true),
-      "error",
-      "03:00 no longer blackout",
-    );
-    assert.equal(await loopAt(new Date("2026-10-14T20:00:00.000Z"), true), "skipped", "20:00 now is");
-    // null disables the nightly, and with it the blackout — nothing to collide with.
-    config.nightlyRenderHourUtc = null;
-    assert.equal(await loopAt(new Date("2026-10-14T03:00:00.000Z"), true), "error", "null: no blackout");
   } finally {
     config.nightlyRenderHourUtc = 3;
   }
+  const configFile = path.join(mkdtempSync(path.join(tmpdir(), "mcsr-studio-hour-")), "mcsr-vid.config.json");
+  process.on("exit", () => rmSync(path.dirname(configFile), { recursive: true, force: true }));
+  writeFileSync(configFile, JSON.stringify({ nightlyRenderHourUtc: 20 }));
+  assert.equal(
+    await loopAt(new Date("2026-10-14T03:00:00.000Z"), true, configFile),
+    "error",
+    "03:00 no longer blackout",
+  );
+  assert.equal(await loopAt(new Date("2026-10-14T20:00:00.000Z"), true, configFile), "skipped", "20:00 now is");
+  // null disables the nightly, and with it the blackout — nothing to collide with.
+  writeFileSync(configFile, JSON.stringify({ nightlyRenderHourUtc: null }));
+  assert.equal(
+    await loopAt(new Date("2026-10-14T03:00:00.000Z"), true, configFile),
+    "error",
+    "null: no blackout",
+  );
   console.log("OK B1-B2: the loop skips 02:50-07:30 even when enabled, and follows the live nightly hour");
 }
 
