@@ -68,7 +68,7 @@ Use the script, don't reconstruct the shell line. Extra arguments go after `--`.
 | `npm run validate-project -- media/<id>/match-<id>.kdenlive` | Loads the MLT XML through the MLT engine. Exit 0 = parses; passes a project with missing media. |
 | `npm run export:fast -- <matchId> [--cpu] [--seconds=N] [--full-tail]` | One ffmpeg pass (Intel VAAPI), no Kdenlive. `--seconds` → smoke test `smoke-<id>.mp4` (never the real final). |
 | `npm run export:nvenc -- media/<id>/match-<id>.kdenlive [out=N]` | melt + `h264_nvenc`. Needs an NVIDIA GPU; the lab has none. |
-| `npm run short -- <matchId> [--at=<ms>] [--seconds=N]` | Vertical Short, cut from the pick's window. Refuses without the hook (`short-<id>.hook.txt`) or once on YouTube. |
+| `npm run short -- <matchId> [--at=<ms>] [--seconds=N]` | Vertical Short, cut from the pick's window. Refuses without the hook (`short-<id>.hook.txt`), once on YouTube, or while `shortsByHand` is on. |
 | `npm run short:hand -- <matchId> <file.mp4> --hook "<hook>" --from <sec> --to <sec> --pov left\|right [--note]` | Registers a hand-cut Short as the pair the chain reads (`shortsByHand`). |
 | `npm run series -- <matchId \| all> [--join-only]` | Playoff series as one video: renders every game missing an export, joins into `series-<g1>.mp4`. Nightly cannot see a run here. |
 | `npm run sync-status -- [matchId]` | Where a match's POV clips sit; derives/writes `sync.json` if missing. No id lists everything, writes nothing. |
@@ -206,7 +206,8 @@ uploads. Client-only changes need just a reload.
   today", never uploaded (long-form or Short), never gets hooks saved, never rendered by `npm run
   short`/`short:hand` even by hand, never a past-hook style example. `finishOnYouTube` carries the
   refusal to Adopt/Finish/nightly-retry alike; Adopt also refuses before `videos.update`;
-  `POST /api/render` and `POST /api/series/:id/render` refuse before the run starts.
+  `POST /api/render` and `POST /api/series/:id/render` refuse before the run starts; `runPipeline`
+  itself refuses right after the match fetch, so `npm run batch`/`generate-project` and the TUI do too.
 - **Rival posts** (`rivalChannelHandle` default `mcsrmatches`): its public feed, never our token;
   matched to cards by pair/date; a posted match sorts after fresh ones.
 - **Hook chips** (`src/pipeline/hooks.ts`) lead with the match's stake (margin, lead change,
@@ -216,7 +217,8 @@ uploads. Client-only changes need just a reload.
   lead (`metrics.splits`), not the raw step that also fires on a widening lead; lead-change is the
   numberless "Does the lead ever settle?" (excludes off-panel splits and the dragon); "not a
   single death" counts every death-screen entry, not just real deaths; the DNF fallback never
-  says "reached" the dragon, only **killed**. A joined series' chips read the game that actually
+  says "reached" the dragon, only **killed**; no "sub-N to win it" on a forfeit, no "N deaths and
+  still this close" unless the margin is under 10s. A joined series' chips read the game that actually
   decided it, not game 1's. `midRollCtaAtSec` (Settings → Publishing, default 90, null=none)
   shows SUBSCRIBE for `midRollCtaSec` (4)s at the first split. `titleNames` (default
   `{ Pinne: "Skycrab", lowk3y_: "lowkey" }`) spells two players the broadcast's way, title only.
@@ -336,7 +338,8 @@ long-polling, no webhook.
 - **"Needs you"** (`gatherNeedsYou`, deterministic, "Nothing today." when empty): a failed
   `short-<id>.status.json` step; Studio signed-out/verify/wrong-channel; no long-form scheduled in
   48h; with `shortsByHand` on, a long-form due in 36h or public ≤3 days with no hand-cut Short; a
-  blocked runner in tonight's queue or as a recent comment's author; an `.experiments.json`
+  public or scheduled long-form/Short title whose hook fails `hookProblem` (video id + problem,
+  never the hook); a blocked runner in tonight's queue or as a recent comment's author; an `.experiments.json`
   `needsHuman` entry; the Studio worker's heartbeat over 90 min old or `sameErrorStreak` ≥3.
   `/needs` answers this section alone, fresh.
 - **A link about one match opens that match** (`#match=<id>` in `public/app.js`). Dedupe is
@@ -391,7 +394,8 @@ anything Google's anti-abuse systems do to a container-run browser.
   winner; `setExperimentChecked` records `watchTimeShare` per arm and "<arm> wins: a% vs b%").
   End screens get the editor's starter layout ("1 video, 1 subscribe") when the video has none.
 - **The worker never sets a Test & Compare winner itself** — `"done"` only records what Studio's
-  own page already shows; `"needsHuman"` lands on anything it couldn't get past. Every title is
+  own page already shows; `"needsHuman"` lands on anything it couldn't get past — a Save with no
+  "Changes saved" too, an error that leaves the experiment planned, never "started". Every title is
   checked before any page opens (`titleTestProblem`: `hookProblem` incl. `hookLabelProblem`,
   `spoilsTheResult`, 100-char ceiling).
 - **The worker's own gate is `opts.enable` (CLI `--enable`, or env `STUDIO_WORKER=1`) OR'd with

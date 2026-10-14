@@ -276,7 +276,11 @@ export async function uploadVideo(opts: UploadOptions): Promise<UploadResult> {
       return resultOf((await probe.json()) as { id: string });
     }
     if (probe.status === 308) uploaded = acceptedBytes(probe) ?? 0;
-    // Anything else means the session is gone; a fresh start is the right answer.
+    // 5xx/429 is YouTube saying "retry", not "expired": keep the session file so the next press
+    // resumes. Reading it as gone started a second videos.insert — two copies of one match.
+    else if (probe.status >= 500 || probe.status === 429)
+      throw new Error(await describeApiFailure(probe, "videos.insert (resume probe)"));
+    // 404/410 (or any other 4xx) means the session is gone; a fresh start is the right answer.
     else sessionUrl = null;
   }
 

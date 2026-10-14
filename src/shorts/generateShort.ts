@@ -24,6 +24,7 @@ import {
 } from "./shortHook.js";
 import { decidedAtMs, raceCaptions } from "./raceGap.js";
 import { pickFile, SHORT_MAX_MS, SHORT_MIN_MS, type ShortPick } from "./shortPlan.js";
+import { WAITING_FOR_HAND_SHORT } from "./handShort.js";
 
 /**
  * npm run short -- <matchId> [--at=<ms>] [--seconds=N] [--top-crop=x,y,w,h] [--bottom-crop=...]
@@ -56,6 +57,13 @@ const hook = await readShortHook(outDir, matchId);
 if (hook === null) refuse(`${WAITING_FOR_HOOK} — save the hooks on the dashboard first (match ${matchId})`);
 if (existsSync(path.join(outDir, "youtube-short.json")))
   refuse(`the Short of ${matchId} is already on the channel — a new cut would need a re-upload`);
+// Hand mode: the Short is the session's own cut (`npm run short:hand`) and the hook above drives
+// nothing — a model cut here would overwrite it and upload as the hand-made Short. The same gate as
+// the dashboard's render route; the setting alone decides, never a leftover hand.json.
+if (config.shortsByHand)
+  refuse(
+    `${WAITING_FOR_HAND_SHORT} — this match's Short is cut by hand (npm run short:hand), never re-rendered over (match ${matchId})`,
+  );
 const pick = await readFile(pickFile(outDir, matchId), "utf8")
   .then((text) => JSON.parse(text) as ShortPick)
   .catch(() => refuse(`no pick for ${matchId} yet — npm run pick -- ${matchId}`));

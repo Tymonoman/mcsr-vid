@@ -31,7 +31,8 @@ import { nightlyShortSummary, readStatus } from "../dashboard/shortFlow.js";
 import { needsHumanExperiments, testsSummary, type TestsSummary } from "../dashboard/experiments.js";
 import { creatorWatchSince, type CreatorWatchHit } from "../dashboard/creatorWatch.js";
 import { handShortFile } from "../shorts/handShort.js";
-import { pickErrorFile } from "../shorts/videoPick.js";
+import { hookProblem, pickErrorFile } from "../shorts/videoPick.js";
+import { SEPARATOR } from "../pipeline/title.js";
 import { playoffBoard } from "../playoffs/playoffs.js";
 import { describeFailure, runClaude } from "./claude.js";
 import { filterUnanswered, type UnansweredComment } from "./comments.js";
@@ -152,10 +153,12 @@ async function gatherTodo(nowMs: number): Promise<TodoFacts> {
   const cap = await capacity();
   const diskMatchesLeft = cap.working?.matchesLeft ?? null;
 
-  const board = await playoffBoard(nowMs / 1000);
+  // A bracket the MCSR API can't serve costs only this line: the rest of TODAY is local reads, and a
+  // down API already shows under health.
+  const board = await playoffBoard(nowMs / 1000).catch(() => null);
   // The board stays up while a finished round's games may still be found; only a slot still to be
   // played in the next 14 days is news for the day.
-  const soon = board.slots.find(
+  const soon = board?.slots.find(
     (s) => s.startTime !== null && s.startTime * 1000 >= nowMs && s.startTime * 1000 <= nowMs + 14 * DAY_MS,
   );
   const playoffsSoon = soon ? { round: soon.round, startTime: soon.startTime, bestOf: soon.bestOf } : null;
@@ -175,7 +178,7 @@ async function gatherTodo(nowMs: number): Promise<TodoFacts> {
 /* --- Needs you (the operator's grant, 8 Oct 2026: "I act only on what the 07:00 Warsaw Telegram
    report lists under 'Needs you'") ---------------------------------------------------------------
  *
- * Deterministic, code only — never Claude — and only these seven kinds, each a fact a human has to
+ * Deterministic, code only — never Claude — and only these eight kinds, each a fact a human has to
  * settle: everything else (a scheduled upload, a quiet night) needs nobody. A match is named by its
  * deep link where there is one; a comment's own text or author is never shown (`blockedRunnerItems`
  * names the video a blocked runner commented on, nothing they wrote). */
@@ -275,6 +278,40 @@ async function handShortItems(nowMs: number): Promise<NeedsYouItem[]> {
       players: m ? playersOf(m) : undefined,
       text: `Short still to make by hand — long-form ${at > nowMs ? "goes public" : "public since"} ${warsawTime(goesPublic!)}`,
     });
+  }
+  return items;
+}
+
+/** A live title — long-form or Short, public or scheduled — whose hook (the text before the first
+ *  " | ") breaks a house rule. A typed hook saves with only a warning ("it should just be a
+ *  suggestion"), so once it is out nothing else says so: 14 Oct 2026, "FALLEN KING vs PLAYOFF
+ *  GOAT" and "RANK #1" were public. `hookProblem` runs `spoilsTheResult` itself, and gets the
+ *  title's own "A vs B" so a fresh "X vs Y" in the hook is a label. The line names the problem and
+ *  the video, never the hook: it may be the label. Each video once; a blocked player's match is
+ *  private by the operator's hand and skipped. */
+async function liveTitleItems(): Promise<NeedsYouItem[]> {
+  const items: NeedsYouItem[] = [];
+  const seen = new Set<string>();
+  for (const matchId of listProcessedMatchIds()) {
+    for (const kind of ["video", "short"] as const) {
+      const rec = await readUpload(matchId, kind);
+      // The record's privacyStatus is from upload time: a scheduled one still reads "private" once
+      // its publishAt has passed, so any publishAt is live (publishSlot.ts reads it the same way).
+      if (!rec?.title || seen.has(rec.videoId) || !(rec.publishAt || rec.privacyStatus === "public")) continue;
+      seen.add(rec.videoId);
+      const [hook, ...rest] = rec.title.split(SEPARATOR);
+      // A Short's pair carries its hashtags after it: "A vs B #mcsr #minecraft".
+      const pair = rest.map((s) => /^(.+?)\s+vs\.?\s+(.+?)(?:\s+#\S+)*$/i.exec(s.trim())).find(Boolean);
+      const players = pair ? [pair[1]!, pair[2]!] : undefined;
+      if (blockedOnDisk(matchDir(matchId)) || blockedIn(players ?? [])) continue;
+      const problem = hookProblem(hook, 100, players?.map((nickname) => ({ nickname })));
+      if (problem)
+        items.push({
+          matchId,
+          players: players?.join(" vs "),
+          text: `Live title breaks a house rule: ${rec.videoId} — ${problem}`,
+        });
+    }
   }
   return items;
 }
@@ -406,11 +443,12 @@ function needsHumanItems(): NeedsYouItem[] {
 }
 
 async function gatherNeedsYou(nowMs: number, sinceMs: number): Promise<NeedsYouFacts> {
-  const [failed, studio, noUpload, handShort, blocked] = await Promise.all([
+  const [failed, studio, noUpload, handShort, liveTitles, blocked] = await Promise.all([
     failedStepItems(),
     Promise.resolve(studioItem()),
     noUploadSoonItem(nowMs),
     handShortItems(nowMs),
+    liveTitleItems(),
     blockedRunnerItems(sinceMs),
   ]);
   const items = [
@@ -418,6 +456,7 @@ async function gatherNeedsYou(nowMs: number, sinceMs: number): Promise<NeedsYouF
     ...(studio ? [studio] : []),
     ...(noUpload ? [noUpload] : []),
     ...handShort,
+    ...liveTitles,
     ...blocked,
     ...needsHumanItems(),
     ...studioWorkerItems(nowMs),

@@ -481,6 +481,30 @@ console.log("youtube: all checks passed");
   );
   assert.equal(existsSync(session), true, "the stale session file is left on disk, not deleted blind");
 
+  // A 5xx/429 on the probe is YouTube's "try again", not "gone" — even WITHOUT resumeOnly (an
+  // operator's Retry after a chunk 503) it must not start a second videos.insert, and the session
+  // file stays so the next press resumes.
+  for (const status of [503, 429]) {
+    let postedTransient = false;
+    const flaky: typeof fetch = async (_url, init) => {
+      if (init?.method === "POST") postedTransient = true;
+      return new Response("", { status });
+    };
+    await assert.rejects(
+      uploadVideo({
+        filePath: file,
+        title: "t",
+        description: "d",
+        privacyStatus: "private",
+        fetchImpl: flaky,
+        chunkBytes: CHUNK,
+      }),
+      new RegExp(`resume probe\\) -> ${status}`),
+    );
+    assert.equal(postedTransient, false, `a ${status} probe never starts a fresh upload`);
+    assert.equal(existsSync(session), true, `a ${status} probe keeps the session for the next press`);
+  }
+
   // A session that is genuinely still good resumes exactly as without resumeOnly — the guard
   // only ever refuses the fall-through to a fresh start, never a real resume.
   await writeFile(

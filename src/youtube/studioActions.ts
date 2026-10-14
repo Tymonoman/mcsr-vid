@@ -32,8 +32,16 @@ const SELECTORS = {
   authorLink: "#author-text",
   pinnedBadge: "text=/Pinned by/i",
   actionMenuButton: 'button[aria-label="Action menu"]',
-  pinMenuItem: 'tp-yt-paper-item:has-text("Pin")',
-  confirmPinButton: 'ytd-button-renderer:has-text("Pin") button, button:has-text("Pin")',
+  // Confirmed live 14 Oct 2026 (d_fi9zEqcFc, `tmp/day/pin/`): the thread's ⋮ opens a
+  // `ytd-menu-popup-renderer` inside `ytd-popup-container` (Pin / Edit / Delete, each a
+  // `ytd-menu-navigation-item-renderer > a > tp-yt-paper-item`); "Pin" opens a
+  // `yt-confirm-dialog-renderer` ("Pin this comment?") whose buttons are
+  // `yt-button-renderer#confirm-button`/`#cancel-button`. Both scoped to the popup container: the
+  // old page-wide `button:has-text("Pin")` resolved first to the player's hidden "Show cards"
+  // button, whose text is "InfoShopping" — sho-PPIN-g — and timed out on it. The menu item is
+  // matched by its exact text in `pinComment` so an "Unpin" item never passes for it.
+  pinMenuItem: "ytd-popup-container ytd-menu-popup-renderer tp-yt-paper-item",
+  confirmPinButton: "ytd-popup-container yt-confirm-dialog-renderer #confirm-button button",
   // End screens — confirmed live 7 Oct 2026.
   endscreenEditorLink: "#endscreen-editor-link",
   // The starter-template gallery only renders while the editor has no elements yet (both sample
@@ -286,16 +294,27 @@ export async function pinComment(
 
     await thread.locator(SELECTORS.actionMenuButton).click();
     await randomPause();
-    await page.locator(SELECTORS.pinMenuItem).click();
+    await page.locator(SELECTORS.pinMenuItem).filter({ hasText: /^\s*Pin\s*$/ }).click();
     await randomPause();
+    const confirm = page.locator(SELECTORS.confirmPinButton);
+    await confirm.waitFor({ state: "visible", timeout: 15_000 });
 
     if (opts.dryRun) {
       await shot(handle, opts.matchId, "pin-dry-run");
       return "pinned";
     }
 
-    await page.locator(SELECTORS.confirmPinButton).first().click();
+    await confirm.click();
+    // The page showed no "Pinned by" before (checked above), so any badge now is this pin landing;
+    // without one the click did nothing, and "pinned" would mark a pin done that never happened.
+    const landed = await page
+      .locator(SELECTORS.pinnedBadge)
+      .first()
+      .waitFor({ state: "visible", timeout: 15_000 })
+      .then(() => true)
+      .catch(() => false);
     await shot(handle, opts.matchId, "pin-after");
+    if (!landed) return { error: 'confirmed the pin, but no "Pinned by" badge appeared' };
     return "pinned";
   } catch (err) {
     return { error: describeError(err) };
@@ -810,12 +829,23 @@ export async function startTestAndCompare(
     await waitForEnabled(page, SELECTORS.pageSaveButton, 15_000);
     await randomPause();
     await page.locator(SELECTORS.pageSaveButton).click();
-    await page
+    // No toast is no proof it saved: swallowed, a Save that never landed read as "started" and
+    // surfaced only a day later as a blank form. As an error the worker records it as this cycle's
+    // and leaves the experiment "planned" — the next cycle reads the page before trying again.
+    const saved = await page
       .locator('text="Changes saved"')
       .first()
       .waitFor({ state: "visible", timeout: 15_000 })
-      .catch(() => {});
+      .then(
+        () => true,
+        () => false,
+      );
     await shot(handle, opts.matchId, "tc-after");
+    if (!saved)
+      return {
+        error:
+          'Save was pressed but Studio never showed "Changes saved" — the test may not have started; check Studio by hand',
+      };
     return "started";
   } catch (err) {
     return { error: describeError(err) };

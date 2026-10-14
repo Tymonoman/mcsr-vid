@@ -653,6 +653,26 @@ try {
     assert.equal(videoWriting(matchId), false);
   }
 
+  // A record written while Finish runs, outside its turn (the Studio worker's pin is another
+  // process): Finish puts back only its ledger, never its own stale copy of the rest — and never
+  // turns a record now for another video back into the one it started on.
+  {
+    const done = { thumbnail: null, playlists: null, comment: null, tags: null };
+    await writeUpload(matchId, { ...record, publishAt: "2026-10-20T19:00:00.000Z", finished: done });
+    const running = finishOnYouTube(matchId, "vidX");
+    const before = (await readUpload(matchId))!;
+    await writeUpload(matchId, { ...before, publishAt: "2026-10-22T19:00:00.000Z" });
+    await running;
+    const after = await readUpload(matchId);
+    assert.equal(after?.publishAt, "2026-10-22T19:00:00.000Z", "the newer time stands");
+    assert.deepEqual(after?.finished, done, "and the ledger with it");
+    const again = finishOnYouTube(matchId, "vidX");
+    await writeUpload(matchId, { ...record, videoId: "vidYYYYYYYY", finished: {} });
+    await again;
+    assert.equal((await readUpload(matchId))?.videoId, "vidYYYYYYYY", "another video's record is left alone");
+    console.log("OK: Finish writes back its ledger onto the record as it is now, not as it was");
+  }
+
   // A thumbnail put on from the Thumbnail panel: the A/B tab files the video under a row of its
   // own (it wore two images), and Adopt of the same video keeps it — the "on YouTube since" line,
   // Undo and that row with it. Another video starts afresh.

@@ -90,6 +90,36 @@ try {
   }
   assert.equal(timers(), baseline);
 
+  // A playoff bracket the MCSR API can't serve (a 503, a timeout) costs TODAY its playoffs line,
+  // never the section: waiting-for-hook, the schedule and the disk are local reads (14 Oct 2026).
+  {
+    const WAITING = 9001;
+    const waitingDir = path.join(media, String(WAITING));
+    mkdirSync(waitingDir, { recursive: true });
+    writeFileSync(path.join(waitingDir, `final-${WAITING}.mp4`), "x");
+    writeFileSync(
+      path.join(waitingDir, `short-${WAITING}.pick.json`),
+      JSON.stringify({ startMs: 60_000, endMs: 90_000, pov: "left", createdAt: new Date().toISOString() }),
+    );
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      if (String(input).startsWith("https://api.mcsrranked.com/"))
+        return new Response("down", { status: 503, statusText: "Service Unavailable" });
+      throw new Error("no network in this test");
+    }) as typeof fetch;
+    try {
+      const now = Date.parse("2026-09-30T20:00:00Z");
+      const { todo } = await gatherFacts(now, now - 86_400_000, ["todo"]);
+      assert.ok(todo.ok, `TODAY survives a dead bracket: ${JSON.stringify(todo)}`);
+      assert.equal(todo.data.playoffsSoon, null);
+      assert.deepEqual(todo.data.waitingForHook.map((w) => w.matchId), [WAITING]);
+      assert.equal(todo.data.scheduledTomorrowCount, 0);
+      console.log("OK: a dead playoff bracket nulls playoffsSoon, the rest of TODAY stays");
+    } finally {
+      globalThis.fetch = realFetch;
+      rmSync(waitingDir, { recursive: true, force: true });
+    }
+  }
+
   // A failed restart-when-idle boot check (src/dashboard/restartWhenIdle.ts) is this process'
   // own state, not a ping — it must surface in `gatherHealth`'s list the same way a down API
   // does, since that is the only way it ever reaches the Telegram report (review fix, 8 Oct 2026).
@@ -508,6 +538,50 @@ try {
       console.log(
         "OK: a long-form due or public without its hand-cut Short is an item while shortsByHand is on",
       );
+
+      // 7. A live title breaking a house rule (14 Oct 2026: "FALLEN KING vs PLAYOFF GOAT" public):
+      //    named by video and problem, never the hook; a clean, a private or a blocked one is not.
+      const titled = async (
+        matchId: number,
+        videoId: string,
+        title: string,
+        live: boolean,
+        kind = "video",
+      ) => {
+        mkdirSync(dir(matchId), { recursive: true });
+        await writeUpload(
+          matchId,
+          {
+            videoId,
+            uploadedAt: new Date(SINCE - 5 * 24 * 3600_000).toISOString(),
+            publishAt: live ? new Date(NOW + 10 * 3600_000).toISOString() : null,
+            privacyStatus: "private",
+            thumbnailVariant: null,
+            title,
+          },
+          kind as "video" | "short",
+        );
+      };
+      await titled(8, "v8", "FALLEN KING vs PLAYOFF GOAT | doogile vs Feinberg | MCSR Ranked", true);
+      await titled(8, "s8", "RANK #1 | doogile vs Feinberg #mcsr #minecraft", true, "short");
+      await titled(9, "v9", "CAN ANYONE CATCH UP? | doogile vs Feinberg | MCSR Ranked", true);
+      await titled(10, "v10", "FALLEN KING vs PLAYOFF GOAT | doogile vs Feinberg | MCSR Ranked", false);
+      await titled(11, "v11", "FALLEN KING vs PLAYOFF GOAT | Aquacorde vs Feinberg | MCSR Ranked", true);
+      items = (await needsYouOf()).filter((i) => /^Live title/.test(i.text));
+      assert.deepEqual(
+        items.map((i) => [i.matchId, i.text]),
+        [
+          [
+            8,
+            "Live title breaks a house rule: v8 — names a runner with a label: runners have objected to this (2 Oct 2026)",
+          ],
+          [8, "Live title breaks a house rule: s8 — it uses a seed, rank or elo"],
+        ],
+        "the epithets and the rank, scheduled; not the clean one, the private one or the blocked one",
+      );
+      assert.equal(items[0]!.players, "doogile vs Feinberg");
+      assert.ok(!/FALLEN|RANK #1/.test(JSON.stringify(items)), "the hook itself never appears");
+      console.log("OK: a live title breaking a house rule is an item by video id and problem");
     } finally {
       config.shortsByHand = false;
       globalThis.fetch = realFetch;

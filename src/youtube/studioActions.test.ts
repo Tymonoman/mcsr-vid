@@ -37,42 +37,56 @@ if (!xvfbAvailable() || !chromePath) {
   process.exit(0);
 }
 
-// A fixture that mimics just enough of a watch page's comment thread for pinComment() to drive:
-// one thread whose author link (`authorHref`) names the test channel, an "Action menu" button
-// that opens a menu with a "Pin" item, which opens a confirm dialog with its own "Pin" button. Clicking that
-// sets `window.__pinned`. `pinned` is the Node-side test's own record of whether a real pin has
-// gone through yet — a real `page.goto()` reload serves fresh HTML each time, same as a real
-// watch page would, so this is what makes the SECOND load show the pin as already there, rather
-// than resetting to a thread nobody has pinned.
-function fixtureHtml(pinned: boolean, authorHref: string): string {
-  const badge = pinned ? '<div id="pinned-badge">Pinned by Test Channel</div>' : "";
+// A fixture that mimics just enough of a watch page's comment thread for pinComment() to drive,
+// in the markup read off the live page 14 Oct 2026 (d_fi9zEqcFc): one thread whose author link
+// (`authorHref`) names the test channel and whose ⋮ "Action menu" opens a `ytd-menu-popup-renderer`
+// in `ytd-popup-container` (Pin / Edit / Delete); its Pin opens a `yt-confirm-dialog-renderer`
+// whose `#confirm-button` sets `window.__pinned` and fills the thread's own "Pinned by" badge.
+// Ahead of all of it sits the player's hidden "Show cards" button, text "InfoShopping" — the
+// page-wide "Pin" match the old locator clicked (and timed out on). `confirmLands: false` is a
+// confirm click that pins nothing. `pinned` is the Node-side test's own record of whether a real
+// pin has gone through yet — a real `page.goto()` reload serves fresh HTML each time, same as a
+// real watch page would, so this is what makes the SECOND load show the pin as already there,
+// rather than resetting to a thread nobody has pinned.
+function fixtureHtml(pinned: boolean, authorHref: string, confirmLands = true): string {
+  const badge = pinned ? "Pinned by @TestHandle" : "";
   return `<!doctype html><html><body>
-  <style>button, tp-yt-paper-item, ytd-comment-thread-renderer { display: inline-block; padding: 4px; }</style>
-  ${badge}
+  <style>button, tp-yt-paper-item { display: inline-block; padding: 4px; } .ytp-cards-button { display: none; }</style>
+  <button class="ytp-button ytp-cards-button" aria-label="Show cards"><span>Info</span><span>Shopping</span></button>
   <ytd-comment-thread-renderer>
-    <a id="author-text" href="${authorHref}">Test Channel</a>
-    <button aria-label="Action menu">&#8942;</button>
+    <div id="comment-container"><ytd-comment-view-model id="comment">
+      <div id="pinned-comment-badge">${badge}</div>
+      <a id="author-text" href="${authorHref}">@TestHandle</a>
+      <div id="action-menu"><ytd-menu-renderer><yt-icon-button id="button">
+        <button id="button" aria-label="Action menu">&#8942;</button>
+      </yt-icon-button></ytd-menu-renderer></div>
+    </ytd-comment-view-model></div>
   </ytd-comment-thread-renderer>
+  <ytd-popup-container></ytd-popup-container>
   <script>
     window.__pinned = ${pinned};
+    const popup = document.querySelector("ytd-popup-container");
+    const item = (text) =>
+      '<ytd-menu-navigation-item-renderer role="menuitem"><a><tp-yt-paper-item role="menuitem">' +
+      '<yt-formatted-string>' + text + '</yt-formatted-string></tp-yt-paper-item></a></ytd-menu-navigation-item-renderer>';
+    const button = (id, text) =>
+      '<yt-button-renderer id="' + id + '"><yt-button-shape><button aria-label="' + text + '">' + text +
+      '</button></yt-button-shape></yt-button-renderer>';
     document.addEventListener("click", (e) => {
-      if (e.target.matches('button[aria-label="Action menu"]')) {
-        const item = document.createElement("tp-yt-paper-item");
-        item.id = "pin-menu-item";
-        item.textContent = "Pin";
-        document.body.appendChild(item);
-      } else if (e.target.id === "pin-menu-item") {
-        e.target.remove();
-        const dialog = document.createElement("div");
-        dialog.id = "confirm-dialog";
-        dialog.innerHTML = '<button id="confirm-pin">Pin</button><button id="cancel-pin">Cancel</button>';
-        document.body.appendChild(dialog);
-      } else if (e.target.id === "confirm-pin") {
-        window.__pinned = true;
-        document.getElementById("confirm-dialog")?.remove();
-        const badge = document.createElement("div");
-        badge.textContent = "Pinned by Test Channel";
-        document.body.appendChild(badge);
+      if (e.target.closest('button[aria-label="Action menu"]')) {
+        popup.innerHTML = '<tp-yt-iron-dropdown><ytd-menu-popup-renderer role="menu"><tp-yt-paper-listbox id="items">' +
+          item("Pin") + item("Edit") + item("Delete") + "</tp-yt-paper-listbox></ytd-menu-popup-renderer></tp-yt-iron-dropdown>";
+      } else if (e.target.closest("ytd-menu-popup-renderer tp-yt-paper-item")?.textContent.trim() === "Pin") {
+        popup.innerHTML = '<tp-yt-paper-dialog><yt-confirm-dialog-renderer><div id="main">' +
+          "<h2>Pin this comment?</h2><div>If you already pinned a comment, this will replace it</div>" +
+          "<div>" + button("cancel-button", "Cancel") + button("confirm-button", "Pin") + "</div>" +
+          "</div></yt-confirm-dialog-renderer></tp-yt-paper-dialog>";
+      } else if (e.target.closest("#confirm-button button")) {
+        popup.innerHTML = "";
+        if (${confirmLands}) {
+          window.__pinned = true;
+          document.getElementById("pinned-comment-badge").textContent = "Pinned by @TestHandle";
+        }
       }
     });
   </script>
@@ -128,8 +142,9 @@ try {
   // A real watch page links the author as `/@handle`; the dry run below still serves the
   // `/channel/<id>` shape, so both ways of naming our channel stay pinned.
   let authorHref = "/@TestHandle";
+  let confirmLands = true;
   await page.route("https://www.youtube.com/watch**", (route) =>
-    route.fulfill({ body: fixtureHtml(pinnedOnServer, authorHref), contentType: "text/html" }),
+    route.fulfill({ body: fixtureHtml(pinnedOnServer, authorHref, confirmLands), contentType: "text/html" }),
   );
 
   // A handle that is only a prefix of the author's is not ours: the comment is left alone. (The
@@ -152,6 +167,13 @@ try {
   assert.equal(dry, "pinned", `dry run: ${JSON.stringify(dry)}`);
   assert.equal(await page.evaluate(() => (window as unknown as { __pinned?: boolean }).__pinned), false);
   console.log("OK: dryRun opens the confirm dialog and stops before clicking it");
+
+  // A confirm click that pins nothing is an error, never "pinned" — the worker marks "pinned" done.
+  confirmLands = false;
+  const silent = await pinComment(handle, "vidTest", { matchId, channelId: "TESTCHANNEL123" });
+  assert.ok(typeof silent === "object" && /no "Pinned by" badge/.test(silent.error), JSON.stringify(silent));
+  console.log("OK: a confirm that never shows the badge is an error, not a pin");
+  confirmLands = true;
 
   // The real thing: a fresh navigation (the route re-serves the fixture, resetting its state)
   // clicks all the way through to the confirm button — found by the `/@` handle from config alone,
@@ -193,6 +215,8 @@ try {
     // naming `relatedTargetId` — results came back, just not the one asked for.
     relatedResults: "none" as "none" | "match" | "miss",
     relatedTargetId: "",
+    // false: the page Save is clicked but no "Changes saved" ever shows (14 Oct 2026).
+    tcSaveConfirms: true,
   };
   function editPageHtml(): string {
     return `<!doctype html><html><body>
@@ -217,7 +241,7 @@ try {
          (s7r-endscreen-open.json: the page's own #save sits before the editor's own #save-button) —
          a reversion to a plain text-based Save selector plus .first() would click this one, not
          the editor's, and this fixture would catch it (the regression fixed 8 Oct 2026). -->
-    <button id="save" onclick="window.__tcSaved=true;document.getElementById('saved-msg').style.display='block'">Save</button>
+    <button id="save" onclick="window.__tcSaved=true;${uiState.tcSaveConfirms ? "document.getElementById('saved-msg').style.display='block'" : ""}">Save</button>
     <div id="saved-msg" style="display:none">Changes saved</div>
     <div id="dialog-root"></div>
     <script>
@@ -532,6 +556,21 @@ try {
   );
   assert.equal(realThumb, "started");
   console.log("OK: a thumbnail test picks the Thumbnail chip and uploads both files");
+
+  // A Save that never confirms is an error, not "started": the worker leaves the experiment
+  // planned and records the cycle's error instead of finding a blank form a day later.
+  uiState.tcSaveConfirms = false;
+  const unsaved = await startTestAndCompare(
+    handle,
+    "vidT3",
+    { kind: "thumbnail", files: [thumbA, thumbB] },
+    { matchId },
+  );
+  uiState.tcSaveConfirms = true;
+  assert.equal(await page.evaluate("window.__tcSaved"), true, "Save was pressed");
+  assert.ok(typeof unsaved === "object" && "error" in unsaved, `expected an error, got ${JSON.stringify(unsaved)}`);
+  assert.match(unsaved.error, /never showed "Changes saved"/);
+  console.log('OK: a Save with no "Changes saved" is an error, never "started"');
 
   uiState.abTest = "running";
   const already2 = await startTestAndCompare(

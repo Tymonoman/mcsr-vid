@@ -63,7 +63,7 @@ Use the script, don't reconstruct the shell line. Extra arguments go after `--`.
 | `npm run validate-project -- media/<id>/match-<id>.kdenlive` | Load the generated MLT XML through the MLT engine. Exit 0 = parses. Malformed XML only: it passes a project whose media is missing. |
 | `npm run export:fast -- <matchId> [--cpu] [--seconds=N] [--full-tail]` | The finished MP4 in one ffmpeg pass (Intel VAAPI on the lab), no Kdenlive. `--seconds` renders a short range as a smoke test, to `smoke-<id>.mp4` (it once wrote over a published match's final). Open the `.kdenlive` when a match needs a human; both place clips through `placeOnTimeline`. |
 | `npm run export:nvenc -- media/<id>/match-<id>.kdenlive [out=N]` | melt + `h264_nvenc` to `out/export.mp4`. Needs an NVIDIA GPU; the lab has none. |
-| `npm run short -- <matchId> [--at=<ms>] [--seconds=N]` | The vertical Short (`short-<id>.mp4`) plus its `.title.txt` / `.description.txt`, cut from the pick's window (`short-<id>.pick.json`). Refuses without the operator's hook (`short-<id>.hook.txt`) or once the Short is on YouTube. `--at`/`--seconds` override the window by hand. The cut is recorded in `short-<id>.cut.json` with the hook it used. |
+| `npm run short -- <matchId> [--at=<ms>] [--seconds=N]` | The vertical Short (`short-<id>.mp4`) plus its `.title.txt` / `.description.txt`, cut from the pick's window (`short-<id>.pick.json`). Refuses without the operator's hook (`short-<id>.hook.txt`), once the Short is on YouTube, or while `shortsByHand` is on (a model cut would overwrite the hand-cut Short). `--at`/`--seconds` override the window by hand. The cut is recorded in `short-<id>.cut.json` with the hook it used. |
 | `npm run series -- <matchId \| all> [--join-only]` | A playoff series as one video (`src/playoffs/series.ts`): renders every game of the slot that has no export, joins them into game 1's `series-<g1>.mp4`, rewrites game 1's title/description/chapters/tags for the series; the series' Short is picked and cut like any match's, from game 1's directory, once the hooks are saved. `all` walks the board in date order; `--join-only` joins what is exported. The dashboard's nightly cannot see a run here: start one in the daytime. |
 | `npm run sync-status -- [matchId]` | Where a match's POV clips are placed. With an id and no `sync.json`, derives it from the `.kdenlive` and writes it, so a re-export picks the corrected offsets up without a re-render. No id lists every match and writes nothing. |
 | `npm run chat -- <matchId>` | Fetch both players' Twitch chat to `chat-<nick>.json` for a match the pipeline saved none for (it does this itself after `download-vods`). Existing files are kept; delete one to refetch. |
@@ -147,7 +147,10 @@ views brought 0 subscribers.
   (`shortsByHand`, Settings → Publishing, default **off**; 11 Oct 2026, the operator, verbatim:
   "you're gonna make the shorts from now on"). On, the chain never runs its own pick or render
   step for the Short — the long-form uploads at its slot without waiting on either (today's chain
-  renders the Short before the long-form upload; this mode skips straight to it). **The pick after
+  renders the Short before the long-form upload; this mode skips straight to it), and `npm run
+  short` run by hand refuses too ("waiting for the hand-made Short"), so a model cut behind the
+  dead dashboard hook never lands over the hand one; the setting alone decides, never a leftover
+  `hand.json` (14 Oct 2026). **The pick after
   the export still runs** (`ensurePick`): auto-hooks is due only 6 h after a pick and takes the
   model's title hooks first — the first build gated that pick off too, which would have left
   every new long-form unhooked and unuploaded (caught before the first night, 11 Oct 2026); the
@@ -462,11 +465,16 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   steps are left alone and nothing is persisted, so unblocking needs no repair) to every one of its
   three callers at once — Adopt, the Finish button and the nightly's `retryFailedPlaylists`/
   `retryPendingComments` ticks; **Adopt** (`POST /api/youtube/adopt/:id`) also refuses up front,
-  before `videos.update` — the write `finishOnYouTube`'s own gate does not cover. `POST /api/render`,
+  first of its checks and before `videos.update` — the write `finishOnYouTube`'s own gate does not
+  cover — on the API's pair or `blockedOnDisk` (before 14 Oct 2026 the API's pair alone, so an
+  archived match with the API down, or a renamed runner, got its title replaced before the refusal). `POST /api/render`,
   `POST /api/render/:id` (`matchIsBlocked`, `src/dashboard/matchStatus.ts`: the API's pair, else
   `blockedOnDisk` on an archived directory) and `POST /api/series/:id/render` refuse before the fire-and-forget run even starts, and `renderSeries`
   itself refuses too (`{kind:"blocked"}`, `src/playoffs/series.ts`) — the one place both that route
-  and `npm run series` settle through. `hasBlockedPlayer` (`youtubeUpload.ts`) reads
+  and `npm run series` settle through. `runPipeline` (`src/pipeline/pipeline.ts`) refuses
+  too, right after the match fetch and before VOD discovery or any write, so the callers with no
+  gate of their own — `npm run batch`, `npm run generate-project`, the TUI — never download a
+  blocked runner's footage. `hasBlockedPlayer` (`youtubeUpload.ts`) reads
   `povNicknamesOnDisk`, the same disk-only POV-clip reader `matchStatusFor` itself uses, so a
   generated MP4 (`overlay-timer.mp4`, `final-<id>.mp4`, …) is never mistaken for a player. The
   operator, 2 Oct 2026, after Aquacorde commented that he does not give permission for his footage
@@ -555,6 +563,14 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   Pinned against real match/series data (fixtures `src/fixtures/match-{13560037,13782182,
   13766294}.json`, and the real edcr-lauveer Round of 16 record in `series.test.ts`), not a live
   write.
+- **Two more chip-truth fixes, 14 Oct 2026** (edge-case sweep): **the pace chip skips a forfeit**
+  — `resultMs` is `match.result.time`, which on a forfeit is the forfeit's moment (`raceGap.ts`),
+  so a 5:40 forfeit got "A sub-6 to win it" at weight 90, above its own "It ended in a forfeit".
+  Ranked suggestions drop forfeits, but a playoff forfeit with a winner (≥60s, `playoffs.ts`), the
+  queue, creator watch and `POST /api/render` still reach one, and from there the chip becomes the
+  cold-start title hook, the auto-hooks fallback and the unattended T&C caption ("SUB-6").
+  **"N deaths and still this close" needs a margin under 10s** — the "Decided by" chip's own bar
+  for close; it had gated on `deaths >= 4` alone, so it fired on a DNF or a minutes-wide finish.
 - **A subscribe line during the race** (`midRollCtaAtSec`, Settings → Publishing; default 90,
   null = none): the post-roll card in the meta column reaches 25–45% of viewers, the first split
   (~90 s) 50–60% (`npm run retention`, 22 Sept 2026). The meta column shows SUBSCRIBE for
@@ -1134,7 +1150,7 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
 - **"Needs you"** (`gatherNeedsYou`, `facts.ts`; `renderNeedsYou`, `report.ts`; the operator's own
   rule for the week of 8–14 Oct 2026, "I act only on what the 07:00 Warsaw Telegram report lists
   under 'Needs you'"): a deterministic section — code, not Claude — at the top of the day message,
-  "Nothing today." when empty. Only seven kinds, one line each, a deep link where there is a match:
+  "Nothing today." when empty. Only eight kinds, one line each, a deep link where there is a match:
   a failed `short-<id>.status.json` step (match, step, the error's first line) until the operator
   retries or re-saves; Studio signed out/needing verification/wrong channel
   (`<mediaDir>/.studio-probe.json`, the Studio automation's own file — absent is no item, read
@@ -1143,7 +1159,13 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
   or public in the last 3 days (`publishAt`, or `uploadedAt` for one published on upload) whose
   Short nobody has cut — no `short-<id>.hand.json`, no `youtube-short.json` — unless `noShort`,
   hidden or `blockedOnDisk`, since nothing else warns before a long-form goes out without its Short;
-  a blocked runner in tonight's queue, rendered and not hidden, with an upload record, or as a
+  a live title — `youtube.json`/`youtube-short.json`, public or with any `publishAt` (the record's
+  `privacyStatus` is upload-time only), each video once, a blocked player's match skipped — whose
+  hook (before the first " | ") fails `hookProblem` (which runs `spoilsTheResult` too) given the
+  title's own "A vs B" (`liveTitleItems`, 14 Oct 2026: "FALLEN KING vs PLAYOFF GOAT" and "RANK #1"
+  were public, since a typed hook saves with only a warning and nothing said so afterwards); the
+  line is "Live title breaks a house rule: <videoId> — <problem>", never the hook, which may be the
+  label; a blocked runner in tonight's queue, rendered and not hidden, with an upload record, or as a
   comment's author newer than the last report (`isBlockedPlayer` against the display name — the
   line names the video or the match, never the comment's own text);
   `<mediaDir>/.experiments.json`'s `needsHuman` entries not yet `needsHumanAck`'d (the experiment
@@ -1361,8 +1383,11 @@ every check above is a fixture page or pure logic; see "What is verified live vs
 - **The worker never sets a Test & Compare winner itself** — `readTestAndCompare`'s `"done"` state
   only ever records what it read off YouTube's own page (the live title/thumbnail it already
   applied). A `"needsHuman"` note lands on the experiment for anything `startTestAndCompare`/
-  `readTestAndCompare` could not get past (a refused title, an unreadable page), and the worker
-  never guesses past an ambiguous state on its own.
+  `readTestAndCompare` could not get past (a refused title, an unreadable page, and since 14 Oct
+  2026 a page Save with no "Changes saved" within 15 s — an error, so the experiment stays
+  `"planned"` and the next cycle reads the page before trying again, where the swallowed wait had
+  returned `"started"` and left a blank form to be found a day later), and the worker never
+  guesses past an ambiguous state on its own.
 
 **What is verified live vs only on fixtures.** Confirmed against the real Studio UI, 7–8 Oct 2026:
 `#endscreen-editor-link`, the "Import from video" button, `ytcp-video-pick-dialog` and its
@@ -1869,6 +1894,9 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
   run as for any dashboard upload rather than declining as "uploaded elsewhere". No session and a
   `source: "dashboard"` record is trusted as done (the crash landed between writing it and marking
   the step so); no session and anything else on record fails the step and names Studio, not a guess.
+  The resume probe itself reads a 5xx/429 as "try again", not "gone" (14 Oct 2026): it throws and
+  keeps the session file, so an operator's Retry after a chunk 503 cannot start a second
+  `videos.insert` either; only a 404/410 (or another 4xx) drops the session for a fresh start.
 - **Country flags render as tofu** without a colour-emoji font (cosmetic, intro card).
 - **Verify visual changes by rendering** (`npm run still`, then read the PNG).
 - **`npm run test:unit` after any edit; `npm test` after touching rendering or asset
