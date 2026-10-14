@@ -241,7 +241,8 @@ views brought 0 subscribers.
   a typed one — a carried value is as untrusted as either. The shared rule everywhere: a denied word
   (an ethnicity or nationality term, a slur-adjacent abbreviation) is refused outright, "vs" or not;
   a fresh "X vs Y" is checked against the match's own two players (API or `titleNames` spelling) and
-  a mismatch is a label too. A model's proposal and a carried one both fail closed; the operator's
+  a mismatch is a label too — "v", "v." and "versus" count as "vs", and so does a third side (14 Oct
+  2026: "CARNIVORE v. VEGAN" and "X vs Y vs THE CLOCK" had slipped through an exact-two "vs" split). A model's proposal and a carried one both fail closed; the operator's
   own typed hook still always saves (`writeHooks`, `src/dashboard/shortFlow.ts`), the problem landing
   in `saveWarnings` next to the field like every other check there — "it should just be a
   suggestion." A match rendered before this fix keeps whatever its `title.txt` already carries until
