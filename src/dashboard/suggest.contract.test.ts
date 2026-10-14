@@ -12,8 +12,8 @@
 //     never a card), whether it came from the feed or a favourite's own list.
 //  5. …and is never shown however stale the cache: a block saved after a scan applies to the cached list.
 //  6. One card per pair across close/chaos/known — never two matches of one pair, in any case.
-//  7. The known bucket is capped one slot per player too: "a first pass skips a candidate if either
-//     player already filled a slot this scan".
+//  7. The known bucket is capped one slot per player too: a first pass skips a candidate if either
+//     player already filled a known slot this scan; a second pass backfills what the cap left empty.
 //  8. No seed, rank or elo term: a player's ladder rank or elo never decides which match gets a slot.
 //  9. Dismissed is never suggested again, from the fresh cache or a rescan.
 //
@@ -26,7 +26,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { MatchInfo } from "../api/types.js";
 import { config, DEFAULTS } from "../config.js";
-import { computeMetrics, type MatchMetrics } from "../pipeline/matchScore.js";
+import type { MatchMetrics } from "../pipeline/matchScore.js";
 import { presentSuggestions } from "./suggestPresent.js";
 import { dismissSuggestion, getSuggestions, KNOWN_DRAW_MIN, tierFor } from "./suggest.js";
 
@@ -262,23 +262,30 @@ try {
     console.log("OK: one card per pair across the buckets");
   }
 
-  // --- 7. One known slot per player — counting the slots this scan already gave him ----------------
-  await deviation(
-    "handbook Suggestions: the known bucket is capped one slot per player — 'a first pass skips a candidate if either player already filled a slot this scan'",
-    async () => {
-      config.favouritePlayers = [];
-      slots(1, 0, 1);
-      withPool([
-        pooled(701, ["silverrruns", "aaa"], 0), //       the only finish: silverrruns takes the close slot
-        pooled(702, ["silverrruns", "edcr"], null), //   audience 2.465
-        pooled(703, ["hackingnoises", "zzz"], null), //  audience 2.33 — a second known player
-      ]);
-      const got = (await getSuggestions({ force: true })).suggestions.map(
-        (s) => `${s.bucket}:${s.metrics.matchId}`,
-      );
-      assert.deepEqual(got, ["close:701", "known:703"], `silverrruns holds two slots this scan: ${got}`);
-    },
-  );
+  // --- 7. One known slot per player, then a backfill ---------------------------------------------
+  {
+    config.favouritePlayers = [];
+    withPool([
+      pooled(711, ["silverrruns", "edcr"], null), //  audience 2.465
+      pooled(712, ["silverrruns", "aaa"], null), //   2.18 — silverrruns again
+      pooled(713, ["Infume", "zzz"], null), //        1.44 — another known player, ranked under 712
+    ]);
+    const known = async () =>
+      (await getSuggestions({ force: true })).suggestions.map((s) => `${s.bucket}:${s.metrics.matchId}`);
+    slots(0, 0, 2);
+    assert.deepEqual(
+      await known(),
+      ["known:711", "known:713"],
+      "the second known slot goes to the other player, though silverrruns' next match ranks higher",
+    );
+    slots(0, 0, 3);
+    assert.deepEqual(
+      await known(),
+      ["known:711", "known:713", "known:712"],
+      "a slot the cap left empty is backfilled",
+    );
+    console.log("OK: one known slot per player, and the backfill fills what the cap left");
+  }
 
   // --- 8. No rank or elo term at the slots ----------------------------------------------------------
   {

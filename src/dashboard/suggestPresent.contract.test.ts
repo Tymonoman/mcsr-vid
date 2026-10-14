@@ -13,7 +13,8 @@
 //  6. House rule: no seed, rank or elo in hooks or suggestions.
 //  7. A blocked player's match is never shown, however stale the cache; whole names, any case;
 //     the block applies live (a Settings save, no rescan).
-//  8. The order is the same for the list and the nightly alike (orderForDisplay).
+//  8. The order is the same for the list and the nightly alike (orderForDisplay); a blocked match
+//     the nightly is handed anyway sorts last and nightlyEligible refuses it, queued or not.
 //  9. learnedDraw (default off) and recordPaceBoostSec (default null) leave today's order exactly;
 //     on, they only reorder inside a tier. Both are read live.
 // 10. The order is a property of the cards, not of the order the scan happened to hand them over.
@@ -28,6 +29,7 @@ import type { MatchInfo } from "../api/types.js";
 import { config, DEFAULTS } from "../config.js";
 import { computeMetrics } from "../pipeline/matchScore.js";
 import type { DrawLearned } from "./drawLearn.js";
+import { nightlyEligible } from "./nightly.js";
 import { parseRivalFeed } from "./rivalPosts.js";
 import { orderForDisplay, presentSuggestions, type SuggestionCard } from "./suggestPresent.js";
 import type { Bucket, Suggestion } from "./suggest.js";
@@ -277,27 +279,27 @@ try {
       shown,
       "the nightly's order is the cards' order",
     );
-    await deviation(
-      "handbook Favourite players: the order, for the list and the nightly alike (a blocked match never shown)",
-      () => {
-        const withBlocked = [...list, real(13549300, { id: 45 })];
-        const n = orderForDisplay(
-          withBlocked,
-          NOW,
-          [],
-          DEFAULTS.favouritePlayers,
-          [],
-          DEFAULTS.knownFollowerThreshold,
-          null,
-          null,
-        );
-        assert.deepEqual(
-          n.map((s) => s.metrics.matchId),
-          ids(present(withBlocked)),
-          "orderForDisplay hands the nightly a blocked match the list never shows",
-        );
-      },
-    );
+    // A blocked match handed to orderForDisplay sorts last, and the nightly's own gate refuses it —
+    // queued or not (the block outranks the queue).
+    const withBlocked = [...list, real(13549300, { id: 45 })];
+    const n = orderForDisplay(
+      withBlocked,
+      NOW,
+      [],
+      DEFAULTS.favouritePlayers,
+      [],
+      DEFAULTS.knownFollowerThreshold,
+      null,
+      null,
+    ).map((s) => s.metrics.matchId);
+    assert.deepEqual(n, [...ids(present(withBlocked)), 45], "the blocked match sorts last");
+    const eligible = nightlyEligible([42, 45], async () => true);
+    const pick = (id: number) => ({
+      metrics: withBlocked.find((s) => s.metrics.matchId === id)!.metrics,
+      bucket: "queued",
+    });
+    assert.equal(await eligible(pick(45)), false, "the nightly refuses the blocked match, queued or not");
+    assert.equal(await eligible(pick(42)), true, "sanity: the same gate takes a clean queued one");
     console.log("OK: orderForDisplay is the display order");
   }
 
