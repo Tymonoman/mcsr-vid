@@ -491,7 +491,8 @@ const [g1, g2, g3] = series(300, [A.uuid, A.uuid, A.uuid]) as [number, number, n
 
 /* --- S12: a game that fails stops the run; the exported games are kept ------------------------- */
 {
-  const [f1, f2, f3] = series(600, [A.uuid, P.uuid, A.uuid]) as [number, number, number];
+  // Decided (3–0): an undecided series answers "undecided" before it looks at any export (S13).
+  const [f1, f2, f3] = series(600, [A.uuid, A.uuid, A.uuid]) as [number, number, number];
   joins.length = 0;
   const log: string[] = [];
   const r = await renderSeries(f1, runners(log, f2), seams([f1, f2, f3]));
@@ -552,6 +553,7 @@ const [g1, g2, g3] = series(300, [A.uuid, A.uuid, A.uuid]) as [number, number, n
         "a 2–1 series (first to 3) was joined — exports deleted, games 2..3 hidden, game 1's text rewritten as the series — before anyone reached firstTo",
       ),
   );
+  assert.deepEqual(early, { kind: "undecided", firstGameId: d1 }, "the 2–1 series waits, nothing missing");
   // Game 4 indexed and exported: the series becomes the four games, in order, whatever happened above.
   history = all;
   writeFileSync(final(d4), "export");

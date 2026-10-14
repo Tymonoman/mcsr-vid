@@ -79,6 +79,7 @@ const comment = (i: number, over: Partial<UnansweredComment> = {}): UnansweredCo
   publishedAt: new Date(NOW - i * 60_000).toISOString(),
   totalReplyCount: 0,
   replyAuthorsAreChannel: [],
+  replies: [],
   repliesTruncated: false,
   ...over,
 });
