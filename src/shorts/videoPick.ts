@@ -50,16 +50,17 @@ import {
   spoilsTheResult,
 } from "../pipeline/hooks.js";
 import { ANCHOR_SEC } from "../pipeline/kdenliveProject.js";
-import { SEPARATOR } from "../pipeline/title.js";
+import { buildTitle, SEPARATOR } from "../pipeline/title.js";
 import { computeMetrics, deathKind, phaseAt } from "../pipeline/matchScore.js";
 import { eloAtMatchStart } from "../pipeline/overlayProps.js";
-import { playoffContextFor } from "../playoffs/playoffs.js";
+import { playoffContextFor, playoffSeriesTail, playoffTitleTail } from "../playoffs/playoffs.js";
 import {
   gameMatchStarts,
   probeDuration,
   readSeriesRecord,
   seriesOutputPath,
   type SeriesGame,
+  type SeriesRecord,
 } from "../playoffs/series.js";
 import { exportMatchStartSec, percentOf } from "../pipeline/exportFast.js";
 import { decidedAtMs, MILESTONES, raceCaptions } from "./raceGap.js";
@@ -557,8 +558,38 @@ export function hookRegister(hook: string): "stake" | "question" | "rivalry" | "
   return "other";
 }
 
+/** The long-form title this match's hook goes into: the series' tail for a series, a playoff game's for one. */
+export function titleFor(
+  match: MatchInfo,
+  series: SeriesRecord | null,
+  playoff: Awaited<ReturnType<typeof playoffContextFor>>,
+) {
+  const [left, right] = match.players;
+  return buildTitle({
+    leftNickname: left?.nickname ?? "?",
+    rightNickname: right?.nickname ?? "?",
+    ...(series
+      ? { suffix: playoffSeriesTail(series.season, series.round) }
+      : playoff
+        ? { suffix: playoffTitleTail(playoff) }
+        : {}),
+  });
+}
+
+/**
+ * The longest title hook this match's long-form takes: `buildTitle`'s `hookMax`, which keeps both
+ * nicknames above the mobile cut, under the hook rule's own 40. A long nickname pair leaves far
+ * less — 14072062's 16 + 6 characters left 21, and every one of the model's 25-29-character title
+ * hooks for it failed the budget the dashboard and auto-hooks hold them to (14 Oct 2026).
+ */
+async function titleHookMax(dir: string, match: MatchInfo): Promise<number> {
+  const series = await readSeriesRecord(dir);
+  const budget = titleFor(match, series, series ? null : await playoffContextFor(match)).hookMax;
+  return Math.min(HOOK_MAX_CHARS, budget);
+}
+
 /** The title-hook and player-moment asks, with the operator's past hooks as the style to match. */
-function extrasSection(spans: readonly GameSpan[], past: readonly PastHook[]): string {
+function extrasSection(spans: readonly GameSpan[], past: readonly PastHook[], titleMax: number): string {
   const [l, r] = spans[0]!.match.players;
   const examples =
     past.length > 0
@@ -566,7 +597,7 @@ function extrasSection(spans: readonly GameSpan[], past: readonly PastHook[]): s
 ${past.map((p) => `  ${JSON.stringify(p.hook)}${p.pair ? ` (${p.pair})` : ""} — ${hookRegister(p.hook)}`).join("\n")}`
       : "";
   return `
-THE LONG-FORM'S TITLE (titleHooks, optional): up to ${TITLE_HOOKS} proposals for the hook that opens the full match video's title — "<hook> | ${l?.nickname} vs ${r?.nickname} | …", so it need not repeat their names. The same rules as hookSuggestion: at most ${HOOK_MAX_CHARS} characters, nothing about who wins or how it ends, never a nickname, label or epithet for a runner, and never a word about ethnicity, nationality, appearance, age or a slang abbreviation of one — a title hook is about the match, never the person. Never use seeds, ladder ranks or elo numbers — they mean nothing to a viewer and change daily.${examples}
+THE LONG-FORM'S TITLE (titleHooks, optional): up to ${TITLE_HOOKS} proposals for the hook that opens the full match video's title — "<hook> | ${l?.nickname} vs ${r?.nickname} | …", so it need not repeat their names. The same rules as hookSuggestion, with this title's own length: at most ${titleMax} characters — a hard limit, so both names still show on a phone; a longer one is dropped. Nothing about who wins or how it ends, never a nickname, label or epithet for a runner, and never a word about ethnicity, nationality, appearance, age or a slang abbreviation of one — a title hook is about the match, never the person. Never use seeds, ladder ranks or elo numbers — they mean nothing to a viewer and change daily.${examples}
 
 PLAYER MOMENTS (playerMoments, optional): for each player, the one moment of theirs in this video worth sending to them — "left" for ${l?.nickname}, "right" for ${r?.nickname}. atSec: seconds of the video file where it starts. line: one sentence to them, at most ${MOMENT_MAX_CHARS} characters, saying what they did — never who wins.
 `;
@@ -592,6 +623,7 @@ function pickPrompt(
   fps: number,
   watched: readonly GameWatch[] = [],
   past: readonly PastHook[] = [],
+  titleMax = HOOK_MAX_CHARS,
 ): string {
   const [l, r] = spans[0]!.match.players;
   const video = series
@@ -639,7 +671,7 @@ THE WINDOW
 THE HOOK (hookSuggestion): the line on screen for the Short's first 4 seconds. At most ${HOOK_MAX_CHARS} characters, punchy, in a viewer's words; it may name the player making the play, by their real nickname only — never a nickname you invent, a label or an epithet, and never a word about ethnicity, nationality, appearance, age, or a slang abbreviation of one: a hook is about the match, never the person. Write it from what you saw — nothing in these instructions hints at what happens in this match. It must never name or hint at who wins the match or how it ends — none of: win, won, winner, beat, lost, lose, defeat, champion, victory, takes it, clutch, comeback, chokes, throws, upset, revenge, dominates. An upset is only ever a question. Never use seeds, ladder ranks or elo numbers — they mean nothing to a viewer and change daily.
 
 why: one line for the operator on why this moment.
-${extrasSection(spans, past)}
+${extrasSection(spans, past, titleMax)}
 Reply with one JSON object and nothing else:
 {${series ? `"gameMatchId": <id>, ` : ""}"startSec": <number>, "endSec": <number>, "rtaAtStart": "m:ss", "pov": "both" | "left" | "right", "focus": "left" | "right" (optional, with pov "both"), "kind": "play" | "race", "hookSuggestion": "<text>", "why": "<text>", "titleHooks": ["<text>", …] (optional, up to ${TITLE_HOOKS}), "playerMoments": {"left": {"atSec": <number>, "line": "<text>"}, "right": {"atSec": <number>, "line": "<text>"}} (optional)}
 
@@ -722,6 +754,7 @@ function extrasOf(
   spans: readonly GameSpan[],
   series: boolean,
   note: Note,
+  titleMax: number,
 ): Pick<ShortPick, "titleHooks" | "playerMoments"> {
   const a = (typeof answer === "object" && answer !== null ? answer : {}) as Record<string, unknown>;
   // Every game of a series is the same two players, so one list of real nicknames covers titleHooks
@@ -737,11 +770,13 @@ function extrasOf(
     const text = typeof h === "string" ? h.trim() : h;
     const why =
       hookProblem(text, HOOK_MAX_CHARS, players) ??
-      (hooks.includes(text as string)
-        ? "a repeat"
-        : hooks.length >= TITLE_HOOKS
-          ? `only ${TITLE_HOOKS} are kept`
-          : null);
+      ((text as string).length > titleMax
+        ? `over this title's ${titleMax}-character budget`
+        : hooks.includes(text as string)
+          ? "a repeat"
+          : hooks.length >= TITLE_HOOKS
+            ? `only ${TITLE_HOOKS} are kept`
+            : null);
     if (why) drop("title hook", h, why);
     else hooks.push(text as string);
   }
@@ -885,7 +920,8 @@ async function askModel(
     if (watched.every((g) => g.povs.length === 0) && config.watchScript)
       note("the model picks without /watch's stills — the lines above say why", { level: "warn" });
     const past = pastTitleHooks();
-    const prompt = pickPrompt(proxy, spans, series, fps, watched, past);
+    const titleMax = await titleHookMax(dir, spans[0]!.match);
+    const prompt = pickPrompt(proxy, spans, series, fps, watched, past, titleMax);
     note(`prompt: ${prompt.length} characters, ${past.length} past title hooks as style examples`);
     // The proxy's directory, and every stills directory outside it (a series' other games).
     const proxyDir = path.dirname(proxy);
@@ -954,7 +990,7 @@ async function askModel(
         source: "agy",
         ...(argv.includes("--model") && model ? { model } : {}),
         createdAt: new Date().toISOString(),
-        ...extrasOf(reply.answer, spans, series, note),
+        ...extrasOf(reply.answer, spans, series, note, titleMax),
       },
     };
   } catch (err) {

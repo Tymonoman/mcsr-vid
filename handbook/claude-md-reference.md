@@ -632,6 +632,15 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   own recent saved hooks (`pastTitleHooks`) read mostly upper case. No title candidate survives:
   nothing is saved and the match's `hooks` step reads failed, with "no suggested hook passed the
   checks — save one by hand". A title that survives with no Short hook saves with `noShort: true`.
+  **Over budget, 14 Oct 2026**: 14072062 (a 16 + 6 character pair, `hookMax` 21) failed every
+  tick from 09:47 to 16:22 UTC — the model's title hooks ran 25–29 characters and no chip fit — and
+  its 15 Oct 23:00 slot sat empty until a hand save. Now, when no candidate fits the mobile budget,
+  auto-hooks asks `suggestionsFor` again with room up to YouTube's 100-character title
+  (`TITLE_MAX_CHARS`) and saves the shortest that passes the same checks, setting `overBudget` on
+  the `autoHooks` record and in the log (the names may be cut on mobile; an empty slot is worse).
+  Only when nothing passes even then does the step fail as above. The pick prompt states the same
+  budget for `titleHooks` (`titleHookMax`, `src/shorts/videoPick.ts`; `titleFor` moved there so
+  both read one title) and drops a longer proposal by name.
   Every save is logged to `short-<id>.status.json`'s own `autoHooks` record (`listAutoHooks`), kept
   across any later save so the morning report's "Auto-saved hooks" block can always say what it
   last picked; a later operator save overwrites the hooks as usual. The session turns the setting

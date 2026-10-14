@@ -58,6 +58,7 @@ import { buildTitle, HOOK_PLACEHOLDER } from "../pipeline/title.js";
 import { parseTcReport, titleTestProblem, type TcReadResult } from "./studioActions.js";
 import { readExperiments, updateTcExperiments, type Experiment } from "./studioExperiments.js";
 import {
+  endScreensThisCycle,
   inBlackoutWindow,
   MAX_ENDSCREENS_PER_CYCLE,
   MAX_PINS_PER_CYCLE,
@@ -234,7 +235,12 @@ async function loopAt(now: Date, enable?: boolean, configFile?: string) {
   const experiments = [1, 2, 3, 4, 5].map((n) => tcExp(`tc-thumbnail-other${n}`, `other${n}`, 1, "planned"));
   const plan = planCycle(NOON, longForms, emptyLedger(), experiments, () => false, shorts);
   // A cold start with many eligible videos must not spend a whole cycle in Studio.
-  assert.equal(plan.endScreenTargets.length, 3, "≤3 end screens");
+  assert.equal(plan.endScreenTargets.length, longForms.length, "the end-screen plan itself is uncapped (14 Oct 2026)");
+  assert.equal(
+    endScreensThisCycle(plan.endScreenTargets, () => false).length,
+    3,
+    "≤3 end screens actually tried",
+  );
   assert.equal(plan.tcToStart.length, 2, "≤2 TC starts");
   assert.equal(plan.relatedLinkTargets.length, 3, "≤3 related links");
   assert.equal(plan.thumbnailTcTargets.length, 2, "≤2 thumbnail-TC plans");
@@ -292,7 +298,7 @@ async function loopAt(now: Date, enable?: boolean, configFile?: string) {
     "three already-linked Shorts do not hold the three related slots",
   );
   assert.deepEqual(
-    plan.endScreenTargets.map((t) => t.videoId),
+    endScreensThisCycle(plan.endScreenTargets, () => false).map((t) => t.videoId),
     ids.slice(3, 6).map((id) => `v${id}`),
     "three done end screens do not hold the three end-screen slots",
   );

@@ -143,8 +143,8 @@ finish spoils and underperforms.
   timeline heuristic (`shortMoment.ts`). Pick is `short-<id>.pick.json`. It also proposes up to 3
   long-form title hooks (`titleHooks`) styled on the operator's past saved hooks; each must pass
   `hookProblem` (a word-list spoiler/label/seed check: catches the usual result verbs, not every
-  paraphrase) or is dropped — the operator's Save is the real gate. A rejected window drops its
-  title hooks too.
+  paraphrase) and fit the title's `hookMax`, which the prompt states, or is dropped — the
+  operator's Save is the real gate. A rejected window drops its title hooks too.
 - **No Short renders and nothing uploads before the operator saves the hooks**
   (`generateShort.ts`, `youtubeUpload.ts` `hookRefusal`, every render path). The Short's hook is
   `short-<id>.hook.txt`; the long-form's is the edited title. Saving both
@@ -226,8 +226,9 @@ reload). After merging server changes, `POST /api/restart-when-idle`; a hand
   `hookProblem`+`spoilsTheResult` (model's, else a chip) and a Short hook the same way, upper-cased,
   then the chain runs as if Save were pressed. Due: readable pick, unsaved, not
   hidden, neither video on channel, not blocked, export not stale, series joined, nothing already
-  running. No survivor: nothing saved, the `hooks` step fails into Needs-you. Logs to `autoHooks`
-  in `short-<id>.status.json`.
+  running. None within the title's mobile budget: the shortest passing one that keeps the title
+  ≤100 chars, marked `overBudget`. No survivor: nothing saved, the `hooks` step fails into
+  Needs-you. Logs to `autoHooks` in `short-<id>.status.json`.
 - **Thumbnails** (`remotion/Thumbnail.tsx`): two big figures, name-only plates, seed type above the
   VS, no rating/seed/placement text. Four pose pairs; `thumbnailRotatePoses` (default off) rotates
   by match id. **"cheering-relaxing" is excluded from every fresh automatic pick**
@@ -391,8 +392,9 @@ by `studioAutomation` (not writable from Settings; a deliberate edit on the box,
 - **Related video linking** (`linkRelatedVideo`) links a Short to its long-form, no privacy filter
   either side. **The worker also pins** (`pinTargets`): every PUBLIC, unblocked long-form whose
   channel comment has posted and whose pin isn't done, capped at `MAX_PINS_PER_CYCLE` (3) after the
-  day's skips (`pinsThisCycle`); end screens skip a blocked match too. Shares the one `finished.pin`
-  ledger field with the dashboard's own gated pin path.
+  day's skips (`pinsThisCycle`); end screens skip a blocked match too, and for the day a video
+  whose page shows no editor (gone from the channel), before their cap (`endScreensThisCycle`).
+  Shares the one `finished.pin` ledger field with the dashboard's own gated pin path.
 
 ## Clips (prototype)
 

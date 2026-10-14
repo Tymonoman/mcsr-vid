@@ -835,6 +835,34 @@ const uploaded = (id: number, title: string, onYouTube = true) => {
 }
 
 {
+  // The title hook's budget is this match's, not the rule's 40 (14 Oct 2026): a 16 + 7 character
+  // pair leaves 20 before a phone cuts the second name, so the prompt says 20 and a longer hook
+  // is dropped with that reason — 14072062 (16 + 6, so 21) got 25-29-character hooks that the
+  // dashboard and auto-hooks then refused, and its slot went empty. The Short's hook keeps 40.
+  const savedTitleNames = config.titleNames;
+  config.titleNames = { edcr: "sixteencharsname", doogile: "sevenyy" };
+  answer({
+    ...good,
+    hookSuggestion: "A 22-SECOND FORTRESS LEAD, ALL SOLO",
+    titleHooks: ["A 22-SECOND FORTRESS LEAD", "CAN A 22-SECOND LEAD SURVIVE?", "ICE COLD"],
+  });
+  lines.length = 0;
+  const pick = await pickShortMoment(single, { force: true, log });
+  config.titleNames = savedTitleNames;
+  assert.equal(pick.source, "agy");
+  assert.deepEqual(pick.titleHooks, ["ICE COLD"]);
+  assert.equal(pick.hookSuggestion, "A 22-SECOND FORTRESS LEAD, ALL SOLO", "the Short's hook is held to 40");
+  for (const h of ["A 22-SECOND FORTRESS LEAD", "CAN A 22-SECOND LEAD SURVIVE?"])
+    assert.ok(
+      lines.includes(`the model's title hook "${h}" was dropped (over this title's 20-character budget)`),
+      `logged: ${h}\n${lines.filter((l) => l.includes("dropped")).join("\n")}`,
+    );
+  const prompt = sentArgv()[sentArgv().indexOf("-p") + 1]!;
+  assert.match(prompt, /THE LONG-FORM'S TITLE[^\n]*at most 20 characters — a hard limit/);
+  console.log("OK: the prompt states this title's hook budget, and a title hook over it is dropped");
+}
+
+{
   // Each past hook is labelled with its register, so the model sees the mix, and the prompt says
   // which one to prefer (30 Sept 2026): the operator's own latest hooks state a stake.
   // hookRegister still classifies a "vs" shaped rivalry hook correctly (it is a pure text
