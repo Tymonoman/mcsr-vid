@@ -336,7 +336,8 @@ long-polling, no webhook.
 - **"Needs you"** (`gatherNeedsYou`, deterministic, "Nothing today." when empty): a failed
   `short-<id>.status.json` step; Studio signed-out/verify/wrong-channel; no long-form scheduled in
   48h; with `shortsByHand` on, a long-form due in 36h or public ≤3 days with no hand-cut Short; a
-  blocked runner in tonight's queue or as a recent comment's author; an `.experiments.json`
+  public or scheduled long-form/Short title whose hook fails `hookProblem` (video id + problem,
+  never the hook); a blocked runner in tonight's queue or as a recent comment's author; an `.experiments.json`
   `needsHuman` entry; the Studio worker's heartbeat over 90 min old or `sameErrorStreak` ≥3.
   `/needs` answers this section alone, fresh.
 - **A link about one match opens that match** (`#match=<id>` in `public/app.js`). Dedupe is
@@ -391,7 +392,8 @@ anything Google's anti-abuse systems do to a container-run browser.
   winner; `setExperimentChecked` records `watchTimeShare` per arm and "<arm> wins: a% vs b%").
   End screens get the editor's starter layout ("1 video, 1 subscribe") when the video has none.
 - **The worker never sets a Test & Compare winner itself** — `"done"` only records what Studio's
-  own page already shows; `"needsHuman"` lands on anything it couldn't get past. Every title is
+  own page already shows; `"needsHuman"` lands on anything it couldn't get past — a Save with no
+  "Changes saved" too, an error that leaves the experiment planned, never "started". Every title is
   checked before any page opens (`titleTestProblem`: `hookProblem` incl. `hookLabelProblem`,
   `spoilsTheResult`, 100-char ceiling).
 - **The worker's own gate is `opts.enable` (CLI `--enable`, or env `STUDIO_WORKER=1`) OR'd with

@@ -508,6 +508,50 @@ try {
       console.log(
         "OK: a long-form due or public without its hand-cut Short is an item while shortsByHand is on",
       );
+
+      // 7. A live title breaking a house rule (14 Oct 2026: "FALLEN KING vs PLAYOFF GOAT" public):
+      //    named by video and problem, never the hook; a clean, a private or a blocked one is not.
+      const titled = async (
+        matchId: number,
+        videoId: string,
+        title: string,
+        live: boolean,
+        kind = "video",
+      ) => {
+        mkdirSync(dir(matchId), { recursive: true });
+        await writeUpload(
+          matchId,
+          {
+            videoId,
+            uploadedAt: new Date(SINCE - 5 * 24 * 3600_000).toISOString(),
+            publishAt: live ? new Date(NOW + 10 * 3600_000).toISOString() : null,
+            privacyStatus: "private",
+            thumbnailVariant: null,
+            title,
+          },
+          kind as "video" | "short",
+        );
+      };
+      await titled(8, "v8", "FALLEN KING vs PLAYOFF GOAT | doogile vs Feinberg | MCSR Ranked", true);
+      await titled(8, "s8", "RANK #1 | doogile vs Feinberg #mcsr #minecraft", true, "short");
+      await titled(9, "v9", "CAN ANYONE CATCH UP? | doogile vs Feinberg | MCSR Ranked", true);
+      await titled(10, "v10", "FALLEN KING vs PLAYOFF GOAT | doogile vs Feinberg | MCSR Ranked", false);
+      await titled(11, "v11", "FALLEN KING vs PLAYOFF GOAT | Aquacorde vs Feinberg | MCSR Ranked", true);
+      items = (await needsYouOf()).filter((i) => /^Live title/.test(i.text));
+      assert.deepEqual(
+        items.map((i) => [i.matchId, i.text]),
+        [
+          [
+            8,
+            "Live title breaks a house rule: v8 — names a runner with a label: runners have objected to this (2 Oct 2026)",
+          ],
+          [8, "Live title breaks a house rule: s8 — it uses a seed, rank or elo"],
+        ],
+        "the epithets and the rank, scheduled; not the clean one, the private one or the blocked one",
+      );
+      assert.equal(items[0]!.players, "doogile vs Feinberg");
+      assert.ok(!/FALLEN|RANK #1/.test(JSON.stringify(items)), "the hook itself never appears");
+      console.log("OK: a live title breaking a house rule is an item by video id and problem");
     } finally {
       config.shortsByHand = false;
       globalThis.fetch = realFetch;
