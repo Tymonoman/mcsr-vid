@@ -1766,9 +1766,10 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
   `series.json` (`matchStartSec`, copied at the join; `gameMatchStarts`): the Short's proxy cut
   and its spans (`videoPick.ts`), the dashboard's pick preview (`shortFlow.ts` `previewOf`). The
   description's chapters are written at render time, before any export, so they take
-  `headTrimSec(config.introSec)` instead. Anything on timeline seconds is unchanged: the sync
-  editor and the 9.6 s sync check read the POV clips (`clipTimeFor`), and the teaser, mid-roll
-  and top-end stills are timed on the timeline before the cut.
+  `headTrimSec` of the intro card on disk, the same cut `export:fast` will make. Anything on
+  timeline seconds is unchanged: the sync editor and the 9.6 s sync check read the POV clips
+  (`clipTimeFor`), and the teaser, mid-roll and top-end stills are timed on the timeline before
+  the cut.
 - **`exportUpscale1440` (7 Oct 2026, off by default):** `export:fast`'s last filter can scale the
   already-composited 1080p frame up to 2560x1440 (lanczos, same fps) right before encoding —
   every overlay asset (`remotion/layout.ts`, the stills, the intro card) stays 1080p, and the

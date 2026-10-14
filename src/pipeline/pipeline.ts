@@ -267,8 +267,9 @@ async function runStages(
     syncConfidence = manual.confidence;
     syncDetail = manual.detail;
     syncSource = "manual";
+    // Not rewritten: a fresh mtime reads as a correction to exportStale, and the upload would
+    // refuse an export nothing moved.
     emit(done("sync", { message: `kept the manual sync (${manual.left}s / ${manual.right}s)` }));
-    writeSyncOffsets(outDir, manual);
   } else {
     try {
       const sync = await computeSyncOffset(

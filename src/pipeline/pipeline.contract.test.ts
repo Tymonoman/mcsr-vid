@@ -9,8 +9,8 @@
 //      skip the download (no yt-dlp), a finished render skips Remotion, every thumbnail variant
 //      on disk skips the thumbnail render.
 //  P3  `overlay-splits.json` is written last and means "the render finished" (CLAUDE.md): no
-//      manifest, a manifest naming a still not on disk, or only a killed run's `.part` file is
-//      not a finished render.
+//      manifest, or a manifest naming a still not on disk, is not a finished render (a killed
+//      run's `.part` manifest is atomicOutput.contract.test.ts's A5).
 //  P4  Timeline zero is the countdown's first second: match start lands at exactly ANCHOR_SEC
 //      (10 s) on the timeline, and the overlay layers sit at timeline 0 untrimmed (CLAUDE.md).
 //  P5  Every consumer places the clips from `sync.json`, which the pipeline writes when the sync
@@ -20,26 +20,26 @@
 //  P7  A clip the picture cannot read keeps the coarse estimate (`config.preRollSec`) at
 //      confidence 0, and the sync stage finishes as a warning, not an error (handbook).
 //  P8  `exportStale` refuses an export whose sync.json was *corrected* after it was exported —
-//      and only then (CLAUDE.md "a sync.json correction after export ... until re-encoded").
+//      and only then (CLAUDE.md "a sync.json correction after export ... until re-encoded"): a
+//      plain re-run that keeps the same sync leaves the export fresh.
 //  P9  The finished MP4 is not the timeline: `exportMatchStartSec(dir, id)` reads
 //      `final-<id>.json`, and is 10 without a record, which is what a fresh generate-project
 //      leaves (CLAUDE.md, handbook).
 //  P10 Kdenlive stays at 0:10 whatever the card length; `export:fast` alone cuts `headTrimSec`
 //      (CLAUDE.md "overlay-intro.webm").
-//  P11 The description's chapters are written at render time and take
-//      `headTrimSec(config.introSec)` (handbook "Timeline zero").
-//  P12 A match keeps the card it was rendered with: export:fast takes the card's length from the
-//      file (handbook "overlay-intro.webm") — so chapters must agree with where that export
-//      puts match start.
-//  P13 Generated projects carry `<mlt root>` with every resource relative to it (CLAUDE.md).
-//  P14 The write stage leaves `.kdenlive`, title, description, chapters and tags (one per line)
+//  P11 A match keeps the card it was rendered with: export:fast takes the card's length from the
+//      file (handbook "overlay-intro.webm"), and the description's chapters, written at render
+//      time, take `headTrimSec` of that same card — so they agree with where the export puts
+//      match start (handbook "Timeline zero").
+//  P12 Generated projects carry `<mlt root>` with every resource relative to it (CLAUDE.md).
+//  P13 The write stage leaves `.kdenlive`, title, description, chapters and tags (one per line)
 //      beside the clips (README mermaid "write"), at absolute paths in the result.
-//  P15 A VOD found once is remembered in `vods.json` and read back first, so a clip on disk stays
+//  P14 A VOD found once is remembered in `vods.json` and read back first, so a clip on disk stays
 //      renderable after the archive is gone — no re-listing (handbook "A Twitch archive").
-//  P16 Both VODs are needed: a match with one, attached or found, fails the fetch stage with the
+//  P15 Both VODs are needed: a match with one, attached or found, fails the fetch stage with the
 //      "1/2 VODs" error and writes nothing (handbook; pipeline.ts).
-//  P17 The chat save is best effort: a Twitch failure never fails the pipeline (README "+ chat").
-//  P18 Nothing names the winner — no result line in the description, title, tags or chapters
+//  P16 The chat save is best effort: a Twitch failure never fails the pipeline (README "+ chat").
+//  P17 Nothing names the winner — no result line in the description, title, tags or chapters
 //      (CLAUDE.md house rules).
 //
 // Hermetic: a temp mediaDir, every fetch mocked (no network), a fake `yt-dlp` first on PATH that
@@ -68,22 +68,10 @@ import { runPipeline, STAGE_ORDER, type StageEvent } from "./pipeline.js";
 import { ANCHOR_SEC, offsetIntoClipFromProject } from "./kdenliveProject.js";
 import { exportStale, readSyncOffsets, staleExportMessage, writeSyncOffsets } from "./syncFile.js";
 import { exportMatchStartSec, headTrimSec, writeExportRecord } from "./exportFast.js";
-import { overlayPaths, readSplitStills, SPLITS_MANIFEST } from "./overlayRender.js";
+import { overlayPaths, readSplitStills } from "./overlayRender.js";
 import { variantFile } from "../thumbnails/thumbnailVariants.js";
 import { buildChapters, formatChapters } from "./chapters.js";
 import { computeSplits } from "./overlayProps.js";
-
-/** Keeps the assertion as the docs word it; a mismatch is reported, not hidden, and not fatal. */
-const deviations: string[] = [];
-function deviation(clause: string, check: () => void): void {
-  try {
-    check();
-  } catch (err) {
-    if (!(err instanceof assert.AssertionError)) throw err;
-    deviations.push(clause);
-    console.log(`DEVIATION: ${clause} — ${err.message.split("\n")[0]}`);
-  }
-}
 
 // ---------------------------------------------------------------------------------------------
 // Sandbox: media, PATH, fetch, env.
@@ -169,7 +157,7 @@ function serve(match: MatchInfo, twitchNames = false): void {
 
 // Tiny real media, made once: ffprobe has to read every duration the write stage asks for.
 const ffmpeg = (...args: string[]) =>
-  execFileSync("ffmpeg", ["-v", "error", "-y", ...args], { timeout: 2000, stdio: "ignore" });
+  execFileSync("ffmpeg", ["-v", "error", "-y", ...args], { timeout: 60_000, stdio: "ignore" });
 const media = path.join(root, "template");
 mkdirSync(media);
 // 160 s, so the coarse estimate (preRollSec = 150) still leaves the clip a tail on the timeline.
@@ -309,7 +297,7 @@ try {
       fetchLog.every((u) => u.startsWith("https://api.mcsrranked.com/") || /twitch\.tv/.test(u)),
       `unexpected host: ${fetchLog.join(", ")}`,
     );
-    // P17: the chat fetch failed (no network) and the run still finished; no chat file pretends.
+    // P16: the chat fetch failed (no network) and the run still finished; no chat file pretends.
     assert.ok(
       fetchLog.some((u) => /twitch\.tv/.test(u)),
       "the chat save was attempted",
@@ -320,7 +308,7 @@ try {
     assert.deepEqual(readSyncOffsets(dir), manual, "a re-run never overwrites a manual sync");
     assert.match(settled(events, "sync")!.message ?? "", /manual/);
 
-    // P14: the write stage's artifacts, at absolute paths, beside the clips.
+    // P13: the write stage's artifacts, at absolute paths, beside the clips.
     for (const p of [
       result.projectPath,
       result.thumbnailPath,
@@ -368,7 +356,7 @@ try {
     assert.ok(start, "a Match start guide is written when sync ran");
     assert.equal(start.pos, ANCHOR_SEC * 60, "the guide is at 0:10 on the timeline");
 
-    // P13: <mlt root> is the match directory and no resource carries an absolute path.
+    // P12: <mlt root> is the match directory and no resource carries an absolute path.
     assert.match(xml, new RegExp(`<mlt root="${path.resolve(dir).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`));
     const absolute = resourcesOf(xml).filter((r) => path.isAbsolute(r));
     assert.deepEqual(absolute, [], "every resource is relative to <mlt root>");
@@ -377,13 +365,13 @@ try {
       "a POV clip resolves under root",
     );
 
-    // P11/P12: a 7 s card cuts nothing, so chapters count match start from 0:10.
+    // P11: a 7 s card cuts nothing, so chapters count match start from 0:10.
     const splits = computeSplits(match, match.players[0]!.uuid, match.players[1]!.uuid);
     const chapters = readFileSync(result.chaptersPath, "utf8");
     assert.equal(chapters, formatChapters(buildChapters(splits, match, 10)));
     assert.match(chapters, /^0:00 Start\n/, "YouTube needs the first chapter at 0:00");
 
-    // P18: no written text names the winner as such.
+    // P17: no written text names the winner as such.
     const winner = match.players.find((p) => p.uuid === match.result.uuid)!.nickname;
     for (const file of [
       result.titlePath,
@@ -399,6 +387,17 @@ try {
       );
       assert.doesNotMatch(text, new RegExp(`${winner}\\s+(takes|took|won|wins|beats)`, "i"));
     }
+    // A result line need not use a result word ("X finished first"): every description line that
+    // names the winner alone must have a twin, same words bar the link, naming the other player.
+    const loser = match.players.find((p) => p.uuid !== match.result.uuid)!.nickname;
+    const lines = readFileSync(result.descriptionPath, "utf8").split("\n");
+    const shape = (l: string, name: string) =>
+      l.replaceAll(name, "<player>").replace(/https?:\/\/\S+/g, "<url>");
+    const alone = (a: string, b: string) => lines.filter((l) => l.includes(a) && !l.includes(b));
+    const twins = new Set(alone(loser, winner).map((l) => shape(l, loser)));
+    for (const line of alone(winner, loser)) {
+      assert.ok(twins.has(shape(line, winner)), `"${line}" names the winner alone`);
+    }
 
     // =========================================================================================
     // E. The same match after its export. P8: only a *correction* of sync.json makes the export
@@ -413,14 +412,10 @@ try {
     const rerun = await run(String(match.id));
     assert.equal(rerun.error, undefined);
     assert.deepEqual(readSyncOffsets(dir), manual, "the hand fix survives a second re-run too");
-    deviation(
-      'CLAUDE.md Known pitfalls: exportStale refuses only after "a sync.json correction after export" — a re-run that keeps the manual sync is no correction',
-      () =>
-        assert.equal(
-          exportStale(dir, final).stale,
-          false,
-          "re-running generate-project on an exported, hand-synced match marks its export stale (sync.json rewritten with identical numbers)",
-        ),
+    assert.equal(
+      exportStale(dir, final).stale,
+      false,
+      "a re-run that keeps the manual sync is no correction: the export stays fresh",
     );
 
     // A real correction after the export is stale, and the refusal names the fix.
@@ -440,9 +435,10 @@ try {
     // The record is per match: another id's record in the same directory is not this one's.
     assert.equal(exportMatchStartSec(dir, match.id + 1), 10);
     // A record that is not a usable second is no record (never seek to -4 s or to "6").
-    for (const bad of [-4, "6", null, Number.MAX_VALUE * 10]) {
-      writeFileSync(path.join(dir, `final-${match.id}.json`), JSON.stringify({ matchStartSec: bad }));
-      assert.equal(exportMatchStartSec(dir, match.id), 10, `matchStartSec ${String(bad)} falls back to 10`);
+    // Raw text: 1e309 parses to Infinity, which JSON.stringify would have written as null.
+    for (const bad of ["-4", '"6"', "null", "1e309"]) {
+      writeFileSync(path.join(dir, `final-${match.id}.json`), `{"matchStartSec": ${bad}}`);
+      assert.equal(exportMatchStartSec(dir, match.id), 10, `matchStartSec ${bad} falls back to 10`);
     }
     writeFileSync(path.join(dir, `final-${match.id}.json`), "{}");
     assert.equal(exportMatchStartSec(dir, match.id), 10, "a record without the field falls back to 10");
@@ -491,22 +487,13 @@ try {
 
     const splits = computeSplits(match, match.players[0]!.uuid, match.players[1]!.uuid);
     const chapters = readFileSync(result.chaptersPath, "utf8");
-    // P12: export:fast cuts headTrimSec(card) = 4 s, so match start is at 0:06 in the MP4.
+    // P11: export:fast cuts headTrimSec(card) = 4 s, so match start is at 0:06 in the MP4 — and
+    // the chapters follow the card on disk, whatever config.introSec says now.
     assert.equal(10 - headTrimSec(3), 6);
     assert.equal(
       chapters,
       formatChapters(buildChapters(splits, match, 10 - headTrimSec(3))),
       "chapters agree with the MP4 the kept card will produce",
-    );
-    // P11: the handbook's wording — headTrimSec(config.introSec), not the card's.
-    deviation(
-      "handbook Known pitfalls, Timeline zero: the description's chapters take headTrimSec(config.introSec)",
-      () =>
-        assert.equal(
-          chapters,
-          formatChapters(buildChapters(splits, match, 10 - headTrimSec(config.introSec))),
-          `with config.introSec ${config.introSec} and a kept 3 s card, chapters follow the card on disk (0:06), not config (0:10)`,
-        ),
     );
     // The description carries the same chapter lines.
     const description = readFileSync(result.descriptionPath, "utf8");
@@ -515,7 +502,7 @@ try {
   }
 
   // =============================================================================================
-  // C. P15: one VOD attached, the other remembered in vods.json from an earlier discovery. The
+  // C. P14: one VOD attached, the other remembered in vods.json from an earlier discovery. The
   // archive is "gone" (yt-dlp fails), and the match still renders without listing anything.
   {
     const full = fixture(13673240);
@@ -542,7 +529,7 @@ try {
   }
 
   // =============================================================================================
-  // D. P16: one VOD and nothing to find it by — the fetch stage fails, nothing is written.
+  // D. P15: one VOD and nothing to find it by — the fetch stage fails, nothing is written.
   {
     const full = fixture(13766294);
     const match: MatchInfo = { ...full, vod: [full.vod[0]!] };
@@ -569,12 +556,6 @@ try {
     const still = path.join(dir, "overlay-splits-0.png");
     writeFileSync(still, "png");
     assert.equal(await readSplitStills(dir), null, "stills without the manifest are an unfinished render");
-    // A killed run's half-written manifest stays under .part (atomicOutput) and is never read.
-    writeFileSync(
-      path.join(dir, SPLITS_MANIFEST.replace(/\.json$/, ".part.json")),
-      JSON.stringify([{ path: still, startSec: 0, durationSec: 5 }]),
-    );
-    assert.equal(await readSplitStills(dir), null, "a .part manifest is not a finished render");
     writeFileSync(
       overlayPaths(dir).manifest,
       JSON.stringify([
@@ -598,5 +579,4 @@ try {
   rmSync(root, { recursive: true, force: true });
 }
 
-if (deviations.length > 0) console.log(`pipeline.contract: ${deviations.length} deviation(s) reported`);
 console.log("pipeline.contract: all checks passed");

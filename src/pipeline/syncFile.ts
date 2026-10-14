@@ -29,8 +29,15 @@ export interface SyncOffsets {
 
 export const syncFilePath = (matchDir: string): string => path.join(matchDir, "sync.json");
 
+/**
+ * Leaves an identical file alone: `exportStale` reads a newer mtime as a correction, so rewriting
+ * the same decision on a plain re-run would refuse an upload whose clips never moved.
+ */
 export function writeSyncOffsets(matchDir: string, offsets: SyncOffsets): void {
-  writeFileSync(syncFilePath(matchDir), `${JSON.stringify(offsets, null, 2)}\n`);
+  const file = syncFilePath(matchDir);
+  const text = `${JSON.stringify(offsets, null, 2)}\n`;
+  if (existsSync(file) && readFileSync(file, "utf8") === text) return;
+  writeFileSync(file, text);
 }
 
 /** Null when the file is missing, unparsable, or does not carry two usable offsets. */
