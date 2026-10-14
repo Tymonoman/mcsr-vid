@@ -68,7 +68,7 @@ Use the script, don't reconstruct the shell line. Extra arguments go after `--`.
 | `npm run validate-project -- media/<id>/match-<id>.kdenlive` | Loads the MLT XML through the MLT engine. Exit 0 = parses; passes a project with missing media. |
 | `npm run export:fast -- <matchId> [--cpu] [--seconds=N] [--full-tail]` | One ffmpeg pass (Intel VAAPI), no Kdenlive. `--seconds` → smoke test `smoke-<id>.mp4` (never the real final). |
 | `npm run export:nvenc -- media/<id>/match-<id>.kdenlive [out=N]` | melt + `h264_nvenc`. Needs an NVIDIA GPU; the lab has none. |
-| `npm run short -- <matchId> [--at=<ms>] [--seconds=N]` | Vertical Short, cut from the pick's window. Refuses without the hook (`short-<id>.hook.txt`) or once on YouTube. |
+| `npm run short -- <matchId> [--at=<ms>] [--seconds=N]` | Vertical Short, cut from the pick's window. Refuses without the hook (`short-<id>.hook.txt`), once on YouTube, or while `shortsByHand` is on. |
 | `npm run short:hand -- <matchId> <file.mp4> --hook "<hook>" --from <sec> --to <sec> --pov left\|right [--note]` | Registers a hand-cut Short as the pair the chain reads (`shortsByHand`). |
 | `npm run series -- <matchId \| all> [--join-only]` | Playoff series as one video: renders every game missing an export, joins into `series-<g1>.mp4`. Nightly cannot see a run here. |
 | `npm run sync-status -- [matchId]` | Where a match's POV clips sit; derives/writes `sync.json` if missing. No id lists everything, writes nothing. |

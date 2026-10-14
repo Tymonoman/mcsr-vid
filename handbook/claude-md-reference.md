@@ -63,7 +63,7 @@ Use the script, don't reconstruct the shell line. Extra arguments go after `--`.
 | `npm run validate-project -- media/<id>/match-<id>.kdenlive` | Load the generated MLT XML through the MLT engine. Exit 0 = parses. Malformed XML only: it passes a project whose media is missing. |
 | `npm run export:fast -- <matchId> [--cpu] [--seconds=N] [--full-tail]` | The finished MP4 in one ffmpeg pass (Intel VAAPI on the lab), no Kdenlive. `--seconds` renders a short range as a smoke test, to `smoke-<id>.mp4` (it once wrote over a published match's final). Open the `.kdenlive` when a match needs a human; both place clips through `placeOnTimeline`. |
 | `npm run export:nvenc -- media/<id>/match-<id>.kdenlive [out=N]` | melt + `h264_nvenc` to `out/export.mp4`. Needs an NVIDIA GPU; the lab has none. |
-| `npm run short -- <matchId> [--at=<ms>] [--seconds=N]` | The vertical Short (`short-<id>.mp4`) plus its `.title.txt` / `.description.txt`, cut from the pick's window (`short-<id>.pick.json`). Refuses without the operator's hook (`short-<id>.hook.txt`) or once the Short is on YouTube. `--at`/`--seconds` override the window by hand. The cut is recorded in `short-<id>.cut.json` with the hook it used. |
+| `npm run short -- <matchId> [--at=<ms>] [--seconds=N]` | The vertical Short (`short-<id>.mp4`) plus its `.title.txt` / `.description.txt`, cut from the pick's window (`short-<id>.pick.json`). Refuses without the operator's hook (`short-<id>.hook.txt`), once the Short is on YouTube, or while `shortsByHand` is on (a model cut would overwrite the hand-cut Short). `--at`/`--seconds` override the window by hand. The cut is recorded in `short-<id>.cut.json` with the hook it used. |
 | `npm run series -- <matchId \| all> [--join-only]` | A playoff series as one video (`src/playoffs/series.ts`): renders every game of the slot that has no export, joins them into game 1's `series-<g1>.mp4`, rewrites game 1's title/description/chapters/tags for the series; the series' Short is picked and cut like any match's, from game 1's directory, once the hooks are saved. `all` walks the board in date order; `--join-only` joins what is exported. The dashboard's nightly cannot see a run here: start one in the daytime. |
 | `npm run sync-status -- [matchId]` | Where a match's POV clips are placed. With an id and no `sync.json`, derives it from the `.kdenlive` and writes it, so a re-export picks the corrected offsets up without a re-render. No id lists every match and writes nothing. |
 | `npm run chat -- <matchId>` | Fetch both players' Twitch chat to `chat-<nick>.json` for a match the pipeline saved none for (it does this itself after `download-vods`). Existing files are kept; delete one to refetch. |
@@ -147,7 +147,10 @@ views brought 0 subscribers.
   (`shortsByHand`, Settings → Publishing, default **off**; 11 Oct 2026, the operator, verbatim:
   "you're gonna make the shorts from now on"). On, the chain never runs its own pick or render
   step for the Short — the long-form uploads at its slot without waiting on either (today's chain
-  renders the Short before the long-form upload; this mode skips straight to it). **The pick after
+  renders the Short before the long-form upload; this mode skips straight to it), and `npm run
+  short` run by hand refuses too ("waiting for the hand-made Short"), so a model cut behind the
+  dead dashboard hook never lands over the hand one; the setting alone decides, never a leftover
+  `hand.json` (14 Oct 2026). **The pick after
   the export still runs** (`ensurePick`): auto-hooks is due only 6 h after a pick and takes the
   model's title hooks first — the first build gated that pick off too, which would have left
   every new long-form unhooked and unuploaded (caught before the first night, 11 Oct 2026); the
