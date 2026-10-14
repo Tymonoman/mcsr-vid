@@ -268,6 +268,8 @@ views brought 0 subscribers.
 - **A playoff game's nameplates show the seed, not the ladder rank**: a bracket has its own
   order. A series is picked and cut from game 1's directory, the clips from the picked game's.
 - **Auto-crop usually declines, and should**: streamers' panels reach the frame edges.
+- **`shortsByHand` off** (moved from CLAUDE.md, 14 Oct 2026): the pick→render→upload chain is
+  exactly as before the switch existed.
 
 ## Dashboard
 
@@ -1762,6 +1764,11 @@ shows it to a human, nobody else parses its stdout as data.
   pin step makes — rather than skip a video that only went public after the record was written.
   `pinComment` itself (phase 1's own rail 2) still refuses to touch a pin someone already set by
   hand, so "never replace an existing pin" holds here exactly as it does for the dashboard's path.
+- **A dead end-screen target is skipped for the day** (14 Oct 2026): Edj_-c7lK38, gone from the
+  channel, timed out on the end-screen editor link every cycle (`sameErrorStreak` 6).
+  `addEndScreenFromTemplate` now returns `"no-editor"` when the link never appears; the worker
+  skips that video for the UTC day, as pins already do, without counting an error, and caps end
+  screens only after the day's skips (`endScreensThisCycle`).
 
 ## Clips (prototype)
 
