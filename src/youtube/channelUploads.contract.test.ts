@@ -37,6 +37,8 @@ const saved = {
   token: process.env.YOUTUBE_TOKEN_FILE,
 };
 config.mediaDir = path.join(tmp, "media");
+// Off on purpose: with auto-finish on, recordStudioUpload legitimately runs finishOnYouTube (a
+// videos.update, a comment, playlists). "A scan makes no YouTube write" below holds only here.
 config.youtubeAutoFinish = false;
 process.env.YOUTUBE_TOKEN_FILE = path.join(tmp, "token.json");
 await writeFile(
@@ -149,6 +151,7 @@ try {
     const writes = requests.filter(
       (r) => r.method !== "GET" && !r.url.startsWith("https://oauth2.googleapis.com/"),
     );
+    // Only because youtubeAutoFinish is off above — not an unconditional promise of the scan.
     assert.deepEqual(writes, [], "a scan makes no YouTube write — no videos.update, no comment, no playlist");
     assert.equal(
       readFileSync(path.join(matchDir(A), "youtube.json"), "utf8"),
