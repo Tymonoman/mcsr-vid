@@ -149,7 +149,10 @@ export async function uploadTextFor(
     // push the title past 100 characters leaves <HOOK> in place, which Upload and Adopt refuse.
     const hook = (await readManifest(dir))?.hookText?.trim();
     const parts = splitTitle(title);
-    const players = parts ? [{ nickname: parts.left }, { nickname: parts.right }] : [];
+    // Each side as shown and as the API spells it (Skycrab is Pinne), the two `withHook` accepts.
+    const players = parts
+      ? [parts.left, parts.right].flatMap((shown) => [{ nickname: shown }, { nickname: canonName(shown) }])
+      : [];
     const filled = hook ? title.replace(HOOK_PLACEHOLDER, hook) : title;
     if (hook && hookLabelProblem(hook, players) === null && filled.length <= TITLE_MAX_CHARS) title = filled;
   }

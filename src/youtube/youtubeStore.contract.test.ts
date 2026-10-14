@@ -367,6 +367,19 @@ const renderFor = (match: MatchInfo, leftName?: string, rightName?: string) => {
     `<HOOK> | Aa vs Bb | ${TAIL}`,
     "CLAUDE.md House rules: a carried hookText value fails closed the same way hookProblem does (never a runner label)",
   );
+
+  // The match's own two players pass in either spelling (API or `titleNames`), as in `withHook`.
+  for (const hookText of ["Pinne vs lowk3y_", "Skycrab vs lowkey"]) {
+    write(552, {
+      "match-552.title.txt": `<HOOK> | Skycrab vs lowkey | ${TAIL}${GUIDANCE}`,
+      "thumbnail.json": JSON.stringify({ chosen: null, hookText, variants: [] }),
+    });
+    assert.equal(
+      (await uploadTextFor(552, "video")).title,
+      `${hookText} | Skycrab vs lowkey | ${TAIL}`,
+      `the match's own pair, ${hookText}`,
+    );
+  }
 }
 
 // --- 10: titleNames respells only the players it names ------------------------------------------

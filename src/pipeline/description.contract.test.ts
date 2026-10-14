@@ -95,18 +95,17 @@ const render = (match: MatchInfo, over: Partial<Parameters<typeof buildDescripti
     ...over,
   });
 };
-/** The same race with the other player taking it: same times, same ratings carried in. */
+/**
+ * The same race with the other player taking it: same times, same ratings carried in
+ * (`changes[].eloRate` is the rating going in — `eloAtMatchStart` — so only the change flips).
+ */
 const otherSideWon = (match: MatchInfo, forfeited = match.forfeited): MatchInfo => {
   const winner = match.players.find((p) => p.uuid !== match.result.uuid)!.uuid;
   return {
     ...match,
     forfeited,
     result: { ...match.result, uuid: winner },
-    changes: match.changes.map((c) => ({
-      ...c,
-      change: -c.change!,
-      eloRate: c.eloRate! - c.change! + -c.change!,
-    })),
+    changes: match.changes.map((c) => ({ ...c, change: -c.change! })),
   };
 };
 const video = (description: string) => ({ description }) as ChannelVideo;

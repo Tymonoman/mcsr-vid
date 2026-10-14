@@ -95,7 +95,6 @@ report is built, so it completes at once:
 CRONS (session-only; recreate if gone): 05:23 UTC morning cycle (job 376be942 — /needs + /ypp, NEVER report --dry-run: it
 carries viewer comment text; then the hand Shorts), 18:17 UTC evening check (bbbb9a98). On 14 Oct evening: the final
 branded report.
-OPEN (contract tests, 14 Oct): src/youtube/youtubeStore.contract.test.ts stays green on two KNOWN HOUSE-RULE BREACHES, printed as DEVIATION lines, not yet fixed: (1) uploadTextFor puts the thumbnail manifest's hookText in place of `<HOOK>` with no hookProblem/hookLabelProblem check ("CHAIR vs LAMP | Aa vs Bb | …" reaches the publish kit and Adopt; real uploads still need a saved title) — the 09:0x fix workflow called this "no change", the contract docs say a carried hookText fails closed; (2) `config.titleNames[nick]` (title.ts titleName, youtubeStore.ts refreshTags) finds Object.prototype keys: a player named constructor/__proto__ gets "function Object() { [native code] }" / "[object Object]" in the title, and refreshTags throws (fix: Object.hasOwn). When either is fixed, its deviation() call fails on purpose until it is turned into a plain assert.
 
 ## ▶ RESUME HERE (9 Oct 2026 ~11:35 UTC, before a /compact) — THE WEEK GOAL IS ACTIVE (/goal, ends 14 Oct)
 /goal: "By 14 Oct: every day's uploads scheduled without the operator; Test & Compare on ≥10 videos with verdicts in the
