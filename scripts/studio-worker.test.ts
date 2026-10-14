@@ -23,17 +23,27 @@ function sandboxHome(): { home: string; log: string; lock: string } {
 
 const sleepMs = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
+// The supervisor cd's into STUDIO_WORKER_ROOT (default /app) before each start. A runner with no
+// /app (GitHub's, 14 Oct 2026) logs "cd: /app: No such file or directory" and the line-shape check
+// below trips, so every run points it at its own sandbox.
+const envFor = (home: string, extra: Record<string, string>) => ({
+  ...process.env,
+  HOME: home,
+  STUDIO_WORKER_ROOT: home,
+  ...extra,
+});
+
 // --- a real first instance (matching cmdline) still running refuses a second start -------------
 {
   const { home, lock, log } = sandboxHome();
   const first = spawn("bash", [SCRIPT], {
-    env: { ...process.env, HOME: home, STUDIO_WORKER_CMD: "sleep 20", STUDIO_WORKER_RESTART_DELAY: "60" },
+    env: envFor(home, { STUDIO_WORKER_CMD: "sleep 20", STUDIO_WORKER_RESTART_DELAY: "60" }),
   });
   for (let i = 0; i < 50 && !existsSync(lock); i++) await sleepMs(100);
   assert.ok(existsSync(lock), "the first instance wrote its own pid into the lock file");
 
   const result = spawnSync("bash", [SCRIPT], {
-    env: { ...process.env, HOME: home, STUDIO_WORKER_CMD: "true" },
+    env: envFor(home, { STUDIO_WORKER_CMD: "true" }),
     encoding: "utf8",
     timeout: 5000,
   });
@@ -45,7 +55,9 @@ const sleepMs = (ms: number): Promise<void> => new Promise((resolve) => setTimeo
     "only the first instance's own loop ever started — the second start never ran its command",
   );
   first.kill("SIGKILL");
-  console.log("OK: a second start refuses while a real first instance (matching cmdline) still holds the lock");
+  console.log(
+    "OK: a second start refuses while a real first instance (matching cmdline) still holds the lock",
+  );
 }
 
 // --- a live pid that is NOT running this script does not block a new start ---------------------
@@ -59,11 +71,15 @@ const sleepMs = (ms: number): Promise<void> => new Promise((resolve) => setTimeo
   for (let i = 0; i < 20 && !decoy.pid; i++) await sleepMs(50);
   writeFileSync(lock, String(decoy.pid));
   const result = spawnSync("bash", [SCRIPT], {
-    env: { ...process.env, HOME: home, STUDIO_WORKER_CMD: "true", STUDIO_WORKER_RESTART_DELAY: "60" },
+    env: envFor(home, { STUDIO_WORKER_CMD: "true", STUDIO_WORKER_RESTART_DELAY: "60" }),
     encoding: "utf8",
     timeout: 5000,
   });
-  assert.notEqual(result.status, 1, "a live pid that isn't this script must not be read as a running supervisor");
+  assert.notEqual(
+    result.status,
+    1,
+    "a live pid that isn't this script must not be read as a running supervisor",
+  );
   assert.ok(existsSync(log) && readFileSync(log, "utf8").includes("starting:"), "the loop actually started");
   decoy.kill();
   console.log("OK: a live pid reused by an unrelated process does not block a new start (cmdline-checked)");
@@ -75,7 +91,7 @@ const sleepMs = (ms: number): Promise<void> => new Promise((resolve) => setTimeo
   const dead = spawnSync("true").pid ?? 999_999; // already exited by the time we read its pid
   writeFileSync(lock, String(dead));
   const child = spawn("timeout", ["-s", "KILL", "2", "bash", SCRIPT], {
-    env: { ...process.env, HOME: home, STUDIO_WORKER_CMD: "true", STUDIO_WORKER_RESTART_DELAY: "10" },
+    env: envFor(home, { STUDIO_WORKER_CMD: "true", STUDIO_WORKER_RESTART_DELAY: "10" }),
   });
   await new Promise((resolve) => child.on("exit", resolve));
   assert.ok(existsSync(lock), "a stale lock is overwritten with this run's own pid, not left alone");
@@ -86,12 +102,10 @@ const sleepMs = (ms: number): Promise<void> => new Promise((resolve) => setTimeo
 {
   const { home, log } = sandboxHome();
   const child = spawn("timeout", ["-s", "KILL", "4", "bash", SCRIPT], {
-    env: {
-      ...process.env,
-      HOME: home,
+    env: envFor(home, {
       STUDIO_WORKER_CMD: "true", // exits 0 immediately — no real npm/Chrome ever touched
       STUDIO_WORKER_RESTART_DELAY: "1", // stand-in for the real 60s so the test takes ~4s, not minutes
-    },
+    }),
   });
   await new Promise((resolve) => child.on("exit", resolve));
 
@@ -114,20 +128,18 @@ const sleepMs = (ms: number): Promise<void> => new Promise((resolve) => setTimeo
 {
   const { home: home1, log: log1 } = sandboxHome();
   const c1 = spawn("timeout", ["-s", "KILL", "2", "bash", SCRIPT], {
-    env: { ...process.env, HOME: home1, STUDIO_WORKER_CMD: "env", STUDIO_WORKER_RESTART_DELAY: "10" },
+    env: envFor(home1, { STUDIO_WORKER_CMD: "env", STUDIO_WORKER_RESTART_DELAY: "10" }),
   });
   await new Promise((resolve) => c1.on("exit", resolve));
   assert.match(readFileSync(log1, "utf8"), /^STUDIO_PROFILE_DIR=\/app\/\.studio-profile$/m);
 
   const { home: home2, log: log2 } = sandboxHome();
   const c2 = spawn("timeout", ["-s", "KILL", "2", "bash", SCRIPT], {
-    env: {
-      ...process.env,
-      HOME: home2,
+    env: envFor(home2, {
       STUDIO_WORKER_CMD: "env",
       STUDIO_WORKER_RESTART_DELAY: "10",
       STUDIO_PROFILE_DIR: "/tmp/a-different-profile",
-    },
+    }),
   });
   await new Promise((resolve) => c2.on("exit", resolve));
   assert.match(readFileSync(log2, "utf8"), /^STUDIO_PROFILE_DIR=\/tmp\/a-different-profile$/m);
