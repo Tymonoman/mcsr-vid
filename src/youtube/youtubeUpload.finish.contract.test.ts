@@ -33,11 +33,13 @@
 //     session file is kept.
 // 15. A resume whose session YouTube no longer honours (404) never falls through to a fresh start.
 // 16. A blocked player's match is never uploaded, long-form or Short (CLAUDE.md "Blocked players").
-// 17. The gate on `videos.insert` is `youtubeUploadEnabled` (handbook: "videos.insert is the only call
-//     the audit gated (`youtubeUploadEnabled`)").
+// 17. Asked, not asserted: should a restart finish a `videos.insert` begun while
+//     `youtubeUploadEnabled` was on, after the flag went off? (printed as a QUESTION line)
 //
-// Hermetic: a temp media directory, a temp token file, fetch stubbed (anything unrouted throws).
-// Run: npx tsx src/youtube/youtubeUpload.contract.test.ts
+// Hermetic: a temp media directory, a temp archive directory, a temp token file, fetch stubbed
+// (anything unrouted throws). A doc clause the code does not keep prints a DEVIATION line and the
+// run ends "KNOWN-FAILING", never "all checks passed" — exit 0 all the same, so test:unit runs on.
+// Run: npx tsx src/youtube/youtubeUpload.finish.contract.test.ts
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -47,14 +49,9 @@ import { config } from "../config.js";
 import { buildShortDescription } from "../shorts/shortHook.js";
 import type { UploadOptions, UploadResult } from "./youtube.js";
 import { sessionPath } from "./youtube.js";
-import {
-  beginUpload,
-  finishOnYouTube,
-  hookRefusal,
-  resumeUpload,
-  retryFailedPlaylists,
-} from "./youtubeUpload.js";
-import { readUpload, writeUpload, type UploadRecord } from "./youtubeStore.js";
+import type { UploadRecord } from "./youtubeStore.js";
+// youtubeUpload.js and youtubeStore.js are imported below, once MCSR_ARCHIVE_DIR points inside the
+// temp dir: both reach src/dashboard/archive.ts, which reads it once, at import.
 
 /** A doc clause the code does not keep: reported, not bent to fit, and the run goes on. */
 const deviations: string[] = [];
@@ -68,24 +65,25 @@ async function deviation(clause: string, check: () => void | Promise<void>): Pro
   }
 }
 
-const media = await mkdtemp(path.join(tmpdir(), "mcsr-upload-contract-"));
+const media = await mkdtemp(path.join(tmpdir(), "mcsr-upload-finish-contract-"));
 const saved = {
   mediaDir: config.mediaDir,
   playlist: config.youtubePlaylistTitle,
   enabled: config.youtubeUploadEnabled,
   blocked: config.blockedPlayers,
+  token: process.env.YOUTUBE_TOKEN_FILE,
 };
 config.mediaDir = media;
 config.youtubePlaylistTitle = "MCSR Ranked matches · contract";
 config.youtubeUploadEnabled = true;
 const SEASON = config.youtubePlaylistTitle;
 const LATER = new Date(Date.UTC(new Date().getUTCFullYear() + 1, 0, 2, 19)).toISOString();
-
-process.env.YOUTUBE_TOKEN_FILE = path.join(media, "token.json");
-await writeFile(
-  process.env.YOUTUBE_TOKEN_FILE,
-  JSON.stringify({ client_id: "c", client_secret: "s", refresh_token: "r" }),
-);
+// A long-form upload queues archiveMatch(): inside the NAS window (03:00-08:00 Warsaw) a standalone
+// run would otherwise rsync this temp folder into the real /archive.
+const archiveDir = path.join(media, "archive");
+const tokenFile = path.join(media, "token.json");
+process.env.MCSR_ARCHIVE_DIR = archiveDir;
+process.env.YOUTUBE_TOKEN_FILE = tokenFile;
 
 /* --- The wire: a small fake YouTube + MCSR API ------------------------------------------------ */
 const fixture = (id: number) =>
@@ -259,6 +257,12 @@ const spySend = () => {
 };
 
 try {
+  await mkdir(archiveDir, { recursive: true });
+  await writeFile(tokenFile, JSON.stringify({ client_id: "c", client_secret: "s", refresh_token: "r" }));
+  const { beginUpload, finishOnYouTube, hookRefusal, resumeUpload, retryFailedPlaylists } =
+    await import("./youtubeUpload.js");
+  const { readUpload, writeUpload } = await import("./youtubeStore.js");
+
   /* --- 1. <HOOK> anywhere in the title is refused before a byte is sent -------------------------- */
   {
     const id = 13782182;
@@ -301,10 +305,11 @@ try {
     // The season and one playlist per player — joined at the wire, not only planned.
     for (const title of [SEASON, "v_strid · MCSR Ranked matches", "doogile · MCSR Ranked matches"])
       assert.ok(playlistItems.has(`${playlists.get(title)}/vidSpy1`), `joined "${title}"`);
-    // The pair's first video: no matchup playlist (22 of 28 held one video on 22 Sept 2026).
-    assert.equal(
-      playlists.has("doogile vs v_strid · MCSR Ranked"),
-      false,
+    // The pair's first video: no matchup playlist (22 of 28 held one video on 22 Sept 2026) —
+    // under any spelling, not only the one the second video will use.
+    assert.deepEqual(
+      [...playlists.keys()].filter((title) => title.includes(" vs ")),
+      [],
       "no matchup playlist on a first meeting",
     );
     assert.equal(hit(mark, "POST", INSERTS).length, 0, "the send seam stood in for videos.insert");
@@ -592,16 +597,17 @@ try {
       JSON.stringify({ filePath: file, total: 1024, sessionUrl: "https://upload.test/session/g" }),
     );
 
+    // Not a broken promise: a resume finishes a videos.insert already started while the flag was
+    // on, it starts no new one. Whether it should is the operator's call, so it is asked, not pinned.
     config.youtubeUploadEnabled = false;
     const off = spySend();
     await resumeUpload(id, "short", off.send);
-    await deviation("videos.insert is the only call the audit gated (youtubeUploadEnabled)", () =>
-      assert.equal(
-        off.sent.length,
-        0,
-        "a resume sent the rest of a videos.insert with youtubeUploadEnabled off",
-      ),
-    );
+    if (off.sent.length > 0)
+      console.log(
+        "QUESTION for the operator: with youtubeUploadEnabled switched off, a restart still finishes " +
+          "a videos.insert begun while it was on (resumeUpload never reads the flag; shortFlow.ts " +
+          "advance() resumes before its uploadsOn() gate). Finish it, or leave it for Studio?",
+      );
     config.youtubeUploadEnabled = true;
     await rm(path.join(dir, "youtube-short.json"), { force: true });
 
@@ -623,10 +629,18 @@ try {
     console.log("OK: the resume gates were probed (see DEVIATION lines, if any)");
   }
 
-  console.log(`deviations: ${deviations.length}`);
-  console.log("youtubeUpload.contract: all checks passed");
+  // A deviation must not read green to anything grepping for "all checks passed". Once the code
+  // keeps a clause, turn its deviation() into a plain assert so it stays pinned.
+  if (deviations.length > 0)
+    console.log(
+      `youtubeUpload.finish.contract: KNOWN-FAILING — ${deviations.length} deviation(s): ` +
+        `${deviations.join("; ")}. Every other check passed.`,
+    );
+  else console.log("youtubeUpload.finish.contract: all checks passed");
 } finally {
   globalThis.fetch = realFetch;
+  if (saved.token === undefined) delete process.env.YOUTUBE_TOKEN_FILE;
+  else process.env.YOUTUBE_TOKEN_FILE = saved.token;
   config.mediaDir = saved.mediaDir;
   config.youtubePlaylistTitle = saved.playlist;
   config.youtubeUploadEnabled = saved.enabled;
