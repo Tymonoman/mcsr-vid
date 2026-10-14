@@ -14,7 +14,7 @@ if (!playerLeft || !playerRight) {
 const [userLeft, userRight, versus] = await Promise.all([
   getUser(playerLeft.uuid),
   getUser(playerRight.uuid),
-  getVersus(playerLeft.uuid, playerRight.uuid),
+  getVersus(playerLeft.uuid, playerRight.uuid, match.season),
 ]);
 
 const outDir = matchDir(matchId);

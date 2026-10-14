@@ -20,8 +20,8 @@ const MIN = 34;
 /** Elo `changes` that put edcr at 1850 and doogile at 2050 going in. */
 const ELO_GAP = {
   changes: [
-    { uuid: "uuid-l", eloRate: 1870, change: 20 },
-    { uuid: "uuid-r", eloRate: 2030, change: -20 },
+    { uuid: "uuid-l", eloRate: 1850, change: 20 },
+    { uuid: "uuid-r", eloRate: 2050, change: -20 },
   ],
 } as unknown as Partial<MatchInfo>;
 
@@ -100,6 +100,10 @@ assert.equal(buildHookSuggestions(input({ finishMarginMs: 1_000 }))[0], "Decided
 // Sub-100ms is exact milliseconds, not a rounded-up "0.1 seconds" that overstates the margin
 // 1.7x (accuracy panel, 6 Oct 2026; the channel's own past title was "58 MILLISECONDS").
 assert.equal(buildHookSuggestions(input({ finishMarginMs: 58 }))[0], "Decided by 58 milliseconds");
+// ...and singular at one (14 Oct 2026 edge run: "Decided by 1 milliseconds"); a dead heat was
+// decided by nothing, so it gets no "Decided by" chip at all, never "0 milliseconds".
+assert.equal(buildHookSuggestions(input({ finishMarginMs: 1 }))[0], "Decided by 1 millisecond");
+assert.ok(!buildHookSuggestions(input({ finishMarginMs: 0 }), 10).some((t) => t.startsWith("Decided by")));
 
 // 3-10s margins now state the same subject ("Decided by"), never a bare "N seconds apart" with
 // nothing saying it is the finish (click panel, 6 Oct 2026: every such hook was dropped).
@@ -243,6 +247,11 @@ assert.ok(
     assert.ok(!spoilsTheResult(text), `"${text}" gives the result away`);
     assert.ok(!HOOK_SEED_RANK_ELO.test(text), `"${text}" uses a seed, rank or elo`);
   }
+  // The plain ladder-rank and elo shapes (14 Oct 2026 edge pass); the world's seed type stays fair.
+  for (const text of ["CAN RANK 1 HOLD ON?", "TOP 10 PLAYER IN TROUBLE?", "THE 2100 ELO RUNNER?", "WORLD NUMBER ONE?", "A TOP SEED FALLS?"])
+    assert.ok(HOOK_SEED_RANK_ELO.test(text), `"${text}" should read as a seed, rank or elo`);
+  for (const text of ["Village seed, no mercy", "Same seed, two routes", "Top of the nether"])
+    assert.ok(!HOOK_SEED_RANK_ELO.test(text), `"${text}" is not a seed, rank or elo`);
   // A first meeting is in the same band: under the stakes, over the fallback.
   assert.deepEqual(
     buildHookSuggestions(input({ finishMarginMs: 2_400, deaths: 0 }, {}, { versus: versus(0, 0) }), 10),
@@ -456,6 +465,15 @@ assert.deepEqual(rivalryFacts.rank, { left: 4, right: 11 });
 assert.deepEqual(rivalryFacts.h2h, { left: 1, right: 2 });
 assert.equal(hookFacts(input()).h2h, null);
 
+// The API's record is read after the match and already counts it: a ranked first meeting the
+// right player won comes back 0-1. Both the generator's facts and the chips must read it as the
+// first 1v1, not a one-sided record that tells the generator who won (14125831).
+{
+  const wonByRight = input({}, { type: 2, result: { uuid: "uuid-r", time: 700_000 } }, { versus: versus(0, 1) });
+  assert.deepEqual(hookFacts(wonByRight).h2h, { left: 0, right: 0 });
+  assert.ok(buildHookSuggestions(wonByRight, 10).includes("Their first 1v1"));
+}
+
 // A forfeit is stated plainly rather than dressed up as a close finish.
 assert.ok(
   buildHookSuggestions(input({ finishMarginMs: null }, { forfeited: true })).includes(
@@ -534,6 +552,26 @@ console.log("hooks: all checks passed");
     // Not the sanctioned pace idiom ("A sub-N to win it") — a real nickname next to "to win"
     // language, which a blanket `\bto win\b` strip briefly let through (6 Oct 2026).
     "doogile battles back to win it",
+    // A name next to a finishing verb, none of them "win" (14 Oct 2026 edge pass). The last one
+    // carries the pace idiom mid-line: only a leading "A sub-N to win it" is the stake.
+    "EDCR TAKES THE MATCH",
+    "EDCR TAKES GAME 3",
+    "EDCR FINISHES FIRST",
+    "EDCR SEALS IT",
+    "EDCR STEALS IT AT THE END",
+    "DOOGILE FALLS SHORT",
+    "EDCR ADVANCES",
+    "THE UPSET NOBODY SAW COMING",
+    "EDCR GOES SUB-8 TO WIN IT",
+    // How it went is the result too (14 Oct 2026 edge run: all eight passed every check).
+    "HUGE UPSET",
+    "THE UPSET OF THE SEASON",
+    "EDCR DOMINATES",
+    "DOOGILE'S REVENGE",
+    "THE LEAD HOLDS",
+    "EDCR NEVER LOOKED BACK",
+    "DOOGILE OUTPLAYS EDCR",
+    "THE UNDERDOG PREVAILS",
   ]) {
     assert.ok(spoilsTheResult(spoiler), `should be rejected: ${spoiler}`);
   }
@@ -547,6 +585,17 @@ console.log("hooks: all checks passed");
     "The lead changed 3 times",
     "Who wins this one?",
     "Can the 3rd place take down the champion?",
+    "A sub-7 to win it",
+    // The full title Test & Compare checks still leads with the stake.
+    "A SUB-8 TO WIN IT | doogile vs edcr #mcsr #minecraft",
+    "A SUB-9 TO WIN IT | lowkey vs Infume | MCSR Ranked Season 11 Playoffs | Grand Finals",
+    // The upset hook is a question.
+    "THE UPSET NOBODY SAW COMING?",
+    "An upset in the making?",
+    "UPSET?",
+    "Does the lead ever settle?",
+    // "advanced" is a result only as "advanced to".
+    "ADVANCED NETHER ROUTE",
   ]) {
     assert.ok(!spoilsTheResult(safe), `should be allowed: ${safe}`);
   }

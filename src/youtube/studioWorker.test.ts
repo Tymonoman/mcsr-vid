@@ -13,10 +13,12 @@ import {
   pickStarterLayoutLabel,
   startTestAndCompare,
   STARTER_LAYOUT_PREFERENCE,
+  titleTestProblem,
 } from "./studioActions.js";
 import type { Experiment } from "./studioExperiments.js";
 import {
   inBlackoutWindow,
+  liveNightlyHour,
   markEndScreenDone,
   markPickerEmptySeen,
   MAX_PINS_PER_CYCLE,
@@ -304,6 +306,24 @@ config.mediaDir = media;
   assert.equal(inBlackoutWindow(new Date("2026-10-11T03:00:00.000Z"), null), false);
   console.log("OK: a null nightlyRenderHourUtc disables the blackout");
 }
+{
+  // The worker's own process booted on one hour; Settings (another process) moved it in the file.
+  // runWorker reads the file every cycle, so the blackout follows the live hour, not the boot one.
+  const file = path.join(mkdtempSync(path.join(tmpdir(), "studio-hour-")), "mcsr-vid.config.json");
+  writeFileSync(file, JSON.stringify({ nightlyRenderHourUtc: 20 }));
+  assert.equal(liveNightlyHour(file), 20);
+  assert.equal(inBlackoutWindow(new Date("2026-10-11T20:30:00.000Z"), liveNightlyHour(file)), true);
+  writeFileSync(file, JSON.stringify({ nightlyRenderHourUtc: null }));
+  assert.equal(liveNightlyHour(file), null, "null: the nightly is off, and so is the blackout");
+  writeFileSync(file, "{}");
+  assert.equal(liveNightlyHour(file), 3, "no key: the default");
+  assert.equal(liveNightlyHour(path.join(path.dirname(file), "missing.json")), 3, "no file: the default");
+  writeFileSync(file, '{"nightlyRenderHourUtc": 2');
+  assert.equal(liveNightlyHour(file), config.nightlyRenderHourUtc, "mid-write: the boot hour");
+  writeFileSync(file, JSON.stringify({ nightlyRenderHourUtc: 25 }));
+  assert.equal(liveNightlyHour(file), config.nightlyRenderHourUtc, "off the clock: the boot hour");
+  console.log("OK: the worker's blackout reads the nightly hour live from the config file");
+}
 
 // --- newCodeWaiting: pure HEAD-changed check (the supervisor's own restart signal) --------------
 {
@@ -467,6 +487,18 @@ config.mediaDir = media;
   );
   assert.ok(typeof r1 === "object" && "error" in r1, `expected a refusal, got ${JSON.stringify(r1)}`);
   assert.match((r1 as { error: string }).error, /gives the result away/);
+
+  // Read per segment, a question hook keeps its exemption: the whole line ends in "Minecraft
+  // Speedrun", and read whole it refused the pipeline's own chip (14 Oct 2026 edge run). "Who
+  // takes it?" stays refused — on purpose, by `hookProblem`'s own word list.
+  const line = (hook: string) => `${hook} | edcr vs doogile | MCSR Ranked 1v1 | Minecraft Speedrun`;
+  assert.equal(titleTestProblem(line("Can a 45-second lead survive?"), players), null);
+  assert.equal(titleTestProblem(line("DOOGILE WINS IT"), players), "it gives the result away");
+  assert.notEqual(titleTestProblem(line("Who takes it?"), players), null);
+  // The finishing-verb words spoilsTheResult gained the same day keep the question exemption too.
+  for (const q of ["THE UPSET NOBODY SAW COMING?", "CAN EDCR CLOSE IT OUT?", "WHO TAKES GAME 3?"])
+    assert.equal(titleTestProblem(line(q), players), null, q);
+  assert.equal(titleTestProblem(line("EDCR CLOSES IT OUT"), players), "it gives the result away");
 
   const tooLong = `${"X".repeat(90)} | edcr vs doogile | MCSR Ranked 1v1 | Minecraft Speedrun`;
   const r2 = await startTestAndCompare(
@@ -1025,6 +1057,18 @@ config.mediaDir = media;
   assert.equal(hb?.lastError, null, "a clean skip is not an error");
   assert.equal(hb?.sameErrorStreak, 0, "no error this cycle — no streak");
   console.log("OK: runWorker({ once: true }) runs exactly one cycle, writes the heartbeat, and returns");
+}
+
+// --- runWorker: each real cycle re-reads the blocklist the Settings tab saves ------------------
+// This process outlives a Settings save, so a runner blocked there after it started stayed open to
+// end screens, pins, tests and links until the next restart.
+{
+  const saved = config.blockedPlayers;
+  config.blockedPlayers = ["stale-list-sentinel"];
+  await runWorker({ once: true, enable: false, now: () => new Date("2026-10-11T12:00:00Z") });
+  assert.ok(!config.blockedPlayers.includes("stale-list-sentinel"), "the cycle ran on the file's list");
+  config.blockedPlayers = saved;
+  console.log("OK: runWorker reloads blockedPlayers before every cycle outside the blackout");
 }
 
 // --- runWorker: a blackout cycle keeps the standing error and its streak (14 Oct 2026) ---------

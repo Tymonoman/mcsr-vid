@@ -58,7 +58,7 @@ import {
   downloadMatchVods,
   estimatedRunSec,
   matchStartIntoVodSec,
-  PRE_ROLL_SEC,
+  matchOffsetIntoClipSec,
   type VodWindow,
 } from "./vodAcquisition.js";
 import { saveChats, vodIdFromUrl } from "../api/twitchChat.js";
@@ -180,10 +180,13 @@ async function runStages(
   const [userLeft, userRight, versus, playoff] = await Promise.all([
     getUser(playerLeft.uuid),
     getUser(playerRight.uuid),
-    getVersus(playerLeft.uuid, playerRight.uuid),
+    getVersus(playerLeft.uuid, playerRight.uuid, match.season),
     // Resolved here, first, because every later `eloAtMatchStart` answers from it: a playoff
     // game has no elo changes, and the bracket's frozen rating is the one the broadcast shows.
-    playoffContextFor(match),
+    // Strict: a bracket read that fails (429/503) fails the stage for a retry, rather than
+    // package the game as an ordinary match into stills every later run reuses. Only a private
+    // room reaches the API here, and a season with no playoffs (404) still reads as ordinary.
+    playoffContextFor(match, true),
   ]);
   emit(done("fetch", { message: `${playerLeft.nickname} vs ${playerRight.nickname}` }));
 
@@ -203,7 +206,7 @@ async function runStages(
         // The offset the download computed, not 0: the chat save and the description's deep
         // links read it back.
         matchOffsetIntoVodSec: matchStartIntoVodSec(match, vodLeft),
-        matchOffsetIntoClipSec: PRE_ROLL_SEC,
+        matchOffsetIntoClipSec: matchOffsetIntoClipSec(match, vodLeft),
       },
       {
         playerUuid: vodRight.uuid,
@@ -211,7 +214,7 @@ async function runStages(
         sourceUrl: vodRight.url,
         path: pathFor(playerRight.nickname),
         matchOffsetIntoVodSec: matchStartIntoVodSec(match, vodRight),
-        matchOffsetIntoClipSec: PRE_ROLL_SEC,
+        matchOffsetIntoClipSec: matchOffsetIntoClipSec(match, vodRight),
       },
     ];
     emit(done("download", { percent: 100, message: "reused cached downloads" }));
@@ -267,9 +270,8 @@ async function runStages(
     syncConfidence = manual.confidence;
     syncDetail = manual.detail;
     syncSource = "manual";
-    // Not rewritten: a fresh mtime reads as a correction to exportStale, and the upload would
-    // refuse an export nothing moved.
     emit(done("sync", { message: `kept the manual sync (${manual.left}s / ${manual.right}s)` }));
+    writeSyncOffsets(outDir, manual);
   } else {
     try {
       const sync = await computeSyncOffset(
@@ -281,16 +283,18 @@ async function runStages(
       );
       syncConfidence = sync.confidence;
       syncDetail = sync.detail;
-      if (sync.confidence >= config.syncConfidenceThreshold) {
-        // BOTH offsets, not just the right one: timeline zero is the countdown, so an error in the
-        // left clip's estimate moves the whole published video.
+      // BOTH offsets, not just the right one: timeline zero is the countdown, so an error in the
+      // left clip's estimate moves the whole published video. A clip the detector could not read
+      // comes back on its estimate, so one read keeps the read side; its confidence, under the
+      // threshold, is what puts the LOW marker and the dashboard's warning on the other.
+      if (sync.confidence > 0) {
         leftOffsetSec = sync.clipACueTimeSec;
         rightOffsetSec = sync.clipBCueTimeSec;
         syncSource = "countdown";
-        emit(done("sync", { message: sync.detail }));
-      } else {
-        emit(warn("sync", { message: `kept coarse offsets — ${sync.detail}` }));
       }
+      if (sync.confidence >= config.syncConfidenceThreshold) emit(done("sync", { message: sync.detail }));
+      else if (sync.confidence > 0) emit(warn("sync", { message: `verify alignment — ${sync.detail}` }));
+      else emit(warn("sync", { message: `kept coarse offsets — ${sync.detail}` }));
     } catch (err) {
       emit(warn("sync", { message: `refinement failed: ${describeError(err)}` }));
     }

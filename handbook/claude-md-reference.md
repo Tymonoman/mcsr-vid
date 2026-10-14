@@ -227,7 +227,12 @@ views brought 0 subscribers.
   not); each proposal passes `hookProblem` or is dropped with the reason logged; `suggestions.title`
   lists them first (the dashboard's chips are held to the same rule, so one cannot reach the panel
   either). The operator's calls (24 Sept): when the model's window is rejected its title hooks go
-  with it — the heuristic fallback carries none.
+  with it — the heuristic fallback carries none. `hookProblem` is a word-list check, not a reader:
+  its spoiler half (`HOOK_SPOILER` + `spoilsTheResult`) catches the usual result verbs ("wins",
+  "chokes", "finishes first", "seals it"), not every paraphrase ("gets there first", "never catches
+  up" pass), so the operator's Save is the real gate. Its seed/rank/elo check is a pattern list
+  (`HOOK_SEED_RANK_ELO`: #N, Nth seed, top seed, top N, elo, rank N, no./number N, lcq, two 3–4
+  digit figures) and catches the usual phrasings, not every one.
 - **Never a nickname, label or epithet for a runner, "vs" or not** (`hookLabelProblem`,
   `src/pipeline/hooks.ts`; `hookProblem`'s `players` argument, `src/shorts/videoPick.ts`; `withHook`'s,
   `src/pipeline/title.ts`; 2 Oct 2026). The operator, after "LCQ vs YN | lauveer vs edcr" and "ASIAN
@@ -242,11 +247,16 @@ views brought 0 subscribers.
   match" — the model copied "YN" onto lauveer–edcr, a different match's different player. Both
   permissions are gone now: `pastTitleHooks` shows no "vs" example at all (above), and `withHook`
   refuses a carried hook that labels a player exactly as `hookProblem` refuses a model's or warns on
-  a typed one — a carried value is as untrusted as either. The shared rule everywhere: a denied word
-  (an ethnicity or nationality term, a slur-adjacent abbreviation) is refused outright, "vs" or not;
-  a fresh "X vs Y" is checked against the match's own two players (API or `titleNames` spelling) and
-  a mismatch is a label too — "v", "v." and "versus" count as "vs", and so does a third side (14 Oct
-  2026: "CARNIVORE v. VEGAN" and "X vs Y vs THE CLOCK" had slipped through an exact-two "vs" split). A model's proposal and a carried one both fail closed; the operator's
+  a typed one — a carried value is as untrusted as either. The shared rule everywhere: a word on the
+  short denied list (`HOOK_DENIED_LABELS`: a handful of ethnicity/nationality terms and a
+  slur-adjacent abbreviation, deliberately not exhaustive) is refused outright, "vs" or not; a fresh
+  "X vs Y" is checked against the match's own two players (API or `titleNames` spelling) and a
+  mismatch is a label too — "v", "v." and "versus" count as "vs", and so does a third side (14 Oct
+  2026: "CARNIVORE v. VEGAN" and "X vs Y vs THE CLOCK" had slipped through an exact-two "vs" split).
+  Each side is compared whole after trimming, so punctuation or a lead-in on a side ("X vs Y?",
+  "REMATCH: X vs Y") counts as a mismatch: a model's proposal is dropped and a typed hook gets a
+  warning. A model's proposal and a carried one both fail closed on a label (a carried value is
+  checked for labels only); the operator's
   own typed hook still always saves (`writeHooks`, `src/dashboard/shortFlow.ts`), the problem landing
   in `saveWarnings` next to the field like every other check there — "it should just be a
   suggestion." A match rendered before this fix keeps whatever its `title.txt` already carries until
@@ -272,8 +282,10 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   `idle()` checks every reason the standing rule exists for ("never restart while a chain
   uploads" — a 1 Oct 2026 restart cut a Grand Final upload at 30%): a pipeline render, an export
   (also a series game's and a sync fix's Re-encode — same job table), a Short render, the model's
-  pick queue, the publish chain, an upload, a `.upload-session-*.json` still on disk, an NAS copy,
-  and the 20 minutes before `nightlyRenderHourUtc` might fire. Idle, it runs `npx tsc --noEmit`
+  pick queue, the publish chain, an upload, a `.upload-session-*.json` still on disk and under a
+  day old (`SESSION_LIFE_MS`, `src/youtube/youtube.ts`: YouTube drops a session after that, and a
+  chunk failure settled in Studio never removes its file), an NAS copy, and the 20 minutes before
+  `nightlyRenderHourUtc` might fire. Idle, it runs `npx tsc --noEmit`
   (5 min cap) before it dares exit — code that would not even type-check must never be the reason
   the channel stops updating unattended — then logs the commit it is booting into
   (`src/dashboard/repoHead.ts`) and calls `process.exit(0)`; tini's `restart: unless-stopped`
@@ -471,7 +483,8 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   `POST /api/render/:id` (`matchIsBlocked`, `src/dashboard/matchStatus.ts`: the API's pair, else
   `blockedOnDisk` on an archived directory) and `POST /api/series/:id/render` refuse before the fire-and-forget run even starts, and `renderSeries`
   itself refuses too (`{kind:"blocked"}`, `src/playoffs/series.ts`) — the one place both that route
-  and `npm run series` settle through. `runPipeline` (`src/pipeline/pipeline.ts`) refuses
+  and `npm run series` settle through; `assembleSeries` refuses the same way (14 Oct 2026), so
+  `npm run series -- --join-only` and every export's settle never join, retitle or prune one. `runPipeline` (`src/pipeline/pipeline.ts`) refuses
   too, right after the match fetch and before VOD discovery or any write, so the callers with no
   gate of their own — `npm run batch`, `npm run generate-project`, the TUI — never download a
   blocked runner's footage. `hasBlockedPlayer` (`youtubeUpload.ts`) reads
@@ -664,13 +677,15 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   to deterministic-by-match-id rotation among the pairs actually rendered instead, because 88% of
   uploads were wearing that one pose pair (the 7 Oct packaging audit). An operator's pick and an
   already-uploaded thumbnail are never touched either way. **"cheering-relaxing" (the left runner,
-  arms up) is excluded from every automatic pick** (`RESULT_LOOKING_POSE_KEY`,
+  arms up) is excluded from every fresh automatic pick** (`RESULT_LOOKING_POSE_KEY`,
   `thumbnailVariants.ts`; 8 Oct 2026, chip-truth): it reads as the result, spoiling when the left
   player won and misleading when they didn't, so both `autoDefaultKey`'s rotation and `tc-thumbs`'s
   SSIM "most different" pick (`tcThumbs.ts`, which had picked it 7 of its first 10 sets) filter it
-  out of their own pool first, falling back to the full list only if that would leave nothing to
-  pick from. The operator can still choose it by hand (`chooseVariant`) — the exclusion is only on
-  the paths nobody reviews. `RIGHT_RENDER_SIDE` follows the CSS mirror of the right image. The hook text came off on 18 Sept
+  out of their own pool first. `autoDefaultKey` falls back to the full list only if that would leave
+  nothing to pick from; `tc-thumbs` instead refuses ("no pose variant other than the result-looking
+  one … pick tc-pose by hand") and writes no tc-pose.png. A choice carried from an earlier manifest
+  keeps itself (only a 7 Oct rotation-on render could have carried it in as "auto"). The operator
+  can still choose it by hand (`chooseVariant`) — the exclusion is only on the paths nobody reviews. `RIGHT_RENDER_SIDE` follows the CSS mirror of the right image. The hook text came off on 18 Sept
   and its twins were deleted on 24 Sept: an older manifest's `hookText`/`-hook` records are read
   by `readManifest`, hidden by the panel and handed to the title by `carriedHookText`. The
   checklist's thumbnail pill ticks on `chosenBy: "operator"`, and `variantStillReusable` keeps a
@@ -914,9 +929,10 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
     once** (`slotEntryFor`/`renderEntryFor`, `src/dashboard/experiments.ts`): the slot lookups
     (`rankedHoursForDate`, `shortDelayMsForDate`) take the date's first entry tagged `slot`; the
     render lookups (`applyScheduledRenderArm`, `writeExperimentArmFile`) the date's first entry
-    tagged `render`. Either falls back to the date's first entry at all when none carries that
-    tag, so a date with just the one entry — every shape on disk before this existed — resolves
-    exactly as before, tag or no tag.
+    tagged `render`. Either falls back to the date's first entry not tagged for the *other*
+    side, so an untagged entry — every shape on disk before this existed — resolves exactly as
+    before, while a slot-only night writes no `experiment-arm.json` (that video enrols by its
+    publish date, below) and a render-only date enrols no publish by date (14 Oct 2026).
   - **The evaluator enrols `exp.videos` from disk before it evaluates anything**
     (`enrolVideos`, `src/dashboard/experimentsEvaluator.ts`, idempotent — checked by `matchId` per
     experiment, never duplicates, never removes): every match directory with its own
@@ -949,6 +965,12 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   records gone. It reads through `readExperimentsOrNull` (corrupt → `null`) at both its reads and
   returns without writing or stamping `evaluatedOn`, so the first tick after the fix evaluates
   the day; every other caller keeps the lenient read.
+  **Edge-case fixes, 14 Oct 2026**: CTR read only the newest daily Reporting CSV (one ~48h-old
+  day — why x1's interim verdict kept flipping) — `impressionsSince` (`src/youtube/youtube.ts`) sums
+  every daily report since publish, a regenerated day counted once, and the CSV's `20261012` is
+  compared with the since-date in one format. A `settle()` throw now reaches `needsHuman` on the
+  second day (the try cleared yesterday's failure before settling). A schedule's
+  `slot.rankedHoursUtc` keeps only whole hours 0–23, like `shortDelayHours` beside it.
 - **Playoffs** (`src/playoffs/playoffs.ts`): the bracket (`/playoffs`) knows the series, not the games;
   the games are private-room matches (type 3) found in each seed's history, and the API stamps
   them with the season *after* the bracket's (a Season 11 bracket's games are season 12). **No
@@ -986,15 +1008,21 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   land within that gap of its own header or of the next game's.
   **The join deletes the games'
   own exports** — a series is fifty minutes of 1080p60 and the disk holds one copy — and takes a
-  game back out of the series (`-c copy` at its recorded offset, exact because every game
-  starts on its own keyframe) whenever a re-join needs it. `exportStale` reads the record, so a
+  game back out of the series (`-c copy` from the keyframe that starts it to the one that starts
+  the next, found near its recorded offset plus the join's ~21 ms AAC-priming shift; a plain seek
+  at the chapter offset kept the previous game's last GOP, one more per re-join, until 14 Oct
+  2026 — `seriesExtract.test.ts` round-trips it with real ffmpeg) only when a re-join will run, never
+  for a series that is current. Nothing joins until a seed has reached `firstTo` (or the bracket's
+  own score says so) — a series still being played is `incomplete` — and a game whose export is
+  in flight (`final-<id>.part.mp4`) holds the join for its own settle. `exportStale` reads the record, so a
   sync fix on game 3 makes the series stale and names game 3; its Re-encode re-exports the game
   and the join follows (`startFastExport` settles through `assembleSeries`), the other games
   extracted rather than re-encoded. Games 2..n are hidden once joined; the series' head lists
   them (each has its own sync check). The Short
   is the best-scoring game's, copied in as `short-<g1>.*` with a description that links the
-  series (`shortFromMatchId`); cut another game's by hand and `adoptSeriesShort` makes it the
-  series'. The board's slot row shows what is exported / the run in flight / the joined video,
+  series (`shortFromMatchId`); a Short cut by hand from another game's footage is registered
+  under game 1's id — `short:hand` refuses a later game's (14 Oct 2026: written into game 2's own
+  directory, the chain never read it). The board's slot row shows what is exported / the run in flight / the joined video,
   and "Render the series" (`POST /api/series/:id/render`) runs the lot in the server; every
   export settles through `startFastExport` (the nightly's chain, Re-encode, a series run), and
   that is where a series joins itself once its last game's export lands. `PlayoffContext.score`
@@ -1166,8 +1194,9 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
   were public, since a typed hook saves with only a warning and nothing said so afterwards); the
   line is "Live title breaks a house rule: <videoId> — <problem>", never the hook, which may be the
   label; a blocked runner in tonight's queue, rendered and not hidden, with an upload record, or as a
-  comment's author newer than the last report (`isBlockedPlayer` against the display name — the
-  line names the video or the match, never the comment's own text);
+  comment's or a returned reply's author newer than the last report (`isBlockedPlayer` against the
+  display name, a leading "@" stripped — the line names the video or the match, never the comment's
+  own text), listed first so the 1500-char cap's "+ N more" never hides it;
   `<mediaDir>/.experiments.json`'s `needsHuman` entries not yet `needsHumanAck`'d (the experiment
   engine's own file, another branch — also read defensively); and the standalone Studio worker's
   own heartbeat (`<mediaDir>/.studio-worker.json`, `studioWorkerItems`/`studioWorkerHealth`,
@@ -1366,7 +1395,8 @@ every check above is a fixture page or pure logic; see "What is verified live vs
 - **Every Test & Compare title is checked before any page opens** (`titleTestProblem`, exported
   from `studioActions.ts`, reused by the plan importer so a title that could never start is never
   even planned): `hookProblem` (which already finishes with its own `hookLabelProblem` call),
-  `hookLabelProblem` again directly, `spoilsTheResult` against the whole line, and the
+  `hookLabelProblem` again directly, `spoilsTheResult` against every segment of the line (so a
+  question hook keeps its exemption), and the
   100-character ceiling. A thumbnail test's 2-3 files just need to exist on disk. Any refusal is
   returned before `startTestAndCompare` ever calls `page.goto`, pinned by a unit test that passes
   it a handle which throws if its `browser` property is ever read.
@@ -1387,7 +1417,9 @@ every check above is a fixture page or pure logic; see "What is verified live vs
   2026 a page Save with no "Changes saved" within 15 s — an error, so the experiment stays
   `"planned"` and the next cycle reads the page before trying again, where the swallowed wait had
   returned `"started"` and left a blank form to be found a day later), and the worker never
-  guesses past an ambiguous state on its own.
+  guesses past an ambiguous state on its own. Studio's "Results ready"/"Test finished" is what
+  counts as done: `parseTcReport` reads the report's per-arm watch-time shares and Studio's own
+  winner, and `setExperimentChecked` records them (`watchTimeShare` per arm, "<arm> wins: a% vs b%").
 
 **What is verified live vs only on fixtures.** Confirmed against the real Studio UI, 7–8 Oct 2026:
 `#endscreen-editor-link`, the "Import from video" button, `ytcp-video-pick-dialog` and its
@@ -1817,8 +1849,8 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
   detector now covers** (22 Sept 2026, replayed on the 13 ranked matches with clips on disk:
   26 of 26 clips read, 25 of them to the frame the "1" vanishes): the API's estimate can be a
   minute off (a VOD that lost a segment runs ahead of the API's clock; Aquacorde, 13559245:
-  53 s, and `1 - off / 20` scored the countdown it found to zero), so an empty ±25 s window is
-  followed by one ±150 s pass and the distance term is soft; and a world that loads late has
+  53 s, and `1 - off / 20` scored the countdown it found to zero), so an empty or untrusted ±25 s
+  window (a countdown cut by its edge) is followed by one ±150 s pass and the distance term is soft; and a world that loads late has
   the loading screen over the "10" (BeefSalad, 13549300), so a countdown is also read from its
   end — the drop out of the last digit with stepping seconds before it — and an onset has to be
   a real "10", half again the fattest digit after it, or the "6" after a waiting screen becomes
@@ -1897,7 +1929,16 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
   the step so); no session and anything else on record fails the step and names Studio, not a guess.
   The resume probe itself reads a 5xx/429 as "try again", not "gone" (14 Oct 2026): it throws and
   keeps the session file, so an operator's Retry after a chunk 503 cannot start a second
-  `videos.insert` either; only a 404/410 (or another 4xx) drops the session for a fresh start.
+  `videos.insert` either; only a 404/410 (or another 4xx) drops the session for a fresh start —
+  and forgets its file, even under `resumeOnly`, so no later press tries the dead one again.
+  A long-form's mid-file failure is resumed the same way on the next Save, before the channel
+  scan's pairing of the half-sent video can read as "up" — but only a session `uploadVideo` could
+  still resume (`resumableSession`: these exact bytes, under a day old); a re-encode since or a
+  day-old session goes through the normal upload instead (14 Oct 2026). A resume of an export
+  whose `sync.json` was corrected since is refused as `startUpload` refuses it (`exportStale`):
+  nothing sent, the session kept, and the re-encode's new bytes start fresh. A resumed upload
+  carries the title its start sent, and the record says so: a hook changed in between is logged,
+  never retitled on the channel.
 - **Country flags render as tofu** without a colour-emoji font (cosmetic, intro card).
 - **Verify visual changes by rendering** (`npm run still`, then read the PNG).
 - **`npm run test:unit` after any edit; `npm test` after touching rendering or asset

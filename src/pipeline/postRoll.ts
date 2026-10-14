@@ -151,11 +151,14 @@ export async function measureTail(
     });
   });
 
-  // Two samples per second in, one mean-difference per second out.
+  // Two samples per second in, one mean-difference per second out: second k compares its own first
+  // frame with the next second's. The last second has no next one, so it compares its own two
+  // frames — without that, N seconds gave N - 1 values and a tail active to the clip's end (the
+  // VOD window stops right at postRollSec) lost its last second.
   const motion: number[] = [];
-  for (let i = 2; i < frames.length; i += 2) {
-    const a = frames[i - 2]!;
-    const b = frames[i]!;
+  for (let i = 0; i + 1 < frames.length; i += 2) {
+    const a = frames[i]!;
+    const b = frames[Math.min(i + 2, frames.length - 1)]!;
     let sum = 0;
     for (let k = 0; k < a.length; k++) sum += Math.abs(a[k]! - b[k]!);
     motion.push(sum / a.length);

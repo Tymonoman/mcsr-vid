@@ -23,6 +23,7 @@ import {
   uploadTextFor,
   type UploadRecord,
 } from "./youtubeStore.js";
+import { HOOK_PLACEHOLDER } from "../pipeline/title.js";
 import type { SeriesRecord } from "../playoffs/series.js";
 
 const media = mkdtempSync(path.join(tmpdir(), "mcsr-uploadtext-"));
@@ -562,5 +563,20 @@ const hookTitle = (hook: string, pair: string) => `${hook} | ${pair} | ${TAIL}`;
   assert.ok("error" in missing, "a match id with no Short record yet is an error, not undefined behaviour");
 }
 console.log("OK: resolveShortVideoId refuses a long-form id where a Short's was expected");
+
+// --- A carried manifest headline stands in for <HOOK> only if it passes the label check the
+// pipeline used (`carriedHookText`): the placeholder is often there because the pipeline refused
+// that very headline ("YN vs TAS", 2 Oct 2026), and Adopt would write it onto the live video.
+{
+  const manifest = (hookText: string) =>
+    JSON.stringify({ chosen: "a", hookText, variants: [{ key: "a", file: "thumbnail-a.png" }] });
+  const title = `${HOOK_PLACEHOLDER} | edcr vs doogile | ${TAIL}\n`;
+  write(910, { "match-910.title.txt": title, "thumbnail.json": manifest("YN vs TAS") });
+  assert.ok((await uploadTextFor(910, "video")).title.includes(HOOK_PLACEHOLDER), "a label never fills <HOOK>");
+  write(911, { "match-911.title.txt": title, "thumbnail.json": manifest("Does the lead ever settle?") });
+  const clean = (await uploadTextFor(911, "video")).title;
+  assert.ok(clean.startsWith("Does the lead ever settle? | edcr vs doogile"), clean);
+}
+console.log("OK: a carried headline that labels a runner never stands in for <HOOK>");
 
 console.log("youtubeStore.test: ok");

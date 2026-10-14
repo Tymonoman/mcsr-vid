@@ -6,7 +6,6 @@ import type { MatchInfo, MatchVod } from "../api/types.js";
 
 // Shared with renderOverlay.ts so the overlay clip uses the same windowing convention as the VODs.
 export const PRE_ROLL_SEC = config.preRollSec; // buffer before the estimated match start, for the sync step to search within
-export const POST_ROLL_SEC = config.postRollSec; // buffer after the estimated match end
 const DEFAULT_RUN_SEC = config.defaultRunSec; // fallback when result.time is missing/zero (e.g. forfeits)
 
 export interface VodWindow {
@@ -35,6 +34,17 @@ export function matchStartIntoVodSec(match: MatchInfo, vod: { startsAt: number }
   return match.date - vod.startsAt - estimatedRunSec(match);
 }
 const matchStartIntoVodSecOf = matchStartIntoVodSec;
+
+/**
+ * Seconds into the downloaded clip where the match is estimated to start: `PRE_ROLL_SEC`, less
+ * whatever the VOD's head clamped off the window — a stream that went live under 150 s before
+ * the match, or a VOD that began after it (negative). The reuse path and validate-sync read
+ * clips already on disk and must search where the download put the match, not at 150 s.
+ */
+export function matchOffsetIntoClipSec(match: MatchInfo, vod: { startsAt: number }): number {
+  const start = matchStartIntoVodSecOf(match, vod);
+  return start - Math.max(0, start - PRE_ROLL_SEC);
+}
 
 interface RunOpts {
   onProgress?: (percent: number) => void;
@@ -100,8 +110,8 @@ async function downloadVodWindow(
   const matchStartIntoVodSec = matchStartIntoVodSecOf(match, vod);
   const matchEndIntoVodSec = matchStartIntoVodSec + runSec;
   const windowStartSec = Math.max(0, matchStartIntoVodSec - PRE_ROLL_SEC);
-  const windowEndSec = matchEndIntoVodSec + POST_ROLL_SEC;
-  const matchOffsetIntoClipSec = matchStartIntoVodSec - windowStartSec;
+  // Read per call, not captured at import: a Settings change reaches the dashboard's in-process renders.
+  const windowEndSec = matchEndIntoVodSec + config.postRollSec;
 
   await mkdir(outDir, { recursive: true });
   const outputTemplate = path.join(outDir, `${playerNickname}.%(ext)s`);
@@ -129,7 +139,7 @@ async function downloadVodWindow(
     sourceUrl: vod.url,
     path: path.join(outDir, `${playerNickname}.mp4`),
     matchOffsetIntoVodSec: matchStartIntoVodSec,
-    matchOffsetIntoClipSec,
+    matchOffsetIntoClipSec: matchOffsetIntoClipSec(match, vod),
   };
 }
 

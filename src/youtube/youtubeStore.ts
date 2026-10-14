@@ -7,7 +7,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { config, matchDir } from "../config.js";
 import { listProcessedMatchIds } from "../dashboard/matchStatus.js";
-import { readManifest } from "../thumbnails/thumbnailVariants.js";
+import { carriedHookText, readManifest } from "../thumbnails/thumbnailVariants.js";
 import { buildTitle, HOOK_PLACEHOLDER, metaPaths, MOBILE_CUTOFF, SEPARATOR } from "../pipeline/title.js";
 import {
   closerFor,
@@ -136,7 +136,14 @@ export async function uploadTextFor(
     (await edited("title")) ?? (await readIfPresent(path.join(dir, `${base}.title.txt`))) ?? "";
   let title = titleText.split("\n")[0]!.trim();
   if (title.includes(HOOK_PLACEHOLDER)) {
-    const hook = (await readManifest(dir))?.hookText?.trim();
+    // The placeholder is often there because the pipeline refused this very headline as a runner
+    // label ("YN vs TAS", 2 Oct 2026): judged the same way here, or Adopt writes it onto the video.
+    const names = splitTitle(title);
+    const hook = carriedHookText(
+      await readManifest(dir),
+      undefined,
+      names ? [{ nickname: names.left }, { nickname: names.right }] : undefined,
+    )?.trim();
     if (hook) title = title.replace(HOOK_PLACEHOLDER, hook);
   }
   // A Short with no saved hook cannot go up (`hookRefusal`): its stored title stands, unlogged —

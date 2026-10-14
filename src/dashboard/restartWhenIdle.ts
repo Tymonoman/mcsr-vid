@@ -21,7 +21,8 @@
  * that is out of its own usage limit still ship into the running box.
  */
 import { execFile } from "node:child_process";
-import { readdirSync } from "node:fs";
+import { readdirSync, statSync } from "node:fs";
+import path from "node:path";
 import { config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { allArchiveStates } from "./archive.js";
@@ -33,6 +34,7 @@ import { repoHead } from "./repoHead.js";
 import { anyShortRunning } from "./shortsRoutes.js";
 import { chainsRunning, picksRunning } from "./shortFlow.js";
 import { anyThumbnailRunning } from "../thumbnails/rerender.js";
+import { SESSION_LIFE_MS } from "../youtube/youtube.js";
 import { anyUploadRunning } from "../youtube/youtubeUpload.js";
 import { anyVideoWriting } from "../youtube/youtubeStore.js";
 
@@ -51,11 +53,18 @@ const NIGHTLY_GUARD_MS = 20 * 60_000;
 /** `.upload-session-<name>.json` (src/youtube/youtube.ts `sessionPath`) beside an export in progress. */
 const UPLOAD_SESSION_RE = /^\.upload-session-.*\.json$/;
 
-/** A resumable upload session sitting on disk for any match — `shortTick` would pick it up next. */
-function anyUploadSessionFile(): boolean {
+/**
+ * A resumable upload session sitting on disk for any match — `shortTick` would pick it up next.
+ * One past `SESSION_LIFE_MS` is dead (a chunk failure keeps the file, and a match settled in
+ * Studio meanwhile never removes it) and must not hold a restart for ever.
+ */
+export function anyUploadSessionFile(nowMs: number = Date.now()): boolean {
   return listProcessedMatchIds().some((id) => {
     try {
-      return readdirSync(matchDir(id)).some((name) => UPLOAD_SESSION_RE.test(name));
+      const dir = matchDir(id);
+      return readdirSync(dir).some(
+        (name) => UPLOAD_SESSION_RE.test(name) && nowMs - statSync(path.join(dir, name)).mtimeMs < SESSION_LIFE_MS,
+      );
     } catch {
       // Deleted between the listing and the read — not a session file either way.
       return false;
@@ -99,7 +108,7 @@ const liveDeps = (): IdleDeps => ({
   pickRunning: picksRunning,
   chainRunning: chainsRunning,
   uploadRunning: anyUploadRunning,
-  uploadSessionFile: anyUploadSessionFile,
+  uploadSessionFile: () => anyUploadSessionFile(),
   archiveRunning: () => allArchiveStates().some((a) => a.running),
   nightlyChainRunning,
   thumbnailRunning: anyThumbnailRunning,
@@ -234,7 +243,11 @@ async function tick(): Promise<void> {
   // Idle: pause the 30 s poll rather than let a second one start on top of a boot check that can
   // run for up to five minutes.
   stopChecking();
+  const armedAt = armedAtMs;
   const error = await active.bootCheck();
+  // A DELETE (or a fresh POST) while tsc ran: this tick speaks for an arm that no longer exists —
+  // no exit, no stale error, no poll resurrected for a cancelled arm. A fresh POST runs its own.
+  if (armedAtMs !== armedAt) return;
   if (error) {
     lastError = error;
     console.error(`restart-when-idle: boot check failed, staying up — ${error.split("\n")[0]}`);

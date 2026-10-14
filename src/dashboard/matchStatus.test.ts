@@ -6,7 +6,8 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { config } from "../config.js";
-import { blockedOnDisk, matchIsBlocked, povNicknamesOnDisk } from "./matchStatus.js";
+import { findExportedVideo } from "../youtube/youtubeStore.js";
+import { blockedOnDisk, matchIsBlocked, matchStatusFor, povNicknamesOnDisk } from "./matchStatus.js";
 
 const dir = mkdtempSync(path.join(tmpdir(), "matchstatus-"));
 
@@ -25,6 +26,8 @@ for (const f of [
   "series-1.mp4",
   "short-1.mp4",
   "smoke-1.mp4",
+  "final.mp4",
+  "sync-preview.mp4",
   "overlay-top.png",
   "chat-edcr.json",
 ]) {
@@ -67,6 +70,16 @@ console.log("OK: povNicknamesOnDisk reads the POV clips, never the pipeline's ow
     false,
   );
   assert.equal(blockedOnDisk(matchPath), true, "the POV clips still count (Aquacorde.mp4 above)");
+  // The title spells some players the broadcast's way (titleNames: Pinne is Skycrab on DEFAULTS).
+  const savedBlocked = config.blockedPlayers;
+  config.blockedPlayers = ["Pinne"];
+  const skycrab = only("titlename", {
+    "match-4.title.txt": "WHO BREAKS FIRST? | Skycrab vs doogile | MCSR Ranked 1v1 | Minecraft Speedrun",
+  });
+  assert.equal(blockedOnDisk(skycrab), true, "a blocked player's titleNames spelling still blocks");
+  config.blockedPlayers = ["Aquacorde"];
+  assert.equal(blockedOnDisk(skycrab), false, "and blocks only him");
+  config.blockedPlayers = savedBlocked;
   console.log("OK: blockedOnDisk reads the clips, the saved chats and the title");
 }
 
@@ -113,4 +126,31 @@ assert.equal(await matchIsBlocked(998), true, "an archived directory's chats sti
 config.blockedPlayers = saved;
 
 console.log("OK: matchIsBlocked reads the live API and the directory, and a down API alone blocks nobody");
+
+// --- matchStatusFor, API down: names off the disk only from an unambiguous pair ------------------
+// A third MP4 (a hand-named export) was read as a player: it named a public playlist, and the real
+// clip it pushed out of the pair was no longer excluded, so findExportedVideo picked the raw POV.
+{
+  const files = (id: number, names: string[]) => {
+    mkdirSync(path.join(dir, String(id)));
+    for (const f of names) writeFileSync(path.join(dir, String(id), f), "x");
+  };
+  files(20, ["alpha.mp4", "zeta.mp4", "my export.mp4"]);
+  const stray = await matchStatusFor(20);
+  assert.deepEqual([stray.leftNickname, stray.rightNickname], ["?", "?"], "three MP4s name nobody");
+  assert.equal(stray.stages.download, true, "the clips are still reported downloaded");
+  assert.match(
+    String((findExportedVideo(20, [stray.leftNickname, stray.rightNickname]) as { error: string }).error),
+    /Several possible videos/,
+    "ambiguous, never a raw POV clip picked as the upload",
+  );
+  files(21, ["alpha.mp4", "zeta.mp4", "sync-preview.mp4", "final.mp4", "final-21.mp4"]);
+  const pair = await matchStatusFor(21);
+  assert.deepEqual(
+    [pair.leftNickname, pair.rightNickname],
+    ["alpha", "zeta"],
+    "the pipeline's own MP4s aside",
+  );
+  console.log("OK: matchStatusFor names players off the disk only from exactly two POV clips");
+}
 console.log("matchStatus: all checks passed");

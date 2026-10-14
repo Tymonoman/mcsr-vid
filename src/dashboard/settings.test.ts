@@ -19,7 +19,8 @@ writeFileSync(
   "utf8",
 );
 
-const { config, CONFIG_PATH, CTA_REASON_MAX_CHARS } = await import("../config.js");
+const { config, CONFIG_PATH, CTA_REASON_MAX_CHARS, isBlockedPlayer, reloadBlockedPlayers } =
+  await import("../config.js");
 const { coerce, saveSettings, SETTINGS, settingsPayload, READ_ONLY } = await import("./settings.js");
 assert.equal(CONFIG_PATH, path.join(dir, "mcsr-vid.config.json"), "the test owns the file it writes");
 
@@ -77,6 +78,13 @@ assert.deepEqual(coerce(field("blockedPlayers"), "Aquacorde, someoneElse"), {
   value: ["Aquacorde", "someoneElse"],
 });
 assert.deepEqual(coerce(field("blockedPlayers"), ""), { value: [] });
+// A nickname is [A-Za-z0-9_]: a space or ";" separates too, never one name that blocks nobody.
+assert.deepEqual(coerce(field("blockedPlayers"), "Aquacorde BeefSalad"), {
+  value: ["Aquacorde", "BeefSalad"],
+});
+assert.deepEqual(coerce(field("blockedPlayers"), "Aquacorde; BeefSalad,\tFoo"), {
+  value: ["Aquacorde", "BeefSalad", "Foo"],
+});
 assert.ok(
   field("blockedPlayers").unattended,
   "it changes what the nightly may render, and the panel says so",
@@ -182,6 +190,26 @@ console.log("settings: the allowlist holds and every kind coerces");
   assert.deepEqual(config.blockedPlayers, ["Aquacorde"]);
 
   console.log("settings: the blocked players save, apply live, and clear to none");
+
+  // Another process's view (the Studio worker's): a block the dashboard saved reaches it only by
+  // re-reading the file, and only that key — nothing else on the box changes under it.
+  const before = readFileSync(CONFIG_PATH, "utf8");
+  writeFileSync(
+    CONFIG_PATH,
+    JSON.stringify({ ...JSON.parse(before), blockedPlayers: ["Aquacorde", "doogile"], pairRepeatDays: 9 }),
+  );
+  assert.equal(isBlockedPlayer("doogile"), false, "this process has not read the file yet");
+  reloadBlockedPlayers();
+  assert.equal(isBlockedPlayer("doogile"), true, "the block saved elsewhere applies after a reload");
+  assert.equal(config.pairRepeatDays, 3, "and nothing but the blocklist is reloaded");
+  writeFileSync(CONFIG_PATH, "{");
+  assert.throws(() => reloadBlockedPlayers(), "an unreadable file throws rather than runs on a stale list");
+  assert.deepEqual(config.blockedPlayers, ["Aquacorde", "doogile"], "and leaves the live list alone");
+  writeFileSync(CONFIG_PATH, before);
+  reloadBlockedPlayers();
+  assert.deepEqual(config.blockedPlayers, ["Aquacorde"]);
+
+  console.log("settings: reloadBlockedPlayers picks up a block saved by another process, and only that");
 
   // The pair-repeat window: 3 until changed, live at once like the list, and a bad one writes nothing.
   assert.equal(config.pairRepeatDays, 3, "the default window is live before any save");

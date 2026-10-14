@@ -5,7 +5,12 @@
 // and no real six-hour wait, and never reaches the real exit path (which would kill this process).
 // Run: npx tsx src/dashboard/restartWhenIdle.test.ts
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { config } from "../config.js";
 import {
+  anyUploadSessionFile,
   armRestart,
   blockedBy,
   disarmRestart,
@@ -195,6 +200,63 @@ console.log("OK: a signal that turns true during the boot check is caught before
 }
 console.log("OK: idle() clear on both reads with a clean boot check actually calls exit, once");
 
+// --- A DELETE (or a fresh POST) while the boot check runs: that tick speaks for no arm ---------
+{
+  let exitCalls = 0;
+  let checking = false;
+  let idleReads = 0;
+  armRestart({
+    idleDeps: () => {
+      idleReads += 1;
+      return allClear();
+    },
+    bootCheck: async () => {
+      checking = true;
+      await sleep(200);
+      return null;
+    },
+    checkIntervalMs: 10,
+    expireMs: 5_000,
+    exit: () => (exitCalls += 1),
+  });
+  while (!checking) await sleep(5);
+  assert.equal(disarmRestart(), true);
+  const reads = idleReads;
+  await sleep(400);
+  assert.equal(exitCalls, 0, "cancelled during tsc: the passing check must not exit anyway");
+  assert.equal(restartState(), null);
+  assert.equal(idleReads, reads, "and the cancelled arm's poll is not resurrected");
+}
+{
+  let exitCalls = 0;
+  let checking = false;
+  armRestart({
+    idleDeps: () => allClear(),
+    bootCheck: async () => {
+      checking = true;
+      await sleep(200);
+      return "error TS2304: the old checkout";
+    },
+    checkIntervalMs: 10,
+    expireMs: 5_000,
+    exit: () => (exitCalls += 1),
+  });
+  while (!checking) await sleep(5);
+  armRestart({
+    idleDeps: () => ({ ...allClear(), jobRunning: () => true }),
+    bootCheck: async () => null,
+    checkIntervalMs: 10,
+    expireMs: 5_000,
+    exit: () => (exitCalls += 1),
+  });
+  await sleep(400);
+  assert.equal(exitCalls, 0);
+  assert.equal(restartState()?.error, undefined, "the replaced arm's tsc error is not the new arm's");
+  assert.deepEqual(restartState()?.blockedBy, ["a render is running"], "the new arm polls on its own");
+  disarmRestart();
+}
+console.log("OK: a DELETE or a fresh POST during the boot check wins over the tick already in it");
+
 // --- Expiry: an arm that never goes idle gives up after its window, cleanly --------------------
 {
   const state = armRestart({
@@ -224,3 +286,18 @@ armRestart({
 assert.equal(disarmRestart(), true, "an armed restart — DELETE says it cancelled one");
 assert.equal(restartState(), null, "cancelled means gone, not just paused");
 console.log("OK: disarmRestart reports whether it actually cancelled something");
+
+// --- A dead upload session does not hold a restart for ever ------------------------------------
+// A chunk failure keeps the session file, and nothing removes it once the match is settled some
+// other way (Studio). YouTube drops the session after about a day, and so does this signal.
+{
+  config.mediaDir = mkdtempSync(path.join(tmpdir(), "mcsr-restart-"));
+  mkdirSync(path.join(config.mediaDir, "9001"));
+  const session = path.join(config.mediaDir, "9001", ".upload-session-final-9001.mp4.json");
+  writeFileSync(session, "{}");
+  assert.equal(anyUploadSessionFile(), true, "a fresh session blocks");
+  const dayAgo = new Date(Date.now() - 25 * 60 * 60 * 1000);
+  utimesSync(session, dayAgo, dayAgo);
+  assert.equal(anyUploadSessionFile(), false, "a session older than YouTube keeps one does not");
+}
+console.log("OK: an upload session file blocks a restart only while YouTube could still resume it");

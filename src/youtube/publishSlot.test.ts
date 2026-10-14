@@ -196,6 +196,48 @@ assert.equal(iso(nextPublishSlot(at("2026-09-08T18:30:00Z"), 19, [slot("09")])),
   dir(1200, ["l", "m"]);
   _setPlayoffContextForTest(1200, { gameNo: 1 } as PlayoffContext);
   assert.equal(iso((await publishSlotFor(1200, morning)).at), "2026-09-08T23:00:00.000Z");
+  // And it is kept apart as the series it is: from the pair's ranked video, both ways — not from
+  // the pair's series (there is none yet) while landing the same day as their ranked one.
+  dir(1300, ["n", "o"], record("2026-09-09T19:00:00Z"));
+  dir(1400, ["o", "n"]);
+  _setPlayoffContextForTest(1400, { gameNo: 1 } as PlayoffContext);
+  const gameOne = await publishSlotFor(1400, morning);
+  assert.equal(iso(gameOne.at), "2026-09-12T23:00:00.000Z");
+  assert.match(gameOne.why ?? "", /this pair's ranked video \(2026-09-09\)$/);
+  assert.deepEqual(await slotWarnings(1400, at("2026-09-09T23:00:00Z"), morning), [
+    "under 3 days from this pair's ranked video (2026-09-09)",
+  ]);
+  // The operator's time stored on that game 1 holds a second ranked video of the pair off it.
+  dir(1500, ["n", "o"]);
+  writeFileSync(
+    path.join(config.mediaDir, "1400", "short-1400.status.json"),
+    JSON.stringify({ steps: {}, errors: [], publishAt: "2026-09-10T23:00:00Z" }),
+  );
+  const rankedBeside = await publishSlotFor(1500, morning);
+  assert.equal(iso(rankedBeside.at), "2026-09-13T19:00:00.000Z");
+  assert.match(rankedBeside.why ?? "", /this pair's series \(2026-09-10\)$/);
+
+  // A Short scheduled on the channel does not hold a long-form's hour (it rides on its long-form's
+  // day, like `pairGapTimes` says); a long-form there still does. 300 is a series of a+c alone.
+  const scheduled = (id: number, durationSec: number) => ({
+    ...video(id, durationSec),
+    privacyStatus: "private",
+    publishAt: "2026-09-08T23:00:00Z",
+  });
+  _setChannelUploadsForTest([video(700, 2400), video(900, 40), scheduled(9100, 40)]);
+  assert.equal(
+    iso((await publishSlotFor(300, morning)).at),
+    "2026-09-08T23:00:00.000Z",
+    "a Short: still the 8th",
+  );
+  assert.deepEqual(await slotWarnings(300, at("2026-09-08T23:00:00Z"), morning), []);
+  _setChannelUploadsForTest([video(700, 2400), video(900, 40), scheduled(9100, 2400)]);
+  assert.equal(
+    iso((await publishSlotFor(300, morning)).at),
+    "2026-09-09T23:00:00.000Z",
+    "a long-form: the 9th",
+  );
+  _setChannelUploadsForTest([video(700, 2400), video(900, 40)]);
   config.seriesPairGapDays = 0;
   assert.equal(iso((await publishSlotFor(200, morning)).at), "2026-09-08T23:00:00.000Z", "0 is off");
 }

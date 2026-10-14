@@ -33,7 +33,7 @@ import { blockedIn, config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { writeExperimentArmFile } from "./experiments.js";
 import { anyExportRunning, exportRunning, startFastExport } from "./exportRoutes.js";
-import { getJob, startJob, type Job } from "./jobs.js";
+import { anyJobRunning, getJob, startJob, type Job } from "./jobs.js";
 import {
   hiddenMatchIds,
   nightlyQueue,
@@ -393,9 +393,16 @@ let lastStartedId: number | null = null;
  * awaiting the suggestion scan and `pickContext` for the next one, which can themselves be
  * network-bound — so `restartWhenIdle.ts`'s `idle()` reads this too, or a restart armed during the
  * day could land in that gap and silently drop the rest of the night's chain (review fix, 8 Oct 2026).
+ *
+ * A count of chains, not one flag: a Run now answered 409 while the scheduled chain is in flight
+ * (or the 03:00 timer firing during a Run now chain) starts and ends a chain of its own, and with
+ * one boolean that ending wiped the other chain's ownership (14 Oct 2026).
  */
-let chainActive = false;
-export const nightlyChainRunning = (): boolean => chainActive;
+let chainsActive = 0;
+export const nightlyChainRunning = (): boolean => chainsActive > 0;
+const endChain = (): void => {
+  chainsActive = Math.max(0, chainsActive - 1);
+};
 
 /** A pipeline, an encode, a Short or a thumbnail re-render on this match: the same four the delete guard refuses for. */
 const busyWith = (id: number): boolean =>
@@ -411,8 +418,13 @@ export const nightlyStarting = (): boolean => starting;
 /** One match's four stills take a minute or two; the scheduled run waits this long at most. */
 const THUMBNAIL_WAIT_MS = 20 * 60_000;
 
+// Any pipeline at all, not only one with a directory: a render clicked elsewhere (or a series run's
+// next game) has none until fetch-match and VOD discovery finish. `busyWith` still adds the export,
+// Short and thumbnail work on a match that has one.
 const renderInFlight = (): boolean =>
-  (lastStartedId !== null && busyWith(lastStartedId)) || listProcessedMatchIds().some(busyWith);
+  anyJobRunning() ||
+  (lastStartedId !== null && busyWith(lastStartedId)) ||
+  listProcessedMatchIds().some(busyWith);
 
 /** The notification's reminder line: "\n3 waiting for a hook", or nothing when none is. */
 async function waitingLine(): Promise<string> {
@@ -728,12 +740,12 @@ async function runOnce(
   const startedAt = new Date(now()).toISOString();
 
   // Set once, at the chain's very first call, and cleared at every point below where this
-  // function settles without a job left running or about to be chained from — see `chainActive`.
-  if (started === 1) chainActive = true;
+  // function settles without a job left running or about to be chained from — see `chainsActive`.
+  if (started === 1) chainsActive++;
   try {
     return await runNightlyOnceInner();
   } catch (err) {
-    chainActive = false;
+    endChain();
     throw err;
   }
 
@@ -765,7 +777,7 @@ async function runOnce(
           reason: "skipped by the operator",
         });
         if (notifyUrl) await notify(notifyUrl, "skipped by the operator");
-        chainActive = false;
+        endChain();
         return { skipped: "skipped by the operator" };
       }
     }
@@ -785,7 +797,7 @@ async function runOnce(
       }
       // Whatever level of the chain this is, nothing further will start from this call —
       // the chain (this call's branch of it) is over.
-      chainActive = false;
+      endChain();
       return { skipped: reason, ...(conflict ? { busy: true } : {}) };
     };
 
@@ -837,45 +849,48 @@ async function runOnce(
     // Recorded now, so a restart mid-render leaves "started" on the strip rather than nothing.
     writeNightlyState({ startedAt, matchId, players: [...players], outcome: "started" });
     afterSettled(job, async (verdict, exportClause, picked) => {
-      // State first, then the push, from the same values: a panel that disagreed with the
-      // notification would be worse than either on its own.
-      writeNightlyState({
-        startedAt,
-        matchId,
-        players: [...players],
-        outcome: verdict.outcome,
-        ...(verdict.reason ? { reason: verdict.reason } : {}),
-        export: exportOutcome(exportClause),
-        ...(picked ? { pick: picked.startsWith(" + picked") ? "agy" : "heuristic" } : {}),
-      });
-      const said = verdict.reason ? `${verdict.outcome}: ${verdict.reason}` : verdict.outcome;
-      if (notifyUrl) {
-        await notify(
-          notifyUrl,
-          `Rendered #${matchId} ${label} — ${said}${exportClause}${picked}${await waitingLine()}`,
-        );
-      }
-      // A lab that finished at 04:30 is idle for the rest of the night, and the operator's morning
-      // is the bottleneck this scheduler exists to widen. The next card goes through the whole of
-      // this function again — the scan, the disk check, the busy check — so nothing that stops the
-      // first render can be skipped by the second. Only a clean run earns one, as the Short and
-      // the export do; the state file then describes the later render, which is the one still
-      // worth acting on.
-      if (
-        verdict.outcome === "done" &&
-        shouldChainNextRender(started, config.nightlyMaxRenders, Date.now(), config.nightlyRenderHourUtc)
-      ) {
-        // `chainActive` stays true across this call — cleared by whichever level of the
-        // recursion finally ends the chain (a skip, a "not chaining further" below, or this
-        // catch if starting the next one blew up before it could reach either).
-        try {
-          await runNightlyOnce(notifyUrl, deps, started + 1);
-        } catch (err) {
-          console.error(`nightly: chained render failed to start — ${describeError(err)}`);
-          chainActive = false;
+      // Ended exactly once here unless handed on: a count that leaked would hold off a restart for ever.
+      let chained = false;
+      try {
+        // State first, then the push, from the same values: a panel that disagreed with the
+        // notification would be worse than either on its own.
+        writeNightlyState({
+          startedAt,
+          matchId,
+          players: [...players],
+          outcome: verdict.outcome,
+          ...(verdict.reason ? { reason: verdict.reason } : {}),
+          export: exportOutcome(exportClause),
+          ...(picked ? { pick: picked.startsWith(" + picked") ? "agy" : "heuristic" } : {}),
+        });
+        const said = verdict.reason ? `${verdict.outcome}: ${verdict.reason}` : verdict.outcome;
+        if (notifyUrl) {
+          await notify(
+            notifyUrl,
+            `Rendered #${matchId} ${label} — ${said}${exportClause}${picked}${await waitingLine()}`,
+          );
         }
-      } else {
-        chainActive = false;
+        // A lab that finished at 04:30 is idle for the rest of the night, and the operator's morning
+        // is the bottleneck this scheduler exists to widen. The next card goes through the whole of
+        // this function again — the scan, the disk check, the busy check — so nothing that stops the
+        // first render can be skipped by the second. Only a clean run earns one, as the Short and
+        // the export do; the state file then describes the later render, which is the one still
+        // worth acting on.
+        if (
+          verdict.outcome === "done" &&
+          shouldChainNextRender(started, config.nightlyMaxRenders, Date.now(), config.nightlyRenderHourUtc)
+        ) {
+          // The chain stays counted across this call — the chained call owns its end now (its
+          // skip, its own "not chaining further", or runOnce's catch if it blew up starting).
+          chained = true;
+          try {
+            await runNightlyOnce(notifyUrl, deps, started + 1);
+          } catch (err) {
+            console.error(`nightly: chained render failed to start — ${describeError(err)}`);
+          }
+        }
+      } finally {
+        if (!chained) endChain();
       }
     });
     return { matchId, players: [...players] };

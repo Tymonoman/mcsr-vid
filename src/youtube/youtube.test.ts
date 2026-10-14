@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, utimesSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { config } from "../config.js";
-import { parseImpressionsCsv, REQUIRED_SCOPES, uploadVideo } from "./youtube.js";
+import { parseImpressionsCsv, REQUIRED_SCOPES, resumableSession, uploadVideo } from "./youtube.js";
 import { findExportedVideo, pinnedComment } from "./youtubeStore.js";
 
 // --- Reporting CSV: the only source of per-video CTR, so a misread here silently corrupts
@@ -451,8 +451,8 @@ console.log("youtube: all checks passed");
   assert.equal(posted, false, "no session at all: resumeOnly never starts one");
 
   // A session file is there, but YouTube no longer honours it (expired, say): resumeOnly still
-  // refuses to fall back to a fresh start, and the stale file is left for a human to look at
-  // rather than deleted on a guess.
+  // refuses to fall back to a fresh start — and forgets the dead file. Kept, every later Save
+  // resumed it again (shortFlow's `uploadSessionOnDisk`) and refused again, for good.
   await writeFile(
     session,
     JSON.stringify({ filePath: file, total: 3 * CHUNK, sessionUrl: "https://upload/session" }),
@@ -479,11 +479,15 @@ console.log("youtube: all checks passed");
     false,
     "a session gone at YouTube's end must not fall through to a fresh POST either",
   );
-  assert.equal(existsSync(session), true, "the stale session file is left on disk, not deleted blind");
+  assert.equal(existsSync(session), false, "a session YouTube answered 404 for is forgotten");
 
   // A 5xx/429 on the probe is YouTube's "try again", not "gone" — even WITHOUT resumeOnly (an
   // operator's Retry after a chunk 503) it must not start a second videos.insert, and the session
   // file stays so the next press resumes.
+  await writeFile(
+    session,
+    JSON.stringify({ filePath: file, total: 3 * CHUNK, sessionUrl: "https://upload/session" }),
+  );
   for (const status of [503, 429]) {
     let postedTransient = false;
     const flaky: typeof fetch = async (_url, init) => {
@@ -505,12 +509,26 @@ console.log("youtube: all checks passed");
     assert.equal(existsSync(session), true, `a ${status} probe keeps the session for the next press`);
   }
 
+  // Resumable as far as the disk can tell: these exact bytes, under a day old. A re-encode since
+  // (another size) or a session past YouTube's day is dead, and a Save must not try to resume it.
+  const sessionFor = (total: number) =>
+    writeFile(
+      session,
+      JSON.stringify({ filePath: file, total, sessionUrl: "https://upload/session", title: "Old hook | a vs b" }),
+    );
+  await sessionFor(3 * CHUNK + 1);
+  assert.equal(await resumableSession(file), false, "a session for other bytes (a re-encode) is dead");
+  await sessionFor(3 * CHUNK);
+  assert.equal(await resumableSession(file), true, "these bytes, fresh: resumable");
+  const dayAgo = new Date(Date.now() - 25 * 60 * 60 * 1000);
+  utimesSync(session, dayAgo, dayAgo);
+  assert.equal(await resumableSession(file), false, "past YouTube's day: dead");
+  assert.equal(await resumableSession(path.join(dir, "none.mp4")), false, "no file, no session");
+
   // A session that is genuinely still good resumes exactly as without resumeOnly — the guard
-  // only ever refuses the fall-through to a fresh start, never a real resume.
-  await writeFile(
-    session,
-    JSON.stringify({ filePath: file, total: 3 * CHUNK, sessionUrl: "https://upload/session" }),
-  );
+  // only ever refuses the fall-through to a fresh start, never a real resume. The title it
+  // reports is the one its start sent, not one changed since.
+  await sessionFor(3 * CHUNK);
   let resumeCalls = 0;
   const goodSession: typeof fetch = async (url) => {
     assert.equal(String(url), "https://upload/session");
@@ -529,6 +547,7 @@ console.log("youtube: all checks passed");
     chunkBytes: CHUNK,
   });
   assert.equal(resumedOk.videoId, "vidResumed");
+  assert.equal(resumedOk.title, "Old hook | a vs b", "the title YouTube holds is the session's");
   assert.equal(resumeCalls, 1, "the probe alone finished it — YouTube already had every byte");
   assert.equal(existsSync(session), false, "a completed resume forgets its session like any other");
   console.log("OK: resumeOnly finishes a real session and never starts a second one");
@@ -902,6 +921,86 @@ console.log("youtube: all checks passed");
     });
     assert.equal(puts.length, 1, "no write for the same time");
     console.log("OK: reschedule sends the whole status part back and refuses what it must not move");
+  } finally {
+    globalThis.fetch = realFetch;
+    if (realToken === undefined) delete process.env.YOUTUBE_TOKEN_FILE;
+    else process.env.YOUTUBE_TOKEN_FILE = realToken;
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+// --- impressionsSince: every daily reach report since a date, a regenerated day counted once ----
+// channel_reach_basic_a1 writes one CSV a day; the evaluator's CTR used to rest on the newest
+// alone. Two list pages, 12 Oct regenerated (the newer createTime wins). Fetch stubbed, token too.
+{
+  const { impressionsSince } = await import("./youtube.js");
+  const realFetch = globalThis.fetch;
+  const realToken = process.env.YOUTUBE_TOKEN_FILE;
+  const dir = await mkdtemp(path.join(tmpdir(), "mcsr-reach-"));
+  process.env.YOUTUBE_TOKEN_FILE = path.join(dir, "token.json");
+  await writeFile(
+    process.env.YOUTUBE_TOKEN_FILE,
+    JSON.stringify({ client_id: "c", client_secret: "s", refresh_token: "r" }),
+  );
+  const report = (day: string, createTime: string, csv = day) => ({
+    id: `${day}-${createTime}`,
+    downloadUrl: `https://fake.invalid/csv/${csv}`,
+    startTime: `${day}T00:00:00Z`,
+    endTime: `${day}T23:59:59Z`,
+    createTime,
+  });
+  const csv: Record<string, string> = {
+    "2026-10-11": "20261011,v1,1000,0.1",
+    "2026-10-12": "20261012,v1,1000,0.1",
+    "2026-10-12-stale": "20261012,v1,999999,0.9",
+    "2026-10-13": "20261013,v1,1000,0.1",
+  };
+  const lists: string[] = [];
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = String(input);
+    if (url.startsWith("https://oauth2.googleapis.com/"))
+      return new Response(JSON.stringify({ access_token: "tok", expires_in: 3600 }));
+    if (url.startsWith("https://youtubereporting.googleapis.com/v1/jobs/job%2F1/reports?")) {
+      lists.push(url);
+      const page2 = new URL(url).searchParams.get("pageToken") === "p2";
+      return new Response(
+        JSON.stringify(
+          page2
+            ? { reports: [report("2026-10-13", "2026-10-15T01:00:00Z"), report("2026-10-12", "2026-10-14T01:00:00Z")] }
+            : {
+                reports: [
+                  report("2026-10-11", "2026-10-13T01:00:00Z"),
+                  report("2026-10-12", "2026-10-13T02:00:00Z", "2026-10-12-stale"),
+                ],
+                nextPageToken: "p2",
+              },
+        ),
+      );
+    }
+    if (url.startsWith("https://fake.invalid/csv/"))
+      return new Response(
+        `date,channel_id,video_id,video_thumbnail_impressions,video_thumbnail_impressions_ctr\n` +
+          csv[url.split("/").pop()!]!.replace(",", ",UC,"),
+      );
+    throw new Error(`unexpected fetch: ${url}`);
+  }) as typeof fetch;
+  try {
+    const rows = await impressionsSince("job/1", "2026-10-11");
+    assert.deepEqual(
+      rows.map((r) => [r.date, r.impressions]).sort(),
+      [
+        ["20261011", 1000],
+        ["20261012", 1000],
+        ["20261013", 1000],
+      ],
+      "three days summed, the regenerated 12 Oct counted once (its newer copy)",
+    );
+    assert.equal(lists.length, 2, "followed nextPageToken");
+    assert.ok(
+      lists.every((u) => new URL(u).searchParams.get("startTimeAtOrAfter") === "2026-10-11T00:00:00Z"),
+      `the server-side filter rides every page (${lists.join(" ")})`,
+    );
+    console.log("OK: impressionsSince sums every daily report since the date, a regenerated day once");
   } finally {
     globalThis.fetch = realFetch;
     if (realToken === undefined) delete process.env.YOUTUBE_TOKEN_FILE;

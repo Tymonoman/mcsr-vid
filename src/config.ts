@@ -30,7 +30,11 @@ export interface Config {
    * earlier choice forward regardless of this key).
    */
   thumbnailRotatePoses: boolean;
-  /** Minimum cross-correlation confidence (sync.ts) to trust the refined audio sync offset. */
+  /**
+   * Minimum sync.ts confidence to trust the countdown placement without review: both clips read
+   * scores 0.68 or more, one clip read 0.1 (the other sits on its coarse estimate), none 0.
+   * Below it the Kdenlive marker says LOW and the dashboard asks for the sync editor.
+   */
   syncConfidenceThreshold: number;
   /** VOD trim window: seconds of buffer before the estimated match start. */
   preRollSec: number;
@@ -648,7 +652,12 @@ export function validateOverrides(raw: Record<string, unknown>): void {
     // Its default is an hour, but null is the documented "no nightly render", and a number
     // outside the clock would pass a type check: `setUTCHours(25)` rolls into the next day
     // without a word, so a mistyped hour would fire at 01:00 and look scheduled.
-    if (key === "nightlyRenderHourUtc" || key === "publishHourUtc" || key === "telegramReportHourWarsaw") {
+    if (
+      key === "nightlyRenderHourUtc" ||
+      key === "publishHourUtc" ||
+      key === "seriesPublishHourUtc" ||
+      key === "telegramReportHourWarsaw"
+    ) {
       const nullable = key === "nightlyRenderHourUtc" || key === "telegramReportHourWarsaw";
       if (
         (value === null && !nullable) ||
@@ -856,10 +865,23 @@ export const config: Config = loadConfig();
 /** Every match's working directory: `<mediaDir>/<id>`. */
 export const matchDir = (matchId: number): string => path.join(config.mediaDir, String(matchId));
 
-/** Whether `name` is on `config.blockedPlayers` (`blockedPlayers`, above), whole names, any case. */
+/**
+ * Re-reads `blockedPlayers` from the config file into the live `config`, for a long-running process
+ * the Settings tab cannot reach (the Studio worker): a block saved there must reach its next cycle.
+ * Only this key — a whole reload would also pick up `studioAutomation`, a deliberate edit on the box.
+ * Throws when the file is unreadable or invalid, so the caller fails rather than runs on a stale list.
+ */
+export function reloadBlockedPlayers(): void {
+  config.blockedPlayers = loadConfig().blockedPlayers;
+}
+
+/**
+ * Whether `name` is on `config.blockedPlayers` (`blockedPlayers`, above), whole names, any case.
+ * Trimmed both sides: a hand-edited `"BeefSalad "` must still block him.
+ */
 export function isBlockedPlayer(name: string): boolean {
-  const lower = name.toLowerCase();
-  return config.blockedPlayers.some((n) => n.toLowerCase() === lower);
+  const lower = name.trim().toLowerCase();
+  return config.blockedPlayers.some((n) => n.trim().toLowerCase() === lower);
 }
 
 /** Whether any of `players` is blocked (`isBlockedPlayer`) — the one check every surface shares. */

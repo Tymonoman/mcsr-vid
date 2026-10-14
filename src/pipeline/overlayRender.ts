@@ -8,7 +8,7 @@ import { computeOverlayProps } from "./overlayProps.js";
 import { bundleOnce } from "./remotionBundle.js";
 import { splitSegments } from "./splitStates.js";
 import { chooseTeaser } from "./teaser.js";
-import { POST_ROLL_SEC, estimatedRunSec } from "./vodAcquisition.js";
+import { estimatedRunSec } from "./vodAcquisition.js";
 import type { MatchInfo, UserDetails, VersusStats } from "../api/types.js";
 
 const FPS = config.overlayFps;
@@ -117,7 +117,7 @@ export function seriesWinner<P extends { series?: { leftWins: number; rightWins:
 export async function renderOverlay(args: RenderOverlayArgs): Promise<RenderOverlayResult> {
   const props = await computeOverlayProps(args.match, args.userLeft, args.userRight, args.versus);
   const runSec = estimatedRunSec(args.match);
-  const durationInFrames = Math.round((LEAD_IN_SEC + runSec + POST_ROLL_SEC) * FPS);
+  const durationInFrames = Math.round((LEAD_IN_SEC + runSec + config.postRollSec) * FPS);
   const timerStartFrame = Math.round(LEAD_IN_SEC * FPS);
   const renderProps = { ...props, timerStartFrame, durationInFrames, fps: FPS, introSec: config.introSec };
   const out = overlayPaths(args.outDir);

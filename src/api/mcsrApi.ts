@@ -142,9 +142,17 @@ export function getUser(identifier: string): Promise<UserDetails> {
   return getJson<UserDetails>(`/users/${encodeURIComponent(identifier)}`);
 }
 
-export function getVersus(identifier1: string, identifier2: string): Promise<VersusStats> {
+/**
+ * Two players' record against each other in one season: the current one unless `season` is
+ * given, which a past match needs or it reads a record played entirely after it.
+ */
+export function getVersus(
+  identifier1: string,
+  identifier2: string,
+  season?: number | null,
+): Promise<VersusStats> {
   return getJson<VersusStats>(
-    `/users/${encodeURIComponent(identifier1)}/versus/${encodeURIComponent(identifier2)}`,
+    `/users/${encodeURIComponent(identifier1)}/versus/${encodeURIComponent(identifier2)}${season ? `?season=${season}` : ""}`,
   );
 }
 

@@ -39,6 +39,7 @@ import { getMatch, getUser, McsrApiError } from "../api/mcsrApi.js";
 import { readChats, readChatTimes, type ChatMessage } from "../api/twitchChat.js";
 import type { MatchInfo } from "../api/types.js";
 import { blockedIn, config, matchDir } from "../config.js";
+import { blockedOnDisk } from "../dashboard/matchStatus.js";
 import { describeError } from "../errorText.js";
 import { atomicOutput } from "../pipeline/atomicOutput.js";
 import {
@@ -525,8 +526,9 @@ export function pastTitleHooks(): PastHook[] {
       const h = hook.trim();
       if (/^playoffs$/i.test(h) || h.includes("<") || / vs /i.test(h) || hookProblem(h) !== null) continue;
       // Never a blocked player's match, however it made it onto the channel before they were
-      // blocked: not even as someone else's unnamed style example (config.blockedPlayers).
-      if (blockedIn(pair.split(" vs ").map((n) => n.trim()))) continue;
+      // blocked: not even as someone else's unnamed style example (config.blockedPlayers). The
+      // shared disk check too (clips, chats, a titleNames spelling), and an edited "VS"/"vs." pair.
+      if (blockedOnDisk(dir) || blockedIn(pair.split(/\s+vs\.?\s+/i).map((n) => n.trim()))) continue;
       if (found.some((f) => f.hook === h)) continue;
       found.push({ hook: h, pair: / vs /.test(pair) ? pair.trim() : "", at: statSync(file).mtimeMs });
     } catch {
@@ -634,7 +636,7 @@ THE WINDOW
       : ""
   }
 
-THE HOOK (hookSuggestion): the line on screen for the Short's first 4 seconds. At most ${HOOK_MAX_CHARS} characters, punchy, in a viewer's words; it may name the player making the play, by their real nickname only — never a nickname you invent, a label or an epithet, and never a word about ethnicity, nationality, appearance, age, or a slang abbreviation of one: a hook is about the match, never the person. Write it from what you saw — nothing in these instructions hints at what happens in this match. It must never name or hint at who wins the match or how it ends — none of: win, won, winner, beat, lost, lose, defeat, champion, victory, takes it, clutch, comeback, chokes, throws. Never use seeds, ladder ranks or elo numbers — they mean nothing to a viewer and change daily.
+THE HOOK (hookSuggestion): the line on screen for the Short's first 4 seconds. At most ${HOOK_MAX_CHARS} characters, punchy, in a viewer's words; it may name the player making the play, by their real nickname only — never a nickname you invent, a label or an epithet, and never a word about ethnicity, nationality, appearance, age, or a slang abbreviation of one: a hook is about the match, never the person. Write it from what you saw — nothing in these instructions hints at what happens in this match. It must never name or hint at who wins the match or how it ends — none of: win, won, winner, beat, lost, lose, defeat, champion, victory, takes it, clutch, comeback, chokes, throws, upset, revenge, dominates. An upset is only ever a question. Never use seeds, ladder ranks or elo numbers — they mean nothing to a viewer and change daily.
 
 why: one line for the operator on why this moment.
 ${extrasSection(spans, past)}
@@ -666,10 +668,12 @@ function checkAnswer(answer: unknown, spans: readonly GameSpan[], series: boolea
   const start = num(a.startSec);
   const end = num(a.endSec);
   if (start === null || end === null) return { problem: "startSec and endSec must be numbers" };
-  const len = end - start;
-  if (len < SHORT_MIN_MS / 1000 || len > SHORT_MAX_MS / 1000)
+  // Whole milliseconds, not raw seconds: 512.3 - 500.3 is 11.999999999999998, which rejected a
+  // 12.0 s window as "12.0 s long, outside 12–60 s" (14 Oct 2026 edge pass).
+  const lenMs = Math.round((end - start) * 1000);
+  if (lenMs < SHORT_MIN_MS || lenMs > SHORT_MAX_MS)
     return {
-      problem: `the window is ${len.toFixed(1)} s long, outside ${SHORT_MIN_MS / 1000}–${SHORT_MAX_MS / 1000} s`,
+      problem: `the window is ${(lenMs / 1000).toFixed(1)} s long, outside ${SHORT_MIN_MS / 1000}–${SHORT_MAX_MS / 1000} s`,
     };
   const span = [...spans].reverse().find((s) => start >= s.offsetSec);
   if (!span) return { problem: `the window starts at ${start} s, before the match` };

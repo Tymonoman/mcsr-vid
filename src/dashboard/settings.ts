@@ -247,7 +247,7 @@ export const SETTINGS: readonly SettingField[] = [
   {
     key: "blockedPlayers",
     label: "Blocked players",
-    help: "MCSR nicknames separated by commas, case ignored. A match with one of these players is dropped before it is scored, never offered to the nightly (even if queued), never listed as worth rendering, never rendered or uploaded. Permanent — for a player who has withdrawn permission to use their footage.",
+    help: "MCSR nicknames separated by commas or spaces, case ignored. A match with one of these players is dropped before it is scored, never offered to the nightly (even if queued), never listed as worth rendering, never rendered or uploaded. Permanent — for a player who has withdrawn permission to use their footage.",
     kind: "list",
     group: "Suggestions",
     unattended: true,
@@ -263,7 +263,7 @@ export const SETTINGS: readonly SettingField[] = [
   {
     key: "creatorWatchlist",
     label: "Creator watchlist",
-    help: "MCSR nicknames of outside creators (Ludwig, a big streamer's one-off) separated by commas, case ignored. Checked on the 15-minute tick while Creator watch is on; empty watches nobody.",
+    help: "MCSR nicknames of outside creators (Ludwig, a big streamer's one-off) separated by commas or spaces, case ignored. Checked on the 15-minute tick while Creator watch is on; empty watches nobody.",
     kind: "list",
     group: "Suggestions",
     unattended: true,
@@ -271,7 +271,7 @@ export const SETTINGS: readonly SettingField[] = [
   {
     key: "favouritePlayers",
     label: "Favourite players",
-    help: "MCSR nicknames separated by commas (Pinne is Skycrab, lowk3y_ is lowkey); case is ignored, spelling is not. The list sorts across the close and chaos cards, and a match with one of these players always comes before one with none, however popular that one is; among matches with a favourite, one counts half again as popular, two twice. The order changes at once and is what the nightly's first pick follows; which matches reach the list changes at the next scan (every 30 minutes or the rescan link), which gives its slots to such matches first. A match about to expire still comes first and one the rival already posted still comes last. Empty means no tier and no bonus: popularity across both buckets.",
+    help: "MCSR nicknames separated by commas or spaces (Pinne is Skycrab, lowk3y_ is lowkey); case is ignored, spelling is not. The list sorts across the close and chaos cards, and a match with one of these players always comes before one with none, however popular that one is; among matches with a favourite, one counts half again as popular, two twice. The order changes at once and is what the nightly's first pick follows; which matches reach the list changes at the next scan (every 30 minutes or the rescan link), which gives its slots to such matches first. A match about to expire still comes first and one the rival already posted still comes last. Empty means no tier and no bonus: popularity across both buckets.",
     kind: "list",
     group: "Suggestions",
     unattended: true,
@@ -412,7 +412,9 @@ export function coerce(field: SettingField, raw: unknown): { value: unknown } | 
   if (field.kind === "text") return { value: text };
   if (field.kind === "words") return { value: text === "" ? null : text.split(/\s+/) };
   // Empty is the empty list, not null: "none" is a value the loader accepts, and it replaces a default.
-  if (field.kind === "list") return { value: text.split(/\s*,\s*/).filter(Boolean) };
+  // MCSR nicknames are [A-Za-z0-9_], so a space or ";" separates too: "Aquacorde BeefSalad" read as
+  // one name would unblock both.
+  if (field.kind === "list") return { value: text.split(/[\s,;]+/).filter(Boolean) };
   if (text === "") {
     if (field.nullable) return { value: null };
     return { error: `${field.label}: cannot be empty` };
