@@ -50,11 +50,16 @@ let duringUserFetch: (() => Promise<void>) | null = null;
 /** YouTube, stubbed: the token and videos.list / videos.update, every call recorded. Nothing reaches Google. */
 const ytVideos = new Map<string, { channelId: string; status: Record<string, unknown> }>();
 const ytCalls: Array<{ method: string; url: string; body?: unknown }> = [];
+/** Holds the next videos.list / videos.update call until it resolves — a Move caught mid-API-call. */
+let ytHold: Promise<void> | null = null;
 globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
   const url = new URL(String(input));
   if (url.hostname === "oauth2.googleapis.com")
     return new Response(JSON.stringify({ access_token: "tok", expires_in: 3600 }));
   if (url.hostname === "www.googleapis.com" && url.pathname === "/youtube/v3/videos") {
+    const hold = ytHold;
+    ytHold = null;
+    await hold;
     const method = init?.method ?? "GET";
     const body = init?.body
       ? (JSON.parse(String(init.body)) as { id: string; status: Record<string, unknown> })
@@ -100,7 +105,8 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
 const flow = await import("./shortFlow.js");
 const { setHidden } = await import("./matchShelf.js");
 const { handleShortsRoute } = await import("./shortsRoutes.js");
-const { hookRefusal, recordStudioUpload, thumbnailRefusal } = await import("../youtube/youtubeUpload.js");
+const { finishOnYouTube, hookRefusal, recordStudioUpload, thumbnailRefusal } =
+  await import("../youtube/youtubeUpload.js");
 const { startRerender, thumbJob } = await import("../thumbnails/rerender.js");
 const { readUpload, writeUpload, uploadTextFor } = await import("../youtube/youtubeStore.js");
 const { readShortHook } = await import("../shorts/shortHook.js");
@@ -1228,6 +1234,43 @@ try {
     assert.deepEqual(
       sent.filter((x) => x.id === Z).map((x) => [x.kind, x.publishAt]),
       [["short", "2026-10-02T13:00:00.000Z"]],
+    );
+
+    // A Finish pressed while a Move waits on YouTube takes its turn after it: unserialized, the
+    // Move wrote back the record it read before the Finish, and the Finish's ledger was gone.
+    const W = 13_000_093;
+    mkdirSync(dir(W), { recursive: true });
+    await writeUpload(W, {
+      videoId: `video-${W}`,
+      uploadedAt: "2026-09-24T07:00:00Z",
+      publishAt: "2026-09-26T19:00:00.000Z",
+      privacyStatus: "private",
+      thumbnailVariant: null,
+      title: "t",
+      source: "studio",
+      finished: { playlists: null, comment: null, tags: null },
+    });
+    ytVideos.set(`video-${W}`, {
+      channelId: config.youtubeChannelId,
+      status: statusPart("2026-09-26T19:00:00.000Z"),
+    });
+    let reply!: () => void;
+    ytHold = new Promise((r) => (reply = r));
+    const moving = put(W, { publishAt: "2026-10-03T19:00:00Z", move: true });
+    const atYouTube = () => ytHold === null;
+    for (let i = 0; !atYouTube() && i < 200; i++) await new Promise((r) => setTimeout(r, 10));
+    assert.ok(atYouTube(), "the Move is at YouTube, its record read");
+    const finishing = finishOnYouTube(W, `video-${W}`);
+    await new Promise((r) => setTimeout(r, 100));
+    reply();
+    assert.equal((await moving).status, 200);
+    const steps = await finishing;
+    const wRec = (await readUpload(W, "video"))!;
+    assert.equal(wRec.publishAt, "2026-10-03T19:00:00.000Z", "the Move's time");
+    assert.deepEqual(wRec.finished, steps, "and the Finish's ledger, both kept");
+    assert.match(String(steps.thumbnail), /left alone/);
+    console.log(
+      "OK: a Move and a Finish on one match take turns — neither puts back the other's stale record",
     );
 
     /* --- Review fixes (26 Sept 2026, publish-at-review.md) -------------------------------------- */

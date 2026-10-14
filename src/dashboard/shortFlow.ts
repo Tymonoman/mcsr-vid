@@ -91,7 +91,13 @@ import {
   uploadRunning,
   type UploadRequest,
 } from "../youtube/youtubeUpload.js";
-import { nicknameWarnings, readUpload, writeUpload, type UploadKind } from "../youtube/youtubeStore.js";
+import {
+  nicknameWarnings,
+  onVideo,
+  readUpload,
+  writeUpload,
+  type UploadKind,
+} from "../youtube/youtubeStore.js";
 import { shortDelayMsForDate } from "./experiments.js";
 import { hiddenMatchIds, isExported, isShortUploaded, isUploaded } from "./matchShelf.js";
 import { listProcessedMatchIds, matchStatusFor } from "./matchStatus.js";
@@ -1137,7 +1143,9 @@ export async function setPublishTime(
     // The Short's upload works out its time from the long-form's when it starts (r3 #3).
     if (chains.has(matchId))
       return no(409, "the Short is being made or sent right now — move it once the chain has finished");
-    return moveOnYouTube(matchId, iso, nowMs);
+    // Its read-reschedule-write waits out a Finish (or Put) on this match, and holds them off in
+    // turn: either one's record write would otherwise put back the other's stale copy.
+    return onVideo(matchId, () => moveOnYouTube(matchId, iso, nowMs));
   }
   // Pressed on a page painted before the chain uploaded: the live channel only moves on the button that says so.
   if (video) return no(409, "the video is on YouTube now — reload the page and use Move on YouTube");

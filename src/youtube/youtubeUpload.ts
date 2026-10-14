@@ -720,7 +720,11 @@ async function finishSteps(
     // Neither condition met yet: `finished.pin` is left untouched (absent, or whatever `already`
     // carried), which is exactly what `todo` reads as "still to do" on the next call.
   }
-  if (record) await writeUpload(matchId, { ...record, finished }, kind);
+  // Read again: the steps above take seconds of API calls, and a Move on YouTube or the Studio
+  // worker's pin (another process, outside onVideo) may have written the record meanwhile — only
+  // this step's own field goes back. A record now for another video, or none, is not this ledger's.
+  const latest = await readUpload(matchId, kind);
+  if (record && latest?.videoId === record.videoId) await writeUpload(matchId, { ...latest, finished }, kind);
   return finished;
 }
 
