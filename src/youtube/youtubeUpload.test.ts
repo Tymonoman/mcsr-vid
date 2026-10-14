@@ -2,6 +2,7 @@
 // Nothing here touches the network or the real media directory.
 // Run: npx tsx src/youtubeUpload.test.ts
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -134,7 +135,9 @@ try {
       await writeFile(descriptionEdited, description);
       const refused = await beginUpload(matchId, { kind: "video", privacyStatus: "private" }, neverSend);
       assert.ok(
-        "error" in refused && refused.status === 400 && /5000 bytes and contain no < or >/.test(refused.error),
+        "error" in refused &&
+          refused.status === 400 &&
+          /5000 bytes and contain no < or >/.test(refused.error),
         `description refused: ${description.slice(0, 8)}`,
       );
     }
@@ -1217,6 +1220,28 @@ try {
     release();
     assert.equal(await inFlight, null);
     assert.equal(uploadRunning(rMatchId), false, "and not once it has settled");
+
+    // A long-form whose sync.json was corrected after its export: the rest of the bytes would
+    // finish a desynced video, so nothing is sent and the session stays for the re-encode.
+    {
+      const vFile = path.join(rDir, `final-${rMatchId}.mp4`);
+      const vSession = path.join(rDir, `.upload-session-final-${rMatchId}.mp4.json`);
+      await writeFile(vFile, "x");
+      await writeFile(vSession, JSON.stringify({ filePath: vFile, total: 1, sessionUrl: "https://x" }));
+      await utimes(vFile, new Date("2026-09-10T12:00:00Z"), new Date("2026-09-10T12:00:00Z"));
+      writeSyncOffsets(rDir, { left: 150, right: 150, confidence: 1, detail: "", source: "manual" });
+      let staleSent = false;
+      const staleSend = async (): Promise<UploadResult> => {
+        staleSent = true;
+        return { videoId: "vidStale", publishAt: null, privacyStatus: "private" };
+      };
+      assert.equal(await resumeUpload(rMatchId, "video", staleSend), staleExportMessage(rMatchId));
+      assert.equal(staleSent, false, "a stale export is never resumed");
+      assert.ok(existsSync(vSession), "its session is left for the re-encode to start fresh over");
+      await rm(path.join(rDir, "sync.json"));
+      await rm(vFile);
+      await rm(vSession);
+    }
 
     // A runner blocked since the upload started: the rest of the bytes never go up either.
     {

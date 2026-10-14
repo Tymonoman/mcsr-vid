@@ -845,7 +845,12 @@ export async function uploadSessionOnDisk(matchId: number, kind: UploadKind): Pr
  * sent, which a hook changed since the failure does not reach: said in the log, never retitled
  * here (a retitle on the channel is the operator's call).
  */
-function titleSent(matchId: number, step: ReturnType<typeof logStep>, result: UploadResult, onDisk: string): string {
+function titleSent(
+  matchId: number,
+  step: ReturnType<typeof logStep>,
+  result: UploadResult,
+  onDisk: string,
+): string {
   const sent = result.title ?? onDisk;
   if (sent !== onDisk)
     shortLog(
@@ -889,7 +894,8 @@ export async function resumeUpload(
   send: typeof uploadVideo = uploadVideo,
 ): Promise<string | null> {
   // A runner blocked since the upload started: the rest of the bytes never go up either.
-  if (hasBlockedPlayer(matchDir(matchId))) return `match ${matchId} has a blocked player — uploads of it are refused`;
+  if (hasBlockedPlayer(matchDir(matchId)))
+    return `match ${matchId} has a blocked player — uploads of it are refused`;
   const located = await uploadFilePath(matchId, kind);
   if ("error" in located) return located.error;
   const filePath = located.path;
@@ -897,6 +903,13 @@ export async function resumeUpload(
   if (!existsSync(sessionPath(filePath))) {
     if (!record || record.source === "dashboard") return null;
     return studioNoSession(kind, matchId, record);
+  }
+  // A sync.json corrected since these bytes were encoded: the rest of them would finish a desynced
+  // video, which `startUpload` refuses too. Nothing is sent and the session stays; a re-encode is
+  // different bytes, so the next Save starts fresh over it.
+  if (kind === "video") {
+    const staleness = exportStale(matchDir(matchId), filePath);
+    if (staleness.stale) return staleExportMessage(matchId, staleness.staleMatchId);
   }
   const manifest = await readManifest(matchDir(matchId));
   const text = await uploadTextFor(matchId, kind);

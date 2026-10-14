@@ -1921,9 +1921,11 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
   A long-form's mid-file failure is resumed the same way on the next Save, before the channel
   scan's pairing of the half-sent video can read as "up" — but only a session `uploadVideo` could
   still resume (`resumableSession`: these exact bytes, under a day old); a re-encode since or a
-  stale one goes through the normal upload instead (14 Oct 2026). A resumed upload carries the
-  title its start sent, and the record says so: a hook changed in between is logged, never
-  retitled on the channel.
+  day-old session goes through the normal upload instead (14 Oct 2026). A resume of an export
+  whose `sync.json` was corrected since is refused as `startUpload` refuses it (`exportStale`):
+  nothing sent, the session kept, and the re-encode's new bytes start fresh. A resumed upload
+  carries the title its start sent, and the record says so: a hook changed in between is logged,
+  never retitled on the channel.
 - **Country flags render as tofu** without a colour-emoji font (cosmetic, intro card).
 - **Verify visual changes by rendering** (`npm run still`, then read the PNG).
 - **`npm run test:unit` after any edit; `npm test` after touching rendering or asset
