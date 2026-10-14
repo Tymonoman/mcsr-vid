@@ -44,6 +44,9 @@ const matchOf = (id: number): MatchInfo => ({
 });
 /** The MCSR API's answer while it is down. */
 let mcsrDown = false;
+/** Runs (once) inside the next `/users/<uuid>` request, before it answers — something the operator
+ *  does while a tick is still waiting on the API. */
+let duringUserFetch: (() => Promise<void>) | null = null;
 /** YouTube, stubbed: the token and videos.list / videos.update, every call recorded. Nothing reaches Google. */
 const ytVideos = new Map<string, { channelId: string; status: Record<string, unknown> }>();
 const ytCalls: Array<{ method: string; url: string; body?: unknown }> = [];
@@ -78,6 +81,9 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
   if (m) return ok(matchOf(Number(m[1])));
   const u = /^\/users\/([^/]+)$/.exec(url.pathname);
   if (u) {
+    const during = duringUserFetch;
+    duringUserFetch = null;
+    await during?.();
     const p = fixture.players.find((x) => x.uuid === u[1])!;
     return ok({
       uuid: p.uuid,
@@ -1602,6 +1608,31 @@ try {
     assert.equal(row2!.stillCurrent, true, "nobody has edited it since");
     assert.equal(row2!.uploaded, true);
     console.log("OK: auto-hooks skips a labelled/spoiler candidate and keeps the dashboard's own order");
+
+    // The operator saves by hand while the tick is still choosing (its suggestions wait on the
+    // API's user lookups): the typed hooks stand, and nothing reads as failed — not an auto save
+    // over them, not the 409 an auto save would get against a hook the upload has since locked.
+    const typedMeanwhile = 13_000_069; // the only due match here: AH2 is saved, AH3 isn't yet
+    exported(typedMeanwhile);
+    customPick(typedMeanwhile, { createdAt: dueAt(7), titleHooks: ["A clean one"] });
+    duringUserFetch = async () => {
+      assert.equal(
+        (await save(typedMeanwhile, { titleHook: "OPERATOR TYPED", shortHook: "OPERATOR SHORT" })).status,
+        202,
+      );
+    };
+    await flow.autoHooksTick(chain, AH_NOW);
+    assert.equal(duringUserFetch, null, "the save ran inside the tick's own user lookup");
+    const stTyped = flow.readStatus(typedMeanwhile);
+    assert.ok(stTyped.hooksSavedAt);
+    assert.ok(!stTyped.autoHooks, "nothing was auto-saved");
+    assert.notEqual(stTyped.steps.hooks?.state, "failed");
+    assert.match(
+      readFileSync(path.join(dir(typedMeanwhile), `match-${typedMeanwhile}.title.edited.txt`), "utf8"),
+      /^OPERATOR TYPED/,
+    );
+    assert.equal(await readShortHook(dir(typedMeanwhile), typedMeanwhile), "OPERATOR SHORT");
+    console.log("OK: a hand save made while auto-hooks is choosing is never overwritten or marked failed");
 
     // No candidate survives at all (both nicknames spelled long enough to leave no room for any
     // hook — the same budget #hook is held to): the hooks step fails with its own message, and

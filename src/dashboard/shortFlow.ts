@@ -1643,6 +1643,21 @@ async function autoSaveHooks(
     });
     return null;
   });
+  // `autoHooksTick` checked this before its awaits (the facts, the match, the suggestions' user
+  // lookups); the operator may have saved by hand since. Checked again with no await between here
+  // and `saveHooks`' own `saving.add`, so an auto save never overwrites a typed hook, nor marks a
+  // hand save's match failed with the 409 it would now get.
+  const now = readStatus(matchId);
+  if (
+    now.hooksSavedAt ||
+    now.noShort ||
+    saving.has(matchId) ||
+    chains.has(matchId) ||
+    uploadRunning(matchId)
+  ) {
+    shortLog(matchId, "chain", "auto-hooks: hooks were saved by hand meanwhile — nothing auto-saved");
+    return;
+  }
   if (!choice) {
     updateStatus(matchId, (s) => {
       const at = new Date().toISOString();
