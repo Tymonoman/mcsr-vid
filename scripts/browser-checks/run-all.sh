@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Full coverage, ready matches and writers too: `node stub-server.cjs capture http://mcsr-dashboard:8080 <dir>`, serve it with `STUB_READY=2 STUB_FIXTURES=<dir> PORT=8097 node stub-server.cjs`, then `SCRATCH=1 run-all.sh http://127.0.0.1:8097`.
 # Drive the dashboard in a real browser the way the operator does. Usage:
 #   bash scripts/browser-checks/run-all.sh http://127.0.0.1:8093
 # Needs `npx playwright install chromium firefox` once, and a server on that URL with real match data.
@@ -36,34 +37,42 @@ READY="$(pick ready)"; READY2="$(pick ready2)"; PUBLISHED="$(pick published)"; U
 SCHEDULED="$(pick scheduled)"
 echo "ready=$READY ready2=$READY2 published=$PUBLISHED unexported=$UNEXPORTED scheduled=$SCHEDULED"
 fail=0
+# A check whose fixture match this server has none of is skipped, not failed (the live server
+# rarely has a ready match: the nightly renders at 03:00 UTC and the chain uploads that day).
+# `need ready,published run x …` checks READY and PUBLISHED; the other checks find their own match.
+need() { local w v; for w in ${1//,/ }; do v=${w^^}; [ -n "${!v}" ] || { echo "SKIP $3 (no $w match on this server)"; return; }; done; shift; "$@"; }
 scratch() { if [ "${SCRATCH:-0}" = 1 ]; then run "$@"; else echo "SKIP $1 (writes on the server: SCRATCH=1 on a stub or test server)"; fi; }
-run() { local name="$1"; shift; if node "$HERE/$name.cjs" "$@" >/tmp/bc-$name.log 2>&1; then echo "PASS $name"; else echo "FAIL $name (see /tmp/bc-$name.log)"; fail=1; fi; }
+# Exit 3 is a check's own skip (nothing here to drive), its reason the log's last line.
+run() {
+  local name="$1" log="${TMPDIR:-/tmp}/bc-$1.log"; shift; node "$HERE/$name.cjs" "$@" >"$log" 2>&1
+  case $? in 0) echo "PASS $name" ;; 3) echo "SKIP $name ($(tail -1 "$log"))" ;; *) echo "FAIL $name (see $log)"; fail=1 ;; esac
+}
 run smoke "$BASE"
 run version-check "$BASE"
 run matches-fail-check "$BASE"
 run runnow-fail-check "$BASE"
 run sugg-fail-check "$BASE"
-run kit-scan-check "$BASE" "$READY"
+need ready run kit-scan-check "$BASE" "$READY"
 scratch round1-fixes-check "$BASE" "$READY"
 run round3-check "$BASE" "$READY"
-run round4-check "$BASE" "$READY"
-run pinned-check "$BASE" "$READY"
-run pull-kit-check "$BASE" "$READY"
+need ready run round4-check "$BASE" "$READY"
+need ready run pinned-check "$BASE" "$READY"
+need ready run pull-kit-check "$BASE" "$READY"
 run abtab-check "$BASE"
 run playoffs-fold-check "$BASE"
-run post-audit-check "$BASE" "$READY" "$PUBLISHED"
+need ready run post-audit-check "$BASE" "$READY" "$PUBLISHED"
 scratch settings-check "$BASE"
 scratch inline-errors-check "$BASE"
-scratch sync-edit-check "$BASE" "$READY"
+need ready scratch sync-edit-check "$BASE" "$READY"
 run phone-rows-check "$BASE"
 run deep-link-check "$BASE"
-run hook-flow-check "$BASE" "$READY2"
+need ready2 run hook-flow-check "$BASE" "$READY2"
 run now-flow-check "$BASE" "$READY" "$READY2"
 run pick-progress-check "$BASE" "$READY"
-run checkchannel-check "$BASE" "$READY"
+need ready run checkchannel-check "$BASE" "$READY"
 # Firefox too (npx playwright install firefox). Its Save, Move and by-hand upload are answered in the
 # browser and every other non-GET is aborted and failed: nothing it does is written on the server.
-run publish-at-check "$BASE" "$READY" "$READY2" "$SCHEDULED" "$PUBLISHED"
-[ -n "$PUBLISHED" ] && run studio-upload-check "$BASE" "$PUBLISHED"
-[ -n "$UNEXPORTED" ] && run stale-preview "$BASE" "$READY2" "$UNEXPORTED"
+need ready run publish-at-check "$BASE" "$READY" "$READY2" "$SCHEDULED" "$PUBLISHED"
+need published run studio-upload-check "$BASE" "$PUBLISHED"
+need ready2,unexported run stale-preview "$BASE" "$READY2" "$UNEXPORTED"
 exit $fail

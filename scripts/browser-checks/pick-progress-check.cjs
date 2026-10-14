@@ -42,7 +42,9 @@ const plan = (id) => ({
 
     const look = async (name, page) => {
       page.on("pageerror", (e) => errors.push(e.message));
-      await page.route("**/api/shorts/plan/*", (r) => r.fulfill({ json: plan(id) }));
+      // One plan per page: a fresh `since` each poll is a new plan, and Now repaints under the shot.
+      const p = plan(id);
+      await page.route("**/api/shorts/plan/*", (r) => r.fulfill({ json: p }));
       await page.goto(base + "/", { waitUntil: "networkidle" });
       // The boot already painted the first card's Now from the same routed plan, bar and all: until
       // this match's own head is up, a wait on the bar finds that one, and select() tears it down
@@ -56,6 +58,13 @@ const plan = (id) => ({
       );
       const step = '#now .step[data-step="pick"]';
       await page.waitForSelector(`${step} .bar.stepbar i`, { timeout: 30000 });
+      // The kit and the sync check each repaint Now as they land (paintNow(…, true)): on the live
+      // server the kit takes seconds, and the step measured below would be torn down mid-shot.
+      await page.waitForFunction(
+        (m) => syncEditState?.id === m && !!document.querySelector("#publishkit .kit"),
+        id,
+        { timeout: 30000 },
+      );
       const got = await page.$eval(step, (el) => ({
         sum: el.querySelector(".sum").textContent.replace(/\s+/g, " ").trim(),
         width: el.querySelector(".bar.stepbar i").style.width,
