@@ -475,9 +475,13 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   a runner's no is a block, same as Aquacorde's. The known bucket (`suggestKnownSlots`, above) is no
   exception: a match is pruned from the pool for being blocked before `tier()` ever sees it.
 - **Rival posts** (`src/dashboard/rivalPosts.ts`): the competitor's (`rivalChannelHandle`, default
-  `mcsrmatches`) last 50 uploads, matched to cards by nickname pair, date and run length (their
-  video is the run plus a few seconds; a post of the wrong length is another match of the same
-  pair). A posted match sorts after the fresh ones, in the nightly's order too. `playersFromTitle`
+  `mcsrmatches`) last 15 uploads, read since 14 Oct 2026 from its public feed
+  (`feeds/videos.xml?channel_id=`, the handle resolved once off the public channel page) with no
+  token — the API audit told Google the OAuth token reads only our own channel, and the old
+  channels/playlistItems/videos.list read of another channel broke that. Matched to cards by
+  nickname pair and date. The feed has no lengths, so the run-length check (a post of the wrong
+  length is another match of the same pair) is idle and two matches of one pair in a night both
+  read as posted. A posted match sorts after the fresh ones, in the nightly's order too. `playersFromTitle`
   takes the pair right before the MCSR tag, so the rival's hook-less "A vs B | MCSR Ranked" titles
   and spaced nicknames ("Darvy  x1" is DARVY__X1) parse too — 18 of its 129 titles were missed
   before 1 Oct 2026.

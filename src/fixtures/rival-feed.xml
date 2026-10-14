@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns:yt="http://www.youtube.com/xml/schemas/2015" xmlns:media="http://search.yahoo.com/mrss/" xmlns="http://www.w3.org/2005/Atom">
+ <link rel="self" href="http://www.youtube.com/feeds/videos.xml?channel_id=UCD4mMby1i-Lz2huxfMMWfLA"/>
+ <id>yt:channel:D4mMby1i-Lz2huxfMMWfLA</id>
+ <yt:channelId>D4mMby1i-Lz2huxfMMWfLA</yt:channelId>
+ <title>MCSR Matches</title>
+ <link rel="alternate" href="https://www.youtube.com/channel/UCD4mMby1i-Lz2huxfMMWfLA"/>
+ <author>
+  <name>MCSR Matches</name>
+  <uri>https://www.youtube.com/channel/UCD4mMby1i-Lz2huxfMMWfLA</uri>
+ </author>
+ <published>2025-09-13T16:47:10+00:00</published>
+ <entry>
+  <id>yt:video:OJDfz_r9_i0</id>
+  <yt:videoId>OJDfz_r9_i0</yt:videoId>
+  <yt:channelId>UCD4mMby1i-Lz2huxfMMWfLA</yt:channelId>
+  <title>Silverrruns vs Lowkey | MCSR Ranked | Minecraft Speedrun</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=OJDfz_r9_i0"/>
+  <author>
+   <name>MCSR Matches</name>
+   <uri>https://www.youtube.com/channel/UCD4mMby1i-Lz2huxfMMWfLA</uri>
+  </author>
+  <published>2026-10-12T21:00:04+00:00</published>
+  <updated>2026-10-13T11:03:13+00:00</updated>
+  <media:group>
+   <media:title>Silverrruns vs Lowkey | MCSR Ranked | Minecraft Speedrun</media:title>
+   <media:content url="https://www.youtube.com/v/OJDfz_r9_i0?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i4.ytimg.com/vi/OJDfz_r9_i0/hqdefault.jpg" width="480" height="360"/>
+   <media:description>If you'd like to support the channel:
+https://www.paypal.me/mcsrmatches
+
+#mcsrranked #speedrun #minecraft #mcsr
+#1v1 #pov #splitscreen
+#bastion #nether #stronghold #end #fortress</media:description>
+   <media:community>
+    <media:starRating count="24" average="5.00" min="1" max="5"/>
+    <media:statistics views="2773"/>
+   </media:community>
+  </media:group>
+ </entry>
+ <entry>
+  <id>yt:video:CNQBRZpa4_A</id>
+  <yt:videoId>CNQBRZpa4_A</yt:videoId>
+  <yt:channelId>UCD4mMby1i-Lz2huxfMMWfLA</yt:channelId>
+  <title>One Mistake &quot;GG&quot; | Doogile vs Aquacorde | MCSR Ranked | Minecraft Speedrun</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=CNQBRZpa4_A"/>
+  <author>
+   <name>MCSR Matches</name>
+   <uri>https://www.youtube.com/channel/UCD4mMby1i-Lz2huxfMMWfLA</uri>
+  </author>
+  <published>2026-10-06T21:00:09+00:00</published>
+  <updated>2026-10-10T06:55:13+00:00</updated>
+  <media:group>
+   <media:title>One Mistake &quot;GG&quot; | Doogile vs Aquacorde | MCSR Ranked | Minecraft Speedrun</media:title>
+   <media:content url="https://www.youtube.com/v/CNQBRZpa4_A?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i4.ytimg.com/vi/CNQBRZpa4_A/hqdefault.jpg" width="480" height="360"/>
+   <media:description>If you'd like to support the channel:
+https://www.paypal.me/mcsrmatches
+
+#mcsrranked #speedrun #minecraft #mcsr
+#1v1 #pov #splitscreen
+#bastion #nether #stronghold #end #fortress</media:description>
+   <media:community>
+    <media:starRating count="47" average="5.00" min="1" max="5"/>
+    <media:statistics views="5919"/>
+   </media:community>
+  </media:group>
+ </entry>
+ <entry>
+  <id>yt:video:ouRbaMNTmHk</id>
+  <yt:videoId>ouRbaMNTmHk</yt:videoId>
+  <yt:channelId>UCD4mMby1i-Lz2huxfMMWfLA</yt:channelId>
+  <title>MINECRAFT SPEEDRUN CLIPS 1</title>
+  <link rel="alternate" href="https://www.youtube.com/shorts/ouRbaMNTmHk"/>
+  <author>
+   <name>MCSR Matches</name>
+   <uri>https://www.youtube.com/channel/UCD4mMby1i-Lz2huxfMMWfLA</uri>
+  </author>
+  <published>2026-09-28T19:01:40+00:00</published>
+  <updated>2026-10-02T08:23:48+00:00</updated>
+  <media:group>
+   <media:title>MINECRAFT SPEEDRUN CLIPS 1</media:title>
+   <media:content url="https://www.youtube.com/v/ouRbaMNTmHk?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i4.ytimg.com/vi/ouRbaMNTmHk/hqdefault.jpg" width="480" height="360"/>
+   <media:description>#minecraft #mcsr #speedrun</media:description>
+   <media:community>
+    <media:starRating count="10" average="5.00" min="1" max="5"/>
+    <media:statistics views="1328"/>
+   </media:community>
+  </media:group>
+ </entry>
+</feed>

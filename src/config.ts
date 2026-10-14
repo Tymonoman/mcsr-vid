@@ -99,7 +99,8 @@ export interface Config {
    * The competitor whose uploads the suggestion cards are checked against (src/dashboard/rivalPosts.ts):
    * MCSR Matches posts the same matches this channel picks, a day later, to 37x the
    * subscribers. A matchup it has already covered is flagged on the card and ordered after the
-   * fresh ones. Empty string turns the check off; it also needs the YouTube token.
+   * fresh ones. Empty string turns the check off. Read from the public upload feed, never with
+   * the YouTube token (the audit: own channel, own data).
    */
   rivalChannelHandle: string;
   /**

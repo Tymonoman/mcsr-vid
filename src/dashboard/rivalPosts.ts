@@ -5,20 +5,23 @@
  * already covered competes with its own video for the same browse session. The suggestion cards
  * flag one, and the display order (which is also the nightly's) puts those after the fresh ones.
  *
- * Three quota units per refresh (channels.list + playlistItems.list + videos.list), every six hours,
- * and never a reason for the suggestions page to fail: no token, no network, no rival channel
- * configured — all read as "nothing known", not an error.
+ * Read from the channel's public upload feed with no token: the API audit told Google the
+ * channel's OAuth token reads its own channel only, so another channel's uploads are read the way
+ * any visitor reads them. Every six hours, and never a reason for the suggestions page to fail: no
+ * network, no rival channel configured — both read as "nothing known", not an error.
  */
 import { config } from "../config.js";
 import { describeError } from "../errorText.js";
-import { dataApiGet, isConfigured } from "../youtube/youtube.js";
 
 export interface RivalPost {
   title: string;
   publishedAtMs: number;
   /** Normalised nicknames from the title, or null when the title names no matchup. */
   players: [string, string] | null;
-  /** The video's length; absent on older snapshots. What tells two matches of one pair apart. */
+  /**
+   * The video's length. What tells two matches of one pair apart — the public feed carries none,
+   * so it is absent since 14 Oct 2026 and matching is by pair and date alone.
+   */
   durationSec?: number;
 }
 
@@ -83,8 +86,8 @@ export function rivalMatchFor(
       p.publishedAtMs <= to,
   );
   // With lengths to compare, only a post the right length counts; one that is not is the rival
-  // posting another match of the pair, which must not demote this one. Without lengths (an
-  // older snapshot), the pair and the window are all there is, as before.
+  // posting another match of the pair, which must not demote this one. Without lengths (the
+  // public feed has none), the pair and the window are all there is.
   const judged = hits.map((p) => ({ p, fits: durationFits(p, runSec) }));
   const hit =
     judged.find((j) => j.fits === true)?.p ?? (judged.every((j) => j.fits === null) ? hits[0] : undefined);
@@ -116,43 +119,55 @@ export function rivalRecentPostFor(
   return hit ? { title: hit.title, publishedAtMs: hit.publishedAtMs } : null;
 }
 
-/** The rival's last fifty uploads, newest first. Throws on API failure; the cache below catches. */
-async function fetchRivalPosts(handle: string, fetchImpl: typeof fetch = fetch): Promise<RivalPost[]> {
-  const yt = (path: string): Promise<any> => dataApiGet<any>(`/${path}`, fetchImpl);
-  const channel = await yt(`channels?part=contentDetails&forHandle=${encodeURIComponent(handle)}`);
-  const uploads = channel.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
-  if (!uploads) throw new Error(`no channel for handle ${handle}`);
-  const items = await yt(`playlistItems?part=snippet&playlistId=${uploads}&maxResults=50`);
-  const posts: RivalPost[] = (items.items ?? []).map((i: any) => ({
-    title: String(i.snippet.title),
-    publishedAtMs: Date.parse(i.snippet.publishedAt),
-    players: playersFromTitle(String(i.snippet.title)),
-  }));
-  // One more unit for the lengths: the only thing that tells two matches of one pair apart.
-  const ids: string[] = (items.items ?? [])
-    .map((i: any) => String(i.snippet.resourceId?.videoId ?? ""))
-    .filter((id: string) => id !== "");
-  if (ids.length > 0) {
-    const vids = await yt(`videos?part=contentDetails&id=${ids.join(",")}`);
-    const seconds = new Map<string, number>(
-      (vids.items ?? []).map((v: any) => [
-        String(v.id),
-        isoDurationSec(String(v.contentDetails?.duration ?? "")),
-      ]),
-    );
-    ids.forEach((id, n) => {
-      const sec = seconds.get(id);
-      if (sec !== undefined && posts[n]) posts[n].durationSec = sec;
-    });
-  }
-  return posts;
+/** `@handle` → `UC…`, read once per boot off the public channel page. */
+const channelIds = new Map<string, string>();
+
+async function channelIdFor(handle: string, fetchImpl: typeof fetch): Promise<string> {
+  handle = handle.replace(/^@/, "");
+  const known = channelIds.get(handle);
+  if (known) return known;
+  // SOCS=CAI is the "reject all" answer to the EU consent page that otherwise stands in front of it.
+  const res = await fetchImpl(`https://www.youtube.com/@${encodeURIComponent(handle)}`, {
+    headers: { cookie: "SOCS=CAI" },
+  });
+  if (!res.ok) throw new Error(`channel page for @${handle}: HTTP ${res.status}`);
+  const html = await res.text();
+  // The canonical link first: a "channelId" further down may be a featured channel's.
+  const id = (
+    /<link rel="canonical" href="https:\/\/www\.youtube\.com\/channel\/(UC[\w-]{22})"/.exec(html) ??
+    /"(?:externalId|channelId)":"(UC[\w-]{22})"/.exec(html)
+  )?.[1];
+  if (!id) throw new Error(`no channel id on the page for @${handle}`);
+  channelIds.set(handle, id);
+  return id;
 }
 
-/** `PT8M59S` → 539. Anything unparseable is 0, which no run time fits. */
-export function isoDurationSec(iso: string): number {
-  const m = /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(iso);
-  if (!m) return 0;
-  return Number(m[1] ?? 0) * 3600 + Number(m[2] ?? 0) * 60 + Number(m[3] ?? 0);
+const XML_ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
+const unescapeXml = (s: string): string =>
+  s.replace(/&(?:#(\d+)|#x([0-9a-f]+)|(amp|lt|gt|quot|apos));/gi, (_, dec, hex, name) =>
+    dec ? String.fromCodePoint(Number(dec)) : hex ? String.fromCodePoint(parseInt(hex, 16)) : XML_ENTITIES[name]!,
+  );
+
+/** The public feed's entries, newest first. An entry with no title or date is skipped. */
+export function parseRivalFeed(xml: string): RivalPost[] {
+  return [...xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g)].flatMap(([, entry]) => {
+    const title = unescapeXml(/<title>([^<]*)<\/title>/.exec(entry!)?.[1] ?? "");
+    const publishedAtMs = Date.parse(/<published>([^<]*)<\/published>/.exec(entry!)?.[1] ?? "");
+    if (!title || Number.isNaN(publishedAtMs)) return [];
+    return [{ title, publishedAtMs, players: playersFromTitle(title) }];
+  });
+}
+
+/**
+ * The rival's last fifteen uploads (all the feed holds — two weeks at its daily cadence, the
+ * matching window), newest first, with no token on any request. Throws on failure; the cache
+ * below catches.
+ */
+export async function fetchRivalPosts(handle: string, fetchImpl: typeof fetch = fetch): Promise<RivalPost[]> {
+  const id = await channelIdFor(handle, fetchImpl);
+  const res = await fetchImpl(`https://www.youtube.com/feeds/videos.xml?channel_id=${id}`);
+  if (!res.ok) throw new Error(`feed for @${handle}: HTTP ${res.status}`);
+  return parseRivalFeed(await res.text());
 }
 
 const REFRESH_MS = 6 * 60 * 60 * 1000;
@@ -170,7 +185,7 @@ export function rivalPostsSnapshot(): RivalPost[] {
  * without the badges and the next has them.
  */
 export function refreshRivalPostsIfStale(nowMs: number = Date.now()): void {
-  if (!config.rivalChannelHandle || !isConfigured()) return;
+  if (!config.rivalChannelHandle) return;
   if (inflight || nowMs - cached.atMs < REFRESH_MS) return;
   inflight = fetchRivalPosts(config.rivalChannelHandle)
     .then((posts) => {
@@ -180,8 +195,8 @@ export function refreshRivalPostsIfStale(nowMs: number = Date.now()): void {
     .catch((err: unknown) => {
       // Try again in five minutes rather than in six hours — a transient 5xx should not blank
       // the badges for a quarter of a day — but not on every request either: the suggestions
-      // route is polled every two seconds during a scan, and a dead token would spend a call
-      // per poll.
+      // route is polled every two seconds during a scan, and a dead feed would be fetched per
+      // poll.
       cached = { ...cached, atMs: nowMs - REFRESH_MS + 5 * 60_000 };
       console.error(`rival: ${describeError(err)} (badges off until the next try)`);
     })

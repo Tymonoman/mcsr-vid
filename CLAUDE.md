@@ -206,8 +206,8 @@ uploads. Client-only changes need just a reload.
   short`/`short:hand` even by hand, never a past-hook style example. `finishOnYouTube` carries the
   refusal to Adopt/Finish/nightly-retry alike; Adopt also refuses before `videos.update`;
   `POST /api/render` and `POST /api/series/:id/render` refuse before the run starts.
-- **Rival posts** (`rivalChannelHandle` default `mcsrmatches`): matched to cards by pair/date/
-  length; a posted match sorts after fresh ones.
+- **Rival posts** (`rivalChannelHandle` default `mcsrmatches`): its public feed, never our token;
+  matched to cards by pair/date; a posted match sorts after fresh ones.
 - **Hook chips** (`src/pipeline/hooks.ts`) lead with the match's stake (margin, lead change,
   death), nickname/rematch chips after. A typed hook reusing another player's nickname warns but
   always saves; any check on a typed hook is a warning, never a refusal ("it should just be a
