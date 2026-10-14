@@ -3315,12 +3315,15 @@ function paintPlayoffs() {
     if (!st) return "";
     const n = s.games.length;
     const done = st.exported.filter(Boolean).length;
-    if (st.progress && !/^(done|failed)/.test(st.progress))
+    if (st.progress && !/^(done|failed|waiting)/.test(st.progress))
       return `<div class="state">series &middot; ${esc(st.progress)}</div>`;
     if (st.progress && st.progress.startsWith("failed"))
       return `<div class="state bad">series &middot; ${esc(st.progress)}</div>`;
     if (st.joined)
       return `<div class="state ready">series video ready${st.shortFromMatchId ? " &middot; short" : ""} &middot; open #${st.firstGameId}</div>`;
+    // Every game exported, the series still being played: joined once a seed takes it.
+    if (st.progress && st.progress.startsWith("waiting"))
+      return `<div class="state">series &middot; ${esc(st.progress)}</div>`;
     return `<div class="state">${done} of ${n} games exported</div>`;
   };
   const gameState = (g) => {
@@ -3355,7 +3358,7 @@ function paintPlayoffs() {
             ? `<div class="btns">${
                 s.series.joined
                   ? `<button data-act="open-series">Open the series</button>`
-                  : s.series.progress && !/^(done|failed)/.test(s.series.progress)
+                  : s.series.progress && !/^(done|failed|waiting)/.test(s.series.progress)
                     ? ""
                     : `<button data-act="render-series">Render the series</button>`
               }</div>`
@@ -3398,7 +3401,7 @@ function paintPlayoffs() {
   });
   // A series in flight repaints itself: the board is the only place its progress shows.
   clearTimeout(seriesPoll);
-  if (slots.some((s) => s.series && s.series.progress && !/^(done|failed)/.test(s.series.progress)))
+  if (slots.some((s) => s.series && s.series.progress && !/^(done|failed|waiting)/.test(s.series.progress)))
     seriesPoll = setTimeout(pollSuggestions, 15000);
 }
 let seriesPoll = null;
