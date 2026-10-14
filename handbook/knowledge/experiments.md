@@ -115,6 +115,12 @@ any video that already has one (his 8 custom ones included).
 
 ## Decisions
 
+- **14 Oct 2026 — explain-the-moves stays on whatever x2 says (the operator: "keep them on").** x2's `adoptWinner`
+  set to false (tmp/day/x2keep.mts), so at its 17 Oct end the control arm "on" is reapplied; the cards guard the review.
+- **14 Oct 2026 — Feinberg vs Infume backlog, one a night (the operator: "yes queue them and post").** 15 unrendered
+  ranked matches from 6–18 Sept with both VODs (tmp/day/growth-subs/fi-backlog.json); the pair converts at 3.6 subs a
+  video in week one vs 0.7 for the rest. Oldest first: 13140492 queued for tonight; the morning cron queues the next one
+  each day. Stop if two in a row fall under 1 sub in their first two days.
 - **14 Oct 2026 — x1 interim flipped back:** 23:00 UTC leads 19:00 UTC on impressions CTR again, 6.85% vs 5.16%
   (z = 4.41). Three readings in three days pointed three ways (12 Oct 23:00, 13 Oct 19:00, 14 Oct 23:00), so with
   ~10 videos a side the hour is noise next to which match each slot got; the 15 Oct evaluator decides.
