@@ -82,6 +82,14 @@ console.log("syncEdit: the timeline arithmetic and every refusal");
   writeSyncOffsets(dir, { left: 1, right: 1, confidence: 1, detail: "", source: "manual" });
   await at(syncFilePath(dir), "2026-09-10T11:00:00Z");
   assert.equal(exportStale(dir, video).stale, false, "the export read this sync.json: fresh");
+  writeSyncOffsets(dir, { left: 1, right: 1, confidence: 1, detail: "", source: "manual" });
+  assert.equal(
+    exportStale(dir, video).stale,
+    false,
+    "an identical rewrite (a re-render keeping the manual sync) is not a new decision",
+  );
+  writeSyncOffsets(dir, { left: 1.5, right: 1, confidence: 1, detail: "", source: "manual" });
+  assert.equal(exportStale(dir, video).stale, true, "a changed offset is");
   await at(syncFilePath(dir), "2026-09-10T12:00:00Z");
   assert.equal(exportStale(dir, video).stale, false, "the same second is not newer");
 

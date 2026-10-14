@@ -41,7 +41,7 @@ export function shortenHookChip(hook: string): string | null {
   const h = hook.trim();
   let m: RegExpMatchArray | null;
 
-  if ((m = h.match(/^Decided by (\d+) milliseconds$/i))) return `${m[1]} MS`;
+  if ((m = h.match(/^Decided by (\d+) milliseconds?$/i))) return `${m[1]} MS`;
   // A decimal margin ("Decided by 1.3 seconds") has no clean token at this budget: "1.3 SEC" is
   // ten characters, and gluing the unit onto the digit ("1.3S") is exactly the misread this fix
   // exists to stop (Monocraft's S reads as a 5 right after a digit) — dropped, not abbreviated.
