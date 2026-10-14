@@ -325,7 +325,11 @@ async function startUpload(matchId: number, req: UploadRequest, send: typeof upl
       `the publish time ${req.publishAt} has already passed — pick a later one (the chain takes the next free slot)`,
     );
 
-  // In the tick that marks the upload running, so nothing starts between the two.
+  // In the tick that marks the upload running, so nothing starts between the two. The running
+  // check again too: a double press passes the first one while the other is still awaiting above.
+  const again = uploads.get(key);
+  if (again && !again.done)
+    return { status: 409, error: `Match ${matchId} is already uploading its ${req.kind}` };
   const held = thumbnailRefusal(matchId, req.kind);
   if (held) return held;
   const progress = idle(matchId, req.kind);
