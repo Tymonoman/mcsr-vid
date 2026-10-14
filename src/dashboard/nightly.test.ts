@@ -33,6 +33,7 @@ import {
   shouldChainNextRender,
   writeNightlyState,
 } from "./nightly.js";
+import { CACHE_VERSION } from "./suggest.js";
 import type { PlayoffBoard } from "../playoffs/playoffs.js";
 import { startRerender } from "../thumbnails/rerender.js";
 import type { MatchInfo } from "../api/types.js";
@@ -582,7 +583,7 @@ try {
     writeFileSync(
       path.join(media, ".suggest-cache.json"),
       JSON.stringify({
-        version: 4,
+        version: CACHE_VERSION,
         pool: {
           "9003": { metrics: { matchId: 9003, players: ["PoolOne", "PoolTwo"] } },
           "9004": { metrics: { matchId: 9004, players: ["PoolOne", "Aquacorde"] } },

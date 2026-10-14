@@ -14,7 +14,7 @@ import {
   getVersus,
   McsrApiError,
 } from "../api/mcsrApi.js";
-import { eloAtMatchStart } from "../pipeline/overlayProps.js";
+import { eloAtMatchStart, h2hWinsBefore } from "../pipeline/overlayProps.js";
 import * as twitch from "../api/twitch.js";
 import type { FeedMatch, MatchInfo } from "../api/types.js";
 
@@ -26,7 +26,9 @@ const PAGE_SIZE = 100;
 const DETAIL_CONCURRENCY = 4;
 /** Bumped whenever `PooledMatch` grows a field: a stale pool regenerates, it never migrates. */
 // 4: metrics.deaths counts real deaths only (hunger resets left out, 26 Sept 2026).
-const CACHE_VERSION = 4;
+// 5: h2h is the match's own season, before it (a first meeting read "rematch 0-1", naming the
+//    winner), and `elo` is changes[].eloRate as carried in, not eloRate - change (14 Oct 2026).
+export const CACHE_VERSION = 5;
 /**
  * Twitch handles are resolved one MCSR request per player and then cached forever, so
  * only a cold cache pays. Capped per scan so a first run can't blow the request budget;
@@ -591,7 +593,9 @@ function profilesOf(match: MatchInfo): [PooledPlayer, PooledPlayer] {
 }
 
 /**
- * Ranked head-to-head, in `metrics.players` order. One request, spent once per match ever: it
+ * Ranked head-to-head in the match's own season, before it (`h2hWinsBefore`: the API's record
+ * already counts this match, so a first meeting would read "rematch 0–1" and name the winner),
+ * in `metrics.players` order. One request, spent once per match ever: it
  * is pooled next to the metrics, because the record barely moves and refreshing it per scan
  * would cost a request for every pooled match on every launch.
  */
@@ -599,10 +603,10 @@ async function headToHead(match: MatchInfo): Promise<HeadToHead | null> {
   const [left, right] = match.players;
   if (!left || !right) return null;
   try {
-    const versus = await getVersus(left.uuid, right.uuid);
+    const versus = await getVersus(left.uuid, right.uuid, match.season);
     return {
-      leftWins: versus.results.ranked[left.uuid] ?? 0,
-      rightWins: versus.results.ranked[right.uuid] ?? 0,
+      leftWins: h2hWinsBefore(versus, match, left.uuid),
+      rightWins: h2hWinsBefore(versus, match, right.uuid),
     };
   } catch {
     // A card without a rivalry line is still a card; the overlay fetches this again at render.

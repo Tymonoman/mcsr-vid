@@ -572,6 +572,7 @@ try {
     const feedMatch = {
       id: 555,
       type: 2,
+      season: 9,
       date: nowSec - 3_600,
       players: [
         { nickname: "doogile", uuid: "u1", eloRank: null, eloRate: null },
@@ -585,6 +586,7 @@ try {
       changes: [],
       result: { time: 600_000, uuid: "u1" },
     };
+    const versusUrls: string[] = [];
     globalThis.fetch = (async (url: string) => {
       const u = String(url);
       if (u.startsWith("https://api.mcsrranked.com/matches/555")) {
@@ -597,7 +599,12 @@ try {
         };
       }
       if (u.includes("/users/") && u.includes("/versus/")) {
-        return { ok: true, json: async () => ({ status: "success", data: { results: { ranked: {} } } }) };
+        versusUrls.push(u);
+        // Read after the match, so it already counts this one: their first meeting, u1 won it.
+        return {
+          ok: true,
+          json: async () => ({ status: "success", data: { results: { ranked: { u1: 1 } } } }),
+        };
       }
       if (u.includes("/users/doogile/matches")) {
         return { ok: true, json: async () => ({ status: "success", data: [feedMatch] }) };
@@ -616,6 +623,11 @@ try {
     const savedAfter = JSON.parse(await readFile(cachePath, "utf8"));
     assert.ok("555" in savedAfter.pool, "and the pool, though it was already in countedMatchIds");
     console.log("OK: a match already in countedMatchIds still gets offered to the pool");
+    // The card's h2h is the record before this match, in its own season: a first meeting is 0-0
+    // (no "rematch 0–1" line naming the winner), not the current season's record.
+    assert.ok(versusUrls.length > 0 && versusUrls.every((u) => u.endsWith("?season=9")), versusUrls.join());
+    assert.deepEqual(savedAfter.pool["555"].h2h, { leftWins: 0, rightWins: 0 });
+    console.log("OK: a pooled h2h is the match's own season, before the match");
   }
 
   console.log("suggestSelect: all checks passed");
