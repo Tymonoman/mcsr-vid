@@ -24,7 +24,7 @@
 //  9. The nightly's experiment-arm.json snapshots the settings the tick just applied, naming the
 //     render experiment and arm, end to end.
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { Experiment, ExperimentsFile } from "./experiments.js";
@@ -318,4 +318,6 @@ config.nightlyRenderHourUtc = 3;
   assert.equal(body.settings.introSec, config.introSec, "the confounders ride along");
 }
 
+process.chdir(tmpdir());
+for (const dir of [cwdDir, media]) rmSync(dir, { recursive: true, force: true });
 console.log("experiments.contract: all checks passed");

@@ -14,7 +14,7 @@
 //  4. A corrupt file is never read as "no experiments" by this side: the tc write refuses, leaving
 //     the file byte for byte, and still releases the lock.
 //  5. The dashboard's own experiments.ts does NOT take this lock (a known, documented gap: "a race
-//     there is still possible") — pinned so closing the gap updates the docs too.
+//     there is still possible") — printed as a note, not asserted, so closing the gap stays green.
 //  6. End to end across both writers: a tc import between two render ticks on the same night never
 //     makes the night's render arm apply twice (appliedOn survives), the evaluator leaves the tc
 //     entries byte for byte, and a later tc import keeps the evaluator's evaluatedOn.
@@ -24,6 +24,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  rmSync,
   unlinkSync,
   utimesSync,
   writeFileSync,
@@ -129,13 +130,13 @@ const idsOnDisk = (): string[] =>
   config.nightlyRenderHourUtc = 3;
   dashboard.applyScheduledRenderArm(Date.parse("2026-10-20T02:45:00Z"));
   // CLAUDE.md: "The dashboard's own src/dashboard/experiments.ts doesn't take this lock, so a race
-  // there is still possible." If this starts failing, the gap was closed — update CLAUDE.md with it.
-  assert.equal(
-    dashboard.readExperiments().appliedOn,
-    "2026-10-20",
-    "the dashboard wrote straight through the held lock",
+  // there is still possible." A defect, so a note — not a promise to keep.
+  console.log(
+    dashboard.readExperiments().appliedOn === "2026-10-20"
+      ? "KNOWN GAP (CLAUDE.md): the dashboard's render tick wrote straight through a held .experiments.json.lock"
+      : "NOTE: the dashboard's render tick now respects .experiments.json.lock — drop the gap from CLAUDE.md",
   );
-  unlinkSync(lock);
+  rmSync(lock, { force: true });
 }
 
 // --- 6. End to end: render tick, tc import, render tick, evaluator, tc import ----------------------------
@@ -216,4 +217,6 @@ const idsOnDisk = (): string[] =>
   assert.equal(final.experiments.filter((e) => e.kind === "between").length, 1, "and the between experiment");
 }
 
+process.chdir(tmpdir());
+for (const dir of [cwdDir, media]) rmSync(dir, { recursive: true, force: true });
 console.log("studioExperiments.contract: all checks passed");
