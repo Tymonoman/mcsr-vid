@@ -1204,6 +1204,13 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
   (what was built, merged, published, uploaded), a research or analysis write-up, an artifact's
   link. Not: an answer to a quick question, a progress note, a question to the operator. A Stop
   hook forwarded every end-of-turn message of 300+ characters for a day; it was removed for that.
+- **Plain replies land in an inbox** (the operator, 14 Oct 2026: "if you have any questions
+  throughout the day just ask me on telegram"). The poller used to drop any non-command text, so an
+  answer typed there never reached the session that asked. Now a plain message from the operator's
+  own chat (never another chat, never a command) appends one line `{at, text, messageId}` to
+  `<mediaDir>/.telegram-inbox.jsonl`, silently — no echo. `npm run tg -- inbox [--since <ISO>]
+  [--clear]` prints them oldest first as `<at>  <text>`; `--clear` moves the file aside before
+  reading, so a reply arriving mid-read starts a fresh file instead of being lost.
 - **What is not built**: `youtubeUploadEnabled`-gated actions, renders, queue edits — every
   command is read-only, and `/help` says so. No command writes anything the dashboard would show
   as changed.

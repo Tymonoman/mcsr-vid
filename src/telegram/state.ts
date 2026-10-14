@@ -7,7 +7,7 @@
  * state travels with the media, not the checkout, and `listProcessedMatchIds` (every `^\d+$`
  * *directory*) never mistakes it for a match.
  */
-import { readFileSync, renameSync, writeFileSync } from "node:fs";
+import { appendFileSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { config } from "../config.js";
 import type { ChannelSnapshot } from "./facts.js";
@@ -71,4 +71,51 @@ export function updateTelegramState(change: (s: TelegramState) => void): Telegra
   change(s);
   writeTelegramState(s);
   return s;
+}
+
+/**
+ * `<mediaDir>/.telegram-inbox.jsonl`: the operator's plain (non-command) replies, one JSON line
+ * each, so a session that asked a question on Telegram can read the answer with `npm run tg --
+ * inbox`. Appended by the dashboard's poller, read and cleared by the CLI — two processes, hence
+ * an append per line rather than a read-modify-write.
+ */
+export interface InboxEntry {
+  at: string;
+  text: string;
+  messageId: number;
+}
+
+const inboxPath = (): string => path.join(config.mediaDir, ".telegram-inbox.jsonl");
+
+export function appendInbox(entry: InboxEntry): void {
+  if (dryRun) return;
+  appendFileSync(inboxPath(), `${JSON.stringify(entry)}\n`);
+}
+
+/** Oldest first; a line that does not parse is skipped. `clear` moves the file aside before
+ *  reading, so a reply the poller appends mid-read starts a fresh file instead of being cut. */
+export function readInbox(clear = false): InboxEntry[] {
+  let file = inboxPath();
+  if (clear && !dryRun) {
+    try {
+      renameSync(file, `${file}.taken`);
+    } catch {
+      return [];
+    }
+    file = `${file}.taken`;
+  }
+  let raw: string;
+  try {
+    raw = readFileSync(file, "utf8");
+  } catch {
+    return [];
+  }
+  if (file.endsWith(".taken")) unlinkSync(file);
+  return raw.split("\n").flatMap((l) => {
+    try {
+      return l ? [JSON.parse(l) as InboxEntry] : [];
+    } catch {
+      return [];
+    }
+  });
 }

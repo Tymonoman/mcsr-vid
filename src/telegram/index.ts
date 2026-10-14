@@ -41,7 +41,7 @@ import {
   type TodayResult,
 } from "./report.js";
 import { msUntilNextWarsawRun, shouldCatchUp, warsawDateStr } from "./schedule.js";
-import { readTelegramState, updateTelegramState } from "./state.js";
+import { appendInbox, readTelegramState, updateTelegramState } from "./state.js";
 import { whenWarsaw } from "./report.js";
 
 /** Only counts, ids and titles ever reach Claude — never a comment's own text or author. */
@@ -323,7 +323,8 @@ let reportTimer: ReturnType<typeof setTimeout> | null = null;
 
 const CLAUDE_COMMANDS = new Set(["report", "todo", "ask"]);
 
-async function handleUpdate(update: bot.TgUpdate): Promise<void> {
+/** Exported for index.test.ts. */
+export async function handleUpdate(update: bot.TgUpdate): Promise<void> {
   const msg = update.message;
   if (!msg?.text) return;
   const from = String(msg.chat.id);
@@ -343,7 +344,11 @@ async function handleUpdate(update: bot.TgUpdate): Promise<void> {
   }
   if (from !== chat) return; // any other chat is ignored silently, as the spec asks
   const parsed = parseCommand(msg.text);
-  if (!parsed) return;
+  if (!parsed) {
+    // An answer to a question a session asked here: saved without a reply, for `npm run tg -- inbox`.
+    appendInbox({ at: new Date(msg.date * 1000).toISOString(), text: msg.text, messageId: msg.message_id });
+    return;
+  }
   try {
     // The adapter's own timeout is two minutes; Haiku on a plain-text ask usually answers in
     // seconds, but say so rather than go quiet on a slow one.

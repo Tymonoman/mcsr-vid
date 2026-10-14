@@ -346,6 +346,8 @@ long-polling, no webhook.
   send --md <file>`. A report = a finished task's end, a write-up, an artifact link — not a quick
   answer, a progress note, or a question to the operator. Every bot command is read-only — no
   uploads, renders or queue edits.
+- Plain replies from the operator's chat are saved to `.telegram-inbox.jsonl`; `npm run tg -- inbox`
+  prints them.
 
 ## Studio automation
 
