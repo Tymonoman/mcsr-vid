@@ -51,6 +51,11 @@ const { launchFor } = require("./launch.cjs");
     // is on the panel that holds Upload
     const ctx = await browser.newContext({ ...devices["iPhone 13"] });
     p = await ctx.newPage();
+    // #headwarn is empty (and hidden) on a match whose sync is sound: a weak one gives it its line.
+    await p.route(`**/api/meta/${id}`, async (r) => {
+      const d = await (await r.fetch()).json();
+      return r.fulfill({ json: { ...d, sync: { left: 0, right: 0, ...d.sync, confidence: 0.04 } } });
+    });
     errors = [];
     p.on("pageerror", (e) => errors.push(e.message));
     await p.goto(base + "/", { waitUntil: "networkidle" });

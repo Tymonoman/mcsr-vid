@@ -282,6 +282,13 @@ const plan = (id, extra = {}) => ({
     puts.length = 0;
     await page.evaluate((id) => select(id, { open: true }), a);
     await page.waitForSelector('#now .step[data-step="videoup"] .inlinefail', { timeout: 30000 });
+    // The kit and the sync check each repaint Now as they land (paintNow(…, true)), which puts a
+    // fresh "Copy" over a "Copied" below: on the live server the kit takes seconds. Both first.
+    await page.waitForFunction(
+      (id) => syncEditState?.id === id && !!document.querySelector("#publishkit .kit"),
+      a,
+      { timeout: 30000 },
+    );
     check(
       "a failed upload reports under Video up",
       /quotaExceeded/.test(await page.textContent('#now .step[data-step="videoup"]')),

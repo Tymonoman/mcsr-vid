@@ -1,10 +1,11 @@
 // A stand-in dashboard for the browser checks: serves public/ from this checkout and answers the
 // API from fixtures captured off a real dashboard, with the Short routes faked per match so every
 // state of the NOW group is on screen at once. Nothing touches /media, YouTube or the config:
-// writes (the hooks PUT, Pick again) change this process's memory and nothing else.
+// writes (the hooks PUT, Pick again, a Settings save) change this process's memory and nothing else.
 //
 //   node stub-server.cjs capture http://mcsr-dashboard:8080 /tmp/nowfx [id…]   # read-only GETs, once
 //   STUB_FIXTURES=/tmp/nowfx PORT=8099 node stub-server.cjs              # serve
+//   STUB_READY=2 STUB_FIXTURES=… node stub-server.cjs  # and the newest 2 exported matches as "ready"
 //
 // capture never asks for /api/shorts/plan: on a real server that GET queues a pick (the model
 // watches the match on the operator's subscription). Media: clip.mp4 (a long test clip, for the
@@ -25,6 +26,7 @@ const GLOBAL = [
   "settings",
   "youtube/status",
   "youtube/uploads",
+  "youtube/abtest",
 ];
 const file = (p) => path.join(FX, `${p.replace(/\//g, "_")}.json`);
 
@@ -277,9 +279,19 @@ const read = (p) => {
   }
 };
 const DEFAULT_ID = 13549300;
+/** A scenario with no long-form upload: the stub's list says it is not on the channel. */
+const offChannel = (id) => planOf(id) && !planOf(id).uploads.video;
 function perMatch(kind, id) {
   const got = read(path.join(FX, String(id), `${kind.replace(/\//g, "_")}.json`));
   if (got) {
+    if (offChannel(id)) {
+      if (kind === "publish") Object.assign(got, { uploaded: false, shortUploaded: false });
+      if (kind === "publishkit") {
+        const at = slot(1, 19);
+        Object.assign(got, { videoUrl: null, publishAt: at, publish: { ...got.publish, state: "open", at } });
+      }
+      if (kind === "thumbnails") Object.assign(got, { onChannel: false, youtube: null });
+    }
     if (kind === "meta" && SCENARIOS[id]?.weakSync && got.sync)
       got.sync = { ...got.sync, confidence: 0.04, source: "countdown" };
     if (kind === "sync" && SCENARIOS[id]?.weakSync && got.sync) got.sync = { ...got.sync, confidence: 0.04 };
@@ -364,6 +376,35 @@ const body = (req) =>
     req.on("data", (c) => (s += c));
     req.on("end", () => ok(s));
   });
+
+/** The settings once a PUT has touched them: `saveSettings`'s coerce and messages, no file. */
+let settings = null;
+function putSettings(patch) {
+  settings ??= read(file("settings")) ?? { fields: [] };
+  const next = new Map();
+  for (const [key, raw] of Object.entries(patch)) {
+    const f = settings.fields.find((x) => x.key === key);
+    if (!f) throw new Error(`"${key}" is not a setting this panel may change.`);
+    const text = typeof raw === "string" ? raw.trim() : raw === null ? "" : String(raw);
+    const [min, max] = [
+      f.min ?? (f.kind === "hour" ? 0 : -Infinity),
+      f.max ?? (f.kind === "hour" ? 23 : Infinity),
+    ];
+    let v;
+    if (f.kind === "boolean") v = raw;
+    else if (f.kind === "text") v = text;
+    else if (f.kind === "words") v = text === "" ? null : text.split(/\s+/);
+    else if (f.kind === "list") v = text.split(/[\s,;]+/).filter(Boolean);
+    else if (text === "" && f.nullable) v = null;
+    else if (!/^-?\d+$/.test(text)) throw new Error(`${f.label}: expected a whole number`);
+    else if (Number(text) < min || Number(text) > max)
+      throw new Error(`${f.label}: must be between ${min} and ${max}`);
+    else v = Number(text);
+    if (JSON.stringify(v) !== JSON.stringify(f.value)) next.set(f, v);
+  }
+  for (const [f, v] of next) f.value = v;
+  return { changed: [...next.keys()].map((f) => f.key), rearmNightly: false, ...settings };
+}
 
 /** The suggestions once a Dismiss has touched them, and each dismissed card with its place. */
 let suggestions = null;
@@ -453,6 +494,27 @@ async function handle(req, res) {
     return json(res, 200, { ...s, restored: id, now: !!row });
   }
   if (get && resource === "suggestions" && !a && suggestions) return json(res, 200, suggestions);
+  if (resource === "settings" && req.method === "PUT") {
+    try {
+      return json(res, 200, putSettings(JSON.parse((await body(req)) || "{}")));
+    } catch (e) {
+      return json(res, 400, { error: e.message });
+    }
+  }
+  if (get && resource === "settings" && settings) return json(res, 200, settings);
+  // Adopt refuses a malformed id the server's way; a well-formed one goes no further here.
+  if (resource === "youtube" && a === "adopt" && req.method === "POST") {
+    const v = String(JSON.parse((await body(req)) || "{}").videoId ?? "").trim();
+    return json(res, 400, {
+      error: /^[A-Za-z0-9_-]{11}$/.test(v)
+        ? "stub: adopt goes no further"
+        : `"${v}" is not a YouTube video id (11 characters from the Studio URL)`,
+    });
+  }
+  if (get && resource === "youtube" && a === "uploads") {
+    const d = read(file("youtube/uploads")) ?? { uploads: [] };
+    return json(res, 200, { ...d, uploads: d.uploads.filter((u) => !offChannel(u.matchId)) });
+  }
   if (get && resource === "matches") return json(res, 200, matchesPayload());
   if (get && resource === "nightly" && !a) return json(res, 200, nightlyPayload());
   if (get && !a && GLOBAL.includes(resource)) return json(res, 200, read(file(resource)) ?? {});
@@ -469,8 +531,15 @@ async function handle(req, res) {
   return json(res, 404, { error: `stub: ${req.method} ${url.pathname} is not faked` });
 }
 
-/** `extra`: live ids whose own per-match answers are worth having -- an exported match, since the
-    scenario ids are archived by now and their sync/preview answers say "no export". */
+/** The newest exported matches with no scenario: captured whole, and what STUB_READY presents. */
+const freshIds = (matches) =>
+  (matches?.matches ?? [])
+    .filter((m) => m.exported && !m.hidden && !SCENARIOS[m.matchId])
+    .slice(0, 4)
+    .map((m) => String(m.matchId));
+
+/** `extra`: more live ids whose own per-match answers are worth having (the scenario ids are
+    archived by now, and their sync/preview answers say "no export"). */
 async function capture(base, dir, extra = []) {
   fs.mkdirSync(dir, { recursive: true });
   const get = async (p, to) => {
@@ -478,7 +547,8 @@ async function capture(base, dir, extra = []) {
     fs.writeFileSync(to, Buffer.from(await r.arrayBuffer()));
   };
   for (const p of GLOBAL) await get(p, path.join(dir, `${p.replace(/\//g, "_")}.json`));
-  for (const id of [...Object.keys(SCENARIOS), ...extra]) {
+  const fresh = freshIds(read(path.join(dir, "matches.json")));
+  for (const id of new Set([...Object.keys(SCENARIOS), ...fresh, ...extra])) {
     fs.mkdirSync(path.join(dir, id), { recursive: true });
     for (const p of PER_MATCH) await get(`${p}/${id}`, path.join(dir, id, `${p.replace(/\//g, "_")}.json`));
   }
@@ -492,6 +562,10 @@ if (process.argv[2] === "capture") {
     process.exit(1);
   });
 } else {
+  // STUB_READY=n (at most 4): that many fresh matches waiting for hooks and not on the channel --
+  // the "ready" matches the live server rarely has (run-all.sh).
+  for (const id of freshIds(read(file("matches"))).slice(0, Number(process.env.STUB_READY || 0)))
+    SCENARIOS[id] = { preview: true };
   const port = Number(process.env.PORT || 8099);
   http
     .createServer((req, res) =>

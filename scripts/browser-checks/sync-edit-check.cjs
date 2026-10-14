@@ -28,14 +28,14 @@ const { launchFor } = require("./launch.cjs");
     const meta = await (await page.request.get(`${base}/api/sync/${id}`)).json();
     check("the match reports both POVs", !!meta.left.nickname && !!meta.right.nickname);
     check("match start is the anchor", meta.anchorSec === 10, String(meta.anchorSec));
-    if (!meta.left.clip || !meta.right.clip) {
-      console.log("PASS sync-edit -- POV clips are gone, nothing to compare");
-      await browser.close();
-      process.exit(ok ? 0 : 1);
-    }
-
     const at = meta.sync ? meta.sync.left : meta.fallback;
-    const a = await frame(`side=left&t=5&offset=${at}`);
+    const a = meta.left.clip && meta.right.clip ? await frame(`side=left&t=5&offset=${at}`) : null;
+    // No clip to draw from (archived off the disk, or the stub, which has none): a skip, not a pass.
+    if (a === null || a.status === 404) {
+      console.log(`nothing to compare: ${a ? String(a.body).slice(0, 120) : "the POV clips are gone"}`);
+      await browser.close();
+      process.exit(ok ? 3 : 1);
+    }
     check("a frame is a JPEG", a.status === 200 && /image\/jpeg/.test(a.type), `${a.status} ${a.type}`);
     check("and is not empty", a.body.length > 2000, `${a.body.length} bytes`);
     check("it is not cached", true);
