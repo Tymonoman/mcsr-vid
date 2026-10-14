@@ -146,7 +146,14 @@ assert.ok(
 // "not a single death".
 assert.ok(buildHookSuggestions(input({ deaths: 0 })).includes("Not a single death between them"));
 
-assert.ok(buildHookSuggestions(input({ deaths: 4 })).includes("4 deaths and still this close"));
+assert.ok(buildHookSuggestions(input({ deaths: 4, finishMarginMs: 5_000 })).includes("4 deaths and still this close"));
+// "Still this close" takes the "Decided by" chip's <10s bar: not the default 30s, a 2-minute
+// finish, or a DNF.
+for (const finishMarginMs of [30_000, 120_000, null])
+  assert.ok(
+    !buildHookSuggestions(input({ deaths: 4, finishMarginMs })).some((t) => /still this close/.test(t)),
+    `no "still this close" at margin ${finishMarginMs}`,
+  );
 
 // A DNF is normal (the loser stops once the winner is done), so it must not outrank real drama.
 const dnf = buildHookSuggestions(input({ finishMarginMs: null, panelLeadChanges: 3 }));
@@ -455,6 +462,11 @@ assert.ok(
     "It ended in a forfeit",
   ),
 );
+// ...nor as a pace record: on a forfeit `resultMs` is the forfeit's moment, so a 5:40 forfeit
+// is no "sub-6 to win it".
+const ff = buildHookSuggestions(input({ resultMs: 340_000, finishMarginMs: null }, { forfeited: true }));
+assert.ok(!ff.some((t) => /sub-\d+ to win/i.test(t)), `no pace chip on a forfeit: ${ff.join(" | ")}`);
+assert.ok(ff.includes("It ended in a forfeit"));
 
 // Never more than the caller asked for.
 assert.ok(buildHookSuggestions(input({ leadChanges: 6, deaths: 6, maxSwingMs: 90_000 }), 2).length <= 2);

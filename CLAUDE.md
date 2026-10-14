@@ -216,7 +216,8 @@ uploads. Client-only changes need just a reload.
   lead (`metrics.splits`), not the raw step that also fires on a widening lead; lead-change is the
   numberless "Does the lead ever settle?" (excludes off-panel splits and the dragon); "not a
   single death" counts every death-screen entry, not just real deaths; the DNF fallback never
-  says "reached" the dragon, only **killed**. A joined series' chips read the game that actually
+  says "reached" the dragon, only **killed**; no "sub-N to win it" on a forfeit, no "N deaths and
+  still this close" unless the margin is under 10s. A joined series' chips read the game that actually
   decided it, not game 1's. `midRollCtaAtSec` (Settings → Publishing, default 90, null=none)
   shows SUBSCRIBE for `midRollCtaSec` (4)s at the first split. `titleNames` (default
   `{ Pinne: "Skycrab", lowk3y_: "lowkey" }`) spells two players the broadcast's way, title only.

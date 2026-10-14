@@ -219,11 +219,15 @@ function candidates(input: HookInput): Candidate[] {
   // count once there has been at least one on-screen death (8 Oct 2026 chip-truth review:
   // `deaths === 0` alone was false in 8 of 10 proposals — 12730175's five resets, 13766294's one).
   if (onScreenDeaths(match) === 0) out.push({ text: "Not a single death between them", weight: 40 });
-  else if (deaths >= 4) out.push({ text: `${deaths} deaths and still this close`, weight: 55 });
+  // "Still this close" is a closeness claim, so it takes the "Decided by" chip's own bar (<10s);
+  // a DNF or a minutes-wide finish is not close however many deaths it had.
+  else if (deaths >= 4 && finishMarginMs !== null && finishMarginMs < 10_000)
+    out.push({ text: `${deaths} deaths and still this close`, weight: 55 });
 
   // The actual minute, not "sub-10": "SUB 7" and "Insane 6:51" both ran ~1.5x the competitor's
-  // median, and a sub-8 is news in a way a sub-10 no longer is.
-  if (resultMs > 0 && resultMs < 600_000) {
+  // median, and a sub-8 is news in a way a sub-10 no longer is. Never on a forfeit: there
+  // `resultMs` is the moment of the forfeit (raceGap.ts), not a finish time.
+  if (!match.forfeited && resultMs > 0 && resultMs < 600_000) {
     const minute = Math.floor(resultMs / 60_000) + 1;
     out.push({ text: `A sub-${minute} to win it`, weight: minute <= 8 ? 90 : 57 });
   }

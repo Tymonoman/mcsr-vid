@@ -555,6 +555,14 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   Pinned against real match/series data (fixtures `src/fixtures/match-{13560037,13782182,
   13766294}.json`, and the real edcr-lauveer Round of 16 record in `series.test.ts`), not a live
   write.
+- **Two more chip-truth fixes, 14 Oct 2026** (edge-case sweep): **the pace chip skips a forfeit**
+  — `resultMs` is `match.result.time`, which on a forfeit is the forfeit's moment (`raceGap.ts`),
+  so a 5:40 forfeit got "A sub-6 to win it" at weight 90, above its own "It ended in a forfeit".
+  Ranked suggestions drop forfeits, but a playoff forfeit with a winner (≥60s, `playoffs.ts`), the
+  queue, creator watch and `POST /api/render` still reach one, and from there the chip becomes the
+  cold-start title hook, the auto-hooks fallback and the unattended T&C caption ("SUB-6").
+  **"N deaths and still this close" needs a margin under 10s** — the "Decided by" chip's own bar
+  for close; it had gated on `deaths >= 4` alone, so it fired on a DNF or a minutes-wide finish.
 - **A subscribe line during the race** (`midRollCtaAtSec`, Settings → Publishing; default 90,
   null = none): the post-roll card in the meta column reaches 25–45% of viewers, the first split
   (~90 s) 50–60% (`npm run retention`, 22 Sept 2026). The meta column shows SUBSCRIBE for
