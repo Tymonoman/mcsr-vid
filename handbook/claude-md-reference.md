@@ -466,7 +466,10 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   `POST /api/render/:id` (`matchIsBlocked`, `src/dashboard/matchStatus.ts`: the API's pair, else
   `blockedOnDisk` on an archived directory) and `POST /api/series/:id/render` refuse before the fire-and-forget run even starts, and `renderSeries`
   itself refuses too (`{kind:"blocked"}`, `src/playoffs/series.ts`) — the one place both that route
-  and `npm run series` settle through. `hasBlockedPlayer` (`youtubeUpload.ts`) reads
+  and `npm run series` settle through. `runPipeline` (`src/pipeline/pipeline.ts`) refuses
+  too, right after the match fetch and before VOD discovery or any write, so the callers with no
+  gate of their own — `npm run batch`, `npm run generate-project`, the TUI — never download a
+  blocked runner's footage. `hasBlockedPlayer` (`youtubeUpload.ts`) reads
   `povNicknamesOnDisk`, the same disk-only POV-clip reader `matchStatusFor` itself uses, so a
   generated MP4 (`overlay-timer.mp4`, `final-<id>.mp4`, …) is never mistaken for a player. The
   operator, 2 Oct 2026, after Aquacorde commented that he does not give permission for his footage

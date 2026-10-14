@@ -206,7 +206,8 @@ uploads. Client-only changes need just a reload.
   today", never uploaded (long-form or Short), never gets hooks saved, never rendered by `npm run
   short`/`short:hand` even by hand, never a past-hook style example. `finishOnYouTube` carries the
   refusal to Adopt/Finish/nightly-retry alike; Adopt also refuses before `videos.update`;
-  `POST /api/render` and `POST /api/series/:id/render` refuse before the run starts.
+  `POST /api/render` and `POST /api/series/:id/render` refuse before the run starts; `runPipeline`
+  itself refuses right after the match fetch, so `npm run batch`/`generate-project` and the TUI do too.
 - **Rival posts** (`rivalChannelHandle` default `mcsrmatches`): its public feed, never our token;
   matched to cards by pair/date; a posted match sorts after fresh ones.
 - **Hook chips** (`src/pipeline/hooks.ts`) lead with the match's stake (margin, lead change,

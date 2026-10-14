@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
-import { config, matchDir } from "../config.js";
+import { blockedIn, config, matchDir } from "../config.js";
 import { getMatch, getUser, getVersus, parseMatchId } from "../api/mcsrApi.js";
 import {
   ANCHOR_SEC,
@@ -153,8 +153,14 @@ async function runStages(
 
   emit(active("fetch"));
   const matchId = parseMatchId(input);
+  const fetched = await getMatch(matchId);
+  // Here, not in each caller: batch, the TUI and generate-project reach this ungated, and a
+  // blocked runner's VODs are the footage they withdrew. Before discovery and any write.
+  if (blockedIn(fetched.players.map((p) => p.nickname))) {
+    throw new Error(`match ${matchId} has a blocked player — it is not rendered`);
+  }
   // Private rooms attach no VOD and ranked matches often only one; the rest are found by time.
-  const match = await withDiscoveredVods(await getMatch(matchId));
+  const match = await withDiscoveredVods(fetched);
 
   const [playerLeft, playerRight] = match.players;
   if (!playerLeft || !playerRight) {
