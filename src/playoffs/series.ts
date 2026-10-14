@@ -194,6 +194,8 @@ export type AssembleResult =
   | { kind: "not-a-series"; matchId: number }
   | { kind: "blocked"; matchId: number }
   | { kind: "incomplete"; firstGameId: number; missing: number[] }
+  /** No seed has taken the series yet: nothing joins until one has. Waiting, not a failure. */
+  | { kind: "undecided"; firstGameId: number }
   | { kind: "stale"; firstGameId: number; stale: number[] }
   /**
    * Every export exists and is current, but not all the same resolution — `exportUpscale1440`
@@ -362,6 +364,17 @@ const syncAtMs = (matchId: number): number | null => {
 };
 
 /**
+ * An export:fast of this game is writing its `.part.mp4` now. ffmpeg writes it continuously, so
+ * only a recently touched one counts: a failed or killed export (a restart mid-encode) leaves its
+ * `.part` behind for good, and taking that for a live encode wedged the series' join forever.
+ */
+const PART_FRESH_MS = 2 * 60_000;
+const exportInFlight = (final: string): boolean => {
+  const at = statSync(final.replace(/\.mp4$/, ".part.mp4"), { throwIfNoEntry: false })?.mtimeMs;
+  return at !== undefined && Date.now() - at < PART_FRESH_MS;
+};
+
+/**
  * Whether the joined series still holds this game as it should be: the series exists, the
  * record names the game at this position, and the game's sync has not moved since the join.
  * Such a game's export is recoverable from the series (`extractFromSeries`) and need not be
@@ -419,7 +432,7 @@ export async function assembleSeries(
     !series.slot.participants.some((p) => p.roundScore >= firstTo)
   ) {
     log(`series ${first.matchId}: not joined — no seed has taken the series yet`);
-    return { kind: "incomplete", firstGameId: first.matchId, missing: [] };
+    return { kind: "undecided", firstGameId: first.matchId };
   }
   const outDir = matchDir(first.matchId);
   const outPath = seriesOutputPath(outDir, first.matchId);
@@ -439,7 +452,7 @@ export async function assembleSeries(
     }
     // An export in flight is the newer copy of this game: its own settle joins it, and nothing is
     // taken out of the series over it.
-    if (existsSync(final.replace(/\.mp4$/, ".part.mp4"))) {
+    if (exportInFlight(final)) {
       missing.push(g.matchId);
       continue;
     }
@@ -677,7 +690,7 @@ export interface SeriesRunners {
 
 export interface SeriesProgress {
   firstGameId: number;
-  /** "game 2 of 4 · render", "joining", "done", "failed: …". */
+  /** "game 2 of 4 · render", "joining", "done", "waiting: series not decided", "failed: …". */
   stage: string;
   startedAt: string;
   done: boolean;
@@ -750,6 +763,12 @@ export async function renderSeries(
     }
     step("joining");
     const joined = await assembleSeries(first.matchId, { log: runners.log, ...seams });
+    // Every game rendered and exported, the series still being played: the join waits for it.
+    if (joined.kind === "undecided") {
+      step("waiting: series not decided");
+      progress.done = true;
+      return joined;
+    }
     if (joined.kind !== "joined" && joined.kind !== "current") return fail(`join: ${JSON.stringify(joined)}`);
 
     progress.stage = "done";

@@ -100,6 +100,7 @@ const {
   hookFactsMatchId,
   readSeriesRecord,
   renderSeries,
+  seriesProgress,
   seriesShortGame,
 } = await import("./series.js");
 const {
@@ -252,13 +253,22 @@ const shelfHidden = (): number[] => {
     probe: async () => 600,
     extract: async (_s: string, at: number) => void calls.push(at),
   });
-  assert.deepEqual(undecided, { kind: "incomplete", firstGameId: 101, missing: [] });
+  assert.deepEqual(undecided, { kind: "undecided", firstGameId: 101 });
   assert.ok(
     !existsSync(path.join(dir(101), "series.json")) && !existsSync(path.join(dir(101), "series-101.mp4")),
   );
   assert.ok(existsSync(final(101)) && existsSync(final(102)), "the games' exports are kept");
   assert.ok(!shelfHidden().includes(102), "game 2 stays on the list");
   assert.ok(!existsSync(path.join(dir(101), "match-101.title.txt")), "game 1 is not retitled as the series");
+  // Every game rendered and exported but no seed through: renderSeries waits, it has not failed.
+  const waiting = await renderSeries(
+    101,
+    { renderGame: async () => "rendered", exportGame: async () => "exported", log: () => {} },
+    { join: async () => assert.fail("joined a series nobody has taken yet"), probe: async () => 600 },
+  );
+  assert.deepEqual(waiting, { kind: "undecided", firstGameId: 101 });
+  assert.equal(seriesProgress(101)?.stage, "waiting: series not decided");
+  assert.equal(seriesProgress(101)?.done, true, "settled: the board offers the button again");
   // The bracket's own score decides it when a game is not among those found (a short forfeit).
   const { _resetPlayoffsForTest } = await import("./playoffs.js");
   slot.participants[0]!.roundScore = 3;
@@ -472,9 +482,14 @@ assert.deepEqual(extracted, [], "a current series takes no game back out of the 
 }
 
 // A newer export of one game re-joins: the other two come back out of the series at their
-// recorded offsets, the three are joined, the exports go again.
+// recorded offsets, the three are joined, the exports go again. Game 2's `.part.mp4` left by a
+// failed or killed export hours ago is no encode in flight: it must not wedge the re-join.
 await new Promise((r) => setTimeout(r, 20));
 writeFileSync(final(103), "xx");
+const leftover = path.join(dir(102), "final-102.part.mp4");
+writeFileSync(leftover, "killed mid-encode");
+const { utimesSync } = await import("node:fs");
+utimesSync(leftover, new Date(Date.now() - 3 * 3600_000), new Date(Date.now() - 3 * 3600_000));
 joins.length = 0;
 extracted.length = 0;
 const rejoined = await assembleSeries(101, seams);
@@ -482,6 +497,8 @@ assert.equal(rejoined.kind, "joined");
 assert.equal(joins.length, 1);
 assert.deepEqual(extracted, [0, 600], "games 1 and 2 extracted at their chapter offsets");
 assert.ok(!existsSync(final(103)));
+rmSync(leftover);
+console.log("OK: a stale .part from a dead export does not hold the re-join");
 
 // A game whose sync moved after the join is stale, and the series says which one.
 writeFileSync(
@@ -489,7 +506,6 @@ writeFileSync(
   JSON.stringify({ left: 1, right: 1, confidence: 1, detail: "", source: "manual" }),
 );
 await new Promise((r) => setTimeout(r, 20));
-const { utimesSync } = await import("node:fs");
 const later = new Date(Date.now() + 5000);
 utimesSync(path.join(dir(102), "sync.json"), later, later);
 const staleNow = await assembleSeries(101, seams);
