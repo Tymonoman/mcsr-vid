@@ -227,7 +227,12 @@ views brought 0 subscribers.
   not); each proposal passes `hookProblem` or is dropped with the reason logged; `suggestions.title`
   lists them first (the dashboard's chips are held to the same rule, so one cannot reach the panel
   either). The operator's calls (24 Sept): when the model's window is rejected its title hooks go
-  with it — the heuristic fallback carries none.
+  with it — the heuristic fallback carries none. `hookProblem` is a word-list check, not a reader:
+  its spoiler half (`HOOK_SPOILER` + `spoilsTheResult`) catches the usual result verbs ("wins",
+  "chokes", "finishes first", "seals it"), not every paraphrase ("gets there first", "never catches
+  up" pass), so the operator's Save is the real gate. Its seed/rank/elo check is a pattern list
+  (`HOOK_SEED_RANK_ELO`: #N, Nth seed, top seed, top N, elo, rank N, no./number N, lcq, two 3–4
+  digit figures) and catches the usual phrasings, not every one.
 - **Never a nickname, label or epithet for a runner, "vs" or not** (`hookLabelProblem`,
   `src/pipeline/hooks.ts`; `hookProblem`'s `players` argument, `src/shorts/videoPick.ts`; `withHook`'s,
   `src/pipeline/title.ts`; 2 Oct 2026). The operator, after "LCQ vs YN | lauveer vs edcr" and "ASIAN

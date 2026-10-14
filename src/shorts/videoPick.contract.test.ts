@@ -40,22 +40,6 @@ import { computeMetrics } from "../pipeline/matchScore.js";
 import { pickFile, SHORT_MAX_MS, SHORT_MIN_MS, type ShortPick } from "./shortPlan.js";
 import { hookProblem, pickErrorFile, pickShortMoment, PROXY_FILE } from "./videoPick.js";
 
-/**
- * A doc clause the code does not keep yet: reported, not fatal, so the suite stays green until the
- * fix. Once the code keeps it the probe fails, so it becomes a plain assertion rather than a pass
- * that can never fail.
- */
-async function deviation(clause: string, fn: () => unknown): Promise<void> {
-  try {
-    await fn();
-  } catch (err) {
-    if (!(err instanceof assert.AssertionError)) throw err;
-    console.log(`DEVIATION: ${clause} — ${err.message.split("\n")[0]}`);
-    return;
-  }
-  assert.fail(`${clause}: the code keeps this now — turn the deviation() probe into a plain assertion`);
-}
-
 const tmp = mkdtempSync(path.join(tmpdir(), "videopick-contract-"));
 config.mediaDir = path.join(tmp, "media");
 mkdirSync(config.mediaDir);
@@ -396,21 +380,21 @@ assert.equal(
   const r = await ask([{ ...good, titleHooks: elo }]);
   assert.equal(r.pick.source, "agy", r.error ?? "");
   assert.equal(r.pick.titleHooks, undefined, `kept as title hooks: ${JSON.stringify(r.pick.titleHooks)}`);
-  // Invented runners, so the line states no real match's result. spoilsTheResult (hooks.ts) is a
-  // word list with no "finishes first".
+  for (const h of elo) assert.notEqual(hookProblem(h), null, `hookProblem(${JSON.stringify(h)}) is null`);
+  // Invented runners, so the line states no real match's result. Kept since spoilsTheResult
+  // (hooks.ts) gained "finish(es|ed) first" (a deviation until then). It is a word list: the usual
+  // result verbs, not every paraphrase — the operator's Save is the real gate.
   const runners = [{ nickname: "RunnerOne" }, { nickname: "RunnerTwo" }];
-  await deviation("Nothing names the winner: no winner in a hook (CLAUDE.md House rules)", () =>
-    assert.notEqual(
-      hookProblem("RUNNERONE FINISHES FIRST", undefined, runners),
-      null,
-      `hookProblem("RUNNERONE FINISHES FIRST") is null`,
-    ),
+  assert.notEqual(
+    hookProblem("RUNNERONE FINISHES FIRST", undefined, runners),
+    null,
+    `hookProblem("RUNNERONE FINISHES FIRST") is null`,
   );
   // The plain spoiler words are refused, as the docs promise.
   for (const h of ["RUNNERONE WINS IT", "RUNNERTWO CHOKES", "RUNNERONE TAKES IT"])
     assert.equal(hookProblem(h, undefined, runners), "it gives the result away", h);
   console.log(
-    "OK P11–P12: elo/top seed/rank title hooks dropped; the plain spoiler words are refused (P12 paraphrase probed)",
+    "OK P11–P12: elo/top seed/rank title hooks dropped; the plain spoiler words and \"finishes first\" are refused",
   );
 }
 
