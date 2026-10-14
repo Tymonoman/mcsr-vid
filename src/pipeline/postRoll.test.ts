@@ -85,5 +85,28 @@ const flat = (value: number, n: number) => Array<number>(n).fill(value);
     rmSync(dir, { recursive: true, force: true });
   }
 }
+{
+  // A reaction that never quiets down keeps the whole allowance — also when the clip ends right at
+  // it, as the VOD window does. Differencing every second frame gave one value fewer than seconds
+  // decoded and cut the last second.
+  const dir = mkdtempSync(path.join(tmpdir(), "postroll-"));
+  const clip = path.join(dir, "loud.mp4");
+  try {
+    execFileSync("ffmpeg", [
+      "-v", "error", "-y",
+      "-f", "lavfi", "-i", "testsrc=size=64x36:rate=10:duration=12",
+      "-f", "lavfi", "-i", "sine=frequency=440:duration=12",
+      "-c:v", "libx264", "-c:a", "aac", clip,
+    ]); // prettier-ignore
+    // runEnd 2 s: the 12 s clip ends exactly at the 10 s allowance.
+    for (const runEndSec of [0, 2]) {
+      const w = await measureTail(clip, runEndSec, 10);
+      assert.equal(w.motion.length, 10, `one motion reading per second (run end ${runEndSec} s)`);
+      assert.equal(suggestTailSec(w, { minSec: 5, maxSec: 10 }), 10);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 console.log("postRoll: all checks passed");

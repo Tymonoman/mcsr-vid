@@ -94,14 +94,18 @@ interface BuiltCommand {
  * repeated — decoding the stills per frame measured 74s of CPU per 1800 frames, more than both
  * 1080p60 POV decodes put together, and it is invisible until measured.
  *
- * `settb` must come before `setpts`: `TB` in `setpts` would otherwise resolve against the image
+ * `settb` must come before `setpts`: the pts would otherwise be read against the image
  * demuxer's 1/25 default, producing non-monotonic timestamps that framesync silently drops
  * downstream (measured: 1594 of 3400 frames gone, with no error).
+ *
+ * The pts is the frame number itself, never `N/fps/TB`: setpts truncates, and 123/60*60 comes
+ * out 122.99999 → 122, so ~2% of frames repeat a pts and `trim=start_frame` cuts less time than
+ * the audio's atrim — the picture ran 1–3 frames behind the sound.
  */
 function stillChain(index: number, width: number, height: number, frames: number, fps: number): string {
   return (
     `[${index}:v]scale=${width}:${height}:flags=bilinear,format=yuv420p,setsar=1,` +
-    `loop=loop=${Math.max(0, frames - 1)}:size=1:start=0,settb=1/${fps},setpts=N/${fps}/TB`
+    `loop=loop=${Math.max(0, frames - 1)}:size=1:start=0,settb=1/${fps},setpts=N`
   );
 }
 
@@ -186,7 +190,7 @@ export function buildFastExportCommand(input: FastExportInput): BuiltCommand {
 
   chains.push(
     `[3:v]scale=${RTA_COL_WIDTH}:${BOTTOM_BAND_HEIGHT}:flags=bilinear,format=yuv420p,setsar=1,` +
-      `fps=${fps},settb=1/${fps},setpts=N/${fps}/TB[RTA]`,
+      `fps=${fps},settb=1/${fps},setpts=N[RTA]`,
   );
   chains.push(`[SPL][RTA]hstack=inputs=2[BAND]`);
   chains.push(`[TOP][POV][BAND]vstack=inputs=3[STAGE]`);
@@ -200,7 +204,7 @@ export function buildFastExportCommand(input: FastExportInput): BuiltCommand {
     const frames = Math.max(1, Math.round(input.countdownTeaserEndSec! * fps) - from);
     chains.push(
       `[${TEASER_INDEX}:v]scale=${STAGE_WIDTH}:${STAGE_HEIGHT}:flags=bilinear,format=yuva420p,setsar=1,` +
-        `loop=loop=${frames - 1}:size=1:start=0,settb=1/${fps},setpts=N/${fps}/TB+${from}[CT]`,
+        `loop=loop=${frames - 1}:size=1:start=0,settb=1/${fps},setpts=N+${from}[CT]`,
     );
     chains.push(`${stage}[CT]overlay=0:0:format=yuv420:eof_action=pass:repeatlast=0[STAGEC]`);
     stage = "[STAGEC]";
@@ -213,7 +217,7 @@ export function buildFastExportCommand(input: FastExportInput): BuiltCommand {
   // The only genuine alpha composite in the whole graph. eof_action=pass so the stage continues
   // once the card is over (introSec, 7 s by default); repeatlast=0 so its last frame is not held over the match.
   chains.push(
-    `[4:v]format=yuva420p,setsar=1,fps=${fps},settb=1/${fps},setpts=N/${fps}/TB+${input.introOffsetSec}/TB[INTRO]`,
+    `[4:v]format=yuva420p,setsar=1,fps=${fps},settb=1/${fps},setpts=N+${input.introOffsetSec}/TB[INTRO]`,
   );
   // Anything that still has to happen to the composited frame (the upscale, then VAAPI's
   // upload) runs after the overlay, so off leaves this overlay's own output label — and the

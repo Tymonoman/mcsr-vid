@@ -33,14 +33,17 @@ assert.equal(seekBefore("/m/right.mp4"), right.inSec.toFixed(3));
 assert.equal(left.inSec, 140, "150s offset minus the 10s anchor");
 assert.ok(Math.abs(right.inSec - 137.3) < 1e-9);
 
-// settb BEFORE setpts on every still chain. Reversed, `TB` resolves against the image demuxer's
+// settb BEFORE setpts on every still chain. Reversed, the pts reads against the image demuxer's
 // 1/25 default and framesync silently drops about half the frames downstream — no error, just a
 // video missing 1594 of 3400 frames.
-for (const chain of filter.split(";").filter((c) => c.includes("setpts=N/"))) {
+for (const chain of filter.split(";").filter((c) => /setpts=N\b/.test(c))) {
   const tb = chain.indexOf("settb=");
   const pts = chain.indexOf("setpts=");
   assert.ok(tb >= 0 && tb < pts, `settb must precede setpts in: ${chain}`);
 }
+// The frame number is the pts, never N/fps/TB: setpts truncates, 123/60*60 = 122.99999 → 122, and
+// the repeated pts left the picture 1–3 frames behind the sound once the head trim counted frames.
+assert.ok(!/setpts=N\/\d+\/TB/.test(filter), "frame-count setpts must not divide");
 
 // Stills are decoded once and looped, not decoded per frame. Decoding them per frame measured
 // more CPU than both 1080p60 POV decodes put together.
@@ -188,7 +191,7 @@ assert.throws(
   const ctIndex = teased.filter((a) => a === "-i").length - 1;
   assert.equal(teased[teased.lastIndexOf("-i") + 1], "/m/ct.png");
   assert.ok(cf.includes(`[${ctIndex}:v]scale=1920:1080`), cf);
-  assert.ok(cf.includes("loop=loop=179:size=1:start=0,settb=1/60,setpts=N/60/TB+420[CT]"), cf);
+  assert.ok(cf.includes("loop=loop=179:size=1:start=0,settb=1/60,setpts=N+420[CT]"), cf);
   assert.ok(cf.includes("[STAGE][CT]overlay=0:0:format=yuv420:eof_action=pass:repeatlast=0[STAGEC]"));
   assert.ok(cf.includes("[STAGEC]trim=start_frame=240"), "teaser first, on timeline seconds");
 
@@ -244,6 +247,52 @@ assert.throws(
   assert.ok(gof.includes("overlay=0:0:format=yuv420:eof_action=pass:repeatlast=0[STAGEI]"));
   assert.ok(gof.includes("[STAGEI]format=nv12,hwupload[V]"));
   assert.ok(!gof.includes("scale=2560:1440"));
+}
+
+{
+  // A blocked runner's match is never encoded. The Export button, the nightly's chainExport and the
+  // series all spawn this CLI, so the refusal lives in it — before any probe, encode or write.
+  const { mkdtempSync, readFileSync, writeFileSync, existsSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const path = await import("node:path");
+  const { spawnSync } = await import("node:child_process");
+  const { fileURLToPath } = await import("node:url");
+  const root = fileURLToPath(new URL("../..", import.meta.url));
+  const tmp = mkdtempSync(path.join(tmpdir(), "export-blocked-"));
+  const id = 990001;
+  const match = JSON.parse(readFileSync(path.join(root, "src/fixtures/match-13446429.json"), "utf8"));
+  match.id = id;
+  match.players[0].nickname = "Aquacorde";
+  // The MCSR API answers from the fixture; anything else is a test failure, not a network call.
+  writeFileSync(
+    path.join(tmp, "stub.mjs"),
+    `const body = ${JSON.stringify(JSON.stringify({ status: "success", data: match }))};\n` +
+      `globalThis.fetch = async (url) => { if (String(url).includes("/matches/${id}")) return new Response(body); throw new Error("no network: " + url); };\n`,
+  );
+  writeFileSync(
+    path.join(tmp, "config.json"),
+    JSON.stringify({ mediaDir: tmp, blockedPlayers: ["Aquacorde"] }),
+  );
+  const cli = spawnSync(
+    path.join(root, "node_modules", ".bin", "tsx"),
+    [
+      "--import",
+      path.join(tmp, "stub.mjs"),
+      path.join(root, "src/pipeline/exportFastCli.ts"),
+      String(id),
+      "--cpu",
+      "--seconds=1",
+    ],
+    {
+      env: { ...process.env, MCSR_CONFIG: path.join(tmp, "config.json"), MCSR_ARCHIVE_DIR: tmp },
+      encoding: "utf8",
+      timeout: 60_000,
+    },
+  );
+  assert.notEqual(cli.status, 0, cli.stderr);
+  assert.match(cli.stderr, /blocked player/);
+  assert.ok(!existsSync(path.join(tmp, String(id), `smoke-${id}.mp4`)), "nothing encoded");
+  rmSync(tmp, { recursive: true, force: true });
 }
 
 console.log("exportFast: all checks passed");
