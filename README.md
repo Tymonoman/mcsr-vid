@@ -92,7 +92,7 @@ flowchart LR
   night at the lab.
 - **Auto-hooks** (`autoHooksAfterHours`): saves hooks the operator left unsaved.
 - **The Studio worker** (`src/youtube/studioWorker.ts`, `npm run studio -- worker`): a real
-  Chrome signed in to YouTube Studio as a channel Editor. Every ~20 minutes, outside the
+  Chrome signed in by hand to the channel's Studio (an Editor account is recommended, see CLAUDE.md). Every ~20 minutes, outside the
   nightly's hours, it pins the channel's own comment, adds an end screen, links each Short to its
   long-form, and starts and reads Test & Compare runs. It never changes anything set by
   hand and never signs in by itself. `scripts/studio-worker.sh` keeps it running.
@@ -151,7 +151,7 @@ commands (`dashboard`, `export:fast`, `short`, `short:hand`, `pick`, `series`, `
 | YouTube: upload, finish, pairing, analytics | an OAuth client (`YOUTUBE_CLIENT_SECRETS`, default `~/.claude/youtube_client_secrets.json`), then `npm run youtube-auth` to write `youtube-token.json` (`YOUTUBE_TOKEN_FILE`). Uploads also need `youtubeUploadEnabled` | repo root, config |
 | The Telegram bot | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` (no token: the bot does not start) | `.env` |
 | The bot's Claude Haiku | a `claude` CLI login: `claude setup-token`, then `CLAUDE_CODE_OAUTH_TOKEN` | `.env` |
-| The Studio worker | a Chrome profile signed in by hand as a channel Editor (the `studio-profile` volume), and `studioAutomation` or `--enable` | volume, config |
+| The Studio worker | a Chrome profile signed in by hand to the channel's Studio (the `studio-profile` volume; an Editor account is recommended), and `studioAutomation` or `--enable` | volume, config |
 | `npm run analytics` | the claude-youtube skill's own token and its Python packages | `~/.claude/` |
 | Nightly notifications | `nightlyNotifyUrl` | config |
 | Tests and CI | nothing | |
