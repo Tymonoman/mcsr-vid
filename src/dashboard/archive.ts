@@ -8,7 +8,7 @@
  * freeing space stays a separate, manual decision.
  */
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, renameSync } from "node:fs";
 import { statfs } from "node:fs/promises";
 import path from "node:path";
 import { config } from "../config.js";
@@ -102,9 +102,7 @@ export function archiveMatch(matchId: number, now: () => number = Date.now): Arc
   // is "this match is published, keep it" and would otherwise need the same test — the channel
   // scan re-pairs a Studio upload whenever its record is missing, and a re-upload of a re-export
   // would queue a second walk of 2.5 GB over CIFS for no change.
-  //
-  // ponytail: existence, not completeness — an rsync that died half way leaves a directory that
-  // reads as archived. Remove `<ARCHIVE_ROOT>/<id>` to force a fresh copy.
+  // `<id>/` exists only for a finished copy: rsync works in `<id>.partial/`, renamed on exit 0.
   if (isArchived(matchId)) return existing ?? { matchId, running: false, error: null, tookMs: null };
 
   const state: ArchiveState = { matchId, running: true, error: null, tookMs: null };
@@ -128,13 +126,14 @@ function copyToArchive(state: ArchiveState, now: () => number): Promise<void> {
     }
     const startedAt = Date.now();
     const src = `${path.resolve(config.mediaDir, String(matchId))}/`;
-    const dest = `${path.join(ARCHIVE_ROOT, String(matchId))}/`;
+    const final = path.join(ARCHIVE_ROOT, String(matchId));
+    const staging = `${final}.partial`;
     // --partial so an interrupted transfer resumes rather than restarting the biggest clip.
     // --exclude studio-*.png: the Studio pin step's before/after screenshots of the public watch
     // page (src/youtube/studioActions.ts `shot()`) — one more copy of "this Google account is
     // signed in here" than the profile-isolation design intends, and publishSet.ts's own bundle
     // already leaves them out the same way (its RSYNC_INCLUDES allowlist never names them).
-    const proc = spawn("rsync", ["-a", "--partial", "--exclude", "studio-*.png", src, dest], {
+    const proc = spawn("rsync", ["-a", "--partial", "--exclude", "studio-*.png", src, `${staging}/`], {
       stdio: ["ignore", "ignore", "pipe"],
     });
 
@@ -148,7 +147,14 @@ function copyToArchive(state: ArchiveState, now: () => number): Promise<void> {
       state.running = false;
       state.tookMs = Date.now() - startedAt;
       if (code !== 0) state.error = stderr.trim().split("\n").slice(-1)[0] || `rsync exited ${code}`;
-      else archivedCache.set(matchId, true); // known good without another stat.
+      else {
+        try {
+          renameSync(staging, final);
+          archivedCache.set(matchId, true); // known good without another stat.
+        } catch (err) {
+          state.error = (err as Error).message;
+        }
+      }
       console.error(
         state.error
           ? `archive ${matchId}: FAILED — ${state.error}`

@@ -287,9 +287,10 @@ reload). After merging server changes, `POST /api/restart-when-idle`; a hand
 - **The NAS** (`//192.168.0.240/homelab`, CIFS): `/archive` holds published matches (recoverable
   delete). `/home-media` is the whole share, **the operator's movies, music and backups: never
   touch them**, except `/home-media/mcsr-replayoffs/` (the pipeline's own: `vods/`, `research/`,
-  `backups/`; at most 300 GB, every write logged to `ledger.jsonl`). **Transfers run only
-  03:00–08:00 Warsaw** (`inNasWindow`, DST-correct); outside it a copy defers to the next night's
-  sweep. Free SSD space by archiving first, not by deleting.
+  `backups/`; at most 300 GB, every write logged to `ledger.jsonl`). **The dashboard's transfers
+  run only 03:00–08:00 Warsaw** (`inNasWindow`, DST-correct); outside it an automatic copy defers
+  to the next night's sweep. `npm run archive -- <id>` is a hand copy that runs at once; run it
+  inside the window. Free SSD space by archiving first, not by deleting.
 
 ## Telegram bot
 

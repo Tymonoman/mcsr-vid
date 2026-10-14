@@ -31,8 +31,8 @@
 //  P15 `/home-media/mcsr-replayoffs/` writes each log a `ledger.jsonl` line, ≤300 GB. No code
 //      writes there today (sessions do it by hand), so only a tripwire is possible: any module
 //      that ever names the folder must also name the ledger.
-//  P16 README's `npm run archive -- <id>` copies with rsync and deletes nothing — and, being a
-//      transfer, it too is bound by the 03:00–08:00 window.
+//  P16 README's `npm run archive -- <id>` copies with rsync and deletes nothing — a hand copy that
+//      runs at once, with no window check, and the docs say so (run it inside the window).
 //
 // Run: MCSR_CONFIG=/nonexistent/mcsr-vid.config.json npx tsx src/dashboard/archive.contract.test.ts
 import assert from "node:assert/strict";
@@ -73,19 +73,6 @@ const fixtureIds = readdirSync(path.join(repo, "src/fixtures"))
   .map((f) => /^match-(\d+)\.json$/.exec(f)?.[1])
   .filter((id): id is string => !!id)
   .map(Number);
-
-/** Records a doc clause the code does not keep, without failing the suite (triage decides). */
-const deviations: string[] = [];
-async function deviation(clause: string, check: () => void | Promise<void>): Promise<void> {
-  try {
-    await check();
-  } catch (err) {
-    if (!(err instanceof assert.AssertionError)) throw err;
-    const observed = err.message.split("\n")[0];
-    deviations.push(clause);
-    console.log(`DEVIATION: ${clause} — ${observed}`);
-  }
-}
 
 /** console.error lines while `fn` runs — the deferred line goes there. */
 async function capturingErrors<T>(fn: () => T | Promise<T>): Promise<{ value: T; lines: string[] }> {
@@ -404,48 +391,33 @@ const failedId = 13766294;
 {
   const src = seedMatch(failedId);
   // One file the copy cannot read: rsync copies the rest, exits non-zero, and leaves a partial
-  // <id>/ on the mount — what a CIFS I/O error mid-transfer leaves behind.
+  // folder on the mount — what a CIFS I/O error mid-transfer leaves behind. It stays staged in
+  // <id>.partial/, so <id>/ never exists for a copy that did not finish.
   const unreadable = path.join(src, `final-${failedId}.mp4`);
   chmodSync(unreadable, 0o000);
   const state = await capturingErrors(() => archiveMatch(failedId, INSIDE)).then((r) => r.value);
   await waitFor(() => !state.running, "the failing copy to finish");
   chmodSync(unreadable, 0o644);
   assert.ok(state.error, "the failure is reported on the state the dashboard shows");
-  assert.ok(
-    existsSync(path.join(nas, String(failedId))),
-    "precondition: a partial folder was left on the mount",
-  );
+  const staged = path.join(nas, `${failedId}.partial`);
+  assert.ok(existsSync(staged), "precondition: a partial folder was left on the mount");
   assert.equal(
-    existsSync(path.join(nas, String(failedId), `final-${failedId}.mp4`)),
+    existsSync(path.join(staged, `final-${failedId}.mp4`)),
     false,
     "precondition: the export is missing from it",
   );
+  assert.equal(existsSync(path.join(nas, String(failedId))), false, "the partial copy is not at <id>/");
   assert.equal(isArchived(failedId), false, "the same process does not count the failed copy as archived");
 
-  await deviation(
-    "sweepArchive covers every upload the NAS does not have yet (handbook, The NAS)",
-    async () => {
-      const queued: number[] = [];
-      await sweepArchive(NEXT_NIGHT, (matchId) => queued.push(matchId));
-      assert.deepEqual(
-        queued,
-        [failedId],
-        "the next night's sweep must queue the failed copy again; it queued none",
-      );
-    },
-  );
-  await deviation("/archive holds published matches (recoverable delete) (CLAUDE.md, The NAS)", async () => {
-    const result = await deleteMatch(failedId);
-    assert.equal(
-      result.archived,
-      false,
-      "a delete after a failed copy must not be reported recoverable; it was",
-    );
-  });
+  // sweepArchive covers every upload the NAS does not have yet (handbook, The NAS).
+  const queued: number[] = [];
+  await sweepArchive(NEXT_NIGHT, (matchId) => queued.push(matchId));
+  assert.deepEqual(queued, [failedId], "the next night's sweep queues the failed copy again");
+  // /archive holds published matches (recoverable delete) (CLAUDE.md, The NAS).
+  const result = await deleteMatch(failedId);
+  assert.equal(result.archived, false, "a delete after a failed copy is not reported recoverable");
 }
-console.log(
-  "OK: P13 — a failed copy reports its error (see DEVIATION lines for what the sweep and delete do next)",
-);
+console.log("OK: P13 — a failed copy reports its error, is queued again, and never reads as archived");
 
 // ============================================================================================
 // P14 + P15 + P16 — the share the pipeline must never touch, and the manual archive script
@@ -485,19 +457,23 @@ console.log(
     /--delete|--remove-source-files|\brm\b|\bmv\b/,
     "nothing is deleted on either side",
   );
-  await deviation(
-    "Transfers run only 03:00–08:00 Warsaw (CLAUDE.md, The NAS) — README's `npm run archive`",
-    () => {
-      assert.ok(
-        !/^sh -c '\s*rsync/.test(script) || /inNasWindow|archive\.(ts|js)/.test(script),
-        `npm run archive runs rsync straight away at any hour: ${script}`,
-      );
-    },
+  // A hand copy runs at once, with no window check — and both docs say so.
+  assert.match(script, /^sh -c '\s*rsync/, "npm run archive runs rsync straight away");
+  assert.match(
+    readFileSync(path.join(repo, "README.md"), "utf8"),
+    /`archive -- <id>`[^\n]*at once \(no 03:00–08:00 window check/,
+    "README says the hand copy skips the window",
+  );
+  assert.match(
+    readFileSync(path.join(repo, "CLAUDE.md"), "utf8"),
+    /`npm run archive -- <id>` is a hand copy that runs at once/,
+    "CLAUDE.md says the hand copy skips the window",
   );
 }
-console.log("OK: P14–P16 — no code names the operator's share; the manual archive script deletes nothing");
+console.log(
+  "OK: P14–P16 — no code names the operator's share; the hand archive script deletes nothing and runs at once",
+);
 
 rmSync(media, { recursive: true, force: true });
 rmSync(nas, { recursive: true, force: true });
-if (deviations.length) console.log(`${deviations.length} deviation(s) recorded for triage`);
 console.log("archive contract: all checks passed");
