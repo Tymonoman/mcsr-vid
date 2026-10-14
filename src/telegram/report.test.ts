@@ -85,6 +85,7 @@ const postMortemYpp = (over: Partial<Parameters<typeof projectYpp>[0]> = {}): Yp
           publishedAt: "2026-09-28T00:00:00Z",
           totalReplyCount: 0,
           replyAuthorsAreChannel: [],
+          replies: [],
           repliesTruncated: false,
         },
       ],
@@ -115,6 +116,7 @@ const postMortemYpp = (over: Partial<Parameters<typeof projectYpp>[0]> = {}): Yp
           publishedAt: "2026-09-28T00:00:00Z",
           totalReplyCount: 0,
           replyAuthorsAreChannel: [],
+          replies: [],
           repliesTruncated: false,
         },
       ],
@@ -242,6 +244,7 @@ const postMortemYpp = (over: Partial<Parameters<typeof projectYpp>[0]> = {}): Yp
     publishedAt: "2026-09-28T00:00:00Z",
     totalReplyCount: 0,
     replyAuthorsAreChannel: [],
+    replies: [],
     repliesTruncated: false,
   });
   const titles = {

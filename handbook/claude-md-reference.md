@@ -1166,8 +1166,9 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
   were public, since a typed hook saves with only a warning and nothing said so afterwards); the
   line is "Live title breaks a house rule: <videoId> — <problem>", never the hook, which may be the
   label; a blocked runner in tonight's queue, rendered and not hidden, with an upload record, or as a
-  comment's author newer than the last report (`isBlockedPlayer` against the display name — the
-  line names the video or the match, never the comment's own text);
+  comment's or a returned reply's author newer than the last report (`isBlockedPlayer` against the
+  display name, a leading "@" stripped — the line names the video or the match, never the comment's
+  own text), listed first so the 1500-char cap's "+ N more" never hides it;
   `<mediaDir>/.experiments.json`'s `needsHuman` entries not yet `needsHumanAck`'d (the experiment
   engine's own file, another branch — also read defensively); and the standalone Studio worker's
   own heartbeat (`<mediaDir>/.studio-worker.json`, `studioWorkerItems`/`studioWorkerHealth`,

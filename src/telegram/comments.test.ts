@@ -13,6 +13,7 @@ const thread = (over: Partial<ChannelCommentThread>): ChannelCommentThread => ({
   publishedAt: "2026-09-28T00:00:00Z",
   totalReplyCount: 0,
   replyAuthorsAreChannel: [],
+  replies: [],
   ...over,
 });
 
