@@ -115,6 +115,9 @@ any video that already has one (his 8 custom ones included).
 
 ## Decisions
 
+- **14 Oct 2026 — x1 interim flipped back:** 23:00 UTC leads 19:00 UTC on impressions CTR again, 6.85% vs 5.16%
+  (z = 4.41). Three readings in three days pointed three ways (12 Oct 23:00, 13 Oct 19:00, 14 Oct 23:00), so with
+  ~10 videos a side the hour is noise next to which match each slot got; the 15 Oct evaluator decides.
 - **13 Oct 2026 — fourth Test & Compare verdict, the first thumbnail test: no winner on vAAYzPblWBw**
   (dandannyboy vs silverrruns). Control 33.8%, most-different pose 35.1%, caption 31.2% watch time share; Studio "They
   all performed well". The live thumbnail stays; pose and caption variants are neither better nor worse so far.
