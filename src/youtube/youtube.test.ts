@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, utimesSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { config } from "../config.js";
-import { parseImpressionsCsv, REQUIRED_SCOPES, uploadVideo } from "./youtube.js";
+import { parseImpressionsCsv, REQUIRED_SCOPES, resumableSession, uploadVideo } from "./youtube.js";
 import { findExportedVideo, pinnedComment } from "./youtubeStore.js";
 
 // --- Reporting CSV: the only source of per-video CTR, so a misread here silently corrupts
@@ -451,8 +451,8 @@ console.log("youtube: all checks passed");
   assert.equal(posted, false, "no session at all: resumeOnly never starts one");
 
   // A session file is there, but YouTube no longer honours it (expired, say): resumeOnly still
-  // refuses to fall back to a fresh start, and the stale file is left for a human to look at
-  // rather than deleted on a guess.
+  // refuses to fall back to a fresh start — and forgets the dead file. Kept, every later Save
+  // resumed it again (shortFlow's `uploadSessionOnDisk`) and refused again, for good.
   await writeFile(
     session,
     JSON.stringify({ filePath: file, total: 3 * CHUNK, sessionUrl: "https://upload/session" }),
@@ -479,11 +479,15 @@ console.log("youtube: all checks passed");
     false,
     "a session gone at YouTube's end must not fall through to a fresh POST either",
   );
-  assert.equal(existsSync(session), true, "the stale session file is left on disk, not deleted blind");
+  assert.equal(existsSync(session), false, "a session YouTube answered 404 for is forgotten");
 
   // A 5xx/429 on the probe is YouTube's "try again", not "gone" — even WITHOUT resumeOnly (an
   // operator's Retry after a chunk 503) it must not start a second videos.insert, and the session
   // file stays so the next press resumes.
+  await writeFile(
+    session,
+    JSON.stringify({ filePath: file, total: 3 * CHUNK, sessionUrl: "https://upload/session" }),
+  );
   for (const status of [503, 429]) {
     let postedTransient = false;
     const flaky: typeof fetch = async (_url, init) => {
@@ -505,12 +509,26 @@ console.log("youtube: all checks passed");
     assert.equal(existsSync(session), true, `a ${status} probe keeps the session for the next press`);
   }
 
+  // Resumable as far as the disk can tell: these exact bytes, under a day old. A re-encode since
+  // (another size) or a session past YouTube's day is dead, and a Save must not try to resume it.
+  const sessionFor = (total: number) =>
+    writeFile(
+      session,
+      JSON.stringify({ filePath: file, total, sessionUrl: "https://upload/session", title: "Old hook | a vs b" }),
+    );
+  await sessionFor(3 * CHUNK + 1);
+  assert.equal(await resumableSession(file), false, "a session for other bytes (a re-encode) is dead");
+  await sessionFor(3 * CHUNK);
+  assert.equal(await resumableSession(file), true, "these bytes, fresh: resumable");
+  const dayAgo = new Date(Date.now() - 25 * 60 * 60 * 1000);
+  utimesSync(session, dayAgo, dayAgo);
+  assert.equal(await resumableSession(file), false, "past YouTube's day: dead");
+  assert.equal(await resumableSession(path.join(dir, "none.mp4")), false, "no file, no session");
+
   // A session that is genuinely still good resumes exactly as without resumeOnly — the guard
-  // only ever refuses the fall-through to a fresh start, never a real resume.
-  await writeFile(
-    session,
-    JSON.stringify({ filePath: file, total: 3 * CHUNK, sessionUrl: "https://upload/session" }),
-  );
+  // only ever refuses the fall-through to a fresh start, never a real resume. The title it
+  // reports is the one its start sent, not one changed since.
+  await sessionFor(3 * CHUNK);
   let resumeCalls = 0;
   const goodSession: typeof fetch = async (url) => {
     assert.equal(String(url), "https://upload/session");
@@ -529,6 +547,7 @@ console.log("youtube: all checks passed");
     chunkBytes: CHUNK,
   });
   assert.equal(resumedOk.videoId, "vidResumed");
+  assert.equal(resumedOk.title, "Old hook | a vs b", "the title YouTube holds is the session's");
   assert.equal(resumeCalls, 1, "the probe alone finished it — YouTube already had every byte");
   assert.equal(existsSync(session), false, "a completed resume forgets its session like any other");
   console.log("OK: resumeOnly finishes a real session and never starts a second one");

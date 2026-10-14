@@ -164,10 +164,10 @@ reload). After merging server changes, `POST /api/restart-when-idle`; a hand
 
 - **Restart only when idle** (`src/dashboard/restartWhenIdle.ts`): `POST /api/restart-when-idle`
   arms, `DELETE` cancels, `GET` reports. `idle()` checks a render (pipeline or Short), an export,
-  the pick queue, the publish chain, an upload, a `.upload-session-*.json`, an NAS copy and
-  the time before `nightlyRenderHourUtc`; idle, it runs `npx tsc --noEmit`, then `process.exit(0)`,
-  and tini brings it back on the new code. **A docker restart must never be issued while a chain
-  uploads.**
+  the pick queue, the publish chain, an upload, a `.upload-session-*.json` under a day old, an NAS
+  copy and the time before `nightlyRenderHourUtc`; idle, it runs `npx tsc --noEmit`, then
+  `process.exit(0)`, and tini brings it back on the new code. **A docker restart must never be
+  issued while a chain uploads.**
 - **Two screens, one bar**: list and match; four list tabs are the only navigation. The match
   screen groups **Now**, **Check**, **Package**, **Publish** in pipeline order. Now's steps
   (`GET /api/shorts/plan/:id`): Video, Pick, Hooks (locked once uploaded), Short (skipped if
