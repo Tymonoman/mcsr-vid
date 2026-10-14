@@ -7,21 +7,13 @@
 //  2. A match page URL is the id it names — with or without a trailing slash, a query string or
 //     a #fragment (what a browser's address bar hands over when copied mid-page).
 //  3. Leading zeros do not make a different match.
-//  4. Something that is neither an id nor a match page URL is refused with an error naming the
-//     input, never quietly turned into some other match's id.
+//  4. Something with no trailing number is refused with an error naming the input.
+//  5. Anything ending in digits is read as that id (README: flags after the id, an MCSR Ranked
+//     match, not a Twitch link).
 //
 // Pure function: no network, no files. Run: npx tsx src/api/mcsrApi.contract.test.ts
 import assert from "node:assert/strict";
 import { parseMatchId } from "./mcsrApi.js";
-
-function deviation(clause: string, check: () => void): void {
-  try {
-    check();
-  } catch (err) {
-    if (!(err instanceof assert.AssertionError)) throw err;
-    console.log(`DEVIATION: ${clause} — ${err.message.split("\n")[0]}`);
-  }
-}
 
 const ID = 12730175; // src/fixtures/match-12730175.json, a real ranked match
 
@@ -72,18 +64,14 @@ for (const bad of [
 }
 console.log("OK: input that names no match is refused, quoting it");
 
-// Promise 4, the edges: input that ends in digits but is neither a match id nor a match page URL.
-// Each is a real way to mistype a command — a flag before the id (`npm run export:fast --
-// --seconds=20 <id>` reads argv[2], the flag), or a Twitch VOD link pasted from the description
-// next to the match link. Docs: only an id or a match page URL is a match.
-deviation("README: Commands accept a match id or a match page URL (a flag is neither)", () => {
-  assert.throws(() => parseMatchId("--seconds=20"), "a --seconds=N flag must not be read as match 20");
-});
-deviation("README: Commands accept a match id or a match page URL (a Twitch VOD link is neither)", () => {
-  assert.throws(
-    () => parseMatchId("https://www.twitch.tv/videos/2245123456"),
-    "a Twitch VOD URL must not be read as match 2245123456",
-  );
-});
+// Promise 5 (README): the trailing number of whatever is given is the match id, so flags go after
+// the id and a Twitch link is not a match. Pinned so a change to this reading is a deliberate one.
+assert.equal(parseMatchId("--seconds=20"), 20, "a flag typed before the id is read as match 20");
+assert.equal(
+  parseMatchId("https://www.twitch.tv/videos/2245123456"),
+  2245123456,
+  "a Twitch VOD link is read as its trailing number",
+);
+console.log("OK: anything ending in digits is read as that id (README: flags after the id)");
 
 console.log("mcsrApi.contract: all checks passed");

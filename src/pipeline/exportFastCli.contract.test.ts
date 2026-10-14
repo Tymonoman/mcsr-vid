@@ -33,15 +33,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-function deviation(clause: string, check: () => void): void {
-  try {
-    check();
-  } catch (err) {
-    if (!(err instanceof assert.AssertionError)) throw err;
-    console.log(`DEVIATION: ${clause} — ${err.message.split("\n")[0]}`);
-  }
-}
-
 const root = fileURLToPath(new URL("../..", import.meta.url));
 const tmp = mkdtempSync(path.join(tmpdir(), "mcsr-exportfast-contract-"));
 process.on("exit", () => rmSync(tmp, { recursive: true, force: true }));
@@ -193,42 +184,19 @@ console.log("OK: without --seconds the export is final-<id>.mp4 with final-<id>.
 
 /* --- 1 again, the edges: a --seconds the parser does not read ------------------------------- */
 // The incident this rule pins was a smoke run landing on a published final. A run that asks for
-// --seconds in another spelling, or with a unit, must not do the same.
-deviation(
-  "CLAUDE.md Commands: export:fast --seconds → smoke-<id>.mp4, never the real final (`--seconds 2`)",
-  () => {
-    assert.equal(
-      read(spaced.dir, `final-${ID}.mp4`),
-      PUBLISHED,
-      "`--seconds 2` must leave the published final alone",
-    );
-  },
-);
-deviation(
-  "handbook Known pitfalls: final-<id>.json is never written for a --seconds smoke run (`--seconds 2`)",
-  () => {
-    assert.equal(
-      read(spaced.dir, `final-${ID}.json`),
-      PUBLISHED_RECORD,
-      "`--seconds 2` must leave the export record alone",
-    );
-  },
-);
-deviation(
-  "CLAUDE.md Commands: export:fast --seconds → smoke-<id>.mp4, never the real final (`--seconds=2s`)",
-  () => {
-    assert.equal(
-      read(garbled.dir, `final-${ID}.mp4`),
-      PUBLISHED,
-      "`--seconds=2s` must leave the published final alone",
-    );
-  },
-);
-// Whatever it does with them, it must not crash half-way and leave a part file.
-for (const r of [spaced, garbled]) {
-  assert.notEqual(r.status, null, "the run ends by itself");
+// --seconds in another spelling, or with a unit, refuses instead of falling through to a full export.
+for (const [r, typed] of [
+  [spaced, "--seconds 2"],
+  [garbled, "--seconds=2s"],
+] as const) {
+  assert.equal(r.status, 1, `\`${typed}\` refuses (exit 1)`);
+  assert.match(r.stderr, /--seconds needs a positive number/, `\`${typed}\` says why`);
+  assert.equal(read(r.dir, `final-${ID}.mp4`), PUBLISHED, `\`${typed}\` leaves the published final alone`);
+  assert.equal(read(r.dir, `final-${ID}.json`), PUBLISHED_RECORD, `\`${typed}\` leaves the export record alone`);
   assert.equal(existsSync(path.join(r.dir, `final-${ID}.part.mp4`)), false);
+  assert.equal(r.ffmpeg, "", `\`${typed}\` never reaches ffmpeg`);
 }
+console.log("OK: an unreadable --seconds refuses and never touches the published final");
 
 // Sanity: the stand-ins really were what ran (nothing encoded on the shared lab cores).
 assert.ok(statSync(path.join(bin, "ffmpeg")).size < 300);

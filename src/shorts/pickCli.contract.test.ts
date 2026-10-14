@@ -8,9 +8,8 @@
 //  3. `--dry-run` asks afresh and writes nothing into the match directory.
 //  4. `--dry-run` refuses (exit 1) rather than make the proxy or a /watch cache, saying why the
 //     one on disk does not count ("none … run once without it").
-//  5. A dry run writes nothing even with a current pick on disk. (CLAUDE.md's short form, "refuses
-//     if the one on disk is current", compresses the handbook row above: "the one on disk" there is
-//     the proxy or /watch cache, not the pick — a doc wording to fix, not a CLI promise.)
+//  5. A dry run with a current pick on disk still asks afresh (exit 0, a fresh pick printed) and
+//     writes nothing — it refuses only when the proxy or a /watch cache would have to be made.
 //  6. The id may be a match page URL, and flags may come before it (`<matchId | all>` is the
 //     argument that is not a flag).
 //
@@ -166,5 +165,11 @@ assert.deepEqual(
   dryCurrent.before,
   "a dry run writes nothing, a current pick or not",
 );
-console.log("OK: --dry-run with a current pick on disk writes nothing");
+assert.equal(dryCurrent.status, 0, `a current pick is no reason to refuse (stderr: ${dryCurrent.stderr})`);
+assert.notEqual(
+  (JSON.parse(dryCurrent.stdout) as typeof KEPT).createdAt,
+  KEPT.createdAt,
+  "it asked afresh and printed the new pick, not the kept one",
+);
+console.log("OK: --dry-run with a current pick on disk asks afresh and writes nothing");
 console.log("pickCli.contract: all checks passed");
