@@ -988,6 +988,45 @@ export async function latestImpressions(jobId: string): Promise<ImpressionsRow[]
 }
 
 /**
+ * Every daily reach report covering `sinceYmd` (YYYY-MM-DD) onward, concatenated — the job
+ * (`channel_reach_basic_a1`) writes one CSV per day, so `latestImpressions`' newest report alone is
+ * a single day's sample. A day YouTube regenerated (a backfill, same window) counts once: the
+ * report with the newest `createTime` wins.
+ *
+ * ponytail: every report is downloaded per call, no cache — fine for one evaluation a day over a
+ * few weeks of videos; memoise per evaluation run if an experiment's video count grows.
+ */
+export async function impressionsSince(jobId: string, sinceYmd: string): Promise<ImpressionsRow[]> {
+  type Report = { id: string; downloadUrl: string; endTime: string; createTime?: string };
+  const byDay = new Map<string, Report>();
+  let pageToken = "";
+  do {
+    const q = new URLSearchParams({
+      startTimeAtOrAfter: `${sinceYmd}T00:00:00Z`,
+      ...(pageToken ? { pageToken } : {}),
+    });
+    const list = await apiCall<{ reports?: Report[]; nextPageToken?: string }>(
+      REPORTING_API,
+      `/jobs/${encodeURIComponent(jobId)}/reports?${q}`,
+    );
+    for (const r of list.reports ?? []) {
+      const prev = byDay.get(r.endTime);
+      if (!prev || (r.createTime ?? "") > (prev.createTime ?? "")) byDay.set(r.endTime, r);
+    }
+    pageToken = list.nextPageToken ?? "";
+  } while (pageToken);
+
+  const accessToken = await getAccessToken();
+  const rows: ImpressionsRow[] = [];
+  for (const r of byDay.values()) {
+    const res = await fetch(r.downloadUrl, { headers: { authorization: `Bearer ${accessToken}` } });
+    if (!res.ok) throw new Error(await describeApiFailure(res, "reporting download"));
+    rows.push(...parseImpressionsCsv(await res.text()));
+  }
+  return rows;
+}
+
+/**
  * Reporting API CSVs are plain comma-separated with a header row naming the columns. Reading the
  * header rather than assuming positions means a column added upstream cannot silently shift the
  * CTR into the impressions slot.

@@ -914,9 +914,10 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
     once** (`slotEntryFor`/`renderEntryFor`, `src/dashboard/experiments.ts`): the slot lookups
     (`rankedHoursForDate`, `shortDelayMsForDate`) take the date's first entry tagged `slot`; the
     render lookups (`applyScheduledRenderArm`, `writeExperimentArmFile`) the date's first entry
-    tagged `render`. Either falls back to the date's first entry at all when none carries that
-    tag, so a date with just the one entry — every shape on disk before this existed — resolves
-    exactly as before, tag or no tag.
+    tagged `render`. Either falls back to the date's first entry not tagged for the *other*
+    side, so an untagged entry — every shape on disk before this existed — resolves exactly as
+    before, while a slot-only night writes no `experiment-arm.json` (that video enrols by its
+    publish date, below) and a render-only date enrols no publish by date (14 Oct 2026).
   - **The evaluator enrols `exp.videos` from disk before it evaluates anything**
     (`enrolVideos`, `src/dashboard/experimentsEvaluator.ts`, idempotent — checked by `matchId` per
     experiment, never duplicates, never removes): every match directory with its own
@@ -949,6 +950,12 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   records gone. It reads through `readExperimentsOrNull` (corrupt → `null`) at both its reads and
   returns without writing or stamping `evaluatedOn`, so the first tick after the fix evaluates
   the day; every other caller keeps the lenient read.
+  **Edge-case fixes, 14 Oct 2026**: CTR read only the newest daily Reporting CSV (one ~48h-old
+  day — why x1's interim verdict kept flipping) — `impressionsSince` (`src/youtube/youtube.ts`) sums
+  every daily report since publish, a regenerated day counted once, and the CSV's `20261012` is
+  compared with the since-date in one format. A `settle()` throw now reaches `needsHuman` on the
+  second day (the try cleared yesterday's failure before settling). A schedule's
+  `slot.rankedHoursUtc` keeps only whole hours 0–23, like `shortDelayHours` beside it.
 - **Playoffs** (`src/playoffs/playoffs.ts`): the bracket (`/playoffs`) knows the series, not the games;
   the games are private-room matches (type 3) found in each seed's history, and the API stamps
   them with the season *after* the bracket's (a Season 11 bracket's games are season 12). **No
@@ -1367,7 +1374,8 @@ every check above is a fixture page or pure logic; see "What is verified live vs
 - **Every Test & Compare title is checked before any page opens** (`titleTestProblem`, exported
   from `studioActions.ts`, reused by the plan importer so a title that could never start is never
   even planned): `hookProblem` (which already finishes with its own `hookLabelProblem` call),
-  `hookLabelProblem` again directly, `spoilsTheResult` against the whole line, and the
+  `hookLabelProblem` again directly, `spoilsTheResult` against every segment of the line (so a
+  question hook keeps its exemption), and the
   100-character ceiling. A thumbnail test's 2-3 files just need to exist on disk. Any refusal is
   returned before `startTestAndCompare` ever calls `page.goto`, pinned by a unit test that passes
   it a handle which throws if its `browser` property is ever read.
@@ -1388,7 +1396,9 @@ every check above is a fixture page or pure logic; see "What is verified live vs
   2026 a page Save with no "Changes saved" within 15 s — an error, so the experiment stays
   `"planned"` and the next cycle reads the page before trying again, where the swallowed wait had
   returned `"started"` and left a blank form to be found a day later), and the worker never
-  guesses past an ambiguous state on its own.
+  guesses past an ambiguous state on its own. Studio's "Results ready"/"Test finished" is what
+  counts as done: `parseTcReport` reads the report's per-arm watch-time shares and Studio's own
+  winner, and `setExperimentChecked` records them (`watchTimeShare` per arm, "<arm> wins: a% vs b%").
 
 **What is verified live vs only on fixtures.** Confirmed against the real Studio UI, 7–8 Oct 2026:
 `#endscreen-editor-link`, the "Import from video" button, `ytcp-video-pick-dialog` and its
@@ -1817,8 +1827,8 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
   detector now covers** (22 Sept 2026, replayed on the 13 ranked matches with clips on disk:
   26 of 26 clips read, 25 of them to the frame the "1" vanishes): the API's estimate can be a
   minute off (a VOD that lost a segment runs ahead of the API's clock; Aquacorde, 13559245:
-  53 s, and `1 - off / 20` scored the countdown it found to zero), so an empty ±25 s window is
-  followed by one ±150 s pass and the distance term is soft; and a world that loads late has
+  53 s, and `1 - off / 20` scored the countdown it found to zero), so an empty or untrusted ±25 s
+  window (a countdown cut by its edge) is followed by one ±150 s pass and the distance term is soft; and a world that loads late has
   the loading screen over the "10" (BeefSalad, 13549300), so a countdown is also read from its
   end — the drop out of the last digit with stepping seconds before it — and an onset has to be
   a real "10", half again the fattest digit after it, or the "6" after a waiting screen becomes
