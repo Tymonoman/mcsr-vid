@@ -1395,7 +1395,9 @@ every check above is a fixture page or pure logic; see "What is verified live vs
   2026 a page Save with no "Changes saved" within 15 s — an error, so the experiment stays
   `"planned"` and the next cycle reads the page before trying again, where the swallowed wait had
   returned `"started"` and left a blank form to be found a day later), and the worker never
-  guesses past an ambiguous state on its own.
+  guesses past an ambiguous state on its own. Studio's "Results ready"/"Test finished" is what
+  counts as done: `parseTcReport` reads the report's per-arm watch-time shares and Studio's own
+  winner, and `setExperimentChecked` records them (`watchTimeShare` per arm, "<arm> wins: a% vs b%").
 
 **What is verified live vs only on fixtures.** Confirmed against the real Studio UI, 7–8 Oct 2026:
 `#endscreen-editor-link`, the "Import from video" button, `ytcp-video-pick-dialog` and its
