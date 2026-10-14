@@ -2,6 +2,7 @@
 // are injected — the picture reading itself is pinned in countdownDetect.test.ts, and the real
 // ffmpeg decode is the pipeline's to run. Run: npx tsx src/sync.test.ts
 import assert from "node:assert/strict";
+import { DEFAULTS } from "../config.js";
 import type { MatchStartDetection } from "./countdownDetect.js";
 import { computeSyncOffset, fromVideo } from "./sync.js";
 
@@ -24,16 +25,30 @@ const unseen: MatchStartDetection = {
   assert.equal(r.clipACueTimeSec, 153.98);
   assert.equal(r.clipBCueTimeSec, 154.23);
   assert.ok(r.confidence >= 0.9 && r.confidence <= 1, `both read: ${r.confidence}`);
+  const weakest = fromVideo(seen(153.98, 0.08), seen(154.23, 0.08), 150, 150);
+  assert.ok(
+    weakest.confidence >= DEFAULTS.syncConfidenceThreshold,
+    `both read is trusted: ${weakest.confidence}`,
+  );
   assert.match(r.detail, /^video: both countdowns found/);
 }
 
-// One clip read: the other keeps its coarse estimate, and the confidence says half.
+// One clip read: the other keeps its coarse estimate, which can be seconds off, so the match
+// sits under the trust line however sure the read side is — the LOW marker and the dashboard's
+// sync warning are what send it to the editor.
 {
   const r = fromVideo(unseen, seen(154.23), 150, 150);
   assert.equal(r.clipACueTimeSec, 150, "the unread clip keeps the estimate");
   assert.equal(r.clipBCueTimeSec, 154.23);
-  assert.ok(r.confidence <= 0.5, `one read: ${r.confidence}`);
   assert.match(r.detail, /^video: one countdown found — countdown A not found/);
+  for (const c of [0.08, 0.8, 1]) {
+    const one = fromVideo(seen(153.98, c), unseen, 150, 150);
+    assert.equal(one.clipACueTimeSec, 153.98, "the read side keeps its reading");
+    assert.ok(
+      one.confidence > 0 && one.confidence < DEFAULTS.syncConfidenceThreshold,
+      `one read must be flagged weak: ${one.confidence}`,
+    );
+  }
 }
 
 // A reading under the trust floor is no reading.
