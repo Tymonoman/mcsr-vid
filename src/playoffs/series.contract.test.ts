@@ -9,7 +9,7 @@
 // (The control path — a clean series rendering and joining — is pinned by series.test.ts.)
 // Run: MCSR_CONFIG=/nonexistent npx tsx src/playoffs/series.contract.test.ts
 import assert from "node:assert/strict";
-import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { MatchInfo } from "../api/types.js";
@@ -17,7 +17,8 @@ import { config } from "../config.js";
 import { renderSeries } from "./series.js";
 
 const saved = { mediaDir: config.mediaDir, blocked: config.blockedPlayers, fetch: globalThis.fetch };
-config.mediaDir = mkdtempSync(path.join(tmpdir(), "mcsr-series-contract-"));
+const media = mkdtempSync(path.join(tmpdir(), "mcsr-series-contract-"));
+config.mediaDir = media;
 
 const fixture = (id: number): MatchInfo =>
   JSON.parse(readFileSync(new URL(`../fixtures/match-${id}.json`, import.meta.url), "utf8")) as MatchInfo;
@@ -58,12 +59,13 @@ try {
     );
   }
   assert.deepEqual(work, [], "no game rendered or exported");
-  assert.deepEqual(readdirSync(config.mediaDir), [], "nothing written under the media directory");
+  assert.deepEqual(readdirSync(media), [], "nothing written under the media directory");
   console.log("OK: renderSeries refuses a blocked runner's series before any work");
 } finally {
   config.mediaDir = saved.mediaDir;
   config.blockedPlayers = saved.blocked;
   globalThis.fetch = saved.fetch;
+  rmSync(media, { recursive: true, force: true });
 }
 
 console.log("series.contract: all checks passed");

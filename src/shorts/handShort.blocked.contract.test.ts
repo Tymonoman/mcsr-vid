@@ -1,29 +1,29 @@
 // Contract test for `npm run short:hand`'s blocked-player gate (src/shorts/handShort.ts), from the docs
-// alone (CLAUDE.md "Blocked players" and "Shorts" → shortsByHand; handbook/claude-md-reference.md;
-// README "The Short and publishing" step 3). Promises:
+// alone (CLAUDE.md "Blocked players" and "Shorts" → shortsByHand; handbook/claude-md-reference.md).
+// handShort.contract.test.ts P7/P16 pins the refusal itself (whole-string, case-insensitive) and that
+// `checkHandShort` refuses before its probe; this file adds what it leaves open:
 //
-//   1. A blocked match is "never rendered by npm run short/short:hand, even by hand": `checkHandShort`
-//      refuses it with the reason, and `buildHandShort` throws `HandShortRefusal` writing nothing —
-//      no short-<id>.mp4, no .title.txt/.description.txt, no short-<id>.hand.json.
-//   2. Refused before any ffprobe spawn (cheap/local checks first).
-//   3. Any case.
-//   4. A blocked match is one whose POV clips are a blocked runner's, even when the MCSR API now
+//   1. `buildHandShort` — the CLI's own path — refuses a blocked match before any ffprobe spawn and
+//      writes no short-* file.
+//   2. A blocked match is one whose POV clips are a blocked runner's, even when the MCSR API now
 //      spells him differently (the renamed-runner case the handbook names for Adopt).
-//   5. The control: the same file and hook for a clean match pass every check.
-// Run: MCSR_CONFIG=/nonexistent npx tsx src/shorts/handShort.contract.test.ts
+// Run: MCSR_CONFIG=/nonexistent npx tsx src/shorts/handShort.blocked.contract.test.ts
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { MatchInfo } from "../api/types.js";
 import { config, DEFAULTS, matchDir } from "../config.js";
 import { buildHandShort, checkHandShort, HandShortRefusal, type VideoSpec } from "./handShort.js";
 
+// A doc promise the code does not keep: printed and listed, never fatal (main's contract files' way).
+const deviations: string[] = [];
 function deviation(clause: string, check: () => void): void {
   try {
     check();
   } catch (err) {
     if (!(err instanceof assert.AssertionError)) throw err;
+    deviations.push(clause);
     console.log(`DEVIATION: ${clause} — ${err.message.split("\n")[0]}`);
   }
 }
@@ -59,54 +59,42 @@ const matchWith = (id: number, from: number, clips: string[]): string => {
   for (const c of clips) writeFileSync(path.join(dir, `${c}.mp4`), "");
   return dir;
 };
-const shortFiles = (dir: string) => readdirSync(dir).filter((f) => f.startsWith("short-"));
 
 try {
-  // --- 1/2. BeefSalad's real match: refused with the reason, before ffprobe, nothing written --------
+  // --- 1. BeefSalad's real match, through buildHandShort: refused before ffprobe, nothing written ---
   const BEEF = 30_000_001;
   const beefDir = matchWith(BEEF, 13549300, ["hackingnoises", "BeefSalad"]);
-  const check = await checkHandShort(BEEF, opts, probe);
-  assert.equal(check.ok, false);
-  assert.match((check as { problem: string }).problem, /blocked player/);
-  await assert.rejects(buildHandShort(BEEF, opts, { probe }), HandShortRefusal);
+  await assert.rejects(
+    buildHandShort(BEEF, opts, { probe }),
+    (err: unknown) => err instanceof HandShortRefusal && /blocked player/.test((err as Error).message),
+  );
   assert.equal(probes, 0, "no ffprobe spawned for a blocked match");
-  assert.deepEqual(shortFiles(beefDir), [], "no Short file, title, description or hand.json");
-  console.log("OK: short:hand refuses a blocked match before ffprobe and writes nothing");
+  assert.deepEqual(
+    readdirSync(beefDir).filter((f) => f.startsWith("short-")),
+    [],
+    "no Short file, title, description or hand.json",
+  );
+  console.log("OK: buildHandShort refuses a blocked match before ffprobe and writes nothing");
 
-  // --- 3. Any case ---------------------------------------------------------------------------------
-  config.blockedPlayers = ["AQUACORDE"];
-  const AQUA = 30_000_002;
-  const aquaDir = matchWith(AQUA, 12902901, ["BlazeMind", "Aquacorde"]);
-  await assert.rejects(buildHandShort(AQUA, opts, { probe }), /blocked player/);
-  assert.deepEqual(shortFiles(aquaDir), []);
-  config.blockedPlayers = [...DEFAULTS.blockedPlayers];
-  console.log("OK: the block ignores case");
-
-  // --- 4. A renamed runner: the API says edcr vs doogile, the POV clip is Aquacorde's ---------------
+  // --- 2. A renamed runner: the API says edcr vs doogile, the POV clip is Aquacorde's ---------------
   const RENAMED = 30_000_003;
   matchWith(RENAMED, 12730175, ["Aquacorde", "doogile"]);
   const renamed = await checkHandShort(RENAMED, opts, probe);
   deviation(
     "CLAUDE.md Blocked players: 'never rendered by npm run short/short:hand even by hand' (match whose POV clips are a blocked runner's)",
     () =>
-      assert.equal(
-        renamed.ok,
-        false,
-        "checkHandShort passes a match whose clip on disk is Aquacorde's — it checks the API's pair only, not blockedOnDisk",
+      assert.match(
+        renamed.ok ? "" : renamed.problem,
+        /blocked player/,
+        `checkHandShort answered ${renamed.ok ? "ok" : JSON.stringify(renamed.problem)} for a match whose clip on disk is Aquacorde's — it checks the API's pair only, not blockedOnDisk`,
       ),
   );
-
-  // --- 5. The control ------------------------------------------------------------------------------
-  const CLEAN = 30_000_004;
-  matchWith(CLEAN, 12730175, ["edcr", "doogile"]);
-  const clean = await checkHandShort(CLEAN, opts, probe);
-  assert.equal(clean.ok, true, `a clean match passes: ${JSON.stringify(clean)}`);
-  assert.ok(!existsSync(path.join(matchDir(CLEAN), `short-${CLEAN}.mp4`)), "a check alone writes nothing");
-  console.log("OK: the same cut and hook for a clean match pass");
 } finally {
   config.mediaDir = saved.mediaDir;
   config.blockedPlayers = saved.blocked;
   globalThis.fetch = saved.fetch;
+  rmSync(media, { recursive: true, force: true });
 }
 
-console.log("handShort.contract: all checks passed");
+if (deviations.length) console.log(`${deviations.length} deviation(s) from the docs — see DEVIATION lines`);
+console.log("handShort.blocked.contract: all checks passed");

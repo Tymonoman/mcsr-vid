@@ -19,18 +19,21 @@
 // through `matchIsBlocked`, the one function every one of them calls before starting a run.
 // Run: MCSR_CONFIG=/nonexistent npx tsx src/dashboard/matchStatus.contract.test.ts
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { MatchInfo } from "../api/types.js";
 import { config, DEFAULTS, matchDir } from "../config.js";
 import { blockedOnDisk, matchIsBlocked } from "./matchStatus.js";
 
+// A doc promise the code does not keep: printed and listed, never fatal (main's contract files' way).
+const deviations: string[] = [];
 function deviation(clause: string, check: () => void): void {
   try {
     check();
   } catch (err) {
     if (!(err instanceof assert.AssertionError)) throw err;
+    deviations.push(clause);
     console.log(`DEVIATION: ${clause} — ${err.message.split("\n")[0]}`);
   }
 }
@@ -187,21 +190,23 @@ try {
   console.log("OK: the title pair is read from ranked, playoff, series and pipe-in-the-hook titles");
 
   // --- 6. A titleNames spelling, archived ---------------------------------------------------------
-  // The default titleNames maps Pinne → Skycrab. Were Pinne to withdraw, an archived match of his
-  // (clips and chats gone) names him in its title only as "Skycrab".
-  config.titleNames = { ...DEFAULTS.titleNames };
-  config.blockedPlayers = ["Pinne"];
-  const skycrab = dirWith({ "match-1.title.txt": title("Skycrab vs doogile") });
+  // titleNames spells a runner the broadcast's way (the default maps two real ones; a made-up runner
+  // here). Blocked, an archived match of his (clips and chats gone) names him in its title only as
+  // the spelling.
+  config.titleNames = { Runnerx: "Spelled" };
+  config.blockedPlayers = ["Runnerx"];
+  const spelled = dirWith({ "match-1.title.txt": title("Spelled vs doogile") });
   deviation(
     "CLAUDE.md Blocked players: title pair checked 'so a match archived off disk is still caught' (titleNames spelling)",
     () =>
       assert.equal(
-        blockedOnDisk(skycrab),
+        blockedOnDisk(spelled),
         true,
         "a blocked player the title spells via titleNames is not caught",
       ),
   );
   config.blockedPlayers = [...DEFAULTS.blockedPlayers];
+  config.titleNames = saved.titleNames;
 
   // --- 7. matchIsBlocked: the render routes' gate ---------------------------------------------------
   // A brand-new render: no directory yet, the API's pair decides (fixture: BlazeMind vs Aquacorde).
@@ -231,6 +236,8 @@ try {
   config.blockedPlayers = saved.blocked;
   config.titleNames = saved.titleNames;
   globalThis.fetch = saved.fetch;
+  rmSync(media, { recursive: true, force: true });
 }
 
+if (deviations.length) console.log(`${deviations.length} deviation(s) from the docs — see DEVIATION lines`);
 console.log("matchStatus.contract: all checks passed");

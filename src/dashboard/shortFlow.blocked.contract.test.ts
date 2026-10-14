@@ -1,29 +1,28 @@
 // Contract test for the hooks gate of "Blocked players" (`saveHooks`, src/dashboard/shortFlow.ts), from
-// the docs alone (CLAUDE.md "Blocked players" and "Shorts"; handbook/claude-md-reference.md). Promises:
+// the docs alone (CLAUDE.md "Blocked players" and "Shorts"; handbook/claude-md-reference.md). The
+// API-pair refusal, its case rule, the clean control and the saved-chat disk case are pinned by
+// shortFlow.contract.test.ts (C11); this file adds the one case it leaves open:
 //
-//   1. A blocked match "never gets hooks saved", so its chain (pick → render → upload) never starts:
-//      `PUT /api/shorts/hooks/:id` answers a refusal, writes no title edit and no Short hook, and
-//      records no `hooksSavedAt`.
-//   2. Any case: the list's spelling and the API's need not match.
-//   3. A blocked match is a match with a blocked runner on it — the POV clips on disk name him even
-//      when the MCSR API now spells him differently (the renamed-runner case the handbook gives for
-//      Adopt) — so the same refusal holds for a match whose own clips are a blocked runner's.
-//   4. The control: the same match with nobody blocked saves (so the refusal is the block).
-// Run: MCSR_CONFIG=/nonexistent npx tsx src/dashboard/shortFlow.contract.test.ts
+//   A blocked match is a match with a blocked runner on it — the POV clips on disk name him even when
+//   the MCSR API now spells him differently (the renamed-runner case the handbook gives for Adopt) —
+//   so a blocked match "never gets hooks saved" holds for a match whose own clips are his.
+// Run: MCSR_CONFIG=/nonexistent npx tsx src/dashboard/shortFlow.blocked.contract.test.ts
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { MatchInfo } from "../api/types.js";
 import { config, DEFAULTS, matchDir } from "../config.js";
-import { metaPaths } from "../pipeline/title.js";
-import { chainIdle, readStatus, saveHooks, type ChainDeps } from "./shortFlow.js";
+import { chainIdle, saveHooks, type ChainDeps } from "./shortFlow.js";
 
+// A doc promise the code does not keep: printed and listed, never fatal (main's contract files' way).
+const deviations: string[] = [];
 function deviation(clause: string, check: () => void): void {
   try {
     check();
   } catch (err) {
     if (!(err instanceof assert.AssertionError)) throw err;
+    deviations.push(clause);
     console.log(`DEVIATION: ${clause} — ${err.message.split("\n")[0]}`);
   }
 }
@@ -33,17 +32,16 @@ const saved = { mediaDir: config.mediaDir, blocked: config.blockedPlayers, fetch
 config.mediaDir = media;
 config.blockedPlayers = [...DEFAULTS.blockedPlayers];
 
-const fixture = (id: number): MatchInfo =>
-  JSON.parse(readFileSync(new URL(`../fixtures/match-${id}.json`, import.meta.url), "utf8")) as MatchInfo;
-// Which real match the MCSR API serves under each test id; nothing else answers.
-const served = new Map<number, MatchInfo>();
+// The MCSR API serves a real match (edcr vs doogile) under the test id; nothing else answers.
+const fixture = JSON.parse(
+  readFileSync(new URL("../fixtures/match-12730175.json", import.meta.url), "utf8"),
+) as MatchInfo;
 globalThis.fetch = (async (input: string | URL | Request) => {
   const url = new URL(String(input instanceof Request ? input.url : input));
   const m = /^\/matches\/(\d+)$/.exec(url.pathname);
-  const match = m ? served.get(Number(m[1])) : undefined;
-  if (!match) throw new Error(`no network in this test: ${url.href}`);
+  if (!m) throw new Error(`no network in this test: ${url.href}`);
   return new Response(
-    JSON.stringify({ status: "success", data: { ...match, id: Number(m![1]), changes: [] } }),
+    JSON.stringify({ status: "success", data: { ...fixture, id: Number(m[1]), changes: [] } }),
   );
 }) as typeof fetch;
 
@@ -59,71 +57,37 @@ const deps: Partial<ChainDeps> = {
   refreshChannel: async () => calls.push("refresh"),
   resumeUpload: async (id) => (calls.push(`resume ${id}`), null),
 };
-const BODY = { titleHook: "WHO BLINKS FIRST?", shortHook: "ONE HEART LEFT" };
-
-/** An exported match's directory with these POV clips. */
-const exported = (id: number, clips: string[], from: number): void => {
-  served.set(id, fixture(from));
-  const dir = matchDir(id);
-  mkdirSync(dir, { recursive: true });
-  for (const c of clips) writeFileSync(path.join(dir, `${c}.mp4`), "");
-  writeFileSync(path.join(dir, `final-${id}.mp4`), "");
-};
-const nothingSaved = (id: number): boolean =>
-  !existsSync(metaPaths(id, "title").edited) &&
-  !existsSync(path.join(matchDir(id), `short-${id}.hook.txt`)) &&
-  !readStatus(id).hooksSavedAt;
 
 try {
-  // --- 1. The API's pair names BeefSalad (his real match): refused, nothing written, no chain -----
-  const BEEF = 40_000_001;
-  exported(BEEF, ["hackingnoises", "BeefSalad"], 13549300);
-  const refused = await saveHooks(BEEF, BODY, deps);
-  assert.ok(refused && "status" in refused, "refused, not saved with warnings");
-  assert.equal(refused.status, 403);
-  assert.match(refused.error, /blocked player/);
-  await chainIdle(BEEF);
-  assert.ok(nothingSaved(BEEF), "no title edit, no Short hook, no hooksSavedAt");
-  assert.deepEqual(calls, [], "no pick, no render, no upload");
-  console.log("OK: a blocked match's hooks are refused and its chain never starts");
-
-  // --- 2. Any case ----------------------------------------------------------------------------------
-  config.blockedPlayers = ["aquacorde"];
-  const AQUA = 40_000_002;
-  exported(AQUA, ["BlazeMind", "Aquacorde"], 12902901);
-  const lower = await saveHooks(AQUA, BODY, deps);
-  assert.equal(lower && "status" in lower ? lower.status : null, 403, "the list's lower case still blocks");
-  assert.ok(nothingSaved(AQUA));
-  config.blockedPlayers = [...DEFAULTS.blockedPlayers];
-  console.log("OK: the block ignores case");
-
-  // --- 3. A renamed runner: the API says edcr vs doogile, the clips on disk are Aquacorde's ----------
+  // A renamed runner: the API says edcr vs doogile, the POV clip on disk is Aquacorde's.
   const RENAMED = 40_000_003;
-  exported(RENAMED, ["Aquacorde", "doogile"], 12730175);
-  const renamed = await saveHooks(RENAMED, BODY, deps);
+  const dir = matchDir(RENAMED);
+  mkdirSync(dir, { recursive: true });
+  for (const f of ["Aquacorde.mp4", "doogile.mp4", `final-${RENAMED}.mp4`])
+    writeFileSync(path.join(dir, f), "");
+  const renamed = await saveHooks(
+    RENAMED,
+    { titleHook: "WHO BLINKS FIRST?", shortHook: "ONE HEART LEFT" },
+    deps,
+  );
   await chainIdle(RENAMED);
   deviation(
     "CLAUDE.md Blocked players: a blocked match 'never gets hooks saved' (match whose POV clips are a blocked runner's)",
     () =>
       assert.ok(
-        renamed !== null && "status" in renamed && renamed.status === 403,
+        renamed !== null &&
+          "status" in renamed &&
+          renamed.status === 403 &&
+          /blocked player/.test(renamed.error),
         `saveHooks answered ${JSON.stringify(renamed)} and the chain ran [${calls.join(", ")}] — saveHooks checks the API's pair only, not blockedOnDisk`,
       ),
   );
-  calls.length = 0;
-
-  // --- 4. The control: a clean match saves --------------------------------------------------------
-  const CLEAN = 40_000_004;
-  exported(CLEAN, ["edcr", "doogile"], 12730175);
-  const ok = await saveHooks(CLEAN, BODY, deps);
-  await chainIdle(CLEAN);
-  assert.ok(ok === null || !("status" in ok), `a clean match's hooks save: ${JSON.stringify(ok)}`);
-  assert.ok(readStatus(CLEAN).hooksSavedAt, "and the save is recorded");
-  console.log("OK: the same files with nobody blocked save");
 } finally {
   config.mediaDir = saved.mediaDir;
   config.blockedPlayers = saved.blocked;
   globalThis.fetch = saved.fetch;
+  rmSync(media, { recursive: true, force: true });
 }
 
-console.log("shortFlow.contract: all checks passed");
+if (deviations.length) console.log(`${deviations.length} deviation(s) from the docs — see DEVIATION lines`);
+console.log("shortFlow.blocked.contract: all checks passed");

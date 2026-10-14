@@ -13,24 +13,28 @@
 // No browser: `planCycle` is the pure planner `runCycle` hands its targets from.
 // Run: MCSR_CONFIG=/nonexistent npx tsx src/youtube/studioWorker.contract.test.ts
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { config, DEFAULTS, matchDir } from "../config.js";
 import type { Experiment } from "../dashboard/experiments.js";
 import { planCycle, type LongFormRef, type StudioLedger } from "./studioWorker.js";
 
+// A doc promise the code does not keep: printed and listed, never fatal (main's contract files' way).
+const deviations: string[] = [];
 function deviation(clause: string, check: () => void): void {
   try {
     check();
   } catch (err) {
     if (!(err instanceof assert.AssertionError)) throw err;
+    deviations.push(clause);
     console.log(`DEVIATION: ${clause} — ${err.message.split("\n")[0]}`);
   }
 }
 
 const saved = { mediaDir: config.mediaDir, blocked: config.blockedPlayers };
-config.mediaDir = mkdtempSync(path.join(tmpdir(), "mcsr-studio-contract-"));
+const media = mkdtempSync(path.join(tmpdir(), "mcsr-studio-contract-"));
+config.mediaDir = media;
 config.blockedPlayers = [...DEFAULTS.blockedPlayers];
 
 const BLOCKED = 80_000_001;
@@ -106,6 +110,8 @@ try {
 } finally {
   config.mediaDir = saved.mediaDir;
   config.blockedPlayers = saved.blocked;
+  rmSync(media, { recursive: true, force: true });
 }
 
+if (deviations.length) console.log(`${deviations.length} deviation(s) from the docs — see DEVIATION lines`);
 console.log("studioWorker.contract: all checks passed");

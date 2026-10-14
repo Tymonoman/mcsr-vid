@@ -9,12 +9,13 @@
 //   3. The control: the same match with nobody blocked gets past every refusal to Google's door,
 //      so the 403 above is the block and nothing else.
 //
-// The API-pair path is isolated with the documented `titleNames` spelling (Pinne → "Skycrab"): an
-// archived match whose title says "Skycrab vs doogile" names nobody on disk, so only the API's pair
-// can catch it. youtubeRoutes.test.ts already pins the disk-only path (title, chats).
-// Run: MCSR_CONFIG=/nonexistent npx tsx src/dashboard/youtubeRoutes.contract.test.ts
+// The API-pair path is isolated with a `titleNames` spelling (a made-up runner, Runnerx → "Spelled",
+// the way the default spells two real ones): an archived match whose title says "Spelled vs doogile"
+// names nobody on disk, so only the API's pair can catch it. youtubeRoutes.test.ts already pins the
+// disk-only path (title, chats).
+// Run: MCSR_CONFIG=/nonexistent npx tsx src/dashboard/youtubeRoutes.blocked.contract.test.ts
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -23,11 +24,14 @@ import { config, DEFAULTS, matchDir } from "../config.js";
 import { manifestPath } from "../thumbnails/thumbnailVariants.js";
 import { handleYoutubeRoute, type YoutubeRouteContext } from "./youtubeRoutes.js";
 
+// A doc promise the code does not keep: printed and listed, never fatal (main's contract files' way).
+const deviations: string[] = [];
 function deviation(clause: string, check: () => void): void {
   try {
     check();
   } catch (err) {
     if (!(err instanceof assert.AssertionError)) throw err;
+    deviations.push(clause);
     console.log(`DEVIATION: ${clause} — ${err.message.split("\n")[0]}`);
   }
 }
@@ -41,27 +45,27 @@ const saved = {
   fetch: globalThis.fetch,
 };
 config.mediaDir = media;
-config.titleNames = { ...DEFAULTS.titleNames }; // Pinne → Skycrab, the documented default
+config.titleNames = { Runnerx: "Spelled" };
 const token = path.join(media, "token.json");
 writeFileSync(token, JSON.stringify({ refresh_token: "r", client_id: "c", client_secret: "s" }));
 process.env.YOUTUBE_TOKEN_FILE = token;
 
-// The MCSR API answers with a real match (edcr vs doogile) re-seated so its left player is Pinne;
+// The MCSR API answers with a real match (edcr vs doogile) re-seated so its left player is Runnerx;
 // anything Google is recorded and refused.
 const real = JSON.parse(
   readFileSync(new URL("../fixtures/match-12730175.json", import.meta.url), "utf8"),
 ) as MatchInfo;
-const asPinne = (id: number): MatchInfo => ({
+const asRunnerx = (id: number): MatchInfo => ({
   ...real,
   id,
-  players: real.players.map((p, i) => (i === 0 ? { ...p, nickname: "Pinne" } : p)),
+  players: real.players.map((p, i) => (i === 0 ? { ...p, nickname: "Runnerx" } : p)),
 });
 const google: string[] = [];
 globalThis.fetch = (async (input: string | URL | Request) => {
   const url = new URL(String(input instanceof Request ? input.url : input));
   const m = /^\/matches\/(\d+)$/.exec(url.pathname);
   if (url.hostname === "api.mcsrranked.com" && m)
-    return new Response(JSON.stringify({ status: "success", data: asPinne(Number(m[1])) }));
+    return new Response(JSON.stringify({ status: "success", data: asRunnerx(Number(m[1])) }));
   if (/google/.test(url.hostname)) google.push(url.href);
   throw new Error(`no network in this test: ${url.href}`);
 }) as typeof fetch;
@@ -91,7 +95,7 @@ const archived = (id: number, confirmed: boolean) => {
   mkdirSync(dir, { recursive: true });
   writeFileSync(
     path.join(dir, `match-${id}.title.edited.txt`),
-    `WHO BLINKS FIRST? | Skycrab vs doogile | MCSR Ranked 1v1 | Minecraft Speedrun\n`,
+    `WHO BLINKS FIRST? | Spelled vs doogile | MCSR Ranked 1v1 | Minecraft Speedrun\n`,
   );
   writeFileSync(
     path.join(dir, `match-${id}.description.txt`),
@@ -102,7 +106,7 @@ const archived = (id: number, confirmed: boolean) => {
 };
 
 try {
-  // --- 3. The control first: Pinne not blocked, the same files reach Google ------------------------
+  // --- 3. The control first: Runnerx not blocked, the same files reach Google ------------------------
   config.blockedPlayers = [...DEFAULTS.blockedPlayers];
   archived(50_000_001, true);
   const open = await adopt(50_000_001);
@@ -114,7 +118,7 @@ try {
   assert.ok(google.length > 0, "the control did reach for Google");
 
   // --- 1. Blocked by the API's pair only: refused, and Google never asked ----------------------------
-  config.blockedPlayers = ["pinne"]; // any case
+  config.blockedPlayers = ["runnerx"]; // any case
   archived(50_000_002, true);
   const byApi = await adopt(50_000_002);
   assert.equal(byApi.status, 403, `the API's pair names a blocked runner: ${JSON.stringify(byApi.body)}`);
@@ -142,6 +146,8 @@ try {
   if (saved.token === undefined) delete process.env.YOUTUBE_TOKEN_FILE;
   else process.env.YOUTUBE_TOKEN_FILE = saved.token;
   globalThis.fetch = saved.fetch;
+  rmSync(media, { recursive: true, force: true });
 }
 
-console.log("youtubeRoutes.contract: all checks passed");
+if (deviations.length) console.log(`${deviations.length} deviation(s) from the docs — see DEVIATION lines`);
+console.log("youtubeRoutes.blocked.contract: all checks passed");

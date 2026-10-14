@@ -16,7 +16,7 @@
 //      for being blocked.
 // Run: MCSR_CONFIG=/nonexistent npx tsx src/youtube/youtubeUpload.contract.test.ts
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { config, DEFAULTS, matchDir } from "../config.js";
@@ -35,9 +35,16 @@ const saved = {
   blocked: config.blockedPlayers,
   enabled: config.youtubeUploadEnabled,
   studio: config.studioAutomation,
+  token: process.env.YOUTUBE_TOKEN_FILE,
   fetch: globalThis.fetch,
 };
 config.mediaDir = media;
+// A token that would work if the block let it through: then the first YouTube step is a token
+// refresh, which the fetch below records — so "no YouTube call" cannot pass by failing auth first
+// (or, run from /app, read the real token file).
+const token = path.join(media, "token.json");
+writeFileSync(token, JSON.stringify({ refresh_token: "r", client_id: "c", client_secret: "s" }));
+process.env.YOUTUBE_TOKEN_FILE = token;
 config.blockedPlayers = [...DEFAULTS.blockedPlayers];
 config.youtubeUploadEnabled = true;
 
@@ -174,7 +181,10 @@ try {
   config.blockedPlayers = saved.blocked;
   config.youtubeUploadEnabled = saved.enabled;
   config.studioAutomation = saved.studio;
+  if (saved.token === undefined) delete process.env.YOUTUBE_TOKEN_FILE;
+  else process.env.YOUTUBE_TOKEN_FILE = saved.token;
   globalThis.fetch = saved.fetch;
+  rmSync(media, { recursive: true, force: true });
 }
 
 console.log("youtubeUpload.contract: all checks passed");

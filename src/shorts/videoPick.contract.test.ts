@@ -12,27 +12,31 @@
 //   5. The control: a clean uploaded match's saved hook is an example.
 // Run: MCSR_CONFIG=/nonexistent npx tsx src/shorts/videoPick.contract.test.ts
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { config, DEFAULTS } from "../config.js";
 import { pastTitleHooks } from "./videoPick.js";
 
+// A doc promise the code does not keep: printed and listed, never fatal (main's contract files' way).
+const deviations: string[] = [];
 function deviation(clause: string, check: () => void): void {
   try {
     check();
   } catch (err) {
     if (!(err instanceof assert.AssertionError)) throw err;
+    deviations.push(clause);
     console.log(`DEVIATION: ${clause} — ${err.message.split("\n")[0]}`);
   }
 }
 
 const saved = { mediaDir: config.mediaDir, blocked: config.blockedPlayers, titleNames: config.titleNames };
-config.titleNames = { ...DEFAULTS.titleNames };
+const dirs: string[] = [];
 
 /** A fresh media dir holding uploaded matches with these saved titles (the operator's edited title). */
 const channel = (titles: Record<number, string>): void => {
   config.mediaDir = mkdtempSync(path.join(tmpdir(), "mcsr-pasthooks-contract-"));
+  dirs.push(config.mediaDir);
   for (const [id, line] of Object.entries(titles)) {
     const dir = path.join(config.mediaDir, id);
     mkdirSync(dir, { recursive: true });
@@ -72,9 +76,11 @@ try {
   );
 
   // --- 4. A titleNames spelling ----------------------------------------------------------------------
-  config.blockedPlayers = ["Pinne"]; // Pinne is spelled "Skycrab" in titles (titleNames default)
+  // A made-up runner the title spells another way, as titleNames does for two real ones by default.
+  config.titleNames = { Runnerx: "Spelled" };
+  config.blockedPlayers = ["Runnerx"];
   channel({
-    6: `SKY HIGH STAKES | Skycrab vs doogile | ${TAIL}`,
+    6: `SKY HIGH STAKES | Spelled vs doogile | ${TAIL}`,
     7: `WHO BLINKS FIRST? | edcr vs doogile | ${TAIL}`,
   });
   const spelled = hooks();
@@ -84,13 +90,15 @@ try {
       assert.deepEqual(
         spelled,
         ["WHO BLINKS FIRST?"],
-        `examples were ${JSON.stringify(spelled)} — the title's "Skycrab" is never mapped back to the blocked "Pinne"`,
+        `examples were ${JSON.stringify(spelled)} — the title's "Spelled" is never mapped back to the blocked "Runnerx"`,
       ),
   );
 } finally {
   config.mediaDir = saved.mediaDir;
   config.blockedPlayers = saved.blocked;
   config.titleNames = saved.titleNames;
+  for (const d of dirs) rmSync(d, { recursive: true, force: true });
 }
 
+if (deviations.length) console.log(`${deviations.length} deviation(s) from the docs — see DEVIATION lines`);
 console.log("videoPick.contract: all checks passed");

@@ -13,7 +13,7 @@
 //   5. Any case.
 // Run: MCSR_CONFIG=/nonexistent npx tsx src/dashboard/nightly.contract.test.ts
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { MatchInfo } from "../api/types.js";
@@ -34,7 +34,8 @@ const saved = {
   favourites: config.favouritePlayers,
   fetch: globalThis.fetch,
 };
-config.mediaDir = mkdtempSync(path.join(tmpdir(), "mcsr-nightly-contract-")); // no scan cache: an empty pool
+const media = mkdtempSync(path.join(tmpdir(), "mcsr-nightly-contract-"));
+config.mediaDir = media; // no scan cache: an empty pool
 config.blockedPlayers = ["aquacorde", "BEEFSALAD"]; // any case, against the API's own spelling
 config.favouritePlayers = [...DEFAULTS.favouritePlayers]; // doogile, Feinberg, … — known by being a favourite
 
@@ -143,6 +144,7 @@ try {
   config.playoffsFirst = saved.playoffsFirst;
   config.favouritePlayers = saved.favourites;
   globalThis.fetch = saved.fetch;
+  rmSync(media, { recursive: true, force: true });
 }
 
 console.log("nightly.contract: all checks passed");

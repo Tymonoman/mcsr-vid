@@ -6,12 +6,14 @@
 //      the pick, the sync — the CLI exits non-zero with the block as its reason.
 //   2. Nothing is cut: no short-<id>.mp4, no title/description/cut files.
 //   3. Any case.
+//   4. The control: the same files with nobody blocked get past the block check to the next step
+//      that needs the network (the players' records), so the refusal above is the block alone.
 // It spawns the CLI the way `npm run short` does (tsx), with its own config file and the MCSR API
 // stubbed by a preloaded fetch that serves BeefSalad's real match; nothing else answers.
-// Run: MCSR_CONFIG=/nonexistent npx tsx src/shorts/generateShort.contract.test.ts
+// Run: MCSR_CONFIG=/nonexistent npx tsx src/shorts/generateShort.blocked.contract.test.ts
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -65,10 +67,23 @@ const run = (blockedPlayers: string[]) => {
 const shortFiles = () =>
   readdirSync(dir).filter((f) => f.startsWith(`short-${id}`) && !/\.(hook\.txt|pick\.json)$/.test(f));
 
-const cli = run(["beefsalad"]); // any case
-assert.equal(cli.status, 1, `exit status: ${cli.status}\n${cli.stderr}`);
-assert.match(cli.stderr, /blocked player/, "the block is the reason given — every earlier gate was passed");
-assert.deepEqual(shortFiles(), [], "nothing cut: no Short, no title, no description, no cut record");
-console.log("OK: npm run short refuses a blocked runner's match, run by hand with everything in place");
+try {
+  const cli = run(["beefsalad"]); // any case
+  assert.equal(cli.status, 1, `exit status: ${cli.status}\n${cli.stderr}`);
+  assert.match(cli.stderr, /blocked player/, "the block is the reason given — every earlier gate was passed");
+  assert.deepEqual(shortFiles(), [], "nothing cut: no Short, no title, no description, no cut record");
+  console.log("OK: npm run short refuses a blocked runner's match, run by hand with everything in place");
 
-console.log("generateShort.contract: all checks passed");
+  // The control: nobody blocked, the CLI goes on past the block to the players' records, which the
+  // stub refuses — so it stops there, before any render, for a reason that is not the block.
+  const open = run([]);
+  assert.equal(open.status, 1, `exit status: ${open.status}\n${open.stderr}`);
+  assert.doesNotMatch(open.stderr, /blocked player/, "unblocked, the block is not the reason");
+  assert.match(open.stderr, /could not be read/, `it got to the players' records: ${open.stderr}`);
+  assert.deepEqual(shortFiles(), [], "the control cut nothing either");
+  console.log("OK: the same files with nobody blocked get past the block check");
+} finally {
+  rmSync(media, { recursive: true, force: true });
+}
+
+console.log("generateShort.blocked.contract: all checks passed");

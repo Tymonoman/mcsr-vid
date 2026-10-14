@@ -8,9 +8,9 @@
 //   2. Nothing past the match fetch: no Twitch/VOD discovery request, no download stage.
 //   3. No write: the match directory is never created.
 //   4. Any case.
-// Run: MCSR_CONFIG=/nonexistent npx tsx src/pipeline/pipeline.contract.test.ts
+// Run: MCSR_CONFIG=/nonexistent npx tsx src/pipeline/pipeline.blocked.contract.test.ts
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { MatchInfo } from "../api/types.js";
@@ -18,7 +18,8 @@ import { config, matchDir } from "../config.js";
 import { runPipeline } from "./pipeline.js";
 
 const saved = { mediaDir: config.mediaDir, blocked: config.blockedPlayers, fetch: globalThis.fetch };
-config.mediaDir = mkdtempSync(path.join(tmpdir(), "mcsr-pipeline-contract-"));
+const media = mkdtempSync(path.join(tmpdir(), "mcsr-pipeline-contract-"));
+config.mediaDir = media;
 
 const fixture = (id: number): MatchInfo =>
   JSON.parse(readFileSync(new URL(`../fixtures/match-${id}.json`, import.meta.url), "utf8")) as MatchInfo;
@@ -52,6 +53,7 @@ try {
   config.mediaDir = saved.mediaDir;
   config.blockedPlayers = saved.blocked;
   globalThis.fetch = saved.fetch;
+  rmSync(media, { recursive: true, force: true });
 }
 
-console.log("pipeline.contract: all checks passed");
+console.log("pipeline.blocked.contract: all checks passed");
