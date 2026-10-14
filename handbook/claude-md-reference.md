@@ -1134,7 +1134,7 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
 - **"Needs you"** (`gatherNeedsYou`, `facts.ts`; `renderNeedsYou`, `report.ts`; the operator's own
   rule for the week of 8–14 Oct 2026, "I act only on what the 07:00 Warsaw Telegram report lists
   under 'Needs you'"): a deterministic section — code, not Claude — at the top of the day message,
-  "Nothing today." when empty. Only seven kinds, one line each, a deep link where there is a match:
+  "Nothing today." when empty. Only eight kinds, one line each, a deep link where there is a match:
   a failed `short-<id>.status.json` step (match, step, the error's first line) until the operator
   retries or re-saves; Studio signed out/needing verification/wrong channel
   (`<mediaDir>/.studio-probe.json`, the Studio automation's own file — absent is no item, read
@@ -1143,7 +1143,13 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
   or public in the last 3 days (`publishAt`, or `uploadedAt` for one published on upload) whose
   Short nobody has cut — no `short-<id>.hand.json`, no `youtube-short.json` — unless `noShort`,
   hidden or `blockedOnDisk`, since nothing else warns before a long-form goes out without its Short;
-  a blocked runner in tonight's queue, rendered and not hidden, with an upload record, or as a
+  a live title — `youtube.json`/`youtube-short.json`, public or with any `publishAt` (the record's
+  `privacyStatus` is upload-time only), each video once, a blocked player's match skipped — whose
+  hook (before the first " | ") fails `hookProblem` (which runs `spoilsTheResult` too) given the
+  title's own "A vs B" (`liveTitleItems`, 14 Oct 2026: "FALLEN KING vs PLAYOFF GOAT" and "RANK #1"
+  were public, since a typed hook saves with only a warning and nothing said so afterwards); the
+  line is "Live title breaks a house rule: <videoId> — <problem>", never the hook, which may be the
+  label; a blocked runner in tonight's queue, rendered and not hidden, with an upload record, or as a
   comment's author newer than the last report (`isBlockedPlayer` against the display name — the
   line names the video or the match, never the comment's own text);
   `<mediaDir>/.experiments.json`'s `needsHuman` entries not yet `needsHumanAck`'d (the experiment
@@ -1361,8 +1367,11 @@ every check above is a fixture page or pure logic; see "What is verified live vs
 - **The worker never sets a Test & Compare winner itself** — `readTestAndCompare`'s `"done"` state
   only ever records what it read off YouTube's own page (the live title/thumbnail it already
   applied). A `"needsHuman"` note lands on the experiment for anything `startTestAndCompare`/
-  `readTestAndCompare` could not get past (a refused title, an unreadable page), and the worker
-  never guesses past an ambiguous state on its own.
+  `readTestAndCompare` could not get past (a refused title, an unreadable page, and since 14 Oct
+  2026 a page Save with no "Changes saved" within 15 s — an error, so the experiment stays
+  `"planned"` and the next cycle reads the page before trying again, where the swallowed wait had
+  returned `"started"` and left a blank form to be found a day later), and the worker never
+  guesses past an ambiguous state on its own.
 
 **What is verified live vs only on fixtures.** Confirmed against the real Studio UI, 7–8 Oct 2026:
 `#endscreen-editor-link`, the "Import from video" button, `ytcp-video-pick-dialog` and its

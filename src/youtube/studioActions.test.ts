@@ -193,6 +193,8 @@ try {
     // naming `relatedTargetId` — results came back, just not the one asked for.
     relatedResults: "none" as "none" | "match" | "miss",
     relatedTargetId: "",
+    // false: the page Save is clicked but no "Changes saved" ever shows (14 Oct 2026).
+    tcSaveConfirms: true,
   };
   function editPageHtml(): string {
     return `<!doctype html><html><body>
@@ -217,7 +219,7 @@ try {
          (s7r-endscreen-open.json: the page's own #save sits before the editor's own #save-button) —
          a reversion to a plain text-based Save selector plus .first() would click this one, not
          the editor's, and this fixture would catch it (the regression fixed 8 Oct 2026). -->
-    <button id="save" onclick="window.__tcSaved=true;document.getElementById('saved-msg').style.display='block'">Save</button>
+    <button id="save" onclick="window.__tcSaved=true;${uiState.tcSaveConfirms ? "document.getElementById('saved-msg').style.display='block'" : ""}">Save</button>
     <div id="saved-msg" style="display:none">Changes saved</div>
     <div id="dialog-root"></div>
     <script>
@@ -532,6 +534,21 @@ try {
   );
   assert.equal(realThumb, "started");
   console.log("OK: a thumbnail test picks the Thumbnail chip and uploads both files");
+
+  // A Save that never confirms is an error, not "started": the worker leaves the experiment
+  // planned and records the cycle's error instead of finding a blank form a day later.
+  uiState.tcSaveConfirms = false;
+  const unsaved = await startTestAndCompare(
+    handle,
+    "vidT3",
+    { kind: "thumbnail", files: [thumbA, thumbB] },
+    { matchId },
+  );
+  uiState.tcSaveConfirms = true;
+  assert.equal(await page.evaluate("window.__tcSaved"), true, "Save was pressed");
+  assert.ok(typeof unsaved === "object" && "error" in unsaved, `expected an error, got ${JSON.stringify(unsaved)}`);
+  assert.match(unsaved.error, /never showed "Changes saved"/);
+  console.log('OK: a Save with no "Changes saved" is an error, never "started"');
 
   uiState.abTest = "running";
   const already2 = await startTestAndCompare(

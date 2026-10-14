@@ -810,12 +810,23 @@ export async function startTestAndCompare(
     await waitForEnabled(page, SELECTORS.pageSaveButton, 15_000);
     await randomPause();
     await page.locator(SELECTORS.pageSaveButton).click();
-    await page
+    // No toast is no proof it saved: swallowed, a Save that never landed read as "started" and
+    // surfaced only a day later as a blank form. As an error the worker records it as this cycle's
+    // and leaves the experiment "planned" — the next cycle reads the page before trying again.
+    const saved = await page
       .locator('text="Changes saved"')
       .first()
       .waitFor({ state: "visible", timeout: 15_000 })
-      .catch(() => {});
+      .then(
+        () => true,
+        () => false,
+      );
     await shot(handle, opts.matchId, "tc-after");
+    if (!saved)
+      return {
+        error:
+          'Save was pressed but Studio never showed "Changes saved" — the test may not have started; check Studio by hand',
+      };
     return "started";
   } catch (err) {
     return { error: describeError(err) };
