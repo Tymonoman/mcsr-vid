@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { computeThumbnailProps, RIGHT_RENDER_SIDE } from "./thumbnailProps.js";
-import { FACING_YAW, KNOWN_POSES, resolveAvatarUrl } from "../api/avatarUrl.js";
+import { computeThumbnailProps, RIGHT_RENDER_SIDE, withInlineAvatars } from "./thumbnailProps.js";
+import { FACING_YAW, inlineAvatar, KNOWN_POSES, resolveAvatarUrl } from "../api/avatarUrl.js";
 import type { MatchInfo, UserDetails } from "../api/types.js";
 
 const realFetch = globalThis.fetch;
@@ -64,7 +64,35 @@ assert.deepEqual(await resolveAvatarUrl("uuid-2", "moonwalking", "left"), {
 // The thumbnail must show the rating each player carried INTO the match, not their rating now.
 // The overlay and the description were fixed for this; the thumbnail kept showing the live value,
 // so the same match rendered a different elo depending on which artefact you looked at.
-globalThis.fetch = (async () => new Response(null, { status: 200 })) as typeof fetch;
+const png = () =>
+  new Response(new Uint8Array([137, 80, 78, 71]), { headers: { "content-type": "image/png" } });
+
+// The render never waits on NMSR (14 Oct 2026: one slow fullbody answer timed the thumbnail stage
+// out). A hung try is cut off and asked again; the image reaches the props as a data: URL.
+{
+  let calls = 0;
+  globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+    calls++;
+    if (calls > 1) return png();
+    // A real hung fetch holds a socket open; this timer stands in for it (the timeout's own is unref'd).
+    const socket = setTimeout(() => {}, 10_000);
+    const signal = init!.signal!;
+    return new Promise((_, reject) =>
+      signal.addEventListener("abort", () => (clearTimeout(socket), reject(signal.reason))),
+    );
+  }) as typeof fetch;
+  assert.equal(await inlineAvatar("https://nmsr.nickac.dev/head/u", 50), "data:image/png;base64,iVBORw==");
+  assert.equal(calls, 2, "the hung try was given up on and asked again");
+
+  // Every try failing hands the render the URL: the browser's one chance, as before.
+  calls = 0;
+  globalThis.fetch = (async () => (calls++, new Response("busy", { status: 503 }))) as typeof fetch;
+  assert.equal(await inlineAvatar("https://nmsr.nickac.dev/head/u", 50), "https://nmsr.nickac.dev/head/u");
+  assert.equal(calls, 3);
+}
+
+globalThis.fetch = (async (url: string) =>
+  url.startsWith("https://nmsr.nickac.dev/") ? png() : new Response(null, { status: 200 })) as typeof fetch;
 {
   const match = {
     tag: null,
@@ -87,6 +115,16 @@ globalThis.fetch = (async () => new Response(null, { status: 200 })) as typeof f
   assert.equal(props.props.headerLabel, "Minecraft · Speedrunning · Ranked", "null tag uses the default");
   assert.equal(props.props.seedType, "VILLAGE", "the centre slot shows the match's seed type");
   assert.equal(params(props.leftAvatar.url).get("yaw"), String(FACING_YAW), "left player turns right");
+  // The props keep the URL (a reused still needs no image); the still about to be drawn gets the image.
+  assert.equal(props.props.left.avatarUrl, props.leftAvatar.url);
+  const drawn = await withInlineAvatars(props.props);
+  assert.equal(
+    drawn.left.avatarUrl,
+    "data:image/png;base64,iVBORw==",
+    "the render gets the image, not a URL",
+  );
+  assert.equal(drawn.right.avatarUrl, "data:image/png;base64,iVBORw==");
+  assert.equal(drawn.left.nickname, "edcr");
   assert.equal(
     props.rightAvatar.url,
     (await resolveAvatarUrl("u-right", props.rightAvatar.pose, RIGHT_RENDER_SIDE)).url,

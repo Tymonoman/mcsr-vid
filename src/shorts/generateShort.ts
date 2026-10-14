@@ -6,6 +6,7 @@ import { requireArg } from "../cliArgs.js";
 import { describeError } from "../errorText.js";
 import { blockedIn, config, matchDir } from "../config.js";
 import { getMatch, getUser, parseMatchId } from "../api/mcsrApi.js";
+import { inlineAvatar } from "../api/avatarUrl.js";
 import { readManifest } from "../thumbnails/thumbnailVariants.js";
 import { renderShort } from "./shortRender.js";
 import { readSyncOffsets } from "../pipeline/syncFile.js";
@@ -171,13 +172,14 @@ console.error(
 
 const outPath = path.join(outDir, `short-${matchId}.mp4`);
 let printed = 0;
-const plate = (p: typeof playerLeft, user: typeof userLeft) => ({
+const plate = async (p: typeof playerLeft, user: typeof userLeft) => ({
   nickname: p.nickname,
   // The rating at the time of the match, never user.eloRate (the rating now).
   eloRate: eloAtMatchStart(game, p.uuid, user.eloRate),
   eloRank: frozenRank(p.uuid, user.eloRank),
   ...(seedOf(p.uuid) ? { seed: seedOf(p.uuid) } : {}),
-  headUrl: `https://nmsr.nickac.dev/head/${p.uuid}`,
+  // Fetched here, not by the render's browser (inlineAvatar).
+  headUrl: await inlineAvatar(`https://nmsr.nickac.dev/head/${p.uuid}`),
 });
 const clips =
   window.pov === "left"
@@ -205,8 +207,8 @@ await renderShort({
   captions,
   endCard,
   board: {
-    top: plate(playerLeft, userLeft),
-    bottom: plate(playerRight, userRight),
+    top: await plate(playerLeft, userLeft),
+    bottom: await plate(playerRight, userRight),
     hook: hook!,
     timerStartMs: window.startMs,
   },

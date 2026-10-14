@@ -19,7 +19,7 @@ import { config } from "../config.js";
 import { hookLabelProblem } from "../pipeline/hooks.js";
 import { bundleOnce } from "../pipeline/remotionBundle.js";
 import type { AvatarProvider } from "../api/avatarUrl.js";
-import { computeThumbnailProps, type PosePair } from "./thumbnailProps.js";
+import { computeThumbnailProps, withInlineAvatars, type PosePair } from "./thumbnailProps.js";
 import type { ThumbnailProgress } from "./thumbnailRender.js";
 import type { MatchInfo, UserDetails } from "../api/types.js";
 
@@ -259,7 +259,6 @@ export async function renderThumbnailVariants(args: RenderVariantsArgs): Promise
       args.onProgress?.({ phase: "rendering", percent: Math.round((index / args.poses.length) * 100) });
 
       const computed = await computeThumbnailProps(args.match, args.userLeft, args.userRight, poses);
-      const renderProps = { ...computed.props };
       const file = variantFile(poses);
       const outPath = path.join(args.outDir, file);
 
@@ -280,6 +279,7 @@ export async function renderThumbnailVariants(args: RenderVariantsArgs): Promise
       });
       if (reuse) continue;
 
+      const renderProps = await withInlineAvatars(computed.props);
       const bundleUrl = await serveUrl();
       const composition = await selectComposition({
         serveUrl: bundleUrl,

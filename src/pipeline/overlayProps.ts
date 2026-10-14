@@ -1,5 +1,5 @@
 import { config } from "../config.js";
-import { resolveAvatarUrl } from "../api/avatarUrl.js";
+import { inlineAvatar, resolveAvatarUrl } from "../api/avatarUrl.js";
 import { playoffContextFor, playoffEloFor, playoffIntroLabel } from "../playoffs/playoffs.js";
 import { chooseTeaser } from "./teaser.js";
 import { chooseMoves } from "./explainMoves.js";
@@ -180,8 +180,15 @@ export async function computeOverlayProps(
     resolveAvatarUrl(userLeft.uuid, LEFT_POSE, "left"),
     resolveAvatarUrl(userRight.uuid, RIGHT_POSE, "right"),
   ]);
-  const leftAvatarUrl = leftAvatar.url;
-  const rightAvatarUrl = rightAvatar.url;
+  // Fetched here rather than by the render's browser, heads included (inlineAvatar).
+  const [leftAvatarUrl, rightAvatarUrl, leftHeadUrl, rightHeadUrl] = await Promise.all(
+    [
+      leftAvatar.url,
+      rightAvatar.url,
+      `https://nmsr.nickac.dev/head/${leftUuid}`,
+      `https://nmsr.nickac.dev/head/${rightUuid}`,
+    ].map((url) => inlineAvatar(url)),
+  );
 
   // The band reads the bracket's order, not the ladder's: the seed in the rank's place, and the
   // series dots at the score this game started on (the after-the-run still fills the winner's,
@@ -203,7 +210,7 @@ export async function computeOverlayProps(
         userLeft,
         eloAtMatchStart(match, leftUuid, userLeft.eloRate),
         leftAvatarUrl,
-        `https://nmsr.nickac.dev/head/${leftUuid}`,
+        leftHeadUrl,
       ),
       leftUuid,
     ),
@@ -212,7 +219,7 @@ export async function computeOverlayProps(
         userRight,
         eloAtMatchStart(match, rightUuid, userRight.eloRate),
         rightAvatarUrl,
-        `https://nmsr.nickac.dev/head/${rightUuid}`,
+        rightHeadUrl,
       ),
       rightUuid,
     ),

@@ -3,7 +3,7 @@ import { config } from "../config.js";
 // (remotion/types.ts), reused here rather than hand-duplicated, since this crosses into Remotion
 // via an untyped `inputProps` JSON boundary.
 import type { ThumbnailProps } from "../../remotion/types.js";
-import { resolveAvatarUrl, type AvatarSide, type ResolvedAvatar } from "../api/avatarUrl.js";
+import { inlineAvatar, resolveAvatarUrl, type AvatarSide, type ResolvedAvatar } from "../api/avatarUrl.js";
 import { eloAtMatchStart } from "../pipeline/overlayProps.js";
 import { playoffContextFor } from "../playoffs/playoffs.js";
 import type { MatchInfo, UserDetails } from "../api/types.js";
@@ -78,4 +78,16 @@ export async function computeThumbnailProps(
     leftAvatar,
     rightAvatar,
   };
+}
+
+/**
+ * `props` with both figures fetched into them (`inlineAvatar`), for a still about to be drawn.
+ * Not part of `computeThumbnailProps`: a variant whose PNG is reused needs its props but no image.
+ */
+export async function withInlineAvatars(props: ThumbnailProps): Promise<ThumbnailProps> {
+  const [left, right] = await Promise.all([
+    inlineAvatar(props.left.avatarUrl),
+    inlineAvatar(props.right.avatarUrl),
+  ]);
+  return { ...props, left: { ...props.left, avatarUrl: left }, right: { ...props.right, avatarUrl: right } };
 }

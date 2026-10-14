@@ -32,7 +32,7 @@ import { HOOK_MAX_CHARS } from "../shorts/videoPick.js";
 import { playoffContextFor } from "../playoffs/playoffs.js";
 import { hookFactsMatchId, readSeriesRecord } from "../playoffs/series.js";
 import { readManifest, RESULT_LOOKING_POSE_KEY, type VariantRecord } from "./thumbnailVariants.js";
-import { computeThumbnailProps } from "./thumbnailProps.js";
+import { computeThumbnailProps, withInlineAvatars } from "./thumbnailProps.js";
 import { pickCaption, type CaptionResult } from "./tcCaption.js";
 
 /** YouTube's own thumbnail cap. */
@@ -177,7 +177,7 @@ async function run(matchId: number, serveUrl: () => Promise<string>): Promise<Ma
     left: chosen.leftPose,
     right: chosen.rightPose,
   });
-  const renderProps = { ...computed.props, caption: captionResult.caption };
+  const renderProps = { ...(await withInlineAvatars(computed.props)), caption: captionResult.caption };
   const url = await serveUrl();
   const composition = await selectComposition({ serveUrl: url, id: "Thumbnail", inputProps: renderProps });
   await atomicOutput(captionOut, (output) =>
