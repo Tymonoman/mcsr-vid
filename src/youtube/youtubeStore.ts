@@ -7,7 +7,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { config, matchDir } from "../config.js";
 import { listProcessedMatchIds } from "../dashboard/matchStatus.js";
-import { readManifest } from "../thumbnails/thumbnailVariants.js";
+import { carriedHookText, readManifest } from "../thumbnails/thumbnailVariants.js";
 import {
   buildTitle,
   HOOK_PLACEHOLDER,
@@ -16,7 +16,6 @@ import {
   SEPARATOR,
   titleName,
 } from "../pipeline/title.js";
-import { hookLabelProblem } from "../pipeline/hooks.js";
 import {
   closerFor,
   seedPhrase,
@@ -144,17 +143,17 @@ export async function uploadTextFor(
     (await edited("title")) ?? (await readIfPresent(path.join(dir, `${base}.title.txt`))) ?? "";
   let title = titleText.split("\n")[0]!.trim();
   if (title.includes(HOOK_PLACEHOLDER)) {
-    // A carried headline is as untrusted as a typed or a model one (`withHook`): one that labels
-    // a runner — judged against the title's own pair, none readable fails closed — or that would
-    // push the title past 100 characters leaves <HOOK> in place, which Upload and Adopt refuse.
-    const hook = (await readManifest(dir))?.hookText?.trim();
+    // The placeholder is often there because the pipeline refused this very headline as a runner
+    // label ("YN vs TAS", 2 Oct 2026): judged against the title's own pair — none readable fails
+    // closed — and kept under 100 characters, or <HOOK> stays, which Upload and Adopt refuse.
     const parts = splitTitle(title);
     // Each side as shown and as the API spells it (Skycrab is Pinne), the two `withHook` accepts.
     const players = parts
       ? [parts.left, parts.right].flatMap((shown) => [{ nickname: shown }, { nickname: canonName(shown) }])
       : [];
+    const hook = carriedHookText(await readManifest(dir), undefined, players)?.trim();
     const filled = hook ? title.replace(HOOK_PLACEHOLDER, hook) : title;
-    if (hook && hookLabelProblem(hook, players) === null && filled.length <= TITLE_MAX_CHARS) title = filled;
+    if (filled.length <= TITLE_MAX_CHARS) title = filled;
   }
   // A Short with no saved hook cannot go up (`hookRefusal`): its stored title stands, unlogged —
   // the publish kit asks for this text every time a match opens. In hand mode

@@ -227,7 +227,12 @@ views brought 0 subscribers.
   not); each proposal passes `hookProblem` or is dropped with the reason logged; `suggestions.title`
   lists them first (the dashboard's chips are held to the same rule, so one cannot reach the panel
   either). The operator's calls (24 Sept): when the model's window is rejected its title hooks go
-  with it — the heuristic fallback carries none.
+  with it — the heuristic fallback carries none. `hookProblem` is a word-list check, not a reader:
+  its spoiler half (`HOOK_SPOILER` + `spoilsTheResult`) catches the usual result verbs ("wins",
+  "chokes", "finishes first", "seals it"), not every paraphrase ("gets there first", "never catches
+  up" pass), so the operator's Save is the real gate. Its seed/rank/elo check is a pattern list
+  (`HOOK_SEED_RANK_ELO`: #N, Nth seed, top seed, top N, elo, rank N, no./number N, lcq, two 3–4
+  digit figures) and catches the usual phrasings, not every one.
 - **Never a nickname, label or epithet for a runner, "vs" or not** (`hookLabelProblem`,
   `src/pipeline/hooks.ts`; `hookProblem`'s `players` argument, `src/shorts/videoPick.ts`; `withHook`'s,
   `src/pipeline/title.ts`; 2 Oct 2026). The operator, after "LCQ vs YN | lauveer vs edcr" and "ASIAN
@@ -242,11 +247,16 @@ views brought 0 subscribers.
   match" — the model copied "YN" onto lauveer–edcr, a different match's different player. Both
   permissions are gone now: `pastTitleHooks` shows no "vs" example at all (above), and `withHook`
   refuses a carried hook that labels a player exactly as `hookProblem` refuses a model's or warns on
-  a typed one — a carried value is as untrusted as either. The shared rule everywhere: a denied word
-  (an ethnicity or nationality term, a slur-adjacent abbreviation) is refused outright, "vs" or not;
-  a fresh "X vs Y" is checked against the match's own two players (API or `titleNames` spelling) and
-  a mismatch is a label too — "v", "v." and "versus" count as "vs", and so does a third side (14 Oct
-  2026: "CARNIVORE v. VEGAN" and "X vs Y vs THE CLOCK" had slipped through an exact-two "vs" split). A model's proposal and a carried one both fail closed; the operator's
+  a typed one — a carried value is as untrusted as either. The shared rule everywhere: a word on the
+  short denied list (`HOOK_DENIED_LABELS`: a handful of ethnicity/nationality terms and a
+  slur-adjacent abbreviation, deliberately not exhaustive) is refused outright, "vs" or not; a fresh
+  "X vs Y" is checked against the match's own two players (API or `titleNames` spelling) and a
+  mismatch is a label too — "v", "v." and "versus" count as "vs", and so does a third side (14 Oct
+  2026: "CARNIVORE v. VEGAN" and "X vs Y vs THE CLOCK" had slipped through an exact-two "vs" split).
+  Each side is compared whole after trimming, so punctuation or a lead-in on a side ("X vs Y?",
+  "REMATCH: X vs Y") counts as a mismatch: a model's proposal is dropped and a typed hook gets a
+  warning. A model's proposal and a carried one both fail closed on a label (a carried value is
+  checked for labels only); the operator's
   own typed hook still always saves (`writeHooks`, `src/dashboard/shortFlow.ts`), the problem landing
   in `saveWarnings` next to the field like every other check there — "it should just be a
   suggestion." A match rendered before this fix keeps whatever its `title.txt` already carries until
@@ -272,8 +282,10 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   `idle()` checks every reason the standing rule exists for ("never restart while a chain
   uploads" — a 1 Oct 2026 restart cut a Grand Final upload at 30%): a pipeline render, an export
   (also a series game's and a sync fix's Re-encode — same job table), a Short render, the model's
-  pick queue, the publish chain, an upload, a `.upload-session-*.json` still on disk, an NAS copy,
-  and the 20 minutes before `nightlyRenderHourUtc` might fire. Idle, it runs `npx tsc --noEmit`
+  pick queue, the publish chain, an upload, a `.upload-session-*.json` still on disk and under a
+  day old (`SESSION_LIFE_MS`, `src/youtube/youtube.ts`: YouTube drops a session after that, and a
+  chunk failure settled in Studio never removes its file), an NAS copy, and the 20 minutes before
+  `nightlyRenderHourUtc` might fire. Idle, it runs `npx tsc --noEmit`
   (5 min cap) before it dares exit — code that would not even type-check must never be the reason
   the channel stops updating unattended — then logs the commit it is booting into
   (`src/dashboard/repoHead.ts`) and calls `process.exit(0)`; tini's `restart: unless-stopped`
@@ -665,13 +677,15 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   to deterministic-by-match-id rotation among the pairs actually rendered instead, because 88% of
   uploads were wearing that one pose pair (the 7 Oct packaging audit). An operator's pick and an
   already-uploaded thumbnail are never touched either way. **"cheering-relaxing" (the left runner,
-  arms up) is excluded from every automatic pick** (`RESULT_LOOKING_POSE_KEY`,
+  arms up) is excluded from every fresh automatic pick** (`RESULT_LOOKING_POSE_KEY`,
   `thumbnailVariants.ts`; 8 Oct 2026, chip-truth): it reads as the result, spoiling when the left
   player won and misleading when they didn't, so both `autoDefaultKey`'s rotation and `tc-thumbs`'s
   SSIM "most different" pick (`tcThumbs.ts`, which had picked it 7 of its first 10 sets) filter it
-  out of their own pool first, falling back to the full list only if that would leave nothing to
-  pick from. The operator can still choose it by hand (`chooseVariant`) — the exclusion is only on
-  the paths nobody reviews. `RIGHT_RENDER_SIDE` follows the CSS mirror of the right image. The hook text came off on 18 Sept
+  out of their own pool first. `autoDefaultKey` falls back to the full list only if that would leave
+  nothing to pick from; `tc-thumbs` instead refuses ("no pose variant other than the result-looking
+  one … pick tc-pose by hand") and writes no tc-pose.png. A choice carried from an earlier manifest
+  keeps itself (only a 7 Oct rotation-on render could have carried it in as "auto"). The operator
+  can still choose it by hand (`chooseVariant`) — the exclusion is only on the paths nobody reviews. `RIGHT_RENDER_SIDE` follows the CSS mirror of the right image. The hook text came off on 18 Sept
   and its twins were deleted on 24 Sept: an older manifest's `hookText`/`-hook` records are read
   by `readManifest`, hidden by the panel and handed to the title by `carriedHookText`. The
   checklist's thumbnail pill ticks on `chosenBy: "operator"`, and `variantStillReusable` keeps a
@@ -1914,7 +1928,16 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
   the step so); no session and anything else on record fails the step and names Studio, not a guess.
   The resume probe itself reads a 5xx/429 as "try again", not "gone" (14 Oct 2026): it throws and
   keeps the session file, so an operator's Retry after a chunk 503 cannot start a second
-  `videos.insert` either; only a 404/410 (or another 4xx) drops the session for a fresh start.
+  `videos.insert` either; only a 404/410 (or another 4xx) drops the session for a fresh start —
+  and forgets its file, even under `resumeOnly`, so no later press tries the dead one again.
+  A long-form's mid-file failure is resumed the same way on the next Save, before the channel
+  scan's pairing of the half-sent video can read as "up" — but only a session `uploadVideo` could
+  still resume (`resumableSession`: these exact bytes, under a day old); a re-encode since or a
+  day-old session goes through the normal upload instead (14 Oct 2026). A resume of an export
+  whose `sync.json` was corrected since is refused as `startUpload` refuses it (`exportStale`):
+  nothing sent, the session kept, and the re-encode's new bytes start fresh. A resumed upload
+  carries the title its start sent, and the record says so: a hook changed in between is logged,
+  never retitled on the channel.
 - **Country flags render as tofu** without a colour-emoji font (cosmetic, intro card).
 - **Verify visual changes by rendering** (`npm run still`, then read the PNG).
 - **`npm run test:unit` after any edit; `npm test` after touching rendering or asset

@@ -17,11 +17,13 @@ thumbnails and a Short, published to **MCSR Replayoffs**.
   The upset hook is a question.
 - **Never a runner nickname, label or epithet, "vs" or not** (`hookLabelProblem`,
   `src/pipeline/hooks.ts`; `hookProblem`'s `players` arg, `src/shorts/videoPick.ts`; `withHook`,
-  `src/pipeline/title.ts`). A denied word (ethnicity/nationality term, slur-adjacent abbreviation)
-  is refused outright; a fresh "X vs Y" must name the match's own two players (API or `titleNames`
-  spelling) or it is a label too. A model's proposal and a carried `hookText` fail closed the same
-  way `hookProblem` does. Only the operator's own **typed** hook always saves: the problem lands as
-  a warning in `saveWarnings`, never a refusal.
+  `src/pipeline/title.ts`). A word on the short denied list (`HOOK_DENIED_LABELS`: a handful of
+  ethnicity/nationality terms and a slur-adjacent abbreviation, deliberately not exhaustive) is
+  refused outright; a fresh "X vs Y" must name the match's own two players (API or `titleNames`
+  spelling) or it is a label too. A model's proposal and a carried `hookText` fail closed on a
+  label the same way `hookProblem` does (a carried value is checked for labels only). Only the
+  operator's own **typed** hook always saves: the problem lands as a warning in `saveWarnings`,
+  never a refusal.
 - **No seed, rank or elo in hooks or suggestions.**
 - **The YouTube API compliance audit has cleared** (`handbook/api-review/`); it gates only
   `videos.insert`. `youtubeUploadEnabled` is true, `nightlyUpload` is `"scheduled"`. Keep every
@@ -138,7 +140,9 @@ finish spoils and underperforms.
   only); validated for bounds and `rtaAtStart` within ±2s. One retry on an empty answer, then the
   timeline heuristic (`shortMoment.ts`). Pick is `short-<id>.pick.json`. It also proposes up to 3
   long-form title hooks (`titleHooks`) styled on the operator's past saved hooks; each must pass
-  `hookProblem` or is dropped, and a rejected window drops its title hooks too.
+  `hookProblem` (a word-list spoiler/label/seed check: catches the usual result verbs, not every
+  paraphrase) or is dropped — the operator's Save is the real gate. A rejected window drops its
+  title hooks too.
 - **No Short renders and nothing uploads before the operator saves the hooks**
   (`generateShort.ts`, `youtubeUpload.ts` `hookRefusal`, every render path). The Short's hook is
   `short-<id>.hook.txt`; the long-form's is the edited title. Saving both
@@ -164,10 +168,10 @@ reload). After merging server changes, `POST /api/restart-when-idle`; a hand
 
 - **Restart only when idle** (`src/dashboard/restartWhenIdle.ts`): `POST /api/restart-when-idle`
   arms, `DELETE` cancels, `GET` reports. `idle()` checks a render (pipeline or Short), an export,
-  the pick queue, the publish chain, an upload, a `.upload-session-*.json`, an NAS copy and
-  the time before `nightlyRenderHourUtc`; idle, it runs `npx tsc --noEmit`, then `process.exit(0)`,
-  and tini brings it back on the new code. **A docker restart must never be issued while a chain
-  uploads.**
+  the pick queue, the publish chain, an upload, a `.upload-session-*.json` under a day old, an NAS
+  copy and the time before `nightlyRenderHourUtc`; idle, it runs `npx tsc --noEmit`, then
+  `process.exit(0)`, and tini brings it back on the new code. **A docker restart must never be
+  issued while a chain uploads.**
 - **Two screens, one bar**: list and match; four list tabs are the only navigation. The match
   screen groups **Now**, **Check**, **Package**, **Publish** in pipeline order. Now's steps
   (`GET /api/shorts/plan/:id`): Video, Pick, Hooks (locked once uploaded), Short (skipped if
@@ -223,9 +227,10 @@ reload). After merging server changes, `POST /api/restart-when-idle`; a hand
   in `short-<id>.status.json`.
 - **Thumbnails** (`remotion/Thumbnail.tsx`): two big figures, name-only plates, seed type above the
   VS, no rating/seed/placement text. Four pose pairs; `thumbnailRotatePoses` (default off) rotates
-  by match id. **"cheering-relaxing" is excluded from every automatic pick**
-  (`RESULT_LOOKING_POSE_KEY`, reads as the result); operator pick only. `playoffThumbnailStyle` is
-  **not wired** into any render yet.
+  by match id. **"cheering-relaxing" is excluded from every fresh automatic pick**
+  (`RESULT_LOOKING_POSE_KEY`, reads as the result); operator pick only. A choice carried from an
+  earlier manifest keeps itself (only a 7 Oct rotation-on render could have carried it as "auto").
+  `playoffThumbnailStyle` is **not wired** into any render yet.
 - **Re-render a match's thumbnails beside the live set, never over it**
   (`src/thumbnails/rerender.ts`, `src/youtube/thumbnailSwap.ts`, `src/dashboard/thumbnailRoutes.ts`,
   `src/dashboard/busy.ts`): variants render into `thumbnail-new/`; live files

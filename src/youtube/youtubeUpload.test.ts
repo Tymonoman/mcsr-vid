@@ -2,6 +2,7 @@
 // Nothing here touches the network or the real media directory.
 // Run: npx tsx src/youtubeUpload.test.ts
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -10,6 +11,7 @@ import type { UploadOptions, UploadResult } from "./youtube.js";
 import {
   beginUpload,
   commentSoonTick,
+  type finishOnYouTube,
   explainUploadError,
   playlistTitlesFor,
   resumeUpload,
@@ -122,6 +124,26 @@ try {
     "a placeholder is no hook",
   );
   await writeFile(titleEdited, "A hook | a vs b | MCSR Ranked 1v1\n");
+
+  // YouTube refuses a description over 5000 BYTES or with < >, and only after the whole file has
+  // gone up: both are refused before a byte is sent. "é" is two bytes — 2600 of them, 5200 bytes.
+  {
+    const descriptionEdited = path.join(dir, `match-${matchId}.description.edited.txt`);
+    let sent = 0;
+    const neverSend = (async () => (sent++, {})) as unknown as typeof import("./youtube.js").uploadVideo;
+    for (const description of ["gg <3", "é".repeat(2600)]) {
+      await writeFile(descriptionEdited, description);
+      const refused = await beginUpload(matchId, { kind: "video", privacyStatus: "private" }, neverSend);
+      assert.ok(
+        "error" in refused &&
+          refused.status === 400 &&
+          /5000 bytes and contain no < or >/.test(refused.error),
+        `description refused: ${description.slice(0, 8)}`,
+      );
+    }
+    assert.equal(sent, 0, "nothing sent");
+    await rm(descriptionEdited);
+  }
 
   // The Short: its confirmed hook, burned into the file being sent, and only once.
   const shortHookPath = path.join(dir, `short-${matchId}.hook.txt`);
@@ -949,6 +971,30 @@ try {
 
   console.log("OK: comment retry posts for public scheduled videos, skips private ones and Shorts");
 
+  // Newest first, capped after the due filter: five old records whose comment never settles (a
+  // deleted video reads as private, one made private again, comments off) took every attempt each
+  // night in match-id order, and a fresh upload never got its first comment — or its pin.
+  {
+    const stuck = [8801, 8802, 8803, 8804, 8805];
+    const fresh = 8806;
+    for (const id of [...stuck, fresh]) {
+      await mkdir(path.join(media, String(id)), { recursive: true });
+      await writeUpload(id, {
+        ...record,
+        videoId: `vid${id}`,
+        publishAt: id === fresh ? new Date(Date.now() - 86_400_000).toISOString() : pastPublishAt,
+        privacyStatus: "private",
+        finished: {},
+      });
+    }
+    const pressed: number[] = [];
+    const fakeFinish = (async (id: number) => (pressed.push(id), {})) as unknown as typeof finishOnYouTube;
+    await retryPendingComments(fakeFinish, 5);
+    assert.equal(pressed[0], fresh, "the newest due video is pressed first");
+    assert.equal(pressed.length, 5, "still at most five a tick");
+    for (const id of [...stuck, fresh]) await rm(path.join(media, String(id)), { recursive: true });
+  }
+
   /* --- commentSoonAfterPublish: the same comment, sooner, only when switched on ------------- */
   {
     // A fixed anchor rather than the wall clock: commentSoonTick takes `nowMs` explicitly, so
@@ -1115,12 +1161,18 @@ try {
     // stick once the chain actually finishes the upload.
     await writeFile(rFile, "x");
     await writeFile(rSession, JSON.stringify({ filePath: rFile, total: 1, sessionUrl: "https://x" }));
-    const resumed = await resumeUpload(rMatchId, "short", stubSend);
+    // The record names the title YouTube holds — the one the session's start sent, before a hook
+    // changed since — not the one on disk now.
+    const resumed = await resumeUpload(rMatchId, "short", async (opts) => ({
+      ...(await stubSend(opts)),
+      title: "Hook from before | a vs b",
+    }));
     assert.equal(resumed, null);
     assert.deepEqual(sent, [{ resumeOnly: true, filePath: rFile }], "resumed, never a fresh start");
     const after = await readUpload(rMatchId, "short");
     assert.equal(after?.videoId, "vidResumed");
     assert.equal(after?.source, "dashboard", "the chain's record replaces the scan's studio one");
+    assert.equal(after?.title, "Hook from before | a vs b", "recorded under the title it went up with");
 
     // The session resumes, but `send` itself still fails (expired, say) with a foreign record on
     // disk: the same "ask the operator" message as no session at all, discovered live instead.
@@ -1168,6 +1220,44 @@ try {
     release();
     assert.equal(await inFlight, null);
     assert.equal(uploadRunning(rMatchId), false, "and not once it has settled");
+
+    // A long-form whose sync.json was corrected after its export: the rest of the bytes would
+    // finish a desynced video, so nothing is sent and the session stays for the re-encode.
+    {
+      const vFile = path.join(rDir, `final-${rMatchId}.mp4`);
+      const vSession = path.join(rDir, `.upload-session-final-${rMatchId}.mp4.json`);
+      await writeFile(vFile, "x");
+      await writeFile(vSession, JSON.stringify({ filePath: vFile, total: 1, sessionUrl: "https://x" }));
+      await utimes(vFile, new Date("2026-09-10T12:00:00Z"), new Date("2026-09-10T12:00:00Z"));
+      writeSyncOffsets(rDir, { left: 150, right: 150, confidence: 1, detail: "", source: "manual" });
+      let staleSent = false;
+      const staleSend = async (): Promise<UploadResult> => {
+        staleSent = true;
+        return { videoId: "vidStale", publishAt: null, privacyStatus: "private" };
+      };
+      assert.equal(await resumeUpload(rMatchId, "video", staleSend), staleExportMessage(rMatchId));
+      assert.equal(staleSent, false, "a stale export is never resumed");
+      assert.ok(existsSync(vSession), "its session is left for the re-encode to start fresh over");
+      await rm(path.join(rDir, "sync.json"));
+      await rm(vFile);
+      await rm(vSession);
+    }
+
+    // A runner blocked since the upload started: the rest of the bytes never go up either.
+    {
+      const saved = config.blockedPlayers;
+      config.blockedPlayers = ["TestBlocked"];
+      await writeFile(path.join(rDir, "testblocked.mp4"), "x");
+      let blockedSent = false;
+      const blockedSend = async (): Promise<UploadResult> => {
+        blockedSent = true;
+        return { videoId: "vidBlocked", publishAt: null, privacyStatus: "private" };
+      };
+      assert.match(String(await resumeUpload(rMatchId, "short", blockedSend)), /blocked player/);
+      assert.equal(blockedSent, false, "a blocked match is never resumed");
+      await rm(path.join(rDir, "testblocked.mp4"));
+      config.blockedPlayers = saved;
+    }
 
     console.log("OK: a cut-short upload resumes its own session and never starts a second one");
   }

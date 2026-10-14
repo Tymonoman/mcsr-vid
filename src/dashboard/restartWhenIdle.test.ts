@@ -5,7 +5,12 @@
 // and no real six-hour wait, and never reaches the real exit path (which would kill this process).
 // Run: npx tsx src/dashboard/restartWhenIdle.test.ts
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { config } from "../config.js";
 import {
+  anyUploadSessionFile,
   armRestart,
   blockedBy,
   disarmRestart,
@@ -281,3 +286,18 @@ armRestart({
 assert.equal(disarmRestart(), true, "an armed restart — DELETE says it cancelled one");
 assert.equal(restartState(), null, "cancelled means gone, not just paused");
 console.log("OK: disarmRestart reports whether it actually cancelled something");
+
+// --- A dead upload session does not hold a restart for ever ------------------------------------
+// A chunk failure keeps the session file, and nothing removes it once the match is settled some
+// other way (Studio). YouTube drops the session after about a day, and so does this signal.
+{
+  config.mediaDir = mkdtempSync(path.join(tmpdir(), "mcsr-restart-"));
+  mkdirSync(path.join(config.mediaDir, "9001"));
+  const session = path.join(config.mediaDir, "9001", ".upload-session-final-9001.mp4.json");
+  writeFileSync(session, "{}");
+  assert.equal(anyUploadSessionFile(), true, "a fresh session blocks");
+  const dayAgo = new Date(Date.now() - 25 * 60 * 60 * 1000);
+  utimesSync(session, dayAgo, dayAgo);
+  assert.equal(anyUploadSessionFile(), false, "a session older than YouTube keeps one does not");
+}
+console.log("OK: an upload session file blocks a restart only while YouTube could still resume it");

@@ -780,6 +780,75 @@ try {
     console.log("OK: a cut-short upload step resumes through its own session and always settles");
   }
 
+  // A mid-file failure (a 5xx on a chunk) keeps the session, and by the operator's Save — the
+  // retry — the channel scan has paired the half-sent video by its description link. That studio
+  // record must not read as "up": the Save resumes the session, it never skips the upload.
+  {
+    const HALF = 13_000_901;
+    exported(HALF);
+    writeFileSync(path.join(dir(HALF), `match-${HALF}.title.edited.txt`), "Half | edcr vs doogile\n");
+    const sessionFile = path.join(dir(HALF), `.upload-session-final-${HALF}.mp4.json`);
+    /** A session for the exported bytes (`final-<id>.mp4` is one byte), or for `total` others. */
+    const saved = (session: boolean, total = 1) => {
+      rmSync(path.join(dir(HALF), "youtube.json"), { force: true });
+      const final = path.join(dir(HALF), `final-${HALF}.mp4`);
+      if (session) writeFileSync(sessionFile, JSON.stringify({ filePath: final, total, sessionUrl: "https://s" }));
+      else rmSync(sessionFile, { force: true });
+      // What a Save leaves: the failed step cleared, the channel to be listed first.
+      writeFileSync(
+        path.join(dir(HALF), `short-${HALF}.status.json`),
+        JSON.stringify({ hooksSavedAt: "2026-09-24T07:00:00Z", noShort: true, recheckChannel: true, steps: {}, errors: [] }),
+      );
+    };
+    const resumeCalls: string[] = [];
+    const scanPairs = {
+      ...chain,
+      refreshChannel: () =>
+        writeUpload(HALF, {
+          videoId: "half-sent",
+          uploadedAt: new Date().toISOString(),
+          publishAt: null,
+          privacyStatus: "private",
+          thumbnailVariant: null,
+          title: "t",
+          source: "studio",
+        }),
+      resumeUpload: async (_id: number, kind: "video" | "short") => (resumeCalls.push(kind), null),
+    };
+    saved(true);
+    const sentBefore = sent.length;
+    await flow.startChain(HALF, scanPairs);
+    assert.deepEqual(resumeCalls, ["video"], "the half-sent long-form is resumed through its session");
+    assert.equal(sent.length, sentBefore, "and never sent again from the start");
+    assert.equal(
+      JSON.parse(readFileSync(path.join(dir(HALF), `short-${HALF}.status.json`), "utf8")).steps["upload-video"].state,
+      "done",
+    );
+    // A real Studio upload has no session file: never resumed, the scan's record stands.
+    resumeCalls.length = 0;
+    saved(false);
+    await flow.startChain(HALF, scanPairs);
+    assert.deepEqual(resumeCalls, [], "no session, no resume");
+
+    // A dead session — the MP4 re-encoded since (as exportStale asks after a sync fix), or past
+    // YouTube's day — is not resumed: a resume could only refuse, on every Save, for good. The
+    // normal upload starts fresh over it.
+    const resumeOnly = { ...chain, resumeUpload: scanPairs.resumeUpload };
+    for (const dead of ["re-encoded", "a day old"]) {
+      saved(true, dead === "re-encoded" ? 2 : 1);
+      if (dead === "a day old") {
+        const dayAgo = new Date(Date.now() - 25 * 60 * 60 * 1000);
+        utimesSync(sessionFile, dayAgo, dayAgo);
+      }
+      const sentBeforeDead: number = sent.length;
+      await flow.startChain(HALF, resumeOnly);
+      assert.deepEqual(resumeCalls, [], `${dead}: never resumed`);
+      assert.equal(sent.length, sentBeforeDead + 1, `${dead}: the long-form goes up through the normal upload`);
+    }
+    rmSync(sessionFile, { force: true });
+    console.log("OK: a Save after a mid-file failure resumes the session rather than trusting the scan's pairing");
+  }
+
   /* --- 12. Weak sync, and a series' preview offset ------------------------------------------------ */
   writeFileSync(
     path.join(dir(G), "sync.json"),
