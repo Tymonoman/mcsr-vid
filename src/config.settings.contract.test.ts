@@ -25,14 +25,16 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-const dir = mkdtempSync(path.join(tmpdir(), "mcsr-config-contract-"));
+const dir = mkdtempSync(path.join(tmpdir(), "mcsr-config-settings-contract-"));
+// Removed however the run ends: a failing assert must not leave the scratch dir in /tmp.
+process.on("exit", () => rmSync(dir, { recursive: true, force: true }));
 // Hermetic whatever the runner exported: a file that is not there, as test:unit sets it.
 process.env.MCSR_CONFIG = path.join(dir, "missing", "mcsr-vid.config.json");
 const { config, DEFAULTS, validateOverrides } = await import("./config.js");
 
 // --- C1: no file is DEFAULTS, exactly -----------------------------------------------------------
 assert.deepEqual(config, DEFAULTS, "a missing config file loads every key at its default");
-console.log("config.contract: a missing file loads DEFAULTS");
+console.log("config.settings.contract: a missing file loads DEFAULTS");
 
 // --- C2, C3: the deliberate switches --------------------------------------------------------------
 // A config default that changes what goes on the channel or what a nightly does is a house-rule break.
@@ -55,7 +57,7 @@ for (const key of ["youtubeUploadEnabled", "studioAutomation"]) {
     assert.throws(() => validateOverrides({ [key]: bad }), new RegExp(key), `${key} ${JSON.stringify(bad)}`);
   }
 }
-console.log("config.contract: the deliberate switches ship off and take only their own type");
+console.log("config.settings.contract: the deliberate switches ship off and take only their own type");
 
 // --- C4: the subscribe card's reason, one plain-ASCII row --------------------------------------
 {
@@ -69,7 +71,7 @@ console.log("config.contract: the deliberate switches ship off and take only the
   for (const bad of [
     "NEW\tMATCH",
     "NEW MATCH\x7F",
-    "NEW MATCH",
+    "NEW\u00A0MATCH",
     "CAFÉ RACE",
     "NEW MATCH \u{1F525}",
     "ＮＥＷ",
@@ -80,7 +82,7 @@ console.log("config.contract: the deliberate switches ship off and take only the
       `ctaReason ${JSON.stringify(bad)}`,
     );
   }
-  console.log("config.contract: ctaReason takes every printable ASCII character and nothing else");
+  console.log("config.settings.contract: ctaReason takes every printable ASCII character and nothing else");
 }
 
 // --- C5, C6: the intro card and the teaser take real seconds -------------------------------------
@@ -91,7 +93,7 @@ for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINIT
 assert.throws(() => validateOverrides({ teaserAtSec: true }), /teaserAtSec/, "a boolean is not seconds");
 assert.doesNotThrow(() => validateOverrides({ teaserAtSec: null }), "null is the documented none");
 assert.doesNotThrow(() => validateOverrides({ teaserAtSec: 0 }), "0 s is a time, at match start");
-console.log("config.contract: introSec and teaserAtSec refuse non-finite seconds");
+console.log("config.settings.contract: introSec and teaserAtSec refuse non-finite seconds");
 
 // --- C7: the documented defaults ------------------------------------------------------------------
 {
@@ -124,7 +126,7 @@ console.log("config.contract: introSec and teaserAtSec refuse non-finite seconds
   for (const [key, value] of Object.entries(DOCUMENTED)) {
     assert.deepEqual(DEFAULTS[key as keyof typeof DEFAULTS], value, `${key}'s default is the documented one`);
   }
-  console.log("config.contract: the documented defaults are the shipped ones");
+  console.log("config.settings.contract: the documented defaults are the shipped ones");
 }
 
 // --- C8: the loader validates at boot -------------------------------------------------------------
@@ -152,8 +154,7 @@ console.log("config.contract: introSec and teaserAtSec refuse non-finite seconds
   ] as const) {
     await assert.rejects(bootOn(bad), new RegExp(key), `a file with ${JSON.stringify(bad)} refuses to boot`);
   }
-  console.log("config.contract: the file is validated at boot, naming the key");
+  console.log("config.settings.contract: the file is validated at boot, naming the key");
 }
 
-rmSync(dir, { recursive: true, force: true });
-console.log("config.contract: all checks passed");
+console.log("config.settings.contract: all checks passed");

@@ -32,21 +32,25 @@ const { DEFAULTS, LAB_REASONER_COMMAND, validateOverrides } = await import("../s
   const at = watchScript.indexOf("/.claude/");
   assert.ok(at > 0, "the committed watchScript is under a home directory");
   const scratch = mkdtempSync(path.join(tmpdir(), "mcsr-config-example-"));
-  const run = spawnSync(
-    path.join(root, "node_modules", ".bin", "tsx"),
-    [path.join(root, "scripts", "write-config-example.mts")],
-    {
-      cwd: scratch,
-      env: { ...process.env, HOME: watchScript.slice(0, at) },
-      encoding: "utf8",
-      timeout: 15_000,
-    },
-  );
-  assert.equal(run.status, 0, `the script ran: ${run.stderr}`);
-  const written = readFileSync(path.join(scratch, "mcsr-vid.config.example.json"), "utf8");
-  // A drifted example is the bug this script exists to make impossible (seven keys, 22 Sept 2026).
-  assert.equal(written, committedText, "npm run config:example would change the committed example");
-  rmSync(scratch, { recursive: true, force: true });
+  // Removed whether or not the asserts pass: a failing run is the one this test exists for.
+  try {
+    const run = spawnSync(
+      path.join(root, "node_modules", ".bin", "tsx"),
+      [path.join(root, "scripts", "write-config-example.mts")],
+      {
+        cwd: scratch,
+        env: { ...process.env, HOME: watchScript.slice(0, at) },
+        encoding: "utf8",
+        timeout: 15_000,
+      },
+    );
+    assert.equal(run.status, 0, `the script ran: ${run.stderr}`);
+    const written = readFileSync(path.join(scratch, "mcsr-vid.config.example.json"), "utf8");
+    // A drifted example is the bug this script exists to make impossible (seven keys, 22 Sept 2026).
+    assert.equal(written, committedText, "npm run config:example would change the committed example");
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
   console.log("write-config-example.contract: the committed example is what the script writes");
 }
 
@@ -57,7 +61,9 @@ for (const [key, value] of Object.entries(DEFAULTS)) {
     assert.deepEqual(committed[key], LAB_REASONER_COMMAND, "the example shows the lab's reasoner argv");
   } else if (key === "watchScript") {
     // The same path, relative to whichever home directory it was generated under.
-    assert.ok(String(committed[key]).endsWith(String(value).slice(String(value).indexOf("/.claude/"))));
+    const at = String(value).indexOf("/.claude/");
+    assert.ok(at > 0, "DEFAULTS.watchScript is under a home directory");
+    assert.ok(String(committed[key]).endsWith(String(value).slice(at)), "watchScript is the default's path");
   } else {
     assert.deepEqual(committed[key], value, `${key} in the example is its default`);
   }

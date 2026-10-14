@@ -212,7 +212,8 @@ function shown(f: Field & { value: unknown }): unknown {
   assert.equal(CTA_REASON_MAX_CHARS, 24);
   const ROW = "SUBSCRIBE FOR A NEW RACE";
   assert.equal(ROW.length, 24);
-  // The box's padding is not the card's: a full row with stray spaces round it saves as the row.
+  // Implementation pin, not a documented promise: the box's padding is trimmed, so a full row with
+  // stray spaces round it saves as the row. Change this line freely if the trim ever goes.
   assert.deepEqual(saveSettings({ ctaReason: `   ${ROW}  ` }).changed, ["ctaReason"]);
   assert.equal(disk().ctaReason, ROW);
   assert.deepEqual(ctaReasonProp(), { ctaReason: ROW }, "the next render's card reads it, no restart");
