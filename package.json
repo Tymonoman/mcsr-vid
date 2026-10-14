@@ -56,6 +56,8 @@
     "pick": "tsx src/shorts/pickCli.ts",
     "//tg": "The Telegram bot's morning report and slash commands from the terminal — see src/telegram/tgCli.ts.",
     "tg": "tsx src/telegram/tgCli.ts",
+    "//x": "X posts: the newest public long-form's hand-cut Short, one a day — see src/x/xCli.ts.",
+    "x": "tsx src/x/xCli.ts",
     "//studio": "Studio automation from the terminal: probe the session, pin a comment, or run the one-time login screen.",
     "studio": "tsx src/youtube/studioCli.ts"
   },

@@ -82,6 +82,7 @@ import {
 } from "./shortFlow.js";
 import { armRestart, disarmRestart, restartState } from "./restartWhenIdle.js";
 import { creatorWatchTick } from "./creatorWatch.js";
+import { xTick } from "../x/xPost.js";
 import { saveSettings, settingsPayload } from "./settings.js";
 import { applyScheduledRenderArm } from "./experiments.js";
 import { evaluateExperiments } from "./experimentsEvaluator.js";
@@ -940,6 +941,9 @@ server.listen(PORT, "0.0.0.0", () => {
     // Creator watch (off by default, config.creatorWatch): a watched outside creator's new ranked
     // match, both VODs found, goes to the front of tonight's queue — see src/dashboard/creatorWatch.ts.
     void creatorWatchTick().catch((err: unknown) => console.error(`creator watch: ${describeError(err)}`));
+    // X posts (off by default, config.xAutoPost, and needs the four X keys in .env): the newest
+    // public long-form's hand-cut Short, at most one a day — see src/x/xPost.ts.
+    void xTick().catch((err: unknown) => console.error(`x: ${describeError(err)}`));
     try {
       // The nightly's own pending timer was armed for the old hour: rearm it, the same signal
       // `/api/settings`' PUT handler acts on above.

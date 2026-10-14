@@ -502,6 +502,12 @@ export interface Config {
    * over it, the same as it wins over every other queue entry.
    */
   creatorWatch: boolean;
+  /**
+   * Off by default, and a deliberate edit on the box like `nightlyUpload` (not in Settings): it
+   * posts in public on another platform. On, with the four X keys in /app/.env, the 15-minute tick
+   * posts the newest public long-form's hand-cut Short to X, at most one a day (src/x/xPost.ts).
+   */
+  xAutoPost: boolean;
 }
 
 /**
@@ -616,6 +622,7 @@ export const DEFAULTS: Config = {
   blockedPlayers: ["Aquacorde", "BeefSalad"],
   creatorWatchlist: [],
   creatorWatch: false,
+  xAutoPost: false,
 };
 
 /** The overrides file. Exported so the settings panel writes the same one the loader reads. */
