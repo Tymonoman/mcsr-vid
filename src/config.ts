@@ -30,7 +30,11 @@ export interface Config {
    * earlier choice forward regardless of this key).
    */
   thumbnailRotatePoses: boolean;
-  /** Minimum cross-correlation confidence (sync.ts) to trust the refined audio sync offset. */
+  /**
+   * Minimum sync.ts confidence to trust the countdown placement without review: both clips read
+   * scores 0.68 or more, one clip read 0.1 (the other sits on its coarse estimate), none 0.
+   * Below it the Kdenlive marker says LOW and the dashboard asks for the sync editor.
+   */
   syncConfidenceThreshold: number;
   /** VOD trim window: seconds of buffer before the estimated match start. */
   preRollSec: number;

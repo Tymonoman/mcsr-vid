@@ -100,6 +100,10 @@ assert.equal(buildHookSuggestions(input({ finishMarginMs: 1_000 }))[0], "Decided
 // Sub-100ms is exact milliseconds, not a rounded-up "0.1 seconds" that overstates the margin
 // 1.7x (accuracy panel, 6 Oct 2026; the channel's own past title was "58 MILLISECONDS").
 assert.equal(buildHookSuggestions(input({ finishMarginMs: 58 }))[0], "Decided by 58 milliseconds");
+// ...and singular at one (14 Oct 2026 edge run: "Decided by 1 milliseconds"); a dead heat was
+// decided by nothing, so it gets no "Decided by" chip at all, never "0 milliseconds".
+assert.equal(buildHookSuggestions(input({ finishMarginMs: 1 }))[0], "Decided by 1 millisecond");
+assert.ok(!buildHookSuggestions(input({ finishMarginMs: 0 }), 10).some((t) => t.startsWith("Decided by")));
 
 // 3-10s margins now state the same subject ("Decided by"), never a bare "N seconds apart" with
 // nothing saying it is the finish (click panel, 6 Oct 2026: every such hook was dropped).
@@ -534,6 +538,15 @@ console.log("hooks: all checks passed");
     // Not the sanctioned pace idiom ("A sub-N to win it") — a real nickname next to "to win"
     // language, which a blanket `\bto win\b` strip briefly let through (6 Oct 2026).
     "doogile battles back to win it",
+    // How it went is the result too (14 Oct 2026 edge run: all eight passed every check).
+    "HUGE UPSET",
+    "THE UPSET OF THE SEASON",
+    "EDCR DOMINATES",
+    "DOOGILE'S REVENGE",
+    "THE LEAD HOLDS",
+    "EDCR NEVER LOOKED BACK",
+    "DOOGILE OUTPLAYS EDCR",
+    "THE UNDERDOG PREVAILS",
   ]) {
     assert.ok(spoilsTheResult(spoiler), `should be rejected: ${spoiler}`);
   }
@@ -547,6 +560,9 @@ console.log("hooks: all checks passed");
     "The lead changed 3 times",
     "Who wins this one?",
     "Can the 3rd place take down the champion?",
+    // The upset hook is a question.
+    "UPSET?",
+    "Does the lead ever settle?",
   ]) {
     assert.ok(!spoilsTheResult(safe), `should be allowed: ${safe}`);
   }

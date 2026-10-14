@@ -14,12 +14,16 @@ export interface SyncOffsets {
   left: number;
   /** Same, for the right player's clip. */
   right: number;
-  /** 0-1, as computeSyncOffset reports it; below the threshold means `left`/`right` are coarse. */
+  /**
+   * 0-1, as computeSyncOffset reports it; below the threshold means one or both of `left`/`right`
+   * are the coarse estimate.
+   */
   confidence: number;
   detail: string;
   /**
-   * `countdown` — the detector's numbers were taken. `coarse` — they were not (too little
-   * confidence, or the stage failed), so these are the download estimate. `derived` — read back
+   * `countdown` — the detector's numbers were taken (one clip read keeps the other on its
+   * estimate, and the confidence says so). `coarse` — they were not (nothing read, or the stage
+   * failed), so these are the download estimate. `derived` — read back
    * out of an already-generated .kdenlive by `npm run sync-status` (see syncStatusCli.ts).
    * `manual` — a human matched the two countdowns in the dashboard's sync editor, which outranks
    * every other source and is never overwritten by a re-run.
@@ -30,7 +34,12 @@ export interface SyncOffsets {
 export const syncFilePath = (matchDir: string): string => path.join(matchDir, "sync.json");
 
 export function writeSyncOffsets(matchDir: string, offsets: SyncOffsets): void {
-  writeFileSync(syncFilePath(matchDir), `${JSON.stringify(offsets, null, 2)}\n`);
+  const file = syncFilePath(matchDir);
+  const text = `${JSON.stringify(offsets, null, 2)}\n`;
+  // Same decision, same file: a rewrite would move the mtime `exportStale` reads and refuse an
+  // export whose clip placement never changed (a re-render of an exported match).
+  if (existsSync(file) && readFileSync(file, "utf8") === text) return;
+  writeFileSync(file, text);
 }
 
 /** Null when the file is missing, unparsable, or does not carry two usable offsets. */
