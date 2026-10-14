@@ -36,6 +36,7 @@ import {
 import { CACHE_VERSION } from "./suggest.js";
 import type { PlayoffBoard } from "../playoffs/playoffs.js";
 import { startRerender } from "../thumbnails/rerender.js";
+import { abortJob, getJob, startJob } from "./jobs.js";
 import type { MatchInfo } from "../api/types.js";
 
 const HOUR = 3_600_000;
@@ -148,7 +149,10 @@ assert.equal(await picked(ranked, { ...roomy, freeMatches: 2 }), 1);
     setNightlyQueue([900, 901]);
     const ctx = await pickContext();
     assert.deepEqual(ctx.processedIds, [901, 902], "only the queued id with no project is let through");
-    assert.equal(await picked([suggestion(902), suggestion(901), suggestion(900)], { ...ctx, freeMatches: 9 }), 900);
+    assert.equal(
+      await picked([suggestion(902), suggestion(901), suggestion(900)], { ...ctx, freeMatches: 9 }),
+      900,
+    );
     console.log("OK: a queued match with only a vods.json or a prefetch on disk is still picked");
   } finally {
     await rm(config.mediaDir, { recursive: true, force: true });
@@ -640,6 +644,37 @@ try {
     );
   }
 
+  // A render clicked elsewhere has no directory until fetch-match and VOD discovery finish; the
+  // default busy check (nothing injected) still sees it, and the night does not start a second
+  // pipeline on top of it. The API stalls, so the clicked one sits in its fetch with nothing written.
+  {
+    const realFetch = globalThis.fetch;
+    let unstall: () => void = () => {};
+    globalThis.fetch = (() =>
+      new Promise<Response>((_, reject) => (unstall = () => reject(new Error("stalled"))))) as typeof fetch;
+    try {
+      const clicked = 13_300_001;
+      startJob(clicked);
+      await new Promise((r) => setTimeout(r, 50));
+      assert.equal(existsSync(path.join(media, String(clicked))), false, "no directory yet");
+      const out = await runNightlyOnce("", {
+        scheduled: true,
+        thumbnailWaitMs: 0,
+        ranked: async () => [
+          { metrics: { matchId: 13_300_002, players: ["doogile", "edcr"] }, bucket: "known" },
+        ],
+      });
+      assert.deepEqual(out, { skipped: "a render is already in flight", busy: true });
+      assert.equal(getJob(13_300_002), undefined, "the night's pick was not started");
+      abortJob(clicked);
+      unstall();
+      while (!getJob(clicked)?.done) await new Promise((r) => setTimeout(r, 10));
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+    console.log("OK: a render with no directory yet still counts as busy");
+  }
+
   // A thumbnail re-render in flight: the scheduled run waits it out instead of skipping the
   // night, and says so (`nightlyStarting`) so the bulk re-render holds its next match meanwhile.
   {
@@ -762,6 +797,35 @@ console.log("nightly: all checks passed");
   );
   assert.equal(nightlyChainRunning(), false, "a thrown ranking step clears the flag too, not just skip()");
   console.log("OK: the nightly chain flag covers the network-bound gap, and always clears");
+}
+// A Run now answered 409 while a chain is in its gap (or the 03:00 timer firing during a Run now
+// chain) starts and ends a chain of its own. With one boolean, that ending wiped the chain still in
+// flight, and a restart armed for "when idle" could land before its next render (14 Oct 2026).
+{
+  let release: (picks: []) => void = () => {};
+  let parked: () => void = () => {};
+  const inRanked = new Promise<void>((resolve) => (parked = resolve));
+  const chain = runNightlyOnce(
+    "",
+    {
+      renderInFlight: () => false,
+      ranked: () =>
+        new Promise((resolve) => {
+          release = resolve;
+          parked();
+        }),
+    },
+    1,
+  );
+  await inRanked;
+  assert.equal(nightlyChainRunning(), true, "the chain is between renders");
+  const runNow = await runNightlyOnce("", { renderInFlight: () => true });
+  assert.equal(runNow.busy, true, "Run now is the 409");
+  assert.equal(nightlyChainRunning(), true, "and its own ending leaves the chain in flight counted");
+  release([]);
+  assert.ok((await chain).skipped);
+  assert.equal(nightlyChainRunning(), false, "the chain's own end clears it");
+  console.log("OK: a 409'd Run now does not end the chain in flight");
 }
 
 // --- The pick does not wait on a stalled API ------------------------------------------------------

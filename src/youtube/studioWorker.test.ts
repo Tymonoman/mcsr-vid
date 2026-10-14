@@ -18,6 +18,7 @@ import {
 import type { Experiment } from "./studioExperiments.js";
 import {
   inBlackoutWindow,
+  liveNightlyHour,
   markEndScreenDone,
   markPickerEmptySeen,
   MAX_PINS_PER_CYCLE,
@@ -304,6 +305,24 @@ config.mediaDir = media;
   // null (nightly disabled) turns the blackout off entirely — nothing to avoid colliding with.
   assert.equal(inBlackoutWindow(new Date("2026-10-11T03:00:00.000Z"), null), false);
   console.log("OK: a null nightlyRenderHourUtc disables the blackout");
+}
+{
+  // The worker's own process booted on one hour; Settings (another process) moved it in the file.
+  // runWorker reads the file every cycle, so the blackout follows the live hour, not the boot one.
+  const file = path.join(mkdtempSync(path.join(tmpdir(), "studio-hour-")), "mcsr-vid.config.json");
+  writeFileSync(file, JSON.stringify({ nightlyRenderHourUtc: 20 }));
+  assert.equal(liveNightlyHour(file), 20);
+  assert.equal(inBlackoutWindow(new Date("2026-10-11T20:30:00.000Z"), liveNightlyHour(file)), true);
+  writeFileSync(file, JSON.stringify({ nightlyRenderHourUtc: null }));
+  assert.equal(liveNightlyHour(file), null, "null: the nightly is off, and so is the blackout");
+  writeFileSync(file, "{}");
+  assert.equal(liveNightlyHour(file), 3, "no key: the default");
+  assert.equal(liveNightlyHour(path.join(path.dirname(file), "missing.json")), 3, "no file: the default");
+  writeFileSync(file, '{"nightlyRenderHourUtc": 2');
+  assert.equal(liveNightlyHour(file), config.nightlyRenderHourUtc, "mid-write: the boot hour");
+  writeFileSync(file, JSON.stringify({ nightlyRenderHourUtc: 25 }));
+  assert.equal(liveNightlyHour(file), config.nightlyRenderHourUtc, "off the clock: the boot hour");
+  console.log("OK: the worker's blackout reads the nightly hour live from the config file");
 }
 
 // --- newCodeWaiting: pure HEAD-changed check (the supervisor's own restart signal) --------------
