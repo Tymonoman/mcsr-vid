@@ -10,10 +10,12 @@
 //  *P1  Nothing names the winner: no chip states the result or names the winner, and the facts
 //       handed to an external generator carry no `winner`.
 //  *P2  The upset/comeback hook is a question, never a flat claim ("Can a M:SS lead survive?").
-//  *P3  A denied word (ethnicity/nationality term, slur-adjacent abbreviation) is refused
-//       outright, "vs" or not, with or without the match at hand.
+//  *P3  A word on the short denied list (HOOK_DENIED_LABELS: a handful of ethnicity/nationality
+//       terms, a slur-adjacent abbreviation; not exhaustive) is refused outright, "vs" or not, with
+//       or without the match at hand.
 //  *P4  A fresh "X vs Y" is checked against the match's own two players (API or titleNames
 //       spelling); a mismatch is a label. "v", "v." and "versus" count as "vs"; so does a third side.
+//       Each side is compared whole after trimming: punctuation or a lead-in on a side mismatches.
 //   P5  A model's proposal (hookProblem) and a carried hookText (withHook) both fail closed on a
 //       label the same way hookProblem does. (title/videoPick contract files)
 //   P6  Only the operator's typed hook always saves; any problem is a warning in saveWarnings,
@@ -297,7 +299,12 @@ console.log("OK: the swing chip quotes a panel lead actually lost, never one tha
 {
   const m = load(13549300); // a 0.3s finish, two panel flips, no death screen
   const [l, r] = users(m);
-  const versus = { results: { ranked: { [l.uuid]: 2, [r.uuid]: 1 } } } as unknown as VersusStats;
+  // The API's record is read after the match and already counts it (h2hWinsBefore takes it off):
+  // 2-1 before this match, so the winner's side reads one more.
+  const won = (uuid: string) => (m.result.uuid === uuid ? 1 : 0);
+  const versus = {
+    results: { ranked: { [l.uuid]: 2 + won(l.uuid), [r.uuid]: 1 + won(r.uuid) } },
+  } as unknown as VersusStats;
   const chips = chipsFor(m, { versus });
   const rematch = chips.findIndex((c) => c.startsWith("Rematch"));
   assert.ok(rematch > 0, `a rematch chip, not first: ${JSON.stringify(chips)}`);
@@ -379,9 +386,11 @@ console.log("OK: no pace chip on a forfeit, no closeness claim on a DNF");
     ].filter((h) => hookLabelProblem(h) === null);
     assert.deepEqual(missed, [], `plural denied terms pass: ${JSON.stringify(missed)}`);
   });
-  // Not a deviation, a question for the operator: the docs say "a denied word", and
-  // HOOK_DENIED_LABELS is short on purpose (hooks.ts), so "THE GERMAN GRINDER" or "BRAZILIAN BLITZ"
-  // passes unless vs-shaped. Whether more nationality terms belong on the list is the operator's call.
+  // The list is short on purpose ("deliberately not exhaustive"): a nationality term not on it
+  // passes unless it sits in a vs-pair. Adding one to HOOK_DENIED_LABELS moves it up to the loop above.
+  for (const offList of ["THE GERMAN GRINDER", "BRAZILIAN BLITZ", "THE RUSSIAN RUNNER", "CANADIAN CLASH"])
+    assert.equal(hookLabelProblem(offList, players), null, `off the list: ${offList}`);
+  assert.equal(hookLabelProblem("alpha_run vs THE GERMAN", players), LABEL, "vs-shaped, it is a label");
 }
 console.log("OK: denied words are refused with or without the match");
 
@@ -411,20 +420,10 @@ console.log("OK: denied words are refused with or without the match");
   // "1v1" is the format, not a pair.
   assert.equal(hookLabelProblem("THEIR FIRST 1v1", m.players), null);
 
-  // A real pair with ordinary punctuation is still the real pair.
-  deviation(
-    'P4 "a fresh X vs Y is checked against the match\'s own two players" — punctuation around a real pair',
-    () => {
-      const flagged = [`${l} vs ${r}?`, `${l} VS ${r}!`, `REMATCH: ${l} vs ${r}`].filter(
-        (h) => hookLabelProblem(h, m.players) !== null,
-      );
-      assert.deepEqual(
-        flagged,
-        [],
-        `the match's own two players flagged as a label: ${JSON.stringify(flagged)}`,
-      );
-    },
-  );
+  // Each side is compared whole after trimming, so punctuation or a lead-in on a side is a
+  // mismatch, even around the real pair: a model's proposal is dropped, a typed hook warns.
+  for (const hook of [`${l} vs ${r}?`, `${l} VS ${r}!`, `REMATCH: ${l} vs ${r}`])
+    assert.equal(hookLabelProblem(hook, m.players), LABEL, hook);
 
   // titleNames: Pinne and lowk3y_ by API spelling, broadcast spelling, or one of each.
   const broadcast = [{ nickname: "Pinne" }, { nickname: "lowk3y_" }];

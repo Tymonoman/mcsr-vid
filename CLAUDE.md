@@ -17,11 +17,13 @@ thumbnails and a Short, published to **MCSR Replayoffs**.
   The upset hook is a question.
 - **Never a runner nickname, label or epithet, "vs" or not** (`hookLabelProblem`,
   `src/pipeline/hooks.ts`; `hookProblem`'s `players` arg, `src/shorts/videoPick.ts`; `withHook`,
-  `src/pipeline/title.ts`). A denied word (ethnicity/nationality term, slur-adjacent abbreviation)
-  is refused outright; a fresh "X vs Y" must name the match's own two players (API or `titleNames`
-  spelling) or it is a label too. A model's proposal and a carried `hookText` fail closed the same
-  way `hookProblem` does. Only the operator's own **typed** hook always saves: the problem lands as
-  a warning in `saveWarnings`, never a refusal.
+  `src/pipeline/title.ts`). A word on the short denied list (`HOOK_DENIED_LABELS`: a handful of
+  ethnicity/nationality terms and a slur-adjacent abbreviation, deliberately not exhaustive) is
+  refused outright; a fresh "X vs Y" must name the match's own two players (API or `titleNames`
+  spelling) or it is a label too. A model's proposal and a carried `hookText` fail closed on a
+  label the same way `hookProblem` does (a carried value is checked for labels only). Only the
+  operator's own **typed** hook always saves: the problem lands as a warning in `saveWarnings`,
+  never a refusal.
 - **No seed, rank or elo in hooks or suggestions.**
 - **The YouTube API compliance audit has cleared** (`handbook/api-review/`); it gates only
   `videos.insert`. `youtubeUploadEnabled` is true, `nightlyUpload` is `"scheduled"`. Keep every

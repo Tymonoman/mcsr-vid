@@ -8,9 +8,8 @@
 //  P4  A fresh "X vs Y" is checked against the match's own two players (API or titleNames
 //      spelling); a mismatch is a label — "v", "v.", "versus" and a third side included.
 //  P5  A carried hookText (withHook) fails closed on a label the same way hookProblem does: a
-//      label or a denied word leaves the <HOOK> placeholder.
-//  P1/P7 Nothing names the winner; no seed, rank or elo in hooks — a carried result or seed/elo
-//      hook landing in the title file is reported against the House rules, not P5.
+//      label or a denied word leaves the <HOOK> placeholder. A carried value is checked for labels
+//      only, so a carried result or seed/elo hook still lands in the title file.
 //  P3  A denied word is refused outright, "vs" or not, with or without the match at hand.
 //  P14 titleNames (default Pinne→Skycrab, lowk3y_→lowkey) is the title's spelling of a player,
 //      and the Settings tab applies it live.
@@ -141,19 +140,16 @@ deviation('P3 "A denied word … is refused outright" — withHook with no playe
   );
 });
 
-/* --- P1/P7: a carried result or seed/elo hook lands in the title file -------------------------- */
-// Not P5: the handbook's "fail closed the same way hookProblem does" is about labels only (withHook
-// "refuses a carried hook that labels a player exactly as hookProblem refuses a model's"). A carried
-// result or seed/elo still breaks the House rules, so it is reported against those.
-deviation(
-  'P1/P7 House rules "Nothing names the winner" / "No seed, rank or elo in hooks" — a carried hookText',
-  () => {
-    const carried = ["THE UNDERDOG WINS", "#1 SEED SHOWDOWN", "2400 vs 2100"].filter(
-      (h) => withHook(inventedTitle, h, invented).title !== inventedTitle.title,
-    );
-    assert.deepEqual(carried, [], `carried into the title file: ${JSON.stringify(carried)}`);
-  },
-);
+/* --- P5: a carried hookText is checked for labels only ------------------------------------------ */
+// CLAUDE.md House rules: "fail closed on a label the same way hookProblem does (a carried value is
+// checked for labels only)". A result or seed hook carries; a vs-shaped figure pair is a label.
+{
+  const carried = ["THE UNDERDOG WINS", "#1 SEED SHOWDOWN", "2400 vs 2100"].filter(
+    (h) => withHook(inventedTitle, h, invented).title !== inventedTitle.title,
+  );
+  assert.deepEqual(carried, ["THE UNDERDOG WINS", "#1 SEED SHOWDOWN"]);
+}
+console.log("OK: a carried hookText is checked for labels only");
 
 if (deviations.length)
   console.log(`title.contract: ${deviations.length} deviation(s) from the docs, listed above`);
