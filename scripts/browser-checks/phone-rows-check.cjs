@@ -15,7 +15,11 @@ const { launchFor } = require("./launch.cjs");
   const rows = await page.$$eval("#list .card", (n) => n.length);
   console.log(`phone: ${rows} rows, ${visible} with visible Hide/Delete`);
   // tapping the row's lower-right corner (where Delete sat) must open the match, not arm a delete
-  const box = await (await page.$("#list .card")).boundingBox();
+  // Centred first: a strip with a few more lines above the list (a failed upload, the picker down)
+  // put the first row's corner under the fixed tab bar, and the tap landed on nothing.
+  const first = await page.$("#list .card");
+  await first.evaluate((e) => e.scrollIntoView({ block: "center" }));
+  const box = await first.boundingBox();
   await page.touchscreen.tap(box.x + box.width - 30, box.y + box.height - 12);
   await page.waitForTimeout(600);
   const detailShown = await page.$eval(

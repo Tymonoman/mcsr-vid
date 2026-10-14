@@ -3,7 +3,7 @@
 // state of the NOW group is on screen at once. Nothing touches /media, YouTube or the config:
 // writes (the hooks PUT, Pick again) change this process's memory and nothing else.
 //
-//   node stub-server.cjs capture http://mcsr-dashboard:8080 /tmp/nowfx   # read-only GETs, once
+//   node stub-server.cjs capture http://mcsr-dashboard:8080 /tmp/nowfx [id…]   # read-only GETs, once
 //   STUB_FIXTURES=/tmp/nowfx PORT=8099 node stub-server.cjs              # serve
 //
 // capture never asks for /api/shorts/plan: on a real server that GET queues a pick (the model
@@ -365,6 +365,10 @@ const body = (req) =>
     req.on("end", () => ok(s));
   });
 
+/** The suggestions once a Dismiss has touched them, and each dismissed card with its place. */
+let suggestions = null;
+const parked = new Map();
+
 async function handle(req, res) {
   const url = new URL(req.url, "http://stub");
   const seg = url.pathname.split("/").filter(Boolean);
@@ -435,6 +439,20 @@ async function handle(req, res) {
   }
   // No /watch audit on record: the panel shows nothing and starts nothing.
   if (get && resource === "youtube" && a === "audit") return json(res, 200, { running: false });
+  // Dismiss and its undo (round1-fixes-check): the list in this process's memory, nothing on disk.
+  if (resource === "suggestions" && (req.method === "DELETE" || b === "restore") && id) {
+    const s = (suggestions ??= read(file("suggestions")) ?? { suggestions: [] });
+    if (req.method === "DELETE") {
+      const at = s.suggestions.findIndex((x) => x.matchId === id);
+      if (at >= 0) parked.set(id, [at, ...s.suggestions.splice(at, 1)]);
+      return json(res, 200, s);
+    }
+    const [at, row] = parked.get(id) ?? [];
+    if (row) s.suggestions.splice(at, 0, row);
+    parked.delete(id);
+    return json(res, 200, { ...s, restored: id, now: !!row });
+  }
+  if (get && resource === "suggestions" && !a && suggestions) return json(res, 200, suggestions);
   if (get && resource === "matches") return json(res, 200, matchesPayload());
   if (get && resource === "nightly" && !a) return json(res, 200, nightlyPayload());
   if (get && !a && GLOBAL.includes(resource)) return json(res, 200, read(file(resource)) ?? {});
@@ -451,14 +469,16 @@ async function handle(req, res) {
   return json(res, 404, { error: `stub: ${req.method} ${url.pathname} is not faked` });
 }
 
-async function capture(base, dir) {
+/** `extra`: live ids whose own per-match answers are worth having -- an exported match, since the
+    scenario ids are archived by now and their sync/preview answers say "no export". */
+async function capture(base, dir, extra = []) {
   fs.mkdirSync(dir, { recursive: true });
   const get = async (p, to) => {
     const r = await fetch(`${base}/api/${p}`);
     fs.writeFileSync(to, Buffer.from(await r.arrayBuffer()));
   };
   for (const p of GLOBAL) await get(p, path.join(dir, `${p.replace(/\//g, "_")}.json`));
-  for (const id of Object.keys(SCENARIOS)) {
+  for (const id of [...Object.keys(SCENARIOS), ...extra]) {
     fs.mkdirSync(path.join(dir, id), { recursive: true });
     for (const p of PER_MATCH) await get(`${p}/${id}`, path.join(dir, id, `${p.replace(/\//g, "_")}.json`));
   }
@@ -467,7 +487,7 @@ async function capture(base, dir) {
 }
 
 if (process.argv[2] === "capture") {
-  capture(process.argv[3], process.argv[4] ?? FX).catch((e) => {
+  capture(process.argv[3], process.argv[4] ?? FX, process.argv.slice(5)).catch((e) => {
     console.error(e);
     process.exit(1);
   });

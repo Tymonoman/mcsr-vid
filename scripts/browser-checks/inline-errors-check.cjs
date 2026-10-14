@@ -62,6 +62,15 @@ const { launchFor } = require("./launch.cjs");
     if (!free) {
       console.log("PASS adopt -- every match on the shelf is already on the channel, nothing to drive");
     } else {
+      // A scratch test server has no YouTube sign-in, and the panel is "Not connected" there with
+      // no adopt row. Said connected in the browser only: the malformed id is refused by the server
+      // before any YouTube call either way -- after "not connected", which a scratch server says first.
+      const connected = (await (await page.request.get(base + "/api/youtube/status")).json()).connected;
+      const reason = connected ? /not a YouTube video id/ : /YouTube is not connected/;
+      await page.route("**/api/youtube/status", async (route) => {
+        const res = await route.fetch();
+        await route.fulfill({ response: res, json: { ...(await res.json()), connected: true } });
+      });
       await page.goto(base + "/", { waitUntil: "networkidle" });
       await page.evaluate((id) => select(Number(id), { open: true }), free.matchId);
       await page.waitForSelector("#ytAdoptId", { timeout: 30000 });
@@ -70,10 +79,8 @@ const { launchFor } = require("./launch.cjs");
       await page.waitForSelector("#youtube .inlinefail", { timeout: 15000 });
       // `.first()`: with uploads enabled and a sync corrected after the export, the Upload button
       // lower down already wears its own refusal (app.js guardUpload); the adopt row's is above it.
-      check(
-        "a refused adopt reports inside the YouTube panel",
-        /not a YouTube video id/.test(await page.locator("#youtube .inlinefail pre").first().innerText()),
-      );
+      const said = await page.locator("#youtube .inlinefail pre").first().innerText();
+      check("a refused adopt reports inside the YouTube panel", reason.test(said), said.slice(0, 80));
       check("and not only in the banner at the top", (await bannerLit()) === false);
     }
 

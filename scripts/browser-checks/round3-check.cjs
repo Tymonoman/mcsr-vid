@@ -1,7 +1,9 @@
 const { devices } = require("playwright");
 const { launchFor } = require("./launch.cjs");
 (async () => {
-  const [base] = process.argv.slice(2);
+  const [base, given] = process.argv.slice(2);
+  // Any match on the list: the head, the section bar and the Publish group are on every one.
+  const id = Number(given) || (await (await fetch(`${base}/api/matches`)).json()).matches[0]?.matchId;
   const browser = await launchFor(base);
   let ok = true;
   const check = (n, c, d = "") => {
@@ -53,7 +55,7 @@ const { launchFor } = require("./launch.cjs");
     p.on("pageerror", (e) => errors.push(e.message));
     await p.goto(base + "/", { waitUntil: "networkidle" });
     await p.click("#tab-matches");
-    await p.evaluate(() => select(13172029, { open: true }));
+    await p.evaluate((id) => select(id, { open: true }), id);
     await p.waitForSelector("#detail .jump a", { timeout: 30000 });
     // Attached, not visible: the kit is in the Publish group, which the phone shows only once
     // its bar link is tapped -- the tap below.
@@ -67,6 +69,9 @@ const { launchFor } = require("./launch.cjs");
     const barH = await p
       .$eval("#backtolist", (b) => Math.round(b.getBoundingClientRect().height))
       .catch(() => 0);
+    // "The first screen" is above the fixed section bar, not a fixed 400px: the strip's own lines
+    // (a server behind the repo, a failed upload) sit over the head and push it down a line or three.
+    const bottom = await p.$eval("#detail .jump", (e) => Math.round(e.getBoundingClientRect().top));
     const vis = await p.$eval("#h-youtube", (h) => h.checkVisibility());
     const scrollY = await p.evaluate(() => window.scrollY);
     const headwarnVis = await p.$eval(
@@ -76,14 +81,14 @@ const { launchFor } = require("./launch.cjs");
     check("phone section bar has the four groups", links.length === 4, links.join(" "));
     check(
       "Publish opens at the top with the YouTube heading on the first screen",
-      vis && scrollY === 0 && y >= barH && y < 400,
-      `heading top ${y}px, back bar ${barH}px, scrollY ${scrollY}`,
+      vis && scrollY === 0 && y >= barH && y + 100 < bottom,
+      `heading top ${y}px, back bar ${barH}px, section bar ${bottom}px, scrollY ${scrollY}`,
     );
     check("#headwarn is on screen on Publish", headwarnVis, String(headwarnVis));
     const deskJump = await (async () => {
       const d = await browser.newPage({ viewport: { width: 1280, height: 900 } });
       await d.goto(base + "/", { waitUntil: "networkidle" });
-      await d.evaluate(() => select(13172029, { open: true }));
+      await d.evaluate((id) => select(id, { open: true }), id);
       await d.waitForSelector("#detail .jump", { state: "attached" });
       const v = await d.$eval("#detail .jump", (e) => getComputedStyle(e).display);
       await d.close();
