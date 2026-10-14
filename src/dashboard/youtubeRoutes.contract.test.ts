@@ -1,147 +1,114 @@
-// Contract test for Adopt's blocked-player gate (`POST /api/youtube/adopt/:id`,
-// src/dashboard/youtubeRoutes.ts), from the docs alone (CLAUDE.md "Blocked players" and "Adopt a
-// Studio draft"; handbook/claude-md-reference.md, the same bullets). Promises:
+// Contract test for the adopt route's sync gate, written from the docs (CLAUDE.md "Known
+// pitfalls": a sync.json correction after export leaves the published video out of sync until
+// re-exported; `exportStale` refuses Upload/nightly/adopt with one line) by an outside engineer.
+// Upload's own refusal is already pinned in src/youtube/youtubeUpload.test.ts; this is adopt's.
+// Every Google call is caught by a mocked fetch: nothing leaves the box.
+// Run: npx tsx src/dashboard/youtubeRoutes.contract.test.ts
 //
-//   1. Adopt refuses a blocked player — on the API's pair OR `blockedOnDisk` — before `videos.update`
-//      (the title/description write `finishOnYouTube`'s own gate does not cover): no YouTube call.
-//   2. The refusal is "up front, first of its checks" (handbook): a blocked match is answered as
-//      blocked, not with whichever other refusal (an unconfirmed thumbnail, say) happens to apply.
-//   3. The control: the same match with nobody blocked gets past every refusal to Google's door,
-//      so the 403 above is the block and nothing else.
-//
-// The API-pair path is isolated with the documented `titleNames` spelling (Pinne → "Skycrab"): an
-// archived match whose title says "Skycrab vs doogile" names nobody on disk, so only the API's pair
-// can catch it. youtubeRoutes.test.ts already pins the disk-only path (title, chats).
-// Run: MCSR_CONFIG=/nonexistent npx tsx src/dashboard/youtubeRoutes.contract.test.ts
+// Promises covered (numbering shared with src/dashboard/syncRoutes.contract.test.ts):
+//  P8  A sync.json correction after export leaves the export stale until re-encoded.
+//  P9  exportStale refuses adopt (`POST /api/youtube/adopt/:id`) with one line — before anything
+//      reaches YouTube — and stops refusing once the export is re-encoded.
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { MatchInfo } from "../api/types.js";
-import { config, DEFAULTS, matchDir } from "../config.js";
-import { manifestPath } from "../thumbnails/thumbnailVariants.js";
-import { handleYoutubeRoute, type YoutubeRouteContext } from "./youtubeRoutes.js";
+import { config, matchDir } from "../config.js";
+import { staleExportMessage, syncFilePath, writeSyncOffsets } from "../pipeline/syncFile.js";
+import { handleYoutubeRoute } from "./youtubeRoutes.js";
 
-function deviation(clause: string, check: () => void): void {
-  try {
-    check();
-  } catch (err) {
-    if (!(err instanceof assert.AssertionError)) throw err;
-    console.log(`DEVIATION: ${clause} — ${err.message.split("\n")[0]}`);
-  }
-}
-
-const media = mkdtempSync(path.join(tmpdir(), "mcsr-adopt-contract-"));
-const saved = {
-  mediaDir: config.mediaDir,
-  blocked: config.blockedPlayers,
-  titleNames: config.titleNames,
-  token: process.env.YOUTUBE_TOKEN_FILE,
-  fetch: globalThis.fetch,
-};
+const ID = 12730175; // edcr vs doogile (src/fixtures)
+const fixture = readFileSync(new URL("../fixtures/match-12730175.json", import.meta.url), "utf8");
+const media = mkdtempSync(path.join(tmpdir(), "adopt-sync-contract-"));
 config.mediaDir = media;
-config.titleNames = { ...DEFAULTS.titleNames }; // Pinne → Skycrab, the documented default
-const token = path.join(media, "token.json");
-writeFileSync(token, JSON.stringify({ refresh_token: "r", client_id: "c", client_secret: "s" }));
-process.env.YOUTUBE_TOKEN_FILE = token;
+// "Connected" with a token that cannot work anywhere: isConfigured() only checks the file.
+const savedToken = process.env.YOUTUBE_TOKEN_FILE;
+process.env.YOUTUBE_TOKEN_FILE = path.join(media, "token.json");
+writeFileSync(process.env.YOUTUBE_TOKEN_FILE, JSON.stringify({ refresh_token: "not-a-token" }));
 
-// The MCSR API answers with a real match (edcr vs doogile) re-seated so its left player is Pinne;
-// anything Google is recorded and refused.
-const real = JSON.parse(
-  readFileSync(new URL("../fixtures/match-12730175.json", import.meta.url), "utf8"),
-) as MatchInfo;
-const asPinne = (id: number): MatchInfo => ({
-  ...real,
-  id,
-  players: real.players.map((p, i) => (i === 0 ? { ...p, nickname: "Pinne" } : p)),
-});
 const google: string[] = [];
+const elsewhere: string[] = [];
 globalThis.fetch = (async (input: string | URL | Request) => {
   const url = new URL(String(input instanceof Request ? input.url : input));
-  const m = /^\/matches\/(\d+)$/.exec(url.pathname);
-  if (url.hostname === "api.mcsrranked.com" && m)
-    return new Response(JSON.stringify({ status: "success", data: asPinne(Number(m[1])) }));
-  if (/google/.test(url.hostname)) google.push(url.href);
-  throw new Error(`no network in this test: ${url.href}`);
+  if (url.hostname === "api.mcsrranked.com" && url.pathname === `/matches/${ID}`)
+    return new Response(`{"status":"success","data":${fixture}}`);
+  (url.hostname.endsWith("googleapis.com") ? google : elsewhere).push(String(url));
+  throw new Error(`no network in a contract test: ${url}`);
 }) as typeof fetch;
 
-const answers: Array<{ status: number; body: Record<string, unknown> }> = [];
-const ctx: YoutubeRouteContext = {
-  json: (_res, status, body) => void answers.push({ status, body: body as Record<string, unknown> }),
-  readBody: async () => JSON.stringify({ videoId: "abcdefghijk" }),
-  matchDir,
-  parseId: (raw) => (raw && /^\d+$/.test(raw) ? Number(raw) : null),
-};
-const adopt = async (matchId: number) => {
-  google.length = 0;
-  assert.ok(
-    await handleYoutubeRoute(
-      { method: "POST" } as IncomingMessage,
-      {} as ServerResponse,
-      ["api", "youtube", "adopt", String(matchId)],
-      ctx,
-    ),
-  );
-  return answers.at(-1)!;
-};
-/** An archived match (no clips, no chats) ready for Adopt: saved title, pairing description, maybe a confirmed variant. */
-const archived = (id: number, confirmed: boolean) => {
-  const dir = matchDir(id);
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(
-    path.join(dir, `match-${id}.title.edited.txt`),
-    `WHO BLINKS FIRST? | Skycrab vs doogile | MCSR Ranked 1v1 | Minecraft Speedrun\n`,
-  );
-  writeFileSync(
-    path.join(dir, `match-${id}.description.txt`),
-    `https://mcsrranked.com/stats/matches/${id}\n`,
-  );
-  if (confirmed)
-    writeFileSync(manifestPath(dir), JSON.stringify({ chosenBy: "operator", chosen: "a", variants: [] }));
-};
+const parseId = (raw: string | undefined): number | null =>
+  raw && /^\d+$/.test(raw) && Number(raw) > 0 ? Number(raw) : null;
 
-try {
-  // --- 3. The control first: Pinne not blocked, the same files reach Google ------------------------
-  config.blockedPlayers = [...DEFAULTS.blockedPlayers];
-  archived(50_000_001, true);
-  const open = await adopt(50_000_001);
-  assert.notEqual(
-    open.status,
-    403,
-    `unblocked, Adopt is not refused as blocked: ${JSON.stringify(open.body)}`,
+async function adopt(videoId: string): Promise<{ status: number; body: { error?: string } }> {
+  const out = { status: 0, body: {} as { error?: string } };
+  const url = `/api/youtube/adopt/${ID}`;
+  await handleYoutubeRoute(
+    { method: "POST", url } as IncomingMessage,
+    {} as ServerResponse,
+    url.split("/").filter(Boolean),
+    {
+      json: (_res, status, body) => {
+        out.status = status;
+        out.body = body as { error?: string };
+      },
+      readBody: async () => JSON.stringify({ videoId }),
+      matchDir,
+      parseId,
+    },
   );
-  assert.ok(google.length > 0, "the control did reach for Google");
-
-  // --- 1. Blocked by the API's pair only: refused, and Google never asked ----------------------------
-  config.blockedPlayers = ["pinne"]; // any case
-  archived(50_000_002, true);
-  const byApi = await adopt(50_000_002);
-  assert.equal(byApi.status, 403, `the API's pair names a blocked runner: ${JSON.stringify(byApi.body)}`);
-  assert.match(String(byApi.body.error), /blocked player/);
-  assert.deepEqual(google, [], "no YouTube read and no videos.update for a blocked match");
-  console.log("OK: Adopt refuses on the API's pair before any YouTube call");
-
-  // --- 2. "First of its checks": a blocked match with another refusal pending is refused as blocked --
-  archived(50_000_003, false); // no confirmed thumbnail variant: Adopt's own 409, if it got that far
-  const ordered = await adopt(50_000_003);
-  assert.deepEqual(google, [], "still no YouTube call");
-  deviation(
-    "handbook Blocked players: Adopt 'also refuses up front, first of its checks … on the API's pair or blockedOnDisk'",
-    () =>
-      assert.equal(
-        ordered.status,
-        403,
-        `a blocked match is answered ${ordered.status} (${String(ordered.body.error)}) — the API-pair check runs after the title/description/thumbnail refusals`,
-      ),
-  );
-} finally {
-  config.mediaDir = saved.mediaDir;
-  config.blockedPlayers = saved.blocked;
-  config.titleNames = saved.titleNames;
-  if (saved.token === undefined) delete process.env.YOUTUBE_TOKEN_FILE;
-  else process.env.YOUTUBE_TOKEN_FILE = saved.token;
-  globalThis.fetch = saved.fetch;
+  return out;
 }
 
+const dir = matchDir(ID);
+mkdirSync(dir, { recursive: true });
+// Everything adopt checks before the sync gate, in order: a hook in the title, a description that
+// pairs, a thumbnail variant the operator confirmed. No result, no label: the match's own names.
+writeFileSync(
+  path.join(dir, `match-${ID}.title.edited.txt`),
+  "Does the lead ever settle? | edcr vs doogile | MCSR Ranked 1v1\n",
+);
+writeFileSync(
+  path.join(dir, `match-${ID}.description.edited.txt`),
+  `edcr and doogile, both POVs side by side.\nhttps://magmamcsr.com/ranked/player/edcr/matches/${ID}\n`,
+);
+writeFileSync(
+  path.join(dir, "thumbnail.json"),
+  JSON.stringify({ chosenBy: "operator", variants: [], hookText: null }),
+);
+const final = path.join(dir, `final-${ID}.mp4`);
+writeFileSync(final, "the export");
+const at = (file: string, ms: number) => utimesSync(file, new Date(ms), new Date(ms));
+const now = Date.now();
+
+try {
+  // P8: exported at -60 s, the sync fixed by hand at -30 s — the export is behind its sync.
+  at(final, now - 60_000);
+  writeSyncOffsets(dir, { left: 153.25, right: 148.5, confidence: 1, detail: "", source: "manual" });
+  at(syncFilePath(dir), now - 30_000);
+
+  const refused = await adopt("abcdefghijk");
+  // P9: refused with the one shared line, naming the re-export — the same words the Upload button
+  // and the nightly get, so the operator learns one fix.
+  assert.equal(refused.status, 409);
+  assert.equal(refused.body.error, staleExportMessage(ID));
+  assert.ok(!refused.body.error!.includes("\n"), "one line");
+  // Before anything reaches YouTube: adopt REPLACES a live video's title and description, so a
+  // stale export must stop it before the first read, let alone the write.
+  assert.deepEqual(google, [], "no Google call for a stale export");
+  assert.equal(existsSync(path.join(dir, "youtube.json")), false, "no record written");
+
+  // P8/P9: re-encoded after the fix — the sync gate opens (the route goes on to ask YouTube about
+  // the video; the mocked fetch refuses that, which is the route's own error, not the stale one).
+  at(final, now);
+  const fresh = await adopt("abcdefghijk");
+  assert.notEqual(fresh.body.error, staleExportMessage(ID), "no longer refused as stale");
+  assert.ok(google.length > 0, "past the sync gate: YouTube is asked (and the mock answers no)");
+} finally {
+  if (savedToken === undefined) delete process.env.YOUTUBE_TOKEN_FILE;
+  else process.env.YOUTUBE_TOKEN_FILE = savedToken;
+  rmSync(media, { recursive: true, force: true });
+}
+
+assert.deepEqual(elsewhere, [], "nothing else was asked for");
 console.log("youtubeRoutes.contract: all checks passed");
