@@ -201,10 +201,11 @@ const END_MIN_STEPS = 3;
 const HIDDEN_ONE_SEC = 0.4;
 const SHORT_LAST_DIGIT_SEC = 0.6;
 /**
- * The second look when the near window is empty. The estimate is the API's clock against the
- * VOD's, and a VOD that lost a segment earlier in the stream runs ahead of it by a minute
- * (Aquacorde, 13559245: 53 s; 13257079's left clip: 80 s) — outside a ±25 s window, and the
- * countdown was there to read all along. The decode is the cost, so only when needed.
+ * The second look when the near window is empty or holds only an untrusted fragment (a
+ * countdown cut by its edge). The estimate is the API's clock against the VOD's, and a VOD that
+ * lost a segment earlier in the stream runs ahead of it by a minute (Aquacorde, 13559245: 53 s;
+ * 13257079's left clip: 80 s) — outside a ±25 s window, and the countdown was there to read all
+ * along. The decode is the cost, so only when needed.
  */
 const WIDE_RADIUS_SEC = 150;
 
@@ -294,7 +295,11 @@ export function findCountdownOnset(
       const last = counts[endIndex - 1]!;
       let from = endIndex - 1;
       while (from > i && Math.abs(counts[from - 1]! - last) <= 0.1 * last) from--;
-      if (endIndex - from < SHORT_LAST_DIGIT_SEC * fps) endIndex = null;
+      // A "10" on screen for (nearly) its whole second was not cut short by a late world load
+      // (lowk3y_), so a short gap after it is a hidden digit however long the last one showed:
+      // a menu opened late in the "2", or as the "1" would appear.
+      const tenFull = counts.slice(i, i + fps).filter((n) => n >= ten * 0.9).length >= fps - 1;
+      if (tenFull || endIndex - from < SHORT_LAST_DIGIT_SEC * fps) endIndex = null;
     }
     candidates.push({ index: i, endIndex, seconds, steps });
   }
@@ -323,6 +328,14 @@ export function findCountdownOnset(
       if (Math.abs(a - b) >= DIGIT_STEP_FRACTION * Math.max(a, b)) steps++;
     }
     if (steps < END_MIN_STEPS) continue;
+    // A "10" (the fattest digit) fewer than ten seconds before the drop: the countdown was not
+    // over and a menu hid the rest (7rowl), so the drop is not 0:00 — for when the onset pass
+    // missed that "10" and cannot claim the drop below.
+    if (
+      plateaus.length < COUNTDOWN_SEC &&
+      plateaus.at(-1)! >= TEN_OVER_DIGIT * Math.max(...plateaus.slice(0, -1))
+    )
+      continue;
     // A drop inside an onset candidate's ten seconds is that countdown's, and the onset pass has
     // judged it: within eight seconds of the "10" it is a menu dimming the digits (7rowl), not 0:00.
     if (candidates.some((c) => j > c.index && j <= c.index + need)) continue;
@@ -396,11 +409,16 @@ export async function detectCountdownDigits(
   const expectedIndex = Math.round((expectedStartSec - COUNTDOWN_SEC - windowStart) * SAMPLE_FPS);
   const counts = whiteCounts(coarse);
   const found = findCountdownOnset(counts, expectedIndex);
-  if (found.index === null) {
-    if (radiusSec < WIDE_RADIUS_SEC)
-      return detectCountdownDigits(clipPath, expectedStartSec, WIDE_RADIUS_SEC, signal);
-    return { matchStartSec: null, confidence: 0, stillRunSec: 0, detail: found.detail };
+  const confidence = found.confidence * (found.endIndex === null ? 0.8 : 1);
+  // A window holding only an untrusted fragment (a countdown cut by its left edge, the estimate
+  // ~20 s late) is as good as empty to detectMatchStartAny, so it gets the second look too; the
+  // better reading stands.
+  if (radiusSec < WIDE_RADIUS_SEC && (found.index === null || confidence < DIGITS_TRUSTED)) {
+    const wide = await detectCountdownDigits(clipPath, expectedStartSec, WIDE_RADIUS_SEC, signal);
+    if (found.index === null || wide.confidence > confidence) return wide;
   }
+  if (found.index === null)
+    return { matchStartSec: null, confidence: 0, stillRunSec: 0, detail: found.detail };
 
   // A frame at 10 fps brackets the moment within 100 ms; a second decode of that instant at
   // 60 fps lands on the frame. The end is the first frame with no digit; the onset the first at
@@ -430,7 +448,7 @@ export async function detectCountdownDigits(
   }
   return {
     matchStartSec,
-    confidence: found.confidence * (found.endIndex === null ? 0.8 : 1),
+    confidence,
     stillRunSec: found.seconds,
     detail: found.detail,
   };

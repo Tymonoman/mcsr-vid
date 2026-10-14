@@ -8,6 +8,7 @@ import { computeSyncOffset } from "./sync.js";
 import {
   downloadMatchVods,
   type VodWindow,
+  matchOffsetIntoClipSec,
   matchStartIntoVodSec as matchStartIntoVodSecOf,
 } from "./vodAcquisition.js";
 
@@ -44,7 +45,7 @@ if (existsSync(expectedPathA) && existsSync(expectedPathB)) {
       sourceUrl: vod.url,
       path: path.join(outDir, `${nickname}.mp4`),
       matchOffsetIntoVodSec: matchStartIntoVodSec,
-      matchOffsetIntoClipSec: 150, // PRE_ROLL_SEC from vodAcquisition.ts
+      matchOffsetIntoClipSec: matchOffsetIntoClipSec(match, vod),
     };
   });
 } else {
