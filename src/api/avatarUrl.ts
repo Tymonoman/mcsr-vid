@@ -1,3 +1,5 @@
+import { describeError } from "../errorText.js";
+
 const NMSR = "https://nmsr.nickac.dev/fullbody";
 
 /** Which half of the frame a player stands in. */
@@ -78,4 +80,39 @@ export async function resolveAvatarUrl(
   }
   const yaw = side === "left" ? FACING_YAW : -FACING_YAW;
   return { url: `${NMSR}/${uuid}?yaw=${yaw}&arms=${arms}`, provider: "nmsr-facing", pose };
+}
+
+/** One try at an avatar: NMSR draws on request, and a render that has not come back by then is hung. */
+const AVATAR_TRY_MS = 15_000;
+const AVATAR_TRIES = 3;
+
+/**
+ * `url`'s image, fetched here and handed to the render as a `data:` URL, so the still never waits
+ * on NMSR. On 14 Oct 2026 the nightly lost a render to one slow fullbody answer: Remotion's
+ * `<Img>` waited the render's 28 s `delayRender()` limit and failed the thumbnail stage. Its
+ * `maxRetries` only re-asks after an `error` event, which a slow answer never fires, its
+ * `delayRenderTimeoutInMilliseconds` cannot outlast the render call's own 30 s, and
+ * `renderStill` ignores `delayRenderRetries` — so the retry has to happen here, where a hung try
+ * can be cut off and asked again. After the last try the plain URL goes back: the browser gets
+ * the one chance it always had, rather than the stage failing here first.
+ */
+export async function inlineAvatar(url: string, tryMs = AVATAR_TRY_MS): Promise<string> {
+  let why = "";
+  for (let attempt = 1; attempt <= AVATAR_TRIES; attempt++) {
+    if (attempt > 1) await new Promise((r) => setTimeout(r, 1000 * (attempt - 1)));
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(tryMs) });
+      const type = res.headers.get("content-type") ?? "";
+      if (res.ok && type.startsWith("image/")) {
+        return `data:${type};base64,${Buffer.from(await res.arrayBuffer()).toString("base64")}`;
+      }
+      why = `HTTP ${res.status} ${type}`.trim();
+    } catch (err) {
+      why = describeError(err);
+    }
+  }
+  console.error(
+    `  Avatar ${url} did not load in ${AVATAR_TRIES} tries (${why}) — the render will ask once more`,
+  );
+  return url;
 }
