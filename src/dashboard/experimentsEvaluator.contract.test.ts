@@ -18,8 +18,9 @@
 //     itself, so it survives a restart), and the decision is written with its numbers.
 //  7. Otherwise (no winner, inconclusive, the control winning, or adoptWinner off) the control
 //     arm's settings are reapplied, in case a render arm left something else live mid-run.
-//  8. Two evaluation failures in a row set `needsHuman` (and it reaches the "Needs you" source,
-//     `needsHumanExperiments`); a success in between resets the streak.
+//  8. Two evaluation failures on consecutive UTC days set `needsHuman` (and it reaches the "Needs
+//     you" source, `needsHumanExperiments`); a success in between, or a day with no evaluation at
+//     all, restarts the count.
 //  9. A failure leaves the experiment as it was (still running, last verdict kept).
 // 10. enrolVideos is idempotent by matchId, never duplicates, never removes — a hand-listed video
 //     whose directory is gone stays.
@@ -468,7 +469,7 @@ await deviation(
   saveSettings({ explainMovesSec: null, introSec: 7 });
 }
 
-// --- 8/9. Two failures in a row set needsHuman; a success resets the streak ---------------------------
+// --- 8/9. Failures on two consecutive days set needsHuman; a success or a gap day resets ------------
 {
   const failing = async (): Promise<VideoMetrics | null> => {
     throw new Error("Reporting API 403");
@@ -512,12 +513,11 @@ await deviation(
   await quiet(() => evaluateExperiments({ fetch: failing, now: at("2026-10-08T04:15:00Z") }));
   // 9 Oct: no tick at all (the dashboard was down / restarting across the evaluation hour).
   await quiet(() => evaluateExperiments({ fetch: failing, now: at("2026-10-10T04:15:00Z") }));
-  // experiments.ts's own contract is "a second failure on the very next day's tick", so this is
-  // not a defect — but CLAUDE.md's looser "two failures in a row" reads either way.
-  if (!one("gap-day").needsHuman)
-    console.log(
-      "QUESTION for the operator: failed 8 Oct and 10 Oct with no tick on 9 Oct (dashboard down) — no needsHuman. Should a gap day still count as two failures in a row?",
-    );
+  // "Two evaluation failures on consecutive UTC days … a day with no evaluation at all restarts the count."
+  assert.equal(one("gap-day").needsHuman, undefined, "a day with no evaluation restarts the count");
+  // 11 Oct fails too: 10 and 11 Oct are consecutive, so the restarted count reaches two.
+  await quiet(() => evaluateExperiments({ fetch: failing, now: at("2026-10-11T04:15:00Z") }));
+  assert.ok(one("gap-day").needsHuman?.includes("Reporting API 403"), one("gap-day").needsHuman);
 }
 
 // --- 10. enrolVideos: idempotent, never removes ------------------------------------------------------

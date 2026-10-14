@@ -271,9 +271,10 @@ reload). After merging server changes, `POST /api/restart-when-idle`; a hand
   `"tc"` = Studio's Test & Compare, untouched). A tick before `nightlyRenderHourUtc` applies the
   day's `render`-tagged entry through `saveSettings` (real `SETTINGS` keys only; a `slot`-tagged
   entry can coexist). A daily tick evaluates each (thresholds in the handbook); at `end` a winner
-  with `adoptWinner` becomes the default, else the control arm is reapplied; two failed
-  evaluations in a row set `needsHuman`. `enrolVideos` (idempotent by `matchId`) fills
-  `exp.videos` from each match's `experiment-arm.json` and `youtube.json`.
+  with `adoptWinner` becomes the default, else the control arm is reapplied; failed evaluations
+  on two consecutive UTC days set `needsHuman` (a day with no evaluation restarts the count).
+  `enrolVideos` (idempotent by `matchId`) fills `exp.videos` from each match's
+  `experiment-arm.json` and `youtube.json`.
 - **Playoffs** (`src/playoffs/playoffs.ts`): the bracket knows the series, not the games. **No
   surface prints a series score**: round/game number only. `playoffsFirst` (default **false**) puts
   detected games ahead of suggestions. **A series is one video; game 1's directory is the series**
