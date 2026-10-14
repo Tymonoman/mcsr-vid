@@ -294,7 +294,7 @@ export function liveDeps(): WorthDeps {
 
 /**
  * The section as the report reads it. Within `WORTH_TTL_MS` of the last gather the state
- * file's copy is used (minus anything taken since); `fresh` — the `/worth` command — gathers anew.
+ * file's copy is used (minus anything taken or blocked since); `fresh` — the `/worth` command — gathers anew.
  * Whatever a gather found is kept, notes included: they are shown with it, and a dead Twitch login
  * would otherwise cost 14 calls and a yt-dlp round on every report. A gather that throws is not
  * kept. Under `--dry-run` the state write is skipped (state.ts).
@@ -307,7 +307,11 @@ export async function gatherWorth(
   const cached = readTelegramState().worth;
   if (!opts.fresh && cached && cached.at <= nowMs && nowMs - cached.at < WORTH_TTL_MS) {
     const taken = deps?.isTaken ?? takenNow();
-    return { ...cached.data, matches: cached.data.matches.filter((m) => !taken(m.matchId)) };
+    // `players` is API nicknames joined with " vs " — a Minecraft name has no spaces.
+    return {
+      ...cached.data,
+      matches: cached.data.matches.filter((m) => !taken(m.matchId) && !blockedIn(m.players.split(" vs "))),
+    };
   }
   const facts = await findWorth(nowMs, deps ?? liveDeps());
   updateTelegramState((s) => {
