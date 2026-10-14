@@ -490,12 +490,8 @@ try {
     config.blockedPlayers = ["Renamedrunner"];
     const rd = await save(D, { titleHook: "Who blinks first?", shortHook: "Down to the last heart" });
     config.blockedPlayers = kept;
-    await deviation(
-      "CLAUDE.md Blocked players: a blocked match (per the disk check) never gets hooks saved",
-      () => {
-        assert.ok(isRefusal(rd) && rd.status === 403, `saveHooks answered ${JSON.stringify(rd)}`);
-      },
-    );
+    // CLAUDE.md Blocked players: a blocked match (per the disk check) never gets hooks saved.
+    assert.ok(isRefusal(rd) && rd.status === 403, `saveHooks answered ${JSON.stringify(rd)}`);
     // Whatever the save did, the upload guard's disk check must still keep it off the channel.
     assert.ok(!of(D).some((e) => e.startsWith("video") || e.startsWith("short")), "C11: never uploaded");
   }
@@ -789,6 +785,26 @@ try {
     );
     assert.equal(of(X)[0], `render:${X}:By hand, at last`, "A8: and the chain runs");
     console.log("OK: A8 no survivor fails the hooks step; a hand save clears it and the chain runs");
+  }
+
+  /* --- A9. A runner blocked on disk only (a rename; the API's pair is clean): skipped, not failed -- */
+  {
+    useMedia();
+    const R = 14_000_601;
+    exported(R);
+    writePick(R, { titleHooks: ["One heart left"], createdAt: iso(NOW - 7 * HOUR) });
+    writeFileSync(path.join(dir(R), "chat-Renamedrunner.json"), "[]");
+    const kept = config.blockedPlayers;
+    config.blockedPlayers = ["Renamedrunner"];
+    await flow.autoHooksTick(deps, NOW);
+    await flow.chainIdle(R);
+    config.blockedPlayers = kept;
+    const st = flow.readStatus(R);
+    assert.equal(st.hooksSavedAt, undefined, "A9: nothing saved");
+    assert.equal(st.autoHooks, undefined, "A9: no auto-hooks record");
+    assert.equal(st.steps.hooks, undefined, "A9: no failed hooks step — a blocked match never reaches Needs-you");
+    assert.deepEqual(of(R), [], "A9: nothing rendered or uploaded");
+    console.log("OK: A9 auto-hooks skips a match its own files block");
   }
 
   assert.deepEqual(modelAsked, [], "every match had a pick: the model is never asked");

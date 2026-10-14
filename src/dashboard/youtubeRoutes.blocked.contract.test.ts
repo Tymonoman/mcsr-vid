@@ -24,18 +24,6 @@ import { config, DEFAULTS, matchDir } from "../config.js";
 import { manifestPath } from "../thumbnails/thumbnailVariants.js";
 import { handleYoutubeRoute, type YoutubeRouteContext } from "./youtubeRoutes.js";
 
-// A doc promise the code does not keep: printed and listed, never fatal (main's contract files' way).
-const deviations: string[] = [];
-function deviation(clause: string, check: () => void): void {
-  try {
-    check();
-  } catch (err) {
-    if (!(err instanceof assert.AssertionError)) throw err;
-    deviations.push(clause);
-    console.log(`DEVIATION: ${clause} — ${err.message.split("\n")[0]}`);
-  }
-}
-
 const media = mkdtempSync(path.join(tmpdir(), "mcsr-adopt-contract-"));
 const saved = {
   mediaDir: config.mediaDir,
@@ -130,14 +118,11 @@ try {
   archived(50_000_003, false); // no confirmed thumbnail variant: Adopt's own 409, if it got that far
   const ordered = await adopt(50_000_003);
   assert.deepEqual(google, [], "still no YouTube call");
-  deviation(
-    "handbook Blocked players: Adopt 'also refuses up front, first of its checks … on the API's pair or blockedOnDisk'",
-    () =>
-      assert.equal(
-        ordered.status,
-        403,
-        `a blocked match is answered ${ordered.status} (${String(ordered.body.error)}) — the API-pair check runs after the title/description/thumbnail refusals`,
-      ),
+  // handbook Blocked players: Adopt 'also refuses up front, first of its checks … on the API's pair or blockedOnDisk'
+  assert.equal(
+    ordered.status,
+    403,
+    `a blocked match is answered ${ordered.status} (${String(ordered.body.error)}) — the block check must run before the title/description/thumbnail refusals`,
   );
 } finally {
   config.mediaDir = saved.mediaDir;
@@ -149,5 +134,4 @@ try {
   rmSync(media, { recursive: true, force: true });
 }
 
-if (deviations.length) console.log(`${deviations.length} deviation(s) from the docs — see DEVIATION lines`);
 console.log("youtubeRoutes.blocked.contract: all checks passed");

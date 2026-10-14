@@ -101,7 +101,7 @@ import {
 } from "../youtube/youtubeStore.js";
 import { shortDelayMsForDate } from "./experiments.js";
 import { hiddenMatchIds, isExported, isShortUploaded, isUploaded } from "./matchShelf.js";
-import { listProcessedMatchIds, matchStatusFor } from "./matchStatus.js";
+import { blockedOnDisk, listProcessedMatchIds, matchStatusFor } from "./matchStatus.js";
 import { shortRunning, spawnShortJob } from "./shortsRoutes.js";
 
 type Step = ShortPlanResponse["errors"][number]["step"];
@@ -853,7 +853,8 @@ async function writeHooks(
   if (!left || !right) return { status: 404, error: `match ${matchId} does not have two players` };
   // Checked before anything else is written: no hooks saved means no pick, no render and no
   // upload for a blocked match — the chain never starts (config.blockedPlayers).
-  if (blockedIn([left.nickname, right.nickname]))
+  // The API's pair, and the match's own files (POV clips, chats, title — a renamed runner).
+  if (blockedIn([left.nickname, right.nickname]) || blockedOnDisk(dir))
     return { status: 403, error: `match ${matchId} has a blocked player — hooks cannot be saved for it` };
 
   // A nickname, label or epithet for a runner: a warning, never a refusal — "it should just be a
@@ -1755,7 +1756,7 @@ export async function autoHooksTick(deps: Partial<ChainDeps> = {}, nowMs = Date.
         continue; // the API is down — try again next tick
       }
       const [left, right] = match.players;
-      if (!left || !right || blockedIn([left.nickname, right.nickname])) continue;
+      if (!left || !right || blockedIn([left.nickname, right.nickname]) || blockedOnDisk(f.dir)) continue;
       // A playoff game whose series hasn't joined yet (game 1 before the join, or game 2..n) —
       // same check `shortPlan` makes before it will even queue a pick. Its hooks are the series',
       // saved from game 1 once every game is in; saveHooks would only refuse it with SERIES_GAME,

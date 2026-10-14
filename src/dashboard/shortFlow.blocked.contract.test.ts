@@ -15,18 +15,6 @@ import type { MatchInfo } from "../api/types.js";
 import { config, DEFAULTS, matchDir } from "../config.js";
 import { chainIdle, saveHooks, type ChainDeps } from "./shortFlow.js";
 
-// A doc promise the code does not keep: printed and listed, never fatal (main's contract files' way).
-const deviations: string[] = [];
-function deviation(clause: string, check: () => void): void {
-  try {
-    check();
-  } catch (err) {
-    if (!(err instanceof assert.AssertionError)) throw err;
-    deviations.push(clause);
-    console.log(`DEVIATION: ${clause} — ${err.message.split("\n")[0]}`);
-  }
-}
-
 const media = mkdtempSync(path.join(tmpdir(), "mcsr-shortflow-contract-"));
 const saved = { mediaDir: config.mediaDir, blocked: config.blockedPlayers, fetch: globalThis.fetch };
 config.mediaDir = media;
@@ -71,16 +59,13 @@ try {
     deps,
   );
   await chainIdle(RENAMED);
-  deviation(
-    "CLAUDE.md Blocked players: a blocked match 'never gets hooks saved' (match whose POV clips are a blocked runner's)",
-    () =>
-      assert.ok(
-        renamed !== null &&
-          "status" in renamed &&
-          renamed.status === 403 &&
-          /blocked player/.test(renamed.error),
-        `saveHooks answered ${JSON.stringify(renamed)} and the chain ran [${calls.join(", ")}] — saveHooks checks the API's pair only, not blockedOnDisk`,
-      ),
+  // CLAUDE.md Blocked players: a blocked match 'never gets hooks saved' (match whose POV clips are a blocked runner's)
+  assert.ok(
+    renamed !== null &&
+      "status" in renamed &&
+      renamed.status === 403 &&
+      /blocked player/.test(renamed.error),
+    `saveHooks answered ${JSON.stringify(renamed)} and the chain ran [${calls.join(", ")}] — the clips on disk (blockedOnDisk) must block it, not just the API's pair`,
   );
 } finally {
   config.mediaDir = saved.mediaDir;
@@ -89,5 +74,4 @@ try {
   rmSync(media, { recursive: true, force: true });
 }
 
-if (deviations.length) console.log(`${deviations.length} deviation(s) from the docs — see DEVIATION lines`);
 console.log("shortFlow.blocked.contract: all checks passed");

@@ -16,18 +16,6 @@ import type { MatchInfo } from "../api/types.js";
 import { config, DEFAULTS, matchDir } from "../config.js";
 import { buildHandShort, checkHandShort, HandShortRefusal, type VideoSpec } from "./handShort.js";
 
-// A doc promise the code does not keep: printed and listed, never fatal (main's contract files' way).
-const deviations: string[] = [];
-function deviation(clause: string, check: () => void): void {
-  try {
-    check();
-  } catch (err) {
-    if (!(err instanceof assert.AssertionError)) throw err;
-    deviations.push(clause);
-    console.log(`DEVIATION: ${clause} — ${err.message.split("\n")[0]}`);
-  }
-}
-
 const media = mkdtempSync(path.join(tmpdir(), "mcsr-handshort-contract-"));
 const saved = { mediaDir: config.mediaDir, blocked: config.blockedPlayers, fetch: globalThis.fetch };
 config.mediaDir = media;
@@ -80,14 +68,11 @@ try {
   const RENAMED = 30_000_003;
   matchWith(RENAMED, 12730175, ["Aquacorde", "doogile"]);
   const renamed = await checkHandShort(RENAMED, opts, probe);
-  deviation(
-    "CLAUDE.md Blocked players: 'never rendered by npm run short/short:hand even by hand' (match whose POV clips are a blocked runner's)",
-    () =>
-      assert.match(
-        renamed.ok ? "" : renamed.problem,
-        /blocked player/,
-        `checkHandShort answered ${renamed.ok ? "ok" : JSON.stringify(renamed.problem)} for a match whose clip on disk is Aquacorde's — it checks the API's pair only, not blockedOnDisk`,
-      ),
+  // CLAUDE.md Blocked players: 'never rendered by npm run short/short:hand even by hand' (match whose POV clips are a blocked runner's)
+  assert.match(
+    renamed.ok ? "" : renamed.problem,
+    /blocked player/,
+    `checkHandShort answered ${renamed.ok ? "ok" : JSON.stringify(renamed.problem)} for a match whose clip on disk is Aquacorde's — the clips on disk (blockedOnDisk) must block it, not just the API's pair`,
   );
 } finally {
   config.mediaDir = saved.mediaDir;
@@ -96,5 +81,4 @@ try {
   rmSync(media, { recursive: true, force: true });
 }
 
-if (deviations.length) console.log(`${deviations.length} deviation(s) from the docs — see DEVIATION lines`);
 console.log("handShort.blocked.contract: all checks passed");

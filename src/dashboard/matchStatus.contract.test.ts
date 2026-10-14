@@ -26,18 +26,6 @@ import type { MatchInfo } from "../api/types.js";
 import { config, DEFAULTS, matchDir } from "../config.js";
 import { blockedOnDisk, matchIsBlocked } from "./matchStatus.js";
 
-// A doc promise the code does not keep: printed and listed, never fatal (main's contract files' way).
-const deviations: string[] = [];
-function deviation(clause: string, check: () => void): void {
-  try {
-    check();
-  } catch (err) {
-    if (!(err instanceof assert.AssertionError)) throw err;
-    deviations.push(clause);
-    console.log(`DEVIATION: ${clause} — ${err.message.split("\n")[0]}`);
-  }
-}
-
 const fixture = (id: number): MatchInfo =>
   JSON.parse(readFileSync(new URL(`../fixtures/match-${id}.json`, import.meta.url), "utf8")) as MatchInfo;
 
@@ -196,17 +184,19 @@ try {
   config.titleNames = { Runnerx: "Spelled" };
   config.blockedPlayers = ["Runnerx"];
   const spelled = dirWith({ "match-1.title.txt": title("Spelled vs doogile") });
-  deviation(
-    "CLAUDE.md Blocked players: title pair checked 'so a match archived off disk is still caught' (titleNames spelling)",
-    () =>
-      assert.equal(
-        blockedOnDisk(spelled),
-        true,
-        "a blocked player the title spells via titleNames is not caught",
-      ),
+  // CLAUDE.md Blocked players: title pair checked 'so a match archived off disk is still caught' (titleNames spelling)
+  assert.equal(
+    blockedOnDisk(spelled),
+    true,
+    "a blocked player the title spells via titleNames is not caught",
   );
   config.blockedPlayers = [...DEFAULTS.blockedPlayers];
   config.titleNames = saved.titleNames;
+
+  // A corrupted directory where the title file should be: no throw, the chat still blocks.
+  const corrupt = dirWith({ "chat-Aquacorde.json": "[]" });
+  mkdirSync(path.join(corrupt, "match-1.title.edited.txt"));
+  assert.equal(blockedOnDisk(corrupt), true, "a title-named directory is skipped, the rest still read");
 
   // --- 7. matchIsBlocked: the render routes' gate ---------------------------------------------------
   // A brand-new render: no directory yet, the API's pair decides (fixture: BlazeMind vs Aquacorde).
@@ -239,5 +229,4 @@ try {
   rmSync(media, { recursive: true, force: true });
 }
 
-if (deviations.length) console.log(`${deviations.length} deviation(s) from the docs — see DEVIATION lines`);
 console.log("matchStatus.contract: all checks passed");
