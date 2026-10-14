@@ -39,6 +39,7 @@ import { getMatch, getUser, McsrApiError } from "../api/mcsrApi.js";
 import { readChats, readChatTimes, type ChatMessage } from "../api/twitchChat.js";
 import type { MatchInfo } from "../api/types.js";
 import { blockedIn, config, matchDir } from "../config.js";
+import { blockedOnDisk } from "../dashboard/matchStatus.js";
 import { describeError } from "../errorText.js";
 import { atomicOutput } from "../pipeline/atomicOutput.js";
 import {
@@ -525,8 +526,9 @@ export function pastTitleHooks(): PastHook[] {
       const h = hook.trim();
       if (/^playoffs$/i.test(h) || h.includes("<") || / vs /i.test(h) || hookProblem(h) !== null) continue;
       // Never a blocked player's match, however it made it onto the channel before they were
-      // blocked: not even as someone else's unnamed style example (config.blockedPlayers).
-      if (blockedIn(pair.split(" vs ").map((n) => n.trim()))) continue;
+      // blocked: not even as someone else's unnamed style example (config.blockedPlayers). The
+      // shared disk check too (clips, chats, a titleNames spelling), and an edited "VS"/"vs." pair.
+      if (blockedOnDisk(dir) || blockedIn(pair.split(/\s+vs\.?\s+/i).map((n) => n.trim()))) continue;
       if (found.some((f) => f.hook === h)) continue;
       found.push({ hook: h, pair: / vs /.test(pair) ? pair.trim() : "", at: statSync(file).mtimeMs });
     } catch {

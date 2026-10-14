@@ -27,7 +27,7 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { blockedIn, config, matchDir } from "../config.js";
+import { blockedIn, config, matchDir, reloadBlockedPlayers } from "../config.js";
 import { blockedOnDisk } from "../dashboard/matchStatus.js";
 import { repoHead } from "../dashboard/repoHead.js";
 import { describeError } from "../errorText.js";
@@ -980,6 +980,9 @@ export async function runWorker(
       }
     } else {
       try {
+        // A runner blocked in the Settings tab since this process started must not get another
+        // end screen, pin, test or link; an unreadable file fails the cycle, never runs it stale.
+        reloadBlockedPlayers();
         result = await runCycle({ dryRun: opts.dryRun, startOpts: opts.startOpts, enable: opts.enable });
       } catch (err) {
         result = { ...SKIPPED_RESULT, probe: "error", errors: [describeError(err)] };
