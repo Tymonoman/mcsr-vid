@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/Tymonoman/mcsr-vid/actions/workflows/ci.yml/badge.svg)](https://github.com/Tymonoman/mcsr-vid/actions/workflows/ci.yml)
 
+![What one match produces: the overlay's top band with both players' names and stats, the splits panel partway through the match, and the video's thumbnail (Feinberg vs Infume)](docs/readme-hero.png)
+
 Turns an [MCSR Ranked](https://mcsrranked.com) match id into a finished race video for the
 YouTube channel [MCSR Replayoffs](https://www.youtube.com/@MCSRReplayoffs)
 ([subscribe](https://www.youtube.com/channel/UCm2mAyONTHlmIxZzNmi388w?sub_confirmation=1)).
