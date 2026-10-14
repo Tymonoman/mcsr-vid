@@ -364,7 +364,8 @@ by `studioAutomation` (not writable from Settings; a deliberate edit on the box,
 - **Safety rails**: **never unpins, replaces, or removes a pin, end screen, related-video link or
   running Test & Compare set by hand** (each action checks for an existing one first, e.g.
   `pinComment` returns `"already-pinned"`). **One browser session at a time** (in-process lock plus
-  the profile's own `SingletonLock`). **Human-paced**: random 2–6s pauses, ~20 min ± 3 min between
+  the profile's own `SingletonLock`; `killOnExit` kills `start()`'s own Chrome/Xvfb on an uncaught
+  exit, not a SIGKILL). **Human-paced**: random 2–6s pauses, ~20 min ± 3 min between
   worker cycles. **Never runs 02:50–07:30 UTC by default** (`inBlackoutWindow`, derived live from
   `nightlyRenderHourUtc`). Per-cycle caps: ≤3 end screens, ≤2 Test & Compare starts, ≤3 related
   links, ≤3 pins.

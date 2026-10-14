@@ -115,6 +115,32 @@ async function terminate(proc: ChildProcess, graceMs = 5000): Promise<void> {
 }
 
 /**
+ * Kills Chrome and Xvfb if this process exits while they still run. An uncaught throw (a
+ * Playwright-internal "Assertion error" in CRSession._onMessage, 14 Oct 2026) or an unhandled
+ * rejection skips every `stop()`, and the orphaned Chrome kept the profile's SingletonLock: every
+ * later `start()` refused "already running" until it was killed by hand. Only this process's own
+ * two children, through their handles (a reaped child is never signalled). Returns the disarm
+ * `stop()` calls, so a long-lived worker never piles up listeners. A SIGKILL of this process
+ * itself still orphans them.
+ */
+export function killOnExit(chrome: ChildProcess, xvfb: ChildProcess): () => void {
+  const kill = (): void => {
+    for (const [proc, signal] of [
+      [chrome, "SIGKILL"],
+      [xvfb, "SIGTERM"],
+    ] as const) {
+      try {
+        proc.kill(signal);
+      } catch {
+        // Best effort: this process is exiting either way, and the other child still needs its signal.
+      }
+    }
+  };
+  process.once("exit", kill);
+  return () => process.off("exit", kill);
+}
+
+/**
  * Starts Xvfb, then Chrome on it with the saved profile, then connects over CDP. Throws (and
  * cleans up what it started) rather than returning a handle that is not actually usable.
  */
@@ -165,6 +191,7 @@ export async function start(opts: StudioBrowserOptions = {}): Promise<StudioHand
       ],
       { env: { ...process.env, DISPLAY: display }, stdio: "ignore" },
     );
+    const disarm = killOnExit(chrome, xvfb);
 
     // A connect that fails after the port answered must not leave Chrome holding the profile's
     // SingletonLock either — every later start() would refuse with "already running".
@@ -173,6 +200,7 @@ export async function start(opts: StudioBrowserOptions = {}): Promise<StudioHand
       await waitForCdp(debugPort, 20_000);
       browser = await chromium.connectOverCDP(`http://127.0.0.1:${debugPort}`);
     } catch (err) {
+      disarm();
       chrome.kill("SIGKILL");
       xvfb.kill("SIGTERM");
       throw err;
@@ -189,6 +217,7 @@ export async function start(opts: StudioBrowserOptions = {}): Promise<StudioHand
         await browser.close().catch(() => {});
         await terminate(chrome);
         xvfb.kill("SIGTERM");
+        disarm();
       },
     };
     active = handle;
