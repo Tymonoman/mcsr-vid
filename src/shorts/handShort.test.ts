@@ -33,8 +33,11 @@ const fixture = JSON.parse(
   readFileSync(new URL("../fixtures/match-12730175.json", import.meta.url), "utf8"),
 ) as MatchInfo;
 // Ranked (type 2): playoffContextFor's own seriesOf short-circuits before any further fetch.
-const matchOf = (id: number): MatchInfo => ({ ...fixture, changes: [], id });
+const matchOf = (id: number): MatchInfo => ({ ...fixture, changes: [], id, ...(privateRoom.has(id) && { type: 3 }) });
 const down = new Set<number>();
+// Type 3 (a private room, where playoff games live): seriesOf asks for the bracket, which this
+// stub never serves.
+const privateRoom = new Set<number>();
 globalThis.fetch = (async (input: string | URL | Request) => {
   const url = new URL(String(input));
   const m = /^\/matches\/(\d+)$/.exec(url.pathname);
@@ -186,6 +189,11 @@ async function refusedCheck(
   mkdirSync(dir(g1), { recursive: true });
   _setPlayoffContextForTest(g1, ctx(1));
   assert.equal((await checkHandShort(g1, baseOpts(), probeOf(GOOD))).ok, true, "game 1 passes");
+  // A bracket that cannot be read refuses: read as an ordinary match, a game 2 would get through.
+  const g = freshId();
+  mkdirSync(dir(g), { recursive: true });
+  privateRoom.add(g);
+  assert.match(await refusedCheck(g, baseOpts()), /playoff bracket could not be read/);
 }
 
 // The file itself is the wrong shape: unreadable, the wrong pixel size, the wrong codecs, too long.

@@ -149,7 +149,13 @@ export async function checkHandShort(
     return no(`match ${matchId} has a blocked player — the Short is not cut`);
   // A series is one video and game 1's directory is the series: the chain and hookRefusal read
   // only that one, so a later game's own directory would wait forever (14 Oct 2026 edge pass).
-  const ctx = (await readSeriesRecord(dir)) ? null : await playoffContextFor(match);
+  // Strict: an unreadable bracket refuses rather than letting a later game through unchecked.
+  let ctx: Awaited<ReturnType<typeof playoffContextFor>> = null;
+  try {
+    ctx = (await readSeriesRecord(dir)) ? null : await playoffContextFor(match, true);
+  } catch (err) {
+    return no(`the playoff bracket could not be read, so a later game cannot be ruled out: ${describeError(err)}`);
+  }
   if (ctx && ctx.gameNo > 1)
     return no(
       `match ${matchId} is game ${ctx.gameNo} of a playoff series — register the Short under game 1's id (cutting from this game's footage is fine)`,

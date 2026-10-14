@@ -634,7 +634,7 @@ THE WINDOW
       : ""
   }
 
-THE HOOK (hookSuggestion): the line on screen for the Short's first 4 seconds. At most ${HOOK_MAX_CHARS} characters, punchy, in a viewer's words; it may name the player making the play, by their real nickname only — never a nickname you invent, a label or an epithet, and never a word about ethnicity, nationality, appearance, age, or a slang abbreviation of one: a hook is about the match, never the person. Write it from what you saw — nothing in these instructions hints at what happens in this match. It must never name or hint at who wins the match or how it ends — none of: win, won, winner, beat, lost, lose, defeat, champion, victory, takes it, clutch, comeback, chokes, throws. Never use seeds, ladder ranks or elo numbers — they mean nothing to a viewer and change daily.
+THE HOOK (hookSuggestion): the line on screen for the Short's first 4 seconds. At most ${HOOK_MAX_CHARS} characters, punchy, in a viewer's words; it may name the player making the play, by their real nickname only — never a nickname you invent, a label or an epithet, and never a word about ethnicity, nationality, appearance, age, or a slang abbreviation of one: a hook is about the match, never the person. Write it from what you saw — nothing in these instructions hints at what happens in this match. It must never name or hint at who wins the match or how it ends — none of: win, won, winner, beat, lost, lose, defeat, champion, victory, takes it, clutch, comeback, chokes, throws, upset, revenge, dominates. An upset is only ever a question. Never use seeds, ladder ranks or elo numbers — they mean nothing to a viewer and change daily.
 
 why: one line for the operator on why this moment.
 ${extrasSection(spans, past)}

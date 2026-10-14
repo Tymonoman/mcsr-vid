@@ -662,6 +662,19 @@ for (const h of ["CAN RANK 1 HOLD ON?", "TOP 10 PLAYER IN TROUBLE?", "THE 2100 E
   assert.equal(hookProblem(h), "it uses a seed, rank or elo", h);
 assert.equal(hookProblem("SAME SEED, 2 MINUTES APART"), null);
 assert.equal(hookProblem("A VILLAGE SEED"), null);
+// A lone elo, the word itself, a top seed or a bare rank (14 Oct 2026 edge run: all passed)...
+for (const h of [
+  "A 2000 ELO SHOWDOWN",
+  "HIGH ELO CHAOS",
+  "TOP SEED IN TROUBLE",
+  "THE NO. 1 SEED FALTERS",
+  "RANK 1 GRIND",
+  "WORLD NUMBER ONE",
+])
+  assert.equal(hookProblem(h), "it uses a seed, rank or elo", h);
+// ...but the world's seed type, "ranked" and a plain "no" are not one.
+for (const h of ["NO ONE SAW THAT COMING", "VILLAGE SEED CHAOS", "RANKED 1V1 CHAOS", "NO 2 RUNS ALIKE"])
+  assert.equal(hookProblem(h), null, h);
 console.log("OK: a spoiler, overlong hook, or seed/rank/elo is swapped for a chip; the window stands");
 
 // "A sub-N to win it" is the house-sanctioned pace stake (hooks.ts's own highest-weighted

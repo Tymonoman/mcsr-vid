@@ -13,6 +13,7 @@ import {
   pickStarterLayoutLabel,
   startTestAndCompare,
   STARTER_LAYOUT_PREFERENCE,
+  titleTestProblem,
 } from "./studioActions.js";
 import type { Experiment } from "./studioExperiments.js";
 import {
@@ -467,6 +468,18 @@ config.mediaDir = media;
   );
   assert.ok(typeof r1 === "object" && "error" in r1, `expected a refusal, got ${JSON.stringify(r1)}`);
   assert.match((r1 as { error: string }).error, /gives the result away/);
+
+  // Read per segment, a question hook keeps its exemption: the whole line ends in "Minecraft
+  // Speedrun", and read whole it refused the pipeline's own chip (14 Oct 2026 edge run). "Who
+  // takes it?" stays refused — on purpose, by `hookProblem`'s own word list.
+  const line = (hook: string) => `${hook} | edcr vs doogile | MCSR Ranked 1v1 | Minecraft Speedrun`;
+  assert.equal(titleTestProblem(line("Can a 45-second lead survive?"), players), null);
+  assert.equal(titleTestProblem(line("DOOGILE WINS IT"), players), "it gives the result away");
+  assert.notEqual(titleTestProblem(line("Who takes it?"), players), null);
+  // The finishing-verb words spoilsTheResult gained the same day keep the question exemption too.
+  for (const q of ["THE UPSET NOBODY SAW COMING?", "CAN EDCR CLOSE IT OUT?", "WHO TAKES GAME 3?"])
+    assert.equal(titleTestProblem(line(q), players), null, q);
+  assert.equal(titleTestProblem(line("EDCR CLOSES IT OUT"), players), "it gives the result away");
 
   const tooLong = `${"X".repeat(90)} | edcr vs doogile | MCSR Ranked 1v1 | Minecraft Speedrun`;
   const r2 = await startTestAndCompare(
