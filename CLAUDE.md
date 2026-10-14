@@ -173,8 +173,8 @@ uploads. Client-only changes need just a reload.
 
 - **Restart only when idle** (`src/dashboard/restartWhenIdle.ts`): `POST /api/restart-when-idle`
   arms, `DELETE` cancels, `GET` reports. `idle()` checks a pipeline render, an export, a Short
-  render, the pick queue, the publish chain, an upload, a `.upload-session-*.json`, an NAS copy,
-  and the time before `nightlyRenderHourUtc`; idle, it runs `npx tsc --noEmit` then
+  render, the pick queue, the publish chain, an upload, a `.upload-session-*.json` under a day old
+  (YouTube's own limit), an NAS copy, and the time before `nightlyRenderHourUtc`; idle, it runs `npx tsc --noEmit` then
   `process.exit(0)`, and tini brings it back on the new code. **A docker restart must never be
   issued while a chain uploads** — a manual restart once cut a Grand Final upload at 30%.
 - **Two screens, one bar**: list and match, four list tabs as the only navigation. Match screen =

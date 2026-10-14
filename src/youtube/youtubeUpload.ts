@@ -44,9 +44,11 @@ import {
   isConfigured,
   postComment,
   SEASON_PLAYLIST_DESCRIPTION,
+  resumableSession,
   sessionPath,
   setThumbnail,
   uploadVideo,
+  type UploadResult,
   videoStats,
 } from "./youtube.js";
 import {
@@ -375,7 +377,7 @@ async function startUpload(matchId: number, req: UploadRequest, send: typeof upl
         publishAt: result.publishAt,
         privacyStatus: result.privacyStatus,
         thumbnailVariant: manifest?.chosen ?? null,
-        title: text.title,
+        title: titleSent(matchId, step, result, text.title),
         source: "dashboard",
       };
       await writeUpload(matchId, record, req.kind);
@@ -828,10 +830,31 @@ const studioNoSession = (kind: UploadKind, matchId: number, record: UploadRecord
   );
 };
 
-/** A cut-short upload's session is still on disk for this kind: only `resumeUpload` may settle it. */
+/**
+ * A cut-short upload's session YouTube could still resume for this kind: only `resumeUpload` may
+ * settle it. A dead one (over a day old, or left by bytes re-encoded since) is not: the normal
+ * upload starts fresh over it, where a resume could only refuse, on every Save, for good.
+ */
 export async function uploadSessionOnDisk(matchId: number, kind: UploadKind): Promise<boolean> {
   const located = await uploadFilePath(matchId, kind);
-  return !("error" in located) && existsSync(sessionPath(located.path));
+  return !("error" in located) && (await resumableSession(located.path));
+}
+
+/**
+ * The title YouTube actually holds, for the record. A resumed session carries the one its start
+ * sent, which a hook changed since the failure does not reach: said in the log, never retitled
+ * here (a retitle on the channel is the operator's call).
+ */
+function titleSent(matchId: number, step: ReturnType<typeof logStep>, result: UploadResult, onDisk: string): string {
+  const sent = result.title ?? onDisk;
+  if (sent !== onDisk)
+    shortLog(
+      matchId,
+      step,
+      `went up under the title its upload started with, "${sent}"; the title on disk now reads "${onDisk}" — change it in Studio if that one should stand`,
+      { level: "warn" },
+    );
+  return sent;
 }
 
 /**
@@ -911,7 +934,7 @@ export async function resumeUpload(
         publishAt: result.publishAt,
         privacyStatus: result.privacyStatus,
         thumbnailVariant: manifest?.chosen ?? null,
-        title: text.title,
+        title: titleSent(matchId, step, result, text.title),
         source: "dashboard",
       },
       kind,

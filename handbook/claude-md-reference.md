@@ -272,8 +272,10 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   `idle()` checks every reason the standing rule exists for ("never restart while a chain
   uploads" — a 1 Oct 2026 restart cut a Grand Final upload at 30%): a pipeline render, an export
   (also a series game's and a sync fix's Re-encode — same job table), a Short render, the model's
-  pick queue, the publish chain, an upload, a `.upload-session-*.json` still on disk, an NAS copy,
-  and the 20 minutes before `nightlyRenderHourUtc` might fire. Idle, it runs `npx tsc --noEmit`
+  pick queue, the publish chain, an upload, a `.upload-session-*.json` still on disk and under a
+  day old (`SESSION_LIFE_MS`, `src/youtube/youtube.ts`: YouTube drops a session after that, and a
+  chunk failure settled in Studio never removes its file), an NAS copy, and the 20 minutes before
+  `nightlyRenderHourUtc` might fire. Idle, it runs `npx tsc --noEmit`
   (5 min cap) before it dares exit — code that would not even type-check must never be the reason
   the channel stops updating unattended — then logs the commit it is booting into
   (`src/dashboard/repoHead.ts`) and calls `process.exit(0)`; tini's `restart: unless-stopped`
@@ -1904,7 +1906,14 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
   the step so); no session and anything else on record fails the step and names Studio, not a guess.
   The resume probe itself reads a 5xx/429 as "try again", not "gone" (14 Oct 2026): it throws and
   keeps the session file, so an operator's Retry after a chunk 503 cannot start a second
-  `videos.insert` either; only a 404/410 (or another 4xx) drops the session for a fresh start.
+  `videos.insert` either; only a 404/410 (or another 4xx) drops the session for a fresh start —
+  and forgets its file, even under `resumeOnly`, so no later press tries the dead one again.
+  A long-form's mid-file failure is resumed the same way on the next Save, before the channel
+  scan's pairing of the half-sent video can read as "up" — but only a session `uploadVideo` could
+  still resume (`resumableSession`: these exact bytes, under a day old); a re-encode since or a
+  stale one goes through the normal upload instead (14 Oct 2026). A resumed upload carries the
+  title its start sent, and the record says so: a hook changed in between is logged, never
+  retitled on the channel.
 - **Country flags render as tofu** without a colour-emoji font (cosmetic, intro card).
 - **Verify visual changes by rendering** (`npm run still`, then read the PNG).
 - **`npm run test:unit` after any edit; `npm test` after touching rendering or asset

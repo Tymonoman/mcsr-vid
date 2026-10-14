@@ -1158,12 +1158,18 @@ try {
     // stick once the chain actually finishes the upload.
     await writeFile(rFile, "x");
     await writeFile(rSession, JSON.stringify({ filePath: rFile, total: 1, sessionUrl: "https://x" }));
-    const resumed = await resumeUpload(rMatchId, "short", stubSend);
+    // The record names the title YouTube holds — the one the session's start sent, before a hook
+    // changed since — not the one on disk now.
+    const resumed = await resumeUpload(rMatchId, "short", async (opts) => ({
+      ...(await stubSend(opts)),
+      title: "Hook from before | a vs b",
+    }));
     assert.equal(resumed, null);
     assert.deepEqual(sent, [{ resumeOnly: true, filePath: rFile }], "resumed, never a fresh start");
     const after = await readUpload(rMatchId, "short");
     assert.equal(after?.videoId, "vidResumed");
     assert.equal(after?.source, "dashboard", "the chain's record replaces the scan's studio one");
+    assert.equal(after?.title, "Hook from before | a vs b", "recorded under the title it went up with");
 
     // The session resumes, but `send` itself still fails (expired, say) with a foreign record on
     // disk: the same "ask the operator" message as no session at all, discovered live instead.

@@ -34,6 +34,7 @@ import { repoHead } from "./repoHead.js";
 import { anyShortRunning } from "./shortsRoutes.js";
 import { chainsRunning, picksRunning } from "./shortFlow.js";
 import { anyThumbnailRunning } from "../thumbnails/rerender.js";
+import { SESSION_LIFE_MS } from "../youtube/youtube.js";
 import { anyUploadRunning } from "../youtube/youtubeUpload.js";
 import { anyVideoWriting } from "../youtube/youtubeStore.js";
 
@@ -53,13 +54,10 @@ const NIGHTLY_GUARD_MS = 20 * 60_000;
 const UPLOAD_SESSION_RE = /^\.upload-session-.*\.json$/;
 
 /**
- * YouTube drops a resumable session after about a day. The file is written once, when the upload
- * starts, so an older one is a dead session nothing can resume — a chunk failure keeps the file
- * and a match settled in Studio meanwhile never removes it — and must not hold a restart for ever.
+ * A resumable upload session sitting on disk for any match — `shortTick` would pick it up next.
+ * One past `SESSION_LIFE_MS` is dead (a chunk failure keeps the file, and a match settled in
+ * Studio meanwhile never removes it) and must not hold a restart for ever.
  */
-const SESSION_LIFE_MS = 24 * 60 * 60 * 1000;
-
-/** A resumable upload session sitting on disk for any match — `shortTick` would pick it up next. */
 export function anyUploadSessionFile(nowMs: number = Date.now()): boolean {
   return listProcessedMatchIds().some((id) => {
     try {

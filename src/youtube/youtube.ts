@@ -185,16 +185,37 @@ export interface UploadOptions {
 export const sessionPath = (filePath: string): string =>
   path.join(path.dirname(filePath), `.upload-session-${path.basename(filePath)}.json`);
 
-async function readSession(filePath: string, total: number): Promise<string | null> {
+/**
+ * YouTube drops a resumable session after about a day. The file is written once, when the upload
+ * starts, so one older than this is a dead session nothing can resume.
+ */
+export const SESSION_LIFE_MS = 24 * 60 * 60 * 1000;
+
+/** The session these exact bytes left, and the title its start sent — what the video carries. */
+async function readSession(filePath: string, total: number): Promise<{ url: string; title?: string } | null> {
   try {
     const s = JSON.parse(await readFile(sessionPath(filePath), "utf8")) as {
       filePath?: string;
       total?: number;
       sessionUrl?: string;
+      title?: string;
     };
-    return s.filePath === filePath && s.total === total && s.sessionUrl ? s.sessionUrl : null;
+    return s.filePath === filePath && s.total === total && s.sessionUrl ? { url: s.sessionUrl, title: s.title } : null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * A session on disk that `uploadVideo` could still resume as far as the disk can tell: written
+ * for these exact bytes (a re-encode since is a different `total`) and under a day old.
+ */
+export async function resumableSession(filePath: string, nowMs: number = Date.now()): Promise<boolean> {
+  try {
+    if (nowMs - statSync(sessionPath(filePath)).mtimeMs >= SESSION_LIFE_MS) return false;
+    return (await readSession(filePath, statSync(filePath).size)) !== null;
+  } catch {
+    return false;
   }
 }
 
@@ -213,6 +234,8 @@ export interface UploadResult {
   videoId: string;
   privacyStatus: string;
   publishAt: string | null;
+  /** The title the upload's start sent. A resumed session's may predate a hook change since. */
+  title?: string;
 }
 
 export async function uploadVideo(opts: UploadOptions): Promise<UploadResult> {
@@ -248,15 +271,17 @@ export async function uploadVideo(opts: UploadOptions): Promise<UploadResult> {
 
   // The session file is only useful to a retry, so a terminal answer removes it either way.
   const forget = () => rm(sessionPath(opts.filePath), { force: true });
+  // A session left by an interrupted attempt on these exact bytes: ask YouTube how much it holds
+  // (`bytes */total`) and carry on from there.
+  const session = await readSession(opts.filePath, total);
+  let sessionUrl = session?.url ?? null;
+  let sentTitle = session?.title ?? opts.title;
   const resultOf = (body: { id: string; status?: { privacyStatus?: string; publishAt?: string } }) => ({
     videoId: body.id,
     privacyStatus: body.status?.privacyStatus ?? privacyStatus,
     publishAt: body.status?.publishAt ?? opts.publishAt ?? null,
+    title: sentTitle,
   });
-
-  // A session left by an interrupted attempt on these exact bytes: ask YouTube how much it holds
-  // (`bytes */total`) and carry on from there.
-  let sessionUrl = await readSession(opts.filePath, total);
   let uploaded = 0;
   if (sessionUrl) {
     const probe = await fetchImpl(sessionUrl, {
@@ -281,7 +306,13 @@ export async function uploadVideo(opts: UploadOptions): Promise<UploadResult> {
     else if (probe.status >= 500 || probe.status === 429)
       throw new Error(await describeApiFailure(probe, "videos.insert (resume probe)"));
     // 404/410 (or any other 4xx) means the session is gone; a fresh start is the right answer.
-    else sessionUrl = null;
+    // Forgotten here too, so a resumeOnly refusal below does not leave a dead file that every
+    // later Save would try to resume again.
+    else {
+      sessionUrl = null;
+      sentTitle = opts.title;
+      await forget();
+    }
   }
 
   if (!sessionUrl) {
@@ -306,7 +337,13 @@ export async function uploadVideo(opts: UploadOptions): Promise<UploadResult> {
     if (!sessionUrl) throw new Error("YouTube did not return a resumable upload URL");
     await writeFile(
       sessionPath(opts.filePath),
-      JSON.stringify({ filePath: opts.filePath, total, sessionUrl, startedAt: new Date().toISOString() }),
+      JSON.stringify({
+        filePath: opts.filePath,
+        total,
+        sessionUrl,
+        title: opts.title,
+        startedAt: new Date().toISOString(),
+      }),
       "utf8",
     );
   }

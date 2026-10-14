@@ -787,11 +787,13 @@ try {
     const HALF = 13_000_901;
     exported(HALF);
     writeFileSync(path.join(dir(HALF), `match-${HALF}.title.edited.txt`), "Half | edcr vs doogile\n");
-    const saved = (session: boolean) => {
+    const sessionFile = path.join(dir(HALF), `.upload-session-final-${HALF}.mp4.json`);
+    /** A session for the exported bytes (`final-<id>.mp4` is one byte), or for `total` others. */
+    const saved = (session: boolean, total = 1) => {
       rmSync(path.join(dir(HALF), "youtube.json"), { force: true });
-      const file = path.join(dir(HALF), `.upload-session-final-${HALF}.mp4.json`);
-      if (session) writeFileSync(file, "{}");
-      else rmSync(file, { force: true });
+      const final = path.join(dir(HALF), `final-${HALF}.mp4`);
+      if (session) writeFileSync(sessionFile, JSON.stringify({ filePath: final, total, sessionUrl: "https://s" }));
+      else rmSync(sessionFile, { force: true });
       // What a Save leaves: the failed step cleared, the channel to be listed first.
       writeFileSync(
         path.join(dir(HALF), `short-${HALF}.status.json`),
@@ -827,6 +829,23 @@ try {
     saved(false);
     await flow.startChain(HALF, scanPairs);
     assert.deepEqual(resumeCalls, [], "no session, no resume");
+
+    // A dead session — the MP4 re-encoded since (as exportStale asks after a sync fix), or past
+    // YouTube's day — is not resumed: a resume could only refuse, on every Save, for good. The
+    // normal upload starts fresh over it.
+    const resumeOnly = { ...chain, resumeUpload: scanPairs.resumeUpload };
+    for (const dead of ["re-encoded", "a day old"]) {
+      saved(true, dead === "re-encoded" ? 2 : 1);
+      if (dead === "a day old") {
+        const dayAgo = new Date(Date.now() - 25 * 60 * 60 * 1000);
+        utimesSync(sessionFile, dayAgo, dayAgo);
+      }
+      const sentBeforeDead: number = sent.length;
+      await flow.startChain(HALF, resumeOnly);
+      assert.deepEqual(resumeCalls, [], `${dead}: never resumed`);
+      assert.equal(sent.length, sentBeforeDead + 1, `${dead}: the long-form goes up through the normal upload`);
+    }
+    rmSync(sessionFile, { force: true });
     console.log("OK: a Save after a mid-file failure resumes the session rather than trusting the scan's pairing");
   }
 
