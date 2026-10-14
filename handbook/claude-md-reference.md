@@ -914,9 +914,10 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
     once** (`slotEntryFor`/`renderEntryFor`, `src/dashboard/experiments.ts`): the slot lookups
     (`rankedHoursForDate`, `shortDelayMsForDate`) take the date's first entry tagged `slot`; the
     render lookups (`applyScheduledRenderArm`, `writeExperimentArmFile`) the date's first entry
-    tagged `render`. Either falls back to the date's first entry at all when none carries that
-    tag, so a date with just the one entry — every shape on disk before this existed — resolves
-    exactly as before, tag or no tag.
+    tagged `render`. Either falls back to the date's first entry not tagged for the *other*
+    side, so an untagged entry — every shape on disk before this existed — resolves exactly as
+    before, while a slot-only night writes no `experiment-arm.json` (that video enrols by its
+    publish date, below) and a render-only date enrols no publish by date (14 Oct 2026).
   - **The evaluator enrols `exp.videos` from disk before it evaluates anything**
     (`enrolVideos`, `src/dashboard/experimentsEvaluator.ts`, idempotent — checked by `matchId` per
     experiment, never duplicates, never removes): every match directory with its own
@@ -949,6 +950,12 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   records gone. It reads through `readExperimentsOrNull` (corrupt → `null`) at both its reads and
   returns without writing or stamping `evaluatedOn`, so the first tick after the fix evaluates
   the day; every other caller keeps the lenient read.
+  **Edge-case fixes, 14 Oct 2026**: CTR read only the newest daily Reporting CSV (one ~48h-old
+  day — why x1's interim verdict kept flipping) — `impressionsSince` (`src/youtube/youtube.ts`) sums
+  every daily report since publish, a regenerated day counted once, and the CSV's `20261012` is
+  compared with the since-date in one format. A `settle()` throw now reaches `needsHuman` on the
+  second day (the try cleared yesterday's failure before settling). A schedule's
+  `slot.rankedHoursUtc` keeps only whole hours 0–23, like `shortDelayHours` beside it.
 - **Playoffs** (`src/playoffs/playoffs.ts`): the bracket (`/playoffs`) knows the series, not the games;
   the games are private-room matches (type 3) found in each seed's history, and the API stamps
   them with the season *after* the bracket's (a Season 11 bracket's games are season 12). **No

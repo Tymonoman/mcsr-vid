@@ -1,7 +1,7 @@
 /**
  * Turns a running "between" experiment's videos into per-arm totals and a verdict, at a daily
  * tick (`evaluateExperiments`, called close to 04:15 UTC from server.ts) — own-channel reads only:
- * the Reporting API's reach report (src/youtube/youtube.ts `latestImpressions`,
+ * the Reporting API's daily reach reports (src/youtube/youtube.ts `impressionsSince`,
  * src/dashboard/youtubeRoutes.ts `totalReach`) and the Analytics API (src/youtube/yppProgress.ts
  * `analytics`, the same one-video filter shape its own per-video engagement call already uses).
  *
@@ -14,7 +14,7 @@ import path from "node:path";
 import { config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { listProcessedMatchIds } from "./matchStatus.js";
-import { getAccessToken, latestImpressions } from "../youtube/youtube.js";
+import { getAccessToken, impressionsSince } from "../youtube/youtube.js";
 import { analytics } from "../youtube/yppProgress.js";
 import { readUpload } from "../youtube/youtubeStore.js";
 import { totalReach } from "./youtubeRoutes.js";
@@ -60,8 +60,10 @@ async function liveMetricsFor(matchId: number, videoIdHint?: string): Promise<Vi
   if (!sinceIso) return null;
   const sinceDate = sinceIso.slice(0, 10);
 
-  const rows = (await latestImpressions(config.youtubeReportingJobId)).filter(
-    (r) => r.videoId === videoId && r.date >= sinceDate,
+  // The CSV's own date column reads "20261012", the since-date "2026-10-08": compare one format.
+  const sinceCompact = sinceDate.replaceAll("-", "");
+  const rows = (await impressionsSince(config.youtubeReportingJobId, sinceDate)).filter(
+    (r) => r.videoId === videoId && r.date.replaceAll("-", "") >= sinceCompact,
   );
   // totalReach's "weightedCtr" is sum(ctr * impressions) over the filtered rows — already a click
   // count, not a rate, despite the name (src/dashboard/youtubeRoutes.ts).
@@ -377,9 +379,11 @@ export async function evaluateExperiments(deps: Partial<EvaluatorDeps> = {}): Pr
         exp.result = { arms, computedAt: new Date(nowMs).toISOString() };
         exp.verdict = verdict.text;
         exp.evaluatedAt = new Date(nowMs).toISOString();
+        // Cleared only once settle() has returned: a settle that throws must leave yesterday's
+        // failure in place for the catch's two-days-running check below.
+        if (exp.end <= today) settle(exp, verdict);
         delete exp.lastEvalFailure;
         delete exp.needsHuman;
-        if (exp.end <= today) settle(exp, verdict);
       } catch (err) {
         const message = describeError(err);
         if (exp.lastEvalFailure && isYesterday(exp.lastEvalFailure.date, today)) exp.needsHuman = message;
