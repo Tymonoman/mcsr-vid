@@ -275,7 +275,8 @@ uploads. Client-only changes need just a reload.
   and upload wait for the operator's hooks. **A candidate also needs a known player** unless the
   operator queued it; a playoff pick always counts; the block list outranks the queue. **A test
   server arms its own nightly too** — any `PORT=… npm run dashboard` schedules against the same
-  `/media`; kill it before the hour, or set `nightlyRenderHourUtc: null` for it.
+  `/media`; kill it before the hour, or set `nightlyRenderHourUtc: null` for it. Its 15-minute
+  tick (chain resume, auto-hooks, creator watch, experiments) runs only on 8080.
 - **The experiment engine runs between-video A/B tests unattended** (`src/dashboard/experiments.ts`
   + `experimentsEvaluator.ts`): `.experiments.json` (hypothesis, arms, a day-by-day `schedule`,
   `result`/`verdict`/`decision`, atomic write, defensive read; `"tc"` = Studio's Test & Compare,

@@ -862,6 +862,11 @@ const server = createServer(async (req, res) => {
     }
 
     if (resource === "render" && req.method === "POST") {
+      // The match screen's Render and the card's "Render + Short + MP4" — the same refusal as above.
+      if (await matchIsBlocked(matchId)) {
+        json(res, 403, { error: `match ${matchId} has a blocked player — it is not rendered` });
+        return;
+      }
       const job = startJob(matchId);
       armFollowUps(job, url);
       json(res, 202, { matchId, running: !job.done });
@@ -946,12 +951,14 @@ server.listen(PORT, "0.0.0.0", () => {
       console.error(`experiments: evaluation tick failed — ${describeError(err)}`),
     );
   };
-  tick();
-  setInterval(tick, 15 * 60_000).unref();
   // A test server (any PORT other than 8080 — CLAUDE.md's "a test server arms its own nightly")
-  // must not also run the Telegram poller and the 07:00 report: two processes would both answer
-  // getUpdates (one gets a 409 and backs off) and both could send the morning report.
+  // runs neither this tick nor the Telegram poller. The tick's chain state is per process, so a
+  // second one reads the main server's upload in flight as orphaned and resumes it on top, and it
+  // could auto-save hooks and start an upload the session then kills. Two pollers would both
+  // answer getUpdates (one gets a 409 and backs off) and both could send the morning report.
   if (PORT === 8080) {
+    tick();
+    setInterval(tick, 15 * 60_000).unref();
     void startTelegramBot().catch((err: unknown) => console.error(`telegram: ${describeError(err)}`));
   }
 });

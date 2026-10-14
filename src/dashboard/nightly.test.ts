@@ -19,6 +19,7 @@ import {
   nightlyEligible,
   PAIR_POSTS_WAIT_MS,
   pickClause,
+  pickContext,
   pickNightlyCandidate,
   playoffPicks,
   previewPick,
@@ -128,6 +129,31 @@ assert.equal(await picked(ranked, roomy, async () => false), null, "none eligibl
 assert.equal(await picked(ranked, { ...roomy, freeMatches: 1 }), null);
 assert.equal(await picked(ranked, { ...roomy, freeMatches: 0 }), null);
 assert.equal(await picked(ranked, { ...roomy, freeMatches: 2 }), 1);
+
+// --- A queued id whose directory holds no project yet is not "processed": creator watch keeps the
+// probe's vods.json for the render, and a download-vods prefetch leaves the clips. Counted as
+// processed, the queue entry dropped through every night until the VODs expired.
+{
+  const saved = config.mediaDir;
+  config.mediaDir = await mkdtemp(path.join(tmpdir(), "mcsr-nightly-ctx-"));
+  assert.ok(config.mediaDir.startsWith(tmpdir()), "refusing to run outside tmpdir");
+  try {
+    const { setNightlyQueue } = await import("./matchShelf.js");
+    const dir = (id: number) => path.join(config.mediaDir, String(id));
+    for (const id of [900, 901, 902]) mkdirSync(dir(id));
+    writeFileSync(path.join(dir(900), "vods.json"), "[]");
+    writeFileSync(path.join(dir(901), "match-901.kdenlive"), "<mlt/>");
+    writeFileSync(path.join(dir(902), "vods.json"), "[]");
+    setNightlyQueue([900, 901]);
+    const ctx = await pickContext();
+    assert.deepEqual(ctx.processedIds, [901, 902], "only the queued id with no project is let through");
+    assert.equal(await picked([suggestion(902), suggestion(901), suggestion(900)], { ...ctx, freeMatches: 9 }), 900);
+    console.log("OK: a queued match with only a vods.json or a prefetch on disk is still picked");
+  } finally {
+    await rm(config.mediaDir, { recursive: true, force: true });
+    config.mediaDir = saved;
+  }
+}
 
 // --- The bracket's games, in front and in series order, only when the operator has asked. The
 // default is off: a config default that changes what tonight's nightly renders is not ours to set.

@@ -160,11 +160,12 @@ export async function matchStatusFor(matchId: number): Promise<MatchStatusEntry>
 
 /**
  * Whether a match's players include a blocked one (config.blockedPlayers) — the gate before
- * starting a brand-new render (`POST /api/render`), whose working directory does not exist yet,
- * so `povNicknamesOnDisk` has nothing to read. One MCSR read, same as `matchStatusFor`'s own; a
- * down API degrades to "?" nicknames, which block nobody.
+ * every render route (`POST /api/render`, `/api/render/:id`, a series). One MCSR read, same as
+ * `matchStatusFor`'s own, for a brand-new render whose working directory does not exist yet; a
+ * down API degrades to "?" nicknames, which block nobody. An archived directory still names its
+ * players in the chats and the title (`blockedOnDisk`), API or not.
  */
 export async function matchIsBlocked(matchId: number): Promise<boolean> {
   const status = await matchStatusFor(matchId);
-  return blockedIn([status.leftNickname, status.rightNickname]);
+  return blockedIn([status.leftNickname, status.rightNickname]) || blockedOnDisk(matchDir(matchId));
 }
