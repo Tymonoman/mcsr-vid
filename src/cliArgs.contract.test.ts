@@ -16,7 +16,7 @@
 // Run: npx tsx src/cliArgs.contract.test.ts
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -24,6 +24,7 @@ import { requireArg } from "./cliArgs.js";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const tmp = mkdtempSync(path.join(tmpdir(), "mcsr-cliargs-contract-"));
+process.on("exit", () => rmSync(tmp, { recursive: true, force: true }));
 const media = path.join(tmp, "media");
 const configPath = path.join(tmp, "config.json");
 writeFileSync(configPath, JSON.stringify({ mediaDir: media }));
@@ -140,7 +141,9 @@ const commands: { npm: string; script: string; usage: RegExp }[] = [
   },
   { npm: "chat", script: "src/cli/chatCli.ts", usage: /npm run chat -- <matchId>/ },
 ];
-const runs = await Promise.all(commands.map((c) => cli(c.script)));
+// One at a time: the lab has four cores shared with the live dashboard.
+const runs: Run[] = [];
+for (const c of commands) runs.push(await cli(c.script));
 for (const [i, c] of commands.entries()) {
   const r = runs[i]!;
   // Promise 1: a refusal, not a crash and not a silent success.

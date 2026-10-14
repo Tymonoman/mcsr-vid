@@ -16,10 +16,10 @@
 //  7. The id may be a match page URL (README: "Commands accept a match id or a match page URL").
 //
 // Hermetic: a temp mediaDir via MCSR_CONFIG; every refusal comes before the match record is read,
-// and fetch is stubbed to log and fail anyway. Run: npx tsx src/shorts/generateShort.contract.test.ts
+// and fetch is stubbed to log and fail anyway. Run: npx tsx src/shorts/generateShort.refusals.contract.test.ts
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -27,6 +27,7 @@ import { WAITING_FOR_HOOK } from "./shortHook.js";
 
 const root = fileURLToPath(new URL("../..", import.meta.url));
 const tmp = mkdtempSync(path.join(tmpdir(), "mcsr-genshort-contract-"));
+process.on("exit", () => rmSync(tmp, { recursive: true, force: true }));
 const media = path.join(tmp, "media");
 const configPath = path.join(tmp, "config.json");
 writeFileSync(configPath, JSON.stringify({ mediaDir: media }));
@@ -156,7 +157,9 @@ const cases: {
 ];
 const dirs = cases.map((c) => matchWith(c.id, c.files));
 const before = dirs.map(snapshot);
-const runs = await Promise.all(cases.map((c) => short(...c.args(c.id))));
+// One at a time: the lab has four cores shared with the live dashboard.
+const runs: Run[] = [];
+for (const c of cases) runs.push(await short(...c.args(c.id)));
 
 for (const [i, c] of cases.entries()) {
   const r = runs[i]!;
@@ -175,4 +178,4 @@ assert.deepEqual(
   "no other directory was created (and no .short-picks.jsonl line was logged)",
 );
 
-console.log("generateShort.contract: all checks passed");
+console.log("generateShort.refusals.contract: all checks passed");

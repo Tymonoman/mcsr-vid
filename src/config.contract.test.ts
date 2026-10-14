@@ -28,7 +28,7 @@
 // script runs in a temp cwd. Run: npx tsx src/config.contract.test.ts
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -36,6 +36,7 @@ import { config, CONFIG_PATH, DEFAULTS, LAB_REASONER_COMMAND, matchDir } from ".
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const tmp = mkdtempSync(path.join(tmpdir(), "mcsr-config-contract-"));
+process.on("exit", () => rmSync(tmp, { recursive: true, force: true }));
 const tsx = path.join(root, "node_modules", ".bin", "tsx");
 
 type Run = { status: number | null; stdout: string; stderr: string };
@@ -131,12 +132,13 @@ const goodPath = file(
     suggestWeights: { closeMargin: 9 },
   }),
 );
-const [good, badType, notObject, typo] = await Promise.all([
-  run([probe], { MCSR_CONFIG: goodPath }),
-  run([probe], { MCSR_CONFIG: file("bad-type.json", JSON.stringify({ postRollSec: "30" })) }),
-  run([probe], { MCSR_CONFIG: file("array.json", "[]") }),
-  run([probe], { MCSR_CONFIG: file("typo.json", JSON.stringify({ blockedPlayer: [] })) }),
-]);
+// One at a time: the lab has four cores shared with the live dashboard.
+const [good, badType, notObject, typo] = [
+  await run([probe], { MCSR_CONFIG: goodPath }),
+  await run([probe], { MCSR_CONFIG: file("bad-type.json", JSON.stringify({ postRollSec: "30" })) }),
+  await run([probe], { MCSR_CONFIG: file("array.json", "[]") }),
+  await run([probe], { MCSR_CONFIG: file("typo.json", JSON.stringify({ blockedPlayer: [] })) }),
+];
 
 // Promise 3: the keys it sets win, every other key is the default — including the other weights
 // of a partly overridden suggestWeights (a shallow spread would drop them).
@@ -180,6 +182,7 @@ console.log("OK: a wrong type, a non-object and a typo each fail the load, namin
 
 /* --- 6, 7: npm run config:example ------------------------------------------------------------ */
 const cwd = mkdtempSync(path.join(tmpdir(), "mcsr-config-example-"));
+process.on("exit", () => rmSync(cwd, { recursive: true, force: true }));
 const example = await run(
   [path.join(root, "scripts", "write-config-example.mts")],
   { MCSR_CONFIG: path.join(cwd, "none.json") },

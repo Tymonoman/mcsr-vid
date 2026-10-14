@@ -1,20 +1,17 @@
-// Contract tests for `npm run sync-status -- [matchId]` (src/pipeline/syncStatusCli.ts) — from
-// CLAUDE.md first, as an outside engineer would.
+// Contract tests for `npm run sync-status -- [matchId]` (src/pipeline/syncStatusCli.ts): its
+// arguments and what its listing says, from CLAUDE.md first, as an outside engineer would. The
+// backfill itself (derive, source "derived", confidence 0, an existing file kept, a bare match
+// left alone) is main's P10/P11 in syncStatusCli.contract.test.ts; this file covers the rest.
 //
 // Promises the docs make (CLAUDE.md Commands + Known pitfalls, handbook "Commands"):
-//  1. No id lists every match and writes nothing — not even for a match it could backfill.
-//  2. With an id and no `sync.json`, it derives the offsets from the match's `.kdenlive` and
-//     writes `sync.json`, so a re-export picks the corrected offsets up without a re-render.
-//  3. The derived file says what it is (`source: "derived"`), and claims no measured confidence.
-//  4. A match that already has a `sync.json` keeps it — a hand fix (`source: "manual"`,
-//     `confidence: 1`) is never overwritten by anything that re-derives.
-//  5. A match with neither file is reported as falling back to the coarse preRollSec estimate,
-//     and nothing is written.
+//  1. No id lists every match and writes nothing anywhere under the media dir.
+//  2. The listing shows the offsets a backfill would derive and the command that writes them; a
+//     hand fix is shown as one; a match with neither file names the preRollSec estimate.
 //  6. Every `mediaDir` scan is `/^\d+$/`: a non-numeric directory (`clips/`) is skipped.
 //  7. The id may be a match page URL (README: "Commands accept a match id or a match page URL").
 //
-// Hermetic: a temp mediaDir via MCSR_CONFIG; the `.kdenlive` is built by the real project
-// builder. No network, no ffmpeg. Run: npx tsx src/pipeline/syncStatusCli.contract.test.ts
+// Hermetic: a temp mediaDir via MCSR_CONFIG, removed on exit; the `.kdenlive` is built by the real
+// project builder. No network, no ffmpeg. Run: npx tsx src/pipeline/syncStatusCli.args.contract.test.ts
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import {
@@ -22,7 +19,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
-  readFileSync,
+  rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -42,6 +39,7 @@ function deviation(clause: string, check: () => void): void {
 
 const root = fileURLToPath(new URL("../..", import.meta.url));
 const tmp = mkdtempSync(path.join(tmpdir(), "mcsr-syncstatus-contract-"));
+process.on("exit", () => rmSync(tmp, { recursive: true, force: true }));
 const media = path.join(tmp, "media");
 const configPath = path.join(tmp, "config.json");
 writeFileSync(configPath, JSON.stringify({ mediaDir: media }));
@@ -113,7 +111,7 @@ function snapshot(dir = media): string[] {
 }
 const syncOf = (id: number) => path.join(media, String(id), "sync.json");
 
-/* --- 1, 5, 6: the listing ------------------------------------------------------------------- */
+/* --- 1, 2, 6: the listing ------------------------------------------------------------------- */
 const before = snapshot();
 const list = await syncStatus();
 assert.equal(list.status, 0, list.stderr);
@@ -149,36 +147,15 @@ assert.equal(
 );
 console.log("OK: no id lists every match directory and writes nothing");
 
-/* --- 2-5, 7: one match at a time ------------------------------------------------------------- */
-const [backfill, manual, bare, byUrl] = await Promise.all([
-  syncStatus(String(BACKFILL)),
-  syncStatus(String(MANUAL)),
-  syncStatus(String(BARE)),
-  syncStatus(`https://mcsrranked.com/matches/${BY_URL}`),
-]);
-for (const r of [backfill, manual, bare, byUrl]) assert.notEqual(r.status, null, "every run ends by itself");
+/* --- 7: the id as a match page URL, and the backfill's message --------------------------------- */
+// One at a time: the lab has four cores shared with the live dashboard.
+const backfill = await syncStatus(String(BACKFILL));
+const byUrl = await syncStatus(`https://mcsrranked.com/matches/${BY_URL}`);
+for (const r of [backfill, byUrl]) assert.notEqual(r.status, null, "every run ends by itself");
 
 assert.equal(backfill.status, 0, backfill.stderr);
-const derived = JSON.parse(readFileSync(syncOf(BACKFILL), "utf8")) as Record<string, unknown>;
-assert.equal(derived.left, 153.9, "the left offset the project placed, exactly");
-assert.equal(derived.right, 155.2, "and the right");
-assert.equal(derived.source, "derived", "the file says it was read back, not measured");
-assert.equal(derived.confidence, 0, "a placement is not a measurement: no confidence is claimed");
 assert.match(backfill.stdout, /re-export/, "the operator is told the fix needs a re-export");
-console.log("OK: an id with a .kdenlive and no sync.json backfills a derived sync.json");
-
-assert.equal(manual.status, 0, manual.stderr);
-assert.equal(
-  readFileSync(syncOf(MANUAL), "utf8"),
-  manualSync,
-  "a hand-fixed sync.json is never re-derived over",
-);
-console.log("OK: an existing (manual) sync.json is kept byte for byte");
-
-assert.equal(bare.status, 0, bare.stderr);
-assert.equal(existsSync(syncOf(BARE)), false, "nothing to derive from, nothing written");
-assert.match(bare.stdout, /no \.kdenlive/);
-console.log("OK: a match with neither file is reported and left alone");
+console.log("OK: a backfill tells the operator to re-export");
 
 deviation("README: Commands accept a match id or a match page URL (npm run sync-status -- <url>)", () => {
   assert.ok(
@@ -192,4 +169,4 @@ assert.equal(
   "whatever it does with a URL, it creates no stray directory",
 );
 
-console.log("syncStatusCli.contract: all checks passed");
+console.log("syncStatusCli.args.contract: all checks passed");

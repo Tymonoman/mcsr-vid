@@ -8,7 +8,9 @@
 //  3. `--dry-run` asks afresh and writes nothing into the match directory.
 //  4. `--dry-run` refuses (exit 1) rather than make the proxy or a /watch cache, saying why the
 //     one on disk does not count ("none … run once without it").
-//  5. CLAUDE.md's short form: "`--dry-run` writes nothing, refuses if the one on disk is current."
+//  5. A dry run writes nothing even with a current pick on disk. (CLAUDE.md's short form, "refuses
+//     if the one on disk is current", compresses the handbook row above: "the one on disk" there is
+//     the proxy or /watch cache, not the pick — a doc wording to fix, not a CLI promise.)
 //  6. The id may be a match page URL, and flags may come before it (`<matchId | all>` is the
 //     argument that is not a flag).
 //
@@ -23,6 +25,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  rmSync,
   statSync,
   utimesSync,
   writeFileSync,
@@ -31,17 +34,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-function deviation(clause: string, check: () => void): void {
-  try {
-    check();
-  } catch (err) {
-    if (!(err instanceof assert.AssertionError)) throw err;
-    console.log(`DEVIATION: ${clause} — ${err.message.split("\n")[0]}`);
-  }
-}
-
 const root = fileURLToPath(new URL("../..", import.meta.url));
 const tmp = mkdtempSync(path.join(tmpdir(), "mcsr-pickcli-contract-"));
+process.on("exit", () => rmSync(tmp, { recursive: true, force: true }));
 const fixturePath = path.join(root, "src", "fixtures", "match-12730175.json");
 const ID = (JSON.parse(readFileSync(fixturePath, "utf8")) as { id: number }).id;
 const stub = path.join(tmp, "fetch-stub.mjs");
@@ -121,13 +116,14 @@ function pick(name: string, opts: { pick: boolean; reasoner: boolean }, args: st
 const pickOnDisk = (dir: string) =>
   JSON.parse(readFileSync(path.join(dir, `short-${ID}.pick.json`), "utf8")) as typeof KEPT;
 
-const [kept, forced, refused, dryCurrent] = await Promise.all([
-  pick("kept", { pick: true, reasoner: false }, [String(ID)]),
-  pick("forced", { pick: true, reasoner: false }, [String(ID), "--force"]),
+// One at a time: the lab has four cores shared with the live dashboard.
+const [kept, forced, refused, dryCurrent] = [
+  await pick("kept", { pick: true, reasoner: false }, [String(ID)]),
+  await pick("forced", { pick: true, reasoner: false }, [String(ID), "--force"]),
   // Flags first and a match page URL: the target is the one argument that is not a flag.
-  pick("refused", { pick: false, reasoner: true }, ["--dry-run", `https://mcsrranked.com/matches/${ID}`]),
-  pick("dry-current", { pick: true, reasoner: false }, [String(ID), "--dry-run"]),
-]);
+  await pick("refused", { pick: false, reasoner: true }, ["--dry-run", `https://mcsrranked.com/matches/${ID}`]),
+  await pick("dry-current", { pick: true, reasoner: false }, [String(ID), "--dry-run"]),
+];
 for (const r of [kept, forced, refused, dryCurrent])
   assert.notEqual(r.status, null, "every run ends by itself");
 
@@ -163,18 +159,12 @@ assert.equal(existsSync(path.join(refused.dir, "short-proxy.mp4")), false, "the 
 console.log("OK: --dry-run refuses (exit 1) rather than make the proxy, and writes nothing");
 
 /* --- 3 and 5: --dry-run when the pick on disk is current ------------------------------------- */
-// The handbook's long form: a dry run "asks afresh and writes nothing" — hold it to that.
+// The handbook's long form: a dry run "asks afresh and writes nothing" — hold it to that. (No
+// reasoner is configured here, so this is the heuristic path; the refusal above covers the model's.)
 assert.deepEqual(
   snapshot(dryCurrent.dir),
   dryCurrent.before,
   "a dry run writes nothing, a current pick or not",
 );
-// CLAUDE.md's short form says it *refuses* when the one on disk is current. Held as written.
-deviation('CLAUDE.md Commands: pick --dry-run "refuses if the one on disk is current"', () => {
-  assert.equal(
-    dryCurrent.status,
-    1,
-    `with a current pick on disk, --dry-run must refuse (it exited ${dryCurrent.status})`,
-  );
-});
+console.log("OK: --dry-run with a current pick on disk writes nothing");
 console.log("pickCli.contract: all checks passed");

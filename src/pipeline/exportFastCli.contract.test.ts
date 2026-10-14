@@ -25,6 +25,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -43,6 +44,7 @@ function deviation(clause: string, check: () => void): void {
 
 const root = fileURLToPath(new URL("../..", import.meta.url));
 const tmp = mkdtempSync(path.join(tmpdir(), "mcsr-exportfast-contract-"));
+process.on("exit", () => rmSync(tmp, { recursive: true, force: true }));
 const fixturePath = path.join(root, "src", "fixtures", "match-12730175.json");
 const fixture = JSON.parse(readFileSync(fixturePath, "utf8")) as {
   id: number;
@@ -142,13 +144,14 @@ function exportFast(name: string, args: string[]): Promise<Run> {
 const read = (dir: string, f: string) =>
   existsSync(path.join(dir, f)) ? readFileSync(path.join(dir, f), "utf8") : null;
 
-const [smoke, final, spaced, garbled] = await Promise.all([
-  exportFast("smoke", [String(ID), "--seconds=2", "--cpu"]),
-  exportFast("final", [`https://mcsrranked.com/matches/${ID}`, "--cpu", "--full-tail"]),
+// One at a time: the lab has four cores shared with the live dashboard.
+const [smoke, final, spaced, garbled] = [
+  await exportFast("smoke", [String(ID), "--seconds=2", "--cpu"]),
+  await exportFast("final", [`https://mcsrranked.com/matches/${ID}`, "--cpu", "--full-tail"]),
   // The same smoke request typed the other common way, and with a value that is not a number.
-  exportFast("spaced", [String(ID), "--seconds", "2", "--cpu"]),
-  exportFast("garbled", [String(ID), "--seconds=2s", "--cpu"]),
-]);
+  await exportFast("spaced", [String(ID), "--seconds", "2", "--cpu"]),
+  await exportFast("garbled", [String(ID), "--seconds=2s", "--cpu"]),
+];
 
 /* --- 1-3, 5: the smoke run ------------------------------------------------------------------ */
 assert.equal(smoke.status, 0, smoke.stderr);

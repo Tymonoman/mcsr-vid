@@ -18,13 +18,14 @@
 // (fetch is stubbed to log and fail anyway). No ffprobe. Run: npx tsx src/shorts/handShortCli.contract.test.ts
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = fileURLToPath(new URL("../..", import.meta.url));
 const tmp = mkdtempSync(path.join(tmpdir(), "mcsr-handshort-contract-"));
+process.on("exit", () => rmSync(tmp, { recursive: true, force: true }));
 const media = path.join(tmp, "media");
 const configPath = path.join(tmp, "config.json");
 writeFileSync(configPath, JSON.stringify({ mediaDir: media, shortsByHand: true }));
@@ -154,7 +155,9 @@ const cases: { what: string; args: string[]; expect: RegExp }[] = [
   },
 ];
 const before = snapshot();
-const runs = await Promise.all(cases.map((c) => hand(...c.args)));
+// One at a time: the lab has four cores shared with the live dashboard.
+const runs: Run[] = [];
+for (const c of cases) runs.push(await hand(...c.args));
 for (const [i, c] of cases.entries()) {
   const r = runs[i]!;
   assert.equal(r.status, 1, `${c.what}: exits 1 (stderr: ${r.stderr})`);
