@@ -30,8 +30,9 @@
 //      "not clips alone, so a match archived off disk is still caught") keeps a blocked match out
 //      of end screens, pins, thumbnail-TC plans and related links, while its neighbour still gets
 //      all four.
-//  K2. Blocked never, for a planned Test & Compare start too (the worker's realIsBlocked is the
-//      shared check; "a runner who withdrew permission for their footage").
+//  K2. The docs name pins, end screens and related links, with realIsBlocked as the worker's shared
+//      block check; they never say a planned TC start skips a blocked match. Kept as a deviation
+//      because the gap is real: planCycle filters tcToStart by status only.
 //  L1. A title test's players come from the match's own two names, "API or titleNames spelling".
 //  W1. "Results ready" means done: the experiment goes to "done", with no winner invented.
 //  W2. The worker never sets a winner itself: lopsided shares with no Winner mark record no winner,
@@ -73,7 +74,10 @@ import {
   type StudioLedger,
 } from "./studioWorker.js";
 
-config.mediaDir = mkdtempSync(path.join(tmpdir(), "mcsr-studioworker-contract-"));
+const mediaDir = mkdtempSync(path.join(tmpdir(), "mcsr-studioworker-contract-"));
+config.mediaDir = mediaDir;
+// Removed on any exit, a failed assertion included, so no run leaves its media dir in /tmp.
+process.on("exit", () => rmSync(mediaDir, { recursive: true, force: true }));
 
 /** Keeps a documented promise the code does not meet visible without failing the suite. */
 const deviations: string[] = [];
@@ -129,6 +133,7 @@ const tcExp = (id: string, videoId: string, matchId: number, status: Experiment[
 // before it spawns Xvfb or Chrome, so "the cycle reached start()" is observable with nothing launched.
 const lockProfile = mkdtempSync(path.join(tmpdir(), "mcsr-studio-lock-"));
 symlinkSync(`contract-test-${process.pid}`, path.join(lockProfile, "SingletonLock"));
+process.on("exit", () => rmSync(lockProfile, { recursive: true, force: true }));
 const startOpts = {
   profileDir: lockProfile,
   chromePath: "/nonexistent/chrome",
@@ -462,7 +467,7 @@ async function loopAt(now: Date, enable?: boolean) {
         undefined,
       );
       deviation(
-        'CLAUDE.md "Blocked players": the Studio worker\'s realIsBlocked shares the block check — a blocked match gets no Studio action',
+        'CLAUDE.md "Blocked players": realIsBlocked is the worker\'s shared block check, yet a planned TC on a blocked match is still started',
         () => {
           assert.deepEqual(
             withTc.tcToStart.map((e) => e.id),
