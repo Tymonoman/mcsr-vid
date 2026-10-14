@@ -321,7 +321,8 @@ export async function pinComment(
   }
 }
 
-export type EndScreenOutcome = "imported" | "already-has-endscreen" | "picker-empty";
+/** "no-editor": the video's page never showed the End screen link — deleted, or not this channel's. */
+export type EndScreenOutcome = "imported" | "already-has-endscreen" | "picker-empty" | "no-editor";
 
 /** Checks each `STARTER_LAYOUT_PREFERENCE` label's visibility, picks one with
  * `pickStarterLayoutLabel`, and clicks it — see that list's own comment for what is and is not
@@ -403,7 +404,14 @@ export async function addEndScreenFromTemplate(
     });
     await randomPause();
 
-    await page.locator(SELECTORS.endscreenEditorLink).click();
+    // A deleted video, or one this channel doesn't own, has no editor link at all: Edj_-c7lK38
+    // (deleted 11 Oct 2026) timed out on this click every cycle on 14 Oct and read as an error.
+    const editorLink = page.locator(SELECTORS.endscreenEditorLink);
+    if (!(await editorLink.waitFor().then(() => true, () => false))) {
+      await shot(handle, opts.matchId, "endscreen-no-editor");
+      return "no-editor";
+    }
+    await editorLink.click();
     // Live run, 8 Oct 2026: the End Screens editor is a full panel, not a dialog with its own
     // `aria-label="Close"` — the only two such elements on the page belong to other, unrelated,
     // hidden dialogs elsewhere in Studio's SPA (confirmed by DOM inspection, not a guess), so a

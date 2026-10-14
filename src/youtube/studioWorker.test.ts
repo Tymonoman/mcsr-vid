@@ -17,6 +17,7 @@ import {
 } from "./studioActions.js";
 import type { Experiment } from "./studioExperiments.js";
 import {
+  endScreensThisCycle,
   inBlackoutWindow,
   liveNightlyHour,
   markEndScreenDone,
@@ -86,8 +87,8 @@ config.mediaDir = media;
     ids.includes("e"),
     "uploaded on/after the cutoff — b's exclusion must not shrink the cap below 3",
   );
-  assert.equal(plan.endScreenTargets.length, 3, `capped at 3 per cycle, got ${ids.join(",")}`);
-  console.log("OK: end-screen candidates are ledger-filtered, cutoff-or-public, capped at 3");
+  assert.equal(plan.endScreenTargets.length, 3, `c, e and f, got ${ids.join(",")}`);
+  console.log("OK: end-screen candidates are ledger-filtered and cutoff-or-public");
 
   // A picker-empty seen on an earlier UTC day is offered again — the bug may be fixed by then.
   const yesterday: StudioLedger = {
@@ -742,6 +743,29 @@ config.mediaDir = media;
     `skips come first, then at most ${MAX_PINS_PER_CYCLE}`,
   );
   console.log(`OK: pinsThisCycle skips today's skips and non-public videos, then caps at ${MAX_PINS_PER_CYCLE}`);
+}
+
+// --- endScreensThisCycle: a video with no editor is skipped for the day, then the cap (14 Oct 2026) ---
+// (Edj_-c7lK38 left the channel on 11 Oct; once its publishAt read as public it timed out on the
+// editor link every cycle — sameErrorStreak 6, a false "Needs you" — and held one of three slots.)
+{
+  const targets: LongFormRef[] = ["gone", "e1", "e2", "e3", "e4"].map((videoId, i) => ({
+    videoId,
+    matchId: i + 1,
+    uploadedAt: "x",
+    privacyStatus: "private",
+  }));
+  assert.deepEqual(
+    endScreensThisCycle(targets, (id) => id === "gone").map((t) => t.videoId),
+    ["e1", "e2", "e3"],
+    "skipped today, and it holds no slot",
+  );
+  assert.deepEqual(
+    endScreensThisCycle(targets, () => false).map((t) => t.videoId),
+    ["gone", "e1", "e2"],
+    "on a later day it is tried again, still capped at 3",
+  );
+  console.log("OK: endScreensThisCycle skips a no-editor video for the day, then caps at 3");
 }
 
 // --- planCycle: pinTargets — a series copy already marked done elsewhere is never re-offered ---

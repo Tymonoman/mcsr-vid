@@ -252,6 +252,7 @@ export interface LongFormRef {
 }
 
 export interface CyclePlan {
+  /** Uncapped, like `pinTargets`: `endScreensThisCycle` caps after the day's "no-editor" skips. */
   endScreenTargets: LongFormRef[];
   tcToStart: Experiment[];
   tcToCheck: Experiment[];
@@ -327,8 +328,7 @@ export function planCycle(
         (!!v.publishAt && Date.parse(v.publishAt) <= now.getTime()),
     )
     .filter((v) => !pickerEmptyToday(v.videoId, ledger, now))
-    .filter((v) => !isBlocked(v.matchId))
-    .slice(0, MAX_ENDSCREENS_PER_CYCLE);
+    .filter((v) => !isBlocked(v.matchId));
 
   const tc = experiments.filter((e) => e.kind === "tc");
   // A test planned before its runner was blocked (or by hand with `tc-plan`) never starts.
@@ -400,6 +400,15 @@ export function planCycle(
     .slice(0, MAX_RELATED_LINKS_PER_CYCLE);
 
   return { endScreenTargets, tcToStart, tcToCheck, thumbnailTcTargets, pinTargets, relatedLinkTargets };
+}
+
+/** The end screens one cycle actually tries: not skipped today ("no-editor"), then capped at
+ * `MAX_ENDSCREENS_PER_CYCLE` — after the skip, so a dead video never holds a slot (14 Oct 2026). */
+export function endScreensThisCycle(
+  targets: readonly LongFormRef[],
+  skippedToday: (videoId: string) => boolean,
+): LongFormRef[] {
+  return targets.filter((t) => !skippedToday(t.videoId)).slice(0, MAX_ENDSCREENS_PER_CYCLE);
 }
 
 /** The pins one cycle actually tries: not already skipped today, live public, then capped at
@@ -506,6 +515,8 @@ async function setNeedsHuman(id: string, reason: string): Promise<void> {
 /** Videos whose pin came back "no-channel-comment"/"skipped-private", by the UTC day it did — skipped
  *  for the rest of that day instead of re-tried (and re-reported) every cycle. */
 const pinSkippedOn = new Map<string, string>();
+/** Same, for an end screen whose video page showed no editor ("no-editor": deleted, or not ours). */
+const endScreenSkippedOn = new Map<string, string>();
 
 async function markPinDone(matchId: number): Promise<void> {
   const record = await readUpload(matchId, "video");
@@ -727,7 +738,9 @@ export async function runCycle(
 
     let endScreensAdded = 0;
     let endScreenPickerEmpty = 0;
-    for (const target of plan.endScreenTargets) {
+    const today = utcDate(new Date());
+    const endScreens = endScreensThisCycle(plan.endScreenTargets, (id) => endScreenSkippedOn.get(id) === today);
+    for (const target of endScreens) {
       const outcome = await addEndScreenFromTemplate(handle, target.videoId, END_SCREEN_TEMPLATE_VIDEO_ID, {
         matchId: target.matchId,
         dryRun: opts.dryRun,
@@ -750,6 +763,11 @@ export async function runCycle(
         // from "nothing to do" (fixed 8 Oct 2026 — see WorkerHeartbeat.lastCycle's own comment).
         if (!opts.dryRun) await markPickerEmptySeen(target.videoId);
         endScreenPickerEmpty++;
+      } else if (outcome === "no-editor") {
+        // A video gone from the channel (Edj_-c7lK38, 14 Oct 2026: a sameErrorStreak of 6 and a
+        // false "Needs you") is a state of the record, not a failure — skipped for the day, as pins are.
+        console.error(`studio worker: end screen ${target.videoId} skipped today — no editor on its page`);
+        endScreenSkippedOn.set(target.videoId, today);
       }
     }
 
@@ -857,7 +875,6 @@ export async function runCycle(
       for (let i = 0; i < plan.pinTargets.length; i += 50)
         stats.push(...(await videoStats(plan.pinTargets.slice(i, i + 50).map((t) => t.videoId))));
       const publicNow = new Set(stats.filter((s) => s.privacyStatus === "public").map((s) => s.videoId));
-      const today = utcDate(new Date());
       // Not public yet is retried a later cycle, not an error.
       const pins = pinsThisCycle(
         plan.pinTargets,

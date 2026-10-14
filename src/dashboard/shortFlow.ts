@@ -29,8 +29,8 @@ import { hookLabelProblem, hookSuggestions, spoilsTheResult } from "../pipeline/
 import { exportMatchStartSec } from "../pipeline/exportFast.js";
 import { computeMetrics } from "../pipeline/matchScore.js";
 import { exportStale, readSyncOffsets } from "../pipeline/syncFile.js";
-import { buildTitle, HOOK_PLACEHOLDER, metaPaths, SEPARATOR, withHook } from "../pipeline/title.js";
-import { playoffContextFor, playoffSeriesTail, playoffTitleTail } from "../playoffs/playoffs.js";
+import { HOOK_PLACEHOLDER, metaPaths, SEPARATOR, withHook } from "../pipeline/title.js";
+import { playoffContextFor } from "../playoffs/playoffs.js";
 import {
   gameMatchStarts,
   hookFactsMatchId,
@@ -74,6 +74,7 @@ import {
   pastTitleHooks,
   pickErrorFile,
   pickShortMoment,
+  titleFor,
 } from "../shorts/videoPick.js";
 import { readManifest } from "../thumbnails/thumbnailVariants.js";
 import {
@@ -146,6 +147,8 @@ export interface AutoHooksRecord {
   titleHook: string;
   shortHook: string | null;
   source: { title: "model" | "chip"; short: "model" | "chip" | null };
+  /** No candidate fit the title's mobile budget, so the shortest that keeps it within 100 was saved: the names may be cut on mobile. */
+  overBudget?: true;
 }
 
 const statusFile = (dir: string, matchId: number): string => path.join(dir, `short-${matchId}.status.json`);
@@ -574,12 +577,15 @@ async function suggestionsFor(
   matchId: number,
   match: MatchInfo,
   f: Facts,
+  /** Title hooks up to YouTube's 100-character title instead of the mobile budget — auto-hooks' fallback only. */
+  wide = false,
 ): Promise<ShortPlanResponse["suggestions"]> {
   const [left, right] = match.players;
   if (!left || !right) return { short: [], title: [] };
   const [userLeft, userRight] = await Promise.all([getUser(left.uuid), getUser(right.uuid)]);
   const playoff = await playoffContextFor(match);
   const budget = titleFor(match, f.series, playoff);
+  const titleMax = wide ? TITLE_MAX_CHARS - SEPARATOR.length - budget.generated.length : budget.hookMax;
   // A joined series' hook chips must read the game that actually decided it, not game 1's own
   // numbers (`hookFactsMatchId`, 8 Oct 2026 chip-truth) — a margin, a pace or a lead-change chip
   // quoting game 1 can be checkably false of the video once another game decided it instead.
@@ -587,7 +593,7 @@ async function suggestionsFor(
   const factsMatch = factsId === matchId ? match : await getMatch(factsId).catch(() => match);
   const facts = { metrics: computeMetrics(factsMatch), match: factsMatch, userLeft, userRight, playoff };
   const committed = (await readManifest(f.dir))?.hookText ?? null;
-  const title = await hookSuggestions({ ...facts, maxChars: budget.hookMax, minChars: budget.hookMin });
+  const title = await hookSuggestions({ ...facts, maxChars: titleMax, minChars: budget.hookMin });
   const short = await hookSuggestions({ ...facts, maxChars: HOOK_MAX_CHARS, minChars: 0 });
   let moment: string | null = null;
   if (f.pick) {
@@ -605,7 +611,7 @@ async function suggestionsFor(
     // The model's proposals (in the operator's own style, videoPick.ts) ahead of the chips. A
     // nickname-pair chip never reaches the panel either (2 Oct 2026, hookProblem's players arg).
     title: dedupe([committed, ...(f.pick?.titleHooks ?? []), ...title]).filter(
-      (h) => h.length <= budget.hookMax && hookProblem(h, budget.hookMax, match.players) === null,
+      (h) => h.length <= titleMax && hookProblem(h, titleMax, match.players) === null,
     ),
     // Held to the rule the model's own suggestion is: no result, and short enough to read at a
     // glance. No `#` (a rank chip's "#7" is a hashtag in the Short's title) and no line naming
@@ -617,24 +623,6 @@ async function suggestionsFor(
         !(h.includes(left.nickname) && h.includes(right.nickname)),
     ),
   };
-}
-
-/** The long-form title this match's hook goes into: the series' tail for a series, a playoff game's for one. */
-function titleFor(
-  match: MatchInfo,
-  series: SeriesRecord | null,
-  playoff: Awaited<ReturnType<typeof playoffContextFor>>,
-) {
-  const [left, right] = match.players;
-  return buildTitle({
-    leftNickname: left?.nickname ?? "?",
-    rightNickname: right?.nickname ?? "?",
-    ...(series
-      ? { suffix: playoffSeriesTail(series.season, series.round) }
-      : playoff
-        ? { suffix: playoffTitleTail(playoff) }
-        : {}),
-  });
 }
 
 /** The export a preview plays, or null. */
@@ -1616,6 +1604,7 @@ export interface AutoHooksChoice {
   titleSource: "model" | "chip";
   shortHook: string | null;
   shortSource: "model" | "chip" | null;
+  overBudget?: true;
 }
 
 /** `choice` turned into the exact body `saveHooks` takes — upper-cased to the house style when
@@ -1638,7 +1627,15 @@ export function autoHooksBody(choice: AutoHooksChoice, upper: boolean): SaveHook
  */
 async function chooseAutoHooks(matchId: number, match: MatchInfo, f: Facts): Promise<AutoHooksChoice | null> {
   const suggestions = await suggestionsFor(matchId, match, f);
-  const titleHook = suggestions.title[0] ?? null;
+  // Nothing fits the mobile budget — a long nickname pair leaves ~20 characters; 14072062 failed
+  // every tick from 09:47 to 16:22 UTC over it and left its slot empty (14 Oct 2026). The shortest
+  // candidate that keeps the title within YouTube's 100 instead, the same checks on it: the names
+  // may be cut on mobile, which beats an empty slot.
+  const overBudget = suggestions.title.length === 0;
+  const titles = overBudget
+    ? [...(await suggestionsFor(matchId, match, f, true)).title].sort((a, b) => a.length - b.length)
+    : suggestions.title;
+  const titleHook = titles[0] ?? null;
   if (titleHook === null) return null;
   const shortHook = suggestions.short[0] ?? null;
   return {
@@ -1646,6 +1643,7 @@ async function chooseAutoHooks(matchId: number, match: MatchInfo, f: Facts): Pro
     titleSource: f.pick?.titleHooks?.includes(titleHook) ? "model" : "chip",
     shortHook,
     shortSource: shortHook === null ? null : shortHook === f.pick?.hookSuggestion ? "model" : "chip",
+    ...(overBudget ? { overBudget: true as const } : {}),
   };
 }
 
@@ -1693,7 +1691,8 @@ async function autoSaveHooks(
   shortLog(
     matchId,
     "chain",
-    `auto-hooks: no hooks saved since the pick landed — saving title ${JSON.stringify(req.titleHook)} (${choice.titleSource})` +
+    `auto-hooks: no hooks saved since the pick landed — saving title ${JSON.stringify(req.titleHook)} (${choice.titleSource}` +
+      (choice.overBudget ? ", over the title's mobile budget: none fit it, names may be cut on mobile)" : ")") +
       (req.noShort
         ? " and no Short (no Short hook passed the checks)"
         : ` and Short ${JSON.stringify(req.shortHook)} (${choice.shortSource})`),
@@ -1719,6 +1718,7 @@ async function autoSaveHooks(
       titleHook: req.titleHook,
       shortHook: req.shortHook,
       source: { title: choice.titleSource, short: req.noShort ? null : choice.shortSource },
+      ...(choice.overBudget ? { overBudget: true as const } : {}),
     };
   });
 }

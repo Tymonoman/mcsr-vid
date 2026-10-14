@@ -36,11 +36,20 @@ const fixture = JSON.parse(
 ) as MatchInfo;
 /** Ids the API serves as private-room matches (type 3), as every playoff game is. */
 const privateRooms = new Set<number>();
+/** Ids served without the loser's dragon: no finish margin, so no "Decided by 1 second" chip. */
+const noFinishMargin = new Set<number>();
 const matchOf = (id: number): MatchInfo => ({
   ...fixture,
   changes: [],
   id,
   ...(privateRooms.has(id) ? { type: 3 } : {}),
+  ...(noFinishMargin.has(id)
+    ? {
+        timelines: fixture.timelines.filter(
+          (t) => t.uuid === fixture.result.uuid || !/dragon/.test(t.type),
+        ),
+      }
+    : {}),
 });
 /** The MCSR API's answer while it is down. */
 let mcsrDown = false;
@@ -1764,6 +1773,34 @@ try {
     assert.equal(plan3.state, "failed");
     assert.match(plan3.detail ?? "", /no suggested hook passed/);
     console.log("OK: no candidate passing fails the hooks step and saves nothing");
+
+    // Nothing fits the mobile budget, though candidates pass every check: a 16 + 7 character pair
+    // leaves 20 (14072062's 16 + 6 left 21 and failed every tick from 09:47 to 16:22 UTC,
+    // 14 Oct 2026). The shortest that passes and keeps the title within 100 is
+    // saved — not the first, and never the shorter spoiler — and the record says it went over.
+    const AH4 = 13_000_082;
+    exported(AH4);
+    noFinishMargin.add(AH4);
+    customPick(AH4, {
+      createdAt: dueAt(7),
+      titleHooks: ["CAN A 22-SECOND LEAD SURVIVE?", "doogile wins it by a lot", "A 22-SECOND FORTRESS LEAD"],
+    });
+    config.titleNames = { edcr: "sixteencharsname", doogile: "sevenyy" };
+    await flow.autoHooksTick(chain, AH_NOW);
+    // AH3's failed step is retried on every tick, and its 15-character title hook fits these 20.
+    await Promise.all([flow.chainIdle(AH4), flow.chainIdle(AH3)]);
+    config.titleNames = savedTitleNames;
+    const st4 = flow.readStatus(AH4);
+    assert.ok(st4.hooksSavedAt, "an over-budget candidate is saved rather than none");
+    assert.equal(st4.autoHooks?.titleHook, "A 22-SECOND FORTRESS LEAD", "the shortest that passes");
+    assert.equal(st4.autoHooks?.source.title, "model");
+    assert.equal(st4.autoHooks?.overBudget, true);
+    assert.equal(
+      readFileSync(path.join(dir(AH4), `match-${AH4}.title.edited.txt`), "utf8").split("\n")[0],
+      "A 22-SECOND FORTRESS LEAD | sixteencharsname vs sevenyy | MCSR Ranked 1v1 | Minecraft Speedrun",
+    );
+    assert.ok(!flow.readStatus(AH2).autoHooks?.overBudget, "a hook inside the budget is not marked");
+    console.log("OK: no hook inside the mobile budget saves the shortest passing one, marked over-budget");
 
     // Each skip reason, all otherwise due.
     const hidden = 13_000_073;
