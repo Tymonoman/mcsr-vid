@@ -18,6 +18,7 @@ const { config } = await import("../config.js");
 assert.equal(config.mediaDir, media, "this test owns its own mediaDir");
 const {
   readExperiments,
+  readExperimentsOrNull,
   writeExperiments,
   scheduleEntryFor,
   slotEntryFor,
@@ -36,6 +37,7 @@ const experimentsFile = path.join(media, ".experiments.json");
 assert.deepEqual(readExperiments(), { experiments: [], schedule: [] });
 writeFileSync(experimentsFile, "{ not json");
 assert.deepEqual(readExperiments(), { experiments: [], schedule: [] }, "corrupt reads as empty");
+assert.equal(readExperimentsOrNull(), null, "the strict read says corrupt, so nothing writes EMPTY over it");
 
 // --- Writing is atomic (write-then-rename) and round-trips ---------------------------------------
 writeExperiments({ experiments: [], schedule: [{ date: "2026-10-08", experimentId: "e1", arm: "a" }] });

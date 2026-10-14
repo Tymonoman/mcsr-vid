@@ -104,7 +104,12 @@ const filePath = (): string => path.join(config.mediaDir, ".experiments.json");
 
 /** Missing or corrupt reads as "no experiments running", never a crash — this file is read on
  *  every publish-slot lookup and every 15-minute tick. */
-export function readExperiments(): ExperimentsFile {
+export const readExperiments = (): ExperimentsFile => readExperimentsOrNull() ?? EMPTY;
+
+/** The same read, but corrupt is `null`, not EMPTY — for a caller that writes the whole file back
+ *  (`evaluateExperiments`), where reading a hand-edit's trailing comma as "nothing here" would
+ *  overwrite every experiment, the schedule and the Studio "tc" records with an empty file. */
+export function readExperimentsOrNull(): ExperimentsFile | null {
   const file = filePath();
   if (!existsSync(file)) return EMPTY;
   try {
@@ -118,7 +123,7 @@ export function readExperiments(): ExperimentsFile {
     };
   } catch (err) {
     console.error(`experiments: ${file} unreadable — ${describeError(err)}`);
-    return EMPTY;
+    return null;
   }
 }
 
