@@ -320,6 +320,24 @@ try {
     first.matches.map((m) => m.matchId).filter((id) => id !== gone),
   );
   deps.isTaken = pure.isTaken;
+  // … and what was blocked since: blockedPlayers applies live, the copy must not outlive it.
+  {
+    const savedBlocked = config.blockedPlayers;
+    const runner = first.matches[0]!.players.split(" vs ")[1]!;
+    config.blockedPlayers = [...savedBlocked, runner.toUpperCase()]; // any case
+    try {
+      const blocked = await gatherWorth(NOW + 1000, {}, deps);
+      assert.equal(calls.list.length, 6, "still the cached copy");
+      assert.deepEqual(
+        blocked.matches.map((m) => m.matchId),
+        first.matches.filter((m) => !m.players.split(" vs ").includes(runner)).map((m) => m.matchId),
+      );
+      assert.ok(blocked.matches.length > 0 && blocked.matches.length < first.matches.length);
+    } finally {
+      config.blockedPlayers = savedBlocked;
+    }
+    console.log("OK: the six-hour copy drops a player blocked since");
+  }
 
   // `fresh` (the /worth command) gathers anew, and so does a copy past the TTL or from the future.
   await gatherWorth(NOW + 1000, { fresh: true }, deps);
