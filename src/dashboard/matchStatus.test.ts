@@ -106,7 +106,11 @@ globalThis.fetch = (async () => {
 }) as typeof fetch;
 config.blockedPlayers = ["aquacorde"];
 assert.equal(await matchIsBlocked(999), false, "a match the API cannot read is not blocked, not refused");
+// Unless its directory, clips archived, still names the player: the Render button on a shelved match.
+mkdirSync(path.join(dir, "998"));
+writeFileSync(path.join(dir, "998", "chat-Aquacorde.json"), "[]");
+assert.equal(await matchIsBlocked(998), true, "an archived directory's chats still block, API or not");
 config.blockedPlayers = saved;
 
-console.log("OK: matchIsBlocked reads the live API, and a down API blocks nobody");
+console.log("OK: matchIsBlocked reads the live API and the directory, and a down API alone blocks nobody");
 console.log("matchStatus: all checks passed");

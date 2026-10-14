@@ -615,14 +615,22 @@ export function nextScheduledRunDateUtc(
 }
 
 /** The disk-and-shelf half of the pick, shared by the run and the dashboard's preview of it. */
-const pickContext = async (): Promise<NightlyPickContext> => ({
-  processedIds: listProcessedMatchIds(),
-  hiddenIds: hiddenMatchIds(),
-  skipIds: nightlySkipIds(),
-  queue: nightlyQueue(),
-  // A missing capacity reading (statfs failed, mediaDir gone) is not a licence to fill a disk.
-  freeMatches: (await capacity()).working?.matchesLeft ?? 0,
-});
+export const pickContext = async (): Promise<NightlyPickContext> => {
+  const queue = nightlyQueue();
+  return {
+    // A queued id whose directory holds no project yet (creator watch's vods.json, a download-vods
+    // prefetch) has not been rendered: counted as processed, the operator's pick would drop
+    // through every night until its VODs expire.
+    processedIds: listProcessedMatchIds().filter(
+      (id) => !queue.includes(id) || existsSync(path.join(matchDir(id), `match-${id}.kdenlive`)),
+    ),
+    hiddenIds: hiddenMatchIds(),
+    skipIds: nightlySkipIds(),
+    queue,
+    // A missing capacity reading (statfs failed, mediaDir gone) is not a licence to fill a disk.
+    freeMatches: (await capacity()).working?.matchesLeft ?? 0,
+  };
+};
 
 /**
  * What a run right now would start, without starting it — the dashboard's preview.

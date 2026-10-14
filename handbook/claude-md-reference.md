@@ -460,9 +460,9 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   steps are left alone and nothing is persisted, so unblocking needs no repair) to every one of its
   three callers at once — Adopt, the Finish button and the nightly's `retryFailedPlaylists`/
   `retryPendingComments` ticks; **Adopt** (`POST /api/youtube/adopt/:id`) also refuses up front,
-  before `videos.update` — the write `finishOnYouTube`'s own gate does not cover. `POST /api/render`
-  (a brand-new match, `matchIsBlocked`, `src/dashboard/matchStatus.ts`) and `POST
-  /api/series/:id/render` refuse before the fire-and-forget run even starts, and `renderSeries`
+  before `videos.update` — the write `finishOnYouTube`'s own gate does not cover. `POST /api/render`,
+  `POST /api/render/:id` (`matchIsBlocked`, `src/dashboard/matchStatus.ts`: the API's pair, else
+  `blockedOnDisk` on an archived directory) and `POST /api/series/:id/render` refuse before the fire-and-forget run even starts, and `renderSeries`
   itself refuses too (`{kind:"blocked"}`, `src/playoffs/series.ts`) — the one place both that route
   and `npm run series` settle through. `hasBlockedPlayer` (`youtubeUpload.ts`) reads
   `povNicknamesOnDisk`, the same disk-only POV-clip reader `matchStatusFor` itself uses, so a
@@ -805,7 +805,10 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
 - **A test server arms its own nightly.** Any `PORT=… npm run dashboard` schedules a render at
   `nightlyRenderHourUtc` against the same `/media` as production, and neither knows the other is
   running — two of them at 03:00 pick the same card and render into one directory. Kill a test
-  server before the hour, or set `nightlyRenderHourUtc: null` for it.
+  server before the hour, or set `nightlyRenderHourUtc: null` for it. The 15-minute tick (chain
+  resume, comment-soon, auto-hooks, creator watch, draw re-seed, experiment arm and evaluation)
+  runs only on the main server (`PORT` 8080), like the Telegram poller: chain state is per process,
+  so a test server read the main one's upload in flight as orphaned and resumed it on top.
 - **Nightly** (`src/dashboard/nightly.ts`): at `nightlyRenderHourUtc` (default 3 UTC; `null` disables) the
   server renders the first eligible card in dashboard order, skipping the night if a render is
   running or under two matches of disk remain, then the MP4 (`nightlyRenderExport`), then queues
@@ -822,6 +825,8 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   ("…or has no known player"). A queued id the latest scan trimmed off the ranked list is still
   resolved rather than dropped (`resolveQueuedPick`): the scan's own pool first, no API call, else
   one `getMatch` and the scan's own scoring — the operator's own pick must not go silently empty.
+  For the same reason a queued id whose directory holds no `match-<id>.kdenlive` yet (creator
+  watch's `vods.json`, a `download-vods` prefetch) is not counted as processed (`pickContext`).
   The strip's preview (`GET /api/nightly`, `previewPick`) is polled, so it resolves from the pool only
   and leaves such an id out; only the run may spend the `getMatch`. The nightly picks from
   `getSuggestions()`'s own cards, never the full pool, so the known bucket's per-player cap
