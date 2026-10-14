@@ -916,6 +916,29 @@ config.mediaDir = media;
   console.log("OK: runWorker({ once: true }) runs exactly one cycle, writes the heartbeat, and returns");
 }
 
+// --- runWorker: a blackout cycle keeps the standing error and its streak (14 Oct 2026) ---------
+// The 07:00 Warsaw report (05:00/06:00 UTC) always lands inside the 02:50–07:30 UTC blackout, so
+// resetting the streak there meant "the same error 3 cycles running" never reached it.
+{
+  await writeHeartbeat({
+    pid: 1,
+    at: "t0",
+    lastCycle: null,
+    lastError: "x",
+    lastErrors: ["x"],
+    sameErrorStreak: 3,
+  });
+  const h = "abc1234";
+  await runWorker({ once: true, now: () => new Date("2026-10-11T05:00:00Z"), bootHead: h, headNow: () => h });
+  const hb = await readHeartbeat();
+  assert.equal(hb?.lastCycle?.probe, "skipped", "the blackout cycle is still recorded as skipped");
+  assert.notEqual(hb?.at, "t0", "the heartbeat itself is refreshed, so the staleness check stays quiet");
+  assert.equal(hb?.lastError, "x", "the last real cycle's error is carried through the blackout");
+  assert.deepEqual(hb?.lastErrors, ["x"]);
+  assert.equal(hb?.sameErrorStreak, 3, "the streak neither resets nor grows on a cycle that never ran");
+  console.log("OK: runWorker carries lastError and sameErrorStreak through a blackout cycle unchanged");
+}
+
 // --- renderTcThumbSet's own real command must put nothing but data on stdout (review fix, 8 Oct
 // 2026): `npm run --silent tc-thumbs -- <id>` is `npm run build-overlay-css && tsx
 // src/thumbnails/tcThumbs.ts`, and `renderTcThumbSet` (studioWorker.ts) `JSON.parse`s the whole
