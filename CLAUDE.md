@@ -48,6 +48,7 @@ thumbnails and a Short, published to **MCSR Replayoffs**.
 | `src/youtube/` | The Data API client and auth, upload records, the upload itself, channel pairing, publish slot, Studio browser automation (`studioBrowser.ts`, `studioActions.ts`, `studioWorker.ts`). |
 | `src/dashboard/` | The web server (`server.ts`), route groups (`youtubeRoutes`, `exportRoutes`, `shortsRoutes`, `syncRoutes`), match screen payload (`matchMeta.ts`), jobs, nightly, suggestions, the shelf (hidden/queue/checklist), the publish set, experiments. |
 | `src/telegram/` | The Telegram bot: `bot.ts`, morning-report facts (`facts.ts`) and rendering (`report.ts`), the Claude CLI adapter (`claude.ts`), `/ask`'s knowledge (`knowledge.ts`), the 07:00 Warsaw schedule (`schedule.ts`), `commands.ts`, dedupe/snapshot state (`state.ts`), `index.ts`, `tgCli.ts`. |
+| `src/clips/` | Standalone clips, not a match: `clipCli.ts` (+ `clipArgs.ts`) behind `npm run clip` — see Clips. |
 | `src/cli/` | Entry points nothing else imports: batch, status, score, chat, bench, retention, the TUI. |
 | `src/` root | `config.ts`, `cliArgs.ts`, `errorText.ts`, cross-folder tests. |
 
