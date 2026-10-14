@@ -1880,6 +1880,9 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
   run as for any dashboard upload rather than declining as "uploaded elsewhere". No session and a
   `source: "dashboard"` record is trusted as done (the crash landed between writing it and marking
   the step so); no session and anything else on record fails the step and names Studio, not a guess.
+  The resume probe itself reads a 5xx/429 as "try again", not "gone" (14 Oct 2026): it throws and
+  keeps the session file, so an operator's Retry after a chunk 503 cannot start a second
+  `videos.insert` either; only a 404/410 (or another 4xx) drops the session for a fresh start.
 - **Country flags render as tofu** without a colour-emoji font (cosmetic, intro card).
 - **Verify visual changes by rendering** (`npm run still`, then read the PNG).
 - **`npm run test:unit` after any edit; `npm test` after touching rendering or asset
