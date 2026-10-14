@@ -142,7 +142,11 @@ assert.ok(
   "a bare match falls back to preRollSec",
 );
 assert.ok(!lines.some((l) => l.startsWith("clips")), "the non-numeric clips/ directory is not a match");
-assert.equal(lines.filter((l) => /^\d+: /.test(l)).length, lines.length, "every line is about a numbered match");
+assert.equal(
+  lines.filter((l) => /^\d+: /.test(l)).length,
+  lines.length,
+  "every line is about a numbered match",
+);
 console.log("OK: no id lists every match directory and writes nothing");
 
 /* --- 2-5, 7: one match at a time ------------------------------------------------------------- */
