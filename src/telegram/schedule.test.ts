@@ -1,5 +1,5 @@
 // Self-check for schedule.ts across both 2026 Polish DST changes (spring forward 29 Mar, fall
-// back 25 Oct) and the 10:00 Warsaw catch-up rule.
+// back 25 Oct) and the report-hour-to-10:00 Warsaw catch-up rule.
 // Run: npx tsx src/telegram/schedule.test.ts
 import assert from "node:assert/strict";
 import { nextWarsawRun, shouldCatchUp, warsawDateStr, warsawUtcForHour } from "./schedule.js";
@@ -54,17 +54,23 @@ assert.equal(warsawDateStr(Date.UTC(2026, 0, 15, 6, 0, 0)), "2026-01-15"); // 07
 assert.equal(warsawDateStr(Date.UTC(2026, 0, 15, 22, 30, 0)), "2026-01-15"); // 23:30 CET, still the 15th
 assert.equal(warsawDateStr(Date.UTC(2026, 0, 15, 23, 30, 0)), "2026-01-16"); // 00:30 CET, already the 16th
 
-// --- The 10:00 Warsaw catch-up rule ---
+// --- The catch-up rule: between the report hour (7) and 10:00 Warsaw ---
 const jan15 = (localHour: number, minute = 0) => Date.UTC(2026, 0, 15, localHour - 1, minute, 0); // CET = UTC+1
-assert.equal(shouldCatchUp(jan15(8, 30), null), true, "08:30, never sent — catch up");
-assert.equal(shouldCatchUp(jan15(9, 59), null), true, "09:59, never sent — still catch up");
-assert.equal(shouldCatchUp(jan15(10, 0), null), false, "10:00, never sent — too late, wait for tomorrow");
-assert.equal(shouldCatchUp(jan15(11, 0), null), false, "11:00, never sent — too late");
+assert.equal(shouldCatchUp(jan15(8, 30), null, 7), true, "08:30, never sent — catch up");
+assert.equal(shouldCatchUp(jan15(9, 59), null, 7), true, "09:59, never sent — still catch up");
+assert.equal(shouldCatchUp(jan15(7, 0), null, 7), true, "07:00 on the dot, never sent — catch up");
+assert.equal(shouldCatchUp(jan15(10, 0), null, 7), false, "10:00, never sent — too late, wait for tomorrow");
+assert.equal(shouldCatchUp(jan15(11, 0), null, 7), false, "11:00, never sent — too late");
 assert.equal(
-  shouldCatchUp(jan15(8, 30), "2026-01-15"),
+  shouldCatchUp(jan15(8, 30), "2026-01-15", 7),
   false,
   "already sent today, however early it still is",
 );
-assert.equal(shouldCatchUp(jan15(8, 30), "2026-01-14"), true, "sent yesterday, not yet today — catch up");
+assert.equal(shouldCatchUp(jan15(8, 30), "2026-01-14", 7), true, "sent yesterday, not yet today — catch up");
+// Before the report hour nothing was missed: the 07:00 timer still sends it, a catch-up would be a second report.
+assert.equal(shouldCatchUp(jan15(5, 25), "2026-01-14", 7), false, "05:25 restart — the 07:00 timer sends it");
+assert.equal(shouldCatchUp(jan15(0, 30), null, 7), false, "00:30 restart — nothing missed yet");
+// The report switched off (`telegramReportHourWarsaw: null`) never catches up either.
+assert.equal(shouldCatchUp(jan15(8, 30), null, null), false, "report off — no catch-up");
 
 console.log("schedule: all checks passed");

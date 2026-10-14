@@ -434,7 +434,7 @@ export async function startTelegramBot(): Promise<void> {
     void pollLoop();
   }
   const state = readTelegramState();
-  if (bot.hasChat() && shouldCatchUp(Date.now(), state.lastReportWarsawDate)) {
+  if (bot.hasChat() && shouldCatchUp(Date.now(), state.lastReportWarsawDate, config.telegramReportHourWarsaw)) {
     console.error(
       "telegram: sending the morning report now — a restart missed 07:00 and it is still before 10:00 Warsaw",
     );

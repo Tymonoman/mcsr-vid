@@ -1155,8 +1155,9 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
   on, its instant (what "overnight" and "since the previous report" mean throughout), the
   previous live channel snapshot (subs/views/videos, for `/stats`'s "+N since last time"), and
   Telegram's own update cursor. A restart that missed 07:00 still sends the report if it is
-  before 10:00 Warsaw and today's date is not already recorded — `shouldCatchUp` in
-  `schedule.ts`. A test server never runs the scheduler at all, so it cannot race the real one's
+  between the report hour and 10:00 Warsaw and today's date is not already recorded —
+  `shouldCatchUp` in `schedule.ts`. A restart before the report hour sends nothing early (the
+  timer sends it, once), and with the report off (`null`) nothing catches up. A test server never runs the scheduler at all, so it cannot race the real one's
   write.
 - **`/stats` reuses `src/youtube/yppProgress.ts`'s Analytics call shape**, not a second
   implementation: one `dimensions: "day"` request over ~62 days
