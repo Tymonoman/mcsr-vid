@@ -1,7 +1,7 @@
 // Self-check for bot.ts's pure helpers: HTML escaping and message splitting.
 // Run: npx tsx src/telegram/bot.test.ts
 import assert from "node:assert/strict";
-import { escapeHtml, MESSAGE_MAX_CHARS, splitMessage } from "./bot.js";
+import { escapeHtml, MESSAGE_MAX_CHARS, messageParts, splitMessage } from "./bot.js";
 
 assert.equal(escapeHtml("<script>&"), "&lt;script&gt;&amp;");
 assert.equal(escapeHtml("a > b < c & d"), "a &gt; b &lt; c &amp; d");
@@ -32,5 +32,16 @@ assert.deepEqual(splitMessage("x".repeat(4096)), ["x".repeat(4096)]);
 }
 
 assert.equal(MESSAGE_MAX_CHARS, 4096);
+
+// Telegram counts an HTML message after parsing: one whose markup alone passes the limit goes
+// whole, never cut through its <blockquote>; plain text, or HTML over the limit once parsed, splits.
+{
+  const line = `• <a href="https://studio.youtube.com/video/abcdefghijk/comments">${"w".repeat(40)}</a>`;
+  const html = `<blockquote expandable>${Array.from({ length: 60 }, () => line).join("\n")}</blockquote>`;
+  assert.ok(html.length > MESSAGE_MAX_CHARS);
+  assert.deepEqual(messageParts(html, true), [html]);
+  assert.ok(messageParts(html).length > 1);
+  assert.ok(messageParts(html.repeat(2), true).length > 1);
+}
 
 console.log("bot: all checks passed");

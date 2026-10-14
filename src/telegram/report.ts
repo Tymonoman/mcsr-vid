@@ -4,7 +4,7 @@
  * supplies the TODAY section's headline and to-do wording. HTML-escaped throughout (Telegram's
  * `parse_mode: "HTML"`), and the whole report capped at 4096 characters.
  */
-import { escapeHtml, MESSAGE_MAX_CHARS } from "./bot.js";
+import { escapeHtml, MESSAGE_MAX_CHARS, visibleLength } from "./bot.js";
 import type { AutoHooksRow } from "../dashboard/shortFlow.js";
 import type {
   AlertItem,
@@ -648,9 +648,7 @@ export function renderNightly(n: NightlyFacts, dashboardBaseUrl: string): string
 
 /* --- The morning report: three messages ----------------------------------------------------- */
 
-/** What Telegram counts against the 4096: the text after its HTML is parsed — tags out, entities one character. */
-export const visibleLength = (html: string): number =>
-  html.replace(/<[^>]+>/g, "").replace(/&(?:lt|gt|amp|quot|#39);/g, "x").length;
+export { visibleLength } from "./bot.js";
 
 /**
  * The morning report as three messages, each saying a thing once: the day (Claude's to-do, the
