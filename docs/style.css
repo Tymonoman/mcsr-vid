@@ -46,3 +46,12 @@ code {
 }
 .rule { height: 4px; background: var(--edge); border: 0; margin: 2.5rem 0 0; }
 footer { margin-top: 2rem; color: var(--muted); font-size: 0.85rem; }
+.cta {
+  display: inline-block;
+  font-family: "Monocraft", ui-monospace, monospace;
+  background: var(--crimson); color: var(--quartz);
+  font-size: 1.2rem; font-weight: 700;
+  padding: 0.5em 1em; text-decoration: none;
+  box-shadow: 4px 4px 0 var(--edge);
+}
+.cta:hover { background: var(--gold); color: var(--panel-2); }

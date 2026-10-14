@@ -2,10 +2,10 @@
 
 The dashboard uploads since the API review cleared (15 Sept 2026): Package → Publish →
 **Upload** sends the file, title, description, tags and thumbnail, schedules it, and **Finish
-on YouTube** adds the playlists, the pinned comment and the tags. This page is for the other
+on YouTube** adds the playlists, the channel's comment and the tags. This page is for the other
 two cases: a video uploaded by hand in Studio (paste the 11-character id into **Adopt this
-draft** and the dashboard writes the rest), and anything Studio still owns — pinning the
-comment, the Short's related-video link, an end screen.
+draft** and the dashboard writes the rest), and what only Studio can do (pinning the comment,
+the Short's related-video link, an end screen) when the Studio worker could not do it.
 
 Everything you paste is pre-generated. Open the match in the dashboard and use
 the **Publish kit** panel — it has a copy button per field below, with the
@@ -49,8 +49,7 @@ faster than hunting through tabs.
 - [ ] **Made for kids:** **No.** Competitive ranked speedrun content aimed at a
       ladder-following adult/teen audience is general-audience, Minecraft
       notwithstanding. "Yes" disables comments, notifications and
-      personalisation, which breaks the credit-and-notify policy this channel
-      runs on.
+      personalisation, all of which the channel needs.
 - [ ] **Visibility:** **Schedule** (not Publish now) for **19:00 UTC** —
       `publishHourUtc` in `src/config.ts`, measured on the active competitor
       (`src/youtube/publishSlot.ts`). The publish kit prints the next slot; it skips one
@@ -60,10 +59,11 @@ faster than hunting through tabs.
 
 ## After it goes live
 
-- [ ] Upload the Short (`short-<matchId>.mp4`, with its own
-      `.title.txt` / `.description.txt`).
-- [ ] Add the related link and the end screen.
-- [ ] Notify both runners — the publish kit has a DM per player with the
-      `youtu.be` link. Notify-always, no opt-in gate before publishing.
+- [ ] Upload the Short (`short-<matchId>.mp4`, with its own `.title.txt` /
+      `.description.txt`) only if the chain did not: the match's Short up step
+      failed, or it never ran.
+- [ ] The pinned comment, the end screen and the Short's related link: the
+      Studio worker does these (`npm run studio -- worker`). By hand only when
+      it reports `needsHuman`, or the worker is off.
 - [ ] Tick the five toggles on the dashboard's publish checklist so the Rendered
       tab stops counting the match as ready.
