@@ -12,8 +12,9 @@
 //  4. A matchup playlist is created on a pair's *second* video, with the first added alongside —
 //     and not on the first.
 //  5. A Short joins no playlist, gets no custom thumbnail and no comment.
-//  6. A Short's description gains "the whole match: https://youtu.be/<id>" at upload, once the
-//     long-form's id is in youtube.json (and not before).
+//  6. A Short's description gains "the whole match: https://youtu.be/<id>" as its second line at
+//     upload, once the long-form's id is in youtube.json (and not before); a one-line description
+//     gets no link.
 //  7. `playlists.insert`'s cap (429 RATE_LIMIT_EXCEEDED): the step records the refusal in the ledger
 //     as a cap line, and the nightly's `retryFailedPlaylists` presses again — no operator action.
 //  8. A retry presses only what failed: a done comment or thumbnail is not redone.
@@ -30,15 +31,16 @@
 // 13. No session and anything other than a `source: "dashboard"` record (a record with no source
 //     included) fails the step, naming Studio.
 // 14. The resume probe reads a 5xx as "try again", not "gone": nothing new is started and the
-//     session file is kept.
+//     session file is kept. With the scan's Studio record on disk the failed resume names Studio
+//     (studioNoSession) instead, the session file still kept.
 // 15. A resume whose session YouTube no longer honours (404) never falls through to a fresh start.
-// 16. A blocked player's match is never uploaded, long-form or Short (CLAUDE.md "Blocked players").
-// 17. Asked, not asserted: should a restart finish a `videos.insert` begun while
-//     `youtubeUploadEnabled` was on, after the flag went off? (printed as a QUESTION line)
+// 16. A blocked player's match is never uploaded, long-form or Short (CLAUDE.md "Blocked players"),
+//     a restart's resume included: the step fails, the session file is left for the operator.
+// 17. `youtubeUploadEnabled` gates starting an insert: a session begun while it was on is still
+//     finished by a restart's resume after the flag went off.
 //
 // Hermetic: a temp media directory, a temp archive directory, a temp token file, fetch stubbed
-// (anything unrouted throws). A doc clause the code does not keep prints a DEVIATION line and the
-// run ends "KNOWN-FAILING", never "all checks passed" — exit 0 all the same, so test:unit runs on.
+// (anything unrouted throws).
 // Run: npx tsx src/youtube/youtubeUpload.finish.contract.test.ts
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
@@ -52,18 +54,6 @@ import { sessionPath } from "./youtube.js";
 import type { UploadRecord } from "./youtubeStore.js";
 // youtubeUpload.js and youtubeStore.js are imported below, once MCSR_ARCHIVE_DIR points inside the
 // temp dir: both reach src/dashboard/archive.ts, which reads it once, at import.
-
-/** A doc clause the code does not keep: reported, not bent to fit, and the run goes on. */
-const deviations: string[] = [];
-async function deviation(clause: string, check: () => void | Promise<void>): Promise<void> {
-  try {
-    await check();
-  } catch (err) {
-    if (!(err instanceof assert.AssertionError)) throw err;
-    console.log(`DEVIATION: ${clause} — ${err.message.replace(/\s+/g, " ")}`);
-    deviations.push(clause);
-  }
-}
 
 const media = await mkdtemp(path.join(tmpdir(), "mcsr-upload-finish-contract-"));
 const saved = {
@@ -475,7 +465,7 @@ try {
       assert.equal(since(mark).filter((c) => c.includes(part)).length, 0, `no ${part} call for a Short`);
     await rm(shortRecord);
 
-    // A Short description of one line (hand-edited, say): the promise has no "if it has two lines".
+    // A Short description of one line (hand-edited, say): the link goes after the first line, so none.
     await writeFile(
       path.join(dir, `short-${id}.description.txt`),
       "bbiddd vs BadGamer, the whole match is on the channel.",
@@ -488,15 +478,7 @@ try {
     );
     assert.ok(!("error" in lone));
     await lone.finished;
-    await deviation(
-      'A Short\'s description gains "the whole match: https://youtu.be/<id>" at upload time',
-      () =>
-        assert.match(
-          oneLine.sent[0]!.description,
-          /youtu\.be\/vidLongBB/,
-          "a one-line description got no link",
-        ),
-    );
+    assert.doesNotMatch(oneLine.sent[0]!.description, /youtu\.be/, "a one-line description gets no link");
     console.log("OK: a Short links its long-form, joins nothing, and a Retry after a 503 inserts once");
   }
 
@@ -563,19 +545,11 @@ try {
     assert.equal(existsSync(session), true, "and keeps the session for the next press");
     assert.equal(await readUpload(id, "short"), null);
 
-    // The same 503 with the scan's record on disk: still a "try again", not "the session is gone".
+    // The same 503 with the scan's record on disk: the failure names Studio, the session still kept.
     await writeUpload(id, record("vidScan", { source: "studio" }), "short");
     const withScan = await resumeUpload(id, "short");
     assert.equal(existsSync(session), true, "the session survives this one too");
-    await deviation(
-      'The resume probe itself reads a 5xx/429 as "try again", not "gone" (handbook, cut-short upload)',
-      () =>
-        assert.doesNotMatch(
-          String(withScan),
-          /session is gone/,
-          `a 503 probe with the scan's record answers: ${String(withScan).slice(0, 160)}…`,
-        ),
-    );
+    assert.match(String(withScan), /from Studio.*youtube-short\.json by hand/, String(withScan));
     await rm(path.join(dir, "youtube-short.json"));
 
     // A session YouTube no longer honours (404): resumeOnly never falls through to a fresh start.
@@ -597,17 +571,12 @@ try {
       JSON.stringify({ filePath: file, total: 1024, sessionUrl: "https://upload.test/session/g" }),
     );
 
-    // Not a broken promise: a resume finishes a videos.insert already started while the flag was
-    // on, it starts no new one. Whether it should is the operator's call, so it is asked, not pinned.
+    // The flag gates starting an insert: a resume finishes one begun while it was on.
     config.youtubeUploadEnabled = false;
     const off = spySend();
     await resumeUpload(id, "short", off.send);
-    if (off.sent.length > 0)
-      console.log(
-        "QUESTION for the operator: with youtubeUploadEnabled switched off, a restart still finishes " +
-          "a videos.insert begun while it was on (resumeUpload never reads the flag; shortFlow.ts " +
-          "advance() resumes before its uploadsOn() gate). Finish it, or leave it for Studio?",
-      );
+    assert.equal(off.sent.length, 1, "a session begun with the flag on is still finished");
+    assert.equal(off.sent[0]!.resumeOnly, true, "and never as a fresh start");
     config.youtubeUploadEnabled = true;
     await rm(path.join(dir, "youtube-short.json"), { force: true });
 
@@ -620,23 +589,15 @@ try {
     await writeFile(path.join(dir, "chat-TestBlocked.json"), "[]");
     assert.equal((await hookRefusal(id, "short"))?.status, 403, "the upload's own gate sees the block");
     const blocked = spySend();
-    await resumeUpload(id, "short", blocked.send);
-    await deviation(
-      'A blocked match is never uploaded (long-form or Short) (CLAUDE.md "Blocked players")',
-      () => assert.equal(blocked.sent.length, 0, "a resume finished a blocked match's Short"),
-    );
+    const refused = await resumeUpload(id, "short", blocked.send);
+    assert.equal(blocked.sent.length, 0, "a resume never finishes a blocked match's Short");
+    assert.match(String(refused), /blocked player/, "the step fails, naming the block");
+    assert.equal(existsSync(sessionPath(file)), true, "the session file is left for the operator");
     config.blockedPlayers = saved.blocked;
-    console.log("OK: the resume gates were probed (see DEVIATION lines, if any)");
+    console.log("OK: a resume finishes a session begun with uploads on, and never a blocked match's");
   }
 
-  // A deviation must not read green to anything grepping for "all checks passed". Once the code
-  // keeps a clause, turn its deviation() into a plain assert so it stays pinned.
-  if (deviations.length > 0)
-    console.log(
-      `youtubeUpload.finish.contract: KNOWN-FAILING — ${deviations.length} deviation(s): ` +
-        `${deviations.join("; ")}. Every other check passed.`,
-    );
-  else console.log("youtubeUpload.finish.contract: all checks passed");
+  console.log("youtubeUpload.finish.contract: all checks passed");
 } finally {
   globalThis.fetch = realFetch;
   if (saved.token === undefined) delete process.env.YOUTUBE_TOKEN_FILE;

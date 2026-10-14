@@ -239,6 +239,8 @@ reload). After merging server changes, `POST /api/restart-when-idle`; a hand
   confirmed here. **`videos.update` replaces the whole part it is given**: `addTags` reads the
   snippet and sends it back whole (omitting description would blank it) and only ever adds tags;
   `reschedule` does the same with `status`; both refuse to write if the read returns no video.
+  `youtubeUploadEnabled` gates starting an insert; a session begun while it was on is still
+  finished by `resumeUpload` after a restart.
 - **Adopt a Studio draft** (`POST /api/youtube/adopt/:id`): writes title/description/tags via
   `videos.update` onto a video pasted by id, then runs finish steps. Not behind
   `youtubeUploadEnabled`. Refuses: malformed id, an id already recorded for another match **or as
@@ -450,7 +452,8 @@ anything it flags (no GitHub credentials, a read-only PAT, an expiring token) fi
 - **A cut-short upload resumes its own session, never trusts a record.** A restart mid-upload is
   settled through `resumeUpload`'s `resumeOnly` (never falls through to a second upload); no
   session + a `source: "dashboard"` record is trusted done; anything else fails the step, naming
-  Studio.
+  Studio — so does any failed resume (a 503 too) with a Studio record on file; the session file
+  stays for the next Retry. A blocked match's session is never resumed.
 - **Verify visual changes by rendering** (`npm run still`, then read the PNG). Run
   `npm run test:unit` after any edit, `npm test` (Chromium+ffmpeg) after touching rendering or
   asset generation; `test:unit` runs on `DEFAULTS`, so a Settings-tab switch can't break it.

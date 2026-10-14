@@ -864,6 +864,10 @@ export async function resumeUpload(
     if (!record || record.source === "dashboard") return null;
     return studioNoSession(kind, matchId, record);
   }
+  // The block outranks a half-sent upload too: a runner who withdrew permission mid-upload gets
+  // no finished video. The session file stays — deleting it is the operator's call.
+  if (hasBlockedPlayer(matchDir(matchId)))
+    return `match ${matchId} has a blocked player — ${kindName(kind)} a restart cut short is left unfinished; delete it in Studio and ${path.basename(sessionPath(filePath))} by hand`;
   const manifest = await readManifest(matchDir(matchId));
   const text = await uploadTextFor(matchId, kind);
   const step = logStep(kind);
