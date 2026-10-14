@@ -49,8 +49,9 @@ const HOOK_DENIED_LABELS =
 
 /**
  * A hook that names a runner with a label: either `HOOK_DENIED_LABELS` on its own, or a "<x> vs
- * <y>" shape where `x` or `y` is not one of `players`' real nicknames or `titleNames` spellings —
- * an invented nickname ("LCQ", "TAS", "CARNIVORE") standing in for a runner. `players` is the
+ * <y>" shape ("vs", "vs.", "v", "v." or "versus", any number of sides) where a side is not one of
+ * `players`' real nicknames or `titleNames` spellings — an invented nickname ("LCQ", "TAS",
+ * "CARNIVORE") standing in for a runner. `players` is the
  * match the hook is for; omit it where that is not at hand and only the denied-label half runs.
  *
  * The root cause (2 Oct 2026): the title-hook model had been shown the operator's own past hooks
@@ -63,8 +64,8 @@ export function hookLabelProblem(hook: string, players?: readonly { nickname: st
   const problem = "names a runner with a label: runners have objected to this (2 Oct 2026)";
   if (HOOK_DENIED_LABELS.test(hook)) return problem;
   if (!players) return null;
-  const sides = hook.split(/\s+vs\.?\s+/i);
-  if (sides.length !== 2) return null;
+  const sides = hook.split(/\s+(?:vs\.?|v\.?|versus)\s+/i);
+  if (sides.length < 2) return null;
   const known = new Set(
     players.flatMap((p) => [p.nickname.toLowerCase(), titleName(p.nickname).toLowerCase()]),
   );

@@ -573,6 +573,15 @@ console.log("hooks: all checks passed");
   assert.equal(hookLabelProblem("edcr vs CATBOY", players), LABEL, "one side is still invented");
   assert.equal(hookLabelProblem("edcr vs doogile", players), null, "the real nicknames, not a label");
   assert.equal(hookLabelProblem("DOOGILE vs EDCR", players), null, "case-insensitive, either order");
+  // Every spelling of "vs", and any number of sides (14 Oct 2026 review: "v."/"versus" and a third
+  // side slipped through an exact-two, literal-"vs" split).
+  for (const label of ["CARNIVORE v. VEGAN", "LOVERBOY VERSUS TAS", "LOVERBOY V TAS", "LOVERBOY vs TAS vs THE CLOCK"]) {
+    assert.equal(hookLabelProblem(label, players), LABEL, label);
+  }
+  assert.equal(hookLabelProblem("edcr versus doogile", players), null, "versus, real nicknames");
+  assert.equal(hookLabelProblem("EDCR v. DOOGILE", players), null, "v., real nicknames");
+  assert.equal(hookLabelProblem("1v1 to the dragon", players), null, "no spaces round the v, no split");
+  assert.equal(hookLabelProblem("Their first 1v1", players), null, "1v1 is not a pair");
 
   // titleNames: the broadcast's spelling is not a label either (Pinne is Skycrab).
   const broadcast = [user("Pinne", "uuid-p"), user("lowk3y_", "uuid-k")];
