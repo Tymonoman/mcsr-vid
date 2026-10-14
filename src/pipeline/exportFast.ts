@@ -143,10 +143,21 @@ export function buildFastExportCommand(input: FastExportInput): BuiltCommand {
   // distort=0 letterboxes into the rect, and yt-dlp downloads whatever the streamer broadcast
   // (`-f bv*+ba/b`). A 1600x900 VOD would be stretched by a bare scale and letterboxed by melt —
   // silently different, and only on some matches.
-  const povChain = (index: number, label: string) =>
+  //
+  // A clip whose match start sits under ANCHOR_SEC into it (a stream begun just before the match,
+  // or a coarse offset under 10) starts `startOnTimelineSec` into the timeline, after that much
+  // black — the blank the Kdenlive project puts in front of it. 0 for every other clip, and then
+  // no pad at all, so the graph is what it always was.
+  const povChain = (index: number, label: string, startSec: number) =>
     `[${index}:v]scale=${POV_WIDTH}:${POV_HEIGHT}:force_original_aspect_ratio=decrease:flags=bilinear,` +
-    `pad=${POV_WIDTH}:${POV_HEIGHT}:-1:-1:color=black,setsar=1,format=yuv420p,fps=${fps},settb=1/${fps}[${label}]`;
-  chains.push(povChain(0, "L"), povChain(1, "R"), `[L][R]hstack=inputs=2[POV]`);
+    `pad=${POV_WIDTH}:${POV_HEIGHT}:-1:-1:color=black,setsar=1,format=yuv420p,fps=${fps},` +
+    `${startSec > 0 ? `tpad=start_duration=${startSec.toFixed(3)}:start_mode=add:color=black,` : ""}` +
+    `settb=1/${fps}[${label}]`;
+  chains.push(
+    povChain(0, "L", left.startOnTimelineSec),
+    povChain(1, "R", right.startOnTimelineSec),
+    `[L][R]hstack=inputs=2[POV]`,
+  );
 
   const totalFrames = Math.round(input.totalDurationSec * fps);
   // A playoff game's top band is two stills: the run, then the winner's dot filled from the
@@ -230,8 +241,10 @@ export function buildFastExportCommand(input: FastExportInput): BuiltCommand {
   const q = 1 - p;
   const pan = (near: number, far: number) =>
     `pan=stereo|c0=${near.toFixed(2)}*c0+${near.toFixed(2)}*c1|c1=${far.toFixed(2)}*c0+${far.toFixed(2)}*c1`;
-  chains.push(`[0:a]aformat=channel_layouts=stereo,${pan(p, q)}[A0]`);
-  chains.push(`[1:a]aformat=channel_layouts=stereo,${pan(q, p)}[A1]`);
+  // Delayed by the same `startOnTimelineSec` as the picture above, and likewise absent at 0.
+  const delay = (sec: number) => (sec > 0 ? `adelay=${Math.round(sec * 1000)}:all=1,` : "");
+  chains.push(`[0:a]${delay(left.startOnTimelineSec)}aformat=channel_layouts=stereo,${pan(p, q)}[A0]`);
+  chains.push(`[1:a]${delay(right.startOnTimelineSec)}aformat=channel_layouts=stereo,${pan(q, p)}[A1]`);
   // normalize=0 because MLT's `mix` transition sums its inputs (sum=1); ffmpeg's amix halves
   // each by default, which would quietly drop both POVs 6dB relative to the Kdenlive export.
   chains.push(

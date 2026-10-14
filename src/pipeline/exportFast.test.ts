@@ -78,6 +78,26 @@ assert.ok(filter.includes("[A0][A1]amix=inputs=2"), "and the two panned streams 
 assert.ok(filter.includes("force_original_aspect_ratio=decrease"), "POVs must letterboxed, not stretched");
 assert.ok(filter.includes("pad=960:540"), "and padded back to the pane size");
 
+// A clip whose match start sits under ANCHOR_SEC into it starts that much later on the timeline,
+// after black, exactly as the Kdenlive project's blank places it — not at the output's 0, ahead of
+// the overlay and the other POV. Every clip with the usual headroom gets no pad at all.
+{
+  const early = { ...base, leftClip: { ...base.leftClip, matchOffsetIntoClipSec: 4 } };
+  const e = buildFastExportCommand(early).args;
+  const ef = e[e.indexOf("-filter_complex") + 1]!;
+  assert.equal(e[e.indexOf("/m/left.mp4") - 2], "0.000", "nothing to seek past");
+  assert.ok(
+    /\[0:v\][^;]*fps=60,tpad=start_duration=6\.000:start_mode=add:color=black,settb=1\/60\[L\]/.test(ef),
+    ef,
+  );
+  assert.ok(ef.includes("[0:a]adelay=6000:all=1,aformat=channel_layouts=stereo,"), ef);
+  assert.ok(
+    !/\[1:v\][^;]*tpad/.test(ef) && ef.includes("[1:a]aformat="),
+    "the other POV is placed as before",
+  );
+  assert.ok(!filter.includes("tpad") && !filter.includes("adelay"), "the usual headroom pads nothing");
+}
+
 // The intro must be decoded with libvpx-vp9. ffmpeg's native vp9 decoder drops the alpha
 // side-data, which turns the fades back into hard cuts — silently, and visible only by looking
 // at a frame mid-fade.
