@@ -225,9 +225,10 @@ reload). After merging server changes, `POST /api/restart-when-idle`; a hand
   in `short-<id>.status.json`.
 - **Thumbnails** (`remotion/Thumbnail.tsx`): two big figures, name-only plates, seed type above the
   VS, no rating/seed/placement text. Four pose pairs; `thumbnailRotatePoses` (default off) rotates
-  by match id. **"cheering-relaxing" is excluded from every automatic pick**
-  (`RESULT_LOOKING_POSE_KEY`, reads as the result); operator pick only. `playoffThumbnailStyle` is
-  **not wired** into any render yet.
+  by match id. **"cheering-relaxing" is excluded from every fresh automatic pick**
+  (`RESULT_LOOKING_POSE_KEY`, reads as the result); operator pick only. A choice carried from an
+  earlier manifest keeps itself (only a 7 Oct rotation-on render could have carried it as "auto").
+  `playoffThumbnailStyle` is **not wired** into any render yet.
 - **Re-render a match's thumbnails beside the live set, never over it**
   (`src/thumbnails/rerender.ts`, `src/youtube/thumbnailSwap.ts`, `src/dashboard/thumbnailRoutes.ts`,
   `src/dashboard/busy.ts`): variants render into `thumbnail-new/`; live files

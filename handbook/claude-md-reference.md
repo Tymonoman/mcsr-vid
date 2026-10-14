@@ -672,13 +672,15 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   to deterministic-by-match-id rotation among the pairs actually rendered instead, because 88% of
   uploads were wearing that one pose pair (the 7 Oct packaging audit). An operator's pick and an
   already-uploaded thumbnail are never touched either way. **"cheering-relaxing" (the left runner,
-  arms up) is excluded from every automatic pick** (`RESULT_LOOKING_POSE_KEY`,
+  arms up) is excluded from every fresh automatic pick** (`RESULT_LOOKING_POSE_KEY`,
   `thumbnailVariants.ts`; 8 Oct 2026, chip-truth): it reads as the result, spoiling when the left
   player won and misleading when they didn't, so both `autoDefaultKey`'s rotation and `tc-thumbs`'s
   SSIM "most different" pick (`tcThumbs.ts`, which had picked it 7 of its first 10 sets) filter it
-  out of their own pool first, falling back to the full list only if that would leave nothing to
-  pick from. The operator can still choose it by hand (`chooseVariant`) — the exclusion is only on
-  the paths nobody reviews. `RIGHT_RENDER_SIDE` follows the CSS mirror of the right image. The hook text came off on 18 Sept
+  out of their own pool first. `autoDefaultKey` falls back to the full list only if that would leave
+  nothing to pick from; `tc-thumbs` instead refuses ("no pose variant other than the result-looking
+  one … pick tc-pose by hand") and writes no tc-pose.png. A choice carried from an earlier manifest
+  keeps itself (only a 7 Oct rotation-on render could have carried it in as "auto"). The operator
+  can still choose it by hand (`chooseVariant`) — the exclusion is only on the paths nobody reviews. `RIGHT_RENDER_SIDE` follows the CSS mirror of the right image. The hook text came off on 18 Sept
   and its twins were deleted on 24 Sept: an older manifest's `hookText`/`-hook` records are read
   by `readManifest`, hidden by the panel and handed to the title by `carriedHookText`. The
   checklist's thumbnail pill ticks on `chosenBy: "operator"`, and `variantStillReusable` keeps a
