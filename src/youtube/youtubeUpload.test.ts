@@ -365,6 +365,30 @@ try {
     console.log("OK: the send seam gets the Short's title and time, once");
   }
 
+  // A double press: both requests pass the early running check while the other is still awaiting
+  // the hook/text/status reads, so the one that reserves the slot must check again in its tick.
+  {
+    const file = path.join(dir, `short-${matchId}.mp4`);
+    await writeFile(file, "x");
+    let sends = 0;
+    const send = async (args: UploadOptions): Promise<UploadResult> => {
+      sends++;
+      return { videoId: "vidOnce", publishAt: args.publishAt ?? null, privacyStatus: "private" };
+    };
+    const req = { kind: "short" as const, privacyStatus: "private" as const, publishAt: LATER };
+    const both = await Promise.all([beginUpload(matchId, req, send), beginUpload(matchId, req, send)]);
+    assert.deepEqual(
+      both.map((b) => ("error" in b ? b.status : 0)).sort(),
+      [0, 409],
+      `exactly one goes up: ${JSON.stringify(both)}`,
+    );
+    for (const b of both) if (!("error" in b)) await b.finished;
+    assert.equal(sends, 1, "videos.insert once");
+    await rm(file);
+    await rm(path.join(dir, "youtube-short.json"));
+    console.log("OK: a double press uploads once, the second is a 409");
+  }
+
   // The Short log: each upload's start, its progress as the activity's percent, its end — and a
   // refusal. YouTube's failures in words, with Google's own text as the detail.
   {
