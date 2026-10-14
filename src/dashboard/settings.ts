@@ -170,7 +170,7 @@ export const SETTINGS: readonly SettingField[] = [
   {
     key: "shortsByHand",
     label: "Cut Shorts by hand",
-    help: "The operator's own call, 11 Oct 2026: \"you're gonna make the shorts from now on.\" On, a match's Short never queues a model pick or a pipeline render — the long-form uploads at its slot on its own, and the Short uploads once `npm run short:hand` has written short-<id>.mp4 and short-<id>.hand.json. Off is today's pick → render → upload chain.",
+    help: "The operator's own call, 11 Oct 2026: \"you're gonna make the shorts from now on.\" On, the chain never renders the Short itself (the pick after export still runs — auto-hooks needs its title hooks, and its window is only a hint) — the long-form uploads at its slot on its own, and the Short uploads once `npm run short:hand` has written short-<id>.mp4 and short-<id>.hand.json. Off is today's pick → render → upload chain.",
     kind: "boolean",
     group: "Publishing",
     unattended: true,

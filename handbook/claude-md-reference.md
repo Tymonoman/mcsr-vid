@@ -163,8 +163,9 @@ views brought 0 subscribers.
   the match directory exists, the file is 1080x1920 h264+aac at 60 s or under (ffprobe, injected
   in tests), the hook passes `hookProblem` (which is already `hookLabelProblem` and
   `spoilsTheResult` together) — refused outright with the reason, never a warning, unlike the
-  operator's own typed hook on the dashboard — no blocked player, and the Short is not already on
-  the channel. Until the pair exists the chain ends its pass with one log line ("waiting for the
+  operator's own typed hook on the dashboard — no blocked player, and the Short is not already
+  uploaded from here (`youtube-short.json`; a Short only ticked by hand or paired from a channel
+  scan is not checked, but the chain then never uploads the re-cut). Until the pair exists the chain ends its pass with one log line ("waiting for the
   hand-made Short") and touches no step's state — never a failure, so it raises no Needs-you
   noise — and `shortTick`'s own 15-minute tick notices once the long-form is up and the Short
   still isn't (nothing on disk otherwise tells this process the files landed, unlike a pick or a
