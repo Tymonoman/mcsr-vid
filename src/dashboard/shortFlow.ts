@@ -89,6 +89,7 @@ import {
   resumeUpload,
   SHORT_DELAY_MS,
   uploadRunning,
+  uploadSessionOnDisk,
   type UploadRequest,
 } from "../youtube/youtubeUpload.js";
 import {
@@ -1350,9 +1351,20 @@ async function advance(matchId: number, deps: ChainDeps): Promise<void> {
   // scan can pair a half-uploaded video to its match long before every byte of it has landed
   // (`recordStudioUpload`) — treating that as "done" used to leave the step "running" forever.
   // `runStep` settles it done or failed either way, so the tick never resumes it a second time.
+  // A long-form's mid-file failure (5xx/429/reset) keeps its session too, and the channel scan
+  // pairs the half-sent video by its description link: a Save's retry must resume it, not read
+  // that record as "up". (The scan never pairs a Short; the main loop's own upload resumes it.)
   for (const step of ["upload-video", "upload-short"] as const) {
-    if (before[step]?.state !== "running") continue;
     const kind: UploadKind = step === "upload-video" ? "video" : "short";
+    const state = before[step]?.state;
+    const cutShort =
+      state === "running" ||
+      (kind === "video" &&
+        state !== "done" &&
+        uploadsOn() &&
+        !uploadRunning(matchId) &&
+        (await uploadSessionOnDisk(matchId, kind)));
+    if (!cutShort) continue;
     if (!(await runStep(matchId, step, () => deps.resumeUpload(matchId, kind)))) return;
   }
   // A failed upload may have reached YouTube before the record was written: a save that retries

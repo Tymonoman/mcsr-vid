@@ -290,7 +290,10 @@ async function startUpload(matchId: number, req: UploadRequest, send: typeof upl
   // whole file has been sent, so a 101-character title costs a gigabyte of upload to find out.
   if (text.title.length > 100 || /[<>]/.test(text.title))
     return bad("title must be at most 100 characters and contain no < or >");
-  if (text.description.length > 5000) return bad("description must be at most 5000 characters");
+  // The description's ceiling is in bytes (an accented or Polish letter is two), and < > are
+  // refused there just as in the title.
+  if (Buffer.byteLength(text.description) > 5000 || /[<>]/.test(text.description))
+    return bad("description must be at most 5000 bytes and contain no < or >");
   if (text.tags.some((t) => t.length > 30) || text.tags.join(",").length > 500)
     return bad("tags: none over 30 characters, and at most 500 characters in all");
 
@@ -825,6 +828,12 @@ const studioNoSession = (kind: UploadKind, matchId: number, record: UploadRecord
   );
 };
 
+/** A cut-short upload's session is still on disk for this kind: only `resumeUpload` may settle it. */
+export async function uploadSessionOnDisk(matchId: number, kind: UploadKind): Promise<boolean> {
+  const located = await uploadFilePath(matchId, kind);
+  return !("error" in located) && existsSync(sessionPath(located.path));
+}
+
 /**
  * A step `shortTick` finds recorded "running" with no chain alive in this process to finish it:
  * whatever was sending the bytes is gone, but the upload itself may not be — YouTube keeps a
@@ -856,6 +865,8 @@ export async function resumeUpload(
   kind: UploadKind,
   send: typeof uploadVideo = uploadVideo,
 ): Promise<string | null> {
+  // A runner blocked since the upload started: the rest of the bytes never go up either.
+  if (hasBlockedPlayer(matchDir(matchId))) return `match ${matchId} has a blocked player — uploads of it are refused`;
   const located = await uploadFilePath(matchId, kind);
   if ("error" in located) return located.error;
   const filePath = located.path;
@@ -1040,16 +1051,15 @@ export async function retryPendingComments(
   maxPerTick = 5,
   nowMs = Date.now(),
 ): Promise<void> {
-  const byVideo = await pendingComments();
-  let attempted = 0;
-  for (const [videoId, v] of byVideo) {
-    if (attempted >= maxPerTick) break;
-    // Only a scheduled upload whose time has come: its comment could not go up while it was
-    // private. A video uploaded public got its comment at upload; older ones are not this loop's.
-    const due =
-      v.publishAt !== null && !Number.isNaN(Date.parse(v.publishAt)) && Date.parse(v.publishAt) <= nowMs;
-    if (v.done || !due) continue;
-    attempted++;
+  // Only a scheduled upload whose time has come: its comment could not go up while it was
+  // private. A video uploaded public got its comment at upload; older ones are not this loop's.
+  // Newest first: a record that can never settle (a deleted video, one made private again,
+  // comments off) only gets the attempts the fresh ones leave over, instead of starving them.
+  const due = [...(await pendingComments())]
+    .filter(([, v]) => !v.done && v.publishAt !== null && Date.parse(v.publishAt) <= nowMs)
+    .sort(([, a], [, b]) => Date.parse(b.publishAt!) - Date.parse(a.publishAt!))
+    .slice(0, maxPerTick);
+  for (const [videoId, v] of due) {
     const { comment } = await finish(v.matchId, videoId, "video");
     console.error(`comment: #${v.matchId} ${comment === null ? "done" : (comment ?? "private")}`);
   }

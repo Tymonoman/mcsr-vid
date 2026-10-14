@@ -21,7 +21,8 @@
  * that is out of its own usage limit still ship into the running box.
  */
 import { execFile } from "node:child_process";
-import { readdirSync } from "node:fs";
+import { readdirSync, statSync } from "node:fs";
+import path from "node:path";
 import { config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { allArchiveStates } from "./archive.js";
@@ -51,11 +52,21 @@ const NIGHTLY_GUARD_MS = 20 * 60_000;
 /** `.upload-session-<name>.json` (src/youtube/youtube.ts `sessionPath`) beside an export in progress. */
 const UPLOAD_SESSION_RE = /^\.upload-session-.*\.json$/;
 
+/**
+ * YouTube drops a resumable session after about a day. The file is written once, when the upload
+ * starts, so an older one is a dead session nothing can resume — a chunk failure keeps the file
+ * and a match settled in Studio meanwhile never removes it — and must not hold a restart for ever.
+ */
+const SESSION_LIFE_MS = 24 * 60 * 60 * 1000;
+
 /** A resumable upload session sitting on disk for any match — `shortTick` would pick it up next. */
-function anyUploadSessionFile(): boolean {
+export function anyUploadSessionFile(nowMs: number = Date.now()): boolean {
   return listProcessedMatchIds().some((id) => {
     try {
-      return readdirSync(matchDir(id)).some((name) => UPLOAD_SESSION_RE.test(name));
+      const dir = matchDir(id);
+      return readdirSync(dir).some(
+        (name) => UPLOAD_SESSION_RE.test(name) && nowMs - statSync(path.join(dir, name)).mtimeMs < SESSION_LIFE_MS,
+      );
     } catch {
       // Deleted between the listing and the read — not a session file either way.
       return false;
@@ -99,7 +110,7 @@ const liveDeps = (): IdleDeps => ({
   pickRunning: picksRunning,
   chainRunning: chainsRunning,
   uploadRunning: anyUploadRunning,
-  uploadSessionFile: anyUploadSessionFile,
+  uploadSessionFile: () => anyUploadSessionFile(),
   archiveRunning: () => allArchiveStates().some((a) => a.running),
   nightlyChainRunning,
   thumbnailRunning: anyThumbnailRunning,
