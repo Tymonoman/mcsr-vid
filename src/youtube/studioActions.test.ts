@@ -38,19 +38,19 @@ if (!xvfbAvailable() || !chromePath) {
 }
 
 // A fixture that mimics just enough of a watch page's comment thread for pinComment() to drive:
-// one thread whose author link names the test channel, an "Action menu" button that opens a
-// menu with a "Pin" item, which opens a confirm dialog with its own "Pin" button. Clicking that
+// one thread whose author link (`authorHref`) names the test channel, an "Action menu" button
+// that opens a menu with a "Pin" item, which opens a confirm dialog with its own "Pin" button. Clicking that
 // sets `window.__pinned`. `pinned` is the Node-side test's own record of whether a real pin has
 // gone through yet — a real `page.goto()` reload serves fresh HTML each time, same as a real
 // watch page would, so this is what makes the SECOND load show the pin as already there, rather
 // than resetting to a thread nobody has pinned.
-function fixtureHtml(pinned: boolean): string {
+function fixtureHtml(pinned: boolean, authorHref: string): string {
   const badge = pinned ? '<div id="pinned-badge">Pinned by Test Channel</div>' : "";
   return `<!doctype html><html><body>
   <style>button, tp-yt-paper-item, ytd-comment-thread-renderer { display: inline-block; padding: 4px; }</style>
   ${badge}
   <ytd-comment-thread-renderer>
-    <a id="author-text" href="https://www.youtube.com/channel/TESTCHANNEL123">Test Channel</a>
+    <a id="author-text" href="${authorHref}">Test Channel</a>
     <button aria-label="Action menu">&#8942;</button>
   </ytd-comment-thread-renderer>
   <script>
@@ -84,6 +84,7 @@ const profileDir = mkdtempSync(path.join(tmpdir(), "mcsr-studio-profile-"));
 const profileDir2 = mkdtempSync(path.join(tmpdir(), "mcsr-studio-profile2-"));
 const { config } = await import("../config.js");
 const mediaDir = config.mediaDir;
+const channelHandle = config.youtubeChannelHandle;
 config.mediaDir = media;
 
 const { isRunning, page: pageOf, start } = await import("./studioBrowser.js");
@@ -124,9 +125,22 @@ const handle = await first;
 try {
   const page = await pageOf(handle);
   let pinnedOnServer = false;
+  // A real watch page links the author as `/@handle`; the dry run below still serves the
+  // `/channel/<id>` shape, so both ways of naming our channel stay pinned.
+  let authorHref = "/@TestHandle";
   await page.route("https://www.youtube.com/watch**", (route) =>
-    route.fulfill({ body: fixtureHtml(pinnedOnServer), contentType: "text/html" }),
+    route.fulfill({ body: fixtureHtml(pinnedOnServer, authorHref), contentType: "text/html" }),
   );
+
+  // A handle that is only a prefix of the author's is not ours: the comment is left alone. (The
+  // 14 Oct 2026 bug: no caller passed a handle, so every real `/@` author read this way.)
+  config.youtubeChannelHandle = "Test";
+  const notOurs = await pinComment(handle, "vidTest", { matchId, channelId: "TESTCHANNEL123" });
+  assert.equal(notOurs, "no-channel-comment", `prefix handle: ${JSON.stringify(notOurs)}`);
+  console.log("OK: an author whose handle only starts with ours is not our comment");
+  config.youtubeChannelHandle = "testhandle";
+
+  authorHref = "https://www.youtube.com/channel/TESTCHANNEL123";
 
   // Dry run: clicks through to opening the confirm dialog, screenshots it, and stops — the pin
   // itself must never actually happen.
@@ -140,7 +154,9 @@ try {
   console.log("OK: dryRun opens the confirm dialog and stops before clicking it");
 
   // The real thing: a fresh navigation (the route re-serves the fixture, resetting its state)
-  // clicks all the way through to the confirm button.
+  // clicks all the way through to the confirm button — found by the `/@` handle from config alone,
+  // case-insensitively, since the channel id never appears in that link.
+  authorHref = "/@TestHandle";
   const real = await pinComment(handle, "vidTest", { matchId, channelId: "TESTCHANNEL123" });
   assert.equal(real, "pinned", `real run: ${JSON.stringify(real)}`);
   assert.equal(await page.evaluate(() => (window as unknown as { __pinned?: boolean }).__pinned), true);
@@ -551,6 +567,7 @@ try {
   await handle.stop();
   assert.equal(isRunning(), false, "the lock must clear once the browser actually stops");
   config.mediaDir = mediaDir;
+  config.youtubeChannelHandle = channelHandle;
   rmSync(media, { recursive: true, force: true });
   rmSync(profileDir, { recursive: true, force: true });
   rmSync(profileDir2, { recursive: true, force: true });

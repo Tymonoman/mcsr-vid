@@ -204,12 +204,16 @@ async function scrollToComments(page: import("playwright").Page): Promise<void> 
   }
 }
 
-/** The thread whose author link names our channel — by id, or by `@handle` when given. */
+/** The thread whose author link names our channel — by id, or by `@handle`. A watch page links a
+ * comment's author as `/@handle`, not `/channel/<id>`, so on a watch page the handle is what
+ * matches; it is compared as the link's whole last segment, case-insensitively, so a handle that
+ * is only a prefix of another ("@Test" vs "@TestHandle") never claims it. */
 async function findChannelThread(
   page: import("playwright").Page,
   channelId: string,
   channelHandle?: string,
 ): Promise<import("playwright").Locator | null> {
+  const handlePath = channelHandle ? `/@${channelHandle.replace(/^@/, "")}`.toLowerCase() : null;
   const threads = page.locator(SELECTORS.commentThread);
   const count = await threads.count();
   for (let i = 0; i < count; i++) {
@@ -219,7 +223,9 @@ async function findChannelThread(
       .first()
       .getAttribute("href")
       .catch(() => null);
-    if (href && (href.includes(channelId) || (channelHandle && href.includes(channelHandle)))) return thread;
+    if (!href) continue;
+    if (href.includes(channelId)) return thread;
+    if (handlePath && href.split(/[?#]/)[0].toLowerCase().endsWith(handlePath)) return thread;
   }
   return null;
 }
@@ -235,6 +241,7 @@ export async function pinComment(
   opts: { matchId: number; dryRun?: boolean; channelId?: string; channelHandle?: string },
 ): Promise<PinOutcome | { error: string }> {
   const channelId = opts.channelId ?? config.youtubeChannelId;
+  const channelHandle = opts.channelHandle ?? config.youtubeChannelHandle;
   try {
     const page = await pageOf(handle);
     await page.goto(`https://www.youtube.com/watch?v=${videoId}&hl=en`, {
@@ -270,7 +277,7 @@ export async function pinComment(
     )
       return "already-pinned";
 
-    const thread = await findChannelThread(page, channelId, opts.channelHandle);
+    const thread = await findChannelThread(page, channelId, channelHandle);
     if (!thread) return "no-channel-comment";
 
     await thread.scrollIntoViewIfNeeded();
