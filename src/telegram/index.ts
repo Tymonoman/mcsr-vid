@@ -395,7 +395,21 @@ async function pollLoop(): Promise<void> {
         console.error(`telegram: update ${u.update_id} — ${describeError(err)}`),
       );
     }
-    if (updates.length) updateTelegramState((s) => (s.updateOffset = offset!));
+    if (updates.length) saveUpdateOffset(offset!);
+  }
+}
+
+/**
+ * Persists the poll cursor. Never throws: `pollLoop` runs as `void pollLoop()` inside the
+ * dashboard, so a failed write here (a full SSD, a rename race with the CLI) would be an unhandled
+ * rejection that takes the whole process down, uploads included. The offset is still held in
+ * memory, so a lost write only means a restart may replay a few commands.
+ */
+export function saveUpdateOffset(offset: number): void {
+  try {
+    updateTelegramState((s) => (s.updateOffset = offset));
+  } catch (err) {
+    console.error(`telegram: could not save the update offset — ${describeError(err)}`);
   }
 }
 

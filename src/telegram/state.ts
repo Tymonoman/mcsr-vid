@@ -58,12 +58,17 @@ export const setStateDryRun = (on = true): void => {
   dryRun = on;
 };
 
-/** Write-then-rename, so a crash mid-write never leaves a half-written file a later read trusts. */
+/**
+ * Write-then-rename, so a crash mid-write never leaves a half-written file a later read trusts.
+ * The temp name carries the pid: the dashboard's poller and a CLI `npm run tg` both write here,
+ * and a shared `.part` let one process rename the other's away mid-write.
+ */
 export function writeTelegramState(state: TelegramState): void {
   if (dryRun) return;
   const file = statePath();
-  writeFileSync(`${file}.part`, JSON.stringify(state, null, 2));
-  renameSync(`${file}.part`, file);
+  const part = `${file}.${process.pid}.part`;
+  writeFileSync(part, JSON.stringify(state, null, 2));
+  renameSync(part, file);
 }
 
 export function updateTelegramState(change: (s: TelegramState) => void): TelegramState {
