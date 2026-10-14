@@ -54,7 +54,9 @@ const nowSec = Math.floor(Date.now() / 1000);
 /** A real match, played `hoursAgo` hours ago so its VODs are still inside the pool's window. */
 // Some fixtures are trimmed to what their own test needed; the live API always sends `changes`.
 const fixture = (id: number, hoursAgo: number): MatchInfo => {
-  const raw = JSON.parse(readFileSync(new URL(`../fixtures/match-${id}.json`, import.meta.url), "utf8")) as MatchInfo;
+  const raw = JSON.parse(
+    readFileSync(new URL(`../fixtures/match-${id}.json`, import.meta.url), "utf8"),
+  ) as MatchInfo;
   return { ...raw, changes: raw.changes ?? [], date: nowSec - hoursAgo * 3600 };
 };
 
