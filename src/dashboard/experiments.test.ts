@@ -271,6 +271,25 @@ assert.deepEqual(readExperiments().schedule, [{ date: "2026-10-08", experimentId
   assert.equal(body5.arm, "snapshot-me");
 }
 
+// --- A slot-only night labels no render, a render-only date no publish ---------------------------
+// The fallback used to take the date's first entry whatever its tag: a match rendered on a
+// slot-only night got that night's slot arm in experiment-arm.json, which enrolVideos then trusted
+// over the arm its publish date actually ran under.
+{
+  const data = {
+    experiments: [],
+    schedule: [
+      { date: "2026-10-20", experimentId: "short-delay", arm: "6h", slot: { shortDelayHours: 6 } },
+      { date: "2026-10-21", experimentId: "render-exp", arm: "4s", render: { introSec: 4 } },
+    ],
+  };
+  writeExperiments(data);
+  writeExperimentArmFile(900007, Date.parse("2026-10-20T03:00:00Z"));
+  assert.ok(!existsSync(path.join(media, "900007", "experiment-arm.json")), "slot-only night: no arm file");
+  assert.equal(slotEntryFor("2026-10-21", data), undefined, "render-only date: no slot entry");
+  assert.equal(slotEntryFor("2026-10-20", data)?.arm, "6h");
+}
+
 // --- writeExperimentArmFile: prefers the night applyScheduledRenderArm actually applied for ----
 // A chained render (nightlyMaxRenders > 1) that starts after UTC midnight must not file itself
 // under *tomorrow's* schedule entry while the settings actually in effect are still last night's.
@@ -504,6 +523,18 @@ assert.deepEqual(readExperiments().schedule, [{ date: "2026-10-08", experimentId
     undefined,
     "an empty hours list is not a real override",
   );
+}
+
+// --- rankedHoursForDate: a hand-edit's bad hours are dropped, never a publish at a wrong time ----
+{
+  const hoursFor = (rankedHoursUtc: unknown): number[] | undefined =>
+    rankedHoursForDate("2026-10-16", {
+      experiments: [],
+      schedule: [{ date: "2026-10-16", experimentId: "c", arm: "a", slot: { rankedHoursUtc } as never }],
+    });
+  for (const bad of ["19,23", [25], [24], [-3], [null], [19.5], ["19", "23"]])
+    assert.equal(hoursFor(bad), undefined, `${JSON.stringify(bad)} is nothing set`);
+  assert.deepEqual(hoursFor([23, 24, 19, 19.5, "21"]), [19, 23], "the valid hours survive, sorted");
 }
 
 // --- shortDelayMsForDate: the 1-48 range's own edges are included, not just what's outside it ----
