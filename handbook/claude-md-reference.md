@@ -242,11 +242,16 @@ views brought 0 subscribers.
   match" — the model copied "YN" onto lauveer–edcr, a different match's different player. Both
   permissions are gone now: `pastTitleHooks` shows no "vs" example at all (above), and `withHook`
   refuses a carried hook that labels a player exactly as `hookProblem` refuses a model's or warns on
-  a typed one — a carried value is as untrusted as either. The shared rule everywhere: a denied word
-  (an ethnicity or nationality term, a slur-adjacent abbreviation) is refused outright, "vs" or not;
-  a fresh "X vs Y" is checked against the match's own two players (API or `titleNames` spelling) and
-  a mismatch is a label too — "v", "v." and "versus" count as "vs", and so does a third side (14 Oct
-  2026: "CARNIVORE v. VEGAN" and "X vs Y vs THE CLOCK" had slipped through an exact-two "vs" split). A model's proposal and a carried one both fail closed; the operator's
+  a typed one — a carried value is as untrusted as either. The shared rule everywhere: a word on the
+  short denied list (`HOOK_DENIED_LABELS`: a handful of ethnicity/nationality terms and a
+  slur-adjacent abbreviation, deliberately not exhaustive) is refused outright, "vs" or not; a fresh
+  "X vs Y" is checked against the match's own two players (API or `titleNames` spelling) and a
+  mismatch is a label too — "v", "v." and "versus" count as "vs", and so does a third side (14 Oct
+  2026: "CARNIVORE v. VEGAN" and "X vs Y vs THE CLOCK" had slipped through an exact-two "vs" split).
+  Each side is compared whole after trimming, so punctuation or a lead-in on a side ("X vs Y?",
+  "REMATCH: X vs Y") counts as a mismatch: a model's proposal is dropped and a typed hook gets a
+  warning. A model's proposal and a carried one both fail closed on a label (a carried value is
+  checked for labels only); the operator's
   own typed hook still always saves (`writeHooks`, `src/dashboard/shortFlow.ts`), the problem landing
   in `saveWarnings` next to the field like every other check there — "it should just be a
   suggestion." A match rendered before this fix keeps whatever its `title.txt` already carries until
