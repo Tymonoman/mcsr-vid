@@ -39,10 +39,9 @@ assert.deepEqual(splitMessage("x".repeat(4096)), ["x".repeat(4096)]);
   assert.equal(parts.join(""), text);
 }
 {
-  const text = escapeHtml("x & y < z ".repeat(800));
+  const text = "a".repeat(4094) + "&amp;" + "b".repeat(100);
   const parts = splitMessage(text);
-  assert.ok(parts.length > 1);
-  for (const p of parts.slice(0, -1)) assert.doesNotMatch(p, /&[a-z#0-9]*$/, "no part ends inside an entity");
+  assert.equal(parts[0]!.length, 4094, "the cut lands before the entity, not inside it");
   assert.equal(parts.join(""), text);
 }
 

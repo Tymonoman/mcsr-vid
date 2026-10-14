@@ -618,11 +618,7 @@ export async function commentThreads(videoId: string, channelId: string): Promis
           };
         };
       };
-      replies?: {
-        comments: Array<{
-          snippet: { authorDisplayName: string; publishedAt: string; authorChannelId?: { value?: string } };
-        }>;
-      };
+      replies?: { comments: Array<{ snippet: { authorChannelId?: { value?: string } } }> };
     }>;
   }>(
     DATA_API,
