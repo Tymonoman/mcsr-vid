@@ -78,6 +78,13 @@ function run(args: string[], signal?: AbortSignal): Promise<string> {
   });
 }
 
+/** astats' RMS_level lines, in order; a silent second ("-inf") reads as -90 rather than vanishing. */
+export function parseLoudness(stderr: string): number[] {
+  return [...stderr.matchAll(/RMS_level=(-?inf|-?[\d.]+)/g)].map((m) =>
+    m[1]!.endsWith("inf") ? -90 : Number(m[1]),
+  );
+}
+
 /** Per-second loudness and motion for the window after the run ends. */
 export async function measureTail(
   clipPath: string,
@@ -87,6 +94,8 @@ export async function measureTail(
 ): Promise<TailWindow> {
   // astats over one-second frames gives a loudness series in a single cheap audio pass; the
   // motion series reuses the same downscaled-grayscale trick the countdown detector uses.
+  // asetnsamples makes each frame a second: astats' reset=1 resets per decoded frame, and an AAC
+  // frame is ~21ms, so without it loudness[0..29] covered the first ~0.6s after the finish.
   const out = await run(
     [
       "-v",
@@ -99,16 +108,14 @@ export async function measureTail(
       clipPath,
       "-vn",
       "-af",
-      "astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level",
+      "aresample=48000,asetnsamples=n=48000:p=0,astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level",
       "-f",
       "null",
       "-",
     ],
     signal,
   );
-  const loudness = [...out.matchAll(/RMS_level=(-?[\d.]+|inf)/g)].map((m) =>
-    m[1] === "inf" || m[1] === "-inf" ? -90 : Number(m[1]),
-  );
+  const loudness = parseLoudness(out);
 
   const W = 64;
   const H = 36;
