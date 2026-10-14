@@ -156,7 +156,7 @@ export const probeResolution = (file: string): Promise<{ width: number; height: 
 export const concatList = (files: readonly string[]): string =>
   files.map((f) => `file '${f.replace(/'/g, "'\\''")}'`).join("\n") + "\n";
 
-async function concatVideos(files: readonly string[], outPath: string): Promise<void> {
+export async function concatVideos(files: readonly string[], outPath: string): Promise<void> {
   const list = `${outPath}.txt`;
   await writeFile(list, concatList(files), "utf8");
   const part = outPath.replace(/\.mp4$/, ".part.mp4");
@@ -237,48 +237,122 @@ export interface JoinSeams {
   probeResolution?: (file: string) => Promise<{ width: number; height: number } | null>;
 }
 
+/** ffprobe's stdout for these arguments; "" when it cannot read the file. */
+const ffprobeText = (args: readonly string[]): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const proc = spawn("ffprobe", ["-v", "error", ...args], { stdio: ["ignore", "pipe", "ignore"] });
+    let out = "";
+    proc.stdout.on("data", (d: Buffer) => (out += d.toString()));
+    proc.on("error", reject);
+    proc.on("close", () => resolve(out));
+  });
+
 /**
- * A game's export taken back out of the joined series: a copy from the recorded offset for the
- * recorded length. Exact, because the join placed each game's first frame — a keyframe, the
- * start of its own file — at that offset.
+ * The joined video's keyframe nearest `atSec`, read from the packets within a second of it (no
+ * decode). Refused past a quarter second off: a record that does not describe this file is not
+ * guessed at.
  */
-async function extractFromSeries(
+async function keyframeNear(file: string, atSec: number): Promise<number> {
+  const out = await ffprobeText([
+    "-read_intervals",
+    `${Math.max(0, atSec - 1).toFixed(3)}%${(atSec + 1).toFixed(3)}`,
+    "-select_streams",
+    "v:0",
+    "-show_entries",
+    "packet=pts_time,flags",
+    "-of",
+    "csv=p=0",
+    file,
+  ]);
+  const keyframes = out
+    .split("\n")
+    .filter((l) => l.split(",")[1]?.startsWith("K"))
+    .map((l) => Number(l.split(",")[0]));
+  const near = keyframes.sort((a, b) => Math.abs(a - atSec) - Math.abs(b - atSec))[0];
+  if (near === undefined || Math.abs(near - atSec) > 0.25)
+    throw new Error(
+      `${path.basename(file)}: no keyframe at ${atSec.toFixed(3)}s — the series record does not describe it`,
+    );
+  return near;
+}
+
+/**
+ * A game's export taken back out of the joined series: the packets from the keyframe that starts
+ * the game to the one that starts the next, cut by the segment muxer (which splits only at a
+ * keyframe). Not a plain `-ss` copy from the chapter offset: the join moves the whole video track
+ * later by the first export's AAC priming (v:0 start_time, ~21 ms), so each game's keyframe sits
+ * just after its chapter, and an input seek there lands on the previous game's last GOP — kept by
+ * `-c copy`, one more GOP on every re-join (14 Oct 2026). Reads only the game and a second either
+ * side (`-copyts` keeps the cut times the series' own).
+ */
+export async function extractFromSeries(
   seriesPath: string,
   startSec: number,
   durationSec: number,
   outPath: string,
 ): Promise<void> {
-  const part = outPath.replace(/\.mp4$/, ".part.mp4");
-  await new Promise<void>((resolve, reject) => {
-    const proc = spawn(
-      "ffmpeg",
-      [
-        "-hide_banner",
-        "-y",
-        "-ss",
-        startSec.toFixed(3),
-        "-i",
+  const shift =
+    parseFloat(
+      await ffprobeText([
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=start_time",
+        "-of",
+        "csv=p=0",
         seriesPath,
-        "-t",
-        durationSec.toFixed(3),
-        "-c",
-        "copy",
-        "-avoid_negative_ts",
-        "make_zero",
-        "-movflags",
-        "+faststart",
-        part,
-      ],
-      { stdio: ["ignore", "ignore", "pipe"] },
-    );
-    let tail = "";
-    proc.stderr.on("data", (d: Buffer) => (tail = (tail + d.toString()).slice(-2000)));
-    proc.on("error", reject);
-    proc.on("close", (code) =>
-      code === 0 ? resolve() : reject(new Error(`ffmpeg extract exited ${code}:\n${tail}`)),
-    );
-  });
-  await rename(part, outPath);
+      ]),
+    ) || 0;
+  const from = startSec > 0 ? await keyframeNear(seriesPath, startSec + shift) : 0;
+  // The last game runs to the end of the file: no keyframe follows it.
+  const end = startSec + durationSec;
+  const to =
+    end < (await probeDuration(seriesPath)) - 0.25 ? await keyframeNear(seriesPath, end + shift) : null;
+  const pattern = outPath.replace(/\.mp4$/, ".extract-%d.mp4");
+  const segment = (n: number) => pattern.replace("%d", String(n));
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const proc = spawn(
+        "ffmpeg",
+        [
+          "-hide_banner",
+          "-y",
+          // A second of lead-in from an earlier keyframe, so the game is always segment 1.
+          ...(from > 0 ? ["-ss", (from - 1).toFixed(3)] : []),
+          ...(to !== null ? ["-to", (to + 1).toFixed(3)] : []),
+          "-copyts",
+          "-i",
+          seriesPath,
+          "-map",
+          "0",
+          "-c",
+          "copy",
+          "-f",
+          "segment",
+          "-segment_times",
+          [from, to ?? end + 3600]
+            .filter((t) => t > 0)
+            .map((t) => (t - 0.0005).toFixed(4))
+            .join(","),
+          "-reset_timestamps",
+          "1",
+          "-segment_format_options",
+          "movflags=+faststart",
+          pattern,
+        ],
+        { stdio: ["ignore", "ignore", "pipe"] },
+      );
+      let tail = "";
+      proc.stderr.on("data", (d: Buffer) => (tail = (tail + d.toString()).slice(-2000)));
+      proc.on("error", reject);
+      proc.on("close", (code) =>
+        code === 0 ? resolve() : reject(new Error(`ffmpeg extract exited ${code}:\n${tail}`)),
+      );
+    });
+    await rename(segment(from > 0 ? 1 : 0), outPath);
+  } finally {
+    for (const n of [0, 1, 2]) await rm(segment(n), { force: true });
+  }
 }
 
 /** The game's sync.json mtime in ms, or null. */
@@ -307,8 +381,8 @@ export function heldBySeries(
 }
 
 /**
- * Joins the series this game belongs to, once every game of it has an export — on disk, or
- * held by the joined series already (see `heldBySeries`). Idempotent: a series file newer than
+ * Joins the series this game belongs to, once a seed has taken it and every game of it has an
+ * export — on disk, or held by the joined series already (see `heldBySeries`). Idempotent: a series file newer than
  * every game's export is left alone and only the text is rewritten. The games' exports are
  * deleted after a join (the series holds them; `prune: false` keeps them), and games 2..n are
  * hidden from the list, since their videos are inside game 1's.
@@ -328,7 +402,25 @@ export async function assembleSeries(
   const match = await getMatch(anyGameId);
   const series = await seriesOf(match);
   if (!series || series.games.length === 0) return { kind: "not-a-series", matchId: anyGameId };
+  // renderSeries refuses before any render; this is the gate for everything else that joins —
+  // `npm run series -- --join-only` and every export's settle (config.blockedPlayers).
+  if (blockedIn(match.players.map((p) => p.nickname))) {
+    log(`series ${anyGameId}: blocked — a blocked player, not joined`);
+    return { kind: "blocked", matchId: anyGameId };
+  }
   const first = series.games[0]!;
+  // A series is one video of every game: nothing joins (retitles, hides, prunes) until a seed has
+  // taken it — counted from the games found, or the bracket's own score when one of them is not
+  // among the games (a short forfeit reads as a room reset, gameBelongs).
+  const firstTo = series.slot.maxRoundScore;
+  const won = (uuid: string) => series.games.filter((g) => g.winnerUuid === uuid).length;
+  if (
+    series.seeds.every((s) => won(s.uuid) < firstTo) &&
+    !series.slot.participants.some((p) => p.roundScore >= firstTo)
+  ) {
+    log(`series ${first.matchId}: not joined — no seed has taken the series yet`);
+    return { kind: "incomplete", firstGameId: first.matchId, missing: [] };
+  }
   const outDir = matchDir(first.matchId);
   const outPath = seriesOutputPath(outDir, first.matchId);
   const previous = await readSeriesRecord(outDir);
@@ -338,11 +430,17 @@ export async function assembleSeries(
   // about it moved; one whose sync moved since is the caller's to re-export.
   const missing: number[] = [];
   const stale: number[] = [];
-  let recovered = 0;
+  const held: number[] = [];
   for (const [i, g] of series.games.entries()) {
     const final = finals[i]!;
     if (existsSync(final)) {
       if (exportStale(matchDir(g.matchId), final).stale) stale.push(g.matchId);
+      continue;
+    }
+    // An export in flight is the newer copy of this game: its own settle joins it, and nothing is
+    // taken out of the series over it.
+    if (existsSync(final.replace(/\.mp4$/, ".part.mp4"))) {
+      missing.push(g.matchId);
       continue;
     }
     if (!heldBySeries(previous, outPath, g)) {
@@ -352,10 +450,7 @@ export async function assembleSeries(
       ).push(g.matchId);
       continue;
     }
-    const starts = chapterStarts(previous!.games.map((h) => h.durationSec));
-    log(`series ${first.matchId}: game ${g.gameNo} taken back out of the series`);
-    await extract(outPath, starts[i]!, previous!.games[i]!.durationSec, final);
-    recovered++;
+    held.push(i);
   }
   if (missing.length > 0) return { kind: "incomplete", firstGameId: first.matchId, missing };
   if (stale.length > 0) {
@@ -365,13 +460,21 @@ export async function assembleSeries(
     return { kind: "stale", firstGameId: first.matchId, stale };
   }
 
-  const newestExport = Math.max(...finals.map((f) => statSync(f).mtimeMs));
-  // Recovered exports are newer than the series by construction and change nothing about it.
+  // Current when the series is newer than every export on disk. Held games come back out only
+  // for a re-join that will run: copying them out of a current series just to prune them again is
+  // a series' worth of disk for nothing (14 Oct 2026).
   const current =
     !opts.force &&
     existsSync(outPath) &&
     previous !== null &&
-    (recovered === series.games.length || statSync(outPath).mtimeMs > newestExport);
+    finals.every((f, i) => held.includes(i) || statSync(outPath).mtimeMs > statSync(f).mtimeMs);
+  if (!current) {
+    const starts = chapterStarts(previous?.games.map((h) => h.durationSec) ?? []);
+    for (const i of held) {
+      log(`series ${first.matchId}: game ${series.games[i]!.gameNo} taken back out of the series`);
+      await extract(outPath, starts[i]!, previous!.games[i]!.durationSec, finals[i]!);
+    }
+  }
   const durations = current
     ? previous!.games.map((g) => g.durationSec)
     : await Promise.all(finals.map(probe));

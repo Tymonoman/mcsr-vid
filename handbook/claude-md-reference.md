@@ -471,7 +471,8 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   `POST /api/render/:id` (`matchIsBlocked`, `src/dashboard/matchStatus.ts`: the API's pair, else
   `blockedOnDisk` on an archived directory) and `POST /api/series/:id/render` refuse before the fire-and-forget run even starts, and `renderSeries`
   itself refuses too (`{kind:"blocked"}`, `src/playoffs/series.ts`) — the one place both that route
-  and `npm run series` settle through. `runPipeline` (`src/pipeline/pipeline.ts`) refuses
+  and `npm run series` settle through; `assembleSeries` refuses the same way (14 Oct 2026), so
+  `npm run series -- --join-only` and every export's settle never join, retitle or prune one. `runPipeline` (`src/pipeline/pipeline.ts`) refuses
   too, right after the match fetch and before VOD discovery or any write, so the callers with no
   gate of their own — `npm run batch`, `npm run generate-project`, the TUI — never download a
   blocked runner's footage. `hasBlockedPlayer` (`youtubeUpload.ts`) reads
@@ -986,8 +987,13 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   land within that gap of its own header or of the next game's.
   **The join deletes the games'
   own exports** — a series is fifty minutes of 1080p60 and the disk holds one copy — and takes a
-  game back out of the series (`-c copy` at its recorded offset, exact because every game
-  starts on its own keyframe) whenever a re-join needs it. `exportStale` reads the record, so a
+  game back out of the series (`-c copy` from the keyframe that starts it to the one that starts
+  the next, found near its recorded offset plus the join's ~21 ms AAC-priming shift; a plain seek
+  at the chapter offset kept the previous game's last GOP, one more per re-join, until 14 Oct
+  2026 — `seriesExtract.test.ts` round-trips it with real ffmpeg) only when a re-join will run, never
+  for a series that is current. Nothing joins until a seed has reached `firstTo` (or the bracket's
+  own score says so) — a series still being played is `incomplete` — and a game whose export is
+  in flight (`final-<id>.part.mp4`) holds the join for its own settle. `exportStale` reads the record, so a
   sync fix on game 3 makes the series stale and names game 3; its Re-encode re-exports the game
   and the join follows (`startFastExport` settles through `assembleSeries`), the other games
   extracted rather than re-encoded. Games 2..n are hidden once joined; the series' head lists
