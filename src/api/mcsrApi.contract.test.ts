@@ -12,10 +12,10 @@
 //  P3  `getMatch` drops a private room's extra seat with no timeline (the host who joined game
 //      13333220 as a third player and stayed at spawn); a real 2-player match is never touched. [mcsrApi]
 //  P4  Elo comes from the match, not the user: `user.eloRate` is the rating now, and the same match
-//      must not show different numbers in different places (overlay vs thumbnail). [overlayProps]
-//  P5  A playoff game shows the bracket's frozen season-end elo (`playoffContextFor`). [overlayProps]
-//  P6  `pickStats` falls back to career totals only when the season bucket has no ranked games. [overlayProps]
-//  P7  …and the overlay then labels itself CAREER (SEASON otherwise). [overlayProps]
+//      must not show different numbers in different places (overlay vs thumbnail). [overlayProps.elo]
+//  P5  A playoff game shows the bracket's frozen season-end elo (`playoffContextFor`). [overlayProps.elo]
+//  P6  `pickStats` falls back to career totals only when the season bucket has no ranked games. [overlayProps.elo]
+//  P7  …and the overlay then labels itself CAREER (SEASON otherwise). [overlayProps.elo]
 //  P8  `withDiscoveredVods` writes what it finds to `<matchDir>/vods.json`. [vodDiscovery]
 //  P9  …and reads it back first, so a clip stays renderable after the archive is gone (no
 //      re-listing, no "1/2 VODs"). [vodDiscovery]

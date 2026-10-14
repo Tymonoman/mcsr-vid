@@ -34,6 +34,8 @@ async function deviation(clause: string, check: () => unknown): Promise<void> {
 
 const root = mkdtempSync(path.join(tmpdir(), "vodDiscovery-contract-"));
 config.mediaDir = path.join(root, "media"); // vods.json lands here, never in /media
+// A failed assertion anywhere below still cleans up (the exit event fires on a thrown top-level await).
+process.on("exit", () => rmSync(root, { recursive: true, force: true }));
 
 /* --- A fake yt-dlp: prints <listings>/<channel>.txt, exits 1 when there is none ------------- */
 const bin = path.join(root, "bin");
@@ -246,5 +248,4 @@ await deviation(
   },
 );
 
-rmSync(root, { recursive: true, force: true });
 console.log("vodDiscovery.contract: all checks passed");
