@@ -65,8 +65,8 @@ export const MESSAGE_MAX_CHARS = 4096;
 /**
  * `text` in pieces of at most `max` characters, breaking on the last newline before the limit
  * when there is a reasonable one (past its first half), else cutting hard. Never used by the
- * morning report itself (that one message must fit whole — `report.ts` caps it), but every
- * `sendMessage` call goes through this so a long `/health` or `/comments` answer still arrives.
+ * morning report itself (each message must fit whole — `report.ts` caps it by `visibleLength`,
+ * and `messageParts` sends it whole), but a long `/health` answer still arrives.
  */
 export function splitMessage(text: string, max = MESSAGE_MAX_CHARS): string[] {
   if (text.length <= max) return [text];
@@ -80,6 +80,19 @@ export function splitMessage(text: string, max = MESSAGE_MAX_CHARS): string[] {
   }
   if (rest) parts.push(rest);
   return parts;
+}
+
+/** What Telegram counts against the 4096: the text after its HTML is parsed — tags out, entities one character. */
+export const visibleLength = (html: string): number =>
+  html.replace(/<[^>]+>/g, "").replace(/&(?:lt|gt|amp|quot|#39);/g, "x").length;
+
+/**
+ * The messages `text` goes out as. An HTML message that fits once parsed goes whole: its markup
+ * can push the raw length past the limit (the comments' links), and a raw cut would split its
+ * `<blockquote>` in two, which Telegram refuses.
+ */
+export function messageParts(text: string, html = false): string[] {
+  return html && visibleLength(text) <= MESSAGE_MAX_CHARS ? [text] : splitMessage(text);
 }
 
 /** `&`, `<`, `>` — the three characters Telegram's HTML parse mode requires escaped in text. */
@@ -103,7 +116,7 @@ export async function sendMessage(text: string, opts: SendOptions = {}): Promise
   }
   const chat = chatId();
   if (!chat) throw new Error("TELEGRAM_CHAT_ID is not set");
-  for (const part of splitMessage(text)) {
+  for (const part of messageParts(text, opts.html)) {
     await call("sendMessage", {
       chat_id: chat,
       text: part,

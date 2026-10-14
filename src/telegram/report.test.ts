@@ -22,7 +22,7 @@ import {
   renderWorth,
   whenWarsaw,
 } from "./report.js";
-import { MESSAGE_MAX_CHARS } from "./bot.js";
+import { MESSAGE_MAX_CHARS, messageParts } from "./bot.js";
 import type { ReportFacts } from "./facts.js";
 import type { AutoHooksRow } from "../dashboard/shortFlow.js";
 import type { UnansweredComment } from "./comments.js";
@@ -264,6 +264,19 @@ const postMortemYpp = (over: Partial<Parameters<typeof projectYpp>[0]> = {}): Yp
   const shown = (long.match(/person\d+/g) ?? []).length;
   assert.ok(shown > 5 && shown < 60, `${shown}`);
   assert.ok(long.includes(`+ ${60 - shown} more in the Studio inbox`), long.slice(-200));
+
+  // Real-length ids put each line's links past the limit raw while the parsed text still fits:
+  // the message goes out as one part, its <blockquote> whole.
+  const real = Array.from({ length: 30 }, (_, i) => ({
+    ...mk(i, ["dQw4w9WgXcQ", "aBcDeFgHiJk", "zYxWvUtSrQp"][i % 3]!, "c".repeat(80)),
+    threadId: `UgzQ7xK2mN4pR8sT1vW3yZ5${String(i).padStart(2, "0")}4AaABAg`,
+  }));
+  const html = renderComments({ ok: true, data: { unanswered: real, videoTitles: {} } }, "UCxyz");
+  assert.ok(html.length > MESSAGE_MAX_CHARS, `${html.length}`);
+  assert.ok(visibleLength(html) <= MESSAGE_MAX_CHARS, `${visibleLength(html)}`);
+  const parts = messageParts(html, true);
+  assert.equal(parts.length, 1);
+  assert.equal(parts[0]!.split("<blockquote").length, parts[0]!.split("</blockquote>").length);
 }
 
 // A to-do item from Claude is escaped, and numbered.
