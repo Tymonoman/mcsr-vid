@@ -899,8 +899,9 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   of one arm beats every video of the other, 3+ a side (counting only videos with views). At the
   experiment's `end`, a winner with `adoptWinner` becomes the new default (`saveSettings`) and the
   decision is written with its numbers; otherwise the control arm's settings are reapplied, in case
-  a render arm left something else live mid-run. Two evaluation failures in a row (a Reporting or
-  Analytics API error) sets `needsHuman` rather than retrying silently forever. `/ask`'s knowledge
+  a render arm left something else live mid-run. Two evaluation failures on consecutive UTC days
+  (a Reporting or Analytics API error) set `needsHuman` rather than retrying silently forever; a
+  day with no evaluation at all (the dashboard down) restarts the count. `/ask`'s knowledge
   (`src/telegram/knowledge.ts`) gets a generated "experiments-live" doc alongside
   `handbook/knowledge/*.md`, and the morning report's channel message gets one deterministic
   "🧪 Tests" line (running count, today's schedule, any verdict or decision since the last
