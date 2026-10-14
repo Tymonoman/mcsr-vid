@@ -86,8 +86,9 @@ const flat = (value: number, n: number) => Array<number>(n).fill(value);
   }
 }
 {
-  // A reaction that never quiets down keeps the whole allowance. The motion pass differences every
-  // second frame, so decoding exactly maxSec gave maxSec - 1 values and cut its last second.
+  // A reaction that never quiets down keeps the whole allowance — also when the clip ends right at
+  // it, as the VOD window does. Differencing every second frame gave one value fewer than seconds
+  // decoded and cut the last second.
   const dir = mkdtempSync(path.join(tmpdir(), "postroll-"));
   const clip = path.join(dir, "loud.mp4");
   try {
@@ -97,9 +98,12 @@ const flat = (value: number, n: number) => Array<number>(n).fill(value);
       "-f", "lavfi", "-i", "sine=frequency=440:duration=12",
       "-c:v", "libx264", "-c:a", "aac", clip,
     ]); // prettier-ignore
-    const w = await measureTail(clip, 0, 10);
-    assert.equal(w.motion.length, 10, "one motion reading per second of the allowance");
-    assert.equal(suggestTailSec(w, { minSec: 5, maxSec: 10 }), 10);
+    // runEnd 2 s: the 12 s clip ends exactly at the 10 s allowance.
+    for (const runEndSec of [0, 2]) {
+      const w = await measureTail(clip, runEndSec, 10);
+      assert.equal(w.motion.length, 10, `one motion reading per second (run end ${runEndSec} s)`);
+      assert.equal(suggestTailSec(w, { minSec: 5, maxSec: 10 }), 10);
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
