@@ -1373,7 +1373,8 @@ every check above is a fixture page or pure logic; see "What is verified live vs
 - **Every Test & Compare title is checked before any page opens** (`titleTestProblem`, exported
   from `studioActions.ts`, reused by the plan importer so a title that could never start is never
   even planned): `hookProblem` (which already finishes with its own `hookLabelProblem` call),
-  `hookLabelProblem` again directly, `spoilsTheResult` against the whole line, and the
+  `hookLabelProblem` again directly, `spoilsTheResult` against every segment of the line (so a
+  question hook keeps its exemption), and the
   100-character ceiling. A thumbnail test's 2-3 files just need to exist on disk. Any refusal is
   returned before `startTestAndCompare` ever calls `page.goto`, pinned by a unit test that passes
   it a handle which throws if its `browser` property is ever read.

@@ -699,13 +699,15 @@ export async function linkRelatedVideo(
  * The hook-only checks every Test & Compare title variant must already pass. `hookProblem`
  * itself finishes with a `hookLabelProblem` call, so calling both here is belt-and-suspenders
  * against the same rule, not a gap — plus the full line's own `TITLE_MAX_CHARS` ceiling and a
- * direct `spoilsTheResult` read against the whole line, since a result word does not have to sit
- * inside the hook segment to spoil it. Exported so the plan importer (`studioExperiments.ts`) can
+ * direct `spoilsTheResult` read against every segment of the line, since a result word does not
+ * have to sit inside the hook segment to spoil it. Per segment, so a question hook keeps its own
+ * question exemption: the whole line ends in "Minecraft Speedrun", never "?", and read whole it
+ * refused the pipeline's own "Can a 45-second lead survive?" (14 Oct 2026). Exported so the plan importer (`studioExperiments.ts`) can
  * refuse the same way before ever writing a "planned" experiment nobody could start.
  */
 export function titleTestProblem(fullTitle: string, players: readonly { nickname: string }[]): string | null {
   if (fullTitle.length > TITLE_MAX_CHARS) return `over ${TITLE_MAX_CHARS} characters`;
-  if (spoilsTheResult(fullTitle)) return "it gives the result away";
+  if (fullTitle.split("|").some((s) => spoilsTheResult(s))) return "it gives the result away";
   const hook = splitTitle(fullTitle)?.hook ?? fullTitle;
   return hookProblem(hook, HOOK_MAX_CHARS, players) ?? hookLabelProblem(hook, players);
 }
