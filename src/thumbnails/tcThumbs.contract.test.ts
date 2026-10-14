@@ -1,7 +1,7 @@
 // Contract test for `npm run tc-thumbs`'s pose pick (CLAUDE.md "Thumbnails": "cheering-relaxing"
-// is excluded from every automatic pick; handbook "Thumbnails are two big figures": tc-thumbs'
-// SSIM "most different" pick filters it out of its own pool first, "falling back to the full list
-// only if that would leave nothing to pick from"; the operator can still choose it by hand).
+// is excluded from every fresh automatic pick; handbook "Thumbnails are two big figures": tc-thumbs'
+// SSIM "most different" pick filters it out of its own pool first and refuses, writing no
+// tc-pose.png, if that leaves nothing; the operator can still choose it by hand).
 // Promise 12 in thumbnailVariants.contract.test.ts. tcThumbs.ts is a CLI with no exports, so it is
 // driven as one: a child process on a temp media dir (MCSR_CONFIG), the MCSR API stubbed by a
 // preload, three tiny solid-colour stills so ffmpeg's SSIM (well under a second) has a clear answer.
@@ -9,7 +9,6 @@
 // render, after tc-control.png and tc-pose.png are already written. Nothing reaches the network.
 // Run: npx tsx src/thumbnails/tcThumbs.contract.test.ts
 import assert from "node:assert/strict";
-import { deviation } from "../fixtures/deviation.js";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -183,22 +182,19 @@ try {
   }
   console.log("OK: an operator's arms-up pick stays the control");
 
-  // --- Nothing else to pick from: the docs say fall back to the full list ----------------------
+  // --- Nothing else to pick from: tc-thumbs refuses rather than fall back to the arms-up pair ---
+  // handbook "Thumbnails are two big figures": `autoDefaultKey` falls back to the full list, but
+  // tc-thumbs refuses ("no pose variant other than the result-looking one …") and writes no
+  // tc-pose.png.
   {
     const id = fixture.id + 2;
     const dir = await strip(id, ["walking-crossed", "cheering-relaxing"], "walking-crossed", "auto");
     const run = await tcThumbs(id);
-    await deviation(
-      'handbook "Thumbnails are two big figures": tc-thumbs\' SSIM pick falls back to the full list only if excluding cheering-relaxing would leave nothing',
-      async () => {
-        assert.ok(
-          existsSync(path.join(dir, "tc", "tc-pose.png")),
-          `no tc-pose.png; exit ${run.code}: ${/Error: ([^\n]+)/.exec(run.stderr)?.[1] ?? run.stderr.slice(-200)}`,
-        );
-        assert.deepEqual(await tcFile(dir, "tc-pose.png"), await still(dir, "cheering-relaxing"));
-      },
-    );
+    assert.notEqual(run.code, 0, "tc-thumbs exits non-zero");
+    assert.match(run.stderr, /no pose variant other than the result-looking one .*pick tc-pose by hand/);
+    assert.ok(!existsSync(path.join(dir, "tc", "tc-pose.png")), "no tc-pose.png is written");
   }
+  console.log("OK: with only the arms-up pair left, tc-thumbs refuses and writes no tc-pose.png");
 
   console.log("tcThumbs.contract: all checks passed");
 } finally {

@@ -9,8 +9,9 @@
 //   3. On, a fresh auto pick rotates deterministically by match id among the pairs actually
 //      rendered (same id, same pick on every re-render, so nothing flaps before a choice is saved).
 //   4. An operator's pick is never touched by a re-render, rotation on or off.
-//   5. "cheering-relaxing" (reads as the result) is excluded from EVERY automatic pick — rotation
-//      and the SSIM pick alike — falling back to the full list only when nothing else is left.
+//   5. "cheering-relaxing" (reads as the result) is excluded from every FRESH automatic pick —
+//      rotation (full-list fallback only when nothing else is left) and the SSIM pick (refuses
+//      instead) alike; a choice carried from an earlier manifest keeps itself.
 //   6. The operator can still choose it by hand; a pick by hand is recorded as the operator's,
 //      and only that ticks the checklist's thumbnail pill (an automatic default says "auto").
 //   7. Re-render: every variant drawn again into `thumbnail-new/`, never over the live set.
@@ -27,7 +28,6 @@
 // placement text" is a property of the drawn PNG (computeThumbnailProps still carries eloRate).
 // Run: npx tsx src/thumbnails/thumbnailVariants.contract.test.ts
 import assert from "node:assert/strict";
-import { deviation } from "../fixtures/deviation.js";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -218,12 +218,11 @@ try {
   }
   console.log("OK 4/6: an operator's pick (even arms-up) is never rotated or re-picked away");
 
-  // --- 5 (carried). A re-render that keeps an earlier AUTOMATIC choice of the arms-up pair ------
-  // Hypothetical, narrow: a manifest carries `chosen: "cheering-relaxing", chosenBy: "auto"` only
-  // if rotation was switched on between d367eff (rotation, 7 Oct 2026 00:13 UTC) and 4dc9b1a (the
-  // exclusion, 7 Oct 23:58 UTC). Keeping an earlier choice is on purpose (thumbnailVariants.ts:
-  // "so re-running the pipeline does not silently swap the thumbnail"); the docs still say no
-  // automatic path lands on that pose, so the gap is reported for triage to weigh.
+  // --- 5 (carried). A re-render keeps an earlier AUTOMATIC choice of the arms-up pair ----------
+  // The exclusion is on every FRESH automatic pick; a choice carried from an earlier manifest keeps
+  // itself (thumbnailVariants.ts: "so re-running the pipeline does not silently swap the
+  // thumbnail"). Only a render with rotation on between d367eff (7 Oct 2026 00:13 UTC) and 4dc9b1a
+  // (the exclusion, 7 Oct 23:58 UTC) could have carried it in as "auto".
   {
     const dir = await strip();
     const before: VariantsManifest = {
@@ -242,16 +241,11 @@ try {
     };
     await writeFile(manifestPath(dir), JSON.stringify(before));
     const m = await render(dir);
-    await deviation(
-      'CLAUDE.md "Thumbnails": "cheering-relaxing" is excluded from every automatic pick (a carried chosenBy:"auto" choice; hypothetical, needs rotation on during 7 Oct 00:13–23:58 UTC)',
-      async () => {
-        assert.ok(
-          !(m.chosen === RESULT_LOOKING_POSE_KEY && m.chosenBy === "auto"),
-          `a re-render rewrote chosen "${m.chosen}" chosenBy "${m.chosenBy}" and thumbnail.png = "${await live(dir)}"`,
-        );
-      },
-    );
+    assert.equal(m.chosen, RESULT_LOOKING_POSE_KEY, "the carried choice stands");
+    assert.equal(m.chosenBy, "auto", "still recorded as automatic, not promoted to the operator's");
+    assert.equal(await live(dir), `still ${RESULT_LOOKING_POSE_KEY}`, "thumbnail.png stays that still");
   }
+  console.log("OK 5/6 (carried): an earlier automatic arms-up choice is kept, never re-picked");
 
   assert.equal(fetches, 0, "nothing here reached the network");
   console.log("thumbnailVariants.contract: all checks passed");
