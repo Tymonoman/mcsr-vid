@@ -30,7 +30,7 @@
 //  P14 A re-render that corrects nothing must not make the export stale (P6 + P8: only "a
 //      sync.json correction after export" does). (pipeline.contract)
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
@@ -209,56 +209,62 @@ try {
     assert.equal(missing.status, 404);
     assert.match(missing.body.error, /doogile/);
 
-    // A 2 s POV clip: red for its first second, blue for its second.
-    const clip = path.join(dir, "edcr.mp4"); // players[0] of the fixture: the left POV
-    execFileSync("ffmpeg", [
+    assert.ok(Math.abs(clipTimeFor(153.25, 9.6) - 152.85) < 1e-9, "0.4 s before match start, any offset");
+    // The frame checks need a real clip and a real decode: without ffmpeg (CI's runner has none;
+    // test:unit's other shell-outs skip themselves the same way) they are skipped, said out loud.
+    if (spawnSync("ffmpeg", ["-version"]).status !== 0) {
+      console.log("SKIP: sync frame colours (no ffmpeg on PATH)");
+    } else {
+      // A 2 s POV clip: red for its first second, blue for its second.
+      const clip = path.join(dir, "edcr.mp4"); // players[0] of the fixture: the left POV
+      execFileSync("ffmpeg", [
       "-v", "error", "-y",
       "-f", "lavfi", "-i", "color=c=red:s=64x36:d=1:r=10",
       "-f", "lavfi", "-i", "color=c=blue:s=64x36:d=1:r=10",
       "-filter_complex", "[0][1]concat=n=2:v=1", "-pix_fmt", "yuv420p", clip,
     ]); // prettier-ignore
-    const colourOf = (jpeg: Buffer): "red" | "blue" => {
-      const [r, , b] = execFileSync(
-        "ffmpeg",
-        [
-          "-v",
-          "error",
-          "-f",
-          "image2pipe",
-          "-i",
-          "-",
-          "-vf",
-          "scale=1:1",
-          "-f",
-          "rawvideo",
-          "-pix_fmt",
-          "rgb24",
-          "-",
-        ],
-        { input: jpeg },
-      );
-      return r! > b! ? "red" : "blue";
-    };
-    const frame = async (query: string) => {
-      const r = await call("GET", `/api/sync/frame?match=${ID}&side=left&${query}`);
-      assert.equal(r.status, 200, `frame ${query}: ${JSON.stringify(r.body)}`);
-      assert.equal(r.headers["content-type"], "image/jpeg");
-      // The same URL must answer differently once the offset is nudged: never a cached frame.
-      assert.equal(r.headers["cache-control"], "no-store");
-      return colourOf(r.bytes);
-    };
-    // An explicit offset: t = ANCHOR_SEC is match start, i.e. clip second 0.5 — red; one second
-    // later on the timeline is clip second 1.5 — blue. Gets the sign wrong and these swap.
-    assert.equal(await frame(`t=${ANCHOR_SEC}&offset=0.5`), "red");
-    assert.equal(await frame(`t=${ANCHOR_SEC + 1}&offset=0.5`), "blue");
-    // No offset in the query: the saved one is used (sync.json is what every consumer reads).
-    writeSyncOffsets(dir, { left: 1.2, right: 1.2, confidence: 1, detail: "", source: "manual" });
-    assert.equal(await frame(`t=${ANCHOR_SEC}`), "blue", "clip second 1.2");
-    assert.equal(await frame(`t=${ANCHOR_SEC - 0.5}`), "red", "clip second 0.7");
-    // P13: the sync check's 9.6 s is 0.4 s before match start in both clips — the last digit of
-    // the countdown both players freeze through.
-    assert.equal(await frame("t=9.6"), "red", "1.2 - 0.4 = clip second 0.8, still the first second");
-    assert.ok(Math.abs(clipTimeFor(153.25, 9.6) - 152.85) < 1e-9, "0.4 s before match start, any offset");
+      const colourOf = (jpeg: Buffer): "red" | "blue" => {
+        const [r, , b] = execFileSync(
+          "ffmpeg",
+          [
+            "-v",
+            "error",
+            "-f",
+            "image2pipe",
+            "-i",
+            "-",
+            "-vf",
+            "scale=1:1",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "rgb24",
+            "-",
+          ],
+          { input: jpeg },
+        );
+        return r! > b! ? "red" : "blue";
+      };
+      const frame = async (query: string) => {
+        const r = await call("GET", `/api/sync/frame?match=${ID}&side=left&${query}`);
+        assert.equal(r.status, 200, `frame ${query}: ${JSON.stringify(r.body)}`);
+        assert.equal(r.headers["content-type"], "image/jpeg");
+        // The same URL must answer differently once the offset is nudged: never a cached frame.
+        assert.equal(r.headers["cache-control"], "no-store");
+        return colourOf(r.bytes);
+      };
+      // An explicit offset: t = ANCHOR_SEC is match start, i.e. clip second 0.5 — red; one second
+      // later on the timeline is clip second 1.5 — blue. Gets the sign wrong and these swap.
+      assert.equal(await frame(`t=${ANCHOR_SEC}&offset=0.5`), "red");
+      assert.equal(await frame(`t=${ANCHOR_SEC + 1}&offset=0.5`), "blue");
+      // No offset in the query: the saved one is used (sync.json is what every consumer reads).
+      writeSyncOffsets(dir, { left: 1.2, right: 1.2, confidence: 1, detail: "", source: "manual" });
+      assert.equal(await frame(`t=${ANCHOR_SEC}`), "blue", "clip second 1.2");
+      assert.equal(await frame(`t=${ANCHOR_SEC - 0.5}`), "red", "clip second 0.7");
+      // P13: the sync check's 9.6 s is 0.4 s before match start in both clips — the last digit of
+      // the countdown both players freeze through.
+      assert.equal(await frame("t=9.6"), "red", "1.2 - 0.4 = clip second 0.8, still the first second");
+    }
   }
 } finally {
   rmSync(media, { recursive: true, force: true });

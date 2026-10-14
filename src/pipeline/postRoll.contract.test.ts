@@ -27,7 +27,7 @@
 // the tail is measured on the *winner's* POV; the 15 s floor constant; the cap shrinking to the
 // footage left on the timer strip.
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -133,137 +133,144 @@ assert.equal(suggestTailSec({ loudness: [], motion: [] }, opts), CAP, "no eviden
 
 // ---------------------------------------------------------------- end to end, real ffmpeg media
 
-const dir = mkdtempSync(path.join(tmpdir(), "postroll-contract-"));
-try {
-  /** A tiny 64x36 clip: luma expression (T = seconds) for the picture, a lavfi audio source. */
-  const clip = (name: string, sec: number, lum: string, audio: string): string => {
-    const out = path.join(dir, name);
-    execFileSync(
-      "ffmpeg",
-      [
-        "-v",
-        "error",
-        "-y",
-        "-f",
-        "lavfi",
-        "-i",
-        `nullsrc=s=64x36:r=4:d=${sec},geq=lum='${lum}':cb=128:cr=128`,
-        "-f",
-        "lavfi",
-        "-i",
-        audio,
-        "-c:v",
-        "libx264",
-        "-preset",
-        "ultrafast",
-        "-c:a",
-        "pcm_s16le",
-        "-t",
-        String(sec),
-        out,
-      ],
-      { stdio: "ignore", timeout: 10_000 },
-    );
-    return out;
-  };
-  const tone = (amp: string, sec: number) => `aevalsrc='(${amp})*sin(2*PI*440*t)':s=48000:d=${sec}`;
-  const ROOM = "0.0003"; // ~-73 dBFS: audible to a meter, silent to a viewer (and not -inf)
-  const SHOUT = "0.5"; // ~-9 dBFS
-  const NOISE = "random(1)*255"; // every pixel changes every frame: a moving picture
-  const GRAY = "128"; // a frozen frame
-  const tail = async (file: string, runEndSec: number, maxSec: number) =>
-    suggestTailSec(await measureTail(file, runEndSec, maxSec), { minSec: FLOOR, maxSec });
-
-  // P4 + P8: the "match" is 3 s, then the winner moves until 23 s into the clip and sits still in
-  // room tone after. Measured from the run's end, the quiet starts 20 s in — cut there, inside
-  // [15, 30]. Measured from the clip's start it would read 23: the seek is what places it.
-  {
-    const file = clip("seek.mkv", 33, `if(lt(T,23),${NOISE},${GRAY})`, tone(ROOM, 33));
-    assert.equal(await tail(file, 3, 30), 20, "the quiet is found 20 s after the run's end");
-  }
-
-  // P10: the winner's clip is missing (archived, a typo in the nickname): measuring must not throw
-  // and must not cut — the whole post-roll stays.
-  {
-    const w = await measureTail(path.join(dir, "missing.mkv"), 0, 20);
-    assert.equal(
-      suggestTailSec(w, { minSec: FLOOR, maxSec: 20 }),
-      20,
-      "an unreadable clip keeps the whole tail",
-    );
-  }
-
-  // P5 end to end: still and room tone from the finish — cut at the floor.
-  {
-    const file = clip("dead.mkv", 20, GRAY, tone(ROOM, 20));
-    assert.equal(await tail(file, 0, 20), FLOOR, "a dead tail is cut at 15 s");
-  }
-
-  // P7: stunned for 2 s, then shouting for the rest while sitting still. Talking is a reaction —
-  // the winner never goes quiet, so the whole tail stays.
-  {
-    const file = clip("talk.mkv", 20, GRAY, tone(`if(lt(t,2),${ROOM},${SHOUT})`, 20));
-    const got = await tail(file, 0, 20);
-    deviation("tail cut earlier only where the winner goes quiet (CLAUDE.md House rules)", () =>
-      assert.equal(got, 20, `a winner talking while still from 2 s on was cut at ${got} s of 20`),
-    );
-  }
-
-  // P4: one shout at the finish, then silent and still for good — the dead air is what the cut
-  // removes, so it lands at the floor, not near the cap.
-  {
-    const file = clip("shout.mkv", 20, GRAY, tone(`if(lt(t,1),${SHOUT},${ROOM})`, 20));
-    const got = await tail(file, 0, 20);
-    deviation("cut earlier where the winner goes quiet, never under 15 s (CLAUDE.md House rules)", () =>
-      assert.equal(got, FLOOR, `a winner silent and still from 1 s on kept ${got} s of 20`),
-    );
-  }
-
-  // P9: a muted VOD segment is digital silence. Still and muted is as quiet as it gets.
-  {
-    const file = clip("muted.mkv", 20, GRAY, "anullsrc=r=48000:cl=mono");
-    const got = await tail(file, 0, 20);
-    deviation(
-      "cut earlier where the winner goes quiet, never under 15 s — a muted winner (CLAUDE.md House rules)",
-      () => assert.equal(got, FLOOR, `a muted, still winner kept ${got} s of 20`),
-    );
-  }
-
-  // P6 end to end: moving and shouting the whole window — nothing is cut.
-  {
-    const file = clip("busy.mkv", 20, NOISE, tone(SHOUT, 20));
-    const got = await tail(file, 0, 20);
-    deviation(
-      "tail ≤ postRollSec, cut earlier only where the winner goes quiet (CLAUDE.md House rules)",
-      () => assert.equal(got, 20, `a winner never quiet kept ${got} s of 20`),
-    );
-  }
-
-  // P13: the public type says per second. A 3 s window is 3 loudness readings — loud or silent.
-  {
-    const wav = (name: string, audio: string) => {
+// Every check here renders its clip with ffmpeg and measures it through ffmpeg — P10's missing clip
+// too: measureTail spawns ffmpeg to find it unreadable. A box without one (CI's runner) skips the
+// section out loud; the pure core above pins the same rules either way.
+if (spawnSync("ffmpeg", ["-version"]).status !== 0) {
+  console.log("SKIP: post-roll end to end on real media (no ffmpeg on PATH)");
+} else {
+  const dir = mkdtempSync(path.join(tmpdir(), "postroll-contract-"));
+  try {
+    /** A tiny 64x36 clip: luma expression (T = seconds) for the picture, a lavfi audio source. */
+    const clip = (name: string, sec: number, lum: string, audio: string): string => {
       const out = path.join(dir, name);
-      execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", audio, "-t", "3", out], {
-        stdio: "ignore",
-        timeout: 10_000,
-      });
+      execFileSync(
+        "ffmpeg",
+        [
+          "-v",
+          "error",
+          "-y",
+          "-f",
+          "lavfi",
+          "-i",
+          `nullsrc=s=64x36:r=4:d=${sec},geq=lum='${lum}':cb=128:cr=128`,
+          "-f",
+          "lavfi",
+          "-i",
+          audio,
+          "-c:v",
+          "libx264",
+          "-preset",
+          "ultrafast",
+          "-c:a",
+          "pcm_s16le",
+          "-t",
+          String(sec),
+          out,
+        ],
+        { stdio: "ignore", timeout: 10_000 },
+      );
       return out;
     };
-    const loud = await measureTail(wav("loud.wav", tone(SHOUT, 3)), 0, 3);
-    deviation('TailWindow.loudness: "Loudness per second" (postRoll.ts)', () =>
-      assert.equal(loud.loudness.length, 3, `3 s of audio gave ${loud.loudness.length} loudness readings`),
-    );
-    const silent = await measureTail(wav("silent.wav", "anullsrc=r=48000:cl=mono"), 0, 3);
-    deviation('TailWindow.loudness: "Loudness per second", silence included (postRoll.ts)', () =>
+    const tone = (amp: string, sec: number) => `aevalsrc='(${amp})*sin(2*PI*440*t)':s=48000:d=${sec}`;
+    const ROOM = "0.0003"; // ~-73 dBFS: audible to a meter, silent to a viewer (and not -inf)
+    const SHOUT = "0.5"; // ~-9 dBFS
+    const NOISE = "random(1)*255"; // every pixel changes every frame: a moving picture
+    const GRAY = "128"; // a frozen frame
+    const tail = async (file: string, runEndSec: number, maxSec: number) =>
+      suggestTailSec(await measureTail(file, runEndSec, maxSec), { minSec: FLOOR, maxSec });
+
+    // P4 + P8: the "match" is 3 s, then the winner moves until 23 s into the clip and sits still in
+    // room tone after. Measured from the run's end, the quiet starts 20 s in — cut there, inside
+    // [15, 30]. Measured from the clip's start it would read 23: the seek is what places it.
+    {
+      const file = clip("seek.mkv", 33, `if(lt(T,23),${NOISE},${GRAY})`, tone(ROOM, 33));
+      assert.equal(await tail(file, 3, 30), 20, "the quiet is found 20 s after the run's end");
+    }
+
+    // P10: the winner's clip is missing (archived, a typo in the nickname): measuring must not throw
+    // and must not cut — the whole post-roll stays.
+    {
+      const w = await measureTail(path.join(dir, "missing.mkv"), 0, 20);
       assert.equal(
-        silent.loudness.length,
-        3,
-        `3 s of digital silence gave ${silent.loudness.length} readings`,
-      ),
-    );
+        suggestTailSec(w, { minSec: FLOOR, maxSec: 20 }),
+        20,
+        "an unreadable clip keeps the whole tail",
+      );
+    }
+
+    // P5 end to end: still and room tone from the finish — cut at the floor.
+    {
+      const file = clip("dead.mkv", 20, GRAY, tone(ROOM, 20));
+      assert.equal(await tail(file, 0, 20), FLOOR, "a dead tail is cut at 15 s");
+    }
+
+    // P7: stunned for 2 s, then shouting for the rest while sitting still. Talking is a reaction —
+    // the winner never goes quiet, so the whole tail stays.
+    {
+      const file = clip("talk.mkv", 20, GRAY, tone(`if(lt(t,2),${ROOM},${SHOUT})`, 20));
+      const got = await tail(file, 0, 20);
+      deviation("tail cut earlier only where the winner goes quiet (CLAUDE.md House rules)", () =>
+        assert.equal(got, 20, `a winner talking while still from 2 s on was cut at ${got} s of 20`),
+      );
+    }
+
+    // P4: one shout at the finish, then silent and still for good — the dead air is what the cut
+    // removes, so it lands at the floor, not near the cap.
+    {
+      const file = clip("shout.mkv", 20, GRAY, tone(`if(lt(t,1),${SHOUT},${ROOM})`, 20));
+      const got = await tail(file, 0, 20);
+      deviation("cut earlier where the winner goes quiet, never under 15 s (CLAUDE.md House rules)", () =>
+        assert.equal(got, FLOOR, `a winner silent and still from 1 s on kept ${got} s of 20`),
+      );
+    }
+
+    // P9: a muted VOD segment is digital silence. Still and muted is as quiet as it gets.
+    {
+      const file = clip("muted.mkv", 20, GRAY, "anullsrc=r=48000:cl=mono");
+      const got = await tail(file, 0, 20);
+      deviation(
+        "cut earlier where the winner goes quiet, never under 15 s — a muted winner (CLAUDE.md House rules)",
+        () => assert.equal(got, FLOOR, `a muted, still winner kept ${got} s of 20`),
+      );
+    }
+
+    // P6 end to end: moving and shouting the whole window — nothing is cut.
+    {
+      const file = clip("busy.mkv", 20, NOISE, tone(SHOUT, 20));
+      const got = await tail(file, 0, 20);
+      deviation(
+        "tail ≤ postRollSec, cut earlier only where the winner goes quiet (CLAUDE.md House rules)",
+        () => assert.equal(got, 20, `a winner never quiet kept ${got} s of 20`),
+      );
+    }
+
+    // P13: the public type says per second. A 3 s window is 3 loudness readings — loud or silent.
+    {
+      const wav = (name: string, audio: string) => {
+        const out = path.join(dir, name);
+        execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", audio, "-t", "3", out], {
+          stdio: "ignore",
+          timeout: 10_000,
+        });
+        return out;
+      };
+      const loud = await measureTail(wav("loud.wav", tone(SHOUT, 3)), 0, 3);
+      deviation('TailWindow.loudness: "Loudness per second" (postRoll.ts)', () =>
+        assert.equal(loud.loudness.length, 3, `3 s of audio gave ${loud.loudness.length} loudness readings`),
+      );
+      const silent = await measureTail(wav("silent.wav", "anullsrc=r=48000:cl=mono"), 0, 3);
+      deviation('TailWindow.loudness: "Loudness per second", silence included (postRoll.ts)', () =>
+        assert.equal(
+          silent.loudness.length,
+          3,
+          `3 s of digital silence gave ${silent.loudness.length} readings`,
+        ),
+      );
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
-} finally {
-  rmSync(dir, { recursive: true, force: true });
 }
 
 console.log(`postRoll.contract: ${deviations} deviation(s) reported above`);

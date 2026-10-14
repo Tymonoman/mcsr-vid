@@ -45,7 +45,7 @@
 // records any call, tiny ffmpeg-made clips (well under 2 s), no Remotion/Chromium.
 // Run: MCSR_CONFIG=/nonexistent/mcsr-vid.config.json npx tsx src/pipeline/pipeline.stages.contract.test.ts
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import {
   chmodSync,
   copyFileSync,
@@ -154,22 +154,13 @@ function serve(match: MatchInfo, twitchNames = false): void {
   for (const p of match.players) users.set(p.uuid, userOf(p, twitchNames ? p.nickname : undefined));
 }
 
-// Tiny real media, made once: ffprobe has to read every duration the write stage asks for.
+// Tiny real media, made once (A–C, below): ffprobe has to read every duration the write stage asks for.
 const ffmpeg = (...args: string[]) =>
   execFileSync("ffmpeg", ["-v", "error", "-y", ...args], { timeout: 60_000, stdio: "ignore" });
 const media = path.join(root, "template");
 mkdirSync(media);
-// 160 s, so the coarse estimate (preRollSec = 150) still leaves the clip a tail on the timeline.
 const POV = path.join(media, "pov.mp4");
-ffmpeg(
-  ...["-f", "lavfi", "-i", "color=c=black:s=320x180:r=1", "-t", "160"],
-  ...["-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", POV],
-);
 const TIMER = path.join(media, "timer.mp4");
-ffmpeg(
-  ...["-f", "lavfi", "-i", "color=c=black:s=16x16:r=1", "-t", "30"],
-  ...["-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", TIMER],
-);
 const cardOf = (sec: number): string => {
   const file = path.join(media, `intro-${sec}.webm`);
   ffmpeg(
@@ -178,8 +169,6 @@ const cardOf = (sec: number): string => {
   );
   return file;
 };
-const CARD7 = cardOf(7);
-const CARD3 = cardOf(3);
 
 /**
  * A match directory as a finished render leaves it: both clips, the overlay stills + manifest,
@@ -240,164 +229,271 @@ const guidesOf = (xml: string): Array<{ pos: number; comment: string }> => {
   return JSON.parse(json) as Array<{ pos: number; comment: string }>;
 };
 
+// A's match and its hand fix; E reads the same directory after its export.
+const matchA = fixture(12929221);
+const manual = {
+  left: 12.5,
+  right: 13.25,
+  confidence: 1,
+  detail: "hand-matched countdowns",
+  source: "manual" as const,
+};
+
 try {
-  // =============================================================================================
-  // A. A finished render on disk with a hand-fixed sync: every stage reuses, the hand fix stands.
-  {
-    const match = fixture(12929221);
-    serve(match);
-    const dir = stageMatch(match, CARD7);
-    const manual = {
-      left: 12.5,
-      right: 13.25,
-      confidence: 1,
-      detail: "hand-matched countdowns",
-      source: "manual" as const,
-    };
-    writeSyncOffsets(dir, manual);
+  // A–C run the real pipeline on real clips: ffmpeg makes them and the write stage's ffprobe reads
+  // them back. A box without both (CI's runner) skips them out loud; E, D and P3 need neither.
+  if (spawnSync("ffmpeg", ["-version"]).status !== 0 || spawnSync("ffprobe", ["-version"]).status !== 0) {
+    console.log("SKIP: stages A–C, the pipeline run on real clips (no ffmpeg/ffprobe on PATH)");
+  } else {
+    // 160 s, so the coarse estimate (preRollSec = 150) still leaves the clip a tail on the timeline.
+    ffmpeg(
+      ...["-f", "lavfi", "-i", "color=c=black:s=320x180:r=1", "-t", "160"],
+      ...["-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", POV],
+    );
+    ffmpeg(
+      ...["-f", "lavfi", "-i", "color=c=black:s=16x16:r=1", "-t", "30"],
+      ...["-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", TIMER],
+    );
+    const CARD7 = cardOf(7);
+    const CARD3 = cardOf(3);
 
-    const { events, result, error } = await run(`https://mcsrranked.com/stats/x/${match.id}?tab=1`);
-    assert.equal(error, undefined, `the run must finish: ${error?.message}`);
-    assert.ok(result);
+    // =============================================================================================
+    // A. A finished render on disk with a hand-fixed sync: every stage reuses, the hand fix stands.
+    {
+      const match = matchA;
+      serve(match);
+      const dir = stageMatch(match, CARD7);
+      writeSyncOffsets(dir, manual);
 
-    // P1: every stage, once, in the documented order — and nothing settled as an error.
-    assert.deepEqual(
-      terminal(events).map((e) => e.stage),
-      STAGE_ORDER,
-      "fetch → download → sync → render → thumbnail → write, each settled once",
-    );
-    assert.deepEqual(STAGE_ORDER, ["fetch", "download", "sync", "render", "thumbnail", "write"]);
-    assert.ok(
-      terminal(events).every((e) => e.status === "done"),
-      "a fully reusable match is all green",
-    );
-    // P1: generate-project stops at `write` — there is no MP4 and no export record afterwards.
-    assert.ok(!existsSync(path.join(dir, `final-${match.id}.mp4`)), "generate-project never encodes");
-    assert.ok(!existsSync(path.join(dir, `final-${match.id}.json`)), "only export:fast writes the record");
-    // P9: so anything seeking in a finished video of this match falls back to the timeline's 10 s.
-    assert.equal(exportMatchStartSec(dir, match.id), 10);
+      const { events, result, error } = await run(`https://mcsrranked.com/stats/x/${match.id}?tab=1`);
+      assert.equal(error, undefined, `the run must finish: ${error?.message}`);
+      assert.ok(result);
 
-    // P2: reuse, stage by stage, and with no yt-dlp spent (download or listing).
-    assert.match(
-      settled(events, "download")!.message ?? "",
-      /reused/,
-      "both clips on disk skip the download",
-    );
-    assert.match(settled(events, "render")!.message ?? "", /reused/, "a finished render skips Remotion");
-    assert.match(
-      settled(events, "thumbnail")!.message ?? "",
-      new RegExp(`reused ${config.thumbnailVariants.length} variants`),
-      "every variant on disk skips the thumbnail render",
-    );
-    assert.equal(ytdlpCalls(), "", "a reused match never calls yt-dlp");
-    // The only reachable host is the MCSR API (the match, both users, the head-to-head); the
-    // chat save's Twitch call is the one best-effort miss.
-    assert.ok(
-      fetchLog.every((u) => u.startsWith("https://api.mcsrranked.com/") || /twitch\.tv/.test(u)),
-      `unexpected host: ${fetchLog.join(", ")}`,
-    );
-    // P16: the chat fetch failed (no network) and the run still finished; no chat file pretends.
-    assert.ok(
-      fetchLog.some((u) => /twitch\.tv/.test(u)),
-      "the chat save was attempted",
-    );
-    assert.ok(!readdirSync(dir).some((f) => f.startsWith("chat-")), "a failed chat save writes no file");
+      // P1: every stage, once, in the documented order — and nothing settled as an error.
+      assert.deepEqual(
+        terminal(events).map((e) => e.stage),
+        STAGE_ORDER,
+        "fetch → download → sync → render → thumbnail → write, each settled once",
+      );
+      assert.deepEqual(STAGE_ORDER, ["fetch", "download", "sync", "render", "thumbnail", "write"]);
+      assert.ok(
+        terminal(events).every((e) => e.status === "done"),
+        "a fully reusable match is all green",
+      );
+      // P1: generate-project stops at `write` — there is no MP4 and no export record afterwards.
+      assert.ok(!existsSync(path.join(dir, `final-${match.id}.mp4`)), "generate-project never encodes");
+      assert.ok(!existsSync(path.join(dir, `final-${match.id}.json`)), "only export:fast writes the record");
+      // P9: so anything seeking in a finished video of this match falls back to the timeline's 10 s.
+      assert.equal(exportMatchStartSec(dir, match.id), 10);
 
-    // P13: the write stage's artifacts, at absolute paths, beside the clips.
-    for (const p of [
-      result.projectPath,
-      result.thumbnailPath,
-      result.chaptersPath,
-      result.descriptionPath,
-      result.titlePath,
-    ]) {
-      assert.ok(path.isAbsolute(p), `${p} must be absolute`);
-      assert.ok(existsSync(p), `${p} must exist`);
-      assert.equal(path.dirname(p), path.resolve(dir), "every artifact lives in the match directory");
-    }
-    assert.equal(result.matchId, match.id, "a full match URL resolves to its id");
-    const tags = readFileSync(path.join(dir, `match-${match.id}.tags.txt`), "utf8");
-    assert.ok(tags.endsWith("\n"), "tags file ends on a newline");
-    const tagLines = tags.trimEnd().split("\n");
-    assert.ok(
-      tagLines.length > 1 && tagLines.every((t) => t.trim().length > 0 && !t.includes(",")),
-      "one tag per line",
-    );
+      // P2: reuse, stage by stage, and with no yt-dlp spent (download or listing).
+      assert.match(
+        settled(events, "download")!.message ?? "",
+        /reused/,
+        "both clips on disk skip the download",
+      );
+      assert.match(settled(events, "render")!.message ?? "", /reused/, "a finished render skips Remotion");
+      assert.match(
+        settled(events, "thumbnail")!.message ?? "",
+        new RegExp(`reused ${config.thumbnailVariants.length} variants`),
+        "every variant on disk skips the thumbnail render",
+      );
+      assert.equal(ytdlpCalls(), "", "a reused match never calls yt-dlp");
+      // The only reachable host is the MCSR API (the match, both users, the head-to-head); the
+      // chat save's Twitch call is the one best-effort miss.
+      assert.ok(
+        fetchLog.every((u) => u.startsWith("https://api.mcsrranked.com/") || /twitch\.tv/.test(u)),
+        `unexpected host: ${fetchLog.join(", ")}`,
+      );
+      // P16: the chat fetch failed (no network) and the run still finished; no chat file pretends.
+      assert.ok(
+        fetchLog.some((u) => /twitch\.tv/.test(u)),
+        "the chat save was attempted",
+      );
+      assert.ok(!readdirSync(dir).some((f) => f.startsWith("chat-")), "a failed chat save writes no file");
 
-    // P4: the project places each POV by sync.json's (hand-fixed) numbers, so match start sits at
-    // exactly ANCHOR_SEC (10 s) on the timeline — reading the offset back out of the XML gives
-    // exactly what sync.json says.
-    const xml = readFileSync(result.projectPath, "utf8");
-    assert.equal(ANCHOR_SEC, 10);
-    assert.equal(offsetIntoClipFromProject(xml, "chain_video_left"), manual.left);
-    assert.equal(offsetIntoClipFromProject(xml, "chain_video_right"), manual.right);
-    assert.equal(
-      offsetIntoClipFromProject(xml, "chain_audio_left"),
-      manual.left,
-      "audio follows its picture",
-    );
-    assert.equal(offsetIntoClipFromProject(xml, "chain_audio_right"), manual.right);
-    // The overlay layers have a lead-in equal to the anchor: at timeline 0, untrimmed.
-    for (const id of ["chain_overlay_0", "chain_overlay_2", "chain_overlay_3"]) {
+      // P13: the write stage's artifacts, at absolute paths, beside the clips.
+      for (const p of [
+        result.projectPath,
+        result.thumbnailPath,
+        result.chaptersPath,
+        result.descriptionPath,
+        result.titlePath,
+      ]) {
+        assert.ok(path.isAbsolute(p), `${p} must be absolute`);
+        assert.ok(existsSync(p), `${p} must exist`);
+        assert.equal(path.dirname(p), path.resolve(dir), "every artifact lives in the match directory");
+      }
+      assert.equal(result.matchId, match.id, "a full match URL resolves to its id");
+      const tags = readFileSync(path.join(dir, `match-${match.id}.tags.txt`), "utf8");
+      assert.ok(tags.endsWith("\n"), "tags file ends on a newline");
+      const tagLines = tags.trimEnd().split("\n");
+      assert.ok(
+        tagLines.length > 1 && tagLines.every((t) => t.trim().length > 0 && !t.includes(",")),
+        "one tag per line",
+      );
+
+      // P4: the project places each POV by sync.json's (hand-fixed) numbers, so match start sits at
+      // exactly ANCHOR_SEC (10 s) on the timeline — reading the offset back out of the XML gives
+      // exactly what sync.json says.
+      const xml = readFileSync(result.projectPath, "utf8");
+      assert.equal(ANCHOR_SEC, 10);
+      assert.equal(offsetIntoClipFromProject(xml, "chain_video_left"), manual.left);
+      assert.equal(offsetIntoClipFromProject(xml, "chain_video_right"), manual.right);
+      assert.equal(
+        offsetIntoClipFromProject(xml, "chain_audio_left"),
+        manual.left,
+        "audio follows its picture",
+      );
+      assert.equal(offsetIntoClipFromProject(xml, "chain_audio_right"), manual.right);
+      // The overlay layers have a lead-in equal to the anchor: at timeline 0, untrimmed.
+      for (const id of ["chain_overlay_0", "chain_overlay_2", "chain_overlay_3"]) {
+        assert.match(
+          xml,
+          new RegExp(`<entry in="00:00:00\\.000" out="[^"]+" producer="${id}"`),
+          `${id} untrimmed`,
+        );
+        assert.equal(offsetIntoClipFromProject(xml, id), ANCHOR_SEC, `${id} starts at timeline 0`);
+      }
+      // The "Match start" guide sits on the anchor (60 fps project).
+      const start = guidesOf(xml).find((g) => /Match start/.test(g.comment));
+      assert.ok(start, "a Match start guide is written when sync ran");
+      assert.equal(start.pos, ANCHOR_SEC * 60, "the guide is at 0:10 on the timeline");
+
+      // P12: <mlt root> is the match directory and no resource carries an absolute path.
       assert.match(
         xml,
-        new RegExp(`<entry in="00:00:00\\.000" out="[^"]+" producer="${id}"`),
-        `${id} untrimmed`,
+        new RegExp(`<mlt root="${path.resolve(dir).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`),
       );
-      assert.equal(offsetIntoClipFromProject(xml, id), ANCHOR_SEC, `${id} starts at timeline 0`);
-    }
-    // The "Match start" guide sits on the anchor (60 fps project).
-    const start = guidesOf(xml).find((g) => /Match start/.test(g.comment));
-    assert.ok(start, "a Match start guide is written when sync ran");
-    assert.equal(start.pos, ANCHOR_SEC * 60, "the guide is at 0:10 on the timeline");
-
-    // P12: <mlt root> is the match directory and no resource carries an absolute path.
-    assert.match(xml, new RegExp(`<mlt root="${path.resolve(dir).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`));
-    const absolute = resourcesOf(xml).filter((r) => path.isAbsolute(r));
-    assert.deepEqual(absolute, [], "every resource is relative to <mlt root>");
-    assert.ok(
-      resourcesOf(xml).some((r) => r === `${match.players[0]!.nickname}.mp4`),
-      "a POV clip resolves under root",
-    );
-
-    // P11: a 7 s card cuts nothing, so chapters count match start from 0:10.
-    const splits = computeSplits(match, match.players[0]!.uuid, match.players[1]!.uuid);
-    const chapters = readFileSync(result.chaptersPath, "utf8");
-    assert.equal(chapters, formatChapters(buildChapters(splits, match, 10)));
-    assert.match(chapters, /^0:00 Start\n/, "YouTube needs the first chapter at 0:00");
-
-    // P17: no written text names the winner as such.
-    const winner = match.players.find((p) => p.uuid === match.result.uuid)!.nickname;
-    for (const file of [
-      result.titlePath,
-      result.descriptionPath,
-      result.chaptersPath,
-      path.join(dir, `match-${match.id}.tags.txt`),
-    ]) {
-      const text = readFileSync(file, "utf8");
-      assert.doesNotMatch(
-        text,
-        /\b(winner|won|wins|victory|defeats?|beats)\b/i,
-        `${path.basename(file)} must not carry a result line`,
+      const absolute = resourcesOf(xml).filter((r) => path.isAbsolute(r));
+      assert.deepEqual(absolute, [], "every resource is relative to <mlt root>");
+      assert.ok(
+        resourcesOf(xml).some((r) => r === `${match.players[0]!.nickname}.mp4`),
+        "a POV clip resolves under root",
       );
-      assert.doesNotMatch(text, new RegExp(`${winner}\\s+(takes|took|won|wins|beats)`, "i"));
-    }
-    // A result line need not use a result word ("X finished first"): every description line that
-    // names the winner alone must have a twin, same words bar the link, naming the other player.
-    const loser = match.players.find((p) => p.uuid !== match.result.uuid)!.nickname;
-    const lines = readFileSync(result.descriptionPath, "utf8").split("\n");
-    const shape = (l: string, name: string) =>
-      l.replaceAll(name, "<player>").replace(/https?:\/\/\S+/g, "<url>");
-    const alone = (a: string, b: string) => lines.filter((l) => l.includes(a) && !l.includes(b));
-    const twins = new Set(alone(loser, winner).map((l) => shape(l, loser)));
-    for (const line of alone(winner, loser)) {
-      assert.ok(twins.has(shape(line, winner)), `"${line}" names the winner alone`);
+
+      // P11: a 7 s card cuts nothing, so chapters count match start from 0:10.
+      const splits = computeSplits(match, match.players[0]!.uuid, match.players[1]!.uuid);
+      const chapters = readFileSync(result.chaptersPath, "utf8");
+      assert.equal(chapters, formatChapters(buildChapters(splits, match, 10)));
+      assert.match(chapters, /^0:00 Start\n/, "YouTube needs the first chapter at 0:00");
+
+      // P17: no written text names the winner as such.
+      const winner = match.players.find((p) => p.uuid === match.result.uuid)!.nickname;
+      for (const file of [
+        result.titlePath,
+        result.descriptionPath,
+        result.chaptersPath,
+        path.join(dir, `match-${match.id}.tags.txt`),
+      ]) {
+        const text = readFileSync(file, "utf8");
+        assert.doesNotMatch(
+          text,
+          /\b(winner|won|wins|victory|defeats?|beats)\b/i,
+          `${path.basename(file)} must not carry a result line`,
+        );
+        assert.doesNotMatch(text, new RegExp(`${winner}\\s+(takes|took|won|wins|beats)`, "i"));
+      }
+      // A result line need not use a result word ("X finished first"): every description line that
+      // names the winner alone must have a twin, same words bar the link, naming the other player.
+      const loser = match.players.find((p) => p.uuid !== match.result.uuid)!.nickname;
+      const lines = readFileSync(result.descriptionPath, "utf8").split("\n");
+      const shape = (l: string, name: string) =>
+        l.replaceAll(name, "<player>").replace(/https?:\/\/\S+/g, "<url>");
+      const alone = (a: string, b: string) => lines.filter((l) => l.includes(a) && !l.includes(b));
+      const twins = new Set(alone(loser, winner).map((l) => shape(l, loser)));
+      for (const line of alone(winner, loser)) {
+        assert.ok(twins.has(shape(line, winner)), `"${line}" names the winner alone`);
+      }
     }
 
-    // =========================================================================================
-    // E. The same match after its export. P8's other half (a re-run that keeps the sync stays
-    // fresh) is pipeline.contract.test.ts's P14: a real correction after the export is stale, and
-    // the refusal names the fix.
+    // =============================================================================================
+    // B. No sync.json, a picture the detector cannot read, and a 3 s card kept from an older render.
+    {
+      const match = fixture(13446429);
+      serve(match);
+      const dir = stageMatch(match, CARD3);
+      assert.equal(readSyncOffsets(dir), null);
+
+      const { events, result, error } = await run(String(match.id));
+      assert.equal(error, undefined, `the run must finish: ${error?.message}`);
+      assert.ok(result);
+
+      // The coarse sync.json itself is pipeline.contract.test.ts's P2/P3; here, past the sync
+      // stage's warning the run carries on to the project.
+      assert.equal(settled(events, "write")!.status, "done", "an unread countdown does not stop the run");
+      const sync = readSyncOffsets(dir)!;
+
+      // P4 + P10: the project places by sync.json and still puts match start at 0:10 — a 3 s card
+      // does not move the Kdenlive timeline.
+      const xml = readFileSync(result.projectPath, "utf8");
+      assert.equal(offsetIntoClipFromProject(xml, "chain_video_left"), sync.left);
+      assert.equal(offsetIntoClipFromProject(xml, "chain_video_right"), sync.right);
+      assert.equal(
+        offsetIntoClipFromProject(xml, "chain_overlay_3"),
+        ANCHOR_SEC,
+        "the card lies over the countdown at 0",
+      );
+      const guide = guidesOf(xml).find((g) => /Match start/.test(g.comment));
+      assert.equal(guide?.pos, ANCHOR_SEC * 60, "Kdenlive stays at 0:10 with a 3 s card");
+      assert.match(
+        guide?.comment ?? "",
+        /LOW/,
+        "a coarse sync is flagged on the guide for whoever opens the project",
+      );
+
+      const splits = computeSplits(match, match.players[0]!.uuid, match.players[1]!.uuid);
+      const chapters = readFileSync(result.chaptersPath, "utf8");
+      // P11: export:fast cuts headTrimSec(card) = 4 s, so match start is at 0:06 in the MP4 — and
+      // the chapters follow the card on disk, whatever config.introSec says now.
+      assert.equal(10 - headTrimSec(3), 6);
+      assert.equal(
+        chapters,
+        formatChapters(buildChapters(splits, match, 10 - headTrimSec(3))),
+        "chapters agree with the MP4 the kept card will produce",
+      );
+      // The description carries the same chapter lines.
+      const description = readFileSync(result.descriptionPath, "utf8");
+      const firstSplit = chapters.split("\n")[1]!;
+      assert.ok(description.includes(firstSplit), "the description's chapters are the chapters file's");
+    }
+
+    // =============================================================================================
+    // C. P14: one VOD attached, the other remembered in vods.json from an earlier discovery. The
+    // archive is "gone" (yt-dlp fails), and the match still renders without listing anything.
+    {
+      const full = fixture(13673240);
+      const [kept, remembered] = full.vod;
+      const match: MatchInfo = { ...full, vod: [kept!] };
+      serve(match, true);
+      const dir = stageMatch(match, CARD7);
+      writeFileSync(path.join(dir, "vods.json"), JSON.stringify([remembered]));
+      writeSyncOffsets(dir, { left: 20, right: 21, confidence: 1, detail: "hand", source: "manual" });
+      const before = ytdlpCalls();
+
+      const { result, error } = await run(String(match.id));
+      assert.equal(error, undefined, `a remembered VOD keeps the match renderable: ${error?.message}`);
+      assert.ok(result);
+      assert.equal(ytdlpCalls(), before, "vods.json is read first: no archive listing");
+      assert.deepEqual(
+        JSON.parse(readFileSync(path.join(dir, "vods.json"), "utf8")),
+        [remembered],
+        "vods.json untouched",
+      );
+      const description = readFileSync(result.descriptionPath, "utf8");
+      const rememberedId = remembered!.url.split("/").pop()!;
+      assert.ok(description.includes(rememberedId), "the remembered VOD is the one the description links");
+    }
+  }
+
+  // =============================================================================================
+  // E. A's match after its export. P8's other half (a re-run that keeps the sync stays fresh) is
+  // pipeline.contract.test.ts's P14: a real correction after the export is stale, and the refusal
+  // names the fix. Plain files only, so it runs whether or not A did (A's directory, else a bare one).
+  {
+    const match = matchA;
+    const dir = path.join(config.mediaDir, String(match.id));
+    mkdirSync(dir, { recursive: true });
     const final = path.join(dir, `final-${match.id}.mp4`);
     writeFileSync(final, "mp4");
     const hourAgo = Date.now() / 1000 - 3600;
@@ -425,84 +521,6 @@ try {
     }
     writeFileSync(path.join(dir, `final-${match.id}.json`), "{}");
     assert.equal(exportMatchStartSec(dir, match.id), 10, "a record without the field falls back to 10");
-  }
-
-  // =============================================================================================
-  // B. No sync.json, a picture the detector cannot read, and a 3 s card kept from an older render.
-  {
-    const match = fixture(13446429);
-    serve(match);
-    const dir = stageMatch(match, CARD3);
-    assert.equal(readSyncOffsets(dir), null);
-
-    const { events, result, error } = await run(String(match.id));
-    assert.equal(error, undefined, `the run must finish: ${error?.message}`);
-    assert.ok(result);
-
-    // The coarse sync.json itself is pipeline.contract.test.ts's P2/P3; here, past the sync
-    // stage's warning the run carries on to the project.
-    assert.equal(settled(events, "write")!.status, "done", "an unread countdown does not stop the run");
-    const sync = readSyncOffsets(dir)!;
-
-    // P4 + P10: the project places by sync.json and still puts match start at 0:10 — a 3 s card
-    // does not move the Kdenlive timeline.
-    const xml = readFileSync(result.projectPath, "utf8");
-    assert.equal(offsetIntoClipFromProject(xml, "chain_video_left"), sync.left);
-    assert.equal(offsetIntoClipFromProject(xml, "chain_video_right"), sync.right);
-    assert.equal(
-      offsetIntoClipFromProject(xml, "chain_overlay_3"),
-      ANCHOR_SEC,
-      "the card lies over the countdown at 0",
-    );
-    const guide = guidesOf(xml).find((g) => /Match start/.test(g.comment));
-    assert.equal(guide?.pos, ANCHOR_SEC * 60, "Kdenlive stays at 0:10 with a 3 s card");
-    assert.match(
-      guide?.comment ?? "",
-      /LOW/,
-      "a coarse sync is flagged on the guide for whoever opens the project",
-    );
-
-    const splits = computeSplits(match, match.players[0]!.uuid, match.players[1]!.uuid);
-    const chapters = readFileSync(result.chaptersPath, "utf8");
-    // P11: export:fast cuts headTrimSec(card) = 4 s, so match start is at 0:06 in the MP4 — and
-    // the chapters follow the card on disk, whatever config.introSec says now.
-    assert.equal(10 - headTrimSec(3), 6);
-    assert.equal(
-      chapters,
-      formatChapters(buildChapters(splits, match, 10 - headTrimSec(3))),
-      "chapters agree with the MP4 the kept card will produce",
-    );
-    // The description carries the same chapter lines.
-    const description = readFileSync(result.descriptionPath, "utf8");
-    const firstSplit = chapters.split("\n")[1]!;
-    assert.ok(description.includes(firstSplit), "the description's chapters are the chapters file's");
-  }
-
-  // =============================================================================================
-  // C. P14: one VOD attached, the other remembered in vods.json from an earlier discovery. The
-  // archive is "gone" (yt-dlp fails), and the match still renders without listing anything.
-  {
-    const full = fixture(13673240);
-    const [kept, remembered] = full.vod;
-    const match: MatchInfo = { ...full, vod: [kept!] };
-    serve(match, true);
-    const dir = stageMatch(match, CARD7);
-    writeFileSync(path.join(dir, "vods.json"), JSON.stringify([remembered]));
-    writeSyncOffsets(dir, { left: 20, right: 21, confidence: 1, detail: "hand", source: "manual" });
-    const before = ytdlpCalls();
-
-    const { result, error } = await run(String(match.id));
-    assert.equal(error, undefined, `a remembered VOD keeps the match renderable: ${error?.message}`);
-    assert.ok(result);
-    assert.equal(ytdlpCalls(), before, "vods.json is read first: no archive listing");
-    assert.deepEqual(
-      JSON.parse(readFileSync(path.join(dir, "vods.json"), "utf8")),
-      [remembered],
-      "vods.json untouched",
-    );
-    const description = readFileSync(result.descriptionPath, "utf8");
-    const rememberedId = remembered!.url.split("/").pop()!;
-    assert.ok(description.includes(rememberedId), "the remembered VOD is the one the description links");
   }
 
   // =============================================================================================

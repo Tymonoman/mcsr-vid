@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -381,7 +381,11 @@ const digitSeries = (spec: Array<[seconds: number, count: number]>): number[] =>
 // whiteCounts counts what is at or over the threshold.
 assert.deepEqual(whiteCounts([new Uint8Array([0, 235, 255, 234]), new Uint8Array([255])]), [2, 1]);
 
-{
+// The late-estimate check below renders a real clip and reads it back, so it needs ffmpeg: a box
+// without one (CI's runner) skips it out loud, like test:unit's other shell-outs.
+if (spawnSync("ffmpeg", ["-version"]).status !== 0) {
+  console.log("SKIP: late-estimate detection on a rendered clip (no ffmpeg on PATH)");
+} else {
   // An estimate ~20 s late (a VOD running ahead of the API's clock) opens the ±25 s window on the
   // "5": that fragment is untrusted, so the ±150 s look still runs and reads the whole countdown.
   // Before, the fragment blocked it, and the freeze had under 5 s left in the window: nothing.

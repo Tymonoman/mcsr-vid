@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -62,50 +62,56 @@ const flat = (value: number, n: number) => Array<number>(n).fill(value);
   const log = "RMS_level=-24.03\nRMS_level=-inf\nRMS_level=-95.19\n";
   assert.deepEqual(parseLoudness(log), [-24.03, -90, -95.19]);
 }
-{
-  // One loudness reading per second, not per ~21ms AAC frame: 3s of tone then 7s of silence over a
-  // black frame is cut at 3s. Per-frame readings put all of the first 0.2s in "seconds" 0-9 and kept 9.
-  const dir = mkdtempSync(path.join(tmpdir(), "postroll-"));
-  const clip = path.join(dir, "tail.mp4");
-  try {
-    execFileSync("ffmpeg", [
-      "-v", "error", "-y",
-      "-f", "lavfi", "-i", "color=black:size=64x36:rate=10:duration=10",
-      "-f", "lavfi", "-i", "sine=frequency=440:duration=3",
-      "-f", "lavfi", "-i", "anullsrc=r=48000:cl=mono:duration=7",
-      "-filter_complex", "[1:a]aresample=48000[t];[t][2:a]concat=n=2:v=0:a=1[a]",
-      "-map", "0:v", "-map", "[a]", "-c:v", "libx264", "-c:a", "aac", clip,
-    ]); // prettier-ignore
-    const w = await measureTail(clip, 0, 10);
-    assert.ok(Math.abs(w.loudness.length - 10) <= 1, `one reading a second, got ${w.loudness.length}`);
-    assert.ok(w.loudness[1]! > -45, "the tone is audible");
-    assert.ok(w.loudness[6]! <= -45, "the silence is silent");
-    assert.equal(suggestTailSec(w, { minSec: 1, maxSec: 10, quietRunSec: 3 }), 3);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-}
-{
-  // A reaction that never quiets down keeps the whole allowance — also when the clip ends right at
-  // it, as the VOD window does. Differencing every second frame gave one value fewer than seconds
-  // decoded and cut the last second.
-  const dir = mkdtempSync(path.join(tmpdir(), "postroll-"));
-  const clip = path.join(dir, "loud.mp4");
-  try {
-    execFileSync("ffmpeg", [
-      "-v", "error", "-y",
-      "-f", "lavfi", "-i", "testsrc=size=64x36:rate=10:duration=12",
-      "-f", "lavfi", "-i", "sine=frequency=440:duration=12",
-      "-c:v", "libx264", "-c:a", "aac", clip,
-    ]); // prettier-ignore
-    // runEnd 2 s: the 12 s clip ends exactly at the 10 s allowance.
-    for (const runEndSec of [0, 2]) {
-      const w = await measureTail(clip, runEndSec, 10);
-      assert.equal(w.motion.length, 10, `one motion reading per second (run end ${runEndSec} s)`);
-      assert.equal(suggestTailSec(w, { minSec: 5, maxSec: 10 }), 10);
+// The two checks below measure clips ffmpeg renders, through ffmpeg: a box without one (CI's
+// runner) skips them out loud, like test:unit's other shell-outs.
+if (spawnSync("ffmpeg", ["-version"]).status !== 0) {
+  console.log("SKIP: measureTail on rendered clips (no ffmpeg on PATH)");
+} else {
+  {
+    // One loudness reading per second, not per ~21ms AAC frame: 3s of tone then 7s of silence over a
+    // black frame is cut at 3s. Per-frame readings put all of the first 0.2s in "seconds" 0-9 and kept 9.
+    const dir = mkdtempSync(path.join(tmpdir(), "postroll-"));
+    const clip = path.join(dir, "tail.mp4");
+    try {
+      execFileSync("ffmpeg", [
+        "-v", "error", "-y",
+        "-f", "lavfi", "-i", "color=black:size=64x36:rate=10:duration=10",
+        "-f", "lavfi", "-i", "sine=frequency=440:duration=3",
+        "-f", "lavfi", "-i", "anullsrc=r=48000:cl=mono:duration=7",
+        "-filter_complex", "[1:a]aresample=48000[t];[t][2:a]concat=n=2:v=0:a=1[a]",
+        "-map", "0:v", "-map", "[a]", "-c:v", "libx264", "-c:a", "aac", clip,
+      ]); // prettier-ignore
+      const w = await measureTail(clip, 0, 10);
+      assert.ok(Math.abs(w.loudness.length - 10) <= 1, `one reading a second, got ${w.loudness.length}`);
+      assert.ok(w.loudness[1]! > -45, "the tone is audible");
+      assert.ok(w.loudness[6]! <= -45, "the silence is silent");
+      assert.equal(suggestTailSec(w, { minSec: 1, maxSec: 10, quietRunSec: 3 }), 3);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
+  }
+  {
+    // A reaction that never quiets down keeps the whole allowance — also when the clip ends right at
+    // it, as the VOD window does. Differencing every second frame gave one value fewer than seconds
+    // decoded and cut the last second.
+    const dir = mkdtempSync(path.join(tmpdir(), "postroll-"));
+    const clip = path.join(dir, "loud.mp4");
+    try {
+      execFileSync("ffmpeg", [
+        "-v", "error", "-y",
+        "-f", "lavfi", "-i", "testsrc=size=64x36:rate=10:duration=12",
+        "-f", "lavfi", "-i", "sine=frequency=440:duration=12",
+        "-c:v", "libx264", "-c:a", "aac", clip,
+      ]); // prettier-ignore
+      // runEnd 2 s: the 12 s clip ends exactly at the 10 s allowance.
+      for (const runEndSec of [0, 2]) {
+        const w = await measureTail(clip, runEndSec, 10);
+        assert.equal(w.motion.length, 10, `one motion reading per second (run end ${runEndSec} s)`);
+        assert.equal(suggestTailSec(w, { minSec: 5, maxSec: 10 }), 10);
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   }
 }
 

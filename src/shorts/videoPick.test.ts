@@ -7,7 +7,7 @@
 // decision), the hook rules, and what the prompt carries.
 // Run: npx tsx src/shorts/videoPick.test.ts
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -557,17 +557,23 @@ async function fallsBack(message: RegExp, timeoutMs?: number, fallback?: string)
   console.log("OK: a quota, an expired sign-in, a missing agy — each named with its fix, none asked twice");
 
   // The proxy failing: ffmpeg's own words, its stderr in the log's detail, the heuristic's window.
+  // Those words exist only when a real ffmpeg fails on the damaged export: a box without one (CI's
+  // runner) skips the check out loud; the stand-in proxy after it is written either way.
   answer(good);
   utimesSync(path.join(dir, `final-${single}.mp4`), new Date(), new Date(Date.now() + 60_000));
-  await fallsBack(
-    /ffmpeg could not make the model's copy of final-12730175\.mp4 \(.+\) — if the export is damaged, Re-encode MP4, then Pick again/,
-  );
-  const proxyLine = readShortLog(single).find((l) => l.text.startsWith("ffmpeg could not make"));
-  assert.equal(proxyLine?.level, "error");
-  assert.match(proxyLine?.detail ?? "", /exited/, "ffmpeg's stderr is the detail");
+  if (spawnSync("ffmpeg", ["-version"]).status !== 0) {
+    console.log("SKIP: a proxy ffmpeg cannot make is named (no ffmpeg on PATH)");
+  } else {
+    await fallsBack(
+      /ffmpeg could not make the model's copy of final-12730175\.mp4 \(.+\) — if the export is damaged, Re-encode MP4, then Pick again/,
+    );
+    const proxyLine = readShortLog(single).find((l) => l.text.startsWith("ffmpeg could not make"));
+    assert.equal(proxyLine?.level, "error");
+    assert.match(proxyLine?.detail ?? "", /exited/, "ffmpeg's stderr is the detail");
+    console.log("OK: a proxy ffmpeg cannot make is named, its stderr kept");
+  }
   writeFileSync(path.join(dir, PROXY_FILE), "not really a proxy");
   utimesSync(path.join(dir, PROXY_FILE), new Date(), new Date(Date.now() + 120_000));
-  console.log("OK: a proxy ffmpeg cannot make is named, its stderr kept");
 
   // The queue's stuck pick: the heuristic stands in for the reason given, the model not asked.
   calls();
@@ -665,7 +671,13 @@ assert.equal(hookProblem("#1 WORLD"), "it uses a seed, rank or elo");
 assert.equal(hookProblem("2427 vs 2293"), "it uses a seed, rank or elo");
 assert.equal(hookProblem("Can the 1789 take down the 2080?"), "it uses a seed, rank or elo");
 // The plain shapes (14 Oct 2026 edge pass); the world's seed type stays fair game.
-for (const h of ["CAN RANK 1 HOLD ON?", "TOP 10 PLAYER IN TROUBLE?", "THE 2100 ELO RUNNER?", "WORLD NUMBER ONE?", "A TOP SEED FALLS?"])
+for (const h of [
+  "CAN RANK 1 HOLD ON?",
+  "TOP 10 PLAYER IN TROUBLE?",
+  "THE 2100 ELO RUNNER?",
+  "WORLD NUMBER ONE?",
+  "A TOP SEED FALLS?",
+])
   assert.equal(hookProblem(h), "it uses a seed, rank or elo", h);
 assert.equal(hookProblem("SAME SEED, 2 MINUTES APART"), null);
 assert.equal(hookProblem("A VILLAGE SEED"), null);
@@ -1022,7 +1034,11 @@ const uploaded = (id: number, title: string, onYouTube = true) => {
   console.log("OK: no video is a recorded failure; an abort is the one throw");
 }
 
-{
+// The bar check cuts a real proxy from a real clip, both through ffmpeg: a box without one (CI's
+// runner) skips it out loud.
+if (spawnSync("ffmpeg", ["-version"]).status !== 0) {
+  console.log("SKIP: the proxy's share of the bar from ffmpeg's time= (no ffmpeg on PATH)");
+} else {
   // The proxy's share (a third of a match's bar) comes from ffmpeg's own time= on a real cut:
   // every other case above reuses a cached proxy, so without this nothing reads -stats at all.
   execFileSync("ffmpeg", [

@@ -305,6 +305,9 @@ const seams = {
     extracted.push(startSec);
     writeFileSync(out, "extracted");
   },
+  // What real ffprobe reads off these placeholder exports: no size. Left to the default, a box
+  // without ffprobe (CI's runner) failed the spawn and the run came back "incomplete".
+  probeResolution: async () => null,
 };
 const result = await renderSeries(
   101,
