@@ -47,6 +47,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  rmSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
@@ -56,6 +57,12 @@ import { config, DEFAULTS } from "../config.js";
 import type { MatchInfo, PlayoffBracket } from "../api/types.js";
 
 config.youtubePlaylistUrl = "https://www.youtube.com/playlist?list=PLcontract";
+
+// Every scenario's media directory, removed on exit so a failed assert cleans up too.
+const tempDirs: string[] = [];
+process.on("exit", () => {
+  for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
+});
 config.supportUrl = "";
 
 /* --- Deviation reporting: keep the doc's assertion, report and continue ------------------------ */
@@ -154,6 +161,7 @@ const future = (sec: number) => new Date(Date.now() + sec * 1000);
  */
 function series(base: number, winners: Array<string | null>, exported = winners.map(() => false)): number[] {
   config.mediaDir = mkdtempSync(path.join(tmpdir(), `series-contract-${base}-`));
+  tempDirs.push(config.mediaDir);
   const ids = winners.map((_, i) => base + 1 + i);
   const seats = [
     [A, P],
@@ -610,8 +618,11 @@ const [g1, g2, g3] = series(300, [A.uuid, A.uuid, A.uuid]) as [number, number, n
   // The docs: the re-filter exists "since a sub-chapter can land within that gap of its own
   // header or of the next game's" — the sub-chapter gives way, and every game keeps the header
   // that names its world. A Result 5 s before the next game's header must not cost that header.
+  // Not a live bug today: a game's tail is never under 15 s (postRoll), so a real export's Result
+  // lands at least 15 s before the next header. This gap is hand-built; it is reachable only when
+  // a game's tail is under 10 s, or its last chapter is not the Result.
   await deviation(
-    'handbook "A series is one video": chapters name each game\'s world; the 10 s re-filter drops the sub-chapter that lands within the gap "of the next game\'s" header',
+    'handbook "A series is one video": chapters name each game\'s world; the 10 s re-filter drops the sub-chapter that lands within the gap "of the next game\'s" header (reachable only with a game tail under 10 s or a non-Result last chapter; postRoll keeps real tails at 15 s+)',
     () => {
       const crowded = buildSeriesDescription(opts(595));
       assert.ok(

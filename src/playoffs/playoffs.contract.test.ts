@@ -33,13 +33,16 @@
 // runner is paired with a made-up result. Every game here is synthetic.
 // Run: npx tsx src/playoffs/playoffs.contract.test.ts
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { config, DEFAULTS } from "../config.js";
 import type { FeedMatch, MatchInfo, PlayoffBracket, PlayoffSlot, UserDetails } from "../api/types.js";
 
 config.mediaDir = mkdtempSync(path.join(tmpdir(), "playoffs-contract-"));
+const tempMediaDir = config.mediaDir;
+// On exit, so a failed assert cleans up too.
+process.on("exit", () => rmSync(tempMediaDir, { recursive: true, force: true }));
 
 /* --- Deviation reporting: keep the doc's assertion, report and continue ------------------------ */
 
@@ -162,8 +165,23 @@ const { computeOverlayProps } = await import("../pipeline/overlayProps.js");
     ],
     "numbered by date, private rooms only, a game listed twice counted once",
   );
-  // The bracket itself names no games — the slot has seeds and a start, nothing to number.
-  assert.equal("games" in slot9, false, "a bracket slot carries no game list of its own");
+  // The bracket itself names no games: the board's slot gets them from the pair's histories
+  // alone — an empty history leaves the seated slot with none, a full one with exactly its games.
+  _resetPlayoffsForTest();
+  history = [];
+  const bare = (await playoffBoard(start + 3600)).slots.find((s) => s.id === 9);
+  assert.deepEqual(bare?.games, [], "no history, no games: the bracket supplies none of its own");
+  _resetPlayoffsForTest();
+  history = [later, ranked, earlier, casual];
+  const listed = (await playoffBoard(start + 3600)).slots.find((s) => s.id === 9);
+  assert.deepEqual(
+    listed?.games.map((g) => [g.matchId, g.gameNo]),
+    [
+      [earlier.id, 1],
+      [later.id, 2],
+    ],
+    "the board's games are the history's private rooms, numbered by date",
+  );
 }
 
 /* --- P2: a bracket's games are stamped with the next season ----------------------------------- */
