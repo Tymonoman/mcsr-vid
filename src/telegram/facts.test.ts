@@ -454,7 +454,62 @@ try {
       assert.ok(!items.some((i) => /arm A or B/.test(i.text)));
       rmSync(experiments);
       console.log("OK: an experiment needing a human call is an item until it is acknowledged");
+
+      // 6. shortsByHand: a long-form going out within 36 h (or public in the last 3 days) with no
+      //    hand-cut Short and no Short upload is an item — and only while the setting is on.
+      const HAND = 7;
+      mkdirSync(dir(HAND), { recursive: true });
+      writeFileSync(path.join(dir(HAND), "doogile.mp4"), "x");
+      writeFileSync(path.join(dir(HAND), "Feinberg.mp4"), "x");
+      const longForm = (publishAt: string | null, privacyStatus = "private") =>
+        writeUpload(
+          HAND,
+          {
+            videoId: "v7",
+            uploadedAt: new Date(NOW - 3600_000).toISOString(),
+            publishAt,
+            privacyStatus,
+            thumbnailVariant: null,
+            title: "t",
+          },
+          "video",
+        );
+      const handItem = async () => (await needsYouOf()).find((i) => i.matchId === HAND);
+      await longForm(new Date(NOW + 20 * 3600_000).toISOString());
+      assert.equal(await handItem(), undefined, "shortsByHand off: no item");
+      config.shortsByHand = true;
+      const item = await handItem();
+      assert.ok(item, "due in 20 h with no Short: an item");
+      assert.match(item!.players ?? "", /doogile/);
+      assert.match(item!.text, /^Short still to make by hand — long-form goes public /);
+      await longForm(new Date(NOW + 40 * 3600_000).toISOString());
+      assert.equal(await handItem(), undefined, "past 36 h: not yet");
+      await longForm(null, "public");
+      assert.match((await handItem())?.text ?? "", /public since/, "published on upload an hour ago");
+      await longForm(new Date(NOW - 4 * 24 * 3600_000).toISOString());
+      assert.equal(await handItem(), undefined, "public 4 days: history");
+      await longForm(new Date(NOW + 20 * 3600_000).toISOString());
+      const status = path.join(dir(HAND), `short-${HAND}.status.json`);
+      for (const [file, body] of [
+        [path.join(dir(HAND), `short-${HAND}.hand.json`), "{}"],
+        [path.join(dir(HAND), "youtube-short.json"), JSON.stringify({ videoId: "s7" })],
+        [status, JSON.stringify({ noShort: true, steps: {}, errors: [] })],
+        [path.join(dir(HAND), "chat-Aquacorde.json"), "[]"],
+      ] as const) {
+        writeFileSync(file, body);
+        assert.equal(await handItem(), undefined, `${path.basename(file)}: no item`);
+        rmSync(file);
+      }
+      setHidden(HAND, true);
+      assert.equal(await handItem(), undefined, "hidden: no item");
+      setHidden(HAND, false);
+      assert.ok(await handItem(), "and back once nothing excuses it");
+      config.shortsByHand = false;
+      console.log(
+        "OK: a long-form due or public without its hand-cut Short is an item while shortsByHand is on",
+      );
     } finally {
+      config.shortsByHand = false;
       globalThis.fetch = realFetch;
     }
   }

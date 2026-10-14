@@ -26,10 +26,11 @@ import { capacity } from "../dashboard/archive.js";
 import { readNightlyState, MIN_FREE_MATCHES, type NightlyLastRun } from "../dashboard/nightly.js";
 import { restartState } from "../dashboard/restartWhenIdle.js";
 import { hiddenMatchIds, isExported, nightlyQueue, nightlySkip } from "../dashboard/matchShelf.js";
-import { listProcessedMatchIds, matchStatusFor } from "../dashboard/matchStatus.js";
+import { blockedOnDisk, listProcessedMatchIds, matchStatusFor } from "../dashboard/matchStatus.js";
 import { nightlyShortSummary, readStatus } from "../dashboard/shortFlow.js";
 import { needsHumanExperiments, testsSummary, type TestsSummary } from "../dashboard/experiments.js";
 import { creatorWatchSince, type CreatorWatchHit } from "../dashboard/creatorWatch.js";
+import { handShortFile } from "../shorts/handShort.js";
 import { pickErrorFile } from "../shorts/videoPick.js";
 import { playoffBoard } from "../playoffs/playoffs.js";
 import { describeFailure, runClaude } from "./claude.js";
@@ -174,7 +175,7 @@ async function gatherTodo(nowMs: number): Promise<TodoFacts> {
 /* --- Needs you (the operator's grant, 8 Oct 2026: "I act only on what the 07:00 Warsaw Telegram
    report lists under 'Needs you'") ---------------------------------------------------------------
  *
- * Deterministic, code only — never Claude — and only these six kinds, each a fact a human has to
+ * Deterministic, code only — never Claude — and only these seven kinds, each a fact a human has to
  * settle: everything else (a scheduled upload, a quiet night) needs nobody. A match is named by its
  * deep link where there is one; a comment's own text or author is never shown (`blockedRunnerItems`
  * names the video a blocked runner commented on, nothing they wrote). */
@@ -243,6 +244,39 @@ async function noUploadSoonItem(nowMs: number): Promise<NeedsYouItem | null> {
   return {
     text: `No long-form is scheduled to go public in the next 48 h — nothing for ${utcDayLabel(nowMs)} or ${utcDayLabel(nowMs + DAY_MS)}`,
   };
+}
+
+/** How far ahead a scheduled long-form, and how far back a public one, still wants its hand-cut
+ *  Short: the Short follows 18 h after, so 36 h ahead is a day and a half to cut it; past 3 days
+ *  public (the session's own `needshort` window) it is history, not a to-do. */
+const HAND_SHORT_AHEAD_MS = 36 * 60 * 60 * 1000;
+const HAND_SHORT_BEHIND_MS = 3 * DAY_MS;
+
+/** `config.shortsByHand` only: a long-form going public within 36 h (or public in the last 3 days)
+ *  whose Short nobody has cut yet — no `short-<id>.hand.json`, no `youtube-short.json` — and that
+ *  wants one (not `noShort`, not hidden, not blocked). Nothing else warns before it goes out alone. */
+async function handShortItems(nowMs: number): Promise<NeedsYouItem[]> {
+  if (!config.shortsByHand) return [];
+  const items: NeedsYouItem[] = [];
+  const hidden = hiddenMatchIds();
+  for (const matchId of listProcessedMatchIds()) {
+    const dir = matchDir(matchId);
+    if (hidden.has(matchId) || existsSync(handShortFile(dir, matchId))) continue;
+    if (readStatus(matchId).noShort || (await readUpload(matchId, "short"))) continue;
+    const video = await readUpload(matchId, "video");
+    // publishAt null is "published on upload" when the record says public, else private with no date.
+    const goesPublic = video?.publishAt ?? (video?.privacyStatus === "public" ? video.uploadedAt : null);
+    const at = goesPublic ? Date.parse(goesPublic) : NaN;
+    if (!Number.isFinite(at) || at > nowMs + HAND_SHORT_AHEAD_MS || at < nowMs - HAND_SHORT_BEHIND_MS) continue;
+    if (blockedOnDisk(dir)) continue;
+    const m = await matchStatusFor(matchId).catch(() => null);
+    items.push({
+      matchId,
+      players: m ? playersOf(m) : undefined,
+      text: `Short still to make by hand — long-form ${at > nowMs ? "goes public" : "public since"} ${warsawTime(goesPublic!)}`,
+    });
+  }
+  return items;
 }
 
 /** A blocked runner appearing somewhere the block is supposed to keep them out of, or commenting —
@@ -372,16 +406,18 @@ function needsHumanItems(): NeedsYouItem[] {
 }
 
 async function gatherNeedsYou(nowMs: number, sinceMs: number): Promise<NeedsYouFacts> {
-  const [failed, studio, noUpload, blocked] = await Promise.all([
+  const [failed, studio, noUpload, handShort, blocked] = await Promise.all([
     failedStepItems(),
     Promise.resolve(studioItem()),
     noUploadSoonItem(nowMs),
+    handShortItems(nowMs),
     blockedRunnerItems(sinceMs),
   ]);
   const items = [
     ...failed,
     ...(studio ? [studio] : []),
     ...(noUpload ? [noUpload] : []),
+    ...handShort,
     ...blocked,
     ...needsHumanItems(),
     ...studioWorkerItems(nowMs),

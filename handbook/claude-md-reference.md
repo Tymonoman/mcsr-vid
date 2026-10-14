@@ -1132,11 +1132,15 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
 - **"Needs you"** (`gatherNeedsYou`, `facts.ts`; `renderNeedsYou`, `report.ts`; the operator's own
   rule for the week of 8–14 Oct 2026, "I act only on what the 07:00 Warsaw Telegram report lists
   under 'Needs you'"): a deterministic section — code, not Claude — at the top of the day message,
-  "Nothing today." when empty. Only six kinds, one line each, a deep link where there is a match:
+  "Nothing today." when empty. Only seven kinds, one line each, a deep link where there is a match:
   a failed `short-<id>.status.json` step (match, step, the error's first line) until the operator
   retries or re-saves; Studio signed out/needing verification/wrong channel
   (`<mediaDir>/.studio-probe.json`, the Studio automation's own file — absent is no item, read
   defensively); no long-form scheduled to go public in the next 48 h, naming both bare UTC days;
+  with `shortsByHand` on only (`handShortItems`, 14 Oct 2026), a long-form going public within 36 h
+  or public in the last 3 days (`publishAt`, or `uploadedAt` for one published on upload) whose
+  Short nobody has cut — no `short-<id>.hand.json`, no `youtube-short.json` — unless `noShort`,
+  hidden or `blockedOnDisk`, since nothing else warns before a long-form goes out without its Short;
   a blocked runner in tonight's queue, rendered and not hidden, with an upload record, or as a
   comment's author newer than the last report (`isBlockedPlayer` against the display name — the
   line names the video or the match, never the comment's own text);
