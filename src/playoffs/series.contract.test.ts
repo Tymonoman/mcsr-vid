@@ -261,6 +261,10 @@ const [g1, g2, g3] = series(300, [A.uuid, A.uuid, A.uuid]) as [number, number, n
   // Started from the *last* game's id, as the board's "Render the series" may be.
   const result = await renderSeries(g3, runners(log), seams([g1, g2, g3]));
   assert.equal(result.kind, "joined");
+  // On the board from its first moment under the id it was started with, then moved to game 1's
+  // (the board's key) once seriesOf names it: nothing left behind under game 3.
+  assert.equal(seriesProgress(g3), undefined, "no stray entry under the id it was started from");
+  assert.equal(seriesProgress(g1)?.stage, "done");
   // S12: every game missing an export, one at a time, in game order.
   assert.deepEqual(log, [
     `render ${g1}`,

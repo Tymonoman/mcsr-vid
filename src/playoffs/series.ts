@@ -712,23 +712,46 @@ export async function renderSeries(
   runners: SeriesRunners,
   seams: JoinSeams = {},
 ): Promise<AssembleResult> {
-  const match = await getMatch(anyGameId);
-  // Before any render or export starts — one game's render alone is ~10 minutes
-  // (config.blockedPlayers). The dashboard's own route also refuses up front so the HTTP
-  // response carries it; this is what `npm run series` gets too.
-  if (blockedIn(match.players.map((p) => p.nickname))) {
-    runners.log(`series ${anyGameId}: blocked — a blocked player, not rendered`);
-    return { kind: "blocked", matchId: anyGameId };
-  }
-  const series = await seriesOf(match);
-  if (!series || series.games.length === 0) return { kind: "not-a-series", matchId: anyGameId };
-  const first = series.games[0]!;
+  // On the board before the first await: the route answers 202 at once, and the press's own
+  // re-read of /api/playoffs used to land while seriesOf still fetched the bracket and both
+  // histories — the old line, a live button, no poll armed. The board sends game 1's id; any
+  // other game's (`npm run series -- <id>`) is re-keyed once seriesOf names game 1.
   const progress: SeriesProgress = {
-    firstGameId: first.matchId,
+    firstGameId: anyGameId,
     stage: "starting",
     startedAt: new Date().toISOString(),
     done: false,
   };
+  runs.set(anyGameId, progress);
+  const settle = (stage: string) => {
+    progress.stage = stage;
+    progress.done = true;
+  };
+  let series: Awaited<ReturnType<typeof seriesOf>>;
+  try {
+    const match = await getMatch(anyGameId);
+    // Before any render or export starts — one game's render alone is ~10 minutes
+    // (config.blockedPlayers). The dashboard's own route also refuses up front so the HTTP
+    // response carries it; this is what `npm run series` gets too.
+    if (blockedIn(match.players.map((p) => p.nickname))) {
+      settle("failed: a blocked player, not rendered");
+      runners.log(`series ${anyGameId}: blocked — a blocked player, not rendered`);
+      return { kind: "blocked", matchId: anyGameId };
+    }
+    series = await seriesOf(match);
+  } catch (err) {
+    settle(`failed: ${describeError(err)}`);
+    throw err;
+  }
+  if (!series || series.games.length === 0) {
+    settle("failed: not a playoff series");
+    return { kind: "not-a-series", matchId: anyGameId };
+  }
+  const first = series.games[0]!;
+  if (first.matchId !== anyGameId) {
+    runs.delete(anyGameId);
+    progress.firstGameId = first.matchId;
+  }
   runs.set(first.matchId, progress);
   const step = (stage: string) => {
     progress.stage = stage;
