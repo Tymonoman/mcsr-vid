@@ -1,5 +1,6 @@
 // A match uploaded through Studio (no youtube.json) must show as published everywhere the
-// dashboard says so: the Rendered row, the YouTube panel (with stats), the kit's DM link.
+// dashboard says so: the Rendered row, the YouTube panel (with stats), the kit's DM link. The
+// panel's status word must be YouTube's live one: the record's is from adopt time and never updated.
 const { launchFor } = require("./launch.cjs");
 (async () => {
   const [base, id] = process.argv.slice(2);
@@ -21,6 +22,16 @@ const { launchFor } = require("./launch.cjs");
   await page.waitForSelector("#youtube .published, #youtube .upload", { timeout: 30000 });
   const yt = (await page.textContent("#youtube")).replace(/\s+/g, " ").trim();
   console.log("youtube panel:", yt.slice(0, 220));
+  const status = (await page.textContent("#youtube .published .row .id")).trim();
+  const live = (await (await fetch(base + "/api/youtube/uploads")).json()).uploads.find(
+    (u) => u.matchId === Number(id),
+  )?.stats;
+  const want = !live
+    ? null
+    : live.publishAt && live.privacyStatus === "private"
+      ? "scheduled for"
+      : live.privacyStatus;
+  console.log("status:", status, "| live:", want ?? "(no stats)");
   await page.waitForSelector("#publishkit .kit", { timeout: 20000 });
   const dm = await page.$$eval("#publishkit .kit", (n) =>
     n.map((k) => k.querySelector("textarea").value).find((v) => /^hi /.test(v)),
@@ -32,6 +43,8 @@ const { launchFor } = require("./launch.cjs");
     /published/.test(rowText) &&
     /found on the channel/.test(yt) &&
     /views/.test(yt) &&
+    !!want &&
+    status.startsWith(want) &&
     /youtu\.be\//.test(dm);
   process.exit(ok ? 0 : 1);
 })().catch((e) => {
