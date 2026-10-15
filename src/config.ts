@@ -845,15 +845,21 @@ export function validateOverrides(raw: Record<string, unknown>): void {
   }
 }
 
-function loadConfig(): Config {
-  // DEFAULTS is the module's one shared object; handing it out directly would let any mutation
-  // of the live config (including a test's) corrupt the default every later reader sees.
-  if (!existsSync(CONFIG_PATH)) return structuredClone(DEFAULTS);
+/** The config file's overrides as parsed JSON, unvalidated; `{}` when there is no file. */
+function readOverrides(): Record<string, unknown> {
+  if (!existsSync(CONFIG_PATH)) return {};
   const parsed: unknown = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     throw new Error(`${CONFIG_PATH}: expected a JSON object.`);
   }
-  const raw = parsed as Record<string, unknown>;
+  return parsed as Record<string, unknown>;
+}
+
+function loadConfig(): Config {
+  // DEFAULTS is the module's one shared object; handing it out directly would let any mutation
+  // of the live config (including a test's) corrupt the default every later reader sees.
+  if (!existsSync(CONFIG_PATH)) return structuredClone(DEFAULTS);
+  const raw = readOverrides();
   validateOverrides(raw);
   return {
     ...DEFAULTS,
@@ -876,10 +882,14 @@ export const matchDir = (matchId: number): string => path.join(config.mediaDir, 
  * Re-reads `blockedPlayers` from the config file into the live `config`, for a long-running process
  * the Settings tab cannot reach (the Studio worker): a block saved there must reach its next cycle.
  * Only this key — a whole reload would also pick up `studioAutomation`, a deliberate edit on the box.
- * Throws when the file is unreadable or invalid, so the caller fails rather than runs on a stale list.
+ * Throws when the file is unreadable or its block list invalid, so the caller fails rather than runs
+ * on a stale list. Validates only this key: the worker runs older code than the dashboard until its
+ * next blackout, and a key a newer build added must not stop every cycle as "unknown".
  */
 export function reloadBlockedPlayers(): void {
-  config.blockedPlayers = loadConfig().blockedPlayers;
+  const { blockedPlayers = DEFAULTS.blockedPlayers } = readOverrides();
+  validateOverrides({ blockedPlayers });
+  config.blockedPlayers = structuredClone(blockedPlayers as string[]);
 }
 
 /**

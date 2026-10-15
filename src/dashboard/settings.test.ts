@@ -205,11 +205,30 @@ console.log("settings: the allowlist holds and every kind coerces");
   writeFileSync(CONFIG_PATH, "{");
   assert.throws(() => reloadBlockedPlayers(), "an unreadable file throws rather than runs on a stale list");
   assert.deepEqual(config.blockedPlayers, ["Aquacorde", "doogile"], "and leaves the live list alone");
+  // The worker runs older code than the dashboard until its next blackout: a key a newer build
+  // added to the file must not fail its reload, but a bad block list beside it still does.
+  writeFileSync(
+    CONFIG_PATH,
+    JSON.stringify({ ...JSON.parse(before), blockedPlayers: ["Aquacorde", "edcr"], someKeyAddedLater: true }),
+  );
+  reloadBlockedPlayers();
+  assert.equal(isBlockedPlayer("edcr"), true, "a key newer than this build does not stop the reload");
+  writeFileSync(CONFIG_PATH, JSON.stringify({ blockedPlayers: "edcr", someKeyAddedLater: true }));
+  assert.throws(() => reloadBlockedPlayers(), /"blockedPlayers" must be an array/, "a bad list still throws");
+  assert.deepEqual(config.blockedPlayers, ["Aquacorde", "edcr"], "and leaves the live list alone");
+  writeFileSync(CONFIG_PATH, JSON.stringify({ someKeyAddedLater: true }));
+  reloadBlockedPlayers();
+  assert.deepEqual(
+    config.blockedPlayers,
+    ["Aquacorde", "BeefSalad"],
+    "no key in the file is the default list",
+  );
   writeFileSync(CONFIG_PATH, before);
   reloadBlockedPlayers();
   assert.deepEqual(config.blockedPlayers, ["Aquacorde"]);
 
   console.log("settings: reloadBlockedPlayers picks up a block saved by another process, and only that");
+  console.log("OK: reloadBlockedPlayers ignores a key newer than this build, still throws on a bad list");
 
   // The pair-repeat window: 3 until changed, live at once like the list, and a bad one writes nothing.
   assert.equal(config.pairRepeatDays, 3, "the default window is live before any save");
