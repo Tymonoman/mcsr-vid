@@ -200,7 +200,9 @@ async function readSession(filePath: string, total: number): Promise<{ url: stri
       sessionUrl?: string;
       title?: string;
     };
-    return s.filePath === filePath && s.total === total && s.sessionUrl ? { url: s.sessionUrl, title: s.title } : null;
+    return s.filePath === filePath && s.total === total && s.sessionUrl
+      ? { url: s.sessionUrl, title: s.title }
+      : null;
   } catch {
     return null;
   }
@@ -1034,9 +1036,13 @@ export async function latestImpressions(jobId: string): Promise<ImpressionsRow[]
  * a single day's sample. A day YouTube regenerated (a backfill, same window) counts once: the
  * report with the newest `createTime` wins.
  *
- * ponytail: every report is downloaded per call, no cache — fine for one evaluation a day over a
- * few weeks of videos; memoise per evaluation run if an experiment's video count grows.
+ * Each report's rows are kept by report id for the life of the process (a report never changes; a
+ * regenerated day gets a new id): the evaluator calls this once per video, and downloading every
+ * report per call hit the Reporting API's per-minute quota (429) on 15 Oct 2026 with ten videos.
+ * A failed download is not kept, so the next call tries it again.
  */
+const reportRows = new Map<string, Promise<ImpressionsRow[]>>();
+
 export async function impressionsSince(jobId: string, sinceYmd: string): Promise<ImpressionsRow[]> {
   type Report = { id: string; downloadUrl: string; endTime: string; createTime?: string };
   const byDay = new Map<string, Report>();
@@ -1060,9 +1066,17 @@ export async function impressionsSince(jobId: string, sinceYmd: string): Promise
   const accessToken = await getAccessToken();
   const rows: ImpressionsRow[] = [];
   for (const r of byDay.values()) {
-    const res = await fetch(r.downloadUrl, { headers: { authorization: `Bearer ${accessToken}` } });
-    if (!res.ok) throw new Error(await describeApiFailure(res, "reporting download"));
-    rows.push(...parseImpressionsCsv(await res.text()));
+    let cached = reportRows.get(r.id);
+    if (!cached) {
+      cached = (async () => {
+        const res = await fetch(r.downloadUrl, { headers: { authorization: `Bearer ${accessToken}` } });
+        if (!res.ok) throw new Error(await describeApiFailure(res, "reporting download"));
+        return parseImpressionsCsv(await res.text());
+      })();
+      reportRows.set(r.id, cached);
+      cached.catch(() => reportRows.delete(r.id));
+    }
+    rows.push(...(await cached));
   }
   return rows;
 }

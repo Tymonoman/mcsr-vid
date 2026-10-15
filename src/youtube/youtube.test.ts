@@ -514,7 +514,12 @@ console.log("youtube: all checks passed");
   const sessionFor = (total: number) =>
     writeFile(
       session,
-      JSON.stringify({ filePath: file, total, sessionUrl: "https://upload/session", title: "Old hook | a vs b" }),
+      JSON.stringify({
+        filePath: file,
+        total,
+        sessionUrl: "https://upload/session",
+        title: "Old hook | a vs b",
+      }),
     );
   await sessionFor(3 * CHUNK + 1);
   assert.equal(await resumableSession(file), false, "a session for other bytes (a re-encode) is dead");
@@ -956,6 +961,8 @@ console.log("youtube: all checks passed");
     "2026-10-13": "20261013,v1,1000,0.1",
   };
   const lists: string[] = [];
+  const downloads: string[] = [];
+  let failNext = false;
   globalThis.fetch = (async (input: string | URL | Request) => {
     const url = String(input);
     if (url.startsWith("https://oauth2.googleapis.com/"))
@@ -966,7 +973,12 @@ console.log("youtube: all checks passed");
       return new Response(
         JSON.stringify(
           page2
-            ? { reports: [report("2026-10-13", "2026-10-15T01:00:00Z"), report("2026-10-12", "2026-10-14T01:00:00Z")] }
+            ? {
+                reports: [
+                  report("2026-10-13", "2026-10-15T01:00:00Z"),
+                  report("2026-10-12", "2026-10-14T01:00:00Z"),
+                ],
+              }
             : {
                 reports: [
                   report("2026-10-11", "2026-10-13T01:00:00Z"),
@@ -977,11 +989,17 @@ console.log("youtube: all checks passed");
         ),
       );
     }
-    if (url.startsWith("https://fake.invalid/csv/"))
+    if (url.startsWith("https://fake.invalid/csv/")) {
+      downloads.push(url);
+      if (failNext) {
+        failNext = false;
+        return new Response("Quota exceeded", { status: 429, statusText: "Too Many Requests" });
+      }
       return new Response(
         `date,channel_id,video_id,video_thumbnail_impressions,video_thumbnail_impressions_ctr\n` +
           csv[url.split("/").pop()!]!.replace(",", ",UC,"),
       );
+    }
     throw new Error(`unexpected fetch: ${url}`);
   }) as typeof fetch;
   try {
@@ -1001,6 +1019,34 @@ console.log("youtube: all checks passed");
       `the server-side filter rides every page (${lists.join(" ")})`,
     );
     console.log("OK: impressionsSince sums every daily report since the date, a regenerated day once");
+
+    // The evaluator calls this once per video: a second call must not download the reports again
+    // (ten videos hit the Reporting API's per-minute quota on 15 Oct 2026).
+    assert.equal(downloads.length, 3, "each of the three kept reports downloaded once");
+    const again = await impressionsSince("job/1", "2026-10-11");
+    assert.equal(again.length, 3);
+    assert.equal(downloads.length, 3, "a second call reuses every report already read");
+    console.log("OK: a report is downloaded once per process, however many videos ask for it");
+
+    // A failed download (a 429) is not remembered: it throws, and the next call fetches it again.
+    csv["2026-10-14"] = "20261014,v1,500,0.2";
+    const before = downloads.length;
+    const listFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.startsWith("https://youtubereporting.googleapis.com/v1/jobs/job%2F1/reports?"))
+        return new Response(JSON.stringify({ reports: [report("2026-10-14", "2026-10-16T01:00:00Z")] }));
+      return listFetch(input);
+    }) as typeof fetch;
+    failNext = true;
+    await assert.rejects(impressionsSince("job/1", "2026-10-14"), /429/);
+    const retried = await impressionsSince("job/1", "2026-10-14");
+    assert.deepEqual(
+      retried.map((r) => r.impressions),
+      [500],
+    );
+    assert.equal(downloads.length - before, 2, "the 429'd report was fetched again, once");
+    console.log("OK: a failed report download is retried on the next call, not cached");
   } finally {
     globalThis.fetch = realFetch;
     if (realToken === undefined) delete process.env.YOUTUBE_TOKEN_FILE;
