@@ -395,20 +395,10 @@ try {
     assert.ok(!isRefusal(first), JSON.stringify(first));
     assert.equal(of(SP).filter((e) => e.startsWith("video")).length, 1, "the long-form went up");
     const readBack = (await flow.shortPlan(SP, { now: NOW })).titleHook;
-    await deviation(
-      "CLAUDE.md Shorts: the long-form's title hook is the edited title (reads back as saved)",
-      () => {
-        assert.equal(
-          readBack,
-          hooks.titleHook,
-          `the saved title hook reads back as ${JSON.stringify(readBack)}`,
-        );
-      },
-    );
+    assert.equal(readBack, hooks.titleHook, `the saved title hook reads back as ${JSON.stringify(readBack)}`);
     const again = await save(SP, hooks);
-    await deviation("CLAUDE.md Shorts: after upload hooks lock — the same text again is accepted", () => {
-      assert.ok(!isRefusal(again), `re-saving the very same hooks answered ${JSON.stringify(again)}`);
-    });
+    assert.ok(!isRefusal(again), `re-saving the very same hooks answered ${JSON.stringify(again)}`);
+    console.log("OK: C2 C8 a typed title hook holding \" | \" reads back whole; the same save again is accepted");
   }
 
   /* --- C9. No Short for this one, after a Short was already rendered ------------------------------ */

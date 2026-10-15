@@ -45,7 +45,7 @@ import {
 import { refreshPairPosts } from "./pairPosts.js";
 import { orderForDisplay } from "./suggestPresent.js";
 import { playoffBoard, type PlayoffBoard } from "../playoffs/playoffs.js";
-import { listProcessedMatchIds } from "./matchStatus.js";
+import { blockedOnDisk, listProcessedMatchIds } from "./matchStatus.js";
 import { shortRunning } from "./shortsRoutes.js";
 import { anyThumbnailRunning, thumbnailRunning } from "../thumbnails/rerender.js";
 import { nightlyShortSummary, picksIdle, shortTick } from "./shortFlow.js";
@@ -248,7 +248,8 @@ export async function pickNightlyCandidate<T extends { metrics: { matchId: numbe
   if (freeMatches < MIN_FREE_MATCHES) return null;
   const processed = new Set(processedIds);
   // The queue is the operator's order and outranks the ranking; an id no longer on the list (the
-  // VODs expired, the card was dismissed) has nothing to render and drops through.
+  // VODs expired, the card was dismissed) has nothing to render and drops through — `resolveMissing`
+  // finds a trimmed one again, never a dismissed one.
   const queuedMatchIds = new Set(queue);
   const queued: T[] = [];
   for (const id of queue) {
@@ -342,15 +343,19 @@ export function nightlyEligible(
   const queued = new Set(queue);
   // Checked before the queue, not after: a blocked match is never rendered, however it got here —
   // the operator's own queue does not override this the way it overrides nightlySkip and the
-  // known-player gate (config.blockedPlayers).
+  // known-player gate (config.blockedPlayers). The directory too: a prefetched clip or chat names a
+  // runner the way they were called before a rename (`blockedOnDisk`).
   return async (pick) =>
     !blockedIn(pick.metrics.players) &&
+    !blockedOnDisk(matchDir(pick.metrics.matchId)) &&
     (await checkVods(pick)) &&
     (queued.has(pick.metrics.matchId) || isKnownPick(pick));
 }
 
 /** A queued id from the scan's own pool, or null — no API call (the preview's whole resolver). */
 export function pooledQueuedPick(id: number): NightlyPick | null {
+  // Dismissed after it was queued: still in the pool and the queue, but the operator rejected it.
+  if (scanKnowledge().dismissed.has(id)) return null;
   const players = pooledMatchPlayers(id);
   return players ? { metrics: { matchId: id, players }, bucket: "queued" } : null;
 }
@@ -362,6 +367,7 @@ export function pooledQueuedPick(id: number): NightlyPick | null {
  * this cannot even read is skipped, logged, and left for the next scan to resolve.
  */
 export async function resolveQueuedPick(id: number): Promise<NightlyPick | null> {
+  if (scanKnowledge().dismissed.has(id)) return null;
   const pooled = pooledQueuedPick(id);
   if (pooled) return blockedIn(pooled.metrics.players) ? null : pooled;
   try {
@@ -378,6 +384,8 @@ export async function resolveQueuedPick(id: number): Promise<NightlyPick | null>
 export interface NightlyOptions {
   /** Empty string turns the notification off. */
   notifyUrl: string;
+  /** The main server (`PORT` 8080, server.ts): only it runs `nightlySideCalls`. */
+  main?: boolean;
 }
 
 /**
@@ -900,6 +908,31 @@ async function runOnce(
 let nightlyTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
+ * The nightly timer's calls besides the render, on the main server only: a test server's nightly
+ * renders and nothing else. Its chain state is its own, so its `shortTick` would read the main
+ * server's upload in flight as cut short and resume it on top, and two processes' retries could
+ * both post the same pinned comment. `calls` is injected by the test.
+ */
+export function nightlySideCalls(
+  main: boolean,
+  calls = { retryFailedPlaylists, retryPendingComments, retryPendingStudio, shortTick },
+): void {
+  if (!main) return;
+  // The daily tick is also the press that clears a playlist step YouTube's creation cap refused
+  // (src/youtube/youtubeUpload.ts); it is not part of the run so a skipped night still makes it.
+  calls.retryFailedPlaylists().catch((err: unknown) => console.error(`playlists: ${describeError(err)}`));
+  // And posts the first comment on a scheduled video once it goes public.
+  calls.retryPendingComments().catch((err: unknown) => console.error(`comments: ${describeError(err)}`));
+  // And pins it through Studio automation (config.studioAutomation; a no-op while it's off) —
+  // skipped outright while an export is running, since Chrome and ffmpeg share this box's four cores.
+  if (!anyExportRunning())
+    calls.retryPendingStudio().catch((err: unknown) => console.error(`studio: ${describeError(err)}`));
+  // And the tick that resumes a chain a restart cut short, and asks the model again for a pick the
+  // heuristic stood in for.
+  calls.shortTick().catch((err: unknown) => console.error(`shorts: ${describeError(err)}`));
+}
+
+/**
  * Arms the nightly render and re-arms it after every run. Never throws: a scheduler that dies on
  * one bad night is worse than one that logs and tries again tomorrow.
  *
@@ -918,17 +951,7 @@ export function scheduleNightly(options: NightlyOptions): void {
   const delay = msUntilNextRun(Date.now(), hourUtc);
   console.error(`nightly: next auto-render at ${new Date(Date.now() + delay).toISOString()}`);
   nightlyTimer = setTimeout(() => {
-    // The daily tick is also the press that clears a playlist step YouTube's creation cap refused
-    // (src/youtube/youtubeUpload.ts); it is not part of the run so a skipped night still makes it.
-    retryFailedPlaylists().catch((err: unknown) => console.error(`playlists: ${describeError(err)}`));
-    // And posts the first comment on a scheduled video once it goes public.
-    retryPendingComments().catch((err: unknown) => console.error(`comments: ${describeError(err)}`));
-    // And pins it through Studio automation (config.studioAutomation; a no-op while it's off) —
-    // skipped outright while an export is running, since Chrome and ffmpeg share this box's four cores.
-    if (!anyExportRunning())
-      retryPendingStudio().catch((err: unknown) => console.error(`studio: ${describeError(err)}`));
-    // And the tick that asks the model again for a pick the heuristic stood in for.
-    shortTick().catch((err: unknown) => console.error(`shorts: ${describeError(err)}`));
+    nightlySideCalls(options.main === true);
     runNightlyOnce(options.notifyUrl, { scheduled: true })
       .catch((err: unknown) => console.error(`nightly: ${describeError(err)}`))
       .finally(() => scheduleNightly(options));

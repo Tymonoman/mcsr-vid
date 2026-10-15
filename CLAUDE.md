@@ -267,8 +267,8 @@ reload). After merging server changes, `POST /api/restart-when-idle`.
   upload wait for the operator's hooks. **A candidate also needs a known player** unless the
   operator queued it; a playoff pick always counts; the block list outranks the queue. **A test
   server arms its own nightly too**: any `PORT=… npm run dashboard` schedules against the same
-  `/media`; kill it before the hour, or set `nightlyRenderHourUtc: null` for it. The 15-minute tick
-  (chain resume, auto-hooks, creator watch, experiments) runs only on 8080.
+  `/media`; kill it before the hour, or set `nightlyRenderHourUtc: null` for it. Chain resume, YouTube
+  retries and the 15-minute tick (auto-hooks, creator watch, experiments) run only on 8080.
 - **The experiment engine runs between-video A/B tests unattended** (`src/dashboard/experiments.ts`
   + `experimentsEvaluator.ts`) from `.experiments.json` (atomic write, never rewritten while
   corrupt; `"tc"` = Studio's Test & Compare, untouched). A tick before `nightlyRenderHourUtc`

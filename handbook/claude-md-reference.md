@@ -864,8 +864,10 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   running — two of them at 03:00 pick the same card and render into one directory. Kill a test
   server before the hour, or set `nightlyRenderHourUtc: null` for it. The 15-minute tick (chain
   resume, comment-soon, auto-hooks, creator watch, draw re-seed, experiment arm and evaluation)
-  runs only on the main server (`PORT` 8080), like the Telegram poller: chain state is per process,
-  so a test server read the main one's upload in flight as orphaned and resumed it on top.
+  runs only on the main server (`PORT` 8080), like the Telegram poller and the nightly timer's own
+  side calls (`nightlySideCalls`: chain resume, the playlist/comment/Studio retries), so a test
+  server's nightly only renders: chain state is per process, so a test server read the main one's
+  upload in flight as orphaned and resumed it on top.
 - **Nightly** (`src/dashboard/nightly.ts`): at `nightlyRenderHourUtc` (default 3 UTC; `null` disables) the
   server renders the first eligible card in dashboard order, skipping the night if a render is
   running or under two matches of disk remain, then the MP4 (`nightlyRenderExport`), then queues
@@ -998,7 +1000,9 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   **Edge-case fixes, 14 Oct 2026**: CTR read only the newest daily Reporting CSV (one ~48h-old
   day — why x1's interim verdict kept flipping) — `impressionsSince` (`src/youtube/youtube.ts`) sums
   every daily report since publish, a regenerated day counted once, and the CSV's `20261012` is
-  compared with the since-date in one format. A `settle()` throw now reaches `needsHuman` on the
+  compared with the since-date in one format; since 15 Oct the A/B tab and the per-video audit
+  (`everyReport`, `src/dashboard/youtubeRoutes.ts`) sum every report the job still holds too, the
+  same endpoints and columns, `latestImpressions` gone. A `settle()` throw now reaches `needsHuman` on the
   second day (the try cleared yesterday's failure before settling). A schedule's
   `slot.rankedHoursUtc` keeps only whole hours 0–23, like `shortDelayHours` beside it.
 - **Playoffs** (`src/playoffs/playoffs.ts`): the bracket (`/playoffs`) knows the series, not the games;

@@ -55,15 +55,21 @@ const ymd = (d: Date): string => d.toISOString().slice(0, 10);
 
 /**
  * One video's metrics since its publish time, live. `videoIdHint` is the pick's own `videoId`
- * when the experiment recorded one; otherwise (and always, for the since-date) it comes from the
- * match's `youtube.json`.
+ * when the experiment recorded one; otherwise it comes from the match's `youtube.json`, as does
+ * the since-date. `sinceHint` (the experiment's start) stands in for a record that is gone — a
+ * deleted match directory: an enrolled video has no reach before it, so the sums are the same.
  */
-async function liveMetricsFor(matchId: number, videoIdHint?: string): Promise<VideoMetrics | null> {
+async function liveMetricsFor(
+  matchId: number,
+  videoIdHint?: string,
+  sinceHint?: string,
+): Promise<VideoMetrics | null> {
   const record = await readUpload(matchId);
   const videoId = videoIdHint ?? record?.videoId;
   if (!videoId) return null;
   const sinceIso =
-    record?.publishAt && Date.parse(record.publishAt) <= Date.now() ? record.publishAt : record?.uploadedAt;
+    (record?.publishAt && Date.parse(record.publishAt) <= Date.now() ? record.publishAt : record?.uploadedAt) ??
+    sinceHint;
   if (!sinceIso) return null;
   const sinceDate = sinceIso.slice(0, 10);
 
@@ -115,6 +121,7 @@ export interface ArmTotals {
 export type MetricsFetcher = (
   matchId: number,
   videoIdHint: string | undefined,
+  sinceHint?: string,
 ) => Promise<VideoMetrics | null>;
 
 /** Every arm's totals, in the experiment's own arm order. `fetch` defaults to the live Reporting +
@@ -139,7 +146,7 @@ export async function armTotalsFor(
     };
     let weightedPctSum = 0;
     for (const v of exp.videos.filter((v) => v.arm === arm.name)) {
-      const m = await fetch(v.matchId, v.videoId);
+      const m = await fetch(v.matchId, v.videoId, exp.start);
       if (!m) continue;
       totals.videos++;
       totals.impressions += m.impressions;
@@ -352,8 +359,13 @@ async function enrolVideos(data: ExperimentsFile): Promise<void> {
       try {
         const body = JSON.parse(readFileSync(armFile, "utf8")) as { experimentId?: string; arm?: string };
         const exp = body.experimentId ? byId.get(body.experimentId) : undefined;
-        if (exp && body.arm && !exp.videos.some((v) => v.matchId === matchId)) {
+        const enrolled = exp?.videos.find((v) => v.matchId === matchId);
+        if (exp && body.arm && !enrolled) {
           exp.videos.push({ matchId, arm: body.arm, ...(upload ? { videoId: upload.videoId } : {}) });
+        } else if (enrolled && !enrolled.videoId && upload) {
+          // Enrolled before its upload: keep the id now, so a later delete of the match directory
+          // (its youtube.json with it) leaves the video measurable.
+          enrolled.videoId = upload.videoId;
         }
       } catch (err) {
         console.error(`experiments: ${armFile} unreadable — ${describeError(err)}`);
