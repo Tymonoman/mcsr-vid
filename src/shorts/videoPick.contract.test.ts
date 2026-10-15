@@ -119,6 +119,9 @@ for (const hook of ["#3 SEED vs #14 SEED", "THE 7th seed", "2410 vs 2200 ELO", "
   assert.equal(hookProblem(hook, 40, players), SEED, hook);
 // The world's seed type is not a bracket seed: "village seed" is fair game.
 assert.equal(hookProblem("A VILLAGE SEED SPRINT", 40, players), null);
+// A lone rating by its unit (15 Oct 2026): the model was handed both elos until then.
+for (const hook of ["A 600-POINT GAP?", "2100 RATED AND SWEATING", "A 300 PTS SWING"])
+  assert.equal(hookProblem(hook, 40, players), SEED, hook);
 deviation('P7 "No seed, rank or elo in hooks or suggestions" — hookProblem on a single figure', () => {
   const passed = ["A 2400 ELO SHOWDOWN", "RANK 1 IN THE BUILDING", "THE NO. 1 SEED RETURNS"].filter(
     (h) => hookProblem(h, 40, players) === null,
@@ -153,6 +156,7 @@ console.log("OK: seed, rank and elo pairings are refused");
     uploaded("SPEEDY versus SLOWPOKE");
     uploaded("SPEEDY v. SLOWPOKE");
     uploaded("SPEEDY v SLOWPOKE");
+    uploaded("SPEEDY VS. SLOWPOKE");
     const shown = pastTitleHooks().map((p) => p.hook);
     // Newest first, the clean ones only — a denied word never becomes an example either.
     for (const ok of ["WHO BLINKS FIRST?", "58 MILLISECONDS"])
@@ -160,17 +164,9 @@ console.log("OK: seed, rank and elo pairings are refused");
     assert.ok(shown.indexOf("WHO BLINKS FIRST?") < shown.indexOf("58 MILLISECONDS"), "newest first");
     for (const never of ["SPEEDY vs SLOWPOKE", "alpha_run VS beta_run", "THE KOREAN GRINDER"])
       assert.ok(!shown.includes(never), `shown to the model: ${never}`);
-    deviation(
-      'P16 "pastTitleHooks shows no \'vs\' example at all" with "v", "v." and "versus" counting as "vs"',
-      () => {
-        const leaked = shown.filter((h) => /\s(?:vs\.?|v\.?|versus)\s/i.test(h));
-        assert.deepEqual(
-          leaked,
-          [],
-          `vs-shaped style examples shown to the model: ${JSON.stringify(leaked)}`,
-        );
-      },
-    );
+    // A deviation until 15 Oct 2026 (the filter was a bare " vs "): now held.
+    const leaked = shown.filter((h) => /\s(?:vs\.?|v\.?|versus)\s/i.test(h));
+    assert.deepEqual(leaked, [], `vs-shaped style examples shown to the model: ${JSON.stringify(leaked)}`);
   } finally {
     config.mediaDir = savedMedia;
     rmSync(media, { recursive: true, force: true });

@@ -27,6 +27,7 @@ import { NOT_SIGNED_IN } from "./reasoner.js";
 import { decidedAtMs } from "./raceGap.js";
 import { pickFile, type ShortPick } from "./shortPlan.js";
 import {
+  BlockedRefusal,
   hookProblem,
   hookRegister,
   modelFailure,
@@ -321,6 +322,7 @@ writeFileSync(pickErrorFile(dir, single), '{"at":"then","message":"an old failur
   );
   assert.doesNotMatch(prompt, /STILLS/, "no /watch, no stills section");
   assert.doesNotMatch(prompt, /"result"|"uuid"/, "the result is not spelled out");
+  assert.doesNotMatch(prompt, /"elo"/, "no rating is handed to the model: a hook may carry none");
   assert.equal(argv[argv.indexOf("--add-dir") + 1], path.resolve(dir));
   assert.equal(JSON.parse(argv[argv.indexOf("--json-schema") + 1]!).required.includes("rtaAtStart"), true);
   assert.ok(
@@ -335,6 +337,27 @@ writeFileSync(pickErrorFile(dir, single), '{"at":"then","message":"an old failur
   assert.deepEqual(await pickShortMoment(single, { timeoutMs: 20_000 }), pick);
   assert.ok(Date.now() - started < 2000, "the cached pick is not re-asked");
   console.log("OK: a pick newer than the video is kept without asking");
+}
+
+// --- A blocked player: refused before the proxy, /watch or the model sees a frame ---------------
+{
+  const savedBlocked = config.blockedPlayers;
+  const kept = readFileSync(pickFile(dir, single), "utf8");
+  writeFileSync(pickErrorFile(dir, single), '{"at":"then","message":"the heuristic stood in"}');
+  answer(good);
+  calls();
+  config.blockedPlayers = ["DOOGILE"]; // the API's pair, any case
+  for (const opts of [{ force: true }, { force: true, dryRun: true }, { force: true, fallback: "stuck" }])
+    await assert.rejects(pickShortMoment(single, { ...opts, log }), (err: unknown) => {
+      assert.ok(err instanceof BlockedRefusal, String(err));
+      assert.match(String(err), /match 12730175 has a blocked player — no pick is made/);
+      return true;
+    });
+  config.blockedPlayers = savedBlocked;
+  assert.equal(calls(), 0, "the model was never asked");
+  assert.equal(readFileSync(pickFile(dir, single), "utf8"), kept, "no pick written, the heuristic's or the model's");
+  assert.ok(!existsSync(pickErrorFile(dir, single)), "the stale error is cleared, so the daily retry stops");
+  console.log("OK: a blocked player's match gets no pick: no model, no heuristic, no hooks");
 }
 
 // --- /watch: a fake watch.py (two stills, one transcript line) on stand-in clips. ---------------
@@ -937,6 +960,10 @@ const uploaded = (id: number, title: string, onYouTube = true) => {
       assembledAt: "",
     }),
   );
+  // Any game's pair counts, not only game 1's: Aquacorde (DEFAULTS.blockedPlayers) plays game 2.
+  await assert.rejects(pickShortMoment(g1, { force: true, log }), BlockedRefusal);
+  // From here on the fixtures' Aquacorde stands for any runner: these blocks pin the pick itself.
+  config.blockedPlayers = [];
   // Game 2's first dragon dies at 7:30.3, so a window in it ends by 7:29.3 — video 16:29.3.
   assert.equal(decidedAtMs(matches.get(g2)!), 450_252);
   const inGame2 = { ...good, gameMatchId: g2, startSec: 540 + 380, endSec: 540 + 410, rtaAtStart: "6:20" };

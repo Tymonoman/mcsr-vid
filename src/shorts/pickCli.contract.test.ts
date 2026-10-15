@@ -12,6 +12,8 @@
 //     writes nothing — it refuses only when the proxy or a /watch cache would have to be made.
 //  6. The id may be a match page URL, and flags may come before it (`<matchId | all>` is the
 //     argument that is not a flag).
+//  7. A blocked player's match (CLAUDE.md "Blocked players") is never picked: `all` skips it, and
+//     named alone it is refused (exit 1), --force or not — no pick written, nothing printed.
 //
 // Hermetic: temp mediaDirs via MCSR_CONFIG, a stand-in final-<id>.mp4, fetch stubbed to serve
 // src/fixtures/match-12730175.json only; the reasoner, where one is configured, is never reached
@@ -66,7 +68,8 @@ const KEPT = {
 };
 
 /** A match with a finished video and, when asked, a pick made after it. */
-function setup(name: string, opts: { pick: boolean; reasoner: boolean }) {
+type Opts = { pick: boolean; reasoner: boolean; blocked?: boolean };
+function setup(name: string, opts: Opts) {
   const media = path.join(tmp, name);
   const dir = path.join(media, String(ID));
   mkdirSync(dir, { recursive: true });
@@ -75,6 +78,8 @@ function setup(name: string, opts: { pick: boolean; reasoner: boolean }) {
   const hourAgo = new Date(Date.now() - 3_600_000);
   utimesSync(video, hourAgo, hourAgo);
   if (opts.pick) writeFileSync(path.join(dir, `short-${ID}.pick.json`), `${JSON.stringify(KEPT, null, 2)}\n`);
+  // A saved chat of a runner on DEFAULTS.blockedPlayers: blockedOnDisk, whatever the API's pair.
+  if (opts.blocked) writeFileSync(path.join(dir, "chat-Aquacorde.json"), "{}");
   const config = path.join(tmp, `${name}.config.json`);
   writeFileSync(
     config,
@@ -88,7 +93,7 @@ const snapshot = (dir: string) =>
     .map((f) => `${f} ${statSync(path.join(dir, f)).size} ${statSync(path.join(dir, f)).mtimeMs}`);
 
 type Run = { status: number | null; stdout: string; stderr: string; dir: string; before: string[] };
-function pick(name: string, opts: { pick: boolean; reasoner: boolean }, args: string[]): Promise<Run> {
+function pick(name: string, opts: Opts, args: string[]): Promise<Run> {
   const m = setup(name, opts);
   const before = snapshot(m.dir);
   return new Promise((resolve) => {
@@ -116,14 +121,16 @@ const pickOnDisk = (dir: string) =>
   JSON.parse(readFileSync(path.join(dir, `short-${ID}.pick.json`), "utf8")) as typeof KEPT;
 
 // One at a time: the lab has four cores shared with the live dashboard.
-const [kept, forced, refused, dryCurrent] = [
+const [kept, forced, refused, dryCurrent, blockedAll, blockedOne] = [
   await pick("kept", { pick: true, reasoner: false }, [String(ID)]),
   await pick("forced", { pick: true, reasoner: false }, [String(ID), "--force"]),
   // Flags first and a match page URL: the target is the one argument that is not a flag.
   await pick("refused", { pick: false, reasoner: true }, ["--dry-run", `https://mcsrranked.com/matches/${ID}`]),
   await pick("dry-current", { pick: true, reasoner: false }, [String(ID), "--dry-run"]),
+  await pick("blocked-all", { pick: true, reasoner: false, blocked: true }, ["all", "--force"]),
+  await pick("blocked-one", { pick: true, reasoner: false, blocked: true }, [String(ID), "--force"]),
 ];
-for (const r of [kept, forced, refused, dryCurrent])
+for (const r of [kept, forced, refused, dryCurrent, blockedAll, blockedOne])
   assert.notEqual(r.status, null, "every run ends by itself");
 
 /* --- 1: a pick newer than the export is kept ------------------------------------------------- */
@@ -172,4 +179,16 @@ assert.notEqual(
   "it asked afresh and printed the new pick, not the kept one",
 );
 console.log("OK: --dry-run with a current pick on disk asks afresh and writes nothing");
+/* --- 7: a blocked player's match ------------------------------------------------------------ */
+assert.equal(blockedAll.status, 0, blockedAll.stderr);
+assert.equal(blockedAll.stdout, "", "`all` skipped the blocked match: no pick printed");
+assert.doesNotMatch(blockedAll.stderr, new RegExp(`--- ${ID}`), "not even started");
+assert.equal(blockedOne.status, 1, `named alone it is refused (stderr: ${blockedOne.stderr})`);
+assert.match(blockedOne.stderr, /refused: match \d+ has a blocked player — no pick is made/);
+assert.equal(blockedOne.stdout, "", "no pick is printed");
+for (const r of [blockedAll, blockedOne]) {
+  assert.deepEqual(pickOnDisk(r.dir), KEPT, "the pick on disk is untouched");
+  assert.equal(existsSync(path.join(r.dir, `short-${ID}.pick-error.json`)), false, "no error file either");
+}
+console.log("OK: a blocked player's match is skipped by `all` and refused by id, --force or not");
 console.log("pickCli.contract: all checks passed");

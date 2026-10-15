@@ -474,7 +474,10 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   (`src/telegram/worth.ts`), never uploaded, long-form or Short, one clear line like `hookRefusal`
   (`src/youtube/youtubeUpload.ts`), never gets its hooks saved so its chain never starts
   (`src/dashboard/shortFlow.ts`), never rendered by `npm run short` even run by hand
-  (`src/shorts/generateShort.ts`), and never a style example in the pick prompt's past hooks
+  (`src/shorts/generateShort.ts`), never picked — `pickShortMoment` throws `BlockedRefusal` on
+  any game's API pair or `blockedOnDisk` before the proxy, /watch or the model sees a frame, and
+  `npm run pick -- all` skips it (15 Oct 2026; until then its footage went to Groq/Gemini) — and
+  never a style example in the pick prompt's past hooks
   (`pastTitleHooks`, `src/shorts/videoPick.ts`). `finishOnYouTube` carries the same refusal
   (no playlist, thumbnail, comment or tag write; a still-pending step's note says why, already-done
   steps are left alone and nothing is persisted, so unblocking needs no repair) to every one of its

@@ -33,9 +33,10 @@ import type { MatchInfo, UserDetails, VersusStats } from "../api/types.js";
 // A bracket seed only ("7th seed", "#7 seed", "top seed", "the LCQ"): the world's seed type
 // ("village seed", "same seed") is fair game for a hook. Also the word "elo" and a lone rank
 // ("RANK 1", "RANKED #5", "TOP 10", "THE NO. 1 SEED", "WORLD NUMBER ONE") — "no" needs its period,
-// so "NO ONE SAW THAT COMING" still passes.
+// so "NO ONE SAW THAT COMING" still passes. A rating by its unit too ("A 600-POINT GAP?", "2100
+// RATED", 15 Oct 2026).
 export const HOOK_SEED_RANK_ELO =
-  /#\d+|\b\d+(?:st|nd|rd|th) seed\b|\blcq\b|\b\d{3,4}\b[^\d]+\b\d{3,4}\b|\belo\b|\btop seed\b|\btop\s+\d+\b|\bno\.\s*\d+|\bnumber\s*(?:\d+|one)\b|\brank(?:ed)?\s*#?\d+\b/i;
+  /\b\d{3,4}\s*-?\s*(?:points?|pts|rated)\b|#\d+|\b\d+(?:st|nd|rd|th) seed\b|\blcq\b|\b\d{3,4}\b[^\d]+\b\d{3,4}\b|\belo\b|\btop seed\b|\btop\s+\d+\b|\bno\.\s*\d+|\bnumber\s*(?:\d+|one)\b|\brank(?:ed)?\s*#?\d+\b/i;
 
 /**
  * Words that name a runner by race, ethnicity or nationality, or a slur-adjacent abbreviation of
