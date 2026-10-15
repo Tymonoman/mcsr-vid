@@ -63,7 +63,8 @@ export function anyUploadSessionFile(nowMs: number = Date.now()): boolean {
     try {
       const dir = matchDir(id);
       return readdirSync(dir).some(
-        (name) => UPLOAD_SESSION_RE.test(name) && nowMs - statSync(path.join(dir, name)).mtimeMs < SESSION_LIFE_MS,
+        (name) =>
+          UPLOAD_SESSION_RE.test(name) && nowMs - statSync(path.join(dir, name)).mtimeMs < SESSION_LIFE_MS,
       );
     } catch {
       // Deleted between the listing and the read — not a session file either way.
@@ -253,7 +254,7 @@ async function tick(): Promise<void> {
     console.error(`restart-when-idle: boot check failed, staying up — ${error.split("\n")[0]}`);
     // Left paused on purpose ("disarm"): hammering a failing tsc every 30 s would only spam the
     // log. armedAtMs stays set so the error keeps showing until a fresh POST (the code is fixed)
-    // or a DELETE (cancel) — the expiry timer below still clears it after 6 h either way.
+    // or a DELETE (cancel) — the expiry leaves it standing too (see armRestart).
     return;
   }
 
@@ -289,9 +290,19 @@ export function armRestart(overrides: Partial<ArmOptions> = {}): RestartState {
   lastError = undefined;
   startChecking();
   expireTimer = setTimeout(() => {
-    console.error(
-      `restart-when-idle: still not idle after ${Math.round(active.expireMs / 3_600_000)} h — the arm expired`,
-    );
+    const hours = Math.round(active.expireMs / 3_600_000);
+    if (lastError) {
+      // A failed boot check (or a broken signal) is the morning report's only word that a
+      // self-deploy never landed (`restartIdleHealth`): an evening arm is over 6 h old by 07:00
+      // Warsaw, so the expiry stops the poll and keeps the error until a fresh POST or a DELETE.
+      stopChecking();
+      expireTimer = null;
+      console.error(
+        `restart-when-idle: the arm expired after ${hours} h with its error standing — kept for the report`,
+      );
+      return;
+    }
+    console.error(`restart-when-idle: still not idle after ${hours} h — the arm expired`);
     disarmRestart();
   }, active.expireMs);
   expireTimer.unref?.();

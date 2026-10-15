@@ -53,6 +53,8 @@ async function deviation(clause: string, check: () => void | Promise<void>): Pro
 }
 
 const ID = 12730175; // edcr vs doogile, a real ranked match (src/fixtures)
+/** A match whose MCSR lookup fails (API down, a 429): its own id, so getMatch's cache never has it. */
+const DOWN_ID = 99_000_001;
 const fixture = readFileSync(new URL("../fixtures/match-12730175.json", import.meta.url), "utf8");
 const media = mkdtempSync(path.join(tmpdir(), "sync-routes-contract-"));
 config.mediaDir = media;
@@ -63,6 +65,8 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   const url = new URL(String(input instanceof Request ? input.url : input));
   if (url.hostname === "api.mcsrranked.com" && url.pathname === `/matches/${ID}`)
     return new Response(`{"status":"success","data":${fixture}}`);
+  if (url.hostname === "api.mcsrranked.com" && url.pathname === `/matches/${DOWN_ID}`)
+    throw new Error("MCSR API down");
   offline.push(String(url));
   throw new Error(`no network in a contract test: ${url}`);
 }) as typeof fetch;
@@ -78,7 +82,12 @@ interface Answer {
   headers: Record<string, string>;
   bytes: Buffer;
 }
-async function call(method: string, url: string, body = ""): Promise<Answer> {
+async function call(
+  method: string,
+  url: string,
+  body = "",
+  exportRunning: (matchId: number) => boolean = () => false,
+): Promise<Answer> {
   const out: Answer = { handled: false, status: 0, body: undefined, headers: {}, bytes: Buffer.alloc(0) };
   const res = {
     writeHead(status: number, headers: Record<string, string> = {}) {
@@ -99,6 +108,7 @@ async function call(method: string, url: string, body = ""): Promise<Answer> {
     readBody: async () => body,
     matchDir,
     parseId,
+    exportRunning,
   });
   return out;
 }
@@ -199,6 +209,46 @@ try {
     const r = await call("GET", `/api/sync/${ID}`);
     assert.equal(r.body.syncStale, false, "re-encoded after the fix: fresh");
     assert.equal(r.body.staleMessage, null);
+  }
+
+  // --- P8: a save while this match encodes is refused, not hidden ------------------------------
+  // export:fast reads sync.json at its start and renames its output at its end, so a save in
+  // between is older than the export and `exportStale` would call that export fresh.
+  {
+    const before = readFileSync(syncFilePath(dir), "utf8");
+    const r = await call("PUT", `/api/sync/${ID}`, JSON.stringify({ left: 1, right: 2 }), (id) => id === ID);
+    assert.equal(r.status, 409, "an encode of this match is running");
+    assert.match(r.body.error, /encode/);
+    assert.equal(readFileSync(syncFilePath(dir), "utf8"), before, "nothing written mid-encode");
+    // Another match's encode is no reason to refuse this one.
+    const other = await call(
+      "PUT",
+      `/api/sync/${ID}`,
+      JSON.stringify({ left: 153.25, right: 148.5 }),
+      (id) => id !== ID,
+    );
+    assert.equal(other.status, 200);
+    console.log("OK: a sync save while that match encodes is refused (409) and writes nothing");
+  }
+
+  // --- The left/right order is the API's: with the lookup down, refuse rather than guess -------
+  // sync.json's left is players[0] (edcr here); the down-API fallback is the clip names sorted
+  // alphabetically (doogile first), which would show and save each offset on the other's clip.
+  {
+    const downDir = matchDir(DOWN_ID);
+    mkdirSync(downDir, { recursive: true });
+    for (const nick of ["edcr", "doogile"]) writeFileSync(path.join(downDir, `${nick}.mp4`), "clip");
+    writeSyncOffsets(downDir, { left: 100, right: 200, confidence: 1, detail: "", source: "manual" });
+    const before = readFileSync(syncFilePath(downDir), "utf8");
+    const get = await call("GET", `/api/sync/${DOWN_ID}`);
+    assert.equal(get.status, 503, `no guessed sides: ${JSON.stringify(get.body)}`);
+    assert.match(get.body.error, /MCSR API/);
+    const frame = await call("GET", `/api/sync/frame?match=${DOWN_ID}&side=left&t=5`);
+    assert.equal(frame.status, 503, "no frame from a guessed clip");
+    const put = await call("PUT", `/api/sync/${DOWN_ID}`, JSON.stringify({ left: 200, right: 100 }));
+    assert.equal(put.status, 503, "no save against a guessed order");
+    assert.equal(readFileSync(syncFilePath(downDir), "utf8"), before, "sync.json untouched");
+    console.log("OK: with the MCSR lookup down the sync editor refuses (503) instead of guessing sides");
   }
 
   // --- P12 / P13: one frame out of a POV clip, at offset + (t - ANCHOR_SEC) --------------------

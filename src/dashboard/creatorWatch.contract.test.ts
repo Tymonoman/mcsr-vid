@@ -40,18 +40,6 @@ import {
   type CreatorWatchDeps,
 } from "./creatorWatch.js";
 
-const deviations: string[] = [];
-/** Keeps the docs' assertion as written; a mismatch is reported, not bent to the code. */
-function deviation(clause: string, check: () => void): void {
-  try {
-    check();
-  } catch (err) {
-    if (!(err instanceof assert.AssertionError)) throw err;
-    deviations.push(clause);
-    console.log(`DEVIATION: ${clause} — ${err.message.split("\n")[0]}`);
-  }
-}
-
 const scratch: string[] = [];
 function freshMedia(): string {
   const dir = mkdtempSync(path.join(tmpdir(), "mcsr-creatorwatch-contract-"));
@@ -247,13 +235,32 @@ try {
     );
     await creatorWatchTick(Date.parse("2026-10-14T00:05:00Z"), deps2);
     const creatorQueued = nightlyQueue().filter((id) => id === 5601 || id === 5603);
-    deviation("at most one creator match a night (CLAUDE.md Creator watch; handbook Creator watch)", () => {
-      assert.ok(
-        creatorQueued.length <= 1,
-        `two creator matches queued ahead of the same 03:00 UTC render: ${JSON.stringify(nightlyQueue())}`,
-      );
-    });
+    assert.ok(
+      creatorQueued.length <= 1,
+      `two creator matches queued ahead of the same 03:00 UTC render: ${JSON.stringify(nightlyQueue())}`,
+    );
+    assert.deepEqual(nightlyQueue(), [5601], "the first one keeps the night's slot");
     console.log("OK: C5 checked across UTC midnight");
+  }
+
+  /* --- C5: the night after a 00:00-03:00 claim is a new night, not "already queued" ------------ */
+  {
+    freshMedia();
+    config.creatorWatchlist = ["WatchedA"];
+    const { deps } = fakes({ WatchedA: [feedMatch(5701, "WatchedA", "NoNameA")] }, { 5701: true });
+    // 02:00 UTC: queued for the 03:00 render the same UTC day.
+    await creatorWatchTick(Date.parse("2026-10-14T02:00:00Z"), deps);
+    assert.deepEqual(nightlyQueue(), [5701]);
+    setNightlyQueue([]); // the 03:00 render took it off the queue
+    // 21:00 UTC, still 14 Oct: this one belongs to the 15 Oct 03:00 run, whose slot is free.
+    const { deps: deps2 } = fakes(
+      { WatchedA: [feedMatch(5701, "WatchedA", "NoNameA"), feedMatch(5702, "WatchedA", "NoNameB")] },
+      { 5702: true },
+    );
+    await creatorWatchTick(Date.parse("2026-10-14T21:00:00Z"), deps2);
+    assert.deepEqual(nightlyQueue(), [5702], "the next night's slot is not taken by last night's match");
+    assert.equal(readCreatorWatchState().hits.find((h) => h.matchId === 5702)?.queued, true);
+    console.log("OK: C5 a claim between 00:00 and 03:00 UTC does not take the next night's slot");
   }
 
   /* --- C6: defensive read, atomic write ----------------------------------------------------------- */
@@ -276,8 +283,6 @@ try {
     console.log("OK: C6 a corrupt state file is survived and rewritten atomically");
   }
 
-  if (deviations.length)
-    console.log(`creatorWatch.contract: ${deviations.length} deviation(s) noted for triage`);
   console.log("creatorWatch.contract: all checks passed");
 } finally {
   console.error = quiet;

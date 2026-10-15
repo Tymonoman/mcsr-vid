@@ -27,6 +27,7 @@ import type { FeedMatch } from "../api/types.js";
 import { withDiscoveredVods } from "../pipeline/vodDiscovery.js";
 import { hiddenMatchIds, nightlyQueue, setNightlyQueue } from "./matchShelf.js";
 import { listProcessedMatchIds } from "./matchStatus.js";
+import { nextScheduledRunDateUtc } from "./nightly.js";
 
 /** `type` 2 is ranked (`RecentMatchQuery`'s own comment) — the only kind this feature watches. */
 const RANKED_TYPE = 2;
@@ -54,7 +55,7 @@ export interface CreatorWatchState {
   /** Nickname -> ISO 8601 UTC of the last time its match list was read. */
   checked: Record<string, string>;
   hits: CreatorWatchHit[];
-  /** UTC calendar date (YYYY-MM-DD) the one creator match queued "tonight" was claimed on. */
+  /** The nightly run (its UTC date, YYYY-MM-DD) the one creator match queued "tonight" is for. */
   queuedOn: string | null;
 }
 
@@ -135,7 +136,13 @@ export function isWatchCandidate(
   );
 }
 
-const utcDate = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
+/**
+ * The night a match queued now renders on: the next nightly run's UTC date, so 23:50 and 00:05
+ * share the 03:00 run and 21:00 belongs to the next one. A disabled nightly falls back to the
+ * calendar date.
+ */
+const nightOf = (ms: number): string =>
+  nextScheduledRunDateUtc(ms) ?? new Date(ms).toISOString().slice(0, 10);
 
 export interface CreatorWatchDeps {
   /** A nickname's few most recent ranked matches, newest first — `getUserMatches`'s own shape. */
@@ -208,7 +215,7 @@ export async function creatorWatchTick(
     const seen = new Set(state.hits.map((h) => h.matchId));
     const processed = new Set(listProcessedMatchIds());
     const hidden = hiddenMatchIds();
-    let queuedTonight = state.queuedOn === utcDate(nowMs);
+    let queuedTonight = state.queuedOn === nightOf(nowMs);
     let changed = false;
     const nowIso = new Date(nowMs).toISOString();
 
@@ -279,7 +286,7 @@ export async function creatorWatchTick(
 
           setNightlyQueue([m.id, ...nightlyQueue().filter((id) => id !== m.id)]);
           queuedTonight = true;
-          state.queuedOn = utcDate(nowMs);
+          state.queuedOn = nightOf(nowMs);
           state.hits.push({ matchId: m.id, nick, players, at: nowIso, queued: true });
         } catch (err) {
           // Anything else — isWatchCandidate or the player-name mapping, on a feed shape this
