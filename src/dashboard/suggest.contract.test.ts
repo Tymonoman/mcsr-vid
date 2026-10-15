@@ -67,7 +67,7 @@ globalThis.fetch = (async (input: string | URL | Request) => {
     const m = [...feed, ...Object.values(ownLists).flat()].find((x) => x.id === Number(detail[1]));
     return m ? ok(m) : { ok: false, status: 404, statusText: "Not Found", json: async () => ({}) };
   }
-  if (route.includes("/versus/")) return ok({ results: { ranked: {} } });
+  if (route.includes("/versus/")) return ok([]);
   const own = /^\/users\/([^/]+)\/matches/.exec(route);
   if (own) return ok(ownLists[decodeURIComponent(own[1]!).toLowerCase()] ?? []);
   throw new Error(`unexpected MCSR call ${url}`);

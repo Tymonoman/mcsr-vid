@@ -1,7 +1,8 @@
 // getMatch's TTL cache, against a stubbed global fetch as playlist.test.ts does — never the
 // network. Run: npx tsx src/mcsrApi.test.ts
 import assert from "node:assert/strict";
-import { getMatch, withoutGhostPlayers } from "./mcsrApi.js";
+import { getMatch, getVersus, withoutGhostPlayers } from "./mcsrApi.js";
+import { h2hWinsBefore } from "../pipeline/overlayProps.js";
 import type { MatchInfo } from "./types.js";
 
 let calls = 0;
@@ -80,3 +81,52 @@ assert.deepEqual(
   "the winner stays even with no timeline",
 );
 console.log("mcsrApi: ghost players ok");
+
+/* --- getVersus: the pair's season up to this match, never the games played after it --------- */
+{
+  // 250 ranked games in season 12 (ids 1001..1250, "a" wins the odd ones), plus a private room;
+  // the stub serves the list the way the API does: newest first, `before` exclusive, ≤`count`.
+  const games = Array.from({ length: 250 }, (_, i) => ({
+    id: 1001 + i,
+    type: 2,
+    season: 12,
+    result: { uuid: i % 2 === 0 ? "a" : "b", time: 1 },
+  }));
+  const asked: string[] = [];
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = new URL(String(input));
+    asked.push(url.pathname + url.search);
+    assert.equal(url.pathname, "/users/a/versus/b/matches");
+    assert.equal(url.searchParams.get("type"), "2");
+    assert.equal(url.searchParams.get("season"), "12");
+    const before = Number(url.searchParams.get("before"));
+    const count = Number(url.searchParams.get("count"));
+    const data = games
+      .filter((g) => g.id < before)
+      .reverse()
+      .slice(0, count);
+    return new Response(JSON.stringify({ status: "success", data }));
+  }) as typeof fetch;
+
+  // The pair's first meeting, "a" won it — and they have played 249 more since.
+  const first = { id: 1001, season: 12, type: 2, result: { uuid: "a", time: 1 } } as MatchInfo;
+  const v1 = await getVersus("a", "b", first);
+  assert.deepEqual(v1.results.ranked, { total: 1, a: 1 }, "counts this match, nothing after it");
+  assert.equal(h2hWinsBefore(v1, first, "a"), 0);
+  assert.equal(h2hWinsBefore(v1, first, "b"), 0, "a first meeting reads 0-0 however many rematches since");
+  assert.equal(asked[0], "/users/a/versus/b/matches?type=2&count=100&before=1002&season=12");
+
+  // Game 230 ("b" won it, an even index): 115-114 going in. Three pages of 100, 100, 30.
+  asked.length = 0;
+  const later = { id: 1230, season: 12, type: 2, result: { uuid: "b", time: 1 } } as MatchInfo;
+  const v2 = await getVersus("a", "b", later);
+  assert.equal(v2.results.ranked.total, 230);
+  assert.equal(h2hWinsBefore(v2, later, "a"), 115);
+  assert.equal(h2hWinsBefore(v2, later, "b"), 114);
+  assert.equal(asked.length, 3, "pages past the API's 100-a-request ceiling");
+  assert.ok(
+    asked[1]!.includes("before=1131") && asked[2]!.includes("before=1031"),
+    "each page from the last one's oldest id",
+  );
+  console.log("OK: getVersus counts the season up to this match, paged, never the rematches after it");
+}

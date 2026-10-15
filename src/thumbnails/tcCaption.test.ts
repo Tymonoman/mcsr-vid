@@ -72,9 +72,11 @@ assert.equal(shortenHookChip("Can a 45-second lead survive?"), "0:45 LEAD", "M:S
 assert.equal(shortenHookChip("Can a 8-second lead survive?"), "0:08 LEAD");
 assert.equal(shortenHookChip("4 deaths and still this close"), "4 DEATHS");
 assert.equal(shortenHookChip("Not a single death between them"), "0 DEATHS");
-assert.equal(shortenHookChip("Rematch: left leads 19-7"), "19-7 REMATCH");
-assert.equal(shortenHookChip("Rematch: 3-3 all time"), "3-3 REMATCH");
-assert.equal(shortenHookChip("Their first 1v1"), "FIRST 1V1");
+assert.equal(shortenHookChip("Rematch: left leads 19-7 this season"), "19-7 REMATCH");
+assert.equal(shortenHookChip("Rematch: 3-3 this season"), "3-3 REMATCH");
+// A season's 0-0 is no lifetime first: "FIRST 1V1" would be false for a pair with 40 games last season.
+assert.equal(shortenHookChip("Their first 1v1 this season"), null);
+assert.equal(shortenHookChip("Their first 1v1"), null, "the old lifetime wording is no template any more");
 assert.equal(shortenHookChip("It ended in a forfeit"), "A FORFEIT");
 assert.equal(shortenHookChip("One of them never killed the dragon"), "NO DRAGON KILL");
 assert.equal(shortenHookChip("THE DUALITY OF MAN"), null, "freeform prose has no known template");
@@ -91,14 +93,13 @@ for (const hook of [
   "Can a 45-second lead survive?",
   "4 deaths and still this close",
   "Not a single death between them",
-  "Their first 1v1",
   "It ended in a forfeit",
 ]) {
   const short = shortenHookChip(hook)!;
   assert.ok(short.length <= CAPTION_MAX_CHARS, `"${short}" (from "${hook}") is ${short.length} chars`);
 }
 assert.ok(
-  shortenHookChip("Rematch: left leads 19-7")!.length > CAPTION_MAX_CHARS,
+  shortenHookChip("Rematch: left leads 19-7 this season")!.length > CAPTION_MAX_CHARS,
   "a rematch token is legitimately over budget and must be skipped, not shortened further",
 );
 assert.ok(shortenHookChip("One of them never killed the dragon")!.length > CAPTION_MAX_CHARS);
@@ -144,7 +145,7 @@ assert.equal(
 // A denied label never reaches a caption, even shortened past recognition — the check runs on
 // the shortened text, not just the source chip, so this is a real regression guard rather than
 // a restatement of hookLabelProblem's own test.
-assert.equal(shortenHookChip("Rematch: left leads 19-7"), "19-7 REMATCH");
+assert.equal(shortenHookChip("Rematch: left leads 19-7 this season"), "19-7 REMATCH");
 assert.equal(pickCaption(input({ panelLeadChanges: 3 }), players)?.checks.hookLabelProblem, null);
 
 console.log("tcCaption: all checks passed");

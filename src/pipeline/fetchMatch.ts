@@ -18,7 +18,7 @@ if (match.vod.length < 2) {
 const [userA, userB, versus] = await Promise.all([
   getUser(playerA.uuid),
   getUser(playerB.uuid),
-  getVersus(playerA.uuid, playerB.uuid, match.season),
+  getVersus(playerA.uuid, playerB.uuid, match),
 ]);
 
 console.log(

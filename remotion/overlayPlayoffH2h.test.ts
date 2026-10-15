@@ -19,4 +19,13 @@ assert.ok(guard >= 0 && guard < label, "the head-to-head sits behind the playoff
 // Nothing closes the guard between it and the value span.
 assert.ok(!overlay.slice(guard, value).includes(")}"), "the guard wraps both the label and the value");
 
+// The head-to-head is one season's record (getVersus; the API keeps no all-time one), so both
+// places that show it say so: a 0-0 "First meeting" under a bare "Head to head" read as never,
+// for a pair with 40 games the season before (15 Oct 2026).
+const intro = readFileSync(new URL("./Intro.tsx", import.meta.url), "utf8");
+const introH2h = intro.slice(intro.indexOf("function H2H("), intro.indexOf("function VersusSide("));
+assert.match(introH2h, /className="lbl">This season</, "the intro's head-to-head says this season");
+assert.match(overlay, /Head-to-Head \(Season\)/, "the band's head-to-head says season");
+console.log("OK: the head-to-head says it is this season's, on the intro and the band");
+
 console.log("overlayPlayoffH2h: all checks passed");

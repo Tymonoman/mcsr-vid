@@ -516,7 +516,15 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
 - **Hook chips** (`src/pipeline/hooks.ts`) lead with the match's stake — the margin, a lead change, a
   death — and put the nickname and "Rematch: X leads N-M" chips after them (1 Oct 2026: the early
   9.36%-vs-2.25% CTR reading was 4,590 impressions; at 126,745 it was 2.77% against 2.59%, a wash, and
-  the rematch record can already include the match itself). The pick prompt labels the operator's past
+  the rematch record can already include the match itself). **The head-to-head is one season's**
+  (`getVersus`, `src/api/mcsrApi.ts`): the API keeps no all-time record (`?season=0` is a 400), and
+  its `/versus` total is the season as it stands when read, so a match rendered after a rematch
+  counted the later games as "before" it. Since 15 Oct 2026 it is tallied from the pair's ranked
+  list in the match's season up to and including the match (`h2hWinsBefore` takes the match's own
+  result off), and every surface says "season": the chips read "Rematch: X leads N-M this season"
+  and "Their first 1v1 this season", the intro card "THIS SEASON" over the record or "FIRST
+  MEETING", the band "Head-to-Head (Season)", and the Test & Compare caption has no "FIRST 1V1"
+  (0-0 this season can be 40 games the season before). The pick prompt labels the operator's past
   hooks by register (stake, question, rivalry) and says stake is preferred. A typed hook that reuses a
   nickname an earlier uploaded title gave another player ("TAS" stood for doogile) comes back with a
   warning in `saveWarnings` — one nickname per player; the post-mortem of 30 Sept 2026 found "TAS" on
@@ -1884,6 +1892,10 @@ sits beside the match directories without the dashboard ever seeing it.
 
 `src/api/twitchChat.ts` fetches a VOD's chat through Twitch's web GQL persisted query without a
 login, paging by **offset** — the cursor fails Twitch's integrity check without a browser token.
+An offset is whole seconds, so a second busier than one page (~15 messages) loses the rest of that
+second and the walk steps on to the next; before 15 Oct 2026 it stopped there, and five saved chats
+(13331666, 13332163, 13335355, 13528697, 13531248) end 33–61 s early, on a burst before the finish.
+`saveChats` never refetches an existing `chat-<nick>.json`.
 The pipeline saves it after `download-vods` and the Short scorer reads it. `remotion/ChatPanel.tsx`
 renders it; where it sits in the frame is the operator's call, and nothing is wired into
 `src/pipeline/pipeline.ts` until then.

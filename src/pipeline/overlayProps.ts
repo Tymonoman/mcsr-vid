@@ -68,9 +68,9 @@ export function eloAtMatchStart(match: MatchInfo, uuid: string, liveElo: number 
 }
 
 /**
- * Ranked wins between the two before this match, for the head-to-head: the API's record is read
- * after the match, so it already counts this one. A draw and a private-room game (never in the
- * ranked count) take nothing off.
+ * Ranked wins between the two earlier in this match's season, for the head-to-head: `getVersus`
+ * counts up to and including this match, so this one comes off. A draw and a private-room game
+ * (never in the ranked count) take nothing off.
  */
 export const h2hWinsBefore = (versus: VersusStats, match: MatchInfo, uuid: string): number =>
   Math.max(

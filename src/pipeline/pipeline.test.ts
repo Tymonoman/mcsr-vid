@@ -34,7 +34,7 @@ globalThis.fetch = (async (input: string | URL | Request) => {
     });
   }
   if (url.endsWith("/playoffs/11")) return new Response("upstream", { status: 503, statusText: "Service Unavailable" });
-  if (url.includes("/versus/")) return ok({ results: { ranked: {}, casual: {} } });
+  if (url.includes("/versus/")) return ok([]);
   if (/\/users\/[cd]$/.test(url)) return ok({ uuid: url.slice(-1), nickname: url.slice(-1) });
   if (!url.endsWith("/matches/999")) throw new Error(`unexpected fetch ${url}`);
   const players = [
@@ -75,7 +75,7 @@ assert.ok(!existsSync(matchDir(999)), "match directory not created");
   await assert.rejects(runPipeline("998", { onEvent }), /\/playoffs\/11 -> 503/);
   assert.ok(!existsSync(matchDir(998)), "nothing written for the match");
   // The head-to-head is the match's own season's, not whatever season is current at render time.
-  assert.ok(fetched.some((u) => u.endsWith("/users/c/versus/d?season=12")), "versus read for season 12");
+  assert.ok(fetched.some((u) => u.endsWith("/users/c/versus/d/matches?type=2&count=100&before=999&season=12")), "versus read for season 12");
 }
 
 console.log("pipeline.test: ok");

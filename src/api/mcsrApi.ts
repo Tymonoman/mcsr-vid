@@ -143,17 +143,33 @@ export function getUser(identifier: string): Promise<UserDetails> {
 }
 
 /**
- * Two players' record against each other in one season: the current one unless `season` is
- * given, which a past match needs or it reads a record played entirely after it.
+ * Two players' ranked record against each other in `match`'s season, up to and including
+ * `match` (`h2hWinsBefore` takes its own result off). Tallied from the pair's match list, not
+ * `/versus`'s season total: that total is the season as it stands when read, so a match rendered
+ * after a rematch counted the later games as "before" it. One season only: the API has no
+ * all-seasons record, so whatever shows this says "this season".
  */
-export function getVersus(
+export async function getVersus(
   identifier1: string,
   identifier2: string,
-  season?: number | null,
+  match: Pick<MatchInfo, "id" | "season">,
 ): Promise<VersusStats> {
-  return getJson<VersusStats>(
-    `/users/${encodeURIComponent(identifier1)}/versus/${encodeURIComponent(identifier2)}${season ? `?season=${season}` : ""}`,
-  );
+  const ranked: VersusStats["results"]["ranked"] = { total: 0 };
+  // `before` is exclusive; 100 a page is the API's ceiling.
+  for (let before = match.id + 1; ;) {
+    const page = await getJson<FeedMatch[]>(
+      `/users/${encodeURIComponent(identifier1)}/versus/${encodeURIComponent(identifier2)}/matches?type=2&count=100&before=${before}${match.season ? `&season=${match.season}` : ""}`,
+    );
+    for (const m of page) {
+      ranked.total++;
+      if (m.result?.uuid) ranked[m.result.uuid] = (ranked[m.result.uuid] ?? 0) + 1;
+    }
+    const oldest = page[page.length - 1]?.id ?? before;
+    // A full page that did not move back (an API that ignored `before`) must not loop forever.
+    if (page.length < 100 || oldest >= before) break;
+    before = oldest;
+  }
+  return { players: [], results: { ranked, casual: { total: 0 } }, changes: {} };
 }
 
 /**

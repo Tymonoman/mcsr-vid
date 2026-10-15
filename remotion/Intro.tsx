@@ -44,12 +44,16 @@ const rankText = (pl: PlayerIdentity) => pl.seed ?? (pl.eloRank != null ? `#${pl
 const fitPx = (name: string, max: number, width: number) =>
   Math.min(max, Math.floor(width / (Math.max(name.length, 1) * 0.68)));
 
-/** The lifetime head-to-head; 0–0 says "first meeting". A playoff game shows none (it would read as the series score). */
+/**
+ * This season's head-to-head (`getVersus` is one season's record; the API keeps no all-time one),
+ * so 0–0 is a first meeting this season, not ever. A playoff game shows none (it would read as
+ * the series score).
+ */
 function H2H({ p }: { p: OverlayProps }) {
   const { h2hLeftWins: l, h2hRightWins: r } = p;
   return (
     <div className="iv-vs-h2h">
-      <span className="lbl">Head to head</span>
+      <span className="lbl">This season</span>
       {l === 0 && r === 0 ? (
         <span className="first">First meeting</span>
       ) : (

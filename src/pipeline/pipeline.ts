@@ -180,7 +180,7 @@ async function runStages(
   const [userLeft, userRight, versus, playoff] = await Promise.all([
     getUser(playerLeft.uuid),
     getUser(playerRight.uuid),
-    getVersus(playerLeft.uuid, playerRight.uuid, match.season),
+    getVersus(playerLeft.uuid, playerRight.uuid, match),
     // Resolved here, first, because every later `eloAtMatchStart` answers from it: a playoff
     // game has no elo changes, and the bracket's frozen rating is the one the broadcast shows.
     // Strict: a bracket read that fails (429/503) fails the stage for a retry, rather than

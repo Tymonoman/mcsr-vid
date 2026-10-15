@@ -600,10 +600,13 @@ try {
       }
       if (u.includes("/users/") && u.includes("/versus/")) {
         versusUrls.push(u);
-        // Read after the match, so it already counts this one: their first meeting, u1 won it.
+        // The pair's list up to and including this match: their first meeting, u1 won it.
         return {
           ok: true,
-          json: async () => ({ status: "success", data: { results: { ranked: { u1: 1 } } } }),
+          json: async () => ({
+            status: "success",
+            data: [{ id: 555, type: 2, season: 9, result: { uuid: "u1", time: 1 } }],
+          }),
         };
       }
       if (u.includes("/users/doogile/matches")) {
@@ -625,7 +628,7 @@ try {
     console.log("OK: a match already in countedMatchIds still gets offered to the pool");
     // The card's h2h is the record before this match, in its own season: a first meeting is 0-0
     // (no "rematch 0–1" line naming the winner), not the current season's record.
-    assert.ok(versusUrls.length > 0 && versusUrls.every((u) => u.endsWith("?season=9")), versusUrls.join());
+    assert.ok(versusUrls.length > 0 && versusUrls.every((u) => u.endsWith("before=556&season=9")), versusUrls.join());
     assert.deepEqual(savedAfter.pool["555"].h2h, { leftWins: 0, rightWins: 0 });
     console.log("OK: a pooled h2h is the match's own season, before the match");
   }

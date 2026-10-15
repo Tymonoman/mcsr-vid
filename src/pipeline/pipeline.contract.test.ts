@@ -48,6 +48,7 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   if (url.hostname === "api.mcsrranked.com") {
     if (url.pathname === `/matches/${ID}`) return new Response(`{"status":"success","data":${fixture}}`);
     // getUser / getVersus: the render's data, not the sync stage's — any well-formed answer.
+    if (url.pathname.includes("/versus/")) return new Response('{"status":"success","data":[]}');
     if (url.pathname.startsWith("/users/")) return new Response('{"status":"success","data":{}}');
   }
   offline.push(String(url));

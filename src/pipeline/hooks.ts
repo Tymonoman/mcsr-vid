@@ -133,10 +133,10 @@ function secondsPhrase(ms: number): string {
  * that keeps changing, a real death — is the register the operator's own hooks are written in
  * ("58 MILLISECONDS", "WHO BLINKS FIRST?"). The reading that put the two nicknames first, 9.36%
  * CTR against 2.25% for descriptive hooks, was 4,590 subscriber-heavy impressions; over 126,745
- * on 15 Sept it was 2.77% against 2.59%, a wash. The rematch line also reads the all-time record,
- * which can already include this very match. So every stake chip sits above both head-to-head
+ * on 15 Sept it was 2.77% against 2.59%, a wash. So every stake chip sits above both head-to-head
  * chips, down to "not a single death", and a rivalry reaches the top of the list only when the
- * match has no stake to state.
+ * match has no stake to state. Both say "this season": `getVersus` is one season's record, the
+ * API keeps no all-time one, and 0-0 this season can be 40 games last season.
  *
  * Within the stake band the old order stands: a photo finish beats a lead change beats a death
  * count. "One of them never killed the dragon" is last of all, under the head-to-head chips:
@@ -161,11 +161,12 @@ function candidates(input: HookInput): Candidate[] {
       const hi = Math.max(leftWins, rightWins);
       const lo = Math.min(leftWins, rightWins);
       out.push({
-        text: hi === lo ? `Rematch: ${hi}-${lo} all time` : `Rematch: ${leader} leads ${hi}-${lo}`,
+        text:
+          hi === lo ? `Rematch: ${hi}-${lo} this season` : `Rematch: ${leader} leads ${hi}-${lo} this season`,
         weight: 35,
       });
     } else if (leftWins === 0 && rightWins === 0) {
-      out.push({ text: "Their first 1v1", weight: 30 });
+      out.push({ text: "Their first 1v1 this season", weight: 30 });
     }
   }
 
