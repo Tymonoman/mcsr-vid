@@ -132,6 +132,7 @@ globalThis.fetch = (async (input: string | URL | Request) => {
       const match = served.get(Number(m[1]));
       return match ? ok(match) : new Response("{}", { status: 404, statusText: "Not Found" });
     }
+    if (/^\/users\/[^/]+\/versus\/[^/]+\/matches$/.test(u.pathname)) return ok([]); // no meeting since
     if ((m = /^\/users\/([^/]+)\/versus\/([^/]+)$/.exec(u.pathname))) {
       const versus: VersusStats = {
         players: [users.get(m[1]!)!, users.get(m[2]!)!],

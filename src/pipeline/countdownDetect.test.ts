@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  detectCountdownDigits,
   detectMatchStartAny,
   findCountdownOnset,
   findMatchStartIndex,
@@ -414,6 +415,37 @@ if (spawnSync("ffmpeg", ["-version"]).status !== 0) {
         `estimate ${estimate}: a full countdown is trusted, got ${r.confidence}`,
       );
     }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+if (spawnSync("ffmpeg", ["-version"]).status !== 0) {
+  console.log("SKIP: weak near countdown vs an earlier one in the pre-roll (no ffmpeg on PATH)");
+} else {
+  // The real countdown at the estimate with its end hidden (a menu on the "4": six digits,
+  // untrusted on its own), and a full countdown 70 s earlier in the pre-roll (a private-room
+  // reset). The ±150 s look sees both; its reading is a different countdown, so it must not
+  // replace the near one. Before, the earlier one won and 0:00 landed 70 s early, trusted.
+  const dir = mkdtempSync(path.join(tmpdir(), "countdown-"));
+  const clip = path.join(dir, "two.mp4");
+  const font = fileURLToPath(new URL("../../remotion/assets/fonts/Monocraft-Bold.ttf", import.meta.url));
+  const digit = (endSec: number, from: number, to: number) =>
+    `drawtext=fontfile=${font}:fontsize=20:fontcolor=white:text='%{eif\\:ceil(${endSec}-t)\\:d}':` +
+    `x=(w-text_w)/2:y=h*0.48-text_h/2:enable='gte(t,${from})*lt(t,${to})'`;
+  try {
+    execFileSync("ffmpeg", [
+      "-v", "error", "-y",
+      "-f", "lavfi", "-i", "color=c=0x505050:s=320x180:r=10:d=120",
+      "-vf", `format=yuv420p,${digit(30, 20, 30)},${digit(100, 90, 96)}`,
+      "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1", clip,
+    ]); // prettier-ignore
+    const r = await detectCountdownDigits(clip, 100);
+    assert.ok(
+      r.matchStartSec !== null && Math.abs(r.matchStartSec - 100) <= 0.5,
+      `the near countdown stands: expected 0:00 near 100 s, got ${r.matchStartSec} (${r.detail})`,
+    );
+    assert.ok(r.confidence < 0.3, `a hidden-end fragment stays untrusted, got ${r.confidence}`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

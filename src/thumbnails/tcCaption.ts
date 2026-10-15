@@ -57,8 +57,9 @@ export function shortenHookChip(hook: string): string | null {
   if ((m = h.match(/^(\d+) deaths and still this close$/i))) return `${m[1]} DEATHS`;
   if (/^Not a single death between them$/i.test(h)) return "0 DEATHS";
   if ((m = h.match(/^Rematch: .+ leads (\d+)-(\d+)$/i))) return `${m[1]}-${m[2]} REMATCH`;
-  if ((m = h.match(/^Rematch: (\d+)-(\d+) all time$/i))) return `${m[1]}-${m[2]} REMATCH`;
-  if (/^Their first 1v1$/i.test(h)) return "FIRST 1V1";
+  if ((m = h.match(/^Rematch: (\d+)-(\d+) this season$/i))) return `${m[1]}-${m[2]} REMATCH`;
+  // "Their first 1v1 this season" has no short form: a bare "FIRST 1V1" claims every season, and
+  // a pair that met in an earlier one would wear a false caption — dropped.
   if (/^It ended in a forfeit$/i.test(h)) return "A FORFEIT";
   if (/^One of them never killed the dragon$/i.test(h)) return "NO DRAGON KILL";
   return null;

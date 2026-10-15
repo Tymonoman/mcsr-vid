@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 /**
@@ -39,7 +39,12 @@ export function writeSyncOffsets(matchDir: string, offsets: SyncOffsets): void {
   // Same decision, same file: a rewrite would move the mtime `exportStale` reads and refuse an
   // export whose clip placement never changed (a re-render of an exported match).
   if (existsSync(file) && readFileSync(file, "utf8") === text) return;
+  // Same placement, new wording (a second Save of the same numbers reads "replacing manual"):
+  // the text is written and the old mtime put back, since the clips did not move.
+  const before = readSyncOffsets(matchDir);
+  const kept = before?.left === offsets.left && before.right === offsets.right ? statSync(file) : null;
   writeFileSync(file, text);
+  if (kept) utimesSync(file, kept.atime, kept.mtime);
 }
 
 /** Null when the file is missing, unparsable, or does not carry two usable offsets. */

@@ -600,6 +600,8 @@ try {
       }
       if (u.includes("/users/") && u.includes("/versus/")) {
         versusUrls.push(u);
+        // No meeting since this one (getVersus's later-meetings read).
+        if (u.includes("/matches?")) return { ok: true, json: async () => ({ status: "success", data: [] }) };
         // Read after the match, so it already counts this one: their first meeting, u1 won it.
         return {
           ok: true,
@@ -625,7 +627,7 @@ try {
     console.log("OK: a match already in countedMatchIds still gets offered to the pool");
     // The card's h2h is the record before this match, in its own season: a first meeting is 0-0
     // (no "rematch 0–1" line naming the winner), not the current season's record.
-    assert.ok(versusUrls.length > 0 && versusUrls.every((u) => u.endsWith("?season=9")), versusUrls.join());
+    assert.ok(versusUrls.length > 0 && versusUrls.every((u) => /[?&]season=9(&|$)/.test(u)), versusUrls.join());
     assert.deepEqual(savedAfter.pool["555"].h2h, { leftWins: 0, rightWins: 0 });
     console.log("OK: a pooled h2h is the match's own season, before the match");
   }

@@ -137,7 +137,7 @@ async function readHookSuggestions(
       getUser(right.uuid),
       // The head-to-head record, for the rematch opener. Its own catch: it is the one fact here
       // that only feeds a single chip, so losing it must not cost the other suggestions.
-      getVersus(left.uuid, right.uuid, match.season).catch(() => undefined),
+      getVersus(left.uuid, right.uuid, match.season, match.id).catch(() => undefined),
     ]);
     const input = {
       metrics: computeMetrics(match),

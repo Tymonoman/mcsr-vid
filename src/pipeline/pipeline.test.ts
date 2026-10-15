@@ -34,7 +34,7 @@ globalThis.fetch = (async (input: string | URL | Request) => {
     });
   }
   if (url.endsWith("/playoffs/11")) return new Response("upstream", { status: 503, statusText: "Service Unavailable" });
-  if (url.includes("/versus/")) return ok({ results: { ranked: {}, casual: {} } });
+  if (url.includes("/versus/")) return ok(url.includes("/matches?") ? [] : { results: { ranked: {}, casual: {} } });
   if (/\/users\/[cd]$/.test(url)) return ok({ uuid: url.slice(-1), nickname: url.slice(-1) });
   if (!url.endsWith("/matches/999")) throw new Error(`unexpected fetch ${url}`);
   const players = [

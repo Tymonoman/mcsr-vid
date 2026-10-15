@@ -73,8 +73,10 @@ assert.equal(shortenHookChip("Can a 8-second lead survive?"), "0:08 LEAD");
 assert.equal(shortenHookChip("4 deaths and still this close"), "4 DEATHS");
 assert.equal(shortenHookChip("Not a single death between them"), "0 DEATHS");
 assert.equal(shortenHookChip("Rematch: left leads 19-7"), "19-7 REMATCH");
-assert.equal(shortenHookChip("Rematch: 3-3 all time"), "3-3 REMATCH");
-assert.equal(shortenHookChip("Their first 1v1"), "FIRST 1V1");
+assert.equal(shortenHookChip("Rematch: 3-3 this season"), "3-3 REMATCH");
+// The record is one season's: "FIRST 1V1" would claim every season, so the chip has no caption.
+assert.equal(shortenHookChip("Their first 1v1 this season"), null);
+assert.equal(shortenHookChip("Their first 1v1"), null);
 assert.equal(shortenHookChip("It ended in a forfeit"), "A FORFEIT");
 assert.equal(shortenHookChip("One of them never killed the dragon"), "NO DRAGON KILL");
 assert.equal(shortenHookChip("THE DUALITY OF MAN"), null, "freeform prose has no known template");
@@ -91,7 +93,6 @@ for (const hook of [
   "Can a 45-second lead survive?",
   "4 deaths and still this close",
   "Not a single death between them",
-  "Their first 1v1",
   "It ended in a forfeit",
 ]) {
   const short = shortenHookChip(hook)!;

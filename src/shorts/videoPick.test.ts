@@ -718,6 +718,13 @@ assert.equal(hookProblem("Who wins this one?"), "it gives the result away");
   );
   // Nor does the pace idiom mid-line: only a leading "A sub-N to win it" is the stake (14 Oct 2026).
   assert.equal(hookProblem("EDCR GOES SUB-8 TO WIN IT", undefined, players), "it gives the result away");
+  // ...nor with the name after it: the idiom is exempt only as the whole segment (15 Oct 2026).
+  for (const named of ["A SUB-8 TO WIN IT FOR DOOGILE", "A SUB-8 TO WIN IT: DOOGILE'S RUN"])
+    assert.equal(hookProblem(named, 100, players), "it gives the result away", named);
+  for (const pace of ["A SUB-8 TO WIN IT!", "A sub-8 to win it."])
+    assert.equal(hookProblem(pace, 100, players), null, pace);
+  // A lone elo, no "elo" after it: the pick prompt carries each player's (15 Oct 2026).
+  assert.equal(hookProblem("CAN ANYONE STOP THE 2400?"), "it uses a seed, rank or elo");
 }
 console.log('OK: hookProblem allows "to win it" (a stake) while still refusing "who wins" (a result)');
 

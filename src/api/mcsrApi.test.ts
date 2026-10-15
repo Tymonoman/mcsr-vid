@@ -1,7 +1,7 @@
 // getMatch's TTL cache, against a stubbed global fetch as playlist.test.ts does — never the
 // network. Run: npx tsx src/mcsrApi.test.ts
 import assert from "node:assert/strict";
-import { getMatch, withoutGhostPlayers } from "./mcsrApi.js";
+import { getMatch, getVersus, withoutGhostPlayers } from "./mcsrApi.js";
 import type { MatchInfo } from "./types.js";
 
 let calls = 0;
@@ -80,3 +80,34 @@ assert.deepEqual(
   "the winner stays even with no timeline",
 );
 console.log("mcsrApi: ghost players ok");
+
+/* --- getVersus(…, matchId): the record as it stood after the match, not at render time ------- */
+{
+  // A beat B on 1 Oct (their first meeting), B beat A on 3 Oct; rendered 5 Oct the API says 1-1.
+  const asked: string[] = [];
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = String(input);
+    asked.push(url);
+    const data = url.includes("/users/A/versus/B/matches?")
+      ? [{ id: 12, type: 2, result: { uuid: "B", time: 500_000 } }]
+      : { results: { ranked: { total: 2, A: 1, B: 1 }, casual: { total: 0 } } };
+    return new Response(JSON.stringify({ status: "success", data }));
+  }) as typeof fetch;
+  const before = await getVersus("A", "B", 12, 11);
+  assert.deepEqual(
+    [before.results.ranked.A, before.results.ranked.B],
+    [1, 0],
+    "the 3 Oct rematch is not in the 1 Oct match's record",
+  );
+  assert.ok(
+    asked.some((u) => /\/users\/A\/versus\/B\/matches\?.*after=11/.test(u) && /season=12/.test(u)),
+    asked.join(" "),
+  );
+  const now = await getVersus("A", "B", 12);
+  assert.deepEqual(
+    [now.results.ranked.A, now.results.ranked.B],
+    [1, 1],
+    "no match id: the record as it stands",
+  );
+  console.log("OK: getVersus with a match id leaves out the meetings played after it");
+}

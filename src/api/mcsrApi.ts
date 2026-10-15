@@ -144,16 +144,33 @@ export function getUser(identifier: string): Promise<UserDetails> {
 
 /**
  * Two players' record against each other in one season: the current one unless `season` is
- * given, which a past match needs or it reads a record played entirely after it.
+ * given, which a past match needs or it reads a record played entirely after it. With `matchId`,
+ * the ranked record as it stood once that match was over: the API counts every meeting up to
+ * now, and a render days later would count a rematch played since (a first meeting, rendered
+ * after the loser won the next one, read "0-1"). `h2hWinsBefore` then takes the match itself off.
  */
-export function getVersus(
+export async function getVersus(
   identifier1: string,
   identifier2: string,
   season?: number | null,
+  matchId?: number,
 ): Promise<VersusStats> {
-  return getJson<VersusStats>(
-    `/users/${encodeURIComponent(identifier1)}/versus/${encodeURIComponent(identifier2)}${season ? `?season=${season}` : ""}`,
-  );
+  const pair = `/users/${encodeURIComponent(identifier1)}/versus/${encodeURIComponent(identifier2)}`;
+  const [versus, later] = await Promise.all([
+    getJson<VersusStats>(`${pair}${season ? `?season=${season}` : ""}`),
+    // ponytail: one page of 100 later meetings; page on `after` if a pair ever outplays that
+    // between a match and its render.
+    matchId === undefined
+      ? []
+      : getJson<FeedMatch[]>(
+          `${pair}/matches?type=2&count=100&after=${matchId}${season ? `&season=${season}` : ""}`,
+        ),
+  ]);
+  for (const m of later) {
+    const uuid = m.result?.uuid;
+    if (uuid && versus.results.ranked[uuid]) versus.results.ranked[uuid]--;
+  }
+  return versus;
 }
 
 /**

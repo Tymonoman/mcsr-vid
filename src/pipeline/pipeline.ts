@@ -180,7 +180,7 @@ async function runStages(
   const [userLeft, userRight, versus, playoff] = await Promise.all([
     getUser(playerLeft.uuid),
     getUser(playerRight.uuid),
-    getVersus(playerLeft.uuid, playerRight.uuid, match.season),
+    getVersus(playerLeft.uuid, playerRight.uuid, match.season, match.id),
     // Resolved here, first, because every later `eloAtMatchStart` answers from it: a playoff
     // game has no elo changes, and the bracket's frozen rating is the one the broadcast shows.
     // Strict: a bracket read that fails (429/503) fails the stage for a retry, rather than
@@ -296,6 +296,9 @@ async function runStages(
       else if (sync.confidence > 0) emit(warn("sync", { message: `verify alignment — ${sync.detail}` }));
       else emit(warn("sync", { message: `kept coarse offsets — ${sync.detail}` }));
     } catch (err) {
+      // A Stop is not a failed refinement: writing the coarse estimate would overwrite a good
+      // sync.json (the export then stale, a re-encode out of sync) and the run would go on.
+      if (signal?.aborted) throw err;
       emit(warn("sync", { message: `refinement failed: ${describeError(err)}` }));
     }
     // Written in the kept-coarse case too: export:fast and the Short must be able to tell "nobody
