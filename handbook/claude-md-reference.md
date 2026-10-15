@@ -1706,9 +1706,12 @@ login." Six fixes/features on top of phase 2/3, all in `studioWorker.ts`/`studio
   non-result-looking pose + a caption when `tcCaption.ts`'s own checks pass it, then keeps the
   caption arm only when it is `AUTO_CAPTION_MAX_CHARS` (6) characters or fewer — tighter than
   `tcCaption.ts`'s own 9-character ceiling, since nobody judges this one before it goes live, unlike
-  the manual `tc-plan.json` flow a human approves first. The render touches no Studio page, so it
-  needs no browser session, but still runs only inside the same cycle the worker's own blackout
-  window (`inBlackoutWindow`) already excludes, and is skipped entirely under `--dry-run` since
+  the manual `tc-plan.json` flow a human approves first. `tc-thumbs` also drops the caption arm
+  when the strip's recorded avatar provider is not today's (an `nmsr-posed` strip from before the
+  24 Sept redesign): the control is copied as rendered then, the caption drawn now, so the two
+  would differ in the whole design; re-render the thumbnails and "Use this" first. The render
+  touches no Studio page, so it needs no browser session, but still runs only inside the same
+  cycle the worker's own blackout window (`inBlackoutWindow`) already excludes, and is skipped entirely under `--dry-run` since
   the render and the `.experiments.json` write are the whole action, with no later "stop before
   the final click" point to fall back to. Planning a `tc` experiment never starts it in the same
   cycle — the next cycle's own `tcToStart` picks it up, same as any manually-planned one.
