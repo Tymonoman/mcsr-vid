@@ -445,6 +445,25 @@ assert.deepEqual(extracted, [], "a current series takes no game back out of the 
   console.log("OK: a game re-encoding holds the join");
 }
 
+// Game 1's upload reading series-101.mp4: a newer export that would re-join waits, so the file
+// is not renamed under the upload. Nothing extracted, joined or pruned; the newer export stays
+// for the next settle or the series button to join.
+{
+  await new Promise((r) => setTimeout(r, 20));
+  writeFileSync(final(103), "newer");
+  const before = readFileSync(path.join(dir(101), "series-101.mp4"), "utf8");
+  const joinsBefore = joins.length;
+  extracted.length = 0;
+  const waiting = await assembleSeries(101, { ...seams, uploading: (id) => id === 101 });
+  assert.deepEqual(waiting, { kind: "uploading", firstGameId: 101 });
+  assert.equal(joins.length, joinsBefore, "never re-joined under a running upload");
+  assert.deepEqual(extracted, []);
+  assert.equal(readFileSync(path.join(dir(101), "series-101.mp4"), "utf8"), before);
+  assert.ok(existsSync(final(103)), "the newer export is kept for the join after the upload");
+  rmSync(final(103));
+  console.log("OK: a running upload of the series holds the re-join");
+}
+
 // A blocked player's match refuses outright — before any render, export or disk write
 // (config.blockedPlayers). The dashboard's own route also refuses up front so the HTTP response
 // carries it; this is what `npm run series` gets, since both call this one function.

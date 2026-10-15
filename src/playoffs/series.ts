@@ -46,6 +46,7 @@ import { buildTitle, formatTitle, withHook } from "../pipeline/title.js";
 import type { MatchInfo } from "../api/types.js";
 import { matchStartIntoVodSec } from "../pipeline/vodAcquisition.js";
 import { withDiscoveredVods } from "../pipeline/vodDiscovery.js";
+import { uploadRunning } from "../youtube/youtubeUpload.js";
 
 export const SERIES_FILE = "series.json";
 
@@ -196,6 +197,8 @@ export type AssembleResult =
   | { kind: "incomplete"; firstGameId: number; missing: number[] }
   /** No seed has taken the series yet: nothing joins until one has. Waiting, not a failure. */
   | { kind: "undecided"; firstGameId: number }
+  /** Game 1's upload is reading the series file: a re-join waits for the next settle or button. */
+  | { kind: "uploading"; firstGameId: number }
   | { kind: "stale"; firstGameId: number; stale: number[] }
   /**
    * Every export exists and is current, but not all the same resolution — `exportUpscale1440`
@@ -237,6 +240,7 @@ export interface JoinSeams {
   probe?: (file: string) => Promise<number>;
   extract?: (seriesPath: string, startSec: number, durationSec: number, outPath: string) => Promise<void>;
   probeResolution?: (file: string) => Promise<{ width: number; height: number } | null>;
+  uploading?: (matchId: number) => boolean;
 }
 
 /** ffprobe's stdout for these arguments; "" when it cannot read the file. */
@@ -481,6 +485,12 @@ export async function assembleSeries(
     existsSync(outPath) &&
     previous !== null &&
     finals.every((f, i) => held.includes(i) || statSync(outPath).mtimeMs > statSync(f).mtimeMs);
+  if (!current && (opts.uploading ?? uploadRunning)(first.matchId)) {
+    log(
+      `series ${first.matchId}: not re-joined — its upload is reading ${path.basename(outPath)}; join again once it is done`,
+    );
+    return { kind: "uploading", firstGameId: first.matchId };
+  }
   if (!current) {
     const starts = chapterStarts(previous?.games.map((h) => h.durationSec) ?? []);
     for (const i of held) {
