@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { requireArg } from "../cliArgs.js";
-import { matchDir } from "../config.js";
+import { blockedIn, matchDir } from "../config.js";
 import { getMatch, parseMatchId } from "../api/mcsrApi.js";
 import { computeSyncOffset } from "./sync.js";
 import {
@@ -14,6 +14,11 @@ import {
 
 const matchId = parseMatchId(requireArg("validate-sync"));
 const match = await getMatch(matchId);
+// Before the reuse branch too: a blocked runner's clip already on disk is not synced or previewed.
+if (blockedIn(match.players.map((p) => p.nickname))) {
+  console.error(`match ${matchId} has a blocked player — not validated`);
+  process.exit(1);
+}
 
 if (match.vod.length < 2) {
   console.error(`Match ${matchId} has ${match.vod.length}/2 VODs attached; sync validation needs both.`);

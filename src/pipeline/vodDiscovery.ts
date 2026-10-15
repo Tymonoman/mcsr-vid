@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { matchDir } from "../config.js";
+import { blockedIn, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { cacheMatch, getUser } from "../api/mcsrApi.js";
 import type { MatchInfo, MatchVod } from "../api/types.js";
@@ -177,12 +177,18 @@ export async function withDiscoveredVods(
   deps?: Partial<DiscoveryDeps>,
 ): Promise<MatchInfo> {
   if (match.vod.length >= 2) return match;
+  // A blocked runner's VODs are the footage they withdrew: no listing, no vods.json. Here so the
+  // `download-vods` CLI (and any caller that forgets) can't reach discovery for one.
+  if (blockedIn(match.players.map((p) => p.nickname))) return match;
   const saved = (await readSavedVods(match.id)).filter((v) => !match.vod.some((m) => m.uuid === v.uuid));
   const known = { ...match, vod: [...match.vod, ...saved] };
   const discovered = known.vod.length >= 2 ? [] : await discoverVods(known, deps);
   if (discovered.length > 0) {
     await mkdir(matchDir(match.id), { recursive: true });
-    await writeFile(vodsFile(match.id), JSON.stringify([...saved, ...discovered], null, 2), "utf8");
+    // All of `known`, not just the file's own entries: a cached match (`cacheMatch` below) already
+    // carries an earlier call's finds, which `saved` filtered out, and writing without them would
+    // forget a VOD whose archive may be gone by the next read. API entries are filtered on read.
+    await writeFile(vodsFile(match.id), JSON.stringify([...known.vod, ...discovered], null, 2), "utf8");
   }
   if (saved.length === 0 && discovered.length === 0) return match;
   // Back into getMatch's cache: a private room never satisfies the no-op above, so without this

@@ -490,7 +490,10 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   `npm run series -- --join-only` and every export's settle never join, retitle or prune one. `runPipeline` (`src/pipeline/pipeline.ts`) refuses
   too, right after the match fetch and before VOD discovery or any write, so the callers with no
   gate of their own — `npm run batch`, `npm run generate-project`, the TUI — never download a
-  blocked runner's footage. `hasBlockedPlayer` (`youtubeUpload.ts`) reads
+  blocked runner's footage. Under that, `withDiscoveredVods` lists nothing and writes no
+  `vods.json` for a blocked match, and `downloadMatchVods` throws before yt-dlp, so
+  `npm run download-vods` and `npm run validate-sync` (which also refuses outright, before
+  reusing clips on disk) can't fetch one either (15 Oct 2026). `hasBlockedPlayer` (`youtubeUpload.ts`) reads
   `povNicknamesOnDisk`, the same disk-only POV-clip reader `matchStatusFor` itself uses, so a
   generated MP4 (`overlay-timer.mp4`, `final-<id>.mp4`, …) is never mistaken for a player. The
   operator, 2 Oct 2026, after Aquacorde commented that he does not give permission for his footage

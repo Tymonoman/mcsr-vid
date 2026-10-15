@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
-import { config } from "../config.js";
+import { blockedIn, config } from "../config.js";
 import type { MatchInfo, MatchVod } from "../api/types.js";
 
 // Shared with renderOverlay.ts so the overlay clip uses the same windowing convention as the VODs.
@@ -157,6 +157,11 @@ export async function downloadMatchVods(
   onProgress?: (p: DownloadProgress) => void,
   signal?: AbortSignal,
 ): Promise<VodWindow[]> {
+  // Every download goes through here (the pipeline, `download-vods`, `validate-sync`): a blocked
+  // runner's footage is never fetched, whoever asks.
+  if (blockedIn(match.players.map((p) => p.nickname))) {
+    throw new Error(`match ${match.id} has a blocked player — its VODs are not downloaded`);
+  }
   const total = match.vod.length;
   // Parallel, not sequential: both yt-dlp processes run concurrently, and a failure in either
   // rejects immediately instead of first waiting out a full download of the other clip.

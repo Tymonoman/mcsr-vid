@@ -57,3 +57,35 @@ console.log("all checks passed");
   }
   console.log("OK: postRollSec read per call");
 }
+
+// --- A blocked runner's VODs are never downloaded, whoever asks --------------------------------
+// `download-vods` and `validate-sync` reach downloadMatchVods without runPipeline's gate. PATH
+// points at an empty directory, so a missing guard fails on spawning yt-dlp, never the network.
+{
+  const { mkdtempSync, existsSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { config } = await import("../config.js");
+  const { downloadMatchVods } = await import("./vodAcquisition.js");
+  config.blockedPlayers = ["Aquacorde"];
+  const match = {
+    id: 1,
+    date: 10_000,
+    result: { time: 480_000 },
+    players: [
+      { uuid: "a", nickname: "aquacorde" },
+      { uuid: "b", nickname: "Someone" },
+    ],
+    vod: [{ uuid: "a", url: "https://www.twitch.tv/videos/0", startsAt: 4_000 }],
+  } as unknown as import("../api/types.js").MatchInfo;
+  const outDir = join(mkdtempSync(join(tmpdir(), "vodAcq-")), "out");
+  const savedPath = process.env.PATH;
+  process.env.PATH = mkdtempSync(join(tmpdir(), "vodAcq-nobin-"));
+  try {
+    await assert.rejects(downloadMatchVods(match, outDir), /blocked player/);
+  } finally {
+    process.env.PATH = savedPath;
+  }
+  assert.equal(existsSync(outDir), false, "nothing written for a blocked match");
+  console.log("OK: downloadMatchVods refuses a blocked runner's match");
+}

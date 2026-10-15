@@ -5,7 +5,7 @@
 // Run: npx tsx src/vodDiscovery.test.ts
 import assert from "node:assert/strict";
 import { discoverVods, parseArchives, pickArchive, withDiscoveredVods } from "./vodDiscovery.js";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { config } from "../config.js";
@@ -52,8 +52,10 @@ const merged = await withDiscoveredVods(
   { getUser, listArchives: async (n) => listings[n]!, log },
 );
 assert.deepEqual(merged.vod, [attached, found[0]]);
-// …and what it found is remembered on disk, and read back before any listing is spent.
+// …and what it found is remembered on disk (with what it already knew), and read back before
+// any listing is spent.
 assert.deepEqual(JSON.parse(readFileSync(path.join(config.mediaDir, "13213922", "vods.json"), "utf8")), [
+  attached,
   found[0],
 ]);
 const remembered = await withDiscoveredVods(
@@ -67,6 +69,50 @@ const remembered = await withDiscoveredVods(
   },
 );
 assert.deepEqual(remembered.vod, [attached, found[0]]);
+
+/* --- A match handed back from getMatch's cache still remembers the earlier find ----------- */
+// cacheMatch puts call 1's find into match.vod; call 2 (within the 10 minutes) finds the other
+// player. vods.json must end up with both, not only call 2's find (review finding, 15 Oct 2026).
+{
+  const cached = { ...match, id: 13213923 };
+  const steezOnly = async (n: string) => (n === "steezsr" ? listings.steezsr! : "");
+  const first = await withDiscoveredVods(cached, { getUser, listArchives: steezOnly, log });
+  assert.deepEqual(first.vod, [found[0]]);
+  const second = await withDiscoveredVods(first, { getUser, listArchives: async (n) => listings[n]!, log });
+  assert.deepEqual(second.vod, [found[0], found[1]]);
+  const onDisk = JSON.parse(readFileSync(path.join(config.mediaDir, "13213923", "vods.json"), "utf8"));
+  assert.deepEqual(onDisk, [found[0], found[1]], "the cached match's earlier find is kept on disk");
+  // …so once the archives are gone, the bare API record (vod: []) still gets both back.
+  const later = await withDiscoveredVods(cached, {
+    getUser,
+    listArchives: async () => {
+      throw new Error("archive expired");
+    },
+    log,
+  });
+  assert.deepEqual(later.vod, [found[0], found[1]]);
+  console.log("OK: vods.json keeps a cached match's earlier find");
+}
+
+/* --- A blocked runner's match: no listing, no vods.json ----------------------------------- */
+{
+  const blocked = {
+    ...match,
+    id: 13213924,
+    players: [match.players[0]!, { uuid: ROWL, nickname: "Aquacorde" }],
+  } as MatchInfo;
+  config.blockedPlayers = ["Aquacorde"];
+  let asked = 0;
+  const m = await withDiscoveredVods(blocked, {
+    getUser: async (uuid) => (asked++, getUser(uuid)),
+    listArchives: async (n) => (asked++, listings[n]!),
+    log,
+  });
+  assert.equal(m, blocked, "returned as is");
+  assert.equal(asked, 0, "no user lookup, no archive listing");
+  assert.equal(existsSync(path.join(config.mediaDir, "13213924")), false, "nothing written");
+  console.log("OK: no discovery for a blocked runner's match");
+}
 
 /* --- Nothing found → [] ------------------------------------------------------------------- */
 assert.deepEqual(
