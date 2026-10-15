@@ -1270,6 +1270,17 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
   immediately before each — never a 30-day window compared to a mostly-empty 30 days before launch
   without saying so (`currentDays`/`previousDays` note a short window). Says which day the data
   ends on; Analytics lags 1–3 days.
+- **The growth number leads the channel message and `/stats`** (WHY report, 14 Oct 2026: raw view
+  growth is mostly muted Home previews and Shorts plays that never convert; net subscribers per
+  1,000 engaged long-form views sat at about 2, flat since mid-September). `gatherLongForm`
+  (`facts.ts`) is a second Analytics request beside the table's, 35 days back,
+  `filters: creatorContentType==videoOnDemand`, `engagedViews,subscribersGained,subscribersLost`,
+  summed over the last 7 and 28 days of data; `renderLongForm` (`report.ts`) prints both windows
+  side by side above the table, then the engaged views ("2.0 net subs / 1,000 engaged long-form
+  views (7d) · 1.9 (28d) · 9,844 engaged views (7d) · 34,171 (28d)"). Net is gained minus lost
+  (`netSubsPer1kEngaged`, `windowStats.ts`); a window with no engaged views reads "n/a"; the
+  request is its own `Section`, so a failure is one "unavailable (reason)" line and the table
+  still renders.
 - **`/comments` is `commentThreads.list allThreadsRelatedToChannelId=<channel>`**
   (`channelCommentThreads`, `src/youtube/youtube.ts`; own-channel read only, 1 unit), not the
   per-video `commentThreads` the publish kit's pinned-comment check uses. Unanswered = not the
