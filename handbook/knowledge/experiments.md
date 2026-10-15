@@ -48,10 +48,11 @@ https://claude.ai/artifact/ADK2WTTzP732w87GgpwXzC.
   nightly finds two known-player candidates).
 - **Metrics:** impressions CTR (Reporting API `channel_reach_basic_a1`), engaged views, average view %, subscribers
   per 1,000 views.
-- **Verdicts:** an arm under ~1,000 impressions is "inconclusive", never a guess. CTR is compared with a
-  two-proportion z-test (|z| ≥ 1.96). A retention metric reports numbers only, unless every video of one arm beats
-  every video of the other with ≥ 3 per arm. Winners become defaults, and every decision is written below with its
-  numbers.
+- **Verdicts:** the video is the unit, not the impression. Fewer than 8 videos with the metric in any arm is "not
+  enough videos", however many impressions; an arm under ~1,000 impressions is "inconclusive". Then the per-video
+  values (CTR, average view %, or subs per 1,000 views) of each arm are compared with a permutation test, and a
+  winner needs p < 0.05; anything else is "no verdict yet". The pooled z-test is shown for CTR but never decides.
+  Winners become defaults, and every decision is written below with its numbers.
 
 ## Test & Compare targets: the 10 public long-forms with the most impressions, 8 Sept–5 Oct
 
@@ -115,6 +116,15 @@ any video that already has one (his 8 custom ones included).
 
 ## Decisions
 
+- **15 Oct 2026 — the experiment engine counts videos, not impressions.** The pooled z-test treated every impression
+  as a coin flip, but each video has its own CTR, set mostly by its match: x1's videos spread ~38x wider than one
+  shared rate allows, so it flipped three times in three days and named "19utc wins" at z = -2.78 when the
+  per-video gap was p = 0.52. A verdict now needs 8 videos with the metric in every arm and p < 0.05 on a
+  permutation test over per-video values. Re-read on the ledger (14 Oct pull): x1 "19utc wins on CTR" becomes
+  "not enough videos (4 with CTR in arm 19utc)", x2 "numbers only" and x3/x4 "inconclusive (0 impressions)"
+  become "not enough videos". Read x1's stored "kept 19utc" as no verdict. x2 and x3 cannot reach 8 a side before
+  their ends, so both will keep the control; x4 (4 render nights an arm, two renders a night) reaches 8 only if
+  every night renders two.
 - **14 Oct 2026 — fifth Test & Compare verdict, the second thumbnail test: no winner on W2bVnDFYSQ0** (ANJOUU vs
   lowkey). Control 36.0%, most-different pose 32.7%, caption 31.3% watch time share; Studio "They all performed
   well". Two thumbnail tests, two level results: the live thumbnail stays, and the pose/caption variants have not

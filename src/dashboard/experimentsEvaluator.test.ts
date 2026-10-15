@@ -18,7 +18,7 @@ writeFileSync(path.join(cwdDir, "mcsr-vid.config.json"), JSON.stringify({ mediaD
 
 const { config, matchDir } = await import("../config.js");
 const { readExperiments, writeExperiments } = await import("./experiments.js");
-const { armTotalsFor, twoProportionZ, verdictFor, evaluateExperiments } =
+const { ALPHA, MIN_VIDEOS_PER_ARM, armTotalsFor, twoProportionZ, verdictFor, evaluateExperiments } =
   await import("./experimentsEvaluator.js");
 const { writeUpload } = await import("../youtube/youtubeStore.js");
 
@@ -45,17 +45,36 @@ async function fixtureUpload(matchId: number, over: Partial<UploadRecord> = {}):
 }
 
 const DAY_MS = 86_400_000;
-const arm = (name: string, impressions: number, clicks: number, pcts: number[] = []): ArmTotals => ({
-  arm: name,
-  videos: pcts.length,
+/** One video: a CTR (%) on `impressions`, an average view % and subscribers on 1,000 views. */
+const video = (ctr: number, avp = 40, impressions = 5000, subs = 0): VideoMetrics => ({
   impressions,
-  clicks,
-  views: 1000 * pcts.length,
+  clicks: Math.round((impressions * ctr) / 100),
+  views: 1000,
   engagedViews: 0,
-  subscribersGained: 0,
-  avgViewPercentage: pcts.length ? pcts.reduce((a, b) => a + b, 0) / pcts.length : 0,
-  avgViewPercentages: pcts,
+  averageViewPercentage: avp,
+  subscribersGained: subs,
 });
+/** `n` values evenly around `center`, 0.2 apart: a per-video spread, not one pooled rate. */
+const around = (center: number, n = 8): number[] =>
+  [...Array(n)].map((_, i) => center + (i - (n - 1) / 2) * 0.2);
+/** Real ArmTotals, through armTotalsFor itself, for each arm's own list of videos. */
+async function armsOf(byArm: Record<string, VideoMetrics[]>): Promise<ArmTotals[]> {
+  const all = Object.entries(byArm).flatMap(([arm, vids]) => vids.map((m) => ({ arm, m })));
+  const exp = baseExperiment({
+    arms: Object.keys(byArm).map((name) => ({ name })),
+    videos: all.map(({ arm }, matchId) => ({ matchId, arm })),
+  });
+  return armTotalsFor(exp, async (matchId) => all[matchId]?.m ?? null);
+}
+/** 8 control videos ("c0".."c7") near 2% CTR and 8 variant videos ("v0".."v7") near 5%. */
+const clearWin = (firstMatch: number) =>
+  [...Array(16)].map((_, i) => ({
+    matchId: firstMatch + i,
+    arm: i < 8 ? "control" : "variant",
+    videoId: `${i < 8 ? "c" : "v"}${i % 8}`,
+  }));
+const clearWinFetch = async (_matchId: number, videoId?: string): Promise<VideoMetrics | null> =>
+  videoId ? video((videoId[0] === "c" ? 2 : 5) + Number(videoId.slice(1)) * 0.1) : null;
 
 const baseExperiment = (over: Partial<Experiment> = {}): Experiment => ({
   id: "e1",
@@ -80,57 +99,166 @@ assert.equal(twoProportionZ(0, 0, 10, 100), 0, "nothing to divide by on one side
   assert.ok(z > 1.96, `expected a significant z, got ${z}`);
 }
 
-// --- verdictFor: the 1,000-impression floor first, regardless of metric -----------------------
+// --- verdictFor: the video floor first — under 8 a side is "not enough videos", whatever the
+// impressions. 7 videos at 100,000 impressions each, 2% vs 9%: a pooled z in the hundreds.
 {
-  const v = verdictFor(baseExperiment(), [arm("control", 500, 20), arm("variant", 5000, 200)]);
-  assert.equal(v.text, "inconclusive (500 impressions in arm control)");
+  assert.equal(MIN_VIDEOS_PER_ARM, 8);
+  const arms = await armsOf({
+    control: Array(7).fill(video(2, 40, 100_000)),
+    variant: Array(8).fill(video(9, 40, 100_000)),
+  });
+  assert.ok(
+    twoProportionZ(arms[1]!.clicks, arms[1]!.impressions, arms[0]!.clicks, arms[0]!.impressions) > 100,
+  );
+  const v = verdictFor(baseExperiment(), arms);
+  assert.equal(v.text, "not enough videos (7 with CTR in arm control, 8 needed)");
   assert.equal(v.winnerArm, null);
 }
 
-// --- verdictFor: CTR, both directions -----------------------------------------------------------
+// --- verdictFor: then the 1,000-impression floor, regardless of metric ---------------------------
 {
-  // The variant clearly wins.
-  const up = verdictFor(baseExperiment(), [arm("control", 5000, 100), arm("variant", 5000, 250)]);
-  assert.ok(up.text.startsWith("variant wins on CTR"), up.text);
+  const arms = await armsOf({
+    control: around(2).map((c) => video(c, 40, 100)),
+    variant: around(5).map((c) => video(c)),
+  });
+  const v = verdictFor(baseExperiment(), arms);
+  assert.equal(v.text, "inconclusive (800 impressions in arm control)");
+  assert.equal(v.winnerArm, null);
+}
+
+// --- verdictFor: CTR per video, both directions -------------------------------------------------
+{
+  // The variant clearly wins: every one of its 8 videos is ahead.
+  const up = verdictFor(
+    baseExperiment(),
+    await armsOf({ control: around(4).map((c) => video(c)), variant: around(6).map((c) => video(c)) }),
+  );
+  assert.ok(
+    up.text.startsWith(
+      "variant wins on CTR (variant 6.00% vs control 4.00% per video, 8 vs 8 videos, p<0.001; pooled z=",
+    ),
+    up.text,
+  );
   assert.equal(up.winnerArm, "variant");
 
   // The control clearly wins — nothing for `settle` to adopt even with adoptWinner on.
-  const down = verdictFor(baseExperiment(), [arm("control", 5000, 250), arm("variant", 5000, 100)]);
-  assert.ok(down.text.startsWith("control wins on CTR"), down.text);
+  const down = verdictFor(
+    baseExperiment(),
+    await armsOf({ control: around(6).map((c) => video(c)), variant: around(4).map((c) => video(c)) }),
+  );
+  assert.ok(down.text.startsWith("control wins on CTR (control 6.00% vs variant 4.00% per video"), down.text);
   assert.equal(down.winnerArm, null);
 
-  // Close enough that 1.96 is not crossed.
-  const flat = verdictFor(baseExperiment(), [arm("control", 5000, 150), arm("variant", 5000, 155)]);
-  assert.equal(flat.text, "no difference on CTR");
+  // Interleaved values: the honest default.
+  const flat = verdictFor(
+    baseExperiment(),
+    await armsOf({ control: around(5).map((c) => video(c)), variant: around(5.1).map((c) => video(c)) }),
+  );
+  assert.ok(
+    flat.text.startsWith(
+      "no verdict yet on CTR (variant 5.10% vs control 5.00% per video, 8 vs 8 videos, p=",
+    ),
+    flat.text,
+  );
   assert.equal(flat.winnerArm, null);
 }
 
-// --- verdictFor: a retention metric, numbers-only unless every video of one arm beats the other -
+// --- (a) Two arms from the same distribution: no verdict, and the false-winner rate stays under
+// alpha over many seeded runs — where the pooled z-test the engine used before 15 Oct 2026 names a
+// "winner" most of the time. Per-video CTR 5% ± 1.6 points (x1's own spread), impressions
+// lognormal around 6,000, 8–12 videos a side.
 {
-  const metric = baseExperiment({ metric: "averageViewPercentage" });
-  // Fewer than 3 videos on one side: numbers only, however far apart the means are.
-  const thin = verdictFor(metric, [
-    arm("control", 5000, 100, [10, 90]),
-    arm("variant", 5000, 100, [80, 85, 90]),
-  ]);
-  assert.equal(thin.text, "numbers only");
+  let seed = 1;
+  const rand = (): number => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const normal = (): number => Math.sqrt(-2 * Math.log(rand())) * Math.cos(2 * Math.PI * rand());
+  const draw = (n: number): VideoMetrics[] =>
+    [...Array(n)].map(() =>
+      video(Math.max(0.5, 5 + 1.6 * normal()), 40, Math.round(6000 * Math.exp(0.8 * normal()))),
+    );
+  const RUNS = 400;
+  let falseWinners = 0;
+  let pooledWinners = 0;
+  for (let r = 0; r < RUNS; r++) {
+    const arms = await armsOf({ control: draw(8 + (r % 5)), variant: draw(8 + ((r * 3) % 5)) });
+    const v = verdictFor(baseExperiment(), arms);
+    if (r === 0) {
+      assert.ok(v.text.startsWith("no verdict yet on CTR"), v.text);
+      assert.equal(v.winnerArm, null);
+    }
+    if (/ wins on /.test(v.text)) falseWinners++;
+    const z = twoProportionZ(arms[1]!.clicks, arms[1]!.impressions, arms[0]!.clicks, arms[0]!.impressions);
+    if (Math.abs(z) >= 1.96) pooledWinners++;
+  }
+  assert.ok(falseWinners / RUNS <= ALPHA, `false-winner rate ${falseWinners / RUNS} over ${RUNS} runs`);
+  assert.ok(pooledWinners / RUNS > 0.5, `the pooled z alone would have named ${pooledWinners} of ${RUNS}`);
+}
+
+// --- x1's own shape: a pooled z past 1.96 that the per-video values don't back ------------------
+// 19utc's and 23utc's real per-video CTRs (the "why" report), twice over to clear the floor.
+{
+  const x1 = (ctrs: number[], imps: number[]) => [...ctrs, ...ctrs].map((c, i) => video(c, 40, imps[i % 4]!));
+  const arms = await armsOf({
+    control: x1([4.1, 7.3, 4.52, 8.01], [6947, 4301, 10202, 3395]),
+    variant: x1([3.59, 6.84, 5.23, 5.01], [14382, 6886, 10289, 5366]),
+  });
+  const z = twoProportionZ(arms[1]!.clicks, arms[1]!.impressions, arms[0]!.clicks, arms[0]!.impressions);
+  assert.ok(z < -1.96, `the pooled z alone would call it (z=${z})`);
+  const v = verdictFor(baseExperiment(), arms);
+  assert.ok(v.text.startsWith("no verdict yet on CTR"), v.text);
+  assert.ok(v.text.includes(`pooled z=${z.toFixed(2)}`), "the pooled z is still reported");
+}
+
+// --- verdictFor: average view % per video, the same test ----------------------------------------
+{
+  const metric = baseExperiment({ metric: "average view %" });
+  const avp = (pcts: number[]) => pcts.map((p) => video(5, p));
+  // Fewer than 8 videos on one side: not enough, however far apart the means are.
+  const thin = verdictFor(metric, await armsOf({ control: avp([10, 90]), variant: avp(around(85)) }));
+  assert.equal(thin.text, "not enough videos (2 with average view % in arm control, 8 needed)");
   assert.equal(thin.winnerArm, null);
 
-  // Every "variant" video beats every "control" video, 3 a side: a real winner.
-  const dominant = verdictFor(metric, [
-    arm("control", 5000, 100, [40, 42, 45]),
-    arm("variant", 5000, 100, [50, 52, 55]),
-  ]);
-  assert.ok(dominant.text.startsWith("variant wins on average view %"), dominant.text);
-  assert.equal(dominant.winnerArm, "variant");
+  const clear = verdictFor(metric, await armsOf({ control: avp(around(42)), variant: avp(around(52)) }));
+  assert.ok(
+    clear.text.startsWith("variant wins on average view % (variant 52.0% vs control 42.0% per video"),
+    clear.text,
+  );
+  assert.equal(clear.winnerArm, "variant");
 
-  // Overlapping ranges: no dominance either way.
-  const overlap = verdictFor(metric, [
-    arm("control", 5000, 100, [40, 50, 60]),
-    arm("variant", 5000, 100, [45, 55, 65]),
-  ]);
-  assert.equal(overlap.text, "numbers only");
+  // Wide, overlapping ranges: no verdict yet.
+  const overlap = verdictFor(
+    metric,
+    await armsOf({
+      control: avp([20, 30, 40, 50, 60, 70, 45, 35]),
+      variant: avp([25, 35, 45, 55, 65, 75, 40, 30]),
+    }),
+  );
+  assert.ok(overlap.text.startsWith("no verdict yet on average view %"), overlap.text);
   assert.equal(overlap.winnerArm, null);
+  assert.ok(!overlap.text.includes("pooled z"), "the pooled z is a CTR number only");
+}
+
+// --- verdictFor: subscribers per 1,000 views, per video; an unknown metric decides nothing -------
+{
+  const subs = (n: number[]) => n.map((k) => video(5, 40, 5000, k));
+  const v = verdictFor(
+    baseExperiment({ metric: "subscribers per 1,000 views" }),
+    await armsOf({ control: subs([0, 1, 0, 1, 1, 0, 2, 1]), variant: subs([4, 5, 6, 4, 5, 7, 5, 6]) }),
+  );
+  assert.ok(
+    v.text.startsWith("variant wins on subs per 1,000 views (variant 5.25 vs control 0.75 per video"),
+    v.text,
+  );
+  assert.equal(v.winnerArm, "variant");
+
+  const unknown = verdictFor(
+    baseExperiment({ metric: "engagedViews" }),
+    await armsOf({
+      control: around(2).map((c) => video(c, 30)),
+      variant: around(9).map((c) => video(c, 60)),
+    }),
+  );
+  assert.equal(unknown.text, 'numbers only (no per-video rule for "engagedViews")');
+  assert.equal(unknown.winnerArm, null);
 }
 
 // --- armTotalsFor: sums by arm, skips a video `fetch` returns null for ------------------------
@@ -158,6 +286,14 @@ assert.equal(twoProportionZ(0, 0, 10, 100), 0, "nothing to divide by on one side
   const totals = await armTotalsFor(exp, async (matchId) => byMatch.get(matchId) ?? null);
   const control = totals.find((a) => a.arm === "control")!;
   assert.equal(control.videos, 2, "the unreadable video does not count");
+  assert.deepEqual(
+    control.perVideo.map((v) => [v.matchId, v.clicks]),
+    [
+      [1, 50],
+      [2, 60],
+    ],
+    "each video's own metrics are kept, one row a video",
+  );
   assert.equal(control.impressions, 2000);
   assert.equal(control.clicks, 110);
   // View-weighted mean: (40*100 + 60*200) / 300 = 53.33...
@@ -166,7 +302,7 @@ assert.equal(twoProportionZ(0, 0, 10, 100), 0, "nothing to divide by on one side
 }
 
 // --- armTotalsFor: a video with no views yet has no retention to count ------------------------
-// (scheduled, or inside Analytics' lag) — its 0% neither blocks dominance nor meets the floor.
+// (scheduled, or inside Analytics' lag) — its 0% neither drags its arm down nor meets the floor.
 {
   const m = (pct: number, views: number): VideoMetrics => ({
     impressions: 1000,
@@ -176,37 +312,34 @@ assert.equal(twoProportionZ(0, 0, 10, 100), 0, "nothing to divide by on one side
     averageViewPercentage: pct,
     subscribersGained: 0,
   });
-  const pcts = new Map<number, VideoMetrics>([
-    [1, m(40, 100)],
-    [2, m(42, 100)],
-    [3, m(0, 0)],
-    [4, m(0, 0)],
-    [5, m(50, 100)],
-    [6, m(52, 100)],
-    [7, m(55, 100)],
-    [8, m(45, 100)],
-  ]);
-  const fetch = async (matchId: number) => pcts.get(matchId) ?? null;
+  // Control: matches 0–6 and 99 near 40%, 7 and 8 at zero views; variant: 100–107, every one ahead.
+  const pct = (matchId: number) => (matchId >= 100 ? 50 + matchId - 100 : 40 + matchId * 0.1);
+  const fetch = async (matchId: number) => (matchId === 7 || matchId === 8 ? m(0, 0) : m(pct(matchId), 100));
   const metric = { metric: "average view %" };
+  const vids = (ids: number[], arm: string) => ids.map((matchId) => ({ matchId, arm }));
+  const variant = vids([100, 101, 102, 103, 104, 105, 106, 107], "variant");
 
-  // Control: 2 real videos + 2 at zero views. Every variant video is ahead, but 2 is under the floor.
   const thin = baseExperiment({
     ...metric,
-    videos: [1, 2, 3, 4]
-      .map((matchId) => ({ matchId, arm: "control" }))
-      .concat([5, 6, 7].map((matchId) => ({ matchId, arm: "variant" }))),
+    videos: [...vids([0, 1, 2, 3, 4, 5, 6, 7, 8], "control"), ...variant],
   });
   const thinTotals = await armTotalsFor(thin, fetch);
-  assert.deepEqual(thinTotals.find((a) => a.arm === "control")!.avgViewPercentages, [40, 42]);
-  assert.equal(thinTotals.find((a) => a.arm === "control")!.videos, 4, "CTR still counts every video");
-  assert.equal(verdictFor(thin, thinTotals).text, "numbers only");
+  assert.equal(thinTotals.find((a) => a.arm === "control")!.avgViewPercentages.length, 7);
+  assert.equal(thinTotals.find((a) => a.arm === "control")!.videos, 9, "`videos` still counts every one");
+  assert.equal(
+    verdictFor(thin, thinTotals).text,
+    "not enough videos (7 with average view % in arm control, 8 needed)",
+  );
 
-  // 3 real a side, plus a zero-view video in the leading arm: it still wins.
+  // 8 real a side, plus a zero-view video in the leading arm: it still wins.
   const lead = baseExperiment({
     ...metric,
-    videos: [1, 2, 8]
-      .map((matchId) => ({ matchId, arm: "control" }))
-      .concat([5, 6, 7, 3].map((matchId) => ({ matchId, arm: "variant" }))),
+    videos: [
+      ...vids([0, 1, 2, 3, 4, 5, 6], "control"),
+      { matchId: 99, arm: "control" },
+      ...variant,
+      { matchId: 7, arm: "variant" },
+    ],
   });
   const v = verdictFor(lead, await armTotalsFor(lead, fetch));
   assert.equal(v.winnerArm, "variant", v.text);
@@ -310,39 +443,14 @@ assert.equal(twoProportionZ(0, 0, 10, 100), 0, "nothing to divide by on one side
   });
   const after = readExperiments().experiments.find((e) => e.id === "mid-run")!;
   assert.equal(after.status, "running", "not ended yet — still running");
-  assert.ok(after.verdict?.startsWith("variant wins on CTR"), after.verdict);
+  assert.equal(after.verdict, "not enough videos (1 with CTR in arm control, 8 needed)");
   assert.equal(after.decision, undefined);
   assert.ok(after.evaluatedAt);
 }
 
 // --- evaluateExperiments: adoption and revert decisions at `end` -------------------------------
 {
-  const winningMetrics = new Map<string, VideoMetrics>([
-    [
-      "c1",
-      {
-        impressions: 5000,
-        clicks: 100,
-        views: 1000,
-        engagedViews: 400,
-        averageViewPercentage: 40,
-        subscribersGained: 1,
-      },
-    ],
-    [
-      "v1",
-      {
-        impressions: 5000,
-        clicks: 250,
-        views: 1000,
-        engagedViews: 400,
-        averageViewPercentage: 42,
-        subscribersGained: 2,
-      },
-    ],
-  ]);
-  const fetch = async (_matchId: number, videoId: string | undefined): Promise<VideoMetrics | null> =>
-    videoId ? (winningMetrics.get(videoId) ?? null) : null;
+  const fetch = clearWinFetch;
 
   // adoptWinner: true — the winning arm's settings become the new default.
   config.publishHourUtc = 17; // whatever it was before, should be overwritten
@@ -354,10 +462,7 @@ assert.equal(twoProportionZ(0, 0, 10, 100), 0, "nothing to divide by on one side
       { name: "control", settings: { publishHourUtc: 19 } },
       { name: "variant", settings: { publishHourUtc: 21 } },
     ],
-    videos: [
-      { matchId: 20, arm: "control", videoId: "c1" },
-      { matchId: 21, arm: "variant", videoId: "v1" },
-    ],
+    videos: clearWin(200),
   });
   writeExperiments({ experiments: [adopt], schedule: [] });
   await evaluateExperiments({ fetch, now: () => Date.parse("2026-10-08T04:15:00Z") });
@@ -376,10 +481,7 @@ assert.equal(twoProportionZ(0, 0, 10, 100), 0, "nothing to divide by on one side
       { name: "control", settings: { publishHourUtc: 19 } },
       { name: "variant", settings: { publishHourUtc: 21 } },
     ],
-    videos: [
-      { matchId: 22, arm: "control", videoId: "c1" },
-      { matchId: 23, arm: "variant", videoId: "v1" },
-    ],
+    videos: clearWin(300),
   });
   writeExperiments({ experiments: [revert], schedule: [] });
   await evaluateExperiments({ fetch, now: () => Date.parse("2026-10-09T04:15:00Z") });
@@ -714,48 +816,30 @@ assert.equal(twoProportionZ(0, 1000, 0, 1000), 0, "pooled proportion 0 — se is
 
 // --- verdictFor: MIN_IMPRESSIONS's own edge is "enough", not "under" -----------------------------
 {
-  const v = verdictFor(baseExperiment(), [arm("control", 1000, 20), arm("variant", 1000, 20)]);
-  assert.notEqual(v.text, "inconclusive (1000 impressions in arm control)", "exactly 1,000 is enough");
+  const eight = around(2).map((c) => video(c, 40, 125)); // 8 x 125 = 1,000 a side
+  const v = verdictFor(baseExperiment(), await armsOf({ control: eight, variant: eight }));
+  assert.ok(v.text.startsWith("no verdict yet"), `exactly 1,000 is enough, got "${v.text}"`);
 }
 
 // --- ctrVerdict: three arms — the most significant non-control arm wins, not just the first -----
 {
-  const v = verdictFor(baseExperiment({ arms: [{ name: "control" }, { name: "a" }, { name: "b" }] }), [
-    arm("control", 5000, 100),
-    arm("a", 5000, 115), // z just over 1.96 — significant, but not the strongest
-    arm("b", 5000, 250), // clearly the biggest gap
-  ]);
+  const arms = await armsOf({
+    control: around(2).map((c) => video(c)),
+    a: around(2.5).map((c) => video(c)), // overlaps the control — no verdict on its own
+    b: around(5).map((c) => video(c)), // clearly the biggest gap
+  });
+  const three = baseExperiment({ arms: [{ name: "control" }, { name: "a" }, { name: "b" }] });
+  const v = verdictFor(three, arms);
   assert.ok(v.text.startsWith("b wins on CTR"), `expected b to win, got "${v.text}"`);
   assert.equal(v.winnerArm, "b");
+  // Two comparisons against one control: each needs p < ALPHA / 2 (Bonferroni), not ALPHA.
+  const lone = verdictFor(three, [arms[0]!, arms[1]!, { ...arms[0]!, arm: "b" }]);
+  assert.ok(lone.text.startsWith("no verdict yet"), lone.text);
 }
 
 // --- settle(): a winning arm whose lever is `slot`, not `settings`, is still a decision ----------
 // with nothing for saveSettings to apply — the doc comment's own "nothing to apply" case.
 {
-  const metrics = new Map<string, VideoMetrics>([
-    [
-      "sc1",
-      {
-        impressions: 5000,
-        clicks: 100,
-        views: 1000,
-        engagedViews: 400,
-        averageViewPercentage: 40,
-        subscribersGained: 1,
-      },
-    ],
-    [
-      "sv1",
-      {
-        impressions: 5000,
-        clicks: 250,
-        views: 1000,
-        engagedViews: 400,
-        averageViewPercentage: 42,
-        subscribersGained: 2,
-      },
-    ],
-  ]);
   const exp = baseExperiment({
     id: "slot-only-winner",
     end: "2026-10-08",
@@ -764,17 +848,11 @@ assert.equal(twoProportionZ(0, 1000, 0, 1000), 0, "pooled proportion 0 — se is
       { name: "control", slot: { rankedHoursUtc: [19] } },
       { name: "variant", slot: { rankedHoursUtc: [21] } },
     ],
-    videos: [
-      { matchId: 80, arm: "control", videoId: "sc1" },
-      { matchId: 81, arm: "variant", videoId: "sv1" },
-    ],
+    videos: clearWin(400),
   });
   writeExperiments({ experiments: [exp], schedule: [] });
   const sentinel = config.introSec;
-  await evaluateExperiments({
-    fetch: async (_m, videoId) => (videoId ? (metrics.get(videoId) ?? null) : null),
-    now: () => Date.parse("2026-10-08T04:15:00Z"),
-  });
+  await evaluateExperiments({ fetch: clearWinFetch, now: () => Date.parse("2026-10-08T04:15:00Z") });
   assert.equal(config.introSec, sentinel, "a slot-only arm has no settings — saveSettings is never called");
   const after = readExperiments().experiments.find((e) => e.id === "slot-only-winner")!;
   assert.equal(after.status, "done");
@@ -924,7 +1002,7 @@ assert.equal(twoProportionZ(0, 1000, 0, 1000), 0, "pooled proportion 0 — se is
       ],
       "11–13 Oct summed; 10 Oct, before publish, dropped",
     );
-    assert.match(e.verdict ?? "", /^control wins on CTR/, e.verdict);
+    assert.equal(e.verdict, "not enough videos (1 with CTR in arm control, 8 needed)");
   } finally {
     globalThis.fetch = realFetch;
     delete process.env.YOUTUBE_TOKEN_FILE;

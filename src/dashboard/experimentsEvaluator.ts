@@ -31,9 +31,16 @@ import { saveSettings } from "./settings.js";
 /** The 1 Oct 2026 post-mortem: a 4,590-impression CTR gap (9.36% vs 2.25%) reversed at 126,745
  *  (2.77% vs 2.59%). Below this, "inconclusive" is the only honest verdict. */
 const MIN_IMPRESSIONS = 1000;
-const Z_THRESHOLD = 1.96;
-/** The retention rule only fires with at least this many videos with views on each side. */
-const MIN_RETENTION_VIDEOS = 3;
+/** The video is the unit (15 Oct 2026, the "why" report): which match a video carries moves its
+ *  CTR far more than any arm does, so x1's per-video CTRs spread ~38x wider than one pooled rate
+ *  allows and the pooled z-test named a winner in 66–77% of no-effect simulations. No verdict
+ *  until every arm has this many videos with the metric, whatever the impressions. */
+export const MIN_VIDEOS_PER_ARM = 8;
+/** Two-sided, split across the non-control arms (Bonferroni) when there are more than one. */
+export const ALPHA = 0.05;
+const SHUFFLES = 10_000;
+/** Fixed, so the same per-video values give the same p every day. */
+const SEED = 0x5eed;
 
 export interface VideoMetrics {
   impressions: number;
@@ -87,6 +94,8 @@ async function liveMetricsFor(matchId: number, videoIdHint?: string): Promise<Vi
   };
 }
 
+export type VideoRow = VideoMetrics & { matchId: number; videoId?: string };
+
 export interface ArmTotals {
   arm: string;
   videos: number;
@@ -95,10 +104,12 @@ export interface ArmTotals {
   views: number;
   engagedViews: number;
   subscribersGained: number;
-  /** View-weighted mean, and the per-video values the dominance check in `retentionVerdict` reads
-   *  (only videos with views — `videos` counts every one, for CTR). */
+  /** View-weighted mean, and the per-video values (only videos with views — `videos` counts every
+   *  one). */
   avgViewPercentage: number;
   avgViewPercentages: number[];
+  /** Every video's own metrics: what `verdictFor` decides on, one value per video. */
+  perVideo: VideoRow[];
 }
 
 export type MetricsFetcher = (
@@ -124,6 +135,7 @@ export async function armTotalsFor(
       subscribersGained: 0,
       avgViewPercentage: 0,
       avgViewPercentages: [],
+      perVideo: [],
     };
     let weightedPctSum = 0;
     for (const v of exp.videos.filter((v) => v.arm === arm.name)) {
@@ -135,8 +147,9 @@ export async function armTotalsFor(
       totals.views += m.views;
       totals.engagedViews += m.engagedViews;
       totals.subscribersGained += m.subscribersGained;
+      totals.perVideo.push({ matchId: v.matchId, ...(v.videoId ? { videoId: v.videoId } : {}), ...m });
       // A video with no views yet (scheduled, or inside Analytics' 2–3 day lag) has no retention
-      // to measure — its 0% would block dominance and still count toward the 3-video floor.
+      // to measure — its 0% would drag the arm down and still count toward the video floor.
       if (m.views > 0) totals.avgViewPercentages.push(m.averageViewPercentage);
       weightedPctSum += m.averageViewPercentage * m.views;
     }
@@ -147,7 +160,8 @@ export async function armTotalsFor(
 }
 
 /** The two-proportion z-score, arm vs control: positive means the arm's CTR is the higher one; 0
- *  (not NaN or Infinity) when either side has nothing to divide by. */
+ *  (not NaN or Infinity) when either side has nothing to divide by. Reported in a CTR verdict's
+ *  text, never the decision: it treats every impression as independent, and ours are not. */
 export function twoProportionZ(clicksA: number, nA: number, clicksB: number, nB: number): number {
   if (nA <= 0 || nB <= 0) return 0;
   const pA = clicksA / nA;
@@ -157,79 +171,127 @@ export function twoProportionZ(clicksA: number, nA: number, clicksB: number, nB:
   return se > 0 ? (pA - pB) / se : 0;
 }
 
+/** Two-sided permutation test on the difference in means, `a` vs `b`: the share of `SHUFFLES`
+ *  random relabellings of the pooled values whose gap is at least the observed one. Each value is
+ *  one video, so a big video counts once, not once per impression. */
+export function permutationP(a: number[], b: number[], shuffles = SHUFFLES, seed = SEED): number {
+  const all = [...a, ...b];
+  const total = all.reduce((x, y) => x + y, 0);
+  const gap = (sumA: number) => Math.abs(sumA / a.length - (total - sumA) / b.length);
+  const observed = gap(a.reduce((x, y) => x + y, 0));
+  let s = seed >>> 0; // mulberry32
+  const rand = (): number => {
+    s = (s + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(s ^ (s >>> 15), s | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  let extreme = 0;
+  for (let i = 0; i < shuffles; i++) {
+    let sumA = 0;
+    for (let j = 0; j < a.length; j++) {
+      const k = j + Math.floor(rand() * (all.length - j)); // partial Fisher–Yates
+      [all[j], all[k]] = [all[k]!, all[j]!];
+      sumA += all[j]!;
+    }
+    if (gap(sumA) >= observed - 1e-9) extreme++;
+  }
+  return (extreme + 1) / (shuffles + 1);
+}
+
 export interface Verdict {
   text: string;
-  /** The non-control arm the verdict names a winner for, or null (inconclusive, no difference, or
-   *  "numbers only"). What `settle` below adopts when the experiment ends with `adoptWinner`. */
+  /** The non-control arm the verdict names a winner for, or null (not enough videos, inconclusive,
+   *  no verdict yet, or the control winning). What `settle` below adopts when the experiment ends
+   *  with `adoptWinner`. */
   winnerArm: string | null;
 }
 
-const ctrOf = (a: ArmTotals): number => (a.impressions > 0 ? (a.clicks / a.impressions) * 100 : 0);
-
-function ctrVerdict(arms: ArmTotals[], controlArm: string): Verdict {
-  const control = arms.find((a) => a.arm === controlArm) ?? arms[0]!;
-  let best: { arm: ArmTotals; z: number } | null = null;
-  for (const a of arms) {
-    if (a.arm === control.arm) continue;
-    const z = twoProportionZ(a.clicks, a.impressions, control.clicks, control.impressions);
-    if (Math.abs(z) >= Z_THRESHOLD && (!best || Math.abs(z) > Math.abs(best.z))) best = { arm: a, z };
-  }
-  if (!best) return { text: "no difference on CTR", winnerArm: null };
-  const winner = best.z > 0 ? best.arm : control;
-  const loser = best.z > 0 ? control : best.arm;
-  return {
-    text: `${winner.arm} wins on CTR (${ctrOf(winner).toFixed(2)}% vs ${ctrOf(loser).toFixed(2)}%, z=${best.z.toFixed(2)})`,
-    winnerArm: winner.arm === control.arm ? null : winner.arm,
-  };
+/** One value per video for the experiment's metric, null for a video that has none yet. */
+interface MetricRule {
+  name: string;
+  of: (m: VideoMetrics) => number | null;
+  fmt: (x: number) => string;
 }
+const RULES: [RegExp, MetricRule][] = [
+  [
+    /ctr|click/,
+    {
+      name: "CTR",
+      of: (m) => (m.impressions > 0 ? (m.clicks / m.impressions) * 100 : null),
+      fmt: (x) => `${x.toFixed(2)}%`,
+    },
+  ],
+  [
+    /view ?(%|perc)|retention/,
+    {
+      name: "average view %",
+      of: (m) => (m.views > 0 ? m.averageViewPercentage : null),
+      fmt: (x) => `${x.toFixed(1)}%`,
+    },
+  ],
+  [
+    /sub/,
+    {
+      name: "subs per 1,000 views",
+      of: (m) => (m.views > 0 ? (m.subscribersGained / m.views) * 1000 : null),
+      fmt: (x) => x.toFixed(2),
+    },
+  ],
+];
+
+const mean = (xs: number[]): number => xs.reduce((a, b) => a + b, 0) / xs.length;
 
 /**
- * Reports the per-arm view-weighted mean (the numbers always land in `result`, win or not); a
- * winner only when every video of one arm beats every video of another, both with at least
- * `MIN_RETENTION_VIDEOS`. Applied to whichever non-CTR metric the experiment names — the spec only
- * ever gives this one rule, for "average view %", so it is this module's one fallback rather than
- * a family of per-metric rules nothing has asked for yet.
- *
- * ponytail: the video-count floor is checked across every arm in the experiment, not just the
- * pair being compared — fine for the two-arm experiments this channel actually runs; a three-arm
- * test would need a per-pair check.
+ * Per video, never pooled: every arm needs `MIN_VIDEOS_PER_ARM` videos with the metric, then any
+ * arm under `MIN_IMPRESSIONS`, then each non-control arm's per-video values against the control's
+ * through `permutationP`; a winner only at p < `ALPHA` (split across the non-control arms). The
+ * pooled two-proportion z rides along in a CTR verdict's text as a number, never as the decision.
+ * Anything short of that is "no verdict yet" — the honest default.
  */
-function retentionVerdict(arms: ArmTotals[], controlArm: string): Verdict {
-  const control = arms.find((a) => a.arm === controlArm) ?? arms[0]!;
-  if (arms.some((a) => a.avgViewPercentages.length < MIN_RETENTION_VIDEOS))
-    return { text: "numbers only", winnerArm: null };
-  for (const a of arms) {
-    if (a.arm === control.arm) continue;
-    const aMin = Math.min(...a.avgViewPercentages);
-    const aMax = Math.max(...a.avgViewPercentages);
-    const cMin = Math.min(...control.avgViewPercentages);
-    const cMax = Math.max(...control.avgViewPercentages);
-    if (aMin > cMax)
-      return {
-        text: `${a.arm} wins on average view % — every video ahead of ${control.arm} (${a.avgViewPercentage.toFixed(1)}% vs ${control.avgViewPercentage.toFixed(1)}%)`,
-        winnerArm: a.arm,
-      };
-    if (cMin > aMax)
-      return {
-        text: `${control.arm} wins on average view % — every video ahead of ${a.arm} (${control.avgViewPercentage.toFixed(1)}% vs ${a.avgViewPercentage.toFixed(1)}%)`,
-        // The control already is the default: nothing for `settle` to adopt.
-        winnerArm: null,
-      };
-  }
-  return { text: "numbers only", winnerArm: null };
-}
-
-/** Any arm under `MIN_IMPRESSIONS` first, regardless of metric — never a guess on a small sample.
- *  Else the metric's own rule: a two-proportion z-test for CTR, the dominance check otherwise. */
 export function verdictFor(exp: Experiment, arms: ArmTotals[]): Verdict {
+  const rule = RULES.find(([re]) => re.test(exp.metric.toLowerCase()))?.[1];
+  if (!rule) return { text: `numbers only (no per-video rule for "${exp.metric}")`, winnerArm: null };
+  const sides = arms.map((a) => ({
+    arm: a,
+    xs: a.perVideo.map(rule.of).filter((x): x is number => x !== null),
+  }));
+  const thin = [...sides].sort((a, b) => a.xs.length - b.xs.length)[0];
+  if (thin && thin.xs.length < MIN_VIDEOS_PER_ARM)
+    return {
+      text: `not enough videos (${thin.xs.length} with ${rule.name} in arm ${thin.arm.arm}, ${MIN_VIDEOS_PER_ARM} needed)`,
+      winnerArm: null,
+    };
   const under = arms
     .filter((a) => a.impressions < MIN_IMPRESSIONS)
     .sort((a, b) => a.impressions - b.impressions)[0];
   if (under)
     return { text: `inconclusive (${under.impressions} impressions in arm ${under.arm})`, winnerArm: null };
-  return exp.metric.toLowerCase() === "ctr"
-    ? ctrVerdict(arms, exp.controlArm)
-    : retentionVerdict(arms, exp.controlArm);
+
+  const control = sides.find((s) => s.arm.arm === exp.controlArm) ?? sides[0]!;
+  let best: { side: (typeof sides)[number]; p: number } | null = null;
+  for (const side of sides) {
+    if (side === control) continue;
+    const p = permutationP(side.xs, control.xs);
+    if (!best || p < best.p) best = { side, p };
+  }
+  if (!best) return { text: "numbers only", winnerArm: null };
+  const ahead = mean(best.side.xs) > mean(control.xs) ? best.side : control;
+  const behind = ahead === control ? best.side : control;
+  const z =
+    rule.name === "CTR"
+      ? `; pooled z=${twoProportionZ(best.side.arm.clicks, best.side.arm.impressions, control.arm.clicks, control.arm.impressions).toFixed(2)}`
+      : "";
+  const numbers =
+    `${ahead.arm.arm} ${rule.fmt(mean(ahead.xs))} vs ${behind.arm.arm} ${rule.fmt(mean(behind.xs))} per video, ` +
+    `${ahead.xs.length} vs ${behind.xs.length} videos, ${best.p < 0.001 ? "p<0.001" : `p=${best.p.toFixed(3)}`}${z}`;
+  if (best.p >= ALPHA / (sides.length - 1))
+    return { text: `no verdict yet on ${rule.name} (${numbers})`, winnerArm: null };
+  return {
+    text: `${ahead.arm.arm} wins on ${rule.name} (${numbers})`,
+    // The control already is the default: nothing for `settle` to adopt.
+    winnerArm: ahead === control ? null : ahead.arm.arm,
+  };
 }
 
 const isYesterday = (date: string, today: string): boolean =>
