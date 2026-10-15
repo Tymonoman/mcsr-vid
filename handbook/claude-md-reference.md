@@ -1389,7 +1389,10 @@ someone set by hand — `pinComment` (`src/youtube/studioActions.ts`) checks for
 by" line first and returns `"already-pinned"` rather than touch it; one browser at a time, an
 in-process lock claimed synchronously before Chrome ever spawns (`starting`, `src/youtube/studioBrowser.ts`
 — a login and a probe pressed back to back must not race into two Xvfb/Chrome pairs) plus the
-profile's own `SingletonLock`; at most 10 Studio actions per nightly tick (`retryPendingStudio`,
+profile's own `SingletonLock`, plus (15 Oct 2026) a refusal when anything already answers on the
+debugging port: the lock only guards one profile dir, and a CLI run with `STUDIO_PROFILE_DIR` unset
+next to the supervised worker had its Chrome fail to bind 9222, then attached to the worker's
+Chrome and drove its live tab; at most 10 Studio actions per nightly tick (`retryPendingStudio`,
 `src/youtube/youtubeUpload.ts`), each with a random 2-6 s pause between clicks; a `verify` probe is
 never retried within the same call — nothing about the session changes until the operator logs in
 again. **The nightly's own retry tick** waits while an `export:fast` is running, since Chrome and
@@ -1462,7 +1465,9 @@ every check above is a fixture page or pure logic; see "What is verified live vs
   `readTestAndCompare` could not get past (a refused title, an unreadable page, and since 14 Oct
   2026 a page Save with no "Changes saved" within 15 s — an error, so the experiment stays
   `"planned"` and the next cycle reads the page before trying again, where the swallowed wait had
-  returned `"started"` and left a blank form to be found a day later), and the worker never
+  returned `"started"` and left a blank form to be found a day later; since 15 Oct the end-screen
+  and related-link saves the same way, whose `"imported"`/`"linked"` the ledger keeps for good),
+  and the worker never
   guesses past an ambiguous state on its own. Studio's "Results ready"/"Test finished" is what
   counts as done: `parseTcReport` reads the report's per-arm watch-time shares and Studio's own
   winner, and `setExperimentChecked` records them (`watchTimeShare` per arm, "<arm> wins: a% vs b%").

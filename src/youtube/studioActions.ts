@@ -353,22 +353,38 @@ async function clickStarterLayout(page: import("playwright").Page): Promise<bool
   return true;
 }
 
-/** Clicks the editor's own Save and waits for the same "Changes saved" confirmation
- * `startTestAndCompare` already waits for elsewhere in this file — shared by the starter-layout
- * and "Import from video" paths below, both of which finish the same way once something has
- * actually been picked. */
+/** Whether Studio's "Changes saved" toast shows within 15s of a Save. No toast is no proof it
+ * saved: swallowed, a Save that never landed read as done and the worker's ledger skipped the
+ * video for good (8 Oct 2026's blank Test & Compare form; end screens and related links had the
+ * same hole until 15 Oct). Every Save in this file turns `false` into an error, so nothing is
+ * marked done and the next cycle re-reads the page. */
+function changesSaved(page: import("playwright").Page): Promise<boolean> {
+  return page
+    .locator('text="Changes saved"')
+    .first()
+    .waitFor({ state: "visible", timeout: 15_000 })
+    .then(
+      () => true,
+      () => false,
+    );
+}
+
+/** Clicks the editor's own Save and waits for "Changes saved" (`changesSaved`) — shared by the
+ * starter-layout and "Import from video" paths below, both of which finish the same way once
+ * something has actually been picked. Throws when the toast never shows, which
+ * `addEndScreenFromTemplate`'s own catch returns as `{ error }`. */
 async function saveEndScreenChange(
   page: import("playwright").Page,
   handle: StudioHandle,
   matchId: number,
 ): Promise<void> {
   await page.locator(SELECTORS.endscreenSaveButton).first().click();
-  await page
-    .locator('text="Changes saved"')
-    .first()
-    .waitFor({ state: "visible", timeout: 15_000 })
-    .catch(() => {});
+  const saved = await changesSaved(page);
   await shot(handle, matchId, "endscreen-after");
+  if (!saved)
+    throw new Error(
+      'Save was pressed but Studio never showed "Changes saved" — the end screen may not have saved; check Studio by hand',
+    );
 }
 
 /**
@@ -691,12 +707,13 @@ export async function linkRelatedVideo(
     await waitForEnabled(page, SELECTORS.pageSaveButton, 15_000);
     await randomPause();
     await page.locator(SELECTORS.pageSaveButton).click();
-    await page
-      .locator('text="Changes saved"')
-      .first()
-      .waitFor({ state: "visible", timeout: 15_000 })
-      .catch(() => {});
+    const saved = await changesSaved(page);
     await shot(handle, opts.matchId, "related-after");
+    if (!saved)
+      return {
+        error:
+          'Save was pressed but Studio never showed "Changes saved" — the related video may not be linked; check Studio by hand',
+      };
     return "linked";
   } catch (err) {
     return { error: describeError(err) };
@@ -842,14 +859,7 @@ export async function startTestAndCompare(
     // No toast is no proof it saved: swallowed, a Save that never landed read as "started" and
     // surfaced only a day later as a blank form. As an error the worker records it as this cycle's
     // and leaves the experiment "planned" — the next cycle reads the page before trying again.
-    const saved = await page
-      .locator('text="Changes saved"')
-      .first()
-      .waitFor({ state: "visible", timeout: 15_000 })
-      .then(
-        () => true,
-        () => false,
-      );
+    const saved = await changesSaved(page);
     await shot(handle, opts.matchId, "tc-after");
     if (!saved)
       return {

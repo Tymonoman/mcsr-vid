@@ -893,10 +893,16 @@ export async function resumeUpload(
   kind: UploadKind,
   send: typeof uploadVideo = uploadVideo,
 ): Promise<string | null> {
-  // A runner blocked since the upload started: the rest of the bytes never go up either.
-  if (hasBlockedPlayer(matchDir(matchId)))
-    return `match ${matchId} has a blocked player — uploads of it are refused`;
   const located = await uploadFilePath(matchId, kind);
+  // A runner blocked since the upload started: the rest of the bytes never go up either, with or
+  // without a session. A half-sent one's session file stays and is named — deleting it (and the
+  // half-sent video in Studio) is the operator's call.
+  if (hasBlockedPlayer(matchDir(matchId))) {
+    const session = "error" in located ? null : sessionPath(located.path);
+    return session && existsSync(session)
+      ? `match ${matchId} has a blocked player — ${kindName(kind)} a restart cut short is left unfinished; delete it in Studio and ${path.basename(session)} by hand`
+      : `match ${matchId} has a blocked player — uploads of it are refused`;
+  }
   if ("error" in located) return located.error;
   const filePath = located.path;
   const record = await readUpload(matchId, kind);
@@ -904,10 +910,6 @@ export async function resumeUpload(
     if (!record || record.source === "dashboard") return null;
     return studioNoSession(kind, matchId, record);
   }
-  // The block outranks a half-sent upload too: a runner who withdrew permission mid-upload gets
-  // no finished video. The session file stays — deleting it is the operator's call.
-  if (hasBlockedPlayer(matchDir(matchId)))
-    return `match ${matchId} has a blocked player — ${kindName(kind)} a restart cut short is left unfinished; delete it in Studio and ${path.basename(sessionPath(filePath))} by hand`;
   // A sync.json corrected since these bytes were encoded: the rest of them would finish a desynced
   // video, which `startUpload` refuses too. Nothing is sent and the session stays; a re-encode is
   // different bytes, so the next Save starts fresh over it.
