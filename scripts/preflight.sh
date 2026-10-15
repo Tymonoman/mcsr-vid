@@ -42,6 +42,16 @@ else
   fi
 fi
 
+# --- the Studio worker. The mcsr container's command is `sleep infinity`, so nothing brings the
+# worker's supervisor back after a container restart (15 Oct 2026: down 19 h after a 00:14
+# restart). Every session start revives it: detached (setsid) so it outlives this session, with
+# the clean env it needs; its own pidfile refuses a second copy.
+if ! pgrep -f "scripts/studio-worker\.sh" >/dev/null 2>&1; then
+  env -u MCSR_CONFIG -u MCSR_ARCHIVE_DIR -u MEDIA_DIR \
+    setsid nohup bash /app/scripts/studio-worker.sh >/dev/null 2>&1 </dev/null &
+  notes+=("Studio worker supervisor was not running — started it")
+fi
+
 # --- the credential most likely to expire silently. See scripts/preflight-youtube.mjs.
 youtube=$(timeout 20 node scripts/preflight-youtube.mjs 2>/dev/null)
 
