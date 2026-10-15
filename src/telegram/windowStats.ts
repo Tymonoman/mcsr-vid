@@ -71,6 +71,17 @@ export const subsPer1kEngaged = (m: Record<string, number>): number | null => {
   return engaged > 0 ? ((m.subscribersGained ?? 0) / engaged) * 1000 : null;
 };
 
+/**
+ * Net subscribers (gained minus lost) per 1,000 engaged views. Read over long-form only, this is the
+ * channel's growth rate: about 2 and flat since mid-September, while most of the raw view growth was
+ * muted Home previews and Shorts plays that never convert (WHY report, 14 Oct 2026). Null with no
+ * engaged views.
+ */
+export const netSubsPer1kEngaged = (m: Record<string, number>): number | null => {
+  const engaged = m.engagedViews ?? 0;
+  return engaged > 0 ? (netSubscribers(m) / engaged) * 1000 : null;
+};
+
 /** The last (most recent) date in the rows, or null for an empty report — "data ends on …". */
 export function latestDate(rows: readonly DayRow[]): string | null {
   return rows.reduce(

@@ -17,6 +17,7 @@ import {
   WORTH_DEADLINE_MS,
   withDeadline,
 } from "./facts.js";
+import { renderStats } from "./report.js";
 import type { WorthFacts } from "./worth.js";
 
 // A gather reads the state file and the scans' cache from the media directory: keep it a scratch one.
@@ -629,6 +630,86 @@ try {
       console.log("OK: a live title breaking a house rule is an item by video id and problem");
     } finally {
       config.shortsByHand = false;
+      globalThis.fetch = realFetch;
+    }
+  }
+
+  // The long-form rate (WHY report, 14 Oct 2026): one more Analytics request beside the stats
+  // table's own, filtered to long-form, summed over the last 7 and 28 days of data. A fake
+  // Analytics layer answers both; the long-form one can be made to fail.
+  {
+    const realFetch = globalThis.fetch;
+    const reports: URLSearchParams[] = [];
+    let longFormFails = false;
+    // 30 days of long-form data ending 11 Oct: the last 7 at 2,000 engaged / 5 gained / 1 lost a day,
+    // the 21 before at 1,000 / 2 / 1, and the 2 oldest far bigger, outside both windows.
+    const longFormRows = Array.from({ length: 30 }, (_, i) => {
+      const date = new Date(Date.UTC(2026, 8, 12 + i)).toISOString().slice(0, 10);
+      return i >= 23 ? [date, 2000, 5, 1] : i >= 2 ? [date, 1000, 2, 1] : [date, 99_999, 999, 0];
+    });
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const url = new URL(String(input));
+      if (url.origin === "https://oauth2.googleapis.com")
+        return new Response(JSON.stringify({ access_token: "t", expires_in: 3600 }));
+      if (url.pathname.endsWith("/youtube/v3/channels"))
+        return new Response(
+          JSON.stringify({
+            items: [{ statistics: { subscriberCount: "300", viewCount: "9000", videoCount: "80" } }],
+          }),
+        );
+      if (url.origin === "https://youtubeanalytics.googleapis.com") {
+        reports.push(url.searchParams);
+        if (!url.searchParams.get("filters"))
+          return new Response(JSON.stringify({ rows: [["2026-10-11", 900, 500, 3000, 4, 1, 20, 2]] }));
+        if (longFormFails)
+          return new Response(JSON.stringify({ error: { message: "Quota exceeded" } }), { status: 403 });
+        return new Response(JSON.stringify({ rows: longFormRows }));
+      }
+      throw new Error(`gatherStats reached for the real network: ${url}`);
+    }) as typeof fetch;
+    try {
+      const { stats } = await gatherFacts(Date.now(), undefined, ["stats"]);
+      assert.ok(stats.ok, JSON.stringify(stats));
+      assert.equal(reports.length, 2, "two Analytics requests per report: the table's and the long-form one");
+      const lf = reports.find((q) => q.get("filters"))!;
+      assert.equal(lf.get("filters"), "creatorContentType==videoOnDemand");
+      assert.equal(lf.get("ids"), "channel==MINE", "own channel only");
+      assert.equal(lf.get("dimensions"), "day");
+      assert.deepEqual(lf.get("metrics")!.split(","), [
+        "engagedViews",
+        "subscribersGained",
+        "subscribersLost",
+      ]);
+      assert.deepEqual(stats.data.longForm, {
+        ok: true,
+        data: [
+          { days: 7, totals: { engagedViews: 14_000, subscribersGained: 35, subscribersLost: 7 } },
+          { days: 28, totals: { engagedViews: 35_000, subscribersGained: 77, subscribersLost: 28 } },
+        ],
+      });
+      // Net per 1,000: (35 - 7) / 14,000 = 2.0 over 7 days; (77 - 28) / 35,000 = 1.4 over 28.
+      assert.ok(
+        renderStats(stats, null).includes(
+          "<b>2.0</b> net subs / 1,000 engaged long-form views (7d) · 1.4 (28d) · 14,000 engaged views (7d) · 35,000 (28d)",
+        ),
+      );
+      console.log("OK: the long-form rate is one filtered request, 7 and 28 days of it");
+
+      // The long-form request fails: its own line says so, the stats table is untouched.
+      longFormFails = true;
+      const failed = (await gatherFacts(Date.now(), undefined, ["stats"])).stats;
+      assert.ok(failed.ok, "a dead long-form read never fails the stats section");
+      assert.deepEqual(failed.data.longForm, { ok: false, error: "Analytics: Quota exceeded" });
+      assert.equal(failed.data.windows[1].current.views, 900);
+      assert.equal(failed.data.live.subscribers, 300);
+      const out = renderStats(failed, null);
+      assert.ok(
+        out.includes("Net subs per 1,000 engaged long-form views: unavailable (Analytics: Quota exceeded)"),
+        out,
+      );
+      assert.ok(out.includes("<pre>"), out);
+      console.log("OK: a failed long-form read is one line, not the report");
+    } finally {
       globalThis.fetch = realFetch;
     }
   }

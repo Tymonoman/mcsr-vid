@@ -21,7 +21,7 @@ import {
   getAccessToken,
 } from "../youtube/youtube.js";
 import { readUpload } from "../youtube/youtubeStore.js";
-import { fetchYppSnapshot, projectYpp, type YppProgress } from "../youtube/yppProgress.js";
+import { analytics, fetchYppSnapshot, projectYpp, type YppProgress } from "../youtube/yppProgress.js";
 import { capacity } from "../dashboard/archive.js";
 import { readNightlyState, MIN_FREE_MATCHES, type NightlyLastRun } from "../dashboard/nightly.js";
 import { restartState } from "../dashboard/restartWhenIdle.js";
@@ -38,6 +38,7 @@ import { describeFailure, runClaude } from "./claude.js";
 import { filterUnanswered, type UnansweredComment } from "./comments.js";
 import { gatherWorth, type WorthFacts } from "./worth.js";
 import {
+  aggregateWindow,
   aggregateWindows,
   latestDate,
   type DayRow,
@@ -752,10 +753,19 @@ export interface ChannelSnapshot {
   videos: number;
 }
 
+/** Long-form (`creatorContentType==videoOnDemand`) totals over the most recent `days` days of data. */
+export interface LongFormWindow {
+  days: 7 | 28;
+  /** engagedViews, subscribersGained, subscribersLost. */
+  totals: Record<string, number>;
+}
+
 export interface StatsFacts {
   live: ChannelSnapshot;
   dataEndsOn: string | null;
   windows: Record<WindowDays, WindowTotals>;
+  /** Its own section: a failed long-form read costs its one line, not the table. */
+  longForm: Section<LongFormWindow[]>;
 }
 
 async function analyticsDayRows(token: string, days: number): Promise<DayRow[]> {
@@ -782,6 +792,29 @@ async function analyticsDayRows(token: string, days: number): Promise<DayRow[]> 
   });
 }
 
+const LONG_FORM_METRICS = ["engagedViews", "subscribersGained", "subscribersLost"] as const;
+
+/** One Analytics request, 35 days back: 28 days of data plus the 1–3 days Analytics lags. */
+async function gatherLongForm(token: string): Promise<LongFormWindow[]> {
+  const ymd = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+  const rows = await analytics(token, {
+    startDate: ymd(Date.now() - 35 * DAY_MS),
+    endDate: ymd(Date.now()),
+    dimensions: "day",
+    metrics: LONG_FORM_METRICS.join(","),
+    filters: "creatorContentType==videoOnDemand",
+  });
+  const dayRows: DayRow[] = rows.map((r) => {
+    const row: DayRow = { date: String(r[0]) };
+    LONG_FORM_METRICS.forEach((m, i) => (row[m] = Number(r[i + 1] ?? 0)));
+    return row;
+  });
+  return ([7, 28] as const).map((days) => ({
+    days,
+    totals: aggregateWindow(dayRows, days, LONG_FORM_METRICS).current,
+  }));
+}
+
 async function gatherStats(): Promise<StatsFacts> {
   const channel = await dataApiGet<{
     items?: Array<{ statistics: { subscriberCount: string; viewCount: string; videoCount: string } }>;
@@ -793,8 +826,16 @@ async function gatherStats(): Promise<StatsFacts> {
     videos: Number(stats?.videoCount ?? 0),
   };
   const token = await getAccessToken();
-  const rows = await analyticsDayRows(token, 62);
-  return { live, dataEndsOn: latestDate(rows), windows: aggregateWindows(rows, [...ANALYTICS_METRICS]) };
+  const [rows, longForm] = await Promise.all([
+    analyticsDayRows(token, 62),
+    section(() => gatherLongForm(token)),
+  ]);
+  return {
+    live,
+    dataEndsOn: latestDate(rows),
+    windows: aggregateWindows(rows, [...ANALYTICS_METRICS]),
+    longForm,
+  };
 }
 
 /* --- Comments ------------------------------------------------------------------------------------ */

@@ -9,6 +9,7 @@ import {
   renderAutoHooks,
   renderComments,
   renderHealth,
+  renderLongForm,
   renderMorningReport,
   renderNeedsYou,
   renderNightly,
@@ -555,7 +556,18 @@ const worthMatch = (i: number, over: Partial<WorthMatch> = {}): WorthMatch => ({
     overnight: { ok: true, data: { uploaded: [], nowPublic: [], nightlyRendered: null } },
     stats: {
       ok: true,
-      data: { live: { subscribers: 92, views: 64883, videos: 36 }, dataEndsOn: "2026-09-26", windows },
+      data: {
+        live: { subscribers: 92, views: 64883, videos: 36 },
+        dataEndsOn: "2026-09-26",
+        windows,
+        longForm: {
+          ok: true,
+          data: [
+            { days: 7, totals: { engagedViews: 15800, subscribersGained: 36, subscribersLost: 3 } },
+            { days: 28, totals: { engagedViews: 61200, subscribersGained: 130, subscribersLost: 14 } },
+          ],
+        },
+      },
     },
     comments: { ok: true, data: { unanswered: [], videoTitles: {} } },
     ypp: { ok: false, error: "no token" },
@@ -611,6 +623,14 @@ const worthMatch = (i: number, over: Partial<WorthMatch> = {}): WorthMatch => ({
   // The channel message leads with net subscribers (a table row before views) and, with YPP data,
   // carries the countdown's range in its one line.
   assert.ok(msgs[1]!.indexOf("\nnet subs") < msgs[1]!.indexOf("\nviews"), msgs[1]);
+  // And above the table, the long-form rate: (36 - 3) / 15,800 and (130 - 14) / 61,200, per 1,000.
+  assert.ok(
+    msgs[1]!.includes(
+      "<b>2.1</b> net subs / 1,000 engaged long-form views (7d) · 1.9 (28d) · 15,800 engaged views (7d) · 61,200 (28d)",
+    ),
+    msgs[1],
+  );
+  assert.ok(msgs[1]!.indexOf("engaged long-form views") < msgs[1]!.indexOf("<pre>"), msgs[1]);
   // The Tests line: running count, today's schedule entry, and the decision since the last report.
   assert.ok(msgs[1]!.includes("🧪"), msgs[1]);
   assert.ok(msgs[1]!.includes("1 running"), msgs[1]);
@@ -747,10 +767,16 @@ const worthMatch = (i: number, over: Partial<WorthMatch> = {}): WorthMatch => ({
       },
     ]),
   ) as unknown as Extract<ReportFacts["stats"], { ok: true }>["data"]["windows"];
+  const longForm = { ok: false as const, error: "Analytics: quota" };
   const out = renderStats(
-    { ok: true, data: { live: { subscribers: 92, views: 1, videos: 1 }, dataEndsOn: "2026-09-26", windows } },
+    {
+      ok: true,
+      data: { live: { subscribers: 92, views: 1, videos: 1 }, dataEndsOn: "2026-09-26", windows, longForm },
+    },
     { subscribers: 90, views: 1, videos: 1 },
   );
+  // A failed long-form read is its own line; the table under it still renders.
+  assert.ok(out.includes("Net subs per 1,000 engaged long-form views: unavailable (Analytics: quota)"), out);
   const table = out.slice(out.indexOf("<pre>") + 5, out.indexOf("</pre>")).split("\n");
   assert.equal(new Set(table.map((l) => l.length)).size, 1, table.join("\n"));
   assert.ok(table[0]!.includes("30d*") && out.includes("fewer days of data"), out);
@@ -791,6 +817,44 @@ const worthMatch = (i: number, over: Partial<WorthMatch> = {}): WorthMatch => ({
   assert.ok(cells("views")[0] === "55K" && cells("vs prev", 2)[0] === "×182");
   // The footer says what subs/1k is: gained, not net.
   assert.ok(out.includes("subs/1k = subscribers gained per 1,000 engaged views"), out);
+}
+
+// The long-form line: net subscribers (gained minus lost) per 1,000 engaged long-form views, 7 and 28
+// days side by side, then the engaged views themselves (WHY report, 14 Oct 2026).
+{
+  const lf = (week: number[], month: number[]) =>
+    renderLongForm({
+      ok: true,
+      data: [
+        {
+          days: 7,
+          totals: { engagedViews: week[0]!, subscribersGained: week[1]!, subscribersLost: week[2]! },
+        },
+        {
+          days: 28,
+          totals: { engagedViews: month[0]!, subscribersGained: month[1]!, subscribersLost: month[2]! },
+        },
+      ],
+    });
+  assert.equal(
+    lf([10000, 25, 4], [40000, 90, 10]),
+    "<b>2.1</b> net subs / 1,000 engaged long-form views (7d) · 2.0 (28d) · 10,000 engaged views (7d) · 40,000 (28d)",
+    "21 net over 10,000 is 2.1; 80 net over 40,000 is 2.0",
+  );
+  // Lost counts against the rate: gained alone would read 1.0 here, not -0.5.
+  assert.ok(lf([4000, 4, 6], [4000, 4, 0]).startsWith("<b>-0.5</b> net subs"), "more lost than gained");
+  // A window with no engaged views has no rate: "n/a", never Infinity or NaN.
+  const empty = lf([0, 3, 0], [0, 0, 0]);
+  assert.equal(
+    empty,
+    "<b>n/a</b> net subs / 1,000 engaged long-form views (7d) · n/a (28d) · 0 engaged views (7d) · 0 (28d)",
+  );
+  assert.ok(!/Infinity|NaN/.test(empty), empty);
+  // A failed read says so in one line, escaped like every other dynamic string.
+  assert.equal(
+    renderLongForm({ ok: false, error: "Analytics: <bad> & co" }),
+    "Net subs per 1,000 engaged long-form views: unavailable (Analytics: &lt;bad&gt; &amp; co)",
+  );
 }
 
 // The YPP countdown: subscribers AND (hours OR Shorts views) — the later of the two, named.

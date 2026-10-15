@@ -18,7 +18,7 @@ import type {
 } from "./facts.js";
 import type { TestsSummary } from "../dashboard/experiments.js";
 import type { CreatorWatchHit } from "../dashboard/creatorWatch.js";
-import { netSubscribers, subsPer1kEngaged, type WindowDays } from "./windowStats.js";
+import { netSubscribers, netSubsPer1kEngaged, subsPer1kEngaged, type WindowDays } from "./windowStats.js";
 import type { NightlyFacts, UpcomingRow } from "./facts.js";
 import type { NightlyLastRun } from "../dashboard/nightly.js";
 
@@ -281,7 +281,24 @@ const cell = (n: number): string =>
       : `${Math.round(n)}`;
 
 /**
- * The live counts, then one monospace table: a metric per row, a window per column (1/3/7/30 days
+ * Net subscribers per 1,000 engaged long-form views, 7 and 28 days side by side, then those engaged
+ * views: the number the channel's growth is read by, ahead of the raw views (WHY report, 14 Oct
+ * 2026). "n/a" for a window with no engaged views; a failed read is this one line.
+ */
+export function renderLongForm(longForm: StatsFacts["longForm"]): string {
+  if (!longForm.ok)
+    return `Net subs per 1,000 engaged long-form views: unavailable (${escapeHtml(longForm.error)})`;
+  const [week, month] = longForm.data;
+  const rate = (w: typeof week) => netSubsPer1kEngaged(w!.totals)?.toFixed(1) ?? "n/a";
+  const engaged = (w: typeof week) => fmtInt(w!.totals.engagedViews ?? 0);
+  return (
+    `${b(rate(week))} net subs / 1,000 engaged long-form views (7d) · ${rate(month)} (28d)` +
+    ` · ${engaged(week)} engaged views (7d) · ${engaged(month)} (28d)`
+  );
+}
+
+/**
+ * The live counts, the long-form rate, then one monospace table: a metric per row, a window per column (1/3/7/30 days
  * by default). Net subscribers and subscribers gained per 1,000 engaged views lead — the channel
  * steered by views while subscribers per 1,000 views fell from 7.0 to 0.98 (post-mortem, 30 Sept
  * 2026) — and each of them, and views, has a "vs prev" row under it: the change against the equal
@@ -331,7 +348,9 @@ export function renderStats(
   const foot = dataEndsOn
     ? `<i>Analytics through ${escapeHtml(dayMonth(Date.parse(dataEndsOn)))} (it lags 1–3 days)${partial ? " · * fewer days of data than the window" : ""} · subs/1k = subscribers gained per 1,000 engaged views</i>`
     : "";
-  return [liveLine, `<pre>${escapeHtml(table)}</pre>`, foot].filter(Boolean).join("\n");
+  return [liveLine, renderLongForm(stats.data.longForm), `<pre>${escapeHtml(table)}</pre>`, foot]
+    .filter(Boolean)
+    .join("\n");
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;

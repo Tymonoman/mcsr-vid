@@ -163,7 +163,12 @@ const factsOf = (over: Partial<ReportFacts> = {}): ReportFacts =>
     },
     stats: {
       ok: true,
-      data: { live: { subscribers: 120, views: 5000, videos: 30 }, dataEndsOn: "2026-10-12", windows },
+      data: {
+        live: { subscribers: 120, views: 5000, videos: 30 },
+        dataEndsOn: "2026-10-12",
+        windows,
+        longForm: { ok: false, error: "not read in this test" },
+      },
     },
     comments: {
       ok: true,
