@@ -1222,8 +1222,11 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
   or public in the last 3 days (`publishAt`, or `uploadedAt` for one published on upload) whose
   Short nobody has cut — no `short-<id>.hand.json`, no `youtube-short.json` — unless `noShort`,
   hidden or `blockedOnDisk`, since nothing else warns before a long-form goes out without its Short;
-  a live title — `youtube.json`/`youtube-short.json`, public or with any `publishAt` (the record's
-  `privacyStatus` is upload-time only), each video once, a blocked player's match skipped — whose
+  a live title — each `youtube.json`/`youtube-short.json` video once, title and privacy read off the
+  channel (`liveVideos`, one `videos.list` per 50 ids; a retitle in Studio never reaches the record,
+  review 15 Oct 2026), the record standing in only when that read fails; public or with any
+  `publishAt` (the record's `privacyStatus` is upload-time only), deleted or set private skipped, a
+  blocked player's match skipped — whose
   hook (before the first " | ") fails `hookProblem` (which runs `spoilsTheResult` too) given the
   title's own "A vs B" (`liveTitleItems`, 14 Oct 2026: "FALLEN KING vs PLAYOFF GOAT" and "RANK #1"
   were public, since a typed hook saves with only a warning and nothing said so afterwards); the
@@ -1237,8 +1240,9 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
   own heartbeat (`<mediaDir>/.studio-worker.json`, `studioWorkerItems`/`studioWorkerHealth`,
   `facts.ts`, 8 Oct 2026 — read defensively the same way, a type duplicated locally rather than
   imported from `studioWorker.ts`): a heartbeat over 90 min old is one item naming when it last
-  beat and the restart command (`npm run -s studio -- worker --enable`, same as "Studio
-  automation" below), and `WorkerHeartbeat.sameErrorStreak` (computed read-before-write in
+  beat and the supervisor's start line (`nohup bash /app/scripts/studio-worker.sh >/dev/null 2>&1 &`,
+  Phase 5 below — never the bare worker, which exits for new code in a blackout and nothing
+  restarts it; review 15 Oct 2026), and `WorkerHeartbeat.sameErrorStreak` (computed read-before-write in
   `runWorker`) at 3 or more is a second, independent item quoting that error's first line — both
   on the same file as `gatherHealth`'s own "studio worker" line (ok with the last cycle's time, or
   down); no file at all means the worker was never started, so neither fires. Below it, **"Auto-saved hooks"**
@@ -1335,7 +1339,9 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
   own chat (never another chat, never a command) appends one line `{at, text, messageId}` to
   `<mediaDir>/.telegram-inbox.jsonl`, silently — no echo. `npm run tg -- inbox [--since <ISO>]
   [--clear]` prints them oldest first as `<at>  <text>`; `--clear` moves the file aside before
-  reading, so a reply arriving mid-read starts a fresh file instead of being lost.
+  reading, so a reply arriving mid-read starts a fresh file instead of being lost, and with
+  `--since` puts back the older replies it did not print (another session's answer, review 15 Oct
+  2026).
 - **What is not built**: `youtubeUploadEnabled`-gated actions, renders, queue edits — every
   command is read-only, and `/help` says so. No command writes anything the dashboard would show
   as changed.
