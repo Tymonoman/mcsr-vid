@@ -139,6 +139,10 @@ export interface ShortStatus {
   /** The last auto-hooks save (autoHooksAfterHours, below) — kept across any later save, by the
    *  operator or auto-hooks again, so the morning report can always say what it last picked. */
   autoHooks?: AutoHooksRecord;
+  /** Auto-hooks found this match due but its sync weak and not hand-set (`syncWeak`), so saved
+   *  nothing: Needs-you lists it until the hooks are saved — by hand, or by a later tick once the
+   *  sync reads sound. Cleared by that tick. */
+  syncHold?: { at: string; detail: string };
 }
 
 /** One auto-hooks save: what it chose and where each hook came from. */
@@ -635,7 +639,8 @@ function syncWeak(matchId: number, f: Facts): boolean {
   const games = f.series ? f.series.games.map((g) => g.matchId) : [matchId];
   const weak = games.some((id) => {
     const sync = readSyncOffsets(matchDir(id));
-    return sync === null || sync.confidence < config.syncConfidenceThreshold;
+    // A hand fix (the sync editor's save) is sound whatever its number: it outranks the detector.
+    return sync === null || (sync.source !== "manual" && sync.confidence < config.syncConfidenceThreshold);
   });
   const video = exportPath(f.dir, matchId);
   return weak || (video !== null && exportStale(f.dir, video).stale);
@@ -1575,6 +1580,8 @@ export async function shortTick(deps: Partial<ChainDeps> = {}, nowMs = Date.now(
  */
 
 const AUTO_HOOKS_NO_PASS = "auto-hooks: no suggested hook passed the checks — save one by hand";
+const AUTO_HOOKS_SYNC_HOLD =
+  "auto-hooks: due, but the sync is weak and not hand-set — waiting on the sync (fix it in the sync editor and re-export, or save the hooks by hand)";
 
 /** The pick's own age, or the file's mtime when it has none readable — a truncated or very old
  *  pick file still counts as "due", rather than ageless. Null when there is no pick file at all. */
@@ -1762,6 +1769,18 @@ export async function autoHooksTick(deps: Partial<ChainDeps> = {}, nowMs = Date.
       // saved from game 1 once every game is in; saveHooks would only refuse it with SERIES_GAME,
       // forever, until the bracket catches up (shortPlan.ts's own pre-check reused here).
       if (await seriesGameUnjoined(match, f.series)) continue;
+      // 14178549 (15 Oct 2026) went up ~1.4 s out of step on a 0.1 countdown read: the dashboard
+      // flags a weak sync, but nobody is looking when this saves. Held, logged once, for a human.
+      if (syncWeak(matchId, f)) {
+        if (!status.syncHold) {
+          updateStatus(matchId, (s) => {
+            s.syncHold = { at: new Date().toISOString(), detail: AUTO_HOOKS_SYNC_HOLD };
+          });
+          shortLog(matchId, "chain", AUTO_HOOKS_SYNC_HOLD, { level: "warn" });
+        }
+        continue;
+      }
+      if (status.syncHold) updateStatus(matchId, (s) => delete s.syncHold);
       try {
         await autoSaveHooks(matchId, match, f, deps);
       } catch (err: unknown) {

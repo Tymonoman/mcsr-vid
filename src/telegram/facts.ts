@@ -179,7 +179,7 @@ async function gatherTodo(nowMs: number): Promise<TodoFacts> {
 /* --- Needs you (the operator's grant, 8 Oct 2026: "I act only on what the 07:00 Warsaw Telegram
    report lists under 'Needs you'") ---------------------------------------------------------------
  *
- * Deterministic, code only — never Claude — and only these eight kinds, each a fact a human has to
+ * Deterministic, code only — never Claude — and only these nine kinds, each a fact a human has to
  * settle: everything else (a scheduled upload, a quiet night) needs nobody. A match is named by its
  * deep link where there is one; a comment's own text or author is never shown (`blockedRunnerItems`
  * names the video a blocked runner commented on, nothing they wrote). */
@@ -211,6 +211,24 @@ async function failedStepItems(): Promise<NeedsYouItem[]> {
       const m = await matchStatusFor(matchId).catch(() => null);
       items.push({ matchId, players: m ? playersOf(m) : undefined, text: `${step} failed: ${message}` });
     }
+  }
+  return items;
+}
+
+/** A match auto-hooks held for a weak sync nobody has set by hand (`syncHold`, shortFlow.ts) —
+ *  until its hooks are saved, by hand or by a later tick once the sync reads sound. */
+async function syncHoldItems(): Promise<NeedsYouItem[]> {
+  const items: NeedsYouItem[] = [];
+  const hidden = hiddenMatchIds();
+  for (const matchId of listProcessedMatchIds()) {
+    const status = readStatus(matchId);
+    if (!status.syncHold || status.hooksSavedAt || status.noShort || hidden.has(matchId)) continue;
+    const m = await matchStatusFor(matchId).catch(() => null);
+    items.push({
+      matchId,
+      players: m ? playersOf(m) : undefined,
+      text: "sync needs a look before it can upload",
+    });
   }
   return items;
 }
@@ -448,8 +466,9 @@ function needsHumanItems(): NeedsYouItem[] {
 }
 
 async function gatherNeedsYou(nowMs: number, sinceMs: number): Promise<NeedsYouFacts> {
-  const [failed, studio, noUpload, handShort, liveTitles, blocked] = await Promise.all([
+  const [failed, syncHold, studio, noUpload, handShort, liveTitles, blocked] = await Promise.all([
     failedStepItems(),
+    syncHoldItems(),
     Promise.resolve(studioItem()),
     noUploadSoonItem(nowMs),
     handShortItems(nowMs),
@@ -461,6 +480,7 @@ async function gatherNeedsYou(nowMs: number, sinceMs: number): Promise<NeedsYouF
   const items = [
     ...blocked,
     ...failed,
+    ...syncHold,
     ...(studio ? [studio] : []),
     ...(noUpload ? [noUpload] : []),
     ...handShort,

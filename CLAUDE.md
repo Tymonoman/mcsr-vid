@@ -218,8 +218,8 @@ reload). After merging server changes, `POST /api/restart-when-idle`.
   whose hooks go unsaved this many hours after its pick gets the best title hook passing
   `hookProblem`+`spoilsTheResult` (model's, else a chip) and a Short hook the same way, upper-cased,
   then the chain runs as if Save were pressed. Due: readable pick, unsaved, not
-  hidden, neither video on channel, not blocked, export not stale, series joined, nothing already
-  running. None within the title's mobile budget: the shortest passing one that keeps the title
+  hidden, neither video on channel, not blocked, export not stale, sync sound or hand-set,
+  series joined, nothing already running. None within the title's mobile budget: the shortest passing one that keeps the title
   ≤100 chars, marked `overBudget`. No survivor: nothing saved, the `hooks` step fails into
   Needs-you. Logs to `autoHooks` in `short-<id>.status.json`.
 - **Thumbnails** (`remotion/Thumbnail.tsx`): two big figures, name-only plates, seed type above the
