@@ -907,10 +907,19 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   `shortPublishAt` (`src/dashboard/shortFlow.ts`) takes the long-form's publish day's
   `slot.shortDelayHours` (1–48) in place of the standing 18 h (`SHORT_DELAY_MS`,
   `src/youtube/youtubeUpload.ts`). A separate daily tick, same 15-minute cadence, evaluates every
-  running "between" experiment once a UTC day (`evaluatedOn`): any arm under 1,000 impressions is
-  "inconclusive", never a guess; CTR is a two-proportion z-test (`|z| ≥ 1.96`); a retention metric
-  (average view %) reports the per-arm view-weighted mean and is "numbers only" unless every video
-  of one arm beats every video of the other, 3+ a side (counting only videos with views). At the
+  running "between" experiment once a UTC day (`evaluatedOn`). **The video is the unit, not the
+  impression (15 Oct 2026)**: an arm with fewer than `MIN_VIDEOS_PER_ARM` (8) videos with the
+  metric is "not enough videos", whatever its impressions; then any arm under 1,000 impressions is
+  "inconclusive"; then each non-control arm's per-video values (CTR, average view % counting only
+  videos with views, or subs per 1,000 views) go against the control's through a two-sided
+  permutation test on the difference in means (`permutationP`, 10,000 shuffles, fixed seed so a
+  day's re-read gives the same p), a winner only at p < 0.05 (`ALPHA`, split across the non-control
+  arms). Anything short is "no verdict yet …" with the per-video means, counts and p; a metric with
+  no per-video rule is "numbers only". The pooled two-proportion z is still printed in a CTR
+  verdict, never the decision: x1's per-video CTRs spread ~38x wider than one pooled rate allows,
+  so in no-effect simulations it named a winner 66–82% of the time (the permutation rule: 4%,
+  `experimentsEvaluator.test.ts`). The per-arm view-weighted mean still lands in `result`, and
+  each arm's `perVideo` rows beside it. At the
   experiment's `end`, a winner with `adoptWinner` becomes the new default (`saveSettings`) and the
   decision is written with its numbers; otherwise the control arm's settings are reapplied, in case
   a render arm left something else live mid-run. Two evaluation failures on consecutive UTC days
