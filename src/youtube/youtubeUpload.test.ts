@@ -6,6 +6,8 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { cacheMatch } from "../api/mcsrApi.js";
+import type { MatchInfo } from "../api/types.js";
 import { config } from "../config.js";
 import type { UploadOptions, UploadResult } from "./youtube.js";
 import {
@@ -107,6 +109,20 @@ try {
   const matchId = 12345678;
   const dir = path.join(media, String(matchId));
   await mkdir(dir, { recursive: true });
+  // The upload's last refusal reads the match (`matchIsDnf`): served from the API cache as a finished
+  // match with the players the stubbed API below names, never the live record (12345678 is a real
+  // forfeit on mcsrranked.com, which would refuse every upload here as a DNF).
+  cacheMatch({
+    id: matchId,
+    type: 2,
+    forfeited: false,
+    result: { uuid: "u-doogile", time: 600_000 },
+    completions: [{ uuid: "u-doogile", time: 600_000 }],
+    players: [
+      { nickname: "doogile", uuid: "u-doogile" },
+      { nickname: "Feinberg", uuid: "u-feinberg" },
+    ],
+  } as unknown as MatchInfo);
   await writeFile(path.join(dir, `match-${matchId}.title.txt`), "A hook | a vs b | MCSR Ranked 1v1\n");
 
   config.youtubeUploadEnabled = true;

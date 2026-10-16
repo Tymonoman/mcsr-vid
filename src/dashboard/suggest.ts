@@ -2,7 +2,14 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { blockedIn, config } from "../config.js";
 import { describeError } from "../errorText.js";
-import { chaosScore, closenessScore, computeMetrics, type MatchMetrics } from "../pipeline/matchScore.js";
+import {
+  chaosScore,
+  closenessScore,
+  computeMetrics,
+  isDnf,
+  metricsDnf,
+  type MatchMetrics,
+} from "../pipeline/matchScore.js";
 import { readDrawLearned, type DrawLearned } from "./drawLearn.js";
 import { listProcessedMatchIds } from "./matchStatus.js";
 import { pairKey, recentPairPostsSnapshot, type PairPost } from "./pairPosts.js";
@@ -471,7 +478,9 @@ export function scanKnowledge(): {
  * because a later scan trimmed it off the ranked list.
  */
 export function pooledMatchPlayers(matchId: number): [string, string] | null {
-  return loadCache().pool[String(matchId)]?.metrics.players ?? null;
+  const metrics = loadCache().pool[String(matchId)]?.metrics;
+  // A DNF is left to the queue's own read (`resolveQueuedPick`), which marks it for the skip.
+  return metrics && !metrics.dnf ? metrics.players : null;
 }
 
 /** Hide a suggestion permanently and drop it from the cached list. */
@@ -640,9 +649,10 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
   if (!options.force && fresh && cache.suggestions.length > 0) {
     // Still filter: a match may have been rendered since the scan that produced this, or a
     // runner blocked in Settings since — the block reaches the cached list too (the TUI lists it as is).
+    // A DNF too, however stale the entry (`metricsDnf`: one cached before the check had no flag).
     return {
       suggestions: cache.suggestions.filter(
-        (s) => !excluded.has(s.metrics.matchId) && !blockedIn(s.metrics.players),
+        (s) => !excluded.has(s.metrics.matchId) && !blockedIn(s.metrics.players) && !metricsDnf(s.metrics),
       ),
       usedTwitchFollowers: cache.usedTwitchFollowers,
       // Re-derived rather than cached: the reason popularity is frequency-only still
@@ -679,7 +689,9 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
         cache.playerAppearances[player.nickname] = (cache.playerAppearances[player.nickname] ?? 0) + 1;
       }
     }
-    if (!match.forfeited && hasBothVods && !excluded.has(match.id) && !candidateIds.has(match.id)) {
+    // A DNF is never a candidate (`isDnf`: a feed entry shows the forfeit and the missing winner;
+    // a run nobody completed shows only once fetched, and `selectable` drops it below).
+    if (!isDnf(match) && hasBothVods && !excluded.has(match.id) && !candidateIds.has(match.id)) {
       candidateIds.add(match.id);
       candidates.push(match);
     }
@@ -855,8 +867,9 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
 
   // Popularity is recomputed rather than stored: appearance counts keep accumulating, so
   // a figure saved when the match was first scored would be stale.
+  // A DNF stays pooled (so it is not fetched again every scan) but is never selectable, in any bucket.
   const selectable = live
-    .filter((entry) => !excluded.has(entry.metrics.matchId))
+    .filter((entry) => !excluded.has(entry.metrics.matchId) && !metricsDnf(entry.metrics))
     .map((entry) => ({
       ...entry,
       popularity: popularityOfNames(entry.metrics.players[0], entry.metrics.players[1]),

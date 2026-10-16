@@ -594,7 +594,8 @@ try {
           ok: true,
           json: async () => ({
             status: "success",
-            data: { ...feedMatch, timelines: [], completions: [] },
+            // Finished: the winner's completion is on record, as on every real finished match (isDnf).
+            data: { ...feedMatch, timelines: [], completions: [{ uuid: "u1", time: 600_000 }] },
           }),
         };
       }

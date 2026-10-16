@@ -22,6 +22,7 @@ import { auditState, readAudit, startAudit } from "./audit.js";
 import { blockedIn, config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { blockedOnDisk, listProcessedMatchIds, matchStatusFor } from "./matchStatus.js";
+import { dnfRefusal, matchIsDnf } from "../playoffs/playoffs.js";
 import { exportStale, staleExportMessage } from "../pipeline/syncFile.js";
 import { abTestKey, readManifest, variantFellBack } from "../thumbnails/thumbnailVariants.js";
 import {
@@ -219,6 +220,10 @@ export async function handleYoutubeRoute(
     const status = await matchStatusFor(matchId);
     if (blockedIn([status.leftNickname, status.rightNickname])) {
       ctx.json(res, 403, { error: `match ${matchId} has a blocked player — it cannot be adopted` });
+      return true;
+    }
+    if (await matchIsDnf(matchId)) {
+      ctx.json(res, 403, { error: dnfRefusal(matchId, "it cannot be adopted") });
       return true;
     }
     const located = findExportedVideo(matchId, [status.leftNickname, status.rightNickname]);

@@ -15,7 +15,7 @@ import { blockedIn, config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { getMatch } from "../api/mcsrApi.js";
 import { blockedOnDisk, listProcessedMatchIds, matchStatusFor } from "../dashboard/matchStatus.js";
-import { playoffContextForId } from "../playoffs/playoffs.js";
+import { dnfRefusal, matchIsDnf, playoffContextForId } from "../playoffs/playoffs.js";
 import { exportStale, staleExportMessage } from "../pipeline/syncFile.js";
 import { readManifest } from "../thumbnails/thumbnailVariants.js";
 import { thumbnailRunning } from "../thumbnails/rerender.js";
@@ -329,6 +329,13 @@ async function startUpload(matchId: number, req: UploadRequest, send: typeof upl
     return bad(
       `the publish time ${req.publishAt} has already passed — pick a later one (the chain takes the next free slot)`,
     );
+
+  // A DNF is never posted, long-form or Short (`matchIsDnf`: nobody finished; a joined series with
+  // a forfeited game among finished ones goes up). The last refusal before the bytes, not in
+  // `hookRefusal`, which decides offline: one cached MCSR read, as this upload's match status makes.
+  // Saved hooks already refuse a DNF (`saveHooks`), so this catches only hooks saved before 16 Oct 2026.
+  if (await matchIsDnf(matchId))
+    return { status: 403, error: dnfRefusal(matchId, "uploads of it are refused") };
 
   // In the tick that marks the upload running, so nothing starts between the two. The running
   // check again too: a double press passes the first one while the other is still awaiting above.

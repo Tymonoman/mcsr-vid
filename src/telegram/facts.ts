@@ -33,7 +33,7 @@ import { creatorWatchSince, type CreatorWatchHit } from "../dashboard/creatorWat
 import { handShortFile } from "../shorts/handShort.js";
 import { hookProblem, pickErrorFile } from "../shorts/videoPick.js";
 import { SEPARATOR } from "../pipeline/title.js";
-import { playoffBoard } from "../playoffs/playoffs.js";
+import { matchIsDnf, playoffBoard } from "../playoffs/playoffs.js";
 import { describeFailure, runClaude } from "./claude.js";
 import { filterUnanswered, type UnansweredComment } from "./comments.js";
 import { gatherWorth, type WorthFacts } from "./worth.js";
@@ -447,14 +447,25 @@ function needsHumanItems(): NeedsYouItem[] {
   }
 }
 
+/** A DNF in tonight's queue: the nightly skips it every night (`finishedPick`), and only the
+ *  operator takes it out. */
+async function queuedDnfItems(): Promise<NeedsYouItem[]> {
+  const items: NeedsYouItem[] = [];
+  for (const matchId of nightlyQueue())
+    if (await matchIsDnf(matchId))
+      items.push({ matchId, text: "a DNF (nobody finished) in tonight's queue — the nightly skips it" });
+  return items;
+}
+
 async function gatherNeedsYou(nowMs: number, sinceMs: number): Promise<NeedsYouFacts> {
-  const [failed, studio, noUpload, handShort, liveTitles, blocked] = await Promise.all([
+  const [failed, studio, noUpload, handShort, liveTitles, blocked, queuedDnf] = await Promise.all([
     failedStepItems(),
     Promise.resolve(studioItem()),
     noUploadSoonItem(nowMs),
     handShortItems(nowMs),
     liveTitleItems(),
     blockedRunnerItems(sinceMs),
+    queuedDnfItems(),
   ]);
   // Blocked runners first: renderNeedsYou's cap keeps items in this order, and "a blocked runner
   // commented" is listed on no dashboard screen, so its "+ N more" would hide it for good.
@@ -465,6 +476,7 @@ async function gatherNeedsYou(nowMs: number, sinceMs: number): Promise<NeedsYouF
     ...(noUpload ? [noUpload] : []),
     ...handShort,
     ...liveTitles,
+    ...queuedDnf,
     ...needsHumanItems(),
     ...studioWorkerItems(nowMs),
   ];

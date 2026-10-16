@@ -126,6 +126,31 @@ const SWING_CEILING_MS = 120_000;
 const LEAD_CHANGE_CEILING = 3;
 const DEATH_CEILING = 6;
 
+/**
+ * A DNF: nobody finished — a forfeit, no winner on record, or no completion. Never suggested,
+ * never rendered by the nightly, never posted (the operator, 16 Oct 2026: "remember not to post
+ * DNF matches also dont suggest them"). Not `finishMarginMs === null`, which is a finished match
+ * whose loser stopped. Judged on what is on record: a feed entry (`FeedMatch`) carries no
+ * `completions`, so for one only the first two count. A playoff game is judged by its series
+ * (`matchIsDnf`, src/playoffs/playoffs.ts).
+ */
+export function isDnf(
+  match: Pick<MatchInfo, "forfeited" | "result"> & Partial<Pick<MatchInfo, "completions">>,
+): boolean {
+  return match.forfeited === true || match.result?.uuid === null || match.completions?.length === 0;
+}
+
+/**
+ * `isDnf` for a scored entry (the suggestion cache's `metrics`): `dnf` when it was scored with one;
+ * an entry scored before 16 Oct 2026 has none, so no winner, or no dragon on either side — a
+ * forfeit or a run nobody completed (none of the 500 finished matches pooled that day reads so).
+ */
+export function metricsDnf(m: Pick<MatchMetrics, "winner" | "splits"> & { dnf?: boolean }): boolean {
+  // `?.`: a cache file is read back as written, and a hand-trimmed entry may carry no splits.
+  const dragon = m.splits?.find((s) => s.label === "Dragon");
+  return m.dnf ?? (m.winner === null || (dragon !== undefined && dragon.aMs === null && dragon.bMs === null));
+}
+
 export interface SplitGap {
   label: string;
   /** Times for players[0] and players[1]; null when that player has no such event. */
@@ -141,6 +166,8 @@ export interface MatchMetrics {
   matchId: number;
   players: [string, string];
   winner: string | null;
+  /** `isDnf` of the match scored. Absent on entries cached before 16 Oct 2026 (`metricsDnf`). */
+  dnf?: boolean;
   resultMs: number;
   splits: SplitGap[];
   /** Gap at the dragon. null when the losing player never killed it (a DNF finish). */
@@ -306,6 +333,7 @@ export function computeMetrics(match: MatchInfo): MatchMetrics {
     matchId: match.id,
     players: [playerA.nickname, playerB.nickname],
     winner,
+    dnf: isDnf(match),
     resultMs: match.result.time,
     splits,
     finishMarginMs: dragonComparable ? Math.abs(dragonA_ms - dragonB_ms) : null,

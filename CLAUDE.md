@@ -25,6 +25,8 @@ thumbnails and a Short, published to **MCSR Replayoffs**.
   `saveWarnings`, never a refusal.
 - **No seed, rank or elo in hooks or hook suggestions, and none in what orders the match
   suggestions** (a suggestion card's story line may still show rank/elo to the operator).
+- **No DNF match** (nobody finished; `matchIsDnf`): never suggested, rendered, given hooks or
+  posted, queued or not; a forfeited game in an otherwise finished series is the series'.
 - **The YouTube API compliance audit has cleared** (`handbook/api-review/`); it gates only
   `videos.insert`. `youtubeUploadEnabled` is true, `nightlyUpload` is `"scheduled"`. Keep every
   API call inside what the recording showed: **own channel, own data, nothing shown to anyone
@@ -80,7 +82,7 @@ Use the script, don't reconstruct the shell line. Extra arguments go after `--`.
 | `npm run config:example` | Rewrites `mcsr-vid.config.example.json` from `DEFAULTS`; run after adding a config key. |
 | `npm run analytics -- <videoId> [--traffic-sources] [--days N]` | YouTube Analytics via `~/.claude/skills/claude-youtube/`. |
 | `bash scripts/agy-task.sh <name> <prompt-file> [model]` | Hand an easy task to agy (Gemini) in a worktree; review the diff and commit yourself. |
-| `python3 scripts/reap.py <command…>` | Subreaper wrapper if zombies climb. |
+| `python3 scripts/reap.py <command…>` | Subreaper wrapper (tini is PID 1) if `ps -eo stat` zombies climb. |
 | `[SCRATCH=1] bash scripts/browser-checks/run-all.sh <url>` | 26 Playwright checks in a real browser: read-only against the real dashboard; the four that write run only with `SCRATCH=1`, against the stub or a scratch server. |
 | `npm run tc-thumbs -- <matchId…>` | A Test & Compare thumbnail set per match in `<id>/tc/` (control, most-different pose, caption). |
 | `npm run studio -- probe \| pin <id> [--dry-run] \| login \| worker [--once] [--dry-run] [--enable] \| tc-plan <plan.json> \| related <id> <id> \| link-related <shortId> <longFormId> [--dry-run]` | Studio browser automation CLI. |
@@ -341,8 +343,7 @@ Europe/Warsaw, DST-correct; every slash command answers fresh. Runs inside the d
 ## Studio automation
 
 Does what Studio has no API for: pinning, end screens, Test & Compare, related-video linking. Gated
-by `studioAutomation` (not writable from Settings; a deliberate edit on the box, like
-`nightlyUpload`/`youtubeUploadEnabled`).
+by `studioAutomation` (not writable from Settings).
 
 - **How it works** (`src/youtube/studioBrowser.ts`): a real, headed `google-chrome-stable` on Xvfb,
   login profile in the `studio-profile` volume. Playwright attaches with
@@ -438,8 +439,7 @@ anything it flags (no GitHub credentials, a read-only PAT, an expiring token) fi
   no audio fallback. Prefer the detector's reading when confident; the hand editor is for a clip it
   cannot read (its anchor is ±1s).
 - **The intro card is a versus screen** (`remotion/Intro.tsx`): animated elements position via
-  left/top, never a CSS `transform`. No head-to-head on a playoff game. **tini is PID 1**; if
-  `ps -eo stat | grep -c ^Z` climbs, wrap in `python3 scripts/reap.py`.
+  left/top, never a CSS `transform`. No head-to-head on a playoff game.
 - **`ss` is there; `lsof`/`fuser` are not**: `ss -tlnp | grep <port>` names the real listener,
   which a `ps`-found PID is not always. **The playoffs board lives inside `#suggestions`, rows
   carry `.sugg`**: match `#suggestions > .sugg`, or a check waits forever on a hidden fold.

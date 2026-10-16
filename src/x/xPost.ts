@@ -18,6 +18,7 @@ import { describeError } from "../errorText.js";
 import { hiddenMatchIds } from "../dashboard/matchShelf.js";
 import { blockedOnDisk, listProcessedMatchIds } from "../dashboard/matchStatus.js";
 import { SEPARATOR, titleName } from "../pipeline/title.js";
+import { dnfRefusal, matchIsDnf } from "../playoffs/playoffs.js";
 import { readHandShort } from "../shorts/handShort.js";
 import { hookProblem, HOOK_MAX_CHARS } from "../shorts/videoPick.js";
 import { allUploads, readUpload, type UploadRecord } from "../youtube/youtubeStore.js";
@@ -69,6 +70,7 @@ export async function planXPost(matchId: number, now = Date.now()): Promise<XPla
   const [left, right] = players;
   if (!left || !right) return `match ${matchId} does not have two players`;
   if (blockedIn([left.nickname, right.nickname])) return blocked;
+  if (await matchIsDnf(matchId)) return dnfRefusal(matchId, "never posted");
   // hookProblem runs spoilsTheResult on the hook itself; the whole text is not run through it
   // again, since a question hook stops ending in "?" once the names and link follow it.
   const problem = hookProblem(hand.hook, HOOK_MAX_CHARS, players);

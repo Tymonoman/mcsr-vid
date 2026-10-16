@@ -19,7 +19,7 @@ import { hiddenMatchIds } from "../dashboard/matchShelf.js";
 import { listProcessedMatchIds } from "../dashboard/matchStatus.js";
 import { knownPlayerFor, scanKnowledge } from "../dashboard/suggest.js";
 import { describeError } from "../errorText.js";
-import { computeMetrics, type MatchMetrics } from "../pipeline/matchScore.js";
+import { computeMetrics, isDnf, type MatchMetrics } from "../pipeline/matchScore.js";
 import { discoverVods, listArchivesWithYtDlp } from "../pipeline/vodDiscovery.js";
 import { readTelegramState, updateTelegramState } from "./state.js";
 
@@ -104,8 +104,7 @@ export function worthCandidates(
       (m) =>
         m.date >= cutoffSec &&
         m.players.length === 2 &&
-        !m.forfeited &&
-        m.result.uuid !== null &&
+        !isDnf(m) &&
         m.result.time >= MIN_RUN_MS &&
         !d.isTaken(m.id) &&
         m.players.every((p) => d.isKnown(p.nickname)) &&
