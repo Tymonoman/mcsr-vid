@@ -150,7 +150,9 @@ assert.ok(
 // "not a single death".
 assert.ok(buildHookSuggestions(input({ deaths: 0 })).includes("Not a single death between them"));
 
-assert.ok(buildHookSuggestions(input({ deaths: 4, finishMarginMs: 5_000 })).includes("4 deaths and still this close"));
+assert.ok(
+  buildHookSuggestions(input({ deaths: 4, finishMarginMs: 5_000 })).includes("4 deaths and still this close"),
+);
 // "Still this close" takes the "Decided by" chip's <10s bar: not the default 30s, a 2-minute
 // finish, or a DNF.
 for (const finishMarginMs of [30_000, 120_000, null])
@@ -248,7 +250,13 @@ assert.ok(
     assert.ok(!HOOK_SEED_RANK_ELO.test(text), `"${text}" uses a seed, rank or elo`);
   }
   // The plain ladder-rank and elo shapes (14 Oct 2026 edge pass); the world's seed type stays fair.
-  for (const text of ["CAN RANK 1 HOLD ON?", "TOP 10 PLAYER IN TROUBLE?", "THE 2100 ELO RUNNER?", "WORLD NUMBER ONE?", "A TOP SEED FALLS?"])
+  for (const text of [
+    "CAN RANK 1 HOLD ON?",
+    "TOP 10 PLAYER IN TROUBLE?",
+    "THE 2100 ELO RUNNER?",
+    "WORLD NUMBER ONE?",
+    "A TOP SEED FALLS?",
+  ])
     assert.ok(HOOK_SEED_RANK_ELO.test(text), `"${text}" should read as a seed, rank or elo`);
   for (const text of ["Village seed, no mercy", "Same seed, two routes", "Top of the nether"])
     assert.ok(!HOOK_SEED_RANK_ELO.test(text), `"${text}" is not a seed, rank or elo`);
@@ -469,7 +477,11 @@ assert.equal(hookFacts(input()).h2h, null);
 // right player won comes back 0-1. Both the generator's facts and the chips must read it as the
 // first 1v1, not a one-sided record that tells the generator who won (14125831).
 {
-  const wonByRight = input({}, { type: 2, result: { uuid: "uuid-r", time: 700_000 } }, { versus: versus(0, 1) });
+  const wonByRight = input(
+    {},
+    { type: 2, result: { uuid: "uuid-r", time: 700_000 } },
+    { versus: versus(0, 1) },
+  );
   assert.deepEqual(hookFacts(wonByRight).h2h, { left: 0, right: 0 });
   assert.ok(buildHookSuggestions(wonByRight, 10).includes("Their first 1v1"));
 }
@@ -615,6 +627,37 @@ console.log("hooks: all checks passed");
   assert.equal(typedSpoiler("TAS vs SWEPT | a vs b", "", "TAS vs SWEPT | a vs b"), null, "already on disk");
 }
 
+// A match's own runner named at the End is the result (15 Oct 2026: "Infume on sub-8 pace at the
+// End" passed every check and auto-saved as 13140492's Short hook; Infume won).
+{
+  const players = [{ nickname: "Feinberg" }, { nickname: "Infume" }];
+  for (const spoiler of [
+    "INFUME ON SUB-8 PACE AT THE END",
+    "Infume on sub-8 pace at the End",
+    "FEINBERG'S ZERO CYCLE",
+    "INFUME AT THE DRAGON ON 1 HEART",
+    "FEINBERG ON RECORD PACE",
+    "INFUME CLOSING IT OUT",
+  ])
+    assert.ok(spoilsTheResult(spoiler, players), `should be rejected: ${spoiler}`);
+  // The broadcast's spelling is the runner too (titleNames, DEFAULTS: lowk3y_ is "lowkey").
+  assert.ok(
+    spoilsTheResult("LOWKEY GOES FOR THE ZERO CYCLE", [{ nickname: "lowk3y_" }, { nickname: "Infume" }]),
+  );
+  for (const safe of [
+    "A SUB-8 RACE TO THE END", // 13140492's own long-form hook: names nobody
+    "INFUME AHEAD AT THE BASTION", // a leader mid-race, no endgame
+    "Can Infume finish before Feinberg?", // a question (14035423's)
+    "FEINBERGER AT THE END", // not a whole-word player
+    "Rematch: Infume leads 3-2 all time",
+  ])
+    assert.ok(!spoilsTheResult(safe, players), `should be allowed: ${safe}`);
+  assert.ok(!spoilsTheResult("INFUME ON SUB-8 PACE AT THE END"), "no players given, no name known");
+  console.log(
+    "OK: a match's runner named at the End or on a finishing pace spoils; nobody named, mid-race or a question does not",
+  );
+}
+
 // --- hookLabelProblem: never a nickname, label or epithet for a runner (2 Oct 2026) -----------
 // "LCQ vs YN" and "ASIAN VS CARNIVORE" both went out this way and drew public objection from the
 // runners named.
@@ -636,7 +679,12 @@ console.log("hooks: all checks passed");
   assert.equal(hookLabelProblem("DOOGILE vs EDCR", players), null, "case-insensitive, either order");
   // Every spelling of "vs", and any number of sides (14 Oct 2026 review: "v."/"versus" and a third
   // side slipped through an exact-two, literal-"vs" split).
-  for (const label of ["CARNIVORE v. VEGAN", "LOVERBOY VERSUS TAS", "LOVERBOY V TAS", "LOVERBOY vs TAS vs THE CLOCK"]) {
+  for (const label of [
+    "CARNIVORE v. VEGAN",
+    "LOVERBOY VERSUS TAS",
+    "LOVERBOY V TAS",
+    "LOVERBOY vs TAS vs THE CLOCK",
+  ]) {
     assert.equal(hookLabelProblem(label, players), LABEL, label);
   }
   assert.equal(hookLabelProblem("edcr versus doogile", players), null, "versus, real nicknames");

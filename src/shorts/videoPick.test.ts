@@ -27,6 +27,7 @@ import { NOT_SIGNED_IN } from "./reasoner.js";
 import { decidedAtMs } from "./raceGap.js";
 import { pickFile, type ShortPick } from "./shortPlan.js";
 import {
+  HOOK_MAX_CHARS,
   hookProblem,
   hookRegister,
   modelFailure,
@@ -695,6 +696,23 @@ for (const h of [
 for (const h of ["NO ONE SAW THAT COMING", "VILLAGE SEED CHAOS", "RANKED 1V1 CHAOS", "NO 2 RUNS ALIKE"])
   assert.equal(hookProblem(h), null, h);
 console.log("OK: a spoiler, overlong hook, or seed/rank/elo is swapped for a chip; the window stands");
+
+// The shared gate hands its players to spoilsTheResult (15 Oct 2026, 13140492): a runner named at
+// the End is refused wherever hookProblem runs — pick, auto-hooks, short:hand, X, Studio.
+{
+  const players = [{ nickname: "Feinberg" }, { nickname: "Infume" }];
+  assert.equal(
+    hookProblem("Infume on sub-8 pace at the End", HOOK_MAX_CHARS, players),
+    "it gives the result away",
+  );
+  assert.equal(hookProblem("A SUB-8 RACE TO THE END", 100, players), null);
+  assert.equal(hookProblem("INFUME AHEAD AT THE BASTION", HOOK_MAX_CHARS, players), null);
+  assert.equal(
+    hookProblem("LOWKEY ON SUB-8 PACE", HOOK_MAX_CHARS, [{ nickname: "lowk3y_" }, { nickname: "Infume" }]),
+    "it gives the result away",
+  );
+  console.log("OK: hookProblem refuses a runner named at the End, by nickname or titleNames spelling");
+}
 
 // "A sub-N to win it" is the house-sanctioned pace stake (hooks.ts's own highest-weighted
 // candidate under 8 minutes, spoilsTheResult's own "safe" example) — hookProblem must not reject

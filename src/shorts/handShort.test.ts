@@ -293,6 +293,43 @@ console.log(
 }
 console.log("OK: a clean build writes the mp4, title, description and hand.json the chain reads");
 
+// The saved Short hook follows the hand Short (15 Oct 2026: 13140492's hook.txt kept the pick's
+// spoiler under a clean hand Short) — only over a saved one, and only in hand mode.
+{
+  const hookTxt = (id: number) => path.join(dir(id), `short-${id}.hook.txt`);
+  const before = config.shortsByHand;
+  try {
+    config.shortsByHand = true;
+    const saved = freshId();
+    mkdirSync(dir(saved), { recursive: true });
+    writeFileSync(hookTxt(saved), "THE PICK'S OLD HOOK\n");
+    await buildHandShort(saved, baseOpts(), { probe: probeOf(GOOD) });
+    assert.equal(readFileSync(hookTxt(saved), "utf8"), "Down to the last heart\n");
+    // No saved hook: none written, or the hooks would read as saved behind the operator.
+    const unsaved = freshId();
+    mkdirSync(dir(unsaved), { recursive: true });
+    await buildHandShort(unsaved, baseOpts(), { probe: probeOf(GOOD) });
+    assert.ok(!existsSync(hookTxt(unsaved)));
+    // Outside hand mode a changed hook re-cuts over the mp4: left alone.
+    config.shortsByHand = false;
+    const off = freshId();
+    mkdirSync(dir(off), { recursive: true });
+    writeFileSync(hookTxt(off), "THE PICK'S OLD HOOK\n");
+    await buildHandShort(off, baseOpts(), { probe: probeOf(GOOD) });
+    assert.equal(readFileSync(hookTxt(off), "utf8"), "THE PICK'S OLD HOOK\n");
+    // The 13140492 shape is refused here too (hookProblem with the match's players).
+    const spoiled = freshId();
+    mkdirSync(dir(spoiled), { recursive: true });
+    assert.match(
+      await refusedCheck(spoiled, { ...baseOpts(), hook: "DOOGILE ON SUB-8 PACE AT THE END" }),
+      /result away/,
+    );
+  } finally {
+    config.shortsByHand = before;
+  }
+  console.log("OK: short:hand writes its hook into a saved short-<id>.hook.txt in hand mode, nowhere else");
+}
+
 // readHandShort must read defensively against a truncated/corrupt file too, not just a missing
 // one — a `.then`'s second argument only ever catches readFile's own rejection, never a throw
 // from the fulfillment handler's JSON.parse (silent-failure review, 11 Oct 2026). A corrupt

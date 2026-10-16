@@ -111,8 +111,9 @@ const HOOK_SPOILER =
 /**
  * Why a hook suggestion cannot stand, or null when it can. `maxChars`: a player moment's line is
  * longer. `players` lets the "<x> vs <y>" check in `hookLabelProblem` tell a real nickname pair
- * from an invented one (2 Oct 2026) — omit it where the match is not at hand, which skips only
- * that one check; a denied word is still caught either way.
+ * from an invented one (2 Oct 2026), and `spoilsTheResult` know a runner named at the End (15 Oct
+ * 2026) — omit it where the match is not at hand, which skips only those two; a denied word is
+ * still caught either way.
  *
  * `HOOK_SPOILER` strips the sanctioned pace idiom first (`PACE_TO_WIN`, hooks.ts), same as
  * `spoilsTheResult`: "A SUB-8 TO WIN IT" says what winning takes, not who did, and `hooks.ts`
@@ -134,7 +135,7 @@ export function hookProblem(
   if (typeof hook !== "string" || hook.trim() === "") return "no hook";
   const h = hook.trim();
   if (h.length > maxChars) return `over ${maxChars} characters`;
-  if (HOOK_SPOILER.test(h.replace(PACE_TO_WIN, "")) || spoilsTheResult(h)) return "it gives the result away";
+  if (HOOK_SPOILER.test(h.replace(PACE_TO_WIN, "")) || spoilsTheResult(h, players)) return "it gives the result away";
   if (HOOK_SEED_RANK_ELO.test(h)) return "it uses a seed, rank or elo";
   return hookLabelProblem(h, players);
 }

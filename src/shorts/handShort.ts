@@ -21,6 +21,7 @@ import { blockedOnDisk } from "../dashboard/matchStatus.js";
 import { hookProblem, HOOK_MAX_CHARS } from "./videoPick.js";
 import { buildShortDescription, buildShortTitle, TITLE_MAX_CHARS } from "./shortHook.js";
 import { shortLog } from "./shortLog.js";
+import { shortHookFile } from "./shortPlan.js";
 
 /** What every path waiting on the hand-cut Short says — the chain's log line and `hookRefusal`. */
 export const WAITING_FOR_HAND_SHORT = "waiting for the hand-made Short";
@@ -156,7 +157,9 @@ export async function checkHandShort(
   try {
     ctx = (await readSeriesRecord(dir)) ? null : await playoffContextFor(match, true);
   } catch (err) {
-    return no(`the playoff bracket could not be read, so a later game cannot be ruled out: ${describeError(err)}`);
+    return no(
+      `the playoff bracket could not be read, so a later game cannot be ruled out: ${describeError(err)}`,
+    );
   }
   if (ctx && ctx.gameNo > 1)
     return no(
@@ -167,7 +170,9 @@ export async function checkHandShort(
   // writeHooks strips these from the dashboard's own Short hook: YouTube refuses < > in a title,
   // and title.txt is one line, so a line break would cut the upload's title at the hook.
   if (/[<>\r\n]/.test(hook))
-    return no(`"${opts.hook}" has < > or a line break — YouTube refuses < > in a title, and title.txt is one line`);
+    return no(
+      `"${opts.hook}" has < > or a line break — YouTube refuses < > in a title, and title.txt is one line`,
+    );
   const problem = hookProblem(hook, HOOK_MAX_CHARS, match.players);
   if (problem) return no(`"${opts.hook}" ${problem}`);
 
@@ -217,6 +222,12 @@ export async function buildHandShort(
   await rename(tmpPath, outPath);
 
   await writeFile(path.join(dir, `short-${matchId}.title.txt`), `${title}\n`, "utf8");
+  // The saved Short hook follows the Short that ships, so the plan screen and every reader agree
+  // with it (15 Oct 2026: 13140492's hook.txt kept the pick's spoiler under a clean hand Short).
+  // Only over a hook already saved, and only in hand mode: a new file would mark the hooks saved
+  // behind the operator, and outside hand mode a changed hook re-cuts over this mp4 (shortFlow.ts).
+  const hookFile = shortHookFile(dir, matchId);
+  if (config.shortsByHand && existsSync(hookFile)) await writeFile(hookFile, `${opts.hook.trim()}\n`, "utf8");
 
   // The same description builder generateShort.ts uses, so "the whole match" link etc. are
   // identical — a series' Short points at the whole series, a playoff game's names the round.
