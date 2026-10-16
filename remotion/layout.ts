@@ -139,8 +139,8 @@ export const SHORT_CLOCK_FONT_PX = 52;
 export const SHORT_CLOCK_MARGIN_PX = 40;
 export const SHORT_CLOCK_Y = SHORT_NAMEPLATE_HEIGHT - 64;
 /**
- * What the top plate keeps free on its right for the clock: "10:00.00" (Monocraft is
- * monospaced, so 8 x 0.667em), its margin and a gap — a long name ellipses short of it.
+ * What the top plate's elo row keeps free on its right for the clock: "10:00.00" (Monocraft is
+ * monospaced, so 8 x 0.667em), its margin and a gap. The name row above it needs none.
  */
 export const SHORT_CLOCK_RESERVE_PX =
   Math.ceil(8 * SHORT_CLOCK_FONT_PX * MONOCRAFT_ADVANCE_EM) + SHORT_CLOCK_MARGIN_PX + 24;
