@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync, utimesSync } from "node:fs";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { config } from "../config.js";
@@ -556,6 +556,42 @@ console.log("youtube: all checks passed");
   assert.equal(resumeCalls, 1, "the probe alone finished it — YouTube already had every byte");
   assert.equal(existsSync(session), false, "a completed resume forgets its session like any other");
   console.log("OK: resumeOnly finishes a real session and never starts a second one");
+
+  // A re-join renames a new series-<g1>.mp4 over the file mid-upload (src/playoffs/series.ts
+  // `concatVideos`). Every chunk must still come from the file the upload started on: read by
+  // path, the rest of the chunks came from the new file, and YouTube got the old head (its moov)
+  // glued to the new tail — one garbled video, scheduled, with nothing reporting it.
+  const swapped = path.join(dir, "series-1.mp4");
+  await writeFile(swapped, Buffer.alloc(3 * CHUNK, 7));
+  const received: Buffer[] = [];
+  const renameMidUpload: typeof fetch = async (_url, init) => {
+    if (init?.method === "POST")
+      return new Response("", { status: 200, headers: { location: "https://upload/session" } });
+    received.push(Buffer.from(init!.body as Uint8Array));
+    if (received.length === 1) {
+      const rejoined = path.join(dir, "series-1.part.mp4");
+      await writeFile(rejoined, Buffer.alloc(3 * CHUNK, 9));
+      await rename(rejoined, swapped);
+    }
+    if (received.length < 3) return new Response("", { status: 308 });
+    return new Response(JSON.stringify({ id: "vidWhole" }), { status: 200 });
+  };
+  const whole = await uploadVideo({
+    filePath: swapped,
+    title: "t",
+    description: "d",
+    privacyStatus: "private",
+    fetchImpl: renameMidUpload,
+    chunkBytes: CHUNK,
+  });
+  assert.equal(whole.videoId, "vidWhole");
+  const sentBytes = Buffer.concat(received);
+  assert.equal(sentBytes.length, 3 * CHUNK);
+  assert.ok(
+    sentBytes.every((b) => b === 7),
+    "every chunk comes from the file the upload opened, not the one renamed over it",
+  );
+  console.log("OK: a file renamed over the path mid-upload does not mix into what is sent");
 
   globalThis.fetch = realFetch;
   console.log("OK: a finished session is not uploaded twice, and an odd Range does not restart it");
