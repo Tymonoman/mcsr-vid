@@ -322,7 +322,7 @@ function nightlyPayload() {
   return {
     ...d,
     // Level with the page: the "server behind" line is its own check (version-check).
-    code: { boot: "b0901f1", now: "b0901f1" },
+    code: { boot: "b0901f1", now: "b0901f1", needsRestart: false },
     waitingForHook: ps.filter((p) => p.state === "waiting-for-hook" && p.pick).map((p) => p.matchId),
     failed: ps.filter((p) => p.state === "failed").map((p) => p.matchId),
     picker: { ok: false, message: "Antigravity is not signed in" },

@@ -288,9 +288,15 @@ views brought 0 subscribers.
 ## Dashboard
 
 `src/` is read at boot; `public/` is served from disk per request. After pulling server changes
-run `docker restart mcsr-dashboard` on the lab (both containers share one image; the repo and
-`/media` are bind mounts). The nightly strip names the running and the checked-out commit when
-they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client changes need only a reload.
+arm `POST /api/restart-when-idle` (below; both containers share one image; the repo and `/media`
+are bind mounts). The nightly strip names the running and the checked-out commit, with a
+**Restart when idle** button, only when the commits between them touched what the process holds
+(`code: { boot, now, needsRestart }` from `src/dashboard/repoHead.ts`: `git diff --quiet` over
+`src/`, `remotion/` — imported by `src/` and bundled once per process — and the package/tsconfig
+files, cached per HEAD; a git failure counts as changed). Docs-only commits (TASKS.md, the
+handbook, CLAUDE.md) say nothing (16 Oct 2026: the old line nagged after every one and named a
+hand `docker restart`, the unsafe path). Armed, the button gives way to the restart line; a
+failed boot check offers it again. Client changes need only a reload.
 
 - **The dashboard can restart itself once it is idle** (`src/dashboard/restartWhenIdle.ts`, 8 Oct
   2026 — part of the operator's week goal: "the automation lives in the dashboard code, not this

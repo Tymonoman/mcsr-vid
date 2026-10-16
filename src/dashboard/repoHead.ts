@@ -2,8 +2,10 @@
  * Which commit is running, versus which one is checked out.
  *
  * `src/` is read at boot and the repo is a bind mount, so after a pull the server keeps running
- * the old code until `docker restart mcsr-dashboard`. The two hashes side by side say so.
+ * the old code until it restarts (`POST /api/restart-when-idle`). The two hashes side by side say
+ * so, and `needsRestart` says whether the commits between them touched anything the process holds.
  */
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -45,7 +47,40 @@ export function repoHead(root: string = REPO_ROOT): string | null {
 /** Read once at boot: what this process is running. */
 const BOOT_HEAD = repoHead();
 
-/** `{ boot, now }` — equal while the running server is the checked-out code. */
-export function codeVersions(): { boot: string | null; now: string | null } {
-  return { boot: BOOT_HEAD, now: repoHead() };
+/**
+ * What a running process holds from boot: `src/` is imported once, `remotion/` is imported by it
+ * and bundled once per process, the rest decides what runs. `public/` is served from disk per
+ * request and docs (TASKS.md, handbook/, CLAUDE.md) are read by nobody, so those commits — most
+ * of a day's — need no restart.
+ */
+const RESTART_PATHS = ["src", "remotion", "package.json", "package-lock.json", "tsconfig.json"];
+
+let diffCache: { key: string; changed: boolean } | null = null;
+
+/** Whether `boot`..`now` touched `RESTART_PATHS`, cached per pair so a poll spawns git once per
+ *  new HEAD. Anything git cannot answer (an unknown hash, no git, a timeout) counts as changed: a needless
+ *  prompt beats a silent miss. */
+export function needsRestart(boot: string | null, now: string | null, root: string = REPO_ROOT): boolean {
+  if (!boot || !now || boot === now) return false;
+  const key = `${root}\0${boot}\0${now}`;
+  if (diffCache?.key !== key) {
+    let changed = false;
+    try {
+      execFileSync("git", ["diff", "--quiet", boot, now, "--", ...RESTART_PATHS], {
+        cwd: root,
+        stdio: "ignore",
+        timeout: 10_000,
+      });
+    } catch {
+      changed = true;
+    }
+    diffCache = { key, changed };
+  }
+  return diffCache.changed;
+}
+
+/** `{ boot, now, needsRestart }` — equal hashes while the running server is the checked-out code. */
+export function codeVersions(): { boot: string | null; now: string | null; needsRestart: boolean } {
+  const now = repoHead();
+  return { boot: BOOT_HEAD, now, needsRestart: needsRestart(BOOT_HEAD, now) };
 }

@@ -161,7 +161,8 @@ finish spoils and underperforms.
 ## Dashboard
 
 `src/` is read at boot; `public/` is served from disk per request (client-only changes need just a
-reload). After merging server changes, `POST /api/restart-when-idle`.
+reload). After merging server changes, `POST /api/restart-when-idle` (the strip's button,
+`needsRestart`).
 
 - **Restart only when idle** (`src/dashboard/restartWhenIdle.ts`): `POST /api/restart-when-idle`
   arms, `DELETE` cancels, `GET` reports. `idle()` checks a render (pipeline or Short), an export,
