@@ -215,8 +215,9 @@ try {
     // naming `relatedTargetId` — results came back, just not the one asked for.
     relatedResults: "none" as "none" | "match" | "miss",
     relatedTargetId: "",
-    // false: the page Save is clicked but no "Changes saved" ever shows (14 Oct 2026).
-    tcSaveConfirms: true,
+    // false: a Save (the page's or the end-screen editor's) is clicked but no "Changes saved"
+    // ever shows (14 Oct 2026 for Test & Compare, 15 Oct for end screens and related links).
+    saveConfirms: true,
   };
   function editPageHtml(): string {
     return `<!doctype html><html><body>
@@ -241,7 +242,7 @@ try {
          (s7r-endscreen-open.json: the page's own #save sits before the editor's own #save-button) —
          a reversion to a plain text-based Save selector plus .first() would click this one, not
          the editor's, and this fixture would catch it (the regression fixed 8 Oct 2026). -->
-    <button id="save" onclick="window.__tcSaved=true;${uiState.tcSaveConfirms ? "document.getElementById('saved-msg').style.display='block'" : ""}">Save</button>
+    <button id="save" onclick="window.__tcSaved=true;${uiState.saveConfirms ? "document.getElementById('saved-msg').style.display='block'" : ""}">Save</button>
     <div id="saved-msg" style="display:none">Changes saved</div>
     <div id="dialog-root"></div>
     <script>
@@ -283,7 +284,7 @@ try {
           // Shows the same "Changes saved" toast the page-level Save does (#saved-msg above) —
           // saveEndScreenChange (studioActions.ts) waits on it the same way startTestAndCompare
           // already waits on it for its own page Save.
-          '<button id="save-button" onclick="window.__endscreenSaved=true;document.getElementById(\\'saved-msg\\').style.display=\\'block\\';closeDialog()">Save</button></div>';
+          '<button id="save-button" onclick="window.__endscreenSaved=true;if(window.__state.saveConfirms)document.getElementById(\\'saved-msg\\').style.display=\\'block\\';closeDialog()">Save</button></div>';
       }
       function openPicker() {
         document.getElementById("dialog-root").innerHTML +=
@@ -416,6 +417,16 @@ try {
   );
   console.log("OK: a real run clicks the editor's own Save, scoped by id, not the page-level Save");
 
+  // An editor Save with no "Changes saved" is an error, never "imported": on "imported" the worker
+  // marks the video done in its ledger and never opens the editor again.
+  uiState.saveConfirms = false;
+  const unsavedEnd = await addEndScreenFromTemplate(handle, "vidE5", "POQrpE0-5d8", { matchId });
+  uiState.saveConfirms = true;
+  assert.equal(await page.evaluate("window.__endscreenSaved"), true, "the editor's Save was pressed");
+  assert.ok(typeof unsavedEnd === "object" && "error" in unsavedEnd, `expected an error, got ${JSON.stringify(unsavedEnd)}`);
+  assert.match(unsavedEnd.error, /never showed "Changes saved"/);
+  console.log('OK: an end-screen Save with no "Changes saved" is an error, never "imported"');
+
   // --- Related video (phase 2's own second half, 8 Oct 2026) ---------------------------------
   // checkRelatedVideoPicker only ever checks and reports.
   uiState.relatedVideoLinked = false;
@@ -506,6 +517,15 @@ try {
   assert.ok(linkShots.length >= 2, `expected search/picked/after screenshots, got: ${linkShots.join(", ")}`);
   console.log("OK: a real run clicks the matching row and presses the page Save");
 
+  // Same for the related link: no toast is an error, never "linked" (which the ledger keeps for good).
+  uiState.saveConfirms = false;
+  const unsavedLink = await linkRelatedVideo(handle, "vidShort1", "longformABC12", { matchId });
+  uiState.saveConfirms = true;
+  assert.equal(await page.evaluate("window.__tcSaved"), true, "the page Save was pressed");
+  assert.ok(typeof unsavedLink === "object" && "error" in unsavedLink, `expected an error, got ${JSON.stringify(unsavedLink)}`);
+  assert.match(unsavedLink.error, /never showed "Changes saved"/);
+  console.log('OK: a related-link Save with no "Changes saved" is an error, never "linked"');
+
   // startTestAndCompare: refuses before this point are covered by studioWorker.test.ts (a poisoned
   // handle that never reaches a page at all); here the dialog is real, so this is the rest of the
   // flow — filling the right chip's fields, dry run stopping before Set test, a real run clicking it,
@@ -559,14 +579,14 @@ try {
 
   // A Save that never confirms is an error, not "started": the worker leaves the experiment
   // planned and records the cycle's error instead of finding a blank form a day later.
-  uiState.tcSaveConfirms = false;
+  uiState.saveConfirms = false;
   const unsaved = await startTestAndCompare(
     handle,
     "vidT3",
     { kind: "thumbnail", files: [thumbA, thumbB] },
     { matchId },
   );
-  uiState.tcSaveConfirms = true;
+  uiState.saveConfirms = true;
   assert.equal(await page.evaluate("window.__tcSaved"), true, "Save was pressed");
   assert.ok(typeof unsaved === "object" && "error" in unsaved, `expected an error, got ${JSON.stringify(unsaved)}`);
   assert.match(unsaved.error, /never showed "Changes saved"/);
