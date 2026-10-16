@@ -3,8 +3,8 @@
 // dashboard's Render, the nightly, `npm run batch`, the TUI — so it refuses one right after the
 // match fetch, the way it refuses a blocked runner. Written from the rule:
 //  1. A forfeited ranked match rejects with the DNF line; nothing past the match fetch, no write.
-//  2. A forfeited playoff game inside an otherwise finished series gets past the gate: the series
-//     is one video, and it needs every game rendered.
+//  2. A forfeited playoff game gets past the gate: playoffs are always posted as is (the operator,
+//     the same day: "playoffs dont have rules they are always posted as is").
 // The MCSR API is a fake (real fixtures, the saved Season 11 bracket); anything else is refused.
 // Run: MCSR_CONFIG=/nonexistent/mcsr-vid.config.json npx tsx src/pipeline/pipeline.dnf.contract.test.ts
 import assert from "node:assert/strict";
@@ -90,7 +90,7 @@ try {
   assert.ok(!existsSync(matchDir(FORFEIT)), "no match directory written");
   console.log("OK: runPipeline stops a DNF at the fetch — no discovery, no download, no write");
 
-  // --- 2. A forfeited game of a finished series ----------------------------------------------------
+  // --- 2. A forfeited playoff game ------------------------------------------------------------------
   // Past the gate it goes on to read the players, which this test refuses: any failure but the DNF
   // line is the gate letting it through.
   const err = await runPipeline(String(G1), {}).then(
@@ -99,9 +99,9 @@ try {
   );
   assert.ok(
     err === null || !/is a DNF/.test(err.message),
-    `a series' forfeited game is rendered for its series: ${err?.message}`,
+    `a forfeited playoff game is rendered: ${err?.message}`,
   );
-  console.log("OK: a forfeited game inside a finished series gets past the gate");
+  console.log("OK: a forfeited playoff game gets past the gate");
 } finally {
   config.mediaDir = saved.mediaDir;
   globalThis.fetch = saved.fetch;

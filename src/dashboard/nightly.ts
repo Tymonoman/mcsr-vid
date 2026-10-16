@@ -355,8 +355,7 @@ export function nightlyEligible(
  * Not a DNF (nobody finished), as the pick's source read it — no API call here. The ranked list is
  * DNF-free already (suggest.ts); the case is a queued id (`resolveQueuedPick`). Logged, queued or
  * not; the queue entry stays, the operator's to remove (the morning report's Needs-you names it).
- * A playoff pick carries no flag: the board offers no series whose every game is a DNF, and a
- * forfeited game among finished ones renders for its series.
+ * A playoff pick carries no flag: a playoff game is never a DNF (`matchIsDnf`), posted as is.
  */
 export function finishedPick(pick: NightlyPick): boolean {
   if (pick.metrics.dnf !== true) return true;

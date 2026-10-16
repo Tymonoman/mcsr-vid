@@ -470,13 +470,6 @@ const server = createServer(async (req, res) => {
         json(res, 403, { error: `match ${matchId} has a blocked player — the series is not rendered` });
         return;
       }
-      // Only a series whose every game is a DNF; a forfeited game among finished ones is its series'.
-      if (await matchIsDnf(matchId)) {
-        json(res, 403, {
-          error: dnfRefusal(matchId, "every game of the series is one, so it is not rendered"),
-        });
-        return;
-      }
       void renderSeries(matchId, serverSeriesRunners)
         .then((r) => {
           if (r.kind === "joined" || r.kind === "current") void ensurePick(r.firstGameId);

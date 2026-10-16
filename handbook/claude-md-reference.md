@@ -21,13 +21,13 @@ what an agent cannot derive from the code; the rest is in the files it names.
   suggest them". A DNF is a match nobody finished: `forfeited: true`, no `result.uuid` (no winner),
   or an empty `completions` list (`isDnf`, src/pipeline/matchScore.ts; judged on what is on record,
   so a feed entry, which carries no `completions`, is judged on the first two). Not
-  `finishMarginMs === null`: that is a finished race whose loser stopped. A playoff game is judged by
-  its series, which is one video (`matchIsDnf`, src/playoffs/playoffs.ts, via `seriesOf`): a
-  forfeited game inside an otherwise finished series renders and goes up with it; a series whose
-  every game is a DNF — a lone forfeited game — is a DNF like any ranked match; a room reset
-  (`gameBelongs` drops it) is judged alone.
+  `finishMarginMs === null`: that is a finished race whose loser stopped. **Except playoff games,
+  always posted as is** — the operator, the same day: "playoffs dont have rules they are always
+  posted as is". `matchIsDnf` (src/playoffs/playoffs.ts) exempts any game of a bracket slot
+  (`seriesOf`), single or in a series, forfeited or not; a room reset (`gameBelongs` drops it) is no
+  game and is judged like a ranked match. The block list still applies to playoffs as before.
   `matchIsDnf` is one cached `getMatch` (a ranked match never reads the bracket) and fails open: a
-  down API refuses nothing, as `matchIsBlocked`. Every refusal reads `dnfRefusal`'s "match N is a DNF
+  down API or bracket refuses nothing, as `matchIsBlocked`. Every refusal reads `dnfRefusal`'s "match N is a DNF
   (nobody finished) — …". The gates, mirroring the block list's:
   - **Suggestions** (`suggest.ts`): `foldMatch` drops a feed or favourite-list entry that is a
     forfeit or has no winner (no detail fetch); a fetched record with no completion is pooled with
@@ -35,19 +35,17 @@ what an agent cannot derive from the code; the rest is in the files it names.
     cache path and `presentSuggestions` drop one on read however stale. An entry cached before the
     flag has no `dnf`: `metricsDnf` reads it off no winner, or no dragon on either side (0 of the 500
     finished matches pooled on 16 Oct read so). `pooledMatchPlayers` leaves a pooled DNF out.
-  - **Playoffs board** (`playoffBoard`): each game carries `dnf`; a slot whose every game is one
-    shows none (after numbering, so game numbers never move).
+  - **Playoffs board** (`playoffBoard`): unchanged, every detected game shown, forfeits included.
   - **Creator watch** (`isWatchCandidate`) and "worth rendering today" (`worth.ts`) skip one.
   - **Nightly** (`finishedPick`, in `nightlyEligible` after the block check): a pick whose source
     marked it `dnf` is skipped and logged ("nightly: #N skipped — match N is a DNF …"), queued or
     not. No API call there: a queued id off the ranked list is marked by `resolveQueuedPick`'s own
-    `matchIsDnf`; the ranked list is DNF-free already; a playoff pick carries no flag (the board
-    offers no all-DNF series). The queue entry stays; Needs-you names it ("a DNF (nobody finished)
+    `matchIsDnf`; the ranked list is DNF-free already; a playoff pick is never one. The queue
+    entry stays; Needs-you names it ("a DNF (nobody finished)
     in tonight's queue — the nightly skips it", `queuedDnfItems`, facts.ts).
   - **Render**: `runPipeline` throws right after the match fetch (so batch, the TUI and
-    generate-project too); `POST /api/render`, `/api/render/:id` and `/api/series/:id/render` refuse
-    first, 403. A series' own run renders a forfeited game through `startJob`, which passes because
-    `matchIsDnf` judges it by its series.
+    generate-project too); `POST /api/render` and `/api/render/:id` refuse first, 403. The series
+    route has no DNF gate (a series is playoffs).
   - **Hooks**: `saveHooks` refuses (by hand or auto-hooks); `autoHooksTick` skips one quietly, as a
     blocked match.
   - **Upload** (`startUpload`, long-form and Short): the last refusal before the bytes, not in

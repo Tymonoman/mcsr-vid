@@ -26,7 +26,7 @@ thumbnails and a Short, published to **MCSR Replayoffs**.
 - **No seed, rank or elo in hooks or hook suggestions, and none in what orders the match
   suggestions** (a suggestion card's story line may still show rank/elo to the operator).
 - **No DNF match** (nobody finished; `matchIsDnf`): never suggested, rendered, given hooks or
-  posted, queued or not; a forfeited game in an otherwise finished series is the series'.
+  posted, queued or not — except playoff games, always posted as is.
 - **The YouTube API compliance audit has cleared** (`handbook/api-review/`); it gates only
   `videos.insert`. `youtubeUploadEnabled` is true, `nightlyUpload` is `"scheduled"`. Keep every
   API call inside what the recording showed: **own channel, own data, nothing shown to anyone

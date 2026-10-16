@@ -1,13 +1,12 @@
 // Contract test: a DNF is never uploaded, long-form or Short (the operator, 16 Oct 2026: "remember
 // not to post DNF matches also dont suggest them"). A DNF is a match nobody finished — a forfeit, no
-// winner on record, or no completion. A playoff series is one video: a forfeited game inside an
-// otherwise finished series does not block it; a single forfeited playoff game is a DNF like any
-// ranked match. Written from the rule:
+// winner on record, or no completion. Playoff games are exempt ("playoffs dont have rules they are
+// always posted as is", the same day). Written from the rule:
 //  1. A ranked DNF with its hooks saved and every file in place is refused, both kinds, with one
 //     line saying why, and `videos.insert` (the `send` seam of `beginUpload`) is never reached.
 //  2. The same files for a finished match reach `send`.
-//  3. A series whose game 1 is a forfeit and game 2 finished goes up; a lone forfeited playoff
-//     game does not.
+//  3. A playoff game goes up forfeited or not: a joined series whose game 1 is a forfeit, and a
+//     lone forfeited game.
 // The MCSR API is a fake serving real fixtures and the saved Season 11 bracket; nothing is sent.
 // Run: MCSR_CONFIG=/nonexistent/mcsr-vid.config.json npx tsx src/youtube/youtubeUpload.dnf.contract.test.ts
 import assert from "node:assert/strict";
@@ -182,19 +181,18 @@ try {
   );
   assert.deepEqual(await outcome(SERIES_G1, "short"), { started: true }, "its Short too");
   ready(LONE);
-  for (const kind of ["video", "short"] as const) {
-    const lone = await outcome(LONE, kind);
-    assert.ok(
-      "refused" in lone && /is a DNF/.test(lone.refused),
-      `${kind}: a lone forfeited playoff game is a DNF`,
+  for (const kind of ["video", "short"] as const)
+    assert.deepEqual(
+      await outcome(LONE, kind),
+      { started: true },
+      `${kind}: a lone forfeited playoff game goes up`,
     );
-  }
   assert.deepEqual(
     sent,
-    [`final-${SERIES_G1}.mp4`, `short-${SERIES_G1}.mp4`],
-    "only the series reached send",
+    [`final-${SERIES_G1}.mp4`, `short-${SERIES_G1}.mp4`, `final-${LONE}.mp4`, `short-${LONE}.mp4`],
+    "both playoff videos reached send",
   );
-  console.log("OK: a series with one forfeited game is not blocked; a lone forfeited playoff game is");
+  console.log("OK: a playoff game goes up forfeited or not, in a series or alone");
 } finally {
   config.mediaDir = saved.mediaDir;
   config.youtubeUploadEnabled = saved.enabled;

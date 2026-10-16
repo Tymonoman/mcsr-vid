@@ -64,8 +64,6 @@ export interface PlayoffGame {
   gameNo: number;
   /** Who took it, or null for a game with no winner on record. Never printed (see `score`). */
   winnerUuid: string | null;
-  /** A DNF (`isDnf`): a forfeit past the first minute still counts as a game. Absent reads as finished. */
-  dnf?: boolean;
 }
 
 /** A game may start a little before the slot's listed time, and a Bo7 can run past three hours. */
@@ -210,7 +208,6 @@ export function slotGames(
       dateSec: m.date,
       gameNo: i + 1,
       winnerUuid: m.result.uuid,
-      dnf: isDnf(m),
     }));
 }
 
@@ -377,13 +374,13 @@ export async function seriesOf(match: MatchInfo | FeedMatch): Promise<PlayoffSer
 }
 
 /**
- * Whether a match's video would be a DNF (`isDnf`: nobody finished) — the one check behind every
- * gate that keeps a DNF off the channel: the render routes, `runPipeline`, the nightly, saved hooks
- * (auto-hooks included), the upload, Adopt, the X post (the operator, 16 Oct 2026: "remember not to
- * post DNF matches also dont suggest them"). Here because a playoff game is judged by its series,
- * which is one video (src/playoffs/series.ts): a forfeited game inside an otherwise finished series
- * renders and goes up with it; a series whose every game is a DNF — one forfeited game alone — is a
- * DNF like any ranked match. One cached MCSR read (a ranked match never reaches the bracket); a
+ * Whether a match is a DNF (`isDnf`: nobody finished) that is kept off the channel — the one check
+ * behind every gate: the render routes, `runPipeline`, the nightly, saved hooks (auto-hooks
+ * included), the upload, Adopt, the X post (the operator, 16 Oct 2026: "remember not to post DNF
+ * matches also dont suggest them"). Never a playoff game, single or in a series, forfeited or not
+ * (the same day: "playoffs dont have rules they are always posted as is"): a game of a bracket slot
+ * (`seriesOf`) is exempt; a room reset (`gameBelongs`) is no game and is judged like a ranked match.
+ * Here because the bracket is. One cached MCSR read (a ranked match never reaches the bracket); a
  * down API refuses nothing, as `matchIsBlocked` (src/dashboard/matchStatus.ts).
  */
 export async function matchIsDnf(
@@ -393,10 +390,7 @@ export async function matchIsDnf(
 ): Promise<boolean> {
   try {
     const match = await read(matchId);
-    if (!isDnf(match)) return false;
-    const games = (await series(match))?.games ?? [];
-    // A room reset (`gameBelongs`) is no game of the series: judged alone.
-    return !games.some((g) => g.matchId === matchId) || games.every((g) => g.dnf);
+    return isDnf(match) && (await series(match)) === null;
   } catch (err) {
     console.error(`match ${matchId}: DNF check skipped — ${describeError(err)}`);
     return false;
@@ -492,10 +486,6 @@ export async function playoffBoard(nowSec: number = Date.now() / 1000): Promise<
       }
     }
   }
-  // A series whose every game so far is a DNF offers nothing to render (`matchIsDnf` refuses it);
-  // one finished game among them and the forfeits are part of the series, shown.
-  // After the numbering above, so a game's number never depends on this.
-  for (const slot of slots) if (slot.games.every((g) => g.dnf)) slot.games = [];
   return {
     season: bracket.season,
     bracketUrl: playoffsBracketUrl(bracket.season),

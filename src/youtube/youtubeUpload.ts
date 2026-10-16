@@ -330,8 +330,8 @@ async function startUpload(matchId: number, req: UploadRequest, send: typeof upl
       `the publish time ${req.publishAt} has already passed — pick a later one (the chain takes the next free slot)`,
     );
 
-  // A DNF is never posted, long-form or Short (`matchIsDnf`: nobody finished; a joined series with
-  // a forfeited game among finished ones goes up). The last refusal before the bytes, not in
+  // A DNF is never posted, long-form or Short (`matchIsDnf`: nobody finished; a playoff game or
+  // series, forfeited or not, always goes up). The last refusal before the bytes, not in
   // `hookRefusal`, which decides offline: one cached MCSR read, as this upload's match status makes.
   // Saved hooks already refuse a DNF (`saveHooks`), so this catches only hooks saved before 16 Oct 2026.
   if (await matchIsDnf(matchId))

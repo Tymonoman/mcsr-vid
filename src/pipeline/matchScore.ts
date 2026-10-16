@@ -131,8 +131,8 @@ const DEATH_CEILING = 6;
  * never rendered by the nightly, never posted (the operator, 16 Oct 2026: "remember not to post
  * DNF matches also dont suggest them"). Not `finishMarginMs === null`, which is a finished match
  * whose loser stopped. Judged on what is on record: a feed entry (`FeedMatch`) carries no
- * `completions`, so for one only the first two count. A playoff game is judged by its series
- * (`matchIsDnf`, src/playoffs/playoffs.ts).
+ * `completions`, so for one only the first two count. A playoff game is never kept off the channel
+ * for it (`matchIsDnf`, src/playoffs/playoffs.ts).
  */
 export function isDnf(
   match: Pick<MatchInfo, "forfeited" | "result"> & Partial<Pick<MatchInfo, "completions">>,

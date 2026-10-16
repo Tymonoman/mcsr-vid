@@ -159,7 +159,7 @@ async function runStages(
   if (blockedIn(fetched.players.map((p) => p.nickname))) {
     throw new Error(`match ${matchId} has a blocked player — it is not rendered`);
   }
-  // The same root for a DNF (`matchIsDnf`: a forfeited game of an otherwise finished series still renders).
+  // The same root for a DNF (`matchIsDnf`; a playoff game, forfeited or not, always renders).
   if (await matchIsDnf(matchId)) throw new Error(dnfRefusal(matchId, "it is not rendered"));
   // Private rooms attach no VOD and ranked matches often only one; the rest are found by time.
   const match = await withDiscoveredVods(fetched);
