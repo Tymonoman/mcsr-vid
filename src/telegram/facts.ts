@@ -289,32 +289,76 @@ async function handShortItems(nowMs: number): Promise<NeedsYouItem[]> {
  *  GOAT" and "RANK #1" were public. `hookProblem` runs `spoilsTheResult` itself, and gets the
  *  title's own "A vs B" so a fresh "X vs Y" in the hook is a label. The line names the problem and
  *  the video, never the hook: it may be the label. Each video once; a blocked player's match is
- *  private by the operator's hand and skipped. */
+ *  private by the operator's hand and skipped.
+ *
+ *  The title and privacy checked are the channel's own (`liveVideos`), not the record's: a record's
+ *  title is written once at upload and a retitle happens in Studio, so the record kept a fixed title
+ *  in Needs you every morning and never saw a label typed in Studio (review, 15 Oct 2026). Only when
+ *  that read fails does the record stand in. */
 async function liveTitleItems(): Promise<NeedsYouItem[]> {
   const items: NeedsYouItem[] = [];
+  const recs: Array<LiveVideo & { matchId: number; videoId: string }> = [];
   const seen = new Set<string>();
   for (const matchId of listProcessedMatchIds()) {
     for (const kind of ["video", "short"] as const) {
       const rec = await readUpload(matchId, kind);
-      // The record's privacyStatus is from upload time: a scheduled one still reads "private" once
-      // its publishAt has passed, so any publishAt is live (publishSlot.ts reads it the same way).
-      if (!rec?.title || seen.has(rec.videoId) || !(rec.publishAt || rec.privacyStatus === "public")) continue;
+      if (!rec?.videoId || seen.has(rec.videoId)) continue;
       seen.add(rec.videoId);
-      const [hook, ...rest] = rec.title.split(SEPARATOR);
-      // A Short's pair carries its hashtags after it: "A vs B #mcsr #minecraft".
-      const pair = rest.map((s) => /^(.+?)\s+vs\.?\s+(.+?)(?:\s+#\S+)*$/i.exec(s.trim())).find(Boolean);
-      const players = pair ? [pair[1]!, pair[2]!] : undefined;
-      if (blockedOnDisk(matchDir(matchId)) || blockedIn(players ?? [])) continue;
-      const problem = hookProblem(hook, 100, players?.map((nickname) => ({ nickname })));
-      if (problem)
-        items.push({
-          matchId,
-          players: players?.join(" vs "),
-          text: `Live title breaks a house rule: ${rec.videoId} — ${problem}`,
-        });
+      recs.push({ matchId, ...rec, title: rec.title ?? "" });
     }
   }
+  const live = await liveVideos(recs.map((r) => r.videoId));
+  for (const r of recs) {
+    // Not in the answer: deleted. The record's privacyStatus is from upload time: a scheduled one
+    // still reads "private" once its publishAt has passed, so any publishAt is live (publishSlot.ts
+    // reads it the same way); the channel's own status says the same with its own publishAt.
+    const v = live ? live.get(r.videoId) : r;
+    if (!v?.title || !(v.publishAt || v.privacyStatus === "public")) continue;
+    const [hook, ...rest] = v.title.split(SEPARATOR);
+    // A Short's pair carries its hashtags after it: "A vs B #mcsr #minecraft".
+    const pair = rest.map((s) => /^(.+?)\s+vs\.?\s+(.+?)(?:\s+#\S+)*$/i.exec(s.trim())).find(Boolean);
+    const players = pair ? [pair[1]!, pair[2]!] : undefined;
+    if (blockedOnDisk(matchDir(r.matchId)) || blockedIn(players ?? [])) continue;
+    const problem = hookProblem(hook, 100, players?.map((nickname) => ({ nickname })));
+    if (problem)
+      items.push({
+        matchId: r.matchId,
+        players: players?.join(" vs "),
+        text: `Live title breaks a house rule: ${r.videoId} — ${problem}`,
+      });
+  }
   return items;
+}
+
+type LiveVideo = { title: string; privacyStatus?: string; publishAt?: string | null };
+
+/** Each id's title and privacy as the channel has them now: one videos.list per 50 ids, 1 unit
+ *  each, own channel's own videos. An id missing from the map was deleted; null = the read failed. */
+async function liveVideos(ids: readonly string[]): Promise<Map<string, LiveVideo> | null> {
+  if (!youtubeConfigured()) return null;
+  const out = new Map<string, LiveVideo>();
+  try {
+    for (let i = 0; i < ids.length; i += 50) {
+      const batch = ids.slice(i, i + 50).map(encodeURIComponent).join(",");
+      const body = await dataApiGet<{
+        items?: Array<{
+          id: string;
+          snippet: { title: string };
+          status?: { privacyStatus?: string; publishAt?: string };
+        }>;
+      }>(`/videos?part=snippet,status&id=${batch}`);
+      for (const v of body.items ?? [])
+        out.set(v.id, {
+          title: v.snippet.title,
+          privacyStatus: v.status?.privacyStatus,
+          publishAt: v.status?.publishAt,
+        });
+    }
+    return out;
+  } catch (err) {
+    console.error(`needsYou: reading the live titles (the records stand in): ${describeError(err)}`);
+    return null;
+  }
 }
 
 /** A blocked runner appearing somewhere the block is supposed to keep them out of, or commenting —
@@ -377,8 +421,9 @@ interface StudioWorkerHeartbeat {
  *  worth the operator's attention rather than one slow cycle. */
 const STUDIO_WORKER_STALE_MS = 90 * 60_000;
 
-const STUDIO_WORKER_RESTART_CMD =
-  "STUDIO_PROFILE_DIR=/app/.studio-profile setsid nohup npm run -s studio -- worker --enable >> ~/.claude/studio-worker.log 2>&1 &";
+/** The supervisor, never the bare worker: the worker exits on purpose in a blackout after new code
+ *  "for the supervisor to restart", and the supervisor's pidfile refuses a second copy. */
+const STUDIO_WORKER_RESTART_CMD = "nohup bash /app/scripts/studio-worker.sh >/dev/null 2>&1 &";
 
 /** "Tue 29 Sept, 01:00" (Europe/Warsaw, DST-correct) — report.ts's own `whenWarsaw` is not
  *  imported here to avoid a cycle (report.ts already imports this module's types). */
@@ -413,7 +458,7 @@ function studioWorkerItems(nowMs: number): NeedsYouItem[] {
   const at = Date.parse(hb.at);
   if (Number.isFinite(at) && nowMs - at > STUDIO_WORKER_STALE_MS) {
     items.push({
-      text: `the Studio worker has stopped (last heartbeat ${warsawTime(hb.at)}) — A/B tests and end screens are paused; restart it in the mcsr container: ${STUDIO_WORKER_RESTART_CMD}`,
+      text: `the Studio worker has stopped (last heartbeat ${warsawTime(hb.at)}) — pins, end screens, related links and A/B tests are paused; restart it in the mcsr container: ${STUDIO_WORKER_RESTART_CMD}`,
     });
   }
   if ((hb.sameErrorStreak ?? 0) >= 3 && hb.lastError) {
