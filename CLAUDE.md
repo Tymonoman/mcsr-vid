@@ -14,7 +14,7 @@ thumbnails and a Short, published to **MCSR Replayoffs**.
 - Each POV's audio leans toward its side (`povAudioPan`, default 0.7) in `export:fast` only; the
   Kdenlive MLT mix stays centred. The Short lowers the off-focus POV 12dB instead (`focus`).
 - **Nothing names the winner**: no result line in descriptions, no winner in a hook or thumbnail.
-  The upset hook is a question. A runner named at the End spoils too.
+  The upset hook is a question; a runner named at the End spoils.
 - **Never a runner nickname, label or epithet, "vs" or not** (`hookLabelProblem`,
   `src/pipeline/hooks.ts`; `hookProblem`'s `players` arg, `src/shorts/videoPick.ts`; `withHook`,
   `src/pipeline/title.ts`). A word on the short denied list (`HOOK_DENIED_LABELS`, deliberately
@@ -161,8 +161,7 @@ finish spoils and underperforms.
 ## Dashboard
 
 `src/` is read at boot; `public/` is served from disk per request (client-only changes need just a
-reload). After merging server changes, `POST /api/restart-when-idle` (the strip's button,
-`needsRestart`).
+reload). After merging server changes, `POST /api/restart-when-idle` (the strip's button).
 
 - **Restart only when idle** (`src/dashboard/restartWhenIdle.ts`): `POST /api/restart-when-idle`
   arms, `DELETE` cancels, `GET` reports. `idle()` checks a render (pipeline or Short), an export,
@@ -220,9 +219,9 @@ reload). After merging server changes, `POST /api/restart-when-idle` (the strip'
   `hookProblem`+`spoilsTheResult` (model's, else a chip) and a Short hook the same way, upper-cased,
   then the chain runs as if Save were pressed. Due: readable pick, unsaved, not
   hidden, neither video on channel, not blocked, export not stale, sync sound or hand-set,
-  series joined, nothing already running. None within the title's mobile budget: the shortest passing one that keeps the title
-  ≤100 chars, marked `overBudget`. No survivor: nothing saved, the `hooks` step fails into
-  Needs-you. Logs to `autoHooks` in `short-<id>.status.json`.
+  series joined, nothing already running. None within the title's mobile budget: the shortest
+  passing one keeping the title ≤100 chars, marked `overBudget`. No survivor: nothing saved, the
+  `hooks` step fails into Needs-you. Logs to `autoHooks` in `short-<id>.status.json`.
 - **Thumbnails** (`remotion/Thumbnail.tsx`): two big figures, name-only plates, seed type above the
   VS, no rating/seed/placement text. Four pose pairs; `thumbnailRotatePoses` (default off) rotates
   by match id. **"cheering-relaxing" is excluded from every fresh automatic pick**
@@ -268,8 +267,8 @@ reload). After merging server changes, `POST /api/restart-when-idle` (the strip'
   upload wait for the operator's hooks. **A candidate also needs a known player** unless the
   operator queued it; a playoff pick always counts; the block list outranks the queue. **A test
   server arms its own nightly too**: any `PORT=… npm run dashboard` schedules against the same
-  `/media`; kill it before the hour, or set `nightlyRenderHourUtc: null` for it. Chain resume, YouTube
-  retries and the 15-minute tick (auto-hooks, creator watch, experiments) run only on 8080.
+  `/media`; kill it before the hour, or set `nightlyRenderHourUtc: null` for it. Chain resume,
+  YouTube retries and the 15-minute tick run only on 8080.
 - **The experiment engine runs between-video A/B tests unattended** (`src/dashboard/experiments.ts`
   + `experimentsEvaluator.ts`) from `.experiments.json` (atomic write, never rewritten while
   corrupt; `"tc"` = Studio's Test & Compare, untouched). A tick before `nightlyRenderHourUtc`
