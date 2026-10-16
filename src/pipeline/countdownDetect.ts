@@ -412,10 +412,20 @@ export async function detectCountdownDigits(
   const confidence = found.confidence * (found.endIndex === null ? 0.8 : 1);
   // A window holding only an untrusted fragment (a countdown cut by its left edge, the estimate
   // ~20 s late) is as good as empty to detectMatchStartAny, so it gets the second look too; the
-  // better reading stands.
+  // better reading stands — but only the same countdown's: the wide window holds the whole
+  // pre-roll, where a clean earlier countdown (a private-room reset) would outrank a near one
+  // whose end a menu hid and put 0:00 a minute early.
   if (radiusSec < WIDE_RADIUS_SEC && (found.index === null || confidence < DIGITS_TRUSTED)) {
     const wide = await detectCountdownDigits(clipPath, expectedStartSec, WIDE_RADIUS_SEC, signal);
-    if (found.index === null || wide.confidence > confidence) return wide;
+    if (found.index === null) return wide;
+    const nearStartSec =
+      windowStart + (found.endIndex ?? found.index + COUNTDOWN_SEC * SAMPLE_FPS) / SAMPLE_FPS;
+    if (
+      wide.confidence > confidence &&
+      wide.matchStartSec !== null &&
+      Math.abs(wide.matchStartSec - nearStartSec) <= COUNTDOWN_SEC
+    )
+      return wide;
   }
   if (found.index === null)
     return { matchStartSec: null, confidence: 0, stillRunSec: 0, detail: found.detail };

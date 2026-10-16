@@ -14,6 +14,7 @@
 //  P14 A re-render that corrects nothing must not make the export stale: only "a sync.json
 //      correction after export" leaves it out of sync until re-encoded (exportStale).
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -139,6 +140,42 @@ try {
           "the manual-keep branch rewrites sync.json with the same numbers, bumping its mtime, so a re-render after export refuses Upload/nightly/adopt until a needless ~10 min re-export",
         ),
     );
+  }
+
+  // --- Stop during sync: the run stops, and the earlier countdown reading stays ----------------
+  // The detectors rethrow an abort; read as "refinement failed" it wrote the coarse estimate over
+  // a good sync.json (export now stale, a re-encode out of sync) and went on into the render.
+  if (spawnSync("ffmpeg", ["-version"]).status !== 0) {
+    console.log("SKIP: Stop during sync (no ffmpeg on PATH: the detector's spawn is what aborts)");
+  } else {
+    const countdown: SyncOffsets = {
+      left: 151.5,
+      right: 149,
+      confidence: 0.9,
+      detail: "digit for 10s with 9 steps",
+      source: "countdown",
+    };
+    writeSyncOffsets(dir, countdown);
+    const stop = new AbortController();
+    const stages: string[] = [];
+    const err = await runPipeline(String(ID), {
+      signal: stop.signal,
+      onEvent: (e) => {
+        stages.push(`${e.stage}:${e.status}`);
+        if (e.stage === "sync" && e.status === "active") stop.abort();
+        if (e.stage === "render" && e.status === "active") throw new StopAtRender();
+      },
+    }).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    assert.ok(
+      err !== null && !(err instanceof StopAtRender),
+      `the run stops at sync, got ${stages.join(" ")}`,
+    );
+    assert.deepEqual(readSyncOffsets(dir), countdown, "the earlier countdown reading is untouched");
+    assert.ok(stages.includes("sync:warn") && !stages.some((s) => s.startsWith("render")), stages.join(" "));
+    console.log("OK: Stop during sync stops the run and keeps sync.json");
   }
 } finally {
   rmSync(media, { recursive: true, force: true });

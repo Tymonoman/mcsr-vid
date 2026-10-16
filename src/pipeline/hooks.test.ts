@@ -250,6 +250,12 @@ assert.ok(
   // The plain ladder-rank and elo shapes (14 Oct 2026 edge pass); the world's seed type stays fair.
   for (const text of ["CAN RANK 1 HOLD ON?", "TOP 10 PLAYER IN TROUBLE?", "THE 2100 ELO RUNNER?", "WORLD NUMBER ONE?", "A TOP SEED FALLS?"])
     assert.ok(HOOK_SEED_RANK_ELO.test(text), `"${text}" should read as a seed, rank or elo`);
+  // A lone rating, no "elo" after it (15 Oct 2026): the pick model is handed both players' elo.
+  for (const text of ["CAN ANYONE STOP THE 2400?", "A 2100 RUNNER'S BEST RUN"])
+    assert.ok(HOOK_SEED_RANK_ELO.test(text), `"${text}" is an elo`);
+  for (const text of ["Decided by 1500 ms", "Decided by 1500 milliseconds", "A sub-10 to win it"])
+    assert.ok(!HOOK_SEED_RANK_ELO.test(text), `"${text}" is not an elo`);
+  console.log("OK: a lone elo number is caught, milliseconds are not");
   for (const text of ["Village seed, no mercy", "Same seed, two routes", "Top of the nether"])
     assert.ok(!HOOK_SEED_RANK_ELO.test(text), `"${text}" is not a seed, rank or elo`);
   // A first meeting is in the same band: under the stakes, over the fallback.
@@ -384,9 +390,21 @@ assert.ok(
     seed9.join(" | "),
   );
   assert.ok(!seed9.some((h) => h.includes("#")), `no hash in 9th/11th seed hooks: ${seed9.join(" | ")}`);
+  // No head-to-head on a playoff game (15 Oct 2026): "Rematch: edcr leads 2-1" beside "Round of 16
+  // | Game 3" reads as the series score, and the generator is not handed the record either.
+  const withRecord = input(
+    {},
+    { type: 3 },
+    { playoff: playoff as unknown as HookInput["playoff"], versus: versus(2, 1) },
+  );
+  const chips = buildHookSuggestions(withRecord, 10);
+  assert.ok(!chips.some((h) => /rematch|1v1/i.test(h)), chips.join(" | "));
+  assert.equal(hookFacts(withRecord).h2h, null);
+  console.log("OK: a playoff game gets no head-to-head chip and no h2h fact");
 }
 
 // A tie is still a rivalry, but nobody "leads" it.
+// The record is one season's (getVersus): "all time" and a bare "first 1v1" claimed more than that.
 assert.equal(buildHookSuggestions(input({}, ELO_GAP, { versus: versus(2, 2) }))[0], "Rematch: 2-2 this season");
 
 // One-sided history is not a rivalry: no rematch chip. A first meeting gets its own chip, but
@@ -400,6 +418,7 @@ assert.ok(!buildHookSuggestions(input({}, {}, { versus: versus(3, 0) })).include
 const first = buildHookSuggestions(input({ finishMarginMs: 2_400 }, {}, { versus: versus(0, 0) }));
 assert.equal(first[0], "Decided by 2.4 seconds");
 assert.equal(first[1], "Their first 1v1 this season");
+console.log('OK: the head-to-head chips say "this season", the record they read');
 
 // The finishing minute is the hook, not a fixed "sub-10": 6:51 is a sub-7, 7:00 is a sub-8.
 assert.ok(buildHookSuggestions(input({ resultMs: 411_000 })).includes("A sub-7 to win it"));
@@ -562,6 +581,9 @@ console.log("hooks: all checks passed");
     "EDCR ADVANCES",
     "THE UPSET NOBODY SAW COMING",
     "EDCR GOES SUB-8 TO WIN IT",
+    // ...and only when it is the whole segment: a name after it is still read (15 Oct 2026).
+    "A SUB-8 TO WIN IT FOR DOOGILE",
+    "A SUB-8 TO WIN IT: DOOGILE'S RUN",
     // How it went is the result too (14 Oct 2026 edge run: all eight passed every check).
     "HUGE UPSET",
     "THE UPSET OF THE SEASON",

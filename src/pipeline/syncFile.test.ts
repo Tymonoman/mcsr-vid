@@ -29,6 +29,19 @@ writeSyncOffsets(dir, { ...offsets });
 assert.equal(mtime(), 1_000_000, "an identical rewrite must not look like a correction");
 writeSyncOffsets(dir, { ...offsets, right: offsets.right + 0.5 });
 assert.notEqual(mtime(), 1_000_000, "a real change is written");
+// Same placement, new wording (a second Save of the same numbers reads "replacing manual" where
+// the first read "replacing countdown"): the new text lands, the mtime does not move.
+const placed = { ...offsets, right: offsets.right + 0.5 };
+utimesSync(syncFilePath(dir), 1000, 1000);
+writeSyncOffsets(dir, {
+  ...placed,
+  confidence: 1,
+  detail: "set in the dashboard, replacing manual",
+  source: "manual",
+});
+assert.equal(readSyncOffsets(dir)?.source, "manual", "the new wording is written");
+assert.equal(mtime(), 1_000_000, "the clips did not move, so the export is not stale");
+console.log("OK: same left/right with a new detail keeps the mtime exportStale reads");
 
 // A truncated or hand-edited file is not a partial answer.
 writeFileSync(syncFilePath(dir), '{"left": 153.9, "right":');

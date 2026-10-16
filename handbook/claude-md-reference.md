@@ -233,7 +233,8 @@ views brought 0 subscribers.
   "chokes", "finishes first", "seals it"), not every paraphrase ("gets there first", "never catches
   up" pass), so the operator's Save is the real gate. Its seed/rank/elo check is a pattern list
   (`HOOK_SEED_RANK_ELO`: #N, Nth seed, top seed, top N, elo, rank N, no./number N, lcq, two 3–4
-  digit figures) and catches the usual phrasings, not every one.
+  digit figures, a lone 1000–3999 not followed by ms) and catches the usual phrasings, not every
+  one.
 - **Never a nickname, label or epithet for a runner, "vs" or not** (`hookLabelProblem`,
   `src/pipeline/hooks.ts`; `hookProblem`'s `players` argument, `src/shorts/videoPick.ts`; `withHook`'s,
   `src/pipeline/title.ts`; 2 Oct 2026). The operator, after "LCQ vs YN | lauveer vs edcr" and "ASIAN
@@ -524,7 +525,9 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   result off), and every surface says "season": the chips read "Rematch: X leads N-M this season"
   and "Their first 1v1 this season", the intro card "THIS SEASON" over the record or "FIRST
   MEETING", the band "Head-to-Head (Season)", and the Test & Compare caption has no "FIRST 1V1"
-  (0-0 this season can be 40 games the season before). The pick prompt labels the operator's past
+  (0-0 this season can be 40 games the season before). A playoff game gets no head-to-head chip or
+  `h2h` fact at all, which beside "Round of 16 | Game 3" reads as the series score (15 Oct 2026).
+  The pick prompt labels the operator's past
   hooks by register (stake, question, rivalry) and says stake is preferred. A typed hook that reuses a
   nickname an earlier uploaded title gave another player ("TAS" stood for doogile) comes back with a
   warning in `saveWarnings` — one nickname per player; the post-mortem of 30 Sept 2026 found "TAS" on
@@ -555,7 +558,8 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   asserting the outcome. The DNF fallback says "One of them never **killed** the dragon", not "reached" —
   `finishMarginMs` null only means no dragon kill; the loser can have fought and died in the End.
   `src/shorts/videoPick.ts`'s `hookProblem` also strips `PACE_TO_WIN` (`hooks.ts`: "sub-N to win
-  [it]" only, never a bare "to win", so "X battles back to win it" stays refused) before its own
+  [it]" only, at the start and as the whole segment, never a bare "to win", so "X battles back to
+  win it" and "A SUB-8 TO WIN IT FOR X" stay refused) before its own
   spoiler check, as `spoilsTheResult` does: it had disagreed with `hooks.ts` and was silently dropping the pace chip
   ("A sub-N to win it", already `hooks.ts`'s own highest-weighted candidate under 8 minutes)
   wherever it would otherwise have won, in both the dashboard's chip list (`shortFlow.ts`) and the
@@ -1960,7 +1964,9 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
   so the fix is `export:fast` (~10 min), not a re-render — and it is not optional: a video went
   out of sync to the channel because sync.json was corrected *after* `final-<id>.mp4` was exported.
   `exportStale` (`src/pipeline/syncFile.ts`, mtime of sync.json vs the export) now refuses the Upload
-  button, the nightly's video and the adopt route with one line, and the match page's "Sync check"
+  button, the nightly's video and the adopt route with one line (`writeSyncOffsets` keeps the old
+  mtime when left/right are unchanged, so a second Save of the same numbers or a re-render with new
+  wording is no correction; a Stop during the sync stage writes nothing), and the match page's "Sync check"
   (both POVs at 9.6 s, above the YouTube panel) is the look that catches the rest. "Save and
   re-export" presses the Final video panel's encode button, which an exported match now also has
   ("Re-encode MP4") — for months it did not, so the button saved and encoded nothing.
@@ -1989,7 +1995,10 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
   26 of 26 clips read, 25 of them to the frame the "1" vanishes): the API's estimate can be a
   minute off (a VOD that lost a segment runs ahead of the API's clock; Aquacorde, 13559245:
   53 s, and `1 - off / 20` scored the countdown it found to zero), so an empty or untrusted ±25 s
-  window (a countdown cut by its edge) is followed by one ±150 s pass and the distance term is soft; and a world that loads late has
+  window (a countdown cut by its edge) is followed by one ±150 s pass and the distance term is soft
+  (a near fragment is replaced only by the same countdown, its 0:00 within 10 s: the wide window
+  holds the whole pre-roll, where a clean earlier countdown, a private-room reset, would win the
+  sort and put 0:00 a minute early); and a world that loads late has
   the loading screen over the "10" (BeefSalad, 13549300), so a countdown is also read from its
   end — the drop out of the last digit with stepping seconds before it — and an onset has to be
   a real "10", half again the fattest digit after it, or the "6" after a waiting screen becomes
@@ -2008,7 +2017,8 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
   the operator's pick of three layouts, 24 Sept 2026): each half slides in with its own inline
   `translateX` and parts like a door on the way out, so every animated element takes its position
   from left/top in the CSS, never a CSS `transform` — an inline transform replaces the whole CSS one.
-  A playoff game shows no head-to-head (it would read as the series score); flags are left out
+  Its head-to-head is labelled THIS SEASON, the record `getVersus` reads (15 Oct 2026; it said
+  "lifetime"). A playoff game shows no head-to-head (it would read as the series score); flags are left out
   (they render as tofu without a colour-emoji font).
 - **tini is PID 1 since 830321f**; if `ps -eo stat | grep -c ^Z` ever climbs, wrap the command
   in `python3 scripts/reap.py`.
