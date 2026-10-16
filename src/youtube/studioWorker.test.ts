@@ -141,6 +141,54 @@ config.mediaDir = media;
   console.log("OK: an old scheduled upload whose publish time has passed is an end-screen candidate");
 }
 
+// --- planCycle: live video status over the upload-time record (16 Oct 2026) -------------------
+// (13172029/13223455: adopted Studio uploads, record "private" with no publishAt, public on
+// YouTube for a month, never planned; Edj_-c7lK38: deleted, an end-screen target every day.)
+{
+  const old = (videoId: string, matchId: number): LongFormRef => ({
+    videoId,
+    matchId,
+    uploadedAt: "2026-09-10T00:00:00.000Z",
+    privacyStatus: "private",
+    publishAt: null,
+    finishedComment: null,
+  });
+  const longForms = [old("adopted", 1), old("gone", 2)];
+  const shorts = [
+    { matchId: 1, videoId: "s-adopted" },
+    { matchId: 2, videoId: "s-gone" },
+  ];
+  const ledger: StudioLedger = {
+    endScreens: {},
+    pickerEmptySeen: {},
+    relatedLinks: {},
+    relatedRetrySeen: {},
+  };
+  const now = new Date("2026-10-16T12:00:00.000Z");
+  const live = new Map([
+    ["adopted", { privacyStatus: "public", publishAt: null }],
+    ["s-adopted", { privacyStatus: "public", publishAt: null }],
+  ]);
+  const plan = planCycle(now, longForms, ledger, [], () => false, shorts, live);
+  assert.deepEqual(
+    plan.endScreenTargets.map((t) => t.videoId),
+    ["adopted"],
+    "live public wins over the record",
+  );
+  console.log('OK: a record-"private" video that is live public is planned for an end screen');
+  assert.ok(!plan.pinTargets.some((t) => t.videoId === "gone"), "deleted: no pin");
+  assert.ok(!plan.relatedLinkTargets.some((t) => t.longFormVideoId === "gone"), "deleted: no related link");
+  assert.deepEqual(plan.pinTargets.map((t) => t.videoId), ["adopted"], "live public: pinned");
+  assert.deepEqual(plan.relatedLinkTargets.map((t) => t.shortVideoId), ["s-adopted"], "live: linked");
+  console.log("OK: a video videos.list doesn't return (deleted) is planned for nothing");
+
+  const fallback = planCycle(now, longForms, ledger, [], () => false, shorts, null);
+  assert.deepEqual(fallback.endScreenTargets, [], 'no live read: the record\'s "private" stands');
+  assert.deepEqual(fallback.pinTargets.map((t) => t.videoId), ["adopted", "gone"], "record-based pins");
+  assert.deepEqual(fallback.relatedLinkTargets.map((t) => t.shortVideoId), ["s-adopted", "s-gone"], "record-based");
+  console.log("OK: a failed live read plans from the upload records, as before");
+}
+
 // --- planCycle: a blocked runner's match never gets an end screen or a pin (14 Oct 2026) ------
 // (8 Oct 2026: end screens went onto four blocked runners' videos; a comment posted before the
 // block leaves `finishedComment` at null, so the pin plan reached them too.)

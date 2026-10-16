@@ -1792,6 +1792,16 @@ shows it to a human, nobody else parses its stdout as data.
   `addEndScreenFromTemplate` now returns `"no-editor"` when the link never appears; the worker
   skips that video for the UTC day, as pins already do, without counting an error, and caps end
   screens only after the day's skips (`endScreensThisCycle`).
+- **The cycle plans from live video status** (16 Oct 2026): 13172029 (jaBXP7CIcQk) and 13223455
+  (tT8Uj2HOF1o), Studio uploads adopted in September, still read "private" with no `publishAt`
+  and an `uploadedAt` before `END_SCREEN_CUTOFF_ISO` while public on YouTube, so they never got an
+  end screen; Edj_-c7lK38 (deleted) stayed a target forever. `runCycle` now reads every long-form
+  and Short id through `videoStats` (one videos.list per 50 ids) and passes it to `planCycle`'s
+  `live` argument: the live privacy/publishAt replace the record's, and a video the read does not
+  return is planned for nothing (no end screen, pin, related link or thumbnail test). A failed
+  read logs one line and plans from the records as before; the cycle still runs. An end screen
+  someone set by hand reads "already-has-endscreen" (the editor is not the empty gallery), is
+  discarded untouched and marked done in `.studio-ledger.json`, so it is never retried.
 
 ## X posts (14 Oct 2026)
 

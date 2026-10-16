@@ -316,7 +316,20 @@ export function planCycle(
   experiments: readonly Experiment[],
   isBlocked: (matchId: number) => boolean = realIsBlocked,
   shorts: readonly { matchId: number; videoId: string }[] = [],
+  live: ReadonlyMap<string, { privacyStatus: string; publishAt: string | null }> | null = null,
 ): CyclePlan {
+  // `live` is `runCycle`'s own videos.list read (16 Oct 2026: two adopted Studio uploads public on
+  // YouTube for a month still read "private" with no publishAt, and Edj_-c7lK38, deleted, stayed
+  // an end-screen target for good). It replaces the upload-time privacy, and a video it doesn't
+  // return is gone from the channel: planned for nothing. `null` (no read, or it failed) plans
+  // from the records alone, as before.
+  if (live) {
+    longForms = longForms.flatMap((v) => {
+      const s = live.get(v.videoId);
+      return s ? [{ ...v, privacyStatus: s.privacyStatus, publishAt: s.publishAt }] : [];
+    });
+    shorts = shorts.filter((s) => live.has(s.videoId));
+  }
   const endScreenTargets = longForms
     .filter((v) => !ledger.endScreens[v.videoId])
     // `privacyStatus` is upload-time only and the chain always uploads private with a publishAt,
@@ -732,9 +745,28 @@ export async function runCycle(
       matchId,
       videoId: record.videoId,
     }));
+    // One videos.list per 50 ids (1 quota unit each). A failed read never skips the cycle.
+    const live = await videoStats([...longForms, ...shorts].map((v) => v.videoId)).then(
+      (stats) =>
+        new Map(stats.map((s) => [s.videoId, { privacyStatus: s.privacyStatus, publishAt: s.publishAt }])),
+      (err) => {
+        console.error(
+          `studio worker: live video status unread, planning from the upload records: ${describeError(err)}`,
+        );
+        return null;
+      },
+    );
     const ledger = await readLedger();
     const experimentsFile = await readExperiments();
-    const plan = planCycle(new Date(), longForms, ledger, experimentsFile.experiments, undefined, shorts);
+    const plan = planCycle(
+      new Date(),
+      longForms,
+      ledger,
+      experimentsFile.experiments,
+      undefined,
+      shorts,
+      live,
+    );
 
     let endScreensAdded = 0;
     let endScreenPickerEmpty = 0;
