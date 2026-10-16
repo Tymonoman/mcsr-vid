@@ -530,7 +530,8 @@ const server = createServer(async (req, res) => {
       const skipTonight = hourUtc !== null && storedSkipNight !== null && storedSkipNight === nextRunDate;
       const summary = await nightlyShortSummary();
       json(res, 200, {
-        // Boot commit vs checked-out commit: the strip says "restart" when they differ.
+        // Boot commit vs checked-out commit, and whether the commits between touched server code:
+        // the strip offers a restart only then.
         code: codeVersions(),
         enabled: hourUtc !== null,
         hourUtc,

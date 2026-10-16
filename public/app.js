@@ -2790,15 +2790,18 @@ function nightlyBody() {
   if (!nightly)
     return offlineSince ? "" : '<div class="lines"><span class="muted">nightly&hellip;</span></div>';
   if (nightly.stale) {
-    return `<div class="bad">The server is running older code than this page &middot; <code>docker restart mcsr-dashboard</code> on the lab enables the nightly render and the newer panels.</div>`;
+    return `<div class="bad">The server is running older code than this page &middot; restart it on the lab, only when nothing uploads, for the nightly render and the newer panels.</div>`;
   }
   if (nightly.error) return `<div class="bad">${esc(nightly.error)}</div>`;
   // One restart behind is invisible otherwise: the page is served from disk and looks current,
-  // the server still writes yesterday's descriptions and hooks.
-  const { boot, now } = nightly.code ?? {};
+  // the server still writes yesterday's descriptions and hooks. Only when the commits since boot
+  // touched code the server holds (repoHead.ts `needsRestart`): a docs-only commit says nothing.
+  // The way out is the restart that waits for every upload and render; armed, the restart line
+  // below says what it waits for, and a failed boot check offers the button again.
+  const { boot, now, needsRestart } = nightly.code ?? {};
   const behind =
-    boot && now && boot !== now
-      ? `<div class="bad">The server is running <code>${esc(boot)}</code>; the repo is at <code>${esc(now)}</code> &middot; <code>docker restart mcsr-dashboard</code> picks it up.</div>`
+    needsRestart && (!nightly.restart || nightly.restart.error)
+      ? `<div class="bad">The server is running <code>${esc(boot)}</code>; the repo is at <code>${esc(now)}</code> &middot; <button data-act="restart-when-idle">Restart when idle</button></div>`
       : "";
 
   // Only sent at all when studioAutomation is on (server.ts): the last probe any Studio job
@@ -2880,8 +2883,18 @@ function nightlyBody() {
   // A restart armed for the moment the box goes idle (src/dashboard/restartWhenIdle.ts): one
   // small line, not `.bad` — it is not a problem, so it stays off the phone's match screen with
   // the plan and the queue.
-  const restart = nightly.restart
-    ? `<div class="restartline muted">restart pending${nightly.restart.blockedBy.length ? ` &middot; waiting for: ${nightly.restart.blockedBy.map(esc).join(", ")}` : ""}${nightly.restart.error ? ` &middot; <span class="bad">boot check failed: ${esc(nightly.restart.error.split("\n")[0])}</span>` : ""}</div>`
+  const armed = nightly.restart;
+  const restartWait = !armed
+    ? ""
+    : armed.blockedBy.length
+      ? ` &middot; waiting for: ${armed.blockedBy.map(esc).join(", ")}`
+      : armed.error
+        ? ""
+        : armed.lastCheck
+          ? " &middot; idle, type-checking the new code"
+          : " &middot; first check within 30 s";
+  const restart = armed
+    ? `<div class="restartline muted">restart pending${restartWait}${armed.error ? ` &middot; <span class="bad">boot check failed: ${esc(armed.error.split("\n")[0])}</span>` : ""}</div>`
     : "";
 
   const failed = stripError ? `<div class="bad">${esc(stripError)}</div>` : "";
@@ -2937,6 +2950,16 @@ function paintNightly() {
   el.innerHTML = nightlyInner();
   const btn = el.querySelector('[data-act="nightly-run"]');
   if (btn) btn.addEventListener("click", () => runNightlyNow(btn));
+  el.querySelector('[data-act="restart-when-idle"]')?.addEventListener("click", async (ev) => {
+    ev.currentTarget.disabled = true;
+    stripError = null;
+    try {
+      if (nightly) nightly.restart = await api("/api/restart-when-idle", { method: "POST" });
+    } catch (e) {
+      stripError = `Restart not armed: ${e.message}`;
+    }
+    paintNightly();
+  });
   el.querySelectorAll('[data-act="nightly-skip-night"]').forEach((btn) =>
     btn.addEventListener("click", async (ev) => {
       ev.preventDefault();
