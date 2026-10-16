@@ -409,7 +409,8 @@ const again = await assembleSeries(101, {
 });
 assert.equal(again.kind, "current");
 log.length = 0;
-const nothing = await renderSeries(
+assert.equal(seriesProgress(101)?.stage, "done", "the last run's line, until the next press");
+const pendingRun = renderSeries(
   101,
   {
     renderGame: async (id) => {
@@ -424,7 +425,17 @@ const nothing = await renderSeries(
   },
   seams,
 );
+// On the board before the run's first await: the route answers 202 at once and the press's own
+// re-read of /api/playoffs must find it, not the last run's "done", a live button and no poll.
+assert.deepEqual(
+  [seriesProgress(101)?.stage, seriesProgress(101)?.done],
+  ["starting", false],
+  "the press registers synchronously",
+);
+const nothing = await pendingRun;
 assert.equal(nothing.kind, "current");
+assert.equal(seriesProgress(101)?.stage, "done");
+console.log("OK: a series run is on the board the moment it is started");
 assert.deepEqual(log, [], "a current series renders nothing");
 assert.deepEqual(extracted, [], "a current series takes no game back out of the joined video");
 
