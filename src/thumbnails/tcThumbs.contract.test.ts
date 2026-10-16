@@ -22,7 +22,8 @@ if (spawnSync("ffmpeg", ["-version"]).status !== 0) {
 }
 
 const repo = fileURLToPath(new URL("../..", import.meta.url));
-const fixturePath = fileURLToPath(new URL("../fixtures/match-13766294.json", import.meta.url));
+// A match whose hooks shorten to a caption ("SUB-9"), so a run really reaches the caption render.
+const fixturePath = fileURLToPath(new URL("../fixtures/match-13673240.json", import.meta.url));
 const fixture = JSON.parse(await readFile(fixturePath, "utf8")) as { id: number };
 const media = await mkdtemp(path.join(tmpdir(), "mcsr-tcthumbs-contract-"));
 
@@ -58,7 +59,13 @@ const COLOURS: Record<string, string> = {
   "cheering-relaxing": "2020C0",
   "marching-crouching": "B02828",
 };
-async function strip(id: number, keys: string[], chosen: string, chosenBy: "operator" | "auto") {
+async function strip(
+  id: number,
+  keys: string[],
+  chosen: string,
+  chosenBy: "operator" | "auto",
+  provider = "nmsr-facing",
+) {
   const dir = path.join(media, String(id));
   await mkdir(dir, { recursive: true });
   for (const key of keys) {
@@ -80,8 +87,8 @@ async function strip(id: number, keys: string[], chosen: string, chosenBy: "oper
     key,
     leftPose: key.split("-")[0],
     rightPose: key.split("-")[1],
-    leftProvider: "nmsr-facing",
-    rightProvider: "nmsr-facing",
+    leftProvider: provider,
+    rightProvider: provider,
     hook: false,
     file: `thumbnail.${key}.png`,
   }));
@@ -118,7 +125,8 @@ function tcThumbs(id: number): Promise<{ code: number | null; stderr: string; re
     child.on("close", (code) => {
       clearInterval(poll);
       clearTimeout(limit);
-      resolve({ code, stderr, reachedCaption });
+      // A hung fetch with nothing else pending lets the child exit before the next poll.
+      resolve({ code, stderr, reachedCaption: reachedCaption || existsSync(mark) });
     });
   });
 }
@@ -151,6 +159,8 @@ try {
       await still(dir, "walking-crossed"),
       "the control is the live pick",
     );
+    // Today's provider on the strip: the caption arm is drawn (the run reaches its avatar fetch).
+    assert.ok(run.reachedCaption, `the caption arm is drawn: ${run.stderr.slice(-400)}`);
     // Additive only: the strip's own files are left alone.
     assert.equal(
       JSON.parse(await readFile(path.join(dir, "thumbnail.json"), "utf8")).chosen,
@@ -195,6 +205,28 @@ try {
     assert.ok(!existsSync(path.join(dir, "tc", "tc-pose.png")), "no tc-pose.png is written");
   }
   console.log("OK: with only the arms-up pair left, tc-thumbs refuses and writes no tc-pose.png");
+
+  // --- A strip from before the redesign: the caption arm would be today's design, so none ------
+  // The control and pose arms are copies of the strip as rendered; a caption drawn now against an
+  // `nmsr-posed` strip would differ in the whole design, not only the caption.
+  {
+    const id = fixture.id + 3;
+    const dir = await strip(
+      id,
+      ["walking-crossed", "cheering-relaxing", "marching-crouching"],
+      "walking-crossed",
+      "operator",
+      "nmsr-posed",
+    );
+    const run = await tcThumbs(id);
+    assert.equal(run.reachedCaption, false, "no caption is drawn against an old-design strip");
+    assert.equal(run.code, 0, `exits cleanly: ${run.stderr.slice(-400)}`);
+    assert.match(run.stderr, /predates the current design/);
+    assert.ok(!existsSync(path.join(dir, "tc", "tc-caption.png")), "no tc-caption.png");
+    assert.deepEqual(await tcFile(dir, "tc-control.png"), await still(dir, "walking-crossed"));
+    assert.ok(existsSync(path.join(dir, "tc", "tc-pose.png")), "the pose arm still lands");
+  }
+  console.log("OK: an old-design strip gets no caption arm");
 
   console.log("tcThumbs.contract: all checks passed");
 } finally {
