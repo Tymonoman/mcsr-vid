@@ -51,11 +51,28 @@ function stub(pages: unknown[]) {
   assert.equal(asked.length, 2, "stops at the first message past the window without another request");
   console.log("OK: pages by offset, overlap deduplicated, window kept, times relative to its start");
 
-  // A second busier than a page: the same page would come back forever, so the walk stops.
+  // A second busier than a page: the same page would come back forever, so the walk steps past
+  // the rest of that second — and still reads the rest of the window (a hype burst just before
+  // the finish used to end the walk there, losing the finish's chat; 5 saved files, Oct 2026).
   const same = [node(7, "p", "a"), node(7, "q", "b")];
-  const busy = stub([page(same, true), page(same, true)]);
-  assert.equal((await fetchVodChat("9", 0, 100, busy.fetchImpl)).length, 2);
-  assert.equal(busy.asked.length, 2, "one repeat, then stop");
+  const busy = stub([
+    page(same, true),
+    page(same, true),
+    page([node(50, "r", "gg"), node(90, "s", "wp")], true),
+    page([node(120, "t", "late")], false),
+  ]);
+  const walked = await fetchVodChat("9", 0, 100, busy.fetchImpl);
+  assert.deepEqual(
+    walked.map((m) => m.atSec),
+    [7, 7, 50, 90],
+    "the window after the busy second is still read",
+  );
+  assert.deepEqual(
+    busy.asked.map((v) => (v as { contentOffsetSeconds: number }).contentOffsetSeconds),
+    [0, 7, 8, 90],
+    "one repeat of the busy second, then on from the next one",
+  );
+  console.log("OK: a second busier than a page loses only that second, not the rest of the window");
 }
 
 {

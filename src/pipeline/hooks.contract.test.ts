@@ -299,13 +299,14 @@ console.log("OK: the swing chip quotes a panel lead actually lost, never one tha
 {
   const m = load(13549300); // a 0.3s finish, two panel flips, no death screen
   const [l, r] = users(m);
-  // The API's record is read after the match and already counts it (h2hWinsBefore takes it off):
-  // 2-1 before this match, so the winner's side reads one more.
+  // getVersus counts this match too (h2hWinsBefore takes it off): 2-1 before this match, so the
+  // winner's side reads one more.
   const won = (uuid: string) => (m.result.uuid === uuid ? 1 : 0);
   const versus = {
     results: { ranked: { [l.uuid]: 2 + won(l.uuid), [r.uuid]: 1 + won(r.uuid) } },
   } as unknown as VersusStats;
-  const chips = chipsFor(m, { versus });
+  // Wide enough for "Rematch: hackingnoises leads 2-1 this season" (44): the order is what P8 pins.
+  const chips = chipsFor(m, { versus, maxChars: 47 });
   const rematch = chips.findIndex((c) => c.startsWith("Rematch"));
   assert.ok(rematch > 0, `a rematch chip, not first: ${JSON.stringify(chips)}`);
   for (const stake of [

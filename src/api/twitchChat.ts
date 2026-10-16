@@ -116,10 +116,12 @@ export async function fetchVodChat(
       });
     }
     const last = comments.edges[comments.edges.length - 1];
-    // No new comment on a page means the next offset would return the same page forever: a
-    // second of chat busier than one page holds, which is the one shape this walk cannot read.
-    if (past || !comments.pageInfo.hasNextPage || !last || fresh === 0) return out;
-    offset = last.node.contentOffsetSeconds;
+    if (past || !comments.pageInfo.hasNextPage || !last) return out;
+    // No new comment on a page means the same offset would return the same page forever: a
+    // second of chat busier than one page holds. The rest of that second is lost (an offset is
+    // whole seconds), never the rest of the window: the walk steps on to the next second.
+    offset =
+      fresh === 0 ? Math.max(offset, last.node.contentOffsetSeconds) + 1 : last.node.contentOffsetSeconds;
   }
   return out;
 }

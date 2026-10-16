@@ -62,7 +62,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { config } from "../config.js";
-import type { MatchInfo, UserDetails, VersusStats } from "../api/types.js";
+import type { MatchInfo, UserDetails } from "../api/types.js";
 import { runPipeline, STAGE_ORDER, type StageEvent } from "./pipeline.js";
 import { ANCHOR_SEC, offsetIntoClipFromProject } from "./kdenliveProject.js";
 import { exportStale, readSyncOffsets, staleExportMessage, writeSyncOffsets } from "./syncFile.js";
@@ -132,14 +132,8 @@ globalThis.fetch = (async (input: string | URL | Request) => {
       const match = served.get(Number(m[1]));
       return match ? ok(match) : new Response("{}", { status: 404, statusText: "Not Found" });
     }
-    if ((m = /^\/users\/([^/]+)\/versus\/([^/]+)$/.exec(u.pathname))) {
-      const versus: VersusStats = {
-        players: [users.get(m[1]!)!, users.get(m[2]!)!],
-        results: { ranked: { total: 0 }, casual: { total: 0 } },
-        changes: {},
-      };
-      return ok(versus);
-    }
+    // getVersus reads the pair's ranked list: none before this match.
+    if (/^\/users\/[^/]+\/versus\/[^/]+\/matches$/.test(u.pathname)) return ok([]);
     if ((m = /^\/users\/([^/]+)$/.exec(u.pathname))) {
       const user = users.get(decodeURIComponent(m[1]!));
       return user ? ok(user) : new Response("{}", { status: 404, statusText: "Not Found" });
