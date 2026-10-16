@@ -666,16 +666,8 @@ const configOnDisk = (): Record<string, unknown> =>
     [[M2, one("render-late").videos[0]?.videoId]],
     "fetch is asked about the match again on the next day's tick",
   );
-  await deviation(
-    "ExperimentVideo.videoId 'Filled in by the evaluator from the match's youtube.json when absent' — src/dashboard/experiments.ts",
-    () => {
-      assert.equal(
-        one("render-late").videos[0]?.videoId,
-        "late1",
-        "videoId still absent after the match was uploaded",
-      );
-    },
-  );
+  assert.equal(one("render-late").videos[0]?.videoId, "late1", "videoId still absent after the match was uploaded");
+  console.log("OK: 11 a render-arm video enrolled before its upload gets its videoId once uploaded");
 }
 
 // --- 12. Slot enrolment: long-forms only, by publish hour --------------------------------------------

@@ -1021,32 +1021,14 @@ export interface ImpressionsRow {
 }
 
 /**
- * Per-video thumbnail impressions and CTR from the standing Reporting API job.
+ * Per-video thumbnail impressions and CTR from the standing Reporting API job: every daily reach
+ * report covering `sinceYmd` (YYYY-MM-DD) onward, concatenated — the job
+ * (`channel_reach_basic_a1`) writes one CSV per day, so its newest report alone is a single day's
+ * sample. A day YouTube regenerated (a backfill, same window) counts once: the report with the
+ * newest `createTime` wins.
  *
- * This is the *only* source of those two numbers — the Analytics API does not expose them — so
- * thumbnail A/B testing depends entirely on this job existing and having produced a report.
+ * This is the *only* source of those two numbers — the Analytics API does not expose them.
  * Reports appear roughly 48h after the day they cover, so a video uploaded today has none.
- */
-export async function latestImpressions(jobId: string): Promise<ImpressionsRow[]> {
-  const list = await apiCall<{ reports?: Array<{ id: string; downloadUrl: string; endTime: string }> }>(
-    REPORTING_API,
-    `/jobs/${encodeURIComponent(jobId)}/reports`,
-  );
-  const reports = list.reports ?? [];
-  if (reports.length === 0) return [];
-
-  const newest = reports.reduce((a, b) => (a.endTime > b.endTime ? a : b));
-  const accessToken = await getAccessToken();
-  const res = await fetch(newest.downloadUrl, { headers: { authorization: `Bearer ${accessToken}` } });
-  if (!res.ok) throw new Error(await describeApiFailure(res, "reporting download"));
-  return parseImpressionsCsv(await res.text());
-}
-
-/**
- * Every daily reach report covering `sinceYmd` (YYYY-MM-DD) onward, concatenated — the job
- * (`channel_reach_basic_a1`) writes one CSV per day, so `latestImpressions`' newest report alone is
- * a single day's sample. A day YouTube regenerated (a backfill, same window) counts once: the
- * report with the newest `createTime` wins.
  *
  * Each report's rows are kept by report id for the life of the process (a report never changes; a
  * regenerated day gets a new id): the evaluator calls this once per video, and downloading every

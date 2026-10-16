@@ -97,6 +97,7 @@ import {
   nicknameWarnings,
   onVideo,
   readUpload,
+  splitTitle,
   writeUpload,
   type UploadKind,
 } from "../youtube/youtubeStore.js";
@@ -327,11 +328,12 @@ async function readJson<T>(file: string): Promise<T | null> {
   }
 }
 
-/** The hook half of a title line: everything before the first separator, or null for a placeholder. */
+/** The hook half of a title line: everything before " | <left> vs <right>" (a typed hook may hold a
+ *  " | " itself, `splitTitle`), else before the first separator; null for a placeholder. */
 const hookOf = (line: string | undefined): string | null => {
   const first = line?.split("\n")[0] ?? "";
   if (first.trim() === "" || first.includes(HOOK_PLACEHOLDER)) return null;
-  return first.split(SEPARATOR)[0]!.trim() || null;
+  return (splitTitle(first)?.hook ?? first.split(SEPARATOR)[0]!).trim() || null;
 };
 
 interface Facts {

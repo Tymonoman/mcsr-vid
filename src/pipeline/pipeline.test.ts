@@ -3,7 +3,7 @@
 // no VOD discovery, no download, nothing written under the match directory.
 // Run: npx tsx src/pipeline/pipeline.test.ts
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -36,6 +36,21 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   if (url.endsWith("/playoffs/11")) return new Response("upstream", { status: 503, statusText: "Service Unavailable" });
   if (url.includes("/versus/")) return ok([]);
   if (/\/users\/[cd]$/.test(url)) return ok({ uuid: url.slice(-1), nickname: url.slice(-1) });
+  // A blocked runner since renamed: the API's names pass, the prefetched clip on disk does not.
+  if (url.endsWith("/matches/997")) {
+    const players = [
+      { uuid: "e", nickname: "RenamedRunner" },
+      { uuid: "f", nickname: "Feinberg" },
+    ];
+    return ok({
+      id: 997,
+      type: 2,
+      players,
+      vod: players.map((p) => ({ uuid: p.uuid, url: `https://www.twitch.tv/videos/${p.uuid}`, startsAt: 0 })),
+      timelines: [],
+      result: { uuid: null, time: 0 },
+    });
+  }
   if (!url.endsWith("/matches/999")) throw new Error(`unexpected fetch ${url}`);
   const players = [
     { uuid: "a", nickname: "BeefSalad" },
@@ -62,6 +77,19 @@ await assert.rejects(
 assert.deepEqual(fetched, ["https://api.mcsrranked.com/matches/999"], "nothing past the match fetch");
 assert.ok(!stages.includes("download"), "no download stage");
 assert.ok(!existsSync(matchDir(999)), "match directory not created");
+
+// The API's names pass, but `npm run download-vods` left the old name's clip and chat on disk.
+{
+  mkdirSync(matchDir(997), { recursive: true });
+  writeFileSync(path.join(matchDir(997), "BeefSalad.mp4"), "");
+  writeFileSync(path.join(matchDir(997), "chat-BeefSalad.json"), "[]");
+  fetched.length = 0;
+  const seen: string[] = [];
+  await assert.rejects(runPipeline("997", { onEvent: (e) => seen.push(e.stage) }), /blocked player/);
+  assert.deepEqual(fetched, ["https://api.mcsrranked.com/matches/997"], "nothing past the match fetch");
+  assert.ok(!seen.includes("download"), "no download stage");
+  console.log("OK: a blocked runner's clip on disk stops the pipeline whatever name the API now gives");
+}
 
 // One failed bracket read must fail the fetch stage for a retry, not package the playoff game as an
 // ordinary ranked match: the overlay stills that run would write are reused by every later run.
