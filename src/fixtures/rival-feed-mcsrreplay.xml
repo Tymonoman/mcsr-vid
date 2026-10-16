@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns:yt="http://www.youtube.com/xml/schemas/2015" xmlns:media="http://search.yahoo.com/mrss/" xmlns="http://www.w3.org/2005/Atom">
+ <link rel="self" href="http://www.youtube.com/feeds/videos.xml?channel_id=UCVwi8UAeS2o_5HpVuDlH4uw"/>
+ <id>yt:channel:Vwi8UAeS2o_5HpVuDlH4uw</id>
+ <yt:channelId>Vwi8UAeS2o_5HpVuDlH4uw</yt:channelId>
+ <title>MCSR Replays</title>
+ <link rel="alternate" href="https://www.youtube.com/channel/UCVwi8UAeS2o_5HpVuDlH4uw"/>
+ <author>
+  <name>MCSR Replays</name>
+  <uri>https://www.youtube.com/channel/UCVwi8UAeS2o_5HpVuDlH4uw</uri>
+ </author>
+ <published>2025-12-16T04:06:52+00:00</published>
+  <entry>
+  <id>yt:video:nm2rpfEioD8</id>
+  <yt:videoId>nm2rpfEioD8</yt:videoId>
+  <yt:channelId>UCVwi8UAeS2o_5HpVuDlH4uw</yt:channelId>
+  <title>Infume vs silverrruns | MCSR Ranked | Shipwreck Seed</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=nm2rpfEioD8"/>
+  <author>
+   <name>MCSR Replays</name>
+   <uri>https://www.youtube.com/channel/UCVwi8UAeS2o_5HpVuDlH4uw</uri>
+  </author>
+  <published>2026-04-18T16:55:18+00:00</published>
+  <updated>2026-10-04T22:55:09+00:00</updated>
+  <media:group>
+   <media:title>Infume vs silverrruns | MCSR Ranked | Shipwreck Seed</media:title>
+   <media:content url="https://www.youtube.com/v/nm2rpfEioD8?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i3.ytimg.com/vi/nm2rpfEioD8/hqdefault.jpg" width="480" height="360"/>
+   <media:description>Match Details&#13;
+Matchup: Infume vs silverrruns&#13;
+Final Time: 7:41&#13;
+Seed Type: Shipwreck&#13;
+Overworld Seed: 6413350982699749923&#13;
+Nether Seed: 50398946021283&#13;
+End Seed: 6413350982699749923&#13;
+Date Played: Apr 14, 2026&#13;
+&#13;
+Links &amp; VODs&#13;
+MCSR Match Page: https://mcsrranked.com/stats/Infume/9244072&#13;
+Infume's Perspective: https://www.twitch.tv/videos/2748272960?t=6538s&#13;
+silverrruns's Perspective: https://www.twitch.tv/videos/2748129177?t=19552s&#13;
+&#13;
+Disclaimer / Info&#13;
+This video is automatically generated. While I strive for accuracy, errors can happen. If you notice something wrong, please reach out! Discord: mr.derp&#13;
+&#13;
+For Runners: If you are featured in this video and would like it removed, or if you would like to opt-out of having your matches uploaded to this channel in the future, please contact me and I will remove you and previous videos.</media:description>
+   <media:community>
+    <media:starRating count="191" average="5.00" min="1" max="5"/>
+    <media:statistics views="6142"/>
+   </media:community>
+  </media:group>
+ </entry>
+ <entry>
+  <id>yt:video:59G-6KgH7ak</id>
+  <yt:videoId>59G-6KgH7ak</yt:videoId>
+  <yt:channelId>UCVwi8UAeS2o_5HpVuDlH4uw</yt:channelId>
+  <title>BeefSalad vs v_strid | MCSR Ranked | Buried Treasure Seed</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=59G-6KgH7ak"/>
+  <author>
+   <name>MCSR Replays</name>
+   <uri>https://www.youtube.com/channel/UCVwi8UAeS2o_5HpVuDlH4uw</uri>
+  </author>
+  <published>2026-04-18T01:05:29+00:00</published>
+  <updated>2026-10-04T00:45:13+00:00</updated>
+  <media:group>
+   <media:title>BeefSalad vs v_strid | MCSR Ranked | Buried Treasure Seed</media:title>
+   <media:content url="https://www.youtube.com/v/59G-6KgH7ak?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i2.ytimg.com/vi/59G-6KgH7ak/hqdefault.jpg" width="480" height="360"/>
+   <media:description>Match Details&#13;
+Matchup: BeefSalad vs v_strid&#13;
+Final Time: 8:13&#13;
+Seed Type: Buried Treasure&#13;
+Overworld Seed: -6777756202798625325&#13;
+Nether Seed: 186804080222963&#13;
+End Seed: -6777756202798625325&#13;
+Date Played: Apr 17, 2026&#13;
+&#13;
+Links &amp; VODs&#13;
+MCSR Match Page: https://mcsrranked.com/stats/BeefSalad/9329664&#13;
+BeefSalad's Perspective: https://www.twitch.tv/videos/2750434766?t=13864s&#13;
+v_strid's Perspective: https://www.twitch.tv/videos/2750289227?t=26363s&#13;
+&#13;
+Disclaimer / Info&#13;
+This video is automatically generated. While I strive for accuracy, errors can happen. If you notice something wrong, please reach out! Discord: mr.derp&#13;
+&#13;
+For Runners: If you are featured in this video and would like it removed, or if you would like to opt-out of having your matches uploaded to this channel in the future, please contact me and I will remove you and previous videos.</media:description>
+   <media:community>
+    <media:starRating count="88" average="5.00" min="1" max="5"/>
+    <media:statistics views="2892"/>
+   </media:community>
+  </media:group>
+ </entry>
+</feed>

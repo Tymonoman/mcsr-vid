@@ -1,9 +1,20 @@
 /**
- * What the active competitor has already published, matched against our candidates.
+ * What the competitors have already published, matched against our candidates.
  *
- * The rival posts the same matches a day later to a far larger audience, so a matchup it has
- * already covered competes with its own video for the same browse session. The suggestion cards
- * flag one, and the display order (which is also the nightly's) puts those after the fresh ones.
+ * A rival posts the same matches a day later to a far larger audience, so a match it has already
+ * covered competes with its own video for the same browse session. The suggestion cards and the
+ * match list say which of two things a rival did: posted *this match*, or only *this pair* in
+ * another match. Only the first puts the card after the fresh ones in the display order (which is
+ * also the nightly's); the second is information.
+ *
+ * "This match" is decided by the strongest signal the rival's public feed carries, and the feeds
+ * differ (read 16 Oct 2026, `feeds/videos.xml`, title + published + media:description):
+ *  - MCSR Replays (@mcsrreplay): the description links the match page
+ *    (`mcsrranked.com/stats/<nick>/<id>`), so the id decides, exactly. Dormant since 18 Apr 2026,
+ *    so not in the default list; it is read correctly if someone adds it back.
+ *  - MCSR Matches (@mcsrmatches) and MCSR Vault (@mcsr-vault): the description is boilerplate
+ *    (a PayPal link and hashtags; Vault's names the players' Twitch channels), no id, no date, no
+ *    seed. The pair and a window after the match date are all there is (`rivalMatchFor`).
  *
  * Read from the channel's public upload feed with no token: the API audit told Google the
  * channel's OAuth token reads its own channel only, so another channel's uploads are read the way
@@ -14,10 +25,14 @@ import { config } from "../config.js";
 import { describeError } from "../errorText.js";
 
 export interface RivalPost {
+  /** The handle whose feed it came from, without the @. */
+  channel: string;
   title: string;
   publishedAtMs: number;
   /** Normalised nicknames from the title, or null when the title names no matchup. */
   players: [string, string] | null;
+  /** Match ids the description links (mcsrranked.com); absent or empty when it links none. */
+  matchIds?: number[];
   /**
    * The video's length. What tells two matches of one pair apart — the public feed carries none,
    * so it is absent since 14 Oct 2026 and matching is by pair and date alone.
@@ -63,8 +78,9 @@ export function playersFromTitle(title: string): [string, string] | null {
   const plain = /^\s*(\S+)\s+vs\.?\s+([^|]+?)\s+MCSR/i.exec(title);
   const m = piped ?? plain;
   if (!m) return null;
-  const a = normaliseNick(m[1]!);
-  const b = normaliseNick(m[2]!);
+  // MCSR Vault adds the broadcast name in brackets ("Pinne (Skycrab) VS ANJOUU"): the API's comes first.
+  const a = normaliseNick(m[1]!.replace(/\(.*?\)/g, ""));
+  const b = normaliseNick(m[2]!.replace(/\(.*?\)/g, ""));
   return a && b ? [a, b] : null;
 }
 
@@ -122,6 +138,64 @@ export function rivalRecentPostFor(
   return hit ? { title: hit.title, publishedAtMs: hit.publishedAtMs } : null;
 }
 
+export interface RivalSighting {
+  channel: string;
+  /** "match": this very match. "pair": the same two players in another match — information only. */
+  kind: "match" | "pair";
+  title: string;
+  publishedAtMs: number;
+}
+
+/**
+ * What each rival did with this match, one line per channel that posted the pair at all: "match"
+ * when a post links this match's id, else (a post that names no match) when `rivalMatchFor`'s pair
+ * and window say so — or, with no date to hand (`dateSec` null: the API was down for the shelf),
+ * `rivalRecentPostFor`'s last two weeks; otherwise "pair", the channel's latest post of the two.
+ * A post linking another id is another match whatever its date.
+ */
+export function rivalSightingsFor(
+  posts: readonly RivalPost[],
+  match: { matchId: number; players: readonly [string, string]; dateSec: number | null; runSec?: number },
+  nowMs: number,
+): RivalSighting[] {
+  const ours = [normaliseNick(match.players[0]), normaliseNick(match.players[1])].sort().join("|");
+  return [...new Set(posts.map((p) => p.channel))].flatMap((channel): RivalSighting[] => {
+    const own = posts.filter((p) => p.channel === channel);
+    const unlinked = own.filter((p) => !p.matchIds?.length);
+    const same =
+      own.find((p) => p.matchIds?.includes(match.matchId)) ??
+      (match.dateSec === null
+        ? rivalRecentPostFor(unlinked, match.players, nowMs)
+        : rivalMatchFor(unlinked, match.players, match.dateSec, match.runSec));
+    if (same) return [{ channel, kind: "match", title: same.title, publishedAtMs: same.publishedAtMs }];
+    const pair = own
+      .filter((p) => p.players && [...p.players].sort().join("|") === ours)
+      .sort((a, b) => b.publishedAtMs - a.publishedAtMs)[0];
+    return pair ? [{ channel, kind: "pair", title: pair.title, publishedAtMs: pair.publishedAtMs }] : [];
+  });
+}
+
+/**
+ * A sighting as the page renders it: the line, and the rival's own title for its tooltip. The
+ * date is the operator's (Europe/Warsaw).
+ */
+export function rivalLine(s: RivalSighting): { kind: RivalSighting["kind"]; label: string; title: string } {
+  const date = new Date(s.publishedAtMs).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    timeZone: "Europe/Warsaw",
+  });
+  const label =
+    s.kind === "match"
+      ? `@${s.channel} posted this match (${date})`
+      : `@${s.channel} posted this pair: a different match (${date})`;
+  return { kind: s.kind, label, title: s.title };
+}
+
+/** The configured rivals' handles, without the @. */
+export const rivalHandles = (): string[] =>
+  config.rivalChannelHandle.map((h) => h.trim().replace(/^@/, "")).filter(Boolean);
+
 /** `@handle` → `UC…`, read once per boot off the public channel page. */
 const channelIds = new Map<string, string>();
 
@@ -151,35 +225,46 @@ const unescapeXml = (s: string): string =>
     dec ? String.fromCodePoint(Number(dec)) : hex ? String.fromCodePoint(parseInt(hex, 16)) : XML_ENTITIES[name]!,
   );
 
-/** The public feed's entries, newest first. An entry with no title or date is skipped. */
-export function parseRivalFeed(xml: string): RivalPost[] {
+/**
+ * The public feed's entries, newest first. An entry with no title or date is skipped. A match page
+ * linked from the description is either form: ours and the API's `/matches/<id>`, MCSR Replays'
+ * `/stats/<nick>/<id>`.
+ */
+export function parseRivalFeed(xml: string, channel: string): RivalPost[] {
   return [...xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g)].flatMap(([, entry]) => {
     const title = unescapeXml(/<title>([^<]*)<\/title>/.exec(entry!)?.[1] ?? "");
     const publishedAtMs = Date.parse(/<published>([^<]*)<\/published>/.exec(entry!)?.[1] ?? "");
     if (!title || Number.isNaN(publishedAtMs)) return [];
-    return [{ title, publishedAtMs, players: playersFromTitle(title) }];
+    const description = /<media:description>([^<]*)<\/media:description>/.exec(entry!)?.[1] ?? "";
+    const matchIds = [...description.matchAll(/mcsrranked\.com\/(?:matches|stats\/[^/\s]+)\/(\d+)/g)].map(
+      (m) => Number(m[1]),
+    );
+    return [{ channel, title, publishedAtMs, players: playersFromTitle(title), matchIds }];
   });
 }
 
 /**
- * The rival's last fifteen uploads (all the feed holds — two weeks at its daily cadence, the
- * matching window), newest first, with no token on any request. Throws on failure; the cache
+ * A rival's last fifteen uploads (all the feed holds — two weeks at MCSR Matches' daily cadence,
+ * the matching window), newest first, with no token on any request. Throws on failure; the cache
  * below catches.
  */
 export async function fetchRivalPosts(handle: string, fetchImpl: typeof fetch = fetch): Promise<RivalPost[]> {
   const id = await channelIdFor(handle, fetchImpl);
   const res = await fetchImpl(`https://www.youtube.com/feeds/videos.xml?channel_id=${id}`);
   if (!res.ok) throw new Error(`feed for @${handle}: HTTP ${res.status}`);
-  return parseRivalFeed(await res.text());
+  return parseRivalFeed(await res.text(), handle.replace(/^@/, ""));
 }
 
 const REFRESH_MS = 6 * 60 * 60 * 1000;
-let cached: { atMs: number; posts: RivalPost[] } = { atMs: 0, posts: [] };
+/** Each handle's last good read: one feed failing keeps its last answer and never blanks another's. */
+const cached = new Map<string, RivalPost[]>();
+/** When the feeds were last asked, and for which handles: a Settings change to the list is stale at once. */
+let checked = { atMs: 0, handles: "" };
 let inflight: Promise<void> | null = null;
 
-/** What is known right now — possibly nothing yet. Synchronous, for the payload builder. */
+/** What is known right now about the configured rivals — possibly nothing yet. Synchronous, for the payload builder. */
 export function rivalPostsSnapshot(): RivalPost[] {
-  return cached.posts;
+  return rivalHandles().flatMap((h) => cached.get(h) ?? []);
 }
 
 /**
@@ -188,20 +273,30 @@ export function rivalPostsSnapshot(): RivalPost[] {
  * without the badges and the next has them.
  */
 export function refreshRivalPostsIfStale(nowMs: number = Date.now()): void {
-  if (!config.rivalChannelHandle) return;
-  if (inflight || nowMs - cached.atMs < REFRESH_MS) return;
-  inflight = fetchRivalPosts(config.rivalChannelHandle)
-    .then((posts) => {
-      cached = { atMs: nowMs, posts };
-      console.error(`rival: ${posts.length} posts from @${config.rivalChannelHandle}`);
-    })
-    .catch((err: unknown) => {
-      // Try again in five minutes rather than in six hours — a transient 5xx should not blank
-      // the badges for a quarter of a day — but not on every request either: the suggestions
-      // route is polled every two seconds during a scan, and a dead feed would be fetched per
-      // poll.
-      cached = { ...cached, atMs: nowMs - REFRESH_MS + 5 * 60_000 };
-      console.error(`rival: ${describeError(err)} (badges off until the next try)`);
+  const handles = rivalHandles();
+  if (handles.length === 0) return;
+  if (inflight || (nowMs - checked.atMs < REFRESH_MS && checked.handles === handles.join())) return;
+  inflight = Promise.all(
+    handles.map((handle) =>
+      fetchRivalPosts(handle).then(
+        (posts) => {
+          cached.set(handle, posts);
+          console.error(`rival: ${posts.length} posts from @${handle}`);
+          return true;
+        },
+        (err: unknown) => {
+          console.error(`rival: ${describeError(err)} (@${handle} keeps its last answer until the next try)`);
+          return false;
+        },
+      ),
+    ),
+  )
+    .then((ok) => {
+      // A failure tries again in five minutes rather than in six hours — a transient 5xx should
+      // not blank the badges for a quarter of a day — but not on every request either: the
+      // suggestions route is polled every two seconds during a scan, and a dead feed would be
+      // fetched per poll.
+      checked = { atMs: ok.every(Boolean) ? nowMs : nowMs - REFRESH_MS + 5 * 60_000, handles: handles.join() };
     })
     .finally(() => {
       inflight = null;

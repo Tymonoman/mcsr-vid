@@ -197,8 +197,8 @@ reload). After merging server changes, `POST /api/restart-when-idle`.
   also refuses before `videos.update`; `POST /api/render` and `POST /api/series/:id/render` refuse
   before the run starts; `runPipeline` refuses right after the match fetch, so
   `npm run batch`/`generate-project` and the TUI do too.
-- **Rival posts** (`rivalChannelHandle` default `mcsrmatches`): its public feed, never our token;
-  matched to cards by pair/date; a posted match sorts after fresh ones.
+- **Rival posts** (`rivalChannelHandle`: `mcsrmatches`, `mcsr-vault`): public feeds, no token;
+  "this match" (id, else pair/date) sorts after fresh ones, "this pair" only shows.
 - **Hook chips** (`src/pipeline/hooks.ts`) lead with the match's stake (margin, lead change,
   death), nickname/rematch chips after. Chip truth, pinned by fixtures:
   swing needs a lead actually held and lost (`metrics.splits`), not a widening one; lead-change is

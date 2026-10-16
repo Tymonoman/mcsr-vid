@@ -170,6 +170,7 @@ console.log("suggestPresent: ok");
 {
   const rival = [
     {
+      channel: "mcsrmatches",
       title: "GG!! | edcr vs doogile | MCSR Ranked",
       publishedAtMs: NOW - 86_400_000,
       players: ["edcr", "doogile"] as [string, string],
@@ -198,8 +199,14 @@ console.log("suggestPresent: ok");
     [23, 22, 21],
     "expiring, then fresh, then the rival's matchup last despite its audience",
   );
-  assert.deepEqual(cards[2]!.rivalPosted, { daysAgo: 1, title: "GG!! | edcr vs doogile | MCSR Ranked" });
-  assert.equal(cards[1]!.rivalPosted, null);
+  assert.deepEqual(cards[2]!.rivalPosts, [
+    {
+      kind: "match",
+      label: "@mcsrmatches posted this match (6 Sept)",
+      title: "GG!! | edcr vs doogile | MCSR Ranked",
+    },
+  ]);
+  assert.deepEqual(cards[1]!.rivalPosts, []);
   assert.deepEqual(
     orderForDisplay(raw, NOW, rival, []).map((s) => s.metrics.matchId),
     [23, 22, 21],
@@ -308,6 +315,7 @@ const order = (
   );
   const rival = [
     {
+      channel: "mcsrmatches",
       title: "GG!! | doogile vs edcr",
       publishedAtMs: NOW - 86_400_000,
       players: ["doogile", "edcr"] as [string, string],
@@ -503,7 +511,12 @@ const order = (
   );
   const rival = [
     // The rival's names come off its titles already normalised: lowercase.
-    { title: "x", publishedAtMs: NOW - DAY, players: ["silverrruns", "infume"] as [string, string] },
+    {
+      channel: "mcsrmatches",
+      title: "x",
+      publishedAtMs: NOW - DAY,
+      players: ["silverrruns", "infume"] as [string, string],
+    },
   ];
   assert.deepEqual(
     order([famous, noNames], roster, rival),
@@ -548,7 +561,12 @@ const order = (
     "the favourite before an expiring no-name",
   );
   const rivalPinne = [
-    { title: "x", publishedAtMs: NOW - DAY, players: ["pinne", "someone"] as [string, string] },
+    {
+      channel: "mcsrmatches",
+      title: "x",
+      publishedAtMs: NOW - DAY,
+      players: ["pinne", "someone"] as [string, string],
+    },
   ];
   assert.deepEqual(
     order([pinne, jabo], roster, rivalPinne),

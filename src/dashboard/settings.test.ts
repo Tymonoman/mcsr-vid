@@ -191,6 +191,29 @@ console.log("settings: the allowlist holds and every kind coerces");
 
   console.log("settings: the blocked players save, apply live, and clear to none");
 
+  // The competitors: a list typed with commas or spaces, live at once, empty for none; a URL or a
+  // spaced name is refused by the loader's own rule before anything is written.
+  assert.deepEqual(saveSettings({ rivalChannelHandle: "mcsrmatches, @mcsr-vault" }).changed, [
+    "rivalChannelHandle",
+  ]);
+  assert.deepEqual(config.rivalChannelHandle, ["mcsrmatches", "@mcsr-vault"]);
+  assert.deepEqual(JSON.parse(readFileSync(CONFIG_PATH, "utf8")).rivalChannelHandle, [
+    "mcsrmatches",
+    "@mcsr-vault",
+  ]);
+  assert.throws(
+    () => saveSettings({ rivalChannelHandle: "https://youtube.com/@mcsrmatches" }),
+    /rivalChannelHandle/,
+  );
+  assert.deepEqual(
+    config.rivalChannelHandle,
+    ["mcsrmatches", "@mcsr-vault"],
+    "a refused save changes nothing",
+  );
+  assert.deepEqual(saveSettings({ rivalChannelHandle: "" }).changed, ["rivalChannelHandle"]);
+  assert.deepEqual(config.rivalChannelHandle, [], "emptied is no competitor checked");
+  console.log("settings: the competitor handles save as a list, apply live, and clear to none");
+
   // Another process's view (the Studio worker's): a block the dashboard saved reaches it only by
   // re-reading the file, and only that key — nothing else on the box changes under it.
   const before = readFileSync(CONFIG_PATH, "utf8");

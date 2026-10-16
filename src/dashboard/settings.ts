@@ -239,9 +239,9 @@ export const SETTINGS: readonly SettingField[] = [
   },
   {
     key: "rivalChannelHandle",
-    label: "Competitor handle",
-    help: "Whose uploads are matched against the suggestions, so a match they already posted sorts last.",
-    kind: "text",
+    label: "Competitor handles",
+    help: "YouTube handles separated by commas or spaces, read from their public feeds. Each card and match row says whether a competitor posted this match (it then sorts last) or only this pair in another match (information, no change in order). Empty is off.",
+    kind: "list",
     group: "Suggestions",
   },
   {

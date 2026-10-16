@@ -19,7 +19,7 @@
 //  8. The defaults CLAUDE.md states for keys that config.test.ts does not already pin: postRollSec
 //     30, povAudioPan 0.7, teaserAtSec 10 / teaserSec 5, midRollCtaAtSec 90 / midRollCtaSec 4,
 //     nightlyRenderHourUtc 3, publishHourUtc 19 / seriesPublishHourUtc 23 / seriesPairGapDays 3,
-//     suggestKnownSlots 4, rivalChannelHandle mcsrmatches, titleNames, telegramReportHourWarsaw 7,
+//     suggestKnownSlots 4, rivalChannelHandle [mcsrmatches, mcsr-vault], titleNames, telegramReportHourWarsaw 7,
 //     and the switches documented as off by default (shortsByHand, playoffsFirst,
 //     thumbnailRotatePoses, exportUpscale1440, countdownTeaser, learnedDraw, recordPaceBoostSec,
 //     creatorWatch with an empty watchlist).
@@ -90,7 +90,7 @@ const documented: Partial<Record<keyof typeof DEFAULTS, unknown>> = {
   seriesPublishHourUtc: 23, // 23:00 series
   seriesPairGapDays: 3, // seriesPairGapDays 3 apart
   suggestKnownSlots: 4, // suggestKnownSlots, default 4
-  rivalChannelHandle: "mcsrmatches", // Rival posts default
+  rivalChannelHandle: ["mcsrmatches", "mcsr-vault"], // Rival posts default
   titleNames: { Pinne: "Skycrab", lowk3y_: "lowkey" }, // titleNames default
   telegramReportHourWarsaw: 7, // the 07:00 Warsaw schedule
   shortsByHand: false, // default **off**
@@ -133,11 +133,15 @@ const goodPath = file(
   }),
 );
 // One at a time: the lab has four cores shared with the live dashboard.
-const [good, badType, notObject, typo] = [
+const [good, badType, notObject, typo, oneRival, noRival] = [
   await run([probe], { MCSR_CONFIG: goodPath }),
   await run([probe], { MCSR_CONFIG: file("bad-type.json", JSON.stringify({ postRollSec: "30" })) }),
   await run([probe], { MCSR_CONFIG: file("array.json", "[]") }),
   await run([probe], { MCSR_CONFIG: file("typo.json", JSON.stringify({ blockedPlayer: [] })) }),
+  await run([probe], {
+    MCSR_CONFIG: file("one-rival.json", JSON.stringify({ rivalChannelHandle: "mcsrmatches" })),
+  }),
+  await run([probe], { MCSR_CONFIG: file("no-rival.json", JSON.stringify({ rivalChannelHandle: "" })) }),
 ];
 
 // Promise 3: the keys it sets win, every other key is the default — including the other weights
@@ -165,6 +169,13 @@ for (const k of untouched) {
   assert.deepEqual(loaded.config[k], JSON.parse(JSON.stringify(DEFAULTS[k])), `${k} keeps its default`);
 }
 console.log("OK: an overrides file is merged over DEFAULTS, key by key");
+
+// The rivals became a list on 16 Oct 2026: an older file's single handle is a list of one, its "" none.
+assert.equal(oneRival.status, 0, oneRival.stderr);
+assert.deepEqual((JSON.parse(oneRival.stdout) as typeof loaded).config.rivalChannelHandle, ["mcsrmatches"]);
+assert.equal(noRival.status, 0, noRival.stderr);
+assert.deepEqual((JSON.parse(noRival.stdout) as typeof loaded).config.rivalChannelHandle, []);
+console.log('OK: an older file\'s single rival handle loads as a list of one, and "" as none');
 
 // Promise 4: refused at load, naming the key / the shape, not carried into a render.
 assert.notEqual(badType.status, 0, "a string where a number belongs fails the load");

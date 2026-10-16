@@ -10,7 +10,7 @@ import { formatShortTime } from "../../remotion/format.js";
 import { blockedIn, config } from "../config.js";
 import { readDrawLearned, type DrawLearned } from "./drawLearn.js";
 import { recentPairPostsSnapshot, type PairPost } from "./pairPosts.js";
-import { rivalMatchFor, rivalPostsSnapshot, type RivalPost } from "./rivalPosts.js";
+import { rivalLine, rivalPostsSnapshot, rivalSightingsFor, type RivalPost } from "./rivalPosts.js";
 import type { SplitGap } from "../pipeline/matchScore.js";
 import {
   audienceFor,
@@ -44,8 +44,11 @@ export interface SuggestionCard {
   resultMs: number;
   splits: SplitGap[];
   vodUrls: string[];
-  /** The rival channel's post of this matchup, when it has one (src/dashboard/rivalPosts.ts). */
-  rivalPosted: { daysAgo: number; title: string } | null;
+  /**
+   * One line per competitor that posted this match or this pair (src/dashboard/rivalPosts.ts);
+   * only a "match" line moves the card in the order.
+   */
+  rivalPosts: ReturnType<typeof rivalLine>[];
 }
 
 /** Follower counts are read at a glance, so they round: 8143 -> 8.1k, 84_312 -> 84k. */
@@ -103,11 +106,17 @@ function toCard(s: Suggestion, nowMs: number, rival: readonly RivalPost[]): Sugg
   const ageDays = (nowMs / 1000 - s.dateSec) / 86_400;
   const expiresInDays = Math.max(0, Math.floor(POOL_MAX_AGE_DAYS - ageDays));
   const expiring = expiresInDays <= EXPIRY_WARN_DAYS;
-  const posted = rivalMatchFor(rival, s.metrics.players, s.dateSec, s.metrics.resultMs / 1000);
   return {
-    rivalPosted: posted
-      ? { daysAgo: Math.max(0, Math.floor((nowMs - posted.publishedAtMs) / 86_400_000)), title: posted.title }
-      : null,
+    rivalPosts: rivalSightingsFor(
+      rival,
+      {
+        matchId: s.metrics.matchId,
+        players: s.metrics.players,
+        dateSec: s.dateSec,
+        runSec: s.metrics.resultMs / 1000,
+      },
+      nowMs,
+    ).map(rivalLine),
     matchId: s.metrics.matchId,
     bucket: s.bucket,
     players: s.metrics.players,
@@ -123,6 +132,8 @@ function toCard(s: Suggestion, nowMs: number, rival: readonly RivalPost[]): Sugg
   };
 }
 
+const postedByRival = (card: SuggestionCard): boolean => card.rivalPosts.some((r) => r.kind === "match");
+
 /** Which bucket breaks a tie: the close races, then the chaos, then a known player's plain match. */
 const BUCKET_RANK: Record<Bucket, number> = { close: 0, chaos: 1, known: 2 };
 
@@ -132,8 +143,9 @@ const BUCKET_RANK: Record<Bucket, number> = { close: 0, chaos: 1, known: 2 };
  * match with a known player (a measured draw, or a Twitch following that clears the gate) above the
  * no-names — whatever else is true of them, an expiring no-name card included (1 Oct 2026: one sat at
  * #1 of 443). Inside a tier: a match whose VODs are about to die first, because it is the only
- * candidate that stops being renderable; a matchup the rival channel has already posted after the
- * fresh ones, because it would compete with the rival's own video for the same browse session; then
+ * candidate that stops being renderable; a match a rival channel has already posted after the
+ * fresh ones, because it would compete with the rival's own video for the same browse session (a
+ * rival's post of the same pair in another match is shown, not ordered on); then
  * the biggest audience (`audienceFor`: expected draw × the favourites' bonus × `REPEAT_FACTOR` for a
  * pair the channel itself put out lately — `posted`, within `pairRepeatDays`, either side of now — and
  * no chaos/closeness term: match quality does not predict views once players are controlled for). The
@@ -173,7 +185,7 @@ export function presentSuggestions(
     (x, y) =>
       tier(y.players) - tier(x.players) ||
       Number(y.expiring) - Number(x.expiring) ||
-      Number(x.rivalPosted !== null) - Number(y.rivalPosted !== null) ||
+      Number(postedByRival(x)) - Number(postedByRival(y)) ||
       paced(y) - paced(x) ||
       BUCKET_RANK[x.bucket] - BUCKET_RANK[y.bucket] ||
       y.popularity - x.popularity,
