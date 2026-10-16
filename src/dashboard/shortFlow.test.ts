@@ -45,9 +45,7 @@ const matchOf = (id: number): MatchInfo => ({
   ...(privateRooms.has(id) ? { type: 3 } : {}),
   ...(noFinishMargin.has(id)
     ? {
-        timelines: fixture.timelines.filter(
-          (t) => t.uuid === fixture.result.uuid || !/dragon/.test(t.type),
-        ),
+        timelines: fixture.timelines.filter((t) => t.uuid === fixture.result.uuid || !/dragon/.test(t.type)),
       }
     : {}),
 });
@@ -801,12 +799,19 @@ try {
     const saved = (session: boolean, total = 1) => {
       rmSync(path.join(dir(HALF), "youtube.json"), { force: true });
       const final = path.join(dir(HALF), `final-${HALF}.mp4`);
-      if (session) writeFileSync(sessionFile, JSON.stringify({ filePath: final, total, sessionUrl: "https://s" }));
+      if (session)
+        writeFileSync(sessionFile, JSON.stringify({ filePath: final, total, sessionUrl: "https://s" }));
       else rmSync(sessionFile, { force: true });
       // What a Save leaves: the failed step cleared, the channel to be listed first.
       writeFileSync(
         path.join(dir(HALF), `short-${HALF}.status.json`),
-        JSON.stringify({ hooksSavedAt: "2026-09-24T07:00:00Z", noShort: true, recheckChannel: true, steps: {}, errors: [] }),
+        JSON.stringify({
+          hooksSavedAt: "2026-09-24T07:00:00Z",
+          noShort: true,
+          recheckChannel: true,
+          steps: {},
+          errors: [],
+        }),
       );
     };
     const resumeCalls: string[] = [];
@@ -830,7 +835,9 @@ try {
     assert.deepEqual(resumeCalls, ["video"], "the half-sent long-form is resumed through its session");
     assert.equal(sent.length, sentBefore, "and never sent again from the start");
     assert.equal(
-      JSON.parse(readFileSync(path.join(dir(HALF), `short-${HALF}.status.json`), "utf8")).steps["upload-video"].state,
+      JSON.parse(readFileSync(path.join(dir(HALF), `short-${HALF}.status.json`), "utf8")).steps[
+        "upload-video"
+      ].state,
       "done",
     );
     // A real Studio upload has no session file: never resumed, the scan's record stands.
@@ -852,10 +859,16 @@ try {
       const sentBeforeDead: number = sent.length;
       await flow.startChain(HALF, resumeOnly);
       assert.deepEqual(resumeCalls, [], `${dead}: never resumed`);
-      assert.equal(sent.length, sentBeforeDead + 1, `${dead}: the long-form goes up through the normal upload`);
+      assert.equal(
+        sent.length,
+        sentBeforeDead + 1,
+        `${dead}: the long-form goes up through the normal upload`,
+      );
     }
     rmSync(sessionFile, { force: true });
-    console.log("OK: a Save after a mid-file failure resumes the session rather than trusting the scan's pairing");
+    console.log(
+      "OK: a Save after a mid-file failure resumes the session rather than trusting the scan's pairing",
+    );
   }
 
   /* --- 12. Weak sync, and a series' preview offset ------------------------------------------------ */
@@ -1943,6 +1956,94 @@ try {
       assert.ok(!flow.readStatus(broken).hooksSavedAt, "the broken match itself never saved");
       assert.ok(flow.readStatus(healthy).hooksSavedAt, "a later due match is still reached and saved");
       console.log("OK: one match throwing out of autoSaveHooks doesn't starve the matches due after it");
+    }
+
+    /* --- Weak sync (15 Oct 2026): 14178549 went up ~1.4 s out of step on a 0.1 countdown read,
+       hooks saved by auto-hooks. A weak sync nobody set by hand is held for a human now. ------- */
+    {
+      const { gatherFacts } = await import("../telegram/facts.js");
+      const { readShortLog } = await import("../shorts/shortLog.js");
+      const needsYou = async () => {
+        const facts = await gatherFacts(AH_NOW, AH_NOW - 86_400_000, ["needsYou"]);
+        assert.ok(facts.needsYou.ok, JSON.stringify(facts.needsYou));
+        return facts.needsYou.ok ? facts.needsYou.data.items : [];
+      };
+      /** Due, exported after this sync was written (so not a stale export). */
+      const dueWithSync = (id: number, sync: { confidence: number; source: string }) => {
+        exported(id);
+        writeFileSync(
+          path.join(dir(id), "sync.json"),
+          JSON.stringify({ left: 150, right: 151.42, detail: "", ...sync }),
+        );
+        customPick(id, { createdAt: dueAt(7) });
+      };
+      const reExport = (id: number) => {
+        const final = path.join(dir(id), `final-${id}.mp4`);
+        utimesSync(final, new Date(Date.now() + 5000), new Date(Date.now() + 5000));
+      };
+
+      const weak = 13_000_083;
+      const fixedLater = 13_000_084;
+      dueWithSync(weak, { confidence: 0.1, source: "countdown" });
+      dueWithSync(fixedLater, { confidence: 0, source: "coarse" });
+      await flow.autoHooksTick(chain, AH_NOW);
+      await flow.autoHooksTick(chain, AH_NOW);
+      for (const id of [weak, fixedLater]) {
+        const st = flow.readStatus(id);
+        assert.ok(!st.hooksSavedAt && !st.autoHooks, `${id}: a weak sync is never auto-saved`);
+        assert.match(st.syncHold?.detail ?? "", /waiting on the sync/);
+        assert.equal(
+          readShortLog(id).filter((l) => /waiting on the sync/.test(l.text)).length,
+          1,
+          `${id}: logged once, not every tick`,
+        );
+        assert.ok(!sent.some((s) => s.id === id), `${id}: nothing uploads`);
+      }
+      let items = await needsYou();
+      assert.deepEqual(
+        items.filter((i) => i.text === "sync needs a look before it can upload").map((i) => i.matchId),
+        [weak, fixedLater],
+        "one Needs-you line per held match",
+      );
+      console.log("OK: weak sync, not hand-set: auto-hooks saves nothing, logs it once, Needs-you lists it");
+
+      // The hand fix (the sync editor's save: manual, confidence 1), then the re-export it needs.
+      writeFileSync(
+        path.join(dir(fixedLater), "sync.json"),
+        JSON.stringify({ left: 150, right: 151.42, detail: "", confidence: 1, source: "manual" }),
+      );
+      reExport(fixedLater);
+      const manual = 13_000_085;
+      const sound = 13_000_086;
+      dueWithSync(manual, { confidence: 1, source: "manual" });
+      dueWithSync(sound, { confidence: 0.9, source: "countdown" });
+      await flow.autoHooksTick(chain, AH_NOW);
+      await Promise.all([fixedLater, manual, sound].map((id) => flow.chainIdle(id)));
+      for (const id of [fixedLater, manual, sound]) {
+        const st = flow.readStatus(id);
+        assert.ok(st.hooksSavedAt && st.autoHooks, `${id}: a sound or hand-set sync proceeds`);
+        assert.equal(st.syncHold, undefined, `${id}: no hold left behind`);
+        assert.ok(
+          sent.some((s) => s.id === id && s.kind === "video"),
+          `${id}: the chain ran`,
+        );
+      }
+      items = await needsYou();
+      assert.ok(!items.some((i) => i.matchId === fixedLater), "the fixed match leaves Needs-you");
+      console.log(
+        "OK: a hand-set sync (manual, confidence 1) and a sound countdown read proceed; a fixed hold clears",
+      );
+
+      // The operator's own Save is never refused on a weak sync — the dashboard warns (syncWeak).
+      assert.equal((await plan(weak)).syncWeak, true);
+      assert.equal(
+        (await save(weak, { titleHook: "Who blinks first?", shortHook: "WHO BLINKS?" })).status,
+        202,
+      );
+      await flow.chainIdle(weak);
+      assert.ok(flow.readStatus(weak).hooksSavedAt, "the typed save saved");
+      assert.ok(!(await needsYou()).some((i) => i.matchId === weak), "saved: off Needs-you");
+      console.log("OK: a typed save on a weak-sync match still saves, and leaves Needs-you");
     }
   }
 

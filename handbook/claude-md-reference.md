@@ -677,6 +677,19 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   only a `short-<id>.log.jsonl` line nothing reads. The tick's own loop wraps each match's
   `autoSaveHooks` call in try/catch, so one broken match directory throwing instead of returning a
   controlled result can't abort the tick and starve every match due after it.
+  **Weak sync, 15 Oct 2026**: 14178549 (silverrruns vs BlazeMind) was auto-hooked and uploaded on
+  a `countdown` sync at confidence 0.1 — one clip at 150 s where the in-game timer said 151.42 s,
+  ~1.4 s out of step; of 69 uploads, three went up on a weak sync nobody had set by hand. The
+  dashboard flagged it (`syncWeak`), but nobody looks before an unattended save. Now a match
+  otherwise due whose `syncWeak` holds (any game's sync.json missing or below
+  `config.syncConfidenceThreshold`, the one threshold the editor and the plan already use, unless
+  its `source` is `"manual"`: a hand fix is always sound) saves nothing: the tick writes
+  `syncHold` (`at`, `detail`) into `short-<id>.status.json` and one `short-<id>.log.jsonl` warning,
+  once, not every tick, and `gatherNeedsYou`'s `syncHoldItems` lists the match ("sync needs a
+  look before it can upload") until its hooks are saved. A hand fix makes the export stale, so
+  the tick waits for the re-export too; the next tick after it clears `syncHold` and saves. The
+  operator's own Save is never refused on a weak sync; the plan's `syncWeak` is the warning. The
+  nightly render itself is untouched.
 - **A playoff game's thumbnails can carry the tournament** (`playoffThumbnailStyle`, in the
   Settings tab; `remotion/Thumbnail.tsx` `playoff`): "bracket" puts the round in the band and
   "Best of 5" under the VS; "trophy" grows the band for a gold PLAYOFFS wordmark over the round
