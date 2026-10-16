@@ -118,7 +118,7 @@ async function run(matchId: number, serveUrl: () => Promise<string>): Promise<Ma
   const [userLeft, userRight, versus] = await Promise.all([
     getUser(left.uuid),
     getUser(right.uuid),
-    getVersus(left.uuid, right.uuid, match.season).catch(() => undefined),
+    getVersus(left.uuid, right.uuid, match).catch(() => undefined),
   ]);
 
   // A generous, fixed budget — not the title's own `hookMax` (buildTitle), which shrinks with
@@ -155,7 +155,25 @@ async function run(matchId: number, serveUrl: () => Promise<string>): Promise<Ma
   await copyFile(path.join(dir, chosen.file), controlOut);
   await copyFile(path.join(dir, alt.file), poseOut);
 
-  if (!captionResult) {
+  // The control and pose arms are the strip as it was rendered; the caption arm is drawn now, with
+  // today's figures. A strip whose avatars came from another provider (`nmsr-posed`, before the
+  // 24 Sept redesign) would differ in the whole design, not only the caption: no caption arm then.
+  const computed =
+    captionResult &&
+    (await computeThumbnailProps(match, userLeft, userRight, {
+      left: chosen.leftPose,
+      right: chosen.rightPose,
+    }));
+  const stale =
+    !!computed &&
+    (computed.leftAvatar.provider !== chosen.leftProvider ||
+      computed.rightAvatar.provider !== chosen.rightProvider);
+  if (stale)
+    console.error(
+      `  ${matchId}: strip predates the current design — no caption arm; re-render thumbnails and Use this first`,
+    );
+
+  if (!captionResult || !computed || stale) {
     await rm(captionOut, { force: true });
     for (const f of [controlOut, poseOut]) await assertUnderLimit(f);
     return {
@@ -170,13 +188,8 @@ async function run(matchId: number, serveUrl: () => Promise<string>): Promise<Ma
     };
   }
 
-  // The caption variant is the live pose pair re-rendered with `caption` set — everything else
-  // about it (avatars, seed, header) must match tc-control.png exactly, so the caption is the
-  // only variable the test compares.
-  const computed = await computeThumbnailProps(match, userLeft, userRight, {
-    left: chosen.leftPose,
-    right: chosen.rightPose,
-  });
+  // The caption variant is the live pose pair re-rendered with `caption` set, from the same avatar
+  // provider as tc-control.png (checked above), so the caption is the variable the test compares.
   const renderProps = { ...(await withInlineAvatars(computed.props)), caption: captionResult.caption };
   const url = await serveUrl();
   const composition = await selectComposition({ serveUrl: url, id: "Thumbnail", inputProps: renderProps });

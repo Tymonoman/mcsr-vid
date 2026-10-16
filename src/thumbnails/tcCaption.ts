@@ -56,9 +56,10 @@ export function shortenHookChip(hook: string): string | null {
   if ((m = h.match(/^Can a (\d+)-second lead survive\?$/i))) return `0:${m[1].padStart(2, "0")} LEAD`;
   if ((m = h.match(/^(\d+) deaths and still this close$/i))) return `${m[1]} DEATHS`;
   if (/^Not a single death between them$/i.test(h)) return "0 DEATHS";
-  if ((m = h.match(/^Rematch: .+ leads (\d+)-(\d+)$/i))) return `${m[1]}-${m[2]} REMATCH`;
-  if ((m = h.match(/^Rematch: (\d+)-(\d+) all time$/i))) return `${m[1]}-${m[2]} REMATCH`;
-  if (/^Their first 1v1$/i.test(h)) return "FIRST 1V1";
+  if ((m = h.match(/^Rematch: .+ leads (\d+)-(\d+) this season$/i))) return `${m[1]}-${m[2]} REMATCH`;
+  if ((m = h.match(/^Rematch: (\d+)-(\d+) this season$/i))) return `${m[1]}-${m[2]} REMATCH`;
+  // "Their first 1v1 this season" has no short form: "FIRST 1V1" claims never, and 0-0 this season
+  // can be 40 games last season (getVersus is one season's record).
   if (/^It ended in a forfeit$/i.test(h)) return "A FORFEIT";
   if (/^One of them never killed the dragon$/i.test(h)) return "NO DRAGON KILL";
   return null;

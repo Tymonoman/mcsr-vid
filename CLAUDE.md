@@ -218,8 +218,8 @@ reload). After merging server changes, `POST /api/restart-when-idle`.
   whose hooks go unsaved this many hours after its pick gets the best title hook passing
   `hookProblem`+`spoilsTheResult` (model's, else a chip) and a Short hook the same way, upper-cased,
   then the chain runs as if Save were pressed. Due: readable pick, unsaved, not
-  hidden, neither video on channel, not blocked, export not stale, series joined, nothing already
-  running. None within the title's mobile budget: the shortest passing one that keeps the title
+  hidden, neither video on channel, not blocked, export not stale, sync sound or hand-set,
+  series joined, nothing already running. None within the title's mobile budget: the shortest passing one that keeps the title
   ≤100 chars, marked `overBudget`. No survivor: nothing saved, the `hooks` step fails into
   Needs-you. Logs to `autoHooks` in `short-<id>.status.json`.
 - **Thumbnails** (`remotion/Thumbnail.tsx`): two big figures, name-only plates, seed type above the
@@ -267,8 +267,8 @@ reload). After merging server changes, `POST /api/restart-when-idle`.
   upload wait for the operator's hooks. **A candidate also needs a known player** unless the
   operator queued it; a playoff pick always counts; the block list outranks the queue. **A test
   server arms its own nightly too**: any `PORT=… npm run dashboard` schedules against the same
-  `/media`; kill it before the hour, or set `nightlyRenderHourUtc: null` for it. The 15-minute tick
-  (chain resume, auto-hooks, creator watch, experiments) runs only on 8080.
+  `/media`; kill it before the hour, or set `nightlyRenderHourUtc: null` for it. Chain resume, YouTube
+  retries and the 15-minute tick (auto-hooks, creator watch, experiments) run only on 8080.
 - **The experiment engine runs between-video A/B tests unattended** (`src/dashboard/experiments.ts`
   + `experimentsEvaluator.ts`) from `.experiments.json` (atomic write, never rewritten while
   corrupt; `"tc"` = Studio's Test & Compare, untouched). A tick before `nightlyRenderHourUtc`

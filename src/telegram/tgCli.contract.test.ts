@@ -5,7 +5,8 @@
 //
 // Promise (numbering shared with index.contract.test.ts):
 //  P19. `npm run tg -- inbox [--since <ISO>] [--clear]` prints the saved replies oldest first as
-//       `<at>  <text>`; `--clear` moves the file aside before reading, so the inbox is empty after.
+//       `<at>  <text>`; `--clear` moves the file aside before reading, so the inbox is empty after
+//       (with `--since`, of what it printed).
 // Run: npx tsx src/telegram/tgCli.contract.test.ts
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -69,6 +70,17 @@ try {
   console.log(
     "OK: `tg inbox` prints oldest first as '<at>  <text>', honours --since, and --clear empties it",
   );
+
+  // --since with --clear takes only what it printed: an older reply may be another session's answer
+  // (sessions run concurrently), and it stays for a later read (review, 15 Oct 2026).
+  writeFileSync(inbox, entries.map((e) => JSON.stringify(e)).join("\n") + "\n");
+  assert.equal(tg("inbox", "--since", entries[2]!.at, "--clear"), `${entries[2]!.at}  ${entries[2]!.text}\n`);
+  assert.equal(
+    tg("inbox"),
+    `${entries[0]!.at}  ${entries[0]!.text}\n${entries[1]!.at}  ${entries[1]!.text}\n`,
+    "the two older replies were never printed, so they are still there",
+  );
+  console.log("OK: `tg inbox --since X --clear` clears only what it printed");
 
   console.log("tgCli.contract: all checks passed");
 } finally {

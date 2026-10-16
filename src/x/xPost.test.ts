@@ -34,6 +34,8 @@ const fixture = JSON.parse(
   readFileSync(new URL("../fixtures/match-12730175.json", import.meta.url), "utf8"),
 ) as MatchInfo;
 const playersOf = new Map<number, [string, string]>();
+/** Matches whose MCSR API read fails (a 429), as the shared 500-per-10-minutes budget can. */
+const rateLimited = new Set<number>();
 const xCalls: string[] = [];
 let postCount = 0;
 globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
@@ -50,6 +52,7 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
   const m = /^\/matches\/(\d+)$/.exec(url.pathname);
   if (m) {
     const id = Number(m[1]);
+    if (rateLimited.has(id)) return json({ status: "error", data: null }, 429);
     const [left, right] = playersOf.get(id) ?? ["RunnerAlpha", "RunnerBravo"];
     const data = {
       ...fixture,
@@ -148,6 +151,13 @@ assert.match(await refusal(makeMatch({ hand: false })), /no hand-cut Short/);
 assert.match(await refusal(makeMatch({ mp4: false })), /no hand-cut Short/);
 console.log("OK: no hand-cut Short (hand file or mp4 missing) is refused");
 
+// "No Short for this one" saved after (or before) `npm run short:hand`: the hand file and mp4
+// stay on disk, but the operator declined the Short, so X never gets it either.
+const declined = makeMatch();
+writeFileSync(path.join(media, String(declined), `short-${declined}.status.json`), JSON.stringify({ noShort: true }));
+assert.match(await refusal(declined), /no Short/);
+console.log('OK: a match marked "No Short for this one" is refused even with a hand-cut Short on disk');
+
 assert.match(await refusal(makeMatch({ hook: "ALPHA WINS IT" })), /gives the result away/);
 assert.match(await refusal(makeMatch({ hook: "TAS vs LOVERBOY" })), /label|nickname/i);
 assert.match(await refusal(makeMatch({ hook: "THE 2080 ELO SHOWDOWN" })), /seed, rank or elo/);
@@ -212,6 +222,17 @@ assert.match(
 );
 assert.ok(existsSync(path.join(media, String(newest), "x.json")));
 console.log("OK: at most one post a UTC day; the newest public long-form goes first; hidden is skipped");
+
+// One candidate's MCSR read failing (429) skips that candidate, not the walk: the next one is
+// picked, and autoPost does not throw (which would cost xTick the whole UTC day).
+const behind = makeMatch({ publishAt: new Date(NOW - HOUR / 3).toISOString() });
+const flaky = makeMatch({ publishAt: new Date(NOW - HOUR / 4).toISOString() });
+rateLimited.add(flaky);
+assert.equal((await pickXCandidate(tomorrow))?.matchId, behind, "the 429 candidate is skipped");
+assert.match(await autoPost({ now: tomorrow + 24 * HOUR, dryRun: true }), new RegExp(`would post match ${behind}`));
+rateLimited.delete(flaky);
+assert.equal((await pickXCandidate(tomorrow))?.matchId, flaky, "once the API answers, it is the newest again");
+console.log("OK: an MCSR API error on one candidate skips it; the walk goes on to the next");
 
 /* --- the tick ------------------------------------------------------------------------------------- */
 xCalls.length = 0;

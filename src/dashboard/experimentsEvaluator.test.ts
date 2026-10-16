@@ -1,6 +1,6 @@
 // Self-check for experimentsEvaluator.ts. Run: npx tsx src/dashboard/experimentsEvaluator.test.ts
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { Experiment } from "./experiments.js";
@@ -1003,6 +1003,21 @@ assert.equal(twoProportionZ(0, 1000, 0, 1000), 0, "pooled proportion 0 — se is
       "11–13 Oct summed; 10 Oct, before publish, dropped",
     );
     assert.equal(e.verdict, "not enough videos (1 with CTR in arm control, 8 needed)");
+
+    // The variant's match directory deleted to free disk (youtube.json with it): the video is still
+    // enrolled with its id, so it is still measured, from the experiment's start.
+    rmSync(matchDir(960002), { recursive: true, force: true });
+    await evaluateExperiments({ now: () => Date.parse("2026-10-16T04:15:00Z") });
+    const gone = readExperiments().experiments.find((x) => x.id === "ctr-days")!;
+    assert.deepEqual(
+      (gone.result as { arms: ArmTotals[] }).arms.map((a) => [a.arm, a.videos, a.clicks, a.impressions]),
+      [
+        ["control", 1, 220, 3000],
+        ["variant", 1, 140, 3000],
+      ],
+      "a deleted match directory does not drop its video out of the arm",
+    );
+    console.log("OK: a video whose match directory was deleted is still measured, from the experiment's start");
   } finally {
     globalThis.fetch = realFetch;
     delete process.env.YOUTUBE_TOKEN_FILE;

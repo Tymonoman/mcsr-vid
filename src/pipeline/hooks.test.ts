@@ -205,7 +205,7 @@ const rivalry = buildHookSuggestions(
 assert.deepEqual(rivalry, [
   "Decided by 2.4 seconds",
   "Does the lead ever settle?",
-  "Rematch: doogile leads 2-1",
+  "Rematch: doogile leads 2-1 this season",
 ]);
 assert.ok(
   !rivalry.some((t) => /#\d+/.test(t) || /seed/i.test(t) || /\b\d{3,4}\b[^\d]+\b\d{3,4}\b/.test(t)),
@@ -213,8 +213,8 @@ assert.ok(
 );
 
 // Every stake chip sits above both head-to-head chips, down to the weakest ("not a single
-// death"); the rivalry still beats the dull fallback of a DNF. The rematch line reads the
-// all-time record, which can already include this match, so it may not lead. The house rules
+// death"); the rivalry still beats the dull fallback of a DNF. The rematch line is one season's
+// record (the API keeps no all-time one), so it may not lead. The house rules
 // hold for each of them.
 {
   // `winner` defaults to "edcr" (see input()); doogile led one split by 65s and did not go on to
@@ -241,7 +241,7 @@ assert.ok(
     "Does the lead ever settle?",
     "Can a 1:05 lead survive?",
     "Not a single death between them",
-    "Rematch: doogile leads 2-1",
+    "Rematch: doogile leads 2-1 this season",
   ]);
   for (const text of both) {
     assert.ok(!spoilsTheResult(text), `"${text}" gives the result away`);
@@ -250,15 +250,21 @@ assert.ok(
   // The plain ladder-rank and elo shapes (14 Oct 2026 edge pass); the world's seed type stays fair.
   for (const text of ["CAN RANK 1 HOLD ON?", "TOP 10 PLAYER IN TROUBLE?", "THE 2100 ELO RUNNER?", "WORLD NUMBER ONE?", "A TOP SEED FALLS?"])
     assert.ok(HOOK_SEED_RANK_ELO.test(text), `"${text}" should read as a seed, rank or elo`);
+  // A lone rating, no "elo" after it (15 Oct 2026): the pick model is handed both players' elo.
+  for (const text of ["CAN ANYONE STOP THE 2400?", "A 2100 RUNNER'S BEST RUN"])
+    assert.ok(HOOK_SEED_RANK_ELO.test(text), `"${text}" is an elo`);
+  for (const text of ["Decided by 1500 ms", "Decided by 1500 milliseconds", "A sub-10 to win it"])
+    assert.ok(!HOOK_SEED_RANK_ELO.test(text), `"${text}" is not an elo`);
+  console.log("OK: a lone elo number is caught, milliseconds are not");
   for (const text of ["Village seed, no mercy", "Same seed, two routes", "Top of the nether"])
     assert.ok(!HOOK_SEED_RANK_ELO.test(text), `"${text}" is not a seed, rank or elo`);
   // A first meeting is in the same band: under the stakes, over the fallback.
   assert.deepEqual(
     buildHookSuggestions(input({ finishMarginMs: 2_400, deaths: 0 }, {}, { versus: versus(0, 0) }), 10),
-    ["Decided by 2.4 seconds", "Not a single death between them", "Their first 1v1"],
+    ["Decided by 2.4 seconds", "Not a single death between them", "Their first 1v1 this season"],
   );
   assert.deepEqual(buildHookSuggestions(input({ finishMarginMs: null }, {}, { versus: versus(1, 2) })), [
-    "Rematch: doogile leads 2-1",
+    "Rematch: doogile leads 2-1 this season",
     "One of them never killed the dragon",
   ]);
 }
@@ -384,10 +390,22 @@ assert.ok(
     seed9.join(" | "),
   );
   assert.ok(!seed9.some((h) => h.includes("#")), `no hash in 9th/11th seed hooks: ${seed9.join(" | ")}`);
+  // No head-to-head on a playoff game (15 Oct 2026): "Rematch: edcr leads 2-1" beside "Round of 16
+  // | Game 3" reads as the series score, and the generator is not handed the record either.
+  const withRecord = input(
+    {},
+    { type: 3 },
+    { playoff: playoff as unknown as HookInput["playoff"], versus: versus(2, 1) },
+  );
+  const chips = buildHookSuggestions(withRecord, 10);
+  assert.ok(!chips.some((h) => /rematch|1v1/i.test(h)), chips.join(" | "));
+  assert.equal(hookFacts(withRecord).h2h, null);
+  console.log("OK: a playoff game gets no head-to-head chip and no h2h fact");
 }
 
 // A tie is still a rivalry, but nobody "leads" it.
-assert.equal(buildHookSuggestions(input({}, ELO_GAP, { versus: versus(2, 2) }))[0], "Rematch: 2-2 all time");
+// The record is one season's (getVersus): "all time" and a bare "first 1v1" claimed more than that.
+assert.equal(buildHookSuggestions(input({}, ELO_GAP, { versus: versus(2, 2) }))[0], "Rematch: 2-2 this season");
 
 // One-sided history is not a rivalry: no rematch chip. A first meeting gets its own chip, but
 // below a close finish — it drew 1.5x the median on the competitor that uses it, while their
@@ -396,10 +414,11 @@ for (const record of [versus(3, 0), versus(0, 0)]) {
   const none = buildHookSuggestions(input({}, {}, { versus: record }));
   assert.ok(!none.some((t) => t.startsWith("Rematch")), `unexpected h2h chip in ${JSON.stringify(none)}`);
 }
-assert.ok(!buildHookSuggestions(input({}, {}, { versus: versus(3, 0) })).includes("Their first 1v1"));
+assert.ok(!buildHookSuggestions(input({}, {}, { versus: versus(3, 0) })).includes("Their first 1v1 this season"));
 const first = buildHookSuggestions(input({ finishMarginMs: 2_400 }, {}, { versus: versus(0, 0) }));
 assert.equal(first[0], "Decided by 2.4 seconds");
-assert.equal(first[1], "Their first 1v1");
+assert.equal(first[1], "Their first 1v1 this season");
+console.log('OK: the head-to-head chips say "this season", the record they read');
 
 // The finishing minute is the hook, not a fixed "sub-10": 6:51 is a sub-7, 7:00 is a sub-8.
 assert.ok(buildHookSuggestions(input({ resultMs: 411_000 })).includes("A sub-7 to win it"));
@@ -465,13 +484,12 @@ assert.deepEqual(rivalryFacts.rank, { left: 4, right: 11 });
 assert.deepEqual(rivalryFacts.h2h, { left: 1, right: 2 });
 assert.equal(hookFacts(input()).h2h, null);
 
-// The API's record is read after the match and already counts it: a ranked first meeting the
-// right player won comes back 0-1. Both the generator's facts and the chips must read it as the
+// getVersus counts this match too: a ranked first meeting the right player won comes back 0-1. Both the generator's facts and the chips must read it as the
 // first 1v1, not a one-sided record that tells the generator who won (14125831).
 {
   const wonByRight = input({}, { type: 2, result: { uuid: "uuid-r", time: 700_000 } }, { versus: versus(0, 1) });
   assert.deepEqual(hookFacts(wonByRight).h2h, { left: 0, right: 0 });
-  assert.ok(buildHookSuggestions(wonByRight, 10).includes("Their first 1v1"));
+  assert.ok(buildHookSuggestions(wonByRight, 10).includes("Their first 1v1 this season"));
 }
 
 // A forfeit is stated plainly rather than dressed up as a close finish.
@@ -563,6 +581,9 @@ console.log("hooks: all checks passed");
     "EDCR ADVANCES",
     "THE UPSET NOBODY SAW COMING",
     "EDCR GOES SUB-8 TO WIN IT",
+    // ...and only when it is the whole segment: a name after it is still read (15 Oct 2026).
+    "A SUB-8 TO WIN IT FOR DOOGILE",
+    "A SUB-8 TO WIN IT: DOOGILE'S RUN",
     // How it went is the result too (14 Oct 2026 edge run: all eight passed every check).
     "HUGE UPSET",
     "THE UPSET OF THE SEASON",
@@ -580,7 +601,7 @@ console.log("hooks: all checks passed");
     // A stake, not a result: what winning takes (a hook the model proposed, 24 Sept 2026).
     "A SUB-8 TO WIN IT",
     "LOVERBOY VS ROBLOX KID",
-    "Rematch: doogile leads 2-1",
+    "Rematch: doogile leads 2-1 this season",
     "Decided by 2.8 seconds",
     "The lead changed 3 times",
     "Who wins this one?",

@@ -592,6 +592,12 @@ try {
     const refused = await resumeUpload(id, "short", blocked.send);
     assert.equal(blocked.sent.length, 0, "a resume never finishes a blocked match's Short");
     assert.match(String(refused), /blocked player/, "the step fails, naming the block");
+    // ...and the session file plus the half-sent video, the operator's cleanup (a second, earlier
+    // generic check made this message unreachable until 15 Oct 2026).
+    assert.ok(
+      String(refused).includes(path.basename(sessionPath(file))) && /delete it in Studio/.test(String(refused)),
+      `the step names the session file and the Studio cleanup: ${refused}`,
+    );
     assert.equal(existsSync(sessionPath(file)), true, "the session file is left for the operator");
     config.blockedPlayers = saved.blocked;
     console.log("OK: a resume finishes a session begun with uploads on, and never a blocked match's");

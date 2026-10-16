@@ -33,18 +33,6 @@ import { startRerender } from "../thumbnails/rerender.js";
 import { sessionPath } from "../youtube/youtube.js";
 import { onVideo } from "../youtube/youtubeStore.js";
 
-const deviations: string[] = [];
-/** Keeps the docs' assertion as written; a mismatch is reported, not bent to the code. */
-function deviation(clause: string, check: () => void): void {
-  try {
-    check();
-  } catch (err) {
-    if (!(err instanceof assert.AssertionError)) throw err;
-    deviations.push(clause);
-    console.log(`DEVIATION: ${clause} — ${err.message.split("\n")[0]}`);
-  }
-}
-
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 const at = (iso: string): number => Date.parse(iso);
 const NOON = at("2026-10-14T12:00:00Z");
@@ -203,22 +191,18 @@ try {
     await sleep(200);
     const state = restartState();
     const health = restartIdleHealth();
-    deviation(
-      "A failed boot check ... keeps its error on the state until a fresh POST or a DELETE (handbook, Restart when idle)",
-      () => {
-        assert.match(
-          state?.error ?? "",
-          /TS2304/,
-          `the arm's expiry cleared it with no POST or DELETE (restartState() = ${JSON.stringify(state)}, report line = ${JSON.stringify(health)})`,
-        );
-      },
+    assert.match(
+      state?.error ?? "",
+      /TS2304/,
+      `the arm's expiry cleared it with no POST or DELETE (restartState() = ${JSON.stringify(state)})`,
     );
-    disarmRestart();
+    assert.match(health?.detail ?? "", /TS2304/, "the morning report still has the line after the expiry");
+    assert.equal(checks, 3, "and the expiry did not start checking again");
+    assert.equal(disarmRestart(), true, "a DELETE still clears it");
+    assert.equal(restartIdleHealth(), null);
     console.log("OK: R9 a failed boot check never exits, never retries, and reports its error");
   }
 
-  if (deviations.length)
-    console.log(`restartWhenIdle.contract: ${deviations.length} deviation(s) noted for triage`);
   console.log("restartWhenIdle.contract: all checks passed");
 } finally {
   console.error = quiet;

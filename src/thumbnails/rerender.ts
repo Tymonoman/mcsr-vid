@@ -13,7 +13,7 @@
 import { existsSync } from "node:fs";
 import { copyFile, mkdir, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { config, matchDir } from "../config.js";
+import { blockedIn, config, matchDir } from "../config.js";
 import { getMatch, getUser } from "../api/mcsrApi.js";
 import { blockedOnDisk } from "../dashboard/matchStatus.js";
 import { describeError } from "../errorText.js";
@@ -44,6 +44,9 @@ export async function rerenderThumbnails(
   if (blockedOnDisk(dir))
     throw new Error(`Match ${matchId} has a blocked player — its thumbnails are never rendered`);
   const match = await getMatch(matchId);
+  // A folder holding only its upload record names nobody: the match's own players still count.
+  if (blockedIn(match.players.map((p) => p.nickname)))
+    throw new Error(`Match ${matchId} has a blocked player — its thumbnails are never rendered`);
   const [left, right] = match.players;
   if (!left || !right) throw new Error(`Match ${matchId} does not have two players`);
   const [userLeft, userRight] = await Promise.all([getUser(left.uuid), getUser(right.uuid)]);

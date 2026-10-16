@@ -63,6 +63,7 @@ import {
 } from "./vodAcquisition.js";
 import { saveChats, vodIdFromUrl } from "../api/twitchChat.js";
 import { withDiscoveredVods } from "./vodDiscovery.js";
+import { blockedOnDisk } from "../dashboard/matchStatus.js";
 
 const FPS = 60;
 
@@ -154,9 +155,11 @@ async function runStages(
   emit(active("fetch"));
   const matchId = parseMatchId(input);
   const fetched = await getMatch(matchId);
-  // Here, not in each caller: batch, the TUI and generate-project reach this ungated, and a
-  // blocked runner's VODs are the footage they withdrew. Before discovery and any write.
-  if (blockedIn(fetched.players.map((p) => p.nickname))) {
+  // Here, not in each caller: batch, the TUI, generate-project and the nightly reach this ungated,
+  // and a blocked runner's VODs are the footage they withdrew. Before discovery and any write. The
+  // directory too (`blockedOnDisk`): a prefetched clip or chat keeps the name a runner had before
+  // a rename the API now reports.
+  if (blockedIn(fetched.players.map((p) => p.nickname)) || blockedOnDisk(matchDir(matchId))) {
     throw new Error(`match ${matchId} has a blocked player — it is not rendered`);
   }
   // Private rooms attach no VOD and ranked matches often only one; the rest are found by time.
@@ -180,7 +183,7 @@ async function runStages(
   const [userLeft, userRight, versus, playoff] = await Promise.all([
     getUser(playerLeft.uuid),
     getUser(playerRight.uuid),
-    getVersus(playerLeft.uuid, playerRight.uuid, match.season),
+    getVersus(playerLeft.uuid, playerRight.uuid, match),
     // Resolved here, first, because every later `eloAtMatchStart` answers from it: a playoff
     // game has no elo changes, and the bracket's frozen rating is the one the broadcast shows.
     // Strict: a bracket read that fails (429/503) fails the stage for a retry, rather than
@@ -296,6 +299,9 @@ async function runStages(
       else if (sync.confidence > 0) emit(warn("sync", { message: `verify alignment — ${sync.detail}` }));
       else emit(warn("sync", { message: `kept coarse offsets — ${sync.detail}` }));
     } catch (err) {
+      // A Stop is not a failed refinement: writing the coarse estimate would overwrite a good
+      // sync.json (the export then stale, a re-encode out of sync) and the run would go on.
+      if (signal?.aborted) throw err;
       emit(warn("sync", { message: `refinement failed: ${describeError(err)}` }));
     }
     // Written in the kept-coarse case too: export:fast and the Short must be able to tell "nobody

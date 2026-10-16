@@ -194,6 +194,10 @@ try {
     const realFetch = globalThis.fetch;
     let commentThreads: unknown[] = [];
     const videoTitles = new Map<string, string>();
+    // The channel's own state of a video, for the live-title check: null = deleted (absent from the
+    // answer); an id not here answers with its title alone and no status, so it is not live.
+    const channel = new Map<string, { title: string; privacyStatus: string; publishAt?: string } | null>();
+    let videosDown = false;
     globalThis.fetch = (async (input: string | URL | Request) => {
       const url = String(input);
       if (url.startsWith("https://api.mcsrranked.com/")) throw new Error("no network in this test");
@@ -201,10 +205,22 @@ try {
         return new Response(JSON.stringify({ access_token: "t", expires_in: 3600 }));
       if (url.includes("/commentThreads?")) return new Response(JSON.stringify({ items: commentThreads }));
       if (url.includes("/videos?")) {
+        if (videosDown)
+          return new Response(JSON.stringify({ error: { message: "backend" } }), { status: 500 });
         const ids = new URL(url).searchParams.get("id")!.split(",");
-        return new Response(
-          JSON.stringify({ items: ids.map((id) => ({ id, snippet: { title: videoTitles.get(id) ?? id } })) }),
-        );
+        const items = ids.flatMap((id) => {
+          const v = channel.get(id);
+          if (v === null) return [];
+          if (!v) return [{ id, snippet: { title: videoTitles.get(id) ?? id } }];
+          return [
+            {
+              id,
+              snippet: { title: v.title },
+              status: { privacyStatus: v.privacyStatus, publishAt: v.publishAt },
+            },
+          ];
+        });
+        return new Response(JSON.stringify({ items }));
       }
       throw new Error(`gatherNeedsYou reached for the real network: ${url}`);
     }) as typeof fetch;
@@ -287,7 +303,10 @@ try {
       items = await needsYouOf();
       const stale = items.find((i) => /has stopped/.test(i.text));
       assert.ok(stale, "a heartbeat over 90 min old is an item");
-      assert.match(stale!.text, /npm run -s studio -- worker --enable/, "names the restart command");
+      assert.ok(
+        stale!.text.endsWith("nohup bash /app/scripts/studio-worker.sh >/dev/null 2>&1 &"),
+        "names the supervisor's start line, not the bare worker (which nothing restarts)",
+      );
       writeFileSync(
         heartbeat,
         JSON.stringify({
@@ -613,7 +632,10 @@ try {
       await titled(9, "v9", "CAN ANYONE CATCH UP? | doogile vs Feinberg | MCSR Ranked", true);
       await titled(10, "v10", "FALLEN KING vs PLAYOFF GOAT | doogile vs Feinberg | MCSR Ranked", false);
       await titled(11, "v11", "FALLEN KING vs PLAYOFF GOAT | Aquacorde vs Feinberg | MCSR Ranked", true);
+      // The channel's read fails: the records stand in.
+      videosDown = true;
       items = (await needsYouOf()).filter((i) => /^Live title/.test(i.text));
+      videosDown = false;
       assert.deepEqual(
         items.map((i) => [i.matchId, i.text]),
         [
@@ -628,6 +650,43 @@ try {
       assert.equal(items[0]!.players, "doogile vs Feinberg");
       assert.ok(!/FALLEN|RANK #1/.test(JSON.stringify(items)), "the hook itself never appears");
       console.log("OK: a live title breaking a house rule is an item by video id and problem");
+
+      // 7b. The channel's own title and privacy, not the record's (review, 15 Oct 2026): the record's
+      //     title is the upload-time one, and a retitle happens in Studio. v8 fixed there is no item
+      //     any more; s8 still says it; v9 given a label there is one; v10 made public by hand is
+      //     one; the blocked one, a deleted one and one set private by hand are not.
+      const pub = (title: string) => ({ title, privacyStatus: "public" });
+      channel.set("v8", pub("CAN ANYONE CATCH UP? | doogile vs Feinberg | MCSR Ranked"));
+      channel.set("s8", pub("RANK #1 | doogile vs Feinberg #mcsr #minecraft"));
+      channel.set("v9", {
+        title: "GOAT vs TAS | doogile vs Feinberg | MCSR Ranked",
+        privacyStatus: "private",
+        publishAt: new Date(NOW + 10 * 3600_000).toISOString(),
+      });
+      channel.set("v10", pub("FALLEN KING vs PLAYOFF GOAT | doogile vs Feinberg | MCSR Ranked"));
+      channel.set("v11", pub("FALLEN KING vs PLAYOFF GOAT | Aquacorde vs Feinberg | MCSR Ranked"));
+      await titled(12, "v12", "FALLEN KING vs PLAYOFF GOAT | doogile vs Feinberg | MCSR Ranked", true);
+      channel.set("v12", null);
+      await titled(13, "v13", "FALLEN KING vs PLAYOFF GOAT | doogile vs Feinberg | MCSR Ranked", true);
+      channel.set("v13", {
+        title: "FALLEN KING vs PLAYOFF GOAT | doogile vs Feinberg | MCSR Ranked",
+        privacyStatus: "private",
+      });
+      items = (await needsYouOf()).filter((i) => /^Live title/.test(i.text));
+      assert.deepEqual(
+        items.map((i) => [i.matchId, i.text.replace(/ — .*/, "")]),
+        [
+          [8, "Live title breaks a house rule: s8"],
+          [9, "Live title breaks a house rule: v9"],
+          [10, "Live title breaks a house rule: v10"],
+        ],
+        "the live titles and privacy decide",
+      );
+      assert.match(items[1]!.text, /label/, "v9's Studio label");
+      assert.ok(!/GOAT|TAS|RANK #1/.test(JSON.stringify(items)), "the hook itself never appears");
+      console.log(
+        "OK: the live-title check reads the channel's own title and privacy, the record only as fallback",
+      );
     } finally {
       config.shortsByHand = false;
       globalThis.fetch = realFetch;

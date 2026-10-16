@@ -25,7 +25,7 @@ jobs:
       # watchPov and videoPick run a fake watch.py) and rsync (publishSet's pull round-trip, which
       # skips itself without it). The runner image has git and python3; installing them is a no-op
       # there and keeps the job honest on another image. Nothing in test:unit runs ffmpeg, melt,
-      # yt-dlp or Chromium — the four tests that do are `npm test`'s extras, not run here.
+      # yt-dlp or Chromium — the tests that do are `npm test`'s extras, not run here.
       - name: Install what the tests shell out to
         run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends python3 rsync
 

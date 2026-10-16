@@ -198,10 +198,12 @@ assert.ok(
 assert.ok(!/won|winner|sweep/i.test(desc));
 
 // copyVariety: off (above, `desc`/`desc9` never set it) is byte for byte today's closer and
-// subscribe line; on picks game 1's own variant.
+// subscribe line; on picks game 1's own variant. Game 1's id here is one whose two picks are both
+// non-canonical (101's closer is index 0 since variantIndex's 15 Oct 2026 remix).
 {
-  const closerIdx = variantIndex(101, 0, CLOSER_VARIANTS.length);
-  const subscribeIdx = variantIndex(101, 1, SUBSCRIBE_LINE_VARIANTS.length);
+  const g1Id = 6;
+  const closerIdx = variantIndex(g1Id, 0, CLOSER_VARIANTS.length);
+  const subscribeIdx = variantIndex(g1Id, 1, SUBSCRIBE_LINE_VARIANTS.length);
   assert.notEqual(closerIdx, 0, "the fixture must exercise a non-canonical closer variant");
   assert.notEqual(subscribeIdx, 0, "the fixture must exercise a non-canonical subscribe variant");
   const varied = buildSeriesDescription({
@@ -212,7 +214,7 @@ assert.ok(!/won|winner|sweep/i.test(desc));
     right: { nickname: "lauveer", label: "LCQ", seasonEloRate: 2137 },
     games: [],
     bracketUrl: "https://magmamcsr.com/events/playoffs/s11/bracket",
-    matchId: 101,
+    matchId: g1Id,
     copyVariety: true,
   });
   assert.equal(varied.split("\n\n")[1], SUBSCRIBE_LINE_VARIANTS[subscribeIdx]);
@@ -407,7 +409,8 @@ const again = await assembleSeries(101, {
 });
 assert.equal(again.kind, "current");
 log.length = 0;
-const nothing = await renderSeries(
+assert.equal(seriesProgress(101)?.stage, "done", "the last run's line, until the next press");
+const pendingRun = renderSeries(
   101,
   {
     renderGame: async (id) => {
@@ -422,7 +425,17 @@ const nothing = await renderSeries(
   },
   seams,
 );
+// On the board before the run's first await: the route answers 202 at once and the press's own
+// re-read of /api/playoffs must find it, not the last run's "done", a live button and no poll.
+assert.deepEqual(
+  [seriesProgress(101)?.stage, seriesProgress(101)?.done],
+  ["starting", false],
+  "the press registers synchronously",
+);
+const nothing = await pendingRun;
 assert.equal(nothing.kind, "current");
+assert.equal(seriesProgress(101)?.stage, "done");
+console.log("OK: a series run is on the board the moment it is started");
 assert.deepEqual(log, [], "a current series renders nothing");
 assert.deepEqual(extracted, [], "a current series takes no game back out of the joined video");
 
@@ -443,6 +456,25 @@ assert.deepEqual(extracted, [], "a current series takes no game back out of the 
   rmSync(part);
   rmSync(final(103));
   console.log("OK: a game re-encoding holds the join");
+}
+
+// Game 1's upload reading series-101.mp4: a newer export that would re-join waits, so the file
+// is not renamed under the upload. Nothing extracted, joined or pruned; the newer export stays
+// for the next settle or the series button to join.
+{
+  await new Promise((r) => setTimeout(r, 20));
+  writeFileSync(final(103), "newer");
+  const before = readFileSync(path.join(dir(101), "series-101.mp4"), "utf8");
+  const joinsBefore = joins.length;
+  extracted.length = 0;
+  const waiting = await assembleSeries(101, { ...seams, uploading: (id) => id === 101 });
+  assert.deepEqual(waiting, { kind: "uploading", firstGameId: 101 });
+  assert.equal(joins.length, joinsBefore, "never re-joined under a running upload");
+  assert.deepEqual(extracted, []);
+  assert.equal(readFileSync(path.join(dir(101), "series-101.mp4"), "utf8"), before);
+  assert.ok(existsSync(final(103)), "the newer export is kept for the join after the upload");
+  rmSync(final(103));
+  console.log("OK: a running upload of the series holds the re-join");
 }
 
 // A blocked player's match refuses outright — before any render, export or disk write

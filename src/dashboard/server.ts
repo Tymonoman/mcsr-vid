@@ -335,7 +335,7 @@ const server = createServer(async (req, res) => {
       try {
         const saved = saveSettings(patch);
         // The nightly captured nothing, but its pending timer was armed for the old hour.
-        if (saved.rearmNightly) scheduleNightly({ notifyUrl: config.nightlyNotifyUrl });
+        if (saved.rearmNightly) scheduleNightly({ notifyUrl: config.nightlyNotifyUrl, main: PORT === 8080 });
         if (saved.changed.length) console.error(`settings: changed ${saved.changed.join(", ")}`);
         json(res, 200, { ...saved, ...settingsPayload(), nightlyArmedAt: nightlyArmedAtMs() });
       } catch (err) {
@@ -920,7 +920,7 @@ server.listen(PORT, "0.0.0.0", () => {
   // at 7.24 videos a month: the render is cheap, the operator's attention is not.
   // Unconditional: scheduleNightly reads the hour from config itself and arms nothing when it is
   // null, so the settings panel can switch the nightly on later without a restart.
-  scheduleNightly({ notifyUrl: config.nightlyNotifyUrl });
+  scheduleNightly({ notifyUrl: config.nightlyNotifyUrl, main: PORT === 8080 });
   // The Short chains a restart cut short resume now, and every quarter hour after; the same tick
   // re-asks the model, once a day per match, for a pick the heuristic stood in for. With
   // commentSoonAfterPublish on (default off), it also posts a just-published video's first
@@ -947,7 +947,7 @@ server.listen(PORT, "0.0.0.0", () => {
     try {
       // The nightly's own pending timer was armed for the old hour: rearm it, the same signal
       // `/api/settings`' PUT handler acts on above.
-      if (applyScheduledRenderArm()) scheduleNightly({ notifyUrl: config.nightlyNotifyUrl });
+      if (applyScheduledRenderArm()) scheduleNightly({ notifyUrl: config.nightlyNotifyUrl, main: PORT === 8080 });
     } catch (err) {
       console.error(`experiments: render arm tick failed — ${describeError(err)}`);
     }
@@ -956,7 +956,8 @@ server.listen(PORT, "0.0.0.0", () => {
     );
   };
   // A test server (any PORT other than 8080 — CLAUDE.md's "a test server arms its own nightly")
-  // runs neither this tick nor the Telegram poller. The tick's chain state is per process, so a
+  // runs neither this tick, the nightly timer's side calls (`nightlySideCalls`) nor the Telegram
+  // poller: its nightly only renders. The tick's chain state is per process, so a
   // second one reads the main server's upload in flight as orphaned and resumes it on top, and it
   // could auto-save hooks and start an upload the session then kills. Two pollers would both
   // answer getUpdates (one gets a 409 and backs off) and both could send the morning report.

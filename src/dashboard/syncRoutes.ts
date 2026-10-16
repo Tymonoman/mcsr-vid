@@ -11,14 +11,28 @@ import { ANCHOR_SEC } from "../pipeline/kdenliveProject.js";
 import { clipTimeFor, povClipExists, povClipPath, povFrame, validOffset } from "../pipeline/syncEdit.js";
 import { exportStale, readSyncOffsets, staleExportMessage, writeSyncOffsets } from "../pipeline/syncFile.js";
 import { findExportedVideo } from "../youtube/youtubeStore.js";
-import { matchStatusFor } from "./matchStatus.js";
+import { exportRunning } from "./exportRoutes.js";
+import { matchStatusFor, type MatchStatusEntry } from "./matchStatus.js";
 
 export interface SyncRouteContext {
   json: (res: ServerResponse, status: number, body: unknown) => void;
   readBody: (req: IncomingMessage) => Promise<string>;
   matchDir: (matchId: number) => string;
   parseId: (raw: string | undefined) => number | null;
+  /** exportRoutes.ts's own; the tests' seam, since a real job is an `npm run export:fast`. */
+  exportRunning?: (matchId: number) => boolean;
 }
+
+/**
+ * Why the editor cannot be trusted with this match right now, or null. sync.json's `left`/`right`
+ * are players[0]/[1], and only the MCSR API says which clip that is: with the lookup failed,
+ * `matchStatusFor` falls back to the clip names sorted alphabetically, and a frame (or a save)
+ * against that guess shows — or writes — each player's offset on the other's clip.
+ */
+const orderUnknown = (status: MatchStatusEntry): string | null =>
+  status.error === null
+    ? null
+    : `the MCSR API lookup failed, so which clip is the left POV is unknown — try again shortly (${status.error})`;
 
 /**
  * What the sync editor and the sync check read: the offsets, the clips, and whether the finished
@@ -27,8 +41,7 @@ export interface SyncRouteContext {
  * server would give; `exported` is what puts the sync check on the page at all. One shape for
  * the GET and the PUT — saving offsets is exactly what makes an export stale.
  */
-async function syncPayload(matchId: number) {
-  const status = await matchStatusFor(matchId);
+function syncPayload(matchId: number, status: MatchStatusEntry) {
   const dir = matchDir(matchId);
   const located = findExportedVideo(matchId, [status.leftNickname, status.rightNickname]);
   const staleness = "error" in located ? null : exportStale(dir, located.path);
@@ -68,6 +81,11 @@ export async function handleSyncRoute(
       return true;
     }
     const status = await matchStatusFor(matchId);
+    const unknown = orderUnknown(status);
+    if (unknown) {
+      ctx.json(res, 503, { error: unknown });
+      return true;
+    }
     const side = url.searchParams.get("side") === "right" ? "right" : "left";
     const nickname = side === "left" ? status.leftNickname : status.rightNickname;
     const offsets = readSyncOffsets(ctx.matchDir(matchId));
@@ -102,7 +120,13 @@ export async function handleSyncRoute(
       ctx.json(res, 400, { error: "match id must be digits" });
       return true;
     }
-    ctx.json(res, 200, await syncPayload(matchId));
+    const status = await matchStatusFor(matchId);
+    const unknown = orderUnknown(status);
+    if (unknown) {
+      ctx.json(res, 503, { error: unknown });
+      return true;
+    }
+    ctx.json(res, 200, syncPayload(matchId, status));
     return true;
   }
 
@@ -129,6 +153,19 @@ export async function handleSyncRoute(
       ctx.json(res, 400, { error: right.error });
       return true;
     }
+    // export:fast reads sync.json once, at its start, and its output's mtime is its end: a save
+    // landing in between reads as fresh to `exportStale`, and the video that uploads is placed
+    // by the offsets before this correction. A series game's export is the same job table.
+    if ((ctx.exportRunning ?? exportRunning)(matchId)) {
+      ctx.json(res, 409, { error: "an encode of this match is running — save after it finishes" });
+      return true;
+    }
+    const status = await matchStatusFor(matchId);
+    const unknown = orderUnknown(status);
+    if (unknown) {
+      ctx.json(res, 503, { error: unknown });
+      return true;
+    }
     const dir = ctx.matchDir(matchId);
     const previous = readSyncOffsets(dir);
     // Confidence 1: a human read the two countdowns, which is the measurement the detector was
@@ -144,7 +181,7 @@ export async function handleSyncRoute(
     console.error(`sync: match ${matchId} set by hand to ${left.value}s / ${right.value}s`);
     // The same shape as the GET: the save is what makes the export stale, and the page repaints
     // its sync check and the Upload button from this answer.
-    ctx.json(res, 200, await syncPayload(matchId));
+    ctx.json(res, 200, syncPayload(matchId, status));
     return true;
   }
 

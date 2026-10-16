@@ -35,3 +35,4 @@ dist/
 __pycache__/
 # Baked seed-icon scenes (scripts/seed-icons/bake.py): intermediate, the PNGs in remotion/assets/seed-icons/ are what ships.
 /remotion/seedIcons/
+.studio-profile/

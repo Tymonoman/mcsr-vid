@@ -4,7 +4,17 @@
 // Run: npx tsx src/youtube/studioBrowser.test.ts
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, readFileSync, readlinkSync, writeFileSync } from "node:fs";
+import { once } from "node:events";
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readlinkSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { createServer as createHttpServer } from "node:http";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -206,7 +216,34 @@ server.listen(port, "127.0.0.1");
   assert.equal(isRunning(), false);
   // The leak this fixes wedged every later start() on the live SingletonLock.
   await assert.rejects(start(opts), (e: Error) => !/already running/.test(e.message));
+  // That start's Chrome is SIGKILLed, not waited for: it must let go of the port before the next
+  // check listens on it (EADDRINUSE otherwise, one run in three).
+  const secondPid = Number(/-(\d+)$/.exec(readlinkSync(path.join(profileDir, "SingletonLock")))![1]);
+  assert.ok(await gone(secondPid), "the second failed connect kills its Chrome too");
   console.log("OK: a connectOverCDP failure kills Chrome and Xvfb, and the next start() is not refused");
+
+  // Another process's Chrome already on the port (the worker's, on another profile dir, so its
+  // SingletonLock is no guard): refused before Xvfb or Chrome spawn, never attached to.
+  const other = createHttpServer((_req, res) => res.end("{}")).listen(debugPort, "127.0.0.1");
+  await once(other, "listening");
+  rmSync(path.join(bin, "xvfb.pid"), { force: true });
+  const spawned = path.join(bin, "chrome2.ran");
+  const chrome2 = path.join(bin, "chrome2");
+  writeFileSync(chrome2, `#!/bin/sh\ntouch ${spawned}\n`);
+  chmodSync(chrome2, 0o755);
+  const freshProfile = mkdtempSync(path.join(tmpdir(), "mcsr-studio-profile-"));
+  try {
+    await assert.rejects(
+      start({ profileDir: freshProfile, chromePath: chrome2, debugPort, display: ":0" }),
+      /already listens on debugging port/,
+    );
+  } finally {
+    other.close();
+  }
+  assert.equal(existsSync(spawned), false, "no Chrome spawned");
+  assert.equal(existsSync(path.join(bin, "xvfb.pid")), false, "no Xvfb spawned");
+  assert.equal(isRunning(), false);
+  console.log("OK: a port another Chrome already answers on is refused before anything spawns");
 }
 
 // --- killOnExit: an uncaught throw still kills what start() spawned (14 Oct 2026) ------------

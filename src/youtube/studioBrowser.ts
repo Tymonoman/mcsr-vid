@@ -50,8 +50,8 @@ let active: StudioHandle | null = null;
 let starting = false;
 
 /** One browser at a time, in this process — the in-process half of the lock (the other half is
- * the profile's own `SingletonLock`, checked in `start`). True for the whole span from the first
- * line of `start()` to `stop()`, not just once Chrome has connected. */
+ * the profile's own `SingletonLock` and the debugging port, both checked in `start`). True for the
+ * whole span from the first line of `start()` to `stop()`, not just once Chrome has connected. */
 export const isRunning = (): boolean => active !== null || starting;
 
 function sleep(ms: number): Promise<void> {
@@ -106,6 +106,16 @@ async function waitForCdp(port: number, timeoutMs: number): Promise<void> {
   }
 }
 
+/** Whether anything already answers on Chrome's debugging endpoint at `port`. */
+async function cdpAnswers(port: number): Promise<boolean> {
+  try {
+    await fetch(`http://127.0.0.1:${port}/json/version`, { signal: AbortSignal.timeout(2000) });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** SIGTERM, wait up to `graceMs` for the process to actually exit, SIGKILL after that. */
 async function terminate(proc: ChildProcess, graceMs = 5000): Promise<void> {
   if (proc.exitCode !== null || proc.signalCode !== null) return;
@@ -156,6 +166,15 @@ export async function start(opts: StudioBrowserOptions = {}): Promise<StudioHand
     const livePid = liveLockPid(profileDir);
     if (livePid !== null)
       throw new Error(`Chrome is already running against ${profileDir} (pid ${livePid}) — close it first`);
+    // The SingletonLock only guards this one profile dir. A CLI run with STUDIO_PROFILE_DIR unset
+    // (a different profile) next to the supervised worker would spawn a Chrome that cannot bind
+    // the same port, have waitForCdp answered by the worker's Chrome, and drive the worker's own
+    // tab mid-cycle (15 Oct 2026). Anything already on the port is refused before spawning.
+    // ponytail: check-then-spawn, not atomic; a Chrome started in the same ~300ms still slips by.
+    if (await cdpAnswers(debugPort))
+      throw new Error(
+        `a Chrome already listens on debugging port ${debugPort} — another Studio browser is running; close it first`,
+      );
 
     mkdirSync(profileDir, { recursive: true });
 

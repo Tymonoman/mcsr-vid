@@ -593,8 +593,8 @@ function profilesOf(match: MatchInfo): [PooledPlayer, PooledPlayer] {
 }
 
 /**
- * Ranked head-to-head in the match's own season, before it (`h2hWinsBefore`: the API's record
- * already counts this match, so a first meeting would read "rematch 0–1" and name the winner),
+ * Ranked head-to-head in the match's own season, before it (`h2hWinsBefore`: `getVersus` counts
+ * this match too, so a first meeting would read "rematch 0–1" and name the winner),
  * in `metrics.players` order. One request, spent once per match ever: it
  * is pooled next to the metrics, because the record barely moves and refreshing it per scan
  * would cost a request for every pooled match on every launch.
@@ -603,7 +603,7 @@ async function headToHead(match: MatchInfo): Promise<HeadToHead | null> {
   const [left, right] = match.players;
   if (!left || !right) return null;
   try {
-    const versus = await getVersus(left.uuid, right.uuid, match.season);
+    const versus = await getVersus(left.uuid, right.uuid, match);
     return {
       leftWins: h2hWinsBefore(versus, match, left.uuid),
       rightWins: h2hWinsBefore(versus, match, right.uuid),

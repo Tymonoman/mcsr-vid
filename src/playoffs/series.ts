@@ -46,6 +46,7 @@ import { buildTitle, formatTitle, withHook } from "../pipeline/title.js";
 import type { MatchInfo } from "../api/types.js";
 import { matchStartIntoVodSec } from "../pipeline/vodAcquisition.js";
 import { withDiscoveredVods } from "../pipeline/vodDiscovery.js";
+import { uploadRunning } from "../youtube/youtubeUpload.js";
 
 export const SERIES_FILE = "series.json";
 
@@ -196,6 +197,8 @@ export type AssembleResult =
   | { kind: "incomplete"; firstGameId: number; missing: number[] }
   /** No seed has taken the series yet: nothing joins until one has. Waiting, not a failure. */
   | { kind: "undecided"; firstGameId: number }
+  /** Game 1's upload is reading the series file: a re-join waits for the next settle or button. */
+  | { kind: "uploading"; firstGameId: number }
   | { kind: "stale"; firstGameId: number; stale: number[] }
   /**
    * Every export exists and is current, but not all the same resolution — `exportUpscale1440`
@@ -237,6 +240,7 @@ export interface JoinSeams {
   probe?: (file: string) => Promise<number>;
   extract?: (seriesPath: string, startSec: number, durationSec: number, outPath: string) => Promise<void>;
   probeResolution?: (file: string) => Promise<{ width: number; height: number } | null>;
+  uploading?: (matchId: number) => boolean;
 }
 
 /** ffprobe's stdout for these arguments; "" when it cannot read the file. */
@@ -481,6 +485,12 @@ export async function assembleSeries(
     existsSync(outPath) &&
     previous !== null &&
     finals.every((f, i) => held.includes(i) || statSync(outPath).mtimeMs > statSync(f).mtimeMs);
+  if (!current && (opts.uploading ?? uploadRunning)(first.matchId)) {
+    log(
+      `series ${first.matchId}: not re-joined — its upload is reading ${path.basename(outPath)}; join again once it is done`,
+    );
+    return { kind: "uploading", firstGameId: first.matchId };
+  }
   if (!current) {
     const starts = chapterStarts(previous?.games.map((h) => h.durationSec) ?? []);
     for (const i of held) {
@@ -712,23 +722,46 @@ export async function renderSeries(
   runners: SeriesRunners,
   seams: JoinSeams = {},
 ): Promise<AssembleResult> {
-  const match = await getMatch(anyGameId);
-  // Before any render or export starts — one game's render alone is ~10 minutes
-  // (config.blockedPlayers). The dashboard's own route also refuses up front so the HTTP
-  // response carries it; this is what `npm run series` gets too.
-  if (blockedIn(match.players.map((p) => p.nickname))) {
-    runners.log(`series ${anyGameId}: blocked — a blocked player, not rendered`);
-    return { kind: "blocked", matchId: anyGameId };
-  }
-  const series = await seriesOf(match);
-  if (!series || series.games.length === 0) return { kind: "not-a-series", matchId: anyGameId };
-  const first = series.games[0]!;
+  // On the board before the first await: the route answers 202 at once, and the press's own
+  // re-read of /api/playoffs used to land while seriesOf still fetched the bracket and both
+  // histories — the old line, a live button, no poll armed. The board sends game 1's id; any
+  // other game's (`npm run series -- <id>`) is re-keyed once seriesOf names game 1.
   const progress: SeriesProgress = {
-    firstGameId: first.matchId,
+    firstGameId: anyGameId,
     stage: "starting",
     startedAt: new Date().toISOString(),
     done: false,
   };
+  runs.set(anyGameId, progress);
+  const settle = (stage: string) => {
+    progress.stage = stage;
+    progress.done = true;
+  };
+  let series: Awaited<ReturnType<typeof seriesOf>>;
+  try {
+    const match = await getMatch(anyGameId);
+    // Before any render or export starts — one game's render alone is ~10 minutes
+    // (config.blockedPlayers). The dashboard's own route also refuses up front so the HTTP
+    // response carries it; this is what `npm run series` gets too.
+    if (blockedIn(match.players.map((p) => p.nickname))) {
+      settle("failed: a blocked player, not rendered");
+      runners.log(`series ${anyGameId}: blocked — a blocked player, not rendered`);
+      return { kind: "blocked", matchId: anyGameId };
+    }
+    series = await seriesOf(match);
+  } catch (err) {
+    settle(`failed: ${describeError(err)}`);
+    throw err;
+  }
+  if (!series || series.games.length === 0) {
+    settle("failed: not a playoff series");
+    return { kind: "not-a-series", matchId: anyGameId };
+  }
+  const first = series.games[0]!;
+  if (first.matchId !== anyGameId) {
+    runs.delete(anyGameId);
+    progress.firstGameId = first.matchId;
+  }
   runs.set(first.matchId, progress);
   const step = (stage: string) => {
     progress.stage = stage;

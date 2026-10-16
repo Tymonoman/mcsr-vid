@@ -233,7 +233,9 @@ views brought 0 subscribers.
   "chokes", "finishes first", "seals it"), not every paraphrase ("gets there first", "never catches
   up" pass), so the operator's Save is the real gate. Its seed/rank/elo check is a pattern list
   (`HOOK_SEED_RANK_ELO`: #N, Nth seed, top seed, top N, elo, rank N, no./number N, lcq, two 3–4
-  digit figures) and catches the usual phrasings, not every one.
+  digit figures, a lone 1000–3999 not followed by ms, a 3–4 digit figure with
+  points/pts/rated) and catches the usual phrasings, not every
+  one.
 - **Never a nickname, label or epithet for a runner, "vs" or not** (`hookLabelProblem`,
   `src/pipeline/hooks.ts`; `hookProblem`'s `players` argument, `src/shorts/videoPick.ts`; `withHook`'s,
   `src/pipeline/title.ts`; 2 Oct 2026). The operator, after "LCQ vs YN | lauveer vs edcr" and "ASIAN
@@ -294,7 +296,8 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   (`src/dashboard/repoHead.ts`) and calls `process.exit(0)`; tini's `restart: unless-stopped`
   brings the same, now-updated bind mount back up. A failed boot check disarms (no automatic
   retry) and keeps its error on the state until a fresh POST or a DELETE; an arm that never goes
-  idle for 6 h gives up on its own. The nightly strip shows one small, non-`.bad` line while
+  idle for 6 h gives up on its own (one holding a boot-check error keeps it past the 6 h, so the
+  07:00 report still shows an evening arm that never landed). The nightly strip shows one small, non-`.bad` line while
   armed.
   **Review fixes, 8 Oct 2026**: `idle()` also reads `nightly.ts`'s own `nightlyChainRunning()` —
   between a chained render's job settling and the next one's `startJob` (`nightlyMaxRenders` > 1),
@@ -474,7 +477,10 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   (`src/telegram/worth.ts`), never uploaded, long-form or Short, one clear line like `hookRefusal`
   (`src/youtube/youtubeUpload.ts`), never gets its hooks saved so its chain never starts
   (`src/dashboard/shortFlow.ts`), never rendered by `npm run short` even run by hand
-  (`src/shorts/generateShort.ts`), and never a style example in the pick prompt's past hooks
+  (`src/shorts/generateShort.ts`), never picked — `pickShortMoment` throws `BlockedRefusal` on
+  any game's API pair or `blockedOnDisk` before the proxy, /watch or the model sees a frame, and
+  `npm run pick -- all` skips it (15 Oct 2026; until then its footage went to Groq/Gemini) — and
+  never a style example in the pick prompt's past hooks
   (`pastTitleHooks`, `src/shorts/videoPick.ts`). `finishOnYouTube` carries the same refusal
   (no playlist, thumbnail, comment or tag write; a still-pending step's note says why, already-done
   steps are left alone and nothing is persisted, so unblocking needs no repair) to every one of its
@@ -490,7 +496,10 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   `npm run series -- --join-only` and every export's settle never join, retitle or prune one. `runPipeline` (`src/pipeline/pipeline.ts`) refuses
   too, right after the match fetch and before VOD discovery or any write, so the callers with no
   gate of their own — `npm run batch`, `npm run generate-project`, the TUI — never download a
-  blocked runner's footage. `hasBlockedPlayer` (`youtubeUpload.ts`) reads
+  blocked runner's footage. Under that, `withDiscoveredVods` lists nothing and writes no
+  `vods.json` for a blocked match, and `downloadMatchVods` throws before yt-dlp, so
+  `npm run download-vods` and `npm run validate-sync` (which also refuses outright, before
+  reusing clips on disk) can't fetch one either (15 Oct 2026). `hasBlockedPlayer` (`youtubeUpload.ts`) reads
   `povNicknamesOnDisk`, the same disk-only POV-clip reader `matchStatusFor` itself uses, so a
   generated MP4 (`overlay-timer.mp4`, `final-<id>.mp4`, …) is never mistaken for a player. The
   operator, 2 Oct 2026, after Aquacorde commented that he does not give permission for his footage
@@ -516,7 +525,17 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
 - **Hook chips** (`src/pipeline/hooks.ts`) lead with the match's stake — the margin, a lead change, a
   death — and put the nickname and "Rematch: X leads N-M" chips after them (1 Oct 2026: the early
   9.36%-vs-2.25% CTR reading was 4,590 impressions; at 126,745 it was 2.77% against 2.59%, a wash, and
-  the rematch record can already include the match itself). The pick prompt labels the operator's past
+  the rematch record can already include the match itself). **The head-to-head is one season's**
+  (`getVersus`, `src/api/mcsrApi.ts`): the API keeps no all-time record (`?season=0` is a 400), and
+  its `/versus` total is the season as it stands when read, so a match rendered after a rematch
+  counted the later games as "before" it. Since 15 Oct 2026 it is tallied from the pair's ranked
+  list in the match's season up to and including the match (`h2hWinsBefore` takes the match's own
+  result off), and every surface says "season": the chips read "Rematch: X leads N-M this season"
+  and "Their first 1v1 this season", the intro card "THIS SEASON" over the record or "FIRST
+  MEETING", the band "Head-to-Head (Season)", and the Test & Compare caption has no "FIRST 1V1"
+  (0-0 this season can be 40 games the season before). A playoff game gets no head-to-head chip or
+  `h2h` fact at all, which beside "Round of 16 | Game 3" reads as the series score (15 Oct 2026).
+  The pick prompt labels the operator's past
   hooks by register (stake, question, rivalry) and says stake is preferred. A typed hook that reuses a
   nickname an earlier uploaded title gave another player ("TAS" stood for doogile) comes back with a
   warning in `saveWarnings` — one nickname per player; the post-mortem of 30 Sept 2026 found "TAS" on
@@ -547,7 +566,8 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   asserting the outcome. The DNF fallback says "One of them never **killed** the dragon", not "reached" —
   `finishMarginMs` null only means no dragon kill; the loser can have fought and died in the End.
   `src/shorts/videoPick.ts`'s `hookProblem` also strips `PACE_TO_WIN` (`hooks.ts`: "sub-N to win
-  [it]" only, never a bare "to win", so "X battles back to win it" stays refused) before its own
+  [it]" only, at the start and as the whole segment, never a bare "to win", so "X battles back to
+  win it" and "A SUB-8 TO WIN IT FOR X" stay refused) before its own
   spoiler check, as `spoilsTheResult` does: it had disagreed with `hooks.ts` and was silently dropping the pace chip
   ("A sub-N to win it", already `hooks.ts`'s own highest-weighted candidate under 8 minutes)
   wherever it would otherwise have won, in both the dashboard's chip list (`shortFlow.ts`) and the
@@ -657,6 +677,19 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   only a `short-<id>.log.jsonl` line nothing reads. The tick's own loop wraps each match's
   `autoSaveHooks` call in try/catch, so one broken match directory throwing instead of returning a
   controlled result can't abort the tick and starve every match due after it.
+  **Weak sync, 15 Oct 2026**: 14178549 (silverrruns vs BlazeMind) was auto-hooked and uploaded on
+  a `countdown` sync at confidence 0.1 — one clip at 150 s where the in-game timer said 151.42 s,
+  ~1.4 s out of step; of 69 uploads, three went up on a weak sync nobody had set by hand. The
+  dashboard flagged it (`syncWeak`), but nobody looks before an unattended save. Now a match
+  otherwise due whose `syncWeak` holds (any game's sync.json missing or below
+  `config.syncConfidenceThreshold`, the one threshold the editor and the plan already use, unless
+  its `source` is `"manual"`: a hand fix is always sound) saves nothing: the tick writes
+  `syncHold` (`at`, `detail`) into `short-<id>.status.json` and one `short-<id>.log.jsonl` warning,
+  once, not every tick, and `gatherNeedsYou`'s `syncHoldItems` lists the match ("sync needs a
+  look before it can upload") until its hooks are saved. A hand fix makes the export stale, so
+  the tick waits for the re-export too; the next tick after it clears `syncHold` and saves. The
+  operator's own Save is never refused on a weak sync; the plan's `syncWeak` is the warning. The
+  nightly render itself is untouched.
 - **A playoff game's thumbnails can carry the tournament** (`playoffThumbnailStyle`, in the
   Settings tab; `remotion/Thumbnail.tsx` `playoff`): "bracket" puts the round in the band and
   "Best of 5" under the VS; "trophy" grows the band for a gold PLAYOFFS wordmark over the round
@@ -864,8 +897,10 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   running — two of them at 03:00 pick the same card and render into one directory. Kill a test
   server before the hour, or set `nightlyRenderHourUtc: null` for it. The 15-minute tick (chain
   resume, comment-soon, auto-hooks, creator watch, draw re-seed, experiment arm and evaluation)
-  runs only on the main server (`PORT` 8080), like the Telegram poller: chain state is per process,
-  so a test server read the main one's upload in flight as orphaned and resumed it on top.
+  runs only on the main server (`PORT` 8080), like the Telegram poller and the nightly timer's own
+  side calls (`nightlySideCalls`: chain resume, the playlist/comment/Studio retries), so a test
+  server's nightly only renders: chain state is per process, so a test server read the main one's
+  upload in flight as orphaned and resumed it on top.
 - **Nightly** (`src/dashboard/nightly.ts`): at `nightlyRenderHourUtc` (default 3 UTC; `null` disables) the
   server renders the first eligible card in dashboard order, skipping the night if a render is
   running or under two matches of disk remain, then the MP4 (`nightlyRenderExport`), then queues
@@ -998,7 +1033,9 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   **Edge-case fixes, 14 Oct 2026**: CTR read only the newest daily Reporting CSV (one ~48h-old
   day — why x1's interim verdict kept flipping) — `impressionsSince` (`src/youtube/youtube.ts`) sums
   every daily report since publish, a regenerated day counted once, and the CSV's `20261012` is
-  compared with the since-date in one format. A `settle()` throw now reaches `needsHuman` on the
+  compared with the since-date in one format; since 15 Oct the A/B tab and the per-video audit
+  (`everyReport`, `src/dashboard/youtubeRoutes.ts`) sum every report the job still holds too, the
+  same endpoints and columns, `latestImpressions` gone. A `settle()` throw now reaches `needsHuman` on the
   second day (the try cleared yesterday's failure before settling). A schedule's
   `slot.rankedHoursUtc` keeps only whole hours 0–23, like `shortDelayHours` beside it.
 - **Playoffs** (`src/playoffs/playoffs.ts`): the bracket (`/playoffs`) knows the series, not the games;
@@ -1084,7 +1121,8 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   with no blocked player is checked for both players' Twitch VODs through the pipeline's own
   discovery (`withDiscoveredVods`, the same call `nightly.ts`'s `playoffVodsReady` already makes
   for a playoff candidate) — found, it goes to the **front** of tonight's nightly queue (at most
-  one creator match a night; the block list still wins over it, same as every other queue entry);
+  one creator match a night, keyed on the next nightly run's UTC date (`queuedOn`), so 23:50 and
+  00:05 share the 03:00 run; the block list still wins over it, same as every other queue entry);
   not found, it is recorded as "no Twitch VOD" and left unqueued (a creator who streams on
   YouTube rather than Twitch never queues this way). Every outcome is resolved once, ever, into
   `<mediaDir>/.creator-watch.json` (`{ checked: {nick: iso}, hits: [{matchId, nick, players, at,
@@ -1222,8 +1260,11 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
   or public in the last 3 days (`publishAt`, or `uploadedAt` for one published on upload) whose
   Short nobody has cut — no `short-<id>.hand.json`, no `youtube-short.json` — unless `noShort`,
   hidden or `blockedOnDisk`, since nothing else warns before a long-form goes out without its Short;
-  a live title — `youtube.json`/`youtube-short.json`, public or with any `publishAt` (the record's
-  `privacyStatus` is upload-time only), each video once, a blocked player's match skipped — whose
+  a live title — each `youtube.json`/`youtube-short.json` video once, title and privacy read off the
+  channel (`liveVideos`, one `videos.list` per 50 ids; a retitle in Studio never reaches the record,
+  review 15 Oct 2026), the record standing in only when that read fails; public or with any
+  `publishAt` (the record's `privacyStatus` is upload-time only), deleted or set private skipped, a
+  blocked player's match skipped — whose
   hook (before the first " | ") fails `hookProblem` (which runs `spoilsTheResult` too) given the
   title's own "A vs B" (`liveTitleItems`, 14 Oct 2026: "FALLEN KING vs PLAYOFF GOAT" and "RANK #1"
   were public, since a typed hook saves with only a warning and nothing said so afterwards); the
@@ -1237,8 +1278,9 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
   own heartbeat (`<mediaDir>/.studio-worker.json`, `studioWorkerItems`/`studioWorkerHealth`,
   `facts.ts`, 8 Oct 2026 — read defensively the same way, a type duplicated locally rather than
   imported from `studioWorker.ts`): a heartbeat over 90 min old is one item naming when it last
-  beat and the restart command (`npm run -s studio -- worker --enable`, same as "Studio
-  automation" below), and `WorkerHeartbeat.sameErrorStreak` (computed read-before-write in
+  beat and the supervisor's start line (`nohup bash /app/scripts/studio-worker.sh >/dev/null 2>&1 &`,
+  Phase 5 below — never the bare worker, which exits for new code in a blackout and nothing
+  restarts it; review 15 Oct 2026), and `WorkerHeartbeat.sameErrorStreak` (computed read-before-write in
   `runWorker`) at 3 or more is a second, independent item quoting that error's first line — both
   on the same file as `gatherHealth`'s own "studio worker" line (ok with the last cycle's time, or
   down); no file at all means the worker was never started, so neither fires. Below it, **"Auto-saved hooks"**
@@ -1335,7 +1377,9 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
   own chat (never another chat, never a command) appends one line `{at, text, messageId}` to
   `<mediaDir>/.telegram-inbox.jsonl`, silently — no echo. `npm run tg -- inbox [--since <ISO>]
   [--clear]` prints them oldest first as `<at>  <text>`; `--clear` moves the file aside before
-  reading, so a reply arriving mid-read starts a fresh file instead of being lost.
+  reading, so a reply arriving mid-read starts a fresh file instead of being lost, and with
+  `--since` puts back the older replies it did not print (another session's answer, review 15 Oct
+  2026).
 - **What is not built**: `youtubeUploadEnabled`-gated actions, renders, queue edits — every
   command is read-only, and `/help` says so. No command writes anything the dashboard would show
   as changed.
@@ -1389,7 +1433,10 @@ someone set by hand — `pinComment` (`src/youtube/studioActions.ts`) checks for
 by" line first and returns `"already-pinned"` rather than touch it; one browser at a time, an
 in-process lock claimed synchronously before Chrome ever spawns (`starting`, `src/youtube/studioBrowser.ts`
 — a login and a probe pressed back to back must not race into two Xvfb/Chrome pairs) plus the
-profile's own `SingletonLock`; at most 10 Studio actions per nightly tick (`retryPendingStudio`,
+profile's own `SingletonLock`, plus (15 Oct 2026) a refusal when anything already answers on the
+debugging port: the lock only guards one profile dir, and a CLI run with `STUDIO_PROFILE_DIR` unset
+next to the supervised worker had its Chrome fail to bind 9222, then attached to the worker's
+Chrome and drove its live tab; at most 10 Studio actions per nightly tick (`retryPendingStudio`,
 `src/youtube/youtubeUpload.ts`), each with a random 2-6 s pause between clicks; a `verify` probe is
 never retried within the same call — nothing about the session changes until the operator logs in
 again. **The nightly's own retry tick** waits while an `export:fast` is running, since Chrome and
@@ -1462,7 +1509,9 @@ every check above is a fixture page or pure logic; see "What is verified live vs
   `readTestAndCompare` could not get past (a refused title, an unreadable page, and since 14 Oct
   2026 a page Save with no "Changes saved" within 15 s — an error, so the experiment stays
   `"planned"` and the next cycle reads the page before trying again, where the swallowed wait had
-  returned `"started"` and left a blank form to be found a day later), and the worker never
+  returned `"started"` and left a blank form to be found a day later; since 15 Oct the end-screen
+  and related-link saves the same way, whose `"imported"`/`"linked"` the ledger keeps for good),
+  and the worker never
   guesses past an ambiguous state on its own. Studio's "Results ready"/"Test finished" is what
   counts as done: `parseTcReport` reads the report's per-arm watch-time shares and Studio's own
   winner, and `setExperimentChecked` records them (`watchTimeShare` per arm, "<arm> wins: a% vs b%").
@@ -1706,9 +1755,12 @@ login." Six fixes/features on top of phase 2/3, all in `studioWorker.ts`/`studio
   non-result-looking pose + a caption when `tcCaption.ts`'s own checks pass it, then keeps the
   caption arm only when it is `AUTO_CAPTION_MAX_CHARS` (6) characters or fewer — tighter than
   `tcCaption.ts`'s own 9-character ceiling, since nobody judges this one before it goes live, unlike
-  the manual `tc-plan.json` flow a human approves first. The render touches no Studio page, so it
-  needs no browser session, but still runs only inside the same cycle the worker's own blackout
-  window (`inBlackoutWindow`) already excludes, and is skipped entirely under `--dry-run` since
+  the manual `tc-plan.json` flow a human approves first. `tc-thumbs` also drops the caption arm
+  when the strip's recorded avatar provider is not today's (an `nmsr-posed` strip from before the
+  24 Sept redesign): the control is copied as rendered then, the caption drawn now, so the two
+  would differ in the whole design; re-render the thumbnails and "Use this" first. The render
+  touches no Studio page, so it needs no browser session, but still runs only inside the same
+  cycle the worker's own blackout window (`inBlackoutWindow`) already excludes, and is skipped entirely under `--dry-run` since
   the render and the `.experiments.json` write are the whole action, with no later "stop before
   the final click" point to fall back to. Planning a `tc` experiment never starts it in the same
   cycle — the next cycle's own `tcToStart` picks it up, same as any manually-planned one.
@@ -1894,6 +1946,10 @@ sits beside the match directories without the dashboard ever seeing it.
 
 `src/api/twitchChat.ts` fetches a VOD's chat through Twitch's web GQL persisted query without a
 login, paging by **offset** — the cursor fails Twitch's integrity check without a browser token.
+An offset is whole seconds, so a second busier than one page (~15 messages) loses the rest of that
+second and the walk steps on to the next; before 15 Oct 2026 it stopped there, and five saved chats
+(13331666, 13332163, 13335355, 13528697, 13531248) end 33–61 s early, on a burst before the finish.
+`saveChats` never refetches an existing `chat-<nick>.json`.
 The pipeline saves it after `download-vods` and the Short scorer reads it. `remotion/ChatPanel.tsx`
 renders it; where it sits in the frame is the operator's call, and nothing is wired into
 `src/pipeline/pipeline.ts` until then.
@@ -1958,10 +2014,17 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
   so the fix is `export:fast` (~10 min), not a re-render — and it is not optional: a video went
   out of sync to the channel because sync.json was corrected *after* `final-<id>.mp4` was exported.
   `exportStale` (`src/pipeline/syncFile.ts`, mtime of sync.json vs the export) now refuses the Upload
-  button, the nightly's video and the adopt route with one line, and the match page's "Sync check"
+  button, the nightly's video and the adopt route with one line (`writeSyncOffsets` keeps the old
+  mtime when left/right are unchanged, so a second Save of the same numbers or a re-render with new
+  wording is no correction; a Stop during the sync stage writes nothing), and the match page's "Sync check"
   (both POVs at 9.6 s, above the YouTube panel) is the look that catches the rest. "Save and
   re-export" presses the Final video panel's encode button, which an exported match now also has
   ("Re-encode MP4") — for months it did not, so the button saved and encoded nothing.
+  **Review fixes, 15 Oct 2026**: the PUT answers 409 while that match's encode runs (export:fast
+  reads sync.json at its start and renames its output at its end, so a save in between read as
+  fresh to `exportStale`); and with the MCSR lookup failed the GET, the frame and the PUT answer
+  503, since the fallback's alphabetical clip order would show and save each offset on the
+  other player's clip (`sync.left` is `match.players[0]`).
 - **A Twitch archive outlives the stream by 14 days for most players** (60 for partners), and the
   chat goes with it. `withDiscoveredVods` writes what it finds to `<matchDir>/vods.json` and reads
   it back first, so a clip on disk stays renderable after the archive is gone — before 21 Sept
@@ -1987,7 +2050,10 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
   26 of 26 clips read, 25 of them to the frame the "1" vanishes): the API's estimate can be a
   minute off (a VOD that lost a segment runs ahead of the API's clock; Aquacorde, 13559245:
   53 s, and `1 - off / 20` scored the countdown it found to zero), so an empty or untrusted ±25 s
-  window (a countdown cut by its edge) is followed by one ±150 s pass and the distance term is soft; and a world that loads late has
+  window (a countdown cut by its edge) is followed by one ±150 s pass and the distance term is soft
+  (a near fragment is replaced only by the same countdown, its 0:00 within 10 s: the wide window
+  holds the whole pre-roll, where a clean earlier countdown, a private-room reset, would win the
+  sort and put 0:00 a minute early); and a world that loads late has
   the loading screen over the "10" (BeefSalad, 13549300), so a countdown is also read from its
   end — the drop out of the last digit with stepping seconds before it — and an onset has to be
   a real "10", half again the fattest digit after it, or the "6" after a waiting screen becomes
@@ -2006,7 +2072,8 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
   the operator's pick of three layouts, 24 Sept 2026): each half slides in with its own inline
   `translateX` and parts like a door on the way out, so every animated element takes its position
   from left/top in the CSS, never a CSS `transform` — an inline transform replaces the whole CSS one.
-  A playoff game shows no head-to-head (it would read as the series score); flags are left out
+  Its head-to-head is labelled THIS SEASON, the record `getVersus` reads (15 Oct 2026; it said
+  "lifetime"). A playoff game shows no head-to-head (it would read as the series score); flags are left out
   (they render as tofu without a colour-emoji font).
 - **tini is PID 1 since 830321f**; if `ps -eo stat | grep -c ^Z` ever climbs, wrap the command
   in `python3 scripts/reap.py`.

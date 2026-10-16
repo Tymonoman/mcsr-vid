@@ -270,7 +270,13 @@ function reachLine(s, e, engagementError) {
 
 function uploadedHtml(u, statsError, engagementError) {
   const s = u.stats;
-  const scheduled = u.publishAt ? `scheduled for ${new Date(u.publishAt).toLocaleString()}` : u.privacyStatus;
+  // The record's status is from upload/adopt time and never updated (a Studio draft adopted
+  // private kept reading "private" once public); YouTube's own answer wins when there is one.
+  const live = s?.privacyStatus ? s : u;
+  const scheduled =
+    live.publishAt && live.privacyStatus === "private"
+      ? `scheduled for ${new Date(live.publishAt).toLocaleString()}`
+      : live.privacyStatus;
   // What "Finish on YouTube" has done, per step; nothing yet reads as all four still to do.
   const f = u.finished ?? {};
   const stepLabel = (step) => (f[step] === null ? `${step} ✓` : f[step] ? `${step} ✗` : step);

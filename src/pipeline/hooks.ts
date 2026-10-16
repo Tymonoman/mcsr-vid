@@ -33,9 +33,11 @@ import type { MatchInfo, UserDetails, VersusStats } from "../api/types.js";
 // A bracket seed only ("7th seed", "#7 seed", "top seed", "the LCQ"): the world's seed type
 // ("village seed", "same seed") is fair game for a hook. Also the word "elo" and a lone rank
 // ("RANK 1", "RANKED #5", "TOP 10", "THE NO. 1 SEED", "WORLD NUMBER ONE") — "no" needs its period,
-// so "NO ONE SAW THAT COMING" still passes.
+// so "NO ONE SAW THAT COMING" still passes. A lone 1000-3999 is an elo ("CAN ANYONE STOP THE
+// 2400?") unless milliseconds follow; no chip carries a four-digit number. A rating by its unit
+// too ("A 600-POINT GAP?", "2100 RATED", 15 Oct 2026).
 export const HOOK_SEED_RANK_ELO =
-  /#\d+|\b\d+(?:st|nd|rd|th) seed\b|\blcq\b|\b\d{3,4}\b[^\d]+\b\d{3,4}\b|\belo\b|\btop seed\b|\btop\s+\d+\b|\bno\.\s*\d+|\bnumber\s*(?:\d+|one)\b|\brank(?:ed)?\s*#?\d+\b/i;
+  /\b\d{3,4}\s*-?\s*(?:points?|pts|rated)\b|#\d+|\b\d+(?:st|nd|rd|th) seed\b|\blcq\b|\b\d{3,4}\b[^\d]+\b\d{3,4}\b|\b[1-3]\d{3}\b(?!\s*(?:ms|milliseconds?)\b)|\belo\b|\btop seed\b|\btop\s+\d+\b|\bno\.\s*\d+|\bnumber\s*(?:\d+|one)\b|\brank(?:ed)?\s*#?\d+\b/i;
 
 /**
  * Words that name a runner by race, ethnicity or nationality, or a slur-adjacent abbreviation of
@@ -133,10 +135,10 @@ function secondsPhrase(ms: number): string {
  * that keeps changing, a real death — is the register the operator's own hooks are written in
  * ("58 MILLISECONDS", "WHO BLINKS FIRST?"). The reading that put the two nicknames first, 9.36%
  * CTR against 2.25% for descriptive hooks, was 4,590 subscriber-heavy impressions; over 126,745
- * on 15 Sept it was 2.77% against 2.59%, a wash. The rematch line also reads the all-time record,
- * which can already include this very match. So every stake chip sits above both head-to-head
+ * on 15 Sept it was 2.77% against 2.59%, a wash. So every stake chip sits above both head-to-head
  * chips, down to "not a single death", and a rivalry reaches the top of the list only when the
- * match has no stake to state.
+ * match has no stake to state. Both say "this season": `getVersus` is one season's record, the
+ * API keeps no all-time one, and 0-0 this season can be 40 games last season.
  *
  * Within the stake band the old order stands: a photo finish beats a lead change beats a death
  * count. "One of them never killed the dragon" is last of all, under the head-to-head chips:
@@ -150,7 +152,8 @@ function candidates(input: HookInput): Candidate[] {
   const { finishMarginMs, panelLeadChanges, deaths, resultMs, winner } = metrics;
 
   // --- Rivalry framing (30-35): under every stake chip, over the dull fallback -------------
-  if (versus) {
+  // None on a playoff game: next to "Round of 16 | Game 3" a record reads as the series score.
+  if (versus && !input.playoff) {
     const leftWins = h2hWinsBefore(versus, match, userLeft.uuid);
     const rightWins = h2hWinsBefore(versus, match, userRight.uuid);
     // Both sides have to have won one for this to read as a rivalry. A one-sided record gets
@@ -161,11 +164,12 @@ function candidates(input: HookInput): Candidate[] {
       const hi = Math.max(leftWins, rightWins);
       const lo = Math.min(leftWins, rightWins);
       out.push({
-        text: hi === lo ? `Rematch: ${hi}-${lo} all time` : `Rematch: ${leader} leads ${hi}-${lo}`,
+        text:
+          hi === lo ? `Rematch: ${hi}-${lo} this season` : `Rematch: ${leader} leads ${hi}-${lo} this season`,
         weight: 35,
       });
     } else if (leftWins === 0 && rightWins === 0) {
-      out.push({ text: "Their first 1v1", weight: 30 });
+      out.push({ text: "Their first 1v1 this season", weight: 30 });
     }
   }
 
@@ -293,13 +297,14 @@ export function hookFacts(input: HookInput) {
     },
     /** Live standings — there is no match-time rank to read back, see candidates(). */
     rank: { left: userLeft.eloRank ?? null, right: userRight.eloRank ?? null },
-    /** Ranked wins between these two, or null when the caller did not fetch them. */
-    h2h: input.versus
-      ? {
-          left: h2hWinsBefore(input.versus, match, userLeft.uuid),
-          right: h2hWinsBefore(input.versus, match, userRight.uuid),
-        }
-      : null,
+    /** Ranked wins between these two this season; null when not fetched, or a playoff game. */
+    h2h:
+      input.versus && !input.playoff
+        ? {
+            left: h2hWinsBefore(input.versus, match, userLeft.uuid),
+            right: h2hWinsBefore(input.versus, match, userRight.uuid),
+          }
+        : null,
     maxChars: input.maxChars,
     minChars: input.minChars,
   };
@@ -313,10 +318,12 @@ export function hookFacts(input: HookInput) {
  * title passes) and to "sub-N ... to win" rather than a blanket `\bto win\b` strip (6 Oct 2026 panel bug,
  * fixed everywhere this is used): a blanket strip also erases the only spoiler word from a hook
  * that names a real player next to "win" language ("doogile battles back to win it"), which must
- * stay rejected. Exported so `hookProblem` (videoPick.ts) strips the identical shape before its
- * own spoiler regex runs, rather than drifting from this one again.
+ * stay rejected. And to the end of the segment (15 Oct 2026: "A SUB-8 TO WIN IT FOR DOOGILE" lost
+ * "win" and kept the name after it), so anything after the idiom is still tested. Exported so
+ * `hookProblem` (videoPick.ts) strips the identical shape before its own spoiler regex runs,
+ * rather than drifting from this one again.
  */
-export const PACE_TO_WIN = /^\s*(?:a\s+)?sub-?\d+(?:\.\d+)?\s+to win(?:\s+it)?\b/i;
+export const PACE_TO_WIN = /^\s*(?:a\s+)?sub-?\d+(?:\.\d+)?\s+to win(?:\s+it)?[ .!?]*(?=\||$)/i;
 
 /**
  * Whether a line gives the result away.

@@ -10,8 +10,8 @@
  * long-lived; the key names deliberately match the Python token the `claude-youtube` skill
  * already writes, so the two are interchangeable.
  */
-import { createReadStream, existsSync, statSync } from "node:fs";
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { existsSync, statSync } from "node:fs";
+import { open, readFile, rm, writeFile, type FileHandle } from "node:fs/promises";
 import path from "node:path";
 
 const TOKEN_URI = "https://oauth2.googleapis.com/token";
@@ -242,7 +242,18 @@ export interface UploadResult {
 
 export async function uploadVideo(opts: UploadOptions): Promise<UploadResult> {
   if (!existsSync(opts.filePath)) throw new Error(`No such video file: ${opts.filePath}`);
-  const total = statSync(opts.filePath).size;
+  // One handle for the whole upload: a series re-join renames a new series-<g1>.mp4 over this
+  // path (src/playoffs/series.ts `concatVideos`), and reading each chunk by path sent the old
+  // file's head and the new one's tail as one video. The handle keeps the bytes the upload began on.
+  const file = await open(opts.filePath, "r");
+  try {
+    return await sendFile(opts, file, (await file.stat()).size);
+  } finally {
+    await file.close();
+  }
+}
+
+async function sendFile(opts: UploadOptions, file: FileHandle, total: number): Promise<UploadResult> {
   if (total === 0) throw new Error(`${opts.filePath} is empty`);
 
   // publishAt is only honoured while the video is private; uploading a scheduled video as
@@ -352,7 +363,7 @@ export async function uploadVideo(opts: UploadOptions): Promise<UploadResult> {
 
   while (uploaded < total) {
     const end = Math.min(uploaded + chunkBytes, total) - 1;
-    const chunk = await readChunk(opts.filePath, uploaded, end);
+    const chunk = await readChunk(file, uploaded, end);
     const res = await fetchImpl(sessionUrl, {
       method: "PUT",
       headers: {
@@ -385,14 +396,15 @@ export async function uploadVideo(opts: UploadOptions): Promise<UploadResult> {
   throw new Error("Upload finished without YouTube returning a video id");
 }
 
-function readChunk(filePath: string, start: number, end: number): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    const stream = createReadStream(filePath, { start, end });
-    stream.on("data", (c) => chunks.push(c as Buffer));
-    stream.on("error", reject);
-    stream.on("end", () => resolve(Buffer.concat(chunks)));
-  });
+async function readChunk(file: FileHandle, start: number, end: number): Promise<Buffer> {
+  const buf = Buffer.alloc(end - start + 1);
+  let got = 0;
+  while (got < buf.length) {
+    const { bytesRead } = await file.read(buf, got, buf.length - got, start + got);
+    if (bytesRead === 0) break;
+    got += bytesRead;
+  }
+  return buf.subarray(0, got);
 }
 
 /** Custom thumbnails require a phone-verified channel; the API says so in the error `reason`. */
@@ -1009,32 +1021,14 @@ export interface ImpressionsRow {
 }
 
 /**
- * Per-video thumbnail impressions and CTR from the standing Reporting API job.
+ * Per-video thumbnail impressions and CTR from the standing Reporting API job: every daily reach
+ * report covering `sinceYmd` (YYYY-MM-DD) onward, concatenated — the job
+ * (`channel_reach_basic_a1`) writes one CSV per day, so its newest report alone is a single day's
+ * sample. A day YouTube regenerated (a backfill, same window) counts once: the report with the
+ * newest `createTime` wins.
  *
- * This is the *only* source of those two numbers — the Analytics API does not expose them — so
- * thumbnail A/B testing depends entirely on this job existing and having produced a report.
+ * This is the *only* source of those two numbers — the Analytics API does not expose them.
  * Reports appear roughly 48h after the day they cover, so a video uploaded today has none.
- */
-export async function latestImpressions(jobId: string): Promise<ImpressionsRow[]> {
-  const list = await apiCall<{ reports?: Array<{ id: string; downloadUrl: string; endTime: string }> }>(
-    REPORTING_API,
-    `/jobs/${encodeURIComponent(jobId)}/reports`,
-  );
-  const reports = list.reports ?? [];
-  if (reports.length === 0) return [];
-
-  const newest = reports.reduce((a, b) => (a.endTime > b.endTime ? a : b));
-  const accessToken = await getAccessToken();
-  const res = await fetch(newest.downloadUrl, { headers: { authorization: `Bearer ${accessToken}` } });
-  if (!res.ok) throw new Error(await describeApiFailure(res, "reporting download"));
-  return parseImpressionsCsv(await res.text());
-}
-
-/**
- * Every daily reach report covering `sinceYmd` (YYYY-MM-DD) onward, concatenated — the job
- * (`channel_reach_basic_a1`) writes one CSV per day, so `latestImpressions`' newest report alone is
- * a single day's sample. A day YouTube regenerated (a backfill, same window) counts once: the
- * report with the newest `createTime` wins.
  *
  * Each report's rows are kept by report id for the life of the process (a report never changes; a
  * regenerated day gets a new id): the evaluator calls this once per video, and downloading every

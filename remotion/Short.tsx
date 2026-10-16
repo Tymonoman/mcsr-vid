@@ -90,16 +90,17 @@ function Nameplate({
    * mirrored with the other plate there.
    */
   variant?: "compact" | "solo";
-  /** The top plate with the running clock: its right side is left to ffmpeg's drawtext. */
+  /**
+   * The top plate with the running clock: the elo row's right side is left to ffmpeg's drawtext,
+   * which sits level with it (SHORT_CLOCK_Y). Not the whole plate: the name row is above the
+   * clock, and a plate-wide reserve cut every 11+-character name on a both-POV Short.
+   */
   clockRoom?: boolean;
 }) {
   return (
     <div
       className={`short-plate ${side}${variant ? ` ${variant}` : ""}`}
-      style={{
-        height: variant === "compact" ? SHORT_COMPACT_NAMEPLATE_HEIGHT : SHORT_NAMEPLATE_HEIGHT,
-        ...(clockRoom ? { paddingRight: SHORT_CLOCK_RESERVE_PX } : {}),
-      }}
+      style={{ height: variant === "compact" ? SHORT_COMPACT_NAMEPLATE_HEIGHT : SHORT_NAMEPLATE_HEIGHT }}
     >
       <PixelBadge />
       {/* The head, as the 16:9 overlay's IdentBar and the intro card both do it: every reference
@@ -108,7 +109,7 @@ function Nameplate({
       {headUrl && <Img className="player-head" src={headUrl} />}
       <div className="short-plate-text">
         <span className="short-name">{nickname}</span>
-        <span className="short-elo">
+        <span className="short-elo" style={clockRoom ? { paddingRight: SHORT_CLOCK_RESERVE_PX } : undefined}>
           {/* On a playoff game the seed replaces the ladder rank: the rank is a ranked-ladder
               fact and a bracket has its own order, and it is the seed pair that states an upset
               without a word — the device every high-performing playoff Short in the set uses. */}

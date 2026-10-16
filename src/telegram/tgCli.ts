@@ -5,7 +5,8 @@
  * `TELEGRAM_BOT_TOKEN` needed, since they never call the Bot API. `whoami` is the pairing step:
  * it prints the chat ids that recently messaged the bot (from `getUpdates`), for the operator to
  * put in `TELEGRAM_CHAT_ID`. `inbox` prints the operator's plain replies the poller saved
- * (`.telegram-inbox.jsonl`), oldest first; `--clear` empties it after.
+ * (`.telegram-inbox.jsonl`), oldest first; `--clear` removes what it printed (with `--since`, the
+ * older replies stay).
  */
 import { describeError } from "../errorText.js";
 import * as bot from "./bot.js";
@@ -13,7 +14,7 @@ import { parseCommand } from "./commands.js";
 import { readFileSync } from "node:fs";
 import { buildMorningReport, dispatchCommand } from "./index.js";
 import { chunkMarkdown, mdToTelegramHtml } from "./markdown.js";
-import { readInbox, setStateDryRun } from "./state.js";
+import { appendInbox, readInbox, setStateDryRun } from "./state.js";
 
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
@@ -106,8 +107,13 @@ async function main(): Promise<void> {
         console.error(usage);
         process.exit(2);
       }
-      for (const e of readInbox(subArgs.includes("--clear")))
+      const clear = subArgs.includes("--clear");
+      // --clear takes only what it prints: a reply older than --since may be another session's
+      // answer, so it goes back in. ponytail: appended, so it can land after a reply the poller
+      // wrote mid-read; sort by `at` here if that ever matters.
+      for (const e of readInbox(clear))
         if (Date.parse(e.at) >= sinceMs) console.log(`${e.at}  ${e.text}`);
+        else if (clear) appendInbox(e);
       return;
     }
     case "whoami": {

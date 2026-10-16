@@ -1597,7 +1597,10 @@ function nowSteps(plan, meta) {
   const pick = plan.pick;
   const againBtn = shortLocked
     ? '<div class="muted small">The Short is on the channel: a new pick would need a re-upload.</div>'
-    : button("pick-again", "Pick again", "the model watches the match again, 1.5&ndash;5 min");
+    : // Hand mode: POST /api/shorts/pick answers 409, so no button that can only fail.
+      plan.shortsByHand
+      ? '<div class="muted small">A hint for the hand cut (<code>npm run short:hand</code>): no pick is re-run in this mode.</div>'
+      : button("pick-again", "Pick again", "the model watches the match again, 1.5&ndash;5 min");
   const picking = plan.pickActivity === "running" || act?.step === "pick";
   if (picking) {
     const s = { key: "pick", status: "run", name: "Pick", open: true };
@@ -1636,7 +1639,7 @@ function nowSteps(plan, meta) {
           sum: plan.shortsByHand ? "cut by hand, outside the pipeline" : "no pick yet",
           open: true,
           body: plan.shortsByHand
-            ? '<div class="muted small">The session cuts this Short by hand (<code>npm run short:hand</code>) &mdash; no model pick is spent here.</div>'
+            ? '<div class="muted small">The session cuts this Short by hand (<code>npm run short:hand</code>) &mdash; the pick after the export still runs, and its window is only a hint.</div>'
             : `${shortLocked ? againBtn : button("pick-again", "Ask the model", "it watches the match, 1.5&ndash;5 min")}<div class="muted small">Or tick &ldquo;No Short for this one&rdquo; under Hooks: the video then goes out alone.</div>`,
         },
         "The picker failed",
@@ -1750,9 +1753,11 @@ function nowSteps(plan, meta) {
         status: "todo",
         sum: noExport
           ? "once the video is exported"
-          : saved
-            ? "waits for the pick"
-            : "renders once the hooks are saved, about 2 min",
+          : plan.shortsByHand
+            ? "cut by hand &mdash; <code>npm run short:hand</code>, never rendered here"
+            : saved
+              ? "waits for the pick"
+              : "renders once the hooks are saved, about 2 min",
       };
     s = attach({ key: "short", name: "Short", ...s }, "Short render failed", "An earlier render failed");
     if (s.status === "fail") Object.assign(s, { sum: "failed", body: `${retry}${s.body ?? ""}` });
@@ -2021,7 +2026,7 @@ function paintSave() {
       plan.titleHook !== null
         ? "Save hooks"
         : noUploads
-          ? "Save hooks — renders the Short; uploads are off"
+          ? `Save hooks — ${plan.shortsByHand ? "the Short is cut by hand" : "renders the Short"}; uploads are off`
           : plan.syncWeak
             ? "Sync looks right — save hooks and schedule"
             : "Save hooks and schedule";
@@ -2159,6 +2164,7 @@ function wireNow(id) {
     } else if (what === "to-playoffs") {
       ev.preventDefault();
       showTab("suggestions");
+      playoffsOpen = true;
       const fold = $("#playoffs details.playoffsoon");
       if (fold) fold.open = true;
     } else if (what === "copy-log") {
@@ -2794,11 +2800,13 @@ function nightlyBody() {
   }
   if (nightly.error) return `<div class="bad">${esc(nightly.error)}</div>`;
   // One restart behind is invisible otherwise: the page is served from disk and looks current,
-  // the server still writes yesterday's descriptions and hooks.
+  // the server still writes yesterday's descriptions and hooks. Never "docker restart": a hand
+  // restart while a chain uploads cut the 1 Oct upload at 30%; restart-when-idle waits for it,
+  // and once it is armed its own line below says so.
   const { boot, now } = nightly.code ?? {};
   const behind =
     boot && now && boot !== now
-      ? `<div class="bad">The server is running <code>${esc(boot)}</code>; the repo is at <code>${esc(now)}</code> &middot; <code>docker restart mcsr-dashboard</code> picks it up.</div>`
+      ? `<div class="bad">The server is running <code>${esc(boot)}</code>; the repo is at <code>${esc(now)}</code>${nightly.restart ? "" : " &middot; <code>POST /api/restart-when-idle</code> picks it up once nothing renders or uploads"}.</div>`
       : "";
 
   // Only sent at all when studioAutomation is on (server.ts): the last probe any Studio job
@@ -3282,6 +3290,9 @@ async function startRenderWithShort(id, btn) {
    and joins them (src/playoffs/series.ts). Round and game number only — the series score is for the
    video's own dots, never for a line here. */
 let playoffData = null;
+/** The fold's open state, kept off the DOM: renderSuggestions swaps in an empty #playoffs on every
+    repaint (the series poll's every 15 s among them), so the element itself forgets it each time. */
+let playoffsOpen = false;
 
 function paintPlayoffs() {
   const el = $("#playoffs");
@@ -3369,11 +3380,13 @@ function paintPlayoffs() {
     .join("");
   // The board is eight series of game rows above the suggestions, a whole screen of it at any
   // width: folded whatever the date (the summary names the round and the next slot), and it
-  // stays open once opened across repaints.
-  const open = el.querySelector("details.playoffsoon")?.open ?? false;
+  // stays open once opened across repaints (playoffsOpen).
   el.innerHTML = `
     <div class="scanline"><span class="bucket playoffs">PLAYOFFS</span> Season ${esc(String(playoffData.season))} bracket &middot; <a href="${esc(playoffData.bracketUrl ?? "")}" target="_blank" rel="noopener">magmamcsr.com</a></div>
-    <details class="playoffsoon"${open ? " open" : ""}><summary>${summary}</summary>${rows}</details>`;
+    <details class="playoffsoon"${playoffsOpen ? " open" : ""}><summary>${summary}</summary>${rows}</details>`;
+  el.querySelector("details.playoffsoon").addEventListener("toggle", (ev) => {
+    playoffsOpen = ev.currentTarget.open;
+  });
   el.querySelectorAll(".game").forEach((row) => {
     const id = Number(row.dataset.id);
     row
@@ -3601,9 +3614,10 @@ async function saveSettingsPanel() {
     settingsData = r;
     paintSettings();
     $("#setmsg").textContent = `saved ${r.changed.join(", ")}`;
-    // Both re-order the list, and its order is read fresh on every GET: the new order is one fetch away.
-    if (r.changed.some((key) => key === "favouritePlayers" || key === "pairRepeatDays"))
-      pollSuggestions().catch(() => {});
+    // The list is read fresh on every GET, so whatever moved is one fetch away: a re-order
+    // (favourites, learnedDraw, the slots…) or, the one that matters, blockedPlayers taking a
+    // withdrawn runner's card off Tonight. Every save, not a list of keys that falls behind.
+    pollSuggestions().catch(() => {});
   } catch (e) {
     msg.textContent = "";
     failAt("#setsave", "Settings not saved", e.message);

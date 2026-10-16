@@ -17,6 +17,7 @@ import {
   msUntilNextRun,
   nightlyChainRunning,
   nightlyEligible,
+  nightlySideCalls,
   PAIR_POSTS_WAIT_MS,
   pickClause,
   pickContext,
@@ -33,7 +34,7 @@ import {
   shouldChainNextRender,
   writeNightlyState,
 } from "./nightly.js";
-import { CACHE_VERSION } from "./suggest.js";
+import { CACHE_VERSION, dismissSuggestion } from "./suggest.js";
 import type { PlayoffBoard } from "../playoffs/playoffs.js";
 import { startRerender } from "../thumbnails/rerender.js";
 import { abortJob, getJob, startJob } from "./jobs.js";
@@ -333,6 +334,24 @@ try {
   assert.ok(chained.skipped, "the chained run still skips");
   assert.deepEqual(readNightlyState(), run, "and the strip still shows the render that happened");
 
+  // A test server's nightly timer renders and nothing else: chain resume and the YouTube retries
+  // are the main server's (`PORT` 8080), or a second process resumes its upload in flight on top.
+  {
+    const called: string[] = [];
+    const spy = (name: string) => async () => void called.push(name);
+    const calls = {
+      retryFailedPlaylists: spy("playlists"),
+      retryPendingComments: spy("comments"),
+      retryPendingStudio: spy("studio"),
+      shortTick: spy("shorts"),
+    };
+    nightlySideCalls(false, calls);
+    assert.deepEqual(called, [], "a test server's timer resumes no chain and writes nothing to YouTube");
+    nightlySideCalls(true, calls);
+    assert.deepEqual(called, ["playlists", "comments", "studio", "shorts"], "the main server's does all four");
+    console.log("OK: the nightly timer's chain resume and YouTube retries run on the main server only");
+  }
+
   // "Run now" must not move tonight's render. runNightlyOnce touches no timer, and this is the
   // assertion that keeps it that way if someone later reaches for `scheduleNightly` inside it.
   const now = at("2026-09-07T01:30:00Z");
@@ -562,6 +581,24 @@ try {
       null,
       "so the queue finds nothing to pick",
     );
+    // Renamed since: the API's names pass, but a prefetch (`npm run download-vods`) left the clip
+    // and chat under the old name — and a queued id with no project is pickable again.
+    const renamedDir = path.join(config.mediaDir, "9051");
+    mkdirSync(renamedDir, { recursive: true });
+    writeFileSync(path.join(renamedDir, "Aquacorde.mp4"), "");
+    writeFileSync(path.join(renamedDir, "chat-Aquacorde.json"), "[]");
+    const renamedPick = {
+      metrics: { matchId: 9051, players: ["NewName", "doogile"] as [string, string] },
+      bucket: "chaos",
+    };
+    assert.equal(await nightlyEligible([9051])(renamedPick), false, "the clip on disk is blocked too");
+    assert.equal(
+      await pickNightlyCandidate([renamedPick], { ...roomy, queue: [9051] }, nightlyEligible([9051])),
+      null,
+      "so a renamed blocked runner's queued match is not picked",
+    );
+    rmSync(renamedDir, { recursive: true, force: true });
+    console.log("OK: the nightly refuses a queued match whose clips on disk name a blocked runner");
     config.blockedPlayers = savedBlocked;
 
     // A playoff pick is always known: the bracket's players are the season's top 16, and their
@@ -626,6 +663,17 @@ try {
         "9998 left out",
       );
       assert.deepEqual(fetched, [], "the preview never calls the network");
+      // Queued, then dismissed: the card stays in the pool (and the queue), but the operator
+      // rejected it — neither the run nor the preview resolves it, and no getMatch stands in.
+      dismissSuggestion(9003);
+      assert.equal(await resolveQueuedPick(9003), null, "a dismissed queued card resolves to nothing");
+      assert.equal(
+        (await previewPick(ranked, { ...roomy, queue: [9003] }))?.metrics.matchId,
+        9010,
+        "the preview skips it too",
+      );
+      assert.deepEqual(fetched, [], "and nothing is fetched for it");
+      console.log("OK: a card queued and then dismissed is not rendered that night");
     } finally {
       globalThis.fetch = realFetch;
     }

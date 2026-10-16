@@ -6,7 +6,8 @@
  * and prints, per match, each stage's time, the prompt's size, the model's raw answer (and the
  * retry when it answered nothing), why it was rejected when it was, and the pick it wrote. A pick
  * newer than its video is kept unless --force. `all` walks every match directory with a finished
- * video — a series counts once, under game 1, since the join deletes the other games' exports.
+ * video — a series counts once, under game 1, since the join deletes the other games' exports —
+ * minus a blocked player's (`blockedOnDisk`); a blocked id named alone is refused, exit 1.
  *
  * --dry-run asks the model afresh and prints the pick while writing nothing into the match
  * directory (no pick, no error file, no log line); it refuses, exit 1, when the proxy or a /watch
@@ -16,7 +17,8 @@ import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { parseMatchId } from "../api/mcsrApi.js";
 import { config, matchDir } from "../config.js";
-import { pickShortMoment } from "./videoPick.js";
+import { blockedOnDisk } from "../dashboard/matchStatus.js";
+import { BlockedRefusal, pickShortMoment } from "./videoPick.js";
 import { DryRunRefusal } from "./watchPov.js";
 
 const args = process.argv.slice(2);
@@ -32,7 +34,7 @@ const ids =
     ? readdirSync(config.mediaDir)
         .filter((name) => /^\d+$/.test(name))
         .map(Number)
-        .filter(hasVideo)
+        .filter((id) => hasVideo(id) && !blockedOnDisk(matchDir(id)))
         .sort((a, b) => a - b)
     : [parseMatchId(target)];
 
@@ -50,7 +52,7 @@ for (const id of ids) {
     });
     console.log(JSON.stringify(pick, null, 2));
   } catch (err) {
-    if (!(err instanceof DryRunRefusal)) throw err;
+    if (!(err instanceof DryRunRefusal || err instanceof BlockedRefusal)) throw err;
     console.error(`  refused: ${err.message}`);
     process.exitCode = 1;
   }

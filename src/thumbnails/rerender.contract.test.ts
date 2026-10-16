@@ -6,7 +6,6 @@
 // Temp media dir, a stubbed MCSR API, no Chromium (stills are written, not drawn), no network.
 // Run: npx tsx src/thumbnails/rerender.contract.test.ts
 import assert from "node:assert/strict";
-import { deviation } from "../fixtures/deviation.js";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -247,14 +246,11 @@ try {
       () => "rendered",
       (err: Error) => err.message,
     );
-    await deviation(
-      'CLAUDE.md "Re-render a match\'s thumbnails…": blocked players apply the same as everywhere else (every render path refuses on the match\'s API player names)',
-      () => {
-        assert.equal(drew, false, `a match whose API players include a blocked runner was drawn (${outcome})`);
-      },
-    );
-    await rm(path.join(dir, NEW_DIR), { recursive: true, force: true });
+    assert.equal(drew, false, `a match whose API players include a blocked runner was drawn (${outcome})`);
+    assert.match(outcome, /blocked player/);
+    assert.ok(!existsSync(path.join(dir, NEW_DIR)), "no new folder started");
   }
+  console.log("OK 10: the match's own API players block a re-render of a folder that names nobody");
 
   // --- 11 (job side). One re-render per match at a time; finished or failed, it lets go -------
   {

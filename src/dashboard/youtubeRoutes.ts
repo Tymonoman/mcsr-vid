@@ -27,8 +27,8 @@ import { abTestKey, readManifest, variantFellBack } from "../thumbnails/thumbnai
 import {
   applyMetadata,
   commentThreads,
+  impressionsSince,
   isConfigured,
-  latestImpressions,
   replyToComment,
   videoStats,
   type ImpressionsRow,
@@ -430,6 +430,13 @@ export function totalReach(rows: ImpressionsRow[]): { impressions: number; weigh
 }
 
 /**
+ * Every daily reach report the Reporting job still holds, for the callers to sum per video: the
+ * job writes one CSV a day, so the newest alone is one day's sample — the flaw that kept flipping
+ * x1's interim verdict, fixed in the evaluator on 14 Oct 2026 and here on 15 Oct.
+ */
+const everyReport = (): Promise<ImpressionsRow[]> => impressionsSince(config.youtubeReportingJobId, "1970-01-01");
+
+/**
  * One video's impressions and click-through, or null.
  *
  * Best-effort: the audit is more useful knowing the video underperformed, but a Reporting job
@@ -437,7 +444,7 @@ export function totalReach(rows: ImpressionsRow[]): { impressions: number; weigh
  */
 async function reachFor(videoId: string): Promise<{ impressions: number; ctr: number } | null> {
   try {
-    const rows = (await latestImpressions(config.youtubeReportingJobId)).filter((r) => r.videoId === videoId);
+    const rows = (await everyReport()).filter((r) => r.videoId === videoId);
     if (rows.length === 0) return null;
     const { impressions, weightedCtr } = totalReach(rows);
     return { impressions, ctr: impressions > 0 ? weightedCtr / impressions : 0 };
@@ -598,7 +605,7 @@ async function abTestPayload() {
   let impressions: ImpressionsRow[] = [];
   let impressionsError: string | null = null;
   try {
-    impressions = await latestImpressions(config.youtubeReportingJobId);
+    impressions = await everyReport();
   } catch (err) {
     impressionsError = describeError(err);
   }
