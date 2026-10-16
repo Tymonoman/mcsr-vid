@@ -233,7 +233,8 @@ views brought 0 subscribers.
   "chokes", "finishes first", "seals it"), not every paraphrase ("gets there first", "never catches
   up" pass), so the operator's Save is the real gate. Its seed/rank/elo check is a pattern list
   (`HOOK_SEED_RANK_ELO`: #N, Nth seed, top seed, top N, elo, rank N, no./number N, lcq, two 3–4
-  digit figures, a lone 1000–3999 not followed by ms) and catches the usual phrasings, not every
+  digit figures, a lone 1000–3999 not followed by ms, a 3–4 digit figure with
+  points/pts/rated) and catches the usual phrasings, not every
   one.
 - **Never a nickname, label or epithet for a runner, "vs" or not** (`hookLabelProblem`,
   `src/pipeline/hooks.ts`; `hookProblem`'s `players` argument, `src/shorts/videoPick.ts`; `withHook`'s,
@@ -475,7 +476,10 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   (`src/telegram/worth.ts`), never uploaded, long-form or Short, one clear line like `hookRefusal`
   (`src/youtube/youtubeUpload.ts`), never gets its hooks saved so its chain never starts
   (`src/dashboard/shortFlow.ts`), never rendered by `npm run short` even run by hand
-  (`src/shorts/generateShort.ts`), and never a style example in the pick prompt's past hooks
+  (`src/shorts/generateShort.ts`), never picked — `pickShortMoment` throws `BlockedRefusal` on
+  any game's API pair or `blockedOnDisk` before the proxy, /watch or the model sees a frame, and
+  `npm run pick -- all` skips it (15 Oct 2026; until then its footage went to Groq/Gemini) — and
+  never a style example in the pick prompt's past hooks
   (`pastTitleHooks`, `src/shorts/videoPick.ts`). `finishOnYouTube` carries the same refusal
   (no playlist, thumbnail, comment or tag write; a still-pending step's note says why, already-done
   steps are left alone and nothing is persisted, so unblocking needs no repair) to every one of its

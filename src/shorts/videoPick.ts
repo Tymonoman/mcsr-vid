@@ -52,7 +52,6 @@ import {
 import { ANCHOR_SEC } from "../pipeline/kdenliveProject.js";
 import { buildTitle, SEPARATOR } from "../pipeline/title.js";
 import { computeMetrics, deathKind, phaseAt } from "../pipeline/matchScore.js";
-import { eloAtMatchStart } from "../pipeline/overlayProps.js";
 import { playoffContextFor, playoffSeriesTail, playoffTitleTail } from "../playoffs/playoffs.js";
 import {
   gameMatchStarts,
@@ -407,8 +406,10 @@ function gameFacts(span: GameSpan, series: boolean) {
   });
   return {
     ...(series ? { game: span.gameNo, gameMatchId: m.id } : {}),
-    left: { nickname: l.nickname, elo: eloAtMatchStart(m, l.uuid, null) || null },
-    right: { nickname: r.nickname, elo: eloAtMatchStart(m, r.uuid, null) || null },
+    // No elo (15 Oct 2026): nothing here reads it, a hook may not carry one, and a number handed
+    // over is a number the model can put in a hook that hookProblem's word list misses.
+    left: { nickname: l.nickname },
+    right: { nickname: r.nickname },
     runLength: clock(span.runSec),
     splits: rows.map((row) => ({
       split: row.split,
@@ -525,7 +526,14 @@ export function pastTitleHooks(): PastHook[] {
     try {
       const [hook = "", pair = ""] = readFileSync(file, "utf8").split("\n")[0]!.split(SEPARATOR);
       const h = hook.trim();
-      if (/^playoffs$/i.test(h) || h.includes("<") || / vs /i.test(h) || hookProblem(h) !== null) continue;
+      // "v", "v." and "versus" count as "vs" (14 Oct 2026), the split hookLabelProblem uses.
+      if (
+        /^playoffs$/i.test(h) ||
+        h.includes("<") ||
+        /\s(?:vs\.?|v\.?|versus)\s/i.test(h) ||
+        hookProblem(h) !== null
+      )
+        continue;
       // Never a blocked player's match, however it made it onto the channel before they were
       // blocked: not even as someone else's unnamed style example (config.blockedPlayers). The
       // shared disk check too (clips, chats, a titleNames spelling), and an edited "VS"/"vs." pair.
@@ -1006,6 +1014,9 @@ async function writeJsonAtomic(file: string, value: unknown): Promise<void> {
   await rename(part, file);
 }
 
+/** A blocked player's match (config.blockedPlayers): no pick, no model, no heuristic. */
+export class BlockedRefusal extends Error {}
+
 export interface PickOptions {
   /** Ask the model even when a pick newer than the video exists. */
   force?: boolean;
@@ -1039,7 +1050,7 @@ const apiDown = (err: unknown): boolean =>
 
 /**
  * The Short's window for a match — for a series, called with game 1's id. Never throws except
- * on abort and a dry run's refusal: every failure is a heuristic pick plus
+ * on abort, a dry run's refusal and a blocked player (`BlockedRefusal`): every failure is a heuristic pick plus
  * `short-<id>.pick-error.json` saying why, and every step is a line of `short-<id>.log.jsonl`.
  */
 export async function pickShortMoment(matchId: number, opts: PickOptions = {}): Promise<ShortPick> {
@@ -1075,6 +1086,13 @@ export async function pickShortMoment(matchId: number, opts: PickOptions = {}): 
       }
     }
     const spans = await spansOf(matchId, source?.games ?? null);
+    // Before the proxy, /watch (Groq) or the model (Gemini) sees a frame: a runner who withdrew
+    // permission for their footage is not sent to a third party, and gets no hooks to save. The
+    // stale error file goes too, so the daily heuristic retry (shortTick) stops coming back.
+    if (blockedOnDisk(dir) || spans.some((s) => blockedIn(s.match.players.map((p) => p.nickname)))) {
+      if (write) await rm(errorFile, { force: true });
+      throw new BlockedRefusal(`match ${matchId} has a blocked player — no pick is made`);
+    }
     let failure: string;
     if (opts.fallback) failure = opts.fallback;
     else if (!source)
@@ -1133,7 +1151,7 @@ export async function pickShortMoment(matchId: number, opts: PickOptions = {}): 
     note(`picked by the heuristic: ${windowText(pick, matchId)}`);
     return pick;
   } catch (err) {
-    if (opts.signal?.aborted || err instanceof DryRunRefusal) throw err;
+    if (opts.signal?.aborted || err instanceof DryRunRefusal || err instanceof BlockedRefusal) throw err;
     // Nothing to stand on — the match itself could not be read. Say so, and write no pick: a
     // made-up window must not wait for a hook as if it were one.
     const text = describeError(err);
