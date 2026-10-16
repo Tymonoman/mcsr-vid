@@ -375,6 +375,22 @@ assert.ok(tagsFor(match({ seedType: "VILLAGE", bastionType: "BRIDGE" })).join(",
   // copyVariety on.
   const zeroId = [...Array(5000).keys()].find((id) => variantIndex(id, 0, CLOSER_VARIANTS.length) === 0)!;
   assert.equal(closerFor(zeroId, true), CLOSER_VARIANTS[0]);
+
+  // Across real-range ids the three pools (closer 0, subscribe 1, the pinned comment's sync
+  // sentence 2) pick independently: XOR-ing the salt in before the multiply left closer and sync
+  // on the same index 90% of the time and 88% of ids on 4 of the 64 triples (15 Oct 2026).
+  const N = 20_000;
+  const triples = new Map<string, number>();
+  let closerIsSync = 0;
+  for (let id = 14_000_000; id < 14_000_000 + N; id++) {
+    const [c, s, y] = [0, 1, 2].map((salt) => variantIndex(id, salt, 4));
+    triples.set(`${c}${s}${y}`, (triples.get(`${c}${s}${y}`) ?? 0) + 1);
+    if (c === y) closerIsSync++;
+  }
+  assert.equal(triples.size, 64, `every (closer, subscribe, sync) triple occurs: ${triples.size}`);
+  assert.ok(Math.max(...triples.values()) / N < 0.03, "no triple is a fixed profile");
+  assert.ok(closerIsSync / N < 0.3, `closer and sync sentence agree ${((100 * closerIsSync) / N).toFixed(1)}%`);
+  console.log("OK: copyVariety pools pick independently");
 }
 
 // buildSeriesDescription (7 Oct 2026): each game's own split/Result chapters follow its header,

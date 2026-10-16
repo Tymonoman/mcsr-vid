@@ -198,10 +198,12 @@ assert.ok(
 assert.ok(!/won|winner|sweep/i.test(desc));
 
 // copyVariety: off (above, `desc`/`desc9` never set it) is byte for byte today's closer and
-// subscribe line; on picks game 1's own variant.
+// subscribe line; on picks game 1's own variant. Game 1's id here is one whose two picks are both
+// non-canonical (101's closer is index 0 since variantIndex's 15 Oct 2026 remix).
 {
-  const closerIdx = variantIndex(101, 0, CLOSER_VARIANTS.length);
-  const subscribeIdx = variantIndex(101, 1, SUBSCRIBE_LINE_VARIANTS.length);
+  const g1Id = 6;
+  const closerIdx = variantIndex(g1Id, 0, CLOSER_VARIANTS.length);
+  const subscribeIdx = variantIndex(g1Id, 1, SUBSCRIBE_LINE_VARIANTS.length);
   assert.notEqual(closerIdx, 0, "the fixture must exercise a non-canonical closer variant");
   assert.notEqual(subscribeIdx, 0, "the fixture must exercise a non-canonical subscribe variant");
   const varied = buildSeriesDescription({
@@ -212,7 +214,7 @@ assert.ok(!/won|winner|sweep/i.test(desc));
     right: { nickname: "lauveer", label: "LCQ", seasonEloRate: 2137 },
     games: [],
     bracketUrl: "https://magmamcsr.com/events/playoffs/s11/bracket",
-    matchId: 101,
+    matchId: g1Id,
     copyVariety: true,
   });
   assert.equal(varied.split("\n\n")[1], SUBSCRIBE_LINE_VARIANTS[subscribeIdx]);

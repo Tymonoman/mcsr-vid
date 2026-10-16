@@ -146,17 +146,17 @@ export const SUBSCRIBE_LINE = SUBSCRIBE_LINE_VARIANTS[0]!;
  * fixed per pool (`SALT_CLOSER`/`SALT_SUBSCRIBE` here, a sync-sentence salt in youtubeStore.ts).
  * Plain `matchId % length` made the closer, the subscribe line and the pinned comment's sync
  * sentence move in lockstep — always the same one of only 4 fixed profiles, since all three pools
- * are keyed off the identical `matchId % 4` (review finding, 7 Oct 2026). Multiplying first
- * spreads the match id's bits before the salt and the modulus narrow it back down, so two pools
- * salted differently land on different indices for most ids instead of a fixed offset of each
- * other.
+ * are keyed off the identical `matchId % 4` (review finding, 7 Oct 2026). The salt is mixed in
+ * after the id is spread, then multiplied again: XOR-ing a small salt into the id first only
+ * flipped its low bits, which left the pools 90% in step (15 Oct 2026). Now each pool's index is
+ * independent of the others' — all 64 (closer, subscribe, sync) triples about equally likely.
  */
 export function variantIndex(matchId: number, salt: number, length: number): number {
-  let h = (matchId ^ salt) >>> 0;
-  h = Math.imul(h, 2654435761) >>> 0;
+  let h = Math.imul(matchId >>> 0, 2654435761) >>> 0;
+  h = Math.imul((h ^ Math.imul(salt + 1, 0x85ebca6b)) >>> 0, 0xc2b2ae35) >>> 0;
   // `^` converts both operands through ToInt32, so a value with the top bit set would come out
   // negative without this final `>>> 0`, and `% length` would stay negative too.
-  h = (h ^ (h >>> 15)) >>> 0;
+  h = (h ^ (h >>> 16)) >>> 0;
   return h % length;
 }
 

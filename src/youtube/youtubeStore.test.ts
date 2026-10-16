@@ -481,11 +481,11 @@ const hookTitle = (hook: string, pair: string) => `${hook} | ${pair} | ${TAIL}`;
 // phrasings by match id, and a repeated upload-text computation (the kit, a retry, the adopt
 // route, all of which call uploadTextFor again) must not grow a second copy of either line.
 {
-  // id 40's closer and subscribe-line indices differ (the independence this fix adds) and both
+  // id 21's closer and subscribe-line indices differ (the independence this fix adds) and both
   // are non-canonical, so the fixture below exercises a distinct variant of each pool, not one
   // shared index (review finding, 7 Oct 2026: both pools used to be keyed off the identical
   // `matchId % 4`).
-  const matchId = 40;
+  const matchId = 21; // re-picked from 40 when variantIndex changed (15 Oct 2026)
   const closerIdx = variantIndex(matchId, 0, CLOSER_VARIANTS.length);
   const subscribeIdx = variantIndex(matchId, 1, SUBSCRIBE_LINE_VARIANTS.length);
   assert.notEqual(closerIdx, 0, "the fixture must exercise a non-canonical closer variant");
@@ -504,21 +504,21 @@ const hookTitle = (hook: string, pair: string) => `${hook} | ${pair} | ${TAIL}`;
 
   config.copyVariety = true;
   try {
-    const text40 = (await uploadTextFor(matchId, "video")).description;
-    assert.ok(text40.includes(CLOSER_VARIANTS[closerIdx]!), text40);
-    assert.ok(!text40.includes(CLOSER), "replaced by this match's own variant, not the canonical one");
-    assert.ok(text40.includes(SUBSCRIBE_LINE_VARIANTS[subscribeIdx]!), text40);
-    assert.ok(!text40.includes(SUBSCRIBE_LINE));
+    const textV = (await uploadTextFor(matchId, "video")).description;
+    assert.ok(textV.includes(CLOSER_VARIANTS[closerIdx]!), textV);
+    assert.ok(!textV.includes(CLOSER), "replaced by this match's own variant, not the canonical one");
+    assert.ok(textV.includes(SUBSCRIBE_LINE_VARIANTS[subscribeIdx]!), textV);
+    assert.ok(!textV.includes(SUBSCRIBE_LINE));
     // Exactly one of each paragraph — not the variant plus a second, canonical copy.
-    assert.equal(text40.split(CLOSER_VARIANTS[closerIdx]!).length, 2);
-    assert.equal(text40.split(SUBSCRIBE_LINE_VARIANTS[subscribeIdx]!).length, 2);
+    assert.equal(textV.split(CLOSER_VARIANTS[closerIdx]!).length, 2);
+    assert.equal(textV.split(SUBSCRIBE_LINE_VARIANTS[subscribeIdx]!).length, 2);
 
     // Computing the upload text again (every retry and every kit page view does) must be a
     // no-op: before the fix, the subscribe-line check only ever looked for index 0, so a
     // description already carrying a different variant read as "missing it" and gained a
     // second copy on every single call.
     const again = (await uploadTextFor(matchId, "video")).description;
-    assert.equal(again, text40, "a second computation changes nothing");
+    assert.equal(again, textV, "a second computation changes nothing");
     assert.equal(again.split(SUBSCRIBE_LINE_VARIANTS[subscribeIdx]!).length, 2, "still exactly one copy");
   } finally {
     config.copyVariety = false;
