@@ -296,7 +296,8 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   (`src/dashboard/repoHead.ts`) and calls `process.exit(0)`; tini's `restart: unless-stopped`
   brings the same, now-updated bind mount back up. A failed boot check disarms (no automatic
   retry) and keeps its error on the state until a fresh POST or a DELETE; an arm that never goes
-  idle for 6 h gives up on its own. The nightly strip shows one small, non-`.bad` line while
+  idle for 6 h gives up on its own (one holding a boot-check error keeps it past the 6 h, so the
+  07:00 report still shows an evening arm that never landed). The nightly strip shows one small, non-`.bad` line while
   armed.
   **Review fixes, 8 Oct 2026**: `idle()` also reads `nightly.ts`'s own `nightlyChainRunning()` —
   between a chained render's job settling and the next one's `startJob` (`nightlyMaxRenders` > 1),
@@ -1103,7 +1104,8 @@ they differ (`code: { boot, now }` from `src/dashboard/repoHead.ts`). Client cha
   with no blocked player is checked for both players' Twitch VODs through the pipeline's own
   discovery (`withDiscoveredVods`, the same call `nightly.ts`'s `playoffVodsReady` already makes
   for a playoff candidate) — found, it goes to the **front** of tonight's nightly queue (at most
-  one creator match a night; the block list still wins over it, same as every other queue entry);
+  one creator match a night, keyed on the next nightly run's UTC date (`queuedOn`), so 23:50 and
+  00:05 share the 03:00 run; the block list still wins over it, same as every other queue entry);
   not found, it is recorded as "no Twitch VOD" and left unqueued (a creator who streams on
   YouTube rather than Twitch never queues this way). Every outcome is resolved once, ever, into
   `<mediaDir>/.creator-watch.json` (`{ checked: {nick: iso}, hits: [{matchId, nick, players, at,
@@ -1991,6 +1993,11 @@ read-only PAT, an expiring OAuth token — fix that first. `bash scripts/preflig
   (both POVs at 9.6 s, above the YouTube panel) is the look that catches the rest. "Save and
   re-export" presses the Final video panel's encode button, which an exported match now also has
   ("Re-encode MP4") — for months it did not, so the button saved and encoded nothing.
+  **Review fixes, 15 Oct 2026**: the PUT answers 409 while that match's encode runs (export:fast
+  reads sync.json at its start and renames its output at its end, so a save in between read as
+  fresh to `exportStale`); and with the MCSR lookup failed the GET, the frame and the PUT answer
+  503, since the fallback's alphabetical clip order would show and save each offset on the
+  other player's clip (`sync.left` is `match.players[0]`).
 - **A Twitch archive outlives the stream by 14 days for most players** (60 for partners), and the
   chat goes with it. `withDiscoveredVods` writes what it finds to `<matchDir>/vods.json` and reads
   it back first, so a clip on disk stays renderable after the archive is gone — before 21 Sept
