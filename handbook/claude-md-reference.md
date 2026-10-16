@@ -17,6 +17,18 @@ what an agent cannot derive from the code; the rest is in the files it names.
   project's MLT mix stays centred, and the Short (stacked top/bottom) lowers the POV the moment is not about by 12 dB instead (`focus`, 23 Sept 2026).
 - Nothing names the winner: no result line in the description, no winner in a hook or on a
   thumbnail. The upset hook is a question.
+  A statement naming one of the match's own runners (nickname or `titleNames` spelling, whole
+  word) beside an endgame cue (the End, end fight, dragon, finish, final split, "to win", sub-N,
+  record/PB/WR, "on pace", seal, clinch, closing it out, zero/one cycle) gives it away too
+  (`ENDGAME_CUE`, `spoilsTheResult`'s `players`, which `hookProblem` passes; 15 Oct 2026: the
+  pick's "Infume on sub-8 pace at the End" passed every check and auto-saved as 13140492's Short
+  hook, Infume won). Naming nobody ("A SUB-8 RACE TO THE END") or a leader mid-race ("INFUME AHEAD
+  AT THE BASTION") passes, and so does a question ("Can lowk3y_ finish before ulsahinn?",
+  14035423). Over every hook on disk that day it newly refused six: four named the eventual
+  winner at the End, two named the loser at the dragon (same shape, kept). `typedSpoiler` (the
+  Title & description fold) has no players and does not run it. `npm run short:hand` rewrites a
+  saved `short-<id>.hook.txt` with its own hook in hand mode only: a new file would mark the hooks
+  saved behind the operator, and outside hand mode a changed hook re-cuts over the hand mp4.
 - **The YouTube API compliance audit cleared on 15 Sept 2026** ("completed your review and don't
   require any further actions"; submitted 7 Sept, round-2 recording 14 Sept — the reply texts are
   `handbook/api-review/`). `videos.insert` is allowed; `youtubeUploadEnabled` is true on

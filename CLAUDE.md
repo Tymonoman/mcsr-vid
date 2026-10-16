@@ -14,7 +14,7 @@ thumbnails and a Short, published to **MCSR Replayoffs**.
 - Each POV's audio leans toward its side (`povAudioPan`, default 0.7) in `export:fast` only; the
   Kdenlive MLT mix stays centred. The Short lowers the off-focus POV 12dB instead (`focus`).
 - **Nothing names the winner**: no result line in descriptions, no winner in a hook or thumbnail.
-  The upset hook is a question.
+  The upset hook is a question. A runner named at the End spoils too.
 - **Never a runner nickname, label or epithet, "vs" or not** (`hookLabelProblem`,
   `src/pipeline/hooks.ts`; `hookProblem`'s `players` arg, `src/shorts/videoPick.ts`; `withHook`,
   `src/pipeline/title.ts`). A word on the short denied list (`HOOK_DENIED_LABELS`, deliberately

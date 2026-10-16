@@ -827,14 +827,6 @@ async function writeHooks(
   if (f.short && (noShort || (f.shortHook !== null && shortHook !== f.shortHook)))
     return { status: 409, error: LOCKED("Short", f.short.videoId) };
 
-  // Spoilers: becomes a warning, save proceeds.
-  const spoilers = [f.video ? "" : titleHook, f.short ? "" : (shortHook ?? "")].filter(
-    (h) => h !== "" && spoilsTheResult(h),
-  );
-  for (const s of new Set(spoilers)) {
-    saveWarnings.push(`"${s}" may give the result away — saved anyway`);
-  }
-
   let match: MatchInfo;
   try {
     match = await getMatch(matchId);
@@ -851,6 +843,14 @@ async function writeHooks(
   // The API's pair, and the match's own files (POV clips, chats, title — a renamed runner).
   if (blockedIn([left.nickname, right.nickname]) || blockedOnDisk(dir))
     return { status: 403, error: `match ${matchId} has a blocked player — hooks cannot be saved for it` };
+
+  // Spoilers: becomes a warning, save proceeds. After the match read: a runner named at the End is one.
+  const spoilers = [f.video ? "" : titleHook, f.short ? "" : (shortHook ?? "")].filter(
+    (h) => h !== "" && spoilsTheResult(h, match.players),
+  );
+  for (const s of new Set(spoilers)) {
+    saveWarnings.push(`"${s}" may give the result away — saved anyway`);
+  }
 
   // A nickname, label or epithet for a runner: a warning, never a refusal — "it should just be a
   // suggestion" is the operator's rule for every check here, and both of these went out this way

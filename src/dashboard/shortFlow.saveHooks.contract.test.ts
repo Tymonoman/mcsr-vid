@@ -113,6 +113,13 @@ try {
     JSON.stringify(spoiled),
   );
 
+  // A runner named at the End (15 Oct 2026, 13140492's auto-saved Short hook): typed, it still
+  // saves, with the spoiler warning.
+  const atTheEnd = `${left.toUpperCase()} ON SUB-8 PACE AT THE END`;
+  const ended = await save("58 MILLISECONDS", atTheEnd);
+  assert.ok(ended.includes(`"${atTheEnd}" may give the result away — saved anyway`), JSON.stringify(ended));
+  console.log("OK: a typed hook naming a runner at the End saves, with a warning");
+
   // P7/P6: a seed, rank or elo saves (strict: never a refusal) ...
   const seeded = await save("#1 SEED SHOWDOWN", "THE 2410 ELO DUEL");
   // ... and, like every other check on a typed hook, says so beside the field.

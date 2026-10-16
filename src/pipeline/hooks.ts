@@ -325,6 +325,10 @@ export function hookFacts(input: HookInput) {
  */
 export const PACE_TO_WIN = /^\s*(?:a\s+)?sub-?\d+(?:\.\d+)?\s+to win(?:\s+it)?[ .!?]*(?=\||$)/i;
 
+/** The End, the dragon, the finish, a finishing pace: said of a named runner, the result. */
+const ENDGAME_CUE =
+  /\b(?:the end|end ?fight|dragon|finish(?:es|ed|ing)?|final split|to win|sub-?\d+|record|pb|wr|on pace|seal(?:s|ed|ing)?|clinch(?:es|ed|ing)?|clos(?:e|es|ing) it out|(?:zero|one)[- ]?cycles?)\b/i;
+
 /**
  * Whether a line gives the result away.
  *
@@ -335,10 +339,25 @@ export const PACE_TO_WIN = /^\s*(?:a\s+)?sub-?\d+(?:\.\d+)?\s+to win(?:\s+it)?[ 
  * "A SUB-8 TO WIN IT" says what winning takes, not who did (`PACE_TO_WIN` is stripped before the
  * test — not every "to win", which would also strip the only spoiler word out of a hook naming a
  * real player, 6 Oct 2026).
+ *
+ * With `players`, one of the match's own runners (nickname or `titleNames` spelling, whole word)
+ * named beside an `ENDGAME_CUE` spoils too: whoever is at the End on sub-8 pace is the winner to
+ * anyone who knows MCSR (15 Oct 2026: the pick's "Infume on sub-8 pace at the End" passed every
+ * check and auto-saved as 13140492's Short hook; Infume won). Still not a question: "Can lowk3y_
+ * finish before ulsahinn?" (14035423) says nothing of who did.
  */
-export function spoilsTheResult(text: string): boolean {
+export function spoilsTheResult(text: string, players?: readonly { nickname: string }[]): boolean {
   const line = text.trim().replace(PACE_TO_WIN, "");
   if (line.endsWith("?")) return false;
+  const names = (players ?? [])
+    .flatMap((p) => [p.nickname, titleName(p.nickname)])
+    .filter((n) => n !== "")
+    .map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  if (names.length > 0) {
+    const all = text.trim();
+    const rest = all.replace(new RegExp(`(?<!\\w)(?:${names.join("|")})(?!\\w)`, "gi"), "");
+    if (rest.length < all.length && ENDGAME_CUE.test(rest)) return true;
+  }
   // Placements are results too: a playoff placing in a ranked video's title ("WINNER vs 3rd
   // PLACE", 23 Sept 2026) told the Season 11 bracket's outcome while its series were still
   // going out from the Round of 16. A sweep is a series result: "PLAYOFFS | SWEPT vs TAS" on a
@@ -388,7 +407,7 @@ export async function suggestHooksExternally(input: HookInput): Promise<string[]
       // Tolerate a numbered or bulleted list, which is what a model returns unless told twice.
       .map((line) => line.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, ""))
       .filter((line) => line.length >= MIN_USEFUL_CHARS && line.length <= input.maxChars)
-      .filter((line) => !spoilsTheResult(line))
+      .filter((line) => !spoilsTheResult(line, [input.userLeft, input.userRight]))
       .filter((line) => !HOOK_SEED_RANK_ELO.test(line))
       .filter((line) => hookLabelProblem(line, [input.userLeft, input.userRight]) === null);
     return lines.length > 0 ? lines.slice(0, 5) : null;
