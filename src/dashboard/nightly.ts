@@ -44,7 +44,7 @@ import {
 } from "./matchShelf.js";
 import { refreshPairPosts } from "./pairPosts.js";
 import { orderForDisplay } from "./suggestPresent.js";
-import { playoffBoard, type PlayoffBoard } from "../playoffs/playoffs.js";
+import { dnfRefusal, matchIsDnf, playoffBoard, type PlayoffBoard } from "../playoffs/playoffs.js";
 import { blockedOnDisk, listProcessedMatchIds } from "./matchStatus.js";
 import { shortRunning } from "./shortsRoutes.js";
 import { anyThumbnailRunning, thumbnailRunning } from "../thumbnails/rerender.js";
@@ -194,7 +194,8 @@ interface NightlyPickContext {
  */
 /** What a pick needs to carry: a Suggestion, or a playoff game dressed as one. */
 export interface NightlyPick {
-  metrics: { matchId: number; players: [string, string] };
+  /** `dnf` as its source read it: a suggestion's own scoring, a queued id's `matchIsDnf`. */
+  metrics: { matchId: number; players: [string, string]; dnf?: boolean };
   bucket: string;
 }
 
@@ -344,12 +345,26 @@ export function nightlyEligible(
   // Checked before the queue, not after: a blocked match is never rendered, however it got here —
   // the operator's own queue does not override this the way it overrides nightlySkip and the
   // known-player gate (config.blockedPlayers). The directory too: a prefetched clip or chat names a
-  // runner the way they were called before a rename (`blockedOnDisk`).
+  // runner the way they were called before a rename (`blockedOnDisk`). Nor is a DNF (`finishedPick`).
   return async (pick) =>
     !blockedIn(pick.metrics.players) &&
     !blockedOnDisk(matchDir(pick.metrics.matchId)) &&
+    finishedPick(pick) &&
     (await checkVods(pick)) &&
     (queued.has(pick.metrics.matchId) || isKnownPick(pick));
+}
+
+/**
+ * Not a DNF (nobody finished), as the pick's source read it — no API call here. The ranked list is
+ * DNF-free already (suggest.ts); the case is a queued id (`resolveQueuedPick`). Logged, queued or
+ * not; the queue entry stays, the operator's to remove (the morning report's Needs-you names it).
+ * A playoff pick carries no flag: a playoff game is never a DNF (`matchIsDnf`), posted as is.
+ */
+export function finishedPick(pick: NightlyPick): boolean {
+  if (pick.metrics.dnf !== true) return true;
+  const id = pick.metrics.matchId;
+  console.error(`nightly: #${id} skipped — ${dnfRefusal(id, "never rendered, queued or not")}`);
+  return false;
 }
 
 /** A queued id from the scan's own pool, or null — no API call (the preview's whole resolver). */
@@ -374,7 +389,10 @@ export async function resolveQueuedPick(id: number): Promise<NightlyPick | null>
     const match = await getMatch(id);
     const players = computeMetrics(match).players;
     if (blockedIn(players)) return null;
-    return { metrics: { matchId: id, players }, bucket: "queued" };
+    // Resolved rather than dropped, so `finishedPick` says why it is skipped. A pooled DNF never
+    // reaches here as one (`pooledMatchPlayers` leaves it out).
+    const dnf = await matchIsDnf(id, async () => match);
+    return { metrics: { matchId: id, players, ...(dnf ? { dnf } : {}) }, bucket: "queued" };
   } catch (err) {
     console.error(`nightly: queued #${id} could not be read — ${describeError(err)}`);
     return null;

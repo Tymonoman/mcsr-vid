@@ -11,7 +11,7 @@ import { blockedIn, config } from "../config.js";
 import { readDrawLearned, type DrawLearned } from "./drawLearn.js";
 import { recentPairPostsSnapshot, type PairPost } from "./pairPosts.js";
 import { rivalMatchFor, rivalPostsSnapshot, type RivalPost } from "./rivalPosts.js";
-import type { SplitGap } from "../pipeline/matchScore.js";
+import { metricsDnf, type SplitGap } from "../pipeline/matchScore.js";
 import {
   audienceFor,
   recordPaceFactor,
@@ -158,7 +158,10 @@ export function presentSuggestions(
 ): SuggestionCard[] {
   // Dropped outright, not just reordered: a stale cached list scanned before a player was
   // blocked (config.blockedPlayers) must not show their match until the next rescan catches up.
-  const cards = suggestions.filter((s) => !blockedIn(s.metrics.players)).map((s) => toCard(s, nowMs, rival));
+  // Nor a DNF (`metricsDnf`), whatever list it came in on.
+  const cards = suggestions
+    .filter((s) => !blockedIn(s.metrics.players) && !metricsDnf(s.metrics))
+    .map((s) => toCard(s, nowMs, rival));
   // Follower counts are already on the suggestions themselves (`profiles`, resolved at scan time);
   // no second Twitch lookup here.
   const followersByName = new Map<string, number | null>();

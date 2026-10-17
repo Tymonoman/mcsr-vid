@@ -26,6 +26,7 @@ import {
   playoffsBracketUrl,
 } from "../api/mcsrApi.js";
 import type { FeedMatch, MatchInfo, PlayoffBracket, PlayoffSlot } from "../api/types.js";
+import { isDnf } from "../pipeline/matchScore.js";
 
 export interface PlayoffSeed {
   uuid: string;
@@ -371,6 +372,34 @@ export async function seriesOf(match: MatchInfo | FeedMatch): Promise<PlayoffSer
   if (!seeds) return null;
   return { bracket, slot, seeds, games: await gamesOf(bracket, slot, [match], true) };
 }
+
+/**
+ * Whether a match is a DNF (`isDnf`: nobody finished) that is kept off the channel — the one check
+ * behind every gate: the render routes, `runPipeline`, the nightly, saved hooks (auto-hooks
+ * included), the upload, Adopt, the X post (the operator, 16 Oct 2026: "remember not to post DNF
+ * matches also dont suggest them"). Never a playoff game, single or in a series, forfeited or not
+ * (the same day: "playoffs dont have rules they are always posted as is"): a game of a bracket slot
+ * (`seriesOf`) is exempt; a room reset (`gameBelongs`) is no game and is judged like a ranked match.
+ * Here because the bracket is. One cached MCSR read (a ranked match never reaches the bracket); a
+ * down API refuses nothing, as `matchIsBlocked` (src/dashboard/matchStatus.ts).
+ */
+export async function matchIsDnf(
+  matchId: number,
+  read: (id: number) => Promise<MatchInfo> = getMatch,
+  series: (match: MatchInfo) => Promise<PlayoffSeries | null> = seriesOf,
+): Promise<boolean> {
+  try {
+    const match = await read(matchId);
+    return isDnf(match) && (await series(match)) === null;
+  } catch (err) {
+    console.error(`match ${matchId}: DNF check skipped — ${describeError(err)}`);
+    return false;
+  }
+}
+
+/** The refusal every DNF gate words the same way: "match N is a DNF (nobody finished) — <what>". */
+export const dnfRefusal = (matchId: number, what: string): string =>
+  `match ${matchId} is a DNF (nobody finished) — ${what}`;
 
 /** The same by id, for callers holding only the id. An unreadable match reads as an ordinary one. */
 export const playoffContextForId = (matchId: number): Promise<PlayoffContext | null> =>

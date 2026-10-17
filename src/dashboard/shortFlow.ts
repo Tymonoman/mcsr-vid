@@ -30,7 +30,7 @@ import { exportMatchStartSec } from "../pipeline/exportFast.js";
 import { computeMetrics } from "../pipeline/matchScore.js";
 import { exportStale, readSyncOffsets } from "../pipeline/syncFile.js";
 import { HOOK_PLACEHOLDER, metaPaths, SEPARATOR, withHook } from "../pipeline/title.js";
-import { playoffContextFor } from "../playoffs/playoffs.js";
+import { dnfRefusal, matchIsDnf, playoffContextFor } from "../playoffs/playoffs.js";
 import {
   gameMatchStarts,
   hookFactsMatchId,
@@ -843,6 +843,9 @@ async function writeHooks(
   // The API's pair, and the match's own files (POV clips, chats, title — a renamed runner).
   if (blockedIn([left.nickname, right.nickname]) || blockedOnDisk(dir))
     return { status: 403, error: `match ${matchId} has a blocked player — hooks cannot be saved for it` };
+  // Nor for a DNF, by hand or by auto-hooks: saved hooks start a chain whose end is an upload.
+  if (await matchIsDnf(matchId))
+    return { status: 403, error: dnfRefusal(matchId, "hooks cannot be saved for it") };
 
   // Spoilers: becomes a warning, save proceeds. After the match read: a runner named at the End is one.
   const spoilers = [f.video ? "" : titleHook, f.short ? "" : (shortHook ?? "")].filter(
@@ -1766,6 +1769,8 @@ export async function autoHooksTick(deps: Partial<ChainDeps> = {}, nowMs = Date.
       }
       const [left, right] = match.players;
       if (!left || !right || blockedIn([left.nickname, right.nickname]) || blockedOnDisk(f.dir)) continue;
+      // A DNF gets no hooks (saveHooks refuses one too): skipped as quietly as a blocked match.
+      if (await matchIsDnf(matchId)) continue;
       // A playoff game whose series hasn't joined yet (game 1 before the join, or game 2..n) —
       // same check `shortPlan` makes before it will even queue a pick. Its hooks are the series',
       // saved from game 1 once every game is in; saveHooks would only refuse it with SERIES_GAME,

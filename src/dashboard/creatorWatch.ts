@@ -24,6 +24,7 @@ import { blockedIn, config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { getMatch, getUserMatches } from "../api/mcsrApi.js";
 import type { FeedMatch } from "../api/types.js";
+import { isDnf } from "../pipeline/matchScore.js";
 import { withDiscoveredVods } from "../pipeline/vodDiscovery.js";
 import { hiddenMatchIds, nightlyQueue, setNightlyQueue } from "./matchShelf.js";
 import { listProcessedMatchIds } from "./matchStatus.js";
@@ -132,7 +133,8 @@ export function isWatchCandidate(
     !ctx.processed.has(m.id) &&
     !ctx.hidden.has(m.id) &&
     !ctx.queued.has(m.id) &&
-    !blockedIn(m.players.map((p) => p.nickname))
+    !blockedIn(m.players.map((p) => p.nickname)) &&
+    !isDnf(m)
   );
 }
 

@@ -41,7 +41,7 @@ import { presentSuggestions } from "./suggestPresent.js";
 import { dismiss, restore, snapshot, startScan } from "./suggestScan.js";
 import { cronLine, rsyncPullAllCommand, rsyncPullCommand } from "./publishSet.js";
 import { playerDms } from "./playerDm.js";
-import { playoffBoard } from "../playoffs/playoffs.js";
+import { dnfRefusal, matchIsDnf, playoffBoard } from "../playoffs/playoffs.js";
 import { renderSeries, seriesState, type SeriesRunners } from "../playoffs/series.js";
 import { refreshRivalPostsIfStale, rivalPostsSnapshot, rivalRecentPostFor } from "./rivalPosts.js";
 import { refreshPairPosts } from "./pairPosts.js";
@@ -429,6 +429,10 @@ const server = createServer(async (req, res) => {
       // Cheap next to the render it would otherwise start (config.blockedPlayers).
       if (await matchIsBlocked(parsed)) {
         json(res, 403, { error: `match ${parsed} has a blocked player — it is not rendered` });
+        return;
+      }
+      if (await matchIsDnf(parsed)) {
+        json(res, 403, { error: dnfRefusal(parsed, "it is not rendered") });
         return;
       }
       const job = startJob(parsed);
@@ -867,6 +871,10 @@ const server = createServer(async (req, res) => {
       // The match screen's Render and the card's "Render + Short + MP4" — the same refusal as above.
       if (await matchIsBlocked(matchId)) {
         json(res, 403, { error: `match ${matchId} has a blocked player — it is not rendered` });
+        return;
+      }
+      if (await matchIsDnf(matchId)) {
+        json(res, 403, { error: dnfRefusal(matchId, "it is not rendered") });
         return;
       }
       const job = startJob(matchId);

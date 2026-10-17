@@ -30,7 +30,7 @@ import { buildDescription, buildTags } from "./description.js";
 import { hookSuggestions } from "./hooks.js";
 import { computeMetrics } from "./matchScore.js";
 import { buildTitle, formatTitle, withHook } from "./title.js";
-import { playoffContextFor, playoffTitleTail } from "../playoffs/playoffs.js";
+import { dnfRefusal, matchIsDnf, playoffContextFor, playoffTitleTail } from "../playoffs/playoffs.js";
 import { overlayPaths, readSplitStills, renderOverlay, type SplitStill } from "./overlayRender.js";
 import {
   carriedHookText,
@@ -162,6 +162,8 @@ async function runStages(
   if (blockedIn(fetched.players.map((p) => p.nickname)) || blockedOnDisk(matchDir(matchId))) {
     throw new Error(`match ${matchId} has a blocked player — it is not rendered`);
   }
+  // The same root for a DNF (`matchIsDnf`; a playoff game, forfeited or not, always renders).
+  if (await matchIsDnf(matchId)) throw new Error(dnfRefusal(matchId, "it is not rendered"));
   // Private rooms attach no VOD and ranked matches often only one; the rest are found by time.
   const match = await withDiscoveredVods(fetched);
 

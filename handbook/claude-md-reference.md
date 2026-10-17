@@ -29,6 +29,42 @@ what an agent cannot derive from the code; the rest is in the files it names.
   Title & description fold) has no players and does not run it. `npm run short:hand` rewrites a
   saved `short-<id>.hook.txt` with its own hook in hand mode only: a new file would mark the hooks
   saved behind the operator, and outside hand mode a changed hook re-cuts over the hand mp4.
+- **No DNF match (16 Oct 2026).** The operator: "remember not to post DNF matches also dont
+  suggest them". A DNF is a match nobody finished: `forfeited: true`, no `result.uuid` (no winner),
+  or an empty `completions` list (`isDnf`, src/pipeline/matchScore.ts; judged on what is on record,
+  so a feed entry, which carries no `completions`, is judged on the first two). Not
+  `finishMarginMs === null`: that is a finished race whose loser stopped. **Except playoff games,
+  always posted as is** — the operator, the same day: "playoffs dont have rules they are always
+  posted as is". `matchIsDnf` (src/playoffs/playoffs.ts) exempts any game of a bracket slot
+  (`seriesOf`), single or in a series, forfeited or not; a room reset (`gameBelongs` drops it) is no
+  game and is judged like a ranked match. The block list still applies to playoffs as before.
+  `matchIsDnf` is one cached `getMatch` (a ranked match never reads the bracket) and fails open: a
+  down API or bracket refuses nothing, as `matchIsBlocked`. Every refusal reads `dnfRefusal`'s "match N is a DNF
+  (nobody finished) — …". The gates, mirroring the block list's:
+  - **Suggestions** (`suggest.ts`): `foldMatch` drops a feed or favourite-list entry that is a
+    forfeit or has no winner (no detail fetch); a fetched record with no completion is pooled with
+    `metrics.dnf: true` (so it is not fetched again) and never selectable in any bucket; the fresh
+    cache path and `presentSuggestions` drop one on read however stale. An entry cached before the
+    flag has no `dnf`: `metricsDnf` reads it off no winner, or no dragon on either side (0 of the 500
+    finished matches pooled on 16 Oct read so). `pooledMatchPlayers` leaves a pooled DNF out.
+  - **Playoffs board** (`playoffBoard`): unchanged, every detected game shown, forfeits included.
+  - **Creator watch** (`isWatchCandidate`) and "worth rendering today" (`worth.ts`) skip one.
+  - **Nightly** (`finishedPick`, in `nightlyEligible` after the block check): a pick whose source
+    marked it `dnf` is skipped and logged ("nightly: #N skipped — match N is a DNF …"), queued or
+    not. No API call there: a queued id off the ranked list is marked by `resolveQueuedPick`'s own
+    `matchIsDnf`; the ranked list is DNF-free already; a playoff pick is never one. The queue
+    entry stays; Needs-you names it ("a DNF (nobody finished)
+    in tonight's queue — the nightly skips it", `queuedDnfItems`, facts.ts).
+  - **Render**: `runPipeline` throws right after the match fetch (so batch, the TUI and
+    generate-project too); `POST /api/render` and `/api/render/:id` refuse first, 403. The series
+    route has no DNF gate (a series is playoffs).
+  - **Hooks**: `saveHooks` refuses (by hand or auto-hooks); `autoHooksTick` skips one quietly, as a
+    blocked match.
+  - **Upload** (`startUpload`, long-form and Short): the last refusal before the bytes, not in
+    `hookRefusal`, which decides offline. Adopt refuses one; the X post (`planXPost`) too.
+  - Not gated: `finishOnYouTube`'s retries and Studio work on a video already up (a DNF published
+    before the rule is left alone); `resumeUpload` (a DNF never starts one); `npm run short` /
+    `short:hand` render, but the upload refuses.
 - **The YouTube API compliance audit cleared on 15 Sept 2026** ("completed your review and don't
   require any further actions"; submitted 7 Sept, round-2 recording 14 Sept — the reply texts are
   `handbook/api-review/`). `videos.insert` is allowed; `youtubeUploadEnabled` is true on
