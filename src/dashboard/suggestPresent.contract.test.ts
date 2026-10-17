@@ -94,7 +94,7 @@ const ids = (cards: readonly SuggestionCard[]): number[] => cards.map((c) => c.m
 const present = (
   list: Suggestion[],
   favourites: readonly string[] = DEFAULTS.favouritePlayers,
-  rival = parseRivalFeed(""),
+  rival = parseRivalFeed("", "mcsrmatches"),
 ) => presentSuggestions(list, NOW, rival, favourites, [], DEFAULTS.knownFollowerThreshold, null, null);
 
 try {
@@ -151,15 +151,18 @@ try {
       "<entry><title>Feinberg vs Silverrruns | MCSR Ranked | Minecraft Speedrun</title>" +
         `<published>${new Date(NOW - DAY / 2).toISOString()}</published></entry></feed>`,
     );
-    const rival = parseRivalFeed(feed);
+    const rival = parseRivalFeed(feed, "mcsrmatches");
     const cards = present([posted, smaller, fresh, expiring], DEFAULTS.favouritePlayers, rival);
     assert.deepEqual(
       ids(cards),
       [11, 12, 13, 14],
       "expiring first; the rival-posted pair after every fresh one though it has the biggest audience",
     );
-    assert.equal(cards[3]!.rivalPosted?.title, "Feinberg vs Silverrruns | MCSR Ranked | Minecraft Speedrun");
-    assert.equal(cards[3]!.rivalPosted?.daysAgo, 0);
+    assert.equal(
+      cards[3]!.rivalPosts[0]?.title,
+      "Feinberg vs Silverrruns | MCSR Ranked | Minecraft Speedrun",
+    );
+    assert.match(cards[3]!.rivalPosts[0]?.label ?? "", /^@mcsrmatches posted this match \(/);
     assert.deepEqual(
       ids(present([posted, smaller, fresh, expiring], DEFAULTS.favouritePlayers)),
       [11, 14, 12, 13],

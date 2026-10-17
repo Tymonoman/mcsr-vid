@@ -12,6 +12,8 @@ export interface MatchStatusEntry {
   rightNickname: string;
   /** For the match-page link; null when the API lookup failed. */
   season: number | null;
+  /** When the match was played, epoch seconds; absent when the API lookup failed. */
+  dateSec?: number;
   stages: Record<StageId, boolean>;
   /** Path to the .kdenlive file if it exists, else null. */
   projectPath: string | null;
@@ -116,6 +118,7 @@ export async function matchStatusFor(matchId: number): Promise<MatchStatusEntry>
   let leftNickname = "?";
   let rightNickname = "?";
   let season: number | null = null;
+  let dateSec: number | undefined;
   let vodsDownloaded = false;
   let error: string | null = null;
   try {
@@ -124,6 +127,7 @@ export async function matchStatusFor(matchId: number): Promise<MatchStatusEntry>
     leftNickname = playerLeft?.nickname ?? "?";
     rightNickname = playerRight?.nickname ?? "?";
     season = match.season;
+    dateSec = match.date;
     vodsDownloaded =
       !!playerLeft &&
       !!playerRight &&
@@ -169,6 +173,7 @@ export async function matchStatusFor(matchId: number): Promise<MatchStatusEntry>
     leftNickname,
     rightNickname,
     season,
+    ...(dateSec === undefined ? {} : { dateSec }),
     stages,
     projectPath: hasProject ? path.resolve(projectFilePath) : null,
     error,

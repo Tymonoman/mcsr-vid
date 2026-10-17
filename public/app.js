@@ -6,9 +6,11 @@ let matches = [];
 let selected = null;
 /** The /api/meta answer the match screen was painted from; the NOW group (paintNow) reads it too. */
 let selectedMeta = null;
-// The competitor's handle as the suggestions payload names it; the Rendered rows' state line reads it too.
-let rivalHandle = null;
-const rivalHandleOrDefault = () => rivalHandle ?? "mcsrmatches";
+/** A competitor posted this very match (not just this pair): the one rival line that moves a row or card down. */
+const rivalPostedMatch = (x) => (x.rivalPosts ?? []).some((r) => r.kind === "match");
+/** The server's rival lines (`rivalLine`, src/dashboard/rivalPosts.ts), the rival's own title as the tooltip. */
+const rivalTag = (r, tag) =>
+  `<${tag} class="rival${r.kind === "pair" ? " pair" : ""}" title="${esc(r.title)}">${esc(r.label)}</${tag}>`;
 let stream = null;
 /** The encode progress stream for the selected match; closed when another match is opened. */
 let exportStream = null;
@@ -100,7 +102,9 @@ function orderedMatches() {
             : 2;
   return (showHidden ? matches : matches.filter((m) => !m.hidden))
     .slice()
-    .sort((a, b) => stage(a) - stage(b) || !!a.rivalPosted - !!b.rivalPosted || b.matchId - a.matchId);
+    .sort(
+      (a, b) => stage(a) - stage(b) || rivalPostedMatch(a) - rivalPostedMatch(b) || b.matchId - a.matchId,
+    );
 }
 
 function renderList() {
@@ -133,8 +137,8 @@ function renderList() {
   updateBackLabel();
   // One line naming where the match stands, from the server's plan (shortState + shortDetail).
   const rival = (m) =>
-    m.rivalPosted && m.shortState !== "published"
-      ? ` &middot; <span class="rival" title="${esc(m.rivalPosted.title)}">@${esc(rivalHandleOrDefault())} posted ${m.rivalPosted.daysAgo === 0 ? "today" : `${m.rivalPosted.daysAgo}d ago`}</span>`
+    m.shortState !== "published"
+      ? (m.rivalPosts ?? []).map((r) => ` &middot; ${rivalTag(r, "span")}`).join("")
       : "";
   const state = (m) => {
     if (parked(m)) {
@@ -3101,7 +3105,6 @@ let lastDismissed = null;
 let suggestData = null;
 
 function renderSuggestions(data) {
-  if (data.rivalHandle) rivalHandle = data.rivalHandle;
   suggestData = data;
   const el = $("#suggestions");
   $("#tab-suggestions small").textContent = data.suggestions.length ? String(data.suggestions.length) : "";
@@ -3145,7 +3148,7 @@ function renderSuggestions(data) {
         </div>
         ${s.story ? `<div class="story">${esc(s.story)}</div>` : ""}
         <div class="facts">${esc(s.facts)} &middot; <span class="expiry${s.expiring ? " warn" : ""}">${esc(s.expiryLabel)}</span></div>
-        ${s.rivalPosted ? `<div class="rival" title="${esc(s.rivalPosted.title)}">@${esc(data.rivalHandle ?? "rival")} posted this ${s.rivalPosted.daysAgo === 0 ? "today" : `${s.rivalPosted.daysAgo}d ago`}</div>` : ""}
+        ${(s.rivalPosts ?? []).map((r) => rivalTag(r, "div")).join("")}
         ${splitsChart(s.splits, { left: s.players[0], right: s.players[1], compact: true })}
         <div class="links">
           <a href="${esc(s.matchUrl)}" target="_blank" rel="noopener">match page #${s.matchId}</a>

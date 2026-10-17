@@ -142,6 +142,18 @@ assert.throws(() => validateOverrides({ blockedPlayers: { Aquacorde: true } }), 
 assert.throws(() => validateOverrides({ blockedPlayers: ["Aquacorde", 7] }), /blockedPlayers/);
 assert.throws(() => validateOverrides({ blockedPlayers: ["  "] }), /blockedPlayers/);
 
+// The competitors: a list of handles, [] for none; an older file's single string is still read.
+assert.deepEqual(DEFAULTS.rivalChannelHandle, ["mcsrmatches", "mcsr-vault"]);
+for (const ok of [[], ["mcsrmatches"], ["@mcsr-vault", "mcsrreplay"], "mcsrmatches", ""])
+  assert.doesNotThrow(() => validateOverrides({ rivalChannelHandle: ok }), JSON.stringify(ok));
+for (const bad of [null, ["  "], ["mcsr matches"], ["https://youtube.com/@x"], [7], { mcsrmatches: true }])
+  assert.throws(
+    () => validateOverrides({ rivalChannelHandle: bad }),
+    /rivalChannelHandle/,
+    JSON.stringify(bad),
+  );
+console.log("OK: rivalChannelHandle is a list of handles, or an older file's one string");
+
 // isBlockedPlayer/blockedIn: whole names, any case, read live off config so a Settings save applies
 // at once. Saved and restored so this file leaves the default in place for whatever runs after it.
 {

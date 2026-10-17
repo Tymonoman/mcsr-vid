@@ -563,19 +563,34 @@ failed boot check offers it again. Client changes need only a reload.
   4 Oct 2026 after commenting "do not use my footage again" — the operator's standing rule is that
   a runner's no is a block, same as Aquacorde's. The known bucket (`suggestKnownSlots`, above) is no
   exception: a match is pruned from the pool for being blocked before `tier()` ever sees it.
-- **Rival posts** (`src/dashboard/rivalPosts.ts`): the competitor's (`rivalChannelHandle`, default
-  `mcsrmatches`) last 15 uploads, read since 14 Oct 2026 from its public feed
+- **Rival posts** (`src/dashboard/rivalPosts.ts`): the competitors' (`rivalChannelHandle`, a list
+  since 16 Oct 2026, default `["mcsrmatches", "mcsr-vault"]`; an older file's single string loads as
+  a list of one, `""` as none) last 15 uploads each, read since 14 Oct 2026 from their public feeds
   (`feeds/videos.xml?channel_id=`, the handle resolved once off the public channel page) with no
   token — the API audit told Google the OAuth token reads only our own channel, and the old
-  channels/playlistItems/videos.list read of another channel broke that. Matched to cards by
-  nickname pair and date, the API nickname normalised (lowercase, alphanumerics only); a rival
-  spelling that differs from the API's (it writes "Lowkey" for lowk3y_) does not match, so those
-  posts are not flagged. The feed has no lengths, so the run-length check (a post of the wrong
-  length is another match of the same pair) is idle and two matches of one pair in a night both
-  read as posted. A posted match sorts after the fresh ones, in the nightly's order too. `playersFromTitle`
-  takes the pair right before the MCSR tag, so the rival's hook-less "A vs B | MCSR Ranked" titles
-  and spaced nicknames ("Darvy  x1" is DARVY__X1) parse too — 18 of its 129 titles were missed
-  before 1 Oct 2026.
+  channels/playlistItems/videos.list read of another channel broke that. One feed failing keeps its
+  last answer and never blanks another's; a failure retries in five minutes.
+  **This match or this pair** (the operator, 16 Oct 2026: "add a distinction to the dashboard whether
+  our competitors have posted the same pair or the same match"): every suggestion card and match row
+  shows one line per competitor that posted the pair, `@<handle> posted this match (<date>)` or
+  `@<handle> posted this pair: a different match (<date>)`, the date in Europe/Warsaw, the rival's
+  title as the tooltip. Only "this match" sorts the card after the fresh ones (in the nightly's
+  order too); "this pair" is information. The strongest signal each feed carries decides (read 16
+  Oct 2026): MCSR Replays (@mcsrreplay) links the match page in every description
+  (`mcsrranked.com/stats/<nick>/<id>`), so the id is exact — a post linking another id is the pair
+  only, whatever its date; it is dormant since 18 Apr 2026 and left out of the default. MCSR Matches
+  and MCSR Vault describe nothing match-specific (a PayPal link, hashtags, the players' Twitch
+  channels), so for them it is the pair plus a post within 10 days after the match; the match row
+  reads the match date off the API (`MatchStatusEntry.dateSec`), and with the API down falls back
+  to "a post of the pair in the last two weeks". Pairs are matched by nickname, normalised
+  (lowercase, alphanumerics only, a bracketed broadcast name dropped: Vault's "Pinne (Skycrab)" is
+  Pinne); a rival spelling that differs from the API's (Matches writes "Lowkey" for lowk3y_) does
+  not match, so those posts are not flagged. The feeds have no lengths, so the run-length check (a
+  post of the wrong length is another match of the same pair) is idle and two matches of one pair in
+  a night both read as this match on Matches and Vault. `playersFromTitle` takes the pair right
+  before the MCSR tag, so the hook-less "A vs B | MCSR Ranked" titles, Vault's "HOOK | A VS B | MCSR
+  Ranked 1v1" and spaced nicknames ("Darvy  x1" is DARVY__X1) parse too — 18 of Matches' 129 titles
+  were missed before 1 Oct 2026.
 - **Hook chips** (`src/pipeline/hooks.ts`) lead with the match's stake — the margin, a lead change, a
   death — and put the nickname and "Rematch: X leads N-M" chips after them (1 Oct 2026: the early
   9.36%-vs-2.25% CTR reading was 4,590 impressions; at 126,745 it was 2.77% against 2.59%, a wash, and

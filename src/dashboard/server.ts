@@ -43,7 +43,7 @@ import { cronLine, rsyncPullAllCommand, rsyncPullCommand } from "./publishSet.js
 import { playerDms } from "./playerDm.js";
 import { dnfRefusal, matchIsDnf, playoffBoard } from "../playoffs/playoffs.js";
 import { renderSeries, seriesState, type SeriesRunners } from "../playoffs/series.js";
-import { refreshRivalPostsIfStale, rivalPostsSnapshot, rivalRecentPostFor } from "./rivalPosts.js";
+import { refreshRivalPostsIfStale, rivalLine, rivalPostsSnapshot, rivalSightingsFor } from "./rivalPosts.js";
 import { refreshPairPosts } from "./pairPosts.js";
 import { drawLearnTick } from "./drawLearn.js";
 import { chooseVariant, readManifest } from "../thumbnails/thumbnailVariants.js";
@@ -183,7 +183,6 @@ function suggestionsPayload() {
   return {
     suggestions,
     nightlySkip: nightlySkip(),
-    rivalHandle: config.rivalChannelHandle || null,
     // For the rescan link's tooltip: how often new matches arrive on their own.
     ttlMin: config.suggestCacheTtlMin,
     scanning: state.scanning,
@@ -384,9 +383,13 @@ const server = createServer(async (req, res) => {
       const now = Date.now();
       const rows = await Promise.all(
         statuses.map(async (m) => {
-          // Same badge as the suggestion cards: of four finished videos, the ones the rival has
-          // not covered go out first.
-          const posted = rivalRecentPostFor(rival, [m.leftNickname, m.rightNickname], now);
+          // Same lines as the suggestion cards: of four finished videos, the ones no rival has
+          // posted go out first.
+          const rivalPosts = rivalSightingsFor(
+            rival,
+            { matchId: m.matchId, players: [m.leftNickname, m.rightNickname], dateSec: m.dateSec ?? null },
+            now,
+          ).map(rivalLine);
           return {
             ...m,
             hidden: hidden.has(m.matchId),
@@ -395,12 +398,7 @@ const server = createServer(async (req, res) => {
             uploaded: await isUploaded(m.matchId),
             // Where the match stands on its way to the channel (src/dashboard/shortFlow.ts).
             ...(await matchRowShort(m.matchId)),
-            rivalPosted: posted
-              ? {
-                  daysAgo: Math.max(0, Math.floor((now - posted.publishedAtMs) / 86_400_000)),
-                  title: posted.title,
-                }
-              : null,
+            rivalPosts,
           };
         }),
       );

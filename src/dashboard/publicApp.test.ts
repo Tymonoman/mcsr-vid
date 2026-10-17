@@ -7,7 +7,9 @@
 //     1 Oct upload at 30%): it names restart-when-idle, and nothing once that is armed;
 //   - hand mode (shortsByHand) offers no Pick again (the route answers 409) and never promises an
 //     automatic render of the Short;
-//   - any Settings save re-reads Tonight, so a runner just blocked leaves the cards at once.
+//   - any Settings save re-reads Tonight, so a runner just blocked leaves the cards at once;
+//   - a card shows each competitor's line as the server words it, "this match" in the warning
+//     colour and "this pair: a different match" muted, the rival's own title as the tooltip.
 // Needs Chromium (`npx playwright install chromium`): a box without it skips out loud. Drives a
 // browser, so it is one of `npm test`'s extras, not test:unit (CI's runner has none).
 // Run: npx tsx src/dashboard/publicApp.test.ts
@@ -131,7 +133,22 @@ const server = http.createServer((req, res) => {
     state.suggestionGets++;
     // What the server does on every read (suggest.ts, blockedIn): a blocked runner's card is gone.
     const blocked = state.blocked.map((n) => n.toLowerCase());
-    const suggestions = [card(1, "alpha", "beta"), card(2, "gamma", "delta")].filter(
+    const posted = {
+      ...card(2, "gamma", "delta"),
+      rivalPosts: [
+        {
+          kind: "pair",
+          label: "@mcsr-vault posted this pair: a different match (30 Sept)",
+          title: 'GG | gamma VS delta "<b>"',
+        },
+        {
+          kind: "match",
+          label: "@mcsrmatches posted this match (3 Oct)",
+          title: "gamma vs delta | MCSR Ranked",
+        },
+      ],
+    };
+    const suggestions = [card(1, "alpha", "beta"), posted].filter(
       (s) => !s.players.some((n) => blocked.includes(n.toLowerCase())),
     );
     return send(res, 200, { suggestions, scanning: false, scannedAtMs: Date.now(), ttlMin: 30 });
@@ -279,6 +296,31 @@ try {
   );
   assert.ok(label && !/renders the Short/.test(label) && /cut by hand/.test(label), String(label));
   console.log("OK: hand mode offers no Pick again and never promises a rendered Short");
+
+  /* --- The rival lines on a card ---------------------------------------------------------- */
+  const lines = await page.$$eval('#suggestions .sugg[data-id="2"] .rival', (els) =>
+    els.map((e) => ({
+      text: e.textContent,
+      pair: e.classList.contains("pair"),
+      title: e.getAttribute("title"),
+      color: getComputedStyle(e).color,
+    })),
+  );
+  assert.deepEqual(
+    lines.map(({ text, pair, title }) => ({ text, pair, title })),
+    [
+      {
+        text: "@mcsr-vault posted this pair: a different match (30 Sept)",
+        pair: true,
+        title: 'GG | gamma VS delta "<b>"',
+      },
+      { text: "@mcsrmatches posted this match (3 Oct)", pair: false, title: "gamma vs delta | MCSR Ranked" },
+    ],
+    "one line per competitor, worded by the server, the title escaped into the tooltip",
+  );
+  assert.notEqual(lines[0]!.color, lines[1]!.color, "the pair-only line does not wear the warning colour");
+  assert.equal(await page.locator('#suggestions .sugg[data-id="1"] .rival').count(), 0, "no post, no line");
+  console.log("OK: a card names which competitor posted this match and which only this pair");
 
   /* --- A Settings save re-reads Tonight ---------------------------------------------------- */
   await page.click("#tab-settings");

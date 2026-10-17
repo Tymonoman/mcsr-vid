@@ -103,6 +103,16 @@ assert.equal(
       ["infume", "vstrid"],
     ],
     [
+      "MCSR Vault: an upper-case VS and the broadcast name in brackets",
+      "NO ONE DOES IT LIKE HIM | Pinne (Skycrab) VS ANJOUU | MCSR Ranked 1v1",
+      ["pinne", "anjouu"],
+    ],
+    [
+      "MCSR Replays: the seed type as the tail",
+      "Infume vs silverrruns | MCSR Ranked | Shipwreck Seed",
+      ["infume", "silverrruns"],
+    ],
+    [
       "a hook stuck to the first nickname, no pipe: no guess",
       "Skilled players.. Feinberg vs BeefSalad MCSR ranked speedrun 1v1 #13",
       null,
@@ -117,16 +127,18 @@ const day = 86_400_000;
 const matchAt = Date.UTC(2026, 8, 6, 20); // 6 Sept 20:00
 const posts: RivalPost[] = [
   {
+    channel: "mcsrmatches",
     title: "TOUGH MATCH | Aquacorde vs Nahhann | MCSR Ranked",
     publishedAtMs: matchAt + day,
     players: ["aquacorde", "nahhann"],
   },
   {
+    channel: "mcsrmatches",
     title: "Old | nahhann vs Aquacorde | MCSR Ranked",
     publishedAtMs: matchAt - 20 * day,
     players: ["nahhann", "aquacorde"],
   },
-  { title: "Something else", publishedAtMs: matchAt + day, players: null },
+  { channel: "mcsrmatches", title: "Something else", publishedAtMs: matchAt + day, players: null },
 ];
 // Either seating, any case, inside the window after the match.
 const hit = rivalMatchFor(posts, ["nahhann", "Aquacorde"], matchAt / 1000);
@@ -146,6 +158,7 @@ assert.equal(rivalMatchFor(posts, ["Infume", "BeefSalad"], matchAt / 1000), null
 {
   const { rivalRecentPostFor } = await import("./rivalPosts.js");
   const post = (title: string): RivalPost => ({
+    channel: "mcsrmatches",
     title,
     publishedAtMs: matchAt + day,
     players: playersFromTitle(title),
@@ -207,13 +220,20 @@ assert.equal(rivalMatchFor(posts, ["Infume", "BeefSalad"], matchAt / 1000), null
   const { rivalRecentPostFor } = await import("./rivalPosts.js");
   const now = Date.UTC(2026, 8, 8, 4);
   const shelfPosts: RivalPost[] = [
-    { title: "old", publishedAtMs: now - 30 * day, players: ["aquacorde", "nahhann"] },
     {
+      channel: "mcsrmatches",
+      title: "old",
+      publishedAtMs: now - 30 * day,
+      players: ["aquacorde", "nahhann"],
+    },
+    {
+      channel: "mcsrmatches",
       title: "TOUGH MATCH | Aquacorde vs Nahhann",
       publishedAtMs: now - 1 * day,
       players: ["aquacorde", "nahhann"],
     },
     {
+      channel: "mcsrmatches",
       title: "earlier | nahhann vs Aquacorde",
       publishedAtMs: now - 5 * day,
       players: ["nahhann", "aquacorde"],
@@ -237,20 +257,30 @@ assert.equal(rivalMatchFor(posts, ["Infume", "BeefSalad"], matchAt / 1000), null
 {
   const { fetchRivalPosts, parseRivalFeed } = await import("./rivalPosts.js");
   const feed = readFileSync(new URL("../fixtures/rival-feed.xml", import.meta.url), "utf8");
-  assert.deepEqual(parseRivalFeed(feed), [
+  assert.deepEqual(parseRivalFeed(feed, "mcsrmatches"), [
     {
+      channel: "mcsrmatches",
       title: "Silverrruns vs Lowkey | MCSR Ranked | Minecraft Speedrun",
       publishedAtMs: Date.parse("2026-10-12T21:00:04+00:00"),
       players: ["silverrruns", "lowkey"],
+      matchIds: [],
     },
     {
+      channel: "mcsrmatches",
       title: 'One Mistake "GG" | Doogile vs Aquacorde | MCSR Ranked | Minecraft Speedrun',
       publishedAtMs: Date.parse("2026-10-06T21:00:09+00:00"),
       players: ["doogile", "aquacorde"],
+      matchIds: [],
     },
-    { title: "MINECRAFT SPEEDRUN CLIPS 1", publishedAtMs: Date.parse("2026-09-28T19:01:40+00:00"), players: null },
+    {
+      channel: "mcsrmatches",
+      title: "MINECRAFT SPEEDRUN CLIPS 1",
+      publishedAtMs: Date.parse("2026-09-28T19:01:40+00:00"),
+      players: null,
+      matchIds: [],
+    },
   ]);
-  assert.deepEqual(parseRivalFeed("<html>not a feed</html>"), [], "no entries, no posts");
+  assert.deepEqual(parseRivalFeed("<html>not a feed</html>", "mcsrmatches"), [], "no entries, no posts");
 
   const asked: { url: string; headers: Record<string, string> }[] = [];
   const stub = (async (input: string | URL | Request, init?: RequestInit) => {
@@ -282,5 +312,25 @@ assert.equal(rivalMatchFor(posts, ["Infume", "BeefSalad"], matchAt / 1000), null
   }
   await assert.rejects(fetchRivalPosts("nosuchchannel", stub), /HTTP 404/);
   console.log("OK: the rival's public feed parses, and nothing carries the token");
+}
+// The match list's rows when the API was down for a match (no date): a post of the pair in the last
+// two weeks reads as this match, as the shelf always read it; an older one as the pair only.
+{
+  const { rivalSightingsFor } = await import("./rivalPosts.js");
+  const now = Date.UTC(2026, 9, 16, 12);
+  const at = (daysBack: number): RivalPost => ({
+    channel: "mcsrmatches",
+    title: `${daysBack}d | Infume vs Feinberg | MCSR Ranked`,
+    publishedAtMs: now - daysBack * day,
+    players: ["infume", "feinberg"],
+  });
+  const kinds = (feed: RivalPost[]) =>
+    rivalSightingsFor(feed, { matchId: 1, players: ["Feinberg", "Infume"], dateSec: null }, now).map(
+      (x) => x.kind,
+    );
+  assert.deepEqual(kinds([at(3)]), ["match"]);
+  assert.deepEqual(kinds([at(20)]), ["pair"]);
+  assert.deepEqual(kinds([]), [], "no post: nothing");
+  console.log("OK: with no match date, the shelf's two-week rule decides");
 }
 console.log("rivalPosts: all checks passed");

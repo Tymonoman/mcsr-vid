@@ -100,13 +100,16 @@ export interface Config {
    */
   youtubePlaylistUrl: string;
   /**
-   * The competitor whose uploads the suggestion cards are checked against (src/dashboard/rivalPosts.ts):
-   * MCSR Matches posts the same matches this channel picks, a day later, to 37x the
-   * subscribers. A matchup it has already covered is flagged on the card and ordered after the
-   * fresh ones. Empty string turns the check off. Read from the public upload feed, never with
-   * the YouTube token (the audit: own channel, own data).
+   * The competitors whose uploads the suggestion cards and the match list are checked against
+   * (src/dashboard/rivalPosts.ts): MCSR Matches posts the same matches this channel picks, a day
+   * later, to many times the subscribers; MCSR Vault posts a 1v1 of the same players about weekly.
+   * A card says whether each posted this match (ordered after the fresh ones) or only this pair in
+   * another match (information only). MCSR Replays (@mcsrreplay) is left out: dormant since
+   * 18 Apr 2026. An empty list turns the check off; a single string (an older config file) is a
+   * list of one. Read from the public upload feeds, never with the YouTube token (the audit: own
+   * channel, own data).
    */
-  rivalChannelHandle: string;
+  rivalChannelHandle: string[];
   /**
    * Players whose matches the suggestion list and the nightly rank first (30 Sept 2026 plan:
    * recognisable names are what converts subscribers). API spellings, compared whole and ignoring
@@ -560,7 +563,7 @@ export const DEFAULTS: Config = {
   youtubeReportingJobId: "eda017ae-a539-4c79-8e2c-66d1af74264a",
   youtubePlaylistTitle: "MCSR Ranked matches",
   youtubePlaylistUrl: "",
-  rivalChannelHandle: "mcsrmatches",
+  rivalChannelHandle: ["mcsrmatches", "mcsr-vault"],
   favouritePlayers: ["doogile", "Feinberg", "Infume", "Pinne", "lowk3y_", "silverrruns"],
   pairRepeatDays: 3,
   knownFollowerThreshold: 10_000,
@@ -738,6 +741,19 @@ export function validateOverrides(raw: Record<string, unknown>): void {
       }
       continue;
     }
+    // A list of handles; a string is an older file's one handle, "" its "none".
+    if (key === "rivalChannelHandle") {
+      const handles = typeof value === "string" ? [value].filter((h) => h.trim()) : value;
+      if (
+        !Array.isArray(handles) ||
+        !handles.every((h) => typeof h === "string" && /^@?[\w.-]+$/.test(h.trim()))
+      ) {
+        throw new Error(
+          `${CONFIG_PATH}: "rivalChannelHandle" must be a list of YouTube handles ([] for none).`,
+        );
+      }
+      continue;
+    }
     if (key === "blockedPlayers" || key === "creatorWatchlist") {
       if (!Array.isArray(value) || !value.every((n) => typeof n === "string" && n.trim() !== "")) {
         throw new Error(`${CONFIG_PATH}: "${key}" must be an array of nicknames ([] for none).`);
@@ -869,6 +885,8 @@ function loadConfig(): Config {
       ...DEFAULTS.suggestWeights,
       ...((raw.suggestWeights as Partial<ScoreWeights>) ?? {}),
     },
+    // An older file names one rival as a string ("" for none); the Settings tab edits a list.
+    rivalChannelHandle: [raw.rivalChannelHandle ?? DEFAULTS.rivalChannelHandle].flat().filter(Boolean),
   } as Config;
 }
 

@@ -120,7 +120,7 @@ console.log("config.settings.contract: introSec and teaserAtSec refuse non-finit
     seriesPublishHourUtc: 23, // "seriesPublishHourUtc 23:00 series"
     seriesPairGapDays: 3, // "seriesPairGapDays 3 apart"
     suggestKnownSlots: 4, // "suggestKnownSlots, default 4"
-    rivalChannelHandle: "mcsrmatches", // "rivalChannelHandle default mcsrmatches"
+    rivalChannelHandle: ["mcsrmatches", "mcsr-vault"], // "rivalChannelHandle (a list) default mcsrmatches + mcsr-vault"
     nightlyMaxRenders: 1, // README: "up to nightlyMaxRenders matches (default 1; 2 at the lab)"
   };
   for (const [key, value] of Object.entries(DOCUMENTED)) {
