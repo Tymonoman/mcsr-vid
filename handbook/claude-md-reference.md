@@ -1450,8 +1450,43 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
   `--since` puts back the older replies it did not print (another session's answer, review 15 Oct
   2026).
 - **What is not built**: `youtubeUploadEnabled`-gated actions, renders, queue edits — every
-  command is read-only, and `/help` says so. No command writes anything the dashboard would show
-  as changed.
+  command is read-only except the title picker's buttons below (operator's chat only), and
+  `/help` says so. No other command writes anything the dashboard would show as changed.
+- **The title picker** (`src/telegram/titlePicker.ts`; the operator, 18 Oct 2026, choosing who
+  writes titles: "I send you 3 options on Telegram and you pick", then "c and let me answer on
+  telegram with buttons under the message. also show me the thumbnails"). A dashboard tick
+  (`titleOfferTick`, 8080 only, wired beside `shortTick`/`autoHooksTick` in `server.ts`) finds
+  every match `dueForTitleOffer` turns up — `shortFlow.ts`'s own `factsOf`/`seriesGameUnjoined`/
+  `syncWeak`/`chooseAutoHooks` exported for this, the same reads `autoHooksTick` makes minus its
+  hours wait: a readable pick, unsaved hooks, not blocked, no DNF, no unjoined series game, sync
+  sound, no video on the channel yet — and for each one not already in `.telegram.json`'s
+  `titleOffers` map, sends `bot.sendPhoto(thumbnail.png, caption, keyboard)`: the players, the
+  publish slot in Warsaw time (`videoPublishTime`, `whenWarsaw`), the match link, one button per
+  `titleOptions()` option plus "🔄 New options". `titleOptions` (`src/pipeline/titleOptions.ts`,
+  titles/policy's file; a `setTitleOptionsImpl` seam here for tests, never the stub) is the only
+  thing this module trusts for what the three options actually say.
+  `titleOffers[matchId]` (messageId, the options, their source, `settled`) is both the dedupe and
+  the per-match cache a button press reads its text back from — the title itself never travels in
+  `callback_data` (Telegram's 64-byte cap), which is the short `t:<matchId>:<index|r>` instead
+  (`r` = refresh). `index.ts`'s `handleUpdate` now also takes `callback_query` (added to
+  `getUpdates`'s `allowed_updates`), checked against `TELEGRAM_CHAT_ID` the same way a message is
+  — any other chat's press does nothing — then hands it to `handleTitleCallback`, which a bad
+  `data` string or a stale match answers safely rather than throwing. A press: not yet uploaded
+  saves through `saveHooks` exactly as `PUT /api/shorts/hooks/:id` does, title the pressed option,
+  Short hook chosen by `chooseAutoHooks` the same way `autoHooksTick` picks one (no upper-casing —
+  the operator already typed the title as shown); already on the channel instead calls
+  `youtube.ts`'s new `retitleHook` (read the whole snippet, replace only the hook half — the title
+  up to the first " | " — write the whole snippet back, same read-check-write shape as
+  `addTags`/`reschedule`; refuses, writing nothing, if the read finds no video), then writes the
+  new line into the match's edited title file so the dashboard agrees. Either way the message is
+  edited to "Saved: …" (or the refusal), its buttons gone (`editMessageCaption`, an empty
+  `reply_markup` when no keyboard is passed). An auto-hooks save (`autoHooksTick`) on a match that
+  had a pending offer edits that same message to "Auto-saved: …" — wired through
+  `shortFlow.ts`'s `setAutoHooksSavedHook`, a settable callback (the `setPicker` pattern) rather
+  than an import either way, fired after the save is already written so it can never fail one.
+  `npm run tg -- titles <matchId> [--dry-run]` (`tgCli.ts`) sends the same offer for any match —
+  even one already uploaded, the retitle case — ignoring the dedupe: how the operator's "retitle
+  the scheduled ones and the ones people complain about" gets done by hand.
 
 ## Studio automation (phase 1, 7 Oct 2026)
 

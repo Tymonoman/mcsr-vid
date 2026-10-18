@@ -46,6 +46,7 @@ const EMPTY: TelegramState = {
   prevSnapshot: null,
   updateOffset: null,
   worth: null,
+  titleOffers: {},
 };
 
 try {
@@ -65,6 +66,9 @@ try {
     prevSnapshot: { subscribers: 120, views: 5000, videos: 30 },
     updateOffset: 991,
     worth: null,
+    titleOffers: {
+      "13560037": { messageId: 42, options: ["A"], source: ["chip"], at: "2026-10-14T05:00:00.000Z" },
+    },
   };
   writeTelegramState(full);
   assert.deepEqual(readTelegramState(), full);

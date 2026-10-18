@@ -1,12 +1,14 @@
 /**
- * npm run tg -- <report|cmd "<text>"|send <text>|send --file <path>|inbox [--since <ISO>] [--clear]|whoami> [--dry-run]
+ * npm run tg -- <report|cmd "<text>"|send <text>|send --file <path>|inbox [--since <ISO>] [--clear]|whoami|titles <matchId>> [--dry-run]
  *
  * `report`/`cmd --dry-run` print the exact message text to stdout and send nothing — no
  * `TELEGRAM_BOT_TOKEN` needed, since they never call the Bot API. `whoami` is the pairing step:
  * it prints the chat ids that recently messaged the bot (from `getUpdates`), for the operator to
  * put in `TELEGRAM_CHAT_ID`. `inbox` prints the operator's plain replies the poller saved
  * (`.telegram-inbox.jsonl`), oldest first; `--clear` removes what it printed (with `--since`, the
- * older replies stay).
+ * older replies stay). `titles <matchId>` sends the title picker's offer for any match by hand —
+ * even one already uploaded, which is how it gets retitled — ignoring the dashboard tick's
+ * once-only dedupe; `--dry-run` prints the caption and the options instead of sending.
  */
 import { describeError } from "../errorText.js";
 import * as bot from "./bot.js";
@@ -15,6 +17,7 @@ import { readFileSync } from "node:fs";
 import { buildMorningReport, dispatchCommand } from "./index.js";
 import { chunkMarkdown, mdToTelegramHtml } from "./markdown.js";
 import { appendInbox, readInbox, setStateDryRun } from "./state.js";
+import { sendTitleOfferForce, titleOfferPreview } from "./titlePicker.js";
 
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
@@ -23,7 +26,7 @@ const [sub, ...subArgs] = rest;
 if (dryRun) setStateDryRun(); // a dry run leaves /media as it found it: no cache, no dedupe record
 
 const usage =
-  'usage: npm run tg -- <report|cmd "<text>"|send <text>|send --md <report.md>|send --file <path>|inbox [--since <ISO>] [--clear]|whoami> [--dry-run]';
+  'usage: npm run tg -- <report|cmd "<text>"|send <text>|send --md <report.md>|send --file <path>|inbox [--since <ISO>] [--clear]|whoami|titles <matchId>> [--dry-run]';
 
 /** Where one Telegram message ends and the next begins, in a dry run. */
 const DRY_RUN_BREAK = "\n\n──────── next message ────────\n\n";
@@ -114,6 +117,22 @@ async function main(): Promise<void> {
       for (const e of readInbox(clear))
         if (Date.parse(e.at) >= sinceMs) console.log(`${e.at}  ${e.text}`);
         else if (clear) appendInbox(e);
+      return;
+    }
+    case "titles": {
+      const matchId = Number(subArgs[0]);
+      if (!Number.isFinite(matchId)) {
+        console.error(usage);
+        process.exit(2);
+      }
+      // How a scheduled or complained-about video gets retitled by hand: the same offer, any
+      // match, even one already on the channel — ignoring the tick's once-only dedupe.
+      if (dryRun) {
+        console.log(await titleOfferPreview(matchId));
+        return;
+      }
+      await sendTitleOfferForce(matchId);
+      console.error("sent");
       return;
     }
     case "whoami": {

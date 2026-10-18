@@ -1723,8 +1723,18 @@ try {
       titleHooks: ["doogile wins it", "TAS vs YN", "A clean one"],
       hookSuggestion: "the asian pulls ahead",
     });
+    // The Telegram title picker's own seam (src/telegram/titlePicker.ts): fired once, after the
+    // save is already on disk, with exactly the title that was saved.
+    const autoHooksSaved: Array<{ matchId: number; titleHook: string }> = [];
+    flow.setAutoHooksSavedHook((matchId, titleHook) => void autoHooksSaved.push({ matchId, titleHook }));
     await flow.autoHooksTick(chain, AH_NOW);
     await flow.chainIdle(AH2);
+    assert.deepEqual(
+      autoHooksSaved,
+      [{ matchId: AH2, titleHook: "A clean one" }],
+      "the hook fired once, after the save",
+    );
+    flow.setAutoHooksSavedHook(() => undefined);
     const st2 = flow.readStatus(AH2);
     assert.ok(st2.hooksSavedAt, "a due pick with a clean candidate is saved");
     assert.equal(st2.autoHooks?.titleHook, "A clean one", "the spoiler and the labelled one were skipped");

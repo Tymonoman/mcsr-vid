@@ -11,6 +11,10 @@
 //     not added twice, and when there is nothing to add nothing is written.
 //  3. addTags refuses to write at all if the read returns no video — an empty list, or none.
 //  4. reschedule refuses, writing nothing, when the read returns no video — an empty list, or none.
+//  5. retitleHook (the Telegram title picker's write) replaces only the hook half of the title —
+//     up to the first " | " — and sends the rest of the title, the description and the tags back
+//     unchanged; refuses an empty hook, a video on another channel, and (like addTags) a read
+//     that returns no video — in every case, writing nothing.
 //
 // Hermetic: a temp token file; the token refresh is stubbed on global fetch, every API call goes
 // through the `fetchImpl` seam. Run: npx tsx src/youtube/youtube.contract.test.ts
@@ -18,7 +22,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { addTags, reschedule } from "./youtube.js";
+import { addTags, reschedule, retitleHook } from "./youtube.js";
 
 const dir = await mkdtemp(path.join(tmpdir(), "mcsr-yt-contract-"));
 const realFetch = globalThis.fetch;
@@ -107,6 +111,56 @@ try {
     assert.equal(yt.writes.length, 0, `read ${JSON.stringify(answer)}: no status write`);
   }
   console.log("OK: reschedule refuses, writing nothing, when the read returns no video");
+
+  /* --- 5. retitleHook: only the hook half changes, everything else survives --------------------- */
+  {
+    const snippet = {
+      channelId: "UCmine",
+      title: "Does the lead ever settle? | Infume vs Feinberg | MCSR Ranked 1v1",
+      description: "Both POVs, synced on the countdown.\nmatch page: https://mcsrranked.com/",
+      categoryId: "20",
+      tags: ["typed in studio", "Infume"],
+      defaultLanguage: "en",
+      defaultAudioLanguage: "en",
+    };
+    const yt = fakeVideos({ items: [{ id: "vid", snippet }] });
+    const result = await retitleHook("vid", "CAN ANYONE CATCH UP?", "UCmine", yt.fetchImpl);
+    assert.equal(result.title, "CAN ANYONE CATCH UP? | Infume vs Feinberg | MCSR Ranked 1v1");
+    assert.equal(result.was, snippet.title);
+    assert.equal(yt.writes.length, 1);
+    const sent = (yt.writes[0]!.body as { snippet: Record<string, unknown> }).snippet;
+    assert.equal(sent.title, result.title, "only the hook half moved");
+    assert.equal(sent.description, snippet.description, "description survives");
+    assert.equal(sent.categoryId, "20", "category survives");
+    assert.deepEqual(sent.tags, snippet.tags, "tags survive untouched");
+
+    // A title with no " | " at all: the whole thing is the "rest" the new hook is prepended to.
+    const bare = fakeVideos({ items: [{ id: "vid", snippet: { ...snippet, title: "<HOOK>" } }] });
+    const r2 = await retitleHook("vid", "A FRESH HOOK", "UCmine", bare.fetchImpl);
+    assert.equal(r2.title, "A FRESH HOOK | <HOOK>");
+    console.log("OK: retitleHook replaces only the hook half, everything else untouched");
+  }
+
+  /* --- 5. retitleHook refuses an empty hook and another channel's video, writing nothing -------- */
+  {
+    const snippet = { channelId: "UCsomeoneelse", title: "X | Y vs Z | MCSR Ranked 1v1" };
+    const yt = fakeVideos({ items: [{ id: "vid", snippet }] });
+    await assert.rejects(retitleHook("vid", "   ", "UCmine", yt.fetchImpl), /empty hook/);
+    await assert.rejects(retitleHook("vid", "A HOOK", "UCmine", yt.fetchImpl), /not yours/);
+    assert.equal(yt.writes.length, 0, "neither refusal wrote anything");
+    console.log("OK: retitleHook refuses an empty hook or another channel's video, writing nothing");
+  }
+
+  /* --- 5. retitleHook: no video read, no write (same shape as addTags') ------------------------- */
+  for (const answer of [{ items: [] }, {}]) {
+    const yt = fakeVideos(answer);
+    await assert.rejects(
+      retitleHook("gone", "A HOOK", "UCmine", yt.fetchImpl),
+      `read ${JSON.stringify(answer)}: refused`,
+    );
+    assert.equal(yt.writes.length, 0, `read ${JSON.stringify(answer)}: never a write of an empty snippet`);
+  }
+  console.log("OK: retitleHook refuses to write when the read returns no video");
 
   console.log("youtube.contract: all checks passed");
 } finally {

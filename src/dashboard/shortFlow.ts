@@ -340,7 +340,7 @@ const hookOf = (line: string | undefined): string | null => {
   return (splitTitle(first)?.hook ?? first.split(SEPARATOR)[0]!).trim() || null;
 };
 
-interface Facts {
+export interface Facts {
   dir: string;
   exported: boolean;
   series: SeriesRecord | null;
@@ -359,7 +359,7 @@ interface Facts {
   status: ShortStatus;
 }
 
-async function factsOf(matchId: number): Promise<Facts> {
+export async function factsOf(matchId: number): Promise<Facts> {
   const dir = matchDir(matchId);
   const status = readStatus(matchId);
   const video = await onChannel(matchId, "video");
@@ -546,7 +546,7 @@ export async function nightlyShortSummary(): Promise<NightlyShortSummary> {
  */
 const SERIES_GAME =
   "a playoff game — the series is picked, cut and uploaded as one video from game 1 once every game is joined: Render the series on the Playoffs board (npm run series -- <game 1>), then save the hooks on game 1";
-async function seriesGameUnjoined(match: MatchInfo, series: SeriesRecord | null): Promise<boolean> {
+export async function seriesGameUnjoined(match: MatchInfo, series: SeriesRecord | null): Promise<boolean> {
   return series === null && (await playoffContextFor(match)) !== null;
 }
 
@@ -637,7 +637,7 @@ const exportPath = (dir: string, matchId: number): string | null =>
     (file) => existsSync(file),
   ) ?? null;
 
-function syncWeak(matchId: number, f: Facts): boolean {
+export function syncWeak(matchId: number, f: Facts): boolean {
   const games = f.series ? f.series.games.map((g) => g.matchId) : [matchId];
   const weak = games.some((id) => {
     const sync = readSyncOffsets(matchDir(id));
@@ -1637,7 +1637,11 @@ export function autoHooksBody(choice: AutoHooksChoice, upper: boolean): SaveHook
  * when nothing survived for the title (the Short may still come back null on its own: "no Short
  * hook passed" is not "no title hook passed").
  */
-async function chooseAutoHooks(matchId: number, match: MatchInfo, f: Facts): Promise<AutoHooksChoice | null> {
+export async function chooseAutoHooks(
+  matchId: number,
+  match: MatchInfo,
+  f: Facts,
+): Promise<AutoHooksChoice | null> {
   const suggestions = await suggestionsFor(matchId, match, f);
   // Nothing fits the mobile budget — a long nickname pair leaves ~20 characters; 14072062 failed
   // every tick from 09:47 to 16:22 UTC over it and left its slot empty (14 Oct 2026). The shortest
@@ -1658,6 +1662,18 @@ async function chooseAutoHooks(matchId: number, match: MatchInfo, f: Facts): Pro
     ...(overBudget ? { overBudget: true as const } : {}),
   };
 }
+
+/**
+ * Lets the Telegram title picker (src/telegram/titlePicker.ts) hear every auto-hooks save, to
+ * edit a pending offer message ("Auto-saved: …") if one is waiting for this match — set once at
+ * that module's load, the same seam `setPicker` above is. Fire-and-forget: called after the save
+ * is already written, so a broken hook here can never fail the save itself.
+ */
+export type AutoHooksSavedHook = (matchId: number, titleHook: string) => void;
+let autoHooksSavedHook: AutoHooksSavedHook = () => {};
+export const setAutoHooksSavedHook = (fn: AutoHooksSavedHook): void => {
+  autoHooksSavedHook = fn;
+};
 
 /** Chooses and saves one match's hooks, exactly as `PUT /api/shorts/hooks/:id` would, and records
  *  what it chose. No candidate passing is a failed "hooks" step, not a thrown error — the match
@@ -1704,7 +1720,9 @@ async function autoSaveHooks(
     matchId,
     "chain",
     `auto-hooks: no hooks saved since the pick landed — saving title ${JSON.stringify(req.titleHook)} (${choice.titleSource}` +
-      (choice.overBudget ? ", over the title's mobile budget: none fit it, names may be cut on mobile)" : ")") +
+      (choice.overBudget
+        ? ", over the title's mobile budget: none fit it, names may be cut on mobile)"
+        : ")") +
       (req.noShort
         ? " and no Short (no Short hook passed the checks)"
         : ` and Short ${JSON.stringify(req.shortHook)} (${choice.shortSource})`),
@@ -1733,6 +1751,7 @@ async function autoSaveHooks(
       ...(choice.overBudget ? { overBudget: true as const } : {}),
     };
   });
+  autoHooksSavedHook(matchId, req.titleHook);
 }
 
 let autoHooksTicking = false;
