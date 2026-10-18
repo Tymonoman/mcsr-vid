@@ -316,14 +316,14 @@ const { computeOverlayProps } = await import("../pipeline/overlayProps.js");
   assert.deepEqual(calls, ["/playoffs"], "one bracket read, no history fetched");
 }
 
-/* --- P6: playoffsFirst is off unless the operator turns it on ---------------------------------- */
+/* --- P6: playoffsFirst is on by default (18 Oct 2026, "pull them first") ----------------------- */
 {
-  assert.equal(DEFAULTS.playoffsFirst, false, "default off: it changes what tonight renders");
-  assert.equal(config.playoffsFirst, false, "and the running config (DEFAULTS under test) agrees");
+  assert.equal(DEFAULTS.playoffsFirst, true, "on by default: a bracket pulls ahead of suggestions");
+  assert.equal(config.playoffsFirst, true, "and the running config (DEFAULTS under test) agrees");
   const example = JSON.parse(
     readFileSync(new URL("../../mcsr-vid.config.example.json", import.meta.url), "utf8"),
   ) as Record<string, unknown>;
-  assert.equal(example.playoffsFirst, false, "the example config is generated from DEFAULTS");
+  assert.equal(example.playoffsFirst, true, "the example config is generated from DEFAULTS");
 }
 
 /* --- P7: an unseated slot's game is an ordinary private match until the bracket fills in -------- */

@@ -206,9 +206,11 @@ try {
       presentSuggestions([goats, fresh], played + 2 * DAY, rival, [], [], 10_000, null, null);
     assert.deepEqual(ids(show([])), [21, 22], "with no rival, the bigger audience leads");
     const both = show([...vault, ...matches]);
-    assert.deepEqual(ids(both), [22, 21], "a posted match goes after the fresh one");
+    // No demotion (18 Oct 2026): the order is the same with or without the rival feed — only the
+    // lines on each card differ.
+    assert.deepEqual(ids(both), [21, 22], "posted or not, the bigger audience still leads");
     assert.deepEqual(
-      both[1]!.rivalPosts.map((r) => [r.kind, r.label]),
+      both[0]!.rivalPosts.map((r) => [r.kind, r.label]),
       [
         ["pair", "@mcsr-vault posted this pair: a different match (22 Aug)"],
         ["match", "@mcsrmatches posted this match (3 Oct)"],
@@ -216,11 +218,11 @@ try {
       "one line per competitor, each saying which it did",
     );
     assert.equal(
-      both[1]!.rivalPosts[0]!.title,
+      both[0]!.rivalPosts[0]!.title,
       "BATTLE of the GOATS | lowk3y_ VS Pinne (Skycrab) | MCSR Ranked 1v1",
     );
     assert.deepEqual(
-      both[0]!.rivalPosts.map((r) => r.label),
+      both[1]!.rivalPosts.map((r) => r.label),
       ["@mcsr-vault posted this pair: a different match (30 Sept)"],
     );
     assert.deepEqual(
@@ -294,18 +296,18 @@ try {
     await settle();
     assert.ok(calls.length > fetched, "then read again");
 
-    // The badge and the order, from the live snapshot (no rival argument): the posted pair goes after
-    // the fresh one though it is the more popular, on the cards and in the nightly's order alike.
+    // The badge, from the live snapshot (no rival argument): shown on the posted pair's card, but
+    // no longer moving it — it still leads on its own bigger popularity (18 Oct 2026).
     const shown = presentSuggestions(list, T0, undefined, [], []);
     assert.deepEqual(
       shown.map((c) => c.matchId),
-      [12, 11],
-      "a posted match sorts after the fresh one",
+      [11, 12],
+      "the posted match still leads on its own popularity — a rival's post no longer demotes",
     );
-    assert.match(shown[1]!.rivalPosts[0]?.title ?? "", /Feinberg vs Infume/);
+    assert.match(shown[0]!.rivalPosts[0]?.title ?? "", /Feinberg vs Infume/);
     assert.deepEqual(
       orderForDisplay(list, T0, undefined, [], []).map((s) => s.metrics.matchId),
-      [12, 11],
+      [11, 12],
       "in the nightly's order too",
     );
     console.log(

@@ -82,6 +82,7 @@ import {
 } from "./shortFlow.js";
 import { armRestart, disarmRestart, restartState } from "./restartWhenIdle.js";
 import { creatorWatchTick } from "./creatorWatch.js";
+import { fastTrackTick } from "./fastTrack.js";
 import { xTick } from "../x/xPost.js";
 import { saveSettings, settingsPayload } from "./settings.js";
 import { applyScheduledRenderArm } from "./experiments.js";
@@ -952,6 +953,9 @@ server.listen(PORT, "0.0.0.0", () => {
     // Creator watch (off by default, config.creatorWatch): a watched outside creator's new ranked
     // match, both VODs found, goes to the front of tonight's queue — see src/dashboard/creatorWatch.ts.
     void creatorWatchTick().catch((err: unknown) => console.error(`creator watch: ${describeError(err)}`));
+    // Fast-track (18 Oct 2026): a really good match found between nightly runs renders right
+    // now instead of waiting for the hour, at most one a day — see src/dashboard/fastTrack.ts.
+    void fastTrackTick().catch((err: unknown) => console.error(`fast-track: ${describeError(err)}`));
     // X posts (off by default, config.xAutoPost, and needs the four X keys in .env): the newest
     // public long-form's hand-cut Short, at most one a day — see src/x/xPost.ts.
     void xTick().catch((err: unknown) => console.error(`x: ${describeError(err)}`));

@@ -1307,6 +1307,128 @@ failed boot check offers it again. Client changes need only a reload.
   Claude container. Only `~/.claude` is a persisted volume in that container: save loose ends
   inside the repo.
 
+### Match-picking rules (18 Oct 2026)
+
+The operator answered fifteen questions about how matches get picked and scheduled (18 Oct 2026,
+verbatim quotes below); this section is the rationale behind the changes that followed, in
+`src/dashboard/suggest.ts`, `suggestPresent.ts`, `nightly.ts`, `matchShelf.ts`, `config.ts` and the
+new `src/dashboard/fastTrack.ts`.
+
+- **Favourites**: "keep edcr" → `DEFAULTS.favouritePlayers` now includes `edcr`. No live override
+  existed, so the default applies at once, with no config file edit.
+- **Known**: "b and c" — Twitch followers *and* how our own past videos with that runner did.
+  `tierFor`/`knownPlayerFor` (`src/dashboard/suggest.ts`) already read both: a favourite, else a
+  measured draw (`DEFAULT_DRAW`, or `learnedDraw` when on) at or above `KNOWN_DRAW_MIN`, else
+  `followersOf` against `knownFollowerThreshold`. `learnedDraw` (on live since 11 Oct 2026) reads
+  real performance: `src/dashboard/drawLearn.ts` takes every long-form upload 7–90 days old, reads
+  its first-7-day view count from the Analytics API once and caches it forever, and a player's
+  learned draw is the median of (that video's first-7-day views ÷ the channel's median first-7-day
+  views) over their videos with 3+ measured. Nothing needed to change here; this is a report, not
+  a diff.
+- **No-names, and the known+unknown weekly cap**: "a, c if one player is known and the other
+  isnt": two unknowns never renders ("a, c" — reading the two options together, "a" rules out
+  both-unknown entirely); one known + one unknown is allowed, but only "once a week, as an
+  experiment". Two changes:
+  1. `suggest.ts`'s `selectable` (the pool every bucket's `take()` draws from) now filters on
+     `tier(players) >= 1` directly, so a no-name pair never becomes a card in any bucket. It stays
+     in `cache.pool` untouched — `pooledMatchPlayers`/`resolveQueuedPick` read the pool, not the
+     filtered suggestion list, so the operator's own `nightlyQueue` entry for a no-name match is
+     still resolved and rendered; the queue is the one thing that still wins, exactly as the block
+     list and a DNF already do.
+  2. A genuinely mixed pair (exactly one of the two known — not both, not neither) is capped to
+     one *unattended nightly render* a week. Tracked as `ShelfState.lastKnownUnknownRenderAt` in
+     `.dashboard.json` (`src/dashboard/matchShelf.ts`: `recordKnownUnknownRender`/
+     `knownUnknownRenderedRecently`), a single timestamp rather than a rolling log — one mixed
+     render a week is the whole budget, so "when was the last one" is all the gate needs. Set the
+     moment a mixed pair's render actually starts (`runOnce` in `nightly.ts`), whether it came
+     from the ranked list or the operator's own queue: the cap is about how often this kind of
+     match goes out, not about second-guessing a queued pick (a queued mixed pair still renders
+     even inside the 7 days — the queue always wins over this gate too — it's the week's *budget*
+     that is spent by it, not a refusal). Suggestion cards themselves are unaffected: a mixed pair
+     can always be shown to the operator to render by hand; the cap is on the unattended nightly
+     pick only.
+- **Ordering**: "a close finish ... should push a match up the list" and "a near-record (sub-8)
+  run jumps the queue: yes". Two distinct mechanisms, kept apart on purpose:
+  - `isCloseFinish` (`suggest.ts`, `CLOSE_FINISH_MS = 5_000`) is a plain boolean ("was the margin
+    under 5s"), inserted into both `take()`'s slot-selection sort and `presentSuggestions`'s
+    display sort, right after tier (and after "about to expire" in the display sort — a match
+    about to lose its VODs for good still comes first even if it wasn't close). It ranks above
+    `audienceFor`/popularity, as asked, but also above the bucket's own `score`
+    (closeness/chaos) — a defensible reading since sort-key order is priority order and a photo
+    finish is rare enough that this almost never overrides a bucket's intent in practice.
+  - `isSubEightFinish` (`nightly.ts`, `SUB_EIGHT_JUMP_MS = 8 * 60_000`) is tier-independent: a
+    sub-8 result is moved to the very front of the *nightly's own* ranked list, right after the
+    playoff picks, by `withSubEightJump` inside `liveRanked`. Deliberately a separate constant
+    from `recordPaceBoostSec` (off by default, and only ever a within-tier multiplier the
+    operator opts into) — question 10's "yes" is unconditional, not gated on a setting nobody has
+    turned on.
+  - Neither reaches `hooks.ts`, a title or a suggestion card's visible text — both are pure
+    ordering signals, same promise as `recordPaceBoostSec` already made.
+- **Repeat matchups / diversity**: "keep going" on repeats (`pairRepeatDays`'s demotion is
+  untouched), but "we need some diversity but still keep feinberg and infume" when
+  `nightlyMaxRenders` lets the nightly chain a second render in one night. The queue is already
+  tried before the ranked list (`pickNightlyCandidate`), so a queued match is render #1 and the
+  ranked list's own top card is naturally render #2 — the bug was that nothing stopped render #2
+  from being the *same pair* as render #1 under a different match id. `nightly.ts` now tracks
+  `chainPairs` (module state, reset at `started === 1`) and filters the ranked list by
+  `pairKey` for every render after the first in a chain; a pair already rendered tonight drops out
+  of contention for the rest of the chain. Only chained renders (started > 1) are filtered — the
+  night's first render is never second-guessed by a rule meant to diversify what follows it.
+- **Fast-track / "if it's a 1 second difference between feinberg and infume ... post it asap"**:
+  a new 15-minute tick, `src/dashboard/fastTrack.ts`, mirrors `creatorWatch.ts`'s shape (a state
+  file, a "due" check, deliberately-swallowed per-item errors). It reads `suggest.ts`'s
+  `pooledMatches()` (no feed scan of its own — the suggestion scanner already walks the last 10
+  days) for a match whose `dateSec` is within 48h, and fast-tracks it when:
+  - a known pair (`knownTierFor`) with `finishMarginMs < 5_000` or `resultMs <= 8 * 60_000`, or
+  - specifically Feinberg vs Infume with `finishMarginMs <= 1_000` and `resultMs < 9 * 60_000`
+    (question 8's second sentence is a tighter, named-pair version of the first).
+  Both VODs are confirmed the same way `nightly.ts`'s `playoffVodsReady`/`creatorWatch.ts`'s
+  `checkVods` already do (`withDiscoveredVods`), not blocked (`blockedIn`), not a DNF (`isDnf`),
+  and not already on disk (`listProcessedMatchIds`). At most one fast-track a day
+  (`.fast-track.json`'s own date stamp). On a hit, it calls the same `startJob` + `afterSettled` +
+  `chainExport`/`pickClause` machinery `nightly.ts`'s own render path is built from (not
+  `runNightlyOnce` itself — that picks from the ranked list, and a fast-track already knows which
+  match it wants), and writes to `short-<id>.log.jsonl` via the existing `shortLog` once the VOD
+  probe has created the match directory.
+
+  **The slot-shuffle ("moves Y back a slot, and Y's own slot-holder back again, in turn") was
+  judged too risky to automate unsupervised and was *not* built.** It would mean the dashboard
+  rewriting `publishAt` on other already-scheduled, possibly-already-public-adjacent videos via
+  `videos.update` with no operator in the loop, cascading through however many slots are full —
+  exactly the kind of "irreversible without the operator" surface CLAUDE.md's house rules exist
+  to keep this dashboard out of. A fast-tracked match instead renders immediately and then claims
+  a publish slot the ordinary way, through `claimSlot`/`videoPublishTime`
+  (`src/dashboard/shortFlow.ts`) once its hooks are saved — the *existing* "next free slot" logic
+  every other match already uses. If the operator wants the full cascading reschedule built later,
+  say so and it can be — this is the one item built to the explicitly offered fallback ("implement
+  only 'take the next free slot + render now' ... and say so").
+- **Evening coverage**: "just make sure there are matches to upload for the evening." Before this,
+  the nightly's only sense of "how much to render" was a flat count (`nightlyMaxRenders`, default
+  1) chained within a 4h window of the scheduled hour — it has no notion of whether a publish slot
+  is actually going to go empty. `eveningCoverageGap`/`openRankedSlots` (`nightly.ts`) are pure
+  functions: given how many of the next 48h's `publishHourUtc` slots have nothing claimed for them
+  yet, and how many matches are already rendered (`isExported`) but not yet uploaded, the gap
+  (capped at `EVENING_COVERAGE_MAX_PER_NIGHT`, 3) is how many *extra* renders tonight are worth
+  starting beyond the configured chain. Wired into the same chain-continuation decision inside
+  `runOnce`'s `afterSettled` callback, gated on `scheduled` (Run now never triggers it) and on the
+  same `CHAIN_WINDOW_MS` the ordinary chain already respects (`withinChainWindow`, pulled out of
+  `shouldChainNextRender` so both share it). `isExported` (a cheap `final*.mp4` existence check,
+  `matchShelf.ts`) is used as "something is in the pipe for this slot" rather than a more exact
+  read of the upload chain's own state — a known simplification: it slightly undercounts a match
+  that has rendered its Kdenlive project but not yet encoded (`nightlyRenderExport` off, or an
+  export still running), which only ever means a possible extra render on a night that did not
+  strictly need one, never a slot going unfilled. `coverageRendersTonight` (module state, reset at
+  `started === 1`, scheduled chains only) enforces the nightly cap.
+- Rival demotion is gone (question 9, "render and post anyway"): `presentSuggestions`'s
+  `postedByRival` term is deleted outright (nothing else used it), not merely weighted down. The
+  "this match"/"this pair" lines on a card are untouched — rival sightings are still worth
+  showing the operator, just not worth reordering on.
+- Seed variety and title angle (questions 11-12) were confirmed as already not inputs to either
+  ordering or the nightly pick — no code reads a seed for ranking (only a playoff nameplate shows
+  one, per the existing house rule) and no hook/title text feeds back into `suggest.ts`/`nightly.ts`
+  at all. Nothing to change; recorded here so a future session does not go looking for a wiring
+  that was never there.
+
 ## Telegram bot
 
 One morning report at `telegramReportHourWarsaw` (Settings has no field for it — a config-file

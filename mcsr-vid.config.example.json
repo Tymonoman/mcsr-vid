@@ -42,7 +42,8 @@
     "Infume",
     "Pinne",
     "lowk3y_",
-    "silverrruns"
+    "silverrruns",
+    "edcr"
   ],
   "pairRepeatDays": 3,
   "knownFollowerThreshold": 10000,
@@ -99,7 +100,7 @@
     "chaosSwing": 2,
     "chaosSpeed": 0.5
   },
-  "playoffsFirst": false,
+  "playoffsFirst": true,
   "titleNames": {
     "Pinne": "Skycrab",
     "lowk3y_": "lowkey"

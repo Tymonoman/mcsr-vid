@@ -138,7 +138,8 @@ try {
     console.log("OK: favourite → known → neither, above expiry and popularity");
   }
 
-  // --- 3. Inside a tier: expiring → the rival's post after → audience → popularity ---------------
+  // --- 3. Inside a tier: expiring first, then audience — a rival's post no longer demotes (18 Oct
+  // 2026, "render and post anyway") ----------------------------------------------------------------
   {
     // Four favourite pairs from real matches, every one tier 2 under the default roster.
     const expiring = real(13782182, { id: 11, daysAgo: 8.5 }); //   silverrruns vs ANJOUU, audience 3.36, 1 day left
@@ -155,25 +156,25 @@ try {
     const cards = present([posted, smaller, fresh, expiring], DEFAULTS.favouritePlayers, rival);
     assert.deepEqual(
       ids(cards),
-      [11, 12, 13, 14],
-      "expiring first; the rival-posted pair after every fresh one though it has the biggest audience",
+      [11, 14, 12, 13],
+      "expiring first; the rival-posted pair (14) then ranks on its own biggest audience, not demoted",
     );
     assert.equal(
-      cards[3]!.rivalPosts[0]?.title,
+      cards[1]!.rivalPosts[0]?.title,
       "Feinberg vs Silverrruns | MCSR Ranked | Minecraft Speedrun",
     );
-    assert.match(cards[3]!.rivalPosts[0]?.label ?? "", /^@mcsrmatches posted this match \(/);
+    assert.match(cards[1]!.rivalPosts[0]?.label ?? "", /^@mcsrmatches posted this match \(/);
     assert.deepEqual(
       ids(present([posted, smaller, fresh, expiring], DEFAULTS.favouritePlayers)),
       [11, 14, 12, 13],
-      "without the rival's post the same card goes by its audience",
+      "with or without the rival's post the order is the same — it is shown, never ordered on",
     );
     // Popularity is the last tie: two matches of one pair, one bucket, one age.
     const a = real(13446429, { id: 15, popularity: 3 });
     const b = real(13673240, { id: 16, popularity: 30 });
     assert.deepEqual(ids(present([a, b])), [16, 15], "an exact audience tie goes to popularity");
     assert.deepEqual(ids(present([b, a])), [16, 15], "wherever they arrive");
-    console.log("OK: inside a tier, expiring → rival-posted last → audience → popularity");
+    console.log("OK: inside a tier, expiring then audience; a rival's post never reorders");
   }
 
   // --- 4. Expiry: VODs live 10 days, two or fewer left is "expiring" -----------------------------
@@ -321,7 +322,13 @@ try {
       videoViews: {},
     };
     writeFileSync(path.join(media, ".draw-learned.json"), JSON.stringify(learned));
-    const list = [real(13617328, { id: 51 }), real(12898432, { id: 52 })];
+    // Both margins pushed past CLOSE_FINISH_MS (18 Oct 2026) and onto the same side of it, so
+    // this stays a test of learnedDraw/audience, not of which one has the closer finish.
+    const notClose = (s: Suggestion): Suggestion => ({
+      ...s,
+      metrics: { ...s.metrics, finishMarginMs: 9_000 },
+    });
+    const list = [notClose(real(13617328, { id: 51 })), notClose(real(12898432, { id: 52 }))];
     const live = () => ids(presentSuggestions(list, NOW, [], [], []));
     const today = ids(presentSuggestions(list, NOW, [], [], [], DEFAULTS.knownFollowerThreshold, null, null));
     assert.deepEqual(today, [51, 52], "today's order: the unmeasured pair's 0.75 over 0.485");

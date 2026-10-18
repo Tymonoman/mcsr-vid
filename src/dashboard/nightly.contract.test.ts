@@ -140,7 +140,7 @@ try {
   assert.equal(config.nightlyRenderHourUtc, 3, "the nightly fires at 03:00 UTC by default");
   assert.equal(config.nightlyMaxRenders, 1, "one render a night unless the operator raises it");
   assert.equal(config.nightlyRenderExport, true, "the night ends on a finished MP4, then the pick");
-  assert.equal(config.playoffsFirst, false, "the bracket goes first only when the operator says so");
+  assert.equal(config.playoffsFirst, true, "the bracket goes first by default (18 Oct 2026)");
   assert.equal(config.creatorWatch, false, "creator watch is off by default");
   assert.deepEqual(config.creatorWatchlist, [], "and watches nobody");
   assert.deepEqual(config.blockedPlayers, ["Aquacorde", "BeefSalad"], "the two runners who withdrew");

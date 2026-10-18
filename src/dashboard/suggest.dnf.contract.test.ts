@@ -42,7 +42,9 @@ const fixture = (id: number, hoursAgo: number, over: Partial<MatchInfo> = {}): M
 };
 
 const finished = fixture(12730175, 2); // edcr vs doogile: a favourite, so a known card at least
-const control = fixture(13617328, 3); // nolqndo vs thecamo6: two no-names, close/chaos only
+// nolqndo vs thecamo6: two no-names — finished, not a DNF, but never a card either way (18 Oct
+// 2026, "two unknown runners = never"); it stays in the pool, proving DNF is not why it is out.
+const control = fixture(13617328, 3);
 const forfeit = fixture(12929221, 4, { forfeited: true, completions: [] }); // Feinberg vs silverrruns
 const noWinner = fixture(13446429, 5); // Infume vs Feinberg
 noWinner.result = { ...noWinner.result, uuid: null };
@@ -83,7 +85,10 @@ try {
   const ids = scan.suggestions.map((s) => s.metrics.matchId);
   for (const id of DNFS) assert.ok(!ids.includes(id), `#${id} is a DNF and must be no card (got ${ids})`);
   assert.ok(ids.includes(finished.id), "the finished favourite's match is a card");
-  assert.ok(ids.includes(control.id), "the finished no-name match is a card");
+  assert.ok(
+    !ids.includes(control.id),
+    "the finished no-name match is still not a card (no known player, not DNF)",
+  );
   assert.equal(detailAsked(forfeit.id), 0, "a forfeit is dropped off the feed, never fetched");
   assert.equal(detailAsked(noWinner.id), 0, "so is a match with no winner");
   console.log(
@@ -93,6 +98,11 @@ try {
   const pooled = readCache().pool[String(nobodyCompleted.id)];
   assert.equal(pooled?.metrics.dnf, true, "a record with no completion is pooled as a DNF");
   assert.equal(readCache().pool[String(finished.id)]?.metrics.dnf, false, "a finished one as finished");
+  assert.equal(
+    readCache().pool[String(control.id)]?.metrics.dnf,
+    false,
+    "the no-name match is pooled as finished too — it is the tier gate keeping it off the list, not a DNF flag",
+  );
   // Every bucket, at once: even with slots to spare the DNF does not fill one.
   [config.suggestCloseSlots, config.suggestChaosSlots, config.suggestKnownSlots] = [10, 10, 10];
   const roomy = await getSuggestions({ force: true });

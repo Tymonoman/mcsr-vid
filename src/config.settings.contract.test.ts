@@ -110,7 +110,7 @@ console.log("config.settings.contract: introSec and teaserAtSec refuse non-finit
     recordPaceBoostSec: null,
     creatorWatch: false, // "Creator watch (creatorWatch/creatorWatchlist, Settings tab, off/empty by default)"
     creatorWatchlist: [],
-    playoffsFirst: false, // "playoffsFirst (default false)"
+    playoffsFirst: true, // "playoffsFirst (default true)" since 18 Oct 2026
     playoffThumbnailStyle: "plain", // handbook: "Default "plain""
     exportUpscale1440: false, // "exportUpscale1440 (default off)"
     povAudioPan: 0.7, // "povAudioPan, default 0.7"

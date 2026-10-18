@@ -120,7 +120,10 @@ assert.equal(favouriteFactorFor([])(["doogile", "Feinberg"]), 1, "an empty list 
     "proven: the repeat factor is 1, not REPEAT_FACTOR",
   );
   // A pair whose last measured ratio did not beat the median (<=1) is not proven: still halved.
-  const notProven: DrawLearned = { ...learnedFile, pairs: { "aaa|bbb": { lastRatio: 0.9, lastVideoId: "v1" } } };
+  const notProven: DrawLearned = {
+    ...learnedFile,
+    pairs: { "aaa|bbb": { lastRatio: 0.9, lastVideoId: "v1" } },
+  };
   assert.equal(
     audienceFor([], noFollowers, posted, notProven)(["aaa", "bbb"]),
     withoutLearned(["aaa", "bbb"]),
@@ -230,21 +233,27 @@ try {
   const ids = async (favourites: string[]) =>
     (await listed(favourites)).suggestions.map((s) => s.metrics.matchId);
 
-  assert.deepEqual(await ids([]), [10, 20], "by score alone: the two best");
+  // No favourite, no measured draw, no followers: every pair here is tier 0 (18 Oct 2026, "two
+  // unknown runners = never") — the pool keeps them (queued resolution still finds them), but
+  // the list never does.
+  assert.deepEqual(await ids([]), [], "no known player anywhere: no card for anyone");
   assert.deepEqual(
     await ids(["hhh"]),
     [30, 40],
     "the matches with a favourite take both slots, though the two best scores are no-name matches",
   );
+  // Both are tier 2 (a favourite present), so without a close finish the bigger audience (two
+  // favourites, 30's one) would win — but 30's margin (4_500ms) clears `CLOSE_FINISH_MS` and 40's
+  // (9_000ms) does not, and a close finish now outranks audience inside a tier (18 Oct 2026).
   assert.deepEqual(
     await ids(["Hhh", "III"]),
-    [40, 30],
-    "in any case; two favourites outrank one on the audience whatever the score, and both beat the no-names",
+    [30, 40],
+    "a close finish outranks the bigger audience, though both beat the no-names",
   );
   assert.deepEqual(
     await ids([]),
-    [10, 20],
-    "and with the list emptied the next scan is back to scores alone",
+    [],
+    "and with the list emptied, no known player is left either — no card for anyone",
   );
 
   // The card keeps the bucket's own score: comparable, and what the TUI prints.
@@ -299,9 +308,10 @@ try {
   );
   assert.deepEqual(
     await ids([]),
-    [63, 61],
+    [63],
     // lowk3y_'s own measured draw (1.38, DEFAULT_DRAW in suggest.ts) clears KNOWN_DRAW_MIN on its
-    // own, roster or not — Pinne's (0.46) does not, so her match needs the roster to be known at all.
+    // own, roster or not — Pinne's (0.46) does not, and Jabo_/sub5average (61) are no-names: with
+    // no known player at all, 61 never reaches the list (18 Oct 2026), unfilled slot and all.
     "an empty roster does not switch the tier off entirely: lowk3y_ is still known",
   );
   config.suggestCloseSlots = 1;
@@ -350,13 +360,13 @@ try {
   assert.deepEqual(await ids([...DEFAULTS.favouritePlayers]), [72, 73], "never two matches of one pair");
 
   // The scan reads each favourite's own list and each strong draw's (STRONG_DRAWS: measured >= 1.0)
-  // once: the default roster's 6 and hackingnoises, edcr, nahhann — 9 calls. BeefSalad was one of
-  // these too, until he was blocked (config.blockedPlayers, 4 Oct 2026).
+  // once: the default roster's 7 (edcr included since 18 Oct 2026) and hackingnoises, nahhann —
+  // 9 calls. BeefSalad was one of these too, until he was blocked (config.blockedPlayers, 4 Oct 2026).
   assert.deepEqual(
     [...asked].sort(),
-    [...DEFAULTS.favouritePlayers.map((n) => n.toLowerCase()), "edcr", "hackingnoises", "nahhann"].sort(),
+    [...DEFAULTS.favouritePlayers.map((n) => n.toLowerCase()), "hackingnoises", "nahhann"].sort(),
   );
-  assert.equal(STRONG_DRAWS.length, 8, "the 8 measured at 1.0 or more, 5 of them on the default roster");
+  assert.equal(STRONG_DRAWS.length, 8, "the 8 measured at 1.0 or more, 6 of them on the default roster");
   console.log("OK: a favourite's match is a tier above the no-name ones at the slots");
 
   // --- A blocked player's match never reaches the list, however it scores, and does not even stay
@@ -366,7 +376,9 @@ try {
     const blocked = Object.fromEntries(
       [
         pooled(81, ["blockedguy", "clean"], 0), //   0.353 — would win outright
-        pooled(82, ["another", "pair"], 5_000), //   0.235
+        // "hackingnoises" so this pair is known (18 Oct 2026) and isolates the block as the
+        // reason 81 never appears, rather than both losing their slot for different reasons.
+        pooled(82, ["hackingnoises", "pair"], 5_000), //   0.235
       ].map((entry) => [String(entry.metrics.matchId), entry]),
     );
     await writeFile(
@@ -629,7 +641,10 @@ try {
     console.log("OK: a match already in countedMatchIds still gets offered to the pool");
     // The card's h2h is the record before this match, in its own season: a first meeting is 0-0
     // (no "rematch 0–1" line naming the winner), not the current season's record.
-    assert.ok(versusUrls.length > 0 && versusUrls.every((u) => u.endsWith("before=556&season=9")), versusUrls.join());
+    assert.ok(
+      versusUrls.length > 0 && versusUrls.every((u) => u.endsWith("before=556&season=9")),
+      versusUrls.join(),
+    );
     assert.deepEqual(savedAfter.pool["555"].h2h, { leftWins: 0, rightWins: 0 });
     console.log("OK: a pooled h2h is the match's own season, before the match");
   }

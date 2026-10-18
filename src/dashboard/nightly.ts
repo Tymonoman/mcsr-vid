@@ -36,13 +36,17 @@ import { anyExportRunning, exportRunning, startFastExport } from "./exportRoutes
 import { anyJobRunning, getJob, startJob, type Job } from "./jobs.js";
 import {
   hiddenMatchIds,
+  isExported,
+  isUploaded,
+  knownUnknownRenderedRecently,
   nightlyQueue,
   nightlySkipIds,
+  recordKnownUnknownRender,
   setNightlyQueue,
   setSkipNightOf,
   skipNightOf,
 } from "./matchShelf.js";
-import { refreshPairPosts } from "./pairPosts.js";
+import { pairKey, refreshPairPosts } from "./pairPosts.js";
 import { orderForDisplay } from "./suggestPresent.js";
 import { dnfRefusal, matchIsDnf, playoffBoard, type PlayoffBoard } from "../playoffs/playoffs.js";
 import { blockedOnDisk, listProcessedMatchIds } from "./matchStatus.js";
@@ -50,13 +54,20 @@ import { shortRunning } from "./shortsRoutes.js";
 import { anyThumbnailRunning, thumbnailRunning } from "../thumbnails/rerender.js";
 import { nightlyShortSummary, picksIdle, shortTick } from "./shortFlow.js";
 import { snapshot, startScan } from "./suggestScan.js";
-import { knownTierFor, pooledMatchPlayers, scanKnowledge } from "./suggest.js";
+import {
+  knownPlayerFor,
+  knownTierFor,
+  pooledMatchPlayers,
+  scanKnowledge,
+  type Suggestion,
+} from "./suggest.js";
 import { getMatch } from "../api/mcsrApi.js";
 import type { MatchInfo } from "../api/types.js";
 import { computeMetrics } from "../pipeline/matchScore.js";
 import { withDiscoveredVods } from "../pipeline/vodDiscovery.js";
 import { retryFailedPlaylists, retryPendingComments, retryPendingStudio } from "../youtube/youtubeUpload.js";
 import { allUploads } from "../youtube/youtubeStore.js";
+import { claimedPublishTimes } from "../youtube/publishSlot.js";
 import { pickFile, type ShortPick } from "../shorts/shortPlan.js";
 import { pickErrorFile } from "../shorts/videoPick.js";
 
@@ -68,6 +79,112 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * carrying its own copy of the number.
  */
 export const MIN_FREE_MATCHES = 2;
+
+/**
+ * 8:00 — the operator, 18 Oct 2026: "a near-record (sub-8) run jumps the queue: yes". Unconditional,
+ * unlike `recordPaceBoostSec` (off by default, and only ever a within-tier multiplier): a sub-8
+ * finish moves the match ahead of every tier, right after the playoff picks (`withSubEightJump`).
+ * A separate constant on purpose — it answers question 10 regardless of whether the operator has
+ * ever touched `recordPaceBoostSec`.
+ */
+export const SUB_EIGHT_JUMP_MS = 8 * 60 * 1000;
+
+export const isSubEightFinish = (resultMs: number): boolean => resultMs <= SUB_EIGHT_JUMP_MS;
+
+/**
+ * The ranked list, with every sub-8 finish moved to the front — tier-independent, right after
+ * `playoffPicks`. Stable: each group (jump, rest) keeps the order `orderForDisplay` already gave
+ * it. Pure, so it is tested without a scan.
+ */
+export function withSubEightJump(suggestions: readonly Suggestion[]): Suggestion[] {
+  const jump = suggestions.filter((s) => isSubEightFinish(s.metrics.resultMs));
+  const rest = suggestions.filter((s) => !isSubEightFinish(s.metrics.resultMs));
+  return [...jump, ...rest];
+}
+
+/**
+ * Exactly one of a pair's two players is known — not both, not neither — the "mixed" pair the
+ * operator capped at one unattended nightly render a week (18 Oct 2026, question 3: "one known
+ * and one unknown = once a week, as an experiment"). A both-known pair has no such cap; a
+ * both-unknown pair never reaches here at all (`suggest.ts`'s own tier-0 filter upstream, and
+ * `isKnownPick` below).
+ */
+export function isMixedKnownPick(pick: NightlyPick): boolean {
+  if (pick.bucket === "playoffs") return false;
+  const known = knownPlayerFor(
+    config.favouritePlayers,
+    (name) => scanKnowledge().twitchOf(name)?.followers ?? null,
+    config.knownFollowerThreshold,
+  );
+  return pick.metrics.players.filter(known).length === 1;
+}
+
+/** At most this many *extra* renders a scheduled night starts to keep an upcoming publish slot
+ *  from going empty — on top of (never instead of) the configured chain. */
+export const EVENING_COVERAGE_MAX_PER_NIGHT = 3;
+/** "the next 48h" (the operator, 18 Oct 2026). */
+export const EVENING_COVERAGE_HORIZON_MS = 48 * 60 * 60 * 1000;
+
+/**
+ * How many of the daily `hourUtc` ranked publish slots strictly between `nowMs` and
+ * `nowMs + horizonMs` have nothing claimed for them (`claimedHourStarts`: each claimed time's own
+ * hour, floored — the caller's job, so this stays a pure count). Pure and tiny: at most two or
+ * three slots ever fall in a 48h window, so a bounded loop beats reasoning about calendar maths.
+ */
+export function openRankedSlots(
+  nowMs: number,
+  hourUtc: number,
+  claimedHourStarts: ReadonlySet<number>,
+  horizonMs: number = EVENING_COVERAGE_HORIZON_MS,
+): number {
+  const HOUR_MS = 3600_000;
+  let open = 0;
+  let day = Math.floor(nowMs / DAY_MS) * DAY_MS;
+  for (let guard = 0; guard < 3; guard++, day += DAY_MS) {
+    const at = day + hourUtc * HOUR_MS;
+    if (at <= nowMs || at > nowMs + horizonMs) continue;
+    if (!claimedHourStarts.has(at)) open++;
+  }
+  return open;
+}
+
+/**
+ * Extra renders worth starting tonight so an open slot in the next 48h does not go empty: the gap
+ * between open slots and matches already rendered and waiting to fill one, capped at
+ * `EVENING_COVERAGE_MAX_PER_NIGHT`. Plenty already waiting is never a reason to render *less* —
+ * floored at 0, not negative.
+ */
+export function eveningCoverageGap(openSlots: number, pendingUnpublished: number): number {
+  return Math.max(0, Math.min(EVENING_COVERAGE_MAX_PER_NIGHT, openSlots - pendingUnpublished));
+}
+
+/**
+ * The live reading `eveningCoverageGap` needs: `claimedPublishTimes` (channel + this dashboard's
+ * own records + a chain's own in-flight claim) for the open-slot count, and every processed match
+ * that is exported (`isExported` — a cheap `final*.mp4` check, not a full upload-chain read: a
+ * known simplification, ponytail — it can undercount a match whose export has not finished yet,
+ * which only ever means a possible extra render on a night that did not strictly need one, never
+ * a slot left empty) but not yet uploaded, hidden or blocked, for the "already waiting" count.
+ */
+async function liveEveningCoverageGap(nowMs: number): Promise<number> {
+  const claimed = await claimedPublishTimes(-1);
+  const HOUR_MS = 3600_000;
+  const hourStarts = new Set(
+    claimed
+      .map((iso) => Date.parse(iso))
+      .filter((ms) => Number.isFinite(ms))
+      .map((ms) => Math.floor(ms / HOUR_MS) * HOUR_MS),
+  );
+  const open = openRankedSlots(nowMs, config.publishHourUtc, hourStarts);
+  const hidden = hiddenMatchIds();
+  let pending = 0;
+  for (const id of listProcessedMatchIds()) {
+    if (hidden.has(id) || blockedOnDisk(matchDir(id)) || !isExported(id)) continue;
+    if (await isUploaded(id)) continue;
+    pending++;
+  }
+  return eveningCoverageGap(open, pending);
+}
 
 /** jobs.ts offers no completion callback, and a render runs unattended for minutes, so poll coarsely. */
 const SETTLE_POLL_MS = 30_000;
@@ -159,6 +276,19 @@ const CHAIN_WINDOW_MS = 4 * 60 * 60 * 1000;
  * A disabled schedule (`hourUtc === null`) chains nothing: the only way to get here then is the
  * dashboard's `Run now`, which is one click asking for one render.
  */
+/** The window half of `shouldChainNextRender`, pulled out so evening coverage's own extra renders
+ *  respect it too (18 Oct 2026) without copying the maths. */
+export function withinChainWindow(
+  nowMs: number,
+  hourUtc: number | null,
+  windowMs: number = CHAIN_WINDOW_MS,
+): boolean {
+  if (hourUtc === null) return false;
+  // msUntilNextRun counts forward to the next hour and never returns 0, so a whole day minus it
+  // is how long ago today's hour was.
+  return DAY_MS - msUntilNextRun(nowMs, hourUtc) < windowMs;
+}
+
 export function shouldChainNextRender(
   started: number,
   maxRenders: number,
@@ -166,10 +296,8 @@ export function shouldChainNextRender(
   hourUtc: number | null,
   windowMs: number = CHAIN_WINDOW_MS,
 ): boolean {
-  if (started >= maxRenders || hourUtc === null) return false;
-  // msUntilNextRun counts forward to the next hour and never returns 0, so a whole day minus it
-  // is how long ago today's hour was.
-  return DAY_MS - msUntilNextRun(nowMs, hourUtc) < windowMs;
+  if (started >= maxRenders) return false;
+  return withinChainWindow(nowMs, hourUtc, windowMs);
 }
 
 interface NightlyPickContext {
@@ -340,6 +468,7 @@ export function isKnownPick(pick: NightlyPick): boolean {
 export function nightlyEligible(
   queue: readonly number[],
   checkVods: (pick: NightlyPick) => Promise<boolean> = playoffVodsReady,
+  nowMs: number = Date.now(),
 ): (pick: NightlyPick) => Promise<boolean> {
   const queued = new Set(queue);
   // Checked before the queue, not after: a blocked match is never rendered, however it got here —
@@ -351,7 +480,10 @@ export function nightlyEligible(
     !blockedOnDisk(matchDir(pick.metrics.matchId)) &&
     finishedPick(pick) &&
     (await checkVods(pick)) &&
-    (queued.has(pick.metrics.matchId) || isKnownPick(pick));
+    (queued.has(pick.metrics.matchId) || isKnownPick(pick)) &&
+    // The weekly budget on a mixed (one known, one unknown) pair — the operator's own queue still
+    // wins over it, same as over the known-player gate just above (18 Oct 2026, question 3).
+    (queued.has(pick.metrics.matchId) || !isMixedKnownPick(pick) || !knownUnknownRenderedRecently(nowMs));
 }
 
 /**
@@ -429,6 +561,27 @@ export const nightlyChainRunning = (): boolean => chainsActive > 0;
 const endChain = (): void => {
   chainsActive = Math.max(0, chainsActive - 1);
 };
+
+/**
+ * Pairs already rendered by this chain tonight (`pairKey`), reset at the chain's first call —
+ * the operator, 18 Oct 2026: "we need some diversity but still keep feinberg and infume". Only a
+ * *chained* render (started > 1) is filtered by it: the night's first render, usually the queue
+ * item, is never second-guessed by a rule meant to diversify what follows it.
+ */
+let chainPairs = new Set<string>();
+
+/** This chain's own count of evening-coverage extra renders tonight, reset the same way — the
+ *  `EVENING_COVERAGE_MAX_PER_NIGHT` cap. */
+let coverageRendersTonight = 0;
+
+/** Drops every candidate whose pair is in `pairs` — `chainPairs`'s own filter, pulled out so it
+ *  is testable without a live chain. */
+export function excludeRenderedPairs<T extends { metrics: { players: readonly [string, string] } }>(
+  list: readonly T[],
+  pairs: ReadonlySet<string>,
+): T[] {
+  return list.filter((s) => !pairs.has(pairKey(s.metrics.players)));
+}
 
 /** A pipeline, an encode, a Short or a thumbnail re-render on this match: the same four the delete guard refuses for. */
 const busyWith = (id: number): boolean =>
@@ -639,7 +792,9 @@ const liveRanked = async (): Promise<readonly NightlyPick[] | null> => {
   const result = snapshot().result;
   // The pairs the channel put out lately, fresh: the order demotes a repeat (src/dashboard/pairPosts.ts).
   await refreshPairPostsWithin();
-  return result ? [...(await playoffPicks()), ...orderForDisplay(result.suggestions)] : null;
+  return result
+    ? [...(await playoffPicks()), ...withSubEightJump(orderForDisplay(result.suggestions))]
+    : null;
 };
 
 /** YYYY-MM-DD in UTC of the next scheduled nightly run, or null when nightly is disabled. */
@@ -683,7 +838,7 @@ export async function nightlyCandidate(): Promise<NightlyPick | null> {
   void refreshPairPosts();
   if (!result) return null;
   return previewPick(
-    [...(await playoffPicks()), ...orderForDisplay(result.suggestions)],
+    [...(await playoffPicks()), ...withSubEightJump(orderForDisplay(result.suggestions))],
     await pickContext(),
   );
 }
@@ -767,7 +922,11 @@ async function runOnce(
 
   // Set once, at the chain's very first call, and cleared at every point below where this
   // function settles without a job left running or about to be chained from — see `chainsActive`.
-  if (started === 1) chainsActive++;
+  if (started === 1) {
+    chainsActive++;
+    chainPairs = new Set();
+    coverageRendersTonight = 0;
+  }
   try {
     return await runNightlyOnceInner();
   } catch (err) {
@@ -838,13 +997,13 @@ async function runOnce(
     const suggestions = await ranked();
     if (!suggestions) return skip("no suggestions available");
 
+    // Diversity (18 Oct 2026): only a *chained* render (started > 1) drops a pair this chain has
+    // already rendered tonight — the night's first render (usually the queue item) is untouched,
+    // so there is always something for this to diversify against.
+    const candidates = started > 1 ? excludeRenderedPairs(suggestions, chainPairs) : suggestions;
+
     const ctx = await pickContext();
-    const pick = await pickNightlyCandidate(
-      suggestions,
-      ctx,
-      nightlyEligible(ctx.queue ?? []),
-      resolveQueued,
-    );
+    const pick = await pickNightlyCandidate(candidates, ctx, nightlyEligible(ctx.queue ?? []), resolveQueued);
     if (!pick) {
       // Naming them: a bracket whose players stream on someone else's channel would otherwise
       // produce nothing but "nothing to render" for a fortnight, with the reason only in the log.
@@ -862,6 +1021,10 @@ async function runOnce(
     const label = `${players[0]} vs ${players[1]}`;
     console.error(`nightly: starting render of #${matchId} ${label}`);
     lastStartedId = matchId;
+    // This chain's own diversity memory, and the weekly mixed-pair budget — spent the moment the
+    // render actually starts, whichever source picked it (ranked list or the operator's queue).
+    chainPairs.add(pairKey(players));
+    if (isMixedKnownPick(pick)) recordKnownUnknownRender(now());
     // A no-op unless today's UTC date has a schedule entry (src/dashboard/experiments.ts) — the
     // render's own arm settings were already applied by `applyScheduledRenderArm` closer to this
     // hour; this just leaves a record of which arm they were in the match directory.
@@ -902,10 +1065,26 @@ async function runOnce(
         // first render can be skipped by the second. Only a clean run earns one, as the Short and
         // the export do; the state file then describes the later render, which is the one still
         // worth acting on.
-        if (
+        const normalChain =
           verdict.outcome === "done" &&
-          shouldChainNextRender(started, config.nightlyMaxRenders, Date.now(), config.nightlyRenderHourUtc)
-        ) {
+          shouldChainNextRender(started, config.nightlyMaxRenders, Date.now(), config.nightlyRenderHourUtc);
+        // Evening coverage (18 Oct 2026): once the configured chain is done, a scheduled run may
+        // still top up — at most `EVENING_COVERAGE_MAX_PER_NIGHT` a night, inside the same window
+        // the ordinary chain respects, and only while an upcoming publish slot would otherwise go
+        // empty. Recomputed fresh each time, so the render just finished (if exported already)
+        // already counts toward "waiting to fill one".
+        const coverageChain =
+          verdict.outcome === "done" &&
+          !normalChain &&
+          scheduled &&
+          withinChainWindow(Date.now(), config.nightlyRenderHourUtc) &&
+          coverageRendersTonight < EVENING_COVERAGE_MAX_PER_NIGHT &&
+          (await liveEveningCoverageGap(Date.now()).catch((err: unknown) => {
+            console.error(`nightly: evening-coverage check failed — ${describeError(err)}`);
+            return 0;
+          })) > 0;
+        if (normalChain || coverageChain) {
+          if (coverageChain) coverageRendersTonight++;
           // The chain stays counted across this call — the chained call owns its end now (its
           // skip, its own "not chaining further", or runOnce's catch if it blew up starting).
           chained = true;

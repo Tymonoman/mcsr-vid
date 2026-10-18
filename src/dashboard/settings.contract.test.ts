@@ -157,18 +157,20 @@ function shown(f: Field & { value: unknown }): unknown {
 {
   const ino = statSync(file).ino;
   const filesBefore = readdirSync(dir).sort();
-  assert.deepEqual(saveSettings({ playoffsFirst: true }).changed, ["playoffsFirst"]);
+  // playoffsFirst's default is true (18 Oct 2026) and LAB does not override it, so the change
+  // worth saving here is away from the default.
+  assert.deepEqual(saveSettings({ playoffsFirst: false }).changed, ["playoffsFirst"]);
   // The loader reads this file at boot: a half-written one is a dashboard that will not start, so a
   // save lands as a whole new file renamed over the old, never an in-place rewrite.
   assert.notEqual(statSync(file).ino, ino, "renamed into place, not rewritten in place");
   assert.deepEqual(readdirSync(dir).sort(), filesBefore, "no temp file left beside it");
-  assert.deepEqual(disk(), { ...LAB, playoffsFirst: true }, "the save is the old file plus the change");
+  assert.deepEqual(disk(), { ...LAB, playoffsFirst: false }, "the save is the old file plus the change");
 
   // A crash between write and rename leaves the temp file behind; the next save must not trip on it.
   writeFileSync(`${file}.tmp`, '{ "half a fi', "utf8");
-  assert.deepEqual(saveSettings({ playoffsFirst: false }).changed, ["playoffsFirst"]);
+  assert.deepEqual(saveSettings({ playoffsFirst: true }).changed, ["playoffsFirst"]);
   assert.ok(!existsSync(`${file}.tmp`), "the stale temp file was replaced and renamed away");
-  assert.equal(disk().playoffsFirst, false);
+  assert.equal(disk().playoffsFirst, true);
   console.log("settings.contract: a save is a rename, and survives a crashed one before it");
 }
 

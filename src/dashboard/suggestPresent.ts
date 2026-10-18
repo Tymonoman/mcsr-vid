@@ -14,6 +14,7 @@ import { rivalLine, rivalPostsSnapshot, rivalSightingsFor, type RivalPost } from
 import { metricsDnf, type SplitGap } from "../pipeline/matchScore.js";
 import {
   audienceFor,
+  isCloseFinish,
   recordPaceFactor,
   tierFor,
   POOL_MAX_AGE_DAYS,
@@ -42,6 +43,8 @@ export interface SuggestionCard {
   popularity: number;
   /** Ranking signal too (the record-pace boost, `recordPaceBoostSec`): not shown on the card. */
   resultMs: number;
+  /** Ranking signal too (`isCloseFinish`, under 5s): not shown on the card. */
+  closeFinish: boolean;
   splits: SplitGap[];
   vodUrls: string[];
   /**
@@ -127,12 +130,11 @@ function toCard(s: Suggestion, nowMs: number, rival: readonly RivalPost[]): Sugg
     expiryLabel: expiresInDays === 0 ? "VODs expire today" : `VODs expire in ${expiresInDays}d`,
     popularity: s.popularity,
     resultMs: s.metrics.resultMs,
+    closeFinish: isCloseFinish(s.metrics),
     splits: s.metrics.splits,
     vodUrls: s.vodUrls,
   };
 }
-
-const postedByRival = (card: SuggestionCard): boolean => card.rivalPosts.some((r) => r.kind === "match");
 
 /** Which bucket breaks a tie: the close races, then the chaos, then a known player's plain match. */
 const BUCKET_RANK: Record<Bucket, number> = { close: 0, chaos: 1, known: 2 };
@@ -141,14 +143,15 @@ const BUCKET_RANK: Record<Bucket, number> = { close: 0, chaos: 1, known: 2 };
  * Cards in display order, one list across both buckets. First `tierFor`: a match with a favourite
  * (`favourites`: nicknames, compared whole and ignoring case) above every match without one, then a
  * match with a known player (a measured draw, or a Twitch following that clears the gate) above the
- * no-names — whatever else is true of them, an expiring no-name card included (1 Oct 2026: one sat at
- * #1 of 443). Inside a tier: a match whose VODs are about to die first, because it is the only
- * candidate that stops being renderable; a match a rival channel has already posted after the
- * fresh ones, because it would compete with the rival's own video for the same browse session (a
- * rival's post of the same pair in another match is shown, not ordered on); then
+ * no-names — except a no-name match no longer reaches a card at all (`suggest.ts`'s own filter; the
+ * operator, 18 Oct 2026: "two unknown runners = never"). Inside a tier: a match whose VODs are about
+ * to die first, because it is the only candidate that stops being renderable; then a photo finish
+ * (`isCloseFinish`, under 5s — the operator, same day: "a close finish should push a match up the
+ * list" — never shown, only ordered on); then
  * the biggest audience (`audienceFor`: expected draw × the favourites' bonus × `REPEAT_FACTOR` for a
- * pair the channel itself put out lately — `posted`, within `pairRepeatDays`, either side of now — and
- * no chaos/closeness term: match quality does not predict views once players are controlled for). The
+ * pair the channel itself put out lately — `posted`, within `pairRepeatDays`, either side of now). A
+ * rival channel already posting the match no longer demotes it either (18 Oct 2026 — it still shows
+ * on the card, `rivalPosts`, just does not move it). The
  * bucket breaks a tie (`BUCKET_RANK`: close, then chaos, then known), and popularity the one after that.
  * Everything here is read on every call and kept out of the scan's cache, so a change to either
  * setting re-orders the next read. (The tier and the audience also decide when a scan chooses the
@@ -188,7 +191,7 @@ export function presentSuggestions(
     (x, y) =>
       tier(y.players) - tier(x.players) ||
       Number(y.expiring) - Number(x.expiring) ||
-      Number(postedByRival(x)) - Number(postedByRival(y)) ||
+      Number(y.closeFinish) - Number(x.closeFinish) ||
       paced(y) - paced(x) ||
       BUCKET_RANK[x.bucket] - BUCKET_RANK[y.bucket] ||
       y.popularity - x.popularity,
