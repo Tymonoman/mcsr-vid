@@ -1557,6 +1557,25 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
   `npm run tg -- titles <matchId> [--dry-run]` (`tgCli.ts`) sends the same offer for any match —
   even one already uploaded, the retitle case — ignoring the dedupe: how the operator's "retitle
   the scheduled ones and the ones people complain about" gets done by hand.
+- **The veto** (same file, 18 Oct 2026, "give me the ability to veto an upload"): a fourth row,
+  `callback_data` `t:<id>:x` — `"🚫 Don't post this one"` not yet uploaded, `"🚫 Cancel this
+  upload"` once `f.video` is set (the same `factsOf` read `chooseOption` already makes, so the
+  wording always matches what a press would actually do). Not yet uploaded: `setHidden(matchId,
+  true)` — the dashboard's own Hide/Delete-from-plan mechanism, so `autoHooksTick`, the nightly's
+  `pickNightlyCandidate` and `dueForTitleOffer` all already skip a hidden id with no new check —
+  then the message becomes "Vetoed — won't be posted" with one button left, `↩️ Undo` (`t:<id>:u`,
+  `offer.vetoedAt` stamped). A press on that within `VETO_UNDO_WINDOW_MS` (24h) unhides the match
+  and rebuilds the same offer (cached `offer.options`, no fresh model call); past the window it
+  just answers that the undo expired and leaves "Vetoed" standing, no live re-check needed since
+  nothing else can touch `vetoedAt` in between. Already uploaded: no Undo (there is nothing this
+  bot can reverse once a video is live) — `setHidden` only, and the message becomes a link to
+  `https://studio.youtube.com/video/<id>/edit` (the report's own Studio-link pattern) asking the
+  operator to delete or unschedule it there by hand; the operator's standing rule holds exactly as
+  everywhere else in this file — nothing here calls `videos.update`, touches privacy, or deletes
+  anything on YouTube. Both branches are gated the same as every other button: `index.ts`'s
+  `handleUpdate` checks the operator's chat and the presser before `handleTitleCallback` is ever
+  called, so there is nothing extra to check inside `vetoOffer`/`undoVeto` themselves beyond "is
+  this offer still live" (`!offer || offer.settled`, same guard `chooseOption` uses).
 
 ## Studio automation (phase 1, 7 Oct 2026)
 

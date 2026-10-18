@@ -336,7 +336,7 @@ Europe/Warsaw, DST-correct; every slash command answers fresh. Runs inside the d
 - **Reports reach Telegram because they are sent, not by a hook**: write a file, then
   `npm run tg -- send --md <file>`. A report is a finished task's end, a write-up; not a quick
   answer, a progress note or a question to the operator. Every bot command is read-only except
-  the title picker's buttons (operator's chat). Plain replies from the operator's chat land in
+  the title picker's buttons, incl. veto (operator's chat). Plain replies from the operator's chat land in
   `.telegram-inbox.jsonl`; `npm run tg -- inbox` prints them.
 
 ## Studio automation
