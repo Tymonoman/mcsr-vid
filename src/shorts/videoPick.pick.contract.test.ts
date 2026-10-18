@@ -372,6 +372,21 @@ assert.equal(
   );
 }
 
+// --- titles/v2 (18 Oct 2026): the pick's own `techniques`, kept only when the id is known. -----
+{
+  stage(SINGLE);
+  const withTech = await ask([{ ...good, techniques: ["zero-cycle", "not-a-real-id", "zero-cycle"] }]);
+  assert.deepEqual(withTech.pick.techniques, ["zero-cycle"], "unknown ids dropped, duplicates collapsed");
+  assert.deepEqual(readJson(pickFile(dir, SINGLE)).techniques, ["zero-cycle"], "written with the pick");
+  assert.ok(
+    withTech.lines.some((l) => l.includes('"not-a-real-id"') && /dropped \(not a known glossary id/.test(l)),
+    "an unknown id is dropped, said so",
+  );
+  const none = await ask([{ ...good, techniques: undefined }]);
+  assert.ok(!("techniques" in none.pick), "no techniques proposed: the field is left out");
+  console.log("OK: techniques seen are kept only when the id is known, deduped, absent when none proposed");
+}
+
 // --- P11, P12: seeds, ranks, elo; the winner. Probes past the obvious "#3" shape. ----------------
 {
   // Kept since 415898a widened HOOK_SEED_RANK_ELO (a deviation until then). A world-seed hook like
@@ -394,7 +409,7 @@ assert.equal(
   for (const h of ["RUNNERONE WINS IT", "RUNNERTWO CHOKES", "RUNNERONE TAKES IT"])
     assert.equal(hookProblem(h, undefined, runners), "it gives the result away", h);
   console.log(
-    "OK P11–P12: elo/top seed/rank title hooks dropped; the plain spoiler words and \"finishes first\" are refused",
+    'OK P11–P12: elo/top seed/rank title hooks dropped; the plain spoiler words and "finishes first" are refused',
   );
 }
 

@@ -41,7 +41,63 @@ export interface ShortPick {
   titleHooks?: string[];
   /** One moment per player the model would send that player (the publish kit's DM). */
   playerMoments?: { left?: PlayerMoment; right?: PlayerMoment };
+  /** Glossary ids (`TECHNIQUE_IDS`) the model actually watched happen on screen (titles/v2, 18
+   *  Oct 2026) — the title picker's run facts read this to ground what a title may mention.
+   *  Unknown ids are dropped before this is written; absent on a heuristic pick. */
+  techniques?: TechniqueId[];
 }
+
+/**
+ * Speedrun-tech glossary ids a model may report seeing on screen. Shared between the pick's own
+ * "which did you see" ask (`videoPick.ts`) and the title picker's grounding (`titleOptions.ts`) so
+ * a title can never call out a technique under a name neither side uses.
+ */
+export const TECHNIQUE_IDS = [
+  "pie-ray",
+  "glowdar",
+  "e-ray",
+  "blind-travel",
+  "educated-travel",
+  "zero-cycle",
+  "one-cycle",
+  "perch",
+  "end-crystals",
+  "bed-bombing",
+  "bartering",
+  "crying-obsidian",
+  "f3-debug",
+  "death-reset",
+  "searchcrafting",
+  "blaze-bed",
+  "preemptive",
+  "boat-clutch",
+] as const;
+export type TechniqueId = (typeof TECHNIQUE_IDS)[number];
+
+/** One line per id, for a model's prompt. */
+export const TECHNIQUE_GLOSSARY: Record<TechniqueId, string> = {
+  "pie-ray": "pie-ray — finding a fortress's blaze spawner through the Shift+F3 debug pie chart",
+  glowdar: "glowdar — reloading a spawner so the pie chart spikes, to confirm the seed's structure",
+  "e-ray": "e-ray / microlensing — the F3 entity count spikes toward a bastion",
+  "blind-travel": "blind travel — to the stronghold by calculated coordinates",
+  "educated-travel": "educated travel / triangulation / Ninjabrain Bot — two eye throws plus maths",
+  "zero-cycle": "zero cycle — blowing up the dragon mid-flight from a pillar with beds",
+  "one-cycle": "one cycle — killing the dragon in one perch with about 4-5 beds",
+  perch: "perch — the dragon landing on the fountain",
+  "end-crystals": "end crystals",
+  "bed-bombing": "bed bombing — beds as explosives",
+  bartering: "bartering — gold for pearls, obsidian and string from piglins",
+  "crying-obsidian": "crying obsidian",
+  "f3-debug": "F3 debug reads — F3+C / F3+F / F3+B",
+  "death-reset":
+    "death reset — dying on purpose to clear hunger or reset a spawn point (mcsrranked.com's own name for it)",
+  searchcrafting:
+    "searchcrafting — typing a craft into the recipe book's search bar instead of arranging the grid by hand",
+  "blaze-bed": "blaze bed — killing a blaze with a bed's explosion instead of a bow",
+  preemptive:
+    "preemptive — moving into bed-placing position before the dragon actually perches, by predicting where it will land",
+  "boat-clutch": "boat clutch — landing in a boat on touching down, to cancel fall damage",
+};
 
 /** A player's moment: `atMs` on the match clock of its game — `gameMatchId` for a series, else the match. */
 export interface PlayerMoment {

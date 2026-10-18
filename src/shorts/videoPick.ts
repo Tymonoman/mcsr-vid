@@ -67,7 +67,16 @@ import { NOT_SIGNED_IN, reasonerConfigured, runReasoner } from "./reasoner.js";
 import { modelFraction, pickPhases, pickProgress } from "./pickProgress.js";
 import { activityProgress, boxFailure, shortLog, type LogExtra } from "./shortLog.js";
 import { distinctShortMoments, leadChangeTimes, runMsOf, SHORT_WINDOW_SEC } from "./shortMoment.js";
-import { pickFile, SHORT_MAX_MS, SHORT_MIN_MS, type PlayerMoment, type ShortPick } from "./shortPlan.js";
+import {
+  pickFile,
+  SHORT_MAX_MS,
+  SHORT_MIN_MS,
+  TECHNIQUE_GLOSSARY,
+  TECHNIQUE_IDS,
+  type PlayerMoment,
+  type ShortPick,
+  type TechniqueId,
+} from "./shortPlan.js";
 import { SPEEDRUN_PRIMER } from "./speedrunPrimer.js";
 import { DryRunRefusal, watchPovs, type PovWatch } from "./watchPov.js";
 
@@ -134,7 +143,8 @@ export function hookProblem(
   if (typeof hook !== "string" || hook.trim() === "") return "no hook";
   const h = hook.trim();
   if (h.length > maxChars) return `over ${maxChars} characters`;
-  if (HOOK_SPOILER.test(h.replace(PACE_TO_WIN, "")) || spoilsTheResult(h, players)) return "it gives the result away";
+  if (HOOK_SPOILER.test(h.replace(PACE_TO_WIN, "")) || spoilsTheResult(h, players))
+    return "it gives the result away";
   if (HOOK_SEED_RANK_ELO.test(h)) return "it uses a seed, rank or elo";
   return hookLabelProblem(h, players);
 }
@@ -166,6 +176,7 @@ const PICK_SCHEMA = {
     why: { type: "string" },
     titleHooks: { type: "array", items: { type: "string" }, maxItems: TITLE_HOOKS },
     playerMoments: { type: "object", properties: { left: MOMENT_SCHEMA, right: MOMENT_SCHEMA } },
+    techniques: { type: "array", items: { type: "string", enum: [...TECHNIQUE_IDS] } },
   },
   required: ["startSec", "endSec", "rtaAtStart", "pov", "kind", "hookSuggestion", "why"],
 };
@@ -609,6 +620,9 @@ ${past.map((p) => `  ${JSON.stringify(p.hook)}${p.pair ? ` (${p.pair})` : ""} �
 THE LONG-FORM'S TITLE (titleHooks, optional): up to ${TITLE_HOOKS} proposals for the hook that opens the full match video's title — "<hook> | ${l?.nickname} vs ${r?.nickname} | …", so it need not repeat their names. The same rules as hookSuggestion, with this title's own length: at most ${titleMax} characters — a hard limit, so both names still show on a phone; a longer one is dropped. Nothing about who wins or how it ends, never a nickname, label or epithet for a runner, and never a word about ethnicity, nationality, appearance, age or a slang abbreviation of one — a title hook is about the match, never the person. Never use seeds, ladder ranks or elo numbers — they mean nothing to a viewer and change daily.${examples}
 
 PLAYER MOMENTS (playerMoments, optional): for each player, the one moment of theirs in this video worth sending to them — "left" for ${l?.nickname}, "right" for ${r?.nickname}. atSec: seconds of the video file where it starts. line: one sentence to them, at most ${MOMENT_MAX_CHARS} characters, saying what they did — never who wins.
+
+TECHNIQUES SEEN (techniques, optional): which of these you actually watched happen on screen, by id — the title picker uses this to decide what a title is allowed to mention, so leave out anything you did not see:
+${TECHNIQUE_IDS.map((id) => `- ${TECHNIQUE_GLOSSARY[id]}`).join("\n")}
 `;
 }
 
@@ -682,7 +696,7 @@ THE HOOK (hookSuggestion): the line on screen for the Short's first 4 seconds. A
 why: one line for the operator on why this moment.
 ${extrasSection(spans, past, titleMax)}
 Reply with one JSON object and nothing else:
-{${series ? `"gameMatchId": <id>, ` : ""}"startSec": <number>, "endSec": <number>, "rtaAtStart": "m:ss", "pov": "both" | "left" | "right", "focus": "left" | "right" (optional, with pov "both"), "kind": "play" | "race", "hookSuggestion": "<text>", "why": "<text>", "titleHooks": ["<text>", …] (optional, up to ${TITLE_HOOKS}), "playerMoments": {"left": {"atSec": <number>, "line": "<text>"}, "right": {"atSec": <number>, "line": "<text>"}} (optional)}
+{${series ? `"gameMatchId": <id>, ` : ""}"startSec": <number>, "endSec": <number>, "rtaAtStart": "m:ss", "pov": "both" | "left" | "right", "focus": "left" | "right" (optional, with pov "both"), "kind": "play" | "race", "hookSuggestion": "<text>", "why": "<text>", "titleHooks": ["<text>", …] (optional, up to ${TITLE_HOOKS}), "playerMoments": {"left": {"atSec": <number>, "line": "<text>"}, "right": {"atSec": <number>, "line": "<text>"}} (optional), "techniques": ["<id>", …] (optional)}
 
 MATCH FACTS (MCSR Ranked API; times are RTA on ${series ? "each game's" : "the"} match clock). ${FACTS_KEY}
 ${JSON.stringify(series ? spans.map((s) => gameFacts(s, true)) : gameFacts(spans[0]!, false))}
@@ -764,7 +778,7 @@ function extrasOf(
   series: boolean,
   note: Note,
   titleMax: number,
-): Pick<ShortPick, "titleHooks" | "playerMoments"> {
+): Pick<ShortPick, "titleHooks" | "playerMoments" | "techniques"> {
   const a = (typeof answer === "object" && answer !== null ? answer : {}) as Record<string, unknown>;
   // Every game of a series is the same two players, so one list of real nicknames covers titleHooks
   // and every player moment below (hookLabelProblem's "<x> vs <y>" check, 2 Oct 2026).
@@ -815,9 +829,20 @@ function extrasOf(
     }
   }
   if (hooks.length > 0) note(`title hooks proposed: ${hooks.map((h) => JSON.stringify(h)).join(", ")}`);
+  const techSeen = new Set<TechniqueId>();
+  const proposedTech: unknown[] =
+    a.techniques === undefined ? [] : Array.isArray(a.techniques) ? a.techniques : [a.techniques];
+  for (const t of proposedTech) {
+    const id = typeof t === "string" ? t.trim() : t;
+    if ((TECHNIQUE_IDS as readonly string[]).includes(id as string)) techSeen.add(id as TechniqueId);
+    else drop("technique", t, "not a known glossary id");
+  }
+  const techniques = [...techSeen];
+  if (techniques.length > 0) note(`techniques seen: ${techniques.join(", ")}`);
   return {
     ...(hooks.length > 0 ? { titleHooks: hooks } : {}),
     ...(moments.left || moments.right ? { playerMoments: moments } : {}),
+    ...(techniques.length > 0 ? { techniques } : {}),
   };
 }
 
