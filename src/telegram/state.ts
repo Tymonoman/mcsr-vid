@@ -34,6 +34,19 @@ export interface TelegramState {
    * from, since the title itself never travels in `callback_data` (Telegram's 64-byte cap).
    */
   titleOffers: Record<string, TitleOfferState>;
+  /**
+   * The fast-track ask's pending/sent messages (src/telegram/fastTrackAsk.ts), keyed by matchId
+   * as a string — same dedupe shape as `titleOffers`: a match in here is never asked again.
+   */
+  fastTrackAsks: Record<string, FastTrackAskState>;
+}
+
+export interface FastTrackAskState {
+  messageId: number;
+  /** ISO 8601 UTC, when the ask was sent. */
+  at: string;
+  /** A button was pressed: the message's buttons are gone, and a stale press must not act again. */
+  settled?: boolean;
 }
 
 export interface TitleOfferState {
@@ -58,6 +71,7 @@ const EMPTY: TelegramState = {
   updateOffset: null,
   worth: null,
   titleOffers: {},
+  fastTrackAsks: {},
 };
 
 const statePath = (): string => path.join(config.mediaDir, ".telegram.json");

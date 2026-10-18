@@ -14,6 +14,7 @@ import * as bot from "./bot.js";
 import { describeFailure, runClaude } from "./claude.js";
 import { knowledgeFor } from "./knowledge.js";
 import { BOT_COMMANDS, HELP_TEXT, parseCommand, parseStatsWindows, type ParsedCommand } from "./commands.js";
+import { handleFastTrackCallback } from "./fastTrackAsk.js";
 import { handleTitleCallback } from "./titlePicker.js";
 import {
   dashboardMatchUrl,
@@ -334,7 +335,10 @@ export async function handleUpdate(update: bot.TgUpdate): Promise<void> {
     // The presser too, not just the chat the message sits in: the operator's chat is private.
     const presser = update.callback_query.from?.id;
     if (chat && from !== undefined && String(from) === chat && String(presser) === chat) {
-      await handleTitleCallback(update.callback_query).catch((err: unknown) =>
+      const handler = update.callback_query.data?.startsWith("f:")
+        ? handleFastTrackCallback
+        : handleTitleCallback;
+      await handler(update.callback_query).catch((err: unknown) =>
         console.error(`telegram: callback failed — ${describeError(err)}`),
       );
     }

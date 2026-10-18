@@ -1402,6 +1402,42 @@ new `src/dashboard/fastTrack.ts`.
   every other match already uses. If the operator wants the full cascading reschedule built later,
   say so and it can be — this is the one item built to the explicitly offered fallback ("implement
   only 'take the next free slot + render now' ... and say so").
+- **Fast-track ask (18 Oct 2026)** — the operator, offered the slot-shuffle above and told it was
+  too risky unsupervised, countered: "the last part you mentioned is perfect give me a splits view
+  image and a link to magmamcsr and a yes or no to move it and post asap." `src/telegram/fastTrackAsk.ts`
+  sends this the moment a fast-tracked match's long-form upload succeeds (`shortFlow.ts`'s chain
+  calls the new `fastTrackUploadedHook` right after the `upload-video` step settles, both on the
+  main path and on `resumeUpload`'s restart-recovery path, guarded by a match id appearing in
+  `readFastTrackState().hits` — same registration pattern as `onAutoHooksSaved`, so `fastTrackAsk.ts`
+  imports from `shortFlow.ts` and never the other way). One message, deduped by matchId in
+  `.telegram.json`'s new `fastTrackAsks` map (mirrors `titleOffers`): a photo — the splits-region
+  still one state before the subscribe card, i.e. `stills[stills.length - 2]` off
+  `overlay-splits.json` (`overlayPaths().manifest`; CLAUDE.md: "Last state is the subscribe card") —
+  captioned with the two players (`titleName`-spelled), the fast-track hit's own `reason` text, the
+  upload record's current `publishAt` in Warsaw time, and the match's `matchPageUrl` (the same
+  builder `description.ts`'s "match page:" line uses). Two buttons, `f:<id>:y` / `f:<id>:n`,
+  gated exactly like the title picker's own callbacks in `index.ts` (operator's chat **and**
+  presser both equal `TELEGRAM_CHAT_ID`, checked before either handler is trusted).
+  - **No** (`f:<id>:n`) writes nothing: marks the ask settled and edits the caption to "Keeping
+    <slot>" off the upload record's current `publishAt`.
+  - **Yes** (`f:<id>:y`) re-reads the upload record first: already public, no `publishAt`, or
+    under 2h away answers "already soon/public" and changes nothing (no YouTube call at all —
+    cheaper and matches the wording the operator asked for). Otherwise it calls the dashboard's
+    own `setPublishTime(matchId, { publishAt: <now + 20 min>, move: true })` — the exact function
+    the Move-on-YouTube button already drives — rather than re-implementing `reschedule`: that
+    function's `moveOnYouTube` already (a) rewrites only this video's `status.publishAt` through
+    `reschedule` (whole `status` part, read-then-write) and (b) moves the Short with it when one
+    is already on the channel or scheduled (`onChannel(matchId, "short")`), via `shortPublishAt`;
+    when the Short has not uploaded yet there is nothing to move — `uploadOne`'s own `kind ===
+    "short"` branch reads the video's (by-then-already-new) `publishAt` fresh when it finally
+    runs, so the Short's time is automatically right with no second write. The same lock
+    (`onVideo`) and the same "a chain is already sending this match's Short right now" refusal
+    the dashboard's button gets apply here too — a Yes pressed while that chain step is still
+    running comes back as that refusal, surfaced verbatim in the edited caption, not silently
+    retried. A successful move edits the caption to "Posting at HH:MM" (Warsaw, `whenWarsaw`).
+  At most one ask a day falls out of `fastTrack.ts`'s own ≤1/day cap — nothing extra enforces it
+  here. Tests: `src/telegram/fastTrackAsk.contract.test.ts`, same fetch-stub shape as
+  `titlePicker.contract.test.ts`.
 - **Evening coverage**: "just make sure there are matches to upload for the evening." Before this,
   the nightly's only sense of "how much to render" was a flat count (`nightlyMaxRenders`, default
   1) chained within a 4h window of the scheduled hour — it has no notion of whether a publish slot

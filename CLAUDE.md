@@ -335,9 +335,9 @@ Europe/Warsaw, DST-correct; every slash command answers fresh. Runs inside the d
   (`claude setup-token`, `CLAUDE_CODE_OAUTH_TOKEN` in `/app/.env`) or every Claude call fails
   "auth".
 - **Reports reach Telegram because they are sent, not by a hook**: write a file, then
-  `npm run tg -- send --md <file>`. A report is a finished task's end, a write-up; not a quick
-  answer, a progress note or a question to the operator. Every bot command is read-only except
-  title-picker buttons + veto (operator's chat). Plain replies from the operator's chat land in
+  `npm run tg -- send --md <file>`. A report is a finished task's end, not a quick answer, a
+  progress note or a question. Every bot command is read-only except title-picker/veto/fast-track
+  buttons (operator's chat). Plain replies from the operator's chat land in
   `.telegram-inbox.jsonl`; `npm run tg -- inbox` prints them.
 
 ## Studio automation

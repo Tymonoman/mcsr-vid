@@ -1365,6 +1365,7 @@ async function advance(matchId: number, deps: ChainDeps): Promise<void> {
         (await uploadSessionOnDisk(matchId, kind)));
     if (!cutShort) continue;
     if (!(await runStep(matchId, step, () => deps.resumeUpload(matchId, kind)))) return;
+    if (step === "upload-video") fastTrackUploadedHook(matchId);
   }
   // A failed upload may have reached YouTube before the record was written: a save that retries
   // it lists the channel first, or the retry would put a second copy on it.
@@ -1433,6 +1434,7 @@ async function advance(matchId: number, deps: ChainDeps): Promise<void> {
     if (!f.video) {
       did = true;
       if (!(await runStep(matchId, "upload-video", () => uploadOne(matchId, "video", deps)))) return;
+      fastTrackUploadedHook(matchId);
       continue;
     }
     if (wantsShort) {
@@ -1636,7 +1638,11 @@ export function autoHooksBody(choice: AutoHooksChoice, upper: boolean): SaveHook
  * Null when nothing survived for the title (the Short may still come back null on its own: "no
  * Short hook passed" is not "no title hook passed").
  */
-export async function chooseAutoHooks(matchId: number, match: MatchInfo, f: Facts): Promise<AutoHooksChoice | null> {
+export async function chooseAutoHooks(
+  matchId: number,
+  match: MatchInfo,
+  f: Facts,
+): Promise<AutoHooksChoice | null> {
   const titled = await titleOptions(matchId);
   const titleHook = titled.options[0] ?? null;
   if (titleHook === null) return null;
@@ -1660,6 +1666,20 @@ export type AutoHooksSavedHook = (matchId: number, titleHook: string) => void;
 let autoHooksSavedHook: AutoHooksSavedHook = () => {};
 export const setAutoHooksSavedHook = (fn: AutoHooksSavedHook): void => {
   autoHooksSavedHook = fn;
+};
+
+/**
+ * Same seam, for the Telegram fast-track ask (src/telegram/fastTrackAsk.ts): fired after every
+ * match's long-form `upload-video` step settles done, on whichever path got it there (the
+ * ordinary chain below or `resumeUpload`'s restart recovery) — unconditionally, same as
+ * `autoHooksSavedHook` above, so this module never has to import `fastTrack.ts` (which imports
+ * `nightly.ts`, which already imports this one) just to ask "was this one fast-tracked?"; the
+ * hook's own implementation answers that.
+ */
+export type FastTrackUploadedHook = (matchId: number) => void;
+let fastTrackUploadedHook: FastTrackUploadedHook = () => {};
+export const setFastTrackUploadedHook = (fn: FastTrackUploadedHook): void => {
+  fastTrackUploadedHook = fn;
 };
 
 /** Chooses and saves one match's hooks, exactly as `PUT /api/shorts/hooks/:id` would, and records
