@@ -624,8 +624,19 @@ console.log("hooks: all checks passed");
     "WHO BLINKS FIRST?",
     "A DRAGON FIGHT FOR TWO",
     "LAVA DOESN'T FORGIVE",
+    "DEATH RESET", // titles/v2, 18 Oct 2026: mcsrranked.com's own name for a hunger reset
   ])
     assert.equal(titleEventProblem(safe, { marginMs: null }), null, `should be allowed: ${safe}`);
+  // "reset" alone, or "death" alone, is still refused — only the exact phrase together is exempt.
+  for (const stillRefused of [
+    "A HEART-POUNDING RESET",
+    "NOT A SINGLE DEATH",
+    "A DEATH SOMEWHERE AND A RESET",
+  ])
+    assert.ok(
+      titleEventProblem(stillRefused, { marginMs: null }) !== null,
+      `should still be refused: ${stillRefused}`,
+    );
   console.log("OK: titleEventProblem refuses in-match events and non-close-finish digits");
 }
 

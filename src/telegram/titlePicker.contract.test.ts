@@ -183,10 +183,14 @@ try {
   /* --- 1. A due match is offered once; a second tick does not resend ---------------------------- */
   const A = 20_000_001;
   readyMatch(A);
-  picker.setTitleOptionsImpl(async (_id, opts) => ({
-    options: opts?.fresh ? ["FRESH ONE", "FRESH TWO"] : ["OPTION ONE", "OPTION TWO", "OPTION THREE"],
-    source: ["chip", "chip", "chip"],
-  }));
+  picker.setTitleOptionsImpl(async (_id, opts) => {
+    const options = opts?.fresh ? ["FRESH ONE", "FRESH TWO"] : ["OPTION ONE", "OPTION TWO", "OPTION THREE"];
+    return {
+      options,
+      source: options.map(() => "chip" as const),
+      styles: options.map(() => "setting" as const),
+    };
+  });
   await picker.titleOfferTick();
   const photosAfterFirst = tgSent("sendPhoto");
   assert.equal(photosAfterFirst.length, 1, "exactly one offer sent");

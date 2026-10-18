@@ -95,12 +95,18 @@ export function hookLabelProblem(hook: string, players?: readonly { nickname: st
 const TITLE_EVENT_WORDS =
   /\b(?:lead|gap|swing|swings|comeback|overtakes?|overtaken|deaths?|died|dying|hearts?|resets?|splits?|chokes?|choked|clutch|clutches|pace|margin|survives?|survived)\b/i;
 
+/** "DEATH RESET" is mcsrranked.com's own name for a hunger reset (`deathKind`'s `hungerReset`),
+ *  a technique, not a death — the one exempted phrase (titles/v2, 18 Oct 2026, the operator's own
+ *  technique list). Stripped before `TITLE_EVENT_WORDS` runs, same shape as `PACE_TO_WIN` below:
+ *  "A HEART-POUNDING RESET" still has no "death" next to its "reset" and stays refused. */
+const DEATH_RESET_PHRASE = /\bdeath reset\b/gi;
+
 /** The segment of a title hook the operator's new rule (18 Oct 2026) refuses: it describes what
  *  happens in the match, rather than the runners or the setting. `marginMs` is the match's own
  *  finish margin (null when there is none) — a number is allowed only under a second. */
 export function titleEventProblem(hook: string, { marginMs }: { marginMs: number | null }): string | null {
   const problem = "describes what happens in the match — a title is about the runners or the setting";
-  if (TITLE_EVENT_WORDS.test(hook)) return problem;
+  if (TITLE_EVENT_WORDS.test(hook.replace(DEATH_RESET_PHRASE, ""))) return problem;
   if (/\d/.test(hook) && !(marginMs !== null && marginMs > 0 && marginMs < 1_000)) return problem;
   return null;
 }

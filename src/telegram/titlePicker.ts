@@ -177,8 +177,10 @@ export async function handleTitleCallback(cq: bot.TgCallbackQuery): Promise<void
   const matchId = Number(m[1]);
   const key = m[2]!;
   try {
-    if (key === "r") await refreshOffer(matchId, chat, messageId, cq.id);
-    else await chooseOption(matchId, chat, messageId, Number(key), cq.id);
+    if (key === "r") {
+      const { message } = await refreshOffer(matchId, chat, messageId);
+      await answerSafely(cq.id, message);
+    } else await chooseOption(matchId, chat, messageId, Number(key), cq.id);
   } catch (err) {
     await answerSafely(cq.id, "failed");
     await editSafely(chat, messageId, `Could not save: ${describeError(err)}`);
@@ -206,13 +208,17 @@ function markSettled(matchId: number): void {
   });
 }
 
-async function refreshOffer(matchId: number, chat: number, messageId: number, cqId: string): Promise<void> {
+/** Regenerates one match's offer and edits its message in place — the button press's "r" and
+ *  `refreshOpenOffers` below both go through this. Returns rather than answers a callback query
+ *  itself, since the latter has none to answer. */
+async function refreshOffer(
+  matchId: number,
+  chat: string | number,
+  messageId: number,
+): Promise<{ ok: boolean; message: string }> {
   const match = await getMatch(matchId);
   const opt = await titleOptionsImpl(matchId, { fresh: true });
-  if (opt.options.length === 0) {
-    await answerSafely(cqId, "no fresh options came back");
-    return;
-  }
+  if (opt.options.length === 0) return { ok: false, message: "no fresh options came back" };
   const slot = await videoPublishTime(matchId, Date.now());
   const [left, right] = match.players;
   const caption = offerCaption(matchId, left!.nickname, right!.nickname, slot.at);
@@ -227,7 +233,7 @@ async function refreshOffer(matchId: number, chat: number, messageId: number, cq
       o.source = opt.source;
     }
   });
-  await answerSafely(cqId, "fresh options");
+  return { ok: true, message: "fresh options" };
 }
 
 async function chooseOption(
@@ -316,4 +322,35 @@ export async function titleOfferPreview(matchId: number): Promise<string> {
     ...opt.options.map((o, i) => `[${i}] ${o}`),
     opt.options.length === 0 ? "(no options — titleOptions() came back empty)" : "[r] New options",
   ].join("\n");
+}
+
+/**
+ * Every open offer (not settled), refreshed in place — `npm run tg -- titles --refresh-open`
+ * (titles/v2, 18 Oct 2026, the rewritten prompt and repeat check apply to a standing offer only
+ * on its next press otherwise). `dryRun`: the same preview `titleOfferPreview` prints, per match,
+ * nothing sent or written.
+ */
+export async function refreshOpenOffers(
+  opts: { dryRun?: boolean } = {},
+): Promise<Array<{ matchId: number; result: string }>> {
+  const pending = Object.entries(readTelegramState().titleOffers)
+    .filter(([, o]) => !o.settled)
+    .map(([id]) => Number(id));
+  if (pending.length === 0) return [];
+  const chat = bot.chatId();
+  if (!opts.dryRun && !bot.hasChat()) return [];
+  const out: Array<{ matchId: number; result: string }> = [];
+  for (const matchId of pending) {
+    try {
+      if (opts.dryRun) out.push({ matchId, result: await titleOfferPreview(matchId) });
+      else {
+        const offer = readTelegramState().titleOffers[String(matchId)]!;
+        const { message } = await refreshOffer(matchId, chat!, offer.messageId);
+        out.push({ matchId, result: message });
+      }
+    } catch (err) {
+      out.push({ matchId, result: `failed: ${describeError(err)}` });
+    }
+  }
+  return out;
 }
