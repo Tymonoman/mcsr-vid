@@ -1,8 +1,9 @@
 /**
  * The Telegram Bot API, over `fetch`, with no dependency — the same call `apiCall` makes in
  * src/youtube/youtube.ts, for the same reason (one form POST and a JSON body do not need an SDK).
- * Outbound only: long polling (`getUpdates`), `sendMessage`, `sendDocument`, `setMyCommands`. No
- * webhook, no port.
+ * Long polling (`getUpdates`, now also carrying `callback_query` — the title picker's button
+ * presses), `sendMessage`, `sendDocument`, `sendPhoto`, `editMessageCaption`,
+ * `answerCallbackQuery`, `setMyCommands`. No webhook, no port.
  *
  * Secrets load the way src/shorts/reasoner.ts and src/api/twitch.ts do: `.env` if it is there,
  * never overwriting a real env var. Never logged, never put in an error message — `call`'s errors
@@ -158,6 +159,75 @@ export async function sendDocument(filePath: string, caption?: string): Promise<
     throw new TelegramApiError(`Telegram sendDocument: ${json?.description ?? res.status}`, res.status);
 }
 
+/** One row of inline buttons under a message — the title picker's options plus "New options". */
+export interface InlineKeyboard {
+  inline_keyboard: { text: string; callback_data: string }[][];
+}
+
+export interface SendPhotoResult {
+  message_id: number;
+}
+
+/** A local image as a photo with a caption and (optionally) inline buttons — the title picker's
+ *  thumbnail offer. Caption capped at 1024 chars, same as `sendDocument`'s. */
+export async function sendPhoto(
+  filePath: string,
+  caption: string,
+  opts: { html?: boolean; keyboard?: InlineKeyboard } = {},
+): Promise<SendPhotoResult> {
+  const tok = token();
+  const chat = chatId();
+  if (!tok || !chat) throw new Error("Telegram is not configured (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID)");
+  const form = new FormData();
+  form.set("chat_id", chat);
+  form.set("caption", caption.slice(0, 1024));
+  if (opts.html) form.set("parse_mode", "HTML");
+  if (opts.keyboard) form.set("reply_markup", JSON.stringify(opts.keyboard));
+  const buf = await readFile(filePath);
+  form.set("photo", new Blob([new Uint8Array(buf)]), path.basename(filePath));
+  const res = await fetch(`${API}/bot${tok}/sendPhoto`, {
+    method: "POST",
+    body: form,
+    signal: AbortSignal.timeout(60_000),
+  });
+  const json = (await res.json().catch(() => null)) as {
+    ok: boolean;
+    result?: SendPhotoResult;
+    description?: string;
+  } | null;
+  if (!json?.ok || !json.result)
+    throw new TelegramApiError(`Telegram sendPhoto: ${json?.description ?? res.status}`, res.status);
+  return json.result;
+}
+
+/**
+ * Edits a photo message's caption and/or its inline keyboard. Omitting `opts.keyboard` clears it
+ * (Telegram's own default is to leave an existing one alone, which no caller here wants: a saved
+ * or auto-saved offer always loses its buttons, and a refresh always replaces them with the
+ * fresh set) — pass one to set a new keyboard instead of removing it.
+ */
+export async function editMessageCaption(
+  chat: string | number,
+  messageId: number,
+  caption: string,
+  opts: { html?: boolean; keyboard?: InlineKeyboard } = {},
+): Promise<void> {
+  await call("editMessageCaption", {
+    chat_id: chat,
+    message_id: messageId,
+    caption: caption.slice(0, 1024),
+    ...(opts.html ? { parse_mode: "HTML" } : {}),
+    reply_markup: opts.keyboard ?? { inline_keyboard: [] },
+  });
+}
+
+/** Clears the "loading" spinner on a pressed button, optionally with a short toast. Never thrown
+ *  on past this call's own `call()` — titlePicker.ts wraps every use so a malformed callback or a
+ *  dropped connection here never takes the poller down. */
+export async function answerCallbackQuery(callbackQueryId: string, text?: string): Promise<void> {
+  await call("answerCallbackQuery", { callback_query_id: callbackQueryId, ...(text ? { text } : {}) });
+}
+
 export interface TgMessage {
   message_id: number;
   chat: { id: number };
@@ -165,16 +235,25 @@ export interface TgMessage {
   date: number;
 }
 
+/** A button press under a message this bot sent — the title picker's buttons only, so far. */
+export interface TgCallbackQuery {
+  id: string;
+  from: { id: number };
+  message?: { message_id: number; chat: { id: number } };
+  data?: string;
+}
+
 export interface TgUpdate {
   update_id: number;
   message?: TgMessage;
+  callback_query?: TgCallbackQuery;
 }
 
 /** Long-poll for updates since `offset`. `timeoutSec` should stay under the HTTP client's own timeout. */
 export function getUpdates(offset: number | undefined, timeoutSec = 50): Promise<TgUpdate[]> {
   return call<TgUpdate[]>(
     "getUpdates",
-    { offset, timeout: timeoutSec, allowed_updates: ["message"] },
+    { offset, timeout: timeoutSec, allowed_updates: ["message", "callback_query"] },
     (timeoutSec + 10) * 1000,
   );
 }

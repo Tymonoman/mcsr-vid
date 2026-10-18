@@ -27,6 +27,24 @@ export interface TelegramState {
    * `WORTH_TTL_MS` — a second report inside that spends nothing.
    */
   worth: { at: number; data: WorthFacts } | null;
+  /**
+   * The title picker's pending offers (src/telegram/titlePicker.ts), keyed by matchId as a
+   * string (JSON object keys always are). Doubles as the dedupe — a match in here is never
+   * offered again — and as the per-match cache a button press reads its option's text back
+   * from, since the title itself never travels in `callback_data` (Telegram's 64-byte cap).
+   */
+  titleOffers: Record<string, TitleOfferState>;
+}
+
+export interface TitleOfferState {
+  messageId: number;
+  options: string[];
+  source: ("nicknames" | "model" | "chip")[];
+  /** ISO 8601 UTC, when the offer (or its last refresh) was sent. */
+  at: string;
+  /** A button was pressed, or auto-hooks saved first: the message's buttons are gone, and a
+   *  stale press or a second auto-save must not try to act on it again. */
+  settled?: boolean;
 }
 
 const EMPTY: TelegramState = {
@@ -35,6 +53,7 @@ const EMPTY: TelegramState = {
   prevSnapshot: null,
   updateOffset: null,
   worth: null,
+  titleOffers: {},
 };
 
 const statePath = (): string => path.join(config.mediaDir, ".telegram.json");

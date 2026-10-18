@@ -14,6 +14,7 @@ import * as bot from "./bot.js";
 import { describeFailure, runClaude } from "./claude.js";
 import { knowledgeFor } from "./knowledge.js";
 import { BOT_COMMANDS, HELP_TEXT, parseCommand, parseStatsWindows, type ParsedCommand } from "./commands.js";
+import { handleTitleCallback } from "./titlePicker.js";
 import {
   dashboardMatchUrl,
   gatherFacts,
@@ -325,6 +326,20 @@ const CLAUDE_COMMANDS = new Set(["report", "todo", "ask"]);
 
 /** Exported for index.test.ts. */
 export async function handleUpdate(update: bot.TgUpdate): Promise<void> {
+  if (update.callback_query) {
+    // A press from any chat but the operator's does nothing — same gate a plain message gets
+    // below, checked before handleTitleCallback trusts the message it is attached to.
+    const chat = bot.chatId();
+    const from = update.callback_query.message?.chat.id;
+    // The presser too, not just the chat the message sits in: the operator's chat is private.
+    const presser = update.callback_query.from?.id;
+    if (chat && from !== undefined && String(from) === chat && String(presser) === chat) {
+      await handleTitleCallback(update.callback_query).catch((err: unknown) =>
+        console.error(`telegram: callback failed — ${describeError(err)}`),
+      );
+    }
+    return;
+  }
   const msg = update.message;
   if (!msg?.text) return;
   const from = String(msg.chat.id);
@@ -448,7 +463,10 @@ export async function startTelegramBot(): Promise<void> {
     void pollLoop();
   }
   const state = readTelegramState();
-  if (bot.hasChat() && shouldCatchUp(Date.now(), state.lastReportWarsawDate, config.telegramReportHourWarsaw)) {
+  if (
+    bot.hasChat() &&
+    shouldCatchUp(Date.now(), state.lastReportWarsawDate, config.telegramReportHourWarsaw)
+  ) {
     console.error(
       "telegram: sending the morning report now — a restart missed 07:00 and it is still before 10:00 Warsaw",
     );

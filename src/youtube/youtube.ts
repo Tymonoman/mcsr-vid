@@ -13,6 +13,7 @@
 import { existsSync, statSync } from "node:fs";
 import { open, readFile, rm, writeFile, type FileHandle } from "node:fs/promises";
 import path from "node:path";
+import { SEPARATOR } from "../pipeline/title.js";
 
 const TOKEN_URI = "https://oauth2.googleapis.com/token";
 const DATA_API = "https://www.googleapis.com/youtube/v3";
@@ -924,6 +925,34 @@ export async function applyMetadata(
     fetchImpl,
   );
   return { replacedTitle: snippet.title, addedTags: merged.added, skippedTags: merged.skipped };
+}
+
+/**
+ * Replaces just the hook half of a video's title — everything up to the first " | " — keeping
+ * the rest of the title, the description and the tags exactly as they are. The Telegram title
+ * picker's own write (src/telegram/titlePicker.ts) for a video already on the channel: a Studio
+ * draft nobody retitled yet, or a hook the operator wants to swap after upload. Same
+ * read-check-write shape as `addTags`/`reschedule`: refuses, writing nothing, an empty hook or a
+ * video on another channel; `readSnippet` itself throws when the read returns no video.
+ */
+export async function retitleHook(
+  videoId: string,
+  hook: string,
+  channelId: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ title: string; was: string }> {
+  const h = hook.trim();
+  if (!h) throw new Error("Refusing to write an empty hook.");
+  const snippet = await readSnippet(videoId, fetchImpl);
+  if (channelId && snippet.channelId && snippet.channelId !== channelId) {
+    throw new Error(`Video ${videoId} belongs to channel ${snippet.channelId}, not yours — nothing written.`);
+  }
+  const sep = snippet.title.indexOf(SEPARATOR);
+  const rest = sep >= 0 ? snippet.title.slice(sep + SEPARATOR.length) : snippet.title;
+  const title = `${h}${SEPARATOR}${rest}`;
+  if (title.length > 100) throw new Error(`"${title}" is ${title.length} characters; YouTube's limit is 100 — nothing written.`);
+  await writeSnippet(videoId, snippet, { title }, fetchImpl);
+  return { title, was: snippet.title };
 }
 
 /** The `status` fields `videos.update` writes; the rest (uploadStatus, madeForKids…) are YouTube's. */

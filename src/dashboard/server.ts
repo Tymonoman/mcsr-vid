@@ -93,6 +93,7 @@ import { readMeta } from "./matchMeta.js";
 import { commentSoonTick, pinnedCommentFor } from "../youtube/youtubeUpload.js";
 import { longFormRecord, readIfPresent, readUpload, uploadTextFor } from "../youtube/youtubeStore.js";
 import { startTelegramBot } from "../telegram/index.js";
+import { titleOfferTick } from "../telegram/titlePicker.js";
 import { readLastProbe } from "../youtube/studioBrowser.js";
 import {
   finishLogin as finishStudioLogin,
@@ -941,6 +942,9 @@ server.listen(PORT, "0.0.0.0", () => {
     void shortTick().catch((err: unknown) => console.error(`shorts: ${describeError(err)}`));
     void commentSoonTick().catch((err: unknown) => console.error(`comments: ${describeError(err)}`));
     void autoHooksTick().catch((err: unknown) => console.error(`auto-hooks: ${describeError(err)}`));
+    // The Telegram title picker's own offer (src/telegram/titlePicker.ts): a no-op with no
+    // paired chat, and otherwise the same "due" reads auto-hooks makes, minus its hours wait.
+    void titleOfferTick().catch((err: unknown) => console.error(`titles: ${describeError(err)}`));
     // config.learnedDraw's own re-seed (src/dashboard/drawLearn.ts): a no-op unless it is on, and
     // then at most once a day — drawLearnTick never throws, but the catch matches every other
     // call on this tick.
@@ -954,7 +958,8 @@ server.listen(PORT, "0.0.0.0", () => {
     try {
       // The nightly's own pending timer was armed for the old hour: rearm it, the same signal
       // `/api/settings`' PUT handler acts on above.
-      if (applyScheduledRenderArm()) scheduleNightly({ notifyUrl: config.nightlyNotifyUrl, main: PORT === 8080 });
+      if (applyScheduledRenderArm())
+        scheduleNightly({ notifyUrl: config.nightlyNotifyUrl, main: PORT === 8080 });
     } catch (err) {
       console.error(`experiments: render arm tick failed — ${describeError(err)}`);
     }

@@ -15,7 +15,8 @@ thumbnails and a Short, published to **MCSR Replayoffs**.
   Kdenlive MLT mix stays centred. The Short lowers the off-focus POV 12dB instead (`focus`).
 - **Nothing names the winner**: no result line in descriptions, no winner in a hook or thumbnail.
   The upset hook is a question; a runner named at the End spoils.
-- **Never a runner nickname, label or epithet, "vs" or not** (`hookLabelProblem`,
+- **No runner nickname, label or epithet but the operator's own** (`runnerNicknames`: "NICK vs
+  NICK" only when both runners have one; nothing invents one; `hookLabelProblem`,
   `src/pipeline/hooks.ts`; `hookProblem`'s `players` arg, `src/shorts/videoPick.ts`; `withHook`,
   `src/pipeline/title.ts`). A word on the short denied list (`HOOK_DENIED_LABELS`, deliberately
   not exhaustive) is refused outright; a fresh "X vs Y" must name the match's own two players
@@ -333,9 +334,9 @@ Europe/Warsaw, DST-correct; every slash command answers fresh. Runs inside the d
   (`claude setup-token`, `CLAUDE_CODE_OAUTH_TOKEN` in `/app/.env`) or every Claude call fails
   "auth".
 - **Reports reach Telegram because they are sent, not by a hook**: write a file, then
-  `npm run tg -- send --md <file>`. A report is a finished task's end, a write-up, an artifact link;
-  not a quick answer, a progress note or a question to the operator. Every bot command is
-  read-only: no uploads, renders or queue edits. Plain replies from the operator's chat land in
+  `npm run tg -- send --md <file>`. A report is a finished task's end, a write-up; not a quick
+  answer, a progress note or a question to the operator. Every bot command is read-only except
+  the title picker's buttons (operator's chat). Plain replies from the operator's chat land in
   `.telegram-inbox.jsonl`; `npm run tg -- inbox` prints them.
 
 ## Studio automation
