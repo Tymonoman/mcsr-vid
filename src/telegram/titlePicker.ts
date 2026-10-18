@@ -7,6 +7,10 @@
  * to three title buttons the moment it is ready for one; a press either saves the hooks (not yet
  * uploaded) or retitles the live video (already on the channel) — the one exception to "every
  * bot command is read-only" (CLAUDE.md "Telegram bot"; the handbook has the full shape).
+ *
+ * A fourth row (18 Oct 2026) lets the operator veto: not yet uploaded, it hides the match (never
+ * auto-hooked, nightly-repicked or re-offered) with a 24h Undo; already uploaded, nothing here
+ * deletes or reschedules it — the message just points at Studio and the match is hidden too.
  */
 import { existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
@@ -25,7 +29,7 @@ import {
   videoPublishTime,
   type Facts,
 } from "../dashboard/shortFlow.js";
-import { hiddenMatchIds } from "../dashboard/matchShelf.js";
+import { hiddenMatchIds, setHidden } from "../dashboard/matchShelf.js";
 import { blockedOnDisk, listProcessedMatchIds } from "../dashboard/matchStatus.js";
 import { describeError } from "../errorText.js";
 import { metaPaths, titleName } from "../pipeline/title.js";
@@ -44,11 +48,12 @@ export const setTitleOptionsImpl = (fn: TitleOptionsFn): void => {
   titleOptionsImpl = fn;
 };
 
-/** `t:<matchId>:<index>` for an option, `t:<matchId>:r` for "New options" — the title itself
- *  never travels here (Telegram's 64-byte `callback_data` cap); the per-match cache in
- *  `.telegram.json`'s `titleOffers` is what a press reads its text back from. */
-const callbackData = (matchId: number, idx: number | "r"): string => `t:${matchId}:${idx}`;
-const CALLBACK_RE = /^t:(\d+):(\d+|r)$/;
+/** `t:<matchId>:<index>` for an option, `t:<matchId>:r` for "New options", `:x` for the veto,
+ *  `:u` for its Undo — the title itself never travels here (Telegram's 64-byte `callback_data`
+ *  cap); the per-match cache in `.telegram.json`'s `titleOffers` is what a press reads its text
+ *  back from. */
+const callbackData = (matchId: number, idx: number | "r" | "x" | "u"): string => `t:${matchId}:${idx}`;
+const CALLBACK_RE = /^t:(\d+):(\d+|r|x|u)$/;
 
 const offerCaption = (matchId: number, left: string, right: string, slotAt: Date): string =>
   [
@@ -57,12 +62,30 @@ const offerCaption = (matchId: number, left: string, right: string, slotAt: Date
     bot.escapeHtml(`${dashboardMatchUrl()}/#match=${matchId}`),
   ].join("\n");
 
-const offerKeyboard = (matchId: number, options: readonly string[]): bot.InlineKeyboard => ({
+/** `uploaded`: whether the long-form is already on the channel — picks the veto row's wording. */
+const offerKeyboard = (
+  matchId: number,
+  options: readonly string[],
+  uploaded: boolean,
+): bot.InlineKeyboard => ({
   inline_keyboard: [
     ...options.map((text, i) => [{ text, callback_data: callbackData(matchId, i) }]),
     [{ text: "🔄 New options", callback_data: callbackData(matchId, "r") }],
+    [
+      {
+        text: uploaded ? "🚫 Cancel this upload" : "🚫 Don't post this one",
+        callback_data: callbackData(matchId, "x"),
+      },
+    ],
   ],
 });
+
+/** The sole button left on a veto message, for 24h — reverses it. */
+const undoKeyboard = (matchId: number): bot.InlineKeyboard => ({
+  inline_keyboard: [[{ text: "↩️ Undo", callback_data: callbackData(matchId, "u") }]],
+});
+
+const VETO_UNDO_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /* --- Who is due ---------------------------------------------------------------------------------
  *
@@ -143,10 +166,11 @@ export async function sendTitleOffer(
   }
   const opt = await titleOptionsImpl(matchId, { fresh: opts.fresh === true });
   if (opt.options.length === 0) return; // nothing to put on a button yet
+  const f = await factsOf(matchId);
   const slot = await videoPublishTime(matchId, Date.now());
   const [left, right] = match.players;
   const caption = offerCaption(matchId, left!.nickname, right!.nickname, slot.at);
-  const keyboard = offerKeyboard(matchId, opt.options);
+  const keyboard = offerKeyboard(matchId, opt.options, f.video !== null);
   const sent = await bot.sendPhoto(thumb, caption, { html: true, keyboard });
   updateTelegramState((s) => {
     s.titleOffers[String(matchId)] = {
@@ -180,7 +204,9 @@ export async function handleTitleCallback(cq: bot.TgCallbackQuery): Promise<void
     if (key === "r") {
       const { message } = await refreshOffer(matchId, chat, messageId);
       await answerSafely(cq.id, message);
-    } else await chooseOption(matchId, chat, messageId, Number(key), cq.id);
+    } else if (key === "x") await vetoOffer(matchId, chat, messageId, cq.id);
+    else if (key === "u") await undoVeto(matchId, chat, messageId, cq.id);
+    else await chooseOption(matchId, chat, messageId, Number(key), cq.id);
   } catch (err) {
     await answerSafely(cq.id, "failed");
     await editSafely(chat, messageId, `Could not save: ${describeError(err)}`);
@@ -195,9 +221,14 @@ async function answerSafely(id: string, text?: string): Promise<void> {
     );
 }
 
-async function editSafely(chat: number, messageId: number, caption: string): Promise<void> {
+async function editSafely(
+  chat: number,
+  messageId: number,
+  caption: string,
+  opts: { html?: boolean; keyboard?: bot.InlineKeyboard } = {},
+): Promise<void> {
   await bot
-    .editMessageCaption(chat, messageId, caption)
+    .editMessageCaption(chat, messageId, caption, opts)
     .catch((err: unknown) => console.error(`titlePicker: editMessageCaption failed — ${describeError(err)}`));
 }
 
@@ -219,12 +250,13 @@ async function refreshOffer(
   const match = await getMatch(matchId);
   const opt = await titleOptionsImpl(matchId, { fresh: true });
   if (opt.options.length === 0) return { ok: false, message: "no fresh options came back" };
+  const f = await factsOf(matchId);
   const slot = await videoPublishTime(matchId, Date.now());
   const [left, right] = match.players;
   const caption = offerCaption(matchId, left!.nickname, right!.nickname, slot.at);
   await bot.editMessageCaption(chat, messageId, caption, {
     html: true,
-    keyboard: offerKeyboard(matchId, opt.options),
+    keyboard: offerKeyboard(matchId, opt.options, f.video !== null),
   });
   updateTelegramState((s) => {
     const o = s.titleOffers[String(matchId)];
@@ -281,6 +313,82 @@ async function chooseOption(
   markSettled(matchId);
   await editSafely(chat, messageId, ok ? `Saved: ${message}` : `Could not save: ${message}`);
   await answerSafely(cqId, ok ? "saved" : "failed");
+}
+
+/* --- The veto ------------------------------------------------------------------------------- */
+
+/**
+ * `t:<id>:x`. Not yet uploaded: hides the match (`setHidden` — the same mechanism the dashboard's
+ * own Hide/Delete-from-plan use, so auto-hooks, the nightly's pick and `dueForTitleOffer` all stay
+ * off it already) and leaves a lone Undo button for `VETO_UNDO_WINDOW_MS`. Already uploaded:
+ * changes nothing on YouTube — the operator's standing rule is nothing here deletes a video or
+ * touches its privacy — just points at Studio and hides the match too, with no Undo (there is
+ * nothing this bot can undo once it is live).
+ */
+async function vetoOffer(matchId: number, chat: number, messageId: number, cqId: string): Promise<void> {
+  const offer = readTelegramState().titleOffers[String(matchId)];
+  if (!offer || offer.settled) {
+    await answerSafely(cqId, "that offer is gone — try /titles again");
+    return;
+  }
+  const f = await factsOf(matchId);
+  setHidden(matchId, true);
+  if (f.video) {
+    markSettled(matchId);
+    const studio = f.video.videoId ? `https://studio.youtube.com/video/${f.video.videoId}/edit` : null;
+    await editSafely(
+      chat,
+      messageId,
+      studio
+        ? `Already uploaded — delete or unschedule it in <a href="${studio}">Studio</a>.`
+        : "Already uploaded — delete or unschedule it in Studio.",
+      { html: true },
+    );
+    await answerSafely(cqId, "hidden");
+    return;
+  }
+  updateTelegramState((s) => {
+    const o = s.titleOffers[String(matchId)];
+    if (o) {
+      o.settled = true;
+      o.vetoedAt = new Date().toISOString();
+    }
+  });
+  await editSafely(chat, messageId, "Vetoed — won't be posted", { keyboard: undoKeyboard(matchId) });
+  await answerSafely(cqId, "vetoed");
+}
+
+/** `t:<id>:u`, within `VETO_UNDO_WINDOW_MS` of the veto: unhides the match and re-offers the same
+ *  3 title buttons. Past the window, or with nothing to undo, leaves the veto standing. */
+async function undoVeto(matchId: number, chat: number, messageId: number, cqId: string): Promise<void> {
+  const offer = readTelegramState().titleOffers[String(matchId)];
+  if (!offer?.vetoedAt) {
+    await answerSafely(cqId, "nothing to undo");
+    return;
+  }
+  if (Date.now() - Date.parse(offer.vetoedAt) > VETO_UNDO_WINDOW_MS) {
+    await editSafely(chat, messageId, "Vetoed — won't be posted");
+    await answerSafely(cqId, "that undo has expired");
+    return;
+  }
+  setHidden(matchId, false);
+  const match = await getMatch(matchId);
+  const f = await factsOf(matchId);
+  const slot = await videoPublishTime(matchId, Date.now());
+  const [left, right] = match.players;
+  const caption = offerCaption(matchId, left!.nickname, right!.nickname, slot.at);
+  await bot.editMessageCaption(chat, messageId, caption, {
+    html: true,
+    keyboard: offerKeyboard(matchId, offer.options, f.video !== null),
+  });
+  updateTelegramState((s) => {
+    const o = s.titleOffers[String(matchId)];
+    if (o) {
+      o.settled = false;
+      delete o.vetoedAt;
+    }
+  });
+  await answerSafely(cqId, "restored");
 }
 
 /* --- Auto-hooks edits the same message, if there was one -------------------------------------- */

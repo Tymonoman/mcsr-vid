@@ -136,6 +136,7 @@ const index = await import("./index.js");
 const picker = await import("./titlePicker.js");
 const { readTelegramState, updateTelegramState } = await import("./state.js");
 const flow = await import("../dashboard/shortFlow.js");
+const { hiddenMatchIds } = await import("../dashboard/matchShelf.js");
 const { writeUpload } = await import("../youtube/youtubeStore.js");
 const { metaPaths } = await import("../pipeline/title.js");
 
@@ -197,10 +198,10 @@ try {
   const sentA = photosAfterFirst[0]!;
   assert.equal(sentA.body?.chat_id, CHAT);
   const keyboardA = JSON.parse(String(sentA.body?.reply_markup)) as InlineKeyboard;
-  assert.equal(keyboardA.inline_keyboard.length, 4, "3 options + New options");
+  assert.equal(keyboardA.inline_keyboard.length, 5, "3 options + New options + veto");
   assert.deepEqual(
     keyboardA.inline_keyboard.map((row) => row[0]!.text),
-    ["OPTION ONE", "OPTION TWO", "OPTION THREE", "🔄 New options"],
+    ["OPTION ONE", "OPTION TWO", "OPTION THREE", "🔄 New options", "🚫 Don't post this one"],
   );
   const offerA = readTelegramState().titleOffers[String(A)];
   assert.ok(offerA, "the offer is recorded for dedupe and for the button press to read back");
@@ -312,7 +313,7 @@ try {
     const keyboard = edit!.body?.reply_markup as InlineKeyboard;
     assert.deepEqual(
       keyboard.inline_keyboard.map((r) => r[0]!.text),
-      ["FRESH ONE", "FRESH TWO", "🔄 New options"],
+      ["FRESH ONE", "FRESH TWO", "🔄 New options", "🚫 Don't post this one"],
     );
     assert.deepEqual(readTelegramState().titleOffers[String(C)]?.options, ["FRESH ONE", "FRESH TWO"]);
     assert.ok(!readTelegramState().titleOffers[String(C)]?.settled, "a refresh never settles the offer");
@@ -386,6 +387,181 @@ try {
     assert.match(preview, /#match=20000005/, "and the match link");
     assert.equal(tgSent("sendPhoto").length, before + 1, "a preview sends nothing");
     console.log("OK: the CLI's titles command bypasses both the dedupe and the due checks");
+  }
+
+  /* --- 9. The veto hides the match, blocking the upload and auto-hooks, with a 24h Undo -------- */
+  const F = 20_000_006;
+  {
+    readyMatch(F);
+    // A pick old enough for autoHooksTick's own threshold below, and a real export so the rest
+    // of autoHooksTick's "due" checks would otherwise pass — the only thing left to prove it
+    // skips F is the veto's hide.
+    writeFileSync(
+      path.join(dir(F), `short-${F}.pick.json`),
+      JSON.stringify({
+        gameMatchId: F,
+        startMs: 300_000,
+        endMs: 330_000,
+        pov: "both",
+        hookSuggestion: "a stand-in",
+        why: "a stand-in",
+        kind: "play",
+        source: "agy",
+        createdAt: new Date(Date.now() - 2 * 3600_000).toISOString(),
+      }),
+    );
+    writeFileSync(path.join(dir(F), `final-${F}.mp4`), "not a real mp4, just needs to exist");
+    await picker.titleOfferTick();
+    const offerF = readTelegramState().titleOffers[String(F)]!;
+
+    {
+      const before = tgCalls.length;
+      await index.handleUpdate(callbackUpdate(9001, offerF.messageId, `t:${F}:x`));
+      assert.equal(tgCalls.length, before, "no Telegram call for another chat's veto press");
+      assert.ok(!hiddenMatchIds().has(F), "not hidden by a stranger's press");
+    }
+
+    await index.handleUpdate(callbackUpdate(Number(CHAT), offerF.messageId, `t:${F}:x`));
+    assert.ok(hiddenMatchIds().has(F), "the match is hidden — the same mechanism Hide uses");
+    const vetoEdit = tgSent("editMessageCaption").find((c) => c.body?.message_id === offerF.messageId);
+    assert.equal(vetoEdit?.body?.caption, "Vetoed — won't be posted");
+    assert.deepEqual(
+      vetoEdit?.body?.reply_markup,
+      { inline_keyboard: [[{ text: "↩️ Undo", callback_data: `t:${F}:u` }]] },
+      "a single Undo button is left",
+    );
+    assert.ok(
+      readTelegramState().titleOffers[String(F)]?.settled,
+      "settled — stale option buttons do nothing",
+    );
+    assert.ok(readTelegramState().titleOffers[String(F)]?.vetoedAt, "the undo window starts now");
+
+    // A stale option press after the veto saves nothing.
+    await index.handleUpdate(callbackUpdate(Number(CHAT), offerF.messageId, `t:${F}:0`));
+    assert.ok(!flow.readStatus(F).hooksSavedAt, "no save from a stale option button");
+
+    // Never re-offered.
+    assert.ok(
+      !(await picker.dueForTitleOffer()).some((d) => d.matchId === F),
+      "dueForTitleOffer skips a hidden match",
+    );
+
+    // Auto-hooks skips it too — it would otherwise be due (the pick is old enough, exported,
+    // unblocked, not DNF) were it not hidden; hidden is checked first and nothing else runs.
+    const before = { steps: { ...flow.readStatus(F).steps }, errors: [...flow.readStatus(F).errors] };
+    config.autoHooksAfterHours = 1;
+    try {
+      await flow.autoHooksTick();
+    } finally {
+      config.autoHooksAfterHours = null;
+    }
+    assert.ok(!flow.readStatus(F).hooksSavedAt, "auto-hooks never saved a vetoed match's hooks");
+    assert.deepEqual(flow.readStatus(F).steps, before.steps, "auto-hooks never even touched its status");
+    assert.deepEqual(flow.readStatus(F).errors, before.errors, "and logged no attempt at it either");
+    console.log("OK: veto hides the match, blocking the upload and auto-hooks, with a 24h Undo");
+  }
+
+  /* --- 10. Undo, within the window, unhides and re-offers the same 3 title buttons -------------- */
+  {
+    const offerF = readTelegramState().titleOffers[String(F)]!;
+
+    {
+      const before = tgCalls.length;
+      await index.handleUpdate(callbackUpdate(9001, offerF.messageId, `t:${F}:u`));
+      assert.equal(tgCalls.length, before, "no Telegram call for another chat's undo press");
+      assert.ok(hiddenMatchIds().has(F), "still hidden");
+    }
+
+    await index.handleUpdate(callbackUpdate(Number(CHAT), offerF.messageId, `t:${F}:u`));
+    assert.ok(!hiddenMatchIds().has(F), "unhidden");
+    const restoreEdit = tgSent("editMessageCaption").find(
+      (c) => c.body?.message_id === offerF.messageId && c.body?.caption !== "Vetoed — won't be posted",
+    );
+    assert.ok(restoreEdit, "the message was rebuilt with the offer");
+    const restoredKeyboard = restoreEdit!.body?.reply_markup as InlineKeyboard;
+    assert.deepEqual(
+      restoredKeyboard.inline_keyboard.map((r) => r[0]!.text),
+      ["OPTION ONE", "OPTION TWO", "OPTION THREE", "🔄 New options", "🚫 Don't post this one"],
+      "the same 3 title buttons are back",
+    );
+    assert.ok(!readTelegramState().titleOffers[String(F)]?.settled, "unsettled again");
+    assert.equal(
+      readTelegramState().titleOffers[String(F)]?.vetoedAt,
+      undefined,
+      "the veto stamp is cleared",
+    );
+    console.log("OK: undo within the window unhides the match and re-offers the same 3 buttons");
+  }
+
+  /* --- 11. Undo past the 24h window leaves the veto standing ------------------------------------ */
+  {
+    const G = 20_000_007;
+    readyMatch(G);
+    await picker.titleOfferTick();
+    const offerG = readTelegramState().titleOffers[String(G)]!;
+    await index.handleUpdate(callbackUpdate(Number(CHAT), offerG.messageId, `t:${G}:x`));
+    assert.ok(hiddenMatchIds().has(G));
+    updateTelegramState((s) => {
+      const o = s.titleOffers[String(G)];
+      if (o) o.vetoedAt = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+    });
+    const before = tgSent("editMessageCaption").length;
+    await index.handleUpdate(callbackUpdate(Number(CHAT), offerG.messageId, `t:${G}:u`));
+    assert.ok(hiddenMatchIds().has(G), "still hidden — the undo had expired");
+    const expiredEdit = tgSent("editMessageCaption")
+      .slice(before)
+      .find((c) => c.body?.message_id === offerG.messageId);
+    assert.equal(expiredEdit?.body?.caption, "Vetoed — won't be posted");
+    assert.deepEqual(expiredEdit?.body?.reply_markup, { inline_keyboard: [] }, "the Undo button is gone too");
+    console.log("OK: an undo past 24h leaves the veto standing");
+  }
+
+  /* --- 12. Vetoing an already-uploaded match changes nothing on YouTube ------------------------- */
+  {
+    const H = 20_000_008;
+    mkdirSync(dir(H), { recursive: true });
+    const videoIdH = "LivEVidId02";
+    ytVideos.set(videoIdH, {
+      channelId: config.youtubeChannelId,
+      title: `SOME HOOK | ${LEFT!.nickname} vs ${RIGHT!.nickname} | MCSR Ranked 1v1`,
+      description: "live description",
+      tags: ["tag"],
+    });
+    await writeUpload(
+      H,
+      {
+        videoId: videoIdH,
+        uploadedAt: new Date().toISOString(),
+        publishAt: new Date(Date.now() + 36e5).toISOString(),
+        privacyStatus: "private",
+        thumbnailVariant: null,
+        title: `SOME HOOK | ${LEFT!.nickname} vs ${RIGHT!.nickname} | MCSR Ranked 1v1`,
+      },
+      "video",
+    );
+    const messageIdH = 8888;
+    updateTelegramState((s) => {
+      s.titleOffers[String(H)] = {
+        messageId: messageIdH,
+        options: ["A TITLE"],
+        source: ["chip"],
+        at: new Date().toISOString(),
+      };
+    });
+    const writesBeforeH = ytWrites.length;
+    await index.handleUpdate(callbackUpdate(Number(CHAT), messageIdH, `t:${H}:x`));
+    assert.equal(ytWrites.length, writesBeforeH, "no videos.update — nothing changes on YouTube");
+    assert.ok(hiddenMatchIds().has(H), "hidden so nothing re-offers it");
+    const editH = tgSent("editMessageCaption").find((c) => c.body?.message_id === messageIdH);
+    assert.match(String(editH?.body?.caption), /Studio/);
+    assert.match(String(editH?.body?.caption), new RegExp(videoIdH));
+    assert.deepEqual(
+      editH?.body?.reply_markup,
+      { inline_keyboard: [] },
+      "no Undo for an already-uploaded veto",
+    );
+    assert.ok(!readTelegramState().titleOffers[String(H)]?.vetoedAt, "nothing to undo here");
+    console.log("OK: vetoing an already-uploaded match touches nothing on YouTube, just hides it");
   }
 
   console.log("titlePicker.contract: all checks passed");

@@ -45,6 +45,10 @@ export interface TitleOfferState {
   /** A button was pressed, or auto-hooks saved first: the message's buttons are gone, and a
    *  stale press or a second auto-save must not try to act on it again. */
   settled?: boolean;
+  /** ISO 8601 UTC of a veto press (`t:<id>:x`), not yet uploaded — the window the lone Undo
+   *  button (`t:<id>:u`) still works in; cleared by Undo. Absent for the already-uploaded veto,
+   *  which has no Undo. */
+  vetoedAt?: string;
 }
 
 const EMPTY: TelegramState = {
