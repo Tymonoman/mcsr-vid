@@ -23,7 +23,7 @@ import {
   type HookInput,
 } from "./hooks.js";
 import { computeMetrics } from "./matchScore.js";
-import { runnerNickname } from "./title.js";
+import { runnerNickname, titleName } from "./title.js";
 import { playoffContextFor } from "../playoffs/playoffs.js";
 import { hookFactsMatchId, readSeriesRecord } from "../playoffs/series.js";
 import { titleFor } from "../shorts/videoPick.js";
@@ -66,21 +66,31 @@ const MAX_OPTIONS = 3;
 /** The channel's own recent titles, for the model's "don't repeat yourself" instruction only. */
 const PAST_TITLES = 20;
 
-const TITLE_SYSTEM_PROMPT = `You write the opening "hook" phrase of a Minecraft speedrunning race video's title. The full title reads "<your hook> | RunnerA vs RunnerB | …", so your hook never needs their names.
+/** Opus, not the bot's Haiku: on 18 Oct 2026 Haiku's options read "SANDS TO FLAMES", "THE BURIED
+ *  GAUNTLET" (the vague phrasing viewers call AI slop); Opus's "THE ONE PIECE IS REAL", "SO WE MEET
+ *  AGAIN", "I DON'T LIKE SAND". A few calls a day. */
+const TITLE_MODEL = "claude-opus-5-5";
+/** More than `MAX_OPTIONS`, so the checks below can drop some and still leave three. */
+const ASK_FOR = 8;
 
-Answer with exactly 3 lines, one hook option per line, nothing else — no numbering, no bullets, no quotes, no explanation.
+const TITLE_SYSTEM_PROMPT = `You write the hook that opens the title of a YouTube video: a full Minecraft speedrun race between two top MCSR Ranked runners, both streams side by side. The title reads "<HOOK> | RunnerA vs RunnerB | MCSR Ranked 1v1 | Minecraft Speedrun", so the hook never needs their names.
 
-Rules, every one of them:
-- Tone: a meme or movie line (in the spirit of THE DUALITY OF MAN, THE CALM BEFORE THE STORM) or funny and irreverent (in the spirit of DON'T DIG STRAIGHT DOWN KIDS, LAVA DOESN'T FORGIVE). Write your own — never reuse an example's exact words.
-- It must make sense to someone who has not watched the match. "THE FORTRESS RUNBACK" failed this: a cold viewer has no idea what it refers to.
-- About the matchup, the runners in general, or the race's setting — NEVER about what happens during the race itself. No lead, gap, swing, death, hearts, comeback, overtake, reset, splits reached, or a finishing time.
-- No digits anywhere, unless you are told the match was decided by under a second — only then is a number allowed.
-- Never name either runner, and never use any nickname, label or epithet for one, their real username included. A hook is about the race, not a person.
-- Something new each time: never reuse an idea from the channel's recent titles you are given below.
-- Your 3 options should differ from each other in style.
-- Each must fit the character budget given below.
+The channel's best title ever is THE DUALITY OF MAN. Others that worked: A DRAGON FIGHT FOR TWO, THE CALM BEFORE THE STORM, DON'T DIG STRAIGHT DOWN KIDS, LAVA DOESN'T FORGIVE, WHO BLINKS FIRST?
 
-Curated examples, for the tone only (never reuse their words): THE DUALITY OF MAN, A DRAGON FIGHT FOR TWO, THE CALM BEFORE THE STORM, DON'T DIG STRAIGHT DOWN KIDS, LAVA DOESN'T FORGIVE, WHO BLINKS FIRST?`;
+What a good hook is:
+- a recognisable meme, movie line, song lyric or internet phrase, bent to fit two people racing Minecraft (THE DUALITY OF MAN), or
+- a dry joke a speedrunner would actually laugh at (DON'T DIG STRAIGHT DOWN KIDS), or
+- a plain, honest tease that makes sense to someone who has never seen the match (WHO BLINKS FIRST?).
+Say it the way a person types a title, not the way a fantasy novel narrates. Viewers call vague epic phrasing "AI slop": never words like awaits, gauntlet, fate, destiny, saga, legend, realm, clash, showdown, quest, beckons, whispers, reckoning, "for none", "to flames", "below".
+
+Hard rules:
+- NOTHING about what happens during the race: no lead, gap, swing, death, hearts, comeback, overtake, reset, a split reached, a time or who wins. Only the matchup, the two people racing, or the seed's setting.
+- No digits, unless you are told the race was decided by under a second.
+- Never name either runner or give one a nickname, label or epithet.
+- Fresh: never reuse an idea from the recent titles listed.
+- ALL CAPS, at most the character budget given.
+
+Answer with ${ASK_FOR} options, one per line, nothing else.`;
 
 function titlePrompt(input: {
   seedType: string | null;
@@ -88,12 +98,14 @@ function titlePrompt(input: {
   closeMs: number | null;
   hookMax: number;
   pastTitles: string[];
+  meetings: number;
 }): string {
   const setting =
     [input.seedType, input.bastionType].filter((s): s is string => s !== null).join(", ") || "unknown";
   return `Setting: ${setting}
 Decided by under a second: ${input.closeMs !== null ? `yes, ${input.closeMs} ms — a number is allowed` : "no — do not use any digits"}
 Character budget: ${input.hookMax}
+${input.meetings > 0 ? `These two have raced each other ${input.meetings > 2 ? "many times" : "before"} on this channel.` : "These two have never met on this channel before."}
 ${
   input.pastTitles.length > 0
     ? `The channel's recent titles, for style only — never reuse one of these ideas:\n${input.pastTitles.map((t) => `- ${t}`).join("\n")}`
@@ -170,7 +182,10 @@ async function buildTitleOptions(matchId: number): Promise<TitleOptions> {
 
   let reason: string | undefined;
   if (options.length < MAX_OPTIONS) {
-    const pastTitles = (await allUploads())
+    const uploads = await allUploads();
+    const pair = [left.nickname, right.nickname].map((n) => titleName(n).toLowerCase());
+    const meetings = uploads.filter((u) => pair.every((n) => (u.record.title ?? "").toLowerCase().includes(n))).length;
+    const pastTitles = uploads
       .sort((a, b) => (a.record.uploadedAt < b.record.uploadedAt ? 1 : -1))
       .slice(0, PAST_TITLES)
       .map((u) => u.record.title);
@@ -181,8 +196,9 @@ async function buildTitleOptions(matchId: number): Promise<TitleOptions> {
         closeMs,
         hookMax,
         pastTitles,
+        meetings,
       }),
-      { systemPrompt: TITLE_SYSTEM_PROMPT },
+      { systemPrompt: TITLE_SYSTEM_PROMPT, model: TITLE_MODEL, timeoutMs: 180_000 },
     );
     if (reply.ok) {
       for (const line of parseLines(reply.text)) add(line, "model");
@@ -201,7 +217,7 @@ async function buildTitleOptions(matchId: number): Promise<TitleOptions> {
       maxChars: hookMax,
       minChars: 0,
     };
-    for (const c of buildHookSuggestions(chipInput, 5)) add(c, "chip");
+    for (const c of buildHookSuggestions(chipInput, 5)) add(c.toUpperCase(), "chip");
   }
 
   return options.length > 0

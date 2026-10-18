@@ -56,11 +56,11 @@ function childEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
-function buildArgs(systemPrompt: string): string[] {
+function buildArgs(systemPrompt: string, model: string = MODEL): string[] {
   return [
     "-p",
     "--model",
-    MODEL,
+    model,
     "--output-format",
     "json",
     "--tools",
@@ -78,6 +78,8 @@ function buildArgs(systemPrompt: string): string[] {
 export interface ClaudeOptions {
   /** The session's whole instructions — plain text, no project context. */
   systemPrompt: string;
+  /** Default `MODEL` (Haiku); the title options ask Opus, which writes far better titles. */
+  model?: string;
   /** Default 120 s. */
   timeoutMs?: number;
   /** The binary to run instead of `claude` (tests). */
@@ -93,7 +95,7 @@ export interface ClaudeOptions {
 export function runClaude(prompt: string, opts: ClaudeOptions): Promise<ClaudeReply> {
   const bin = opts.binary ?? "claude";
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const args = buildArgs(opts.systemPrompt);
+  const args = buildArgs(opts.systemPrompt, opts.model);
 
   return new Promise<ClaudeReply>((resolve) => {
     let stdout = "";

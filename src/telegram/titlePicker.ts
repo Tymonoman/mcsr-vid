@@ -53,7 +53,7 @@ const CALLBACK_RE = /^t:(\d+):(\d+|r)$/;
 const offerCaption = (matchId: number, left: string, right: string, slotAt: Date): string =>
   [
     `<b>${bot.escapeHtml(titleName(left))} vs ${bot.escapeHtml(titleName(right))}</b>`,
-    `Slot: ${bot.escapeHtml(whenWarsaw(slotAt.toISOString()))}`,
+    `Next free slot: ${bot.escapeHtml(whenWarsaw(slotAt.toISOString()))}`,
     bot.escapeHtml(`${dashboardMatchUrl()}/#match=${matchId}`),
   ].join("\n");
 
