@@ -367,6 +367,7 @@ by `studioAutomation` (not writable from Settings).
   later cycle. A running test is read once a UTC day; **Studio's "Results ready"/"Test finished"
   means done** (`readTestAndCompare`, `parseTcReport`). End screens get the editor's starter
   layout ("1 video, 1 subscribe") when the video has none.
+- **A video with a title test gets no thumbnail test** (`titleTcTargets`; `ab-report` reads it).
 - **The worker never sets a Test & Compare winner itself**: `"done"` only records what Studio's own
   page already shows; `"needsHuman"` lands on anything it couldn't get past (a Save with no
   "Changes saved" too); an error leaves the experiment planned, never "started". Every title is

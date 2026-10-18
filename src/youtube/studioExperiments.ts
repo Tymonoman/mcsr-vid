@@ -45,6 +45,12 @@ export interface ExperimentArm {
   name: string;
   settings?: unknown;
   slot?: unknown;
+  /** A title arm's style ("meme"/"tech"/"setting"/"tease"/"nicknames", from `title-options.json`'s
+   *  own `styles`, else "unknown"). The control arm gets one too — the cache option its own saved
+   *  hook matches, else "picked" — so `src/cli/abReport.ts`'s aggregation can say whether the
+   *  operator's own pick beat the styles it skipped. Absent on an arm from before 18 Oct 2026
+   *  (`planTcExperiments`'s own single-challenger title branch, or any thumbnail arm). */
+  style?: string;
 }
 
 export interface ExperimentVideoRef {

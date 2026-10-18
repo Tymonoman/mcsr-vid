@@ -24,6 +24,7 @@ import {
   markPickerEmptySeen,
   MAX_PINS_PER_CYCLE,
   MAX_RELATED_LINKS_PER_CYCLE,
+  MAX_TITLE_PLANS_PER_CYCLE,
   newCodeWaiting,
   pinsThisCycle,
   planCycle,
@@ -40,6 +41,7 @@ import {
   writeLedger,
   type LongFormRef,
   type StudioLedger,
+  type TitleOptionsCache,
 } from "./studioWorker.js";
 import { readExperiments, updateTcExperiments } from "./studioExperiments.js";
 
@@ -124,7 +126,13 @@ config.mediaDir = media;
       privacyStatus: "private",
       publishAt: "2026-10-20T19:00:00.000Z",
     },
-    { videoId: "r", matchId: 3, uploadedAt: "2026-10-01T00:00:00.000Z", privacyStatus: "private", publishAt: null },
+    {
+      videoId: "r",
+      matchId: 3,
+      uploadedAt: "2026-10-01T00:00:00.000Z",
+      privacyStatus: "private",
+      publishAt: null,
+    },
   ];
   const plan = planCycle(
     new Date("2026-10-14T12:00:00.000Z"),
@@ -178,14 +186,30 @@ config.mediaDir = media;
   console.log('OK: a record-"private" video that is live public is planned for an end screen');
   assert.ok(!plan.pinTargets.some((t) => t.videoId === "gone"), "deleted: no pin");
   assert.ok(!plan.relatedLinkTargets.some((t) => t.longFormVideoId === "gone"), "deleted: no related link");
-  assert.deepEqual(plan.pinTargets.map((t) => t.videoId), ["adopted"], "live public: pinned");
-  assert.deepEqual(plan.relatedLinkTargets.map((t) => t.shortVideoId), ["s-adopted"], "live: linked");
+  assert.deepEqual(
+    plan.pinTargets.map((t) => t.videoId),
+    ["adopted"],
+    "live public: pinned",
+  );
+  assert.deepEqual(
+    plan.relatedLinkTargets.map((t) => t.shortVideoId),
+    ["s-adopted"],
+    "live: linked",
+  );
   console.log("OK: a video videos.list doesn't return (deleted) is planned for nothing");
 
   const fallback = planCycle(now, longForms, ledger, [], () => false, shorts, null);
   assert.deepEqual(fallback.endScreenTargets, [], 'no live read: the record\'s "private" stands');
-  assert.deepEqual(fallback.pinTargets.map((t) => t.videoId), ["adopted", "gone"], "record-based pins");
-  assert.deepEqual(fallback.relatedLinkTargets.map((t) => t.shortVideoId), ["s-adopted", "s-gone"], "record-based");
+  assert.deepEqual(
+    fallback.pinTargets.map((t) => t.videoId),
+    ["adopted", "gone"],
+    "record-based pins",
+  );
+  assert.deepEqual(
+    fallback.relatedLinkTargets.map((t) => t.shortVideoId),
+    ["s-adopted", "s-gone"],
+    "record-based",
+  );
   console.log("OK: a failed live read plans from the upload records, as before");
 }
 
@@ -207,8 +231,16 @@ config.mediaDir = media;
     [],
     (matchId) => matchId === 13,
   );
-  assert.deepEqual(plan.endScreenTargets.map((t) => t.videoId), ["ok"], "blocked: no end screen");
-  assert.deepEqual(plan.pinTargets.map((t) => t.videoId), ["ok"], "blocked: no pin");
+  assert.deepEqual(
+    plan.endScreenTargets.map((t) => t.videoId),
+    ["ok"],
+    "blocked: no end screen",
+  );
+  assert.deepEqual(
+    plan.pinTargets.map((t) => t.videoId),
+    ["ok"],
+    "blocked: no pin",
+  );
   console.log("OK: a blocked runner's match is in neither endScreenTargets nor pinTargets");
 }
 
@@ -515,6 +547,79 @@ config.mediaDir = media;
   );
 }
 
+// --- testFor / setExperimentChecked: a title test with 2 challengers (18 Oct 2026) --------------
+// `planCycle`'s own title planner can now offer up to MAX_TITLE_CHALLENGERS (2) at once — proof
+// that needed no change to `testFor` (every non-control arm already became a `titles` entry) or
+// to `setExperimentChecked` (its `armOf` already matches a report's title text to any arm).
+{
+  const twoChallengerTitle: Experiment = {
+    id: "tc-title-multi",
+    kind: "tc",
+    variable: "title",
+    controlArm: "control",
+    arms: [
+      { name: "control", settings: { title: "LIVE | edcr vs doogile | MCSR Ranked 1v1" } },
+      {
+        name: "challenger1",
+        settings: { title: "MEME HOOK | edcr vs doogile | MCSR Ranked 1v1" },
+        style: "meme",
+      },
+      {
+        name: "challenger2",
+        settings: { title: "TECH HOOK | edcr vs doogile | MCSR Ranked 1v1" },
+        style: "tech",
+      },
+    ],
+    videos: [{ videoId: "multi", matchId: 1, arm: "tc" }],
+    status: "planned",
+  };
+  assert.deepEqual(testFor(twoChallengerTitle), {
+    kind: "title",
+    titles: [
+      "MEME HOOK | edcr vs doogile | MCSR Ranked 1v1",
+      "TECH HOOK | edcr vs doogile | MCSR Ranked 1v1",
+    ],
+  });
+
+  const expId = "tc-title-multi-shape";
+  await updateTcExperiments((tc) => [...tc, { ...twoChallengerTitle, id: expId, status: "running" }]);
+  const REPORT = [
+    "Title only",
+    "A/B Test report",
+    "We have a winner!",
+    "10:00",
+    "LIVE | edcr vs doogile | MCSR Ranked 1v1",
+    "MCSR Replayoffs",
+    "20.0%",
+    "Watch time share",
+    "10:00",
+    "MEME HOOK | edcr vs doogile | MCSR Ranked 1v1",
+    "MCSR Replayoffs",
+    "55.0%",
+    "Watch time share",
+    "Winner",
+    "10:00",
+    "TECH HOOK | edcr vs doogile | MCSR Ranked 1v1",
+    "MCSR Replayoffs",
+    "25.0%",
+    "Watch time share",
+    "Test finished. Ran from October 15, 2026 at 9:00 AM to October 18, 2026 at 9:00 AM.",
+    "New test",
+    "Done",
+  ].join("\n");
+  const r = parseTcReport(REPORT);
+  assert.equal(r.winnerSlot, 2, "the middle slot's own Winner mark");
+  await setExperimentChecked(expId, { state: "done", raw: REPORT, ...r });
+  const done = (await readExperiments()).experiments.find((e) => e.id === expId);
+  assert.equal((done?.result as { winner?: string }).winner, "challenger1");
+  assert.deepEqual((done?.result as { watchTimeShare?: object }).watchTimeShare, {
+    control: 20,
+    challenger1: 55,
+    challenger2: 25,
+  });
+  console.log("OK: a 3-slot title test (2 challengers) reads shares and the winner by title, unchanged code");
+}
+
 // --- startTestAndCompare refuses a bad title before touching the browser ----------------------
 {
   // Any access to `.browser` fails the test rather than the function: proof the refusal happened
@@ -733,6 +838,226 @@ config.mediaDir = media;
   console.log("OK: abTestsPaused plans and starts nothing, still reads running tests");
 }
 
+// --- planCycle: titleTcTargets, auto-planned title tests (18 Oct 2026) -------------------------
+{
+  const title = "OLD HOOK | edcr vs doogile | MCSR Ranked 1v1 | Minecraft Speedrun";
+  const longForms: LongFormRef[] = [
+    // Good candidate: on/after the title cutoff, public, 3 options besides the saved hook.
+    {
+      videoId: "t1",
+      matchId: 101,
+      uploadedAt: "2026-10-18T01:00:00.000Z",
+      privacyStatus: "public",
+      source: "dashboard",
+      title,
+    },
+    // Before the title cutoff — never retroactive, even with a usable cache.
+    {
+      videoId: "t2",
+      matchId: 102,
+      uploadedAt: "2026-10-17T23:59:59.000Z",
+      privacyStatus: "public",
+      source: "dashboard",
+      title,
+    },
+    // Not source "dashboard".
+    {
+      videoId: "t3",
+      matchId: 103,
+      uploadedAt: "2026-10-19T00:00:00.000Z",
+      privacyStatus: "public",
+      source: "studio",
+      title,
+    },
+    // Still private, no publishAt passed — not public yet.
+    {
+      videoId: "t4",
+      matchId: 104,
+      uploadedAt: "2026-10-19T00:00:00.000Z",
+      privacyStatus: "private",
+      source: "dashboard",
+      title,
+    },
+    // Blocked player's footage.
+    {
+      videoId: "t5",
+      matchId: 105,
+      uploadedAt: "2026-10-19T00:00:00.000Z",
+      privacyStatus: "public",
+      source: "dashboard",
+      title,
+    },
+    // Already has a tc experiment (any kind).
+    {
+      videoId: "t6",
+      matchId: 106,
+      uploadedAt: "2026-10-19T00:00:00.000Z",
+      privacyStatus: "public",
+      source: "dashboard",
+      title,
+    },
+    // Two more good candidates, to prove the cap.
+    {
+      videoId: "t7",
+      matchId: 107,
+      uploadedAt: "2026-10-19T00:00:00.000Z",
+      privacyStatus: "public",
+      source: "dashboard",
+      title,
+    },
+    {
+      videoId: "t8",
+      matchId: 108,
+      uploadedAt: "2026-10-19T00:00:00.000Z",
+      privacyStatus: "public",
+      source: "dashboard",
+      title,
+    },
+    // A cache exists but offers nothing new — no title target, but still loses its thumbnail test.
+    {
+      videoId: "t9",
+      matchId: 109,
+      uploadedAt: "2026-10-19T00:00:00.000Z",
+      privacyStatus: "public",
+      source: "dashboard",
+      title,
+    },
+    // No title-options.json at all — the one video still eligible for a thumbnail test below.
+    {
+      videoId: "t10",
+      matchId: 110,
+      uploadedAt: "2026-10-19T00:00:00.000Z",
+      privacyStatus: "public",
+      source: "dashboard",
+      title,
+    },
+  ];
+  const caches = new Map<number, TitleOptionsCache>([
+    [
+      101,
+      {
+        options: ["OLD HOOK", "NEW HOOK ONE", "NEW HOOK TWO", "NEW HOOK THREE"],
+        styles: ["meme", "tech", "setting", "tease"],
+      },
+    ],
+    [102, { options: ["NEW HOOK"], styles: ["meme"] }],
+    [103, { options: ["NEW HOOK"], styles: ["meme"] }],
+    [104, { options: ["NEW HOOK"], styles: ["meme"] }],
+    [105, { options: ["NEW HOOK"], styles: ["meme"] }],
+    [106, { options: ["NEW HOOK"], styles: ["meme"] }],
+    [107, { options: ["NEW HOOK A"], styles: ["meme"] }],
+    [108, { options: ["NEW HOOK B"], styles: ["tech"] }],
+    [109, { options: [] }],
+    // 110 deliberately absent — titleOptionsFor reads it as null, same as no file on disk.
+  ]);
+  const titleOptionsFor = (matchId: number): TitleOptionsCache | null => caches.get(matchId) ?? null;
+  const experiments: Experiment[] = [
+    {
+      id: "tc-title-t6",
+      kind: "tc",
+      variable: "title",
+      arms: [{ name: "control" }],
+      videos: [{ videoId: "t6", matchId: 106, arm: "tc" }],
+      status: "running",
+    },
+  ];
+  const now = new Date("2026-10-19T12:00:00.000Z");
+  const isBlocked = (matchId: number): boolean => matchId === 105;
+  const plan = planCycle(
+    now,
+    longForms,
+    { endScreens: {}, pickerEmptySeen: {}, relatedLinks: {}, relatedRetrySeen: {} },
+    experiments,
+    isBlocked,
+    [],
+    null,
+    false,
+    titleOptionsFor,
+  );
+  const ids = plan.titleTcTargets.map((t) => t.videoId);
+  assert.ok(ids.includes("t1"), "on/after the cutoff, public, usable cache — a target");
+  assert.ok(!ids.includes("t2"), "uploaded before the title cutoff — never retroactive");
+  assert.ok(!ids.includes("t3"), "not a dashboard upload");
+  assert.ok(!ids.includes("t4"), "not public yet");
+  assert.ok(!ids.includes("t5"), "a blocked player's footage is never offered");
+  assert.ok(!ids.includes("t6"), "already has a tc experiment of its own (any kind)");
+  assert.ok(!ids.includes("t9"), "the cache offers nothing but the saved hook — no target");
+  assert.equal(plan.titleTcTargets.length, MAX_TITLE_PLANS_PER_CYCLE, `capped, got ${ids.join(",")}`);
+  assert.ok(ids.includes("t1") && ids.includes("t7"), `t1/t7 expected ahead of t8, got ${ids.join(",")}`);
+
+  const t1 = plan.titleTcTargets.find((t) => t.videoId === "t1")!;
+  assert.equal(t1.title, title, "the control arm is the video's own current title");
+  assert.equal(
+    t1.controlStyle,
+    "meme",
+    "the saved hook's own style, read off the cache option it still matches",
+  );
+  assert.deepEqual(
+    t1.challengers,
+    [
+      { title: "NEW HOOK ONE | edcr vs doogile | MCSR Ranked 1v1 | Minecraft Speedrun", style: "tech" },
+      { title: "NEW HOOK TWO | edcr vs doogile | MCSR Ranked 1v1 | Minecraft Speedrun", style: "setting" },
+    ],
+    "the saved hook is dropped, up to 2 challengers rebuilt with the rest of the title and their own style",
+  );
+  console.log(
+    "OK: titleTcTargets is dashboard-sourced, on/after the cutoff, public, untested, unblocked, capped",
+  );
+
+  // The saved hook isn't one of the cache's current options (hand-typed, or the cache since
+  // refreshed) — the control still gets a bucket, just "picked" rather than a real style.
+  const handTitle = "HAND TYPED HOOK | edcr vs doogile | MCSR Ranked 1v1 | Minecraft Speedrun";
+  const pickedPlan = planCycle(
+    now,
+    [
+      {
+        videoId: "t11",
+        matchId: 111,
+        uploadedAt: "2026-10-19T00:00:00.000Z",
+        privacyStatus: "public",
+        source: "dashboard",
+        title: handTitle,
+      },
+    ],
+    { endScreens: {}, pickerEmptySeen: {}, relatedLinks: {}, relatedRetrySeen: {} },
+    [],
+    () => false,
+    [],
+    null,
+    false,
+    (matchId) => (matchId === 111 ? { options: ["SOME OTHER HOOK"], styles: ["meme"] } : null),
+  );
+  const t11 = pickedPlan.titleTcTargets.find((t) => t.videoId === "t11")!;
+  assert.equal(t11.controlStyle, "picked", "the saved hook matches none of the cache's current options");
+  assert.deepEqual(t11.challengers, [
+    { title: "SOME OTHER HOOK | edcr vs doogile | MCSR Ranked 1v1 | Minecraft Speedrun", style: "meme" },
+  ]);
+  console.log('OK: a hand-typed or stale saved hook gets controlStyle "picked"');
+
+  const thumbIds = plan.thumbnailTcTargets.map((t) => t.videoId);
+  assert.ok(
+    !thumbIds.includes("t9"),
+    "a video with title-options.json loses its thumbnail test even with no title target",
+  );
+  assert.ok(thumbIds.includes("t10"), "no title-options.json at all — the thumbnail test still runs");
+  console.log("OK: a video with title-options.json never also gets a thumbnail test");
+
+  // abTestsPaused (18 Oct 2026): no new title plans either.
+  const paused = planCycle(
+    now,
+    longForms,
+    { endScreens: {}, pickerEmptySeen: {}, relatedLinks: {}, relatedRetrySeen: {} },
+    experiments,
+    isBlocked,
+    [],
+    null,
+    true,
+    titleOptionsFor,
+  );
+  assert.deepEqual(paused.titleTcTargets, [], "paused: no new title plans either");
+  console.log("OK: abTestsPaused plans no new title tests");
+}
+
 // --- planCycle: pinTargets (phase 5, 8 Oct 2026) -----------------------------------------------
 {
   const longForms: LongFormRef[] = [
@@ -805,7 +1130,9 @@ config.mediaDir = media;
     ["s4", "s5", "s6"],
     `skips come first, then at most ${MAX_PINS_PER_CYCLE}`,
   );
-  console.log(`OK: pinsThisCycle skips today's skips and non-public videos, then caps at ${MAX_PINS_PER_CYCLE}`);
+  console.log(
+    `OK: pinsThisCycle skips today's skips and non-public videos, then caps at ${MAX_PINS_PER_CYCLE}`,
+  );
 }
 
 // --- endScreensThisCycle: a video with no editor is skipped for the day, then the cap (14 Oct 2026) ---
@@ -1122,6 +1449,7 @@ config.mediaDir = media;
       tcStarted: 0,
       tcChecked: 0,
       thumbnailTestsPlanned: 0,
+      titleTestsPlanned: 0,
       pinsAdded: 0,
       relatedLinksAdded: 0,
       errors: [],
