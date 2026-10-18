@@ -950,6 +950,7 @@ export async function retitleHook(
   const sep = snippet.title.indexOf(SEPARATOR);
   const rest = sep >= 0 ? snippet.title.slice(sep + SEPARATOR.length) : snippet.title;
   const title = `${h}${SEPARATOR}${rest}`;
+  if (title.length > 100) throw new Error(`"${title}" is ${title.length} characters; YouTube's limit is 100 — nothing written.`);
   await writeSnippet(videoId, snippet, { title }, fetchImpl);
   return { title, was: snippet.title };
 }

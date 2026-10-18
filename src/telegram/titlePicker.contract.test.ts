@@ -212,7 +212,13 @@ try {
     await index.handleUpdate(callbackUpdate(9001, offerA!.messageId, `t:${A}:0`));
     assert.equal(tgCalls.length, before, "not one Telegram call for another chat's press");
     assert.ok(!flow.readStatus(A).hooksSavedAt, "nothing was saved");
-    console.log("OK: a press from another chat does nothing");
+    // Someone else pressing inside the operator's chat (a group, a forwarded message) is ignored too.
+    const other = callbackUpdate(Number(CHAT), offerA!.messageId, `t:${A}:0`);
+    other.callback_query.from.id = 9001;
+    await index.handleUpdate(other);
+    assert.equal(tgCalls.length, before, "not one Telegram call for another presser");
+    assert.ok(!flow.readStatus(A).hooksSavedAt, "nothing was saved");
+    console.log("OK: a press from another chat or another presser does nothing");
   }
 
   /* --- 3. A press saves through saveHooks (not yet uploaded) ------------------------------------- */

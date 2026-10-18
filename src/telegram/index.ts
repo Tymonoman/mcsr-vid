@@ -331,7 +331,9 @@ export async function handleUpdate(update: bot.TgUpdate): Promise<void> {
     // below, checked before handleTitleCallback trusts the message it is attached to.
     const chat = bot.chatId();
     const from = update.callback_query.message?.chat.id;
-    if (chat && from !== undefined && String(from) === chat) {
+    // The presser too, not just the chat the message sits in: the operator's chat is private.
+    const presser = update.callback_query.from?.id;
+    if (chat && from !== undefined && String(from) === chat && String(presser) === chat) {
       await handleTitleCallback(update.callback_query).catch((err: unknown) =>
         console.error(`telegram: callback failed — ${describeError(err)}`),
       );

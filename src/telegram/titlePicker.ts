@@ -245,6 +245,12 @@ async function chooseOption(
   }
   const f = await factsOf(matchId);
   const match = await getMatch(matchId);
+  if (blockedIn(match.players.map((p) => p.nickname)) || blockedOnDisk(matchDir(matchId))) {
+    markSettled(matchId);
+    await editSafely(chat, messageId, "Could not save: a blocked runner's match — nothing written");
+    await answerSafely(cqId, "blocked");
+    return;
+  }
   let ok = true;
   let message = title;
   if (f.video) {
