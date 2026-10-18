@@ -223,6 +223,18 @@ export function recordPaceFactor(resultMs: number, boostSec: number | null): num
 }
 
 /**
+ * A finish this close (`metrics.finishMarginMs`) ranks above audience and popularity inside its
+ * tier (the operator, 18 Oct 2026: "a close finish ... should push a match up the list"). Not
+ * folded into `recordPaceFactor`/`audienceFor`: this is a photo finish, not a fast one, and it
+ * never reaches a hook, title or anything public — only `take()`'s and `presentSuggestions`'s own
+ * ordering read it.
+ */
+export const CLOSE_FINISH_MS = 5_000;
+
+export const isCloseFinish = (metrics: Pick<MatchMetrics, "finishMarginMs">): boolean =>
+  metrics.finishMarginMs !== null && metrics.finishMarginMs < CLOSE_FINISH_MS;
+
+/**
  * Measured draws at or above this get their own matches pulled every scan, favourite or not
  * (`STRONG_DRAWS`): with the default roster that adds hackingnoises, BeefSalad, edcr and nahhann.
  */
@@ -359,7 +371,7 @@ interface SuggestCache {
 /** Followers move daily and are cached separately, so they are filled in per scan, not pooled. */
 type PooledPlayer = Omit<SuggestionPlayer, "followers">;
 
-interface PooledMatch {
+export interface PooledMatch {
   metrics: MatchMetrics;
   profiles: [PooledPlayer, PooledPlayer];
   h2h: HeadToHead | null;
@@ -481,6 +493,16 @@ export function pooledMatchPlayers(matchId: number): [string, string] | null {
   const metrics = loadCache().pool[String(matchId)]?.metrics;
   // A DNF is left to the queue's own read (`resolveQueuedPick`), which marks it for the skip.
   return metrics && !metrics.dnf ? metrics.players : null;
+}
+
+/**
+ * Every match the scan's pool holds, metrics and all — the fast-track tick's own source
+ * (src/dashboard/fastTrack.ts), so a 15-minute check costs no feed scan of its own. Includes a
+ * DNF and a blocked player's match exactly as the pool does; the caller filters, as every other
+ * reader of the pool does.
+ */
+export function pooledMatches(): PooledMatch[] {
+  return Object.values(loadCache().pool);
 }
 
 /** Hide a suggestion permanently and drop it from the cached list. */
@@ -868,8 +890,17 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
   // Popularity is recomputed rather than stored: appearance counts keep accumulating, so
   // a figure saved when the match was first scored would be stale.
   // A DNF stays pooled (so it is not fetched again every scan) but is never selectable, in any bucket.
+  // Nor is a no-name pair (tier 0, neither player known): it never reaches a card (the operator,
+  // 18 Oct 2026 — "two unknown runners = never"). The pool itself (`cache.pool`) keeps it, so a
+  // no-name match the operator queues by id is still resolved (`pooledMatchPlayers`,
+  // src/dashboard/nightly.ts) — only the suggestion lists this function returns are gated.
   const selectable = live
-    .filter((entry) => !excluded.has(entry.metrics.matchId) && !metricsDnf(entry.metrics))
+    .filter(
+      (entry) =>
+        !excluded.has(entry.metrics.matchId) &&
+        !metricsDnf(entry.metrics) &&
+        tier(entry.metrics.players) >= 1,
+    )
     .map((entry) => ({
       ...entry,
       popularity: popularityOfNames(entry.metrics.players[0], entry.metrics.players[1]),
@@ -887,10 +918,12 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
       ? closenessScore(entry.metrics, suggestWeights, suggestFastRunTargetSec, suggestSlowRunCutoffSec)
       : chaosScore(entry.metrics, suggestWeights, suggestFastRunTargetSec, suggestSlowRunCutoffSec);
 
-  // The slots go by `tierFor` — the matches with a favourite, then those with a known player, then
-  // the rest — inside a tier by `audienceFor` (the pairs put out lately as the scan finds them), then
-  // the bucket's score, then popularity; the `score` kept on the card stays the bucket's own. One card
-  // per pair across all three buckets (`pairs`): the best of a pair's matches, never two of them.
+  // The slots go by `tierFor` — the matches with a favourite, then those with a known player (the
+  // rest never reach a slot at all, `selectable`'s own filter) — inside a tier by `isCloseFinish`
+  // (a photo finish ranks above audience and popularity, never shown), then `audienceFor` (the
+  // pairs put out lately as the scan finds them), then the bucket's score, then popularity; the
+  // `score` kept on the card stays the bucket's own. One card per pair across all three buckets
+  // (`pairs`): the best of a pair's matches, never two of them.
   const learned = config.learnedDraw ? readDrawLearned() : null;
   const audience = audienceFor(config.favouritePlayers, followersOf, recentPairPostsSnapshot(), learned);
   // `recordPaceBoostSec` (off = null): folded in here rather than into `audience` itself, since
@@ -910,6 +943,7 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
       .sort(
         (a, b) =>
           tier(b.metrics.players) - tier(a.metrics.players) ||
+          Number(isCloseFinish(b.metrics)) - Number(isCloseFinish(a.metrics)) ||
           paced(b) - paced(a) ||
           b.score - a.score ||
           b.popularity - a.popularity,
@@ -969,11 +1003,10 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
   // A known player's match is a card whether or not it is close or chaotic, on top of the close and
   // chaos slots rather than competing with them for one: the operator, 4 Oct 2026, "schedule some
   // matches really known players the matches don't have to be that interesting you can lower the
-  // threshold like this for the suggestion mechanism." No score gate, just `tier` — already used to
-  // rank every other bucket — so a favourite still outranks a merely-known player here too. A match
-  // this bucket would have picked but that close or chaos already claimed does not take a second slot.
-  const knownEligible = selectable.filter((entry) => tier(entry.metrics.players) >= 1);
-  const known = take(knownEligible, "known", config.suggestKnownSlots, claimed);
+  // threshold like this for the suggestion mechanism." No score gate — `selectable` is already
+  // tier >= 1 — so a favourite still outranks a merely-known player here too. A match this bucket
+  // would have picked but that close or chaos already claimed does not take a second slot.
+  const known = take(selectable, "known", config.suggestKnownSlots, claimed);
   const suggestions = [...close, ...chaos, ...known];
 
   cache.version = CACHE_VERSION;

@@ -31,6 +31,7 @@ export const WATCH_ROSTER: readonly string[] = [
   "Pinne",
   "lowk3y_",
   "silverrruns",
+  "edcr",
 ];
 
 /** How far back a match still counts as news. */

@@ -20,9 +20,9 @@
 //     30, povAudioPan 0.7, teaserAtSec 10 / teaserSec 5, midRollCtaAtSec 90 / midRollCtaSec 4,
 //     nightlyRenderHourUtc 3, publishHourUtc 19 / seriesPublishHourUtc 23 / seriesPairGapDays 3,
 //     suggestKnownSlots 4, rivalChannelHandle [mcsrmatches, mcsr-vault], titleNames, telegramReportHourWarsaw 7,
-//     and the switches documented as off by default (shortsByHand, playoffsFirst,
-//     thumbnailRotatePoses, exportUpscale1440, countdownTeaser, learnedDraw, recordPaceBoostSec,
-//     creatorWatch with an empty watchlist).
+//     and the switches documented as off by default (shortsByHand, thumbnailRotatePoses,
+//     exportUpscale1440, countdownTeaser, learnedDraw, recordPaceBoostSec, creatorWatch with an
+//     empty watchlist) — playoffsFirst is **on** by default since 18 Oct 2026.
 //
 // Hermetic: the loader is exercised in child processes with temp MCSR_CONFIG files; the example
 // script runs in a temp cwd. Run: npx tsx src/config.contract.test.ts
@@ -95,7 +95,7 @@ const documented: Partial<Record<keyof typeof DEFAULTS, unknown>> = {
   runnerNicknames: {}, // runnerNicknames default: empty until the operator fills it in
   telegramReportHourWarsaw: 7, // the 07:00 Warsaw schedule
   shortsByHand: false, // default **off**
-  playoffsFirst: false, // default **false**
+  playoffsFirst: true, // default **true** since 18 Oct 2026
   thumbnailRotatePoses: false, // default off
   exportUpscale1440: false, // default off
   countdownTeaser: false, // default off

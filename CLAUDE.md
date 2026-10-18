@@ -180,10 +180,10 @@ reload). After merging server changes, `POST /api/restart-when-idle`.
   5), rescanned periodically; one card per pair across close/chaos/`known` buckets, and the known
   bucket caps one slot per player too (`suggestKnownSlots`, default 4).
 - **Favourite players, then known** (`tierFor`; `favouritePlayers` Settings tab, default
-  doogile/Feinberg/Infume/Pinne/lowk3y_/silverrruns; edcr is the operator's call). Order: favourite
-  → known → neither, then expiring → audience → popularity. Known: a favourite, a measured draw ≥
-  `KNOWN_DRAW_MIN` (0.6), or Twitch followers ≥ `knownFollowerThreshold` (10,000). **No
-  chaos/closeness, seed, rank or elo term; only tier, audience and recency decide the order.**
+  doogile/Feinberg/Infume/Pinne/lowk3y_/silverrruns/edcr). Order: favourite → known → neither, then
+  expiring → close → audience → popularity. Known: a favourite, a measured draw ≥
+  `KNOWN_DRAW_MIN` (0.6), or Twitch followers ≥ `knownFollowerThreshold` (10,000). No-names
+  never render; mixed weekly; close/sub-8 reorder, never a hook.
   `learnedDraw`/`recordPaceBoostSec` (Settings tab, both default **off**) reorder by
   real/near-record stats without naming or implying the winner.
 - **Blocked players** (`blockedPlayers`, Settings tab, default `["Aquacorde", "BeefSalad"]`;
@@ -266,10 +266,11 @@ reload). After merging server changes, `POST /api/restart-when-idle`.
 - **Nightly** (`src/dashboard/nightly.ts`): at `nightlyRenderHourUtc` (default 3 UTC, null
   disables) renders the first eligible card, then the MP4, then queues the Short's pick; Short and
   upload wait for the operator's hooks. **A candidate also needs a known player** unless the
-  operator queued it; a playoff pick always counts; the block list outranks the queue. **A test
-  server arms its own nightly too**: any `PORT=… npm run dashboard` schedules against the same
-  `/media`; kill it before the hour, or set `nightlyRenderHourUtc: null` for it. Chain resume,
-  YouTube retries and the 15-minute tick run only on 8080.
+  operator queued it; a playoff pick always counts; the block list outranks the queue. Chains
+  skip repeats; see fast-track/coverage. **A test server arms its own
+  nightly too**: any `PORT=… npm run dashboard` schedules against the same `/media`; kill it
+  before the hour, or set `nightlyRenderHourUtc: null` for it. Chain resume, YouTube retries and
+  the 15-minute tick run only on 8080.
 - **The experiment engine runs between-video A/B tests unattended** (`src/dashboard/experiments.ts`
   + `experimentsEvaluator.ts`) from `.experiments.json` (atomic write, never rewritten while
   corrupt; `"tc"` = Studio's Test & Compare, untouched). A tick before `nightlyRenderHourUtc`
@@ -279,7 +280,7 @@ reload). After merging server changes, `POST /api/restart-when-idle`.
   reapplied; failed evaluations on two consecutive UTC days set `needsHuman` (a day with no
   evaluation restarts the count).
 - **Playoffs** (`src/playoffs/playoffs.ts`): the bracket knows the series, not the games. **No
-  surface prints a series score**: round/game number only. `playoffsFirst` (default **false**) puts
+  surface prints a series score**: round/game number only. `playoffsFirst` (default **true**) puts
   detected games ahead of suggestions. **A series is one video; game 1's directory is the series**
   (`src/playoffs/series.ts`): exports joined with `ffmpeg -f concat -c copy` into
   `series-<g1>.mp4`; chapters name each game's world, never the seed or score; the join deletes the

@@ -210,6 +210,7 @@ try {
     Pinne: [],
     lowk3y_: [],
     silverrruns: [],
+    edcr: [],
     ...per,
   });
 
@@ -269,7 +270,7 @@ try {
   deps = mkDeps({ doogile: [feedMatch(300, "doogile", "Feinberg")], Feinberg: [] });
   found = await findWorth(NOW, deps);
   assert.equal(found.matches.length, 1);
-  assert.equal(found.notes.length, 4); // Infume, Pinne, lowk3y_, silverrruns
+  assert.equal(found.notes.length, 5); // Infume, Pinne, lowk3y_, silverrruns, edcr
   assert.ok(found.notes[0]!.startsWith("Infume's matches could not be read"), found.notes[0]);
   await assert.rejects(findWorth(NOW, mkDeps({})), /429 for doogile/);
 
@@ -302,19 +303,19 @@ try {
   const feeds = rosterFeeds({ doogile: twelve.slice(0, 3) });
   deps = mkDeps(feeds);
   const first = await gatherWorth(NOW, {}, deps);
-  assert.equal(calls.list.length, 6);
+  assert.equal(calls.list.length, WATCH_ROSTER.length);
   assert.equal(readTelegramState().worth?.at, NOW);
   assert.equal(first.matches.length, 3);
 
   // Within the TTL a second report spends nothing …
   const again = await gatherWorth(NOW + WORTH_TTL_MS - 1000, {}, deps);
-  assert.equal(calls.list.length, 6);
+  assert.equal(calls.list.length, WATCH_ROSTER.length);
   assert.deepEqual(again, first);
   // … and leaves out what was taken since (rendered, hidden or dismissed).
   const gone = first.matches[0]!.matchId;
   deps.isTaken = (id) => id === gone;
   const after = await gatherWorth(NOW + 1000, {}, deps);
-  assert.equal(calls.list.length, 6);
+  assert.equal(calls.list.length, WATCH_ROSTER.length);
   assert.deepEqual(
     after.matches.map((m) => m.matchId),
     first.matches.map((m) => m.matchId).filter((id) => id !== gone),
@@ -327,7 +328,7 @@ try {
     config.blockedPlayers = [...savedBlocked, runner.toUpperCase()]; // any case
     try {
       const blocked = await gatherWorth(NOW + 1000, {}, deps);
-      assert.equal(calls.list.length, 6, "still the cached copy");
+      assert.equal(calls.list.length, WATCH_ROSTER.length, "still the cached copy");
       assert.deepEqual(
         blocked.matches.map((m) => m.matchId),
         first.matches.filter((m) => !m.players.split(" vs ").includes(runner)).map((m) => m.matchId),
@@ -341,11 +342,11 @@ try {
 
   // `fresh` (the /worth command) gathers anew, and so does a copy past the TTL or from the future.
   await gatherWorth(NOW + 1000, { fresh: true }, deps);
-  assert.equal(calls.list.length, 12);
+  assert.equal(calls.list.length, 2 * WATCH_ROSTER.length);
   await gatherWorth(NOW + WORTH_TTL_MS + 2000, {}, deps);
-  assert.equal(calls.list.length, 18);
+  assert.equal(calls.list.length, 3 * WATCH_ROSTER.length);
   await gatherWorth(NOW - 3600_000, {}, deps); // the clock went back: the copy is not trusted
-  assert.equal(calls.list.length, 24);
+  assert.equal(calls.list.length, 4 * WATCH_ROSTER.length);
 
   // A gather that had to leave something out is kept too: its notes are shown with it, and
   // gathering again on every report for a channel that will not list would cost 14 calls and a

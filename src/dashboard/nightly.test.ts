@@ -12,12 +12,18 @@ import path from "node:path";
 import { config } from "../config.js";
 import {
   chainExport,
+  EVENING_COVERAGE_MAX_PER_NIGHT,
+  eveningCoverageGap,
+  excludeRenderedPairs,
   type ExportStarter,
   isKnownPick,
+  isMixedKnownPick,
+  isSubEightFinish,
   msUntilNextRun,
   nightlyChainRunning,
   nightlyEligible,
   nightlySideCalls,
+  openRankedSlots,
   PAIR_POSTS_WAIT_MS,
   pickClause,
   pickContext,
@@ -32,9 +38,13 @@ import {
   resolveQueuedPick,
   runNightlyOnce,
   shouldChainNextRender,
+  SUB_EIGHT_JUMP_MS,
+  withinChainWindow,
+  withSubEightJump,
   writeNightlyState,
 } from "./nightly.js";
-import { CACHE_VERSION, dismissSuggestion } from "./suggest.js";
+import { CACHE_VERSION, dismissSuggestion, type Suggestion } from "./suggest.js";
+import { knownUnknownRenderedRecently, recordKnownUnknownRender } from "./matchShelf.js";
 import type { PlayoffBoard } from "../playoffs/playoffs.js";
 import { startRerender } from "../thumbnails/rerender.js";
 import { abortJob, getJob, startJob } from "./jobs.js";
@@ -187,7 +197,9 @@ assert.equal(await picked(ranked, { ...roomy, freeMatches: 2 }), 1);
   let loads = 0;
   const load = async () => (loads++, board);
 
-  assert.equal(config.playoffsFirst, false, "off by default; the operator flips it for a tournament");
+  assert.equal(config.playoffsFirst, true, "on by default since 18 Oct 2026 — 'pull them first'");
+
+  config.playoffsFirst = false;
   assert.deepEqual(await playoffPicks(load), [], "off means off");
   assert.equal(loads, 0, "and costs no bracket read");
 
@@ -207,7 +219,6 @@ assert.equal(await picked(ranked, { ...roomy, freeMatches: 2 }), 1);
     [],
     "a dead bracket is not the reason a night renders nothing",
   );
-  config.playoffsFirst = false;
 }
 
 // --- A blocked seed's games are skipped, same as any other candidate (config.blockedPlayers). ---
@@ -348,7 +359,11 @@ try {
     nightlySideCalls(false, calls);
     assert.deepEqual(called, [], "a test server's timer resumes no chain and writes nothing to YouTube");
     nightlySideCalls(true, calls);
-    assert.deepEqual(called, ["playlists", "comments", "studio", "shorts"], "the main server's does all four");
+    assert.deepEqual(
+      called,
+      ["playlists", "comments", "studio", "shorts"],
+      "the main server's does all four",
+    );
     console.log("OK: the nightly timer's chain resume and YouTube retries run on the main server only");
   }
 
@@ -920,4 +935,174 @@ console.log("nightly: all checks passed");
     console.error = quiet;
   }
   console.log("OK: the pick waits at most 15 s for the pairs the channel put out lately");
+}
+
+// --- The 18 Oct 2026 rules: sub-8 jump, diversity, evening coverage, the weekly mixed-pair cap ---
+const sug = (matchId: number, players: [string, string], resultMs: number): Suggestion => ({
+  metrics: {
+    matchId,
+    players,
+    winner: players[0],
+    resultMs,
+    splits: [],
+    finishMarginMs: null,
+    finishEstimated: false,
+    splitsWithin3s: 0,
+    comparedSplits: 0,
+    maxLeadMs: 0,
+    leadChanges: 0,
+    panelLeadChanges: 0,
+    maxSwingMs: 0,
+    deaths: 0,
+    deathsByPlayer: {},
+  },
+  bucket: "close",
+  score: 0,
+  popularity: 0,
+  profiles: players.map((nickname) => ({
+    nickname,
+    eloRank: null,
+    elo: null,
+    followers: null,
+  })) as Suggestion["profiles"],
+  h2h: null,
+  vodUrls: [],
+  dateSec: 0,
+});
+
+// --- isSubEightFinish / withSubEightJump: tier-independent, right after playoffs ----------------
+{
+  assert.equal(SUB_EIGHT_JUMP_MS, 8 * 60 * 1000, "8:00, named separately from recordPaceBoostSec");
+  assert.equal(isSubEightFinish(8 * 60_000), true, "exactly 8:00 jumps");
+  assert.equal(isSubEightFinish(8 * 60_000 + 1), false, "a millisecond over does not");
+  assert.equal(isSubEightFinish(7 * 60_000), true);
+
+  const slow1 = sug(1, ["a", "b"], 9 * 60_000);
+  const fast1 = sug(2, ["c", "d"], 7 * 60_000);
+  const slow2 = sug(3, ["e", "f"], 10 * 60_000);
+  const fast2 = sug(4, ["g", "h"], 7.5 * 60_000);
+  assert.deepEqual(
+    withSubEightJump([slow1, fast1, slow2, fast2]).map((s) => s.metrics.matchId),
+    [2, 4, 1, 3],
+    "both sub-8 finishes move to the front, each group keeping its own relative order",
+  );
+  assert.deepEqual(
+    withSubEightJump([slow1, slow2]).map((s) => s.metrics.matchId),
+    [1, 3],
+    "nothing sub-8: the order is untouched",
+  );
+  console.log("OK: isSubEightFinish/withSubEightJump — tier-independent, stable, 8:00 or under");
+}
+
+// --- excludeRenderedPairs: a chained render's own diversity filter -------------------------------
+{
+  const a = sug(1, ["Feinberg", "Infume"], 500_000);
+  const b = sug(2, ["doogile", "edcr"], 500_000);
+  const c = sug(3, ["Infume", "Feinberg"], 500_000); // same pair as a, reversed, different match
+  assert.deepEqual(
+    excludeRenderedPairs([a, b, c], new Set()).map((s) => s.metrics.matchId),
+    [1, 2, 3],
+    "nothing excluded with an empty set",
+  );
+  assert.deepEqual(
+    excludeRenderedPairs([a, b, c], new Set(["feinberg|infume"])).map((s) => s.metrics.matchId),
+    [2],
+    "the pair already rendered tonight is dropped — either order, a different match id too",
+  );
+  console.log("OK: excludeRenderedPairs drops a pair by key, any order, any match id");
+}
+
+// --- openRankedSlots / eveningCoverageGap: pure, bounded, never negative ------------------------
+{
+  const HOUR = 3_600_000;
+  const now = Date.parse("2026-10-18T10:00:00Z");
+  const slot = (dateUtc: string) => Date.parse(`${dateUtc}T19:00:00Z`);
+  assert.equal(
+    openRankedSlots(now, 19, new Set()),
+    2,
+    "today's and tomorrow's 19:00 UTC both fall inside the next 48h and neither is claimed",
+  );
+  assert.equal(
+    openRankedSlots(now, 19, new Set([slot("2026-10-18")])),
+    1,
+    "today's slot is claimed; tomorrow's is still open",
+  );
+  assert.equal(
+    openRankedSlots(now, 19, new Set([slot("2026-10-18"), slot("2026-10-19")])),
+    0,
+    "both claimed: nothing open",
+  );
+  assert.equal(
+    openRankedSlots(now, 19, new Set(), 20 * HOUR),
+    1,
+    "a horizon short of tomorrow's slot sees only today's",
+  );
+  assert.equal(EVENING_COVERAGE_MAX_PER_NIGHT, 3);
+  assert.equal(eveningCoverageGap(2, 0), 2, "two open slots, nothing already waiting: a gap of 2");
+  assert.equal(eveningCoverageGap(2, 2), 0, "plenty already waiting: no gap");
+  assert.equal(eveningCoverageGap(1, 5), 0, "never negative");
+  assert.equal(eveningCoverageGap(10, 0), EVENING_COVERAGE_MAX_PER_NIGHT, "capped at the nightly max");
+  console.log("OK: openRankedSlots/eveningCoverageGap — pure, bounded, floored at 0");
+}
+
+// --- withinChainWindow: the window shouldChainNextRender already used, shared with coverage -----
+{
+  const night = at("2026-09-07T03:00:00Z");
+  assert.equal(withinChainWindow(night, 3), true, "right at the hour");
+  assert.equal(withinChainWindow(night + 3.9 * HOUR, 3), true);
+  assert.equal(withinChainWindow(night + 4 * HOUR, 3), false, "the window has closed");
+  assert.equal(withinChainWindow(night, null), false, "no schedule, no window");
+  console.log("OK: withinChainWindow — shouldChainNextRender's own window, shared with coverage");
+}
+
+// --- isMixedKnownPick / the weekly cap on a mixed (one known, one unknown) pair -----------------
+{
+  const savedFav = config.favouritePlayers;
+  config.favouritePlayers = ["doogile"];
+  try {
+    const bothKnown = {
+      metrics: { matchId: 1, players: ["doogile", "Feinberg"] as [string, string] },
+      bucket: "close",
+    };
+    const mixed = {
+      metrics: { matchId: 2, players: ["doogile", "RandoOne"] as [string, string] },
+      bucket: "close",
+    };
+    const bothUnknown = {
+      metrics: { matchId: 3, players: ["RandoOne", "RandoTwo"] as [string, string] },
+      bucket: "close",
+    };
+    const playoff = {
+      metrics: { matchId: 4, players: ["RandoOne", "RandoTwo"] as [string, string] },
+      bucket: "playoffs",
+    };
+    assert.equal(isMixedKnownPick(bothKnown), false, "both known: no cap");
+    assert.equal(isMixedKnownPick(mixed), true, "exactly one known: mixed");
+    assert.equal(isMixedKnownPick(bothUnknown), false, "neither known: not mixed (never eligible at all)");
+    assert.equal(isMixedKnownPick(playoff), false, "a playoff pick is never mixed");
+
+    const savedMedia = config.mediaDir;
+    config.mediaDir = await mkdtemp(path.join(tmpdir(), "mcsr-nightly-mixedcap-"));
+    try {
+      const now = Date.now();
+      assert.equal(knownUnknownRenderedRecently(now), false, "nothing recorded yet");
+      recordKnownUnknownRender(now);
+      assert.equal(knownUnknownRenderedRecently(now), true, "spent for the week");
+      assert.equal(knownUnknownRenderedRecently(now + 6 * 86_400_000), true, "still inside 7 days");
+      assert.equal(knownUnknownRenderedRecently(now + 7 * 86_400_000 + 1), false, "the week is up");
+
+      const vodsAlways = async () => true;
+      const eligible = nightlyEligible([], vodsAlways, now);
+      assert.equal(await eligible(mixed), false, "a mixed pair is refused inside the 7 days");
+      assert.equal(await eligible(bothKnown), true, "a both-known pair has no such cap");
+      const queued = nightlyEligible([2], vodsAlways, now);
+      assert.equal(await queued(mixed), true, "the operator's own queue still wins over the weekly cap");
+    } finally {
+      await rm(config.mediaDir, { recursive: true, force: true });
+      config.mediaDir = savedMedia;
+    }
+  } finally {
+    config.favouritePlayers = savedFav;
+  }
+  console.log("OK: isMixedKnownPick and the weekly cap — queue still wins, both-known is never capped");
 }

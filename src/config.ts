@@ -578,7 +578,7 @@ export const DEFAULTS: Config = {
   youtubePlaylistTitle: "MCSR Ranked matches",
   youtubePlaylistUrl: "",
   rivalChannelHandle: ["mcsrmatches", "mcsr-vault"],
-  favouritePlayers: ["doogile", "Feinberg", "Infume", "Pinne", "lowk3y_", "silverrruns"],
+  favouritePlayers: ["doogile", "Feinberg", "Infume", "Pinne", "lowk3y_", "silverrruns", "edcr"],
   pairRepeatDays: 3,
   knownFollowerThreshold: 10_000,
   learnedDraw: false,
@@ -626,7 +626,9 @@ export const DEFAULTS: Config = {
   suggestSlowRunCutoffSec: 600,
   suggestFollowerWeight: 3,
   suggestWeights: DEFAULT_WEIGHTS,
-  playoffsFirst: false,
+  // The operator, 18 Oct 2026: "pull them first I'll notify you when theres an event upcoming" —
+  // on by default now; it still only ever does anything while a bracket has undetected games.
+  playoffsFirst: true,
   titleNames: { Pinne: "Skycrab", lowk3y_: "lowkey" },
   runnerNicknames: {},
   playoffThumbnailStyle: "plain",

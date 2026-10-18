@@ -135,10 +135,11 @@ try {
       "Pinne",
       "lowk3y_",
       "silverrruns",
+      "edcr",
     ]);
     assert.ok(
-      !DEFAULTS.favouritePlayers.some((n) => n.toLowerCase() === "edcr"),
-      "edcr is the operator's call",
+      DEFAULTS.favouritePlayers.some((n) => n.toLowerCase() === "edcr"),
+      "edcr: 'keep edcr' (the operator, 18 Oct 2026)",
     );
     const followers: Record<string, number> = { bigstreamer: 10_000, almost: 9_999, romuxii: 1_000_000 };
     const tier = tierFor(
@@ -152,7 +153,7 @@ try {
       "a favourite in any case (Pinne's own draw, 0.46, would not do it)",
     );
     assert.equal(tier(["anjouu", "almost"]), 1, "a measured 0.62 clears 0.6 with no followers at all");
-    assert.equal(tier(["edcr", "almost"]), 1, "edcr is known by his measured draw, not the roster");
+    assert.equal(tier(["edcr", "almost"]), 2, "edcr is a favourite now (18 Oct 2026)");
     assert.equal(tier(["bigstreamer", "almost"]), 1, "an unmeasured 10,000 followers is known");
     assert.equal(tier(["almost", "nobody"]), 0, "9,999 is not");
     assert.equal(
@@ -291,11 +292,12 @@ try {
   {
     config.favouritePlayers = [];
     slots(1, 0, 0);
-    // Two no-name matches identical but for the players' ladder rank and elo: #1/#2 against #900/#901.
+    // Two matches (each with one known player, so both clear the tier gate) identical but for
+    // the players' ladder rank and elo: #1/#2 against #900/#901.
     const run = async (topFirst: boolean) => {
       withPool([
-        pooled(801, ["aaa_one", "bbb_one"], 2_000, topFirst ? [1, 2] : [900, 901]),
-        pooled(802, ["ccc_two", "ddd_two"], 2_000, topFirst ? [900, 901] : [1, 2]),
+        pooled(801, ["hackingnoises", "bbb_one"], 2_000, topFirst ? [1, 2] : [900, 901]),
+        pooled(802, ["silverrruns", "ddd_two"], 2_000, topFirst ? [900, 901] : [1, 2]),
       ]);
       return cardIds();
     };
@@ -311,7 +313,7 @@ try {
   {
     config.favouritePlayers = [];
     slots(2, 0, 0);
-    withPool([pooled(901, ["aaa", "bbb"], 0), pooled(902, ["ccc", "ddd"], 1_000)]);
+    withPool([pooled(901, ["hackingnoises", "bbb"], 0), pooled(902, ["silverrruns", "ddd"], 1_000)]);
     assert.deepEqual(await cardIds(), [901, 902]);
     dismissSuggestion(901);
     assert.deepEqual(await cardIds(false), [902], "the fresh cached list");

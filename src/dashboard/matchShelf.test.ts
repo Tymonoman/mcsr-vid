@@ -23,10 +23,12 @@ const {
   hiddenMatchIds,
   isExported,
   isUploaded,
+  knownUnknownRenderedRecently,
   nightlyQueue,
   nightlySkip,
   nightlySkipIds,
   publishChecklist,
+  recordKnownUnknownRender,
   setHidden,
   setNightlyQueue,
   setNightlySkip,
@@ -264,6 +266,25 @@ try {
   assert.equal(skipNightOf(), "2026-09-25");
   setSkipNightOf(null);
   assert.equal(skipNightOf(), null);
+
+  // --- 11. knownUnknownRenderedRecently / recordKnownUnknownRender: the weekly mixed-pair budget ---
+  {
+    const now = Date.parse("2026-10-18T03:00:00Z");
+    assert.equal(knownUnknownRenderedRecently(now), false, "nothing spent yet");
+    recordKnownUnknownRender(now);
+    assert.equal(knownUnknownRenderedRecently(now), true, "spent, right away");
+    assert.equal(knownUnknownRenderedRecently(now + 86_400_000), true, "a day later: still this week");
+    assert.equal(knownUnknownRenderedRecently(now + 7 * 86_400_000), false, "exactly a week later: free");
+    assert.equal(
+      knownUnknownRenderedRecently(now + 7 * 86_400_000 - 1),
+      true,
+      "one millisecond short of a week: still spent",
+    );
+    // A later render resets the clock, same as any other "last done at" field.
+    recordKnownUnknownRender(now + 86_400_000);
+    assert.equal(knownUnknownRenderedRecently(now + 7 * 86_400_000), true, "the later render still counts");
+    console.log("OK: knownUnknownRenderedRecently/recordKnownUnknownRender — a single timestamp, a week");
+  }
 
   console.log("matchShelf: all checks passed");
 } finally {

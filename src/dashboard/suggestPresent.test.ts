@@ -165,8 +165,9 @@ console.log("suggestPresent: ok");
   console.log("OK: a blocked player's card never appears on the list");
 }
 
-// --- inside a tier, a matchup the rival already posted goes after the fresh ones, but never above an
-// expiring one. Three known pairs and no favourites, so all three share tier 1.
+// --- a rival having already posted the matchup no longer demotes it (18 Oct 2026, "render and
+// post anyway") — the expiring card still comes first, but the rival's own card (21) now ranks on
+// its audience like any other. Three known pairs and no favourites, so all three share tier 1.
 {
   const rival = [
     {
@@ -196,21 +197,21 @@ console.log("suggestPresent: ok");
   const cards = presentSuggestions(raw, NOW, rival, []);
   assert.deepEqual(
     cards.map((c) => c.matchId),
-    [23, 22, 21],
-    "expiring, then fresh, then the rival's matchup last despite its audience",
+    [23, 21, 22],
+    "expiring first; the rival's own matchup (21) ranks on audience, not demoted for being posted",
   );
-  assert.deepEqual(cards[2]!.rivalPosts, [
+  assert.deepEqual(cards[1]!.rivalPosts, [
     {
       kind: "match",
       label: "@mcsrmatches posted this match (6 Sept)",
       title: "GG!! | edcr vs doogile | MCSR Ranked",
     },
   ]);
-  assert.deepEqual(cards[1]!.rivalPosts, []);
+  assert.deepEqual(cards[2]!.rivalPosts, []);
   assert.deepEqual(
     orderForDisplay(raw, NOW, rival, []).map((s) => s.metrics.matchId),
-    [23, 22, 21],
-    "the nightly demotes it too",
+    [23, 21, 22],
+    "the nightly's order matches the card's — no demotion for either",
   );
 }
 
@@ -526,8 +527,8 @@ const order = (
   const otherFavourites = game(9, ["doogile", "Feinberg"], 10);
   assert.deepEqual(
     order([famous, otherFavourites], roster, rival),
-    [9, 2],
-    "and after the fresh ones of its tier",
+    [2, 9],
+    "and ranks on its own audience, same tier — a rival's post no longer demotes it (18 Oct 2026)",
   );
 
   // The offline replay of the live pool: Jabo_ against sub5average, popular from appearances alone,
@@ -705,8 +706,14 @@ const order = (
 {
   // Two unmeasured, unfollowed pairs tie on audience (both the UNMEASURED_DRAW floor) and fall to
   // popularity: the more popular one wins without either setting.
-  const quieter = suggestion({ popularity: 10, dateSec: daysAgo(2) }, { matchId: 601, players: ["aaa", "bbb"] });
-  const louder = suggestion({ popularity: 50, dateSec: daysAgo(2) }, { matchId: 602, players: ["ccc", "ddd"] });
+  const quieter = suggestion(
+    { popularity: 10, dateSec: daysAgo(2) },
+    { matchId: 601, players: ["aaa", "bbb"] },
+  );
+  const louder = suggestion(
+    { popularity: 50, dateSec: daysAgo(2) },
+    { matchId: 602, players: ["ccc", "ddd"] },
+  );
   assert.deepEqual(
     presentSuggestions([quieter, louder], NOW, [], [], []).map((c) => c.matchId),
     [602, 601],

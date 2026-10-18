@@ -46,6 +46,13 @@ interface ShelfState {
   nightlySkip: number[];
   /** YYYY-MM-DD in UTC of the scheduled run to skip, or null. */
   skipNightOf?: string | null;
+  /**
+   * ISO 8601 UTC of the last unattended nightly render of a "mixed" pair — exactly one of the two
+   * players known, not both, not neither (`src/dashboard/nightly.ts`'s own count). The operator's
+   * own experiment, 18 Oct 2026: "one known + one unknown = once a week". A single timestamp, not
+   * a log: the whole budget is one such render a week, so "when was the last one" answers the gate.
+   */
+  lastKnownUnknownRenderAt?: string | null;
 }
 
 function read(): ShelfState {
@@ -58,6 +65,8 @@ function read(): ShelfState {
       queue: (parsed.queue ?? []).filter((n) => Number.isSafeInteger(n)),
       nightlySkip: (parsed.nightlySkip ?? []).filter((n) => Number.isSafeInteger(n)),
       skipNightOf: typeof parsed.skipNightOf === "string" ? parsed.skipNightOf : null,
+      lastKnownUnknownRenderAt:
+        typeof parsed.lastKnownUnknownRenderAt === "string" ? parsed.lastKnownUnknownRenderAt : null,
     };
   } catch (err) {
     // A corrupt preferences file must not take the dashboard down over a cosmetic setting — but
@@ -111,6 +120,26 @@ export function skipNightOf(): string | null {
 export function setSkipNightOf(dateStr: string | null): void {
   const state = read();
   writeFileSync(statePath(), JSON.stringify({ ...state, skipNightOf: dateStr }, null, 2));
+}
+
+/** The weekly budget's own gate: whether a mixed (one known, one unknown) pair has already
+ *  rendered unattended within `days` of `nowMs`. Called by `src/dashboard/nightly.ts`'s own
+ *  eligibility check — a both-known or both-unknown pair never asks this. */
+export function knownUnknownRenderedRecently(nowMs: number, days = 7): boolean {
+  const at = read().lastKnownUnknownRenderAt;
+  if (!at) return false;
+  const ms = Date.parse(at);
+  return Number.isFinite(ms) && nowMs - ms < days * 24 * 60 * 60 * 1000;
+}
+
+/** Spends this week's mixed-pair budget — called the moment such a render actually starts,
+ *  whichever source picked it (ranked list or the operator's own queue). */
+export function recordKnownUnknownRender(nowMs: number): void {
+  const state = read();
+  writeFileSync(
+    statePath(),
+    JSON.stringify({ ...state, lastKnownUnknownRenderAt: new Date(nowMs).toISOString() }, null, 2),
+  );
 }
 
 export function hiddenMatchIds(): Set<number> {

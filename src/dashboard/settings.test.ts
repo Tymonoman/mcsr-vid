@@ -107,12 +107,14 @@ console.log("settings: the allowlist holds and every kind coerces");
 
 // --- Writing: the file the loader reads ---------------------------------------------------------
 {
-  const saved = saveSettings({ playoffsFirst: true, suggestCloseSlots: "9" });
+  // playoffsFirst defaults to true (18 Oct 2026) and nothing above overrode it, so false is the
+  // actual change here.
+  const saved = saveSettings({ playoffsFirst: false, suggestCloseSlots: "9" });
   assert.deepEqual(saved.changed.sort(), ["playoffsFirst", "suggestCloseSlots"]);
   assert.equal(saved.rearmNightly, false, "nothing touched the nightly's hour");
 
   const onDisk = JSON.parse(readFileSync(CONFIG_PATH, "utf8")) as Record<string, unknown>;
-  assert.equal(onDisk.playoffsFirst, true);
+  assert.equal(onDisk.playoffsFirst, false);
   assert.equal(onDisk.suggestCloseSlots, 9, "the string became a number");
   // The file is shared with whoever edits it on the box, so a key the panel does not know about
   // and one it deliberately does not expose both have to survive a save.
@@ -120,12 +122,12 @@ console.log("settings: the allowlist holds and every kind coerces");
   assert.equal(onDisk.preRollSec, 150);
 
   // Applied live, or the panel would report a value the process is not using.
-  assert.equal(config.playoffsFirst, true);
+  assert.equal(config.playoffsFirst, false);
   assert.equal(config.suggestCloseSlots, 9);
-  assert.equal(settingsPayload().fields.find((f) => f.key === "playoffsFirst")?.value, true);
+  assert.equal(settingsPayload().fields.find((f) => f.key === "playoffsFirst")?.value, false);
 
   // Saving the same values again is not a change, so the panel does not claim one.
-  assert.deepEqual(saveSettings({ playoffsFirst: true }).changed, []);
+  assert.deepEqual(saveSettings({ playoffsFirst: false }).changed, []);
 
   // Moving the nightly's hour is the one change that has to re-arm a pending timer.
   assert.equal(saveSettings({ nightlyRenderHourUtc: "5" }).rearmNightly, true);
