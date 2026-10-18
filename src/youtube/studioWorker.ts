@@ -27,7 +27,15 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { abTestsPausedNow, blockedIn, config, CONFIG_PATH, DEFAULTS, matchDir, reloadBlockedPlayers } from "../config.js";
+import {
+  abTestsPausedNow,
+  blockedIn,
+  config,
+  CONFIG_PATH,
+  DEFAULTS,
+  matchDir,
+  reloadBlockedPlayers,
+} from "../config.js";
 import { blockedOnDisk } from "../dashboard/matchStatus.js";
 import { repoHead } from "../dashboard/repoHead.js";
 import { describeError } from "../errorText.js";
@@ -37,6 +45,7 @@ import {
   pinComment,
   readTestAndCompare,
   startTestAndCompare,
+  titleTestProblem,
   type TcReadResult,
   type TcTest,
 } from "./studioActions.js";
@@ -46,8 +55,10 @@ import {
   readExperiments,
   updateTcExperiments,
   type Experiment,
+  type ExperimentArm,
   type TcPlanThumbEntry,
 } from "./studioExperiments.js";
+import { SEPARATOR } from "../pipeline/title.js";
 import { videoStats } from "./youtube.js";
 import { allShortUploads, allUploads, readUpload, splitTitle, writeUpload } from "./youtubeStore.js";
 
@@ -61,6 +72,13 @@ export const MAX_TC_STARTS_PER_CYCLE = 2;
  * Test & Compare (phase 4, 8 Oct 2026) — the day this feature shipped; nothing retroactive. */
 export const THUMBNAIL_TC_CUTOFF_ISO = "2026-10-08T00:00:00.000Z";
 export const MAX_THUMBNAIL_PLANS_PER_CYCLE = 2;
+/** A dashboard long-form uploaded on or after this date gets its title tested too (18 Oct 2026,
+ * the Telegram title picker) — nothing retroactive, same shape as `THUMBNAIL_TC_CUTOFF_ISO`. */
+export const TITLE_TC_CUTOFF_ISO = "2026-10-18T00:00:00.000Z";
+export const MAX_TITLE_PLANS_PER_CYCLE = 2;
+/** Title-only mode's dialog has one live slot plus at most 2 challenger slots (CLAUDE.md's
+ *  "Phase 2/3" facts) — the ceiling on how many `title-options.json` options become arms. */
+export const MAX_TITLE_CHALLENGERS = 2;
 /** Phase 5, 8 Oct 2026: the worker pins a PUBLIC long-form's own channel comment itself, the same
  * `finished.pin` ledger step `finishOnYouTube` (`src/youtube/youtubeUpload.ts`) uses — gated there
  * on `config.studioAutomation`, off, since the dashboard has no Chrome. Capped per cycle for the
@@ -192,6 +210,8 @@ export interface WorkerHeartbeat {
     tcStarted: number;
     tcChecked: number;
     thumbnailTestsPlanned: number;
+    /** See `CycleResult.titleTestsPlanned` (18 Oct 2026). */
+    titleTestsPlanned: number;
     /** PUBLIC long-forms whose channel comment was pinned this cycle (phase 5, 8 Oct 2026). */
     pinsAdded: number;
     /** Shorts whose "Related video" was linked (new or already there) this cycle (11 Oct 2026). */
@@ -249,6 +269,37 @@ export interface LongFormRef {
    *  pin plan below. `undefined` on either means that step has never been attempted. */
   finishedComment?: string | null;
   finishedPin?: string | null;
+  /** The record's own stored title (`UploadRecord.title`) — only the title-test planner below
+   *  reads this; every other target list ignores it. */
+  title?: string;
+}
+
+/** `<matchDir>/title-options.json`, as the title-test planner needs it: the Telegram offer's own
+ *  options and, when the cache carries them (titles/v2, optional on an older file), a parallel
+ *  `styles` array. */
+export interface TitleOptionsCache {
+  options: string[];
+  styles?: string[];
+}
+
+export interface TitleTcChallenger {
+  /** The full title this challenger would ship, already past `titleTestProblem`. */
+  title: string;
+  style: string;
+}
+
+export interface TitleTcTarget {
+  videoId: string;
+  matchId: number;
+  /** The video's current full title — becomes the control arm as is. */
+  title: string;
+  /** The saved hook's own style: the cache option it matches (same normalised compare that drops
+   *  it from the challenger candidates), else `"picked"` when the saved hook isn't one of the
+   *  cache's current options (a hand-typed title, or the cache since refreshed) — the operator's
+   *  own choice still deserves a bucket in `ab-report`'s aggregation. */
+  controlStyle: string;
+  /** 1–2 challengers, already built and checked (see `planCycle`'s own title-target block). */
+  challengers: TitleTcChallenger[];
 }
 
 export interface CyclePlan {
@@ -260,6 +311,11 @@ export interface CyclePlan {
    *  2026) — `runCycle` renders each one's thumbnail set and plans a "tc" experiment for it,
    *  which a *later* cycle's own `tcToStart` picks up, never this same cycle's. */
   thumbnailTcTargets: LongFormRef[];
+  /** Dashboard long-forms with a `title-options.json` offering something other than the saved
+   *  hook, no tc experiment yet, unblocked, public (18 Oct 2026) — capped at
+   *  `MAX_TITLE_PLANS_PER_CYCLE`. A video that has `title-options.json` at all is excluded from
+   *  `thumbnailTcTargets` above, title target or not: Studio runs one Test & Compare per video. */
+  titleTcTargets: TitleTcTarget[];
   /** Comment posted, pin not done, not blocked (phase 5, 8 Oct 2026). Uncapped: `pinsThisCycle`
    *  caps at `MAX_PINS_PER_CYCLE` only after the day's skips and the live check — capping here
    *  first let three standing skips hold every slot (8–14 Oct 2026, no pin tried past them). Whether
@@ -309,6 +365,32 @@ function relatedRetryToday(shortVideoId: string, ledger: StudioLedger, now: Date
  * its logic stays a pure, filesystem-free unit test. */
 const realIsBlocked = (matchId: number): boolean => blockedOnDisk(matchDir(matchId));
 
+/** `planCycle`'s own default for reading `<matchDir>/title-options.json` — a missing or corrupt
+ *  cache reads as `null` ("no title-options.json"), same "a bad file is no worse than no file"
+ *  rule every other cache in this codebase follows. Overridable by a test the same way
+ *  `realIsBlocked` is. */
+function realTitleOptionsFor(matchId: number): TitleOptionsCache | null {
+  const file = path.join(matchDir(matchId), "title-options.json");
+  if (!existsSync(file)) return null;
+  try {
+    const parsed = JSON.parse(readFileSync(file, "utf8")) as { options?: unknown; styles?: unknown };
+    const options = Array.isArray(parsed.options)
+      ? parsed.options.filter((o): o is string => typeof o === "string")
+      : [];
+    const styles = Array.isArray(parsed.styles)
+      ? parsed.styles.filter((s): s is string => typeof s === "string")
+      : undefined;
+    return { options, ...(styles ? { styles } : {}) };
+  } catch {
+    return null;
+  }
+}
+
+/** Upload-time `privacyStatus` is never updated after the fact, so a scheduled upload whose
+ *  publish time has passed counts as public too — the same reading `endScreenTargets` uses below. */
+const looksPublicNow = (v: LongFormRef, now: Date): boolean =>
+  v.privacyStatus === "public" || (!!v.publishAt && Date.parse(v.publishAt) <= now.getTime());
+
 export function planCycle(
   now: Date,
   longForms: readonly LongFormRef[],
@@ -318,6 +400,7 @@ export function planCycle(
   shorts: readonly { matchId: number; videoId: string }[] = [],
   live: ReadonlyMap<string, { privacyStatus: string; publishAt: string | null }> | null = null,
   testsPaused = false,
+  titleOptionsFor: (matchId: number) => TitleOptionsCache | null = realTitleOptionsFor,
 ): CyclePlan {
   // `live` is `runCycle`'s own videos.list read (16 Oct 2026: two adopted Studio uploads public on
   // YouTube for a month still read "private" with no publishAt, and Edj_-c7lK38, deleted, stayed
@@ -359,13 +442,65 @@ export function planCycle(
   const alreadyTested = new Set(
     tc.flatMap((e) => e.videos.map((v) => v.videoId).filter((id): id is string => !!id)),
   );
+  // One lookup per match, shared between the two target lists below.
+  const titleCacheByMatch = new Map<number, TitleOptionsCache | null>();
+  const titleCacheFor = (matchId: number): TitleOptionsCache | null => {
+    if (!titleCacheByMatch.has(matchId)) titleCacheByMatch.set(matchId, titleOptionsFor(matchId));
+    return titleCacheByMatch.get(matchId)!;
+  };
   const thumbnailTcTargets = longForms
     .filter(() => !testsPaused)
     .filter((v) => v.source === "dashboard")
     .filter((v) => v.uploadedAt >= THUMBNAIL_TC_CUTOFF_ISO)
     .filter((v) => !alreadyTested.has(v.videoId))
     .filter((v) => !isBlocked(v.matchId))
+    // Any video with a title-options.json loses its thumbnail test, title target this cycle or
+    // not: Studio runs one Test & Compare per video at a time (CyclePlan.titleTcTargets' own doc).
+    .filter((v) => titleCacheFor(v.matchId) === null)
     .slice(0, MAX_THUMBNAIL_PLANS_PER_CYCLE);
+
+  // A title test for a new dashboard long-form whose title-options.json still offers something
+  // other than the saved hook (18 Oct 2026, the Telegram title picker) — same eligibility shape
+  // as thumbnailTcTargets, plus the cache and a "still public" check (a test's own watch-time
+  // comparison needs real traffic, same reason `tcToCheck` below waits for public too).
+  const titleTcTargets: TitleTcTarget[] = testsPaused
+    ? []
+    : longForms
+        .filter((v) => v.source === "dashboard")
+        .filter((v) => v.uploadedAt >= TITLE_TC_CUTOFF_ISO)
+        .filter((v) => !alreadyTested.has(v.videoId))
+        .filter((v) => !isBlocked(v.matchId))
+        .filter((v) => looksPublicNow(v, now))
+        .flatMap((v): TitleTcTarget[] => {
+          if (!v.title) return [];
+          const cache = titleCacheFor(v.matchId);
+          if (!cache || cache.options.length === 0) return [];
+          const sepIdx = v.title.indexOf(SEPARATOR);
+          if (sepIdx === -1) return []; // no "<hook> | …" shape to rebuild challengers from
+          const savedHook = v.title.slice(0, sepIdx).trim();
+          const rest = v.title.slice(sepIdx + SEPARATOR.length);
+          const parts = splitTitle(v.title);
+          if (!parts) return []; // no "<a> vs <b>" names — titleTestProblem has nobody to check against
+          const players = [{ nickname: parts.left }, { nickname: parts.right }];
+          // The operator's own pick was one of the cache's options too (unless it was hand-typed,
+          // or the cache has since refreshed) — same normalised compare used to drop it from the
+          // challenger candidates below, so `ab-report` can say whether a pick beats what it skipped.
+          const savedHookIdx = cache.options.findIndex((o) => o.trim() === savedHook);
+          const controlStyle = savedHookIdx === -1 ? "picked" : (cache.styles?.[savedHookIdx] ?? "unknown");
+          const challengers: TitleTcChallenger[] = [];
+          for (let i = 0; i < cache.options.length && challengers.length < MAX_TITLE_CHALLENGERS; i++) {
+            if (i === savedHookIdx) continue;
+            const option = cache.options[i]!.trim();
+            if (option === "") continue;
+            const title = `${option}${SEPARATOR}${rest}`;
+            if (titleTestProblem(title, players)) continue;
+            challengers.push({ title, style: cache.styles?.[i] ?? "unknown" });
+          }
+          return challengers.length
+            ? [{ videoId: v.videoId, matchId: v.matchId, title: v.title, controlStyle, challengers }]
+            : [];
+        })
+        .slice(0, MAX_TITLE_PLANS_PER_CYCLE);
 
   // Same `todo()` reading `finishOnYouTube` already uses for this field: `null` is done, a
   // string is a failed attempt worth retrying, `undefined` is never attempted — either of the
@@ -416,7 +551,15 @@ export function planCycle(
     }))
     .slice(0, MAX_RELATED_LINKS_PER_CYCLE);
 
-  return { endScreenTargets, tcToStart, tcToCheck, thumbnailTcTargets, pinTargets, relatedLinkTargets };
+  return {
+    endScreenTargets,
+    tcToStart,
+    tcToCheck,
+    thumbnailTcTargets,
+    titleTcTargets,
+    pinTargets,
+    relatedLinkTargets,
+  };
 }
 
 /** The end screens one cycle actually tries: not skipped today ("no-editor"), then capped at
@@ -692,6 +835,10 @@ export interface CycleResult {
    *  this cycle (phase 4, 8 Oct 2026) — distinct from `tcStarted`, since the plan always waits for
    *  a *later* cycle's own `tcToStart` (see `CyclePlan.thumbnailTcTargets`'s own comment). */
   thumbnailTestsPlanned: number;
+  /** New dashboard long-forms whose `title-options.json` got turned into a "tc" title experiment
+   *  this cycle (18 Oct 2026) — same "waits for a later cycle's `tcToStart`" shape as
+   *  `thumbnailTestsPlanned`. */
+  titleTestsPlanned: number;
   /** PUBLIC long-forms whose channel comment was pinned this cycle (phase 5, 8 Oct 2026). */
   pinsAdded: number;
   /** Shorts whose "Related video" was linked (new or already there) this cycle (11 Oct 2026). */
@@ -706,6 +853,7 @@ const SKIPPED_RESULT: CycleResult = {
   tcStarted: 0,
   tcChecked: 0,
   thumbnailTestsPlanned: 0,
+  titleTestsPlanned: 0,
   pinsAdded: 0,
   relatedLinksAdded: 0,
   errors: [],
@@ -744,6 +892,7 @@ export async function runCycle(
       source: record.source,
       finishedComment: record.finished?.comment,
       finishedPin: record.finished?.pin,
+      title: record.title,
     }));
     const shorts = (await allShortUploads()).map(({ matchId, record }) => ({
       matchId,
@@ -776,7 +925,10 @@ export async function runCycle(
     let endScreensAdded = 0;
     let endScreenPickerEmpty = 0;
     const today = utcDate(new Date());
-    const endScreens = endScreensThisCycle(plan.endScreenTargets, (id) => endScreenSkippedOn.get(id) === today);
+    const endScreens = endScreensThisCycle(
+      plan.endScreenTargets,
+      (id) => endScreenSkippedOn.get(id) === today,
+    );
     for (const target of endScreens) {
       const outcome = await addEndScreenFromTemplate(handle, target.videoId, END_SCREEN_TEMPLATE_VIDEO_ID, {
         matchId: target.matchId,
@@ -896,6 +1048,41 @@ export async function runCycle(
       }
     }
 
+    // A title Test & Compare, same ride-along reasoning as the thumbnail block above — no
+    // browser page touched, just `.experiments.json` (`updateTcExperiments`'s own lock already
+    // serializes this against a concurrent `tc-plan`/worker write). Skipped under `--dry-run` for
+    // the same reason: the write is the whole action.
+    let titleTestsPlanned = 0;
+    if (!opts.dryRun) {
+      for (const target of plan.titleTcTargets) {
+        const id = `tc-title-${target.videoId}`;
+        const arms: ExperimentArm[] = [
+          { name: "control", settings: { title: target.title }, style: target.controlStyle },
+          ...target.challengers.map((c, i) => ({
+            name: `challenger${i + 1}`,
+            settings: { title: c.title },
+            style: c.style,
+          })),
+        ];
+        const exp: Experiment = {
+          id,
+          kind: "tc",
+          variable: "title",
+          controlArm: "control",
+          arms,
+          videos: [{ videoId: target.videoId, matchId: target.matchId, arm: "tc" }],
+          status: "planned",
+        };
+        let added = false;
+        await updateTcExperiments((tc) => {
+          if (tc.some((e) => e.id === id)) return tc; // another writer beat us to this video
+          added = true;
+          return [...tc, exp];
+        });
+        if (added) titleTestsPlanned++;
+      }
+    }
+
     // Phase 5, 8 Oct 2026: pin a public long-form's own channel comment, the same `finished.pin`
     // ledger step `finishOnYouTube` uses (off there — `config.studioAutomation` is false, the
     // dashboard has no Chrome) — so the two never both do it, and `pinComment` itself (rail 2)
@@ -977,6 +1164,7 @@ export async function runCycle(
       tcStarted,
       tcChecked,
       thumbnailTestsPlanned,
+      titleTestsPlanned,
       pinsAdded,
       relatedLinksAdded,
       errors,
@@ -1086,6 +1274,7 @@ export async function runWorker(
         tcStarted: result.tcStarted,
         tcChecked: result.tcChecked,
         thumbnailTestsPlanned: result.thumbnailTestsPlanned,
+        titleTestsPlanned: result.titleTestsPlanned,
         pinsAdded: result.pinsAdded,
         relatedLinksAdded: result.relatedLinksAdded,
       },

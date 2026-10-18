@@ -2029,6 +2029,69 @@ shows it to a human, nobody else parses its stdout as data.
   someone set by hand reads "already-has-endscreen" (the editor is not the empty gallery), is
   discarded untouched and marked done in `.studio-ledger.json`, so it is never retried.
 
+### Phase 6: title tests (18 Oct 2026)
+
+The operator's own words that day: "run extensive a/b testing over the next few weeks" — and, that
+morning, titles became the operator's own call (`src/telegram/titlePicker.ts`, `title-options.json`),
+so the worker's auto-planned Test & Compare grew a title side to match the thumbnail one, reusing
+the same shapes end to end.
+
+- **`planCycle`'s `titleTcTargets`** (`src/youtube/studioWorker.ts`): a dashboard long-form
+  (`UploadRecord.source === "dashboard"`), uploaded on or after `TITLE_TC_CUTOFF_ISO` (18 Oct
+  2026), with no `tc` experiment of its own yet (either kind — the same `alreadyTested` set
+  `thumbnailTcTargets` already built), not blocked, and currently public (`looksPublicNow`, the
+  same "upload-time `privacyStatus` or a passed `publishAt`" reading `endScreenTargets` uses) —
+  capped at `MAX_TITLE_PLANS_PER_CYCLE` (2), same as thumbnails.
+- **The cache, read straight off disk** (`realTitleOptionsFor`, `<matchDir>/title-options.json`):
+  `{ options: string[], styles?: string[] }` — `styles` is titles/v2's own addition and may be
+  absent on an older file, read as `undefined` rather than a throw. A missing or corrupt file
+  reads as `null` ("no title-options.json"), the same "a bad cache is no worse than none" rule
+  every other cache in this codebase follows. Memoized per match (`titleCacheByMatch`) since both
+  target lists below ask for the same video's cache.
+- **Building the arms, inside `planCycle` so it stays a pure, filesystem-injectable unit test**:
+  the video's current title splits on the first `SEPARATOR` (`" | "`) into the saved hook and
+  "the rest" (names, format, tail); every cache option other than the saved hook becomes a
+  challenger title (`<option> | <rest>`), kept only if it passes `titleTestProblem` (the same
+  refusal `startTestAndCompare` would apply anyway — nothing gets planned that could never start),
+  capped at `MAX_TITLE_CHALLENGERS` (2) — Title-only mode's dialog has one live slot plus at most
+  two challenger slots. A video with zero surviving challengers (every option is the saved hook,
+  fails the check, or the title has no `"<a> vs <b>"` to validate players against) is simply not a
+  target this cycle — not an error, since the cache may still produce a usable option later (an
+  operator picking a 4th option on a refresh, say).
+- **A video with a title-options.json never gets a thumbnail test, title target this cycle or
+  not** (the `thumbnailTcTargets` filter chain in `planCycle` now excludes `titleCacheFor(matchId)
+  !== null` outright): Studio runs one Test & Compare per video at a time, and the operator's own
+  focus since 18 Oct is titles, not a stale thumbnail plan racing a fresher title one.
+- **Planning writes the experiment directly** (`runCycle`, `updateTcExperiments`), not through
+  `planTcExperiments`'s own title branch (`tc-plan.json`'s manual flow, still exactly one
+  challenger — untouched): the auto-planned arms already carry up to two challengers and each
+  one's `style` (`ExperimentArm.style`, `src/youtube/studioExperiments.ts` — from the cache's
+  `styles[i]`, else `"unknown"`). **The control arm gets a style too** (`TitleTcTarget.controlStyle`,
+  18 Oct 2026, the operator's own ask: "the readout can't say whether the operator's picks beat
+  the options they skipped" without it): the cache option its own saved hook matches (same
+  normalised compare that drops it from the challenger candidates), else `"picked"` when the saved
+  hook isn't one of the cache's current options (a hand-typed title, or the cache since
+  refreshed). The lock (`withExperimentsLock`, inside `updateTcExperiments`)
+  is the whole idempotency check: a video already carrying `tc-title-<videoId>` from either flow
+  is left alone.
+- **Starting, reading and verdicts needed no changes.** `testFor` already mapped every non-control
+  arm's title into `TcTest.titles` (not just one), `startTestAndCompare` already fills one input
+  per challenger slot, and `setExperimentChecked`'s `armOf` already matches a report's title text
+  back to its arm regardless of how many there are — all three were written for an arbitrary
+  number of titles from the start, the single-challenger ceiling lived only in
+  `planTcExperiments`'s own title branch.
+- **`npm run ab-report`** (`src/cli/abReport.ts`, pure logic in `src/youtube/abReport.ts` so it
+  stays testable — `src/cli/` itself is "entry points nothing imports"): every finished
+  (`status: "done"`) `variable: "title"` experiment whose `end` is on or after 18 Oct 2026, printed
+  per arm (style, watch-time share, winner mark), then aggregated by style — wins (Studio declared
+  that arm the winner), ties (`result.headline === "They all performed well"`, credited to every
+  styled arm in that experiment), and the mean share across every arm of that style. A
+  `titleTcTargets`-planned control's own `"picked"` (or real-style) arm aggregates right alongside
+  the challengers, so the numbers can say whether the operator's own picks beat the styles they
+  skipped, not just "which style of challenger performs well." Only an arm with no style at all
+  (anything from before 18 Oct 2026) is left out. Reads `.experiments.json` only — no network, no
+  YouTube call.
+
 ## X posts (14 Oct 2026)
 
 The operator, 14 Oct 2026: "go ahead and build the x integration I'll go ahead and create an
