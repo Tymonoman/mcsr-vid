@@ -279,6 +279,12 @@ export interface Config {
    */
   studioAutomation: boolean;
   /**
+   * The operator, 18 Oct 2026: "we will run new ones once everything is built". On, the Studio
+   * worker plans and starts no new Test & Compare; running ones are still read daily. Config file
+   * only, read fresh each worker cycle (`abTestsPausedNow`).
+   */
+  abTestsPaused: boolean;
+  /**
    * What the nightly does with the MP4 it just exported: nothing, upload it private, or upload
    * it scheduled for the next publish slot (`publishHourUtc`; the Short follows 18 h later).
    * Needs `youtubeUploadEnabled` too. "off" by default so no config default changes what a
@@ -598,6 +604,7 @@ export const DEFAULTS: Config = {
   youtubeAutoFinish: false,
   commentSoonAfterPublish: false,
   studioAutomation: false,
+  abTestsPaused: false,
   nightlyUpload: "off",
   suggestCloseSlots: 8,
   suggestChaosSlots: 2,
@@ -908,6 +915,15 @@ export function reloadBlockedPlayers(): void {
   const { blockedPlayers = DEFAULTS.blockedPlayers } = readOverrides();
   validateOverrides({ blockedPlayers });
   config.blockedPlayers = structuredClone(blockedPlayers as string[]);
+}
+
+/** `abTestsPaused` straight from the file, for the worker, which cannot see Settings; off if unreadable. */
+export function abTestsPausedNow(): boolean {
+  try {
+    return readOverrides().abTestsPaused === true;
+  } catch {
+    return false;
+  }
 }
 
 /**

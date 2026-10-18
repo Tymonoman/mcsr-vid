@@ -27,7 +27,7 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { blockedIn, config, CONFIG_PATH, DEFAULTS, matchDir, reloadBlockedPlayers } from "../config.js";
+import { abTestsPausedNow, blockedIn, config, CONFIG_PATH, DEFAULTS, matchDir, reloadBlockedPlayers } from "../config.js";
 import { blockedOnDisk } from "../dashboard/matchStatus.js";
 import { repoHead } from "../dashboard/repoHead.js";
 import { describeError } from "../errorText.js";
@@ -317,6 +317,7 @@ export function planCycle(
   isBlocked: (matchId: number) => boolean = realIsBlocked,
   shorts: readonly { matchId: number; videoId: string }[] = [],
   live: ReadonlyMap<string, { privacyStatus: string; publishAt: string | null }> | null = null,
+  testsPaused = false,
 ): CyclePlan {
   // `live` is `runCycle`'s own videos.list read (16 Oct 2026: two adopted Studio uploads public on
   // YouTube for a month still read "private" with no publishAt, and Edj_-c7lK38, deleted, stayed
@@ -345,7 +346,9 @@ export function planCycle(
 
   const tc = experiments.filter((e) => e.kind === "tc");
   // A test planned before its runner was blocked (or by hand with `tc-plan`) never starts.
+  // `abTestsPaused`: nothing new starts or gets planned; running tests are still read below.
   const tcToStart = tc
+    .filter(() => !testsPaused)
     .filter((e) => e.status === "planned" && !e.videos.some((v) => isBlocked(v.matchId)))
     .slice(0, MAX_TC_STARTS_PER_CYCLE);
   const tcToCheck = tc.filter((e) => e.status === "running" && needsDailyCheck(e, now));
@@ -357,6 +360,7 @@ export function planCycle(
     tc.flatMap((e) => e.videos.map((v) => v.videoId).filter((id): id is string => !!id)),
   );
   const thumbnailTcTargets = longForms
+    .filter(() => !testsPaused)
     .filter((v) => v.source === "dashboard")
     .filter((v) => v.uploadedAt >= THUMBNAIL_TC_CUTOFF_ISO)
     .filter((v) => !alreadyTested.has(v.videoId))
@@ -766,6 +770,7 @@ export async function runCycle(
       undefined,
       shorts,
       live,
+      abTestsPausedNow(),
     );
 
     let endScreensAdded = 0;

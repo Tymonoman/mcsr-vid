@@ -77,6 +77,7 @@
   "youtubeAutoFinish": false,
   "commentSoonAfterPublish": false,
   "studioAutomation": false,
+  "abTestsPaused": false,
   "nightlyUpload": "off",
   "suggestCloseSlots": 8,
   "suggestChaosSlots": 2,

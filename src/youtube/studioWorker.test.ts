@@ -716,6 +716,21 @@ config.mediaDir = media;
   console.log(
     "OK: thumbnailTcTargets is dashboard-sourced, on/after the cutoff, untested, unblocked, capped at 2",
   );
+  // abTestsPaused (18 Oct 2026): no new plans or starts; running tests are still read.
+  const paused = planCycle(
+    now,
+    longForms,
+    { endScreens: {}, pickerEmptySeen: {}, relatedLinks: {}, relatedRetrySeen: {} },
+    [...experiments, { ...experiments[0], id: "planned1", status: "planned" }],
+    isBlocked,
+    [],
+    null,
+    true,
+  );
+  assert.deepEqual(paused.thumbnailTcTargets, [], "paused: nothing new planned");
+  assert.deepEqual(paused.tcToStart, [], "paused: nothing started");
+  assert.ok(paused.tcToCheck.length > 0, "paused: running tests still read");
+  console.log("OK: abTestsPaused plans and starts nothing, still reads running tests");
 }
 
 // --- planCycle: pinTargets (phase 5, 8 Oct 2026) -----------------------------------------------
