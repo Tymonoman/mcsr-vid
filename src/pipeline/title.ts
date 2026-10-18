@@ -52,6 +52,17 @@ export interface BuiltTitle {
 export const titleName = (nickname: string): string =>
   Object.hasOwn(config.titleNames, nickname) ? config.titleNames[nickname]! : nickname;
 
+/**
+ * The operator's own nickname for a runner (`config.runnerNicknames`), or null when they have not
+ * supplied one. Matched case-insensitively — the operator types a runner's API nickname from a
+ * list, not its exact casing. Only the operator fills this in; code never invents one (18 Oct
+ * 2026, `titleOptions.ts`).
+ */
+export function runnerNickname(nickname: string): string | null {
+  const key = Object.keys(config.runnerNicknames).find((k) => k.toLowerCase() === nickname.toLowerCase());
+  return key ? config.runnerNicknames[key]! : null;
+}
+
 export function buildTitle({
   leftNickname: left,
   rightNickname: right,

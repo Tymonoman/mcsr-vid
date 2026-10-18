@@ -92,6 +92,7 @@ const documented: Partial<Record<keyof typeof DEFAULTS, unknown>> = {
   suggestKnownSlots: 4, // suggestKnownSlots, default 4
   rivalChannelHandle: ["mcsrmatches", "mcsr-vault"], // Rival posts default
   titleNames: { Pinne: "Skycrab", lowk3y_: "lowkey" }, // titleNames default
+  runnerNicknames: {}, // runnerNicknames default: empty until the operator fills it in
   telegramReportHourWarsaw: 7, // the 07:00 Warsaw schedule
   shortsByHand: false, // default **off**
   playoffsFirst: false, // default **false**

@@ -19,10 +19,10 @@ thumbnails and a Short, published to **MCSR Replayoffs**.
   `src/pipeline/hooks.ts`; `hookProblem`'s `players` arg, `src/shorts/videoPick.ts`; `withHook`,
   `src/pipeline/title.ts`). A word on the short denied list (`HOOK_DENIED_LABELS`, deliberately
   not exhaustive) is refused outright; a fresh "X vs Y" must name the match's own two players
-  (API or `titleNames` spelling) or it is a label too. A model's proposal and a carried `hookText`
-  fail closed on a label the same way `hookProblem` does (a carried value is checked for labels
-  only). Only the operator's own **typed** hook always saves: the problem lands as a warning in
-  `saveWarnings`, never a refusal.
+  (API, `titleNames` or the operator's own `runnerNicknames` spelling) or it is a label too. A
+  model's proposal and a carried `hookText` fail closed on a label the same way `hookProblem`
+  does (a carried value is checked for labels only). Only the operator's own **typed** hook
+  always saves: the problem lands as a warning in `saveWarnings`, never a refusal.
 - **No seed, rank or elo in hooks or hook suggestions, and none in what orders the match
   suggestions** (a suggestion card's story line may still show rank/elo to the operator).
 - **No DNF match** (nobody finished; `matchIsDnf`): never suggested, rendered, given hooks or
@@ -201,13 +201,12 @@ reload). After merging server changes, `POST /api/restart-when-idle`.
   `npm run batch`/`generate-project` and the TUI do too.
 - **Rival posts** (`rivalChannelHandle`: `mcsrmatches`, `mcsr-vault`): public feeds, no token;
   "this match" (id, else pair/date) sorts after fresh ones, "this pair" only shows.
-- **Hook chips** (`src/pipeline/hooks.ts`) lead with the match's stake (margin, lead change,
-  death), nickname/rematch chips after. Chip truth, pinned by fixtures:
-  swing needs a lead actually held and lost (`metrics.splits`), not a widening one; lead-change is
-  the numberless "Does the lead ever settle?" (no off-panel splits, no dragon); "not a single
-  death" counts every death-screen entry; the DNF fallback says **killed** the dragon, never
-  "reached"; no "sub-N to win it" on a forfeit; "N deaths and still this close" only under a 10s
-  margin. A joined series' chips read the game that decided it, not game 1's. `midRollCtaAtSec`
+- **Hook chips** (`src/pipeline/hooks.ts`) are never about what happens in the match — no
+  margin, lead, death or pace — only the setting, a forfeit and a real head-to-head rivalry; a
+  close finish (under 1s) is the one case a number still shows (`titleEventProblem`). A title
+  hook is `titleOptions.ts`'s own first option: the operator's `runnerNicknames` pair when both
+  players have one, else a title-only model call (no video), else a chip. A joined series' chips
+  read the game that decided it, not game 1's. `midRollCtaAtSec`
   (Settings → Publishing, default 90, null = none) shows SUBSCRIBE for `midRollCtaSec` (4)s at the
   first split. `titleNames` (default
   `{ Pinne: "Skycrab", lowk3y_: "lowkey" }`) spells two players the broadcast's way, title only.
@@ -217,13 +216,12 @@ reload). After merging server changes, `POST /api/restart-when-idle`.
   render. Picking and claiming the free slot is one serialized step (`claimSlot`), so concurrent
   chains never collide on an hour.
 - **Auto-hooks** (`autoHooksAfterHours`, Settings → Publishing, default **null = off**): a match
-  whose hooks go unsaved this many hours after its pick gets the best title hook passing
-  `hookProblem`+`spoilsTheResult` (model's, else a chip) and a Short hook the same way, upper-cased,
-  then the chain runs as if Save were pressed. Due: readable pick, unsaved, not
-  hidden, neither video on channel, not blocked, export not stale, sync sound or hand-set,
-  series joined, nothing already running. None within the title's mobile budget: the shortest
-  passing one keeping the title ≤100 chars, marked `overBudget`. No survivor: nothing saved, the
-  `hooks` step fails into Needs-you. Logs to `autoHooks` in `short-<id>.status.json`.
+  whose hooks go unsaved this many hours after its pick gets `titleOptions.ts`'s own first title
+  option and a Short hook the dashboard's own first offer, both upper-cased, then the chain runs
+  as if Save were pressed. Due: readable pick, unsaved, not hidden, neither video on channel, not
+  blocked, export not stale, sync sound or hand-set, series joined, nothing already running. No
+  survivor: nothing saved, the `hooks` step fails into Needs-you. Logs to `autoHooks` in
+  `short-<id>.status.json`.
 - **Thumbnails** (`remotion/Thumbnail.tsx`): two big figures, name-only plates, seed type above the
   VS, no rating/seed/placement text. Four pose pairs; `thumbnailRotatePoses` (default off) rotates
   by match id. **"cheering-relaxing" is excluded from every fresh automatic pick**

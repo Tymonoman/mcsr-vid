@@ -440,6 +440,14 @@ export interface Config {
    */
   titleNames: Record<string, string>;
   /**
+   * The operator's own nickname for a runner (API nickname -> the operator's own name for them,
+   * matched case-insensitively), the operator's own call, 18 Oct 2026: a title-hook option is
+   * "NICK_LEFT vs NICK_RIGHT" once both of a match's players have an entry here; code never
+   * invents one, and never a label from a word list. `titleOptions.ts`'s only source of a runner
+   * name in a title hook. Default empty: nothing until the operator fills it in.
+   */
+  runnerNicknames: Record<string, string>;
+  /**
    * How a playoff game's thumbnails are framed (remotion/Thumbnail.tsx `playoff`): "plain" is the
    * ranked look (a category band, the rating in the nameplate); "bracket" puts the round in the
    * band, the seed in the nameplate and the series length under the VS; "trophy" grows the band
@@ -620,6 +628,7 @@ export const DEFAULTS: Config = {
   suggestWeights: DEFAULT_WEIGHTS,
   playoffsFirst: false,
   titleNames: { Pinne: "Skycrab", lowk3y_: "lowkey" },
+  runnerNicknames: {},
   playoffThumbnailStyle: "plain",
   reasonerCommand: null,
   watchScript: path.join(os.homedir(), ".claude/plugins/cache/claude-watch/watch/0.2.0/scripts/watch.py"),
@@ -738,6 +747,20 @@ export function validateOverrides(raw: Record<string, unknown>): void {
         );
       if (!ok)
         throw new Error(`${CONFIG_PATH}: "titleNames" must map nicknames to the names the title shows.`);
+      continue;
+    }
+    if (key === "runnerNicknames") {
+      const ok =
+        typeof value === "object" &&
+        value !== null &&
+        !Array.isArray(value) &&
+        Object.values(value as Record<string, unknown>).every(
+          (v) => typeof v === "string" && v.trim() !== "",
+        );
+      if (!ok)
+        throw new Error(
+          `${CONFIG_PATH}: "runnerNicknames" must map API nicknames to the operator's own name for them.`,
+        );
       continue;
     }
     // Its default is an array too, so the typeof check below would pass `null`, `{}` and `[1]`; an

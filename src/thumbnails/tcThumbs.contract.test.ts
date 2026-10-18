@@ -22,10 +22,29 @@ if (spawnSync("ffmpeg", ["-version"]).status !== 0) {
 }
 
 const repo = fileURLToPath(new URL("../..", import.meta.url));
-// A match whose hooks shorten to a caption ("SUB-9"), so a run really reaches the caption render.
-const fixturePath = fileURLToPath(new URL("../fixtures/match-13673240.json", import.meta.url));
-const fixture = JSON.parse(await readFile(fixturePath, "utf8")) as { id: number };
+// A match whose hooks shorten to a caption (18 Oct 2026: hooks.ts no longer states a margin, lead
+// change or death count at all, so a close finish, a forfeit or a real rivalry are the only chips
+// left that can still produce one — and only a close finish under 100 ms gets a clean token, "N
+// MS"; this fixture's real 276 ms margin would only reach the dropped decimal-seconds template).
+// This real fixture's dragon-death timestamps are shifted to 58 ms apart so a run really reaches
+// the caption render, in a temp copy — the original fixture file is never modified.
+const fixturePath = fileURLToPath(new URL("../fixtures/match-13549300.json", import.meta.url));
 const media = await mkdtemp(path.join(tmpdir(), "mcsr-tcthumbs-contract-"));
+const fixture = JSON.parse(await readFile(fixturePath, "utf8")) as {
+  id: number;
+  changes?: unknown[];
+  timelines: Array<{ uuid: string; time: number; type: string }>;
+};
+// This fixture carries no `changes` (the API's per-match elo deltas) — eloAtMatchStart needs the
+// array, same stand-in every other test serving this file from fetch gives it.
+fixture.changes ??= [];
+{
+  const deaths = fixture.timelines.filter((t) => t.type === "projectelo.timeline.dragon_death");
+  const [first, second] = deaths.sort((a, b) => a.time - b.time);
+  if (first && second) second.time = first.time + 58;
+}
+const shiftedFixturePath = path.join(media, "match-fixture.json");
+await writeFile(shiftedFixturePath, JSON.stringify(fixture));
 
 // The child's MCSR API: the fixture for any match, its two players, no versus record; any other
 // request is the caption render fetching an avatar — mark it and hang there for the parent to stop.
@@ -33,7 +52,7 @@ const preload = path.join(media, "preload.mjs");
 await writeFile(
   preload,
   `import { readFileSync, writeFileSync } from "node:fs";
-const fixture = JSON.parse(readFileSync(${JSON.stringify(fixturePath)}, "utf8"));
+const fixture = JSON.parse(readFileSync(${JSON.stringify(shiftedFixturePath)}, "utf8"));
 const ok = (data) => new Response(JSON.stringify({ status: "success", data }));
 globalThis.fetch = async (input) => {
   const url = String(input);
