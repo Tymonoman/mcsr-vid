@@ -356,7 +356,11 @@ writeFileSync(pickErrorFile(dir, single), '{"at":"then","message":"an old failur
     });
   config.blockedPlayers = savedBlocked;
   assert.equal(calls(), 0, "the model was never asked");
-  assert.equal(readFileSync(pickFile(dir, single), "utf8"), kept, "no pick written, the heuristic's or the model's");
+  assert.equal(
+    readFileSync(pickFile(dir, single), "utf8"),
+    kept,
+    "no pick written, the heuristic's or the model's",
+  );
   assert.ok(!existsSync(pickErrorFile(dir, single)), "the stale error is cleared, so the daily retry stops");
   console.log("OK: a blocked player's match gets no pick: no model, no heuristic, no hooks");
 }
@@ -679,11 +683,12 @@ for (const hookSuggestion of [
   assert.equal(pick.source, "agy");
   assert.notEqual(pick.hookSuggestion, hookSuggestion);
   assert.equal(hookProblem(pick.hookSuggestion), null, `replaced by a usable chip: ${pick.hookSuggestion}`);
+  // No bracket seed or ladder rank/elo pairing; the world's own seed type (a setting chip, 18 Oct
+  // 2026, e.g. "A buried treasure seed race") is fair game, same as HOOK_SEED_RANK_ELO itself
+  // already allows — not re-checked by a blunter bare "seed" regex here.
   assert.ok(
-    !/#\d+/.test(pick.hookSuggestion) &&
-      !/seed/i.test(pick.hookSuggestion) &&
-      !/\b\d{3,4}\b[^\d]+\b\d{3,4}\b/.test(pick.hookSuggestion),
-    `replacement chip has no seed, rank, or elo: ${pick.hookSuggestion}`,
+    !/#\d+/.test(pick.hookSuggestion) && !/\b\d{3,4}\b[^\d]+\b\d{3,4}\b/.test(pick.hookSuggestion),
+    `replacement chip has no bracket seed, rank, or elo: ${pick.hookSuggestion}`,
   );
 }
 assert.equal(hookProblem("CRAZY ZERO BY SILVERRRUNS"), null);

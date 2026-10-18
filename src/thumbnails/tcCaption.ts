@@ -78,7 +78,11 @@ export interface CaptionResult {
  * known template and passes every check a hook has to clear — `hookProblem` already covers
  * `spoilsTheResult`, `HOOK_SEED_RANK_ELO` and `hookLabelProblem`, so the three are also reported
  * individually (the task's own checklist) even though `hookProblem === null` implies all three.
- * Null only when nothing in the candidate list shortens and passes, which no real match has hit.
+ * Null when nothing in the candidate list shortens and passes — since the 18 Oct 2026 rewrite
+ * (hooks.ts no longer states a margin, lead change or death count) that is most ordinary matches:
+ * a real close finish, a forfeit or a real rivalry still has a token; the new setting chip
+ * ("A village seed race") has none that is not a lossy squeeze, so it is skipped like any other
+ * unrecognised template.
  */
 export function pickCaption(
   input: HookInput,

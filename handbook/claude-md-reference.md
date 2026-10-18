@@ -759,6 +759,76 @@ failed boot check offers it again. Client changes need only a reload.
   the tick waits for the re-export too; the next tick after it clears `syncHold` and saves. The
   operator's own Save is never refused on a weak sync; the plan's `syncWeak` is the warning. The
   nightly render itself is untouched.
+- **The title rewrite, 18 Oct 2026**: the operator's own words — "why are you spoiling stuff
+  that's happening in the match in titles why mention a death or lead changes can't you just put
+  a nice title something about the runners... the titles are shit and it's causing rage in the
+  comments of our vids. ppl are calling this channel ai slop." Every stake chip above (margin,
+  lead-change, death count, swing, pace) is removed outright, not just reordered — a title hook
+  is never about what happens in the race any more, only the runners or the setting. Answered
+  live: (1) the operator supplies a nickname per runner, never code; (2) only the operator's own
+  list, never invented, because a wrong guess can hurt someone (2 Oct 2026's "LCQ vs YN"/"ASIAN VS
+  CARNIVORE" above is exactly this risk); (3) a mix — "NICKNAME vs NICKNAME" when both runners
+  have one, a phrase otherwise; (4) a phrase is the setting or a tease that gives nothing away —
+  "THE FORTRESS RUNBACK" was named as not making sense cold; (5) numbers only on a really close
+  match; (6) tone is meme/movie lines and funny/irreverent; (7) a fresh title every time, no
+  series numbering on a repeat matchup; (9) nobody is picked by upload time — auto-save moves to
+  the new rules too.
+  - **`config.runnerNicknames`** (`Record<string, string>`, API nickname → the operator's own
+    name, matched case-insensitively, default `{}`): the only source of a runner's name in a
+    title hook. `runnerNickname()` (`src/pipeline/title.ts`, beside `titleName`) does the
+    case-insensitive lookup; `hookLabelProblem` (`src/pipeline/hooks.ts`) treats the operator's
+    own pair as operator-authored, not an invented label, the same carve-out `titleNames` already
+    had.
+  - **`titleEventProblem(hook, { marginMs })`** (`src/pipeline/hooks.ts`): refuses a word list of
+    in-match events (lead, gap, swing, comeback, overtake, death, hearts, reset, split, choke,
+    clutch, pace, margin, survive) and any digit unless `marginMs` is under 1000 — the operator's
+    own bar for "really close". Deliberately not added to `hookProblem` (`videoPick.ts`): that one
+    also gates the Short's own hook, which describes the moment on purpose and stays out of this
+    rule's scope. Applied to a title-only model's output and to the operator's own typed title
+    hook as a warning in `saveWarnings` (never a refusal, the same treatment every other hook
+    check gets) — not re-applied to the surviving hooks.ts chips below, which already comply by
+    construction once rewritten.
+  - **The surviving chips** (`candidates()`, `src/pipeline/hooks.ts`): the rivalry pair (Rematch /
+    first 1v1, unchanged), the setting ("A village seed race", from `seedPhrase`), a forfeit ("It
+    ended in a forfeit", a circumstance rather than a spoiler, so it stays), and a close finish
+    under a second ("Decided by 58 milliseconds") — the one number the operator still wants. Every
+    other stake chip (margin ≥1s, lead-change, swing, death counts, pace) is deleted, not merely
+    filtered: `buildHookSuggestions` on an ordinary, un-close, un-forfeited match with no fetched
+    rivalry now returns `[]`. A consequence, not a bug: the Test & Compare caption
+    (`src/thumbnails/tcCaption.ts`) shortens one of these to a clean token far less often —
+    `pickCaption` returning null is now the common case for an ordinary match, and the setting
+    chip has no short form that is not a lossy squeeze, so it never gets one either.
+  - **`titleOptions(matchId, { fresh? })`** (`src/pipeline/titleOptions.ts`, new): up to 3 options,
+    the one function the Telegram approval message and auto-hooks both read, cached to
+    `<matchDir>/title-options.json` so they see the same list for the same pick (`fresh: true`
+    re-asks and overwrites). Option 1 is the `runnerNicknames` pair, upper-cased, when both
+    players have one — checked only for length, not re-run through the event/digit or spoiler
+    rules, since it is the operator's own grant. The rest are phrase hooks from a new, title-only
+    model call (`runClaude`, Haiku, no tools, no video — unlike the Short's picker, which still
+    watches the match) telling it the seed/bastion type, whether the match was decided under a
+    second (and the margin then), and the channel's last 20 long-form titles (`allUploads`, read
+    from `youtube.json` files on disk, no API call) so it does not repeat itself; curated examples
+    replace the operator's own past-saved hooks as the style reference, because those had
+    collapsed into one template ("A 24-SECOND LEAD AT THE END") that is now itself banned. A
+    joined series reads the game that decided it, not game 1's (`hookFactsMatchId`, the same rule
+    `suggestionsFor` already followed). The model unavailable, or nothing surviving every check,
+    falls back to the hooks.ts chips above; `reason` carries why when fewer than 3 (or none)
+    survive. Exports exactly `TitleOptions` (`options`, `source`, `reason?`) and the one function —
+    nothing else, so the Telegram agent importing it has a narrow, stable surface.
+  - **Auto-hooks now saves `titleOptions(matchId).options[0]`** — the exact option the operator
+    was shown — in place of the old "model's proposals first, then the chips" race through
+    `suggestionsFor`'s `title` array; the Short hook is untouched; still the dashboard's own first
+    offer. The pick's own `titleHooks` field (`src/shorts/videoPick.ts`) is left alone — the
+    model still may propose them, the schema and prompt are unchanged — but nothing downstream
+    reads them any more: `suggestionsFor`'s `title` dedupe and its no-match fallback both dropped
+    the `f.pick?.titleHooks` term, and `chooseAutoHooks` no longer compares a title choice against
+    them to decide "model" vs "chip" for the record (`titleOptions`' own `source` array says this
+    outright). The old "over budget: widen to YouTube's 100-character title and save the shortest
+    that still passes" fallback (14 Oct 2026, above) is retired with it — `titleOptions` already
+    holds every candidate, model or chip, to the title's own `hookMax`, so there is nothing left to
+    widen; `AutoHooksRecord`'s `overBudget` field is gone.
+  - **Telegram** (another agent's own work, not built here): approves hooks by chat buttons,
+    showing the thumbnails too, calling `titleOptions` directly rather than re-implementing it.
 - **A playoff game's thumbnails can carry the tournament** (`playoffThumbnailStyle`, in the
   Settings tab; `remotion/Thumbnail.tsx` `playoff`): "bracket" puts the round in the band and
   "Best of 5" under the VS; "trophy" grows the band for a gold PLAYOFFS wordmark over the round

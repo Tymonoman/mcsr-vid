@@ -8,18 +8,18 @@
  *
  * Every rule reads a field the scorer already computes (MatchMetrics), so a suggestion can
  * never claim something the video does not show. Nothing here invents superlatives: a hook that
- * says "decided by 2.4 seconds" is checkable against the splits panel in the render.
+ * says "decided by 320 milliseconds" is checkable against the splits panel in the render.
  *
  * `HOOK_SUGGEST_CMD` hands the same facts to an external generator when one is configured. The
  * built-ins are the fallback and stay the default: they cost nothing, need no network, and work
  * when the container has no model credentials.
  */
 import { spawn } from "node:child_process";
-import { formatShortTime } from "../../remotion/format.js";
 import { describeError } from "../errorText.js";
-import { OFF_PANEL_SPLITS, onScreenDeaths, type MatchMetrics } from "./matchScore.js";
+import { seedPhrase } from "./description.js";
+import type { MatchMetrics } from "./matchScore.js";
 import { eloAtMatchStart, h2hWinsBefore } from "./overlayProps.js";
-import { titleName } from "./title.js";
+import { runnerNickname, titleName } from "./title.js";
 import type { PlayoffContext } from "../playoffs/playoffs.js";
 import type { MatchInfo, UserDetails, VersusStats } from "../api/types.js";
 
@@ -49,10 +49,6 @@ export const HOOK_SEED_RANK_ELO =
 const HOOK_DENIED_LABELS =
   /\b(?:yn|asian|asians|black|white|latino|latina|hispanic|african|arab|arabs|european|american|chinese|korean|japanese|mexican|indian)\b/i;
 
-// OFF_PANEL_SPLITS (which `matchScore.ts` splits the overlay's panel never shows: "Bastion loot",
-// "Blaze rod") now lives there, next to `panelLeadChanges`, which uses the same exclusion — one
-// definition rather than two that could drift apart again.
-
 /**
  * A hook that names a runner with a label: either `HOOK_DENIED_LABELS` on its own, or a "<x> vs
  * <y>" shape ("vs", "vs.", "v", "v." or "versus", any number of sides) where a side is not one of
@@ -65,6 +61,9 @@ const HOOK_DENIED_LABELS =
  * player. `pastTitleHooks` (videoPick.ts) no longer shows the model a "vs" hook to copy at all;
  * this is the second line of defence for whatever a model proposes or the operator types anyway —
  * dropped from a model's proposal, a warning beside a typed one (`hookProblem`, `writeHooks`).
+ *
+ * A side may also be the operator's own `runnerNicknames` spelling (18 Oct 2026): that pair is
+ * code assembling what the operator typed in Settings, not an invented label.
  */
 export function hookLabelProblem(hook: string, players?: readonly { nickname: string }[]): string | null {
   const problem = "names a runner with a label: runners have objected to this (2 Oct 2026)";
@@ -73,9 +72,37 @@ export function hookLabelProblem(hook: string, players?: readonly { nickname: st
   const sides = hook.split(/\s+(?:vs\.?|v\.?|versus)\s+/i);
   if (sides.length < 2) return null;
   const known = new Set(
-    players.flatMap((p) => [p.nickname.toLowerCase(), titleName(p.nickname).toLowerCase()]),
+    players.flatMap((p) => {
+      const operator = runnerNickname(p.nickname);
+      return [
+        p.nickname.toLowerCase(),
+        titleName(p.nickname).toLowerCase(),
+        ...(operator ? [operator.toLowerCase()] : []),
+      ];
+    }),
   );
   return sides.some((s) => !known.has(s.trim().toLowerCase())) ? problem : null;
+}
+
+/**
+ * Words that describe something happening in the match — a lead, a death, a comeback — never a
+ * title hook's business (18 Oct 2026: "why are you spoiling stuff that's happening in the match in
+ * titles"). A digit is the same kind of tell (a margin, a lead change count, a finishing minute)
+ * unless the match was actually decided inside a second, the one case the operator still wants a
+ * number for. Forfeit is not on this list: `candidates()` keeps "It ended in a forfeit" as a plain
+ * circumstance, not a spoiler.
+ */
+const TITLE_EVENT_WORDS =
+  /\b(?:lead|gap|swing|swings|comeback|overtakes?|overtaken|deaths?|died|dying|hearts?|resets?|splits?|chokes?|choked|clutch|clutches|pace|margin|survives?|survived)\b/i;
+
+/** The segment of a title hook the operator's new rule (18 Oct 2026) refuses: it describes what
+ *  happens in the match, rather than the runners or the setting. `marginMs` is the match's own
+ *  finish margin (null when there is none) — a number is allowed only under a second. */
+export function titleEventProblem(hook: string, { marginMs }: { marginMs: number | null }): string | null {
+  const problem = "describes what happens in the match — a title is about the runners or the setting";
+  if (TITLE_EVENT_WORDS.test(hook)) return problem;
+  if (/\d/.test(hook) && !(marginMs !== null && marginMs > 0 && marginMs < 1_000)) return problem;
+  return null;
 }
 
 /** A hook nobody would read as a hook. Below this a suggestion is noise, not a shorter option. */
@@ -131,27 +158,19 @@ function secondsPhrase(ms: number): string {
 /**
  * The facts, ranked. Order here is the tiebreak when several apply, and it is deliberate.
  *
- * The stake outranks the rivalry (30 Sept 2026). What the match turns on — a photo finish, a lead
- * that keeps changing, a real death — is the register the operator's own hooks are written in
- * ("58 MILLISECONDS", "WHO BLINKS FIRST?"). The reading that put the two nicknames first, 9.36%
- * CTR against 2.25% for descriptive hooks, was 4,590 subscriber-heavy impressions; over 126,745
- * on 15 Sept it was 2.77% against 2.59%, a wash. So every stake chip sits above both head-to-head
- * chips, down to "not a single death", and a rivalry reaches the top of the list only when the
- * match has no stake to state. Both say "this season": `getVersus` is one season's record, the
- * API keeps no all-time one, and 0-0 this season can be 40 games last season.
- *
- * Within the stake band the old order stands: a photo finish beats a lead change beats a death
- * count. "One of them never killed the dragon" is last of all, under the head-to-head chips:
- * the loser usually stops once the winner is done, so it is filler, not a stake.
+ * Rewritten 18 Oct 2026 (the operator's complaint: titles were spoiling the match and had
+ * collapsed into one template, "A 24-SECOND LEAD AT THE END"). A chip here is never about what
+ * happens in the match — no margin, lead, death count or pace, which `titleEventProblem` also
+ * refuses downstream — only the rivalry (a real head-to-head record), the setting (the seed
+ * type) and, since a real close finish is still worth saying, a close-finish chip gated to
+ * under a second. The forfeit chip stays: it is a circumstance, not a spoiler or a number.
  */
 function candidates(input: HookInput): Candidate[] {
   const { metrics, match, userLeft, userRight, versus } = input;
   const out: Candidate[] = [];
-  // Real deaths only: a hunger reset is routine (matchScore.ts `deathKind`), and "5 deaths and
-  // still this close" on five resets reads to a runner as not knowing the game.
-  const { finishMarginMs, panelLeadChanges, deaths, resultMs, winner } = metrics;
+  const { finishMarginMs } = metrics;
 
-  // --- Rivalry framing (30-35): under every stake chip, over the dull fallback -------------
+  // --- Rivalry framing (30-35): a real head-to-head record ----------------------------------
   // None on a playoff game: next to "Round of 16 | Game 3" a record reads as the series score.
   if (versus && !input.playoff) {
     const leftWins = h2hWinsBefore(versus, match, userLeft.uuid);
@@ -173,75 +192,17 @@ function candidates(input: HookInput): Candidate[] {
     }
   }
 
-  // --- Stakes: what the match turns on (40-95; the dull fallback is 25) --------------------
-
-  if (finishMarginMs !== null) {
-    // Under three seconds after eight-plus minutes is the whole story; the scorer uses the same
-    // 3s window to call a split "close". 3-10s keeps the same "Decided by" subject rather than a
-    // bare "N seconds apart" — every such hook in the 6 Oct 2026 panel was dropped for not saying
-    // what the number measured. A dead heat (0ms) was decided by nothing, so it gets no chip.
-    if (finishMarginMs > 0 && finishMarginMs < 10_000)
-      out.push({
-        text: `Decided by ${secondsPhrase(finishMarginMs)}`,
-        weight: finishMarginMs < 3_000 ? 95 : 65,
-      });
-  } else {
-    // The loser usually stops once the winner is done, so a null margin is normal, not dramatic.
-    out.push({ text: "One of them never killed the dragon", weight: 25 });
-  }
+  // --- The setting: always available, never a spoiler ---------------------------------------
+  const setting = seedPhrase(match);
+  if (setting) out.push({ text: `A ${setting} race`, weight: 20 });
 
   if (match.forfeited) out.push({ text: "It ended in a forfeit", weight: 60 });
 
-  // An exact count is a countdown: once a viewer has seen that many flips go by, parity tells
-  // them who leads at the end (risk panel, 6 Oct 2026 — every "The lead changed N times" in the
-  // sample was dropped for this, several also for overcounting splits the overlay never shows).
-  // The question form states no number, so neither problem applies. `panelLeadChanges`, not the
-  // shared `leadChanges`: the latter still counts "Bastion loot", "Blaze rod" and the dragon, so
-  // it fired this chip on matches whose panel shows 0-1 real flips (8 Oct 2026 chip-truth review —
-  // live-verified on 13560037, panel 1 vs the shared field's 3, and 13782182, panel 0 vs 2).
-  if (panelLeadChanges >= 3) out.push({ text: "Does the lead ever settle?", weight: 80 });
-  else if (panelLeadChanges === 2) out.push({ text: "Does the lead ever settle?", weight: 50 });
-
-  // The biggest lead a player actually lost: a split where they led but did not go on to win —
-  // never a leader simply extending their lead. The old `maxSwingMs` (the raw step between two
-  // splits' signed gaps) fired on both; verified false on 5 real matches where the leader led
-  // wire to wire and "the swing" was the lead growing (6 Oct 2026 panel). A question, not a flat
-  // claim: "gone"/"swung it" named the eventual loser by elimination. Panel-visible splits only
-  // (`OFF_PANEL_SPLITS`) — live-verified on match 13705580: "Bastion loot" showed a bigger gap
-  // than any split the overlay actually displays, which is exactly the overcounting the accuracy
-  // panel flagged for the (separate) lead-change count; the same fix applies here.
-  if (winner) {
-    const lostLeadMs = metrics.splits.reduce(
-      (max, s) =>
-        s.gapMs !== null && s.leader !== null && s.leader !== winner && !OFF_PANEL_SPLITS.has(s.label)
-          ? Math.max(max, s.gapMs)
-          : max,
-      0,
-    );
-    if (lostLeadMs >= 60_000)
-      out.push({ text: `Can a ${formatShortTime(lostLeadMs)} lead survive?`, weight: 75 });
-    else if (lostLeadMs >= 30_000)
-      out.push({ text: `Can a ${Math.round(lostLeadMs / 1000)}-second lead survive?`, weight: 45 });
-  }
-
-  // "Not a single death" is a claim about what the POV shows, so it gates on every death the
-  // viewer actually sees — a hunger reset included, since starving to 0 is the same death screen
-  // (`onScreenDeaths`). `deaths` (real deaths only, `metrics.deaths`) still names the dramatic
-  // count once there has been at least one on-screen death (8 Oct 2026 chip-truth review:
-  // `deaths === 0` alone was false in 8 of 10 proposals — 12730175's five resets, 13766294's one).
-  if (onScreenDeaths(match) === 0) out.push({ text: "Not a single death between them", weight: 40 });
-  // "Still this close" is a closeness claim, so it takes the "Decided by" chip's own bar (<10s);
-  // a DNF or a minutes-wide finish is not close however many deaths it had.
-  else if (deaths >= 4 && finishMarginMs !== null && finishMarginMs < 10_000)
-    out.push({ text: `${deaths} deaths and still this close`, weight: 55 });
-
-  // The actual minute, not "sub-10": "SUB 7" and "Insane 6:51" both ran ~1.5x the competitor's
-  // median, and a sub-8 is news in a way a sub-10 no longer is. Never on a forfeit: there
-  // `resultMs` is the moment of the forfeit (raceGap.ts), not a finish time.
-  if (!match.forfeited && resultMs > 0 && resultMs < 600_000) {
-    const minute = Math.floor(resultMs / 60_000) + 1;
-    out.push({ text: `A sub-${minute} to win it`, weight: minute <= 8 ? 90 : 57 });
-  }
+  // --- A real close finish, numbers and all — the one case the operator still wants a figure
+  // (18 Oct 2026: "only if it's a reaaaally close match"). A dead heat (0ms) was decided by
+  // nothing, so it gets no chip.
+  if (finishMarginMs !== null && finishMarginMs > 0 && finishMarginMs < 1_000)
+    out.push({ text: `Decided by ${secondsPhrase(finishMarginMs)}`, weight: 95 });
 
   return out;
 }

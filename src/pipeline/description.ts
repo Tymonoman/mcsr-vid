@@ -23,7 +23,7 @@ export function seedPhrase(match: MatchInfo): string | null {
   return match.seedType ? humanise(match.seedType, "seed") : null;
 }
 
-function bastionPhrase(match: MatchInfo): string | null {
+export function bastionPhrase(match: MatchInfo): string | null {
   return match.bastionType ? humanise(match.bastionType, "bastion") : null;
 }
 

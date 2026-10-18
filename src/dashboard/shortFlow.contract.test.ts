@@ -35,9 +35,9 @@
 //      also when only the files on disk (a saved chat) name them. (CLAUDE.md Blocked players)
 //  A1  Auto-hooks is off by default (`autoHooksAfterHours` null): the tick does nothing.
 //  A2  Due once the pick is at least `autoHooksAfterHours` old by its own `createdAt` — not before.
-//  A3  A heuristic pick counts; with no model title hooks the chip the dashboard offers first is
-//      saved (source "chip") — candidates and order are exactly `#hook`/`#shorthook`'s: the
-//      model's proposals first, then the chips (an old thumbnail headline does not jump them).
+//  A3  A heuristic pick counts; the title saved is `titleOptions.ts`'s own first option, 18 Oct
+//      2026 (nicknames, else a title-only model call, else a hooks.ts chip) — the Short hook is
+//      still the dashboard's own first offer (`#shorthook`/`suggestionsFor`, untouched).
 //  A4  The chain then runs as if Save had been pressed: render, long-form at its slot, Short +18 h.
 //  A5  Upper-cased to house style when the operator's own saved hooks read mostly upper case;
 //      left as offered when they read lower case.
@@ -159,6 +159,13 @@ const editedTitle = (id: number): string | null => {
   return existsSync(f) ? readFileSync(f, "utf8").split("\n")[0]! : null;
 };
 const hookFile = (id: number) => path.join(dir(id), `short-${id}.hook.txt`);
+/** Seeds the cache `titleOptions.ts` reads (18 Oct 2026), so auto-hooks' title choice never
+ *  spawns the real model in this test. */
+const seedTitleOptions = (
+  id: number,
+  options: string[],
+  source: ("nicknames" | "model" | "chip")[] = options.map(() => "model" as const),
+) => writeFileSync(path.join(dir(id), "title-options.json"), JSON.stringify({ options, source }));
 
 /* --- The render and the uploader, injected (ChainDeps) ------------------------------------------- */
 /** Everything the chain did, in order: "render:<id>:<hook>", "video:<id>:<publishAt>", "short:<id>:<publishAt>". */
@@ -398,7 +405,9 @@ try {
     assert.equal(readBack, hooks.titleHook, `the saved title hook reads back as ${JSON.stringify(readBack)}`);
     const again = await save(SP, hooks);
     assert.ok(!isRefusal(again), `re-saving the very same hooks answered ${JSON.stringify(again)}`);
-    console.log("OK: C2 C8 a typed title hook holding \" | \" reads back whole; the same save again is accepted");
+    console.log(
+      'OK: C2 C8 a typed title hook holding " | " reads back whole; the same save again is accepted',
+    );
   }
 
   /* --- C9. No Short for this one, after a Short was already rendered ------------------------------ */
@@ -560,13 +569,13 @@ try {
     exported(early);
     writePick(early, { createdAt: iso(NOW - 6 * HOUR + 60_000) });
     exported(due);
-    // The heuristic's pick: no title hooks of the model's, so the title must come from a chip.
+    // The heuristic's pick still counts; the title is titleOptions' own first option (18 Oct
+    // 2026) — seeded here so the tick never spawns the real model — and the Short is still the
+    // dashboard's own first offer (suggestionsFor, untouched).
     const pick = writePick(due, { source: "heuristic", createdAt: iso(NOW - 6 * HOUR) });
+    seedTitleOptions(due, ["A clean one"], ["chip"]);
     const offered = (await flow.shortPlan(due, { now: NOW })).suggestions;
-    assert.ok(
-      offered.title.length > 0 && offered.short.length > 0,
-      "the dashboard offers chips for a real match",
-    );
+    assert.ok(offered.short.length > 0, "the dashboard offers Short chips for a real match");
 
     await flow.autoHooksTick(deps, NOW);
     await flow.chainIdle(due);
@@ -580,16 +589,16 @@ try {
         source: st.autoHooks.source,
       },
       {
-        title: offered.title[0],
+        title: "A clean one",
         short: offered.short[0],
         source: { title: "chip", short: offered.short[0] === pick.hookSuggestion ? "model" : "chip" },
       },
-      "A3: the first hooks the dashboard offers, the title from a chip",
+      "A3: titleOptions' own first option; the Short still the dashboard's own first offer",
     );
     assert.equal(
       editedTitle(due)!.split(" | ")[0],
-      offered.title[0],
-      "A3: saved exactly as the panel's Save would",
+      "A clean one",
+      "A3: saved exactly as titleOptions offered",
     );
     assert.equal(readFileSync(hookFile(due), "utf8").trim(), offered.short[0]);
     const v = of(due)
@@ -614,6 +623,7 @@ try {
     assert.equal(of(due).length, 3, "A7: nothing re-rendered or re-uploaded");
 
     // A2: the early one becomes due by its own age, a minute later.
+    seedTitleOptions(early, ["A clean one"], ["chip"]);
     await flow.autoHooksTick(deps, NOW + 60_000);
     await flow.chainIdle(early);
     assert.ok(flow.readStatus(early).hooksSavedAt, "A2: due once the pick is 6 h old");
@@ -636,7 +646,7 @@ try {
     );
     await flow.autoHooksTick(deps, NOW);
     assert.equal(flow.readStatus(onChannel).hooksSavedAt, undefined, "A7: the Short on the channel: not due");
-    console.log("OK: A2 A3 A4 A7 due by the pick's own age; the first offered hooks; the chain runs");
+    console.log("OK: A2 A3 A4 A7 due by the pick's own age; titleOptions' own first option; the chain runs");
   }
 
   /* --- A5. Upper-cased when the operator's own saved hooks are; as offered when they are not ------ */
@@ -658,7 +668,8 @@ try {
     );
     const UP = 14_000_204;
     exported(UP);
-    writePick(UP, { titleHooks: ["One heart left"], createdAt: iso(NOW - 7 * HOUR) });
+    writePick(UP, { createdAt: iso(NOW - 7 * HOUR) });
+    seedTitleOptions(UP, ["One heart left"]);
     await flow.autoHooksTick(deps, NOW);
     await flow.chainIdle(UP);
     assert.equal(
@@ -688,7 +699,8 @@ try {
     );
     const LO = 14_000_304;
     exported(LO);
-    writePick(LO, { titleHooks: ["One heart left"], createdAt: iso(NOW - 7 * HOUR) });
+    writePick(LO, { createdAt: iso(NOW - 7 * HOUR) });
+    seedTitleOptions(LO, ["One heart left"]);
     config.nightlyUpload = "off"; // nothing goes up, so the hooks stay editable
     await flow.autoHooksTick(deps, NOW);
     await flow.chainIdle(LO);
@@ -719,15 +731,15 @@ try {
     console.log("OK: A5 A6 lower-case house style kept; an operator save overwrites, the record stays");
   }
 
-  /* --- A3 edge: an old thumbnail headline on disk does not outrank the model's own proposal ------ */
+  /* --- A3 edge, retired 18 Oct 2026: titleOptions.ts never reads the thumbnail manifest's carried
+     headline at all — a title hook is its own first cached option, full stop, so an old headline
+     cannot outrank it by construction (no "model vs chip" race to referee any more). ------------ */
   {
-    // Thumbnails carried a headline until 18 Sept 2026 and a re-render keeps it (carriedHookText).
-    // The docs give auto-hooks one order — "the model's proposals first, then the chips" — and
-    // record where the hook came from as "model" or "chip".
     useMedia();
     const OLD = 14_000_501;
     exported(OLD);
-    writePick(OLD, { titleHooks: ["One heart left"], createdAt: iso(NOW - 7 * HOUR) });
+    writePick(OLD, { createdAt: iso(NOW - 7 * HOUR) });
+    seedTitleOptions(OLD, ["One heart left"]);
     const { manifestPath } = await import("../thumbnails/thumbnailVariants.js");
     writeFileSync(manifestPath(dir(OLD)), JSON.stringify({ variants: [], hookText: "Every second counts" }));
     config.nightlyUpload = "off";
@@ -736,13 +748,11 @@ try {
     config.nightlyUpload = "scheduled";
     const a = flow.readStatus(OLD).autoHooks;
     assert.ok(a, "saved: the pick is due and clean candidates exist");
-    await deviation("handbook Auto-hooks: the model's proposals first, then the chips", () => {
-      assert.deepEqual(
-        [a!.titleHook, a!.source.title],
-        ["One heart left", "model"],
-        `auto-hooks saved ${JSON.stringify(a!.titleHook)} (source "${a!.source.title}")`,
-      );
-    });
+    assert.deepEqual(
+      [a!.titleHook, a!.source.title],
+      ["One heart left", "model"],
+      `auto-hooks saved ${JSON.stringify(a!.titleHook)} (source "${a!.source.title}")`,
+    );
   }
 
   /* --- A8. No candidate survives: the hooks step fails; a hand save clears it ------------------- */
@@ -750,13 +760,11 @@ try {
     useMedia();
     const X = 14_000_401;
     exported(X);
-    writePick(X, { titleHooks: ["One heart left"], createdAt: iso(NOW - 7 * HOUR) });
-    // Both names spelled long enough to leave the title no room for any hook — the same budget
-    // the dashboard's own chips are held to, so nothing can pass.
-    const kept = config.titleNames;
-    config.titleNames = { edcr: "E".repeat(30), doogile: "D".repeat(30) };
+    writePick(X, { createdAt: iso(NOW - 7 * HOUR) });
+    // titleOptions' own cache says nothing passed — the same outcome a budget too tight for any
+    // hook produces, without reaching for a titleNames trick to force it.
+    seedTitleOptions(X, [], []);
     await flow.autoHooksTick(deps, NOW);
-    config.titleNames = kept;
     const st = flow.readStatus(X);
     assert.equal(st.hooksSavedAt, undefined, "A8: nothing saved");
     assert.equal(editedTitle(X), null, "A8: no title written");
@@ -782,7 +790,7 @@ try {
     useMedia();
     const R = 14_000_601;
     exported(R);
-    writePick(R, { titleHooks: ["One heart left"], createdAt: iso(NOW - 7 * HOUR) });
+    writePick(R, { createdAt: iso(NOW - 7 * HOUR) });
     writeFileSync(path.join(dir(R), "chat-Renamedrunner.json"), "[]");
     const kept = config.blockedPlayers;
     config.blockedPlayers = ["Renamedrunner"];
@@ -792,7 +800,11 @@ try {
     const st = flow.readStatus(R);
     assert.equal(st.hooksSavedAt, undefined, "A9: nothing saved");
     assert.equal(st.autoHooks, undefined, "A9: no auto-hooks record");
-    assert.equal(st.steps.hooks, undefined, "A9: no failed hooks step — a blocked match never reaches Needs-you");
+    assert.equal(
+      st.steps.hooks,
+      undefined,
+      "A9: no failed hooks step — a blocked match never reaches Needs-you",
+    );
     assert.deepEqual(of(R), [], "A9: nothing rendered or uploaded");
     console.log("OK: A9 auto-hooks skips a match its own files block");
   }

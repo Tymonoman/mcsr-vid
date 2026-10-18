@@ -303,7 +303,9 @@ try {
   await plan(A);
   await flow.picksIdle();
   assert.equal(picks.length, 1);
-  // The model's title hooks lead the title chips (a new pick is a new cache key).
+  // The pick's own titleHooks no longer feed the dashboard's title chips (18 Oct 2026): a title
+  // hook is titleOptions.ts's job now (shown on Telegram, chosen by `chooseAutoHooks`), not the
+  // Short-moment model's — pinned in shortFlow.contract.test.ts's "A" scenarios instead.
   {
     const file = path.join(dir(A), `short-${A}.pick.json`);
     const kept = readFileSync(file, "utf8");
@@ -316,29 +318,10 @@ try {
       }),
     );
     const titled = (await plan(A)).suggestions.title;
-    assert.deepEqual(
-      titled.slice(0, 2),
-      ["DEAD HEAT AT THE DRAGON", "ICE COLD"],
-      "the model's proposals first",
+    assert.ok(
+      !titled.includes("DEAD HEAT AT THE DRAGON"),
+      `the pick's titleHooks must not surface: ${titled}`,
     );
-    assert.ok(titled.length > 2, "the chips after them");
-
-    // A nickname-pair title hook never reaches the chips, whatever proposed it (2 Oct 2026: "LCQ
-    // vs YN" and "ASIAN VS CARNIVORE" both went out this way) — this match is edcr vs doogile, so
-    // "UNC vs OG" names neither and is the dashboard's second line of defence for whatever is on
-    // disk, behind the model-proposal filter at pick time.
-    writeFileSync(
-      file,
-      JSON.stringify({
-        ...pickOf(A),
-        titleHooks: ["UNC vs OG", "ICE COLD"],
-        createdAt: "2026-09-24T09:00:00Z",
-      }),
-    );
-    const guarded = (await plan(A)).suggestions.title;
-    assert.ok(!guarded.includes("UNC vs OG"), `a nickname pair must not reach the chips: ${guarded}`);
-    assert.ok(guarded.includes("ICE COLD"), "a clean proposal still does");
-
     writeFileSync(file, kept);
   }
 
@@ -1695,15 +1678,22 @@ try {
 
   /* --- Auto-hooks: the operator's own grant (8 Oct 2026) — a pick nobody has looked at for
      `autoHooksAfterHours` gets saved by itself, exactly as the dashboard's own Save would. The
-     "noShort" path and the upper-casing rule are pinned in autoHooks.test.ts, which needs no
-     network: a real match's hooks.ts chips almost always have a dull fallback that survives, so
-     forcing the Short list empty through this fixture is not worth fighting for. --------------- */
+     title hook is `titleOptions.ts`'s own first option (18 Oct 2026); its model call is never
+     exercised here — every match below gets its own `title-options.json` seeded on disk, so the
+     tick reads that cache instead of spawning the real `claude` CLI. The "noShort" path and the
+     upper-casing rule are pinned in autoHooks.test.ts, which needs no network. ----------------- */
   {
     config.autoHooksAfterHours = 6;
     const AH_NOW = Date.now();
     const dueAt = (hoursAgo: number) => new Date(AH_NOW - hoursAgo * 3600_000).toISOString();
     const customPick = (id: number, over: Partial<ShortPick>) =>
       writeFileSync(path.join(dir(id), `short-${id}.pick.json`), JSON.stringify({ ...pickOf(id), ...over }));
+    /** Seeds the cache `titleOptions.ts` reads, so auto-hooks never calls the real model here. */
+    const seedTitleOptions = (
+      id: number,
+      options: string[],
+      source: ("nicknames" | "model" | "chip")[] = options.map(() => "model" as const),
+    ) => writeFileSync(path.join(dir(id), "title-options.json"), JSON.stringify({ options, source }));
 
     // Not yet due: an hour-old pick is left alone.
     const AH1 = 13_000_070;
@@ -1713,21 +1703,17 @@ try {
     assert.ok(!flow.readStatus(AH1).hooksSavedAt, "an hour-old pick is not due at 6 h");
     assert.ok(!flow.readStatus(AH1).autoHooks);
 
-    // Due, and candidates are checked in the dashboard's own order: the model's labelled and
-    // spoiler proposals are skipped, the first clean one wins; its own Short suggestion is a
-    // denied word, so the Short falls back to a hooks.ts chip.
+    // Due: the title is titleOptions' own first option; its own Short suggestion is a denied
+    // word, so the Short falls back to a hooks.ts chip.
     const AH2 = 13_000_071;
     exported(AH2);
-    customPick(AH2, {
-      createdAt: dueAt(7),
-      titleHooks: ["doogile wins it", "TAS vs YN", "A clean one"],
-      hookSuggestion: "the asian pulls ahead",
-    });
+    seedTitleOptions(AH2, ["A clean one"]);
+    customPick(AH2, { createdAt: dueAt(7), hookSuggestion: "the asian pulls ahead" });
     await flow.autoHooksTick(chain, AH_NOW);
     await flow.chainIdle(AH2);
     const st2 = flow.readStatus(AH2);
     assert.ok(st2.hooksSavedAt, "a due pick with a clean candidate is saved");
-    assert.equal(st2.autoHooks?.titleHook, "A clean one", "the spoiler and the labelled one were skipped");
+    assert.equal(st2.autoHooks?.titleHook, "A clean one", "titleOptions' own first option");
     assert.equal(st2.autoHooks?.source.title, "model");
     assert.ok(st2.autoHooks?.shortHook, "a chip stood in for the model's own denied Short hook");
     assert.equal(st2.autoHooks?.source.short, "chip");
@@ -1741,14 +1727,15 @@ try {
     assert.equal(row2!.titleHook, "A clean one");
     assert.equal(row2!.stillCurrent, true, "nobody has edited it since");
     assert.equal(row2!.uploaded, true);
-    console.log("OK: auto-hooks skips a labelled/spoiler candidate and keeps the dashboard's own order");
+    console.log("OK: auto-hooks saves titleOptions' own first option");
 
     // The operator saves by hand while the tick is still choosing (its suggestions wait on the
     // API's user lookups): the typed hooks stand, and nothing reads as failed — not an auto save
     // over them, not the 409 an auto save would get against a hook the upload has since locked.
     const typedMeanwhile = 13_000_069; // the only due match here: AH2 is saved, AH3 isn't yet
     exported(typedMeanwhile);
-    customPick(typedMeanwhile, { createdAt: dueAt(7), titleHooks: ["A clean one"] });
+    seedTitleOptions(typedMeanwhile, ["A clean one"]);
+    customPick(typedMeanwhile, { createdAt: dueAt(7) });
     duringUserFetch = async () => {
       assert.equal(
         (await save(typedMeanwhile, { titleHook: "OPERATOR TYPED", shortHook: "OPERATOR SHORT" })).status,
@@ -1768,16 +1755,13 @@ try {
     assert.equal(await readShortHook(dir(typedMeanwhile), typedMeanwhile), "OPERATOR SHORT");
     console.log("OK: a hand save made while auto-hooks is choosing is never overwritten or marked failed");
 
-    // No candidate survives at all (both nicknames spelled long enough to leave no room for any
-    // hook — the same budget #hook is held to): the hooks step fails with its own message, and
-    // nothing is saved.
+    // No candidate survives at all (titleOptions' own cache says so): the hooks step fails with
+    // its own message, and nothing is saved.
     const AH3 = 13_000_072;
     exported(AH3);
-    customPick(AH3, { createdAt: dueAt(7), titleHooks: ["A clean one too"] });
-    const savedTitleNames = config.titleNames;
-    config.titleNames = { edcr: "E".repeat(30), doogile: "D".repeat(30) };
+    seedTitleOptions(AH3, [], []);
+    customPick(AH3, { createdAt: dueAt(7) });
     await flow.autoHooksTick(chain, AH_NOW);
-    config.titleNames = savedTitleNames;
     const st3 = flow.readStatus(AH3);
     assert.ok(!st3.hooksSavedAt, "nothing was saved");
     assert.equal(st3.steps.hooks?.state, "failed");
@@ -1787,34 +1771,6 @@ try {
     assert.match(plan3.detail ?? "", /no suggested hook passed/);
     console.log("OK: no candidate passing fails the hooks step and saves nothing");
 
-    // Nothing fits the mobile budget, though candidates pass every check: a 16 + 7 character pair
-    // leaves 20 (14072062's 16 + 6 left 21 and failed every tick from 09:47 to 16:22 UTC,
-    // 14 Oct 2026). The shortest that passes and keeps the title within 100 is
-    // saved — not the first, and never the shorter spoiler — and the record says it went over.
-    const AH4 = 13_000_082;
-    exported(AH4);
-    noFinishMargin.add(AH4);
-    customPick(AH4, {
-      createdAt: dueAt(7),
-      titleHooks: ["CAN A 22-SECOND LEAD SURVIVE?", "doogile wins it by a lot", "A 22-SECOND FORTRESS LEAD"],
-    });
-    config.titleNames = { edcr: "sixteencharsname", doogile: "sevenyy" };
-    await flow.autoHooksTick(chain, AH_NOW);
-    // AH3's failed step is retried on every tick, and its 15-character title hook fits these 20.
-    await Promise.all([flow.chainIdle(AH4), flow.chainIdle(AH3)]);
-    config.titleNames = savedTitleNames;
-    const st4 = flow.readStatus(AH4);
-    assert.ok(st4.hooksSavedAt, "an over-budget candidate is saved rather than none");
-    assert.equal(st4.autoHooks?.titleHook, "A 22-SECOND FORTRESS LEAD", "the shortest that passes");
-    assert.equal(st4.autoHooks?.source.title, "model");
-    assert.equal(st4.autoHooks?.overBudget, true);
-    assert.equal(
-      readFileSync(path.join(dir(AH4), `match-${AH4}.title.edited.txt`), "utf8").split("\n")[0],
-      "A 22-SECOND FORTRESS LEAD | sixteencharsname vs sevenyy | MCSR Ranked 1v1 | Minecraft Speedrun",
-    );
-    assert.ok(!flow.readStatus(AH2).autoHooks?.overBudget, "a hook inside the budget is not marked");
-    console.log("OK: no hook inside the mobile budget saves the shortest passing one, marked over-budget");
-
     // Each skip reason, all otherwise due.
     const hidden = 13_000_073;
     exported(hidden);
@@ -1822,7 +1778,8 @@ try {
     setHidden(hidden, true);
     await flow.autoHooksTick(chain, AH_NOW);
     assert.ok(!flow.readStatus(hidden).hooksSavedAt, "a hidden match is left alone");
-    setHidden(hidden, false);
+    // Left hidden (not restored): unhidden, it would be a due, unguarded pick for every later
+    // tick in this file, which would reach titleOptions with no cache seeded for it.
 
     const onChannel = 13_000_074;
     exported(onChannel);
@@ -1848,6 +1805,9 @@ try {
     const blockedMatch = 13_000_075;
     exported(blockedMatch);
     customPick(blockedMatch, { createdAt: dueAt(7) });
+    // Seeded so that once config.blockedPlayers is restored below, a later tick sweeping this
+    // still-due pick again never reaches the real model for it.
+    seedTitleOptions(blockedMatch, [], []);
     const savedBlocked2 = config.blockedPlayers;
     config.blockedPlayers = ["edcr"]; // the fixture's own left player
     await flow.autoHooksTick(chain, AH_NOW);
@@ -1928,6 +1888,7 @@ try {
       const refused = 13_000_079;
       exported(refused);
       customPick(refused, { createdAt: dueAt(7) });
+      seedTitleOptions(refused, ["A clean one"]);
       mkdirSync(path.join(dir(refused), `match-${refused}.title.edited.txt`), { recursive: true });
       await flow.autoHooksTick(chain, AH_NOW);
       const stRefused = flow.readStatus(refused);
@@ -1948,9 +1909,11 @@ try {
       const healthy = 13_000_081; // sorts after `broken`: listProcessedMatchIds() is numeric order
       exported(broken);
       customPick(broken, { createdAt: dueAt(7) }); // an ordinary due pick: a candidate is found
+      seedTitleOptions(broken, ["A clean one"]);
       mkdirSync(path.join(dir(broken), `short-${broken}.status.json.part`), { recursive: true });
       exported(healthy);
       customPick(healthy, { createdAt: dueAt(7) });
+      seedTitleOptions(healthy, ["A clean one"]);
       await flow.autoHooksTick(chain, AH_NOW);
       await flow.chainIdle(healthy);
       assert.ok(!flow.readStatus(broken).hooksSavedAt, "the broken match itself never saved");
@@ -2013,10 +1976,13 @@ try {
         JSON.stringify({ left: 150, right: 151.42, detail: "", confidence: 1, source: "manual" }),
       );
       reExport(fixedLater);
+      seedTitleOptions(fixedLater, ["A clean one"]);
       const manual = 13_000_085;
       const sound = 13_000_086;
       dueWithSync(manual, { confidence: 1, source: "manual" });
       dueWithSync(sound, { confidence: 0.9, source: "countdown" });
+      seedTitleOptions(manual, ["A clean one"]);
+      seedTitleOptions(sound, ["A clean one"]);
       await flow.autoHooksTick(chain, AH_NOW);
       await Promise.all([fixedLater, manual, sound].map((id) => flow.chainIdle(id)));
       for (const id of [fixedLater, manual, sound]) {

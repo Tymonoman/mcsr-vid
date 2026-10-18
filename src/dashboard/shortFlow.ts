@@ -30,6 +30,7 @@ import { exportMatchStartSec } from "../pipeline/exportFast.js";
 import { computeMetrics } from "../pipeline/matchScore.js";
 import { exportStale, readSyncOffsets } from "../pipeline/syncFile.js";
 import { HOOK_PLACEHOLDER, metaPaths, SEPARATOR, withHook } from "../pipeline/title.js";
+import { titleOptions } from "../pipeline/titleOptions.js";
 import { dnfRefusal, matchIsDnf, playoffContextFor } from "../playoffs/playoffs.js";
 import {
   gameMatchStarts,
@@ -151,9 +152,7 @@ export interface AutoHooksRecord {
   at: string;
   titleHook: string;
   shortHook: string | null;
-  source: { title: "model" | "chip"; short: "model" | "chip" | null };
-  /** No candidate fit the title's mobile budget, so the shortest that keeps it within 100 was saved: the names may be cut on mobile. */
-  overBudget?: true;
+  source: { title: "nicknames" | "model" | "chip"; short: "model" | "chip" | null };
 }
 
 const statusFile = (dir: string, matchId: number): string => path.join(dir, `short-${matchId}.status.json`);
@@ -614,9 +613,10 @@ async function suggestionsFor(
     );
   }
   return {
-    // The model's proposals (in the operator's own style, videoPick.ts) ahead of the chips. A
-    // nickname-pair chip never reaches the panel either (2 Oct 2026, hookProblem's players arg).
-    title: dedupe([committed, ...(f.pick?.titleHooks ?? []), ...title]).filter(
+    // The pick's own titleHooks no longer feed this list (18 Oct 2026): a title hook is
+    // `titleOptions.ts`'s job now, not the Short-moment model's. A nickname-pair chip never
+    // reaches the panel either (2 Oct 2026, hookProblem's players arg).
+    title: dedupe([committed, ...title]).filter(
       (h) => h.length <= titleMax && hookProblem(h, titleMax, match.players) === null,
     ),
     // Held to the rule the model's own suggestion is: no result, and short enough to read at a
@@ -696,7 +696,7 @@ export async function shortPlan(
         console.error(`plan #${matchId}: suggestions — ${describeError(err)}`);
         return { short: [], title: [] };
       })
-    : { short: f.pick?.hookSuggestion ? [f.pick.hookSuggestion] : [], title: f.pick?.titleHooks ?? [] };
+    : { short: f.pick?.hookSuggestion ? [f.pick.hookSuggestion] : [], title: [] };
   f = await factsOf(matchId);
   const { state, detail } =
     seriesGame && !f.video
@@ -1613,10 +1613,9 @@ export function pastHooksAreUpperCase(past: readonly { hook: string }[]): boolea
 
 export interface AutoHooksChoice {
   titleHook: string;
-  titleSource: "model" | "chip";
+  titleSource: "nicknames" | "model" | "chip";
   shortHook: string | null;
   shortSource: "model" | "chip" | null;
-  overBudget?: true;
 }
 
 /** `choice` turned into the exact body `saveHooks` takes — upper-cased to the house style when
@@ -1630,32 +1629,24 @@ export function autoHooksBody(choice: AutoHooksChoice, upper: boolean): SaveHook
 }
 
 /**
- * The same candidates, in the same order, the dashboard offers for `#hook`/`#shorthook`
- * (`suggestionsFor`, not re-implemented here): the model's own proposals first, then the
- * `hooks.ts` chips — each already filtered through `hookProblem`, which is `hookLabelProblem` and
- * `spoilsTheResult` together, so the first survivor is the first one that passes all three. null
- * when nothing survived for the title (the Short may still come back null on its own: "no Short
- * hook passed" is not "no title hook passed").
+ * The title hook is `titleOptions.ts`'s own first option — the same one the operator is shown on
+ * Telegram (18 Oct 2026) — never re-checked here: that function already holds every candidate to
+ * the new rules. The Short hook is still the dashboard's own first offer (`suggestionsFor`,
+ * untouched): the Short describes the moment on purpose, which is out of `titleOptions`' scope.
+ * Null when nothing survived for the title (the Short may still come back null on its own: "no
+ * Short hook passed" is not "no title hook passed").
  */
 async function chooseAutoHooks(matchId: number, match: MatchInfo, f: Facts): Promise<AutoHooksChoice | null> {
-  const suggestions = await suggestionsFor(matchId, match, f);
-  // Nothing fits the mobile budget — a long nickname pair leaves ~20 characters; 14072062 failed
-  // every tick from 09:47 to 16:22 UTC over it and left its slot empty (14 Oct 2026). The shortest
-  // candidate that keeps the title within YouTube's 100 instead, the same checks on it: the names
-  // may be cut on mobile, which beats an empty slot.
-  const overBudget = suggestions.title.length === 0;
-  const titles = overBudget
-    ? [...(await suggestionsFor(matchId, match, f, true)).title].sort((a, b) => a.length - b.length)
-    : suggestions.title;
-  const titleHook = titles[0] ?? null;
+  const titled = await titleOptions(matchId);
+  const titleHook = titled.options[0] ?? null;
   if (titleHook === null) return null;
+  const suggestions = await suggestionsFor(matchId, match, f);
   const shortHook = suggestions.short[0] ?? null;
   return {
     titleHook,
-    titleSource: f.pick?.titleHooks?.includes(titleHook) ? "model" : "chip",
+    titleSource: titled.source[0] ?? "chip",
     shortHook,
     shortSource: shortHook === null ? null : shortHook === f.pick?.hookSuggestion ? "model" : "chip",
-    ...(overBudget ? { overBudget: true as const } : {}),
   };
 }
 
@@ -1703,8 +1694,7 @@ async function autoSaveHooks(
   shortLog(
     matchId,
     "chain",
-    `auto-hooks: no hooks saved since the pick landed — saving title ${JSON.stringify(req.titleHook)} (${choice.titleSource}` +
-      (choice.overBudget ? ", over the title's mobile budget: none fit it, names may be cut on mobile)" : ")") +
+    `auto-hooks: no hooks saved since the pick landed — saving title ${JSON.stringify(req.titleHook)} (${choice.titleSource})` +
       (req.noShort
         ? " and no Short (no Short hook passed the checks)"
         : ` and Short ${JSON.stringify(req.shortHook)} (${choice.shortSource})`),
@@ -1730,7 +1720,6 @@ async function autoSaveHooks(
       titleHook: req.titleHook,
       shortHook: req.shortHook,
       source: { title: choice.titleSource, short: req.noShort ? null : choice.shortSource },
-      ...(choice.overBudget ? { overBudget: true as const } : {}),
     };
   });
 }

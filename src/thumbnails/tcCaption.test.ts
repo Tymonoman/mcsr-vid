@@ -68,7 +68,11 @@ assert.equal(shortenHookChip("A sub-8 to win it"), "SUB-8");
 assert.equal(shortenHookChip("A sub-10 to win it"), "SUB-10");
 assert.equal(shortenHookChip("Does the lead ever settle?"), null, "no clean token reads right, dropped");
 assert.equal(shortenHookChip("Can a 1:36 lead survive?"), "1:36 LEAD");
-assert.equal(shortenHookChip("Can a 45-second lead survive?"), "0:45 LEAD", "M:SS like the minute form, no glued S unit");
+assert.equal(
+  shortenHookChip("Can a 45-second lead survive?"),
+  "0:45 LEAD",
+  "M:SS like the minute form, no glued S unit",
+);
 assert.equal(shortenHookChip("Can a 8-second lead survive?"), "0:08 LEAD");
 assert.equal(shortenHookChip("4 deaths and still this close"), "4 DEATHS");
 assert.equal(shortenHookChip("Not a single death between them"), "0 DEATHS");
@@ -117,35 +121,40 @@ function checkPicked(over: Partial<MatchMetrics>, expectedCaption: string) {
 }
 
 // The ten real Test & Compare matches (handbook/knowledge/experiments.md), metrics read live
-// 7 Oct 2026 — pickCaption's choice must match `buildHookSuggestions`' own top-weighted chip that
-// both shortens and fits, for each, and clear every check. Re-pinned 8 Oct 2026 (chip-truth): the
-// "Does the lead ever settle?" and decimal-seconds templates these cases used to pick are now
-// dropped (see above), so several move to the next-best real chip for the same match.
-checkPicked({ finishMarginMs: 12_054, panelLeadChanges: 3, deaths: 0, resultMs: 493_570 }, "SUB-9"); // 13673240
-checkPicked({ finishMarginMs: 1_259, panelLeadChanges: 2, deaths: 0, resultMs: 559_394 }, "SUB-10"); // 13395245
-checkPicked({ finishMarginMs: 14_682, panelLeadChanges: 1, deaths: 0, resultMs: 532_425 }, "SUB-9"); // 13473906
-checkPicked({ finishMarginMs: 10_383, panelLeadChanges: 0, deaths: 0, resultMs: 548_267 }, "SUB-10"); // 13672776
-checkPicked({ finishMarginMs: 58, panelLeadChanges: 4, deaths: 0, resultMs: 562_387 }, "58 MS"); // 13704828
-checkPicked({ finishMarginMs: null, panelLeadChanges: 0, deaths: 0, resultMs: 463_204 }, "SUB-8"); // 13305732
-checkPicked({ finishMarginMs: 1_607, panelLeadChanges: 4, deaths: 0, resultMs: 542_517 }, "SUB-10"); // 13223455
-checkPicked({ finishMarginMs: 17_070, panelLeadChanges: 0, deaths: 0, resultMs: 649_755 }, "0 DEATHS"); // 13766294
-checkPicked({ finishMarginMs: 7_131, panelLeadChanges: 5, deaths: 0, resultMs: 645_655 }, "0 DEATHS"); // 13391780
+// 7 Oct 2026. Re-pinned 18 Oct 2026 (the operator's title rewrite): hooks.ts no longer states a
+// margin, lead-change count, death count or pace at all, so none of the old stake chips these
+// matches once picked exist any more — only a real close finish (under a second), a forfeit, a
+// real rivalry or the setting (no clean short token, so never a caption) can still produce one.
+// None of these ten was decided inside a second except 13704828, so nine now get no caption —
+// "nothing" is the correct answer, not a made-up token.
+for (const over of [
+  { finishMarginMs: 12_054, panelLeadChanges: 3, deaths: 0, resultMs: 493_570 }, // 13673240
+  { finishMarginMs: 1_259, panelLeadChanges: 2, deaths: 0, resultMs: 559_394 }, // 13395245
+  { finishMarginMs: 14_682, panelLeadChanges: 1, deaths: 0, resultMs: 532_425 }, // 13473906
+  { finishMarginMs: 10_383, panelLeadChanges: 0, deaths: 0, resultMs: 548_267 }, // 13672776
+  { finishMarginMs: null, panelLeadChanges: 0, deaths: 0, resultMs: 463_204 }, // 13305732
+  { finishMarginMs: 1_607, panelLeadChanges: 4, deaths: 0, resultMs: 542_517 }, // 13223455
+  { finishMarginMs: 17_070, panelLeadChanges: 0, deaths: 0, resultMs: 649_755 }, // 13766294
+  { finishMarginMs: 7_131, panelLeadChanges: 5, deaths: 0, resultMs: 645_655 }, // 13391780
+  { finishMarginMs: 584, panelLeadChanges: 2, deaths: 1, resultMs: 746_168 }, // 13705853
+])
+  assert.equal(
+    pickCaption(input(over), players),
+    null,
+    `no caption, no margin/lead/death chip: ${JSON.stringify(over)}`,
+  );
 
-// 13705853 (margin 584ms, 2 panel lead changes, 1 real death, 746.2s): every candidate the old
-// panel had for it — the decimal margin, the lead-settle question — is now a dropped template,
-// deaths is 1 (neither "0 DEATHS" nor the >=4 chip applies), and the match ran too long for a
-// sub-N chip. No real `hooks.ts` candidate survives shortening, so the caption is "nothing" — the
-// one correct answer per the task's own rule, not a made-up token.
-assert.equal(
-  pickCaption(input({ finishMarginMs: 584, panelLeadChanges: 2, deaths: 1, resultMs: 746_168 }), players),
-  null,
-  "no clean token survives for 13705853 — the caption is absent, not a broken one",
-);
+// The one real close finish: 13704828, decided under a second.
+checkPicked({ finishMarginMs: 58, panelLeadChanges: 4, deaths: 0, resultMs: 562_387 }, "58 MS"); // 13704828
 
 // A denied label never reaches a caption, even shortened past recognition — the check runs on
 // the shortened text, not just the source chip, so this is a real regression guard rather than
 // a restatement of hookLabelProblem's own test.
 assert.equal(shortenHookChip("Rematch: left leads 19-7 this season"), "19-7 REMATCH");
-assert.equal(pickCaption(input({ panelLeadChanges: 3 }), players)?.checks.hookLabelProblem, null);
+assert.equal(
+  pickCaption(input({ finishMarginMs: 58 }), players)?.checks.hookLabelProblem,
+  null,
+  "a real chip's checks still run and clear",
+);
 
 console.log("tcCaption: all checks passed");
