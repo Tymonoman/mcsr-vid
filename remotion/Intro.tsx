@@ -72,9 +72,11 @@ function VersusSide({
   side,
   t,
   exit,
+  stats,
 }: {
   pl: PlayerIdentity;
   side: "left" | "right";
+  stats: boolean;
   t: ReturnType<typeof useClock>["t"];
   exit: number;
 }) {
@@ -106,7 +108,9 @@ function VersusSide({
           <b>{pl.eloRate} ELO</b>
           {rank && <span> · {rank}</span>}
         </span>
-        <div className="iv-vs-stats" style={{ opacity: t(0.75, 1.05) }}>
+        {/* config.introStats off keeps the block's room, so the names stay where they are and the
+            stakes line (src/pipeline/banners.ts) sits where the stats were. */}
+        <div className="iv-vs-stats" style={{ opacity: stats ? t(0.75, 1.05) : 0 }}>
           <span>
             <i>PB</i>
             <b>{formatTime(pl.pbMs)}</b>
@@ -139,8 +143,8 @@ export const Intro: FC<{ props: OverlayProps }> = ({ props: p }) => {
   // No whole-card fade: the halves part like doors and the gameplay shows through the gap.
   return (
     <AbsoluteFill className="iv iv-vs" style={{ opacity: t(0, 0.1, (n) => n) }}>
-      <VersusSide pl={p.left} side="left" t={t} exit={exit} />
-      <VersusSide pl={p.right} side="right" t={t} exit={exit} />
+      <VersusSide pl={p.left} side="left" t={t} exit={exit} stats={p.introStats !== false} />
+      <VersusSide pl={p.right} side="right" t={t} exit={exit} stats={p.introStats !== false} />
       <div className="iv-vs-seam" style={{ opacity: gone, transform: `scaleY(${t(0.3, 0.55)})` }} />
       <div className="iv-vs-top" style={{ opacity: centre }}>
         {p.playoffLabel && <span className="playoff">{p.playoffLabel} ·</span>}

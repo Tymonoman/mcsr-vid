@@ -69,3 +69,21 @@ export function formatChapterTime(timeSec: number): string {
 export function formatChapters(chapters: ChapterMarker[]): string {
   return chapters.map((c) => `${formatChapterTime(c.timeSec)} ${c.label}`).join("\n");
 }
+
+/**
+ * A description's chapter lines ("M:SS Label") moved `sec` later — a cold open joined in front of
+ * the export (src/pipeline/coldOpen.ts); the 0:00 line stays the video's start. Floored like
+ * `formatChapterTime`, so a line can land up to a second early, never late.
+ */
+export function shiftChapterLines(text: string, sec: number): string {
+  if (!sec) return text;
+  return text.replace(/^(\d+):(\d{2})(?::(\d{2}))?(\s+\S.*)$/gm, (line, a, b, c, rest: string) => {
+    const t = c === undefined ? Number(a) * 60 + Number(b) : Number(a) * 3600 + Number(b) * 60 + Number(c);
+    if (t === 0) return line;
+    const s = Math.floor(t + sec);
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const ss = String(s % 60).padStart(2, "0");
+    return `${h > 0 ? `${h}:${String(m).padStart(2, "0")}` : m}:${ss}${rest}`;
+  });
+}

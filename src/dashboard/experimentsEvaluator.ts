@@ -49,6 +49,10 @@ export interface VideoMetrics {
   engagedViews: number;
   averageViewPercentage: number;
   subscribersGained: number;
+  /** The audience still watching at 10% of the video (Analytics' audienceWatchRatio), as a
+   *  percentage: the first minute, where the retention opening (x5) should show. Absent when
+   *  Analytics has no curve for it yet. */
+  retentionAt10?: number;
 }
 
 const ymd = (d: Date): string => d.toISOString().slice(0, 10);
@@ -68,8 +72,9 @@ async function liveMetricsFor(
   const videoId = videoIdHint ?? record?.videoId;
   if (!videoId) return null;
   const sinceIso =
-    (record?.publishAt && Date.parse(record.publishAt) <= Date.now() ? record.publishAt : record?.uploadedAt) ??
-    sinceHint;
+    (record?.publishAt && Date.parse(record.publishAt) <= Date.now()
+      ? record.publishAt
+      : record?.uploadedAt) ?? sinceHint;
   if (!sinceIso) return null;
   const sinceDate = sinceIso.slice(0, 10);
 
@@ -90,7 +95,16 @@ async function liveMetricsFor(
     filters: `video==${videoId}`,
   });
   const [views, engagedViews, averageViewPercentage, subscribersGained] = analyticsRows[0] ?? [0, 0, 0, 0];
+  const curve = await analytics(token, {
+    startDate: sinceDate,
+    endDate: ymd(new Date()),
+    metrics: "audienceWatchRatio",
+    dimensions: "elapsedVideoTimeRatio",
+    filters: `video==${videoId}`,
+  }).catch(() => []); // an extra number, never a reason to fail the metrics every experiment needs
+  const at10 = curve.find((r) => Math.abs(Number(r[0]) - 0.1) < 0.005)?.[1];
   return {
+    ...(at10 !== undefined ? { retentionAt10: Number(at10) * 100 } : {}),
     impressions,
     clicks: Math.round(clicks),
     views: Number(views),
@@ -221,6 +235,15 @@ interface MetricRule {
   fmt: (x: number) => string;
 }
 const RULES: [RegExp, MetricRule][] = [
+  // Before the average view % rule, whose pattern also reads "retention".
+  [
+    /retention at 10/,
+    {
+      name: "retention at 10%",
+      of: (m) => (m.views > 0 && m.retentionAt10 !== undefined ? m.retentionAt10 : null),
+      fmt: (x) => `${x.toFixed(1)}%`,
+    },
+  ],
   [
     /ctr|click/,
     {

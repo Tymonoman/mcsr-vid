@@ -1,5 +1,5 @@
 import { makeCancelSignal, renderMedia, renderStill, selectComposition } from "@remotion/renderer";
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { atomicOutput } from "./atomicOutput.js";
@@ -8,6 +8,7 @@ import { computeOverlayProps } from "./overlayProps.js";
 import { bundleOnce } from "./remotionBundle.js";
 import { splitSegments } from "./splitStates.js";
 import { chooseTeaser } from "./teaser.js";
+import { bannersFor } from "./banners.js";
 import { estimatedRunSec } from "./vodAcquisition.js";
 import type { MatchInfo, UserDetails, VersusStats } from "../api/types.js";
 
@@ -81,7 +82,26 @@ export const overlayPaths = (outDir: string) => ({
   timer: path.join(outDir, "overlay-timer.mp4"),
   intro: path.join(outDir, "overlay-intro.webm"),
   manifest: path.join(outDir, SPLITS_MANIFEST),
+  /** The retention opening's big lines (src/pipeline/banners.ts): `[{ path, fromMs, toMs }]`;
+   *  absent when every switch is off. */
+  banners: path.join(outDir, "overlay-banners.json"),
 });
+
+export interface BannerStill {
+  path: string;
+  fromMs: number;
+  toMs: number;
+}
+
+/** The banner stills a render left, or none: a manifest naming a missing still counts as none. */
+export async function readBannerStills(outDir: string): Promise<BannerStill[]> {
+  try {
+    const stills = JSON.parse(await readFile(overlayPaths(outDir).banners, "utf8")) as BannerStill[];
+    return stills.every((s) => existsSync(s.path)) ? stills : [];
+  } catch {
+    return [];
+  }
+}
 
 /** The split stills recorded by a previous run, or null if this match has not been rendered. */
 export async function readSplitStills(outDir: string): Promise<SplitStill[] | null> {
@@ -119,7 +139,14 @@ export async function renderOverlay(args: RenderOverlayArgs): Promise<RenderOver
   const runSec = estimatedRunSec(args.match);
   const durationInFrames = Math.round((LEAD_IN_SEC + runSec + config.postRollSec) * FPS);
   const timerStartFrame = Math.round(LEAD_IN_SEC * FPS);
-  const renderProps = { ...props, timerStartFrame, durationInFrames, fps: FPS, introSec: config.introSec };
+  const renderProps = {
+    ...props,
+    timerStartFrame,
+    durationInFrames,
+    fps: FPS,
+    introSec: config.introSec,
+    introStats: config.introStats,
+  };
   const out = overlayPaths(args.outDir);
 
   const { cancelSignal, cancel } = makeCancelSignal();
@@ -155,7 +182,8 @@ export async function renderOverlay(args: RenderOverlayArgs): Promise<RenderOver
       if (wonBy) await atomicOutput(out.topEnd, (output) => renderTop(output, wonBy));
       // The countdown teaser: only when on and the match has a moment, removed otherwise so an
       // earlier render's line never reaches the export.
-      const teaser = config.countdownTeaser ? chooseTeaser(args.match) : null;
+      // The stakes line takes the countdown's bottom strip, so it replaces this one.
+      const teaser = config.countdownTeaser && !config.stakesLine ? chooseTeaser(args.match) : null;
       if (teaser) {
         const inputProps = { momentMs: teaser.momentMs, text: teaser.text };
         await atomicOutput(out.countdownTeaser, async (output) => {
@@ -205,6 +233,33 @@ export async function renderOverlay(args: RenderOverlayArgs): Promise<RenderOver
           durationSec: (segment.endFrame - segment.startFrame) / FPS,
         });
       }
+      // The big lines over the frame go with the band's own state: the banner style takes the
+      // explain cards and COMING UP out of the meta column (overlayProps.ts) and draws them here.
+      // Earlier banners are removed first, so a switch turned off never reaches the export.
+      for (const f of await readdir(args.outDir))
+        if (/^overlay-banner-\d+\.png$/.test(f)) await rm(path.join(args.outDir, f), { force: true });
+      await rm(out.banners, { force: true });
+      const banners = bannersFor(args.match);
+      const bannerStills: BannerStill[] = [];
+      for (const [i, b] of banners.entries()) {
+        const file = path.join(args.outDir, `overlay-banner-${i}.png`);
+        const inputProps = { kind: b.kind, head: b.head, text: b.text };
+        await atomicOutput(file, async (output) => {
+          await renderStill({
+            composition: await selectComposition({ serveUrl, id: "Banner", inputProps }),
+            serveUrl,
+            output,
+            imageFormat: "png",
+            inputProps,
+            cancelSignal,
+          });
+        });
+        bannerStills.push({ path: file, fromMs: b.fromMs, toMs: b.toMs });
+      }
+      if (bannerStills.length > 0)
+        await atomicOutput(out.banners, (temp) =>
+          writeFile(temp, JSON.stringify(bannerStills, null, 2), "utf8"),
+        );
       args.onProgress?.({ phase: "splits", percent: 100 });
     }
 

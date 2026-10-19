@@ -75,6 +75,19 @@ export interface FastExportInput {
    * scaling entrypoint. Absent or false leaves the graph exactly as it is today.
    */
   upscale1440?: boolean;
+  /**
+   * Full-frame PNGs with alpha over the finished frame — after the intro card, before the upscale —
+   * each from `startSec` to `endSec` of the *output* (src/pipeline/banners.ts: the stakes line,
+   * explain banners, gap chips; the cold open's title). Absent or empty leaves the graph as it is.
+   */
+  overlays?: Array<{ path: string; startSec: number; endSec: number }>;
+  /**
+   * The cold open (src/pipeline/coldOpen.ts): the stage from this timeline second for
+   * `totalDurationSec`, with no intro card, the clips and the timer seeked rather than decoded
+   * from 0, and the sound faded in and out. `splits` must already be sliced to the window
+   * (`sliceStills`) and no teaser, head trim or second top still passed.
+   */
+  windowFromSec?: number;
 }
 
 /** The upscale's target — 4:3 of the 1920x1080 stage, same aspect ratio. */
@@ -113,15 +126,23 @@ export function buildFastExportCommand(input: FastExportInput): BuiltCommand {
   const { fps } = input;
   const left = placeOnTimeline(input.leftClip);
   const right = placeOnTimeline(input.rightClip);
+  const from = input.windowFromSec;
+  // A clip `startOnTimelineSec` into the timeline is at `inSec + (t - startOnTimelineSec)` at
+  // timeline second t; a window is always past that black lead, so it needs no pad.
+  const seekOf = (clip: typeof left) =>
+    from === undefined ? clip.inSec : clip.inSec + from - clip.startOnTimelineSec;
+  if (from !== undefined && (from < left.startOnTimelineSec || from < right.startOnTimelineSec))
+    throw new Error(`a window from ${from}s starts before a clip does`);
 
   const args: string[] = ["-hide_banner", "-y"];
   if (input.useVaapi) {
     args.push("-init_hw_device", "vaapi=va:/dev/dri/renderD128", "-filter_hw_device", "va");
   }
   // -ss before -i so the decoder seeks rather than decoding and discarding the head.
-  args.push("-ss", left.inSec.toFixed(3), "-i", input.leftClip.path);
-  args.push("-ss", right.inSec.toFixed(3), "-i", input.rightClip.path);
+  args.push("-ss", seekOf(left).toFixed(3), "-i", input.leftClip.path);
+  args.push("-ss", seekOf(right).toFixed(3), "-i", input.rightClip.path);
   args.push("-i", input.topPath);
+  if (from !== undefined) args.push("-ss", from.toFixed(3));
   args.push("-i", input.timerPath);
   // libvpx-vp9 explicitly: ffmpeg's *native* vp9 decoder silently drops the alpha side-data, so
   // without this the intro composites as an opaque card and its fades become hard cuts.
@@ -137,6 +158,9 @@ export function buildFastExportCommand(input: FastExportInput): BuiltCommand {
     input.countdownTeaserEndSec > input.countdownTeaserStartSec;
   const TEASER_INDEX = TOP_END_INDEX + (topEnd ? 1 : 0);
   if (teaser) args.push("-i", input.countdownTeaserPath!);
+  const OVERLAY_BASE = TEASER_INDEX + (teaser ? 1 : 0);
+  const timed = input.overlays ?? [];
+  for (const o of timed) args.push("-i", o.path);
   const trimFrames = Math.max(0, Math.round((input.headTrimSec ?? 0) * fps));
   const outSec = input.totalDurationSec - trimFrames / fps;
 
@@ -158,8 +182,8 @@ export function buildFastExportCommand(input: FastExportInput): BuiltCommand {
     `${startSec > 0 ? `tpad=start_duration=${startSec.toFixed(3)}:start_mode=add:color=black,` : ""}` +
     `settb=1/${fps}[${label}]`;
   chains.push(
-    povChain(0, "L", left.startOnTimelineSec),
-    povChain(1, "R", right.startOnTimelineSec),
+    povChain(0, "L", from === undefined ? left.startOnTimelineSec : 0),
+    povChain(1, "R", from === undefined ? right.startOnTimelineSec : 0),
     `[L][R]hstack=inputs=2[POV]`,
   );
 
@@ -216,16 +240,33 @@ export function buildFastExportCommand(input: FastExportInput): BuiltCommand {
 
   // The only genuine alpha composite in the whole graph. eof_action=pass so the stage continues
   // once the card is over (introSec, 7 s by default); repeatlast=0 so its last frame is not held over the match.
-  chains.push(
-    `[4:v]format=yuva420p,setsar=1,fps=${fps},settb=1/${fps},setpts=N+${input.introOffsetSec}/TB[INTRO]`,
-  );
-  // Anything that still has to happen to the composited frame (the upscale, then VAAPI's
-  // upload) runs after the overlay, so off leaves this overlay's own output label — and the
+  // Anything that still has to happen to the composited frame (the timed overlays, the upscale,
+  // then VAAPI's upload) runs after the intro, so off leaves its own output label — and the
   // graph after it — exactly as it is today.
   const needsPost = input.useVaapi || input.upscale1440;
-  const videoOut = needsPost ? "[STAGEI]" : "[V]";
-  chains.push(`${stage}[INTRO]overlay=0:0:format=yuv420:eof_action=pass:repeatlast=0${videoOut}`);
-  let composited = videoOut;
+  let composited = stage;
+  // A window (the cold open) is mid-race: no intro card in it.
+  if (from === undefined) {
+    chains.push(
+      `[4:v]format=yuva420p,setsar=1,fps=${fps},settb=1/${fps},setpts=N+${input.introOffsetSec}/TB[INTRO]`,
+    );
+    composited = needsPost || timed.length > 0 ? "[STAGEI]" : "[V]";
+    chains.push(`${stage}[INTRO]overlay=0:0:format=yuv420:eof_action=pass:repeatlast=0${composited}`);
+  }
+  // Each timed still starts at its own pts and passes through once its frames run out — the
+  // countdown teaser's mechanism above, on the output's own clock.
+  const outFrames = Math.round(outSec * fps);
+  timed.forEach((o, i) => {
+    const start = Math.max(0, Math.round(o.startSec * fps));
+    const frames = Math.min(outFrames, Math.round(o.endSec * fps)) - start;
+    if (frames <= 0) return;
+    chains.push(
+      `[${OVERLAY_BASE + i}:v]scale=${STAGE_WIDTH}:${STAGE_HEIGHT}:flags=bilinear,format=yuva420p,setsar=1,` +
+        `loop=loop=${frames - 1}:size=1:start=0,settb=1/${fps},setpts=N+${start}[O${i}]`,
+    );
+    chains.push(`${composited}[O${i}]overlay=0:0:format=yuv420:eof_action=pass:repeatlast=0[STAGEO${i}]`);
+    composited = `[STAGEO${i}]`;
+  });
   if (input.upscale1440) {
     // Every overlay asset (remotion/layout.ts, the stills, the intro card) is composited at
     // 1920x1080 above this line; this is the one place the canvas changes, after all of it. No
@@ -236,6 +277,7 @@ export function buildFastExportCommand(input: FastExportInput): BuiltCommand {
     composited = next;
   }
   if (input.useVaapi) chains.push(`${composited}format=nv12,hwupload[V]`);
+  else if (composited !== "[V]") chains.push(`${composited}null[V]`);
 
   // Each POV folded to mono and placed toward its own side: the left ear gets `p` of the left
   // stream and `1-p` of the right, mirrored for the right ear. At p=0.5 both ears get half of
@@ -247,12 +289,18 @@ export function buildFastExportCommand(input: FastExportInput): BuiltCommand {
     `pan=stereo|c0=${near.toFixed(2)}*c0+${near.toFixed(2)}*c1|c1=${far.toFixed(2)}*c0+${far.toFixed(2)}*c1`;
   // Delayed by the same `startOnTimelineSec` as the picture above, and likewise absent at 0.
   const delay = (sec: number) => (sec > 0 ? `adelay=${Math.round(sec * 1000)}:all=1,` : "");
-  chains.push(`[0:a]${delay(left.startOnTimelineSec)}aformat=channel_layouts=stereo,${pan(p, q)}[A0]`);
-  chains.push(`[1:a]${delay(right.startOnTimelineSec)}aformat=channel_layouts=stereo,${pan(q, p)}[A1]`);
+  const lead = (clip: typeof left) => (from === undefined ? clip.startOnTimelineSec : 0);
+  chains.push(`[0:a]${delay(lead(left))}aformat=channel_layouts=stereo,${pan(p, q)}[A0]`);
+  chains.push(`[1:a]${delay(lead(right))}aformat=channel_layouts=stereo,${pan(q, p)}[A1]`);
   // normalize=0 because MLT's `mix` transition sums its inputs (sum=1); ffmpeg's amix halves
   // each by default, which would quietly drop both POVs 6dB relative to the Kdenlive export.
+  // A window is cut out of the race: a short fade at each end, so neither join clicks.
+  const fades =
+    from === undefined
+      ? ""
+      : `,afade=t=in:d=0.08,afade=t=out:st=${Math.max(0, outSec - 0.25).toFixed(3)}:d=0.25`;
   chains.push(
-    `[A0][A1]amix=inputs=2:duration=longest:normalize=0,aresample=48000:async=1:first_pts=0${trimFrames > 0 ? `,atrim=start=${(trimFrames / fps).toFixed(6)},asetpts=PTS-STARTPTS` : ""}[A]`,
+    `[A0][A1]amix=inputs=2:duration=longest:normalize=0,aresample=48000:async=1:first_pts=0${trimFrames > 0 ? `,atrim=start=${(trimFrames / fps).toFixed(6)},asetpts=PTS-STARTPTS` : ""}${fades}[A]`,
   );
 
   args.push("-filter_complex", chains.join(";"));
@@ -352,6 +400,41 @@ export const exportRecordPath = (outDir: string, matchId: number): string =>
 
 export interface ExportRecord {
   matchStartSec: number;
+  /** The encoder and frame size that wrote the MP4 — what a cold open must be encoded with. */
+  encoder?: "h264_vaapi" | "libx264";
+  upscale1440?: boolean;
+  /** The cold open chosen at export (config.coldOpenSec): `sec` from `fromMs` into the race. */
+  coldOpen?: { fromMs: number; sec: number };
+  /** Set once the cold open is joined in front: its length (already in `matchStartSec`) and the
+   *  title hook burned into it. The export without it is `final-<id>.base.mp4`. */
+  coldOpenSec?: number;
+  coldOpenHook?: string;
+}
+
+export function readExportRecord(outDir: string, matchId: number): ExportRecord | null {
+  try {
+    const record = JSON.parse(readFileSync(exportRecordPath(outDir, matchId), "utf8")) as ExportRecord;
+    return typeof record.matchStartSec === "number" ? record : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The split stills that cover timeline [fromSec, fromSec + lenSec), re-based to the window's own
+ * 0 — the cold open's band. Frame-rounded the way the export's still chain rounds them.
+ */
+export function sliceStills(
+  splits: readonly { path: string; startSec: number; durationSec: number }[],
+  fromSec: number,
+  lenSec: number,
+): Array<{ path: string; startSec: number; durationSec: number }> {
+  const to = fromSec + lenSec;
+  return splits.flatMap((s) => {
+    const a = Math.max(s.startSec, fromSec);
+    const b = Math.min(s.startSec + s.durationSec, to);
+    return b > a ? [{ path: s.path, startSec: a - fromSec, durationSec: b - a }] : [];
+  });
 }
 
 export function writeExportRecord(outDir: string, matchId: number, record: ExportRecord): void {

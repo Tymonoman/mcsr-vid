@@ -5,6 +5,7 @@ import { ClipFrame } from "./ClipFrame.js";
 import { SeedIconSheet } from "./SeedIconMC.js";
 import { SeedIconScene, type BakedScene } from "./SeedScene.js";
 import { CountdownTeaser } from "./CountdownTeaser.js";
+import { Banner, type BannerProps } from "./Banner.js";
 import { Short, ShortCaption, ShortEndCard, ShortHook, ShortResult, type ShortStillProps } from "./Short.js";
 import { ChatPanel } from "./ChatPanel.js";
 import {
@@ -329,6 +330,21 @@ export const RemotionRoot: React.FC = () => {
         width={1920}
         height={1080}
         defaultProps={{ momentMs: 314_000, text: "THE LEAD CHANGES ON BLIND TRAVEL" }}
+      />
+      <Composition
+        id="Banner"
+        component={Banner}
+        durationInFrames={1}
+        fps={30}
+        width={1920}
+        height={1080}
+        defaultProps={
+          {
+            kind: "explain",
+            head: "FORTRESS",
+            text: "BLAZES SPAWN ONLY HERE.\nEACH DROPS A ROD 50%\nOF THE TIME",
+          } as BannerProps
+        }
       />
     </>
   );

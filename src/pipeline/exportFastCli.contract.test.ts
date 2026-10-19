@@ -8,7 +8,7 @@
 //     record of where match start sits is left alone.
 //  3. A smoke run renders a short range: N seconds of output.
 //  4. Without `--seconds`, the export is `final-<id>.mp4` plus `final-<id>.json`
-//     `{ matchStartSec }` — 10 for the default 7 s intro card (`introSec + 3`).
+//     `{ matchStartSec, encoder, upscale1440 }` — 10 for the default 7 s intro card (`introSec + 3`).
 //  5. `--cpu` encodes in software (libx264) even where the VAAPI node exists.
 //  6. `--full-tail` keeps the whole rendered overlay span instead of trimming the tail.
 //  7. The id may be a match page URL (README: "Commands accept a match id or a match page URL").
@@ -174,7 +174,8 @@ assert.equal(final.status, 0, final.stderr);
 assert.equal(read(final.dir, `final-${ID}.mp4`), "ENCODED", "a full export replaces final-<id>.mp4");
 assert.deepEqual(
   JSON.parse(read(final.dir, `final-${ID}.json`)!),
-  { matchStartSec: 10 },
+  // The encoder rides along for a later cold open (src/pipeline/coldOpen.ts); none is planned by default.
+  { matchStartSec: 10, encoder: "libx264", upscale1440: false },
   "7 s card: match start at 0:10",
 );
 assert.equal(existsSync(path.join(final.dir, `smoke-${ID}.mp4`)), false, "and writes no smoke file");

@@ -237,6 +237,23 @@ assert.equal(twoProportionZ(0, 0, 10, 100), 0, "nothing to divide by on one side
   assert.ok(!overlap.text.includes("pooled z"), "the pooled z is a CTR number only");
 }
 
+// --- verdictFor: retention at 10% of the video (x5), per video; a video without a curve has none --
+{
+  const metric = baseExperiment({ metric: "retention at 10%" });
+  const at10 = (pcts: number[]) => pcts.map((p) => ({ ...video(5, 40), retentionAt10: p }));
+  const clear = verdictFor(metric, await armsOf({ control: at10(around(58)), variant: at10(around(66)) }));
+  assert.ok(
+    clear.text.startsWith("variant wins on retention at 10% (variant 66.0% vs control 58.0%"),
+    clear.text,
+  );
+  assert.equal(clear.winnerArm, "variant");
+  const noCurve = verdictFor(metric, await armsOf({ control: avpOnly(8), variant: at10(around(66)) }));
+  assert.equal(noCurve.text, "not enough videos (0 with retention at 10% in arm control, 8 needed)");
+}
+function avpOnly(n: number): VideoMetrics[] {
+  return [...Array(n)].map(() => video(5, 40));
+}
+
 // --- verdictFor: subscribers per 1,000 views, per video; an unknown metric decides nothing -------
 {
   const subs = (n: number[]) => n.map((k) => video(5, 40, 5000, k));
@@ -1017,7 +1034,9 @@ assert.equal(twoProportionZ(0, 1000, 0, 1000), 0, "pooled proportion 0 — se is
       ],
       "a deleted match directory does not drop its video out of the arm",
     );
-    console.log("OK: a video whose match directory was deleted is still measured, from the experiment's start");
+    console.log(
+      "OK: a video whose match directory was deleted is still measured, from the experiment's start",
+    );
   } finally {
     globalThis.fetch = realFetch;
     delete process.env.YOUTUBE_TOKEN_FILE;
