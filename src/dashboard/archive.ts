@@ -14,8 +14,9 @@ import path from "node:path";
 import { config } from "../config.js";
 import { warsawParts } from "../telegram/schedule.js";
 
-/** Where the NAS is mounted inside the container. See compose.yaml. */
-const ARCHIVE_ROOT = process.env.MCSR_ARCHIVE_DIR ?? "/archive";
+/** Where the NAS is mounted inside the container. See compose.yaml. Exported for `freeLocalCopies`
+ *  (src/dashboard/nightly.ts), which must check the same path this module copies into. */
+export const ARCHIVE_ROOT = process.env.MCSR_ARCHIVE_DIR ?? "/archive";
 
 /**
  * NAS transfers run only in this Warsaw wall-clock window — the disks are audible in the

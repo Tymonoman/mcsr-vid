@@ -57,6 +57,7 @@
   "overlayFps": 30,
   "renderConcurrency": null,
   "nightlyRenderHourUtc": 3,
+  "spaceAlarmGb": 25,
   "publishHourUtc": 19,
   "seriesPublishHourUtc": 23,
   "seriesPairGapDays": 3,

@@ -226,6 +226,14 @@ export interface Config {
    */
   nightlyRenderHourUtc: number | null;
   /**
+   * The 15-minute tick's Telegram alarm: under this many GB free on `/media`, "Needs you" gets a
+   * line naming the free space and about how much the next NAS sweep (`freeLocalCopies`,
+   * src/dashboard/nightly.ts) would recover right now. Never blocks anything by itself — see
+   * `MIN_FREE_MATCHES` for the nightly's own pick-time guard and the 15 GB "still try" line
+   * `runOnce` logs before starting a render.
+   */
+  spaceAlarmGb: number;
+  /**
    * Whether a clean nightly render is also encoded to a finished MP4 (`npm run export:fast`,
    * ~10 minutes for a 10-minute match on the lab's VAAPI). On by default, because the render
    * alone leaves a project and overlays: nothing to watch in the preview and nothing to upload,
@@ -591,6 +599,7 @@ export const DEFAULTS: Config = {
   overlayFps: 30,
   renderConcurrency: null,
   nightlyRenderHourUtc: 3,
+  spaceAlarmGb: 25,
   publishHourUtc: 19,
   seriesPublishHourUtc: 23,
   seriesPairGapDays: 3,

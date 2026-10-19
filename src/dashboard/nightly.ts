@@ -26,9 +26,17 @@
  * It renders no Short and uploads nothing: those wait for the operator's hooks (23 Sept 2026), and
  * the notification says how many matches are waiting for one.
  */
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
-import { archiveMatch, capacity, inNasWindow, refreshArchived } from "./archive.js";
+import { ARCHIVE_ROOT, archiveMatch, capacity, inNasWindow, refreshArchived } from "./archive.js";
 import { blockedIn, config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { writeExperimentArmFile } from "./experiments.js";
@@ -49,10 +57,11 @@ import {
 import { pairKey, refreshPairPosts } from "./pairPosts.js";
 import { orderForDisplay } from "./suggestPresent.js";
 import { dnfRefusal, matchIsDnf, playoffBoard, type PlayoffBoard } from "../playoffs/playoffs.js";
+import { readSeriesRecord } from "../playoffs/series.js";
 import { blockedOnDisk, listProcessedMatchIds } from "./matchStatus.js";
 import { shortRunning } from "./shortsRoutes.js";
 import { anyThumbnailRunning, thumbnailRunning } from "../thumbnails/rerender.js";
-import { nightlyShortSummary, picksIdle, shortTick } from "./shortFlow.js";
+import { nightlyShortSummary, picksIdle, readStatus, shortTick } from "./shortFlow.js";
 import { snapshot, startScan } from "./suggestScan.js";
 import {
   knownPlayerFor,
@@ -66,7 +75,8 @@ import type { MatchInfo } from "../api/types.js";
 import { computeMetrics } from "../pipeline/matchScore.js";
 import { withDiscoveredVods } from "../pipeline/vodDiscovery.js";
 import { retryFailedPlaylists, retryPendingComments, retryPendingStudio } from "../youtube/youtubeUpload.js";
-import { allUploads } from "../youtube/youtubeStore.js";
+import { allUploads, readUpload } from "../youtube/youtubeStore.js";
+import { videoStats, type VideoStats } from "../youtube/youtube.js";
 import { claimedPublishTimes } from "../youtube/publishSlot.js";
 import { pickFile, type ShortPick } from "../shorts/shortPlan.js";
 import { pickErrorFile } from "../shorts/videoPick.js";
@@ -79,6 +89,15 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * carrying its own copy of the number.
  */
 export const MIN_FREE_MATCHES = 2;
+
+/**
+ * Below this, a starting render only gets a log line, never a refusal (19 Oct 2026: "this
+ * situation should not happen again the space should be automatically cleared" — the sweep above
+ * is the fix; a render must still never be the thing that silently stops because of it).
+ * `MIN_FREE_MATCHES` above is the separate, lower, harder guard `pickNightlyCandidate` already
+ * applies before a candidate is even chosen — this only adds visibility once one has been.
+ */
+const LOW_DISK_LOG_BYTES = 15 * 1024 ** 3;
 
 /**
  * 8:00 — the operator, 18 Oct 2026: "a near-record (sub-8) run jumps the queue: yes". Unconditional,
@@ -880,6 +899,126 @@ export async function sweepArchive(
   }
 }
 
+/* --- Freeing local copies once the NAS already has them ---------------------------------------- */
+
+/**
+ * A big local file whose NAS copy is this match's to lose first — the operator's hand rule from
+ * the 19 Oct 2026 space scramble (/media at 98%, 90 GB freed by hand; "this situation should not
+ * happen again the space should be automatically cleared"), copied from the script that did it
+ * (`final-<id>.mp4`/`series-<id>.mp4`/the fixed overlay names/the two POV clips — never
+ * `short-<id>.mp4`, a json/txt/png record or a thumbnail).
+ */
+const BIG_LOCAL_FILE = (id: string, f: string): boolean =>
+  f === `final-${id}.mp4` ||
+  f === `series-${id}.mp4` ||
+  f === "overlay-timer.mp4" ||
+  f === "overlay.mov" ||
+  f === "overlay-intro.mov" ||
+  f === "short-proxy.mp4" ||
+  (f.endsWith(".mp4") && !/^(final-|overlay|short-|short_|series-|smoke-)/.test(f));
+
+const SPACE_LEDGER_FILE = ".space-ledger.jsonl";
+const PUBLIC_48H_MS = 48 * 3600 * 1000;
+
+export interface FreedFile {
+  /** The directory it came out of — a series' game 2..n for a joined series. */
+  matchId: number;
+  /** The long-form video this match (or its series) is recorded under. */
+  videoId: string;
+  file: string;
+  bytes: number;
+}
+
+/**
+ * What tonight's sweep would delete, right now, without deleting anything or caring what hour it
+ * is — the one read the low-disk Telegram line (src/telegram/facts.ts) and the real sweep below
+ * share, so "frees about M GB" is never a different number than what the sweep actually does.
+ *
+ * A file counts only when: an identically-sized copy already sits under `ARCHIVE_ROOT`; the
+ * long-form reads PUBLIC on YouTube right now (`fetchStats`, never the possibly-stale
+ * `youtube.json`) and has for at least 48 h; its Short, if one was ever recorded, reads PUBLIC
+ * too; and no `short-<id>.status.json` step is still "running" or "failed". A series' games 2..n
+ * carry no `youtube.json` of their own and are judged entirely by game 1's — CLAUDE.md, "Series:
+ * games of a joined series count via game 1's record."
+ */
+export async function planFreeLocalCopies(
+  now: () => number = Date.now,
+  fetchStats: (ids: string[]) => Promise<VideoStats[]> = videoStats,
+): Promise<FreedFile[]> {
+  const uploads = await allUploads();
+  const shortVideoId = new Map<number, string | null>(
+    await Promise.all(
+      uploads.map(async ({ matchId }): Promise<[number, string | null]> => [
+        matchId,
+        (await readUpload(matchId, "short"))?.videoId ?? null,
+      ]),
+    ),
+  );
+  const ids = [
+    ...new Set(
+      [...uploads.map((u) => u.record.videoId), ...shortVideoId.values()].filter(
+        (v): v is string => v !== null,
+      ),
+    ),
+  ];
+  const live = new Map((await fetchStats(ids)).map((v) => [v.videoId, v]));
+  const nowMs = now();
+  const freed: FreedFile[] = [];
+
+  for (const { matchId, record } of uploads) {
+    const v = live.get(record.videoId);
+    if (!v || v.privacyStatus !== "public") continue;
+    const publicAt = v.publishAt || record.publishAt || v.publishedAt;
+    if (!publicAt || nowMs - Date.parse(publicAt) < PUBLIC_48H_MS) continue;
+    const shortId = shortVideoId.get(matchId);
+    if (shortId && live.get(shortId)?.privacyStatus !== "public") continue;
+    const steps = readStatus(matchId).steps;
+    if (Object.values(steps).some((s) => s?.state === "running" || s?.state === "failed")) continue;
+
+    const series = await readSeriesRecord(matchDir(matchId));
+    const gameIds = series ? series.games.map((g) => g.matchId) : [matchId];
+    for (const id of gameIds) {
+      const dir = matchDir(id);
+      if (!existsSync(dir)) continue;
+      for (const f of readdirSync(dir)) {
+        if (!BIG_LOCAL_FILE(String(id), f)) continue;
+        const full = path.join(dir, f);
+        const st = statSync(full);
+        if (!st.isFile()) continue;
+        const archived = path.join(ARCHIVE_ROOT, String(id), f);
+        if (!existsSync(archived) || statSync(archived).size !== st.size) continue;
+        freed.push({ matchId: id, videoId: record.videoId, file: f, bytes: st.size });
+      }
+    }
+  }
+  return freed;
+}
+
+/**
+ * `planFreeLocalCopies`'s list, actually deleted and logged one JSON line per file to
+ * `<mediaDir>/.space-ledger.jsonl`. Gated on the NAS window like `sweepArchive`, which runs
+ * first (`runOnce`) so a file is never freed the same night its archive copy is still being
+ * written.
+ */
+export async function freeLocalCopies(
+  now: () => number = Date.now,
+  fetchStats: (ids: string[]) => Promise<VideoStats[]> = videoStats,
+): Promise<FreedFile[]> {
+  if (!inNasWindow(now())) return [];
+  const freed = await planFreeLocalCopies(now, fetchStats);
+  if (freed.length === 0) return freed;
+  const at = new Date(now()).toISOString();
+  for (const f of freed) unlinkSync(path.join(matchDir(f.matchId), f.file));
+  appendFileSync(
+    path.join(config.mediaDir, SPACE_LEDGER_FILE),
+    freed.map((f) => JSON.stringify({ at, ...f }) + "\n").join(""),
+  );
+  console.error(
+    `nightly: freed ${(freed.reduce((n, f) => n + f.bytes, 0) / 1e9).toFixed(2)} GB (${freed.length} files) already on the NAS`,
+  );
+  return freed;
+}
+
 /**
  * One nightly run, from the guards to the notification.
  *
@@ -943,6 +1082,13 @@ async function runOnce(
         await sweepArchive(now);
       } catch (err) {
         console.error(`nightly: NAS sweep failed — ${describeError(err)}`);
+      }
+      // After the copy, not instead of it: a file this freed tonight is one `sweepArchive` just
+      // confirmed is safely on the NAS, never one it was still writing.
+      try {
+        await freeLocalCopies(now);
+      } catch (err) {
+        console.error(`nightly: freeing local copies failed — ${describeError(err)}`);
       }
     }
 
@@ -1019,6 +1165,10 @@ async function runOnce(
 
     const { matchId, players } = pick.metrics;
     const label = `${players[0]} vs ${players[1]}`;
+    const freeBytes = (await capacity(now())).working?.freeBytes;
+    if (freeBytes !== undefined && freeBytes < LOW_DISK_LOG_BYTES) {
+      console.error(`nightly: low disk — ${(freeBytes / 1e9).toFixed(1)} GB free, starting anyway`);
+    }
     console.error(`nightly: starting render of #${matchId} ${label}`);
     lastStartedId = matchId;
     // This chain's own diversity memory, and the weekly mixed-pair budget — spent the moment the

@@ -1300,8 +1300,39 @@ failed boot check offers it again. Client changes need only a reload.
   operator, 1 Oct: "create a directory there and use the space responsibly"): `vods/<id>/` holds
   known-player matches' VOD sections secured before Twitch's 14-day expiry (copy the folder to
   `/media/<id>/` to render one), `research/` the datasets behind reports, `backups/` anything
-  replaced; at most 300 GB, every write a line in `ledger.jsonl`, README there. Free SSD space by
-  archiving to the NAS first, not by deleting.
+  replaced; at most 300 GB, every write a line in `ledger.jsonl`, README there.
+- **Freeing local copies once the NAS already has them** (19 Oct 2026: `/media` hit 98% (5 GB
+  free), 90 GB freed by hand; the operator: "this situation should not happen again the space
+  should be automatically cleared"). `freeLocalCopies`/`planFreeLocalCopies`
+  (`src/dashboard/nightly.ts`) run every night, inside the NAS window, right after `sweepArchive`
+  (so a file is never freed the same night its archive copy is still being written) — not only
+  when the disk is full. A file (`BIG_LOCAL_FILE`: the two POV clips, `final-<id>.mp4`,
+  `series-<id>.mp4`, `overlay-timer.mp4`, the two legacy `overlay.mov`/`overlay-intro.mov` names,
+  `short-proxy.mp4` — never `short-<id>.mp4`, a json/txt/png record or a thumbnail) is deleted
+  only when: an identically-sized copy already sits under `ARCHIVE_ROOT` (exported from
+  `archive.ts` for this); the long-form reads PUBLIC on YouTube right now via a live `videoStats`
+  call, never the possibly-stale `youtube.json`, and has for ≥48 h; its Short, if one was ever
+  recorded, reads PUBLIC too; and no `short-<id>.status.json` step is "running" or "failed". A
+  series' games 2..n carry no `youtube.json` of their own and are judged entirely through game 1's
+  record (`readSeriesRecord`, `series.games` fans out to every game's directory). Every deletion
+  is one JSON line (`at`, `matchId`, `videoId`, `file`, `bytes`) appended to
+  `<mediaDir>/.space-ledger.jsonl` — `planFreeLocalCopies` is the same read with no deletion and
+  no window gate, shared with the Telegram alarm below so the two numbers can never disagree.
+  `config.spaceAlarmGb` (default 25, Settings → Nightly, a plain int — no special-case validation
+  needed since its default is a finite number) feeds a new Needs-you line
+  (`spaceAlarmItem`, `src/telegram/facts.ts`, exported for its own test): under that many GB free
+  on `/media`, "disk: N GB free on /media; the next NAS sweep frees about M GB" where M is
+  `planFreeLocalCopies`'s bytes right now — computed fresh on every report/`/needs` call rather
+  than on its own timer, since Needs-you already answers fresh each time (CLAUDE.md's Telegram
+  section) and a second interval would just be a second thing to keep in sync with the same read.
+  Separately, `runOnce` logs (never refuses) when free space is under 15 GB right before the
+  night's render actually starts — `MIN_FREE_MATCHES` (2 matches, ~6 GB) is the older, harder,
+  unchanged guard `pickNightlyCandidate` applies before a candidate is even chosen; this only adds
+  visibility in the band above it, since below `MIN_FREE_MATCHES` no candidate (and so no render)
+  is picked at all. Tests: `src/dashboard/archive.test.ts` (the eligibility rule — size mismatch,
+  under 48 h, a pending step, `short-<id>.mp4` excluded, a series' game 2 judged through game 1;
+  outside the window nothing happens, not even a plan; the ledger's contents) and
+  `src/telegram/facts.space.test.ts` (the alarm line, silent above the threshold).
 - `docs/` is the GitHub Pages site (`mcsr.sezamki.site`: the OAuth homepage, privacy and terms
   pages Google checks). `deploy/mcsr-claude.service` is the lab's systemd user unit for the
   Claude container. Only `~/.claude` is a persisted volume in that container: save loose ends

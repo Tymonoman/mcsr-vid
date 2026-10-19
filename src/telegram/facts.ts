@@ -23,7 +23,12 @@ import {
 import { readUpload } from "../youtube/youtubeStore.js";
 import { analytics, fetchYppSnapshot, projectYpp, type YppProgress } from "../youtube/yppProgress.js";
 import { capacity } from "../dashboard/archive.js";
-import { readNightlyState, MIN_FREE_MATCHES, type NightlyLastRun } from "../dashboard/nightly.js";
+import {
+  readNightlyState,
+  MIN_FREE_MATCHES,
+  planFreeLocalCopies,
+  type NightlyLastRun,
+} from "../dashboard/nightly.js";
 import { restartState } from "../dashboard/restartWhenIdle.js";
 import { hiddenMatchIds, isExported, nightlyQueue, nightlySkip } from "../dashboard/matchShelf.js";
 import { blockedOnDisk, listProcessedMatchIds, matchStatusFor } from "../dashboard/matchStatus.js";
@@ -289,7 +294,8 @@ async function handShortItems(nowMs: number): Promise<NeedsYouItem[]> {
     // publishAt null is "published on upload" when the record says public, else private with no date.
     const goesPublic = video?.publishAt ?? (video?.privacyStatus === "public" ? video.uploadedAt : null);
     const at = goesPublic ? Date.parse(goesPublic) : NaN;
-    if (!Number.isFinite(at) || at > nowMs + HAND_SHORT_AHEAD_MS || at < nowMs - HAND_SHORT_BEHIND_MS) continue;
+    if (!Number.isFinite(at) || at > nowMs + HAND_SHORT_AHEAD_MS || at < nowMs - HAND_SHORT_BEHIND_MS)
+      continue;
     if (blockedOnDisk(dir)) continue;
     const m = await matchStatusFor(matchId).catch(() => null);
     items.push({
@@ -337,7 +343,11 @@ async function liveTitleItems(): Promise<NeedsYouItem[]> {
     const pair = rest.map((s) => /^(.+?)\s+vs\.?\s+(.+?)(?:\s+#\S+)*$/i.exec(s.trim())).find(Boolean);
     const players = pair ? [pair[1]!, pair[2]!] : undefined;
     if (blockedOnDisk(matchDir(r.matchId)) || blockedIn(players ?? [])) continue;
-    const problem = hookProblem(hook, 100, players?.map((nickname) => ({ nickname })));
+    const problem = hookProblem(
+      hook,
+      100,
+      players?.map((nickname) => ({ nickname })),
+    );
     if (problem)
       items.push({
         matchId: r.matchId,
@@ -357,7 +367,10 @@ async function liveVideos(ids: readonly string[]): Promise<Map<string, LiveVideo
   const out = new Map<string, LiveVideo>();
   try {
     for (let i = 0; i < ids.length; i += 50) {
-      const batch = ids.slice(i, i + 50).map(encodeURIComponent).join(",");
+      const batch = ids
+        .slice(i, i + 50)
+        .map(encodeURIComponent)
+        .join(",");
       const body = await dataApiGet<{
         items?: Array<{
           id: string;
@@ -520,17 +533,33 @@ async function queuedDnfItems(): Promise<NeedsYouItem[]> {
   return items;
 }
 
+/** Under `config.spaceAlarmGb` free on `/media`: how much free and about how much the next NAS
+ *  sweep (`planFreeLocalCopies`) would recover right now — the same read the sweep itself uses,
+ *  so this is never a different number than what actually runs at 03:00 Warsaw. */
+export async function spaceAlarmItem(): Promise<NeedsYouItem | null> {
+  const free = (await capacity()).working?.freeBytes;
+  if (free === undefined || free >= config.spaceAlarmGb * 1024 ** 3) return null;
+  const freed = await planFreeLocalCopies().catch(() => []);
+  const gb = (b: number) => (b / 1e9).toFixed(1);
+  const freedBytes = freed.reduce((n, f) => n + f.bytes, 0);
+  return {
+    text: `disk: ${gb(free)} GB free on ${config.mediaDir}; the next NAS sweep frees about ${gb(freedBytes)} GB`,
+  };
+}
+
 async function gatherNeedsYou(nowMs: number, sinceMs: number): Promise<NeedsYouFacts> {
-  const [failed, syncHold, studio, noUpload, handShort, liveTitles, blocked, queuedDnf] = await Promise.all([
-    failedStepItems(),
-    syncHoldItems(),
-    Promise.resolve(studioItem()),
-    noUploadSoonItem(nowMs),
-    handShortItems(nowMs),
-    liveTitleItems(),
-    blockedRunnerItems(sinceMs),
-    queuedDnfItems(),
-  ]);
+  const [failed, syncHold, studio, noUpload, handShort, liveTitles, blocked, queuedDnf, space] =
+    await Promise.all([
+      failedStepItems(),
+      syncHoldItems(),
+      Promise.resolve(studioItem()),
+      noUploadSoonItem(nowMs),
+      handShortItems(nowMs),
+      liveTitleItems(),
+      blockedRunnerItems(sinceMs),
+      queuedDnfItems(),
+      spaceAlarmItem(),
+    ]);
   // Blocked runners first: renderNeedsYou's cap keeps items in this order, and "a blocked runner
   // commented" is listed on no dashboard screen, so its "+ N more" would hide it for good.
   const items = [
@@ -542,6 +571,7 @@ async function gatherNeedsYou(nowMs: number, sinceMs: number): Promise<NeedsYouF
     ...handShort,
     ...liveTitles,
     ...queuedDnf,
+    ...(space ? [space] : []),
     ...needsHumanItems(),
     ...studioWorkerItems(nowMs),
   ];

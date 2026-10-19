@@ -64,6 +64,15 @@ export const SETTINGS: readonly SettingField[] = [
     unattended: true,
   },
   {
+    key: "spaceAlarmGb",
+    label: "Low-disk alarm (GB free)",
+    help: "Under this many GB free on /media, the Telegram report's Needs-you section names the free space and about how much the next NAS sweep would recover. Never blocks a render by itself.",
+    kind: "int",
+    group: "Nightly",
+    min: 1,
+    max: 500,
+  },
+  {
     key: "nightlyMaxRenders",
     label: "Renders per night",
     help: "How many cards one night may work through. Each is a further ~21 minutes and ~2.2 GB.",

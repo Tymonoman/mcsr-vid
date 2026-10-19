@@ -297,7 +297,7 @@ reload). After merging server changes, `POST /api/restart-when-idle`.
   `backups/`; at most 300 GB, every write logged to `ledger.jsonl`). **The dashboard's transfers
   run only 03:00–08:00 Warsaw** (`inNasWindow`, DST-correct); outside it an automatic copy defers
   to the next night's sweep. `npm run archive -- <id>` is a hand copy that runs at once; run it
-  inside the window. Free SSD space by archiving first, not by deleting.
+  inside the window. `freeLocalCopies` frees a public-48h+ file; `spaceAlarmGb` flags low disk.
 
 ## Telegram bot
 
