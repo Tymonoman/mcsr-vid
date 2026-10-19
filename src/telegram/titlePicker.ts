@@ -55,11 +55,21 @@ export const setTitleOptionsImpl = (fn: TitleOptionsFn): void => {
 const callbackData = (matchId: number, idx: number | "r" | "x" | "u"): string => `t:${matchId}:${idx}`;
 const CALLBACK_RE = /^t:(\d+):(\d+|r|x|u)$/;
 
-const offerCaption = (matchId: number, left: string, right: string, slotAt: Date): string =>
+const offerCaption = (
+  matchId: number,
+  left: string,
+  right: string,
+  slotAt: Date,
+  opt?: { options: string[]; whys?: string[] },
+): string =>
   [
     `<b>${bot.escapeHtml(titleName(left))} vs ${bot.escapeHtml(titleName(right))}</b>`,
     `Next free slot: ${bot.escapeHtml(whenWarsaw(slotAt.toISOString()))}`,
     bot.escapeHtml(`${dashboardMatchUrl()}/#match=${matchId}`),
+    // Why each option (19 Oct 2026, the operator's ask); an older cache has no reasons.
+    ...(opt?.whys?.some((w) => w)
+      ? ["", ...opt.options.map((o, i) => `${i + 1}. <b>${bot.escapeHtml(o)}</b>${opt.whys?.[i] ? ` — ${bot.escapeHtml(opt.whys[i]!)}` : ""}`)]
+      : []),
   ].join("\n");
 
 /** `uploaded`: whether the long-form is already on the channel — picks the veto row's wording. */
@@ -169,7 +179,7 @@ export async function sendTitleOffer(
   const f = await factsOf(matchId);
   const slot = await videoPublishTime(matchId, Date.now());
   const [left, right] = match.players;
-  const caption = offerCaption(matchId, left!.nickname, right!.nickname, slot.at);
+  const caption = offerCaption(matchId, left!.nickname, right!.nickname, slot.at, opt);
   const keyboard = offerKeyboard(matchId, opt.options, f.video !== null);
   const sent = await bot.sendPhoto(thumb, caption, { html: true, keyboard });
   updateTelegramState((s) => {
@@ -253,7 +263,7 @@ async function refreshOffer(
   const f = await factsOf(matchId);
   const slot = await videoPublishTime(matchId, Date.now());
   const [left, right] = match.players;
-  const caption = offerCaption(matchId, left!.nickname, right!.nickname, slot.at);
+  const caption = offerCaption(matchId, left!.nickname, right!.nickname, slot.at, opt);
   await bot.editMessageCaption(chat, messageId, caption, {
     html: true,
     keyboard: offerKeyboard(matchId, opt.options, f.video !== null),
@@ -376,7 +386,11 @@ async function undoVeto(matchId: number, chat: number, messageId: number, cqId: 
   const f = await factsOf(matchId);
   const slot = await videoPublishTime(matchId, Date.now());
   const [left, right] = match.players;
-  const caption = offerCaption(matchId, left!.nickname, right!.nickname, slot.at);
+  const cached = await titleOptionsImpl(matchId).catch(() => null);
+  const caption = offerCaption(matchId, left!.nickname, right!.nickname, slot.at, {
+    options: offer.options,
+    whys: cached && cached.options.join("\n") === offer.options.join("\n") ? cached.whys : undefined,
+  });
   await bot.editMessageCaption(chat, messageId, caption, {
     html: true,
     keyboard: offerKeyboard(matchId, offer.options, f.video !== null),
@@ -423,7 +437,7 @@ export async function titleOfferPreview(matchId: number): Promise<string> {
   const opt = await titleOptionsImpl(matchId, { fresh: true });
   const slot = await videoPublishTime(matchId, Date.now());
   const [left, right] = match.players;
-  const caption = offerCaption(matchId, left!.nickname, right!.nickname, slot.at);
+  const caption = offerCaption(matchId, left!.nickname, right!.nickname, slot.at, opt);
   return [
     caption,
     "",

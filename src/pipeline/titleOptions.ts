@@ -55,6 +55,9 @@ export interface TitleOptions {
   source: ("nicknames" | "model" | "chip")[];
   /** Parallel to `options`. */
   styles: TitleStyle[];
+  /** Parallel to `options`: one line on what each plays on, for the operator's picker (19 Oct 2026:
+   *  "add to the telegram title picking why you chose each title proposal"). Older caches lack it. */
+  whys?: string[];
   /** Why there are fewer than 3 (or none): the model was unavailable, nothing passed, … */
   reason?: string;
 }
@@ -290,7 +293,7 @@ Other hard rules:
 
 Each option is one of four styles: meme (a trending community joke, from the list below if one is given and fits), tech (a pun on real speedrun technique or gameplay), setting (a tease built from the seed/bastion/world alone), tease (a plain, honest line that leans on none of those). Never force a meme or a technique that is not in "What happened in this run" — a setting or tease option is always safe.
 
-Answer with ${ASK_FOR} options, one per line, each as STYLE|TITLE (e.g. "tech|BLIND DATE AT THE BRIDGE") — nothing else.`;
+Answer with ${ASK_FOR} options, one per line, each as STYLE|TITLE|WHY — WHY is one short plain line (under 80 characters) naming the recorded fact or the reference the title plays on (e.g. "tech|BLIND DATE AT THE BRIDGE|blind travel + a bridge bastion, pun on a blind date") — nothing else.`;
 
 function titlePrompt(input: {
   facts: readonly string[];
@@ -352,13 +355,16 @@ function parseLines(text: string): string[] {
  * one that is not in `MODEL_STYLES` — keeps its text and falls back to "tease", the catch-all:
  * a formatting slip costs a style tag, never the option itself.
  */
-export function parseStyledLines(text: string): Array<{ style: TitleStyle; text: string }> {
+export function parseStyledLines(text: string): Array<{ style: TitleStyle; text: string; why: string }> {
   return parseLines(text).map((line) => {
-    const at = line.indexOf("|");
-    if (at < 0) return { style: "tease", text: line };
-    const style = line.slice(0, at).trim().toLowerCase();
-    const rest = line.slice(at + 1).trim();
-    return { style: (MODEL_STYLES.has(style) ? style : "tease") as TitleStyle, text: rest };
+    const parts = line.split("|").map((p) => p.trim());
+    if (parts.length < 2) return { style: "tease", text: line, why: "" };
+    const style = parts[0]!.toLowerCase();
+    return {
+      style: (MODEL_STYLES.has(style) ? style : "tease") as TitleStyle,
+      text: parts[1]!,
+      why: parts.slice(2).join(" | "),
+    };
   });
 }
 
@@ -400,12 +406,13 @@ async function buildTitleOptions(matchId: number): Promise<TitleOptions> {
   const options: string[] = [];
   const source: TitleOptions["source"] = [];
   const styles: TitleStyle[] = [];
+  const whys: string[] = [];
   /** Populated once there's a model (or chip) call to make — see below; `add()` closes over it. */
   let existingHooks: string[] = [];
 
   /** Every check a model or chip phrase hook has to pass; the nicknames pair below is operator
    *  grant, not re-checked against any of this. */
-  const add = (text: string, from: "model" | "chip", style: TitleStyle): void => {
+  const add = (text: string, from: "model" | "chip", style: TitleStyle, why: string): void => {
     if (options.length >= MAX_OPTIONS) return;
     const t = text.trim();
     if (
@@ -421,6 +428,7 @@ async function buildTitleOptions(matchId: number): Promise<TitleOptions> {
     options.push(t);
     source.push(from);
     styles.push(style);
+    whys.push(why);
   };
 
   const leftNick = runnerNickname(left.nickname);
@@ -431,6 +439,7 @@ async function buildTitleOptions(matchId: number): Promise<TitleOptions> {
       options.push(pair);
       source.push("nicknames");
       styles.push("nicknames");
+      whys.push("your own nicknames for both runners");
     }
   }
 
@@ -471,7 +480,7 @@ async function buildTitleOptions(matchId: number): Promise<TitleOptions> {
       { systemPrompt: TITLE_SYSTEM_PROMPT, model: TITLE_MODEL, timeoutMs: 180_000 },
     );
     if (reply.ok) {
-      for (const { style, text } of parseStyledLines(reply.text)) add(text, "model", style);
+      for (const { style, text, why } of parseStyledLines(reply.text)) add(text, "model", style, why);
     } else {
       reason = `the model was unavailable (${describeFailure(reply)})`;
     }
@@ -487,10 +496,11 @@ async function buildTitleOptions(matchId: number): Promise<TitleOptions> {
       maxChars: hookMax,
       minChars: 0,
     };
-    for (const c of buildHookSuggestions(chipInput, 5)) add(c.toUpperCase(), "chip", chipStyle(c));
+    for (const c of buildHookSuggestions(chipInput, 5))
+      add(c.toUpperCase(), "chip", chipStyle(c), "fallback: a plain line from the match facts");
   }
 
   return options.length > 0
-    ? { options, source, styles, ...(reason ? { reason } : {}) }
-    : { options, source, styles, reason: reason ?? "nothing passed the checks for this match" };
+    ? { options, source, styles, whys, ...(reason ? { reason } : {}) }
+    : { options, source, styles, whys, reason: reason ?? "nothing passed the checks for this match" };
 }

@@ -216,14 +216,15 @@ const cacheFile = (id: number) => path.join(dir(id), "title-options.json");
 // parseStyledLines: "STYLE|TITLE" per line; no "|" or an unrecognised style still keeps the text,
 // filed as the "tease" catch-all.
 {
-  assert.deepEqual(parseStyledLines("tech|BLIND DATE AT THE BRIDGE\nmeme|CHICKEN JOCKEY!!"), [
-    { style: "tech", text: "BLIND DATE AT THE BRIDGE" },
-    { style: "meme", text: "CHICKEN JOCKEY!!" },
-  ]);
-  assert.deepEqual(parseStyledLines("A HOOK WITH NO PIPE"), [
-    { style: "tease", text: "A HOOK WITH NO PIPE" },
-  ]);
-  assert.deepEqual(parseStyledLines("notastyle|STILL A HOOK"), [{ style: "tease", text: "STILL A HOOK" }]);
+  assert.deepEqual(
+    parseStyledLines("tech|BLIND DATE AT THE BRIDGE|blind travel + bridge bastion\nmeme|CHICKEN JOCKEY!!"),
+    [
+      { style: "tech", text: "BLIND DATE AT THE BRIDGE", why: "blind travel + bridge bastion" },
+      { style: "meme", text: "CHICKEN JOCKEY!!", why: "" },
+    ],
+  );
+  assert.deepEqual(parseStyledLines("A HOOK WITH NO PIPE"), [{ style: "tease", text: "A HOOK WITH NO PIPE", why: "" }]);
+  assert.deepEqual(parseStyledLines("notastyle|STILL A HOOK"), [{ style: "tease", text: "STILL A HOOK", why: "" }]);
 }
 
 console.log("titleOptions: all checks passed");
