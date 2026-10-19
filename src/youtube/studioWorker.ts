@@ -721,12 +721,15 @@ export async function setExperimentReadFailed(id: string, error: string): Promis
         ...e,
         result: { ...(e.result as object), checkedAt, readError: error, readErrorSince: since },
         ...(longStanding
-          ? { needsHuman: `A/B test could not be read two days running: ${error.split("\n")[0]}` }
+          ? { needsHuman: `${READ_FAILED_PREFIX} ${error.split("\n")[0]}` }
           : {}),
       };
     }),
   );
 }
+
+/** The start of a read-failure streak's `needsHuman`; a later good read clears exactly this flag. */
+const READ_FAILED_PREFIX = "A/B test could not be read two days running:";
 
 export async function setExperimentChecked(id: string, read: TcReadResult): Promise<void> {
   const checkedAt = new Date().toISOString();
@@ -741,6 +744,12 @@ export async function setExperimentChecked(id: string, read: TcReadResult): Prom
           result: { checkedAt, raw: read.raw },
           needsHuman: "Studio shows no A/B test on this video — the start did not take",
         };
+      // A good read ends a read-failure streak's flag (19 Oct 2026: five tests timed out together
+      // under load and kept their "could not be read" Needs-you line after reading fine again).
+      if (typeof e.needsHuman === "string" && e.needsHuman.startsWith(READ_FAILED_PREFIX)) {
+        const { needsHuman: _cleared, ...rest } = e;
+        e = rest as typeof e;
+      }
       if (read.state !== "done")
         return { ...e, status: "running", start: e.start ?? checkedAt, result: { checkedAt, raw: read.raw } };
       // The report lists variants in slot order (slot 1 = control); a title test's own titles

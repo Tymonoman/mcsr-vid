@@ -1587,6 +1587,11 @@ config.mediaDir = media;
     "failing 20 h+ asks, first line only",
   );
   console.log("OK: a failed A/B read is retried tomorrow, not every cycle; two in a row ask for a human");
+  // 19 Oct 2026: a later good read clears that flag (it stuck after a load-time timeout).
+  await setExperimentChecked("tc-title-readfail", { state: "running", raw: "Test running" } as never);
+  exp = (await readExperiments()).experiments.find((e) => e.id === "tc-title-readfail")!;
+  assert.equal(exp.needsHuman, undefined, "a good read clears the read-failure flag");
+  console.log("OK: a good A/B read clears a read-failure Needs-you flag");
 }
 
 console.log("studioWorker: all checks passed");
