@@ -89,6 +89,8 @@ export type OverlayProps = {
   fps: number;
   /** Length of the intro card in seconds (config.introSec); absent means INTRO_SECONDS. */
   introSec?: number;
+  /** The versus card's PB/avg/games/win-rate block (config.introStats); absent means shown. */
+  introStats?: boolean;
 };
 
 export interface ThumbnailPlayer {

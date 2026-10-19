@@ -61,3 +61,34 @@ export function chooseMoves(match: MatchInfo): Move[] {
     return times.length > 0 ? [{ atMs: Math.min(...times), ...MOVE_LINES[type]! }] : [];
   }).sort((a, b) => a.atMs - b.atMs);
 }
+
+/**
+ * The banner style's two overworld beats (config.explainMovesStyle "banner"), for the minute
+ * before the Nether where the retention curve drops: what the seed type's structure is for, and
+ * the lava bucket. The operator approved these words on 19 Oct 2026; a seed type with no line here
+ * gets no opener — a wrong one teaches the viewer the overlay lies.
+ */
+export const SEED_OPENERS: Record<string, { head: string; line: string }> = {
+  DESERT_TEMPLE: { head: "DESERT TEMPLE", line: "DIGGING DOWN TO THE LOOT ROOM\nFOR GOLD, IRON AND TNT" },
+};
+/** The opener's time: the race is on and nobody has a split to explain yet. */
+export const OPENER_AT_MS = 8000;
+export const LAVA_BUCKET = {
+  type: "story.lava_bucket",
+  head: "LAVA BUCKET",
+  line: "LAVA AND WATER BUCKETS\nBUILD THE NETHER PORTAL",
+};
+
+/** The seed type's opener and the first lava bucket of either player, then every split's move. */
+export function chooseBannerMoves(match: MatchInfo): Move[] {
+  const seated = new Set(match.players.map((p) => p.uuid));
+  const opener = match.seedType ? SEED_OPENERS[match.seedType] : undefined;
+  const lava = match.timelines
+    .filter((e) => e.type === LAVA_BUCKET.type && seated.has(e.uuid))
+    .map((e) => e.time);
+  return [
+    ...(opener ? [{ atMs: OPENER_AT_MS, ...opener }] : []),
+    ...(lava.length > 0 ? [{ atMs: Math.min(...lava), head: LAVA_BUCKET.head, line: LAVA_BUCKET.line }] : []),
+    ...chooseMoves(match),
+  ].sort((a, b) => a.atMs - b.atMs);
+}

@@ -25,6 +25,18 @@ assert.throws(() => validateOverrides({ renderConcurrency: "4" }), /renderConcur
 assert.throws(() => validateOverrides({ suggestCloseSlots: "8" }), /suggestCloseSlots/);
 assert.throws(() => validateOverrides({ overlayFps: Number.NaN }), /overlayFps/);
 assert.throws(() => validateOverrides({ mediaDir: 5 }), /mediaDir/);
+// The retention opening's switches (x5): a cold open of 3-8 s or none, a style of two words.
+validateOverrides({
+  coldOpenSec: null,
+  explainMovesStyle: "banner",
+  introStats: false,
+  stakesLine: true,
+  gapChips: true,
+});
+validateOverrides({ coldOpenSec: 5 });
+assert.throws(() => validateOverrides({ coldOpenSec: 1 }), /coldOpenSec/);
+assert.throws(() => validateOverrides({ coldOpenSec: "5" }), /coldOpenSec/);
+assert.throws(() => validateOverrides({ explainMovesStyle: "big" }), /explainMovesStyle/);
 // An hour outside the clock would not fail — setUTCHours(25) quietly means 01:00 tomorrow.
 assert.throws(() => validateOverrides({ nightlyRenderHourUtc: 24 }), /nightlyRenderHourUtc.*0-23/);
 assert.throws(() => validateOverrides({ nightlyRenderHourUtc: -1 }), /nightlyRenderHourUtc/);

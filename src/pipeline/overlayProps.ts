@@ -148,7 +148,8 @@ export function computeSplits(match: MatchInfo, leftUuid: string, rightUuid: str
  * match here, so its teaser never points past its own decision.
  */
 export function teaserProp(match: MatchInfo): Pick<OverlayProps, "teaser"> {
-  if (config.teaserAtSec === null) return {};
+  // The banner style draws it big over the POVs instead (src/pipeline/banners.ts).
+  if (config.teaserAtSec === null || config.explainMovesStyle === "banner") return {};
   const t = chooseTeaser(match);
   return t ? { teaser: { atSec: config.teaserAtSec, forSec: config.teaserSec, ...t } } : {};
 }
@@ -161,7 +162,7 @@ export function ctaReasonProp(): Pick<OverlayProps, "ctaReason"> {
 
 /** The "explain the moves" cards, to spread into the props: empty while `explainMovesSec` is null. */
 export function explainMovesProp(match: MatchInfo): Pick<OverlayProps, "explainMoves"> {
-  return config.explainMovesSec === null
+  return config.explainMovesSec === null || config.explainMovesStyle === "banner"
     ? {}
     : { explainMoves: { forSec: config.explainMovesSec, moves: chooseMoves(match) } };
 }

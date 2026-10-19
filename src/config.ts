@@ -374,6 +374,27 @@ export interface Config {
    */
   explainMovesSec: number | null;
   /**
+   * The retention opening (proposal approved 19 Oct 2026, experiment x5-retention-opening), every
+   * switch default off so a render is today's until an experiment arm turns them on:
+   *
+   * `coldOpenSec`: seconds of the race's closest mid-race split (src/pipeline/coldOpen.ts) put in
+   * front of the export, in the normal layout with the saved title hook big at the top. Planned at
+   * export, joined when the hooks are saved (before the long-form uploads). Null is none.
+   */
+  coldOpenSec: number | null;
+  /** The versus card's PB/avg/games/win-rate block; false draws names, heads and VS only. */
+  introStats: boolean;
+  /** "SAME SEED. SAME WORLD. / FIRST TO KILL THE DRAGON WINS" over the intro card and countdown. */
+  stakesLine: boolean;
+  /**
+   * Where "explain the moves" and the COMING UP line are drawn: "panel" in the meta column (today),
+   * "banner" big over the POVs (COMING UP over the empty splits column), with the seed type's
+   * opener and the lava-bucket beat added (src/pipeline/banners.ts). export:fast only.
+   */
+  explainMovesStyle: "panel" | "banner";
+  /** "<SPLIT>: N.Ns APART" over the POVs at each split's second arrival; never who leads. */
+  gapChips: boolean;
+  /**
    * The operator's own grant, 8 Oct 2026 ("a match whose hooks I haven't saved 6 h after its pick
    * lands gets the best title hook that passes hookProblem + hookLabelProblem + spoilsTheResult
    * (the model's, else a hooks.ts chip) and a Short hook chosen the same way; the chain then runs
@@ -612,6 +633,11 @@ export const DEFAULTS: Config = {
   introSec: 7,
   countdownTeaser: false,
   explainMovesSec: null,
+  coldOpenSec: null,
+  introStats: true,
+  stakesLine: false,
+  explainMovesStyle: "panel",
+  gapChips: false,
   autoHooksAfterHours: null,
   shortsByHand: false,
   nightlyRenderExport: true,
@@ -798,6 +824,18 @@ export function validateOverrides(raw: Record<string, unknown>): void {
     if (key === "blockedPlayers" || key === "creatorWatchlist") {
       if (!Array.isArray(value) || !value.every((n) => typeof n === "string" && n.trim() !== "")) {
         throw new Error(`${CONFIG_PATH}: "${key}" must be an array of nicknames ([] for none).`);
+      }
+      continue;
+    }
+    if (key === "coldOpenSec") {
+      if (value !== null && (typeof value !== "number" || !(value >= 3 && value <= 8))) {
+        throw new Error(`${CONFIG_PATH}: "coldOpenSec" must be seconds from 3 to 8, or null for none.`);
+      }
+      continue;
+    }
+    if (key === "explainMovesStyle") {
+      if (value !== "panel" && value !== "banner") {
+        throw new Error(`${CONFIG_PATH}: "explainMovesStyle" must be "panel" or "banner".`);
       }
       continue;
     }

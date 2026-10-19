@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { SPLITS_MANIFEST, overlayPaths, readSplitStills } from "./overlayRender.js";
+import { SPLITS_MANIFEST, overlayPaths, readBannerStills, readSplitStills } from "./overlayRender.js";
 
 const dir = mkdtempSync(path.join(tmpdir(), "overlay-contract-"));
 try {
@@ -24,6 +24,7 @@ try {
     timer: "overlay-timer.mp4",
     intro: "overlay-intro.webm",
     manifest: "overlay-splits.json",
+    banners: "overlay-banners.json",
   });
 
   // Stills on disk with no manifest: a render that died mid-way. Not finished, so not trusted.
@@ -49,6 +50,14 @@ try {
     writeFileSync(p.manifest, broken);
     assert.equal(await readSplitStills(dir), null, broken);
   }
+
+  // The retention opening's banners: none without a manifest, none when one names a missing still.
+  assert.deepEqual(await readBannerStills(dir), []);
+  const banner = { path: path.join(dir, "overlay-banner-0.png"), fromMs: -60_000, toMs: 0 };
+  writeFileSync(p.banners, JSON.stringify([banner]));
+  assert.deepEqual(await readBannerStills(dir), []);
+  writeFileSync(banner.path, "png");
+  assert.deepEqual(await readBannerStills(dir), [banner]);
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }
