@@ -361,13 +361,13 @@ by `studioAutomation` (not writable from Settings).
   ≤2 Test & Compare starts, ≤3 related links, ≤3 pins.
 - **`.experiments.json`'s read-merge-write is serialized through a lockfile**
   (`withExperimentsLock`, `.experiments.json.lock`, stale after 30s). The dashboard's
-  `src/dashboard/experiments.ts` doesn't take it, so a race there is still possible.
+  `src/dashboard/experiments.ts` skips it, so a race is still possible.
 - **The worker plans a thumbnail Test & Compare on every new dashboard long-form**
   (`thumbnailTcTargets`, ≤2 a cycle; `npm run tc-thumbs` renders control + the most different
   non-result-looking pose + a ≤6-char caption if `tcCaption.ts` passes one) and starts it on a
   later cycle. A running test is read once a UTC day; **Studio's "Results ready"/"Test finished"
-  means done** (`readTestAndCompare`, `parseTcReport`). End screens get the editor's starter
-  layout ("1 video, 1 subscribe") when the video has none.
+  means done** (`readTestAndCompare`, `parseTcReport`). **A new end screen: same-rivalry layout**
+  (`addRivalryEndScreen`), else starter ("1 video, 1 subscribe").
 - **A video with a title test gets no thumbnail test** (`titleTcTargets`; `ab-report` reads it).
 - **The worker never sets a Test & Compare winner itself**: `"done"` only records what Studio's own
   page already shows; `"needsHuman"` lands on anything it couldn't get past (a Save with no

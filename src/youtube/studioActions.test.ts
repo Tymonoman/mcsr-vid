@@ -105,6 +105,7 @@ const { isRunning, page: pageOf, start } = await import("./studioBrowser.js");
 const {
   pinComment,
   addEndScreenFromTemplate,
+  addRivalryEndScreen,
   startTestAndCompare,
   readTestAndCompare,
   checkRelatedVideoPicker,
@@ -215,6 +216,17 @@ try {
     // naming `relatedTargetId` — results came back, just not the one asked for.
     relatedResults: "none" as "none" | "match" | "miss",
     relatedTargetId: "",
+    // Same-rivalry end screen (19 Oct 2026, addRivalryEndScreen): the custom "+ Element" toolbar
+    // alongside the starter gallery — `rivalryToolbar` off mimics the toolbar not existing at all
+    // (a markup change, or a channel without it), the fallback-to-starter test's own setup.
+    rivalryToolbar: true,
+    // Off models the toolbar's own top-level button existing (haveToolbar reads true) but opening
+    // it revealing nothing — a partial markup drift, distinct from the toolbar being gone outright.
+    rivalryVideoChooserAvailable: true,
+    rivalrySubscribeAvailable: true,
+    rivalryVideoResults: "none" as "none" | "match",
+    rivalryTargetId: "",
+    rivalryPlaylistResults: "none" as "none" | "match",
     // false: a Save (the page's or the end-screen editor's) is clicked but no "Changes saved"
     // ever shows (14 Oct 2026 for Test & Compare, 15 Oct for end screens and related links).
     saveConfirms: true,
@@ -252,6 +264,10 @@ try {
       window.__tcSaved = false;
       window.__starterPicked = false;
       window.__pickerOpened = false;
+      window.__rivalryVideo = null;
+      window.__rivalryRowClicked = null;
+      window.__rivalryPlaylistClicked = null;
+      window.__subscribeAdded = false;
       function closeDialog() { document.getElementById("dialog-root").innerHTML = ""; }
       function renderEndScreen() {
         // Live run, 8 Oct 2026: the real End Screens editor has no aria-label="Close" element
@@ -279,7 +295,19 @@ try {
               // title is what reproduces the real "intercepts pointer events" failure here).
               '<div role="gridcell" aria-label="1 video, 1 subscribe" tabindex="0" style="cursor:pointer" onclick="window.__starterPicked=true">' +
               '<div class="title" style="pointer-events:none">1 video, 1 subscribe</div></div>' +
-              '<button onclick="window.__pickerOpened=true;openPicker()">Import from video</button>') +
+              '<button onclick="window.__pickerOpened=true;openPicker()">Import from video</button>' +
+              // The same-rivalry layout's own custom "+ Element" toolbar (19 Oct 2026,
+              // addRivalryEndScreen) — UNCONFIRMED shape, same honesty as the gridcell above's own
+              // live-confirmed one; off models the toolbar not existing at all (a markup change),
+              // which the fallback-to-starter test below turns off to exercise.
+              (window.__state.rivalryToolbar
+                ? '<button aria-label="Add video element" onclick="openVideoChooser()">Video</button>' +
+                  '<button aria-label="Add playlist element" onclick="openPlaylistPicker()">Playlist</button>' +
+                  (window.__state.rivalrySubscribeAvailable
+                    ? '<button aria-label="Add subscribe element" onclick="window.__subscribeAdded=true">Subscribe</button>'
+                    : '') +
+                  '<div id="video-chooser"></div>'
+                : '')) +
           '<button id="discard-button" onclick="closeDialog()">Discard changes</button>' +
           // Shows the same "Changes saved" toast the page-level Save does (#saved-msg above) —
           // saveEndScreenChange (studioActions.ts) waits on it the same way startTestAndCompare
@@ -289,6 +317,58 @@ try {
       function openPicker() {
         document.getElementById("dialog-root").innerHTML +=
           '<ytcp-video-pick-dialog><input oninput="onPickerInput(this.value)" /><div id="picker-results"></div></ytcp-video-pick-dialog>';
+      }
+      // The rivalry video element's own chooser ("Specific video" vs "Best for viewer") — both
+      // buttons stay in the DOM once opened (unlike the starter gallery's one-shot "Import from
+      // video"), so a failed search can close its own picker and still find "Best for viewer"
+      // underneath it, the same defensive order addRivalryEndScreen's own video step relies on.
+      function openVideoChooser() {
+        document.getElementById("video-chooser").innerHTML = window.__state.rivalryVideoChooserAvailable
+          ? '<button onclick="openRivalryVideoPicker()">Specific video</button>' +
+            '<button onclick="window.__rivalryVideo=\\'best-for-viewer\\'">Best for viewer for this device</button>'
+          : "";
+      }
+      function openRivalryVideoPicker() {
+        document.getElementById("dialog-root").innerHTML +=
+          '<ytcp-video-pick-dialog><input oninput="onRivalryVideoInput(this.value)" />' +
+          '<button aria-label="Close" onclick="document.querySelector(\\'ytcp-video-pick-dialog\\')?.remove()">Close</button>' +
+          '<div id="rivalry-video-results"></div></ytcp-video-pick-dialog>';
+      }
+      // Same shape as relatedCard below (a decoy card ahead of the real one in DOM order) — kept
+      // separate rather than shared, so the rivalry and related-video tests stay independent.
+      function rivalryVideoCard(id) {
+        return '<ytcp-entity-card role="option" onclick="window.__rivalryRowClicked=\\'' + id + '\\';window.__rivalryVideo=\\'specific\\';' +
+          'document.querySelector(\\'ytcp-video-pick-dialog\\')?.remove();">' +
+          '<div class="thumbnail" style="background-image:url(&quot;https://i9.ytimg.com/vi/' + id +
+          '/mqdefault.jpg&quot;)"></div></ytcp-entity-card>';
+      }
+      function onRivalryVideoInput(value) {
+        const results = document.getElementById("rivalry-video-results");
+        if (!value) { results.innerHTML = ""; return; }
+        if (window.__state.rivalryVideoResults === "none") {
+          results.innerHTML = '<div>No matching results. Please try again.</div>';
+          return;
+        }
+        results.innerHTML = rivalryVideoCard("decoyRivalXYZ12") + rivalryVideoCard(window.__state.rivalryTargetId);
+      }
+      // The playlist element's own picker — same generic dialog, a plain text-matched row (a
+      // playlist has no thumbnail to key off the way a video card does).
+      function openPlaylistPicker() {
+        document.getElementById("dialog-root").innerHTML +=
+          '<ytcp-video-pick-dialog><input oninput="onPlaylistInput(this.value)" />' +
+          '<button aria-label="Close" onclick="document.querySelector(\\'ytcp-video-pick-dialog\\')?.remove()">Close</button>' +
+          '<div id="playlist-results"></div></ytcp-video-pick-dialog>';
+      }
+      function onPlaylistInput(value) {
+        const results = document.getElementById("playlist-results");
+        if (!value) { results.innerHTML = ""; return; }
+        if (window.__state.rivalryPlaylistResults === "none") {
+          results.innerHTML = '<div>No matching results. Please try again.</div>';
+          return;
+        }
+        results.innerHTML =
+          '<div role="option" onclick="window.__rivalryPlaylistClicked=\\'' + value + '\\';' +
+          'document.querySelector(\\'ytcp-video-pick-dialog\\')?.remove()">' + value + '</div>';
       }
       // The related-video control's own picker — same dialog tag/input/no-results text as
       // openPicker() above (confirmed live, tmp/studio3/), but replaces dialog-root outright
@@ -423,9 +503,167 @@ try {
   const unsavedEnd = await addEndScreenFromTemplate(handle, "vidE5", "POQrpE0-5d8", { matchId });
   uiState.saveConfirms = true;
   assert.equal(await page.evaluate("window.__endscreenSaved"), true, "the editor's Save was pressed");
-  assert.ok(typeof unsavedEnd === "object" && "error" in unsavedEnd, `expected an error, got ${JSON.stringify(unsavedEnd)}`);
+  assert.ok(
+    typeof unsavedEnd === "object" && "error" in unsavedEnd,
+    `expected an error, got ${JSON.stringify(unsavedEnd)}`,
+  );
   assert.match(unsavedEnd.error, /never showed "Changes saved"/);
   console.log('OK: an end-screen Save with no "Changes saved" is an error, never "imported"');
+
+  // --- Same-rivalry end screen (19 Oct 2026 retention proposal) ------------------------------
+  // Never touches a video that already has one, same rail as the starter-layout path above.
+  uiState.endScreenHasElements = true;
+  const rivalryAlready = await addRivalryEndScreen(handle, "vidR1", "POQrpE0-5d8", {
+    matchId,
+    rivalVideoId: "rivalVid123",
+    playlistTitle: null,
+  });
+  assert.equal(rivalryAlready, "already-has-endscreen");
+  console.log('OK: addRivalryEndScreen leaves a video with elements alone too ("already-has-endscreen")');
+  uiState.endScreenHasElements = false;
+
+  // No custom toolbar at all (a markup change, or a channel without it) falls back to the
+  // starter template rather than leave the editor open unsaved.
+  uiState.rivalryToolbar = false;
+  const fellBack = await addRivalryEndScreen(handle, "vidR2", "POQrpE0-5d8", {
+    matchId,
+    rivalVideoId: "rivalVid123",
+    playlistTitle: "edcr vs doogile · MCSR Ranked",
+  });
+  assert.deepEqual(fellBack, {
+    outcome: "imported",
+    layout: "starter",
+    video: "none",
+    playlist: false,
+    subscribe: false,
+  });
+  assert.equal(await page.evaluate("window.__starterPicked"), true, "fell back to the starter card");
+  assert.equal(await page.evaluate("window.__endscreenSaved"), true, "the fallback still saves");
+  console.log("OK: no custom toolbar falls back to the starter template, saved");
+  uiState.rivalryToolbar = true;
+
+  // The real thing: a specific rival video found by its thumbnail id (not the decoy ahead of it
+  // in DOM order), the matchup playlist found by its exact title, and Subscribe — dry run picks
+  // all three and stops before Save.
+  uiState.rivalryVideoResults = "match";
+  uiState.rivalryTargetId = "rivalVid123";
+  uiState.rivalryPlaylistResults = "match";
+  const dryRivalry = await addRivalryEndScreen(handle, "vidR3", "POQrpE0-5d8", {
+    matchId,
+    rivalVideoId: "rivalVid123",
+    playlistTitle: "edcr vs doogile · MCSR Ranked",
+    dryRun: true,
+  });
+  assert.deepEqual(dryRivalry, {
+    outcome: "imported",
+    layout: "rivalry",
+    video: "specific",
+    playlist: true,
+    subscribe: true,
+  });
+  assert.equal(
+    await page.evaluate("window.__rivalryRowClicked"),
+    "rivalVid123",
+    "picked the real row, not the decoy ahead of it",
+  );
+  assert.equal(await page.evaluate("window.__rivalryPlaylistClicked"), "edcr vs doogile · MCSR Ranked");
+  assert.equal(await page.evaluate("window.__subscribeAdded"), true);
+  assert.equal(await page.evaluate("window.__endscreenSaved"), false, "a dry run must never actually save");
+  console.log("OK: addRivalryEndScreen's dry run places video+playlist+subscribe and stops before Save");
+
+  const realRivalry = await addRivalryEndScreen(handle, "vidR4", "POQrpE0-5d8", {
+    matchId,
+    rivalVideoId: "rivalVid123",
+    playlistTitle: "edcr vs doogile · MCSR Ranked",
+  });
+  assert.deepEqual(realRivalry, {
+    outcome: "imported",
+    layout: "rivalry",
+    video: "specific",
+    playlist: true,
+    subscribe: true,
+  });
+  assert.equal(await page.evaluate("window.__endscreenSaved"), true, "a real run saves the custom layout");
+  console.log("OK: a real run places all three elements and saves the same-rivalry layout");
+
+  // A rival video search that finds nothing falls back to "Best for viewer", not an empty
+  // element — and no playlistTitle at all skips that element outright rather than search for one.
+  uiState.rivalryVideoResults = "none";
+  const missedVideo = await addRivalryEndScreen(handle, "vidR5", "POQrpE0-5d8", {
+    matchId,
+    rivalVideoId: "rivalVid123",
+    playlistTitle: null,
+  });
+  assert.deepEqual(missedVideo, {
+    outcome: "imported",
+    layout: "rivalry",
+    video: "best-for-viewer",
+    playlist: false,
+    subscribe: true,
+  });
+  console.log('OK: a video search with no match falls back to "Best for viewer"');
+  uiState.rivalryVideoResults = "match";
+
+  // No rival video at all (a first meeting) goes straight to "Best for viewer" — no search ever
+  // opened, so nothing in it is ever clicked.
+  const noRival = await addRivalryEndScreen(handle, "vidR6", "POQrpE0-5d8", {
+    matchId,
+    rivalVideoId: null,
+    playlistTitle: null,
+  });
+  assert.deepEqual(noRival, {
+    outcome: "imported",
+    layout: "rivalry",
+    video: "best-for-viewer",
+    playlist: false,
+    subscribe: true,
+  });
+  assert.equal(
+    await page.evaluate("window.__rivalryRowClicked"),
+    null,
+    "no search dialog was ever opened with no rival video to look for",
+  );
+  console.log("OK: no rival video goes straight to Best for viewer, no search opened");
+
+  // Nothing placeable at all (every toolbar sub-option broken) saves an empty canvas to nobody —
+  // falls back to the starter template instead, same as the missing-toolbar case above.
+  uiState.rivalryVideoChooserAvailable = false;
+  uiState.rivalrySubscribeAvailable = false;
+  const allFailed = await addRivalryEndScreen(handle, "vidR7", "POQrpE0-5d8", {
+    matchId,
+    rivalVideoId: "rivalVid123",
+    playlistTitle: null,
+  });
+  assert.deepEqual(allFailed, {
+    outcome: "imported",
+    layout: "starter",
+    video: "none",
+    playlist: false,
+    subscribe: false,
+  });
+  assert.equal(
+    await page.evaluate("window.__starterPicked"),
+    true,
+    "fell back to the starter card when nothing could be placed",
+  );
+  console.log("OK: nothing placeable at all falls back to the starter template, never an empty save");
+  uiState.rivalryVideoChooserAvailable = true;
+  uiState.rivalrySubscribeAvailable = true;
+
+  // Same "no toast is no proof it saved" rule as the starter layout: an error, never "imported".
+  uiState.saveConfirms = false;
+  const unsavedRivalry = await addRivalryEndScreen(handle, "vidR8", "POQrpE0-5d8", {
+    matchId,
+    rivalVideoId: "rivalVid123",
+    playlistTitle: null,
+  });
+  uiState.saveConfirms = true;
+  assert.ok(
+    typeof unsavedRivalry === "object" && "error" in unsavedRivalry,
+    `expected an error, got ${JSON.stringify(unsavedRivalry)}`,
+  );
+  assert.match(unsavedRivalry.error, /never showed "Changes saved"/);
+  console.log('OK: a same-rivalry Save with no "Changes saved" is an error, never "imported"');
 
   // --- Related video (phase 2's own second half, 8 Oct 2026) ---------------------------------
   // checkRelatedVideoPicker only ever checks and reports.
@@ -522,7 +760,10 @@ try {
   const unsavedLink = await linkRelatedVideo(handle, "vidShort1", "longformABC12", { matchId });
   uiState.saveConfirms = true;
   assert.equal(await page.evaluate("window.__tcSaved"), true, "the page Save was pressed");
-  assert.ok(typeof unsavedLink === "object" && "error" in unsavedLink, `expected an error, got ${JSON.stringify(unsavedLink)}`);
+  assert.ok(
+    typeof unsavedLink === "object" && "error" in unsavedLink,
+    `expected an error, got ${JSON.stringify(unsavedLink)}`,
+  );
   assert.match(unsavedLink.error, /never showed "Changes saved"/);
   console.log('OK: a related-link Save with no "Changes saved" is an error, never "linked"');
 
@@ -588,7 +829,10 @@ try {
   );
   uiState.saveConfirms = true;
   assert.equal(await page.evaluate("window.__tcSaved"), true, "Save was pressed");
-  assert.ok(typeof unsaved === "object" && "error" in unsaved, `expected an error, got ${JSON.stringify(unsaved)}`);
+  assert.ok(
+    typeof unsaved === "object" && "error" in unsaved,
+    `expected an error, got ${JSON.stringify(unsaved)}`,
+  );
   assert.match(unsaved.error, /never showed "Changes saved"/);
   console.log('OK: a Save with no "Changes saved" is an error, never "started"');
 

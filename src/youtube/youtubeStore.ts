@@ -277,6 +277,33 @@ export async function lastMeetingFor(matchId: number, title: string): Promise<st
   return earlier[earlier.length - 1]?.record.videoId ?? null;
 }
 
+/**
+ * The most recent OTHER public long-form with the same two players, in either order — the
+ * same-rivalry end screen's own video element (19 Oct 2026 retention proposal, CLAUDE.md "Studio
+ * automation"). Unlike `lastMeetingFor`, not limited to an earlier match id: the worker gives a
+ * video an end screen whenever it has none, which can be well after a later rematch goes up.
+ * "Public" is `lastMeetingFor`'s own reading of a stored `privacyStatus`: not private, or a
+ * scheduled upload with a publish time. Ties by `uploadedAt` keep whichever `allUploads()` lists
+ * last. `excludeVideoId` drops a series' own other games, which all share game 1's video id.
+ */
+export async function samePairLongForm(
+  matchId: number,
+  title: string,
+  excludeVideoId?: string,
+): Promise<string | null> {
+  const pair = pairKey(title);
+  if (!pair) return null;
+  const others = (await allUploads()).filter(
+    ({ matchId: other, record }) =>
+      other !== matchId &&
+      record.videoId !== excludeVideoId &&
+      (record.privacyStatus !== "private" || !!record.publishAt) &&
+      pairKey(record.title ?? "") === pair,
+  );
+  others.sort((a, b) => Date.parse(a.record.uploadedAt) - Date.parse(b.record.uploadedAt));
+  return others[others.length - 1]?.record.videoId ?? null;
+}
+
 /** The nicknames a title's hook sets against each other ("TAS", "UNC"), and the two players it names. */
 function hookNicknames(line: string) {
   const parts = splitTitle(line);

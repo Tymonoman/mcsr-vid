@@ -127,6 +127,23 @@ const SELECTORS = {
   // so picking a row is the dialog's only confirm step; whether it also closes the dialog on its
   // own is what `linkRelatedVideo` below checks for itself rather than assume.
   relatedVideoPickerRows: 'ytcp-video-pick-dialog ytcp-entity-card[role="option"]',
+  // Same-rivalry end screen (19 Oct 2026 retention proposal, CLAUDE.md "Studio automation") — a
+  // custom layout the starter-template gallery above has no card for. UNCONFIRMED: no live
+  // exploration of this toolbar exists yet (every end-screen exploration to date only ever saw
+  // the empty-state gallery, never clicked past it into a custom "+ Element" flow) — best-effort
+  // guesses at YouTube Studio's known element-picker shape, the same honesty `endscreenPickerRow`
+  // above already gives its own guess. Replace the moment a real layout is seen
+  // (`addRivalryEndScreen`'s own doc comment says so again).
+  endscreenAddVideoButton: 'button[aria-label="Add video element"]',
+  endscreenAddPlaylistButton: 'button[aria-label="Add playlist element"]',
+  endscreenAddSubscribeButton: 'button[aria-label="Add subscribe element"]',
+  endscreenSpecificVideoOption: 'text="Specific video"',
+  endscreenBestForViewerOption: "text=/Best for viewer/i",
+  // Reuses the same picker dialog/input/no-results selectors the video picker already does
+  // (`endscreenPickerDialog`/`endscreenPickerInput`/`endscreenPickerNoResults`) — only the row
+  // shape differs: a playlist has no thumbnail to key off the way `relatedVideoPickerRowFor` does,
+  // so this is filtered by its own title text instead (`addRivalryEndScreen`'s own playlist step).
+  endscreenPlaylistPickerRow: 'ytcp-video-pick-dialog [role="option"]',
 };
 
 /** The one result row whose own thumbnail names `videoId` — never "the first row" (a search can
@@ -294,7 +311,10 @@ export async function pinComment(
 
     await thread.locator(SELECTORS.actionMenuButton).click();
     await randomPause();
-    await page.locator(SELECTORS.pinMenuItem).filter({ hasText: /^\s*Pin\s*$/ }).click();
+    await page
+      .locator(SELECTORS.pinMenuItem)
+      .filter({ hasText: /^\s*Pin\s*$/ })
+      .click();
     await randomPause();
     const confirm = page.locator(SELECTORS.confirmPinButton);
     await confirm.waitFor({ state: "visible", timeout: 15_000 });
@@ -387,24 +407,147 @@ async function saveEndScreenChange(
     );
 }
 
-/**
- * Gives `videoId` an end screen — skipped if the editor already shows elements (rail 2: never
- * replaces one someone set by hand; when the empty-state gallery cannot be confirmed either way,
- * this treats the video as already configured, the safe direction to be wrong in). The empty
- * state's own starter-layout gallery (phase 4, 8 Oct 2026) is the primary path: apply the card
- * closest to the operator's own template, save, confirm saved (`clickStarterLayout`,
- * `saveEndScreenChange`) — "Import from video" (the operator's own template, named by id) is now
- * only a fallback for the day the picker's own account-scoping bug (below) is fixed and a search
- * actually returns rows to click; until then it still ends in `"picker-empty"` every time, same
- * as before the starter-layout path existed. `dryRun` stops right after picking a card or a
- * picker row, before the save click that would actually apply it — mirroring `pinComment`'s own
- * dry run.
+/** Opens `videoId`'s End Screens editor and reports whether it is ready for a fresh layout —
+ * shared by the starter-template path and the same-rivalry path below, so "never replace one set
+ * by hand" (rail 2) and "no editor on this page" live in exactly one place rather than two copies
+ * that could drift. `"ok"` leaves the editor open on the empty-state gallery; the other two are
+ * terminal outcomes the caller returns as is (the editor is already closed again on
+ * `"already-has-endscreen"`; nothing was ever open on `"no-editor"`). */
+async function openEmptyEndScreenEditor(
+  page: import("playwright").Page,
+  handle: StudioHandle,
+  videoId: string,
+  matchId: number,
+): Promise<"ok" | "already-has-endscreen" | "no-editor"> {
+  await page.goto(`https://studio.youtube.com/video/${videoId}/edit?hl=en`, {
+    waitUntil: "domcontentloaded",
+    timeout: 30_000,
+  });
+  await randomPause();
+
+  // A deleted video, or one this channel doesn't own, has no editor link at all: Edj_-c7lK38
+  // (deleted 11 Oct 2026) timed out on this click every cycle on 14 Oct and read as an error.
+  const editorLink = page.locator(SELECTORS.endscreenEditorLink);
+  if (
+    !(await editorLink.waitFor().then(
+      () => true,
+      () => false,
+    ))
+  ) {
+    await shot(handle, matchId, "endscreen-no-editor");
+    return "no-editor";
+  }
+  await editorLink.click();
+  // Live run, 8 Oct 2026: the End Screens editor is a full panel, not a dialog with its own
+  // `aria-label="Close"` — the only two such elements on the page belong to other, unrelated,
+  // hidden dialogs elsewhere in Studio's SPA (confirmed by DOM inspection, not a guess), so a
+  // wait on `dialogClose` here timed out every time, editor open or not. "Discard changes" is
+  // confirmed live instead (`SELECTORS.endscreenDiscardButton`, already this function's own
+  // cleanup click below) — present the moment the panel opens.
+  await page.locator(SELECTORS.endscreenDiscardButton).first().waitFor({ state: "visible", timeout: 15_000 });
+  await shot(handle, matchId, "endscreen-opened");
+
+  const empty = await page
+    .locator(SELECTORS.endscreenEmptyGallery)
+    .first()
+    .isVisible()
+    .catch(() => false);
+  if (!empty) {
+    await page
+      .locator(SELECTORS.endscreenDiscardButton)
+      .first()
+      .click()
+      .catch(() => {});
+    return "already-has-endscreen";
+  }
+  return "ok";
+}
+
+/** The starter-template gallery flow, once `openEmptyEndScreenEditor` has confirmed the editor is
+ * open and empty — the card closest to the operator's own template, save, confirm saved
+ * (`clickStarterLayout`, `saveEndScreenChange`); "Import from video" (the operator's own template,
+ * named by id) is only a fallback for the day the picker's own account-scoping bug (below) is
+ * fixed and a search actually returns rows to click; until then it still ends in `"picker-empty"`
+ * every time. `dryRun` stops right after picking a card or a picker row, before the save click
+ * that would actually apply it — mirroring `pinComment`'s own dry run.
  *
  * `templateQuery` (default `templateId`) is unverified to find anything at all on this profile
  * right now: the exploration's own test run got "No matching results" for every query it tried,
  * including the raw id, because the picker's own search call resolves against the wrong Google
  * account/channel on this login. That exact outcome is reported as `"picker-empty"` rather than
- * guessed past.
+ * guessed past. */
+async function applyStarterLayout(
+  page: import("playwright").Page,
+  handle: StudioHandle,
+  matchId: number,
+  templateId: string,
+  opts: { dryRun?: boolean; templateQuery?: string },
+): Promise<EndScreenOutcome | { error: string }> {
+  if (await clickStarterLayout(page)) {
+    await randomPause();
+    await shot(handle, matchId, "endscreen-starter-picked");
+    if (opts.dryRun) {
+      await shot(handle, matchId, "endscreen-dry-run");
+      await page
+        .locator(SELECTORS.endscreenDiscardButton)
+        .first()
+        .click()
+        .catch(() => {});
+      return "imported";
+    }
+    await saveEndScreenChange(page, handle, matchId);
+    return "imported";
+  }
+
+  // Fallback — see this function's own doc comment above.
+  await page.locator(SELECTORS.endscreenImportButton).click();
+  await page.locator(SELECTORS.endscreenPickerDialog).waitFor({ state: "visible", timeout: 15_000 });
+  await page
+    .locator(SELECTORS.endscreenPickerInput)
+    .first()
+    .fill(opts.templateQuery ?? templateId);
+  await randomPause();
+
+  const noResults = await page
+    .locator(SELECTORS.endscreenPickerNoResults)
+    .first()
+    .isVisible()
+    .catch(() => false);
+  if (noResults) {
+    await shot(handle, matchId, "endscreen-picker-empty");
+    // Best effort: leave nothing open behind us. The picker dialog sits over the editor panel,
+    // neither with a real Close button (above) — "Discard changes" dismisses both at once.
+    await page
+      .locator(SELECTORS.endscreenDiscardButton)
+      .first()
+      .click()
+      .catch(() => {});
+    return "picker-empty";
+  }
+
+  await page.locator(SELECTORS.endscreenPickerRow).first().click();
+  await randomPause();
+
+  if (opts.dryRun) {
+    await shot(handle, matchId, "endscreen-dry-run");
+    await page
+      .locator(SELECTORS.endscreenDiscardButton)
+      .first()
+      .click()
+      .catch(() => {});
+    return "imported";
+  }
+
+  await saveEndScreenChange(page, handle, matchId);
+  return "imported";
+}
+
+/**
+ * Gives `videoId` an end screen from the operator's own starter template — skipped if the editor
+ * already shows elements (rail 2: never replaces one someone set by hand; when the empty-state
+ * gallery cannot be confirmed either way, this treats the video as already configured, the safe
+ * direction to be wrong in). `addRivalryEndScreen` below is the same-rivalry layout this falls
+ * back to it when there is nothing of its own to place.
  */
 export async function addEndScreenFromTemplate(
   handle: StudioHandle,
@@ -414,90 +557,177 @@ export async function addEndScreenFromTemplate(
 ): Promise<EndScreenOutcome | { error: string }> {
   try {
     const page = await pageOf(handle);
-    await page.goto(`https://studio.youtube.com/video/${videoId}/edit?hl=en`, {
-      waitUntil: "domcontentloaded",
-      timeout: 30_000,
-    });
-    await randomPause();
+    const state = await openEmptyEndScreenEditor(page, handle, videoId, opts.matchId);
+    if (state !== "ok") return state;
+    return await applyStarterLayout(page, handle, opts.matchId, templateId, opts);
+  } catch (err) {
+    return { error: describeError(err) };
+  }
+}
 
-    // A deleted video, or one this channel doesn't own, has no editor link at all: Edj_-c7lK38
-    // (deleted 11 Oct 2026) timed out on this click every cycle on 14 Oct and read as an error.
-    const editorLink = page.locator(SELECTORS.endscreenEditorLink);
-    if (!(await editorLink.waitFor().then(() => true, () => false))) {
-      await shot(handle, opts.matchId, "endscreen-no-editor");
-      return "no-editor";
-    }
-    await editorLink.click();
-    // Live run, 8 Oct 2026: the End Screens editor is a full panel, not a dialog with its own
-    // `aria-label="Close"` — the only two such elements on the page belong to other, unrelated,
-    // hidden dialogs elsewhere in Studio's SPA (confirmed by DOM inspection, not a guess), so a
-    // wait on `dialogClose` here timed out every time, editor open or not. "Discard changes" is
-    // confirmed live instead (`SELECTORS.endscreenDiscardButton`, already this function's own
-    // cleanup click below) — present the moment the panel opens.
-    await page
-      .locator(SELECTORS.endscreenDiscardButton)
-      .first()
-      .waitFor({ state: "visible", timeout: 15_000 });
-    await shot(handle, opts.matchId, "endscreen-opened");
+/** Which video element `addRivalryEndScreen` ended up placing. */
+export type RivalryVideoChoice = "specific" | "best-for-viewer";
 
-    const empty = await page
-      .locator(SELECTORS.endscreenEmptyGallery)
+export interface RivalryEndScreenPlaced {
+  outcome: "imported";
+  /** `"rivalry"`: the custom video+playlist+subscribe layout below. `"starter"`: the toolbar this
+   *  needed was unavailable (a markup change, or a channel without it) and this fell back to
+   *  `applyStarterLayout` instead of leaving the editor unsaved — recorded so the A/B readout
+   *  (CLAUDE.md "Studio automation") can tell which layout a given video actually got. */
+  layout: "rivalry" | "starter";
+  video: RivalryVideoChoice | "none";
+  playlist: boolean;
+  subscribe: boolean;
+}
+
+export type RivalryEndScreenOutcome =
+  RivalryEndScreenPlaced | "already-has-endscreen" | "no-editor" | "picker-empty";
+
+const asRivalryFallback = (
+  result: EndScreenOutcome | { error: string },
+): RivalryEndScreenOutcome | { error: string } =>
+  result === "imported"
+    ? { outcome: "imported", layout: "starter", video: "none", playlist: false, subscribe: false }
+    : result;
+
+/**
+ * The same-rivalry end screen (19 Oct 2026 retention proposal): a video element for the most
+ * recent other public long-form between the same two players (`rivalVideoId`, null falls back to
+ * Studio's own "Best for viewer"), the matchup playlist when one exists (`playlistTitle`, null
+ * skips the element outright), and Subscribe — in place of the plain starter template, for a NEW
+ * end screen only (rail 2, via `openEmptyEndScreenEditor`, same as `addEndScreenFromTemplate`).
+ *
+ * Studio has no API for any of this and no exploration has ever driven past the empty-state
+ * gallery into a custom layout (see `SELECTORS`' own note on every selector this function uses) —
+ * so each element is attempted and caught on its own: a step that fails or finds nothing is
+ * skipped and logged, never left as an open, unsaved half state. If the toolbar itself is missing
+ * (`endscreenAddVideoButton` never shows), or every one of the three steps comes up empty, this
+ * falls back to `applyStarterLayout` rather than save an empty canvas or leave the editor open —
+ * `addEndScreenFromTemplate`'s own fallback shape, reused (`asRivalryFallback`).
+ *
+ * ponytail: placement ("over the lower part of the frame") and duration ("the last 20s") are left
+ * at whatever Studio's own new-element defaults are — there is no live layout yet to confirm a
+ * drag target or a timing control against, and a blind drag risks corrupting an otherwise-good
+ * save for a purely cosmetic gain. Upgrade once a real custom layout has been seen (CLAUDE.md).
+ */
+export async function addRivalryEndScreen(
+  handle: StudioHandle,
+  videoId: string,
+  templateId: string,
+  opts: {
+    matchId: number;
+    rivalVideoId: string | null;
+    playlistTitle: string | null;
+    dryRun?: boolean;
+    templateQuery?: string;
+  },
+): Promise<RivalryEndScreenOutcome | { error: string }> {
+  try {
+    const page = await pageOf(handle);
+    const state = await openEmptyEndScreenEditor(page, handle, videoId, opts.matchId);
+    if (state !== "ok") return state;
+
+    const haveToolbar = await page
+      .locator(SELECTORS.endscreenAddVideoButton)
       .first()
       .isVisible()
       .catch(() => false);
-    if (!empty) {
-      await page
-        .locator(SELECTORS.endscreenDiscardButton)
-        .first()
-        .click()
-        .catch(() => {});
-      return "already-has-endscreen";
-    }
+    if (!haveToolbar)
+      return asRivalryFallback(await applyStarterLayout(page, handle, opts.matchId, templateId, opts));
 
-    if (await clickStarterLayout(page)) {
+    let video: RivalryVideoChoice | "none" = "none";
+    let playlist = false;
+    let subscribe = false;
+
+    // A missing element (no toolbar sub-option, a broken dialog) must fail fast, not wait out
+    // Playwright's default 30s actionability timeout per step — three end screens a cycle at 30s
+    // a missed element each is real time off a 20-min cycle, and the same shortened wait keeps a
+    // fake-page test of this path from taking half a minute for no reason.
+    const QUICK = { timeout: 5_000 };
+    try {
+      await page.locator(SELECTORS.endscreenAddVideoButton).first().click();
       await randomPause();
-      await shot(handle, opts.matchId, "endscreen-starter-picked");
-      if (opts.dryRun) {
-        await shot(handle, opts.matchId, "endscreen-dry-run");
+      if (opts.rivalVideoId) {
         await page
-          .locator(SELECTORS.endscreenDiscardButton)
+          .locator(SELECTORS.endscreenSpecificVideoOption)
           .first()
-          .click()
+          .click(QUICK)
           .catch(() => {});
-        return "imported";
+        await page.locator(SELECTORS.endscreenPickerInput).first().fill(opts.rivalVideoId, QUICK);
+        await randomPause();
+        const row = relatedVideoPickerRowFor(page, opts.rivalVideoId);
+        if ((await row.count()) > 0) {
+          await row.first().click();
+          video = "specific";
+        } else {
+          // Close the search dialog first: "Best for viewer" is a sibling option in the chooser
+          // underneath it, not reachable (nor confirmed to still be) while the search overlays it.
+          await page
+            .locator(SELECTORS.dialogClose)
+            .first()
+            .click()
+            .catch(() => {});
+          await page.locator(SELECTORS.endscreenBestForViewerOption).first().click(QUICK);
+          video = "best-for-viewer";
+        }
+      } else {
+        await page.locator(SELECTORS.endscreenBestForViewerOption).first().click(QUICK);
+        video = "best-for-viewer";
       }
-      await saveEndScreenChange(page, handle, opts.matchId);
-      return "imported";
+      await randomPause();
+    } catch (err) {
+      console.error(
+        `studio worker: rivalry end screen ${videoId} video element failed — ${describeError(err)}`,
+      );
     }
 
-    // Fallback — see this function's own doc comment above.
-    await page.locator(SELECTORS.endscreenImportButton).click();
-    await page.locator(SELECTORS.endscreenPickerDialog).waitFor({ state: "visible", timeout: 15_000 });
-    await page
-      .locator(SELECTORS.endscreenPickerInput)
-      .first()
-      .fill(opts.templateQuery ?? templateId);
-    await randomPause();
+    if (opts.playlistTitle) {
+      try {
+        await page.locator(SELECTORS.endscreenAddPlaylistButton).first().click(QUICK);
+        await randomPause();
+        await page.locator(SELECTORS.endscreenPickerInput).first().fill(opts.playlistTitle, QUICK);
+        await randomPause();
+        const row = page.locator(SELECTORS.endscreenPlaylistPickerRow, { hasText: opts.playlistTitle });
+        if ((await row.count()) > 0) {
+          await row.first().click();
+          playlist = true;
+        } else {
+          await page
+            .locator(SELECTORS.dialogClose)
+            .first()
+            .click()
+            .catch(() => {});
+        }
+        await randomPause();
+      } catch (err) {
+        console.error(
+          `studio worker: rivalry end screen ${videoId} playlist element skipped — ${describeError(err)}`,
+        );
+      }
+    }
 
-    const noResults = await page
-      .locator(SELECTORS.endscreenPickerNoResults)
-      .first()
-      .isVisible()
-      .catch(() => false);
-    if (noResults) {
-      await shot(handle, opts.matchId, "endscreen-picker-empty");
-      // Best effort: leave nothing open behind us. The picker dialog sits over the editor panel,
-      // neither with a real Close button (above) — "Discard changes" dismisses both at once.
+    try {
+      await page.locator(SELECTORS.endscreenAddSubscribeButton).first().click(QUICK);
+      subscribe = true;
+      await randomPause();
+    } catch (err) {
+      console.error(
+        `studio worker: rivalry end screen ${videoId} subscribe element failed — ${describeError(err)}`,
+      );
+    }
+
+    await shot(handle, opts.matchId, "endscreen-rivalry-filled");
+
+    if (video === "none" && !playlist && !subscribe) {
+      // Nothing placed at all — never save an empty canvas; the starter template is still better
+      // than no end screen.
       await page
         .locator(SELECTORS.endscreenDiscardButton)
         .first()
         .click()
         .catch(() => {});
-      return "picker-empty";
+      return asRivalryFallback(await addEndScreenFromTemplate(handle, videoId, templateId, opts));
     }
-
-    await page.locator(SELECTORS.endscreenPickerRow).first().click();
-    await randomPause();
 
     if (opts.dryRun) {
       await shot(handle, opts.matchId, "endscreen-dry-run");
@@ -506,11 +736,11 @@ export async function addEndScreenFromTemplate(
         .first()
         .click()
         .catch(() => {});
-      return "imported";
+      return { outcome: "imported", layout: "rivalry", video, playlist, subscribe };
     }
 
     await saveEndScreenChange(page, handle, opts.matchId);
-    return "imported";
+    return { outcome: "imported", layout: "rivalry", video, playlist, subscribe };
   } catch (err) {
     return { error: describeError(err) };
   }
