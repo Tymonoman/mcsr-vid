@@ -109,8 +109,6 @@ const cacheFile = (id: number) => path.join(dir(id), "title-options.json");
     "a bastion",
     "eye throws",
     "the End",
-    "zero cycle", // the pick's own techniques
-    "boat clutch", // ditto, a titles/v2 addition
     "educated travel / triangulation / Ninjabrain Bot", // the /watch report's own words
   ])
     assert.ok(
@@ -118,6 +116,9 @@ const cacheFile = (id: number) => path.join(dir(id), "title-options.json");
       `facts should include ${JSON.stringify(expected)}: ${rf.facts.join(", ")}`,
     );
   assert.ok(!rf.facts.includes("glowdar"), "a decoy chat-*.json must never ground a fact");
+  // 19 Oct 2026: the pick's own technique list over-reports (14075056: 12 ids, "blaze-bed" untrue) —
+  // it grounds nothing on its own.
+  assert.ok(!rf.facts.includes("zero cycle") && !rf.facts.includes("boat clutch"), "pick-only techniques are not facts");
   assert.ok(!rf.facts.some((f) => /dragon/i.test(f)), "dragon_death/end.kill_dragon are skipped, not mapped");
   assert.deepEqual(rf.videoShows, ["a routine blind travel into the stronghold", "left's moment"]);
 }

@@ -174,8 +174,7 @@ export function titleOptionProblem(
 }
 
 /**
- * Speedrun-tech glossary ids the model actually confirmed seeing (the pick's own `techniques`,
- * videoPick.ts), union a keyword scan of the runners' own speech — `/watch`'s report and
+ * Speedrun-tech glossary ids a runner actually says — a keyword scan of the runners' own speech — `/watch`'s report and
  * transcript for each POV. Never `chat-*.json`: that is viewer chat, which never reaches a model
  * prompt (CLAUDE.md).
  */
@@ -208,8 +207,12 @@ const SPEECH_FILES = [
   "short-watch-right/watch.json",
 ];
 
-function groundedTechniques(dir: string, pick: ShortPick | null): TechniqueId[] {
-  const found = new Set<TechniqueId>(pick?.techniques ?? []);
+function groundedTechniques(dir: string, _pick: ShortPick | null): TechniqueId[] {
+  // The pick's own `techniques` are NOT proof (19 Oct 2026): for 14075056 it listed 12 of the 18 ids,
+  // "blaze-bed" among them, and "BLAZE BED & BREAKFAST" went out though both runners used TNT. A
+  // technique counts only when a runner says it (below); the timeline-backed ones (blind travel,
+  // bartering, crying obsidian, death reset) reach the facts through `runFacts`' own timeline read.
+  const found = new Set<TechniqueId>();
   let speech = "";
   for (const f of SPEECH_FILES) {
     try {

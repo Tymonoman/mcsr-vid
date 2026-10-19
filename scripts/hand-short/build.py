@@ -18,6 +18,7 @@ so nothing important is placed there.
 
 Two POVs stacked instead (runners with no face cam): "dual": true, "nicknames": [left, right], "side" = the POV
 the Short is about (the other plays at -12 dB); no faceCrop/gameX/gameW. --words reads "nickname" if given.
+Optional "dualCrop": [x, y, w, h] in the 1920x1080 clip, same for both POVs, aspect ~1080/780 (default: centre, full height).
 
 Spec (JSON):
   { "matchId": 14074004, "nickname": "silverrruns", "side": "left",
@@ -146,9 +147,11 @@ def base(spec, mdir, tmp, dur):
             inputs += ["-ss", str(float(sync[side]) + spec["fromSec"]), "-t", str(dur), "-i", os.path.join(mdir, f"{nick}.mp4")]
         inputs += timer + ["-i", f"{tmp}/band.png", "-i", f"{tmp}/hook.png"]
         cw = round(1080 * 1080 / 780)
+        # "dualCrop": [x, y, w, h] (w/h ~ 1080/780) to keep a stream's match-info panel out of frame
+        cx, cy, cw, ch = spec.get("dualCrop", [(1920 - cw) // 2, 0, cw, 1080])
         g = [bg,
-             f"[0:v]crop={cw}:1080:{(1920 - cw) // 2}:0,scale=1080:780:flags=lanczos[top]",
-             f"[1:v]crop={cw}:1080:{(1920 - cw) // 2}:0,scale=1080:780:flags=lanczos[bot]",
+             f"[0:v]crop={cw}:{ch}:{cx}:{cy},scale=1080:780:flags=lanczos[top]",
+             f"[1:v]crop={cw}:{ch}:{cx}:{cy},scale=1080:780:flags=lanczos[bot]",
              "[bg][3:v]overlay=0:0[l0]", "[l0][top]overlay=0:112[l1]", "[l1][bot]overlay=0:900[l2]",
              "[2:v]fps=60,scale=280:202:flags=area[clock]", "[l2][clock]overlay=14:795:eof_action=pass[l4]"]
         quiet = 0 if spec["side"] == "right" else 1
