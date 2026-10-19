@@ -29,6 +29,7 @@ import { readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   abTestsPausedNow,
+  endScreenRivalryNow,
   blockedIn,
   config,
   CONFIG_PATH,
@@ -40,6 +41,7 @@ import { blockedOnDisk } from "../dashboard/matchStatus.js";
 import { repoHead } from "../dashboard/repoHead.js";
 import { describeError } from "../errorText.js";
 import {
+  addEndScreenFromTemplate,
   addRivalryEndScreen,
   linkRelatedVideo,
   pinComment,
@@ -959,12 +961,19 @@ export async function runCycle(
       const titleParts = target.title ? splitTitle(target.title) : null;
       const matchupTitle = titleParts ? matchupPlaylistTitle(titleParts.left, titleParts.right) : null;
       const playlistTitle = matchupTitle && (await findPlaylistId(matchupTitle)) ? matchupTitle : null;
-      const outcome = await addRivalryEndScreen(handle, target.videoId, END_SCREEN_TEMPLATE_VIDEO_ID, {
-        matchId: target.matchId,
-        rivalVideoId,
-        playlistTitle,
-        dryRun: opts.dryRun,
-      });
+      // Off until a live Studio check confirms the custom "+ Element" selectors (`endScreenRivalry`,
+      // config file only): until then the starter layout, as before, recorded as such.
+      const outcome = endScreenRivalryNow()
+        ? await addRivalryEndScreen(handle, target.videoId, END_SCREEN_TEMPLATE_VIDEO_ID, {
+            matchId: target.matchId,
+            rivalVideoId,
+            playlistTitle,
+            dryRun: opts.dryRun,
+          })
+        : await addEndScreenFromTemplate(handle, target.videoId, END_SCREEN_TEMPLATE_VIDEO_ID, {
+            matchId: target.matchId,
+            dryRun: opts.dryRun,
+          }).then((o) => (o === "imported" ? ({ outcome: "imported", layout: "starter" } as const) : o));
       if (typeof outcome === "object" && "error" in outcome) {
         errors.push(`end screen ${target.videoId}: ${outcome.error}`);
         continue;

@@ -292,6 +292,8 @@ export interface Config {
    * only, read fresh each worker cycle (`abTestsPausedNow`).
    */
   abTestsPaused: boolean;
+  /** Same-rivalry end screens (see `endScreenRivalryNow`); off until a live Studio check. */
+  endScreenRivalry: boolean;
   /**
    * What the nightly does with the MP4 it just exported: nothing, upload it private, or upload
    * it scheduled for the next publish slot (`publishHourUtc`; the Short follows 18 h later).
@@ -648,6 +650,7 @@ export const DEFAULTS: Config = {
   commentSoonAfterPublish: false,
   studioAutomation: false,
   abTestsPaused: false,
+  endScreenRivalry: false,
   nightlyUpload: "off",
   suggestCloseSlots: 8,
   suggestChaosSlots: 2,
@@ -987,6 +990,16 @@ export function reloadBlockedPlayers(): void {
   const { blockedPlayers = DEFAULTS.blockedPlayers } = readOverrides();
   validateOverrides({ blockedPlayers });
   config.blockedPlayers = structuredClone(blockedPlayers as string[]);
+}
+
+/** `endScreenRivalry` straight from the file (config-file only, default off): the Studio worker's
+ *  same-rivalry end screen waits for a live check of Studio's custom end-screen editor. */
+export function endScreenRivalryNow(): boolean {
+  try {
+    return readOverrides().endScreenRivalry === true;
+  } catch {
+    return false;
+  }
 }
 
 /** `abTestsPaused` straight from the file, for the worker, which cannot see Settings; off if unreadable. */
