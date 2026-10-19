@@ -29,7 +29,7 @@ import {
   titleEventProblem,
   type HookInput,
 } from "./hooks.js";
-import { computeMetrics, deathKind } from "./matchScore.js";
+import { computeMetrics } from "./matchScore.js";
 import { HOOK_PLACEHOLDER, runnerNickname, titleName } from "./title.js";
 import { playoffContextFor } from "../playoffs/playoffs.js";
 import { hookFactsMatchId, readSeriesRecord } from "../playoffs/series.js";
@@ -173,66 +173,6 @@ export function titleOptionProblem(
   return null;
 }
 
-/**
- * Speedrun-tech glossary ids a runner actually says — a keyword scan of the runners' own speech — `/watch`'s report and
- * transcript for each POV. Never `chat-*.json`: that is viewer chat, which never reaches a model
- * prompt (CLAUDE.md).
- */
-const TECHNIQUE_KEYWORD: Record<TechniqueId, RegExp> = {
-  "pie-ray": /\bpie[\s-]?ray|pie chart\b/i,
-  glowdar: /\bglowdar\b/i,
-  "e-ray": /\be-?ray\b|\bmicrolensing\b/i,
-  "blind-travel": /\bblind travel\b/i,
-  "educated-travel": /\beducated travel\b|\btriangulat\w*\b|\bninjabrain\b/i,
-  "zero-cycle": /\bzero[\s-]?cycle\b/i,
-  "one-cycle": /\bone[\s-]?cycle\b/i,
-  perch: /\bperch(?:ed|ing)?\b/i,
-  "end-crystals": /\bend crystals?\b/i,
-  "bed-bombing": /\bbed[\s-]?bomb\w*\b/i,
-  bartering: /\bbarter\w*\b/i,
-  "crying-obsidian": /\bcrying obsidian\b/i,
-  "f3-debug": /\bf3\b/i,
-  "death-reset": /\bdeath reset\b|\bhunger reset\b/i,
-  searchcrafting: /\bsearchcraft\w*\b/i,
-  "blaze-bed": /\bblaze bed\b/i,
-  preemptive: /\bpreemptive\w*\b/i,
-  "boat-clutch": /\bboat clutch\b/i,
-};
-
-/** `<matchDir>/short-watch-left|right/report.md` + `watch.json` — not every match has one. */
-const SPEECH_FILES = [
-  "short-watch-left/report.md",
-  "short-watch-left/watch.json",
-  "short-watch-right/report.md",
-  "short-watch-right/watch.json",
-];
-
-function groundedTechniques(dir: string, _pick: ShortPick | null): TechniqueId[] {
-  // The pick's own `techniques` are NOT proof (19 Oct 2026): for 14075056 it listed 12 of the 18 ids,
-  // "blaze-bed" among them, and "BLAZE BED & BREAKFAST" went out though both runners used TNT. A
-  // technique counts only when a runner says it (below); the timeline-backed ones (blind travel,
-  // bartering, crying obsidian, death reset) reach the facts through `runFacts`' own timeline read.
-  const found = new Set<TechniqueId>();
-  let speech = "";
-  for (const f of SPEECH_FILES) {
-    try {
-      speech += readFileSync(path.join(dir, f), "utf8");
-    } catch {
-      // No /watch report for this POV — the keyword scan just finds nothing there.
-    }
-  }
-  for (const id of TECHNIQUE_IDS) if (TECHNIQUE_KEYWORD[id].test(speech)) found.add(id);
-  return [...found];
-}
-
-function readPick(dir: string, matchId: number): ShortPick | null {
-  try {
-    return JSON.parse(readFileSync(pickFile(dir, matchId), "utf8")) as ShortPick;
-  } catch {
-    return null;
-  }
-}
-
 /** `MatchInfo.timelines[].type` → a plain-word fact, for either player, in a fixed declared order
  *  so "no order" never reads as "who got there first". Deliberately not every type:
  *  `death_spawnpoint`, `dragon_death` and `end.kill_dragon` lean on the result. */
@@ -270,21 +210,17 @@ export async function runFacts(
 ): Promise<RunFacts> {
   const match = opts.match ?? (await getMatch(matchId));
   const dir = opts.dir ?? matchDir(matchId);
-  const pick = readPick(dir, matchId);
 
   const facts = new Set<string>();
   for (const f of [seedPhrase(match), bastionPhrase(match)]) if (f) facts.add(f);
   const types = new Set(match.timelines.map((e) => e.type));
   for (const [type, fact] of Object.entries(TIMELINE_FACT)) if (types.has(type)) facts.add(fact);
-  // death_spawnpoint outside the End is a hunger reset, not a death (deathKind) — the operator's
-  // own "death reset" (18 Oct 2026), read off the timeline rather than guessed from a keyword.
-  if (match.timelines.some((e) => deathKind(match, e) === "hungerReset")) facts.add("death reset");
-  for (const id of groundedTechniques(dir, pick)) facts.add(TECHNIQUE_GLOSSARY[id].split(" — ")[0]!.trim());
-
-  const videoShows = [pick?.why, pick?.playerMoments?.left?.line, pick?.playerMoments?.right?.line].filter(
-    (l): l is string => !!l && l.trim() !== "",
-  );
-  return { facts: [...facts], videoShows };
+  // Only what the match data records (19 Oct 2026, 14075056): the pick's technique list (12 of 18 ids,
+  // "blaze-bed" untrue), its narration ("bed bombing" where both used TNT) and the runners' speech (a
+  // runner listing "one cycle, half bow…" while choosing a strategy) all named things that did not
+  // happen, and a timeline death can be a real one, not a death reset. The operator: "don't mention
+  // things in the title that didn't happen in the run".
+  return { facts: [...facts], videoShows: [] };
 }
 
 /** `handbook/knowledge/title-memes.md`, the operator's weekly scan, resolved relative to this

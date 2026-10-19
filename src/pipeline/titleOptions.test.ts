@@ -109,7 +109,6 @@ const cacheFile = (id: number) => path.join(dir(id), "title-options.json");
     "a bastion",
     "eye throws",
     "the End",
-    "educated travel / triangulation / Ninjabrain Bot", // the /watch report's own words
   ])
     assert.ok(
       rf.facts.includes(expected),
@@ -119,8 +118,9 @@ const cacheFile = (id: number) => path.join(dir(id), "title-options.json");
   // 19 Oct 2026: the pick's own technique list over-reports (14075056: 12 ids, "blaze-bed" untrue) —
   // it grounds nothing on its own.
   assert.ok(!rf.facts.includes("zero cycle") && !rf.facts.includes("boat clutch"), "pick-only techniques are not facts");
+  assert.ok(!rf.facts.some((f) => /educated travel/i.test(f)), "a runner's speech alone grounds nothing");
   assert.ok(!rf.facts.some((f) => /dragon/i.test(f)), "dragon_death/end.kill_dragon are skipped, not mapped");
-  assert.deepEqual(rf.videoShows, ["a routine blind travel into the stronghold", "left's moment"]);
+  assert.deepEqual(rf.videoShows, [], "the pick's narration never reaches the title model");
 }
 
 // titleOptionProblem: the trigram repeat check catches an idea reused with different words around
@@ -162,8 +162,8 @@ const cacheFile = (id: number) => path.join(dir(id), "title-options.json");
   );
 }
 
-// runFacts: a death_spawnpoint outside the End reads as "death reset" (deathKind's hungerReset),
-// not a plain death word — the operator's own technique list, 18 Oct 2026.
+// runFacts: a death_spawnpoint is NOT a "death reset" fact (19 Oct 2026: 14075056's was a real death
+// to a magma cube) — the timeline cannot tell a deliberate reset from an accident.
 {
   const id = 4;
   const uuid = "deadbeef-0000-0000-0000-000000000000";
@@ -175,7 +175,7 @@ const cacheFile = (id: number) => path.join(dir(id), "title-options.json");
     timelines: [{ uuid, time: 1_000, type: "projectelo.timeline.death_spawnpoint" }],
   } as unknown as MatchInfo;
   const rf = await runFacts(id, { match: resetMatch, dir: dir(id) });
-  assert.deepEqual(rf.facts, ["death reset"]);
+  assert.deepEqual(rf.facts, []);
 }
 
 // titleMemes: only the newest "## Week of …" section's entries, never its "### Rejected" list,
