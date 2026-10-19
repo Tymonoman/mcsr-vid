@@ -105,11 +105,9 @@ Almost nothing moves, so the render is stills plus one strip (`src/pipeline/over
 - **COMING UP card** (`teaserFramesOf`): from `teaserAtSec` (default 10, Settings → Publishing,
   empty = none) for `teaserSec` (5). Moment from `src/pipeline/teaser.ts`, `match.timelines`
   only; never in the first/last minute, names nobody, reads `death` only (never a hunger reset).
-- **Explain the moves** (`explainMovesSec`, Settings → Publishing, default **null = off**; on
-  changes what the nightly renders): the first time either player reaches one of six `MILESTONES`
-  splits, the meta column shows the split and why (`MOVE_LINES`, `src/pipeline/explainMoves.ts`);
-  names nobody; a card overlapping SUBSCRIBE/teaser/the prior card waits, one reaching the finish
-  is dropped.
+- **Explain the moves** (`explainMovesSec`, default **null = off**): the first time either player
+  reaches one of six `MILESTONES` splits, the meta column says why (`MOVE_LINES`,
+  `src/pipeline/explainMoves.ts`); names nobody; a card waits out an overlap, none reaches the finish.
 - `overlay-timer.mp4`: the RTA column, the only thing rendered per frame.
 - `overlay-intro.webm`: the versus-screen intro (`remotion/Intro.tsx`), `introSec` long (Settings →
   Publishing, 2–7, default 7). Lies *over* the frozen countdown, never moves the timeline anchor.
@@ -117,6 +115,11 @@ Almost nothing moves, so the render is stills plus one strip (`src/pipeline/over
   `introSec + 3`s (default 0:10); Kdenlive stays at 0:10.
 - `overlay-countdown-teaser.png`: COMING UP line across both POVs (`countdownTeaser`, default off,
   needs a teaser moment); `export:fast` shows it from card end to match start.
+- **Retention opening** (x5; `introStats`, `stakesLine`, `explainMovesStyle` panel|banner,
+  `gapChips`, `coldOpenSec`; all default off): big lines over the frame (`src/pipeline/banners.ts`),
+  naming nobody. The cold open (`src/pipeline/coldOpen.ts`) is planned at export, joined in front
+  (`-c copy`) when the hooks are saved, `final-<id>.base.mp4` kept until upload; it shifts
+  `matchStartSec`.
 
 ## Shorts
 
@@ -173,9 +176,9 @@ reload). After merging server changes, `POST /api/restart-when-idle`.
   and tini brings it back on the new code. **A hand `docker restart mcsr-dashboard` must never be
   issued while a chain uploads.**
 - **Two screens, one bar**: list and match; four list tabs are the only navigation. The match
-  screen groups **Now**, **Check**, **Package**, **Publish** in pipeline order. Now's steps
+  screen groups **Now**, **Check**, **Package**, **Publish**. Now's steps
   (`GET /api/shorts/plan/:id`): Video, Pick, Hooks (locked once uploaded), Short (skipped if
-  `noShort`), Video up, Short up. Rows show one state line.
+  `noShort`), Video up, Short up.
 - **Suggestions** (`src/dashboard/suggest.ts`): cached in `.suggest-cache.json` (`CACHE_VERSION`
   5), rescanned periodically; one card per pair across close/chaos/`known` buckets, and the known
   bucket caps one slot per player too (`suggestKnownSlots`, default 4).
@@ -226,8 +229,7 @@ reload). After merging server changes, `POST /api/restart-when-idle`.
 - **Thumbnails** (`remotion/Thumbnail.tsx`): two big figures, name-only plates, seed type above the
   VS, no rating/seed/placement text. Four pose pairs; `thumbnailRotatePoses` (default off) rotates
   by match id. **"cheering-relaxing" is excluded from every fresh automatic pick**
-  (`RESULT_LOOKING_POSE_KEY`, reads as the result); operator pick only. A choice carried from an
-  earlier manifest keeps itself.
+  (`RESULT_LOOKING_POSE_KEY`, reads as the result); operator pick only.
   `playoffThumbnailStyle` is **not wired** into any render yet.
 - **Re-render a match's thumbnails beside the live set, never over it**
   (`src/thumbnails/rerender.ts`, `src/youtube/thumbnailSwap.ts`, `src/dashboard/thumbnailRoutes.ts`,
@@ -388,23 +390,20 @@ by `studioAutomation` (not writable from Settings).
 
 ## Clips (prototype)
 
-For a video that is not a match (a stream statement, a reaction). `remotion/ClipFrame.tsx` is the
-reusable frame. `npm run clip` gets the source (yt-dlp or a local file), renders the frame,
-composites to
-`<mediaDir>/clips/<slug>/clip-<slug>.mp4`; **nothing here uploads or posts anywhere**. `clips/` is
-non-numeric, so every `mediaDir` scan (`/^\d+$/`) skips it.
+A video that is not a match (`remotion/ClipFrame.tsx`): `npm run clip` writes
+`<mediaDir>/clips/<slug>/clip-<slug>.mp4`; **nothing here uploads or posts anywhere**; every
+`mediaDir` scan (`/^\d+$/`) skips `clips/`.
 
 ## Chat replay (prototype)
 
-`src/api/twitchChat.ts` fetches a VOD's chat via Twitch's web GQL persisted query, paging by
-**offset**. Saved after
+`src/api/twitchChat.ts` fetches a VOD's chat (Twitch web GQL, paging by **offset**), saved after
 `download-vods`; the Short scorer reads it. `remotion/ChatPanel.tsx` renders it, not yet wired
 into `src/pipeline/pipeline.ts`.
 
 ## Session preflight
 
-`scripts/preflight.sh` runs at session start, always exits 0, prints one line when fine. Fix
-anything it flags (no GitHub credentials, a read-only PAT, an expiring token) first.
+`scripts/preflight.sh` runs at session start (always exits 0, one line when fine); fix what it
+flags (no GitHub credentials, a read-only PAT, an expiring token) first.
 
 ## Known pitfalls
 

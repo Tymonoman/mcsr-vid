@@ -183,6 +183,54 @@ Almost nothing in the overlay moves, so the render is stills plus one strip (`sr
   moment; removed otherwise. `export:fast` shows it from the card's end to match start when the
   setting is on and the file exists; absent, the filter graph is today's. The Kdenlive project
   does not know it.
+- **The retention opening** (proposal approved by the operator 19 Oct 2026, with changes;
+  experiment `x5-retention-opening`). Five switches, every one default off so a render is today's
+  until an arm turns them on (Settings → Publishing; `export:fast`-only, the Kdenlive project
+  stays as it is):
+  - `introStats` (default true): false hides the versus card's PB/avg/games/win-rate block;
+    names, heads, the elo line and the VS stay ("the overlay already shows the stats"). The block
+    keeps its room (opacity 0): removed, the names dropped to where the stakes line sits.
+  - `stakesLine`: "SAME SEED. SAME WORLD. / FIRST TO KILL THE DRAGON WINS" across the bottom
+    from the first frame to match start, over the card and the countdown; it replaces the
+    countdown teaser (not rendered while it is on).
+  - `explainMovesStyle` `"panel"` (today) | `"banner"`: the explain lines big across the top of
+    the POVs (50/38 px), one at a time, none reaching the finish; the COMING UP line big over the
+    still-empty splits column (`teaserAtSec`/`teaserSec`, gone before its moment); plus two
+    overworld beats, the seed type's opener at 0:08 (`SEED_OPENERS`, only DESERT_TEMPLE has
+    operator-approved words so far; a type with none gets none) and the first lava bucket
+    (`LAVA_BUCKET`). The panel's own cards and teaser are not drawn then (`overlayProps.ts`).
+  - `gapChips`: "FORTRESS: 2.9s APART" mid-POV on the seam for 4 s at each split's second
+    arrival, a neutral edge colour, never who leads, none ending within a minute of
+    `decidedAtMs`.
+  - `coldOpenSec` (null = none, 3–8): the cold open, below.
+  All of these are `src/pipeline/banners.ts` → `remotion/Banner.tsx` stills
+  (`overlay-banner-<n>.png` + `overlay-banners.json`, `[{ path, fromMs, toMs }]` on the race
+  clock), rendered in the splits phase and removed when off; `export:fast` lays them over the
+  finished frame after the intro card and before the upscale (`overlays`, output seconds). None
+  names a player or reads `match.result` (pinned by `banners.test.ts` on every fixture).
+- **The cold open** (`src/pipeline/coldOpen.ts`). `export:fast` picks the moment under that
+  night's settings (`chooseColdOpen`: the closest split whose two first arrivals are ≤5 s apart,
+  window centred on them, never in the first minute nor ending within a minute of `decidedAtMs`;
+  none qualifies, none) and records it in `final-<id>.json` (`coldOpen: { fromMs, sec }`, beside
+  `encoder` and `upscale1440`). The title exists only once the hooks are saved, so the chain's
+  `uploadOne` (src/dashboard/shortFlow.ts) runs `export:fast -- <id> --cold-open=<title hook>`
+  right before the long-form upload (series videos never): it renders the hook big just under the
+  top band (`Banner` kind `title`), encodes the window from the raw clips through the same
+  `buildFastExportCommand` (`windowFromSec`: clips and timer seeked, no intro, 80/250 ms audio
+  fades) with the recorded encoder and upscale, checks every stream parameter `-c copy` needs
+  equal, extradata hash included (`probeStreams`), and joins it in front with the concat demuxer
+  (`joinColdOpen`). The export without it stays as `final-<id>.base.mp4` (hard link, then the
+  joined file renamed over `final-<id>.mp4`, so there is never a moment without one); the joined
+  file keeps the base's mtime so `exportStale` reads as before. The record gets `coldOpenSec`,
+  `coldOpenHook`, and `matchStartSec` shifted by it, so every consumer of the export clock — the
+  Short pick's proxy (cuts at match start), the preview, the player DM — follows. A re-save with
+  another hook restores the base first (`restoreColdOpen`), then joins again; an empty hook, one
+  that fails `hookProblem` (runner names checked), or no plan leaves the plain export. Any failure
+  is a warning in the chain and the plain export goes up. After the upload the base is deleted
+  (the hooks lock). A fresh `export:fast` deletes a stale base. Chapters: `uploadTextFor` shifts an
+  unedited description's chapter lines by `coldOpenSec` (`shiftChapterLines`, 0:00 stays); an
+  edited one is the operator's and is not touched. `findExportedVideo` skips `*.base.mp4`. The
+  Upload button and Adopt do not run the cold open; only the chain does.
 
 ## Shorts
 
@@ -1085,7 +1133,9 @@ failed boot check offers it again. Client changes need only a reload.
   impression (15 Oct 2026)**: an arm with fewer than `MIN_VIDEOS_PER_ARM` (8) videos with the
   metric is "not enough videos", whatever its impressions; then any arm under 1,000 impressions is
   "inconclusive"; then each non-control arm's per-video values (CTR, average view % counting only
-  videos with views, or subs per 1,000 views) go against the control's through a two-sided
+  videos with views, retention at 10% of the video — a metric naming "retention at 10", from
+  Analytics' `audienceWatchRatio` curve, fetched beside the rest and never failing it — or subs
+  per 1,000 views) go against the control's through a two-sided
   permutation test on the difference in means (`permutationP`, 10,000 shuffles, fixed seed so a
   day's re-read gives the same p), a winner only at p < 0.05 (`ALPHA`, split across the non-control
   arms). Anything short is "no verdict yet …" with the per-video means, counts and p; a metric with
