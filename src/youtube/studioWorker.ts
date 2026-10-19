@@ -40,7 +40,7 @@ import { blockedOnDisk } from "../dashboard/matchStatus.js";
 import { repoHead } from "../dashboard/repoHead.js";
 import { describeError } from "../errorText.js";
 import {
-  addEndScreenFromTemplate,
+  addRivalryEndScreen,
   linkRelatedVideo,
   pinComment,
   readTestAndCompare,
@@ -59,8 +59,15 @@ import {
   type TcPlanThumbEntry,
 } from "./studioExperiments.js";
 import { SEPARATOR } from "../pipeline/title.js";
-import { videoStats } from "./youtube.js";
-import { allShortUploads, allUploads, readUpload, splitTitle, writeUpload } from "./youtubeStore.js";
+import { findPlaylistId, matchupPlaylistTitle, videoStats } from "./youtube.js";
+import {
+  allShortUploads,
+  allUploads,
+  readUpload,
+  samePairLongForm,
+  splitTitle,
+  writeUpload,
+} from "./youtubeStore.js";
 
 /** The operator's own end-screen template, set up by hand once (CLAUDE.md, the task's own FACTS). */
 export const END_SCREEN_TEMPLATE_VIDEO_ID = "POQrpE0-5d8";
@@ -104,7 +111,10 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 // ---------------------------------------------------------------------------
 
 export interface StudioLedger {
-  endScreens: Record<string, { at: string; matchId: number }>;
+  /** `layout` is absent on a record written before the 19 Oct 2026 retention proposal, and on
+   *  "already-has-endscreen" (never this worker's own layout to name) — the A/B readout
+   *  (`ab-report`) reads it to compare the same-rivalry layout against the plain starter template. */
+  endScreens: Record<string, { at: string; matchId: number; layout?: "rivalry" | "starter" }>;
   /** The last UTC calendar date a video hit the picker's own confirmed account-scoping bug
    * (`"picker-empty"`) — not "done" (worth trying again once the bug is fixed), but bounds the
    * retry to once a day instead of every ~20 min cycle (added 8 Oct 2026: before this, a
@@ -148,7 +158,7 @@ export async function readLedger(): Promise<StudioLedger> {
       relatedRetrySeen: parsed.relatedRetrySeen ?? {},
     };
   } catch {
-    // ponytail: a corrupt ledger just means "nothing recorded yet" — `addEndScreenFromTemplate`
+    // ponytail: a corrupt ledger just means "nothing recorded yet" — `addRivalryEndScreen`
     // checks the live editor for an existing end screen itself, so losing this file risks one
     // redundant (and safe) check per video, never a duplicate import.
     return emptyLedger();
@@ -163,9 +173,13 @@ export async function writeLedger(ledger: StudioLedger): Promise<void> {
   await rename(tmp, target);
 }
 
-export async function markEndScreenDone(videoId: string, matchId: number): Promise<void> {
+export async function markEndScreenDone(
+  videoId: string,
+  matchId: number,
+  layout?: "rivalry" | "starter",
+): Promise<void> {
   const ledger = await readLedger();
-  ledger.endScreens[videoId] = { at: new Date().toISOString(), matchId };
+  ledger.endScreens[videoId] = { at: new Date().toISOString(), matchId, ...(layout ? { layout } : {}) };
   await writeLedger(ledger);
 }
 
@@ -720,9 +734,7 @@ export async function setExperimentReadFailed(id: string, error: string): Promis
       return {
         ...e,
         result: { ...(e.result as object), checkedAt, readError: error, readErrorSince: since },
-        ...(longStanding
-          ? { needsHuman: `${READ_FAILED_PREFIX} ${error.split("\n")[0]}` }
-          : {}),
+        ...(longStanding ? { needsHuman: `${READ_FAILED_PREFIX} ${error.split("\n")[0]}` } : {}),
       };
     }),
   );
@@ -939,18 +951,28 @@ export async function runCycle(
       (id) => endScreenSkippedOn.get(id) === today,
     );
     for (const target of endScreens) {
-      const outcome = await addEndScreenFromTemplate(handle, target.videoId, END_SCREEN_TEMPLATE_VIDEO_ID, {
+      // Same-rivalry layout (19 Oct 2026 retention proposal): the most recent other public
+      // long-form of this pair, and the matchup playlist only when one already exists on the
+      // channel (a first meeting has none — `playlistTitlesFor`'s own rule). Both are hints
+      // `addRivalryEndScreen` is free to find nothing for; neither reaching YouTube at all here.
+      const rivalVideoId = await samePairLongForm(target.matchId, target.title ?? "", target.videoId);
+      const titleParts = target.title ? splitTitle(target.title) : null;
+      const matchupTitle = titleParts ? matchupPlaylistTitle(titleParts.left, titleParts.right) : null;
+      const playlistTitle = matchupTitle && (await findPlaylistId(matchupTitle)) ? matchupTitle : null;
+      const outcome = await addRivalryEndScreen(handle, target.videoId, END_SCREEN_TEMPLATE_VIDEO_ID, {
         matchId: target.matchId,
+        rivalVideoId,
+        playlistTitle,
         dryRun: opts.dryRun,
       });
-      if (typeof outcome === "object") {
+      if (typeof outcome === "object" && "error" in outcome) {
         errors.push(`end screen ${target.videoId}: ${outcome.error}`);
         continue;
       }
       if (outcome === "already-has-endscreen") {
         await markEndScreenDone(target.videoId, target.matchId);
-      } else if (outcome === "imported" && !opts.dryRun) {
-        await markEndScreenDone(target.videoId, target.matchId);
+      } else if (typeof outcome === "object" && outcome.outcome === "imported" && !opts.dryRun) {
+        await markEndScreenDone(target.videoId, target.matchId, outcome.layout);
         endScreensAdded++;
       } else if (outcome === "picker-empty") {
         // The picker's own confirmed account-scoping bug (7 Oct 2026) is left unmarked as

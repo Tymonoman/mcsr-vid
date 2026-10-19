@@ -2169,6 +2169,61 @@ login." Six fixes/features on top of phase 2/3, all in `studioWorker.ts`/`studio
   clickable starter card, so an empty editor always has *something* for `clickStarterLayout` to
   find. Kept anyway — a channel or locale where that is not true picks up the fallback with no
   code change.
+
+### Same-rivalry end screen (19 Oct 2026 retention proposal)
+
+The operator's own words, approving the retention proposal that night: "you have my okay. Just go
+build it. Let's see how it performs. Whatever helps us grow the channel." The proposal's own
+evidence: 12 of 14 retention curves lift at the finish (viewers are still there to be offered
+something), suggested-traffic videos convert 6.4 subs per 1k engaged views against 2.0 from Home
+(an end screen is suggested-traffic surface), and one rivalry (edcr vs doogile) brought 26 of 49
+long-form subs — the plain template's generic "1 video, 1 subscribe" names nothing a viewer who
+just watched this match would recognize.
+
+`addRivalryEndScreen` (`src/youtube/studioActions.ts`) replaces the starter-layout gallery above
+as the FIRST thing a new end screen tries — never on a video that already has one, same rail 2 as
+before, now shared through `openEmptyEndScreenEditor` (the open/empty check both flows call) so
+"never replace one set by hand" lives in exactly one place. Three elements:
+
+- **Video**: the most recent OTHER public long-form between the match's own two players, in either
+  order (`samePairLongForm`, `src/youtube/youtubeStore.ts` — unlike `lastMeetingFor`, not limited
+  to an earlier match id, since the worker end-screens a video whenever it has none, which can be
+  well after a later rematch goes up). Searched in the same picker the starter layout's own
+  "Import from video" fallback already drives; no match, or no rival video at all (a first
+  meeting), falls back to Studio's own "Best for viewer for this device" option rather than leave
+  the element empty.
+- **Playlist**: the matchup playlist (`matchupPlaylistTitle`), only when one already exists on the
+  channel (`findPlaylistId` — a first meeting has none, `playlistTitlesFor`'s own rule); skipped
+  outright otherwise, never searched for and never created here.
+- **Subscribe**: added unconditionally when the toolbar offers it.
+
+Each of the three is attempted and caught on its own — a step that fails or finds nothing is
+skipped and logged (`console.error`), never left as an open, unsaved half state. If the toolbar
+itself never shows (`endscreenAddVideoButton` invisible — a markup change, or a channel without
+it) or all three end up empty, this falls back to `applyStarterLayout` — the starter-layout
+gallery's own body, factored out of `addEndScreenFromTemplate` so both flows share it — rather
+than save a blank canvas. `asRivalryFallback` reshapes that fallback's plain `EndScreenOutcome`
+into the rivalry shape (`layout: "starter"`) so a caller only ever handles one result type.
+`markEndScreenDone`'s own ledger entry (`.studio-ledger.json`) now carries which `layout` actually
+landed (`"rivalry"` or `"starter"`, absent on `"already-has-endscreen"`), for a later A/B readout
+to compare the two without needing a second signal.
+
+UNCONFIRMED, same honesty as `endscreenPickerRow`'s own note above: no live exploration of a
+custom "+ Element" toolbar exists yet — every end-screen exploration to date only ever saw the
+empty-state starter gallery, never clicked past it. The toolbar button labels
+(`endscreenAddVideoButton`/`endscreenAddPlaylistButton`/`endscreenAddSubscribeButton`), the
+"Specific video"/"Best for viewer for this device" chooser, and the playlist row's plain-text
+match are all best-effort guesses at YouTube Studio's known shape, confirmed only against the
+fake-page fixture this ships with (`studioActions.test.ts`'s own "Same-rivalry end screen"
+section) — replace them the moment a real layout is seen, the same promise every other guessed
+selector in this file already makes.
+
+Placement ("over the lower part of the frame") and duration ("the last 20s") are left at whatever
+Studio's own new-element defaults are: there is no live layout yet to confirm a drag target or a
+timing control against, and a blind drag risks corrupting an otherwise-good save for a purely
+cosmetic gain (`ponytail` comment, `addRivalryEndScreen`'s own doc comment) — upgrade once a real
+custom layout has actually been seen in Studio.
+
 - **Title tests use exactly one challenger** (`planTcExperiments`'s title branch): Title-only
   mode's own dialog has only one challenger slot (live + 1, confirmed live in phase 2/3), so a plan
   whose variants had more than one survive `titleTestProblem` used to be planned with an arm

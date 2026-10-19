@@ -20,6 +20,7 @@ import {
   refreshDescription,
   refreshTitle,
   resolveShortVideoId,
+  samePairLongForm,
   uploadTextFor,
   type UploadRecord,
 } from "./youtubeStore.js";
@@ -431,6 +432,24 @@ write(600, {
   // A Short's record (match 322, between the two) never counts.
   assert.ok(!third.includes("SSSSSSSSSSS"));
   assert.equal(await lastMeetingFor(500, "no pair here"), null);
+
+  // samePairLongForm: the same-rivalry end screen's own lookup (19 Oct 2026) — unlike
+  // lastMeetingFor, not limited to an earlier match id, so it finds a rematch that came later too.
+  const pairTitle = `Hook | doogile vs Feinberg | ${TAIL}`;
+  // 303 (public, earliest), 311 (public, latest), 312 (private, no publish time — never counts).
+  assert.equal(await samePairLongForm(303, pairTitle), "GGGGGGGGGGG", "the later public rematch, 311");
+  assert.equal(await samePairLongForm(311, pairTitle), "CCCCCCCCCCC", "the earlier public match, 303");
+  assert.equal(
+    await samePairLongForm(312, pairTitle),
+    "GGGGGGGGGGG",
+    "the most recent of the two public ones, regardless of 312's own match id",
+  );
+  // excludeVideoId drops a would-be match — a series' own other games sharing game 1's video id.
+  assert.equal(await samePairLongForm(303, pairTitle, "GGGGGGGGGGG"), null, "excluded, nothing public left");
+  // A scheduled-private video with a publish time still counts as public-ish, same reading
+  // lastMeetingFor already gives it; the old and new spelling are the same pair.
+  assert.equal(await samePairLongForm(320, `Hook | Pinne vs Zed | ${TAIL}`), "JJJJJJJJJJJ");
+  assert.equal(await samePairLongForm(500, "no pair here"), null);
 }
 
 // A hook's nickname that earlier titles used beside another player: TAS is doogile's (three
@@ -572,7 +591,10 @@ console.log("OK: resolveShortVideoId refuses a long-form id where a Short's was 
     JSON.stringify({ chosen: "a", hookText, variants: [{ key: "a", file: "thumbnail-a.png" }] });
   const title = `${HOOK_PLACEHOLDER} | edcr vs doogile | ${TAIL}\n`;
   write(910, { "match-910.title.txt": title, "thumbnail.json": manifest("YN vs TAS") });
-  assert.ok((await uploadTextFor(910, "video")).title.includes(HOOK_PLACEHOLDER), "a label never fills <HOOK>");
+  assert.ok(
+    (await uploadTextFor(910, "video")).title.includes(HOOK_PLACEHOLDER),
+    "a label never fills <HOOK>",
+  );
   write(911, { "match-911.title.txt": title, "thumbnail.json": manifest("Does the lead ever settle?") });
   const clean = (await uploadTextFor(911, "video")).title;
   assert.ok(clean.startsWith("Does the lead ever settle? | edcr vs doogile"), clean);
