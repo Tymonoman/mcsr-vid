@@ -5,10 +5,11 @@
 // shortFlow.test.ts use.
 // Run: npx tsx src/dashboard/archive.test.ts
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { config } from "../config.js";
+import type { VideoStats } from "../youtube/youtube.js";
 
 const media = mkdtempSync(path.join(tmpdir(), "mcsr-archive-media-"));
 const archiveDir = mkdtempSync(path.join(tmpdir(), "mcsr-archive-nas-"));
@@ -19,7 +20,7 @@ process.env.MCSR_ARCHIVE_DIR = archiveDir;
 const { archiveMatch, capacity, inNasWindow, isArchived, refreshArchived } = await import("./archive.js");
 // archive.ts owns the window and the queue; sweepArchive is nightly.ts's caller of both, so it
 // needs the same MCSR_ARCHIVE_DIR set before nightly.ts's own import chain first loads archive.ts.
-const { sweepArchive } = await import("./nightly.js");
+const { sweepArchive, freeLocalCopies, planFreeLocalCopies } = await import("./nightly.js");
 
 // --- inNasWindow: both sides of DST, the four boundary instants ------------------------------
 // 1 Oct 2026 is CEST (UTC+2).
@@ -152,5 +153,141 @@ console.log("OK: sweepArchive is a no-op outside the window");
   assert.equal(seenNow[0], insideNow, "the sweep's own clock is threaded into the archiver");
 }
 console.log("OK: sweepArchive queues only uploaded matches the NAS does not have yet");
+
+// --- freeLocalCopies / planFreeLocalCopies -----------------------------------------------------
+{
+  const insideNow = () => Date.UTC(2026, 9, 1, 4, 0); // 1 Oct 2026, 04:00 CEST — inside the window
+  const outsideNow = () => Date.UTC(2026, 9, 1, 12, 0); // same day, 14:00 CEST — outside it
+  const OLD = "2026-09-01T00:00:00.000Z"; // ~5 days before insideNow — well past 48h
+  const RECENT = "2026-09-30T20:00:00.000Z"; // 8h before insideNow — under 48h
+
+  const videoStatsOf = (id: string, privacyStatus: string, publishAt: string | null): VideoStats => ({
+    videoId: id,
+    title: "t",
+    publishedAt: publishAt ?? OLD,
+    privacyStatus,
+    publishAt,
+    views: 0,
+    likes: 0,
+    comments: 0,
+    duration: "",
+  });
+
+  const upload = (matchId: number, videoId: string) => {
+    mkdirSync(path.join(media, String(matchId)), { recursive: true });
+    writeFileSync(
+      path.join(media, String(matchId), "youtube.json"),
+      JSON.stringify({
+        videoId,
+        uploadedAt: OLD,
+        publishAt: null,
+        privacyStatus: "public",
+        thumbnailVariant: null,
+        title: "t",
+      }),
+    );
+  };
+  const bigFile = (matchId: number, name: string, bytes: number, archiveBytes: number | null) => {
+    const dir = path.join(media, String(matchId));
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, name), "x".repeat(bytes));
+    if (archiveBytes !== null) {
+      const archDir = path.join(archiveDir, String(matchId));
+      mkdirSync(archDir, { recursive: true });
+      writeFileSync(path.join(archDir, name), "x".repeat(archiveBytes));
+    }
+  };
+
+  // 9301: eligible, but the archived copy is a different size — kept.
+  upload(9301, "v9301");
+  bigFile(9301, "final-9301.mp4", 100, 99);
+
+  // 9302: eligible, archived copy matches, but the video went public under 48h ago — kept.
+  upload(9302, "v9302");
+  bigFile(9302, "final-9302.mp4", 100, 100);
+
+  // 9303: eligible and archived, but a chain step is still "failed" — kept.
+  upload(9303, "v9303");
+  bigFile(9303, "final-9303.mp4", 100, 100);
+  writeFileSync(
+    path.join(media, "9303", "short-9303.status.json"),
+    JSON.stringify({ steps: { pick: { state: "failed", at: OLD } }, errors: [] }),
+  );
+
+  // 9304: eligible and archived, but the file is short-<id>.mp4 itself — never a candidate.
+  upload(9304, "v9304");
+  bigFile(9304, "short-9304.mp4", 100, 100);
+
+  // 9305/9306: a joined series — 9305 is game 1 (holds youtube.json + series.json), 9306 is
+  // game 2 (no youtube.json of its own, judged by game 1's record). Both have a big file with a
+  // matching archived copy.
+  upload(9305, "v9305");
+  writeFileSync(
+    path.join(media, "9305", "series.json"),
+    JSON.stringify({
+      games: [
+        { matchId: 9305, gameNo: 1 },
+        { matchId: 9306, gameNo: 2 },
+      ],
+    }),
+  );
+  bigFile(9305, "series-9305.mp4", 100, 100);
+  bigFile(9306, "doogile.mp4", 50, 50); // a POV clip, matched by the plain ".mp4" rule
+
+  const videos = new Map<string, VideoStats>([
+    ["v9301", videoStatsOf("v9301", "public", OLD)],
+    ["v9302", videoStatsOf("v9302", "public", RECENT)],
+    ["v9303", videoStatsOf("v9303", "public", OLD)],
+    ["v9304", videoStatsOf("v9304", "public", OLD)],
+    ["v9305", videoStatsOf("v9305", "public", OLD)],
+  ]);
+  const fetchStats = async (ids: string[]): Promise<VideoStats[]> =>
+    ids.flatMap((id) => (videos.has(id) ? [videos.get(id)!] : []));
+
+  // Outside the window: nothing is even planned to run — not a no-op after planning, before it.
+  const outsideFreed = await freeLocalCopies(outsideNow, fetchStats);
+  assert.deepEqual(outsideFreed, [], "outside the NAS window, nothing happens");
+  assert.ok(existsSync(path.join(media, "9305", "series-9305.mp4")), "nothing deleted outside the window");
+  assert.ok(
+    !existsSync(path.join(media, ".space-ledger.jsonl")),
+    "no ledger written outside the window either",
+  );
+
+  const plan = await planFreeLocalCopies(insideNow, fetchStats);
+  const byFile = (matchId: number, file: string) =>
+    plan.find((p) => p.matchId === matchId && p.file === file);
+  assert.equal(byFile(9301, "final-9301.mp4"), undefined, "a size mismatch against the NAS copy is kept");
+  assert.equal(byFile(9302, "final-9302.mp4"), undefined, "public under 48h is kept");
+  assert.equal(byFile(9303, "final-9303.mp4"), undefined, "a pending ('failed') chain step is kept");
+  assert.equal(byFile(9304, "short-9304.mp4"), undefined, "short-<id>.mp4 is never a candidate");
+  assert.ok(byFile(9305, "series-9305.mp4"), "game 1's own big file is eligible");
+  assert.ok(byFile(9306, "doogile.mp4"), "game 2's file is judged eligible through game 1's record");
+  assert.equal(
+    byFile(9306, "doogile.mp4")?.videoId,
+    "v9305",
+    "a series game's ledger entry carries game 1's video id",
+  );
+  console.log("OK: planFreeLocalCopies applies every rule — size, 48h, pending steps, series fan-out");
+
+  const freed = await freeLocalCopies(insideNow, fetchStats);
+  assert.deepEqual(
+    freed.map((f) => `${f.matchId}/${f.file}`).sort(),
+    ["9305/series-9305.mp4", "9306/doogile.mp4"],
+    "only the eligible files were actually freed",
+  );
+  assert.ok(!existsSync(path.join(media, "9305", "series-9305.mp4")), "freed file deleted");
+  assert.ok(!existsSync(path.join(media, "9306", "doogile.mp4")), "freed file deleted");
+  assert.ok(existsSync(path.join(media, "9301", "final-9301.mp4")), "a kept file stays on disk");
+  assert.ok(existsSync(path.join(media, "9304", "short-9304.mp4")), "short-<id>.mp4 stays on disk");
+
+  const ledgerLines = readFileSync(path.join(media, ".space-ledger.jsonl"), "utf8").trim().split("\n");
+  assert.equal(ledgerLines.length, 2, "one ledger line per freed file");
+  const ledgerEntries = ledgerLines.map((l) => JSON.parse(l) as Record<string, unknown>);
+  assert.ok(
+    ledgerEntries.some((e) => e.matchId === 9306 && e.file === "doogile.mp4" && e.videoId === "v9305"),
+    "the ledger records what was deleted, including the series fan-out's own video id",
+  );
+  console.log("OK: freeLocalCopies deletes only what's eligible and logs every deletion to the ledger");
+}
 
 console.log("archive: all checks passed");
