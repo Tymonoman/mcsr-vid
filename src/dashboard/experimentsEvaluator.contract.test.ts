@@ -135,7 +135,7 @@ const m = (impressions: number, clicks: number, pct = 40, views = 1000): VideoMe
 
 /** ArmTotals the way armTotalsFor builds them, from one arm's own videos, for calling verdictFor directly. */
 const totals = (arm: string, vids: VideoMetrics[]): ArmTotals => {
-  const sum = (k: keyof VideoMetrics) => vids.reduce((a, v) => a + v[k], 0);
+  const sum = (k: keyof VideoMetrics) => vids.reduce((a, v) => a + (v[k] ?? 0), 0);
   return {
     arm,
     videos: vids.length,
