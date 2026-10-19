@@ -68,9 +68,9 @@ export function chooseMoves(match: MatchInfo): Move[] {
  * the lava bucket. The operator approved these words on 19 Oct 2026; a seed type with no line here
  * gets no opener — a wrong one teaches the viewer the overlay lies.
  */
-export const SEED_OPENERS: Record<string, { head: string; line: string }> = {
-  DESERT_TEMPLE: { head: "DESERT TEMPLE", line: "DIGGING DOWN TO THE LOOT ROOM\nFOR GOLD, IRON AND TNT" },
-};
+// Empty since 19 Oct 2026, the operator: "I don't think we need the specific seed type banners as
+// well just go without it". Kept as a map so a future line needs no new code.
+export const SEED_OPENERS: Record<string, { head: string; line: string }> = {};
 /** The opener's time: the race is on and nobody has a split to explain yet. */
 export const OPENER_AT_MS = 8000;
 export const LAVA_BUCKET = {
