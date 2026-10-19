@@ -29,6 +29,8 @@ import { buildShortTitle, readShortHook, TITLE_MAX_CHARS } from "../shorts/short
 import { describeError } from "../errorText.js";
 import { getMatch } from "../api/mcsrApi.js";
 import { readSeriesRecord, type SeriesRecord } from "../playoffs/series.js";
+import { shiftChapterLines } from "../pipeline/chapters.js";
+import { readExportRecord } from "../pipeline/exportFast.js";
 
 /** The long-form and the Short are two videos with two records. */
 export type UploadKind = "video" | "short";
@@ -184,6 +186,9 @@ export async function uploadTextFor(
     editedDescription ?? (await readIfPresent(path.join(dir, `${base}.description.txt`))) ?? "";
   // The operator's own words stay theirs: only a description nobody edited is patched.
   if (editedDescription === null) {
+    // The chapters were written for the export; a cold open joined in front moves them all later.
+    if (kind === "video")
+      description = shiftChapterLines(description, readExportRecord(dir, matchId)?.coldOpenSec ?? 0);
     const stored = description;
     description = await refreshed("description", stored, () =>
       refreshDescription(stored, kind, config.supportUrl, dir, matchId),
@@ -672,6 +677,8 @@ export function findExportedVideo(
         // `export:fast --seconds` writes smoke-<id>.mp4: a range, never the deliverable.
         !name.startsWith("smoke-") &&
         !name.includes(".part.") &&
+        // The export as it was before its cold open was joined in front (src/pipeline/coldOpen.ts).
+        !name.endsWith(".base.mp4") &&
         name !== "sync-preview.mp4",
     );
 

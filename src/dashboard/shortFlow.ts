@@ -18,6 +18,7 @@
  * kept in `short-<id>.status.json`, the one record the panel, the list and a restarted server
  * all read.
  */
+import { spawn } from "node:child_process";
 import { existsSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -26,7 +27,8 @@ import type { MatchInfo } from "../api/types.js";
 import { blockedIn, config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { hookLabelProblem, hookSuggestions, spoilsTheResult } from "../pipeline/hooks.js";
-import { exportMatchStartSec } from "../pipeline/exportFast.js";
+import { exportMatchStartSec, readExportRecord } from "../pipeline/exportFast.js";
+import { baseExportPath } from "../pipeline/coldOpen.js";
 import { computeMetrics } from "../pipeline/matchScore.js";
 import { exportStale, readSyncOffsets } from "../pipeline/syncFile.js";
 import { HOOK_PLACEHOLDER, metaPaths, SEPARATOR, withHook } from "../pipeline/title.js";
@@ -99,6 +101,7 @@ import {
   onVideo,
   readUpload,
   splitTitle,
+  uploadTextFor,
   writeUpload,
   type UploadKind,
 } from "../youtube/youtubeStore.js";
@@ -949,6 +952,9 @@ export interface ChainDeps {
   refreshChannel: () => Promise<unknown>;
   /** Settle an upload-video/upload-short step a restart left "running" (`resumeUpload`). */
   resumeUpload: (matchId: number, kind: UploadKind) => Promise<string | null>;
+  /** Join the export's planned cold open with the title's hook (src/pipeline/coldOpen.ts); the
+   *  failure's last line, or null — done, or nothing planned. */
+  coldOpen: (matchId: number, hook: string) => Promise<string | null>;
   now: () => number;
 }
 
@@ -959,8 +965,36 @@ const liveDeps = (): ChainDeps => ({
   pick: (matchId) => queuePick(matchId),
   refreshChannel: () => refreshChannelUploadsNow(),
   resumeUpload,
+  coldOpen: joinColdOpenNow,
   now: Date.now,
 });
+
+/**
+ * `npm run export:fast -- <id> --cold-open=<hook>`, but only when the export planned a cold open
+ * (or carries one with another hook): every other match never spawns anything.
+ */
+function joinColdOpenNow(matchId: number, hook: string): Promise<string | null> {
+  const record = readExportRecord(matchDir(matchId), matchId);
+  const joined = record?.coldOpenSec !== undefined;
+  if (!record || (!record.coldOpen && !joined) || (joined && record.coldOpenHook === hook))
+    return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const proc = spawn(
+      "npm",
+      ["run", "--silent", "export:fast", "--", String(matchId), `--cold-open=${hook}`],
+      {
+        cwd: path.resolve(new URL("../..", import.meta.url).pathname),
+        stdio: ["ignore", "ignore", "pipe"],
+      },
+    );
+    let tail = "";
+    proc.stderr.on("data", (d: Buffer) => (tail = (tail + d.toString()).slice(-2000)));
+    proc.on("error", (err) => resolve(describeError(err)));
+    proc.on("close", (code) =>
+      resolve(code === 0 ? null : (tail.trim().split("\n").pop() ?? `export:fast exited ${code}`)),
+    );
+  });
+}
 
 /**
  * When the Short goes public: the standing 18 h after the long-form (it lands while the match
@@ -1290,6 +1324,16 @@ async function uploadOne(matchId: number, kind: UploadKind, deps: ChainDeps): Pr
     } else publishAt = shortPublishAt(await onChannel(matchId, "video"), deps.now());
   }
   if (kind === "video" && !isExported(matchId)) return NOT_EXPORTED;
+  // The cold open needs the title, so it is joined here, after the save and before the upload; a
+  // series video has none. A failure is a warning: the plain export goes up.
+  if (kind === "video" && !existsSync(path.join(matchDir(matchId), "series.json"))) {
+    const hook = hookOf((await uploadTextFor(matchId, "video")).title) ?? "";
+    const failed = await deps.coldOpen(matchId, hook);
+    if (failed) {
+      shortLog(matchId, "chain", `no cold open: ${failed}`, { level: "warn" });
+      notes.push(`no cold open: ${failed}`);
+    }
+  }
   const begun = await deps.upload(matchId, {
     kind,
     privacyStatus: "private",
@@ -1298,6 +1342,8 @@ async function uploadOne(matchId: number, kind: UploadKind, deps: ChainDeps): Pr
   if ("error" in begun) return begun.error;
   const done = await begun.finished;
   if (done.error) return done.error;
+  // Up: the hooks lock, so the export without the cold open is never needed again.
+  if (kind === "video") await rm(baseExportPath(matchDir(matchId), matchId), { force: true });
   // Up, with a post-insert problem (a playlist cap, a thumbnail): a problem on the way, not a failure.
   const step: Step = kind === "video" ? "upload-video" : "upload-short";
   if (done.warnings.length || notes.length)

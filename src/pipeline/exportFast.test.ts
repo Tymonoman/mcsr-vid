@@ -295,4 +295,47 @@ assert.throws(
   rmSync(tmp, { recursive: true, force: true });
 }
 
+// Timed overlays (src/pipeline/banners.ts) go over the finished frame after the intro card and
+// before the upscale, each on the output's clock; none leaves the graph as it was.
+{
+  const off = buildFastExportCommand(base).args;
+  const on = buildFastExportCommand({
+    ...base,
+    upscale1440: true,
+    overlays: [
+      { path: "/m/overlay-banner-0.png", startSec: 0, endSec: 5 },
+      { path: "/m/overlay-banner-1.png", startSec: 20, endSec: 26 },
+    ],
+  }).args;
+  const f = on[on.indexOf("-filter_complex") + 1]!;
+  assert.ok(f.includes("eof_action=pass:repeatlast=0[STAGEI];"), "the intro first");
+  assert.ok(f.includes("setpts=N+1200[O1]"), "the second banner starts at 20 s of output");
+  assert.ok(f.includes("loop=loop=359:size=1"), "and holds for its 6 s");
+  assert.ok(f.includes("[STAGEI][O0]overlay") && f.includes("[STAGEO0][O1]overlay"), "chained in order");
+  assert.ok(f.includes("[STAGEO1]scale=2560:1440:flags=lanczos[V]"), "then the upscale");
+  assert.deepEqual(
+    buildFastExportCommand({ ...base, overlays: [] }).args,
+    off,
+    "an empty list changes nothing",
+  );
+}
+
+// The cold open's window: the clips and the timer seeked to it, no intro card, a fade at each end.
+{
+  const w = buildFastExportCommand({
+    ...base,
+    splits: [{ path: "/m/overlay-splits-3.png", startSec: 0, durationSec: 5 }],
+    windowFromSec: 312.5,
+    totalDurationSec: 5,
+    overlays: [{ path: "/m/title.png", startSec: 0, endSec: 5 }],
+  }).args;
+  const wf = w[w.indexOf("-filter_complex") + 1]!;
+  assert.equal(w[w.indexOf("/m/left.mp4") - 2], (left.inSec + 312.5).toFixed(3));
+  assert.equal(w[w.indexOf("/m/overlay-timer.mp4") - 2], "312.500");
+  assert.ok(!wf.includes("[INTRO]"), "no intro card mid-race");
+  assert.ok(wf.includes("[STAGE][O0]overlay"), "the title straight over the stage");
+  assert.ok(wf.includes("afade=t=in:d=0.08,afade=t=out:st=4.750:d=0.25[A]"));
+  assert.equal(w[w.indexOf("-t") + 1], "5.000");
+}
+
 console.log("exportFast: all checks passed");
