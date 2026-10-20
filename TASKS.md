@@ -20,7 +20,7 @@ OPEN WITH THE OPERATOR:
 - the nickname list
 - intro/cold-open results (first x5 video ~Sun 26/Mon 27 Oct)
 - the TN0_s3y0HH8 Short whose long-form was deleted (keep or delete in Studio)
-- BLAZE BED & BREAKFAST: a fresh picker was sent and is unpressed
+- BLAZE BED & BREAKFAST: DONE. The operator picked DIAMONDS ARE FOREVER (live title checked 20 Oct 14:09 Polish). Nobody blaze-bedded; silverrruns used beds on the dragon.
 - earlier: the compose.yaml worker line, X keys, the Replays DM
 LESSONS: Bash caps at 600 s, so run suites in the background and poll. Formatter noise appears in /app (studioActions/studioWorker/facts): discard it before merging. Helpers stall when they wait on Monitor: check their worktrees yourself.
 
