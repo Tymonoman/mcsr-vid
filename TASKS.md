@@ -1,5 +1,29 @@
 # TASKS — resume point (the newest block is first; older blocks: handbook/tasks-archive-2026-09-23_10-07.md)
 
+## ▶ RESUME HERE (20 Oct 2026, 08:1x Polish) — CHANNEL RUNNING; NOTHING HALF-DONE IN CODE
+Times to the operator are Polish. Main 129d20b+ pushed; dashboard restart-when-idle armed for 2a78232 (seed openers off). Worker supervisor pid 2357.
+LIVE SINCE 18–19 OCT:
+- Titles: Telegram picker (thumbnail + 3 options + WHY line + New options + 🚫 veto/undo). Options come from Opus, grounded ONLY in match data: seed, bastion, timeline milestones. The pick's technique list, its narration and runner speech were all wrong once (BLAZE BED & BREAKFAST, 14075056). Operator nicknames in config runnerNicknames (still empty: the list was sent 18 Oct). Auto-save after 12 h.
+- Match picking (pick/rules): edcr is a favourite; no-name pairs never; close <5 s and sub-8 boosts; rivals don't demote; playoffsFirst; fast-track + Telegram "Post ASAP" ask; evening coverage up to 3 renders.
+- A/B: Studio title tests on every new long-form (pick vs the 2 skipped, tagged by style), `npm run ab-report`. A good read now clears the read-failure Needs-you flag.
+- Retention opening: all settings off by default; x5-retention-opening in .experiments.json runs 25 Oct–9 Nov alternating, ranked. Retention arm: cold open with the title on top + stats, versus card without stats, stakes line, big explain banners + lava bucket, gap chips, no COMING UP, no seed openers.
+- Disk: nightly freeLocalCopies + Needs-you under 25 GB.
+- Same-rivalry end screens merged OFF (endScreenRivalry). They need a supervised live check of Studio's custom editor first.
+IN FLIGHT:
+- 13392725 + 14306147 rendered last night; title pickers on the operator's phone; auto-save ~15:30–16:00 → Thu 01:00 + Thu 21:00. Each needs a hand Short (cutter prompts: see the hand-short-13198700 brief; poll long jobs, never idle).
+- Tonight's queue: 13393121 (F–I #8). VODs for 13393652 downloading.
+- The F–I stop rule is still unjudged; check Wed when Analytics has 2 days for ZlHoS-Svx58 / nVFfA0_do_c.
+SESSION CRONS (they die with the session):
+- 1b9e4e85 07:23 morning and d791ac1b 20:17 evening both expire ~22 Oct: recreate them. After 26 Oct the slots read 20:00/00:00 Polish.
+- 1107d901 Mon 10:17 weekly (memes + A/B readout + retitle before/after).
+OPEN WITH THE OPERATOR:
+- the nickname list
+- intro/cold-open results (first x5 video ~Sun 26/Mon 27 Oct)
+- the TN0_s3y0HH8 Short whose long-form was deleted (keep or delete in Studio)
+- BLAZE BED & BREAKFAST: a fresh picker was sent and is unpressed
+- earlier: the compose.yaml worker line, X keys, the Replays DM
+LESSONS: Bash caps at 600 s, so run suites in the background and poll. Formatter noise appears in /app (studioActions/studioWorker/facts): discard it before merging. Helpers stall when they wait on Monitor: check their worktrees yourself.
+
 ## ▶ RESUME HERE (17 Oct 2026, 08:0x Polish) — CHANNEL RUNNING; NOTHING HALF-DONE IN CODE
 Times are Polish (the operator's rule since 15 Oct; code/config stay UTC). Main e866ed4+ pushed (c7105a8 tasks), dashboard on it, CI green. Studio worker supervisor pid 2357 (setsid; preflight revives it per session).
 IN FLIGHT: nightly "Run now" 07:54 rendering 13142923 (F–I #3) → pick → auto-hooks after 6 h (~14:30) → Sun 18 Oct 21:00 slot; it needs a HAND SHORT before Mon (scripts/hand-short/build.py, specs tmp/shorts/specs/, `npm run short:hand`; window ends before the result; name + endgame cue is now refused). Tonight 05:00 renders the queued 13143975 (F–I #4) → Mon 01:00. VODs on disk: 13144771; 13198700 downloading. Reddit (r/speedrun post ~15 Oct): hourly snapshots tmp/night/reddit2/snaps.jsonl (bg loop), full Analytics readout by cron 48253516 Sun 18 Oct 10:13 (sends a short Telegram note).
