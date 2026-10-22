@@ -182,11 +182,10 @@ reload). After merging server changes, `POST /api/restart-when-idle`.
   bucket caps one slot per player too (`suggestKnownSlots`, default 4).
 - **Favourite players, then known** (`tierFor`; `favouritePlayers` Settings tab, default
   doogile/Feinberg/Infume/Pinne/lowk3y_/silverrruns/edcr). Order: favourite → known → neither, then
-  expiring → close → audience → popularity. Known: a favourite, a measured draw ≥
-  `KNOWN_DRAW_MIN` (0.6), or Twitch followers ≥ `knownFollowerThreshold` (10,000). No-names
-  never render; mixed weekly; close/sub-8 reorder, never a hook.
-  `learnedDraw`/`recordPaceBoostSec` (Settings tab, both default **off**) reorder by
-  real/near-record stats without naming or implying the winner.
+  expiring → close → rivalry → audience → popularity. Known: favourite, draw ≥ 0.6 or ≥10k
+  followers (`knownFollowerThreshold`). No-names never render; mixed weekly; close/sub-8 reorder,
+  never a hook. Rivalry: two `rivalryPlayers` (Settings) with a public video up; ≤2 a pair per 48h
+  of slots unless queued. `learnedDraw`/`recordPaceBoostSec` (Settings, **off**) also reorder.
 - **Blocked players** (`blockedPlayers`, Settings tab, default `["Aquacorde", "BeefSalad"]`;
   `isBlockedPlayer`/`blockedIn`, `src/config.ts`, whole-string, case-insensitive): runners who
   withdrew permission for their footage. `blockedOnDisk`/`hasBlockedPlayer`

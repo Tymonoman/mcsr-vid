@@ -1502,6 +1502,25 @@ new `src/dashboard/fastTrack.ts`.
   `pairKey` for every render after the first in a chain; a pair already rendered tonight drops out
   of contention for the rest of the chain. Only chained renders (started > 1) are filtered — the
   night's first render is never second-guessed by a rule meant to diversify what follows it.
+- **Rivalries as a series** (the operator, 22 Oct 2026: "lowkey silver runs doogile", plus
+  Feinberg vs Infume, already one; `rivalryPlayers`, Settings tab, default Feinberg, Infume,
+  lowk3y_, silverrruns, doogile; empty = off). A match between two listed players whose pair
+  already has at least one public long-form on the channel ranks first inside its tier, right
+  after the close-finish rule and before audience (`rivalryCountFor`, `suggest.ts`, in `take()`
+  and `presentSuggestions` alike, so the nightly follows); a pair with no video yet gets nothing,
+  a blocked pair never. The history is `publicPairCounts` (`youtubeStore.ts`): every `youtube.json`
+  long-form, public now (a scheduled one once its time has passed), one per video id, its pair
+  read off the title the way `lastMeetingFor` reads it (no API call; `titleNames` mapped back, so
+  "lowkey" is lowk3y_), refreshed with the pair snapshot (`pairsOnChannelSnapshot`, `pairPosts.ts`).
+  The card's story line leads with "rivalry: N on the channel"; nothing reads a seed, rank or elo
+  or says who won. Diversity on top: the nightly never renders an unqueued pick whose pair already
+  holds `PAIR_SLOTS_PER_48H` (2) of the next 48 h of publish slots (`pairsAtCap`, `nightly.ts`):
+  the claimed times `publishSlot.ts` itself reads (`publishTimesById`: scheduled uploads, a kit's
+  or a chain's claim, Studio's schedule; one per match, then one per time, so a series counts once)
+  plus each pair this chain rendered tonight (`chainPairs`). The operator's queue (the
+  Feinberg–Infume backlog) still renders, and a playoff game goes out as is; the cap failing to
+  read caps nothing. The dashboard's preview does not apply the cap (its pair lookup may need the
+  API, which a polled GET never spends), so it can name a pair the night then passes over.
 - **Fast-track / "if it's a 1 second difference between feinberg and infume ... post it asap"**:
   a new 15-minute tick, `src/dashboard/fastTrack.ts`, mirrors `creatorWatch.ts`'s shape (a state
   file, a "due" check, deliberately-swallowed per-item errors). It reads `suggest.ts`'s
