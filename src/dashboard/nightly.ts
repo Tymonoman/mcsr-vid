@@ -54,7 +54,7 @@ import {
   setSkipNightOf,
   skipNightOf,
 } from "./matchShelf.js";
-import { pairKey, refreshPairPosts } from "./pairPosts.js";
+import { cachedMatchPlayers, pairKey, refreshPairPosts } from "./pairPosts.js";
 import { orderForDisplay } from "./suggestPresent.js";
 import { dnfRefusal, matchIsDnf, playoffBoard, type PlayoffBoard } from "../playoffs/playoffs.js";
 import { readSeriesRecord } from "../playoffs/series.js";
@@ -78,7 +78,7 @@ import { withDiscoveredVods } from "../pipeline/vodDiscovery.js";
 import { retryFailedPlaylists, retryPendingComments, retryPendingStudio } from "../youtube/youtubeUpload.js";
 import { allUploads, readUpload } from "../youtube/youtubeStore.js";
 import { videoStats, type VideoStats } from "../youtube/youtube.js";
-import { claimedPublishTimes } from "../youtube/publishSlot.js";
+import { claimedPublishTimes, publishTimesById } from "../youtube/publishSlot.js";
 import { pickFile, type ShortPick } from "../shorts/shortPlan.js";
 import { pickErrorFile } from "../shorts/videoPick.js";
 
@@ -204,6 +204,40 @@ async function liveEveningCoverageGap(nowMs: number): Promise<number> {
     pending++;
   }
   return eveningCoverageGap(open, pending);
+}
+
+/**
+ * At most this many videos of one pair in the publish slots of the next 48 h
+ * (`EVENING_COVERAGE_HORIZON_MS`): the operator, 22 Oct 2026, builds rivalries as a series
+ * (`rivalryPlayers`), and the rivalry boost puts the same few pairs on top every night.
+ */
+export const PAIR_SLOTS_PER_48H = 2;
+
+/**
+ * The pairs that already fill `PAIR_SLOTS_PER_48H` of the next 48 h: each publish time in that
+ * window (`publishTimesById` — scheduled uploads, a kit's or a chain's claim, Studio's own schedule;
+ * one per match, then one per time, so a series' games are one video) by its match's pair, plus each
+ * pair this chain rendered tonight (`chainPairs`: no slot claimed yet, but it will take one). A match
+ * whose players cannot be read is no constraint. `nightlyEligible` keeps such a pair off an unqueued pick.
+ */
+export async function pairsAtCap(
+  nowMs: number,
+  tonight: ReadonlySet<string>,
+  times: () => Promise<ReadonlyArray<{ id: number; ms: number }>> = publishTimesById,
+  namesOf: (id: number) => Promise<[string, string] | null> = cachedMatchPlayers,
+): Promise<Set<string>> {
+  const due = new Map<number, number>();
+  for (const { id, ms } of await times())
+    if (ms > nowMs && ms <= nowMs + EVENING_COVERAGE_HORIZON_MS && !due.has(id)) due.set(id, ms);
+  const slots = new Map<string, Set<number>>();
+  for (const [id, ms] of due) {
+    const players = await namesOf(id).catch(() => null);
+    if (!players) continue;
+    const key = pairKey(players);
+    slots.set(key, (slots.get(key) ?? new Set()).add(ms));
+  }
+  const count = (key: string): number => (slots.get(key)?.size ?? 0) + Number(tonight.has(key));
+  return new Set([...slots.keys(), ...tonight].filter((key) => count(key) >= PAIR_SLOTS_PER_48H));
 }
 
 /** jobs.ts offers no completion callback, and a render runs unattended for minutes, so poll coarsely. */
@@ -489,6 +523,8 @@ export function nightlyEligible(
   queue: readonly number[],
   checkVods: (pick: NightlyPick) => Promise<boolean> = playoffVodsReady,
   nowMs: number = Date.now(),
+  /** `pairsAtCap`: pairs already twice in the next 48 h of publish slots. A playoff game is exempt, as is the queue. */
+  capped: ReadonlySet<string> = new Set(),
 ): (pick: NightlyPick) => Promise<boolean> {
   const queued = new Set(queue);
   // Checked before the queue, not after: a blocked match is never rendered, however it got here —
@@ -503,7 +539,12 @@ export function nightlyEligible(
     (queued.has(pick.metrics.matchId) || isKnownPick(pick)) &&
     // The weekly budget on a mixed (one known, one unknown) pair — the operator's own queue still
     // wins over it, same as over the known-player gate just above (18 Oct 2026, question 3).
-    (queued.has(pick.metrics.matchId) || !isMixedKnownPick(pick) || !knownUnknownRenderedRecently(nowMs));
+    (queued.has(pick.metrics.matchId) || !isMixedKnownPick(pick) || !knownUnknownRenderedRecently(nowMs)) &&
+    // The 48 h pair cap (22 Oct 2026): the queue is the operator's (the Feinberg–Infume backlog) and
+    // still renders; the bracket is pulled first and goes out as is.
+    (queued.has(pick.metrics.matchId) ||
+      pick.bucket === "playoffs" ||
+      !capped.has(pairKey(pick.metrics.players)));
 }
 
 /**
@@ -1152,7 +1193,17 @@ async function runOnce(
     const candidates = started > 1 ? excludeRenderedPairs(suggestions, chainPairs) : suggestions;
 
     const ctx = await pickContext();
-    const pick = await pickNightlyCandidate(candidates, ctx, nightlyEligible(ctx.queue ?? []), resolveQueued);
+    // Never the reason a night renders nothing: unreadable, it caps no pair.
+    const capped = await pairsAtCap(now(), chainPairs).catch((err: unknown) => {
+      console.error(`nightly: the 48 h pair cap could not be read — ${describeError(err)}`);
+      return new Set<string>();
+    });
+    const pick = await pickNightlyCandidate(
+      candidates,
+      ctx,
+      nightlyEligible(ctx.queue ?? [], playoffVodsReady, Date.now(), capped),
+      resolveQueued,
+    );
     if (!pick) {
       // Naming them: a bracket whose players stream on someone else's channel would otherwise
       // produce nothing but "nothing to render" for a fortnight, with the reason only in the log.

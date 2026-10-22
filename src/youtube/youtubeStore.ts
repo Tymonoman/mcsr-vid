@@ -332,6 +332,28 @@ export async function samePairLongForm(
   return others[others.length - 1]?.record.videoId ?? null;
 }
 
+/**
+ * Public long-forms per pair on the channel, all time, keyed like `pairKey` in
+ * src/dashboard/pairPosts.ts (the API spellings, lower case, sorted): the rivalry boost's history
+ * (`rivalryCountFor`, src/dashboard/suggest.ts). Public now, stricter than `lastMeetingFor`: a
+ * scheduled upload counts once its time has passed. One per video id (a series' games share game 1's).
+ * ponytail: off each record's title, like `lastMeetingFor`, so no API call and the same blind spots.
+ */
+export async function publicPairCounts(nowMs: number = Date.now()): Promise<Map<string, number>> {
+  const counts = new Map<string, number>();
+  const seen = new Set<string>();
+  for (const { record } of await allUploads()) {
+    const pair = pairKey(record.title ?? "");
+    const live = record.publishAt
+      ? Date.parse(record.publishAt) <= nowMs
+      : record.privacyStatus !== "private";
+    if (!pair || !live || seen.has(record.videoId)) continue;
+    seen.add(record.videoId);
+    counts.set(pair, (counts.get(pair) ?? 0) + 1);
+  }
+  return counts;
+}
+
 /** The nicknames a title's hook sets against each other ("TAS", "UNC"), and the two players it names. */
 function hookNicknames(line: string) {
   const parts = splitTitle(line);

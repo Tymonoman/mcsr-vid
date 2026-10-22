@@ -25,6 +25,8 @@ import {
   nightlySideCalls,
   openRankedSlots,
   PAIR_POSTS_WAIT_MS,
+  PAIR_SLOTS_PER_48H,
+  pairsAtCap,
   pickClause,
   pickContext,
   pickNightlyCandidate,
@@ -1105,4 +1107,91 @@ const sug = (matchId: number, players: [string, string], resultMs: number): Sugg
     config.favouritePlayers = savedFav;
   }
   console.log("OK: isMixedKnownPick and the weekly cap — queue still wins, both-known is never capped");
+}
+
+// --- The 48 h pair cap (22 Oct 2026): no third video of one pair in the next 48 h of publish slots,
+// unless the operator queued it; the rivalry boost puts the same few pairs on top every night ------
+{
+  assert.equal(PAIR_SLOTS_PER_48H, 2);
+  const NOW = at("2026-10-22T03:00:00Z");
+  const names: Record<number, [string, string]> = {
+    1: ["Feinberg", "Infume"],
+    2: ["Infume", "Feinberg"],
+    3: ["Feinberg", "Infume"],
+    4: ["lowk3y_", "silverrruns"],
+  };
+  const namesOf = async (id: number) => {
+    if (id === 99) throw new Error("the API is down");
+    return names[id] ?? null;
+  };
+  const times = (list: Array<[number, string]>) => async () => list.map(([id, iso]) => ({ id, ms: at(iso) }));
+  const capped = async (list: Array<[number, string]>, tonight: string[] = []) =>
+    [...(await pairsAtCap(NOW, new Set(tonight), times(list), namesOf))].sort();
+
+  assert.deepEqual(
+    await capped([
+      [1, "2026-10-22T19:00:00Z"],
+      [2, "2026-10-23T19:00:00Z"],
+      [4, "2026-10-22T23:00:00Z"],
+    ]),
+    ["feinberg|infume"],
+    "two of a pair in the next 48 h fill its share; one does not",
+  );
+  assert.deepEqual(
+    await capped([
+      [1, "2026-10-21T19:00:00Z"], // already out
+      [2, "2026-10-22T19:00:00Z"],
+      [3, "2026-10-24T19:00:00Z"], // past the 48 h
+      [99, "2026-10-23T19:00:00Z"], // players unreadable: no constraint
+      [4, "not a time"],
+    ]),
+    [],
+    "only the slots ahead and inside 48 h count, and only a pair that can be read",
+  );
+  assert.deepEqual(
+    await capped([
+      [1, "2026-10-22T19:00:00Z"],
+      [1, "2026-10-22T19:00:00Z"], // the record and Studio's schedule: one video
+      [3, "2026-10-22T19:00:00Z"], // a series' game 2 on game 1's video: one slot
+    ]),
+    [],
+    "one video counts once",
+  );
+  assert.deepEqual(
+    await capped([[1, "2026-10-23T19:00:00Z"]], ["feinberg|infume", "doogile|edcr"]),
+    ["feinberg|infume"],
+    "a pair this chain rendered tonight takes a slot too",
+  );
+
+  // Through the pick: the cap drops an unqueued pick of a capped pair; the queue and the bracket are untouched.
+  const savedMedia = config.mediaDir;
+  config.mediaDir = await mkdtemp(path.join(tmpdir(), "mcsr-nightly-paircap-"));
+  try {
+    const full = new Set(["feinberg|infume"]);
+    const vods = async () => true;
+    const now = Date.now();
+    const fi = sug(11, ["Feinberg", "Infume"], 600_000);
+    const other = sug(12, ["doogile", "edcr"], 600_000);
+    const bracket = { metrics: { matchId: 13, players: ["Infume", "Feinberg"] as [string, string] }, bucket: "playoffs" };
+    const ctx = { processedIds: [], hiddenIds: new Set<number>(), freeMatches: 10 };
+    assert.equal(await nightlyEligible([], vods, now, full)(fi), false, "a capped pair, unqueued: not tonight");
+    assert.equal(await nightlyEligible([], vods, now, full)(other), true, "another pair is untouched");
+    assert.equal(await nightlyEligible([], vods, now)(fi), true, "no cap read: nothing capped");
+    assert.equal(await nightlyEligible([], vods, now, full)(bracket), true, "a playoff game goes out as is");
+    assert.equal(
+      (await pickNightlyCandidate([fi, other], ctx, nightlyEligible([], vods, now, full)))?.metrics.matchId,
+      12,
+      "the ranked list falls through to the next pair",
+    );
+    assert.equal(
+      (await pickNightlyCandidate([other, fi], { ...ctx, queue: [11] }, nightlyEligible([11], vods, now, full)))
+        ?.metrics.matchId,
+      11,
+      "the operator's queue (the Feinberg–Infume backlog) still renders, first",
+    );
+  } finally {
+    await rm(config.mediaDir, { recursive: true, force: true });
+    config.mediaDir = savedMedia;
+  }
+  console.log("OK: the 48 h pair cap — two slots a pair, tonight's renders count, the queue and the bracket untouched");
 }

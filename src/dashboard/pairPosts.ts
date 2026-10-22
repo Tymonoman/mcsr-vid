@@ -22,7 +22,7 @@
 import { statSync } from "node:fs";
 import { config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
-import { allUploads, type UploadRecord } from "../youtube/youtubeStore.js";
+import { allUploads, publicPairCounts, type UploadRecord } from "../youtube/youtubeStore.js";
 import { hiddenMatchIds } from "./matchShelf.js";
 import { listProcessedMatchIds, matchStatusFor } from "./matchStatus.js";
 
@@ -122,7 +122,11 @@ export async function recentPairPosts(nowMs: number, deps: PairPostDeps = liveDe
   return posts;
 }
 
-let cached: { atMs: number; posts: PairPost[] } = { atMs: 0, posts: [] };
+let cached: { atMs: number; posts: PairPost[]; onChannel: ReadonlyMap<string, number> } = {
+  atMs: 0,
+  posts: [],
+  onChannel: new Map(),
+};
 let inflight: Promise<void> | null = null;
 
 /**
@@ -138,6 +142,12 @@ export function recentPairPostsSnapshot(
 }
 
 /**
+ * Public long-forms per pair on the channel, all time (`publicPairCounts`), as of the last refresh:
+ * the rivalry boost's history (src/dashboard/suggest.ts `rivalryCountFor`). Empty until the first.
+ */
+export const pairsOnChannelSnapshot = (): ReadonlyMap<string, number> => cached.onChannel;
+
+/**
  * Rereads the records when the snapshot is older than five minutes, once at a time, and never
  * rejects. The routes that show suggestions fire and forget it, so the first request after boot
  * answers without the demotion and the next has it; the nightly awaits it.
@@ -145,9 +155,9 @@ export function recentPairPostsSnapshot(
 export function refreshPairPosts(nowMs: number = Date.now(), deps?: PairPostDeps): Promise<void> {
   if (inflight) return inflight;
   if (nowMs - cached.atMs < REFRESH_MS) return Promise.resolve();
-  inflight = recentPairPosts(nowMs, deps)
-    .then((posts) => {
-      cached = { atMs: nowMs, posts };
+  inflight = Promise.all([recentPairPosts(nowMs, deps), publicPairCounts(nowMs)])
+    .then(([posts, onChannel]) => {
+      cached = { atMs: nowMs, posts, onChannel };
     })
     .catch((err: unknown) => {
       // The last answer stands, and the next try is in a minute rather than on every poll.

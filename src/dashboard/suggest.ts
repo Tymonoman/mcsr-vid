@@ -12,7 +12,7 @@ import {
 } from "../pipeline/matchScore.js";
 import { readDrawLearned, type DrawLearned } from "./drawLearn.js";
 import { listProcessedMatchIds } from "./matchStatus.js";
-import { pairKey, recentPairPostsSnapshot, type PairPost } from "./pairPosts.js";
+import { pairKey, pairsOnChannelSnapshot, recentPairPostsSnapshot, type PairPost } from "./pairPosts.js";
 import {
   getMatch,
   getRecentMatches,
@@ -233,6 +233,25 @@ export const CLOSE_FINISH_MS = 5_000;
 
 export const isCloseFinish = (metrics: Pick<MatchMetrics, "finishMarginMs">): boolean =>
   metrics.finishMarginMs !== null && metrics.finishMarginMs < CLOSE_FINISH_MS;
+
+/**
+ * A rivalry the channel builds as a series (`config.rivalryPlayers`, the operator 22 Oct 2026):
+ * the number of public long-forms its pair already has on the channel (`onChannel`, by `pairKey`)
+ * when both players are on `rivals`, else 0 — and 0 for a blocked pair, whatever the list says.
+ * Above 0 the match ranks first inside its tier, right after `isCloseFinish`, in `take()` and in
+ * `presentSuggestions` alike; the card's story line says the count. A pair with no video yet gets
+ * nothing. Reads only the channel's own uploads: never a seed, rank or elo, never who won.
+ */
+export function rivalryCountFor(
+  rivals: readonly string[],
+  onChannel: ReadonlyMap<string, number>,
+): (players: readonly [string, string]) => number {
+  const listed = new Set(rivals.map((name) => name.toLowerCase()));
+  return (players) =>
+    players.every((p) => listed.has(p.toLowerCase())) && !blockedIn(players)
+      ? (onChannel.get(pairKey(players)) ?? 0)
+      : 0;
+}
 
 /**
  * Measured draws at or above this get their own matches pulled every scan, favourite or not
@@ -920,7 +939,8 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
 
   // The slots go by `tierFor` — the matches with a favourite, then those with a known player (the
   // rest never reach a slot at all, `selectable`'s own filter) — inside a tier by `isCloseFinish`
-  // (a photo finish ranks above audience and popularity, never shown), then `audienceFor` (the
+  // (a photo finish ranks above audience and popularity, never shown), then `rivalryCountFor` (a
+  // rivalry with a video on the channel, whatever the count), then `audienceFor` (the
   // pairs put out lately as the scan finds them), then the bucket's score, then popularity; the
   // `score` kept on the card stays the bucket's own. One card per pair across all three buckets
   // (`pairs`): the best of a pair's matches, never two of them.
@@ -930,6 +950,7 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
   // the boost is a property of the match (its finish), not of the pair.
   const paced = (entry: (typeof selectable)[number]): number =>
     audience(entry.metrics.players) * recordPaceFactor(entry.metrics.resultMs, config.recordPaceBoostSec);
+  const rivalry = rivalryCountFor(config.rivalryPlayers, pairsOnChannelSnapshot());
   const pairs = new Set<string>();
   const take = (
     pool: typeof selectable,
@@ -944,6 +965,7 @@ export async function getSuggestions(options: SuggestOptions = {}): Promise<Sugg
         (a, b) =>
           tier(b.metrics.players) - tier(a.metrics.players) ||
           Number(isCloseFinish(b.metrics)) - Number(isCloseFinish(a.metrics)) ||
+          Number(rivalry(b.metrics.players) > 0) - Number(rivalry(a.metrics.players) > 0) ||
           paced(b) - paced(a) ||
           b.score - a.score ||
           b.popularity - a.popularity,

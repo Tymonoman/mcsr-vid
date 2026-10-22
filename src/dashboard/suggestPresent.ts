@@ -9,13 +9,14 @@
 import { formatShortTime } from "../../remotion/format.js";
 import { blockedIn, config } from "../config.js";
 import { readDrawLearned, type DrawLearned } from "./drawLearn.js";
-import { recentPairPostsSnapshot, type PairPost } from "./pairPosts.js";
+import { pairsOnChannelSnapshot, recentPairPostsSnapshot, type PairPost } from "./pairPosts.js";
 import { rivalLine, rivalPostsSnapshot, rivalSightingsFor, type RivalPost } from "./rivalPosts.js";
 import { metricsDnf, type SplitGap } from "../pipeline/matchScore.js";
 import {
   audienceFor,
   isCloseFinish,
   recordPaceFactor,
+  rivalryCountFor,
   tierFor,
   POOL_MAX_AGE_DAYS,
   type Bucket,
@@ -45,6 +46,8 @@ export interface SuggestionCard {
   resultMs: number;
   /** Ranking signal too (`isCloseFinish`, under 5s): not shown on the card. */
   closeFinish: boolean;
+  /** The rivalry's public long-forms on the channel (`rivalryCountFor`, 0 for none): ranks, and the story line says it. */
+  rivalry: number;
   splits: SplitGap[];
   vodUrls: string[];
   /**
@@ -59,15 +62,19 @@ const followerLabel = (n: number): string =>
   n >= 10_000 ? `${Math.round(n / 1000)}k` : n >= 1_000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 
 /**
- * `#4 vs #11 · 2130 v 1980 elo · rematch 2-1 · 8.1k + 2.3k followers`, minus any part whose
- * data is missing. Pairwise parts need both sides: "#4 vs #null" is worse than silence.
+ * `rivalry: 3 on the channel · #4 vs #11 · 2130 v 1980 elo · rematch 2-1 · 8.1k + 2.3k followers`,
+ * minus any part whose data is missing. Pairwise parts need both sides: "#4 vs #null" is worse
+ * than silence. The rivalry part first: it is why the card sits where it does (`rivalryCountFor`).
  */
 export function storyLine(
   profiles: readonly [SuggestionPlayer, SuggestionPlayer],
   h2h: HeadToHead | null,
+  rivalry = 0,
 ): string | null {
   const [a, b] = profiles;
   const parts: string[] = [];
+
+  if (rivalry > 0) parts.push(`rivalry: ${rivalry} on the channel`);
 
   if (a.eloRank !== null && b.eloRank !== null) parts.push(`#${a.eloRank} vs #${b.eloRank}`);
   if (a.elo !== null && b.elo !== null) parts.push(`${a.elo} v ${b.elo} elo`);
@@ -105,7 +112,7 @@ export function factsLine(s: Suggestion): string {
   ].join(" · ");
 }
 
-function toCard(s: Suggestion, nowMs: number, rival: readonly RivalPost[]): SuggestionCard {
+function toCard(s: Suggestion, nowMs: number, rival: readonly RivalPost[], rivalry: number): SuggestionCard {
   const ageDays = (nowMs / 1000 - s.dateSec) / 86_400;
   const expiresInDays = Math.max(0, Math.floor(POOL_MAX_AGE_DAYS - ageDays));
   const expiring = expiresInDays <= EXPIRY_WARN_DAYS;
@@ -123,7 +130,7 @@ function toCard(s: Suggestion, nowMs: number, rival: readonly RivalPost[]): Sugg
     matchId: s.metrics.matchId,
     bucket: s.bucket,
     players: s.metrics.players,
-    story: storyLine(s.profiles, s.h2h),
+    story: storyLine(s.profiles, s.h2h, rivalry),
     facts: factsLine(s),
     expiresInDays,
     expiring,
@@ -131,6 +138,7 @@ function toCard(s: Suggestion, nowMs: number, rival: readonly RivalPost[]): Sugg
     popularity: s.popularity,
     resultMs: s.metrics.resultMs,
     closeFinish: isCloseFinish(s.metrics),
+    rivalry,
     splits: s.metrics.splits,
     vodUrls: s.vodUrls,
   };
@@ -147,7 +155,9 @@ const BUCKET_RANK: Record<Bucket, number> = { close: 0, chaos: 1, known: 2 };
  * operator, 18 Oct 2026: "two unknown runners = never"). Inside a tier: a match whose VODs are about
  * to die first, because it is the only candidate that stops being renderable; then a photo finish
  * (`isCloseFinish`, under 5s — the operator, same day: "a close finish should push a match up the
- * list" — never shown, only ordered on); then
+ * list" — never shown, only ordered on); then a rivalry the channel builds as a series with at least
+ * one public video of the pair up already (`rivalryCountFor`, `rivalryPlayers` against `onChannel`,
+ * 22 Oct 2026 — the story line says the count); then
  * the biggest audience (`audienceFor`: expected draw × the favourites' bonus × `REPEAT_FACTOR` for a
  * pair the channel itself put out lately — `posted`, within `pairRepeatDays`, either side of now). A
  * rival channel already posting the match no longer demotes it either (18 Oct 2026 — it still shows
@@ -170,13 +180,16 @@ export function presentSuggestions(
   knownFollowerThreshold: number = config.knownFollowerThreshold,
   learned: DrawLearned | null = config.learnedDraw ? readDrawLearned() : null,
   recordPaceBoostSec: number | null = config.recordPaceBoostSec,
+  rivals: readonly string[] = config.rivalryPlayers,
+  onChannel: ReadonlyMap<string, number> = pairsOnChannelSnapshot(),
 ): SuggestionCard[] {
+  const rivalry = rivalryCountFor(rivals, onChannel);
   // Dropped outright, not just reordered: a stale cached list scanned before a player was
   // blocked (config.blockedPlayers) must not show their match until the next rescan catches up.
   // Nor a DNF (`metricsDnf`), whatever list it came in on.
   const cards = suggestions
     .filter((s) => !blockedIn(s.metrics.players) && !metricsDnf(s.metrics))
-    .map((s) => toCard(s, nowMs, rival));
+    .map((s) => toCard(s, nowMs, rival, rivalry(s.metrics.players)));
   // Follower counts are already on the suggestions themselves (`profiles`, resolved at scan time);
   // no second Twitch lookup here.
   const followersByName = new Map<string, number | null>();
@@ -192,6 +205,7 @@ export function presentSuggestions(
       tier(y.players) - tier(x.players) ||
       Number(y.expiring) - Number(x.expiring) ||
       Number(y.closeFinish) - Number(x.closeFinish) ||
+      Number(y.rivalry > 0) - Number(x.rivalry > 0) ||
       paced(y) - paced(x) ||
       BUCKET_RANK[x.bucket] - BUCKET_RANK[y.bucket] ||
       y.popularity - x.popularity,
@@ -211,6 +225,8 @@ export function orderForDisplay(
   knownFollowerThreshold: number = config.knownFollowerThreshold,
   learned: DrawLearned | null = config.learnedDraw ? readDrawLearned() : null,
   recordPaceBoostSec: number | null = config.recordPaceBoostSec,
+  rivals: readonly string[] = config.rivalryPlayers,
+  onChannel: ReadonlyMap<string, number> = pairsOnChannelSnapshot(),
 ): Suggestion[] {
   const rank = new Map(
     presentSuggestions(
@@ -222,6 +238,8 @@ export function orderForDisplay(
       knownFollowerThreshold,
       learned,
       recordPaceBoostSec,
+      rivals,
+      onChannel,
     ).map((card, i) => [card.matchId, i]),
   );
   return [...suggestions].sort(

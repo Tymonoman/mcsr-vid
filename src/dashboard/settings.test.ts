@@ -19,7 +19,7 @@ writeFileSync(
   "utf8",
 );
 
-const { config, CONFIG_PATH, CTA_REASON_MAX_CHARS, isBlockedPlayer, reloadBlockedPlayers } =
+const { config, CONFIG_PATH, CTA_REASON_MAX_CHARS, isBlockedPlayer, reloadBlockedPlayers, validateOverrides } =
   await import("../config.js");
 const { coerce, saveSettings, SETTINGS, settingsPayload, READ_ONLY } = await import("./settings.js");
 assert.equal(CONFIG_PATH, path.join(dir, "mcsr-vid.config.json"), "the test owns the file it writes");
@@ -72,6 +72,15 @@ assert.deepEqual(coerce(field("favouritePlayers"), "doogile, Feinberg ,edcr"), {
 assert.deepEqual(coerce(field("favouritePlayers"), ""), { value: [] });
 assert.deepEqual(coerce(field("favouritePlayers"), " , ,"), { value: [] }, "stray commas name nobody");
 assert.ok(field("favouritePlayers").unattended, "it changes the nightly's pick, and the panel says so");
+
+// The rivalry players: the same list kind, and the loader takes nicknames only (22 Oct 2026).
+assert.deepEqual(coerce(field("rivalryPlayers"), "Feinberg, Infume lowk3y_"), {
+  value: ["Feinberg", "Infume", "lowk3y_"],
+});
+assert.ok(field("rivalryPlayers").unattended, "it changes the nightly's pick, and the panel says so");
+assert.doesNotThrow(() => validateOverrides({ rivalryPlayers: [] }), "empty is off");
+assert.throws(() => validateOverrides({ rivalryPlayers: "Feinberg" }), /rivalryPlayers/);
+assert.throws(() => validateOverrides({ rivalryPlayers: ["Feinberg", " "] }), /rivalryPlayers/);
 
 // The blocked players are the same list kind, empty likewise means none.
 assert.deepEqual(coerce(field("blockedPlayers"), "Aquacorde, someoneElse"), {

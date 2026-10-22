@@ -169,8 +169,26 @@ async function pairOf(matchId: number): Promise<string | null> {
  * evidence is a repeated pair, not a repeated name.
  */
 export async function pairGapTimes(matchId: number, sinceMs: number): Promise<number[]> {
+  const timed = (await publishTimesById()).filter((v) => v.id !== matchId && v.ms >= sinceMs);
+  // The pair first: the kind may read the bracket, and another pair's videos never need it.
+  const pair = timed.length > 0 ? await pairOf(matchId) : null;
+  if (!pair) return [];
+  const series = await seriesKind(matchId);
+  const out: number[] = [];
+  for (const v of timed)
+    if ((await pairOf(v.id)) === pair && (await seriesKind(v.id)) !== series) out.push(v.ms);
+  return [...new Set(out)];
+}
+
+/**
+ * Every long-form's time on the channel by match id, from the sources `pairGapTimes` describes: a
+ * scheduled video at its `publishAt`, a public one at its upload, one not uploaded yet at the time
+ * chosen or claimed for it, a Studio upload by the match its description links. `ms` is NaN for a
+ * private one with no time. The nightly's pair cap reads the next 48 h of it (src/dashboard/nightly.ts).
+ */
+export async function publishTimesById(): Promise<Array<{ id: number; ms: number }>> {
   const uploads = await allUploads();
-  const timed = [
+  return [
     ...uploads.map((u) => ({
       id: u.matchId,
       at: u.record.publishAt ?? (u.record.privacyStatus !== "private" ? u.record.uploadedAt : null),
@@ -185,15 +203,7 @@ export async function pairGapTimes(matchId: number, sinceMs: number): Promise<nu
       })),
   ]
     .map((v) => ({ id: v.id, ms: v.at ? Date.parse(v.at) : NaN }))
-    .filter((v) => Number.isInteger(v.id) && v.id !== matchId && v.ms >= sinceMs);
-  // The pair first: the kind may read the bracket, and another pair's videos never need it.
-  const pair = timed.length > 0 ? await pairOf(matchId) : null;
-  if (!pair) return [];
-  const series = await seriesKind(matchId);
-  const out: number[] = [];
-  for (const v of timed)
-    if ((await pairOf(v.id)) === pair && (await seriesKind(v.id)) !== series) out.push(v.ms);
-  return [...new Set(out)];
+    .filter((v) => Number.isInteger(v.id));
 }
 
 /** The hour a match publishes at: a series video (`series.json` in its directory) has its own. */

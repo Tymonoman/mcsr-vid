@@ -3,12 +3,13 @@
 // bucket's own; and a cache of an older layout is rebuilt without losing what the operator dismissed.
 // Run: npx tsx src/dashboard/suggestSelect.test.ts
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { config, DEFAULTS } from "../config.js";
 import { DEFAULT_WEIGHTS, type MatchMetrics } from "../pipeline/matchScore.js";
 import type { DrawLearned } from "./drawLearn.js";
+import { refreshPairPosts } from "./pairPosts.js";
 import {
   DEFAULT_DRAW,
   RECORD_PACE_BOOST,
@@ -647,6 +648,56 @@ try {
     );
     assert.deepEqual(savedAfter.pool["555"].h2h, { leftWins: 0, rightWins: 0 });
     console.log("OK: a pooled h2h is the match's own season, before the match");
+  }
+
+  // --- The rivalry boost at the slots (22 Oct 2026): Feinberg vs Infume, with a public video up,
+  // takes the one slot from a known pair with the bigger audience; with no video up it does not.
+  {
+    config.suggestCloseSlots = 1;
+    config.suggestChaosSlots = 0;
+    config.suggestKnownSlots = 0;
+    globalThis.fetch = (async () => ({
+      ok: true,
+      json: async () => ({ status: "success", data: [] }),
+    })) as unknown as typeof fetch;
+    const rivalry = Object.fromEntries(
+      [
+        pooled(91, ["Feinberg", "Infume"], 9_000), //          audience 1.19 + 1.09/2
+        pooled(92, ["hackingnoises", "silverrruns"], 9_000), // audience 2.08 + 1.93/2
+      ].map((entry) => [String(entry.metrics.matchId), entry]),
+    );
+    const withPool = async () =>
+      writeFile(
+        cachePath,
+        JSON.stringify({ ...JSON.parse(await readFile(cachePath, "utf8")), dismissed: [], pool: rivalry, scannedAt: 0 }),
+        "utf8",
+      );
+    await withPool();
+    assert.deepEqual(await ids([]), [92], "no video of the pair on the channel yet: no boost, audience decides");
+
+    // One public long-form of the pair on disk, read into the snapshot the way the routes refresh it.
+    const uploaded = path.join(media, "9901");
+    await mkdir(uploaded);
+    await writeFile(
+      path.join(uploaded, "youtube.json"),
+      JSON.stringify({
+        videoId: "rivalry0001",
+        uploadedAt: new Date(Date.now() - 86_400_000).toISOString(),
+        publishAt: null,
+        privacyStatus: "public",
+        thumbnailVariant: null,
+        title: "THE REMATCH | Infume vs Feinberg | MCSR Ranked",
+      }),
+    );
+    await refreshPairPosts(Date.now(), { uploads: async () => [], rendered: () => [], namesOf: async () => null });
+    await withPool();
+    assert.deepEqual(await ids([]), [91], "a rivalry with a video up takes the slot from the bigger audience");
+    config.rivalryPlayers = ["Feinberg"];
+    await withPool();
+    assert.deepEqual(await ids([]), [92], "only a pair of two listed players");
+    config.rivalryPlayers = [...DEFAULTS.rivalryPlayers];
+    await rm(uploaded, { recursive: true, force: true });
+    console.log("OK: a rivalry with a public video takes the slot; one without, or off the list, does not");
   }
 
   console.log("suggestSelect: all checks passed");

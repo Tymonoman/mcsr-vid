@@ -337,6 +337,7 @@ function shown(f: Field & { value: unknown }): unknown {
     assert.equal(field(key).group, "Publishing", `${key} is under Settings → Publishing`);
   for (const key of [
     "favouritePlayers",
+    "rivalryPlayers",
     "blockedPlayers",
     "learnedDraw",
     "recordPaceBoostSec",

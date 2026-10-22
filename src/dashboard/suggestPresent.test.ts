@@ -5,7 +5,7 @@ import type { DrawLearned } from "./drawLearn.js";
 import { nightlyEligible, pickNightlyCandidate } from "./nightly.js";
 import { refreshPairPosts, type PairPost } from "./pairPosts.js";
 import { factsLine, orderForDisplay, presentSuggestions, storyLine } from "./suggestPresent.js";
-import type { Bucket, Suggestion, SuggestionPlayer } from "./suggest.js";
+import { rivalryCountFor, type Bucket, type Suggestion, type SuggestionPlayer } from "./suggest.js";
 
 const NOW = Date.UTC(2026, 8, 7);
 const daysAgo = (n: number): number => Math.floor((NOW - n * 86_400_000) / 1000);
@@ -769,4 +769,71 @@ const order = (
     "orderForDisplay agrees",
   );
   console.log("OK: a learned draw and a near-record finish each reorder inside a tier, off by default");
+}
+
+// --- The rivalry boost (22 Oct 2026): a rivalry with a video on the channel, first inside its tier
+// right after a photo finish; its card says how many. `rivals`/`onChannel` passed explicitly, the
+// rest pinned as above so no live snapshot or setting leaks in.
+{
+  const RIVALS = ["Feinberg", "Infume", "lowk3y_", "silverrruns", "doogile", "Aquacorde"];
+  const onChannel = new Map([
+    ["feinberg|infume", 3],
+    ["aquacorde|doogile", 5], // blocked (config.blockedPlayers): never a boost
+    ["edcr|hackingnoises", 4], // not on the list: never a boost
+  ]);
+  const plain = (nickname: string) => player({ nickname, eloRank: null, elo: null, followers: null });
+  const card = (matchId: number, players: [string, string], finishMarginMs: number) =>
+    suggestion(
+      { popularity: 10, dateSec: daysAgo(2), h2h: null, profiles: [plain(players[0]), plain(players[1])] },
+      { matchId, players, finishMarginMs },
+    );
+
+  const count = rivalryCountFor(RIVALS, onChannel);
+  assert.equal(count(["Infume", "FEINBERG"]), 3, "either order, any case");
+  assert.equal(count(["silverrruns", "lowk3y_"]), 0, "both listed, no video yet: nothing");
+  assert.equal(count(["edcr", "hackingnoises"]), 0, "a pair off the list: nothing, whatever its history");
+  assert.equal(count(["doogile", "Aquacorde"]), 0, "a blocked pair: never");
+  assert.equal(rivalryCountFor([], onChannel)(["Feinberg", "Infume"]), 0, "an empty list is off");
+
+  // Every one of these is tier 1 (known by measured draw, no favourites passed). Without the boost
+  // the bigger audiences go first: silverrruns–lowk3y_ (both listed, no video yet), hackingnoises–edcr.
+  const fi = card(701, ["Feinberg", "Infume"], 30_000);
+  const silverLowkey = card(702, ["silverrruns", "lowk3y_"], 30_000);
+  const hackingEdcr = card(703, ["hackingnoises", "edcr"], 30_000);
+  const photo = card(704, ["nahhann", "edcr"], 400); // a photo finish, no rivalry
+  const order = (on: ReadonlyMap<string, number>) =>
+    presentSuggestions([silverLowkey, hackingEdcr, fi, photo], NOW, [], [], [], undefined, null, null, RIVALS, on);
+  assert.deepEqual(
+    order(new Map()).map((c) => c.matchId),
+    [704, 702, 703, 701],
+    "no history anywhere: the photo finish, then audience",
+  );
+  assert.deepEqual(
+    order(onChannel).map((c) => c.matchId),
+    [704, 701, 702, 703],
+    "the rivalry with a video up ranks above the known pairs without, right after the photo finish",
+  );
+  assert.deepEqual(
+    orderForDisplay([silverLowkey, hackingEdcr, fi, photo], NOW, [], [], [], undefined, null, null, RIVALS, onChannel).map(
+      (s) => s.metrics.matchId,
+    ),
+    [704, 701, 702, 703],
+    "orderForDisplay agrees, so the nightly takes the same order",
+  );
+  const cards = order(onChannel);
+  assert.equal(cards.find((c) => c.matchId === 701)!.story, "rivalry: 3 on the channel", "the reason, no rank or elo");
+  assert.equal(cards.find((c) => c.matchId === 702)!.story, null, "no history, no line");
+  assert.equal(
+    storyLine(full.profiles, full.h2h, 2),
+    "rivalry: 2 on the channel · #4 vs #11 · 2130 v 1980 elo · rematch 2–1 · 8.1k + 2.3k followers",
+    "the rivalry part leads the card's own line",
+  );
+  // A blocked pair's card never shows, history or not.
+  const blocked = card(705, ["doogile", "Aquacorde"], 30_000);
+  assert.deepEqual(
+    presentSuggestions([blocked, fi], NOW, [], [], [], undefined, null, null, RIVALS, onChannel).map((c) => c.matchId),
+    [701],
+    "a blocked pair is dropped, never boosted",
+  );
+  console.log("OK: a rivalry with a video on the channel ranks first in its tier after a photo finish, and says so");
 }

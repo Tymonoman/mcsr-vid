@@ -2,7 +2,7 @@
 // template goes up with today's generated half, while what the operator wrote is kept.
 // Run: npx tsx src/youtube/youtubeStore.test.ts
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { config } from "../config.js";
@@ -21,6 +21,7 @@ import {
   lastMeetingFor,
   nicknameWarnings,
   pinnedComment,
+  publicPairCounts,
   refreshDescription,
   refreshTitle,
   resolveShortVideoId,
@@ -660,5 +661,53 @@ console.log("OK: resolveShortVideoId refuses a long-form id where a Short's was 
   assert.ok(clean.startsWith("Does the lead ever settle? | edcr vs doogile"), clean);
 }
 console.log("OK: a carried headline that labels a runner never stands in for <HOOK>");
+
+// --- publicPairCounts: the rivalry boost's history — public now, one per video, the API spelling ---
+{
+  const saved = { mediaDir: config.mediaDir, titleNames: config.titleNames };
+  config.mediaDir = mkdtempSync(path.join(tmpdir(), "mcsr-paircounts-"));
+  config.titleNames = { lowk3y_: "lowkey" };
+  const NOW = Date.UTC(2026, 9, 22, 3);
+  const up = (matchId: number, videoId: string, title: string, over: Partial<UploadRecord> = {}) => {
+    mkdirSync(path.join(config.mediaDir, String(matchId)));
+    const record: UploadRecord = {
+      videoId,
+      uploadedAt: new Date(NOW - 3 * 86_400_000).toISOString(),
+      publishAt: null,
+      privacyStatus: "public",
+      thumbnailVariant: null,
+      title,
+      ...over,
+    };
+    writeFileSync(path.join(config.mediaDir, String(matchId), "youtube.json"), JSON.stringify(record));
+  };
+  try {
+    up(1, "v1", "HOOK | Feinberg vs Infume | MCSR Ranked");
+    up(2, "v2", "HOOK | Infume vs Feinberg | MCSR Ranked", {
+      privacyStatus: "private",
+      publishAt: new Date(NOW - 86_400_000).toISOString(), // scheduled, and its time has passed
+    });
+    up(3, "v3", "HOOK | Feinberg vs Infume | MCSR Ranked", {
+      privacyStatus: "private",
+      publishAt: new Date(NOW + 86_400_000).toISOString(), // scheduled ahead: not on the channel yet
+    });
+    up(4, "v2", "HOOK | Infume vs Feinberg | MCSR Ranked"); // a series' game 2: game 1's video
+    up(5, "v5", "HOOK | silverrruns vs lowkey | MCSR Ranked"); // the title's spelling of lowk3y_
+    up(6, "v6", "HOOK | doogile vs edcr", { privacyStatus: "private" }); // private, no time
+    assert.deepEqual(
+      [...(await publicPairCounts(NOW))].sort(),
+      [
+        ["feinberg|infume", 2],
+        ["lowk3y_|silverrruns", 1],
+      ],
+      "public now, one per video id, keyed by the API spelling",
+    );
+  } finally {
+    rmSync(config.mediaDir, { recursive: true, force: true });
+    config.mediaDir = saved.mediaDir;
+    config.titleNames = saved.titleNames;
+  }
+  console.log("OK: publicPairCounts — public now, one per video, the API spelling");
+}
 
 console.log("youtubeStore.test: ok");

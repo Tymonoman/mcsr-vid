@@ -324,6 +324,14 @@ export const SETTINGS: readonly SettingField[] = [
     unattended: true,
   },
   {
+    key: "rivalryPlayers",
+    label: "Rivalry players",
+    help: "MCSR nicknames separated by commas or spaces (lowk3y_ is lowkey); case is ignored, spelling is not. A match between two of them whose pair already has a public video on the channel comes first among matches of its kind, right after a photo finish, and its card says how many are up. A pair with no video yet gets nothing. Separately, the nightly renders no third match of one pair into the next 48 hours of publish slots unless you queued it. Empty is off.",
+    kind: "list",
+    group: "Suggestions",
+    unattended: true,
+  },
+  {
     key: "pairRepeatDays",
     label: "Days before a pair repeats",
     help: "A match whose two players this channel already put out a video for (public, scheduled, or rendered and still waiting for its hooks) within this many days either side of now counts for half in the list and in the nightly's first pick, so another pair goes first — among matches of the same kind: a repeated favourite pair still comes before a no-name one. Never skipped: a rematch still renders when nothing else qualifies. 0 is off. Applies on the next read.",

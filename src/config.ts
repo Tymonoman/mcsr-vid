@@ -124,6 +124,15 @@ export interface Config {
    */
   favouritePlayers: string[];
   /**
+   * The rivalries this channel builds as a series (the operator, 22 Oct 2026: "lowkey silver runs
+   * doogile", plus Feinberg vs Infume). API spellings, compared whole and ignoring case. A match
+   * between two of them whose pair already has a public long-form on the channel ranks first inside
+   * its tier, right after a photo finish (`rivalryCountFor`, src/dashboard/suggest.ts), and its card
+   * says how many; a pair with no video yet gets nothing. Never a seed, rank or elo, never a winner.
+   * Empty is off.
+   */
+  rivalryPlayers: string[];
+  /**
    * Whole days, 0-30 (0 is off): a match whose two players this channel already put out a
    * long-form video for — public, scheduled, or rendered and waiting for its hooks — within this many
    * days of now counts for half when the suggestion list is ordered (`presentSuggestions`,
@@ -650,6 +659,7 @@ export const DEFAULTS: Config = {
   youtubePlaylistUrl: "",
   rivalChannelHandle: ["mcsrmatches", "mcsr-vault"],
   favouritePlayers: ["doogile", "Feinberg", "Infume", "Pinne", "lowk3y_", "silverrruns", "edcr"],
+  rivalryPlayers: ["Feinberg", "Infume", "lowk3y_", "silverrruns", "doogile"],
   pairRepeatDays: 3,
   knownFollowerThreshold: 10_000,
   learnedDraw: false,
@@ -870,7 +880,7 @@ export function validateOverrides(raw: Record<string, unknown>): void {
       }
       continue;
     }
-    if (key === "blockedPlayers" || key === "creatorWatchlist") {
+    if (key === "blockedPlayers" || key === "creatorWatchlist" || key === "rivalryPlayers") {
       if (!Array.isArray(value) || !value.every((n) => typeof n === "string" && n.trim() !== "")) {
         throw new Error(`${CONFIG_PATH}: "${key}" must be an array of nicknames ([] for none).`);
       }

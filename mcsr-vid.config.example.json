@@ -45,6 +45,13 @@
     "silverrruns",
     "edcr"
   ],
+  "rivalryPlayers": [
+    "Feinberg",
+    "Infume",
+    "lowk3y_",
+    "silverrruns",
+    "doogile"
+  ],
   "pairRepeatDays": 3,
   "knownFollowerThreshold": 10000,
   "learnedDraw": false,
