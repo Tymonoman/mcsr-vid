@@ -139,13 +139,12 @@ finish spoils and underperforms.
   `pickShortMoment`): a 2fps proxy, /watch's stills/transcripts per player (needs `GROQ_API_KEY`),
   then Antigravity (`agy`, `gemini-3.8-flash-high`, `--sandbox`, never
   `--dangerously-skip-permissions`). Answer: a continuous 12–60s window
-  (`SHORT_MIN_MS`/`SHORT_MAX_MS`), a focus side, a hook suggestion, a one-line why (operator's eyes
+  (`SHORT_MIN_MS`/`SHORT_MAX_MS`), a focus side, a hook suggestion, a one-line why (operator
   only); validated for bounds and `rtaAtStart` ±2s. One retry on an empty answer, then the
-  timeline heuristic (`shortMoment.ts`). Pick is `short-<id>.pick.json`. It also proposes up to 3
-  long-form title hooks (`titleHooks`) styled on the operator's past saved hooks; each must pass
-  `hookProblem` (a word-list spoiler/label/seed check, not every paraphrase) and fit the title's
-  `hookMax`, which the prompt states, or is dropped — the operator's Save is the real gate. A
-  rejected window drops its title hooks too.
+  timeline heuristic (`shortMoment.ts`). Pick is `short-<id>.pick.json`. It also proposes ≤3
+  long-form title hooks (`titleHooks`) styled on past saved hooks; each must pass `hookProblem`
+  (a word-list spoiler/label/seed check, not every paraphrase) and fit the title's `hookMax`, or
+  is dropped — the operator's Save is the real gate. A rejected window drops its title hooks too.
 - **No Short renders and nothing uploads before the operator saves the hooks**
   (`generateShort.ts`, `youtubeUpload.ts` `hookRefusal`, every render path). The Short's hook is
   `short-<id>.hook.txt`; the long-form's is the edited title. Saving both
@@ -154,8 +153,8 @@ finish spoils and underperforms.
   upload hooks lock. "No Short for this one" lets the long-form go alone.
 - **On screen** (`remotion/Short.tsx`; hand-cut: `scripts/hand-short/build.py`): hook 4s, race
   captions (a leader may be named, never the result), running clock, off-focus POV at -12dB,
-  closing card: "WHO TOOK IT?" if undecided, "FULL MATCH ON THE CHANNEL", SUBSCRIBE (both
-  renderers). Title: `<hook> | <left> vs <right>` + `titleName` (Skycrab, lowkey) + `#mcsr #minecraft`.
+  closing card: "WHO TOOK IT?" if undecided, "FULL MATCH ON THE CHANNEL", SUBSCRIBE. Title:
+  `<hook> | <left> vs <right>` + `titleName` + `#mcsr #minecraft`.
 - **`deathKind`** (`src/pipeline/matchScore.ts`) is the one reading of `death_spawnpoint`: a hunger
   reset in every phase but the End, a real death in the End. `metrics.deaths` counts real deaths
   only; the prompt, captions/hook, heuristic, title chips and "N deaths" follow it (`teaser.ts`
