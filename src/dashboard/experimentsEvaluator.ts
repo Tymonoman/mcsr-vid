@@ -15,6 +15,7 @@ import { config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { listProcessedMatchIds } from "./matchStatus.js";
 import { getAccessToken, impressionsSince } from "../youtube/youtube.js";
+import { engagedRates } from "../youtube/abReport.js";
 import { analytics } from "../youtube/yppProgress.js";
 import { readUpload } from "../youtube/youtubeStore.js";
 import { totalReach } from "./youtubeRoutes.js";
@@ -128,6 +129,13 @@ export interface ArmTotals {
    *  one). */
   avgViewPercentage: number;
   avgViewPercentages: number[];
+  /** engagedViews / views and subscribers per 1,000 engaged views over the arm's totals
+   *  (`engagedRates`), null with nothing to divide by; and the mean retention at 10% over the
+   *  videos that have a curve. Display only (`engagementReadout`): never decide a verdict. Absent
+   *  on a result written before 22 Oct 2026. */
+  engagedRatio?: number | null;
+  subsPer1kEngaged?: number | null;
+  retentionAt10?: number;
   /** Every video's own metrics: what `verdictFor` decides on, one value per video. */
   perVideo: VideoRow[];
 }
@@ -175,6 +183,11 @@ export async function armTotalsFor(
       weightedPctSum += m.averageViewPercentage * m.views;
     }
     totals.avgViewPercentage = totals.views > 0 ? weightedPctSum / totals.views : 0;
+    Object.assign(totals, engagedRates(totals));
+    const at10 = totals.perVideo.flatMap((v) =>
+      v.views > 0 && v.retentionAt10 !== undefined ? [v.retentionAt10] : [],
+    );
+    if (at10.length) totals.retentionAt10 = mean(at10);
     out.push(totals);
   }
   return out;
@@ -322,6 +335,22 @@ export function verdictFor(exp: Experiment, arms: ArmTotals[]): Verdict {
     // The control already is the default: nothing for `settle` to adopt.
     winnerArm: ahead === control ? null : ahead.arm.arm,
   };
+}
+
+/** Per arm, the numbers subscribers follow here — engaged share of views, subs per 1,000 engaged
+ *  views, retention at 10% — appended to the verdict and decision text. Display only; "" while no
+ *  arm has a view yet. */
+export function engagementReadout(arms: ArmTotals[]): string {
+  if (!arms.some((a) => a.views > 0)) return "";
+  return arms
+    .map((a) =>
+      [
+        `${a.arm} ${a.engagedRatio == null ? "–" : `${(a.engagedRatio * 100).toFixed(0)}%`} engaged`,
+        `${a.subsPer1kEngaged == null ? "–" : a.subsPer1kEngaged.toFixed(2)} subs/1k engaged`,
+        ...(a.retentionAt10 !== undefined ? [`${a.retentionAt10.toFixed(1)}% at 10%`] : []),
+      ].join(", "),
+    )
+    .join("; ");
 }
 
 const isYesterday = (date: string, today: string): boolean =>
@@ -473,7 +502,9 @@ export async function evaluateExperiments(deps: Partial<EvaluatorDeps> = {}): Pr
       if (exp.kind !== "between" || exp.status !== "running") continue;
       try {
         const arms = await armTotalsFor(exp, fetch);
-        const verdict = verdictFor(exp, arms);
+        const decided = verdictFor(exp, arms);
+        const readout = engagementReadout(arms);
+        const verdict = readout ? { ...decided, text: `${decided.text} · ${readout}` } : decided;
         exp.result = { arms, computedAt: new Date(nowMs).toISOString() };
         exp.verdict = verdict.text;
         exp.evaluatedAt = new Date(nowMs).toISOString();

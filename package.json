@@ -60,7 +60,7 @@
     "x": "tsx src/x/xCli.ts",
     "//studio": "Studio automation from the terminal: probe the session, pin a comment, or run the one-time login screen.",
     "studio": "tsx src/youtube/studioCli.ts",
-    "//ab-report": "Every finished title Test & Compare since 18 Oct 2026, by style — reads .experiments.json only, no network.",
+    "//ab-report": "Every finished title Test & Compare since 18 Oct 2026 by style, and every finished thumbnail concept test by concept with the adoption rule — reads .experiments.json only; --analytics adds one own-video Analytics read per test.",
     "ab-report": "tsx src/cli/abReport.ts"
   },
   "devDependencies": {

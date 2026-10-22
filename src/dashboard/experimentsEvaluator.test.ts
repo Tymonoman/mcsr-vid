@@ -18,8 +18,15 @@ writeFileSync(path.join(cwdDir, "mcsr-vid.config.json"), JSON.stringify({ mediaD
 
 const { config, matchDir } = await import("../config.js");
 const { readExperiments, writeExperiments } = await import("./experiments.js");
-const { ALPHA, MIN_VIDEOS_PER_ARM, armTotalsFor, twoProportionZ, verdictFor, evaluateExperiments } =
-  await import("./experimentsEvaluator.js");
+const {
+  ALPHA,
+  MIN_VIDEOS_PER_ARM,
+  armTotalsFor,
+  engagementReadout,
+  twoProportionZ,
+  verdictFor,
+  evaluateExperiments,
+} = await import("./experimentsEvaluator.js");
 const { writeUpload } = await import("../youtube/youtubeStore.js");
 
 // Fixtures for `enrolVideos`: a real match directory, since it's discovered by `listProcessedMatchIds`
@@ -460,9 +467,54 @@ function avpOnly(n: number): VideoMetrics[] {
   });
   const after = readExperiments().experiments.find((e) => e.id === "mid-run")!;
   assert.equal(after.status, "running", "not ended yet — still running");
-  assert.equal(after.verdict, "not enough videos (1 with CTR in arm control, 8 needed)");
+  // The verdict is unchanged; the engaged readout (display only) rides after it.
+  assert.equal(
+    after.verdict,
+    "not enough videos (1 with CTR in arm control, 8 needed) · " +
+      "control 40% engaged, 2.50 subs/1k engaged; variant 40% engaged, 5.00 subs/1k engaged",
+  );
+  const stored = (after.result as { arms: ArmTotals[] }).arms;
+  assert.deepEqual(
+    stored.map((a) => [a.arm, a.engagedRatio, a.subsPer1kEngaged]),
+    [
+      ["control", 0.4, 2.5],
+      ["variant", 0.4, 5],
+    ],
+    "stored per arm beside the totals",
+  );
   assert.equal(after.decision, undefined);
   assert.ok(after.evaluatedAt);
+}
+
+// --- engaged readout: per arm, display only; retention at 10% only where a curve was fetched -------
+{
+  const withAt10 = (at10?: number, engagedViews = 300, subs = 3): VideoMetrics => ({
+    ...video(5, 40),
+    engagedViews,
+    subscribersGained: subs,
+    ...(at10 !== undefined ? { retentionAt10: at10 } : {}),
+  });
+  const arms = await armsOf({
+    control: [withAt10(60), withAt10(50), withAt10()],
+    variant: [withAt10(undefined, 0, 0), { ...withAt10(70, 0, 0), views: 0 }],
+  });
+  const [control, variant] = arms;
+  assert.equal(control!.retentionAt10, 55, "the mean over the two videos with a curve");
+  assert.equal(control!.engagedRatio, 900 / 3000);
+  assert.equal(control!.subsPer1kEngaged, (9 / 900) * 1000);
+  assert.equal(variant!.retentionAt10, undefined, "a 0-view video's curve is not counted");
+  assert.equal(variant!.subsPer1kEngaged, null, "no engaged views: nothing to divide by");
+  assert.equal(
+    engagementReadout(arms),
+    "control 30% engaged, 10.00 subs/1k engaged, 55.0% at 10%; variant 0% engaged, – subs/1k engaged",
+  );
+  assert.equal(engagementReadout(await armsOf({ control: [], variant: [] })), "", "no views yet: no readout");
+  // The verdict itself never reads them.
+  assert.equal(
+    verdictFor(baseExperiment(), arms).text,
+    "not enough videos (2 with CTR in arm variant, 8 needed)",
+  );
+  console.log("OK: engaged ratio, subs per 1k engaged and retention at 10% per arm, display only");
 }
 
 // --- evaluateExperiments: adoption and revert decisions at `end` -------------------------------
@@ -1061,7 +1113,11 @@ assert.equal(twoProportionZ(0, 1000, 0, 1000), 0, "pooled proportion 0 — se is
       ],
       "11–13 Oct summed; 10 Oct, before publish, dropped",
     );
-    assert.equal(e.verdict, "not enough videos (1 with CTR in arm control, 8 needed)");
+    assert.equal(
+      e.verdict,
+      "not enough videos (1 with CTR in arm control, 8 needed) · " +
+        "control 50% engaged, 20.00 subs/1k engaged; variant 50% engaged, 20.00 subs/1k engaged",
+    );
 
     // The variant's match directory deleted to free disk (youtube.json with it): the video is still
     // enrolled with its id, so it is still measured, from the experiment's start.

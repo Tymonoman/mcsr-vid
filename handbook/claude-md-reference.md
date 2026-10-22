@@ -2496,7 +2496,38 @@ the same shapes end to end.
   the challengers, so the numbers can say whether the operator's own picks beat the styles they
   skipped, not just "which style of challenger performs well." Only an arm with no style at all
   (anything from before 18 Oct 2026) is left out. Reads `.experiments.json` only — no network, no
-  YouTube call.
+  YouTube call (unless `--analytics`; see "Tests read on subscribers" below).
+
+### Tests read on subscribers (22 Oct 2026)
+
+The operator, 22 Oct 2026: "do everything there is in your power to bring us to the 1000subs
+asap". Research that day found views here track impressions (correlation 0.86), not CTR (−0.25),
+and that subscribers come from engaged views, so a test judged on CTR or watch-time share alone
+can "win" without moving subscribers. Both readouts now carry the subscriber-side numbers; neither
+decides anything with them.
+
+- **Experiment engine** (`src/dashboard/experimentsEvaluator.ts`): each arm in `result.arms` also
+  stores `engagedRatio` (engagedViews / views) and `subsPer1kEngaged` (subscribersGained /
+  engagedViews × 1,000), null over a zero (`engagedRates`, `src/youtube/abReport.ts`), and
+  `retentionAt10`, the mean over the arm's videos whose curve was already fetched (the per-video
+  rows carried it before). `engagementReadout` appends them to the verdict after " · "
+  (`control 40% engaged, 2.50 subs/1k engaged, 58.0% at 10%; retention …`), so the decision, the
+  morning report's 🧪 line and `/ask`'s ledger show them too; nothing is appended while no arm has
+  a view. `verdictFor`, the thresholds and the winner/adopt logic are untouched, and no API call
+  was added. A result written before 22 Oct has none of these fields.
+- **`npm run ab-report`**: rows carry the test's `start`, its `controlArm` and each thumbnail arm's
+  `settings.concept` (the 22 Oct hand-planned concept tests: "live" | "big-heads" |
+  "seed-scenery"; only thumbnail tests with a concept arm are listed). Per arm it prints the share
+  delta vs the same test's control; per style and per concept, wins/losses/ties (a loss: Studio
+  named another arm of that test the winner), mean share and mean delta in points (none for a key
+  that was only ever the control). The "Concepts" section says whether each concept meets the
+  operator's bar, ≥3 finished tests, ≥2 wins, mean delta ≥ +3 points (`ADOPT_RULE`,
+  `readyToAdopt`). "READY TO ADOPT" is a report line only, because "improvements should still be
+  ab tested": nothing changes on its say-so. `--analytics` adds one Analytics read per listed test
+  (own channel, the test's own video, `views,engagedViews,subscribersGained` from its start date to
+  its end date) and prints the video's engaged share and subs per 1,000 engaged for that window.
+  Every arm of a Test & Compare shares one video, so this is per test, not per arm, and Analytics
+  lags 2–3 days, so a test that just finished reads short. Without the flag it stays network-free.
 
 ### Community poll per upload (22 Oct 2026)
 
