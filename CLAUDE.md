@@ -303,43 +303,44 @@ reload). After merging server changes, `POST /api/restart-when-idle`.
 ## Telegram bot
 
 One morning report at `telegramReportHourWarsaw` (config-file edit only, like `nightlyUpload`),
-Europe/Warsaw, DST-correct; every slash command answers fresh. Runs inside the dashboard process
-(`startTelegramBot()`, `src/telegram/bot.ts`), long-polling, no webhook.
+Europe/Warsaw, DST-correct; every slash command answers fresh. Runs inside the dashboard
+(`startTelegramBot()`, `src/telegram/bot.ts`), long-polling.
 
 - **Secrets**: `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` in `/app/.env`. No token: nothing runs; no
-  chat id: `/start` reports it. **Only one poller**: a test server
-  (`PORT` ≠ 8080) never starts it; a 409 from `getUpdates` (another poller) makes this one
-  back off.
+  chat id: `/start` reports it. **Only one poller**: a test server (`PORT` ≠ 8080) never starts
+  it; a 409 from `getUpdates` makes this one back off.
 - **Claude Haiku is the brain, code is the facts.** `facts.ts` gathers every number/list/link
   deterministically; only TODAY's headline+to-do and `/ask`'s answer come from Claude via
   `src/telegram/claude.ts` (`runClaude`): `claude -p` on Haiku with no tools, MCP, slash commands,
-  session persistence or setting sources (exact argv in the handbook), prompt on stdin, plain argv
-  (never a shell). Env allow-list: `PATH`,
-  `HOME`, `LANG`, `TMPDIR`, plus `CLAUDE_CODE_OAUTH_TOKEN`/`ANTHROPIC_API_KEY` if set; **never the
-  Telegram token or any other secret**. **No viewer comment text or author name is ever put in a
-  Claude prompt** (`/ask` included, and the `handbook/knowledge/*.md` it reads); only counts,
-  titles, ids. The adapter never retries; a usage-limit answer reads exactly "usage limit reached
-  — try again later" everywhere; any other failure falls back to `fallbackToday` with the reason.
+  session persistence or setting sources, prompt on stdin, plain argv (never a shell). Env
+  allow-list: `PATH`, `HOME`, `LANG`, `TMPDIR`, plus
+  `CLAUDE_CODE_OAUTH_TOKEN`/`ANTHROPIC_API_KEY` if set; **never the Telegram token or any other
+  secret**. **No viewer comment text or author name is ever put in a Claude prompt** (`/ask`
+  included, and the `handbook/knowledge/*.md` it reads); only counts, titles, ids. The adapter
+  never retries; a usage-limit answer reads exactly "usage limit reached — try again later";
+  any other failure falls back to `fallbackToday`.
 - **The report is three messages**: the day (**Needs you** first, then **Auto-saved hooks**,
-  Claude's headline+to-do), the channel, the comments (capped to 4096 chars). HTML parse mode; every dynamic string through `escapeHtml`.
-- **"Needs you"** (`gatherNeedsYou`, deterministic, "Nothing today." when empty): a failed
-  `short-<id>.status.json` step; Studio signed-out/verify/wrong-channel; no long-form scheduled in
+  Claude's headline+to-do), the channel, the comments. HTML parse mode; every dynamic string
+  through `escapeHtml`.
+- **"Needs you"** (`gatherNeedsYou`, deterministic): a failed `short-<id>.status.json` step;
+  Studio signed-out/verify/wrong-channel; no long-form scheduled in
   48h; with `shortsByHand` on, a long-form due in 36h or public ≤3 days with no hand-cut Short; a
-  public or scheduled title whose hook fails `hookProblem` (video id + problem,
-  never the hook); a blocked runner in tonight's queue or as a recent comment's author; an
-  `.experiments.json` `needsHuman` entry; the Studio worker's heartbeat over 90 min old or
-  `sameErrorStreak` ≥3. `/needs` answers this section alone, fresh.
+  public or scheduled title whose hook fails `hookProblem` (video id + problem, never the hook); a
+  blocked runner in tonight's queue or as a recent comment's author; an `.experiments.json`
+  `needsHuman` entry; the Studio worker's heartbeat over 90 min old or `sameErrorStreak` ≥3.
+  `/needs` answers it alone.
 - **A link about one match opens that match** (`#match=<id>` in `public/app.js`). Dedupe is
-  `.telegram.json` (atomic write); a restart that missed 07:00 still sends before 10:00 Warsaw if
-  today isn't recorded. **Every YouTube link the bot sends opens Studio, never the public watch
-  page.** `/health` pings Claude for real (~30s); the dashboard container needs its own login
-  (`claude setup-token`, `CLAUDE_CODE_OAUTH_TOKEN` in `/app/.env`) or every Claude call fails
-  "auth".
+  `.telegram.json` (atomic write); a restart that missed 07:00 still sends before 10:00 Warsaw.
+  **Every YouTube link the bot sends opens Studio, never the public watch page.** `/health` pings
+  Claude (~30s); the container needs a login (`claude setup-token`, `CLAUDE_CODE_OAUTH_TOKEN` in
+  `/app/.env`) or every Claude call fails "auth".
 - **Reports reach Telegram because they are sent, not by a hook**: write a file, then
-  `npm run tg -- send --md <file>`. A report is a finished task's end, not a quick answer, a
-  progress note or a question. Every bot command is read-only except title-picker/veto/fast-track
-  buttons (operator's chat). Plain replies from the operator's chat land in
-  `.telegram-inbox.jsonl`; `npm run tg -- inbox` prints them.
+  `npm run tg -- send --md <file>`. A report is a finished task's end, not a progress note or a
+  question. Every command is read-only except title-picker/veto/fast-track buttons (operator's
+  chat). Plain replies land in `.telegram-inbox.jsonl` (`npm run tg -- inbox`).
+- **Comment nudges** (`commentNudges`, file-only, off; `src/telegram/commentNudge.ts`): a silent
+  line per threshold (1/5/10/25) a long-form crosses in its first 48h public, with the Studio
+  comments link; counts only, never text or names; dedupe in `.telegram.json`.
 
 ## Studio automation
 

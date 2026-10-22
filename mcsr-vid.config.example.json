@@ -142,5 +142,6 @@
   ],
   "creatorWatchlist": [],
   "creatorWatch": false,
-  "xAutoPost": false
+  "xAutoPost": false,
+  "commentNudges": false
 }

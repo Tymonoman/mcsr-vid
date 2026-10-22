@@ -1852,6 +1852,25 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
   called, so there is nothing extra to check inside `vetoOffer`/`undoVeto` themselves beyond "is
   this offer still live" (`!offer || offer.settled`, same guard `chooseOption` uses).
 
+- **Comment nudges** (`src/telegram/commentNudge.ts`, 22 Oct 2026 — the operator's "silent
+  notifications but yes" to comment-count nudges): on the dashboard's 15-minute tick, behind
+  `config.commentNudges` (a file-only boolean like `xAutoPost`, default off, never in Settings).
+  Every long-form `allUploads` knows gets one `videoStats` read (one `videos.list` per 50 ids, the
+  statistics part the audit already covers — own channel, own data); a video that is public and
+  within 48h of its publish time (`v.publishAt || record.publishAt || v.publishedAt`, the
+  `freeLocalCopies` reading) and whose title pair is not blocked (`blockedIn`) is checked against
+  the thresholds 1, 5, 10, 25 (`NUDGE_THRESHOLDS`). The message is HTML, sent with
+  `disable_notification` (`SendOptions.silent`, added for this): `<hook> | <left> vs <right>: N
+  comments, H h after publishing · Studio`, the link being
+  `studio.youtube.com/video/<id>/comments` — the count, the title the channel already shows and a
+  link; no comment text, no author, nothing the operator has not already published. Dedupe is
+  `.telegram.json`'s `commentNudges` (videoId → highest threshold sent): a count that jumps past
+  two thresholds between ticks (0 → 12) sends the highest one only, and a sent threshold never
+  repeats, restart or not. A `videos.list` failure is one log line and the tick returns — the
+  next one catches up; a send failure propagates to the tick's own catch in `server.ts`, state
+  unwritten, so the nudge is tried again next tick rather than lost. Tests:
+  `src/telegram/commentNudge.test.ts`.
+
 ## Studio automation (phase 1, 7 Oct 2026)
 
 Does what Studio has no API for, starting with pinning a video's own first comment. The operator,

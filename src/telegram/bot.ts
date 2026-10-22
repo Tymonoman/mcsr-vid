@@ -114,6 +114,8 @@ export interface SendOptions {
   preview?: boolean;
   /** Test/CLI seam: print instead of calling the API. */
   dryRun?: boolean;
+  /** Telegram's `disable_notification`: delivered without a sound or vibration. */
+  silent?: boolean;
 }
 
 /** Sends `text` to the operator's chat, split at `MESSAGE_MAX_CHARS`. Throws if not configured. */
@@ -130,6 +132,7 @@ export async function sendMessage(text: string, opts: SendOptions = {}): Promise
       text: part,
       ...(opts.html ? { parse_mode: "HTML" } : {}),
       disable_web_page_preview: opts.preview !== true,
+      ...(opts.silent ? { disable_notification: true } : {}),
     });
   }
 }

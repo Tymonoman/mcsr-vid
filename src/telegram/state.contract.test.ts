@@ -48,6 +48,7 @@ const EMPTY: TelegramState = {
   worth: null,
   titleOffers: {},
   fastTrackAsks: {},
+  commentNudges: {},
 };
 
 try {
@@ -71,6 +72,7 @@ try {
       "13560037": { messageId: 42, options: ["A"], source: ["chip"], at: "2026-10-14T05:00:00.000Z" },
     },
     fastTrackAsks: {},
+    commentNudges: {},
   };
   writeTelegramState(full);
   assert.deepEqual(readTelegramState(), full);

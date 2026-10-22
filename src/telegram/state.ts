@@ -39,6 +39,11 @@ export interface TelegramState {
    * as a string — same dedupe shape as `titleOffers`: a match in here is never asked again.
    */
   fastTrackAsks: Record<string, FastTrackAskState>;
+  /**
+   * Comment nudges (src/telegram/commentNudge.ts): per long-form video id, the highest comment
+   * threshold already announced — the dedupe, so a count never nudges twice.
+   */
+  commentNudges: Record<string, number>;
 }
 
 export interface FastTrackAskState {
@@ -72,6 +77,7 @@ const EMPTY: TelegramState = {
   worth: null,
   titleOffers: {},
   fastTrackAsks: {},
+  commentNudges: {},
 };
 
 const statePath = (): string => path.join(config.mediaDir, ".telegram.json");
