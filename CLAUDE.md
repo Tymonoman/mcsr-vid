@@ -75,7 +75,7 @@ Use the script, don't reconstruct the shell line. Extra arguments go after `--`.
 | `npm run chat -- <matchId>` | Fetch both players' Twitch chat for a match that saved none. |
 | `npm run clip -- <twitch url \| file> [--from=HH:MM:SS --to=HH:MM:SS] --title="…" --speaker="…" --when="…" --credit="…" [--slug=…] [--seconds=N]` | A standalone clip, not a match; see Clips. |
 | `npm run tg -- report --dry-run` | Morning report printed, nothing sent. **Prints real viewer comment text**: prefer `cmd "/needs"` / `"/ypp"` / `"/stats 7d"`. `send --md <file>` sends to the operator; `whoami` prints chat ids. |
-| `npm run x -- post <id> [--dry-run] \| auto \| status` | One X post; see X posts. |
+| `npm run x -- post <id> \| auto \| status \| login` | See X posts. |
 | `npm run pick -- <matchId \| all> [--force] [--dry-run]` | Ask the model for the Short's moment. `--dry-run` asks afresh and writes nothing; refuses (exit 1) only when the proxy or a /watch cache would have to be made first. |
 | `npm run bench -- <Composition> [--frames=N] [--codec=] [--pixelFormat=] [--concurrency=N]` | Render throughput; measure before claiming a render change is faster. |
 | `scripts/seed-icons/icons.sh [TYPE…]` | Re-render thumbnail seed-type icons. |
@@ -290,8 +290,8 @@ reload). After merging server changes, `POST /api/restart-when-idle`.
   **not** the block list. **Creator watch** (`creatorWatch`/`creatorWatchlist`, Settings tab,
   off/empty by default): a watched nickname's new match with both Twitch VODs goes to the **front**
   of tonight's queue (block list still wins); not in Needs-you.
-- **X posts** (`src/x/`; `xAutoPost`, config file only, off): the tick posts a public long-form's
-  hand-cut Short + link, ≤1 a UTC day (`x.json`); blocked/spoiler/label refused. Keys: `X_*` in `.env`.
+- **X posts** (`src/x/`; `xAutoPost` API or `xBrowserPost` browser, config file only, off): a public
+  long-form's hand-cut Short + link, ≤1 a UTC day (`x.json`); refusals = `planXPost`; handbook/x-browser-setup.md.
 - **The NAS** (`//192.168.0.240/homelab`, CIFS): `/archive` holds published matches (recoverable
   delete). `/home-media` is the whole share, **the operator's movies, music and backups: never
   touch them**, except `/home-media/mcsr-replayoffs/` (the pipeline's own: `vods/`, `research/`,
@@ -389,10 +389,11 @@ What Studio has no API for: pins, end screens, Test & Compare, related links, po
   the title's two names, link; long-forms public <36h, ≤2/cycle; Post pressed but unseen
   (`unconfirmed`) never repeats; selectors unverified (`studio poll --dry-run`).
 
-## Clips (prototype)
+## Clips and trailer
 
-Not a match (`remotion/ClipFrame.tsx`): `npm run clip` writes `<mediaDir>/clips/<slug>/clip-<slug>.mp4`;
-**nothing here uploads or posts anywhere**; every `mediaDir` scan (`/^\d+$/`) skips `clips/`.
+`npm run clip` (`remotion/ClipFrame.tsx`) writes `<mediaDir>/clips/<slug>/clip-<slug>.mp4`, which
+`mediaDir` scans skip; `scripts/trailer/build.py` cuts the channel trailer (`handbook/trailer.md`).
+**Neither uploads.**
 
 ## Chat replay (prototype)
 

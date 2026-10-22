@@ -62,6 +62,7 @@ import {
   type TcTest,
 } from "./studioActions.js";
 import { probe, start, type StudioBrowserOptions } from "./studioBrowser.js";
+import { xBrowserTick, xStartOpts } from "../x/xBrowser.js";
 import {
   importTcPlan,
   readExperiments,
@@ -1420,6 +1421,16 @@ export async function runWorker(
         result = await runCycle({ dryRun: opts.dryRun, startOpts: opts.startOpts, enable: opts.enable });
       } catch (err) {
         result = { ...SKIPPED_RESULT, probe: "error", errors: [describeError(err)] };
+      }
+      // The X post (22 Oct 2026, `xBrowserPost`, config-file only): its own Chrome on the X
+      // profile, only once the cycle's Studio handle is stopped (`runCycle`'s finally) — never two
+      // browser sessions at once. Its outcome lives in `.x-browser.json`, not this heartbeat.
+      if (config.xBrowserPost) {
+        try {
+          console.log(`x browser: ${await xBrowserTick({ dryRun: opts.dryRun, startOpts: xStartOpts(opts.startOpts) })}`);
+        } catch (err) {
+          console.error(`x browser: ${describeError(err)}`);
+        }
       }
     }
     const currentError = result.errors[0] ?? null;

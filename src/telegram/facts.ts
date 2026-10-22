@@ -43,6 +43,7 @@ import { matchIsDnf, playoffBoard } from "../playoffs/playoffs.js";
 import { describeFailure, runClaude } from "./claude.js";
 import { filterUnanswered, type UnansweredComment } from "./comments.js";
 import { gatherWorth, type WorthFacts } from "./worth.js";
+import { readXBrowserState, xBrowserNeedsYou } from "../x/xBrowserState.js";
 import {
   aggregateWindow,
   aggregateWindows,
@@ -584,6 +585,7 @@ async function gatherNeedsYou(nowMs: number, sinceMs: number): Promise<NeedsYouF
     ...needsHumanItems(),
     ...studioWorkerItems(nowMs),
     ...communityPollItems(nowMs),
+    ...xBrowserNeedsYou(readXBrowserState(), config.xBrowserPost).map((text) => ({ text })),
   ];
   return { items };
 }
