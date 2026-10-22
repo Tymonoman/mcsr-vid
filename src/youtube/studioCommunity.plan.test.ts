@@ -114,6 +114,18 @@ const H = 3600_000;
     [],
     "until it has failed three times",
   );
+  assert.deepEqual(
+    ids(
+      pollTargets(
+        NOW,
+        [v("v1")],
+        { v1: { at: "t", outcome: "unconfirmed: Post was pressed but the new poll never appeared", matchId: 1 } },
+        () => false,
+      ),
+    ),
+    [],
+    "Post pressed but unseen: never a second click",
+  );
   assert.deepEqual(ids(pollTargets(NOW, [v("v1"), v("v2")], {}, (m) => m === 1)), ["v2"], "blocked");
   // A series copies the same record into every game's folder: one poll per video id.
   assert.deepEqual(ids(pollTargets(NOW, [v("v1"), v("v1", { matchId: 9 })], {}, () => false)), ["v1"]);
@@ -138,19 +150,28 @@ const H = 3600_000;
     recordCommunityPost("v1", 1, "error: no composer", NOW, file);
     recordCommunityPost("v1", 1, "error: no composer", NOW, file);
     assert.equal(readCommunityPosts(file).v1?.failures, 2);
-    assert.deepEqual(pollFailureLines(readCommunityPosts(file)), [], "two failures is not yet Needs you");
+    const lines = () => pollFailureLines(readCommunityPosts(file), NOW.getTime());
+    assert.deepEqual(lines(), [], "two failures is not yet Needs you");
     recordCommunityPost("v1", 1, "error: no composer", NOW, file);
-    assert.deepEqual(pollFailureLines(readCommunityPosts(file)), [
-      { matchId: 1, text: "Community poll failed 3 times: no composer (v1)" },
-    ]);
+    assert.deepEqual(lines(), [{ matchId: 1, text: "Community poll failed 3 times: no composer (v1)" }]);
+    // The line has a horizon: a record older than the poll window is no longer reported (the
+    // video is outside the window too), so a stale ledger never nags every morning.
+    assert.deepEqual(pollFailureLines(readCommunityPosts(file), NOW.getTime() + POLL_WINDOW_MS + 1), []);
+    assert.equal(pollFailureLines(readCommunityPosts(file), NOW.getTime() + POLL_WINDOW_MS).length, 1);
     // A success clears the streak; a later failure starts a fresh one.
     recordCommunityPost("v1", 1, "posted", NOW, file);
     assert.equal(readCommunityPosts(file).v1?.failures, undefined);
     assert.equal(readCommunityPosts(file).v1?.outcome, "posted");
     recordCommunityPost("v1", 1, "error: again", NOW, file);
     assert.equal(readCommunityPosts(file).v1?.failures, 1);
-    assert.deepEqual(pollFailureLines(readCommunityPosts(file)), []);
-    console.log("OK: three consecutive failures on a video make one Needs-you line; a success resets it");
+    assert.deepEqual(lines(), []);
+    // Post pressed but never seen: no streak to count, reported at once.
+    recordCommunityPost("v2", 2, "unconfirmed: Post was pressed but the new poll never appeared", NOW, file);
+    assert.equal(readCommunityPosts(file).v2?.failures, undefined);
+    assert.deepEqual(lines(), [
+      { matchId: 2, text: "Community poll: Post was pressed but the new poll never appeared (v2)" },
+    ]);
+    console.log("OK: three failures or one unconfirmed Post make a Needs-you line, for 36 h; a success resets it");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

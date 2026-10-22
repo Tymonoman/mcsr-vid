@@ -2442,11 +2442,18 @@ off because none of its selectors has been seen live yet — the first supervise
   `--dry-run` runs the composer and writes nothing.
 - **The ledger**, `<mediaDir>/.community-posts.json`: `{ videoId: { at, outcome, matchId,
   failures? } }`, atomic rename, one record per video. `outcome` is `posted`, `already-posted`,
-  `skipped: <why>` or `error: <message>`. A failed video is retried next cycle with `failures`
-  counting up; at `POLL_MAX_FAILURES` (3) it is left alone and `gatherNeedsYou`
-  (`src/telegram/facts.ts`, `communityPollItems`) reports "Community poll failed 3 times:
-  <error> (<videoId>)" — only while the flag is on, so a stale ledger on a box with polls off says
-  nothing. Any other outcome clears the streak. The heartbeat's `lastCycle.pollsPosted` counts
+  `skipped: <why>`, `error: <message>` or `unconfirmed: <message>`. A failed video is retried
+  next cycle with `failures` counting up; at `POLL_MAX_FAILURES` (3) it is left alone and
+  `gatherNeedsYou` (`src/telegram/facts.ts`, `communityPollItems`) reports "Community poll failed
+  3 times: <error> (<videoId>)" — only while the flag is on, so a stale ledger on a box with polls
+  off says nothing, and only for a record younger than `POLL_WINDOW_MS` (`pollFailureLines(posts,
+  nowMs)`): the video is outside the window by then, and the line used to repeat every morning
+  until the ledger was hand-edited. `unconfirmed` is a Post click the tab never showed
+  (`postCommunityPoll` returns `{ error, postClicked: true }`): the poll may well be on the channel
+  and the same `posts` selector that missed it would miss the already-posted check too, so it is
+  never retried (`pollTargets` re-offers `error` only) and reported at once — the alternative was
+  up to three identical polls on one video before Needs-you fired. Deleting the video's entry
+  re-arms it. Any other outcome clears the streak. The heartbeat's `lastCycle.pollsPosted` counts
   real posts (not "already-posted", not a dry run).
 - **Tests**: `studioCommunity.test.ts` (Xvfb + Chromium over CDP against a local fixture of the
   tab, in `npm test`'s browser list, skipped without either): dry run stops before Post, a live

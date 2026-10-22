@@ -502,10 +502,11 @@ function studioWorkerItems(nowMs: number): NeedsYouItem[] {
 }
 
 /** `<mediaDir>/.community-posts.json` (`src/youtube/studioCommunity.ts`): a video whose
- *  "WHO TAKES IT?" poll failed three cycles running — read only while `communityPolls` is on. */
-function communityPollItems(): NeedsYouItem[] {
+ *  "WHO TAKES IT?" poll failed three cycles running or went unconfirmed after the Post click, in
+ *  the last 36 h — read only while `communityPolls` is on. */
+function communityPollItems(nowMs: number): NeedsYouItem[] {
   if (!communityPollsNow()) return [];
-  return pollFailureLines(readCommunityPosts());
+  return pollFailureLines(readCommunityPosts(), nowMs);
 }
 
 interface ExperimentsFile {
@@ -582,7 +583,7 @@ async function gatherNeedsYou(nowMs: number, sinceMs: number): Promise<NeedsYouF
     ...(space ? [space] : []),
     ...needsHumanItems(),
     ...studioWorkerItems(nowMs),
-    ...communityPollItems(),
+    ...communityPollItems(nowMs),
   ];
   return { items };
 }

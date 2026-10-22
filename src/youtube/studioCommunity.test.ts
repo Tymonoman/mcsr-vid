@@ -43,6 +43,8 @@ if (!xvfbAvailable() || !chromePath) {
 // Node-side server's own list, so a reload (a fresh `goto`) shows what was posted before.
 const state = {
   composer: true,
+  /** false: the Post click is swallowed (the post never shows) — the `postClicked` case. */
+  lands: true,
   posts: [] as Array<{ text: string; link: string }>,
 };
 function fixtureHtml(): string {
@@ -81,6 +83,7 @@ function fixtureHtml(): string {
       const text = document.getElementById("contenteditable-root").innerText.replace(/\\n+$/, "");
       const options = [...document.querySelectorAll("#poll input")].map(i => i.value);
       window.__posted = { text, options };
+      if (!${state.lands}) return;
       const link = (text.match(/https:\\S+/) || [""])[0];
       const el = document.createElement("ytd-backstage-post-renderer");
       el.innerHTML = '<div id="content-text">' + text.replace(/\\n/g, "<br>") + '</div><a href="' + link + '">' + link + "</a>";
@@ -151,8 +154,18 @@ try {
   assert.equal(other, "posted");
   console.log("OK: an existing post with the link is already-posted; another video's is not");
 
-  // No composer (not the owner here, or the markup moved): a clear error, no click anywhere.
+  // Post pressed, nothing shows: the error says so (`postClicked`), so the worker never retries it.
   state.posts = [];
+  state.lands = false;
+  const unseen = await postCommunityPoll(handle, poll, { matchId, channelId });
+  assert.ok(
+    typeof unseen === "object" && unseen.postClicked === true && /Post was pressed/.test(unseen.error),
+    JSON.stringify(unseen),
+  );
+  state.lands = true;
+  console.log("OK: a Post click that never shows is an error flagged postClicked");
+
+  // No composer (not the owner here, or the markup moved): a clear error, no click anywhere.
   state.composer = false;
   const missing = await postCommunityPoll(handle, poll, { matchId, channelId });
   assert.ok(

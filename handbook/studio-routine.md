@@ -86,6 +86,7 @@ selectors for the Community tab's composer are guesses until you have watched on
    check the channel's Community tab by hand once. A second run on the same video must answer
    `already-posted`.
 3. Set `communityPolls: true` on the box. The worker takes it from there, at most two a cycle; a
-   video that fails three cycles running shows up in the morning report's Needs you, and
-   `.community-posts.json` in `/media` is the record. Nothing is ever removed or edited here: a
-   wrong poll is deleted by hand in Studio.
+   video that fails three cycles running, or whose Post click was pressed but never seen on the
+   tab (`unconfirmed`, never pressed again), shows up in the morning report's Needs you for 36 h,
+   and `.community-posts.json` in `/media` is the record. Deleting a video's entry there re-arms
+   it (after a selector fix, say); a wrong poll is deleted by hand in Studio, never by code.

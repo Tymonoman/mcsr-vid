@@ -1253,7 +1253,8 @@ export async function runCycle(
         const outcome = await postCommunityPoll(handle, poll, { matchId: target.matchId, dryRun: opts.dryRun });
         if (typeof outcome === "object") {
           errors.push(`poll ${target.videoId}: ${outcome.error}`);
-          record(`error: ${outcome.error}`);
+          // Post pressed but unseen: terminal, never a second click on the same video.
+          record(`${outcome.postClicked ? "unconfirmed" : "error"}: ${outcome.error}`);
           continue;
         }
         record(outcome);

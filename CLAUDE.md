@@ -387,8 +387,8 @@ Does what Studio has no API for: pins, end screens, Test & Compare, related link
   comment and no pin, ≤3 a cycle after the day's skips; no end screen on a blocked match, none that
   day on a video with no editor. Shares `finished.pin` with the dashboard.
 - **Community poll** (`communityPolls`, file-only, off; `studioCommunity.ts`): "WHO TAKES IT?",
-  the title's two names, the link, per long-form public <36h, ≤2 a cycle; never blocked, DNF or
-  private; selectors unverified until `npm run studio -- poll <id> --dry-run`.
+  the title's two names, link; long-forms public <36h, ≤2/cycle; Post pressed but unseen
+  (`unconfirmed`) never repeats; selectors unverified (`studio poll --dry-run`).
 
 ## Clips (prototype)
 

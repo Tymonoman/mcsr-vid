@@ -73,6 +73,10 @@ export function pollContentFor(title: string, videoId: string): CommunityPoll | 
 }
 
 export type PollOutcome = "posted" | "already-posted";
+/** `postClicked`: Post was pressed and the tab never showed the poll — it may well be on the
+ *  channel (a `posts` selector that misses it would miss the already-posted check too), so the
+ *  caller must never press Post again for this video; the operator checks by hand. */
+export type PollError = { error: string; postClicked?: true };
 
 const randomPause = (): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, 2000 + Math.random() * 4000));
@@ -88,7 +92,7 @@ export async function postCommunityPoll(
   handle: StudioHandle,
   poll: CommunityPoll,
   opts: { matchId: number; dryRun?: boolean; channelId?: string },
-): Promise<PollOutcome | { error: string }> {
+): Promise<PollOutcome | PollError> {
   const channelId = opts.channelId ?? config.youtubeChannelId;
   try {
     const page = await pageOf(handle);
@@ -159,6 +163,7 @@ export async function postCommunityPoll(
     if (!landed)
       return {
         error: "Post was pressed but the new poll never appeared on the tab — check the channel by hand",
+        postClicked: true,
       };
     return "posted";
   } catch (err) {
@@ -172,7 +177,8 @@ export async function postCommunityPoll(
 
 export interface CommunityPostRecord {
   at: string;
-  /** "posted" | "already-posted" | "skipped: <why>" | "error: <message>". */
+  /** "posted" | "already-posted" | "skipped: <why>" | "error: <message>" (retried) |
+   *  "unconfirmed: <message>" (Post was pressed; never retried, reported at once). */
   outcome: string;
   matchId: number;
   /** Consecutive failed attempts; absent once one succeeds. */
@@ -225,8 +231,8 @@ export interface PollCandidate {
 
 /**
  * Pure: the long-forms one cycle polls — public now, public within `POLL_WINDOW_MS`, no record
- * yet (a failed one is retried until `POLL_MAX_FAILURES`), not blocked, one per video id, at most
- * `MAX_POLLS_PER_CYCLE`. The DNF check needs the API, so `runCycle` makes it per candidate.
+ * yet (an `error` one is retried until `POLL_MAX_FAILURES`; an `unconfirmed` one never, Post was
+ * already pressed), not blocked, one per video id, at most `MAX_POLLS_PER_CYCLE`. The DNF check needs the API, so `runCycle` makes it per candidate.
  */
 export function pollTargets(
   now: Date,
@@ -254,12 +260,28 @@ export function pollTargets(
     .slice(0, MAX_POLLS_PER_CYCLE);
 }
 
-/** Pure: the "Needs you" lines — one per video whose poll has failed `POLL_MAX_FAILURES` times. */
-export function pollFailureLines(posts: CommunityPosts): Array<{ matchId: number; text: string }> {
+/** Pure: the "Needs you" lines — one per video whose poll failed `POLL_MAX_FAILURES` times or
+ *  whose Post click went unconfirmed, while the record is younger than `POLL_WINDOW_MS`: after
+ *  that the video is outside the poll window anyway, and the line would otherwise repeat every
+ *  morning until the ledger was hand-edited (deleting the video's entry re-arms it). */
+export function pollFailureLines(posts: CommunityPosts, nowMs: number): Array<{ matchId: number; text: string }> {
   return Object.entries(posts)
-    .filter(([, rec]) => (rec.failures ?? 0) >= POLL_MAX_FAILURES)
-    .map(([videoId, rec]) => ({
-      matchId: rec.matchId,
-      text: `Community poll failed ${POLL_MAX_FAILURES} times: ${rec.outcome.replace(/^error:\s*/, "")} (${videoId})`,
-    }));
+    .filter(([, rec]) => Date.parse(rec.at) >= nowMs - POLL_WINDOW_MS)
+    .flatMap(([videoId, rec]) => {
+      if (rec.outcome.startsWith("unconfirmed"))
+        return [
+          {
+            matchId: rec.matchId,
+            text: `Community poll: ${rec.outcome.replace(/^unconfirmed:\s*/, "")} (${videoId})`,
+          },
+        ];
+      if ((rec.failures ?? 0) >= POLL_MAX_FAILURES)
+        return [
+          {
+            matchId: rec.matchId,
+            text: `Community poll failed ${POLL_MAX_FAILURES} times: ${rec.outcome.replace(/^error:\s*/, "")} (${videoId})`,
+          },
+        ];
+      return [];
+    });
 }
