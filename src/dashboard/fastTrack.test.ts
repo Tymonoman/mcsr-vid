@@ -70,8 +70,23 @@ try {
   );
   assert.equal(
     isReallyGood(metrics(["KnownOne", "Stranger"], null, FAST_TRACK_SUB_EIGHT_MS), known),
+    false,
+    "a known runner's sub-8 run whose opponent never finished: not a race, never fast-tracked",
+  );
+  assert.equal(
+    isReallyGood(metrics(["KnownOne", "Stranger"], 3_000, FAST_TRACK_SUB_EIGHT_MS), known),
     true,
-    "a known pair's sub-8 finish, no margin needed",
+    "a known pair's sub-8 finish with both runners home (3s margin)",
+  );
+  assert.equal(
+    isReallyGood(metrics(["KnownOne", "Stranger"], 60_000, FAST_TRACK_SUB_EIGHT_MS), known),
+    true,
+    "sub-8 needs both finished, not a close margin",
+  );
+  assert.equal(
+    isReallyGood(metrics(["Feinberg", "Infume"], null, FEINFUME_SUB_MS - 1), known),
+    false,
+    "Feinberg vs Infume with one runner stopped: no margin, no fast-track",
   );
   assert.equal(
     isReallyGood(metrics(["Stranger", "Stranger2"], 1, 400_000), known),
@@ -93,7 +108,7 @@ try {
     false,
     "Feinberg vs Infume at exactly 9:00 does not clear 'under 9:00'",
   );
-  console.log("OK: isReallyGood — known pair sub-5s/sub-8, or Feinberg/Infume's tighter named rule");
+  console.log("OK: isReallyGood — known pair sub-5s/sub-8 with both finished, or Feinberg/Infume's tighter named rule");
 
   /* --- The tick: pool -> VOD check -> render, once a day, skipping what fails the VOD check ---- */
   // fastTrackTick reads its own "known" off config.favouritePlayers (the real knownTierFor), not

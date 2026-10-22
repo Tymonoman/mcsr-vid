@@ -48,17 +48,20 @@ const FEINFUME_KEY = pairKey(["Feinberg", "Infume"]);
  * Whether a scored match is "really good" enough to jump the nightly's clock: a known pair with
  * a sub-5s or sub-8 finish, or Feinberg vs Infume specifically within 1s on a sub-9 run. `known`
  * is injected the same way `isKnownPick` reads it elsewhere — the scan's own cache, no API call.
+ * Both runners must have finished (`finishMarginMs !== null`) in every branch: a sub-8 run whose
+ * opponent stopped is a one-sided video, not a race (the operator, 22 Oct 2026, "fast-track only
+ * on matches both runners finished": yes).
  */
 export function isReallyGood(
   metrics: Pick<MatchMetrics, "players" | "finishMarginMs" | "resultMs">,
   known: (players: readonly [string, string]) => boolean,
 ): boolean {
-  const closeFinish = metrics.finishMarginMs !== null && metrics.finishMarginMs < FAST_TRACK_CLOSE_MS;
+  if (metrics.finishMarginMs === null) return false;
+  const closeFinish = metrics.finishMarginMs < FAST_TRACK_CLOSE_MS;
   const subEight = metrics.resultMs <= FAST_TRACK_SUB_EIGHT_MS;
   if (known(metrics.players) && (closeFinish || subEight)) return true;
   return (
     pairKey(metrics.players) === FEINFUME_KEY &&
-    metrics.finishMarginMs !== null &&
     metrics.finishMarginMs <= FEINFUME_CLOSE_MS &&
     metrics.resultMs < FEINFUME_SUB_MS
   );
@@ -179,9 +182,8 @@ export async function fastTrackTick(
       if (!hasVods) continue;
 
       const label = `${players[0]} vs ${players[1]}`;
-      const margin =
-        entry.metrics.finishMarginMs === null ? "DNF margin" : `${entry.metrics.finishMarginMs}ms margin`;
-      const reason = `${label}, ${margin}, ${(entry.metrics.resultMs / 1000).toFixed(1)}s run`;
+      // isReallyGood already refused a null margin: both runners finished.
+      const reason = `${label}, ${entry.metrics.finishMarginMs}ms margin, ${(entry.metrics.resultMs / 1000).toFixed(1)}s run`;
       console.error(`fast-track: starting render of #${matchId} ${label} (${reason})`);
 
       state.lastDate = utcDate(nowMs);
