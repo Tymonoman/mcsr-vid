@@ -37,7 +37,7 @@ export interface StudioBrowserOptions {
 export interface StudioHandle {
   browser: Browser;
   debugPort: number;
-  /** SIGTERM (cookies flush), wait, SIGKILL after a grace, then stop Xvfb. Always safe to call twice. */
+  /** SIGTERM (cookies flush), wait, SIGKILL after a grace, then stop Xvfb and wait for it. Always safe to call twice. */
   stop(): Promise<void>;
 }
 
@@ -221,7 +221,7 @@ export async function start(opts: StudioBrowserOptions = {}): Promise<StudioHand
     } catch (err) {
       disarm();
       chrome.kill("SIGKILL");
-      xvfb.kill("SIGTERM");
+      await terminate(xvfb);
       throw err;
     }
 
@@ -235,7 +235,9 @@ export async function start(opts: StudioBrowserOptions = {}): Promise<StudioHand
         // killing Chrome — the SIGTERM below is what actually flushes cookies and exits it.
         await browser.close().catch(() => {});
         await terminate(chrome);
-        xvfb.kill("SIGTERM");
+        // Waited for: the X step starts its own Xvfb on this same display right after, and one
+        // still shutting down refuses it, which Chrome meets as no display at all.
+        await terminate(xvfb);
         disarm();
       },
     };
