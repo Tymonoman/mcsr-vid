@@ -34,8 +34,9 @@ const offers = {
   "11": { messageId: 2, options: [], source: [], at: "", vetoedAt: "2026-10-21T01:00:00Z" },
   "12": { messageId: 3, options: [], source: [], at: "" },
   "13": { messageId: 4, options: [], source: [], at: "", vetoedAt: "2026-10-23T02:00:00Z" },
+  "14": { messageId: 5, options: [], source: [], at: "", vetoedUploadedAt: "2026-10-22T12:00:00Z" },
 } as never;
-assert.equal(recentVetoes(now, offers), 2, "a morning veto buys the next night, a 02:00 veto the same night; an undone one has no vetoedAt");
+assert.equal(recentVetoes(now, offers), 3, "a morning veto buys the next night, a 02:00 veto the same night; an undone one has no vetoedAt");
 // One night per veto: the 10:00 veto counts for the 23rd's render and never again on the 24th.
 assert.equal(recentVetoes(at("2026-10-24T03:00:00Z"), offers), 0, "a veto is never credited to two nights");
 assert.equal(vetoNight(at("2026-10-22T10:00:00Z")), nightKey(at("2026-10-23T03:00:00Z")));

@@ -345,12 +345,12 @@ async function vetoOffer(matchId: number, chat: number, messageId: number, cqId:
   setHidden(matchId, true);
   if (f.video) {
     // No undo here (the video is on YouTube), but the decision still buys tonight a render
-    // (src/dashboard/renderBudget.ts reads vetoedAt; undoVeto never shows for this message).
+    // (src/dashboard/renderBudget.ts reads vetoedUploadedAt; undoVeto reads only vetoedAt).
     updateTelegramState((s) => {
       const o = s.titleOffers[String(matchId)];
       if (o) {
         o.settled = true;
-        o.vetoedAt = new Date().toISOString();
+        o.vetoedUploadedAt = new Date().toISOString();
       }
     });
     const studio = f.video.videoId ? `https://studio.youtube.com/video/${f.video.videoId}/edit` : null;

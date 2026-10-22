@@ -51,11 +51,13 @@ export function recordNightRender(matchId: number, nowMs: number): void {
  *  render on D+1; one at 02:00 on D buys D's). Exactly one night per veto, never two. */
 export const vetoNight = (vetoedAtMs: number): string => nightKey(vetoedAtMs + 12 * 3600_000);
 
-/** Title-picker vetoes credited to `nowMs`'s night; an undone veto has no `vetoedAt` and counts 0. */
+/** Title-picker vetoes (before or after the upload) credited to `nowMs`'s night; an undone veto
+ *  has no `vetoedAt` and counts 0. */
 export function recentVetoes(nowMs: number, offers = readTelegramState().titleOffers): number {
   const night = nightKey(nowMs);
   return Object.values(offers).filter((o) => {
-    const at = o.vetoedAt ? Date.parse(o.vetoedAt) : NaN;
+    const iso = o.vetoedAt ?? o.vetoedUploadedAt;
+    const at = iso ? Date.parse(iso) : NaN;
     return at <= nowMs && vetoNight(at) === night;
   }).length;
 }

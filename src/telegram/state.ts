@@ -67,6 +67,9 @@ export interface TitleOfferState {
    *  button (`t:<id>:u`) still works in; cleared by Undo. Absent for the already-uploaded veto,
    *  which has no Undo. */
   vetoedAt?: string;
+  /** A veto pressed after the upload (no Undo, the video is on YouTube): counted for the night
+   *  cap like `vetoedAt` (src/dashboard/renderBudget.ts), never read by undoVeto. */
+  vetoedUploadedAt?: string;
 }
 
 const EMPTY: TelegramState = {
