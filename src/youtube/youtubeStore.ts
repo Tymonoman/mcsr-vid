@@ -26,7 +26,6 @@ import {
   withLastMeeting,
   withRivalry,
 } from "../pipeline/description.js";
-import { findPlaylistId, isConfigured, matchupPlaylistTitle, playlistUrl } from "./youtube.js";
 import { playoffSeriesTail, playoffTitleTail, seedOrdinal } from "../playoffs/playoffs.js";
 import { buildShortTitle, readShortHook, TITLE_MAX_CHARS } from "../shorts/shortHook.js";
 import { describeError } from "../errorText.js";
@@ -203,10 +202,7 @@ export async function uploadTextFor(
       );
       description = withLastMeeting(description, earlier);
       // A pair with history: the ask names the pair, the links block gains the pair's playlist.
-      if (earlier) {
-        const stored = description;
-        description = await refreshed("rivalry lines", stored, () => withRivalryFor(stored, title));
-      }
+      if (earlier) description = withRivalryFor(description, title);
     }
   }
   // A Short's description is written when it is cut, before the long-form has an id; by the
@@ -267,19 +263,19 @@ const apiName = (shown: string): string =>
 const canonName = (shown: string): string => apiName(shown).toLowerCase();
 
 /**
- * Rivalry packaging (`withRivalry`, src/pipeline/description.ts) for a pair with history: the two
- * names off the title, as the API spells each (so the matchup playlist's title matches) and as
- * the title shows them. The playlist is only looked up here, never made — the kit asks for this
- * text on every open; `startUpload` (src/youtube/youtubeUpload.ts) makes it before the insert when
- * the pair's second video has none yet. A blocked pair gets none of it, whoever asks.
+ * Rivalry packaging (`withRivalry`, src/pipeline/description.ts) for a pair with history: the
+ * named ask only, the two names off the title as the API spells each and as the title shows
+ * them. No YouTube call here — the kit asks for this text on every open of the match screen, and
+ * a playlist lookup has no timeout — so the playlist line is `startUpload`'s
+ * (`withMatchupPlaylist`, src/youtube/youtubeUpload.ts), which finds or makes the playlist before
+ * the insert. A blocked pair gets none of it, whoever asks.
  */
-async function withRivalryFor(description: string, title: string): Promise<string> {
+function withRivalryFor(description: string, title: string): string {
   const parts = splitTitle(title);
   if (!parts) return description;
   const [left, right] = [parts.left, parts.right].map(apiName) as [string, string];
   if (blockedIn([left, right])) return description;
-  const id = isConfigured() ? await findPlaylistId(matchupPlaylistTitle(left, right)) : null;
-  return withRivalry(description, titleName(left), titleName(right), id ? playlistUrl(id) : null);
+  return withRivalry(description, titleName(left), titleName(right), null);
 }
 
 /** The two players a title names as one key, whichever side each is on; null when it names none. */

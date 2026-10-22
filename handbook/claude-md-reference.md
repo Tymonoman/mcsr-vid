@@ -665,15 +665,22 @@ failed boot check offers it again. Client changes need only a reload.
   B." and the links block gains "every A vs B on the channel: <matchup playlist url>" beside the
   season's "all the matches" line; names as the title shows them (`titleName`, in the title's
   order), never a score, a count of wins or the winner, and never for a blocked pair (`blockedIn`
-  — the kit asks for this text before any refusal). `uploadTextFor` only looks the playlist up
-  (`findPlaylistId`, `isConfigured` first); a pair's matchup playlist is otherwise created at
-  finish, after the insert, so `startUpload` (`withMatchupPlaylist`, `src/youtube/youtubeUpload.ts`)
-  makes it first on the chain's own upload of a pair's second video (not a playoff game, not a
-  blocked pair, not with the API down) and links it; a failed insert is one log line and finish
-  makes the playlist later, as before. A second video uploaded any other way (Adopt, a Studio
-  paste off the kit) links the playlist only from the pair's third video on. A pair without
-  history keeps every byte, so `copyVariety` off is unchanged for them; `refreshDescription`
-  counts the named ask as the subscribe line, or a second pass would add a second ask. Hook suggestions never use seeds, ranks or elo, and neither does the suggestion order (the operator's
+  — the kit asks for this text before any refusal). `uploadTextFor` adds the named ask only and
+  stays disk-only (a `playlists.list` has no timeout and a miss is not cached, and the kit calls
+  this on every open of the match screen; found 22 Oct 2026). The playlist line is
+  `startUpload`'s (`withMatchupPlaylist`, `src/youtube/youtubeUpload.ts`): a pair's matchup
+  playlist is otherwise created at finish, after the insert, so the chain's own upload of a
+  pair's second video finds or makes it first and links it — after every refusal (`<HOOK>`,
+  limits, no file, `exportStale`, DNF, thumbnails busy), so a refused upload never leaves an
+  empty public playlist or spends an insert; never on a description the operator edited
+  (`uploadTextFor`'s rule, so the upload is what the kit showed), a playoff game, a blocked pair
+  or with the API down. A failed insert is one log line and finish makes the playlist later, as
+  before. A second video uploaded any other way (Adopt, a Studio paste off the kit) never gets
+  the line. Finish fills the matchup playlist on `earlierVideoOfPair` OR `lastMeetingFor` (the
+  test the upload made it on, titles on disk), so the API down with the earlier match's clips
+  freed still adds the earlier video. A pair without history keeps every byte, so `copyVariety`
+  off is unchanged for them; `refreshDescription` counts the named ask as the subscribe line, or
+  a second pass would add a second ask. Hook suggestions never use seeds, ranks or elo, and neither does the suggestion order (the operator's
   call, 24 Sept 2026: "no one cares about that" — and they change daily). "SWEPT"/"sweep" is a result word in
   `spoilsTheResult` (a best of 5 titled "PLAYOFFS | SWEPT vs TAS" told how it went). A typed hook always
   saves — any check on it (result words, length) comes back as a warning beside the field, never a refusal

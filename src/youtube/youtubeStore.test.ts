@@ -457,10 +457,26 @@ write(600, {
   assert.equal(await samePairLongForm(500, "no pair here"), null);
 
   // Rivalry packaging (22 Oct 2026): the pair with history gets the named ask, in the title's
-  // order; no YouTube sign-in here, so no playlist is looked up and the links block is as above.
+  // order; the playlist line is the upload's (`withMatchupPlaylist`), so the links block is as
+  // above and nothing here calls YouTube, signed in or not: the kit asks for this text on every
+  // open of the match screen, and a playlist lookup has no timeout.
   assert.equal(second.split("\n\n")[1], rivalrySubscribeLine("Feinberg", "doogile"));
   assert.ok(!second.includes(SUBSCRIBE_LINE));
   assert.ok(!RIVALRY_PLAYLIST_LINE.test(second));
+  {
+    const tokenFile = path.join(media, "token.json");
+    writeFileSync(tokenFile, JSON.stringify({ client_id: "c", client_secret: "s", refresh_token: "r" }));
+    const savedToken = process.env.YOUTUBE_TOKEN_FILE;
+    process.env.YOUTUBE_TOKEN_FILE = tokenFile;
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async () => {
+      throw new Error("uploadTextFor must not reach the network");
+    }) as typeof fetch;
+    assert.equal((await uploadTextFor(400, "video")).description, second, "disk only, signed in");
+    globalThis.fetch = realFetch;
+    if (savedToken === undefined) delete process.env.YOUTUBE_TOKEN_FILE;
+    else process.env.YOUTUBE_TOKEN_FILE = savedToken;
+  }
   // A pair with no history keeps every byte of its stored description.
   assert.equal((await uploadTextFor(600, "video")).description, modern(600, "Aa vs Bb"));
   // A blocked pair gets none of it, whoever asks for the text (the kit does, before any refusal).
