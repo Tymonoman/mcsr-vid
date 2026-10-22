@@ -610,18 +610,20 @@ export async function pinnedCommentFor(matchId: number, playlistWaitMs?: number)
   // on the channel (`lastMeetingFor`, the description's "last time they met" test) — then the
   // comment names the pair and asks. Never for a blocked pair, whoever asks for the text.
   const matchup = found?.title === matchupPlaylistTitle(status.leftNickname, status.rightNickname);
-  const history =
-    matchup &&
-    !hasBlockedPlayer(dir) &&
-    !!(await quietly(matchId, "earlier meeting", async () =>
-      lastMeetingFor(matchId, (await uploadTextFor(matchId, "video")).title),
-    ));
+  const earlier =
+    matchup && !hasBlockedPlayer(dir)
+      ? await quietly(matchId, "earlier meeting", async () =>
+          lastMeetingFor(matchId, (await uploadTextFor(matchId, "video")).title),
+        )
+      : null;
   const rivalry =
-    history && found
+    earlier && found
       ? {
           left: titleName(status.leftNickname),
           right: titleName(status.rightNickname),
           playlistUrl: found.url,
+          // "last time they met" (growth plan idea 4, 22 Oct 2026): the previous match's link.
+          lastVideoId: earlier,
         }
       : null;
   return pinnedComment({ question, playlistUrl: found?.url ?? null, matchId, rivalry });

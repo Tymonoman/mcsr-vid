@@ -104,6 +104,7 @@ assert.deepEqual(await lines(12730175), [
   const question = "who would you have backed on blind travel, edcr or doogile?";
   assert.deepEqual(await lines(12730175), [
     question,
+    "last time they met: https://youtu.be/EEEEEEEEEEE",
     SYNC,
     "more edcr vs doogile: https://www.youtube.com/playlist?list=PLPAIR",
     "subscribe to catch the next one",

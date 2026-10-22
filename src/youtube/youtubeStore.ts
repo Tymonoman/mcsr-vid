@@ -605,7 +605,7 @@ export function pinnedComment(
     question?: string | null;
     playlistUrl?: string | null;
     matchId?: number;
-    rivalry?: { left: string; right: string; playlistUrl: string } | null;
+    rivalry?: { left: string; right: string; playlistUrl: string; lastVideoId?: string | null } | null;
   } = {},
   supportUrl = config.supportUrl,
 ): string {
@@ -615,6 +615,7 @@ export function pinnedComment(
       : SYNC_SENTENCE_VARIANTS[variantIndex(matchId, SALT_SYNC, SYNC_SENTENCE_VARIANTS.length)]!;
   return [
     ...(question ? [question] : []),
+    ...(rivalry?.lastVideoId ? [`last time they met: https://youtu.be/${rivalry.lastVideoId}`] : []),
     sentence,
     ...(rivalry
       ? [
