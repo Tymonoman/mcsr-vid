@@ -1886,6 +1886,32 @@ directly (`src/telegram/bot.ts`) — no dependency, long-polling `getUpdates`, n
   unwritten, so the nudge is tried again next tick rather than lost. Tests:
   `src/telegram/commentNudge.test.ts`.
 
+- **Growth line** (`src/telegram/growthLine.ts`, 22 Oct 2026 — the operator's "b plus button to
+  ask for more info"): one silent line a day, `+N subs yesterday (M total) · V views · best:
+  <hook> | <pair> (views)`, with a "More" button. On the 15-minute tick (8080 only) behind
+  `config.growthLine` (file-only like `commentNudges`, but **on** by default since the operator
+  asked for it; there is no Settings-writable Telegram toggle to follow). Due from
+  `telegramReportHourWarsaw` + 10 min until three hours past the hour (the report's own catch-up
+  span; null hour = no line), once per Warsaw date: `.telegram.json`'s `growthLine.date`. N and V
+  are `channels.list` statistics against the snapshot the previous line stored — its own, not
+  the report's `prevSnapshot`, which the report overwrites ten minutes earlier — so the first run
+  only saves a baseline and logs it, and a previous line older than yesterday turns "yesterday"
+  into "since <date>". "Best" is the long-form `allUploads` knows that is public ≤3 days (the
+  nudges' `publishAt` reading) and not a blocked pair, ranked by views gained since the previous
+  line (`videoStats` lifetime counts minus the stored `growthLine.videoViews`; a video with none
+  stored went public since and counts from 0), linked to its Studio analytics page. Any read that
+  fails (a hidden subscriber count included) sends nothing, logs once that day, and the next tick
+  tries again; a send failure leaves the state unwritten. The button is `g:more:<date>`:
+  `index.ts`'s `handleUpdate` routes the operator's own press (chat and presser) to
+  `handleGrowthCallback`, and answers any other chat or presser "that button isn't yours" (the
+  title picker's and fast-track's buttons still ignore strangers silently). The answer is
+  `/stats 7d`'s own text (`renderStats` + `parseStatsWindows("7d")`, repeated rather than imported
+  from `index.ts`, which imports this module) plus that line's top 3 with views and Studio links,
+  read from `growthLine.lines[date]` (kept 7 days). It is marked sent before the slow stats read,
+  so a double tap answers "already sent"; a failed read unmarks it so the operator can press
+  again; a line over 7 days old answers "that button has expired". Counts and titles only — no
+  comment text or author is read. Tests: `src/telegram/growthLine.test.ts`.
+
 ## Studio automation (phase 1, 7 Oct 2026)
 
 Does what Studio has no API for, starting with pinning a video's own first comment. The operator,

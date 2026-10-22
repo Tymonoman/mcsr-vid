@@ -338,9 +338,9 @@ Europe/Warsaw, DST-correct; every slash command answers fresh. Runs inside the d
   `npm run tg -- send --md <file>`. A report is a finished task's end, not a progress note or a
   question. Every command is read-only except title-picker/veto/fast-track buttons (operator's
   chat). Plain replies land in `.telegram-inbox.jsonl` (`npm run tg -- inbox`).
-- **Comment nudges** (`commentNudges`, file-only, off; `src/telegram/commentNudge.ts`): a silent
-  line per threshold (1/5/10/25) a long-form crosses in its first 48h public, with the Studio
-  comments link; counts only, never text or names; dedupe in `.telegram.json`.
+- **Silent lines** (counts only, never comment text/names): `commentNudges` (file-only, off;
+  `commentNudge.ts`) per threshold (1/5/10/25) in a long-form's first 48h public; `growthLine`
+  (file-only, on; `growthLine.ts`) daily at report hour +10 min, with a More button.
 
 ## Studio automation
 

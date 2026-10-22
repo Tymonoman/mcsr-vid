@@ -116,6 +116,8 @@ export interface SendOptions {
   dryRun?: boolean;
   /** Telegram's `disable_notification`: delivered without a sound or vibration. */
   silent?: boolean;
+  /** Inline buttons under the message (its last part, when split) — the growth line's "More". */
+  keyboard?: InlineKeyboard;
 }
 
 /** Sends `text` to the operator's chat, split at `MESSAGE_MAX_CHARS`. Throws if not configured. */
@@ -126,13 +128,15 @@ export async function sendMessage(text: string, opts: SendOptions = {}): Promise
   }
   const chat = chatId();
   if (!chat) throw new Error("TELEGRAM_CHAT_ID is not set");
-  for (const part of messageParts(text, opts.html)) {
+  const parts = messageParts(text, opts.html);
+  for (const [i, part] of parts.entries()) {
     await call("sendMessage", {
       chat_id: chat,
       text: part,
       ...(opts.html ? { parse_mode: "HTML" } : {}),
       disable_web_page_preview: opts.preview !== true,
       ...(opts.silent ? { disable_notification: true } : {}),
+      ...(opts.keyboard && i === parts.length - 1 ? { reply_markup: opts.keyboard } : {}),
     });
   }
 }

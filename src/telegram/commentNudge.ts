@@ -39,9 +39,14 @@ export const sinceText = (ms: number): string => {
   return min < 60 ? `${min} min after publishing` : `${Math.round(min / 60)} h after publishing`;
 };
 
-export function nudgeText(title: string, videoId: string, count: number, sinceMs: number): string {
+/** "<hook> | <left> vs <right>" — the title without its tail; the whole title if it has no pair. */
+export function titleHead(title: string): string {
   const parts = splitTitle(title);
-  const head = parts ? `${parts.hook} | ${parts.left} vs ${parts.right}` : title;
+  return parts ? `${parts.hook} | ${parts.left} vs ${parts.right}` : title;
+}
+
+export function nudgeText(title: string, videoId: string, count: number, sinceMs: number): string {
+  const head = titleHead(title);
   const noun = count === 1 ? "comment" : "comments";
   return (
     `${escapeHtml(head)}: ${count} ${noun}, ${sinceText(sinceMs)} · ` +

@@ -11,6 +11,7 @@ import { appendFileSync, readFileSync, renameSync, unlinkSync, writeFileSync } f
 import path from "node:path";
 import { config } from "../config.js";
 import type { ChannelSnapshot } from "./facts.js";
+import type { GrowthLineState } from "./growthLine.js";
 import type { WorthFacts } from "./worth.js";
 
 export interface TelegramState {
@@ -44,6 +45,9 @@ export interface TelegramState {
    * threshold already announced — the dedupe, so a count never nudges twice.
    */
   commentNudges: Record<string, number>;
+  /** The daily growth line (src/telegram/growthLine.ts): its date is the dedupe, its snapshot
+   *  what tomorrow's line subtracts, its `lines` what a More button reads back. */
+  growthLine: GrowthLineState | null;
 }
 
 export interface FastTrackAskState {
@@ -81,6 +85,7 @@ const EMPTY: TelegramState = {
   titleOffers: {},
   fastTrackAsks: {},
   commentNudges: {},
+  growthLine: null,
 };
 
 const statePath = (): string => path.join(config.mediaDir, ".telegram.json");

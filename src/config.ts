@@ -571,6 +571,14 @@ export interface Config {
    */
   commentNudges: boolean;
   /**
+   * On by default (the operator, 22 Oct 2026: "b plus button to ask for more info"), a
+   * config-file edit like `commentNudges`. On, the 15-minute tick sends one silent Telegram line
+   * a day, ten minutes after `telegramReportHourWarsaw`: subscribers and views since the day
+   * before, and the fresh long-form that grew most, with a "More" button
+   * (src/telegram/growthLine.ts). Counts and titles only, never a comment's text or author.
+   */
+  growthLine: boolean;
+  /**
    * Off by default, config-file only like `xAutoPost`. On, the Studio worker's cycle
    * (`src/youtube/studioWorker.ts`) posts the same one-a-day clip through a real, signed-in
    * browser instead of the paid API (`src/x/xBrowser.ts`): the X profile lives in
@@ -716,6 +724,7 @@ export const DEFAULTS: Config = {
   creatorWatch: false,
   xAutoPost: false,
   commentNudges: false,
+  growthLine: true,
   xBrowserPost: false,
   xHandle: "mcsrreplayoffs",
   xMinHoursBetweenPosts: 40,

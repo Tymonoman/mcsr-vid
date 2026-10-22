@@ -15,6 +15,7 @@ import { describeFailure, runClaude } from "./claude.js";
 import { knowledgeFor } from "./knowledge.js";
 import { BOT_COMMANDS, HELP_TEXT, parseCommand, parseStatsWindows, type ParsedCommand } from "./commands.js";
 import { handleFastTrackCallback } from "./fastTrackAsk.js";
+import { handleGrowthCallback } from "./growthLine.js";
 import { handleTitleCallback } from "./titlePicker.js";
 import {
   dashboardMatchUrl,
@@ -334,13 +335,21 @@ export async function handleUpdate(update: bot.TgUpdate): Promise<void> {
     const from = update.callback_query.message?.chat.id;
     // The presser too, not just the chat the message sits in: the operator's chat is private.
     const presser = update.callback_query.from?.id;
+    const data = update.callback_query.data ?? "";
     if (chat && from !== undefined && String(from) === chat && String(presser) === chat) {
-      const handler = update.callback_query.data?.startsWith("f:")
+      const handler = data.startsWith("f:")
         ? handleFastTrackCallback
-        : handleTitleCallback;
+        : data.startsWith("g:")
+          ? handleGrowthCallback
+          : handleTitleCallback;
       await handler(update.callback_query).catch((err: unknown) =>
         console.error(`telegram: callback failed — ${describeError(err)}`),
       );
+    } else if (data.startsWith("g:")) {
+      // The growth line's More button only: a polite no, nothing read or sent.
+      await bot
+        .answerCallbackQuery(update.callback_query.id, "that button isn't yours")
+        .catch((err: unknown) => console.error(`telegram: callback answer failed — ${describeError(err)}`));
     }
     return;
   }

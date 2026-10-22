@@ -49,6 +49,7 @@ const EMPTY: TelegramState = {
   titleOffers: {},
   fastTrackAsks: {},
   commentNudges: {},
+  growthLine: null,
 };
 
 try {
@@ -73,6 +74,7 @@ try {
     },
     fastTrackAsks: {},
     commentNudges: {},
+    growthLine: null,
   };
   writeTelegramState(full);
   assert.deepEqual(readTelegramState(), full);

@@ -86,6 +86,7 @@ import { creatorWatchTick } from "./creatorWatch.js";
 import { fastTrackTick } from "./fastTrack.js";
 import { xTick } from "../x/xPost.js";
 import { commentNudgeTick } from "../telegram/commentNudge.js";
+import { growthLineTick } from "../telegram/growthLine.js";
 import { saveSettings, settingsPayload } from "./settings.js";
 import { applyScheduledRenderArm } from "./experiments.js";
 import { evaluateExperiments } from "./experimentsEvaluator.js";
@@ -972,6 +973,9 @@ server.listen(PORT, "0.0.0.0", () => {
     // Comment nudges (off by default, config.commentNudges): a silent Telegram line per
     // comment-count threshold a fresh public long-form crosses — see src/telegram/commentNudge.ts.
     void commentNudgeTick().catch((err: unknown) => console.error(`comment nudges: ${describeError(err)}`));
+    // The growth line (on, config.growthLine): one silent Telegram line a day, ten minutes after
+    // the morning report's hour, with a More button — see src/telegram/growthLine.ts.
+    void growthLineTick().catch((err: unknown) => console.error(`growth line: ${describeError(err)}`));
     try {
       // The nightly's own pending timer was armed for the old hour: rearm it, the same signal
       // `/api/settings`' PUT handler acts on above.

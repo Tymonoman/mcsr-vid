@@ -144,6 +144,7 @@
   "creatorWatch": false,
   "xAutoPost": false,
   "commentNudges": false,
+  "growthLine": true,
   "xBrowserPost": false,
   "xHandle": "mcsrreplayoffs",
   "xMinHoursBetweenPosts": 40
