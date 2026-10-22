@@ -39,15 +39,24 @@ export interface XPlan {
 
 /** `x.json` in the match directory: the post that went out. Its presence means "posted". */
 export interface XRecord {
+  /** X's own id, or `browser:<timestamp>` when the browser poster could not read it off the page. */
   postId: string;
   at: string;
   text: string;
+  /** The API's media id; "" from the browser poster, which never sees one. */
   mediaId: string;
+  /** Absent on an API post. */
+  via?: "browser";
 }
 
 export class XRefusal extends Error {}
 
-const xFile = (matchId: number) => path.join(matchDir(matchId), "x.json");
+/** `x.json` in the match directory. Shared by both posters so "posted" means one thing. */
+export const xFile = (matchId: number): string => path.join(matchDir(matchId), "x.json");
+
+export async function writeXRecord(matchId: number, record: XRecord): Promise<void> {
+  await writeFile(xFile(matchId), `${JSON.stringify(record, null, 2)}\n`, "utf8");
+}
 
 /** When the long-form became public: its publish time, or its upload if it went up public. */
 function publicSince(record: UploadRecord): number | null {
@@ -101,7 +110,7 @@ export async function postMatch(
   const mediaId = await uploadVideo(plan.clipPath, keys, opts.base ?? X_API);
   const postId = await createPost(keys, plan.text, mediaId, opts.base ?? X_API);
   const record: XRecord = { postId, at: new Date().toISOString(), text: plan.text, mediaId };
-  await writeFile(xFile(matchId), `${JSON.stringify(record, null, 2)}\n`, "utf8");
+  await writeXRecord(matchId, record);
   return { plan, record };
 }
 
@@ -137,14 +146,19 @@ export async function pickXCandidate(now = Date.now()): Promise<XPlan | null> {
   return null;
 }
 
+/** The one-a-UTC-day rule both posters share: the latest `x.json` when it is dated today, else null. */
+export async function postedToday(now = Date.now()): Promise<(XRecord & { matchId: number }) | null> {
+  const last = await lastXPost();
+  return last && last.at.slice(0, 10) === new Date(now).toISOString().slice(0, 10) ? last : null;
+}
+
 /** At most one post per UTC day: the candidate, unless any `x.json` is already dated today. */
 export async function autoPost(
   opts: { dryRun?: boolean; now?: number; base?: string } = {},
 ): Promise<string> {
   const now = opts.now ?? Date.now();
-  const last = await lastXPost();
-  if (last && last.at.slice(0, 10) === new Date(now).toISOString().slice(0, 10))
-    return `already posted today (match ${last.matchId})`;
+  const last = await postedToday(now);
+  if (last) return `already posted today (match ${last.matchId})`;
   const plan = await pickXCandidate(now);
   if (!plan) return "nothing to post";
   if (opts.dryRun) return `would post match ${plan.matchId}:\n${plan.text}`;

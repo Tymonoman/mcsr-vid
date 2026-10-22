@@ -19,13 +19,22 @@ import {
   probe,
   readLastProbe,
   start,
-  type ProbeResult,
   type StudioBrowserOptions,
   type StudioHandle,
 } from "../youtube/studioBrowser.js";
 
 /** Auto-stop the screen after this long, whether or not anyone pressed Done. */
 const SCREEN_LIFETIME_MS = 15 * 60_000;
+export const STUDIO_START_URL = "https://studio.youtube.com/?hl=en";
+
+/** What `finishLogin` runs to settle the session: Studio's probe by default, X's (`src/x/xBrowser.ts`)
+ * when the screen was opened on x.com. The result is one word the CLI prints; "ok" is the one that counts. */
+export type LoginProbe = (handle: StudioHandle) => Promise<{ result: string; message: string }>;
+
+const studioProbe: LoginProbe = async (handle) => {
+  const { result, url, title } = await probe(handle, config.youtubeChannelId);
+  return { result, message: `${title} (${url})` };
+};
 
 interface LoginScreen {
   handle: StudioHandle;
@@ -159,13 +168,15 @@ export function studioSecretOk(provided: string | undefined | null): boolean {
 }
 
 /**
- * Starts Xvfb + Chrome on `studio.youtube.com`, then x11vnc and websockify so a browser on the
+ * Starts Xvfb + Chrome on `startUrl` (Studio by default; `npm run x -- login` passes x.com's login
+ * page with the X profile in `opts.profileDir`), then x11vnc and websockify so a browser on the
  * operator's Tailscale IP can drive it. The password is one-time and never logged — it is in this
  * function's return value only, which the route hands straight to the browser.
  */
 export async function startLogin(
   hostname: string,
   opts: StudioBrowserOptions = {},
+  startUrl: string = STUDIO_START_URL,
 ): Promise<{ url: string; password: string; expiresAt: string } | { error: string }> {
   const refusal = loginRefusal({
     screenRunning: screen !== null,
@@ -182,7 +193,7 @@ export async function startLogin(
     await (
       await page(handle)
     )
-      .goto("https://studio.youtube.com/?hl=en", { waitUntil: "domcontentloaded", timeout: 30_000 })
+      .goto(startUrl, { waitUntil: "domcontentloaded", timeout: 30_000 })
       .catch(() => {
         // Worth trying so the remote screen opens on Studio rather than a blank tab; a sign-in
         // redirect or a slow load is exactly what the operator is about to look at by eye.
@@ -247,12 +258,13 @@ export async function stopLogin(): Promise<void> {
 }
 
 /** Probes the session, tears the screen down either way, and returns what the probe found. */
-export async function finishLogin(): Promise<{ result: ProbeResult; message: string } | { error: string }> {
+export async function finishLogin(
+  probeWith: LoginProbe = studioProbe,
+): Promise<{ result: string; message: string } | { error: string }> {
   const s = screen;
   if (!s) return { error: "no login screen is running" };
   try {
-    const { result, url, title } = await probe(s.handle, config.youtubeChannelId);
-    return { result, message: `${title} (${url})` };
+    return await probeWith(s.handle);
   } catch (err) {
     return { error: describeError(err) };
   } finally {

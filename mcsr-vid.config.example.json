@@ -141,5 +141,6 @@
   ],
   "creatorWatchlist": [],
   "creatorWatch": false,
-  "xAutoPost": false
+  "xAutoPost": false,
+  "xBrowserPost": false
 }

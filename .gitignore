@@ -36,3 +36,5 @@ __pycache__/
 # Baked seed-icon scenes (scripts/seed-icons/bake.py): intermediate, the PNGs in remotion/assets/seed-icons/ are what ships.
 /remotion/seedIcons/
 .studio-profile/
+# The X account's own Chrome profile (npm run x -- login); X_PROFILE_DIR may point elsewhere.
+.x-profile/

@@ -556,6 +556,13 @@ export interface Config {
    * posts the newest public long-form's hand-cut Short to X, at most one a day (src/x/xPost.ts).
    */
   xAutoPost: boolean;
+  /**
+   * Off by default, config-file only like `xAutoPost`. On, the Studio worker's cycle
+   * (`src/youtube/studioWorker.ts`) posts the same one-a-day clip through a real, signed-in
+   * browser instead of the paid API (`src/x/xBrowser.ts`): the X profile lives in
+   * `X_PROFILE_DIR` (default `/app/.x-profile`), signed in once by hand over `npm run x -- login`.
+   */
+  xBrowserPost: boolean;
 }
 
 /**
@@ -682,6 +689,7 @@ export const DEFAULTS: Config = {
   creatorWatchlist: [],
   creatorWatch: false,
   xAutoPost: false,
+  xBrowserPost: false,
 };
 
 /** The overrides file. Exported so the settings panel writes the same one the loader reads. */
