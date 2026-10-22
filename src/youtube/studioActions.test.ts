@@ -437,7 +437,8 @@ try {
           root.innerHTML = '<tp-yt-paper-dialog><span>A/B Test report</span><button aria-label="Close" onclick="closeDialog()">Close</button>' +
             '<p>39.8%</p><p>Watch time share</p><p>Set this option</p><p>19.6%</p><p>Watch time share</p><p>Set this option</p>' +
             '<p>Test finished. Ran from October 17, 2026 at 7:00 PM to October 18, 2026 at 6:56 AM.</p>' +
-            '<button onclick="window.__newTestClicked=true;if(!window.__state.newTestDead){window.__state.abTest=\\'none\\';renderAbTest()}">New test</button><button onclick="closeDialog()">Done</button></tp-yt-paper-dialog>';
+            '<button onclick="window.__newTestClicked=true;if(!window.__state.newTestDead){document.getElementById(\\'nt-confirm\\').style.display=\\'block\\'}">New test</button><button onclick="closeDialog()">Done</button>' +
+            '<div id="nt-confirm" role="dialog" style="display:none"><p>Start a new experiment?</p><p>This deletes your current experiment.</p><button onclick="document.getElementById(\\'nt-confirm\\').style.display=\\'none\\'">Cancel</button><button onclick="window.__newTestConfirmed=true;window.__state.abTest=\\'none\\';renderAbTest()">Continue</button></div></tp-yt-paper-dialog>';
         } else {
           // The finished report's shape, as read live on _2EOkOOX0PQ (11 Oct 2026), for a thumbnail test.
           root.innerHTML = '<div><span>A/B Test report</span><button aria-label="Close" onclick="closeDialog()">Close</button>' +
@@ -870,6 +871,11 @@ try {
   );
   assert.equal(overReport, "started", `expected the fresh form behind New test, got ${JSON.stringify(overReport)}`);
   assert.equal(await page.evaluate("window.__newTestClicked"), true, "New test was clicked");
+  assert.equal(await page.evaluate("window.__newTestConfirmed"), true, "the 'Start a new experiment?' confirm was answered Continue");
+  assert.ok(
+    readdirSync(path.join(media, String(matchId))).some((f) => f.startsWith("studio-tc-new-test-confirm")),
+    "the confirm dialog was screenshotted",
+  );
   assert.equal(await page.evaluate("window.__tcStarted"), null, "a dry run still never clicks Set test");
   const reportShots = readdirSync(path.join(media, String(matchId))).filter((f) =>
     f.startsWith("studio-tc-finished-report"),

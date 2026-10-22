@@ -89,6 +89,9 @@ const SELECTORS = {
   // "New test" clears the report for a fresh form. Exact accessible name, scoped to the dialog;
   // the report dialog's own element is unverified, so the scope is the two Studio dialog shapes.
   abTestNewTestButton: 'tp-yt-paper-dialog, [role="dialog"] >> role=button[name="New test"s]',
+  /** The confirm Studio puts over the report after New test: "Start a new experiment? This deletes
+   *  your current experiment." Its Continue button (22 Oct 2026). */
+  abTestNewTestConfirm: 'tp-yt-paper-dialog, [role="dialog"] >> role=button[name="Continue"s]',
   // Confirmed live 8 Oct 2026: "Set test" only stages the test inside the dialog — the banner
   // "The test is ready and will start once you save your changes" appears, and the test does not
   // actually start until the Details page's own Save button is pressed too (the same one that
@@ -1041,6 +1044,14 @@ export async function startTestAndCompare(
         await shot(handle, opts.matchId, "tc-finished-report");
         clickedNewTest = true;
         await newTest.click();
+        // Studio asks "Start a new experiment? This deletes your current experiment." (seen live
+        // 22 Oct 2026 on nVFfA0_do_c). The finished report is already recorded in
+        // .experiments.json, so Continue; a missing confirm (older dialog) is fine too.
+        const confirm = page.locator(SELECTORS.abTestNewTestConfirm).first();
+        if (await confirm.isVisible({ timeout: 5_000 }).catch(() => false)) {
+          await shot(handle, opts.matchId, "tc-new-test-confirm");
+          await confirm.click();
+        }
         await page
           .locator(SELECTORS.abTestSetButton)
           .first()
