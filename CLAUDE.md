@@ -205,15 +205,15 @@ reload). After merging server changes, `POST /api/restart-when-idle`.
   `npm run batch`/`generate-project` and the TUI do too.
 - **Rival posts** (`rivalChannelHandle`: `mcsrmatches`, `mcsr-vault`): public feeds, no token;
   "this match" (id, else pair/date) sorts after fresh ones, "this pair" only shows.
-- **Hook chips** (`src/pipeline/hooks.ts`) are never about what happens in the match — no
-  margin, lead, death or pace — only the setting, a forfeit and a real head-to-head rivalry; a
-  close finish (under 1s) is the one case a number still shows (`titleEventProblem`). A title
-  hook is `titleOptions.ts`'s own first option: the operator's `runnerNicknames` pair when both
-  players have one, else a title-only model call (no video), else a chip. A joined series' chips
-  read the game that decided it, not game 1's. `midRollCtaAtSec`
-  (Settings → Publishing, default 90, null = none) shows SUBSCRIBE for `midRollCtaSec` (4)s at the
-  first split. `titleNames` (default
-  `{ Pinne: "Skycrab", lowk3y_: "lowkey" }`) spells two players the broadcast's way, title only.
+- **Hook chips** (`src/pipeline/hooks.ts`) never say what happens in the match (no margin, lead,
+  death or pace): the setting, a forfeit, a real rivalry (`h2h`); a sub-1s finish is the one
+  number shown (`titleEventProblem`). A title hook (`titleOptions.ts`): the operator's
+  `runnerNicknames` pair if both have one, else a title-only model call, else a chip. A series'
+  chips read the deciding game. `midRollCtaAtSec` (Settings → Publishing, 90, null = none):
+  SUBSCRIBE for `midRollCtaSec` (4)s at the first split. `titleNames` (`{ Pinne: "Skycrab",
+  lowk3y_: "lowkey" }`): the broadcast's spelling, titles only. **Rivalry packaging** (new
+  uploads only): a pair with history gets a named ask, playlist line and pinned comment; never a
+  blocked pair, score or winner.
 - **`nightlyUpload`** is `"scheduled"` (**not writable from Settings**): once hooks are saved the
   chain uploads private, scheduled for the next free slot (19:00 UTC ranked / 23:00 series) or the
   kit's Publish-at time, Short 18h later. `"private"` = no publish time; `"off"` = chain stops after

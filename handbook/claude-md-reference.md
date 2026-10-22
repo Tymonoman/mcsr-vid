@@ -658,7 +658,22 @@ failed boot check offers it again. Client changes need only a reload.
   warning in `saveWarnings` — one nickname per player; the post-mortem of 30 Sept 2026 found "TAS" on
   four players across seven titles. The description's links block gains "last time they met:
   https://youtu.be/<id>" at upload when the same pair has an earlier long-form on the channel
-  (`lastMeetingFor`, `src/youtube/youtubeStore.ts`; once, unedited descriptions only). Hook suggestions never use seeds, ranks or elo, and neither does the suggestion order (the operator's
+  (`lastMeetingFor`, `src/youtube/youtubeStore.ts`; once, unedited descriptions only). Rivalry
+  packaging (22 Oct 2026, `withRivalry`, `src/pipeline/description.ts`; the operator's answer that
+  day: new uploads only, never re-pushed onto a video already up): when that same lookup finds an
+  earlier public long-form, the subscribe line becomes "subscribe so you don't miss the next A vs
+  B." and the links block gains "every A vs B on the channel: <matchup playlist url>" beside the
+  season's "all the matches" line; names as the title shows them (`titleName`, in the title's
+  order), never a score, a count of wins or the winner, and never for a blocked pair (`blockedIn`
+  — the kit asks for this text before any refusal). `uploadTextFor` only looks the playlist up
+  (`findPlaylistId`, `isConfigured` first); a pair's matchup playlist is otherwise created at
+  finish, after the insert, so `startUpload` (`withMatchupPlaylist`, `src/youtube/youtubeUpload.ts`)
+  makes it first on the chain's own upload of a pair's second video (not a playoff game, not a
+  blocked pair, not with the API down) and links it; a failed insert is one log line and finish
+  makes the playlist later, as before. A second video uploaded any other way (Adopt, a Studio
+  paste off the kit) links the playlist only from the pair's third video on. A pair without
+  history keeps every byte, so `copyVariety` off is unchanged for them; `refreshDescription`
+  counts the named ask as the subscribe line, or a second pass would add a second ask. Hook suggestions never use seeds, ranks or elo, and neither does the suggestion order (the operator's
   call, 24 Sept 2026: "no one cares about that" — and they change daily). "SWEPT"/"sweep" is a result word in
   `spoilsTheResult` (a best of 5 titled "PLAYOFFS | SWEPT vs TAS" told how it went). A typed hook always
   saves — any check on it (result words, length) comes back as a warning beside the field, never a refusal
@@ -1036,7 +1051,12 @@ failed boot check offers it again. Client changes need only a reload.
   blind travel, X or Y?"; it never reads the result), the sync line, "more matches like this" with the
   pair's playlist (a read-only lookup — a pair's playlist is only created on its second video — else the
   left player's, else the season's) and the tip jar; the subscribe line lives in the description, not
-  here. `copyVariety` (7 Oct 2026, off by default): rotates this sync sentence and the description's
+  here — except for a pair with history (22 Oct 2026, rivalry packaging, new uploads only): when
+  the playlist found is the pair's own (`playlistUrlFor` returns the title it found) and the same
+  `lastMeetingFor` test passes off the title `uploadTextFor` gives, the link line reads "more A vs
+  B: <matchup playlist url>" and "subscribe to catch the next one" follows it (`pinnedComment`'s
+  `rivalry`), names via `titleName`; never for a blocked pair (`hasBlockedPlayer`). Without
+  history the comment is byte for byte what it was. `copyVariety` (7 Oct 2026, off by default): rotates this sync sentence and the description's
   closer and subscribe-line paragraphs through a few phrasings of the same facts, each keyed off the
   match id by its own salt (`variantIndex`, `src/pipeline/description.ts`) so the three don't always
   move together, and a re-render or re-upload keeps its own phrasing rather than the one

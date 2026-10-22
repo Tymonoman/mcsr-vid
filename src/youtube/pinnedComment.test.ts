@@ -3,7 +3,7 @@
 // (the MCSR API from the fixtures, YouTube's playlist list and its token endpoint), so nothing hits
 // the network. Run: npx tsx src/youtube/pinnedComment.test.ts
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -76,6 +76,65 @@ assert.deepEqual(await lines(12730175), [
   link("PLPAIR"),
   TIP,
 ]);
+
+// Rivalry packaging (22 Oct 2026): the pair's own playlist is the link AND the pair has an earlier
+// public long-form on the channel (`lastMeetingFor`, off the title on disk — the case above had the
+// playlist and no record, so it read as a first meeting): the comment names the pair and asks,
+// once. A blocked pair gets the plain comment, whoever asks for the text.
+{
+  const dir = path.join(media, "12730175");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    path.join(dir, "match-12730175.title.edited.txt"),
+    "Hook | edcr vs doogile | MCSR Ranked 1v1 | Minecraft Speedrun\n",
+  );
+  const earlier = path.join(media, "12000000");
+  mkdirSync(earlier, { recursive: true });
+  writeFileSync(
+    path.join(earlier, "youtube.json"),
+    JSON.stringify({
+      videoId: "EEEEEEEEEEE",
+      uploadedAt: "2026-09-01T19:00:00Z",
+      publishAt: null,
+      privacyStatus: "public",
+      thumbnailVariant: null,
+      title: "Hook | doogile vs edcr | MCSR Ranked 1v1 | Minecraft Speedrun",
+    }),
+  );
+  const question = "who would you have backed on blind travel, edcr or doogile?";
+  assert.deepEqual(await lines(12730175), [
+    question,
+    SYNC,
+    "more edcr vs doogile: https://www.youtube.com/playlist?list=PLPAIR",
+    "subscribe to catch the next one",
+    TIP,
+  ]);
+  const savedBlocked = config.blockedPlayers;
+  config.blockedPlayers = ["EDCR"];
+  assert.deepEqual(
+    await lines(12730175),
+    [question, SYNC, link("PLPAIR"), TIP],
+    "a blocked pair: the plain comment",
+  );
+  config.blockedPlayers = savedBlocked;
+  // The earlier video gone private with no time: not on the channel for anyone, so no history.
+  writeFileSync(
+    path.join(earlier, "youtube.json"),
+    JSON.stringify({
+      videoId: "EEEEEEEEEEE",
+      uploadedAt: "2026-09-01T19:00:00Z",
+      publishAt: null,
+      privacyStatus: "private",
+      title: "Hook | doogile vs edcr | MCSR Ranked 1v1 | Minecraft Speedrun",
+    }),
+  );
+  assert.deepEqual(await lines(12730175), [question, SYNC, link("PLPAIR"), TIP]);
+  rmSync(earlier, { recursive: true });
+  rmSync(dir, { recursive: true });
+  console.log(
+    "OK: a pair with history gets its playlist named and one ask; a blocked pair the plain comment",
+  );
+}
 
 // A first meeting has no matchup playlist (it waits for the second video) and is not made for the
 // comment: the left player's is the link.

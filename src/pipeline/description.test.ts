@@ -6,11 +6,15 @@ import {
   closerFor,
   CLOSER_VARIANTS,
   LAST_MEETING,
+  RIVALRY_ASK,
+  RIVALRY_PLAYLIST_LINE,
+  rivalrySubscribeLine,
   subscribeLineFor,
   SUBSCRIBE_LINE,
   SUBSCRIBE_LINE_VARIANTS,
   variantIndex,
   withLastMeeting,
+  withRivalry,
   type DescriptionInput,
 } from "./description.js";
 import type { MatchInfo, UserDetails } from "../api/types.js";
@@ -311,6 +315,51 @@ assert.ok(tagsFor(match({ seedType: "VILLAGE", bastionType: "BRIDGE" })).join(",
   assert.equal(withLastMeeting("0:00 intro", "AAAAAAAAAAA"), "0:00 intro");
 }
 
+// Rivalry packaging (22 Oct 2026): a pair with history gets a named ask and its own playlist line,
+// beside the season's; a pair without keeps every byte. Names only — no score, no wins, no winner.
+{
+  const playlist = "https://www.youtube.com/playlist?list=PLHG-jSA-dWDo";
+  const pair = "https://www.youtube.com/playlist?list=PLPAIR";
+  const full = withLastMeeting(
+    build(match(), { playlistUrl: playlist, supportUrl: "https://ko-fi.com/mcsrreplayoffs" }),
+    "AAAAAAAAAAA",
+  );
+  const ask = rivalrySubscribeLine("edcr", "doogile");
+  assert.equal(ask, "subscribe so you don't miss the next edcr vs doogile.");
+  assert.ok(ask.startsWith(RIVALRY_ASK));
+  assert.doesNotMatch(ask, /[!\u2014]|\d/, "no exclamation mark, em dash or figure");
+  const packed = withRivalry(full, "edcr", "doogile", pair);
+  assert.equal(packed.split("\n\n")[1], ask, "the ask names the pair, in the opening's place");
+  assert.ok(!packed.includes(SUBSCRIBE_LINE), "the generic ask is gone, not doubled");
+  // After the last meeting, before the season playlist: the links block in reading order.
+  assert.deepEqual(packed.split("\n\n")[3]!.split("\n").slice(2), [
+    full.split("\n").find((l) => l.startsWith("match page: ")),
+    `${LAST_MEETING}https://youtu.be/AAAAAAAAAAA`,
+    `every edcr vs doogile on the channel: ${pair}`,
+    `all the matches: ${playlist}`,
+    "tip jar: https://ko-fi.com/mcsrreplayoffs",
+  ]);
+  assert.ok(RIVALRY_PLAYLIST_LINE.test(packed));
+  assert.ok(!RIVALRY_PLAYLIST_LINE.test(full));
+  // Once: a second pass, with another playlist even, changes nothing.
+  assert.equal(withRivalry(packed, "edcr", "doogile", pair), packed);
+  assert.equal(withRivalry(packed, "edcr", "doogile", "https://www.youtube.com/playlist?list=OTHER"), packed);
+  // No playlist yet (a pair's second video, before finish makes it): the ask alone.
+  const askOnly = withRivalry(full, "edcr", "doogile", null);
+  assert.equal(askOnly.split("\n\n")[1], ask);
+  assert.ok(!RIVALRY_PLAYLIST_LINE.test(askOnly));
+  assert.equal(withRivalry(askOnly, "edcr", "doogile", pair), packed, "the line lands later, the ask stays");
+  // A copyVariety phrasing of the ask is replaced too.
+  for (const variant of SUBSCRIBE_LINE_VARIANTS)
+    assert.equal(withRivalry(full.replace(SUBSCRIBE_LINE, variant), "edcr", "doogile", null), askOnly);
+  // No season playlist or tip jar: the end of the links block.
+  const bare = withRivalry(withLastMeeting(build(match()), "AAAAAAAAAAA"), "edcr", "doogile", pair);
+  assert.equal(bare.split("\n\n")[3]!.split("\n").at(-1), `every edcr vs doogile on the channel: ${pair}`);
+  // No template, nothing.
+  assert.equal(withRivalry("0:00 intro", "edcr", "doogile", pair), "0:00 intro");
+  console.log("OK: rivalry packaging names the pair, once, and leaves a pair without history alone");
+}
+
 // --- copyVariety (off by default: byte-identical to today) -----------------------------------
 {
   // Off (the default, and every build above that never set it) is always index 0 — today's
@@ -389,7 +438,10 @@ assert.ok(tagsFor(match({ seedType: "VILLAGE", bastionType: "BRIDGE" })).join(",
   }
   assert.equal(triples.size, 64, `every (closer, subscribe, sync) triple occurs: ${triples.size}`);
   assert.ok(Math.max(...triples.values()) / N < 0.03, "no triple is a fixed profile");
-  assert.ok(closerIsSync / N < 0.3, `closer and sync sentence agree ${((100 * closerIsSync) / N).toFixed(1)}%`);
+  assert.ok(
+    closerIsSync / N < 0.3,
+    `closer and sync sentence agree ${((100 * closerIsSync) / N).toFixed(1)}%`,
+  );
   console.log("OK: copyVariety pools pick independently");
 }
 

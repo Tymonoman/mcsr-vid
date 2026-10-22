@@ -20,7 +20,8 @@ import { exportStale, staleExportMessage } from "../pipeline/syncFile.js";
 import { readManifest } from "../thumbnails/thumbnailVariants.js";
 import { thumbnailRunning } from "../thumbnails/rerender.js";
 import { pinnedQuestion } from "../pipeline/pinnedQuestion.js";
-import { HOOK_PLACEHOLDER, metaPaths } from "../pipeline/title.js";
+import { HOOK_PLACEHOLDER, metaPaths, titleName } from "../pipeline/title.js";
+import { RIVALRY_PLAYLIST_LINE, withRivalry } from "../pipeline/description.js";
 import { readHandShort, WAITING_FOR_HAND_SHORT } from "../shorts/handShort.js";
 import { readShortCut, readShortHook, WAITING_FOR_HOOK } from "../shorts/shortHook.js";
 import { activityProgress, boxFailure, endActivity, shortLog, startActivity } from "../shorts/shortLog.js";
@@ -40,8 +41,10 @@ import {
   playoffPlaylistDescription,
   playoffPlaylistTitle,
   commentThreads,
+  findOrCreatePlaylist,
   findPlaylistId,
   isConfigured,
+  playlistUrl,
   postComment,
   SEASON_PLAYLIST_DESCRIPTION,
   resumableSession,
@@ -53,7 +56,9 @@ import {
 } from "./youtube.js";
 import {
   findExportedVideo,
+  lastMeetingFor,
   pinnedComment,
+  splitTitle,
   allUploads,
   longFormRecord,
   onVideo,
@@ -282,6 +287,8 @@ async function startUpload(matchId: number, req: UploadRequest, send: typeof upl
   const refused = await hookRefusal(matchId, req.kind);
   if (refused) return refused;
   const text = await uploadTextFor(matchId, req.kind);
+  // The pair's playlist, made now rather than at finish, so this description can link it.
+  if (req.kind === "video") text.description = await withMatchupPlaylist(matchId, dir, text);
   const bad = (error: string): Begun => ({ status: 400, error });
   if (text.title === "") return bad(`no title on disk for the ${req.kind} of match ${matchId}`);
   // Refuse a title still carrying the `<HOOK>` placeholder — the one string that must never
@@ -514,19 +521,52 @@ function within<T>(ms: number | undefined, work: Promise<T>): Promise<T> {
  * is one title lost, not the chain: a later one may be an id this process already knows. Past
  * `until` (epoch ms) the caller has stopped waiting and no more lookups are made for it.
  */
-async function playlistUrlFor(matchId: number, until = Infinity): Promise<string | null> {
-  const titles = playlistTitlesFor(
-    await matchStatusFor(matchId),
-    "video",
-    await playoffContextForId(matchId),
-  ).map(([title]) => title);
+async function playlistUrlFor(
+  matchId: number,
+  status: { leftNickname: string; rightNickname: string },
+  until = Infinity,
+): Promise<{ title: string; url: string } | null> {
+  const titles = playlistTitlesFor(status, "video", await playoffContextForId(matchId)).map(
+    ([title]) => title,
+  );
   const season = config.youtubePlaylistTitle;
   for (const title of [...titles.filter((t) => t !== season), ...titles.filter((t) => t === season)]) {
     if (Date.now() >= until) return null;
     const id = await quietly(matchId, `playlist "${title}"`, () => findPlaylistId(title));
-    if (id) return `https://www.youtube.com/playlist?list=${id}`;
+    if (id) return { title, url: playlistUrl(id) };
   }
   return null;
+}
+
+/**
+ * Rivalry packaging before the insert (22 Oct 2026, new uploads only): a pair's matchup playlist
+ * is made at finish, on the pair's second video — after the insert this description goes up
+ * with. So the chain's own upload makes it here instead, when the pair has history
+ * (`lastMeetingFor`, the "last time they met" test) and `uploadTextFor` found none to link, and
+ * the description gets its "every A vs B on the channel" line (`withRivalry`). The names the
+ * title shows, in its order. A playoff game never gets one (`playlistTitlesFor`: the tournament's
+ * stands in), nor a blocked pair, nor "?" (the API down). A failed insert is one log line and the
+ * season line stays: finish makes the playlist later, as before. Exported for the test.
+ */
+export async function withMatchupPlaylist(
+  matchId: number,
+  dir: string,
+  text: { title: string; description: string },
+): Promise<string> {
+  const parts = splitTitle(text.title);
+  if (!parts || !isConfigured() || RIVALRY_PLAYLIST_LINE.test(text.description) || hasBlockedPlayer(dir))
+    return text.description;
+  if (!(await lastMeetingFor(matchId, text.title)) || (await playoffContextForId(matchId)))
+    return text.description;
+  const { leftNickname: l, rightNickname: r } = await matchStatusFor(matchId);
+  if (l === "?" || r === "?") return text.description;
+  try {
+    const id = await findOrCreatePlaylist(matchupPlaylistTitle(l, r), matchupPlaylistDescription(l, r));
+    return withRivalry(text.description, parts.left, parts.right, playlistUrl(id));
+  } catch (err) {
+    console.warn(`upload, match ${matchId}: no matchup playlist to link — ${describeError(err)}`);
+    return text.description;
+  }
 }
 
 /**
@@ -542,15 +582,37 @@ async function playlistUrlFor(matchId: number, until = Infinity): Promise<string
  * takes, since a comment posted without its link stays without it.
  */
 export async function pinnedCommentFor(matchId: number, playlistWaitMs?: number): Promise<string> {
-  const series = existsSync(path.join(matchDir(matchId), "series.json"));
+  const dir = matchDir(matchId);
+  const series = existsSync(path.join(dir, "series.json"));
   const question = await quietly(matchId, "question", async () =>
     pinnedQuestion(await getMatch(matchId), series),
   );
   const until = playlistWaitMs === undefined ? Infinity : Date.now() + playlistWaitMs;
-  const playlistUrl = isConfigured()
-    ? await quietly(matchId, "playlist link", () => within(playlistWaitMs, playlistUrlFor(matchId, until)))
+  const status = await matchStatusFor(matchId);
+  const found = isConfigured()
+    ? await quietly(matchId, "playlist link", () =>
+        within(playlistWaitMs, playlistUrlFor(matchId, status, until)),
+      )
     : null;
-  return pinnedComment({ question, playlistUrl, matchId });
+  // Rivalry packaging (22 Oct 2026): the link is the pair's own playlist AND the pair has history
+  // on the channel (`lastMeetingFor`, the description's "last time they met" test) — then the
+  // comment names the pair and asks. Never for a blocked pair, whoever asks for the text.
+  const matchup = found?.title === matchupPlaylistTitle(status.leftNickname, status.rightNickname);
+  const history =
+    matchup &&
+    !hasBlockedPlayer(dir) &&
+    !!(await quietly(matchId, "earlier meeting", async () =>
+      lastMeetingFor(matchId, (await uploadTextFor(matchId, "video")).title),
+    ));
+  const rivalry =
+    history && found
+      ? {
+          left: titleName(status.leftNickname),
+          right: titleName(status.rightNickname),
+          playlistUrl: found.url,
+        }
+      : null;
+  return pinnedComment({ question, playlistUrl: found?.url ?? null, matchId, rivalry });
 }
 
 /**

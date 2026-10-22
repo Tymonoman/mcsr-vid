@@ -10,6 +10,9 @@ import {
   CLOSER,
   CLOSER_VARIANTS,
   LAST_MEETING,
+  RIVALRY_ASK,
+  RIVALRY_PLAYLIST_LINE,
+  rivalrySubscribeLine,
   SUBSCRIBE_LINE,
   SUBSCRIBE_LINE_VARIANTS,
   variantIndex,
@@ -17,10 +20,12 @@ import {
 import {
   lastMeetingFor,
   nicknameWarnings,
+  pinnedComment,
   refreshDescription,
   refreshTitle,
   resolveShortVideoId,
   samePairLongForm,
+  SYNC_SENTENCE_VARIANTS,
   uploadTextFor,
   type UploadRecord,
 } from "./youtubeStore.js";
@@ -450,6 +455,45 @@ write(600, {
   // lastMeetingFor already gives it; the old and new spelling are the same pair.
   assert.equal(await samePairLongForm(320, `Hook | Pinne vs Zed | ${TAIL}`), "JJJJJJJJJJJ");
   assert.equal(await samePairLongForm(500, "no pair here"), null);
+
+  // Rivalry packaging (22 Oct 2026): the pair with history gets the named ask, in the title's
+  // order; no YouTube sign-in here, so no playlist is looked up and the links block is as above.
+  assert.equal(second.split("\n\n")[1], rivalrySubscribeLine("Feinberg", "doogile"));
+  assert.ok(!second.includes(SUBSCRIBE_LINE));
+  assert.ok(!RIVALRY_PLAYLIST_LINE.test(second));
+  // A pair with no history keeps every byte of its stored description.
+  assert.equal((await uploadTextFor(600, "video")).description, modern(600, "Aa vs Bb"));
+  // A blocked pair gets none of it, whoever asks for the text (the kit does, before any refusal).
+  const savedBlocked = config.blockedPlayers;
+  config.blockedPlayers = ["feinberg"];
+  const blocked = (await uploadTextFor(400, "video")).description;
+  config.blockedPlayers = savedBlocked;
+  assert.equal(blocked.split("\n\n")[1], SUBSCRIBE_LINE, "a blocked pair: the plain ask");
+  assert.ok(!blocked.includes(RIVALRY_ASK) && !RIVALRY_PLAYLIST_LINE.test(blocked));
+  // The comment's own shape with a rivalry: the pair's playlist, named, and one plain ask.
+  assert.deepEqual(
+    pinnedComment(
+      {
+        question: "q?",
+        playlistUrl: "https://x/pl",
+        rivalry: { left: "Feinberg", right: "doogile", playlistUrl: "https://x/pl" },
+      },
+      "https://ko-fi.com/x",
+    ).split("\n"),
+    [
+      "q?",
+      SYNC_SENTENCE_VARIANTS[0],
+      "more Feinberg vs doogile: https://x/pl",
+      "subscribe to catch the next one",
+      "tip jar: https://ko-fi.com/x",
+    ],
+  );
+  assert.equal(
+    pinnedComment({ question: "q?", playlistUrl: "https://x/pl", rivalry: null }, "https://ko-fi.com/x"),
+    pinnedComment({ question: "q?", playlistUrl: "https://x/pl" }, "https://ko-fi.com/x"),
+    "no rivalry: byte for byte the comment as before",
+  );
+  console.log("OK: rivalry packaging at upload — history pairs only, never a blocked one");
 }
 
 // A hook's nickname that earlier titles used beside another player: TAS is doogile's (three

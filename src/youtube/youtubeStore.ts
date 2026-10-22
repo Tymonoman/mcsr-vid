@@ -5,7 +5,7 @@
 import { existsSync, readdirSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { config, matchDir } from "../config.js";
+import { blockedIn, config, matchDir } from "../config.js";
 import { listProcessedMatchIds } from "../dashboard/matchStatus.js";
 import { carriedHookText, readManifest } from "../thumbnails/thumbnailVariants.js";
 import {
@@ -18,12 +18,15 @@ import {
 } from "../pipeline/title.js";
 import {
   closerFor,
+  RIVALRY_ASK,
   seedPhrase,
   subscribeLineFor,
   SUBSCRIBE_LINE_VARIANTS,
   variantIndex,
   withLastMeeting,
+  withRivalry,
 } from "../pipeline/description.js";
+import { findPlaylistId, isConfigured, matchupPlaylistTitle, playlistUrl } from "./youtube.js";
 import { playoffSeriesTail, playoffTitleTail, seedOrdinal } from "../playoffs/playoffs.js";
 import { buildShortTitle, readShortHook, TITLE_MAX_CHARS } from "../shorts/shortHook.js";
 import { describeError } from "../errorText.js";
@@ -194,11 +197,17 @@ export async function uploadTextFor(
       refreshDescription(stored, kind, config.supportUrl, dir, matchId),
     );
     // The pair's last meeting is only known now, and only a long-form sends a viewer on.
-    if (kind === "video")
-      description = withLastMeeting(
-        description,
-        await refreshed<string | null>("last meeting", null, () => lastMeetingFor(matchId, title)),
+    if (kind === "video") {
+      const earlier = await refreshed<string | null>("last meeting", null, () =>
+        lastMeetingFor(matchId, title),
       );
+      description = withLastMeeting(description, earlier);
+      // A pair with history: the ask names the pair, the links block gains the pair's playlist.
+      if (earlier) {
+        const stored = description;
+        description = await refreshed("rivalry lines", stored, () => withRivalryFor(stored, title));
+      }
+    }
   }
   // A Short's description is written when it is cut, before the long-form has an id; by the
   // time it uploads (18 h after the video) the id is in youtube.json, and a Short whose job is
@@ -245,15 +254,33 @@ export function splitTitle(line: string): { hook: string; left: string; right: s
   return null;
 }
 
+/** A shown name as the API spells it: `titleNames`' Skycrab is Pinne again (any other name is its own). */
+const apiName = (shown: string): string =>
+  Object.entries(config.titleNames).find(
+    ([, spelled]) => spelled.toLowerCase() === shown.toLowerCase(),
+  )?.[0] ?? shown;
+
 /**
- * A name as the API spells it, lower case: `titleNames`' Skycrab is Pinne again, so a title
- * written before 22 Sept 2026 and one written after name the same player.
+ * `apiName`, lower case, so a title written before 22 Sept 2026 and one written after name the
+ * same player.
  */
-const canonName = (shown: string): string => {
-  const name = shown.toLowerCase();
-  const api = Object.entries(config.titleNames).find(([, spelled]) => spelled.toLowerCase() === name);
-  return api ? api[0].toLowerCase() : name;
-};
+const canonName = (shown: string): string => apiName(shown).toLowerCase();
+
+/**
+ * Rivalry packaging (`withRivalry`, src/pipeline/description.ts) for a pair with history: the two
+ * names off the title, as the API spells each (so the matchup playlist's title matches) and as
+ * the title shows them. The playlist is only looked up here, never made — the kit asks for this
+ * text on every open; `startUpload` (src/youtube/youtubeUpload.ts) makes it before the insert when
+ * the pair's second video has none yet. A blocked pair gets none of it, whoever asks.
+ */
+async function withRivalryFor(description: string, title: string): Promise<string> {
+  const parts = splitTitle(title);
+  if (!parts) return description;
+  const [left, right] = [parts.left, parts.right].map(apiName) as [string, string];
+  if (blockedIn([left, right])) return description;
+  const id = isConfigured() ? await findPlaylistId(matchupPlaylistTitle(left, right)) : null;
+  return withRivalry(description, titleName(left), titleName(right), id ? playlistUrl(id) : null);
+}
 
 /** The two players a title names as one key, whichever side each is on; null when it names none. */
 function pairKey(line: string): string | null {
@@ -462,7 +489,8 @@ export async function refreshDescription(
     out = at < 0 ? `${out}\n${line}` : `${out.slice(0, at)}\n${line}${out.slice(at)}`;
   }
   // The opening is one line, so the first blank line is its end; no blank line is no template.
-  if (!SUBSCRIBE_LINE_VARIANTS.some((v) => out.includes(v))) {
+  // A pair's own ask (`withRivalry`) is the line too, or a second pass would add a second ask.
+  if (!SUBSCRIBE_LINE_VARIANTS.some((v) => out.includes(v)) && !out.includes(RIVALRY_ASK)) {
     const line = subscribeLineFor(matchId, config.copyVariety);
     out = out.replace("\n\n", `\n\n${line}\n\n`);
   }
@@ -540,7 +568,9 @@ export const SYNC_SENTENCE_VARIANTS: readonly string[] = [
  * what it is handed here). In the operator's own voice and never the winner: a spoiler-free
  * question to answer (`pinnedQuestion`, 30 Sept 2026), where to report a sync slip, a playlist to
  * watch next, and the tip-jar line, which follows supportUrl like the descriptions. The subscribe
- * ask is the description's and the cards', not a third copy here.
+ * ask is the description's and the cards', not a third copy here — except for a pair with
+ * history (`rivalry`, 22 Oct 2026, new uploads only): then the playlist line is the pair's own,
+ * named, and one plain ask follows it. Names as the title shows them; no score, no count of wins.
  *
  * `matchId` keys `copyVariety`'s pick of `SYNC_SENTENCE_VARIANTS`; omitted (every call before
  * this existed, and every test that does not pass it) is always index 0.
@@ -550,7 +580,13 @@ export function pinnedComment(
     question,
     playlistUrl,
     matchId,
-  }: { question?: string | null; playlistUrl?: string | null; matchId?: number } = {},
+    rivalry,
+  }: {
+    question?: string | null;
+    playlistUrl?: string | null;
+    matchId?: number;
+    rivalry?: { left: string; right: string; playlistUrl: string } | null;
+  } = {},
   supportUrl = config.supportUrl,
 ): string {
   const sentence =
@@ -560,7 +596,14 @@ export function pinnedComment(
   return [
     ...(question ? [question] : []),
     sentence,
-    ...(playlistUrl ? [`more matches like this: ${playlistUrl}`] : []),
+    ...(rivalry
+      ? [
+          `more ${rivalry.left} vs ${rivalry.right}: ${rivalry.playlistUrl}`,
+          "subscribe to catch the next one",
+        ]
+      : playlistUrl
+        ? [`more matches like this: ${playlistUrl}`]
+        : []),
     ...(supportUrl ? [`tip jar: ${supportUrl}`] : []),
   ].join("\n");
 }

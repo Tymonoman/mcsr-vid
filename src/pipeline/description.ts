@@ -185,12 +185,44 @@ export const LAST_MEETING = "last time they met: ";
 
 export function withLastMeeting(description: string, videoId: string | null): string {
   if (!videoId || description.includes(LAST_MEETING)) return description;
-  const line = `${LAST_MEETING}https://youtu.be/${videoId}`;
-  // Before the playlist and tip-jar lines, else at the end of the links block. No template, no line.
+  return withLink(description, `${LAST_MEETING}https://youtu.be/${videoId}`);
+}
+
+/** `line` before the playlist and tip-jar lines, else at the end of the links block. No template, no line. */
+function withLink(description: string, line: string): string {
   const links = description.search(/^(?:all the matches: |tip jar: )/m);
   if (links >= 0) return `${description.slice(0, links)}${line}\n${description.slice(links)}`;
   const closer = description.search(/\n\n(?:fan channel, |#MCSR)/);
   return closer < 0 ? description : `${description.slice(0, closer)}\n${line}${description.slice(closer)}`;
+}
+
+/**
+ * Rivalry packaging (22 Oct 2026), new uploads only — never pushed onto a video already up: when
+ * the same pair has an earlier public long-form on the channel (`lastMeetingFor`'s test, the one
+ * "last time they met" uses), the subscribe ask names the pair and the links block gains the
+ * pair's own playlist beside the season's. The names as the title shows them (`titleName`); never
+ * a score, a count of wins or the winner. `uploadTextFor` (src/youtube/youtubeStore.ts) applies it
+ * with a looked-up playlist; `startUpload` (src/youtube/youtubeUpload.ts) with one it just made.
+ * Both parts are once: a description that has the line keeps it, and a pair with no history keeps
+ * every byte it had.
+ */
+export const RIVALRY_ASK = "subscribe so you don't miss the next ";
+export const rivalrySubscribeLine = (left: string, right: string): string =>
+  `${RIVALRY_ASK}${left} vs ${right}.`;
+export const RIVALRY_PLAYLIST_LINE = /^every .+ vs .+ on the channel: /m;
+
+export function withRivalry(
+  description: string,
+  left: string,
+  right: string,
+  playlistUrl: string | null,
+): string {
+  let out = description;
+  const generic = SUBSCRIBE_LINE_VARIANTS.find((v) => out.includes(v));
+  if (generic && !out.includes(RIVALRY_ASK)) out = out.replace(generic, rivalrySubscribeLine(left, right));
+  if (playlistUrl && !RIVALRY_PLAYLIST_LINE.test(out))
+    out = withLink(out, `every ${left} vs ${right} on the channel: ${playlistUrl}`);
+  return out;
 }
 
 /**

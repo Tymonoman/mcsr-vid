@@ -1417,6 +1417,97 @@ try {
     console.log("OK: retryPendingStudio is off by default and otherwise presses only pending pins");
   }
 
+  /* --- Rivalry packaging before the insert (22 Oct 2026) ------------------------------------- */
+  // A pair's matchup playlist is made at finish, after the insert the description goes up with:
+  // the upload makes it first when the pair has history, and links it. Nothing for a first
+  // meeting or a blocked pair, and a description already linking one is left as it is.
+  {
+    const { withMatchupPlaylist } = await import("./youtubeUpload.js");
+    const { RIVALRY_PLAYLIST_LINE, rivalrySubscribeLine, SUBSCRIBE_LINE } =
+      await import("../pipeline/description.js");
+    const stubbed = globalThis.fetch;
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/playlists?") && init?.method === "POST") {
+        hits.push(`POST ${url}`);
+        sent.push({ url, body: JSON.parse(String(init.body)) });
+        return new Response(JSON.stringify({ id: "PLRIVAL" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return stubbed(input, init);
+    }) as typeof fetch;
+    const text = {
+      title: "A hook | doogile vs Feinberg | MCSR Ranked 1v1",
+      description: [
+        "doogile vs Feinberg, mcsr ranked 1v1 on the same seed.",
+        "",
+        SUBSCRIBE_LINE,
+        "",
+        "0:00 intro",
+        "",
+        `match page: https://magmamcsr.com/ranked/player/x/matches/${matchId}?season=12`,
+        "all the matches: https://www.youtube.com/playlist?list=PL",
+        "",
+        "fan channel, x",
+        "",
+        "#MCSRRanked",
+      ].join("\n"),
+    };
+    const posts = () => hits.filter((h) => h.startsWith("POST") && h.includes("/playlists?")).length;
+    // A first meeting: nothing made, every byte kept.
+    const before = posts();
+    assert.equal(await withMatchupPlaylist(matchId, dir, text), text.description);
+    assert.equal(posts(), before, "no playlist for a first meeting");
+    // The pair's earlier public long-form on the channel: the playlist is made, the line links it.
+    const earlierDir = path.join(media, "12000001");
+    await mkdir(earlierDir, { recursive: true });
+    await writeFile(
+      path.join(earlierDir, "youtube.json"),
+      JSON.stringify({
+        videoId: "EEEEEEEEEEE",
+        uploadedAt: "2026-09-01T19:00:00Z",
+        publishAt: null,
+        privacyStatus: "public",
+        thumbnailVariant: null,
+        title: "Hook | Feinberg vs doogile | MCSR Ranked 1v1",
+      }),
+    );
+    const packed = await withMatchupPlaylist(matchId, dir, text);
+    assert.equal(posts(), before + 1, "one playlists.insert");
+    const made = sent
+      .filter((s) => s.url.includes("/playlists?") && s.url.includes("part=snippet,status"))
+      .at(-1);
+    assert.equal(
+      (made?.body as { snippet: { title: string } }).snippet.title,
+      "doogile vs Feinberg · MCSR Ranked",
+    );
+    assert.ok(
+      packed.includes(
+        "every doogile vs Feinberg on the channel: https://www.youtube.com/playlist?list=PLRIVAL",
+      ),
+      packed,
+    );
+    assert.ok(packed.includes(rivalrySubscribeLine("doogile", "Feinberg")), "the ask names the pair too");
+    assert.ok(!packed.includes(SUBSCRIBE_LINE));
+    assert.ok(RIVALRY_PLAYLIST_LINE.test(packed));
+    // Already linked (uploadTextFor found it): nothing more, not a second insert.
+    assert.equal(await withMatchupPlaylist(matchId, dir, { ...text, description: packed }), packed);
+    assert.equal(posts(), before + 1);
+    // A blocked pair, whatever the history: nothing, and no write.
+    const savedBlocked = config.blockedPlayers;
+    config.blockedPlayers = ["TestBlocked"];
+    await writeFile(path.join(dir, "testblocked.mp4"), "x");
+    assert.equal(await withMatchupPlaylist(matchId, dir, text), text.description);
+    await rm(path.join(dir, "testblocked.mp4"));
+    config.blockedPlayers = savedBlocked;
+    assert.equal(posts(), before + 1);
+    await rm(earlierDir, { recursive: true, force: true });
+    globalThis.fetch = stubbed;
+    console.log("OK: the upload makes the pair's playlist before the insert, for a pair with history only");
+  }
+
   globalThis.fetch = realFetch;
   console.log("OK: the tags step adds what is missing without blanking the snippet");
   console.log("OK: finishing an already-finished video calls nothing");
