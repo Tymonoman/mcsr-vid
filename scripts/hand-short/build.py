@@ -160,7 +160,7 @@ def base(spec, mdir, tmp, dur):
              f"[0:v]crop={cw}:{ch}:{cx}:{cy},scale=1080:780:flags=lanczos[top]",
              f"[1:v]crop={cw}:{ch}:{cx}:{cy},scale=1080:780:flags=lanczos[bot]",
              "[bg][3:v]overlay=0:0[l0]", "[l0][top]overlay=0:112[l1]", "[l1][bot]overlay=0:900[l2]",
-             "[2:v]fps=60,scale=280:202:flags=area[clock]", "[l2][clock]overlay=14:795:eof_action=pass[l4]"]
+             "[2:v]fps=60,scale=280:202:flags=area[clock]", f"[l2][clock]overlay={spec.get('clockX', 14)}:795:eof_action=pass[l4]"]  # clockX: move it off a HUD it hides
         quiet = 0 if spec["side"] == "right" else 1
         audio = (f"[{quiet}:a]volume=0.25[q];[{1 - quiet}:a][q]amix=inputs=2:normalize=0:duration=first,")
         return inputs, g, 4, 5, audio
