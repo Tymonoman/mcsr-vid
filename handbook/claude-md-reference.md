@@ -2542,6 +2542,11 @@ the same post through a real, signed-in Chrome. Setup: `handbook/x-browser-setup
   both entry points, and a 404 page as an `error` outcome. Needs
   `PLAYWRIGHT_BROWSERS_PATH` when `HOME` is scrubbed. `src/x/xBrowserState.test.ts` (pure): the
   flag contract, the state file, the once-a-day gate stopping `xBrowserTick` before any browser.
+- **`stop()` now waits for Xvfb to exit** (`studioBrowser.ts`, `await terminate(xvfb)`): the X
+  step starts its own Xvfb on the same `:99` right after the Studio handle stops, and an Xvfb still
+  shutting down refuses the display, which Chrome meets as no display at all (seen as a flaky
+  `error` outcome in the test's stop/start sequence). The browser test uses port 9341 / `:84`,
+  since another test's 9295 / `:96` collided with it when run beside it.
 - **ponytail:** no lock between the worker's X step and a hand `npm run x -- post` at the same
   minute (`start()` refuses the second Chrome on the port/profile, which is the practical lock);
   the post id is read from the first article matching the text's first line, so two identical

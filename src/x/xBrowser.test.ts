@@ -5,7 +5,15 @@
 // Run: npx tsx src/x/xBrowser.test.ts
 import assert from "node:assert/strict";
 import { execSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -123,13 +131,31 @@ const home = `http://127.0.0.1:${port}/home`;
 server.unref(); // the fixture must not keep the process alive once the checks are done
 
 // --- classifyX, pure -------------------------------------------------------------------------------
-assert.equal(classifyX("https://x.com/home", "verify your identity in a quoted post", { composer: true, loginForm: false }), "ok");
-assert.equal(classifyX("https://x.com/i/flow/login", "Sign in to X", { composer: false, loginForm: true }), "signed-out");
+assert.equal(
+  classifyX("https://x.com/home", "verify your identity in a quoted post", {
+    composer: true,
+    loginForm: false,
+  }),
+  "ok",
+);
+assert.equal(
+  classifyX("https://x.com/i/flow/login", "Sign in to X", { composer: false, loginForm: true }),
+  "signed-out",
+);
 assert.equal(classifyX("https://x.com/home", "", { composer: false, loginForm: true }), "signed-out");
 assert.equal(classifyX("https://x.com/account/access", "", { composer: false, loginForm: false }), "verify");
-assert.equal(classifyX("https://x.com/home", "Confirm your email address", { composer: false, loginForm: false }), "verify");
-assert.equal(classifyX("https://x.com/i/flow/login_challenge", "", { composer: false, loginForm: false }), "verify");
-assert.equal(classifyX("https://x.com/home", "Something went wrong", { composer: false, loginForm: false }), "error");
+assert.equal(
+  classifyX("https://x.com/home", "Confirm your email address", { composer: false, loginForm: false }),
+  "verify",
+);
+assert.equal(
+  classifyX("https://x.com/i/flow/login_challenge", "", { composer: false, loginForm: false }),
+  "verify",
+);
+assert.equal(
+  classifyX("https://x.com/home", "Something went wrong", { composer: false, loginForm: false }),
+  "error",
+);
 console.log("OK: classifyX — composer wins, then verify, then login, else error");
 
 // --- the drive ----------------------------------------------------------------------------------
@@ -144,7 +170,10 @@ const plan: XPlan = {
   videoId: "vid1",
 };
 // Test-only: this container has no usable Chromium sandbox (studioActions.test.ts says why).
-const startOpts = xStartOpts({ chromePath, debugPort: 9295, display: ":96", extraArgs: ["--no-sandbox"] }, profileDir);
+const startOpts = xStartOpts(
+  { chromePath, debugPort: 9341, display: ":84", extraArgs: ["--no-sandbox"] },
+  profileDir,
+);
 const pace = (): Promise<void> => new Promise((r) => setTimeout(r, 50));
 const shots = () => readdirSync(path.join(media, String(matchId))).filter((f) => f.startsWith("x-"));
 
@@ -154,7 +183,9 @@ const out = await postPlanViaBrowser(plan, { startOpts, home, pace });
 assert.equal(out.outcome, "signed-out", JSON.stringify(out));
 assert.equal(readXBrowserState()?.lastProbe, "signed-out");
 assert.ok(!existsSync(path.join(media, "1", "x.json")));
-assert.deepEqual(xBrowserNeedsYou(readXBrowserState(), true), ["X: signed out, sign in with npm run x -- login"]);
+assert.deepEqual(xBrowserNeedsYou(readXBrowserState(), true), [
+  "X: signed out, sign in with npm run x -- login",
+]);
 assert.deepEqual(xBrowserNeedsYou(readXBrowserState(), false), [], "the flag off: no line");
 console.log("OK: a signed-out session is the outcome, recorded, and never retried or logged into");
 
@@ -180,7 +211,11 @@ console.log("OK: dry run attaches the clip, screenshots the composer and stops b
 const live = await postPlanViaBrowser(plan, { startOpts, home, pace });
 assert.equal(live.outcome, "posted", JSON.stringify(live));
 assert.equal(posted.length, 1);
-assert.ok(posted[0]!.includes("ONE PEARL FROM THE END | Alpha vs Bravo") && posted[0]!.includes("https://youtu.be/vid1"), posted[0]);
+assert.ok(
+  posted[0]!.includes("ONE PEARL FROM THE END | Alpha vs Bravo") &&
+    posted[0]!.includes("https://youtu.be/vid1"),
+  posted[0],
+);
 const record = JSON.parse(readFileSync(path.join(media, "1", "x.json"), "utf8"));
 assert.equal(record.via, "browser");
 assert.equal(record.postId, "1849000000000000001");
@@ -192,10 +227,15 @@ assert.equal(state.lastMatchId, 1);
 assert.equal(state.lastError, null);
 assert.ok(state.lastPostAt);
 assert.deepEqual(xBrowserNeedsYou(state, true), [], "a clean post: nothing for the operator");
-console.log("OK: a live post clicks Post, reads the status id off the timeline and writes x.json via:browser");
+console.log(
+  "OK: a live post clicks Post, reads the status id off the timeline and writes x.json via:browser",
+);
 
 // 5. Already posted: refused before any browser starts, and inside the drive too.
-await assert.rejects(postPlanViaBrowser(plan, { startOpts, home, pace }), (e: unknown) => e instanceof XRefusal && /already on X/.test(e.message));
+await assert.rejects(
+  postPlanViaBrowser(plan, { startOpts, home, pace }),
+  (e: unknown) => e instanceof XRefusal && /already on X/.test(e.message),
+);
 const handle = await start(startOpts);
 try {
   await assert.rejects(postViaBrowser(handle, plan, { home, pace }), XRefusal);
