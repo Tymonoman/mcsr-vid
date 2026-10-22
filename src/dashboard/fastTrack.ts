@@ -31,6 +31,7 @@ import { blockedOnDisk, listProcessedMatchIds } from "./matchStatus.js";
 import { startJob, type Job } from "./jobs.js";
 import { afterSettled, nightlyChainRunning, requestExport } from "./nightly.js";
 import { shortLog } from "../shorts/shortLog.js";
+import { recordNightRender, renderBudgetLeft } from "./renderBudget.js";
 
 /** A match must have happened within this long to be worth jumping the queue for. */
 export const FAST_TRACK_WINDOW_MS = 48 * 60 * 60 * 1000;
@@ -146,6 +147,8 @@ export async function fastTrackTick(
     const state = readFastTrackState();
     if (state.lastDate === utcDate(nowMs)) return;
     if (nightlyChainRunning()) return;
+    // Counts against the night's shared cap (src/dashboard/renderBudget.ts).
+    if (renderBudgetLeft(nowMs) <= 0) return;
 
     const known = knownTierFor(
       config.favouritePlayers,
@@ -184,6 +187,7 @@ export async function fastTrackTick(
       state.lastDate = utcDate(nowMs);
       state.hits.push({ matchId, players: label, at: new Date(nowMs).toISOString(), reason });
       writeFastTrackState(state);
+      recordNightRender(matchId, nowMs);
 
       if (config.nightlyRenderExport) requestExport(matchId);
       const job = deps.startRender(matchId);

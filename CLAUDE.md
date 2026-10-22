@@ -88,8 +88,8 @@ Use the script, don't reconstruct the shell line. Extra arguments go after `--`.
 | `npm run tc-thumbs -- <matchId…>` | A Test & Compare thumbnail set per match in `<id>/tc/` (control, most-different pose, caption). |
 | `npm run studio -- probe \| pin <id> [--dry-run] \| login \| worker [--once] [--dry-run] [--enable] \| tc-plan <plan.json> \| related <id> <id> \| link-related <shortId> <longFormId> [--dry-run]` | Studio browser automation CLI. |
 
-Lab timings for a 10-minute match: overlay ~9 min, `export:fast` ~10 min, a Short seconds; a
-nightly render ~12 min, ~21 with the MP4.
+Lab timings (10-minute match): overlay ~9 min, `export:fast` ~10 min, a Short seconds; nightly
+~12 min, ~21 with the MP4.
 
 ## What the render produces
 
@@ -162,7 +162,7 @@ finish spoils and underperforms.
   only; the prompt, captions/hook, heuristic, title chips and "N deaths" follow it (`teaser.ts`
   stays stricter, above).
 - **A playoff game's nameplates show the seed, not the ladder rank.** A series is picked/cut from
-  game 1's directory, clips from the picked game's. Auto-crop usually declines, and should.
+  game 1's directory, clips from the picked game's.
 
 ## Dashboard
 
@@ -269,7 +269,8 @@ reload). After merging server changes, `POST /api/restart-when-idle`.
   disables) renders the first eligible card, then the MP4, then queues the Short's pick; Short and
   upload wait for the operator's hooks. **A candidate also needs a known player** unless the
   operator queued it; a playoff pick always counts; the block list outranks the queue. Chains
-  skip repeats; see fast-track/coverage. **A test server arms its own
+  skip repeats; chain, coverage and fast-track share one night cap (`renderBudget.ts`:
+  `nightlyMaxRenders` + 1 per Telegram veto in 24 h). **A test server arms its own
   nightly too**: any `PORT=… npm run dashboard` schedules against the same `/media`; kill it
   before the hour, or set `nightlyRenderHourUtc: null` for it. Chain resume, YouTube retries and
   the 15-minute tick run only on 8080.
@@ -353,7 +354,7 @@ by `studioAutomation` (not writable from Settings).
   accounts.google.com on its own**; the operator signs in by hand whenever Google asks. `probe()`
   classifies the session (`ok`/`signed-out`/`verify`/`wrong-channel`) at the start of every job;
   **a `verify` or `signed-out` result is that attempt's error, chased no further until the
-  operator logs in again, never retried in a loop.** The active channel is MCSR Replayoffs.
+  operator logs in again, never retried in a loop.**
 - **Safety rails**: **never unpins, replaces, or removes a pin, end screen, related-video link or
   running Test & Compare set by hand** (each action checks for an existing one first). **One browser
   session at a time** (in-process lock plus the profile's own `SingletonLock`; `killOnExit` kills
@@ -479,4 +480,4 @@ One pixel-art Minecraft identity across overlay, thumbnails, channel art and rep
   edge).
 - **Channel art:** `branding/logo.png` + `banner.png` from `branding/generate_brand_assets.py`
   (`branding/README.md`).
-- **Brand and launch plan:** https://claude.ai/code/artifact/82c863d6-1bf5-4e01-b679-a2a3c40fcc80
+- **Brand plan:** https://claude.ai/code/artifact/82c863d6-1bf5-4e01-b679-a2a3c40fcc80

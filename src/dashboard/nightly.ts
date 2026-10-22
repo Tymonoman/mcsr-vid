@@ -63,6 +63,7 @@ import { shortRunning } from "./shortsRoutes.js";
 import { anyThumbnailRunning, thumbnailRunning } from "../thumbnails/rerender.js";
 import { nightlyShortSummary, picksIdle, readStatus, shortTick } from "./shortFlow.js";
 import { snapshot, startScan } from "./suggestScan.js";
+import { recordNightRender, renderBudgetLeft } from "./renderBudget.js";
 import {
   knownPlayerFor,
   knownTierFor,
@@ -1139,6 +1140,8 @@ async function runOnce(
     const inFlight = () =>
       anyThumbnailRunning() ? "a thumbnail re-render is running" : "a render is already in flight";
     if (busy()) return skip(inFlight(), true);
+    // The night's shared cap (src/dashboard/renderBudget.ts): fast-track and coverage count too.
+    if (scheduled && renderBudgetLeft(now()) <= 0) return skip("tonight's render cap is spent");
 
     const suggestions = await ranked();
     if (!suggestions) return skip("no suggestions available");
@@ -1171,6 +1174,7 @@ async function runOnce(
     }
     console.error(`nightly: starting render of #${matchId} ${label}`);
     lastStartedId = matchId;
+    if (scheduled) recordNightRender(matchId, now());
     // This chain's own diversity memory, and the weekly mixed-pair budget — spent the moment the
     // render actually starts, whichever source picked it (ranked list or the operator's queue).
     chainPairs.add(pairKey(players));
@@ -1217,7 +1221,13 @@ async function runOnce(
         // worth acting on.
         const normalChain =
           verdict.outcome === "done" &&
-          shouldChainNextRender(started, config.nightlyMaxRenders, Date.now(), config.nightlyRenderHourUtc);
+          shouldChainNextRender(
+            started,
+            // A scheduled night chains while the shared cap has room (a veto adds one).
+            scheduled ? started + renderBudgetLeft(now()) : config.nightlyMaxRenders,
+            Date.now(),
+            config.nightlyRenderHourUtc,
+          );
         // Evening coverage (18 Oct 2026): once the configured chain is done, a scheduled run may
         // still top up — at most `EVENING_COVERAGE_MAX_PER_NIGHT` a night, inside the same window
         // the ordinary chain respects, and only while an upcoming publish slot would otherwise go
