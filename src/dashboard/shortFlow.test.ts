@@ -606,6 +606,34 @@ try {
     "2026-09-24T09:00:00.000Z",
   );
   assert.equal(flow.shortPublishAt({ videoId: "v", publishAt: null, privacyStatus: "private" }, NOW), null);
+  // A teaser day (x6): the Short goes public BEFORE the long-form, still no sooner than an hour out.
+  {
+    const { writeExperiments } = await import("./experiments.js");
+    const teaser = { experimentId: "x6", arm: "before", slot: { shortDelayHours: -2 } };
+    writeExperiments({
+      experiments: [],
+      schedule: [
+        { date: "2026-09-26", ...teaser },
+        { date: "2026-09-24", ...teaser },
+      ],
+    });
+    assert.equal(
+      flow.shortPublishAt(at("2026-09-26T19:00:00Z"), NOW)?.toISOString(),
+      "2026-09-26T17:00:00.000Z",
+      "two hours before its long-form",
+    );
+    assert.equal(
+      flow.shortPublishAt(at("2026-09-24T10:00:00Z"), NOW)?.toISOString(),
+      "2026-09-24T09:00:00.000Z",
+      "an hour from now when the teaser's time is under an hour away",
+    );
+    rmSync(path.join(media, ".experiments.json"));
+    assert.equal(
+      flow.shortPublishAt(at("2026-09-26T19:00:00Z"), NOW)?.toISOString(),
+      "2026-09-27T13:00:00.000Z",
+      "no entry: the standing 18 h",
+    );
+  }
 
   /* --- 11. The tick: resume a chain a restart cut short; retry a heuristic pick once a day -------- */
   const F = 13_000_006;
@@ -1529,6 +1557,26 @@ try {
       (await put(N, { publishAt: "2026-10-09T19:00:00Z", move: true })).payload.message!,
       /; the Short did not move: .* — it now goes out before the video \(2026-10-08 13:00 UTC\); move it in Studio to 2026-10-10 13:00 UTC$/,
     );
+    // A teaser day (x6, the Short 2 h before): a Short left inside that head start is not "early";
+    // one further ahead still is, and is told the teaser's own time.
+    {
+      const { writeExperiments } = await import("./experiments.js");
+      writeExperiments({
+        experiments: [],
+        schedule: [{ date: "2026-10-11", experimentId: "x6", arm: "before", slot: { shortDelayHours: -2 } }],
+      });
+      await writeUpload(N, rec("short-N", "2026-10-11T18:00:00.000Z"), "short");
+      assert.match(
+        (await put(N, { publishAt: "2026-10-11T19:00:00Z", move: true })).payload.message!,
+        /; the Short did not move: short-N belongs to channel UCsomeoneelse, not yours — nothing moved$/,
+      );
+      await writeUpload(N, rec("short-N", "2026-10-11T13:00:00.000Z"), "short");
+      assert.match(
+        (await put(N, { publishAt: "2026-10-11T19:30:00Z", move: true })).payload.message!,
+        /; the Short did not move: .* — it now goes out before the video \(2026-10-11 13:00 UTC\); move it in Studio to 2026-10-11 17:30 UTC$/,
+      );
+      rmSync(path.join(media, ".experiments.json"));
+    }
 
     // #12: a playoff game after game 1 has no time of its own; game 1 has.
     const G2 = 13_000_046;

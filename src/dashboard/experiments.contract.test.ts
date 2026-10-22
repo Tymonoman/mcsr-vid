@@ -262,8 +262,8 @@ config.nightlyRenderHourUtc = 3;
   assert.deepEqual(rankedHoursForDate("2026-10-16", data), [19, 23], "sorted, first free hour wins");
   assert.equal(
     shortDelayMsForDate("2026-10-16", data),
-    undefined,
-    "the second slot entry's delay is not merged in",
+    6 * 3600_000,
+    "the delay comes from the slot entry that sets one, whichever experiment's (22 Oct 2026)",
   );
   // A render-only date leaves the publish slot and the Short's delay at their standing values.
   assert.equal(rankedHoursForDate("2026-10-17", data), undefined, "render arm never moves a publish hour");

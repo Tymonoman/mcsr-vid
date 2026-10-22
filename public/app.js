@@ -18,6 +18,8 @@ let exportStream = null;
 let publishSlotAt = null;
 /** Whether that time is the operator's own (the kit's field), for Now's Video up. */
 let publishChosen = false;
+/** The kit's Short time beside its own publish time, `{ videoAt, at }` (shortFlow.ts shortPublishAt), for Now's Short up. */
+let publishShortAt = null;
 /** What prefillPublishAt last put into the upload form's #ytWhen. */
 let prefilledWhen = null;
 
@@ -347,6 +349,7 @@ async function select(id, { open = false, panel } = {}) {
   // The last match's kit time, until this one's kit says its own (Now's Video up, #ytWhen).
   publishSlotAt = null;
   publishChosen = false;
+  publishShortAt = null;
   clearTimeout(nowPoll);
   if (exportStream) {
     exportStream.close();
@@ -1064,9 +1067,10 @@ async function loadPublishKit(id, meta) {
     slot = pub.at ? new Date(pub.at) : null;
     publishSlotAt = pub.state === "open" ? slot : null;
     publishChosen = pub.state === "open" && pub.chosen;
+    publishShortAt = kit.shortAt && pub.at ? { videoAt: pub.at, at: kit.shortAt } : null;
     prefillPublishAt();
-    // Now's "Video up" names this time until the video has one of its own.
-    if (nowPlan?.matchId === id && !nowPlan.uploads.video) paintNow(nowPlan, true);
+    // Now's "Video up" and "Short up" name this time until each has one of its own.
+    if (nowPlan?.matchId === id && !nowPlan.uploads.short) paintNow(nowPlan, true);
   };
   takeTime();
   /** What the field holds, unsaved: the repaint a typed hook causes (below) keeps it. */
@@ -1826,10 +1830,15 @@ function nowSteps(plan, meta) {
     Object.assign(videoUp, { status: "run", sum: `${esc(plan.detail ?? "uploading")}&hellip;` });
   steps.push(videoUp);
   if (!plan.noShort) {
-    // The long-form's time + 18 h, or an hour from now if that has passed (shortFlow.ts shortPublishAt).
-    const shortAt = videoAt
-      ? new Date(Math.max(new Date(videoAt).getTime() + 18 * 3600e3, Date.now() + 3600e3)).toISOString()
-      : null;
+    // The kit's word for this video time (shortFlow.ts shortPublishAt: a Short-delay arm's day, a
+    // teaser's before the video, x6), else the long-form's time + 18 h, or an hour from now if later.
+    const shortAt =
+      (videoAt && publishShortAt && Date.parse(publishShortAt.videoAt) === Date.parse(videoAt)
+        ? publishShortAt.at
+        : null) ??
+      (videoAt
+        ? new Date(Math.max(new Date(videoAt).getTime() + 18 * 3600e3, Date.now() + 3600e3)).toISOString()
+        : null);
     const shortUp = up(
       "shortup",
       "Short up",

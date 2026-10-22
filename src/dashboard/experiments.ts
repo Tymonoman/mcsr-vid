@@ -24,7 +24,8 @@ import { saveSettings, SETTINGS } from "./settings.js";
 export interface SlotArm {
   /** Ranked-video (never series) candidate publish hours UTC for this day, tried in order. */
   rankedHoursUtc?: number[];
-  /** Hours after the long-form the Short follows, 1–48; out of range is ignored. */
+  /** Hours after the long-form the Short follows, -6–48; negative is a teaser (the Short goes
+   *  public that many hours BEFORE the long-form, x6); out of range is ignored. */
   shortDelayHours?: number;
 }
 
@@ -141,20 +142,30 @@ export const scheduleEntryFor = (
 
 /**
  * A date's schedule entries can now number more than one — a render arm (`render`, applied
- * before that night's render) and a slot arm (`slot`, publish hours / Short delay) of *different*
- * experiments both naming the same date. These two helpers pick the entry tagged for the side
+ * before that night's render) and slot arms (`slot`, publish hours / Short delay) of *different*
+ * experiments all naming the same date. These helpers pick the entries tagged for the side
  * that's asking, falling back to the date's first entry not tagged for the *other* side — so an
  * untagged entry (every shape on disk before this existed) resolves exactly as `scheduleEntryFor`
  * always did, but a slot-only night never labels a render (`writeExperimentArmFile`), nor a
  * render-only date a publish (`enrolVideos`), with the other side's arm.
+ *
+ * Two slot experiments can share a date when each owns a different slot field (a publish-hour
+ * experiment's `rankedHoursUtc` beside a Short-delay experiment's `shortDelayHours`, 22 Oct 2026):
+ * every slot entry enrols (`enrolVideos`), and each lookup below takes the first entry that sets
+ * its own field.
  */
-export function slotEntryFor(
+export function slotEntriesFor(date: string, data: ExperimentsFile = readExperiments()): ScheduleEntry[] {
+  const entries = data.schedule.filter((s) => s.date === date);
+  const tagged = entries.filter((s) => s.slot);
+  if (tagged.length) return tagged;
+  const untagged = entries.find((s) => !s.render);
+  return untagged ? [untagged] : [];
+}
+
+export const slotEntryFor = (
   date: string,
   data: ExperimentsFile = readExperiments(),
-): ScheduleEntry | undefined {
-  const entries = data.schedule.filter((s) => s.date === date);
-  return entries.find((s) => s.slot) ?? entries.find((s) => !s.render);
-}
+): ScheduleEntry | undefined => slotEntriesFor(date, data)[0];
 
 function renderEntryFor(date: string, data: ExperimentsFile): ScheduleEntry | undefined {
   const entries = data.schedule.filter((s) => s.date === date);
@@ -170,7 +181,7 @@ export function rankedHoursForDate(
   date: string,
   data: ExperimentsFile = readExperiments(),
 ): number[] | undefined {
-  const hours: unknown = slotEntryFor(date, data)?.slot?.rankedHoursUtc;
+  const hours: unknown = slotEntriesFor(date, data).find((s) => s.slot?.rankedHoursUtc)?.slot?.rankedHoursUtc;
   // Hand-edited, like shortDelayHours below: only whole UTC hours 0–23 count — a string would be
   // spread into digits, 24 rolls into tomorrow, 19.5 publishes at 19:30.
   const ok = Array.isArray(hours)
@@ -181,16 +192,19 @@ export function rankedHoursForDate(
 
 /**
  * The Short's delay in ms for a long-form publishing on this UTC date, or undefined for the
- * standing 18 h (`SHORT_DELAY_MS`, src/youtube/youtubeUpload.ts). Out-of-range hours (the spec is
- * 1–48) are ignored rather than trusted — this file can be hand-edited, or written by the Studio
- * automation's own code on another branch.
+ * standing 18 h (`SHORT_DELAY_MS`, src/youtube/youtubeUpload.ts). Negative is a teaser: the Short
+ * public that many hours BEFORE the long-form (x6); further back than 6 h it would trail a match
+ * nobody can watch for most of a day. Out-of-range hours (the spec is -6–48) are ignored rather
+ * than trusted — this file can be hand-edited, or written by the Studio automation's own code on
+ * another branch.
  */
 export function shortDelayMsForDate(
   date: string,
   data: ExperimentsFile = readExperiments(),
 ): number | undefined {
-  const hours = slotEntryFor(date, data)?.slot?.shortDelayHours;
-  return hours !== undefined && Number.isFinite(hours) && hours >= 1 && hours <= 48
+  const hours: unknown = slotEntriesFor(date, data).find((s) => s.slot?.shortDelayHours !== undefined)?.slot
+    ?.shortDelayHours;
+  return typeof hours === "number" && Number.isFinite(hours) && hours >= -6 && hours <= 48
     ? hours * 3600_000
     : undefined;
 }

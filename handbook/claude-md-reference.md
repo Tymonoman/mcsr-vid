@@ -1159,7 +1159,7 @@ failed boot check offers it again. Client changes need only a reload.
   wins, so a two-a-day cadence day is just `rankedHoursUtc: [15, 19]` plus a render entry
   `{ nightlyMaxRenders: 2 }`; no entry is the old single-hour behaviour, byte for byte.
   `shortPublishAt` (`src/dashboard/shortFlow.ts`) takes the long-form's publish day's
-  `slot.shortDelayHours` (1–48) in place of the standing 18 h (`SHORT_DELAY_MS`,
+  `slot.shortDelayHours` (-6–48, a teaser below 0) in place of the standing 18 h (`SHORT_DELAY_MS`,
   `src/youtube/youtubeUpload.ts`). A separate daily tick, same 15-minute cadence, evaluates every
   running "between" experiment once a UTC day (`evaluatedOn`). **The video is the unit, not the
   impression (15 Oct 2026)**: an arm with fewer than `MIN_VIDEOS_PER_ARM` (8) videos with the
@@ -1211,14 +1211,29 @@ failed boot check offers it again. Client changes need only a reload.
   cadence (the operator's own plan: "publish hour, the Short's offset, `explainMovesSec` on/off,
   `countdownTeaser`, `introSec`, alternating by day") had nowhere to put two experiments' worth of
   data on one date, and the evaluator above was evaluating an array that stayed empty forever.
-  - **A date can now carry a render-arm entry and a slot-arm entry of *different* experiments at
-    once** (`slotEntryFor`/`renderEntryFor`, `src/dashboard/experiments.ts`): the slot lookups
-    (`rankedHoursForDate`, `shortDelayMsForDate`) take the date's first entry tagged `slot`; the
+  - **A date can now carry a render-arm entry and slot-arm entries of *different* experiments at
+    once** (`slotEntriesFor`/`renderEntryFor`, `src/dashboard/experiments.ts`): the slot lookups
+    take the date's first `slot`-tagged entry that sets their own field (`rankedHoursForDate`:
+    `rankedHoursUtc`; `shortDelayMsForDate`: `shortDelayHours`), so a publish-hour experiment and
+    a Short-delay experiment share a date and every slot entry enrols (22 Oct 2026); the
     render lookups (`applyScheduledRenderArm`, `writeExperimentArmFile`) the date's first entry
     tagged `render`. Either falls back to the date's first entry not tagged for the *other*
     side, so an untagged entry — every shape on disk before this existed — resolves exactly as
     before, while a slot-only night writes no `experiment-arm.json` (that video enrols by its
     publish date, below) and a render-only date enrols no publish by date (14 Oct 2026).
+  - **A negative `shortDelayHours` is a teaser: the Short goes public that many hours BEFORE its
+    long-form** (x6-short-teaser, 22 Oct 2026, the operator's "yes" to a Short 2 h before; arms
+    `after` 18 / `before` -2 alternating by publish date). `shortPublishAt` still never goes under an
+    hour from now, so a Short uploaded later than 3 h before its long-form lands nearer it, or
+    after it — with `shortsByHand` on, the hand-cut Short must be registered by then or the
+    `before` day is really an `after` one (the evaluator enrols by date regardless). For those
+    hours the long-form is private: the Short's "whole match" link (`uploadTextFor`) opens a
+    private video, and Studio's related-video picker lists only public long-forms, so the worker's
+    first try misses — `planCycle` retries a miss from before the long-form's publish time the
+    first cycle after it, once (`missedBeforePublic`), rather than the next UTC day. Nothing names
+    a result either way. Move on YouTube flags a Short left scheduled before its video only when it
+    is ahead of the teaser's own time too; the publish kit carries `shortAt` so Now's "Short up"
+    shows the arm's time, not a flat +18 h.
   - **The evaluator enrols `exp.videos` from disk before it evaluates anything**
     (`enrolVideos`, `src/dashboard/experimentsEvaluator.ts`, idempotent — checked by `matchId` per
     experiment, never duplicates, never removes): every match directory with its own

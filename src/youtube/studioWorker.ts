@@ -431,6 +431,8 @@ export function planCycle(
   testsPaused = false,
   titleOptionsFor: (matchId: number) => TitleOptionsCache | null = realTitleOptionsFor,
 ): CyclePlan {
+  // The record's own scheduled time, kept past `live` below (a public video's live publishAt is null).
+  const scheduledAt = new Map(longForms.map((v) => [v.videoId, v.publishAt]));
   // `live` is `runCycle`'s own videos.list read (16 Oct 2026: two adopted Studio uploads public on
   // YouTube for a month still read "private" with no publishAt, and Edj_-c7lK38, deleted, stayed
   // an end-screen target for good). It replaces the upload-time privacy, and a video it doesn't
@@ -562,10 +564,19 @@ export function planCycle(
   // Short record is ever copied across more than one match directory the way a series' own
   // `youtube.json` already is.
   const longFormByMatch = new Map(longForms.map((v) => [v.matchId, v]));
+  // The picker lists only public long-forms, so a Short up before its long-form (a teaser, x6,
+  // 22 Oct 2026) misses until that hour: a miss from before it is retried the first cycle after
+  // it, not the next UTC day. Once — the retry's own miss is stamped after it.
+  const missedBeforePublic = (s: { matchId: number; videoId: string }): boolean => {
+    const lf = longFormByMatch.get(s.matchId);
+    const at = Date.parse((lf && (lf.publishAt ?? scheduledAt.get(lf.videoId))) ?? "");
+    const seen = Date.parse(ledger.relatedRetrySeen[s.videoId] ?? "");
+    return seen < at && at <= now.getTime();
+  };
   const seenShortVideos = new Set<string>();
   const relatedLinkTargets: RelatedLinkTarget[] = shorts
     .filter((s) => !ledger.relatedLinks[s.videoId])
-    .filter((s) => !relatedRetryToday(s.videoId, ledger, now))
+    .filter((s) => !relatedRetryToday(s.videoId, ledger, now) || missedBeforePublic(s))
     .filter((s) => longFormByMatch.has(s.matchId))
     .filter((s) => !isBlocked(s.matchId))
     .filter((s) => {
