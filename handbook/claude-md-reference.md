@@ -1463,6 +1463,10 @@ new `src/dashboard/fastTrack.ts`.
   - a known pair (`knownTierFor`) with `finishMarginMs < 5_000` or `resultMs <= 8 * 60_000`, or
   - specifically Feinberg vs Infume with `finishMarginMs <= 1_000` and `resultMs < 9 * 60_000`
     (question 8's second sentence is a tighter, named-pair version of the first).
+  **Both runners must have finished in every branch** (`finishMarginMs !== null`; the operator,
+  22 Oct 2026, "fast-track only on matches both runners finished": yes). Until then the sub-8
+  branch took a null margin — a finished match whose loser stopped, not a DNF — and fired every
+  night from 18 Oct on "DNF margin" runs; the hit's `reason` now always carries a real margin.
   Both VODs are confirmed the same way `nightly.ts`'s `playoffVodsReady`/`creatorWatch.ts`'s
   `checkVods` already do (`withDiscoveredVods`), not blocked (`blockedIn`), not a DNF (`isDnf`),
   and not already on disk (`listProcessedMatchIds`). At most one fast-track a day
