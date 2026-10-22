@@ -142,5 +142,7 @@
   "creatorWatchlist": [],
   "creatorWatch": false,
   "xAutoPost": false,
-  "xBrowserPost": false
+  "xBrowserPost": false,
+  "xHandle": "mcsrreplayoffs",
+  "xMinHoursBetweenPosts": 40
 }

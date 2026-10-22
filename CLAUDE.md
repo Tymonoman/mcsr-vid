@@ -293,7 +293,7 @@ reload). After merging server changes, `POST /api/restart-when-idle`.
   off/empty by default): a watched nickname's new match with both Twitch VODs goes to the **front**
   of tonight's queue (block list still wins); not in Needs-you.
 - **X posts** (`src/x/`; `xAutoPost` API or `xBrowserPost` browser, config file only, off): a public
-  long-form's hand-cut Short + link, ≤1 a UTC day (`x.json`); refusals = `planXPost`; handbook/x-browser-setup.md.
+  long-form's hand-cut Short + link, ≥40h apart (`x.json`); refusals = `planXPost`; handbook/x-browser-setup.md.
 - **The NAS** (`//192.168.0.240/homelab`, CIFS): `/archive` holds published matches (recoverable
   delete). `/home-media` is the whole share, **the operator's movies, music and backups: never
   touch them**, except `/home-media/mcsr-replayoffs/` (the pipeline's own: `vods/`, `research/`,

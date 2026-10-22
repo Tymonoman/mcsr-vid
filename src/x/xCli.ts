@@ -7,13 +7,14 @@
  *      Without the four API keys, or with `--via browser`, it goes through the signed-in browser
  *      (src/x/xBrowser.ts): the whole drive up to the Post button, then the click.
  * auto: what the worker/tick does — the newest public long-form not yet posted, at most one post
- *      a UTC day; the same `--via` rule picks the path.
+ *      a UTC day and `xMinHoursBetweenPosts` apart; the same `--via` rule picks the path.
  * status: the keys (names only, never values), both flags, the X profile and the browser's last
  *      probe/post/error (`.x-browser.json`), the last post and the next candidate.
  * login: the one-time X sign-in over the remote screen (the Studio login's own screen, on
  *      x.com/login in the X profile); prints url/password/expiry, waits for Enter, then probes.
  *      Nothing here ever types a password, answers 2FA or solves a CAPTCHA.
- * probe: start the browser on the X profile, load the timeline, print ok/signed-out/verify/error.
+ * probe: start the browser on the X profile, load the timeline, print
+ *      ok/signed-out/verify/wrong-account/error and the handle it read.
  */
 import { existsSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
@@ -71,8 +72,8 @@ async function loginCmd(): Promise<void> {
   await rl.question("Sign in to X over that screen (you type everything yourself), then press Enter here… ");
   rl.close();
   const done = await finishLogin(async (handle) => {
-    const { result, url, title } = await probeX(handle);
-    return { result, message: `${title} (${url})` };
+    const { result, url, title, handle: as } = await probeX(handle);
+    return { result, message: `${title} (${url}) as @${as ?? "?"}` };
   });
   if ("error" in done) {
     console.error(done.error);
@@ -85,8 +86,8 @@ async function loginCmd(): Promise<void> {
 async function probeCmd(): Promise<void> {
   const handle = await start(xStartOpts());
   try {
-    const { result, url, title } = await probeX(handle);
-    console.log(`${result}: ${title} (${url})`);
+    const { result, url, title, handle: as } = await probeX(handle);
+    console.log(`${result}: ${title} (${url}) as @${as ?? "?"}`);
     if (result !== "ok") process.exitCode = 1;
   } finally {
     await handle.stop();
@@ -138,7 +139,7 @@ async function main(): Promise<void> {
       const state = readXBrowserState();
       console.log(
         state
-          ? `browser: last probe ${state.lastProbe ?? "none"} at ${state.lastProbeAt ?? "-"}, last post ${state.lastPostAt ?? "none"}${state.lastError ? `, last error: ${state.lastError}` : ""}`
+          ? `browser: last probe ${state.lastProbe ?? "none"} at ${state.lastProbeAt ?? "-"}, last post ${state.lastPostAt ?? "none"}${state.lastError ? `, last error: ${state.lastError}` : ""}${state.unconfirmed ? `, unconfirmed click: match ${state.unconfirmed.matchId} at ${state.unconfirmed.at}` : ""}`
           : "browser: never run",
       );
       const last = await lastXPost();

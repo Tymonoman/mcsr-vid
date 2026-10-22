@@ -563,6 +563,17 @@ export interface Config {
    * `X_PROFILE_DIR` (default `/app/.x-profile`), signed in once by hand over `npm run x -- login`.
    */
   xBrowserPost: boolean;
+  /**
+   * The X account the browser poster may post as (no "@"); config-file only. A session signed in
+   * as anyone else is `wrong-account`, never driven (`src/x/xBrowser.ts`, `classifyX`).
+   */
+  xHandle: string;
+  /**
+   * Hours that must pass after the newest `x.json` before either poster sends another, on top of
+   * the one-a-UTC-day rule (the operator, 22 Oct 2026: at most one a day, "even less"). Config-file
+   * only; 0 leaves only the daily rule.
+   */
+  xMinHoursBetweenPosts: number;
 }
 
 /**
@@ -690,6 +701,8 @@ export const DEFAULTS: Config = {
   creatorWatch: false,
   xAutoPost: false,
   xBrowserPost: false,
+  xHandle: "mcsrreplayoffs",
+  xMinHoursBetweenPosts: 40,
 };
 
 /** The overrides file. Exported so the settings panel writes the same one the loader reads. */
@@ -910,6 +923,21 @@ export function validateOverrides(raw: Record<string, unknown>): void {
     if (key === "seriesPairGapDays" || key === "pairRepeatDays") {
       if (!Number.isInteger(value) || (value as number) < 0 || (value as number) > 30) {
         throw new Error(`${CONFIG_PATH}: "${key}" must be whole days 0-30 (0 is off).`);
+      }
+      continue;
+    }
+    // A typo here reads every session as another account's: nothing posts until it is fixed.
+    if (key === "xHandle") {
+      if (typeof value !== "string" || !/^\w{1,15}$/.test(value)) {
+        throw new Error(
+          `${CONFIG_PATH}: "xHandle" must be an X handle without the "@" (1-15 letters, digits, _).`,
+        );
+      }
+      continue;
+    }
+    if (key === "xMinHoursBetweenPosts") {
+      if (typeof value !== "number" || !(value >= 0 && value <= 24 * 30)) {
+        throw new Error(`${CONFIG_PATH}: "xMinHoursBetweenPosts" must be hours from 0 to 720.`);
       }
       continue;
     }

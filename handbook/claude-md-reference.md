@@ -2428,8 +2428,10 @@ account later". One post a day on the channel's own X account, through X's offic
   LEADER?") would read as a spoiler, since the text no longer ends in "?".
 - **Which match, how often.** `pickXCandidate`: public long-forms newest first (by publish time),
   hidden ones skipped (`hiddenMatchIds`), the first `planXPost` lets through. `autoPost` posts it
-  unless any `x.json` in the media dir is dated today (UTC): at most one post a UTC day. The post
-  writes `x.json` `{ postId, at, text, mediaId }` in the match directory; its presence is "posted".
+  unless `xTooSoon` says no: the newest `x.json` in the media dir is dated today (UTC), or is
+  under `xMinHoursBetweenPosts` old (default **40**, config-file only, 0–720; 0 leaves the daily
+  rule alone). The operator, 22 Oct 2026: at most one a day, "even less". The post writes
+  `x.json` `{ postId, at, text, mediaId }` in the match directory; its presence is "posted".
 - **Unattended.** `xAutoPost` (default **false**) is config-file only, like `nightlyUpload`: it
   posts in public on another platform, a deliberate edit on the box, and leaving it out of the
   Settings tab is also the smaller change. The dashboard's 15-minute tick (`src/dashboard/server.ts`,
@@ -2472,8 +2474,9 @@ account later". One post a day on the channel's own X account, through X's offic
 - **Tests.** `src/x/xApi.test.ts`: the documented signature, then the whole upload and post against
   an in-process `node:http` stand-in for api.x.com that checks each request's shape and re-verifies
   its signature. `src/x/xPost.test.ts`: the text, every refusal, the 280 budget at its edge, dry
-  run, `x.json`, one a day, newest first, hidden skipped, the tick's no-op, and `npm run x -- auto
-  --dry-run` exiting 0 with "not configured" when no key is set. Neither makes a real X call.
+  run, `x.json`, one a day and the 40 h gap, newest first, hidden skipped, the tick's no-op, and
+  `npm run x -- auto --dry-run` exiting 0 with "not configured" when no key is set. Neither makes
+  a real X call.
 - **ponytail:** no lock between the tick and a hand `npm run x -- post` run at the same minute
   (both would post); `xTick`'s own in-process flag covers the tick against itself. Add a lockfile
   if that ever bites.
@@ -2488,27 +2491,44 @@ the same post through a real, signed-in Chrome. Setup: `handbook/x-browser-setup
   every refusal (blocked, not public, no hand Short, hook, 280, DNF, `x.json`) is decided there
   before a browser opens, and `postViaBrowser` refuses an `x.json` again on its own. The record is
   the API's `XRecord` plus `via: "browser"`, `mediaId: ""`, and `postId` is X's id read off the
-  timeline article's status link, else `browser:<timestamp>` (`writeXRecord`, `xFile`,
-  `postedToday` are exported from `xPost.ts` so both posters share one "posted" and one
-  once-a-UTC-day rule).
+  timeline article's status link, else `browser:<timestamp>`, and `browser:pending`
+  (`PENDING_POST_ID`) from just before the click until X confirms (`writeXRecord`, `xFile`,
+  `xTooSoon` are exported from `xPost.ts` so both posters share one "posted" and one gate).
 - **The browser is the Studio one.** `studioBrowser.start({ profileDir })` with
   `X_PROFILE_DIR` (`/app/.x-profile`, mode 700, gitignored; `xStartOpts` always overrides a caller's
   profile so the worker's `--profile-dir` (Studio's) never opens x.com): the in-process
   one-session lock, the profile `SingletonLock`, the port check and `killOnExit` all apply
   unchanged. `start()` assumed nothing Studio-specific; only `probe()` does, so X has its own
-  `probeX` → `classifyX` (pure): a visible composer or account menu is `ok` whatever the page text
-  says (a timeline quotes anything), then a challenge/verification/CAPTCHA page or URL
-  (`/account/access`, `/i/flow/<anything but login>`) is `verify`, then X's login form or
-  `/i/flow/login` is `signed-out`, else `error`: "ok" is positively confirmed before the composer
+  `probeX` → `classifyX` (pure). `probeX` classifies only a page on the timeline's own origin
+  (`waitForURL` after the settle; a tab Chrome restored, or a redirect off the site, throws, an
+  `error`). In order: a visible dialog or sheet (`[role=dialog]`, `sheetDialog`,
+  `ocfEnterTextTextInput`) over `/home` is `verify` even with the composer beneath it (X's login
+  flow is itself a dialog, hence only over `/home`); a visible composer or account menu is `ok`
+  whatever the page text says (a timeline quotes anything), but only when the handle read off the
+  account switcher (the avatar's `UserAvatar-Container-<handle>` test id, else `@handle` in its
+  text) is `xHandle` (default `mcsrreplayoffs`, config-file only, case-insensitive), else
+  `wrong-account`, an unread handle included; then a challenge/verification/CAPTCHA page or URL
+  (`/account/access`, `/i/flow/<anything but login>`) is `verify`; then X's login form or
+  `/i/flow/login` is `signed-out`; else `error`: "ok" is positively confirmed before the composer
   is touched. A non-ok probe is the attempt's outcome, never retried, never logged into.
 - **The drive** (`postViaBrowser`): `/home`, click `tweetTextarea_0`, type in 3-word chunks with
-  a 40–100 ms keystroke delay, `setInputFiles` on `fileInput`, wait for `attachments` and for its
-  progress bar to clear with the Post button enabled (≤180 s), screenshot `x-compose-<iso>.png`;
-  dry-run stops there. Live: click `tweetButtonInline`/`tweetButton`, wait ≤30 s for the "sent"
-  toast or an emptied composer, ≤20 s for the article with the text's first line and its
-  `/status/<id>` link, `x.json`, `x-posted-<iso>.png`. 2–6 s pauses between steps
-  (`randomPause`; tests inject a 50 ms one). Selectors are x.com's of 22 Oct 2026 (`SEL`); the
-  fixture in `xBrowser.test.ts` mirrors them, so a markup change breaks the real page, not the test.
+  a 40–100 ms keystroke delay, then `checkTyped`: the composer's `innerText` (nbsp as space,
+  trimmed) must equal the plan's text, else it throws naming an `x-compose-<iso>.png` of what it
+  holds. **Dry run stops here**: the screenshot, then select-all + Delete so X keeps no draft;
+  nothing is uploaded. Live: `setInputFiles` on `fileInput`, wait for `attachments` and for its
+  progress bar to clear with the Post button enabled (≤180 s), `checkTyped` again, screenshot,
+  then **`x.json` as `browser:pending`, written exclusively (`flag: "wx"`, so a record written
+  since the first check wins as `XRefusal`) before the click**: from the click on the post may
+  be out, and `planXPost`/`xTooSoon` count it as posted whatever happens next. Click
+  `tweetButtonInline`/`tweetButton`; confirmed only by the "Your post was sent" toast or a
+  timeline article with the text's first line and a `/status/<id>` link (≤30 s, then ≤20 s more
+  for the link after a toast); an emptied composer proves nothing. Confirmed: `x.json` rewritten
+  with X's id (else `browser:<timestamp>`), `x-posted-<iso>.png`. Anything thrown from the click
+  on is the **`unconfirmed`** outcome: `x.json` stays `browser:pending` (never posted again),
+  `x-unconfirmed-<iso>.png`, and `.x-browser.json` `unconfirmed: { matchId, at, error }`. 2–6 s
+  pauses between steps (`randomPause`; tests inject a 50 ms one). Selectors are x.com's of 22 Oct
+  2026 (`SEL`); the fixture in `xBrowser.test.ts` mirrors them, so a markup change breaks the real
+  page, not the test.
 - **Login hand-off.** `studioLogin.ts` grew two defaults: `startLogin(host, opts, startUrl =
   STUDIO_START_URL)` and `finishLogin(probeWith = studioProbe)` (a `LoginProbe` returns
   `{ result, message }`, `result` now typed `string`). `npm run x -- login` opens
@@ -2520,37 +2540,58 @@ the same post through a real, signed-in Chrome. Setup: `handbook/x-browser-setup
   --dry-run` exit-0 test holds). `status` adds `xBrowserPost`, the profile dir and
   `.x-browser.json`'s last probe/post/error.
 - **Worker step.** `runWorker` (`studioWorker.ts`), in the non-blackout branch, after `runCycle`
-  has stopped its Studio handle: `config.xBrowserPost` → `xBrowserTick({ dryRun, startOpts })`,
-  which is `postedToday` → `pickXCandidate` → `postPlanViaBrowser` (its own `start`/`stop`). Its
-  outcome is logged and written to `<mediaDir>/.x-browser.json` (`src/x/xBrowserState.ts`,
-  `{ lastProbe, lastProbeAt, lastPostAt, lastError, lastMatchId }`, atomic merge), never into the
-  Studio heartbeat. Gated on the flag alone, not on the worker's `--enable` (the file-only flag is
-  the operator's own grant, as `xAutoPost` is for the tick).
+  has stopped its Studio handle: `config.xBrowserPost` → `xBrowserTick({ dryRun, startOpts })`.
+  In order: "API poster is on; browser poster idle" while `xAutoPost` and the four keys are both
+  there (never two posters armed); an `unconfirmed` whose `x.json` no longer reads
+  `browser:pending` (the operator put X's id in, or deleted it) is cleared; a `lastError` dated
+  today (`lastErrorAt`) waits for the next UTC day, so a failing page is not reopened every
+  cycle; dry, one drive a UTC day (`lastDryRunAt`); `xTooSoon`; `pickXCandidate`;
+  `postPlanViaBrowser`, whose own `start()` sits inside its try, so a start failure is an `error`
+  like any other. Every attempt is written to `<mediaDir>/.x-browser.json`
+  (`src/x/xBrowserState.ts`, `{ lastProbe, lastProbeAt, lastPostAt, lastError, lastErrorAt,
+  lastMatchId, unconfirmed, lastDryRunAt }`, atomic merge): an `error` sets `lastError`, any other
+  outcome clears it, and so does a tick that attempts nothing (too soon, nothing to post) once the
+  error's own UTC day is over; never into the Studio heartbeat. `npm run x -- auto --via browser` is this
+  same tick, gates included; `npm run x -- post <id>` is not. Gated on the flag alone, not on the
+  worker's `--enable` (the file-only flag is the operator's own grant, as `xAutoPost` is for the
+  tick).
 - **Needs you.** `gatherNeedsYou` appends `xBrowserNeedsYou(readXBrowserState(),
   config.xBrowserPost)` (pure, in `xBrowserState.ts` so facts.ts never imports Playwright): "X:
   signed out, sign in with npm run x -- login", "X: verification prompt, clear it over npm run x
-  -- login (never automated)", "X post failed: <first line>". Flag off or no file: nothing.
-- **`xBrowserPost`** (default **false**): config-file only like `xAutoPost`, validated as a
-  boolean, in the example (`npm run config:example`), asserted absent from `SETTINGS` by
-  `xBrowserState.test.ts`.
+  -- login (never automated)", "X: the browser is not signed in as @mcsrreplayoffs, sign in with
+  npm run x -- login", "X: post may have gone out unconfirmed, check x.com/mcsrreplayoffs (match
+  N)" (until that `x.json` is settled or the next confirmed post), "X post failed: <first line>".
+  Flag off or no file: nothing.
+- **`xBrowserPost`** (default **false**), **`xHandle`** (default `"mcsrreplayoffs"`, no "@",
+  1–15 word characters) and **`xMinHoursBetweenPosts`** (default **40**, 0–720): config-file only
+  like `xAutoPost`, validated, in the example (`npm run config:example`), asserted absent from
+  `SETTINGS` by `xBrowserState.test.ts`.
 - **Tests.** `src/x/xBrowser.test.ts` (Xvfb + Playwright's Chromium over CDP, like
   `studioActions.test.ts`; listed with it in package.json's `test`, skipped by `test:unit`): a
   `node:http` fixture serving a composer page, a login page and a verify page on 127.0.0.1 —
-  no page ever leaves the box. Covers `classifyX`, signed-out and verify outcomes with their
-  Needs-you lines, dry-run stopping before the click (the fixture counts POSTs), a live post
-  writing `x.json` `via: "browser"` with the id off the article, the already-posted refusal at
-  both entry points, and a 404 page as an `error` outcome. Needs
-  `PLAYWRIGHT_BROWSERS_PATH` when `HOME` is scrubbed. `src/x/xBrowserState.test.ts` (pure): the
-  flag contract, the state file, the once-a-day gate stopping `xBrowserTick` before any browser.
-- **`stop()` now waits for Xvfb to exit** (`studioBrowser.ts`, `await terminate(xvfb)`): the X
-  step starts its own Xvfb on the same `:99` right after the Studio handle stops, and an Xvfb still
-  shutting down refuses the display, which Chrome meets as no display at all (seen as a flaky
-  `error` outcome in the test's stop/start sequence). The browser test uses port 9341 / `:84`,
-  since another test's 9295 / `:96` collided with it when run beside it.
+  no page ever leaves the box. Covers `classifyX`; signed-out, verify (a page, and a sheet over
+  the timeline), wrong-account and off-origin outcomes, never driven; a `start()` failure in
+  `lastError`; the dry run uploading nothing (the fixture counts uploads and POSTs) and leaving the
+  composer empty; `stop()` returning only once Xvfb's display lock is gone; text the composer does
+  not hold, before the upload and before the click; a live post with `x.json` already
+  `browser:pending` when the click reached the fixture, then X's id; the already-posted refusal at
+  both entry points; a click with no toast and no article as `unconfirmed`, never retried (~30 s,
+  the confirmation window); a 404 page as an `error` with `lastError`. Port 9351 / display `:85`.
+  Needs `PLAYWRIGHT_BROWSERS_PATH` when `HOME` is scrubbed. `src/x/xBrowserState.test.ts` (pure):
+  the three keys' contract, the state file and every Needs-you line, `xTooSoon` (today, the 40 h
+  gap, a pending click), and each tick gate stopping `xBrowserTick` before any browser.
+- **`stop()` waits for Xvfb to exit** (`studioBrowser.ts`, `await terminate(xvfb)`, and so does
+  `start()`'s cleanup after a failed connect): the X step starts its own Xvfb on the same `:99`
+  right after the Studio handle stops, and an Xvfb still shutting down refuses the display, which
+  Chrome meets as no display at all ("debugging port never answered" in the test's stop/start
+  sequence). A first commit said so while the code still only sent SIGTERM; fixed 22 Oct 2026, and
+  `studioBrowser.test.ts` now asserts the stub Xvfb is gone the moment `start()` rejects.
 - **ponytail:** no lock between the worker's X step and a hand `npm run x -- post` at the same
-  minute (`start()` refuses the second Chrome on the port/profile, which is the practical lock);
+  minute (`start()` refuses the second Chrome on the port/profile, which is the practical lock,
+  and the exclusive `browser:pending` write refuses the second click on the same match);
   the post id is read from the first article matching the text's first line, so two identical
-  hooks a day apart could read the older post's id (the record still says posted; cosmetic).
+  hooks a day apart could read the older post's id (the record still says posted; cosmetic). An
+  `unconfirmed` line clears only when the tick runs (the worker, ~20 min) after `x.json` is settled.
 
 ## Clips (prototype)
 

@@ -39,7 +39,9 @@ export interface XPlan {
 
 /** `x.json` in the match directory: the post that went out. Its presence means "posted". */
 export interface XRecord {
-  /** X's own id, or `browser:<timestamp>` when the browser poster could not read it off the page. */
+  /** X's own id; from the browser poster `browser:<timestamp>` when it could not read it off the
+   * page, or `browser:pending` from just before the Post click until the post is confirmed (an
+   * unconfirmed click stays so: it may have gone out). */
   postId: string;
   at: string;
   text: string;
@@ -54,8 +56,9 @@ export class XRefusal extends Error {}
 /** `x.json` in the match directory. Shared by both posters so "posted" means one thing. */
 export const xFile = (matchId: number): string => path.join(matchDir(matchId), "x.json");
 
-export async function writeXRecord(matchId: number, record: XRecord): Promise<void> {
-  await writeFile(xFile(matchId), `${JSON.stringify(record, null, 2)}\n`, "utf8");
+/** `flag: "wx"` fails with EEXIST instead of replacing a record another run wrote. */
+export async function writeXRecord(matchId: number, record: XRecord, flag: "w" | "wx" = "w"): Promise<void> {
+  await writeFile(xFile(matchId), `${JSON.stringify(record, null, 2)}\n`, { encoding: "utf8", flag });
 }
 
 /** When the long-form became public: its publish time, or its upload if it went up public. */
@@ -146,19 +149,28 @@ export async function pickXCandidate(now = Date.now()): Promise<XPlan | null> {
   return null;
 }
 
-/** The one-a-UTC-day rule both posters share: the latest `x.json` when it is dated today, else null. */
-export async function postedToday(now = Date.now()): Promise<(XRecord & { matchId: number }) | null> {
+/**
+ * The gate both posters share, from the newest `x.json` (a `browser:pending` one included): why
+ * nothing may post yet, or null. One a UTC day, and never within `xMinHoursBetweenPosts` of the last.
+ */
+export async function xTooSoon(now = Date.now()): Promise<string | null> {
   const last = await lastXPost();
-  return last && last.at.slice(0, 10) === new Date(now).toISOString().slice(0, 10) ? last : null;
+  if (!last) return null;
+  if (last.at.slice(0, 10) === new Date(now).toISOString().slice(0, 10))
+    return `already posted today (match ${last.matchId})`;
+  const hours = (now - Date.parse(last.at)) / 3_600_000;
+  return hours < config.xMinHoursBetweenPosts
+    ? `last post ${Math.floor(hours)}h ago (match ${last.matchId}), under the ${config.xMinHoursBetweenPosts}h gap`
+    : null;
 }
 
-/** At most one post per UTC day: the candidate, unless any `x.json` is already dated today. */
+/** At most one post per UTC day and per `xMinHoursBetweenPosts`: the candidate, unless `xTooSoon` says no. */
 export async function autoPost(
   opts: { dryRun?: boolean; now?: number; base?: string } = {},
 ): Promise<string> {
   const now = opts.now ?? Date.now();
-  const last = await postedToday(now);
-  if (last) return `already posted today (match ${last.matchId})`;
+  const tooSoon = await xTooSoon(now);
+  if (tooSoon) return tooSoon;
   const plan = await pickXCandidate(now);
   if (!plan) return "nothing to post";
   if (opts.dryRun) return `would post match ${plan.matchId}:\n${plan.text}`;
