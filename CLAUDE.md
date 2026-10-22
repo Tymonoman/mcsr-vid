@@ -345,8 +345,8 @@ Europe/Warsaw, DST-correct; every slash command answers fresh. Runs inside the d
 
 ## Studio automation
 
-Does what Studio has no API for: pinning, end screens, Test & Compare, related-video linking. Gated
-by `studioAutomation` (not writable from Settings).
+What Studio has no API for: pins, end screens, Test & Compare, related-video links. Gated by
+`studioAutomation` (not writable from Settings).
 
 - **How it works** (`src/youtube/studioBrowser.ts`): a real, headed `google-chrome-stable` on Xvfb,
   login profile in the `studio-profile` volume. Playwright attaches with
@@ -373,11 +373,10 @@ by `studioAutomation` (not writable from Settings).
   (`addRivalryEndScreen`), else starter ("1 video, 1 subscribe").
 - **A video with a title test gets no thumbnail test** (`titleTcTargets`; `ab-report` reads it).
 - **The worker never sets a Test & Compare winner itself**: `"done"` records what Studio shows;
-  `"needsHuman"` marks what it couldn't get past; an error leaves the experiment planned. An
-  earlier experiment's test (any status but planned) is never adopted (`adoptsExistingTest`): a
-  finished report gets New test, a title test (`blockingTitleTest`) refuses before a page opens;
-  `npm run studio -- tc-reset <id…>` re-plans a done one. Titles are checked before a page opens
-  (`titleTestProblem`: `hookProblem`, `hookLabelProblem`, `spoilsTheResult`, 100 chars).
+  `"needsHuman"` marks what it couldn't get past; an error leaves the experiment planned. Another
+  experiment's test (any status but planned) is never adopted (`adoptsExistingTest`); a finished
+  report gets New test; `npm run studio -- tc-reset <id…>` re-plans a done one. Titles are checked
+  before a page opens (`titleTestProblem`, `hookLabelProblem`, `spoilsTheResult`, 100 chars).
 - **The worker's own gate is `opts.enable` (CLI `--enable`, or env `STUDIO_WORKER=1`) OR'd with
   `config.studioAutomation`**, not the dashboard flag alone. A supervisor
   (`scripts/studio-worker.sh`) restarts `npm run -s studio -- worker --enable` 60s after any exit;
@@ -392,9 +391,8 @@ by `studioAutomation` (not writable from Settings).
 
 ## Clips (prototype)
 
-A video that is not a match (`remotion/ClipFrame.tsx`): `npm run clip` writes
-`<mediaDir>/clips/<slug>/clip-<slug>.mp4`; **nothing here uploads or posts anywhere**; every
-`mediaDir` scan (`/^\d+$/`) skips `clips/`.
+Not a match (`remotion/ClipFrame.tsx`): `npm run clip` writes `<mediaDir>/clips/<slug>/clip-<slug>.mp4`;
+**nothing here uploads or posts anywhere**; every `mediaDir` scan (`/^\d+$/`) skips `clips/`.
 
 ## Chat replay (prototype)
 
@@ -404,8 +402,8 @@ into `src/pipeline/pipeline.ts`.
 
 ## Session preflight
 
-`scripts/preflight.sh` runs at session start (always exits 0, one line when fine); fix what it
-flags (no GitHub credentials, a read-only PAT, an expiring token) first.
+`scripts/preflight.sh` runs at session start; fix what it flags (no GitHub credentials, a
+read-only PAT, an expiring token) first.
 
 ## Known pitfalls
 
