@@ -17,6 +17,7 @@ import {
 } from "./studioActions.js";
 import type { Experiment } from "./studioExperiments.js";
 import {
+  adoptsExistingTest,
   endScreensThisCycle,
   inBlackoutWindow,
   liveNightlyHour,
@@ -1405,6 +1406,60 @@ config.mediaDir = media;
   assert.equal(afterSkip?.start, undefined, "the done branch never backfills a start it never saw");
   assert.match(afterSkip?.verdict ?? "", /Title B/);
   console.log("OK: setExperimentChecked can promote planned straight to done, with no start ever recorded");
+}
+
+// --- adoptsExistingTest: a finished report another experiment already holds is not this one's ---
+// (22 Oct 2026: tc-thumbnail-<v>-concepts planned on PaIbZDXaT18/ZlHoS-Svx58/nVFfA0_do_c, each with
+// an earlier tc-thumbnail-<v> already done; the start loop read the OLD report as "done" and
+// recorded it on the new experiment, identical shares, nothing started.)
+{
+  const tcOn = (id: string, status: Experiment["status"], videoId = "vidConcept"): Experiment => ({
+    id,
+    kind: "tc",
+    variable: "thumbnail",
+    arms: [{ name: "control" }, { name: "big-heads" }, { name: "scenery" }],
+    videos: [{ videoId, matchId: 9, arm: "tc" }],
+    status,
+  });
+  const oldReport = {
+    state: "done" as const,
+    finished: true,
+    shares: [39.8, 19.6],
+    raw: "Test finished. Ran from October 17, 2026 at 7:00 PM to October 18, 2026 at 6:56 AM.",
+  };
+  const earlier = { ...tcOn("tc-thumbnail-vidConcept", "done"), result: { watchTimeShare: {} } };
+  const concepts = tcOn("tc-thumbnail-vidConcept-concepts", "planned");
+  assert.equal(
+    adoptsExistingTest(concepts, oldReport, [earlier, concepts]),
+    false,
+    "the 22 Oct case: the old done report belongs to the earlier experiment — start, never adopt",
+  );
+  assert.equal(
+    adoptsExistingTest(concepts, oldReport, [concepts]),
+    true,
+    "a hand-run test nobody tracks (no other experiment on the video) is still reconciled",
+  );
+  assert.equal(
+    adoptsExistingTest(concepts, oldReport, [tcOn("tc-thumbnail-other", "done", "vidOther"), concepts]),
+    true,
+    "another video's done experiment is not this video's",
+  );
+  assert.equal(
+    adoptsExistingTest(concepts, { state: "running", raw: "Your test is live." }, [earlier, concepts]),
+    true,
+    "a running test is always reconciled — nothing ever starts over a live one",
+  );
+  assert.equal(
+    adoptsExistingTest(concepts, { state: "none", raw: "" }, [earlier, concepts]),
+    false,
+    "a blank form is nothing to adopt",
+  );
+  // The loop keeps the experiment planned on a refused adoption: only setExperimentChecked ever
+  // marks it done, and the loop reaches that call only through adoptsExistingTest.
+  await updateTcExperiments((tc) => [...tc, earlier, concepts]);
+  const stillPlanned = (await readExperiments()).experiments.find((e) => e.id === concepts.id);
+  assert.equal(stillPlanned?.status, "planned");
+  console.log("OK: adoptsExistingTest reconciles a running or untracked test, never an earlier experiment's finished report");
 }
 
 // --- pickStarterLayoutLabel: end-screen starter-layout preference (phase 4, 8 Oct 2026) --------

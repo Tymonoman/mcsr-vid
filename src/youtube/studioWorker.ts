@@ -700,6 +700,31 @@ async function markPinDone(matchId: number): Promise<void> {
   await writeUpload(matchId, { ...record, finished: { ...record.finished, pin: null } }, "video");
 }
 
+/**
+ * Whether a `"planned"` experiment adopts the test Studio's page already shows instead of starting
+ * its own: always a `"running"` one, and a `"done"` report only when no other tc experiment on
+ * that video already holds a done result (a hand-run test nobody tracks). 22 Oct 2026: three
+ * concept tests planned on videos whose earlier test had finished adopted the OLD report, numbers
+ * identical to the earlier experiments', and nothing started — that report is history, and
+ * `startTestAndCompare` clears it through the report's own "New test" button.
+ */
+export function adoptsExistingTest(
+  exp: Experiment,
+  read: TcReadResult,
+  experiments: readonly Experiment[],
+): boolean {
+  if (read.state === "running") return true;
+  if (read.state !== "done") return false;
+  const videoId = exp.videos[0]?.videoId;
+  return !experiments.some(
+    (e) =>
+      e.kind === "tc" &&
+      e.id !== exp.id &&
+      e.status === "done" &&
+      e.videos.some((v) => v.videoId === videoId),
+  );
+}
+
 async function setExperimentRunning(id: string): Promise<void> {
   await updateTcExperiments((tc) =>
     tc.map((e) => (e.id === id ? { ...e, status: "running", start: new Date().toISOString() } : e)),
@@ -1012,12 +1037,22 @@ export async function runCycle(
       // entirely (a manual `npm run studio -- tc` CLI press before this experiment ever existed,
       // exactly LUI5E7yF0zE's own history, phase 4 8 Oct 2026). Reconcile ground truth rather
       // than ever call startTestAndCompare a second time on it, which Studio refuses anyway (see
-      // its own "a test may already be set up" error below).
+      // its own "a test may already be set up" error below) — unless the page shows a finished
+      // report another experiment already recorded (`adoptsExistingTest`): then it is history
+      // and startTestAndCompare starts over it through the report's own "New test".
       const existing = await readTestAndCompare(handle, video.videoId);
       if (!("error" in existing) && existing.state !== "none") {
-        await setExperimentChecked(exp.id, existing);
-        tcChecked++;
-        continue;
+        if (adoptsExistingTest(exp, existing, experimentsFile.experiments)) {
+          console.error(
+            `studio worker: ${exp.id}: Studio already shows a ${existing.state} test on ${video.videoId} — recorded as this experiment's, not started again`,
+          );
+          await setExperimentChecked(exp.id, existing);
+          tcChecked++;
+          continue;
+        }
+        console.error(
+          `studio worker: ${exp.id}: the finished report on ${video.videoId} belongs to an earlier experiment — starting a new test over it`,
+        );
       }
       const test = testFor(exp);
       if (!test) {

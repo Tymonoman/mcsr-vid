@@ -2264,6 +2264,18 @@ custom layout has actually been seen in Studio.
   `status` untouched on anything short of `"done"`, so this reconciliation path would have silently
   stuck at `"planned"` forever rather than ever being picked up by `tcToCheck`'s own
   `status === "running"` filter.
+- **A finished report another experiment already holds is never adopted** (`adoptsExistingTest`,
+  22 Oct 2026): three concept thumbnail tests (`tc-thumbnail-<videoId>-concepts`, on
+  PaIbZDXaT18/ZlHoS-Svx58/nVFfA0_do_c) were planned on videos whose earlier `tc-thumbnail-<videoId>`
+  had finished; Studio's dialog still showed that old report, the loop read it as `"done"` and
+  recorded the OLD shares on the NEW experiment, and nothing started. The reconcile above now applies
+  to a `"running"` read always, and to a `"done"` read only when no other tc experiment on that
+  video is already done (a hand-run test nobody tracks). Otherwise `startTestAndCompare` runs, and
+  when the dialog shows no fresh form it looks for the report's own "New test" button
+  (`SELECTORS.abTestNewTestButton`, exact accessible name, scoped to the dialog; the live selector is
+  unverified until a real cycle), screenshots `tc-finished-report`, clicks it and continues as for a
+  fresh form; no button is still today's "a test may already be set up" error, so nothing ever
+  starts over a running test. `readTestAndCompare`'s `"done"` now also carries `finished: true`.
 - The tc-plan importer's `tc/` files are now treated as final, judged renders in every case — the
   one-off `tc-pose.png`→strip-file rewrite `planTcExperiments` used to do for a single night's plan
   (whose `tc/` files were about to be re-rendered out from under it) is gone; every thumbnail

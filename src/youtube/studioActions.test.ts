@@ -204,7 +204,8 @@ try {
   const uiState = {
     endScreenHasElements: false,
     pickerHasResults: true,
-    abTest: "none" as "none" | "running" | "done",
+    // "finished": the 22 Oct 2026 report shape, whose "New test" button clears it for a fresh form.
+    abTest: "none" as "none" | "running" | "done" | "finished",
     // Related video (phase 2's own second half, 8 Oct 2026 — tmp/studio3/, read-only, no Save
     // ever pressed live): the Short's Details-page sidebar control, "None" until something is
     // linked.
@@ -428,6 +429,13 @@ try {
             '<button id="set-test-button" onclick="window.__tcStarted={kind:window.__chipKind,title2:window.__title2};closeDialog()">Set test</button></ytcp-creator-experiment-create-dialog>';
         } else if (s === "running") {
           root.innerHTML = '<div><span>A/B Testing</span><button aria-label="Close" onclick="closeDialog()">Close</button><p>Your test is live. Check back later.</p></div>';
+        } else if (s === "finished") {
+          // Dialog text captured 22 Oct 2026 (tc-finished-dialog.txt): the report ends with
+          // "Test finished. Ran from …" and the buttons "New test" / "Done".
+          root.innerHTML = '<tp-yt-paper-dialog><span>A/B Test report</span><button aria-label="Close" onclick="closeDialog()">Close</button>' +
+            '<p>39.8%</p><p>Watch time share</p><p>Set this option</p><p>19.6%</p><p>Watch time share</p><p>Set this option</p>' +
+            '<p>Test finished. Ran from October 17, 2026 at 7:00 PM to October 18, 2026 at 6:56 AM.</p>' +
+            '<button onclick="window.__newTestClicked=true;window.__state.abTest=\\'none\\';renderAbTest()">New test</button><button onclick="closeDialog()">Done</button></tp-yt-paper-dialog>';
         } else {
           // The finished report's shape, as read live on _2EOkOOX0PQ (11 Oct 2026), for a thumbnail test.
           root.innerHTML = '<div><span>A/B Test report</span><button aria-label="Close" onclick="closeDialog()">Close</button>' +
@@ -849,6 +857,36 @@ try {
     "OK: startTestAndCompare refuses to touch a video with no fresh test form (one may be running)",
   );
 
+  // A finished report (22 Oct 2026): its "New test" button is clicked, screenshot taken, and the
+  // fresh form behind it is filled exactly as a fresh dialog's — here a dry run, so it stops there.
+  uiState.abTest = "finished";
+  const overReport = await startTestAndCompare(
+    handle,
+    "vidT4",
+    { kind: "thumbnail", files: [thumbA, thumbB] },
+    { matchId, dryRun: true },
+  );
+  assert.equal(overReport, "started", `expected the fresh form behind New test, got ${JSON.stringify(overReport)}`);
+  assert.equal(await page.evaluate("window.__newTestClicked"), true, "New test was clicked");
+  assert.equal(await page.evaluate("window.__tcStarted"), null, "a dry run still never clicks Set test");
+  const reportShots = readdirSync(path.join(media, String(matchId))).filter((f) =>
+    f.startsWith("studio-tc-finished-report"),
+  );
+  assert.ok(reportShots.length >= 1, `expected a tc-finished-report screenshot, got: ${reportShots.join(", ")}`);
+  console.log("OK: a finished report's New test is clicked (screenshot taken) and the fresh form behind it filled");
+
+  // A report with no New test button (the 11 Oct shape) is still the existing error, never a guess.
+  uiState.abTest = "done";
+  const noButton = await startTestAndCompare(
+    handle,
+    "vidT4",
+    { kind: "thumbnail", files: [thumbA, thumbB] },
+    { matchId, dryRun: true },
+  );
+  assert.ok(typeof noButton === "object" && "error" in noButton);
+  assert.match((noButton as { error: string }).error, /already be set up/);
+  console.log("OK: a dialog with neither a fresh form nor a New test button is still an error");
+
   // readTestAndCompare: the one confidently-read state ("none"), then the two best-effort ones.
   uiState.abTest = "none";
   const readNone = await readTestAndCompare(handle, "vidT1");
@@ -863,6 +901,8 @@ try {
   assert.equal((readDone as { state: string }).state, "done");
   assert.deepEqual((readDone as { shares?: number[] }).shares, [41.5, 58.5]);
   assert.equal((readDone as { winnerSlot?: number }).winnerSlot, 2);
+  assert.equal((readDone as { finished?: boolean }).finished, true, "a finished report says so");
+  assert.equal((readRunning as { finished?: boolean }).finished, undefined);
   console.log(
     'OK: readTestAndCompare reads "none" confidently and "running"/"done" as its documented best effort',
   );

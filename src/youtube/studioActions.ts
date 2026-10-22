@@ -85,6 +85,10 @@ const SELECTORS = {
   abTestChipTitle: "#chip-0",
   abTestChipThumbnail: "#chip-1",
   abTestSetButton: "#set-test-button",
+  // A finished test's report ends with "New test" / "Done" (dialog text captured 22 Oct 2026);
+  // "New test" clears the report for a fresh form. Exact accessible name, scoped to the dialog;
+  // the report dialog's own element is unverified, so the scope is the two Studio dialog shapes.
+  abTestNewTestButton: 'tp-yt-paper-dialog, [role="dialog"] >> role=button[name="New test"s]',
   // Confirmed live 8 Oct 2026: "Set test" only stages the test inside the dialog — the banner
   // "The test is ready and will start once you save your changes" appears, and the test does not
   // actually start until the Details page's own Save button is pressed too (the same one that
@@ -1020,11 +1024,30 @@ export async function startTestAndCompare(
     await page.locator(SELECTORS.dialogClose).first().waitFor({ state: "visible", timeout: 15_000 });
     await shot(handle, opts.matchId, "tc-opened");
 
-    const settable = await page
-      .locator(SELECTORS.abTestSetButton)
-      .first()
-      .isVisible()
-      .catch(() => false);
+    const formShown = () =>
+      page
+        .locator(SELECTORS.abTestSetButton)
+        .first()
+        .isVisible()
+        .catch(() => false);
+    let settable = await formShown();
+    if (!settable) {
+      // A finished test's report blocks the form (22 Oct 2026: three concept tests planned on
+      // videos whose earlier test had finished); its own "New test" button clears it. A running
+      // test offers no such button and still errors below — nothing here ever stops a test.
+      const newTest = page.locator(SELECTORS.abTestNewTestButton).first();
+      if (await newTest.isVisible().catch(() => false)) {
+        await shot(handle, opts.matchId, "tc-finished-report");
+        await newTest.click();
+        await page
+          .locator(SELECTORS.abTestSetButton)
+          .first()
+          .waitFor({ state: "visible", timeout: 15_000 })
+          .catch(() => {});
+        await randomPause();
+        settable = await formShown();
+      }
+    }
     if (!settable) {
       await page
         .locator(SELECTORS.dialogClose)
@@ -1104,6 +1127,9 @@ export async function startTestAndCompare(
 
 export interface TcReadResult {
   state: "running" | "done" | "none";
+  /** `true` with `"done"`: the page shows a finished report (one `startTestAndCompare` can clear
+   *  with its "New test" button), not a test this bookkeeping has to wait on. */
+  finished?: boolean;
   winner?: string;
   raw: string;
   /** Watch time share per variant, in the report's order (slot 1 = the live one before the test). */
@@ -1163,6 +1189,7 @@ function doneFromReport(report: string, fallbackRaw: string): TcReadResult {
   const { shares, winnerSlot, titles, headline } = parseTcReport(report);
   return {
     state: "done",
+    finished: true,
     raw: report || fallbackRaw,
     ...(headline ? { headline } : {}),
     ...(shares?.length ? { shares } : {}),
