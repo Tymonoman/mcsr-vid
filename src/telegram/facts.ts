@@ -10,7 +10,7 @@
 import { lookup } from "node:dns/promises";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { blockedIn, config, isBlockedPlayer, matchDir } from "../config.js";
+import { blockedIn, communityPollsNow, config, isBlockedPlayer, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
 import { getRecentMatches } from "../api/mcsrApi.js";
 import { getBroadcasterIds, isConfigured as twitchConfigured } from "../api/twitch.js";
@@ -21,6 +21,7 @@ import {
   getAccessToken,
 } from "../youtube/youtube.js";
 import { readUpload } from "../youtube/youtubeStore.js";
+import { pollFailureLines, readCommunityPosts } from "../youtube/studioCommunity.js";
 import { analytics, fetchYppSnapshot, projectYpp, type YppProgress } from "../youtube/yppProgress.js";
 import { capacity } from "../dashboard/archive.js";
 import {
@@ -500,6 +501,13 @@ function studioWorkerItems(nowMs: number): NeedsYouItem[] {
   return items;
 }
 
+/** `<mediaDir>/.community-posts.json` (`src/youtube/studioCommunity.ts`): a video whose
+ *  "WHO TAKES IT?" poll failed three cycles running — read only while `communityPolls` is on. */
+function communityPollItems(): NeedsYouItem[] {
+  if (!communityPollsNow()) return [];
+  return pollFailureLines(readCommunityPosts());
+}
+
 interface ExperimentsFile {
   experiments?: Array<{ needsHuman?: unknown; needsHumanAck?: unknown }>;
 }
@@ -574,6 +582,7 @@ async function gatherNeedsYou(nowMs: number, sinceMs: number): Promise<NeedsYouF
     ...(space ? [space] : []),
     ...needsHumanItems(),
     ...studioWorkerItems(nowMs),
+    ...communityPollItems(),
   ];
   return { items };
 }

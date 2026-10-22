@@ -86,6 +86,7 @@
   "studioAutomation": false,
   "abTestsPaused": false,
   "endScreenRivalry": false,
+  "communityPolls": false,
   "nightlyUpload": "off",
   "suggestCloseSlots": 8,
   "suggestChaosSlots": 2,

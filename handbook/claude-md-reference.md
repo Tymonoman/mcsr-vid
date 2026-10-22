@@ -2405,6 +2405,56 @@ the same shapes end to end.
   (anything from before 18 Oct 2026) is left out. Reads `.experiments.json` only — no network, no
   YouTube call.
 
+### Community poll per upload (22 Oct 2026)
+
+The operator's growth push ("do everything there is in your power to bring us to the 1000subs
+asap"), asked whether to post a community poll per upload: "yes". `src/youtube/studioCommunity.ts`,
+posted by the Studio worker, gated by **`communityPolls`** (config file only, default `false`,
+read fresh each cycle through `communityPollsNow`, the same shape as `endScreenRivalry`). It ships
+off because none of its selectors has been seen live yet — the first supervised run
+(handbook/studio-routine.md, "Community poll") is what turns it on.
+
+- **What it says** (`pollContentFor`, pure): question `WHO TAKES IT?` (upper-case like the
+  Shorts), options the stored title's own two names in the title's order (`splitTitle`, then
+  `titleName`, so Pinne reads Skycrab), text `<A> vs <B> is up: https://youtu.be/<videoId>`. The
+  question is a question: no result, no count of wins, no elo, rank or nickname — the same house
+  rule as every hook and description. A title with no "A vs B" pair gets no poll ("skipped").
+- **Which page** (`postCommunityPoll`): `https://www.youtube.com/channel/<id>/community`, the
+  channel's own Community tab on www.youtube.com, not Studio's "Create → Create post". The pin
+  flow already drives www.youtube.com as the brand channel (a pin is owner-only; confirmed live
+  14 Oct 2026), so the active channel there is the right one, and the same tab lists the existing
+  posts — the "already-posted" check (a post carrying this video's link, whoever posted it) and the
+  after-click confirmation (the new post with the question and the link) read the same list.
+  Studio's composer is the fallback if that tab ever stops offering one. Steps: open, screenshot
+  `community-opened`, already-posted check, click the composer, pick the exact "Poll" type ("Image
+  poll" never passes for it), wait for two option inputs, type the question, Enter, the link line
+  (a `fill` with "\n" runs the two lines together in a contenteditable), fill the options,
+  screenshot `community-filled`; `dryRun` stops here and reports "posted". Live: click Post, wait
+  up to 20 s for the new post, screenshot `community-after`; no post is `{ error }`, never
+  "posted". Every missing element is a clear `{ error }` naming it; nothing is clicked in its place.
+- **The worker step** (`runCycle`, after related links): with the flag on and this cycle's
+  `videoStats` read in hand (no live read, no polls — the upload-time `privacyStatus` is never
+  trusted for "public"), `pollTargets` picks long-forms that are public now, went public within
+  `POLL_WINDOW_MS` (36 h, from `publishAt`, else `publishedAt`), have no record yet, are not
+  blocked (`blockedOnDisk`), one per video id (a series copies its record into every game's
+  folder), at most `MAX_POLLS_PER_CYCLE` (2). Each candidate is then checked for DNF
+  (`matchIsDnf`, the API's own read; a playoff game is never one) and gets its content built;
+  `--dry-run` runs the composer and writes nothing.
+- **The ledger**, `<mediaDir>/.community-posts.json`: `{ videoId: { at, outcome, matchId,
+  failures? } }`, atomic rename, one record per video. `outcome` is `posted`, `already-posted`,
+  `skipped: <why>` or `error: <message>`. A failed video is retried next cycle with `failures`
+  counting up; at `POLL_MAX_FAILURES` (3) it is left alone and `gatherNeedsYou`
+  (`src/telegram/facts.ts`, `communityPollItems`) reports "Community poll failed 3 times:
+  <error> (<videoId>)" — only while the flag is on, so a stale ledger on a box with polls off says
+  nothing. Any other outcome clears the streak. The heartbeat's `lastCycle.pollsPosted` counts
+  real posts (not "already-posted", not a dry run).
+- **Tests**: `studioCommunity.test.ts` (Xvfb + Chromium over CDP against a local fixture of the
+  tab, in `npm test`'s browser list, skipped without either): dry run stops before Post, a live
+  post lands and returns "posted", a tab with the link is "already-posted" while another video's
+  post is not, a missing composer is an error. `studioCommunity.plan.test.ts` (unit): the content,
+  every `pollTargets` filter and the cap, the failure streak and its Needs-you line.
+  `config.settings.contract.test.ts` pins the flag off and boolean-only.
+
 ## X posts (14 Oct 2026)
 
 The operator, 14 Oct 2026: "go ahead and build the x integration I'll go ahead and create an

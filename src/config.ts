@@ -295,6 +295,13 @@ export interface Config {
   /** Same-rivalry end screens (see `endScreenRivalryNow`); off until a live Studio check. */
   endScreenRivalry: boolean;
   /**
+   * A "WHO TAKES IT?" community poll on every long-form that went public in the last 36 h
+   * (`src/youtube/studioCommunity.ts`, the Studio worker). Config file only, like
+   * `studioAutomation`: off until a supervised `npm run studio -- poll <id>` has confirmed the
+   * composer's selectors live. Read fresh each worker cycle (`communityPollsNow`).
+   */
+  communityPolls: boolean;
+  /**
    * What the nightly does with the MP4 it just exported: nothing, upload it private, or upload
    * it scheduled for the next publish slot (`publishHourUtc`; the Short follows 18 h later).
    * Needs `youtubeUploadEnabled` too. "off" by default so no config default changes what a
@@ -651,6 +658,7 @@ export const DEFAULTS: Config = {
   studioAutomation: false,
   abTestsPaused: false,
   endScreenRivalry: false,
+  communityPolls: false,
   nightlyUpload: "off",
   suggestCloseSlots: 8,
   suggestChaosSlots: 2,
@@ -997,6 +1005,15 @@ export function reloadBlockedPlayers(): void {
 export function endScreenRivalryNow(): boolean {
   try {
     return readOverrides().endScreenRivalry === true;
+  } catch {
+    return false;
+  }
+}
+
+/** `communityPolls` straight from the file (config-file only, default off), like `endScreenRivalryNow`. */
+export function communityPollsNow(): boolean {
+  try {
+    return readOverrides().communityPolls === true;
   } catch {
     return false;
   }

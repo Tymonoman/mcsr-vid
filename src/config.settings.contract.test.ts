@@ -41,6 +41,7 @@ console.log("config.settings.contract: a missing file loads DEFAULTS");
 assert.equal(DEFAULTS.youtubeUploadEnabled, false);
 assert.equal(DEFAULTS.nightlyUpload, "off");
 assert.equal(DEFAULTS.studioAutomation, false);
+assert.equal(DEFAULTS.communityPolls, false);
 for (const ok of ["off", "private", "scheduled"])
   assert.doesNotThrow(() => validateOverrides({ nightlyUpload: ok }));
 // A typo there would otherwise read as "off" at the one switch deciding whether a nightly uploads.
@@ -51,7 +52,7 @@ for (const bad of ["scheduled ", "Scheduled", "", true, null, 1]) {
     `nightlyUpload ${JSON.stringify(bad)}`,
   );
 }
-for (const key of ["youtubeUploadEnabled", "studioAutomation"]) {
+for (const key of ["youtubeUploadEnabled", "studioAutomation", "communityPolls"]) {
   assert.doesNotThrow(() => validateOverrides({ [key]: true }));
   for (const bad of ["true", 1, null]) {
     assert.throws(() => validateOverrides({ [key]: bad }), new RegExp(key), `${key} ${JSON.stringify(bad)}`);

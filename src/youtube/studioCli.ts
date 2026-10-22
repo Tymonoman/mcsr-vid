@@ -3,7 +3,7 @@
  *   | endscreen <matchId|videoId> [--dry-run] | tc <matchId|videoId> title <title…> [--dry-run]
  *   | tc <matchId|videoId> thumbnail <file…> [--dry-run] | tc-read <matchId|videoId>
  *   | worker [--once] [--dry-run] | tc-plan <plan.json>
- *   | related <shortId> <longFormId>
+ *   | related <shortId> <longFormId> | poll <matchId|videoId> [--dry-run]
  *
  * probe: starts Chrome, loads Studio, prints what it found, stops.
  * pin: pins the channel's own first comment on a video — by match id (reads its recorded
@@ -32,6 +32,11 @@
  *      `"picker-empty"`/`"not-found"`/an error. `--dry-run` picks the row, screenshots it, and
  *      stops before the page Save that would actually apply it.
  *
+ * poll: the "WHO TAKES IT?" community poll for one long-form (`postCommunityPoll`) — the
+ *      supervised first run of the Community tab's unverified selectors (handbook/studio-routine.md).
+ *      Same refusals as the worker's own step: blocked, DNF, not public. `--dry-run` fills the
+ *      composer, screenshots it, and stops before the Post click.
+ *
  * `--profile-dir=<path>` overrides the real `/home/node/.studio-profile` on probe/pin/login/worker
  * — ad hoc testing against a throwaway profile without ever touching the operator's actual login.
  */
@@ -55,6 +60,11 @@ import {
   type StudioHandle,
 } from "./studioBrowser.js";
 import { finishLogin, startLogin } from "../dashboard/studioLogin.js";
+import { blockedOnDisk } from "../dashboard/matchStatus.js";
+import { matchDir } from "../config.js";
+import { dnfRefusal, matchIsDnf } from "../playoffs/playoffs.js";
+import { videoStats } from "./youtube.js";
+import { pollContentFor, postCommunityPoll } from "./studioCommunity.js";
 import { importTcPlan, type TcPlan } from "./studioExperiments.js";
 import { END_SCREEN_TEMPLATE_VIDEO_ID, runWorker } from "./studioWorker.js";
 
@@ -71,7 +81,8 @@ function usage(): never {
       " | tc <matchId|videoId> title|thumbnail <variant…> [--dry-run] | tc-read <matchId|videoId>" +
       " | worker [--once] [--dry-run] [--enable] | tc-plan <plan.json>" +
       " | related <shortId|matchId> <longFormVideoId>" +
-      " | link-related <shortId|matchId> <longFormVideoId> [--dry-run]",
+      " | link-related <shortId|matchId> <longFormVideoId> [--dry-run]" +
+      " | poll <matchId|videoId> [--dry-run]",
   );
   process.exit(2);
 }
@@ -288,6 +299,34 @@ async function linkRelatedCmd(
   }
 }
 
+async function pollCmd(target: string | undefined): Promise<void> {
+  const { matchId, videoId } = await resolveVideo(target);
+  const refuse = (why: string): void => {
+    console.error(why);
+    process.exit(1);
+  };
+  if (blockedOnDisk(matchDir(matchId))) refuse(`match ${matchId} has a blocked player — no poll`);
+  if (await matchIsDnf(matchId)) refuse(dnfRefusal(matchId, "no poll"));
+  const [live] = await videoStats([videoId]);
+  if (live?.privacyStatus !== "public") refuse(`${videoId} is ${live?.privacyStatus ?? "gone"}, not public — no poll yet`);
+  const record = await readUpload(matchId, "video");
+  const poll = pollContentFor(record?.title ?? "", videoId);
+  if (!poll) refuse(`match ${matchId}'s stored title names no "A vs B" pair — nothing to ask`);
+  const handle = await startAndProbe();
+  if (!handle) return;
+  try {
+    const outcome = await postCommunityPoll(handle, poll!, { matchId, dryRun });
+    if (typeof outcome === "object") {
+      console.error(`error: ${outcome.error}`);
+      process.exitCode = 1;
+      return;
+    }
+    console.log(`${outcome}${dryRun ? " (dry run — stopped before the Post click)" : ""}`);
+  } finally {
+    await handle.stop();
+  }
+}
+
 async function tcPlanCmd(file: string | undefined): Promise<void> {
   if (!file) usage();
   const plan = JSON.parse(await readFile(file, "utf8")) as TcPlan;
@@ -327,6 +366,9 @@ switch (command) {
     break;
   case "link-related":
     await linkRelatedCmd(args[0], args[1]);
+    break;
+  case "poll":
+    await pollCmd(args[0]);
     break;
   default:
     usage();
