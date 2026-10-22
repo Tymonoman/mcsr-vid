@@ -304,6 +304,48 @@ config.mediaDir = media;
   console.log(`OK: related-link targets capped at ${MAX_RELATED_LINKS_PER_CYCLE} a cycle`);
 }
 
+// --- planCycle: a Short up before its long-form (a teaser, x6) retries once that one is public ---
+{
+  const lf = (n: number, publishAt: string): LongFormRef => ({
+    videoId: `lf${n}`,
+    matchId: n,
+    uploadedAt: "2026-10-11T03:30:00.000Z",
+    privacyStatus: "private",
+    publishAt,
+  });
+  const longForms = [
+    lf(1, "2026-10-11T11:00:00.000Z"), // public since 11:00, missed at 08:00 — retried now
+    lf(2, "2026-10-11T11:00:00.000Z"), // missed again at 11:30, after it went public — tomorrow
+    lf(3, "2026-10-11T19:00:00.000Z"), // still scheduled — tomorrow
+  ];
+  const shorts = [1, 2, 3].map((n) => ({ matchId: n, videoId: `t${n}` }));
+  const ledger: StudioLedger = {
+    endScreens: {},
+    pickerEmptySeen: {},
+    relatedLinks: {},
+    relatedRetrySeen: {
+      t1: "2026-10-11T08:00:00.000Z",
+      t2: "2026-10-11T11:30:00.000Z",
+      t3: "2026-10-11T08:00:00.000Z",
+    },
+  };
+  const now = new Date("2026-10-11T12:00:00.000Z");
+  const ids = (live: Map<string, { privacyStatus: string; publishAt: string | null }> | null) =>
+    planCycle(now, longForms, ledger, [], () => false, shorts, live).relatedLinkTargets.map(
+      (t) => t.shortVideoId,
+    );
+  assert.deepEqual(ids(null), ["t1"], "from the records alone");
+  // The live read of a public video has no publishAt: the record's scheduled time still counts.
+  const live = new Map([
+    ["lf1", { privacyStatus: "public", publishAt: null }],
+    ["lf2", { privacyStatus: "public", publishAt: null }],
+    ["lf3", { privacyStatus: "private", publishAt: "2026-10-11T19:00:00Z" }],
+    ...shorts.map((s) => [s.videoId, { privacyStatus: "public", publishAt: null }] as const),
+  ]);
+  assert.deepEqual(ids(live), ["t1"], "with the live read");
+  console.log("OK: a related link missed before the long-form went public is retried once it is");
+}
+
 // --- planCycle: Test & Compare starts and daily checks ----------------------------------------
 {
   const planned = (id: string): Experiment => ({

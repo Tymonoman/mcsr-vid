@@ -999,9 +999,14 @@ function joinColdOpenNow(matchId: number, hook: string): Promise<string | null> 
 /**
  * When the Short goes public: the standing 18 h after the long-form (it lands while the match
  * video is still fresh in Browse) — or the day the long-form publishes on's Short-delay
- * experiment arm (`shortDelayMsForDate`, src/dashboard/experiments.ts, 1–48 h), when that day has
- * one — or an hour from now if that is later. A long-form already public gives the hour; one
- * private with no time gives none, and the Short waits private beside it.
+ * experiment arm (`shortDelayMsForDate`, src/dashboard/experiments.ts, -6–48 h; negative is a
+ * teaser, the Short public BEFORE the long-form, x6), when that day has one — or an hour from now
+ * if that is later. A long-form already public gives the hour; one private with no time gives
+ * none, and the Short waits private beside it. A teaser Short links a long-form still private for
+ * those hours: the description link (`uploadTextFor`) opens a private video until then, and the
+ * Studio worker's related-video link, which the picker offers only once the long-form is public,
+ * is retried right after that hour (`missedBeforePublic`, src/youtube/studioWorker.ts). The
+ * Short's title and slate name no result either way.
  */
 export function shortPublishAt(video: OnChannel | null, nowMs: number): Date | null {
   const soonest = nowMs + 3600_000;
@@ -1232,11 +1237,12 @@ async function moveOnYouTube(
   // experiment arm — `shortPublishAt`): moved with it when it is scheduled too, and when it is
   // not up yet the chain reads the time just written.
   const shortAt = shortPublishAt({ videoId, publishAt: moved.publishAt, privacyStatus: "private" }, nowMs)!;
-  const delayText = `${Math.round((shortAt.getTime() - Date.parse(moved.publishAt)) / 3600_000)} h`;
+  const delayH = Math.round((shortAt.getTime() - Date.parse(moved.publishAt)) / 3600_000);
+  const delayText = `${Math.abs(delayH)} h ${delayH < 0 ? "before" : "after"}`;
   const short = await onChannel(matchId, "short");
   let shortLine = readStatus(matchId).noShort
     ? "no Short"
-    : `the Short is not up yet — it goes up for ${when(shortAt.toISOString())}, ${delayText} after`;
+    : `the Short is not up yet — it goes up for ${when(shortAt.toISOString())}, ${delayText}`;
   if (short) {
     let failed: string;
     try {
@@ -1248,18 +1254,19 @@ async function moveOnYouTube(
         failed = "";
         const rec = await readUpload(matchId, "short");
         if (rec) await writeUpload(matchId, { ...rec, publishAt: s.publishAt }, "short");
-        shortLine = `the Short moved with it to ${when(s.publishAt)}, ${delayText} after`;
+        shortLine = `the Short moved with it to ${when(s.publishAt)}, ${delayText}`;
       }
     } catch (err) {
       failed = describeError(err);
     }
     if (failed) {
-      // Scheduled before the long-form's new time, the Short would go public first and link a private video.
+      // Scheduled before the long-form's new time, the Short would go public first and link a private
+      // video — further ahead than a teaser day's own head start (`shortAt` before the video, x6).
       const early =
         short.privacyStatus === "private" &&
         !!short.publishAt &&
         Date.parse(short.publishAt) > nowMs &&
-        Date.parse(short.publishAt) < Date.parse(moved.publishAt);
+        Date.parse(short.publishAt) < Math.min(Date.parse(moved.publishAt), shortAt.getTime());
       shortLine = `the Short did not move: ${failed}${early ? ` — it now goes out before the video (${when(short.publishAt)}); move it in Studio to ${when(shortAt.toISOString())}` : ""}`;
     }
   }

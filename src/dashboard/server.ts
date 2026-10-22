@@ -78,6 +78,7 @@ import {
   matchRowShort,
   nightlyShortSummary,
   publishTimeView,
+  shortPublishAt,
   shortTick,
 } from "./shortFlow.js";
 import { armRestart, disarmRestart, restartState } from "./restartWhenIdle.js";
@@ -755,6 +756,14 @@ const server = createServer(async (req, res) => {
         publishAt: publish.at,
         publishWhy: publish.why,
         publish,
+        // When the Short goes out beside that time (`shortPublishAt`: 18 h after, or the day's
+        // Short-delay arm, a teaser's before it), for Now's "Short up".
+        shortAt: publish.at
+          ? shortPublishAt(
+              { videoId: null, publishAt: publish.at, privacyStatus: null },
+              Date.now(),
+            )!.toISOString()
+          : null,
         // Commands for the operator's own shell, not this one: the publishing PC pulls.
         pull: config.pullSource
           ? {
