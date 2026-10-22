@@ -42,6 +42,10 @@ process.on("exit", () => {
   rmSync(media, { recursive: true, force: true });
   rmSync(profileDir, { recursive: true, force: true });
 });
+// The real profile must never be touched by a test (22 Oct 2026: a first version re-resolved the
+// test's options through xStartOpts and ran Chromium against /app/.x-profile).
+const realProfile = path.join(media, "never-created-x-profile");
+process.env.X_PROFILE_DIR = realProfile;
 const { config } = await import("../config.js");
 config.mediaDir = media;
 const { classifyX, postPlanViaBrowser, postViaBrowser, probeX, xStartOpts } = await import("./xBrowser.js");
@@ -116,7 +120,7 @@ const server = createServer((req, res) => {
 await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
 const port = (server.address() as { port: number }).port;
 const home = `http://127.0.0.1:${port}/home`;
-process.on("exit", () => server.close());
+server.unref(); // the fixture must not keep the process alive once the checks are done
 
 // --- classifyX, pure -------------------------------------------------------------------------------
 assert.equal(classifyX("https://x.com/home", "verify your identity in a quoted post", { composer: true, loginForm: false }), "ok");
@@ -213,4 +217,5 @@ assert.equal(posted.length, 0);
 assert.ok(!existsSync(path.join(media, "1", "x.json")));
 console.log("OK: an unreadable page is an error outcome, no post, no retry");
 
+assert.ok(!existsSync(realProfile), "the real X profile dir was never created by a test");
 console.log("xBrowser: all OK");

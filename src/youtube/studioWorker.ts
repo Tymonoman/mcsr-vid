@@ -52,7 +52,7 @@ import {
   type TcTest,
 } from "./studioActions.js";
 import { probe, start, type StudioBrowserOptions } from "./studioBrowser.js";
-import { xBrowserTick } from "../x/xBrowser.js";
+import { xBrowserTick, xStartOpts } from "../x/xBrowser.js";
 import {
   importTcPlan,
   readExperiments,
@@ -1302,7 +1302,7 @@ export async function runWorker(
       // browser sessions at once. Its outcome lives in `.x-browser.json`, not this heartbeat.
       if (config.xBrowserPost) {
         try {
-          console.log(`x browser: ${await xBrowserTick({ dryRun: opts.dryRun, startOpts: opts.startOpts })}`);
+          console.log(`x browser: ${await xBrowserTick({ dryRun: opts.dryRun, startOpts: xStartOpts(opts.startOpts) })}`);
         } catch (err) {
           console.error(`x browser: ${describeError(err)}`);
         }

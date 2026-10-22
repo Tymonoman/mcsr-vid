@@ -75,7 +75,9 @@ export function ensureXProfileDir(dir: string = X_PROFILE_DIR): string {
 }
 
 /** `start()` options for an X session: the caller's chromePath/port/display, never its profile
- * (the worker's `--profile-dir` is Studio's); the X profile, created 700 if missing. */
+ * (the worker's `--profile-dir` is Studio's); the X profile, created 700 if missing. Every caller
+ * resolves its options through this once; `postPlanViaBrowser` takes them as given (a test's own
+ * throwaway profile included) and only falls back to the real X profile when handed none. */
 export function xStartOpts(opts: StudioBrowserOptions = {}, profileDir: string = X_PROFILE_DIR): StudioBrowserOptions {
   return { ...opts, profileDir: ensureXProfileDir(profileDir) };
 }
@@ -247,14 +249,14 @@ export async function postViaBrowser(
 /**
  * One plan, its own browser session: start Chrome on the X profile, probe, post, stop. A
  * `signed-out`/`verify` probe or a thrown error is returned as the outcome and written to
- * `.x-browser.json`; the caller decides what to print. `startOpts` is the test's seam.
+ * `.x-browser.json`; the caller decides what to print. `startOpts` are X's (`xStartOpts`), or a test's.
  */
 export async function postPlanViaBrowser(
   plan: XPlan,
   opts: XBrowserOptions & { startOpts?: StudioBrowserOptions } = {},
 ): Promise<XBrowserOutcome> {
   if (existsSync(xFile(plan.matchId))) throw new XRefusal(`match ${plan.matchId} is already on X (x.json)`);
-  const handle = await start(xStartOpts(opts.startOpts));
+  const handle = await start(opts.startOpts ?? xStartOpts());
   try {
     const probed = await probeX(handle, opts);
     if (probed.result !== "ok") {
