@@ -345,32 +345,33 @@ Europe/Warsaw, DST-correct; every slash command answers fresh. Runs inside the d
 
 ## Studio automation
 
-What Studio has no API for: pins, end screens, Test & Compare, related-video links. Gated by
+What Studio has no API for: pins, end screens, Test & Compare, related links, polls. Gated by
 `studioAutomation` (not writable from Settings).
 
 - **How it works** (`src/youtube/studioBrowser.ts`): a real, headed `google-chrome-stable` on Xvfb,
   login profile in the `studio-profile` volume. Playwright attaches with
-  **`chromium.connectOverCDP`**, **never `chromium.launch()`**. **Nothing here ever types a password, answers 2FA, solves a CAPTCHA, or opens
-  accounts.google.com on its own**; the operator signs in by hand whenever Google asks. `probe()`
-  classifies the session (`ok`/`signed-out`/`verify`/`wrong-channel`) at the start of every job;
-  **a `verify` or `signed-out` result is that attempt's error, chased no further until the
-  operator logs in again, never retried in a loop.**
-- **Safety rails**: **never unpins, replaces, or removes a pin, end screen, related-video link or
-  running Test & Compare set by hand** (each action checks for an existing one first). **One browser
-  session at a time** (in-process lock plus the profile's own `SingletonLock`; `killOnExit` kills
-  `start()`'s own Chrome/Xvfb on an uncaught exit, not a SIGKILL). **Human-paced**: random 2–6s
-  pauses, ~20 min ± 3 min between worker cycles. **Never runs 02:50–07:30 UTC by default**
-  (`inBlackoutWindow`, derived live from `nightlyRenderHourUtc`). Per-cycle caps: ≤3 end screens,
-  ≤2 Test & Compare starts, ≤3 related links, ≤3 pins.
+  **`chromium.connectOverCDP`**, **never `chromium.launch()`**. **Nothing here ever types a
+  password, answers 2FA, solves a CAPTCHA, or opens accounts.google.com on its own**; the operator
+  signs in by hand when Google asks. `probe()` classifies the session
+  (`ok`/`signed-out`/`verify`/`wrong-channel`) at the start of every job;
+  **a `verify` or `signed-out` result is that attempt's error, never retried until the operator
+  logs in again.**
+- **Safety rails**: **never unpins, replaces, or removes a pin, end screen, related link, poll or
+  running Test & Compare set by hand** (each action checks first). **One browser session at a
+  time** (in-process lock plus the profile's `SingletonLock`; `killOnExit` kills `start()`'s own
+  Chrome/Xvfb on an uncaught exit, not a SIGKILL). **Human-paced**: 2–6s random pauses, ~20±3 min
+  between cycles. **Never runs 02:50–07:30 UTC by default** (`inBlackoutWindow`, live from
+  `nightlyRenderHourUtc`). Per-cycle caps: ≤3 end screens, ≤2 Test & Compare starts, ≤3 related
+  links, ≤3 pins.
 - **`.experiments.json`'s read-merge-write is serialized through a lockfile**
-  (`withExperimentsLock`, `.experiments.json.lock`, stale after 30s). The dashboard's
-  `src/dashboard/experiments.ts` skips it, so a race is still possible.
+  (`withExperimentsLock`, `.experiments.json.lock`, stale after 30s); the dashboard's
+  `src/dashboard/experiments.ts` skips it, so a race is possible.
 - **The worker plans a thumbnail Test & Compare on every new dashboard long-form**
-  (`thumbnailTcTargets`, ≤2 a cycle; `npm run tc-thumbs` renders control + the most different
-  non-result-looking pose + a ≤6-char caption if `tcCaption.ts` passes one) and starts it on a
-  later cycle. A running test is read once a UTC day; **Studio's "Results ready"/"Test finished"
+  (`thumbnailTcTargets`, ≤2 a cycle; `npm run tc-thumbs`: control + the most different
+  non-result-looking pose + a ≤6-char caption if `tcCaption.ts` passes one), started on a later
+  cycle. A running test is read once a UTC day; **Studio's "Results ready"/"Test finished"
   means done** (`readTestAndCompare`, `parseTcReport`). **A new end screen: same-rivalry layout**
-  (`addRivalryEndScreen`), else starter ("1 video, 1 subscribe").
+  (`addRivalryEndScreen`), else the starter ("1 video, 1 subscribe").
 - **A video with a title test gets no thumbnail test** (`titleTcTargets`; `ab-report` reads it).
 - **The worker never sets a Test & Compare winner itself**: `"done"` records what Studio shows;
   `"needsHuman"` marks what it couldn't get past; an error leaves the experiment planned. Another
@@ -378,16 +379,16 @@ What Studio has no API for: pins, end screens, Test & Compare, related-video lin
   report gets New test; `npm run studio -- tc-reset <id…>` re-plans a done one. Titles are checked
   before a page opens (`titleTestProblem`, `hookLabelProblem`, `spoilsTheResult`, 100 chars).
 - **The worker's own gate is `opts.enable` (CLI `--enable`, or env `STUDIO_WORKER=1`) OR'd with
-  `config.studioAutomation`**, not the dashboard flag alone. A supervisor
-  (`scripts/studio-worker.sh`) restarts `npm run -s studio -- worker --enable` 60s after any exit;
-  its pidfile refuses a second start:
-  `nohup bash /app/scripts/studio-worker.sh >/dev/null 2>&1 &`
-- **Related video linking** (`linkRelatedVideo`) links a Short to its long-form, no privacy filter
-  either side. **The worker also pins** (`pinTargets`): every PUBLIC, unblocked long-form whose
-  channel comment has posted and whose pin isn't done, capped at `MAX_PINS_PER_CYCLE` (3) after the
-  day's skips (`pinsThisCycle`); end screens skip a blocked match too, and for the day a video
-  with no editor (`endScreensThisCycle`). Shares one `finished.pin` field with the dashboard's pin
-  path.
+  `config.studioAutomation`**. A supervisor
+  (`scripts/studio-worker.sh`) restarts `npm run -s studio -- worker --enable` 60s after any exit,
+  its pidfile refuses a second start: `nohup bash /app/scripts/studio-worker.sh >/dev/null 2>&1 &`
+- **Related video linking** (`linkRelatedVideo`): a Short to its long-form, no privacy filter.
+  **The worker also pins** (`pinTargets`): every PUBLIC, unblocked long-form with a posted channel
+  comment and no pin, ≤3 a cycle after the day's skips; no end screen on a blocked match, none that
+  day on a video with no editor. Shares `finished.pin` with the dashboard.
+- **Community poll** (`communityPolls`, file-only, off; `studioCommunity.ts`): "WHO TAKES IT?",
+  the title's two names, link; long-forms public <36h, ≤2/cycle; Post pressed but unseen
+  (`unconfirmed`) never repeats; selectors unverified (`studio poll --dry-run`).
 
 ## Clips (prototype)
 
@@ -402,8 +403,8 @@ into `src/pipeline/pipeline.ts`.
 
 ## Session preflight
 
-`scripts/preflight.sh` runs at session start; fix what it flags (no GitHub credentials, a
-read-only PAT, an expiring token) first.
+`scripts/preflight.sh` runs at session start; fix what it flags (missing or read-only GitHub
+credentials, an expiring token) first.
 
 ## Known pitfalls
 

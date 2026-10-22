@@ -67,3 +67,26 @@ faster than hunting through tabs.
       it reports `needsHuman`, or the worker is off.
 - [ ] Tick the five toggles on the dashboard's publish checklist so the Rendered
       tab stops counting the match as ready.
+
+## Community poll (supervised first run)
+
+The worker posts a "WHO TAKES IT?" poll on each long-form public in the last 36 h once
+`communityPolls` is `true` in `mcsr-vid.config.json` (`src/youtube/studioCommunity.ts`). Its
+selectors for the Community tab's composer are guesses until you have watched one run, so:
+
+1. Pick a long-form that is public, not blocked, not a DNF, posted today — the CLI refuses the
+   other three. From the mcsr container, with the worker stopped (one browser at a time):
+   `npm run studio -- poll <matchId> --dry-run`. It opens
+   `youtube.com/channel/<id>/community`, picks Poll, fills the question, the two names and the link,
+   and stops before Post. Read the three `studio-community-*.png` screenshots in the match
+   directory: opened (is the composer there, is it our channel?), filled (two lines of text, both
+   options). A `{ error }` names the element it could not find; fix that one selector in
+   `SELECTORS` and run the dry run again.
+2. Live: `npm run studio -- poll <matchId>`. It clicks Post and waits for the new post on the tab;
+   check the channel's Community tab by hand once. A second run on the same video must answer
+   `already-posted`.
+3. Set `communityPolls: true` on the box. The worker takes it from there, at most two a cycle; a
+   video that fails three cycles running, or whose Post click was pressed but never seen on the
+   tab (`unconfirmed`, never pressed again), shows up in the morning report's Needs you for 36 h,
+   and `.community-posts.json` in `/media` is the record. Deleting a video's entry there re-arms
+   it (after a selector fix, say); a wrong poll is deleted by hand in Studio, never by code.

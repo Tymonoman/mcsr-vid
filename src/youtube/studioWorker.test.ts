@@ -1523,6 +1523,7 @@ config.mediaDir = media;
       titleTestsPlanned: 0,
       pinsAdded: 0,
       relatedLinksAdded: 0,
+      pollsPosted: 0,
       errors: [],
     },
     "neither --enable/STUDIO_WORKER=1 nor config.studioAutomation set",

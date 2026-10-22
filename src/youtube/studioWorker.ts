@@ -31,6 +31,7 @@ import {
   abTestsPausedNow,
   endScreenRivalryNow,
   blockedIn,
+  communityPollsNow,
   config,
   CONFIG_PATH,
   DEFAULTS,
@@ -40,6 +41,15 @@ import {
 import { blockedOnDisk } from "../dashboard/matchStatus.js";
 import { repoHead } from "../dashboard/repoHead.js";
 import { describeError } from "../errorText.js";
+import { matchIsDnf } from "../playoffs/playoffs.js";
+import {
+  pollContentFor,
+  pollTargets,
+  postCommunityPoll,
+  readCommunityPosts,
+  recordCommunityPost,
+  type PollCandidate,
+} from "./studioCommunity.js";
 import {
   addEndScreenFromTemplate,
   addRivalryEndScreen,
@@ -232,6 +242,8 @@ export interface WorkerHeartbeat {
     pinsAdded: number;
     /** Shorts whose "Related video" was linked (new or already there) this cycle (11 Oct 2026). */
     relatedLinksAdded: number;
+    /** Community polls posted this cycle (22 Oct 2026, `communityPolls`); absent before then. */
+    pollsPosted?: number;
   } | null;
   /** The first error of the cycle, kept for anything that only ever read this one field. */
   lastError: string | null;
@@ -908,6 +920,8 @@ export interface CycleResult {
   pinsAdded: number;
   /** Shorts whose "Related video" was linked (new or already there) this cycle (11 Oct 2026). */
   relatedLinksAdded: number;
+  /** "WHO TAKES IT?" polls posted this cycle (22 Oct 2026, `config.communityPolls`). */
+  pollsPosted: number;
   errors: string[];
 }
 
@@ -921,6 +935,7 @@ const SKIPPED_RESULT: CycleResult = {
   titleTestsPlanned: 0,
   pinsAdded: 0,
   relatedLinksAdded: 0,
+  pollsPosted: 0,
   errors: [],
 };
 
@@ -966,7 +981,12 @@ export async function runCycle(
     // One videos.list per 50 ids (1 quota unit each). A failed read never skips the cycle.
     const live = await videoStats([...longForms, ...shorts].map((v) => v.videoId)).then(
       (stats) =>
-        new Map(stats.map((s) => [s.videoId, { privacyStatus: s.privacyStatus, publishAt: s.publishAt }])),
+        new Map(
+          stats.map((s) => [
+            s.videoId,
+            { privacyStatus: s.privacyStatus, publishAt: s.publishAt, publishedAt: s.publishedAt },
+          ]),
+        ),
       (err) => {
         console.error(
           `studio worker: live video status unread, planning from the upload records: ${describeError(err)}`,
@@ -1256,6 +1276,51 @@ export async function runCycle(
       }
     }
 
+    // A "WHO TAKES IT?" poll on each long-form public since the last 36 h (22 Oct 2026,
+    // `config.communityPolls`, file-only like `endScreenRivalry`). Public is this cycle's own
+    // live read — no read, no polls; the DNF check is the API's, per candidate; blocked is the
+    // same on-disk check as everything above. `--dry-run` fills the composer and writes nothing.
+    let pollsPosted = 0;
+    if (communityPollsNow() && live) {
+      const candidates: PollCandidate[] = longForms.flatMap((v) => {
+        const s = live.get(v.videoId);
+        return s
+          ? [
+              {
+                videoId: v.videoId,
+                matchId: v.matchId,
+                title: v.title ?? "",
+                privacyStatus: s.privacyStatus,
+                publicAt: s.publishAt ?? s.publishedAt ?? null,
+              },
+            ]
+          : [];
+      });
+      for (const target of pollTargets(new Date(), candidates, readCommunityPosts(), realIsBlocked)) {
+        const record = (outcome: string) => {
+          if (!opts.dryRun) recordCommunityPost(target.videoId, target.matchId, outcome);
+        };
+        if (await matchIsDnf(target.matchId)) {
+          record("skipped: DNF");
+          continue;
+        }
+        const poll = pollContentFor(target.title, target.videoId);
+        if (!poll) {
+          record("skipped: the title names no pair");
+          continue;
+        }
+        const outcome = await postCommunityPoll(handle, poll, { matchId: target.matchId, dryRun: opts.dryRun });
+        if (typeof outcome === "object") {
+          errors.push(`poll ${target.videoId}: ${outcome.error}`);
+          // Post pressed but unseen: terminal, never a second click on the same video.
+          record(`${outcome.postClicked ? "unconfirmed" : "error"}: ${outcome.error}`);
+          continue;
+        }
+        record(outcome);
+        if (outcome === "posted" && !opts.dryRun) pollsPosted++;
+      }
+    }
+
     return {
       probe: probed.result,
       endScreensAdded,
@@ -1266,6 +1331,7 @@ export async function runCycle(
       titleTestsPlanned,
       pinsAdded,
       relatedLinksAdded,
+      pollsPosted,
       errors,
     };
   } finally {
@@ -1376,6 +1442,7 @@ export async function runWorker(
         titleTestsPlanned: result.titleTestsPlanned,
         pinsAdded: result.pinsAdded,
         relatedLinksAdded: result.relatedLinksAdded,
+        pollsPosted: result.pollsPosted,
       },
       lastError: blackout ? (prev?.lastError ?? null) : currentError,
       lastErrors: blackout ? (prev?.lastErrors ?? []) : result.errors,
