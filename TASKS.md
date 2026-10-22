@@ -60,6 +60,8 @@ LESSONS: Bash caps at 600 s, so run suites in the background and poll. Formatter
 
 22 Oct 19:2x Polish: 14347184 TEMPLE RUN Short reviewed (lowkey, the loser, first into the chest on half a heart; doogile wins) and registered by me: "DOWN TO THE LAST HEART" 2:28–2:49. 13393652's re-cut still waits on the operator deleting BlqIkSXjEoc.
 
+22 Oct 20:4x Polish EVENING CHECK: 48 h slots filled (14306147 tonight 21:00, 14311162 01:00, 13393121 Fri 21:00, 14222413 Sat 01:00), all with hand Shorts; failed none; Needs-you empty; worker up (supervisor 2652536, heartbeat 13 min, streak 0); tonight's queue 13421438 (record pace, first) then 13394048 (F–I #10), VODs on disk for both; inbox = the third batch, already handled. Open: the operator to delete Short BlqIkSXjEoc before Sun 15:00; draft feedback (explainer + appeal A/B).
+
 ## ▶ RESUME HERE (17 Oct 2026, 08:0x Polish) — CHANNEL RUNNING; NOTHING HALF-DONE IN CODE
 Times are Polish (the operator's rule since 15 Oct; code/config stay UTC). Main e866ed4+ pushed (c7105a8 tasks), dashboard on it, CI green. Studio worker supervisor pid 2357 (setsid; preflight revives it per session).
 IN FLIGHT: nightly "Run now" 07:54 rendering 13142923 (F–I #3) → pick → auto-hooks after 6 h (~14:30) → Sun 18 Oct 21:00 slot; it needs a HAND SHORT before Mon (scripts/hand-short/build.py, specs tmp/shorts/specs/, `npm run short:hand`; window ends before the result; name + endgame cue is now refused). Tonight 05:00 renders the queued 13143975 (F–I #4) → Mon 01:00. VODs on disk: 13144771; 13198700 downloading. Reddit (r/speedrun post ~15 Oct): hourly snapshots tmp/night/reddit2/snaps.jsonl (bg loop), full Analytics readout by cron 48253516 Sun 18 Oct 10:13 (sends a short Telegram note).
