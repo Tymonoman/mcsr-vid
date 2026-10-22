@@ -1,4 +1,4 @@
-import type { FeedMatch, MatchInfo, PlayoffBracket, UserDetails, VersusStats } from "./types.js";
+import type { FeedMatch, MatchInfo, PlayoffBracket, RecordRun, UserDetails, VersusStats } from "./types.js";
 
 const BASE_URL = "https://api.mcsrranked.com";
 
@@ -137,6 +137,9 @@ export async function getPlayoffs(season?: number): Promise<PlayoffBracket> {
   );
   return page.data;
 }
+
+/** The all-time record leaderboard: the 100 fastest ranked completions (`RecordRun`). */
+export const getRecordLeaderboard = (): Promise<RecordRun[]> => getJson<RecordRun[]>("/record-leaderboard");
 
 export function getUser(identifier: string): Promise<UserDetails> {
   return getJson<UserDetails>(`/users/${encodeURIComponent(identifier)}`);

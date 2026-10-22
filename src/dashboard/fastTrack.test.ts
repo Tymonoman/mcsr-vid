@@ -5,10 +5,11 @@
 // pipeline.test.ts, not here.
 // Run: npx tsx src/dashboard/fastTrack.test.ts
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import type { MatchInfo, RecordRun } from "../api/types.js";
 import { config } from "../config.js";
 import type { MatchMetrics } from "../pipeline/matchScore.js";
 import { CACHE_VERSION, type PooledMatch } from "./suggest.js";
@@ -21,6 +22,8 @@ import {
   fastTrackTick,
   isReallyGood,
   readFastTrackState,
+  readRecordWatch,
+  type RecordAsk,
 } from "./fastTrack.js";
 import type { Job } from "./jobs.js";
 
@@ -256,6 +259,109 @@ try {
       startRender: fakeStartRender,
     });
     assert.equal(asked2, 0, "a match with a working directory already is never re-fast-tracked");
+  }
+
+  /* --- The record watch: leaderboard -> same gates -> render (48h) or ask (older) ------------ */
+  {
+    const FIXTURES = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "fixtures");
+    const fixture = (file: string, id: number, extra: Partial<MatchInfo> = {}): MatchInfo => ({
+      ...(JSON.parse(readFileSync(path.join(FIXTURES, `match-${file}.json`), "utf8")) as MatchInfo),
+      id,
+      ...extra,
+    });
+    // Both finished, sub-8 (7:23), Infume vs Feinberg; Infume is a favourite here.
+    const matches = new Map<number, MatchInfo>([
+      [501, fixture("13446429", 501)],
+      [502, fixture("13446429", 502)],
+      [505, fixture("12902901", 505)], // BlazeMind vs Aquacorde: blocked by default
+      [506, fixture("13446429", 506, { forfeited: true })], // a DNF
+      [507, fixture("13617328", 507)], // nolqndo vs thecamo6: nobody known
+      [508, fixture("12929221", 508)], // Feinberg vs silverrruns, one runner stopped
+      [509, fixture("13446429", 509)],
+      [510, fixture("13446429", 510)],
+      [511, fixture("13446429", 511)],
+      [512, fixture("13446429", 512)],
+    ]);
+    config.favouritePlayers = ["KnownOne", "Infume", "BlazeMind"];
+    const dayA = Date.parse("2026-10-25T12:00:00Z");
+    const run = (id: number, hoursAgo: number, nickname = "Infume", atMs = dayA): RecordRun => ({
+      id,
+      date: Math.floor(atMs / 1000) - hoursAgo * 3600,
+      time: 443_052,
+      user: { uuid: `u${id}`, nickname },
+    });
+    const fetched: number[] = [];
+    const asked: RecordAsk[] = [];
+    const vodless = new Set<number>([512]);
+    const deps = (runs: RecordRun[]) => ({
+      checkVods: async (id: number) => !vodless.has(id),
+      startRender: fakeStartRender,
+      records: async () => runs,
+      match: async (id: number) => {
+        fetched.push(id);
+        const m = matches.get(id);
+        if (!m) throw new Error(`no fixture for ${id}`);
+        return m;
+      },
+      ask: async (a: RecordAsk) => (asked.push(a), true),
+    });
+    writePool([]);
+    startedRenders.length = 0;
+
+    const runsA = [
+      run(501, 2), // recent: fast-tracks
+      run(502, 5 * 24), // older than 48h: asked
+      run(503, 30 * 24), // past the pool's age: VODs gone, seen without a fetch
+      run(504, 3 * 24, "Aquacorde"), // the leaderboard's own runner is blocked: no fetch
+      run(505, 3 * 24, "BlazeMind"),
+      run(506, 3 * 24),
+      run(507, 3 * 24, "nolqndo"),
+      run(508, 3 * 24, "Feinberg"),
+    ];
+    await fastTrackTick(dayA, deps(runsA));
+    assert.deepEqual(startedRenders, [501], "a new record run inside 48h fast-tracks");
+    assert.match(readFastTrackState().hits.at(-1)!.reason, /record pace 7:23$/, "the reason says so");
+    assert.deepEqual(
+      asked.map((a) => a.matchId),
+      [502],
+      "an older one is asked about; blocked, DNF, one-sided and unknown pairs are not",
+    );
+    assert.deepEqual(asked[0]!.players, ["Infume", "Feinberg"]);
+    assert.equal(asked[0]!.timeMs, 443_052);
+    assert.ok(!fetched.includes(503) && !fetched.includes(504), "no API call for a run that is too old or blocked");
+    const seenA = Object.keys(readRecordWatch().seen).sort();
+    assert.deepEqual(seenA, ["502", "503", "504", "505", "506", "508"], "unknown pair and the render stay unseen");
+    assert.ok(readRecordWatch().asks["502"], "the ask is recorded");
+    console.log("OK: record watch — recent fast-tracks, older asks, blocked/DNF/one-sided/unknown skipped");
+
+    // Same day: the once-a-day cap holds before the leaderboard is even read.
+    fetched.length = 0;
+    let read = 0;
+    await fastTrackTick(dayA + 3_600_000, {
+      ...deps(runsA),
+      records: async () => ((read += 1), runsA),
+    });
+    assert.equal(read, 0, "today's fast-track is spent: no leaderboard read, no ask");
+    assert.deepEqual(startedRenders, [501]);
+
+    // Next day: 501 has its directory now; 502 is seen and never asked again; 2 asks a day.
+    mkdirSync(path.join(media, "501"), { recursive: true });
+    const dayB = dayA + 24 * 3_600_000;
+    asked.length = 0;
+    const runsB = [...runsA, run(509, 4 * 24), run(510, 4 * 24), run(511, 4 * 24)];
+    await fastTrackTick(dayB, deps(runsB));
+    assert.deepEqual(asked.map((a) => a.matchId), [509, 510], "two asks a day, never 502 again");
+    assert.deepEqual(startedRenders, [501], "nothing rendered");
+    assert.ok("501" in readRecordWatch().seen, "a processed match is seen");
+    assert.ok(!("511" in readRecordWatch().seen), "the third waits for tomorrow");
+
+    // Day C: the third gets its ask; a run whose VODs are gone is seen without one.
+    asked.length = 0;
+    await fastTrackTick(dayB + 24 * 3_600_000, deps([...runsB, run(512, 4 * 24)]));
+    assert.deepEqual(asked.map((a) => a.matchId), [511]);
+    assert.ok("512" in readRecordWatch().seen && !readRecordWatch().asks["512"], "VODs gone: seen, not asked");
+    assert.ok(!("507" in readRecordWatch().seen), "an unknown pair is looked at again");
+    console.log("OK: record watch — once a day, one ask per id ever, two asks a day, VOD-less runs never asked");
   }
 
   console.log("fastTrack: all checks passed");

@@ -1589,6 +1589,29 @@ new `src/dashboard/fastTrack.ts`.
   At most one ask a day falls out of `fastTrack.ts`'s own ≤1/day cap — nothing extra enforces it
   here. Tests: `src/telegram/fastTrackAsk.contract.test.ts`, same fetch-stub shape as
   `titlePicker.contract.test.ts`.
+- **Record watch (22 Oct 2026, the growth plan's idea 3)**: fast-track's second candidate source,
+  `recordCandidates` in `src/dashboard/fastTrack.ts`. `GET /record-leaderboard` (`getRecordLeaderboard`,
+  `RecordRun`) returns the 100 fastest ranked completions of **all seasons** (not one season; seen
+  22 Oct 2026: rows `{rank, id, season, date, time, user, seed}`, 5:41–6:27, seasons 3–12), so a
+  run older than `POOL_MAX_AGE_DAYS` (VODs gone) or by a blocked runner is marked seen in
+  `.record-watch.json` (`{seen: {id: iso}, asks: {id: {at, label, answer?}}}`) without a
+  `getMatch`. The rest go through fast-track's own gates on `computeMetrics`: blocked, DNF,
+  one-sided (`finishMarginMs === null`) or already processed is seen for good; an unknown pair
+  stays unseen (follower counts may still come in); `isReallyGood` decides the rest (every
+  leaderboard run is sub-8). Behind the tick's own gates (one fast-track a UTC day, no nightly
+  chain running, `renderBudgetLeft > 0`): a run within 48h joins the pool's candidates (merged
+  if the pool already has it) and renders like any hit, its `reason` ending "record pace m:ss";
+  an older one with VODs still findable is put to the operator by `src/telegram/recordAsk.ts`
+  ("Record pace: A vs B, m:ss. Queue it for tonight?" + the magmamcsr link, `r:<id>:q` /
+  `r:<id>:s`, gated in `index.ts` like every button), at most 2 asks a UTC day, one per id ever
+  (an asked id is seen). Queue appends to tonight's queue with `setNightlyQueue`, as the
+  dashboard's own button does (the nightly still applies the block list, DNF and night cap);
+  Skip only closes the ask. An older run whose VODs are gone is seen without an ask. "Record"
+  and the run time live only in the hit's `reason` and the ask: `recordAsk.ts` is imported by
+  `index.ts` alone, nothing else reads `.record-watch.json`, and `fastTrack.ts` is imported only
+  by `server.ts`, `fastTrackAsk.ts` and `recordAsk.ts` (`recordAsk.contract.test.ts` checks all
+  three), so no title, hook, description or model prompt can carry it. No "fastest runs"
+  playlist: its membership would name the winner.
 - **Evening coverage**: "just make sure there are matches to upload for the evening." Before this,
   the nightly's only sense of "how much to render" was a flat count (`nightlyMaxRenders`, default
   1) chained within a 4h window of the scheduled hour — it has no notion of whether a publish slot

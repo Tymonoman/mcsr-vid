@@ -153,6 +153,19 @@ export interface MatchInfo {
  */
 export type FeedMatch = Omit<MatchInfo, "timelines" | "completions">;
 
+/** One `GET /record-leaderboard` row (seen 22 Oct 2026): the 100 fastest ranked completions of all
+ *  seasons, fastest first. Only what the record watch reads; the row also carries `rank`,
+ *  `season`, the runner's elo and the seed. */
+export interface RecordRun {
+  /** The match id. */
+  id: number;
+  /** Unix seconds. */
+  date: number;
+  /** The completion, ms. */
+  time: number;
+  user: { uuid: string; nickname: string };
+}
+
 /** A seeded entrant of a playoff bracket (`/playoffs`). `seasonEloRate` is the frozen season-end rating. */
 export interface PlayoffPlayer {
   uuid: string;

@@ -16,6 +16,7 @@ import { knowledgeFor } from "./knowledge.js";
 import { BOT_COMMANDS, HELP_TEXT, parseCommand, parseStatsWindows, type ParsedCommand } from "./commands.js";
 import { handleFastTrackCallback } from "./fastTrackAsk.js";
 import { handleGrowthCallback } from "./growthLine.js";
+import { handleRecordCallback } from "./recordAsk.js";
 import { handleTitleCallback } from "./titlePicker.js";
 import {
   dashboardMatchUrl,
@@ -341,7 +342,9 @@ export async function handleUpdate(update: bot.TgUpdate): Promise<void> {
         ? handleFastTrackCallback
         : data.startsWith("g:")
           ? handleGrowthCallback
-          : handleTitleCallback;
+          : data.startsWith("r:")
+            ? handleRecordCallback
+            : handleTitleCallback;
       await handler(update.callback_query).catch((err: unknown) =>
         console.error(`telegram: callback failed — ${describeError(err)}`),
       );

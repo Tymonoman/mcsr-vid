@@ -17,15 +17,23 @@
  * house rules keep this dashboard off of. A fast-tracked match renders now and then claims a
  * publish slot the ordinary way (`claimSlot`/`videoPublishTime`, `src/dashboard/shortFlow.ts`)
  * once its hooks are saved, same as every other match — see the handbook for the full rationale.
+ *
+ * The record watch (22 Oct 2026, the growth plan's idea 3) is a second candidate source: the API's
+ * record leaderboard (`recordCandidates`). A run on it within the 48h window joins the pool's
+ * candidates; an older one is put to the operator instead (`src/telegram/recordAsk.ts`), queued
+ * for tonight on a yes. "Record" and the run time stay in the reason and the ask: nothing that
+ * names or orders a video reads either (no "fastest runs" playlist: its membership names the
+ * winner).
  */
 import { readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { blockedIn, config, matchDir } from "../config.js";
 import { describeError } from "../errorText.js";
-import { getMatch } from "../api/mcsrApi.js";
-import { metricsDnf, type MatchMetrics } from "../pipeline/matchScore.js";
+import { getMatch, getRecordLeaderboard } from "../api/mcsrApi.js";
+import type { MatchInfo, RecordRun } from "../api/types.js";
+import { computeMetrics, metricsDnf, type MatchMetrics } from "../pipeline/matchScore.js";
 import { withDiscoveredVods } from "../pipeline/vodDiscovery.js";
-import { knownTierFor, pooledMatches, scanKnowledge } from "./suggest.js";
+import { knownTierFor, POOL_MAX_AGE_DAYS, pooledMatches, scanKnowledge } from "./suggest.js";
 import { pairKey } from "./pairPosts.js";
 import { blockedOnDisk, listProcessedMatchIds } from "./matchStatus.js";
 import { startJob, type Job } from "./jobs.js";
@@ -115,6 +123,110 @@ export function fastTrackSince(
 
 const utcDate = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
 
+/* --- The record watch ---------------------------------------------------------------------------- */
+
+/** "One ask per id ever, at most 2 asks a day" (the record-watch brief, 22 Oct 2026). */
+export const MAX_RECORD_ASKS_PER_DAY = 2;
+
+/** `.record-watch.json`: every leaderboard id settled for good, and the asks sent. An id in
+ *  `seen` is never fetched again; every asked id is also seen, so it is never asked twice. */
+export interface RecordWatchState {
+  seen: Record<string, string>;
+  asks: Record<string, { at: string; label: string; answer?: "queue" | "skip" }>;
+}
+
+const recordWatchPath = (): string => path.join(config.mediaDir, ".record-watch.json");
+
+export function readRecordWatch(): RecordWatchState {
+  try {
+    const parsed = JSON.parse(readFileSync(recordWatchPath(), "utf8")) as Partial<RecordWatchState>;
+    return { seen: parsed.seen ?? {}, asks: parsed.asks ?? {} };
+  } catch {
+    return { seen: {}, asks: {} };
+  }
+}
+
+/** Read, change, write in one synchronous step, so the tick and a button press (same process)
+ *  never write over each other's change across an await. */
+export function updateRecordWatch(change: (s: RecordWatchState) => void): void {
+  const state = readRecordWatch();
+  change(state);
+  const file = recordWatchPath();
+  writeFileSync(`${file}.tmp`, JSON.stringify(state, null, 2));
+  renameSync(`${file}.tmp`, file);
+}
+
+const markSeen = (matchId: number, nowMs: number): void =>
+  updateRecordWatch((s) => {
+    s.seen[String(matchId)] = new Date(nowMs).toISOString();
+  });
+
+/** What the operator is asked about: built into text by `src/telegram/recordAsk.ts` alone. */
+export interface RecordAsk {
+  matchId: number;
+  players: readonly [string, string];
+  timeMs: number;
+}
+
+/** Registered by `src/telegram/recordAsk.ts` (this module never imports it, same seam as
+ *  `setFastTrackUploadedHook`); resolves true once the ask is sent. */
+let recordAskHook: ((ask: RecordAsk) => Promise<boolean>) | null = null;
+export const setRecordAskHook = (hook: (ask: RecordAsk) => Promise<boolean>): void => {
+  recordAskHook = hook;
+};
+
+export interface RecordCandidate {
+  metrics: MatchMetrics;
+  dateSec: number;
+  timeMs: number;
+}
+
+/**
+ * The record leaderboard's new runs that pass fast-track's own gates: not blocked, not a DNF,
+ * both runners finished, not processed, a known pair (`isReallyGood`; every leaderboard run is
+ * sub-8). A run past `POOL_MAX_AGE_DAYS` (its VODs are gone), blocked, a DNF, one-sided or already
+ * processed is marked seen and never fetched again; an unknown pair is not, since the scan's
+ * follower counts can still come in.
+ */
+export async function recordCandidates(
+  nowMs: number,
+  known: (players: readonly [string, string]) => boolean,
+  processed: ReadonlySet<number>,
+  deps: { records: () => Promise<RecordRun[]>; match: (matchId: number) => Promise<MatchInfo> },
+): Promise<RecordCandidate[]> {
+  const seen = readRecordWatch().seen;
+  const out: RecordCandidate[] = [];
+  for (const run of await deps.records()) {
+    if (String(run.id) in seen) continue;
+    if (nowMs - run.date * 1000 > POOL_MAX_AGE_DAYS * 86_400_000 || blockedIn([run.user.nickname])) {
+      markSeen(run.id, nowMs);
+      continue;
+    }
+    let metrics: MatchMetrics;
+    try {
+      metrics = computeMetrics(await deps.match(run.id));
+    } catch (err) {
+      console.error(`record watch: #${run.id} unreadable — ${describeError(err)}`);
+      continue;
+    }
+    if (
+      blockedIn(metrics.players) ||
+      metricsDnf(metrics) ||
+      metrics.finishMarginMs === null ||
+      processed.has(run.id)
+    ) {
+      markSeen(run.id, nowMs);
+      continue;
+    }
+    if (isReallyGood(metrics, known)) out.push({ metrics, dateSec: run.date, timeMs: run.time });
+  }
+  return out;
+}
+
+/** m:ss, for the reason and the ask. */
+export const runClock = (ms: number): string =>
+  `${Math.floor(ms / 60_000)}:${String(Math.floor((ms % 60_000) / 1000)).padStart(2, "0")}`;
+
 export interface FastTrackDeps {
   /** Both VODs findable — the pipeline's own first step, same call `nightly.ts`'s
    *  `playoffVodsReady`/`creatorWatch.ts`'s `checkVods` already make. */
@@ -122,6 +234,11 @@ export interface FastTrackDeps {
   /** Starts the render — `startJob` by default; injected so a test never has to let the real
    *  pipeline run to settle just to see that a render was requested. */
   startRender: (matchId: number) => Job;
+  /** The record leaderboard; left out, the record watch does nothing (the pool-only tests). */
+  records?: () => Promise<RecordRun[]>;
+  match?: (matchId: number) => Promise<MatchInfo>;
+  /** Sends the record ask; true once sent. */
+  ask?: (ask: RecordAsk) => Promise<boolean>;
 }
 
 const liveDeps: FastTrackDeps = {
@@ -130,6 +247,9 @@ const liveDeps: FastTrackDeps = {
     return match.players.every((p) => match.vod.some((v) => v.uuid === p.uuid));
   },
   startRender: startJob,
+  records: getRecordLeaderboard,
+  match: getMatch,
+  ask: async (ask) => (recordAskHook ? recordAskHook(ask) : false),
 };
 
 /** Guards a slow VOD probe outlasting the 15-minute cadence this is called on. */
@@ -159,12 +279,33 @@ export async function fastTrackTick(
       config.knownFollowerThreshold,
     );
     const processed = new Set(listProcessedMatchIds());
-    const candidates = pooledMatches()
-      .filter((entry) => nowMs - entry.dateSec * 1000 <= FAST_TRACK_WINDOW_MS)
+    const pool: Array<{ metrics: MatchMetrics; dateSec: number; recordMs?: number }> = pooledMatches()
       .filter((entry) => !metricsDnf(entry.metrics))
       .filter((entry) => !blockedIn(entry.metrics.players))
       .filter((entry) => !processed.has(entry.metrics.matchId))
-      .filter((entry) => isReallyGood(entry.metrics, known))
+      .filter((entry) => isReallyGood(entry.metrics, known));
+
+    let records: RecordCandidate[] = [];
+    if (deps.records && deps.match) {
+      try {
+        records = await recordCandidates(nowMs, known, processed, { records: deps.records, match: deps.match });
+      } catch (err) {
+        console.error(`record watch: leaderboard unreadable — ${describeError(err)}`);
+      }
+    }
+    for (const r of records) {
+      if (nowMs - r.dateSec * 1000 <= FAST_TRACK_WINDOW_MS) {
+        // Often already in the pool (it scans the same days): one candidate, marked a record.
+        const inPool = pool.find((e) => e.metrics.matchId === r.metrics.matchId);
+        if (inPool) inPool.recordMs = r.timeMs;
+        else pool.push({ metrics: r.metrics, dateSec: r.dateSec, recordMs: r.timeMs });
+      } else {
+        await askAboutRecord(r, nowMs, deps);
+      }
+    }
+
+    const candidates = pool
+      .filter((entry) => nowMs - entry.dateSec * 1000 <= FAST_TRACK_WINDOW_MS)
       // Newest first: "it's recent" (question 8) — of several really-good matches, the freshest
       // one is the one worth beating a rival channel's own upload to.
       .sort((a, b) => b.dateSec - a.dateSec);
@@ -186,7 +327,9 @@ export async function fastTrackTick(
 
       const label = `${players[0]} vs ${players[1]}`;
       // isReallyGood already refused a null margin: both runners finished.
-      const reason = `${label}, ${entry.metrics.finishMarginMs}ms margin, ${(entry.metrics.resultMs / 1000).toFixed(1)}s run`;
+      const reason =
+        `${label}, ${entry.metrics.finishMarginMs}ms margin, ${(entry.metrics.resultMs / 1000).toFixed(1)}s run` +
+        (entry.recordMs === undefined ? "" : `, record pace ${runClock(entry.recordMs)}`);
       console.error(`fast-track: starting render of #${matchId} ${label} (${reason})`);
 
       state.lastDate = utcDate(nowMs);
@@ -212,4 +355,31 @@ export async function fastTrackTick(
   } finally {
     ticking = false;
   }
+}
+
+/**
+ * An older record run (past the 48h window) is the operator's call: one ask, queued for tonight
+ * on Queue (`src/telegram/recordAsk.ts`). Its VODs must still be findable; past the window an
+ * archive that is not there will not appear, so a miss marks it seen.
+ */
+async function askAboutRecord(r: RecordCandidate, nowMs: number, deps: FastTrackDeps): Promise<void> {
+  const today = utcDate(nowMs);
+  const asks = Object.values(readRecordWatch().asks);
+  if (asks.filter((a) => utcDate(Date.parse(a.at)) === today).length >= MAX_RECORD_ASKS_PER_DAY) return;
+  const { matchId, players } = r.metrics;
+  try {
+    if (!(await deps.checkVods(matchId))) {
+      markSeen(matchId, nowMs);
+      return;
+    }
+    if (!(await deps.ask?.({ matchId, players, timeMs: r.timeMs }))) return;
+  } catch (err) {
+    console.error(`record watch: ask for #${matchId} failed — ${describeError(err)}`);
+    return;
+  }
+  const at = new Date(nowMs).toISOString();
+  updateRecordWatch((s) => {
+    s.seen[String(matchId)] = at;
+    s.asks[String(matchId)] = { at, label: `${players[0]} vs ${players[1]}` };
+  });
 }

@@ -228,6 +228,16 @@ export async function editMessageCaption(
   });
 }
 
+/** `editMessageCaption` for a text message: replaces its text and clears its buttons. */
+export async function editMessageText(chat: string | number, messageId: number, text: string): Promise<void> {
+  await call("editMessageText", {
+    chat_id: chat,
+    message_id: messageId,
+    text,
+    reply_markup: { inline_keyboard: [] },
+  });
+}
+
 /** Clears the "loading" spinner on a pressed button, optionally with a short toast. Never thrown
  *  on past this call's own `call()` — titlePicker.ts wraps every use so a malformed callback or a
  *  dropped connection here never takes the poller down. */

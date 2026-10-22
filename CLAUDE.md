@@ -262,15 +262,15 @@ reload). After merging server changes, `POST /api/restart-when-idle`.
   per-player DM. Publish-at is editable; slot rules are warnings, never refusals.
   **Publish checklist**: facts from disk + toggles in `publish.json`; Delete refuses while any job
   writes into the match directory.
-- **Nightly** (`src/dashboard/nightly.ts`): at `nightlyRenderHourUtc` (default 3 UTC, null
-  disables) renders the first eligible card, then the MP4, then queues the Short's pick; Short and
-  upload wait for the operator's hooks. **A candidate also needs a known player** unless the
-  operator queued it; a playoff pick always counts; the block list and the night cap outrank the
-  queue. Chains skip repeats; chain, coverage and fast-track share one cap (`renderBudget.ts`:
-  `nightlyMaxRenders` + 1 per Telegram veto, credited to the next render). **A test server arms its own
-  nightly too**: any `PORT=… npm run dashboard` schedules against the same `/media`; kill it
-  before the hour, or set `nightlyRenderHourUtc: null` for it. Chain resume, YouTube retries and
-  the 15-minute tick run only on 8080.
+- **Nightly** (`src/dashboard/nightly.ts`): at `nightlyRenderHourUtc` (3 UTC; null = off)
+  renders the first eligible card, its MP4, then queues the Short's pick; Short and upload wait
+  for the hooks. **A candidate needs a known player** unless queued; a playoff pick always counts;
+  the block list and night cap outrank the queue. Chains skip repeats; chain, coverage and
+  fast-track share one cap (`renderBudget.ts`: `nightlyMaxRenders` + 1 per Telegram veto,
+  credited to the next render). Fast-track also reads the record leaderboard (past 48h: a
+  Telegram Queue/Skip ask). **A test server arms its own nightly too**: any `PORT=…` dashboard
+  schedules on the same `/media`; kill it before the hour or null its `nightlyRenderHourUtc`.
+  Chain resume, YouTube retries and the 15-min tick: 8080 only.
 - **The experiment engine runs between-video A/B tests unattended** (`src/dashboard/experiments.ts`
   + `experimentsEvaluator.ts`) from `.experiments.json` (atomic write, never rewritten while
   corrupt; `"tc"` = Studio's Test & Compare, untouched). A tick before `nightlyRenderHourUtc`
