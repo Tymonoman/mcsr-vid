@@ -389,11 +389,11 @@ by `studioAutomation` (not writable from Settings).
   with no editor (`endScreensThisCycle`). Shares one `finished.pin` field with the dashboard's pin
   path.
 
-## Clips (prototype)
+## Clips and trailer
 
-A video that is not a match (`remotion/ClipFrame.tsx`): `npm run clip` writes
-`<mediaDir>/clips/<slug>/clip-<slug>.mp4`; **nothing here uploads or posts anywhere**; every
-`mediaDir` scan (`/^\d+$/`) skips `clips/`.
+`npm run clip` (`remotion/ClipFrame.tsx`) writes `<mediaDir>/clips/<slug>/clip-<slug>.mp4`, which
+`mediaDir` scans skip; `scripts/trailer/build.py` cuts the channel trailer (`handbook/trailer.md`).
+**Neither uploads.**
 
 ## Chat replay (prototype)
 
