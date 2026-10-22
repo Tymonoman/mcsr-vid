@@ -194,8 +194,8 @@ reload). After merging server changes, `POST /api/restart-when-idle`.
   (`chat-<nick>.json`) **and** the title's "A vs B" pair, so a match archived off disk is still
   caught (the Studio worker's `realIsBlocked` shares this check).
   A blocked match leaves the suggestion pool even if already in it, never shown however stale the
-  cache; **never rendered by the nightly even if queued (the block is the only gate that
-  outranks the queue)**; never "worth rendering today", never uploaded (long-form or Short), never
+  cache; **never rendered by the nightly even if queued (the block and the night cap are the gates
+  that outrank the queue)**; never "worth rendering today", never uploaded (long-form or Short), never
   given saved hooks, never rendered by `npm run short`/`short:hand` even by hand, never a past-hook
   style example. `finishOnYouTube` carries the refusal to Adopt/Finish/nightly-retry alike; Adopt
   also refuses before `videos.update`; `POST /api/render` and `POST /api/series/:id/render` refuse
@@ -266,9 +266,9 @@ reload). After merging server changes, `POST /api/restart-when-idle`.
 - **Nightly** (`src/dashboard/nightly.ts`): at `nightlyRenderHourUtc` (default 3 UTC, null
   disables) renders the first eligible card, then the MP4, then queues the Short's pick; Short and
   upload wait for the operator's hooks. **A candidate also needs a known player** unless the
-  operator queued it; a playoff pick always counts; the block list outranks the queue. Chains
-  skip repeats; chain, coverage and fast-track share one night cap (`renderBudget.ts`:
-  `nightlyMaxRenders` + 1 per Telegram veto in 24 h). **A test server arms its own
+  operator queued it; a playoff pick always counts; the block list and the night cap outrank the
+  queue. Chains skip repeats; chain, coverage and fast-track share one cap (`renderBudget.ts`:
+  `nightlyMaxRenders` + 1 per Telegram veto, credited to the next render). **A test server arms its own
   nightly too**: any `PORT=… npm run dashboard` schedules against the same `/media`; kill it
   before the hour, or set `nightlyRenderHourUtc: null` for it. Chain resume, YouTube retries and
   the 15-minute tick run only on 8080.

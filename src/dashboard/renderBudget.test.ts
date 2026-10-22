@@ -7,7 +7,7 @@ import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { config } from "../config.js";
-import { nightKey, recentVetoes, recordNightRender, renderBudgetLeft, rendersTonight } from "./renderBudget.js";
+import { nightKey, recentVetoes, recordNightRender, renderBudgetLeft, rendersTonight, vetoNight } from "./renderBudget.js";
 
 const media = mkdtempSync(path.join(tmpdir(), "mcsr-budget-"));
 assert.ok(media.startsWith(tmpdir()), "refusing to run outside tmpdir");
@@ -33,8 +33,13 @@ const offers = {
   "10": { messageId: 1, options: [], source: [], at: "", vetoedAt: "2026-10-22T10:00:00Z" },
   "11": { messageId: 2, options: [], source: [], at: "", vetoedAt: "2026-10-21T01:00:00Z" },
   "12": { messageId: 3, options: [], source: [], at: "" },
+  "13": { messageId: 4, options: [], source: [], at: "", vetoedAt: "2026-10-23T02:00:00Z" },
 } as never;
-assert.equal(recentVetoes(now, offers), 1, "only the veto inside 24 h counts; an undone one has no vetoedAt");
+assert.equal(recentVetoes(now, offers), 2, "a morning veto buys the next night, a 02:00 veto the same night; an undone one has no vetoedAt");
+// One night per veto: the 10:00 veto counts for the 23rd's render and never again on the 24th.
+assert.equal(recentVetoes(at("2026-10-24T03:00:00Z"), offers), 0, "a veto is never credited to two nights");
+assert.equal(vetoNight(at("2026-10-22T10:00:00Z")), nightKey(at("2026-10-23T03:00:00Z")));
+assert.equal(vetoNight(at("2026-10-22T20:00:00Z")), nightKey(at("2026-10-23T03:00:00Z")));
 
 await rm(media, { recursive: true, force: true });
 console.log("renderBudget.test.ts: ok");

@@ -1174,7 +1174,13 @@ async function runOnce(
     }
     console.error(`nightly: starting render of #${matchId} ${label}`);
     lastStartedId = matchId;
-    if (scheduled) recordNightRender(matchId, now());
+    if (scheduled) {
+      try {
+        recordNightRender(matchId, now());
+      } catch (err) {
+        console.error(`nightly: render ledger write failed — ${describeError(err)}`);
+      }
+    }
     // This chain's own diversity memory, and the weekly mixed-pair budget — spent the moment the
     // render actually starts, whichever source picked it (ranked list or the operator's queue).
     chainPairs.add(pairKey(players));
@@ -1239,6 +1245,8 @@ async function runOnce(
           scheduled &&
           withinChainWindow(Date.now(), config.nightlyRenderHourUtc) &&
           coverageRendersTonight < EVENING_COVERAGE_MAX_PER_NIGHT &&
+          // The shared night cap (22 Oct 2026) covers coverage too: no scan when it cannot render.
+          renderBudgetLeft(now()) > 0 &&
           (await liveEveningCoverageGap(Date.now()).catch((err: unknown) => {
             console.error(`nightly: evening-coverage check failed — ${describeError(err)}`);
             return 0;

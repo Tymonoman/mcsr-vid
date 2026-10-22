@@ -180,6 +180,9 @@ export async function fastTrackTick(
         continue;
       }
       if (!hasVods) continue;
+      // The VOD probe is slow network: the 03:00 nightly may have started (or spent the cap) since
+      // the checks at the top of this tick.
+      if (nightlyChainRunning() || renderBudgetLeft(nowMs) <= 0) return;
 
       const label = `${players[0]} vs ${players[1]}`;
       // isReallyGood already refused a null margin: both runners finished.
@@ -189,7 +192,11 @@ export async function fastTrackTick(
       state.lastDate = utcDate(nowMs);
       state.hits.push({ matchId, players: label, at: new Date(nowMs).toISOString(), reason });
       writeFastTrackState(state);
-      recordNightRender(matchId, nowMs);
+      try {
+        recordNightRender(matchId, nowMs);
+      } catch (err) {
+        console.error(`fast-track: render ledger write failed — ${describeError(err)}`);
+      }
 
       if (config.nightlyRenderExport) requestExport(matchId);
       const job = deps.startRender(matchId);
