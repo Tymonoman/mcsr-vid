@@ -64,8 +64,8 @@ assert.deepEqual(readExperiments().schedule, [{ date: "2026-10-08", experimentId
   assert.equal(rankedHoursForDate("2026-10-30", data), undefined, "no entry at all — the no-entry path");
 
   assert.equal(shortDelayMsForDate("2026-10-09", data), 6 * 3600_000);
-  assert.equal(shortDelayMsForDate("2026-10-10", data), undefined, "72 h is out of the 1-48 range");
-  assert.equal(shortDelayMsForDate("2026-10-11", data), undefined, "0 h is out of range too");
+  assert.equal(shortDelayMsForDate("2026-10-10", data), undefined, "72 h is out of the -6..48 range");
+  assert.equal(shortDelayMsForDate("2026-10-11", data), 0, "0 h: the Short at the long-form's own minute");
   assert.equal(shortDelayMsForDate("2026-10-30", data), undefined, "no entry at all");
 }
 
@@ -548,6 +548,53 @@ assert.deepEqual(readExperiments().schedule, [{ date: "2026-10-08", experimentId
   };
   assert.equal(shortDelayMsForDate("2026-10-08", data), 1 * 3600_000, "1 h is the low edge, included");
   assert.equal(shortDelayMsForDate("2026-10-09", data), 48 * 3600_000, "48 h is the high edge, included");
+}
+
+// --- shortDelayMsForDate: a negative delay is a teaser Short, public BEFORE the long-form (x6) --
+{
+  const data = {
+    experiments: [],
+    schedule: [
+      { date: "2026-10-24", experimentId: "x6", arm: "before", slot: { shortDelayHours: -2 } },
+      { date: "2026-10-25", experimentId: "x6", arm: "edge", slot: { shortDelayHours: -6 } },
+      { date: "2026-10-26", experimentId: "x6", arm: "too-early", slot: { shortDelayHours: -7 } },
+      { date: "2026-10-27", experimentId: "x6", arm: "nan", slot: { shortDelayHours: Number.NaN } },
+    ],
+  };
+  assert.equal(shortDelayMsForDate("2026-10-24", data), -2 * 3600_000, "-2 h: two hours before");
+  assert.equal(shortDelayMsForDate("2026-10-25", data), -6 * 3600_000, "-6 h is the low edge, included");
+  assert.equal(shortDelayMsForDate("2026-10-26", data), undefined, "-7 h is out of range");
+  assert.equal(shortDelayMsForDate("2026-10-27", data), undefined, "NaN is nothing set");
+}
+
+// --- slotEntriesFor: two slot experiments on one date, each owning its own field ----------------
+{
+  const { slotEntriesFor } = await import("./experiments.js");
+  const data = {
+    experiments: [],
+    schedule: [
+      { date: "2026-10-24", experimentId: "render-x", arm: "r", render: { introSec: 4 } },
+      { date: "2026-10-24", experimentId: "cadence", arm: "two-a-day", slot: { rankedHoursUtc: [23, 19] } },
+      { date: "2026-10-24", experimentId: "x6", arm: "before", slot: { shortDelayHours: -2 } },
+      { date: "2026-10-25", experimentId: "old-shape", arm: "untagged" },
+      { date: "2026-10-26", experimentId: "render-only", arm: "r", render: { introSec: 4 } },
+    ],
+  };
+  assert.deepEqual(
+    slotEntriesFor("2026-10-24", data).map((s) => s.experimentId),
+    ["cadence", "x6"],
+    "every slot-tagged entry, never the render one",
+  );
+  assert.equal(slotEntryFor("2026-10-24", data)?.experimentId, "cadence", "slotEntryFor is still the first");
+  assert.deepEqual(rankedHoursForDate("2026-10-24", data), [19, 23], "the hours come from the cadence entry");
+  assert.equal(shortDelayMsForDate("2026-10-24", data), -2 * 3600_000, "the delay from x6's, not swallowed");
+  assert.deepEqual(
+    slotEntriesFor("2026-10-25", data).map((s) => s.arm),
+    ["untagged"],
+    "an untagged entry still counts",
+  );
+  assert.deepEqual(slotEntriesFor("2026-10-26", data), [], "a render-only date has no slot entry");
+  assert.deepEqual(slotEntriesFor("2026-10-30", data), [], "no entry at all");
 }
 
 // --- applyScheduledRenderArm: the lead window's own edge (exactly RENDER_ARM_LEAD_MS out) applies -

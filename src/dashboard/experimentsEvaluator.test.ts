@@ -772,6 +772,48 @@ function avpOnly(n: number): VideoMetrics[] {
   );
 }
 
+// --- enrolVideos: two slot experiments on one date each enrol the upload (cadence + x6) ---------
+{
+  await fixtureUpload(940001, { videoId: "sv5", publishAt: "2026-10-24T19:00:00Z" });
+  const hours = baseExperiment({
+    id: "hours-x",
+    end: "2026-11-20",
+    controlArm: "two-a-day",
+    arms: [{ name: "two-a-day", slot: { rankedHoursUtc: [19, 23] } }],
+    videos: [],
+  });
+  const teaser = baseExperiment({
+    id: "teaser-x",
+    end: "2026-11-20",
+    controlArm: "after",
+    arms: [
+      { name: "after", slot: { shortDelayHours: 18 } },
+      { name: "before", slot: { shortDelayHours: -2 } },
+    ],
+    videos: [],
+  });
+  writeExperiments({
+    experiments: [hours, teaser],
+    schedule: [
+      { date: "2026-10-24", experimentId: "hours-x", arm: "two-a-day", slot: { rankedHoursUtc: [19, 23] } },
+      { date: "2026-10-24", experimentId: "teaser-x", arm: "before", slot: { shortDelayHours: -2 } },
+    ],
+  });
+  const fetch = async (): Promise<VideoMetrics | null> => video(3, 40, 5000, 2);
+  await evaluateExperiments({ fetch, now: () => Date.parse("2026-10-25T00:15:00Z") });
+  const after = readExperiments().experiments;
+  assert.deepEqual(
+    after.find((e) => e.id === "hours-x")?.videos.map((v) => v.matchId),
+    [940001],
+    "the publish-hour experiment enrolled it",
+  );
+  assert.equal(
+    after.find((e) => e.id === "teaser-x")?.videos.find((v) => v.matchId === 940001)?.arm,
+    "before",
+    "the Short-delay experiment enrolled it too, under the date's own arm",
+  );
+}
+
 // --- evaluateExperiments: a concurrent edit to a DONE experiment's own field survives -----------
 // (review fix, 8 Oct 2026): before this, `touched` was seeded with *every* between experiment —
 // done or planned included — regardless of whether `enrolVideos` found anything new for it, so

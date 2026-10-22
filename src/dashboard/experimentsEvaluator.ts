@@ -20,7 +20,7 @@ import { readUpload } from "../youtube/youtubeStore.js";
 import { totalReach } from "./youtubeRoutes.js";
 import {
   readExperimentsOrNull,
-  slotEntryFor,
+  slotEntriesFor,
   writeExperiments,
   type Experiment,
   type ExperimentArm,
@@ -361,7 +361,7 @@ function settle(exp: Experiment, verdict: Verdict): void {
  *      it rendered under; `videoId` comes from `youtube.json` when the match has one by now — a
  *      match not yet uploaded is enrolled anyway and simply has no metrics to fetch until it is.
  *  (b) SLOT experiments: a long-form upload record (`youtube.json`, never a Short) whose publish
- *      time (`publishAt`, else `uploadedAt`) falls on a date whose slot entry (`slotEntryFor`)
+ *      time (`publishAt`, else `uploadedAt`) falls on a date whose slot entries (`slotEntriesFor`)
  *      names the experiment; the arm is the arm whose own `slot.rankedHoursUtc` is exactly that
  *      one publish hour (an hour-split experiment: two hours a day, each its own arm) when such
  *      an arm exists, else the schedule entry's own `arm`.
@@ -395,18 +395,19 @@ async function enrolVideos(data: ExperimentsFile): Promise<void> {
       }
     }
 
-    // (b) This match's own upload, if its publish date names a slot experiment.
+    // (b) This match's own upload, into every slot experiment its publish date names (a
+    // publish-hour experiment and a Short-delay experiment can share a date).
     if (!upload) continue;
     const publishIso = upload.publishAt ?? upload.uploadedAt;
-    const entry = slotEntryFor(publishIso.slice(0, 10), data);
-    if (!entry) continue;
-    const exp = byId.get(entry.experimentId);
-    if (!exp || exp.videos.some((v) => v.matchId === matchId)) continue;
-    const hour = new Date(publishIso).getUTCHours();
-    const hourArm = exp.arms.find(
-      (a) => a.slot?.rankedHoursUtc?.length === 1 && a.slot.rankedHoursUtc[0] === hour,
-    );
-    exp.videos.push({ matchId, arm: hourArm?.name ?? entry.arm, videoId: upload.videoId });
+    for (const entry of slotEntriesFor(publishIso.slice(0, 10), data)) {
+      const exp = byId.get(entry.experimentId);
+      if (!exp || exp.videos.some((v) => v.matchId === matchId)) continue;
+      const hour = new Date(publishIso).getUTCHours();
+      const hourArm = exp.arms.find(
+        (a) => a.slot?.rankedHoursUtc?.length === 1 && a.slot.rankedHoursUtc[0] === hour,
+      );
+      exp.videos.push({ matchId, arm: hourArm?.name ?? entry.arm, videoId: upload.videoId });
+    }
   }
 }
 
