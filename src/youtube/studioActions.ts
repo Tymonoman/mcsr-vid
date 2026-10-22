@@ -1031,6 +1031,7 @@ export async function startTestAndCompare(
         .isVisible()
         .catch(() => false);
     let settable = await formShown();
+    let clickedNewTest = false;
     if (!settable) {
       // A finished test's report blocks the form (22 Oct 2026: three concept tests planned on
       // videos whose earlier test had finished); its own "New test" button clears it. A running
@@ -1038,6 +1039,7 @@ export async function startTestAndCompare(
       const newTest = page.locator(SELECTORS.abTestNewTestButton).first();
       if (await newTest.isVisible().catch(() => false)) {
         await shot(handle, opts.matchId, "tc-finished-report");
+        clickedNewTest = true;
         await newTest.click();
         await page
           .locator(SELECTORS.abTestSetButton)
@@ -1055,8 +1057,9 @@ export async function startTestAndCompare(
         .click()
         .catch(() => {});
       return {
-        error:
-          "the dialog did not show a fresh test form — a test may already be set up; check Studio by hand",
+        error: clickedNewTest
+          ? "New test was clicked on a finished report but no fresh form followed; see studio-tc-finished-report-*.png and check Studio by hand"
+          : "the dialog did not show a fresh test form — a test may already be set up; check Studio by hand",
       };
     }
 

@@ -25,6 +25,8 @@
  * tc-plan: turns an approved judge's plan (tc-plan.json's own shape) into planned "tc" experiments
  *      in `<mediaDir>/.experiments.json` — idempotent, prints what it added and what it skipped
  *      and why. Opens no browser.
+ * tc-reset: puts done tc experiments back to planned, result cleared (`resetTcExperiments`), for a
+ *      result that was never theirs — the worker then starts them. Opens no browser.
  * related: checks a Short's "Related video" field against its own long-form — only ever opens
  *      the picker, searches, and reports `"already-linked"`/`"picker-empty"`/an error; never
  *      selects or saves anything. No `--dry-run`: there is nothing destructive to stop short of.
@@ -55,7 +57,7 @@ import {
   type StudioHandle,
 } from "./studioBrowser.js";
 import { finishLogin, startLogin } from "../dashboard/studioLogin.js";
-import { importTcPlan, type TcPlan } from "./studioExperiments.js";
+import { importTcPlan, resetTcExperiments, type TcPlan } from "./studioExperiments.js";
 import { END_SCREEN_TEMPLATE_VIDEO_ID, runWorker } from "./studioWorker.js";
 
 const [command, ...rest] = process.argv.slice(2);
@@ -69,7 +71,7 @@ function usage(): never {
     "usage: npm run studio -- probe | pin <matchId|videoId> [--dry-run] | login [--profile-dir=<path>]" +
       " | endscreen <matchId|videoId> [--dry-run]" +
       " | tc <matchId|videoId> title|thumbnail <variant…> [--dry-run] | tc-read <matchId|videoId>" +
-      " | worker [--once] [--dry-run] [--enable] | tc-plan <plan.json>" +
+      " | worker [--once] [--dry-run] [--enable] | tc-plan <plan.json> | tc-reset <experimentId…>" +
       " | related <shortId|matchId> <longFormVideoId>" +
       " | link-related <shortId|matchId> <longFormVideoId> [--dry-run]",
   );
@@ -297,6 +299,13 @@ async function tcPlanCmd(file: string | undefined): Promise<void> {
   console.log(`${added.length} planned, ${skipped.length} skipped`);
 }
 
+async function tcResetCmd(ids: string[]): Promise<void> {
+  if (ids.length === 0) usage();
+  const { reset, skipped } = await resetTcExperiments(ids);
+  for (const id of reset) console.log(`planned again: ${id}`);
+  for (const id of skipped) console.log(`skipped ${id}: not a done tc experiment`);
+}
+
 switch (command) {
   case "probe":
     await probeCmd();
@@ -321,6 +330,9 @@ switch (command) {
     break;
   case "tc-plan":
     await tcPlanCmd(args[0]);
+    break;
+  case "tc-reset":
+    await tcResetCmd(args);
     break;
   case "related":
     await relatedCmd(args[0], args[1]);

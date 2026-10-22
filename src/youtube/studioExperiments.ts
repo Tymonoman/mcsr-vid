@@ -177,6 +177,24 @@ export async function updateTcExperiments(
   });
 }
 
+/**
+ * Puts `"done"` tc experiments back to `"planned"` with their result cleared, so the worker starts
+ * them: for a result that was never theirs (22 Oct 2026: three `-concepts` tests recorded with an
+ * earlier experiment's finished report). A `"running"` one tracks a live test and is left alone.
+ */
+export async function resetTcExperiments(ids: readonly string[]): Promise<{ reset: string[]; skipped: string[] }> {
+  const reset: string[] = [];
+  await updateTcExperiments((tc) =>
+    tc.map((e) => {
+      if (!ids.includes(e.id) || e.status !== "done") return e;
+      reset.push(e.id);
+      const { result: _r, verdict: _v, needsHuman: _n, needsHumanAck: _a, ...rest } = e;
+      return { ...rest, status: "planned", start: null, end: null };
+    }),
+  );
+  return { reset, skipped: ids.filter((id) => !reset.includes(id)) };
+}
+
 export interface TcPlanThumbEntry {
   matchId: number;
   videoId: string;

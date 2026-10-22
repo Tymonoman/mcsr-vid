@@ -2276,6 +2276,17 @@ custom layout has actually been seen in Studio.
   unverified until a real cycle), screenshots `tc-finished-report`, clicks it and continues as for a
   fresh form; no button is still today's "a test may already be set up" error, so nothing ever
   starts over a running test. `readTestAndCompare`'s `"done"` now also carries `finished: true`.
+  Review fix the same day: the earlier experiment may still be `"running"` on disk when the page
+  already shows "Test finished" (`tcToCheck` reads once a UTC day, and `runCycle` runs `tcToStart`
+  first), so any other tc experiment on the video with a status but `"planned"` owns the page's
+  test, for a running read too — a tracked running test lands in `startTestAndCompare`'s "a test
+  may already be set up" refusal instead of being adopted twice. A sibling title test
+  (`blockingTitleTest`) is refused before any page opens, since the A/B button opens no dialog over
+  one and the start would only time out every cycle. A New test click that shows no form is its own
+  error, naming `studio-tc-finished-report-*.png`. The three 22 Oct concept experiments were
+  recorded `"done"` with the earlier reports' shares: `npm run studio -- tc-reset <id…>`
+  (`resetTcExperiments`, done ones only, running left alone) puts them back to `"planned"` so the
+  fixed start path reaches them.
 - The tc-plan importer's `tc/` files are now treated as final, judged renders in every case — the
   one-off `tc-pose.png`→strip-file rewrite `planTcExperiments` used to do for a single night's plan
   (whose `tc/` files were about to be re-rendered out from under it) is gone; every thumbnail

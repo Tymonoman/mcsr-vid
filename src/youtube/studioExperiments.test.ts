@@ -9,6 +9,7 @@ import { config } from "../config.js";
 import {
   importTcPlan,
   planTcExperiments,
+  resetTcExperiments,
   readExperiments,
   updateTcExperiments,
   writeExperiments,
@@ -342,3 +343,23 @@ function thumbPlan(): TcPlan {
 }
 
 console.log("studioExperiments: all checks passed");
+
+// 5. resetTcExperiments: a done experiment goes back to planned with its result gone; running/planned untouched.
+{
+  await updateTcExperiments((tc) => [
+    ...tc,
+    { id: "tc-reset-done", kind: "tc", variable: "thumbnail", arms: [{ name: "a" }, { name: "b" }], videos: [{ videoId: "vR1", matchId: 1, arm: "tc" }], status: "done", start: null, end: "2026-10-22T09:46:00.000Z", result: { watchTimeShare: { a: 1 } }, verdict: "old", needsHuman: "x" },
+    { id: "tc-reset-running", kind: "tc", variable: "thumbnail", arms: [{ name: "a" }, { name: "b" }], videos: [{ videoId: "vR2", matchId: 2, arm: "tc" }], status: "running", start: "2026-10-20T00:00:00.000Z" },
+  ]);
+  const { reset, skipped } = await resetTcExperiments(["tc-reset-done", "tc-reset-running", "tc-reset-missing"]);
+  assert.deepEqual(reset, ["tc-reset-done"]);
+  assert.deepEqual(skipped, ["tc-reset-running", "tc-reset-missing"]);
+  const after = (await readExperiments()).experiments;
+  const done = after.find((e) => e.id === "tc-reset-done");
+  assert.equal(done?.status, "planned");
+  assert.equal(done?.start, null);
+  assert.equal(done?.end, null);
+  assert.ok(!("result" in done!) && !("verdict" in done!) && !("needsHuman" in done!), "result, verdict and needsHuman are gone");
+  assert.equal(after.find((e) => e.id === "tc-reset-running")?.status, "running", "a running experiment tracks a live test — untouched");
+  console.log("OK: resetTcExperiments puts a done tc experiment back to planned and leaves a running one alone");
+}

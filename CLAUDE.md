@@ -374,9 +374,10 @@ by `studioAutomation` (not writable from Settings).
 - **A video with a title test gets no thumbnail test** (`titleTcTargets`; `ab-report` reads it).
 - **The worker never sets a Test & Compare winner itself**: `"done"` records what Studio shows;
   `"needsHuman"` marks what it couldn't get past; an error leaves the experiment planned. An
-  earlier experiment's finished report is not adopted (`adoptsExistingTest`): the start clicks
-  New test. Titles are checked before a page opens (`titleTestProblem`: `hookProblem`,
-  `hookLabelProblem`, `spoilsTheResult`, 100 chars).
+  earlier experiment's test (any status but planned) is never adopted (`adoptsExistingTest`): a
+  finished report gets New test, a title test (`blockingTitleTest`) refuses before a page opens;
+  `npm run studio -- tc-reset <id…>` re-plans a done one. Titles are checked before a page opens
+  (`titleTestProblem`: `hookProblem`, `hookLabelProblem`, `spoilsTheResult`, 100 chars).
 - **The worker's own gate is `opts.enable` (CLI `--enable`, or env `STUDIO_WORKER=1`) OR'd with
   `config.studioAutomation`**, not the dashboard flag alone. A supervisor
   (`scripts/studio-worker.sh`) restarts `npm run -s studio -- worker --enable` 60s after any exit;

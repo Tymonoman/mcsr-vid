@@ -18,6 +18,7 @@ import {
 import type { Experiment } from "./studioExperiments.js";
 import {
   adoptsExistingTest,
+  blockingTitleTest,
   endScreensThisCycle,
   inBlackoutWindow,
   liveNightlyHour,
@@ -1444,11 +1445,26 @@ config.mediaDir = media;
     true,
     "another video's done experiment is not this video's",
   );
+  const earlierRunning = tcOn("tc-thumbnail-vidConcept", "running");
   assert.equal(
-    adoptsExistingTest(concepts, { state: "running", raw: "Your test is live." }, [earlier, concepts]),
-    true,
-    "a running test is always reconciled — nothing ever starts over a live one",
+    adoptsExistingTest(concepts, oldReport, [earlierRunning, concepts]),
+    false,
+    "the earlier experiment still reads running on disk (daily read not yet taken) while the page shows finished: its report, not this one's",
   );
+  assert.equal(
+    adoptsExistingTest(concepts, { state: "running", raw: "Your test is live." }, [earlierRunning, concepts]),
+    false,
+    "a running test another experiment tracks is not adopted twice — startTestAndCompare's own refusal lands instead",
+  );
+  assert.equal(
+    adoptsExistingTest(concepts, { state: "running", raw: "Your test is live." }, [concepts]),
+    true,
+    "a running test nobody tracks is reconciled — nothing ever starts over a live one",
+  );
+  const earlierTitle = { ...tcOn("tc-title-vidConcept", "done"), variable: "title" };
+  assert.equal(blockingTitleTest(concepts, [earlierTitle, concepts])?.id, earlierTitle.id, "a finished title test blocks before any page opens");
+  assert.equal(blockingTitleTest(concepts, [earlier, concepts]), undefined, "a thumbnail sibling is adoptsExistingTest's business, not a title block");
+  assert.equal(blockingTitleTest(concepts, [{ ...earlierTitle, status: "planned" }, concepts]), undefined, "a merely planned title test tracks nothing");
   assert.equal(
     adoptsExistingTest(concepts, { state: "none", raw: "" }, [earlier, concepts]),
     false,

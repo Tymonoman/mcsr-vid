@@ -700,29 +700,46 @@ async function markPinDone(matchId: number): Promise<void> {
   await writeUpload(matchId, { ...record, finished: { ...record.finished, pin: null } }, "video");
 }
 
+/** The other tc experiments on `exp`'s video that have left `"planned"`: each tracks a Studio test. */
+function trackedSiblings(exp: Experiment, experiments: readonly Experiment[]): Experiment[] {
+  const videoId = exp.videos[0]?.videoId;
+  return experiments.filter(
+    (e) =>
+      e.kind === "tc" &&
+      e.id !== exp.id &&
+      e.status !== "planned" &&
+      e.videos.some((v) => v.videoId === videoId),
+  );
+}
+
 /**
  * Whether a `"planned"` experiment adopts the test Studio's page already shows instead of starting
- * its own: always a `"running"` one, and a `"done"` report only when no other tc experiment on
- * that video already holds a done result (a hand-run test nobody tracks). 22 Oct 2026: three
- * concept tests planned on videos whose earlier test had finished adopted the OLD report, numbers
- * identical to the earlier experiments', and nothing started — that report is history, and
- * `startTestAndCompare` clears it through the report's own "New test" button.
+ * its own: only when no other tc experiment on that video tracks one (a hand-run test nobody
+ * tracks). 22 Oct 2026: three concept tests planned on videos whose earlier test had finished
+ * adopted the OLD report, numbers identical to the earlier experiments', and nothing started — that
+ * report is history, and `startTestAndCompare` clears it through the report's own "New test"
+ * button. The earlier experiment may still read `"running"` on disk (its daily read not yet taken,
+ * and `runCycle` starts before it checks), so any status but `"planned"` owns the page's test; a
+ * running read with a tracked sibling then lands in `startTestAndCompare`'s own "a test may
+ * already be set up" refusal, never adopted twice and never started over.
  */
 export function adoptsExistingTest(
   exp: Experiment,
   read: TcReadResult,
   experiments: readonly Experiment[],
 ): boolean {
-  if (read.state === "running") return true;
-  if (read.state !== "done") return false;
-  const videoId = exp.videos[0]?.videoId;
-  return !experiments.some(
-    (e) =>
-      e.kind === "tc" &&
-      e.id !== exp.id &&
-      e.status === "done" &&
-      e.videos.some((v) => v.videoId === videoId),
-  );
+  if (read.state !== "running" && read.state !== "done") return false;
+  return trackedSiblings(exp, experiments).length === 0;
+}
+
+/**
+ * A title test on the video (`variable: "title"`, started or finished) that would stop a new test:
+ * its A/B button opens no dialog (`readTestAndCompare`'s own note, confirmed live 9 Oct 2026 on a
+ * running one; a finished one is unverified), so `startTestAndCompare` would only time out on the
+ * Close wait every cycle, naming nothing. Refused before any page opens.
+ */
+export function blockingTitleTest(exp: Experiment, experiments: readonly Experiment[]): Experiment | undefined {
+  return trackedSiblings(exp, experiments).find((e) => e.variable === "title");
 }
 
 async function setExperimentRunning(id: string): Promise<void> {
@@ -1040,6 +1057,13 @@ export async function runCycle(
       // its own "a test may already be set up" error below) — unless the page shows a finished
       // report another experiment already recorded (`adoptsExistingTest`): then it is history
       // and startTestAndCompare starts over it through the report's own "New test".
+      const titleTest = blockingTitleTest(exp, experimentsFile.experiments);
+      if (titleTest) {
+        const why = `${titleTest.id} (${titleTest.status}) is a title test on ${video.videoId}; Studio opens no A/B dialog over one — clear it in Studio by hand`;
+        errors.push(`${exp.id}: ${why}`);
+        await setNeedsHuman(exp.id, why);
+        continue;
+      }
       const existing = await readTestAndCompare(handle, video.videoId);
       if (!("error" in existing) && existing.state !== "none") {
         if (adoptsExistingTest(exp, existing, experimentsFile.experiments)) {
@@ -1051,7 +1075,7 @@ export async function runCycle(
           continue;
         }
         console.error(
-          `studio worker: ${exp.id}: the finished report on ${video.videoId} belongs to an earlier experiment — starting a new test over it`,
+          `studio worker: ${exp.id}: the ${existing.state} test on ${video.videoId} belongs to an earlier experiment — a finished report gets New test, a running one is refused`,
         );
       }
       const test = testFor(exp);

@@ -206,6 +206,8 @@ try {
     pickerHasResults: true,
     // "finished": the 22 Oct 2026 report shape, whose "New test" button clears it for a fresh form.
     abTest: "none" as "none" | "running" | "done" | "finished",
+    // A "New test" whose click lands nowhere (a wrapper that swallows it).
+    newTestDead: false,
     // Related video (phase 2's own second half, 8 Oct 2026 — tmp/studio3/, read-only, no Save
     // ever pressed live): the Short's Details-page sidebar control, "None" until something is
     // linked.
@@ -435,7 +437,7 @@ try {
           root.innerHTML = '<tp-yt-paper-dialog><span>A/B Test report</span><button aria-label="Close" onclick="closeDialog()">Close</button>' +
             '<p>39.8%</p><p>Watch time share</p><p>Set this option</p><p>19.6%</p><p>Watch time share</p><p>Set this option</p>' +
             '<p>Test finished. Ran from October 17, 2026 at 7:00 PM to October 18, 2026 at 6:56 AM.</p>' +
-            '<button onclick="window.__newTestClicked=true;window.__state.abTest=\\'none\\';renderAbTest()">New test</button><button onclick="closeDialog()">Done</button></tp-yt-paper-dialog>';
+            '<button onclick="window.__newTestClicked=true;if(!window.__state.newTestDead){window.__state.abTest=\\'none\\';renderAbTest()}">New test</button><button onclick="closeDialog()">Done</button></tp-yt-paper-dialog>';
         } else {
           // The finished report's shape, as read live on _2EOkOOX0PQ (11 Oct 2026), for a thumbnail test.
           root.innerHTML = '<div><span>A/B Test report</span><button aria-label="Close" onclick="closeDialog()">Close</button>' +
@@ -874,6 +876,21 @@ try {
   );
   assert.ok(reportShots.length >= 1, `expected a tc-finished-report screenshot, got: ${reportShots.join(", ")}`);
   console.log("OK: a finished report's New test is clicked (screenshot taken) and the fresh form behind it filled");
+
+  // New test clicked but nothing followed (a wrapper that swallows the click, a form past 15s):
+  // a distinct error naming the screenshot, never "a test may already be set up".
+  uiState.abTest = "finished";
+  uiState.newTestDead = true;
+  const deadNewTest = await startTestAndCompare(
+    handle,
+    "vidT4",
+    { kind: "thumbnail", files: [thumbA, thumbB] },
+    { matchId, dryRun: true },
+  );
+  uiState.newTestDead = false;
+  assert.ok(typeof deadNewTest === "object" && "error" in deadNewTest);
+  assert.match((deadNewTest as { error: string }).error, /New test was clicked.*tc-finished-report/);
+  console.log("OK: a New test click that shows no form is its own error, naming the screenshot");
 
   // A report with no New test button (the 11 Oct shape) is still the existing error, never a guess.
   uiState.abTest = "done";
