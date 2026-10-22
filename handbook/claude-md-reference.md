@@ -2589,7 +2589,7 @@ account later". One post a day on the channel's own X account, through X's offic
   (both would post); `xTick`'s own in-process flag covers the tick against itself. Add a lockfile
   if that ever bites.
 
-## Clips (prototype)
+## Clips and trailer
 
 For a video that is not a match — a stream statement, a reaction, something worth posting on the
 channel on its own (built 29 Sept 2026 for Feinberg's on-stream statement on the edcr situation).
@@ -2602,6 +2602,16 @@ already-downloaded file is used as-is), renders the frame, and composites both w
 operator picks the title and reviews the file first, same as every other export. `clips/` is a
 non-numeric directory name, which every scan of `mediaDir` already filters on (`/^\d+$/`), so it
 sits beside the match directories without the dashboard ever seeing it.
+
+**Channel trailer** (22 Oct 2026; the operator: "you can draft some insane finishes or moment into
+a clip as a channel trailer"): `scripts/trailer/build.py spec.json` cuts a 45-60 s montage from
+the matches' own exports (`final-<id>.mp4`, overlay and splits included, from `/media` else
+`/archive`), one caption plate per segment in the hand-Short's style (`scripts/hand-short/build.py`'s
+`plate`), game audio normalised, 0.3 s cross-fades, the end card, and a `check-sheet.png`. Segments
+come from public, unblocked long-forms; a finish is cut before the game's own result screen; a
+caption names the pair and what is happening, never a winner, score, nickname, elo or rank. The
+operator sets it in Studio by hand (Customisation → Layout → Channel trailer); nothing uploads.
+`handbook/trailer.md` has the spec and the re-run.
 
 ## Chat replay (prototype)
 
