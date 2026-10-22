@@ -549,13 +549,15 @@ const SALT_SYNC = 2;
  * the countdown, report a bad timestamp and it gets fixed), picked by match id when
  * `copyVariety` is on — salted differently from the description's closer and subscribe lines
  * (`variantIndex`, src/pipeline/description.ts) so the two surfaces don't always change together.
- * Index 0 is unchanged: `copyVariety` off is byte for byte today's.
+ * Rewritten in the first person on 22 Oct 2026 for the YPP review (ypp-prep.md 2.1): a reviewer
+ * must read that a person syncs the streams and builds the timer, not that the footage is the
+ * players' streams.
  */
 export const SYNC_SENTENCE_VARIANTS: readonly string[] = [
-  "both povs are the players own streams, synced on the countdown. if the timer looks off anywhere drop the timestamp here and ill fix it",
-  "both povs are the players own streams, lined up on the countdown. if the timer looks off anywhere drop the timestamp below and ill fix it",
-  "both povs are the players own streams, matched up on the countdown. spot the timer off anywhere? drop the timestamp here and ill fix it",
-  "both povs are the players own streams, synced off the countdown. if the timer looks off anywhere just drop the timestamp and ill fix it",
+  "i sync both streams to the frame off the countdown and build the timer and splits myself. if the timer looks off anywhere drop the timestamp here and ill fix it",
+  "both povs are the runners own streams, lined up to the frame by me, with the timer and chapters made for this upload. if the timer looks off anywhere drop the timestamp below and ill fix it",
+  "i line the two povs up on the countdown and build the split timer between them. spot the timer off anywhere? drop the timestamp here and ill fix it",
+  "the two streams are synced off the countdown by hand and the timer, splits and chapters are made here. if the timer looks off anywhere just drop the timestamp and ill fix it",
 ];
 
 /**

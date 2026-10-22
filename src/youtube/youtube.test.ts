@@ -62,12 +62,12 @@ assert.ok(REQUIRED_SCOPES.includes("https://www.googleapis.com/auth/yt-analytics
   assert.equal(lines.length, 4);
   assert.equal(lines[0], question);
   assert.ok(
-    lines[1]!.startsWith("both povs are the players own streams") && lines[1]!.endsWith("ill fix it"),
+    lines[1]!.startsWith("i sync both streams") && lines[1]!.endsWith("ill fix it"),
   );
   assert.equal(lines[2], `more matches like this: ${playlistUrl}`);
   assert.equal(lines[3], "tip jar: https://ko-fi.com/x");
   const bare = pinnedComment({}, "");
-  assert.ok(bare.startsWith("both povs are the players own streams") && !bare.includes("\n"), bare);
+  assert.ok(bare.startsWith("i sync both streams") && !bare.includes("\n"), bare);
   assert.ok(!pinnedComment({ question, playlistUrl }, "").includes("tip jar"));
   assert.ok(!/subscribe/i.test(pinnedComment({ question, playlistUrl }, "https://ko-fi.com/x")));
 }

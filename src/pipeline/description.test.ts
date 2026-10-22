@@ -146,7 +146,7 @@ assert.deepEqual(
 // The closer: who this is, and where to report a sync slip. Then the hashtags, and nothing else.
 assert.equal(
   text.split("\n\n").slice(-2).join("\n\n"),
-  "fan channel, mcsr ranked has no idea i exist. both streams are synced to the frame off the countdown, the splits and elo come straight from the ranked api. if the sync looks off anywhere say where in the comments and ill fix it.\n\n#MCSRRanked #MCSR #MinecraftSpeedrunning",
+  "fan channel, not affiliated with mcsr ranked. i line both streams up to the frame off the countdown and build the timer, the splits, the chapters and the cards that explain each stage of the race. if the sync looks off anywhere say where in the comments and ill fix it.\n\n#MCSRRanked #MCSR #MinecraftSpeedrunning",
 );
 
 // VOD links sit below the chapters, so the preview is prose rather than URLs.
@@ -391,9 +391,9 @@ assert.ok(tagsFor(match({ seedType: "VILLAGE", bastionType: "BRIDGE" })).join(",
   // splits/elo from the API, invite to report a sync slip) and the house style (no em dash, no
   // exclamation mark, no banned words).
   for (const variant of CLOSER_VARIANTS) {
-    assert.match(variant, /^fan channel, mcsr ranked has no idea i exist\./);
+    assert.match(variant, /^fan channel, not affiliated with mcsr ranked\./);
     assert.match(variant, /countdown/);
-    assert.match(variant, /splits.*elo.*ranked api|ranked api.*splits.*elo/s);
+    assert.match(variant, /countdown.*timer.*comments.*fix it/s);
     assert.match(variant, /comments/);
     assert.doesNotMatch(variant, /[!—]/, `no exclamation mark or em dash: ${variant}`);
   }

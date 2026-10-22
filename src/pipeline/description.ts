@@ -236,13 +236,15 @@ export function withRivalry(
  * phrasings of the same three facts (unaffiliated fan channel, the sync/elo source, the invite to
  * report a sync slip), picked by match id when `copyVariety` is on. Every variant still starts
  * with "fan channel, " so `refreshDescription`'s drift patch keeps finding the line to replace.
- * `CLOSER_VARIANTS[0]` is this constant, unchanged: `copyVariety` off is byte for byte today's.
+ * `CLOSER_VARIANTS[0]` is the default. Rewritten in the first person on 22 Oct 2026 for the YPP
+ * review (ypp-prep.md 2.1): the old text credited the streams and the API and never said a person
+ * builds the overlay; the reused-content policy reads that as someone else's footage.
  */
 export const CLOSER_VARIANTS: readonly string[] = [
-  "fan channel, mcsr ranked has no idea i exist. both streams are synced to the frame off the countdown, the splits and elo come straight from the ranked api. if the sync looks off anywhere say where in the comments and ill fix it.",
-  "fan channel, mcsr ranked has no idea i exist. the povs are synced to the frame off the countdown and the splits and elo come straight from the ranked api. drop a timestamp in the comments if the sync looks off anywhere and ill fix it.",
-  "fan channel, mcsr ranked has no idea i exist. both povs are lined up to the frame on the countdown, the splits and elo are pulled right from the ranked api. if anything looks out of sync just say where in the comments and ill fix it.",
-  "fan channel, mcsr ranked has no idea i exist. the two streams are synced to the frame off the countdown, splits and elo straight from the ranked api. say where in the comments if the sync looks off anywhere and ill fix it.",
+  "fan channel, not affiliated with mcsr ranked. i line both streams up to the frame off the countdown and build the timer, the splits, the chapters and the cards that explain each stage of the race. if the sync looks off anywhere say where in the comments and ill fix it.",
+  "fan channel, not affiliated with mcsr ranked. i sync the two povs to the frame on the countdown and make the split timer, the chapters and the explain-the-moves cards for this upload. drop a timestamp in the comments if the sync looks off anywhere and ill fix it.",
+  "fan channel, not affiliated with mcsr ranked. the two streams are lined up to the frame on the countdown by me, with the timer, splits, chapters and stage cards built for this video. if anything looks out of sync just say where in the comments and ill fix it.",
+  "fan channel, not affiliated with mcsr ranked. i match both povs to the frame off the countdown and build the timer, the splits and the chapters myself. say where in the comments if the sync looks off anywhere and ill fix it.",
 ];
 export const CLOSER = CLOSER_VARIANTS[0]!;
 

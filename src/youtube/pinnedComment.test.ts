@@ -58,7 +58,7 @@ const reset = () => {
 };
 
 const SYNC =
-  "both povs are the players own streams, synced on the countdown. if the timer looks off anywhere drop the timestamp here and ill fix it";
+  "i sync both streams to the frame off the countdown and build the timer and splits myself. if the timer looks off anywhere drop the timestamp here and ill fix it";
 const TIP = "tip jar: https://ko-fi.com/x";
 const link = (id: string) => `more matches like this: https://www.youtube.com/playlist?list=${id}`;
 const lines = async (matchId: number, waitMs?: number) =>
