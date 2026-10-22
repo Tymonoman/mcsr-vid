@@ -131,32 +131,31 @@ finish spoils and underperforms.
   without waiting. **The pick after export still runs** (`ensurePick`; auto-hooks needs its title
   hooks); its window is only a hint. `npm run short:hand` (`src/shorts/handShort.ts`) validates
   first (`checkHandShort`: 1080x1920 h264+aac ≤60s; hook passes `hookProblem`, refused outright,
-  never a warning, unlike a typed dashboard hook; no blocked player; not already uploaded from
-  here — `youtube-short.json`), then writes `short-<id>.mp4` + `.title.txt`/`.description.txt` +
-  `short-<id>.hand.json`, which `uploadTextFor` reads like a rendered Short. Until then the chain
-  logs "waiting for the hand-made Short" (never a failure). `noShort`/a blocked player still mean
-  no Short.
+  never a warning; no blocked player; not already uploaded from here — `youtube-short.json`), then
+  writes `short-<id>.mp4` + `.title.txt`/`.description.txt` + `short-<id>.hand.json`, which
+  `uploadTextFor` reads like a rendered Short. Until then the chain logs "waiting for the hand-made
+  Short" (never a failure). `noShort`/a blocked player still mean no Short.
 - **A model watches the whole match and picks the moment** (`src/shorts/videoPick.ts`,
   `pickShortMoment`): a 2fps proxy, /watch's stills/transcripts per player (needs `GROQ_API_KEY`),
   then Antigravity (`agy`, `gemini-3.8-flash-high`, `--sandbox`, never
   `--dangerously-skip-permissions`). Answer: a continuous 12–60s window
   (`SHORT_MIN_MS`/`SHORT_MAX_MS`), a focus side, a hook suggestion, a one-line why (operator's eyes
-  only); validated for bounds and `rtaAtStart` within ±2s. One retry on an empty answer, then the
+  only); validated for bounds and `rtaAtStart` ±2s. One retry on an empty answer, then the
   timeline heuristic (`shortMoment.ts`). Pick is `short-<id>.pick.json`. It also proposes up to 3
   long-form title hooks (`titleHooks`) styled on the operator's past saved hooks; each must pass
-  `hookProblem` (a word-list spoiler/label/seed check: catches the usual result verbs, not every
-  paraphrase) and fit the title's `hookMax`, which the prompt states, or is dropped — the
-  operator's Save is the real gate. A rejected window drops its title hooks too.
+  `hookProblem` (a word-list spoiler/label/seed check, not every paraphrase) and fit the title's
+  `hookMax`, which the prompt states, or is dropped — the operator's Save is the real gate. A
+  rejected window drops its title hooks too.
 - **No Short renders and nothing uploads before the operator saves the hooks**
   (`generateShort.ts`, `youtubeUpload.ts` `hookRefusal`, every render path). The Short's hook is
   `short-<id>.hook.txt`; the long-form's is the edited title. Saving both
   (`PUT /api/shorts/hooks/:id`) starts the chain (`src/dashboard/shortFlow.ts`): render Short,
   upload long-form at its slot, Short 18h later. A hook changed before upload re-renders; after
   upload hooks lock. "No Short for this one" lets the long-form go alone.
-- **On screen** (`remotion/Short.tsx`): hook 4s, race captions (a leader may be named mid-race,
-  never the result), running clock, off-focus POV at -12dB, closing card ("WHO TOOK IT? FULL MATCH
-  ON THE CHANNEL" if the window ends undecided, else "FULL MATCH ON THE CHANNEL"). Title:
-  `<hook> | <left> vs <right>` with `titleName` (Skycrab, lowkey) + `#mcsr #minecraft`.
+- **On screen** (`remotion/Short.tsx`; hand-cut: `scripts/hand-short/build.py`): hook 4s, race
+  captions (a leader may be named, never the result), running clock, off-focus POV at -12dB,
+  closing card: "WHO TOOK IT?" if undecided, "FULL MATCH ON THE CHANNEL", SUBSCRIBE (both
+  renderers). Title: `<hook> | <left> vs <right>` + `titleName` (Skycrab, lowkey) + `#mcsr #minecraft`.
 - **`deathKind`** (`src/pipeline/matchScore.ts`) is the one reading of `death_spawnpoint`: a hunger
   reset in every phase but the End, a real death in the End. `metrics.deaths` counts real deaths
   only; the prompt, captions/hook, heuristic, title chips and "N deaths" follow it (`teaser.ts`
