@@ -3,7 +3,7 @@
 // Run: npx tsx src/youtubeUpload.test.ts
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { cacheMatch } from "../api/mcsrApi.js";
@@ -1415,6 +1415,176 @@ try {
 
     config.studioAutomation = savedStudio;
     console.log("OK: retryPendingStudio is off by default and otherwise presses only pending pins");
+  }
+
+  /* --- Rivalry packaging before the insert (22 Oct 2026) ------------------------------------- */
+  // A pair's matchup playlist is made at finish, after the insert the description goes up with:
+  // the upload makes it first when the pair has history, and links it. Nothing for a first
+  // meeting or a blocked pair, and a description already linking one is left as it is.
+  {
+    const { withMatchupPlaylist } = await import("./youtubeUpload.js");
+    const { RIVALRY_PLAYLIST_LINE, rivalrySubscribeLine, SUBSCRIBE_LINE } =
+      await import("../pipeline/description.js");
+    const stubbed = globalThis.fetch;
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/playlists?") && init?.method === "POST") {
+        hits.push(`POST ${url}`);
+        sent.push({ url, body: JSON.parse(String(init.body)) });
+        return new Response(JSON.stringify({ id: "PLRIVAL" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return stubbed(input, init);
+    }) as typeof fetch;
+    const text = {
+      title: "A hook | doogile vs Feinberg | MCSR Ranked 1v1",
+      description: [
+        "doogile vs Feinberg, mcsr ranked 1v1 on the same seed.",
+        "",
+        SUBSCRIBE_LINE,
+        "",
+        "0:00 intro",
+        "",
+        `match page: https://magmamcsr.com/ranked/player/x/matches/${matchId}?season=12`,
+        "all the matches: https://www.youtube.com/playlist?list=PL",
+        "",
+        "fan channel, x",
+        "",
+        "#MCSRRanked",
+      ].join("\n"),
+    };
+    const posts = () => hits.filter((h) => h.startsWith("POST") && h.includes("/playlists?")).length;
+    // A first meeting: nothing made, every byte kept.
+    const before = posts();
+    assert.equal(await withMatchupPlaylist(matchId, dir, text), text.description);
+    assert.equal(posts(), before, "no playlist for a first meeting");
+    // The pair's earlier public long-form on the channel: the playlist is made, the line links it.
+    const earlierDir = path.join(media, "12000001");
+    await mkdir(earlierDir, { recursive: true });
+    await writeFile(
+      path.join(earlierDir, "youtube.json"),
+      JSON.stringify({
+        videoId: "EEEEEEEEEEE",
+        uploadedAt: "2026-09-01T19:00:00Z",
+        publishAt: null,
+        privacyStatus: "public",
+        thumbnailVariant: null,
+        title: "Hook | Feinberg vs doogile | MCSR Ranked 1v1",
+      }),
+    );
+    const packed = await withMatchupPlaylist(matchId, dir, text);
+    assert.equal(posts(), before + 1, "one playlists.insert");
+    const made = sent
+      .filter((s) => s.url.includes("/playlists?") && s.url.includes("part=snippet,status"))
+      .at(-1);
+    assert.equal(
+      (made?.body as { snippet: { title: string } }).snippet.title,
+      "doogile vs Feinberg · MCSR Ranked",
+    );
+    assert.ok(
+      packed.includes(
+        "every doogile vs Feinberg on the channel: https://www.youtube.com/playlist?list=PLRIVAL",
+      ),
+      packed,
+    );
+    assert.ok(packed.includes(rivalrySubscribeLine("doogile", "Feinberg")), "the ask names the pair too");
+    assert.ok(!packed.includes(SUBSCRIBE_LINE));
+    assert.ok(RIVALRY_PLAYLIST_LINE.test(packed));
+    // Already linked (uploadTextFor found it): nothing more, not a second insert.
+    assert.equal(await withMatchupPlaylist(matchId, dir, { ...text, description: packed }), packed);
+    assert.equal(posts(), before + 1);
+    // A blocked pair, whatever the history: nothing, and no write.
+    const savedBlocked = config.blockedPlayers;
+    config.blockedPlayers = ["TestBlocked"];
+    await writeFile(path.join(dir, "testblocked.mp4"), "x");
+    assert.equal(await withMatchupPlaylist(matchId, dir, text), text.description);
+    await rm(path.join(dir, "testblocked.mp4"));
+    config.blockedPlayers = savedBlocked;
+    assert.equal(posts(), before + 1);
+    // The operator's own description (the edited file, `uploadTextFor`'s rule): every byte kept,
+    // the generic ask and all, and no playlist made for it — what goes up is what the kit showed.
+    const descriptionEdited = path.join(dir, `match-${matchId}.description.edited.txt`);
+    await writeFile(descriptionEdited, text.description);
+    assert.equal(await withMatchupPlaylist(matchId, dir, text), text.description);
+    assert.equal(posts(), before + 1, "no insert for an edited description");
+    await rm(descriptionEdited);
+
+    // Ordering in `startUpload`: the insert comes after every refusal, so a stale export (or any
+    // other 400) never leaves an empty public playlist behind; a fresh one gets it just before
+    // the send. The pair with history is this match's own title here, hence a different playlist.
+    {
+      const titleEdited = path.join(dir, `match-${matchId}.title.edited.txt`);
+      const savedTitle = await readFile(titleEdited, "utf8");
+      await writeFile(titleEdited, "A hook | doogile vs Feinberg | MCSR Ranked 1v1\n");
+      // The finish tests above left this match on the channel; an upload needs it not to be.
+      const youtubeJson = path.join(dir, "youtube.json");
+      const savedRecord = await readFile(youtubeJson, "utf8").catch(() => null);
+      if (savedRecord !== null) await rm(youtubeJson);
+      const descriptionFile = path.join(dir, `match-${matchId}.description.txt`);
+      const savedDescription = await readFile(descriptionFile, "utf8").catch(() => null);
+      await writeFile(descriptionFile, text.description);
+      const exportFile = path.join(dir, `final-${matchId}.mp4`);
+      await writeFile(exportFile, "");
+      const stamp = (file: string, iso: string) => utimes(file, new Date(iso), new Date(iso));
+      await stamp(exportFile, "2026-09-10T12:00:00Z");
+      writeSyncOffsets(dir, { left: 150, right: 150, confidence: 1, detail: "", source: "manual" });
+      await stamp(path.join(dir, "sync.json"), "2026-09-10T13:00:00Z");
+      const req = { kind: "video" as const, privacyStatus: "private" as const, videoPath: exportFile };
+      const stale = await beginUpload(matchId, req);
+      assert.ok("error" in stale && stale.error === staleExportMessage(matchId), JSON.stringify(stale));
+      assert.equal(posts(), before + 1, "a refused upload makes no playlist");
+      await stamp(exportFile, "2026-09-10T14:00:00Z");
+      // The playlist's id is cached from the insert above, so the proof is what the send got.
+      let sentDescription = "";
+      const seeDescription = (async (opts: UploadOptions) => {
+        sentDescription = opts.description;
+        throw new Error("stop here");
+      }) as typeof import("./youtube.js").uploadVideo;
+      const fresh = await beginUpload(matchId, req, seeDescription);
+      assert.ok(!("error" in fresh), JSON.stringify(fresh));
+      assert.match(String((await fresh.finished).error), /stop here/, "and got as far as the send");
+      assert.ok(
+        RIVALRY_PLAYLIST_LINE.test(sentDescription),
+        `linked just before the send: ${sentDescription}`,
+      );
+      await rm(exportFile);
+      await rm(path.join(dir, "sync.json"));
+      await writeFile(titleEdited, savedTitle);
+      if (savedRecord !== null) await writeFile(youtubeJson, savedRecord);
+      if (savedDescription === null) await rm(descriptionFile);
+      else await writeFile(descriptionFile, savedDescription);
+    }
+
+    // Finish fills the playlist on the same history test the upload made it on: the earlier
+    // match's clips freed and the MCSR API down, `earlierVideoOfPair` sees "?", and the earlier
+    // video is still added by its record (`lastMeetingFor`, titles on disk).
+    {
+      const wrapped = globalThis.fetch;
+      globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes("mcsrranked.com") && url.includes("12000001"))
+          return new Response("down", { status: 503 });
+        return wrapped(input, init);
+      }) as typeof fetch;
+      await writeUpload(matchId, {
+        ...record,
+        title: "A hook | doogile vs Feinberg | MCSR Ranked 1v1",
+        finished: { thumbnail: null, comment: null, tags: null },
+      });
+      sent.length = 0;
+      const steps = await finishOnYouTube(matchId, "vidX");
+      assert.equal(steps.playlists, null, JSON.stringify(steps));
+      const joined = sent
+        .filter((s) => s.url.includes("/playlistItems?"))
+        .map((s) => (s.body as { snippet: { resourceId: { videoId: string } } }).snippet.resourceId.videoId);
+      assert.ok(joined.includes("EEEEEEEEEEE"), `the earlier video joins the matchup playlist: ${joined}`);
+      globalThis.fetch = wrapped;
+    }
+    await rm(earlierDir, { recursive: true, force: true });
+    globalThis.fetch = stubbed;
+    console.log("OK: the upload makes the pair's playlist before the insert, for a pair with history only");
   }
 
   globalThis.fetch = realFetch;
