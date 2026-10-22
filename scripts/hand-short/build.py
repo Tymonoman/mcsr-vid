@@ -9,7 +9,7 @@ every time, from the match's own overlay renders (so the look is the long-form's
   - the MC/SR badge from the same band
   - the gold RTA clock: overlay-timer.mp4, whose timeline is match time + 10 s (ANCHOR_SEC)
   - hook / turn / captions on the channel's plates (Monocraft, --panel fill, hard pixel shadow)
-  - an end slate: checker, badge, MCSR REPLAYOFFS, the question in gold, FULL MATCH ON THE CHANNEL
+  - an end slate: checker, badge, MCSR REPLAYOFFS, the question in gold, FULL MATCH ON THE CHANNEL, SUBSCRIBE
 
 Layout (1080x1920): band 0-114, face cam 114-600, game 600-1920; clock on the face cam's left
 wall, badge at its top right; captions at y 1340 (or 1650 when a dialog fills the middle).
@@ -35,6 +35,7 @@ Times in hook/turn/captions/mute/endFrom are seconds into the Short (0 = fromSec
 
   python3 scripts/hand-short/build.py spec.json            # build out + out.beats.png
   python3 scripts/hand-short/build.py spec.json --words    # word timings of the window (Groq Whisper)
+  python3 scripts/hand-short/build.py spec.json --slate-only out.png   # the end slate alone, to look at
 """
 import json, os, subprocess, sys, tempfile
 from PIL import Image, ImageDraw, ImageFont
@@ -81,6 +82,11 @@ def brand(spec, mdir, tmp):
         plate(spec["turn"]["text"], 74, CRIMSON, EDGE_L, f"{tmp}/turn.png")
     for i, c in enumerate(spec.get("captions", [])):
         plate(c["text"], 50, QUARTZ, EDGE_L, f"{tmp}/cap{i}.png", pad=(22, 14), shadow=6, bw=4, max_w=880)
+    slate(spec, top, f"{tmp}/end.png")
+
+
+def slate(spec, top, path):
+    """The end slate: checker, badge, MCSR REPLAYOFFS, the question in gold, FULL MATCH ON THE CHANNEL, SUBSCRIBE."""
     end = Image.new("RGBA", (W, H), PANEL + (255,))
     d = ImageDraw.Draw(end)
     cs = 40
@@ -103,7 +109,8 @@ def brand(spec, mdir, tmp):
     ctext(850, "MCSR REPLAYOFFS", 64, QUARTZ)
     ctext(1010, spec.get("endQuestion", "WHO TOOK IT?"), 80, GOLD)
     ctext(1130, "FULL MATCH ON THE CHANNEL", 46, QUARTZ)
-    end.save(f"{tmp}/end.png")
+    ctext(1240, "SUBSCRIBE", 52, QUARTZ)  # 22 Oct 2026: the ask, still above the bottom fifth YouTube covers
+    end.save(path)
 
 
 def clip_start(spec, mdir):
@@ -214,6 +221,10 @@ def build(spec):
 
 if __name__ == "__main__":
     spec = json.load(open(sys.argv[1]))
+    if "--slate-only" in sys.argv:  # just the end slate as a PNG, for a look: spec needs matchId (+ endQuestion)
+        top = Image.open(f"/media/{spec['matchId']}/overlay-top.png").convert("RGBA")
+        slate(spec, top, sys.argv[sys.argv.index("--slate-only") + 1])
+        sys.exit(0)
     need = ("nicknames",) if spec.get("dual") else ("nickname", "faceCrop", "gameX", "gameW")
     for k in ("matchId", "side", "fromSec", "toSec", "hook", "out", *need):
         assert k in spec, f"spec is missing {k}"

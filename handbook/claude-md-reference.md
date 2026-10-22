@@ -306,8 +306,13 @@ views brought 0 subscribers.
   "SILVERRRUNS 8 S UP AT THE EYES" — a leader may be named mid-race, never the result), a running
   clock in the top nameplate (YouTube's own UI covers the bottom ~20%), the off-focus POV lowered
   12 dB, and a closing card: "WHO TOOK IT? FULL MATCH ON THE CHANNEL" when the window ends before
-  the match is decided, else "FULL MATCH ON THE CHANNEL" ("SERIES" for a series). The single-POV
-  layout is a centre crop that keeps the crosshair and the hotbar.
+  the match is decided, else "FULL MATCH ON THE CHANNEL" ("SERIES" for a series), with a quartz
+  SUBSCRIBE row under it (`.short-endcard-ask`). The hand-cut renderer (`scripts/hand-short/build.py`,
+  `slate()`) draws the same three lines on its end slate — question in gold, FULL MATCH ON THE
+  CHANNEL, SUBSCRIBE at y 1240, all above the bottom fifth YouTube's controls cover; the operator
+  asked for the ask on 22 Oct 2026. `--slate-only <out.png>` renders that slate alone from a spec
+  with just `matchId` (+ `endQuestion`). The single-POV layout is a centre crop that keeps the
+  crosshair and the hotbar.
 - **The model is told the game** (`src/shorts/speedrunPrimer.ts`, sourced lines only; 26 Sept 2026, after it built
   "THEY BOTH DIED IN THE STRONGHOLD?!" on two hunger resets; corrected by the fact-check of 26 Sept). `deathKind`
   (`src/pipeline/matchScore.ts`) is the one reading of `death_spawnpoint`: the hunger reset in every phase but the
