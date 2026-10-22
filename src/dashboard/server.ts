@@ -84,6 +84,7 @@ import { armRestart, disarmRestart, restartState } from "./restartWhenIdle.js";
 import { creatorWatchTick } from "./creatorWatch.js";
 import { fastTrackTick } from "./fastTrack.js";
 import { xTick } from "../x/xPost.js";
+import { commentNudgeTick } from "../telegram/commentNudge.js";
 import { saveSettings, settingsPayload } from "./settings.js";
 import { applyScheduledRenderArm } from "./experiments.js";
 import { evaluateExperiments } from "./experimentsEvaluator.js";
@@ -959,6 +960,9 @@ server.listen(PORT, "0.0.0.0", () => {
     // X posts (off by default, config.xAutoPost, and needs the four X keys in .env): the newest
     // public long-form's hand-cut Short, at most one a day — see src/x/xPost.ts.
     void xTick().catch((err: unknown) => console.error(`x: ${describeError(err)}`));
+    // Comment nudges (off by default, config.commentNudges): a silent Telegram line per
+    // comment-count threshold a fresh public long-form crosses — see src/telegram/commentNudge.ts.
+    void commentNudgeTick().catch((err: unknown) => console.error(`comment nudges: ${describeError(err)}`));
     try {
       // The nightly's own pending timer was armed for the old hour: rearm it, the same signal
       // `/api/settings`' PUT handler acts on above.

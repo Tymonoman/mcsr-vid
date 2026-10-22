@@ -556,6 +556,13 @@ export interface Config {
    * posts the newest public long-form's hand-cut Short to X, at most one a day (src/x/xPost.ts).
    */
   xAutoPost: boolean;
+  /**
+   * Off by default, a config-file edit like `xAutoPost`. On, the 15-minute tick sends one silent
+   * Telegram line per comment-count threshold (1, 5, 10, 25) a long-form crosses in its first 48h
+   * public — counts and a Studio link only, never a comment's text or author
+   * (src/telegram/commentNudge.ts).
+   */
+  commentNudges: boolean;
 }
 
 /**
@@ -682,6 +689,7 @@ export const DEFAULTS: Config = {
   creatorWatchlist: [],
   creatorWatch: false,
   xAutoPost: false,
+  commentNudges: false,
 };
 
 /** The overrides file. Exported so the settings panel writes the same one the loader reads. */
