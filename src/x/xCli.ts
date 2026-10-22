@@ -37,7 +37,8 @@ import { autoPost, lastXPost, pickXCandidate, postMatch, XRefusal } from "./xPos
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
 const viaAt = args.indexOf("--via");
-const viaArg = args.find((a) => a.startsWith("--via="))?.slice(6) ?? (viaAt >= 0 ? args[viaAt + 1] : undefined);
+const viaArg =
+  args.find((a) => a.startsWith("--via="))?.slice(6) ?? (viaAt >= 0 ? args[viaAt + 1] : undefined);
 const [sub, ...subArgs] = args.filter(
   (a, i) => a !== "--dry-run" && !a.startsWith("--via") && (viaAt < 0 || i !== viaAt + 1),
 );

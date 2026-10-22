@@ -78,7 +78,10 @@ export function ensureXProfileDir(dir: string = X_PROFILE_DIR): string {
  * (the worker's `--profile-dir` is Studio's); the X profile, created 700 if missing. Every caller
  * resolves its options through this once; `postPlanViaBrowser` takes them as given (a test's own
  * throwaway profile included) and only falls back to the real X profile when handed none. */
-export function xStartOpts(opts: StudioBrowserOptions = {}, profileDir: string = X_PROFILE_DIR): StudioBrowserOptions {
+export function xStartOpts(
+  opts: StudioBrowserOptions = {},
+  profileDir: string = X_PROFILE_DIR,
+): StudioBrowserOptions {
   return { ...opts, profileDir: ensureXProfileDir(profileDir) };
 }
 
@@ -317,4 +320,3 @@ export async function xBrowserTick(
   const done = await postPlanViaBrowser(plan, opts);
   return `match ${plan.matchId}: ${describeOutcome(done)}`;
 }
-
