@@ -1,14 +1,14 @@
 # Setting up X posts
 
-Once this is done, the dashboard posts one clip a day to the channel's X account: the hand-cut
-Short of the newest public long-form, its hook and the pair, and the YouTube link. What it posts
-and what it refuses: CLAUDE.md "X posts", and `handbook/claude-md-reference.md` "X posts" for the
-long version. Nothing posts until step 7.
+Once this is done, the dashboard posts a clip to the channel's X account every 40 hours at most:
+the hand-cut Short of the newest public long-form, its hook and the pair, and the YouTube link.
+What it posts and what it refuses: CLAUDE.md "X posts", and `handbook/claude-md-reference.md` "X
+posts" for the long version. Nothing posts until step 7.
 
 **Cost first.** X has no free API tier any more (checked 14 Oct 2026). It runs on prepaid
-credits, and a post with a link costs $0.20, so one a day is about $6 a month. Saving your first
-card gives a one-time $20 credit if you qualify, which covers about three months, but it expires
-three months after it's granted.
+credits, and a post with a link costs $0.20, so one a day would be about $6 a month (one every
+40 hours, the default, about $3.60). Saving your first card gives a one-time $20 credit if you
+qualify, which covers about three months, but it expires three months after it's granted.
 
 ## 1. Create the account
 
@@ -83,6 +83,7 @@ tab, like `nightlyUpload`. Then restart the dashboard when it's idle
 (`POST /api/restart-when-idle`, or ask a session to), because both the config file and `.env`
 are read at boot.
 
-From then on the dashboard's 15-minute tick posts at most one clip per UTC day, as soon as a
+From then on the dashboard's 15-minute tick posts at most one clip per UTC day and none within
+40 hours of the last (`"xMinHoursBetweenPosts"` in the config file, default 40), as soon as a
 long-form with a hand-cut Short is public. To stop it, set `"xAutoPost": false` and restart when
 idle. To skip one match for good, hide it on the dashboard.

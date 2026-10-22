@@ -211,6 +211,9 @@ server.listen(port, "127.0.0.1");
   assert.ok(err, "start() must throw when connectOverCDP does");
   const chromePid = Number(/-(\d+)$/.exec(readlinkSync(path.join(profileDir, "SingletonLock")))![1]);
   const xvfbPid = Number(readFileSync(path.join(bin, "xvfb.pid"), "utf8"));
+  // Exited (and reaped) by the time start() rejects, not merely signalled: the next start() on
+  // the same display must find it free.
+  assert.throws(() => process.kill(xvfbPid, 0), "start() rejects only once its Xvfb has exited");
   assert.ok(await gone(chromePid), "a failed connect must kill the Chrome it spawned");
   assert.ok(await gone(xvfbPid), "a failed connect must stop the Xvfb it spawned");
   assert.equal(isRunning(), false);

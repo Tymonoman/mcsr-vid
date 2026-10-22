@@ -201,37 +201,44 @@ console.log(
 );
 
 /* --- one a day, newest first, hidden skipped ------------------------------------------------------ */
-// `clean` posted today, so autoPost waits for tomorrow whatever else is ready.
+// `clean` posted today, so autoPost waits whatever else is ready: the rest of the day, then the 40h gap.
 xCalls.length = 0;
 assert.match(await autoPost({ now: NOW }), /already posted today/);
 assert.deepEqual(xCalls, []);
-const tomorrow = NOW + 24 * HOUR;
+// The next UTC day is not enough: the newest x.json must be xMinHoursBetweenPosts (40) old.
+assert.match(await autoPost({ now: NOW + 24 * HOUR }), /last post 2[34]h ago \(match \d+\), under the 40h gap/);
+assert.deepEqual(xCalls, []);
+const twoDaysOn = NOW + 48 * HOUR;
 const newest = makeMatch({ publishAt: new Date(NOW - HOUR).toISOString() });
 const hiddenNewer = makeMatch({ publishAt: new Date(NOW - HOUR / 2).toISOString() });
 setHidden(hiddenNewer, true);
 assert.equal(
-  (await pickXCandidate(tomorrow))?.matchId,
+  (await pickXCandidate(twoDaysOn))?.matchId,
   newest,
   "the newest public, unhidden, unposted match",
 );
-assert.match(await autoPost({ now: tomorrow, dryRun: true }), new RegExp(`would post match ${newest}`));
+assert.match(await autoPost({ now: twoDaysOn, dryRun: true }), new RegExp(`would post match ${newest}`));
 assert.deepEqual(xCalls, [], "auto --dry-run sends nothing");
 assert.match(
-  await autoPost({ now: tomorrow }),
+  await autoPost({ now: twoDaysOn }),
   new RegExp(`posted match ${newest}: https://x.com/i/status/92`),
 );
 assert.ok(existsSync(path.join(media, String(newest), "x.json")));
-console.log("OK: at most one post a UTC day; the newest public long-form goes first; hidden is skipped");
+console.log(
+  "OK: at most one post a UTC day and none within 40h; the newest public long-form goes first; hidden is skipped",
+);
 
 // One candidate's MCSR read failing (429) skips that candidate, not the walk: the next one is
 // picked, and autoPost does not throw (which would cost xTick the whole UTC day).
 const behind = makeMatch({ publishAt: new Date(NOW - HOUR / 3).toISOString() });
 const flaky = makeMatch({ publishAt: new Date(NOW - HOUR / 4).toISOString() });
 rateLimited.add(flaky);
-assert.equal((await pickXCandidate(tomorrow))?.matchId, behind, "the 429 candidate is skipped");
-assert.match(await autoPost({ now: tomorrow + 24 * HOUR, dryRun: true }), new RegExp(`would post match ${behind}`));
+assert.equal((await pickXCandidate(twoDaysOn))?.matchId, behind, "the 429 candidate is skipped");
+// x.json carries the real clock, so the last post is ~48h behind twoDaysOn: past the gap. (NOW+72h
+// would also make the long-form scheduled for then public, and the newest.)
+assert.match(await autoPost({ now: twoDaysOn, dryRun: true }), new RegExp(`would post match ${behind}`));
 rateLimited.delete(flaky);
-assert.equal((await pickXCandidate(tomorrow))?.matchId, flaky, "once the API answers, it is the newest again");
+assert.equal((await pickXCandidate(twoDaysOn))?.matchId, flaky, "once the API answers, it is the newest again");
 console.log("OK: an MCSR API error on one candidate skips it; the walk goes on to the next");
 
 /* --- the tick ------------------------------------------------------------------------------------- */
