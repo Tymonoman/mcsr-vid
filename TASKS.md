@@ -1,6 +1,8 @@
 # TASKS — resume point (the newest block is first; older blocks: handbook/tasks-archive-2026-09-23_10-07.md)
 
 ## ▶ RESUME HERE (23 Oct 2026, 08:5x Polish) — CHANNEL RUNNING; NOTHING HALF-DONE IN CODE
+
+- 23 Oct 21:20 Polish: operator verdicts: trailer YES (full file sent; operator uploads unlisted + sets it as the non-subscriber trailer in Studio, handbook/trailer.md); explainer Short NO (dropped); appeal video = captions-only version, kept unuploaded for the YPP appeal (upload unlisted only when appealing). Both saved under /media/clips/{channel-trailer,appeal-video}/.
 Times to the operator are Polish (CEST until 25 Oct 03:00, then CET: slots 20:00/00:00). Main pushed, dashboard on it, suite 228 green. Worker supervisor pid 2652536. Questions all answered (memory feedback_growth_push_answers_2026_10_22.md); state of the 22 Oct push: memory project_growth_push_state_2026_10_22.md; plan page Niusyey7UkW3eXjVaonjYf, X setup page RYpKhxNVCjESomSrmoF2qB.
 WAITING ON THE OPERATOR:
 - Delete or unschedule Short BlqIkSXjEoc (13393652's rejected cut, public Sun 25 Oct 15:00 Polish). Then move /media/13393652/youtube-short.json aside and run: npm run short:hand -- 13393652 /home/node/.claude/jobs/8d7d95a1/tmp/shorts/13393652/hand-short-final.mp4 --hook "ON FIRE AND UNDER FIRE" --from 113.5 --to 137 --pov left
