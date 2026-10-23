@@ -1,5 +1,20 @@
 # TASKS — resume point (the newest block is first; older blocks: handbook/tasks-archive-2026-09-23_10-07.md)
 
+## ▶ RESUME HERE (23 Oct 2026, 08:5x Polish) — CHANNEL RUNNING; NOTHING HALF-DONE IN CODE
+Times to the operator are Polish (CEST until 25 Oct 03:00, then CET: slots 20:00/00:00). Main pushed, dashboard on it, suite 228 green. Worker supervisor pid 2652536. Questions all answered (memory feedback_growth_push_answers_2026_10_22.md); state of the 22 Oct push: memory project_growth_push_state_2026_10_22.md; plan page Niusyey7UkW3eXjVaonjYf, X setup page RYpKhxNVCjESomSrmoF2qB.
+WAITING ON THE OPERATOR:
+- Delete or unschedule Short BlqIkSXjEoc (13393652's rejected cut, public Sun 25 Oct 15:00 Polish). Then move /media/13393652/youtube-short.json aside and run: npm run short:hand -- 13393652 /home/node/.claude/jobs/8d7d95a1/tmp/shorts/13393652/hand-short-final.mp4 --hook "ON FIRE AND UNDER FIRE" --from 113.5 --to 137 --pov left
+- Verdict on drafts (tmp/growth/drafts: explainer Short; appeal video captions vs Kokoro voice) and the trailer (tmp/growth/trailer/trailer.mp4).
+- Create @mcsrreplayoffs on X, then `npm run x -- login` (VNC), a --dry-run, one live post, then xBrowserPost true.
+- 2-step verification; channel links (X + tip jar); nicknames whenever.
+IN FLIGHT:
+- 13421438 MORTGAGE PAID IN GOLD swapped to tonight 21:00 (its Short registered, Sat 15:00). 13393121 TREASURE moved to Sun 20:00 (Short 2 h before, x6).
+- Tonight's queue 13395720 (F–I #11); 13445452 (#12) downloading. Renders 23 Oct night: 14367569, 13421438, 13394048 → enrol as x5 control once uploaded (13421438 uploaded: 3QyM-sDvpYc).
+- x5 new opening renders 25–29 Oct; swap each into an earlier control slot (tmp/x5/swap.sh). x6 Short teaser from 24/25 Oct. Concept thumbnail tests running since 22 Oct 16:23–16:47.
+- 3 A/B reads failed two nights on page.goto timeouts (Hl6pwsyMNEI, A3msfp_DDC0, 8WS-rzCXsQ0): check after tonight's read.
+RULES LEARNED: hand-Short helpers BUILD ONLY, I register after review (a registered Short uploads at once); reject a Short where the loser suffers a decisive setback too; NAS reads only 03:00–08:00 Warsaw; one helper at a time; verify every claim live.
+CRONS (session-only): 8eef5dc5 07:23 morning, 579a1923 20:17 evening, cfd6f94d 20:37 x5/concepts duty (created 21–22 Oct, expire ~28–29 Oct); 1107d901 Mon 10:17 weekly (created 18 Oct, EXPIRES ~25 Oct: recreate). After 25 Oct the cron times stay UTC, so they read 06:23 / 19:17 / 19:37 Polish.
+
 ## ▶ RESUME HERE (20 Oct 2026, 08:1x Polish) — CHANNEL RUNNING; NOTHING HALF-DONE IN CODE
 Times to the operator are Polish. Main 129d20b+ pushed; dashboard restart-when-idle armed for 2a78232 (seed openers off). Worker supervisor pid 2357.
 LIVE SINCE 18–19 OCT:
