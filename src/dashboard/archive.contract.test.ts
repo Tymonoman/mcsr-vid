@@ -461,7 +461,7 @@ console.log("OK: P13 — a failed copy reports its error, is queued again, and n
   assert.match(script, /^sh -c '\s*rsync/, "npm run archive runs rsync straight away");
   assert.match(
     readFileSync(path.join(repo, "README.md"), "utf8"),
-    /`archive -- <id>`[^\n]*at once \(no 03:00–08:00 window check/,
+    /`archive -- <id>`[^\n]*at once \(no 03:00–08:00 (Warsaw )?window check/,
     "README says the hand copy skips the window",
   );
   assert.match(
