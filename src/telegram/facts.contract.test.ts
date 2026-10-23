@@ -193,7 +193,10 @@ try {
         experiments: [
           { needsHuman: "   ", needsHumanAck: false }, // blank: nothing to decide
           { needsHuman: true }, // not a string: read defensively, no item
-          { needsHuman: "Analytics: quota exceeded\n  at armTotalsFor (experimentsEvaluator.ts:120)" },
+          {
+            id: "x9-demo",
+            needsHuman: "Analytics: quota exceeded\n  at armTotalsFor (experimentsEvaluator.ts:120)",
+          },
         ],
       }),
     );
@@ -202,6 +205,7 @@ try {
       (i) => /quota exceeded/.test(i.text) || i.text.trim() === "" || i.text === "true",
     );
     assert.equal(human.length, 1, JSON.stringify(items));
+    assert.ok(human[0]!.text.startsWith("x9-demo: "), "the line names which experiment it is");
     deviation("Needs you: only eight kinds, one line each (experiment needsHuman)", () => {
       assert.ok(
         !human[0]!.text.includes("\n"),

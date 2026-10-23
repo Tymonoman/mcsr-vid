@@ -511,7 +511,7 @@ function communityPollItems(nowMs: number): NeedsYouItem[] {
 }
 
 interface ExperimentsFile {
-  experiments?: Array<{ needsHuman?: unknown; needsHumanAck?: unknown }>;
+  experiments?: Array<{ id?: unknown; needsHuman?: unknown; needsHumanAck?: unknown }>;
 }
 
 /** `<mediaDir>/.experiments.json`, written by the experiment engine (another branch) — read
@@ -526,7 +526,11 @@ function needsHumanItems(): NeedsYouItem[] {
       .filter(
         (e) => typeof e?.needsHuman === "string" && e.needsHuman.trim() !== "" && e.needsHumanAck !== true,
       )
-      .map((e) => ({ text: e.needsHuman as string }));
+      // Prefixed with the experiment id (a tc id carries the video id): three tests flagged for
+      // the same reason were three identical, unactionable lines (23 Oct 2026).
+      .map((e) => ({
+        text: `${typeof e.id === "string" && e.id ? `${e.id}: ` : ""}${(e.needsHuman as string).split("\n")[0]}`,
+      }));
   } catch (err) {
     console.error(`needsYou: .experiments.json: ${describeError(err)}`);
     return [];

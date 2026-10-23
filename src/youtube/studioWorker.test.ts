@@ -1706,6 +1706,29 @@ config.mediaDir = media;
   exp = (await readExperiments()).experiments.find((e) => e.id === "tc-title-readfail")!;
   assert.equal(exp.needsHuman, undefined, "a good read clears the read-failure flag");
   console.log("OK: a good A/B read clears a read-failure Needs-you flag");
+
+  // 23 Oct 2026: a page that never loaded gets one more try the same day, an hour on.
+  const due = async (at: Date) =>
+    planCycle(at, [], { endScreensDone: {} } as unknown as StudioLedger, (await readExperiments()).experiments)
+      .tcToCheck.some((e) => e.id === "tc-title-readfail");
+  const navTimeout = 'page.goto: Timeout 30000ms exceeded.\nCall log:\n  - navigating to "…"';
+  await setExperimentReadFailed("tc-title-readfail", navTimeout);
+  const failedAt = Date.parse(
+    ((await readExperiments()).experiments.find((e) => e.id === "tc-title-readfail")!.result as { checkedAt: string })
+      .checkedAt,
+  );
+  const sameDay = (ms: number) => new Date(failedAt).toISOString().slice(0, 10) === new Date(ms).toISOString().slice(0, 10);
+  // Near UTC midnight the hour-on check is tomorrow's ordinary read: skip, not flake.
+  if (sameDay(failedAt + 2 * 3600_000)) {
+    assert.equal(await due(new Date(failedAt + 600_000)), false, "not straight away");
+    assert.equal(await due(new Date(failedAt + 3700_000)), true, "a navigation timeout is retried an hour on");
+    await setExperimentReadFailed("tc-title-readfail", navTimeout);
+    assert.equal(await due(new Date(Date.now() + 3700_000)), false, "only once a day");
+  }
+  await setExperimentReadFailed("tc-title-readfail", "locator.waitFor: Timeout 15000ms exceeded.");
+  if (sameDay(failedAt + 2 * 3600_000))
+    assert.equal(await due(new Date(failedAt + 3700_000)), false, "any other error waits for tomorrow");
+  console.log("OK: a page that never loaded is retried once the same day");
 }
 
 console.log("studioWorker: all checks passed");

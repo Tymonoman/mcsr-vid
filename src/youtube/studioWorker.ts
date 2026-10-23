@@ -370,9 +370,16 @@ const utcDate = (d: Date): string => d.toISOString().slice(0, 10);
 /** "Once a day" per running experiment, by UTC calendar date rather than exact elapsed hours —
  * robust against the worker's own ±3 min cycle jitter ever skipping a day by a cycle's width. */
 function needsDailyCheck(e: Experiment, now: Date): boolean {
-  const checkedAt = (e.result as { checkedAt?: string } | undefined)?.checkedAt;
-  return !checkedAt || utcDate(new Date(checkedAt)) !== utcDate(now);
+  const r = e.result as { checkedAt?: string; readError?: string; timeoutRetried?: boolean } | undefined;
+  const checkedAt = r?.checkedAt;
+  if (!checkedAt || utcDate(new Date(checkedAt)) !== utcDate(now)) return true;
+  // A page that never loaded is the browser, not the test (23 Oct 2026: Chrome's CDP link died
+  // mid-cycle, every read timed out, and three tests read fine an hour later but waited a day,
+  // then asked for a human): one more try the same day, an hour on.
+  return isNavTimeout(r?.readError) && !r?.timeoutRetried && now.getTime() - Date.parse(checkedAt) >= 3600_000;
 }
+
+const isNavTimeout = (error: string | undefined): boolean => /^page\.goto: Timeout/.test(error ?? "");
 
 /** Same "once a day" shape as `needsDailyCheck`, for a video that already hit the picker's own
  * confirmed bug this UTC day — worth trying again a future cycle (the bug may get fixed), not
@@ -799,9 +806,19 @@ export async function setExperimentReadFailed(id: string, error: string): Promis
       // after UTC midnight is one bad evening, not two days (9 Oct 2026: 00:10 after 18:30).
       const since = prev?.readError ? (prev.readErrorSince ?? checkedAt) : checkedAt;
       const longStanding = Date.parse(checkedAt) - Date.parse(since) >= 20 * 3600_000;
+      const prevAt = (e.result as { checkedAt?: string } | undefined)?.checkedAt;
+      // A same-day failure after a navigation timeout was `needsDailyCheck`'s one retry.
+      const timeoutRetried =
+        isNavTimeout(prev?.readError) && !!prevAt && utcDate(new Date(prevAt)) === utcDate(new Date(checkedAt));
       return {
         ...e,
-        result: { ...(e.result as object), checkedAt, readError: error, readErrorSince: since },
+        result: {
+          ...(e.result as object),
+          checkedAt,
+          readError: error,
+          readErrorSince: since,
+          timeoutRetried: timeoutRetried || undefined,
+        },
         ...(longStanding ? { needsHuman: `${READ_FAILED_PREFIX} ${error.split("\n")[0]}` } : {}),
       };
     }),
