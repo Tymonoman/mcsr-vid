@@ -1,25 +1,39 @@
 <p align="center">
-  <img src="docs/logo.png" width="112" alt="MCSR Replayoffs logo">
+  <a href="https://www.youtube.com/@MCSRReplayoffs"><img src="docs/readme/cover.png" alt="mcsr-vid: match id to race video to YouTube"></a>
 </p>
 
-<h1 align="center">mcsr-vid</h1>
+<h4 align="center">
+  <a href="https://www.youtube.com/@MCSRReplayoffs">Channel</a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#get-started">Get started</a> ·
+  <a href="#docs">Docs</a>
+</h4>
+
+<h3 align="center">
+  An MCSR Ranked match id in, a finished side-by-side race video out.<br>
+  The pipeline behind <a href="https://www.youtube.com/@MCSRReplayoffs">MCSR Replayoffs</a>.
+</h3>
 
 <p align="center">
-  An MCSR Ranked match id in, a finished race video out.<br>
-  The pipeline behind the YouTube channel <a href="https://www.youtube.com/@MCSRReplayoffs">MCSR Replayoffs</a>.
+  <a href="https://github.com/Tymonoman/mcsr-vid/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Tymonoman/mcsr-vid/ci.yml?branch=main&style=for-the-badge&label=CI&labelColor=221f27" alt="CI"></a>
+  <a href="https://www.youtube.com/channel/UCm2mAyONTHlmIxZzNmi388w?sub_confirmation=1"><img src="https://img.shields.io/badge/YouTube-subscribe-e2483f?style=for-the-badge&logo=youtube&logoColor=white&labelColor=221f27" alt="Subscribe on YouTube"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/licence-MIT-35d6c4?style=for-the-badge&labelColor=221f27" alt="MIT licence"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/Tymonoman/mcsr-vid/actions/workflows/ci.yml"><img src="https://github.com/Tymonoman/mcsr-vid/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://www.youtube.com/channel/UCm2mAyONTHlmIxZzNmi388w?sub_confirmation=1"><img src="https://img.shields.io/badge/YouTube-subscribe-e2483f?logo=youtube&logoColor=white" alt="Subscribe on YouTube"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/licence-MIT-35d6c4" alt="MIT licence"></a>
+  <img src="docs/readme-hero.png" alt="What one match produces: the overlay's top band with both players' names and stats, the splits panel partway through the match, and the video's thumbnail (Feinberg vs Infume)">
 </p>
 
-![What one match produces: the overlay's top band with both players' names and stats, the splits panel partway through the match, and the video's thumbnail (Feinberg vs Infume)](docs/readme-hero.png)
+## Features
 
-It pulls the match, both players and their head-to-head from the
-[MCSR Ranked](https://mcsrranked.com) API, downloads both players' Twitch VODs, lines the two
-POVs up on the pre-match countdown and lays a split-timer overlay over them.
+- **Synced side by side**: both players' Twitch VODs, lined up on the countdown digit or the camera freeze. The match footage is never cut.
+- **Split-timer overlay**: a stats band, live splits, the RTA timer, a versus intro and a subscribe card.
+- **Thumbnails**: four posed variants, plus sets for YouTube's Test & Compare.
+- **Shorts**: a model watches the whole match and picks the moment, or it is cut by hand.
+- **Spoiler-free text**: titles, descriptions and chapters never name the winner.
+- **Playoff series**: every game joined into one video.
+- **Runs on its own**: nightly renders, scheduled uploads, a Studio worker, A/B tests between videos.
+- **Morning report**: what needs the operator, on Telegram.
 
 ## What one match becomes
 
@@ -33,8 +47,6 @@ POVs up on the pre-match countdown and lays a split-timer overlay over them.
 | A Short | A vertical cut of the match's best moment. |
 | `series-<g1>.mp4` | A playoff series: every game joined into one video. |
 | `match-<id>.kdenlive` | A Kdenlive project, for a match that needs a human. |
-
-The match footage itself is never cut.
 
 ## How it works
 
@@ -60,7 +72,7 @@ Nothing renders or uploads until they are saved, by the operator or by auto-hook
 | The experiment engine | `src/dashboard/experiments.ts` | A/B tests between videos, judged on CTR, engaged views and early retention from the channel's own Analytics. |
 | The Telegram bot | `src/telegram/` | A morning report and read-only commands (`/needs`, `/ypp`, `/stats 7d`, `/ask`). Claude Haiku writes the headline from counts and titles, never comment text. |
 
-## Quick start
+## Get started
 
 Needs Node 24, `ffmpeg`/`ffprobe` and [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) on `PATH`,
 and `python3` for `/watch` and `npm run analytics`. MLT (`melt-7`) only to open a Kdenlive
