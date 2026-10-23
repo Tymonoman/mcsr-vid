@@ -1037,8 +1037,10 @@ export async function startTestAndCompare(
     let clickedNewTest = false;
     if (!settable) {
       // A finished test's report blocks the form (22 Oct 2026: three concept tests planned on
-      // videos whose earlier test had finished); its own "New test" button clears it. A running
-      // test offers no such button and still errors below — nothing here ever stops a test.
+      // videos whose earlier test had finished); its own "New test" button clears it. A RUNNING
+      // test's report shows New test too (seen 23 Oct 2026) and this would replace it: the guard
+      // against that is the worker's `adoptsExistingTest`, so call this only through the worker
+      // or for a test the operator asked to restart.
       const newTest = page.locator(SELECTORS.abTestNewTestButton).first();
       if (await newTest.isVisible().catch(() => false)) {
         await shot(handle, opts.matchId, "tc-finished-report");
