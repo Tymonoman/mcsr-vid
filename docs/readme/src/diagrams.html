@@ -1,0 +1,95 @@
+<style>
+@font-face{font-family:M;src:url(../../../remotion/assets/fonts/Monocraft.ttf)}
+@font-face{font-family:M;font-weight:700;src:url(../../../remotion/assets/fonts/Monocraft-Bold.ttf)}
+:root{--panel:#221f27;--panel2:#1a1820;--edge:#0d0c10;--edgel:#3c3844;--crimson:#e2483f;--warped:#35d6c4;--gold:#f0c93d;--quartz:#f3ede2;--muted:#a59fad}
+*{box-sizing:border-box;margin:0}
+body{background:#fff;font-family:M,monospace;color:var(--quartz)}
+.sheet{width:1000px;padding:44px 40px 48px;background:var(--panel2);
+ background-image:linear-gradient(45deg,rgba(255,255,255,.025) 25%,transparent 25%,transparent 75%,rgba(255,255,255,.025) 75%),linear-gradient(45deg,rgba(255,255,255,.025) 25%,transparent 25%,transparent 75%,rgba(255,255,255,.025) 75%);
+ background-size:48px 48px;background-position:0 0,24px 24px;border-top:10px solid var(--crimson);border-bottom:10px solid var(--warped)}
+h1{font-weight:700;font-size:40px;letter-spacing:2px;margin-bottom:6px;text-shadow:4px 4px 0 var(--edge)}
+.sub{color:var(--muted);font-size:21px;margin-bottom:34px}
+.grid{display:grid;grid-template-columns:1fr 64px 1fr;row-gap:30px;align-items:stretch}
+.card{background:var(--panel);border:4px solid var(--quartz);box-shadow:8px 8px 0 var(--edge);padding:20px 22px;position:relative}
+.card.l{border-left:16px solid var(--crimson)} .card.r{border-right:16px solid var(--warped)}
+.n{color:var(--gold);font-weight:700;font-size:22px}
+.t{font-weight:700;font-size:31px;letter-spacing:1px;margin:4px 0 8px}
+.d{color:var(--muted);font-size:20px;line-height:1.35}
+.d b{color:var(--quartz);font-weight:400}
+.arr{display:flex;align-items:center;justify-content:center;font-size:40px;font-weight:700;color:var(--gold)}
+.col{display:flex;flex-direction:column;gap:0}
+.down{text-align:center;font-size:40px;color:var(--gold);font-weight:700;line-height:58px}
+.row{display:grid;grid-template-columns:1fr 330px;gap:26px;align-items:center}
+.note{border:3px dashed var(--edgel);padding:14px 16px;color:var(--muted);font-size:19px;line-height:1.35}
+.note b{color:var(--gold);font-weight:400}
+.tl{position:relative;margin:10px 0 0}
+.bar{display:grid;grid-template-columns:repeat(24,1fr);border:4px solid var(--quartz);box-shadow:8px 8px 0 var(--edge);height:64px;background:var(--panel)}
+.bar div{border-right:2px solid var(--edgel)} .bar div:last-child{border:0}
+.hours{display:grid;grid-template-columns:repeat(24,1fr);font-size:17px;color:var(--muted);margin-top:8px}
+.hours span{text-align:left}
+.span{position:absolute;top:4px;height:56px}
+.ev{display:grid;grid-template-columns:250px 1fr;gap:18px;align-items:baseline;padding:14px 0;border-bottom:2px solid var(--edgel)}
+.ev:last-child{border:0}
+.ev .h{font-weight:700;font-size:26px;color:var(--gold)}
+.ev .w{font-size:22px} .ev .w i{font-style:normal;color:var(--muted);display:block;font-size:19px;margin-top:4px}
+.key{display:inline-block;width:22px;height:22px;vertical-align:-3px;margin-right:10px;border:3px solid var(--quartz)}
+</style>
+
+<div class="sheet" id="pipeline">
+ <h1>ONE MATCH, ONE VIDEO</h1>
+ <div class="sub">npm run generate-project runs 1–7, npm run export:fast runs 8</div>
+ <div class="grid">
+  <div class="card l"><div class="n">01</div><div class="t">MATCH ID</div><div class="d">from the suggestions or tonight's queue</div></div>
+  <div class="arr">›</div>
+  <div class="card r"><div class="n">02</div><div class="t">FETCH</div><div class="d">MCSR Ranked API: the match, both players, their head-to-head</div></div>
+  <div class="card l"><div class="n">03</div><div class="t">DOWNLOAD</div><div class="d">both Twitch VOD windows and their chat</div></div>
+  <div class="arr">›</div>
+  <div class="card r"><div class="n">04</div><div class="t">SYNC</div><div class="d">countdown digit or camera freeze → <b>sync.json</b></div></div>
+  <div class="card l"><div class="n">05</div><div class="t">RENDER</div><div class="d">Remotion: overlay stills, timer strip, intro card</div></div>
+  <div class="arr">›</div>
+  <div class="card r"><div class="n">06</div><div class="t">THUMBNAILS</div><div class="d">four posed variants</div></div>
+  <div class="card l"><div class="n">07</div><div class="t">WRITE</div><div class="d">title, description, chapters, tags, a .kdenlive project</div></div>
+  <div class="arr">›</div>
+  <div class="card r"><div class="n">08</div><div class="t">EXPORT</div><div class="d">one ffmpeg pass → <b>final-&lt;id&gt;.mp4</b></div></div>
+ </div>
+</div>
+
+<div class="sheet" id="publish" style="margin-top:40px">
+ <h1>FROM VIDEO TO CHANNEL</h1>
+ <div class="sub">nothing renders or uploads until the hooks are saved</div>
+ <div class="row"><div class="card l"><div class="n">01</div><div class="t">PICK</div><div class="d">a model watches the whole match and picks a 12–60 s moment for the Short</div></div>
+  <div class="note"><b>no answer?</b> a timeline heuristic picks instead</div></div>
+ <div class="down">↓</div>
+ <div class="row"><div class="card l"><div class="n">02</div><div class="t">HOOKS</div><div class="d">the operator saves the title hook and the Short's hook</div></div>
+  <div class="note"><b>left unsaved?</b> auto-hooks saves the best one that passes the spoiler checks</div></div>
+ <div class="down">↓</div>
+ <div class="row"><div class="card l"><div class="n">03</div><div class="t">SHORT</div><div class="d">rendered from the pick's window, or cut by hand (<b>shortsByHand</b>)</div></div>
+  <div class="note"><b>no Short for this one?</b> the long-form goes alone</div></div>
+ <div class="down">↓</div>
+ <div class="row"><div class="card r"><div class="n">04</div><div class="t">LONG-FORM UP</div><div class="d">uploads private, scheduled for 19:00 UTC (a series 23:00)</div></div>
+  <div class="note"><b>then</b> playlists, the pinned comment, an end screen, a thumbnail test</div></div>
+ <div class="down">↓</div>
+ <div class="row"><div class="card r"><div class="n">05</div><div class="t">SHORT UP</div><div class="d">18 h after the long-form, linked to it</div></div>
+  <div class="note"><b>by default.</b> an experiment can move it</div></div>
+</div>
+
+<div class="sheet" id="day" style="margin-top:40px">
+ <h1>A DAY ON ITS OWN</h1>
+ <div class="sub">what runs without anyone pressing a button (UTC)</div>
+ <div class="tl">
+  <div class="bar">
+   <div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div>
+  </div>
+  <div class="span" style="left:calc(4px + (100% - 8px)*2.833/24);width:calc((100% - 8px)*4.667/24);background:repeating-linear-gradient(45deg,#3c3844 0 10px,#2b2830 10px 20px)"></div>
+  <div class="span" style="left:calc(4px + (100% - 8px)*3/24);width:calc((100% - 8px)*1/24);background:var(--crimson)"></div>
+  <div class="span" style="left:calc(4px + (100% - 8px)*19/24);width:calc((100% - 8px)*.5/24);background:var(--warped)"></div>
+  <div class="span" style="left:calc(4px + (100% - 8px)*23/24);width:calc((100% - 8px)*.5/24);background:var(--warped)"></div>
+  <div class="hours"><span>00</span><span></span><span></span><span>03</span><span></span><span></span><span>06</span><span></span><span></span><span>09</span><span></span><span></span><span>12</span><span></span><span></span><span>15</span><span></span><span></span><span>18</span><span></span><span></span><span>21</span><span></span><span></span></div>
+ </div>
+ <div style="margin-top:30px">
+  <div class="ev"><div class="h">03:00</div><div class="w"><span class="key" style="background:var(--crimson)"></span>The nightly renders<i>two matches at the lab (nightlyMaxRenders), then the model picks each one's Short</i></div></div>
+  <div class="ev"><div class="h">02:50–07:30</div><div class="w"><span class="key" style="background:repeating-linear-gradient(45deg,#3c3844 0 6px,#2b2830 6px 12px)"></span>The Studio worker rests<i>the rest of the day it runs every ~20 min: pins, end screens, A/B tests</i></div></div>
+  <div class="ev"><div class="h">07:00 PL</div><div class="w">The Telegram report<i>what needs the operator, uploads, channel stats</i></div></div>
+  <div class="ev"><div class="h">19:00</div><div class="w"><span class="key" style="background:var(--warped)"></span>A long-form goes public<i>a playoff series at 23:00; its Short 18 h later</i></div></div>
+ </div>
+</div>

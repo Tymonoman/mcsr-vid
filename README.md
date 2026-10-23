@@ -1,91 +1,70 @@
-# mcsr-vid
+<p align="center">
+  <img src="docs/logo.png" width="112" alt="MCSR Replayoffs logo">
+</p>
 
-[![CI](https://github.com/Tymonoman/mcsr-vid/actions/workflows/ci.yml/badge.svg)](https://github.com/Tymonoman/mcsr-vid/actions/workflows/ci.yml)
+<h1 align="center">mcsr-vid</h1>
+
+<p align="center">
+  An MCSR Ranked match id in, a finished race video out.<br>
+  The pipeline behind the YouTube channel <a href="https://www.youtube.com/@MCSRReplayoffs">MCSR Replayoffs</a>.
+</p>
+
+<p align="center">
+  <a href="https://github.com/Tymonoman/mcsr-vid/actions/workflows/ci.yml"><img src="https://github.com/Tymonoman/mcsr-vid/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://www.youtube.com/channel/UCm2mAyONTHlmIxZzNmi388w?sub_confirmation=1"><img src="https://img.shields.io/badge/YouTube-subscribe-e2483f?logo=youtube&logoColor=white" alt="Subscribe on YouTube"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/licence-MIT-35d6c4" alt="MIT licence"></a>
+</p>
 
 ![What one match produces: the overlay's top band with both players' names and stats, the splits panel partway through the match, and the video's thumbnail (Feinberg vs Infume)](docs/readme-hero.png)
 
-Turns an [MCSR Ranked](https://mcsrranked.com) match id into a finished race video for the
-YouTube channel [MCSR Replayoffs](https://www.youtube.com/@MCSRReplayoffs)
-([subscribe](https://www.youtube.com/channel/UCm2mAyONTHlmIxZzNmi388w?sub_confirmation=1)).
-It pulls the match, the players and their head-to-head from the MCSR Ranked API, downloads
-both players' Twitch VODs, lines the two POVs up on the pre-match countdown, and puts a
-split-timer overlay over them. Each match produces:
+It pulls the match, both players and their head-to-head from the
+[MCSR Ranked](https://mcsrranked.com) API, downloads both players' Twitch VODs, lines the two
+POVs up on the pre-match countdown and lays a split-timer overlay over them.
 
-- `final-<id>.mp4`: both POVs side by side at 60 fps, the overlay, an intro card and the
-  subscribe card at the end. 1080p by default, 1440p with `exportUpscale1440` (on at the lab).
-  The intro is `introSec` long (2 to 7 s, default 7; 3 at the lab). For a match that needs a
-  human there is `match-<id>.kdenlive` as well.
-- four thumbnail variants, the title, description, chapters and tags
-- a vertical Short of the match's best moment
-- for a playoff series, every game joined into one video (`series-<g1>.mp4`)
+## What one match becomes
 
 ![A frame from a published video (silverrruns vs Infume): both POVs with the stats band above and the match info, splits and RTA timer below; beside it a frame from the same match's Short, one POV with the hook on screen](docs/readme/output.jpg)
 
-At 03:00 UTC the nightly renders up to `nightlyMaxRenders`
-matches (default 1; 2 at the lab) and a model picks each one's Short moment. The hooks are saved
-by the operator, or automatically `autoHooksAfterHours` after the pick (default off; 12 h at the
-lab). The long-form then uploads private, scheduled for 19:00 UTC (23:00 for a series), and the
-Short follows 18 h later by default. A Studio worker pins the comment, adds the end screen and runs
-thumbnail tests, and a Telegram bot sends the operator a report every morning.
+| Output | What it is |
+| --- | --- |
+| `final-<id>.mp4` | Both POVs side by side at 60 fps with the overlay, an intro card and a subscribe card. 1080p, or 1440p with `exportUpscale1440`. |
+| Thumbnails | Four posed variants. |
+| Text | Title, description, chapters and tags. |
+| A Short | A vertical cut of the match's best moment. |
+| `series-<g1>.mp4` | A playoff series: every game joined into one video. |
+| `match-<id>.kdenlive` | A Kdenlive project, for a match that needs a human. |
 
-## The pipeline
+The match footage itself is never cut.
 
-![Flowchart: suggestions or tonight's queue picks a match id, which goes through fetch (MCSR Ranked API), download (both Twitch VOD windows and chat), sync (countdown digit or camera freeze, writes sync.json), render (Remotion overlay stills, timer strip, intro), thumbnails (4 posed variants) and write (.kdenlive, title, description, chapters, tags), ending in export:fast (one ffmpeg pass to final-id.mp4); a match that needs a human branches from write into Kdenlive or melt instead](docs/readme/pipeline.png)
+## How it works
 
-`npm run generate-project` runs every stage up to `write`; `npm run export:fast` then encodes
-the MP4 from what's on disk (it refuses if the render hasn't run yet). Each stage reuses what is
-already in `<mediaDir>/<id>/`. The match footage is never cut. When the detector cannot read a
-clip's countdown, the dashboard's "Fix the sync by hand" fold settles it, and the fix needs a
-re-export rather than a re-render. The nightly takes the first eligible suggestion: a known
-player unless the operator queued it, never a runner on the block list.
+![The pipeline in eight steps: match id, fetch, download, sync, render, thumbnails, write, export](docs/readme/pipeline.png)
 
-## The Short and publishing
+`npm run generate-project` runs every step up to *write*; `npm run export:fast` encodes the MP4
+from what is on disk and refuses if the render has not run. Each step reuses what is already in
+`<mediaDir>/<id>/`. When the detector cannot read a clip's countdown, the dashboard's
+"Fix the sync by hand" fold settles it; the fix needs a re-export, not a re-render.
 
-![Flowchart: the finished final-id.mp4 goes to a model pick (agy watches a 2fps proxy plus /watch stills per POV), falling back to a timeline heuristic on no answer; once hooks are saved, shortsByHand off renders the Short from the pick's window and uploads the long-form, while shortsByHand on has the operator cut the Short by hand with npm run short:hand; either way the long-form uploads private and scheduled, then the Short uploads 18 hours later; unsaved hooks can also be filled by auto-hooks after autoHooksAfterHours, and a match can skip the Short entirely](docs/readme/shorts.png)
+![From video to channel in five steps: pick, hooks, Short, long-form upload, Short upload](docs/readme/publish.png)
 
-1. **Model pick** (`src/shorts/videoPick.ts`): `agy` (`reasonerCommand`, Antigravity) watches the
-   whole match and returns a 12–60 s window, a focus side, a hook suggestion, up to three title
-   hooks and a one-line reason. No answer falls back to the timeline heuristic
-   (`src/shorts/shortMoment.ts`); `npm run pick -- <id> --force` asks again.
-2. **Hooks.** Nothing renders or uploads until the hooks are saved: the title hook becomes the
-   long-form's title, the Short hook goes to `short-<id>.hook.txt`. The operator saves them on
-   the dashboard, or `autoHooksAfterHours` after the pick picks the best hook that passes the
-   spoiler/label checks on its own. If none pass, nothing is saved and the match lands in the
-   morning report's "Needs you".
-3. **The Short** (`src/dashboard/shortFlow.ts`): rendered from the pick's window, or — with
-   `shortsByHand` on (the lab) — cut by hand and registered with `npm run short:hand`, which
-   checks the format, the hook and the block list. The pick still runs either way, as a hint.
-4. **Upload.** The long-form uploads at its slot, the Short 18 h later, gated by
-   `youtubeUploadEnabled` and `nightlyUpload`; hooks lock after upload.
-   `short-<id>.status.json` tracks each step; `youtubeAutoFinish` runs the finish steps
-   (playlists, the channel's comment, tags) on its own.
+A model (`agy`, `src/shorts/videoPick.ts`) picks the Short's moment; the hooks are the gate.
+Nothing renders or uploads until they are saved, by the operator or by auto-hooks
+(`autoHooksAfterHours`, off by default). Uploads also need `youtubeUploadEnabled`.
 
-## What runs on its own
+![A day on its own: the nightly render at 03:00 UTC, the Studio worker's quiet hours 02:50 to 07:30 UTC, the Telegram report at 07:00 Polish time, and the long-form going public at 19:00 UTC](docs/readme/day.png)
 
-- **The nightly** (`src/dashboard/nightly.ts`): renders, exports, queues the pick. Two renders a
-  night at the lab.
-- **Auto-hooks** (`autoHooksAfterHours`): saves hooks the operator left unsaved.
-- **The Studio worker** (`src/youtube/studioWorker.ts`, `npm run studio -- worker`): a real
-  Chrome signed in by hand to the channel's Studio (an Editor account is recommended, see CLAUDE.md).
-  Every ~20 minutes, outside the nightly's hours, it pins the channel's own comment, adds an end
-  screen, links each Short to its long-form, and starts and reads Test & Compare runs. It never
-  changes anything set by hand and never signs in by itself. `scripts/studio-worker.sh` keeps it
-  running.
-- **The experiment engine** (`src/dashboard/experiments.ts`, `.experiments.json`): A/B tests
-  between videos. It applies each day's render settings before the nightly and judges the arms
-  on CTR, engaged views and early retention from the channel's own Analytics and Reporting data.
-- **The Telegram bot** (`src/telegram/`): a morning report at 07:00 Warsaw (what needs the
-  operator, overnight uploads, channel stats, new comments) and read-only slash commands
-  (`/needs`, `/ypp`, `/stats 7d`, `/ask`). Claude Haiku writes the headline and answers `/ask`
-  from counts, titles, ids and the operator's notes, never comment text.
+| Part | Where | What it does |
+| --- | --- | --- |
+| The nightly | `src/dashboard/nightly.ts` | Renders the first eligible suggestions (`nightlyMaxRenders`), exports, queues the pick. A known player only, unless queued; never a blocked runner. |
+| The Studio worker | `src/youtube/studioWorker.ts` | A real Chrome signed in by hand. Pins the channel's comment, adds end screens, links Shorts to their videos, starts and reads Test & Compare. Never signs in by itself, never changes what was set by hand. |
+| The experiment engine | `src/dashboard/experiments.ts` | A/B tests between videos, judged on CTR, engaged views and early retention from the channel's own Analytics. |
+| The Telegram bot | `src/telegram/` | A morning report and read-only commands (`/needs`, `/ypp`, `/stats 7d`, `/ask`). Claude Haiku writes the headline from counts and titles, never comment text. |
 
-## Running it
+## Quick start
 
-Requirements: Node 24 (what the image and CI run), `ffmpeg`/`ffprobe` and
-[`yt-dlp`](https://github.com/yt-dlp/yt-dlp) on `PATH`, and `python3` for `/watch` and
-`npm run analytics`. You only need MLT (`melt-7`) to open or validate a Kdenlive project.
-`Dockerfile` + `compose.yaml` define the lab's image: one container you exec into, and
-`mcsr-dashboard`.
+Needs Node 24, `ffmpeg`/`ffprobe` and [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) on `PATH`,
+and `python3` for `/watch` and `npm run analytics`. MLT (`melt-7`) only to open a Kdenlive
+project. `Dockerfile` and `compose.yaml` define the lab's containers.
 
 ```sh
 npm install
@@ -93,12 +72,11 @@ cp mcsr-vid.config.example.json mcsr-vid.config.json   # optional: any subset of
 npm run dashboard                                      # http://localhost:8080
 ```
 
-Commands accept a match id or a match page URL as the first argument, with flags after it
-(the trailing number of whatever is given is taken as the match id, so pass an MCSR Ranked
-match, not a Twitch link). Extra arguments go after `--`. The everyday
-commands (`dashboard`, `export:fast`, `short`, `short:hand`, `pick`, `series`, `sync-status`,
-`chat`, `clip`, `tg`, `studio`, `tc-thumbs` and the rest) are in the
-[Commands table in CLAUDE.md](CLAUDE.md#commands). The ones not listed there:
+Commands take a match id or a match page URL first, flags after `--`. The everyday ones are in
+the [Commands table in CLAUDE.md](CLAUDE.md#commands).
+
+<details>
+<summary><b>The other scripts</b></summary>
 
 | Script | What it does |
 | --- | --- |
@@ -116,7 +94,10 @@ commands (`dashboard`, `export:fast`, `short`, `short:hand`, `pick`, `series`, `
 | `typecheck` / `format` | `tsc --noEmit` / prettier. |
 | `test:unit` / `test` | Every `*.test.ts` except the eight that drive Chromium and ffmpeg / all of them. |
 
-## Credentials
+</details>
+
+<details>
+<summary><b>Credentials</b></summary>
 
 | Part | Needs | Where |
 | --- | --- | --- |
@@ -137,16 +118,17 @@ commands (`dashboard`, `export:fast`, `short`, `short:hand`, `pick`, `series`, `
 `scripts/preflight.sh` warns when a credential is missing or about to expire. What the channel
 sends where is on the [privacy page](https://mcsr.sezamki.site/privacy.html).
 
-## Tests and CI
+</details>
 
-The tests are plain assertion scripts with no framework, each next to the file it tests.
-`npm run test:unit` runs all but the eight that drive Chromium and ffmpeg, and `npm test` adds
-those eight. To run a single test: `npx tsx src/pipeline/kdenliveProject.test.ts`.
-`bash scripts/browser-checks/run-all.sh <url>` drives a real dashboard in Playwright.
-[CI](.github/workflows/ci.yml) runs `tsc --noEmit` and `npm run test:unit` on every push and
-pull request, with no secrets.
+## Tests
 
-## Layout
+Plain assertion scripts, each next to the file it tests. `npm run test:unit` runs all but the
+eight that drive Chromium and ffmpeg; `npm test` runs everything. One file:
+`npx tsx src/pipeline/kdenliveProject.test.ts`. [CI](.github/workflows/ci.yml) runs
+`tsc --noEmit` and `npm run test:unit` on every push and pull request.
+
+<details>
+<summary><b>Repository layout</b></summary>
 
 ```
 src/
@@ -173,10 +155,15 @@ docs/           the GitHub Pages site for mcsr.sezamki.site (home, privacy, term
 deploy/         the lab's systemd user unit
 ```
 
-Start with the doc for your role: **[CLAUDE.md](CLAUDE.md)** for agents and anyone changing the
-code (house rules, commands, what each render produces, the dashboard's design, known pitfalls —
-reasons in [handbook/claude-md-reference.md](handbook/claude-md-reference.md)); **[handbook/](handbook/README.md)**
-for the operator running the channel (Studio fallback, API compliance review, domain).
+</details>
+
+## Docs
+
+- **[CLAUDE.md](CLAUDE.md)**: for agents and anyone changing the code. House rules, commands,
+  what each render produces, known pitfalls. Reasons in
+  [handbook/claude-md-reference.md](handbook/claude-md-reference.md).
+- **[handbook/](handbook/README.md)**: for the operator. Routines, setup guides, the API review.
+- The diagrams are drawn in [docs/readme/src/diagrams.html](docs/readme/src/diagrams.html).
 
 ## Licence
 
